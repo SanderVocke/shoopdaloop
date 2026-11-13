@@ -1,4 +1,5 @@
 use super::*;
+use crate::Sample;
 
 pub(in crate::resource) struct CaptureWrite {
     write: Write,
@@ -7,7 +8,7 @@ pub(in crate::resource) struct CaptureWrite {
     extra: usize,
 }
 
-impl AudioStore {
+impl<S: Sample> AudioStore<S> {
     pub(in crate::resource) fn capture_slots(&self, members: usize) -> Result<(), Error> {
         if !self.pages.chunked() || self.closed || self.keep == 0 {
             return Err(Error::InvalidState);
@@ -20,7 +21,7 @@ impl AudioStore {
 
     pub(in crate::resource) fn reserve_capture_block(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         take: TakeId,
         export: ExportId,
     ) -> Result<CaptureWrite, Error> {
@@ -81,9 +82,9 @@ impl AudioStore {
 
     pub(in crate::resource) fn fill_capture_block(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         write: &CaptureWrite,
-        samples: &[f32],
+        samples: &[S],
     ) -> Result<(), Error> {
         self.check(io.store)?;
         if samples.len() != self.page_frames * self.channels {
@@ -115,7 +116,7 @@ impl AudioStore {
 
     pub(in crate::resource) fn cancel_capture_block(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         write: CaptureWrite,
     ) -> Result<(), Error> {
         let mut export = self.view(write.export.0)?;
@@ -127,7 +128,7 @@ impl AudioStore {
 
     pub(in crate::resource) fn commit_capture_block(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         write: CaptureWrite,
     ) -> Result<(), Error> {
         self.commit_write(io, write.write).map(|_| ())

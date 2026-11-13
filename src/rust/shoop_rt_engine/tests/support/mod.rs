@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 
 pub fn description() -> EngineDescription {
     EngineDescription {
+        audio_backend: shoop_rt_protocol::AudioBackendKind::NewEngine,
         audio_render_mode: shoop_rt_engine::AudioRenderMode::Current,
         audio_bench_only: false,
         history: shoop_rt_protocol::host::InputHistorySettings {
@@ -64,6 +65,7 @@ pub fn audio_modes() -> [shoop_rt_engine::AudioRenderMode; 3] {
 
 pub fn audio_description(mode: shoop_rt_engine::AudioRenderMode) -> EngineDescription {
     EngineDescription {
+        audio_backend: shoop_rt_protocol::AudioBackendKind::NewEngine,
         audio_render_mode: mode,
         audio_bench_only: true,
         ..description()
@@ -124,8 +126,7 @@ pub fn midi_out() -> HostPortId {
 
 type Input = Box<dyn FnMut(usize, u64) -> f32>;
 
-/// The offline host with collected engine messages. Every engine call is
-/// heap-guarded; collecting messages happens outside the guard.
+/// Engine calls are heap-guarded. Message collection happens outside the guard.
 pub struct Harness {
     pub host: OfflineHost,
     pub results: BTreeMap<u64, Outcome>,

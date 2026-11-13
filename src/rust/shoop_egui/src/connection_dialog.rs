@@ -677,7 +677,9 @@ fn is_application_owned_host(app_state: &AppState, host: &HostPortState) -> bool
     let configured_client = match &active.configured {
         crate::AudioDriverConfig::Jack(config) => Some(config.client_name.as_str()),
         crate::AudioDriverConfig::Cpal(config) => Some(config.client_name.as_str()),
-        crate::AudioDriverConfig::Dummy(_) | crate::AudioDriverConfig::WebAudio => None,
+        crate::AudioDriverConfig::Dummy(_)
+        | crate::AudioDriverConfig::WebAudio
+        | crate::AudioDriverConfig::Simulated(_) => None,
     };
     let application_client = (!active.instance_name.is_empty())
         .then_some(active.instance_name.as_str())

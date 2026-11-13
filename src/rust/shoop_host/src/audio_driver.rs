@@ -6,7 +6,7 @@ use shoop_rt_host_native::{NativeConfig, NativeHost};
 use std::{
     sync::mpsc::{self, Receiver, SyncSender},
     thread::{self, JoinHandle},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 mod conversion;
@@ -63,28 +63,26 @@ pub struct Owner {
     stop_result: Option<Result<(), String>>,
 }
 impl Owner {
-    pub fn stop(&mut self) -> Result<(), String> {
+    pub fn poll_stop(&mut self) -> Option<Result<(), String>> {
         if let Some(result) = &self.stop_result {
-            return result.clone();
+            return Some(result.clone());
         }
         if self.stopping.is_none() {
             let (tx, rx) = mpsc::channel();
-            self.sender
-                .try_send(Request::Stop(tx))
-                .map_err(|_| "audio lifecycle worker is busy or unavailable".to_owned())?;
+            if self.sender.try_send(Request::Stop(tx)).is_err() {
+                return Some(Err(
+                    "audio lifecycle worker is busy or unavailable".to_owned()
+                ));
+            }
             self.stopping = Some(rx);
         }
-        let result = match self
-            .stopping
-            .as_ref()
-            .unwrap()
-            .recv_timeout(Duration::from_secs(5))
-        {
+        if self.join.as_ref().is_some_and(|join| !join.is_finished()) {
+            return None;
+        }
+        let result = match self.stopping.as_ref().unwrap().try_recv() {
             Ok(result) => result,
-            Err(mpsc::RecvTimeoutError::Timeout) => {
-                return Err("audio lifecycle cleanup did not finish".into())
-            }
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
+            Err(mpsc::TryRecvError::Empty) => return None,
+            Err(mpsc::TryRecvError::Disconnected) => {
                 Err("audio lifecycle worker lost its cleanup result".into())
             }
         };
@@ -95,7 +93,20 @@ impl Owner {
         };
         self.stopping = None;
         self.stop_result = Some(result.clone());
-        result
+        Some(result)
+    }
+
+    pub fn stop(&mut self) -> Result<(), String> {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if let Some(result) = self.poll_stop() {
+                return result;
+            }
+            if Instant::now() >= deadline {
+                return Err("audio lifecycle cleanup did not finish".into());
+            }
+            thread::sleep(Duration::from_millis(1));
+        }
     }
 }
 impl Drop for Owner {
@@ -334,7 +345,7 @@ fn available(kind: AudioDriverKind) -> bool {
         AudioDriverKind::Dummy => true,
         AudioDriverKind::Cpal => cfg!(feature = "cpal"),
         AudioDriverKind::Jack => cfg!(feature = "jack"),
-        AudioDriverKind::WebAudio => false,
+        AudioDriverKind::WebAudio | AudioDriverKind::Simulated => false,
     }
 }
 

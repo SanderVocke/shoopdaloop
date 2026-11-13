@@ -1,9 +1,13 @@
-//! Single-owner fixed-page resource storage. All allocation and final destruction
-//! happen at preparation/host teardown; rendering uses fixed pools and bounded copies.
+//! Single-owner resource storage. Ordinary modes use prepared fixed-page pools;
 //! Raw resource/snapshot IDs require same-store caller discipline. Scoped indexes
 //! additionally check instance and lease generation; copying either acquires no lease.
 
+use crate::Sample;
+mod external;
 mod reservation;
+pub use external::ExternalReadScope;
+pub(crate) mod memory;
+pub use memory::MemoryUsage;
 pub use reservation::ReservedSnapshotId;
 mod boundary;
 pub use boundary::{CaptureBoundaryIo, PlannerResourceIo};
@@ -167,7 +171,7 @@ impl Cursor {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SnapshotReservation(SnapshotId);
 
-pub struct ResourceStore {
+pub struct ResourceStore<S: Sample = f32> {
     audio_graph_work: crate::audio_refs::AudioGraphWork,
     audio_render_mode: crate::AudioRenderMode,
     quantum: Quantum,
@@ -194,9 +198,9 @@ pub struct ResourceStore {
     midi_indexes: MidiPool,
     capture_groups: CapturePool,
     control_phase: bool,
-    audio_stores: Vec<Option<Box<shared_audio::AudioStore>>>,
+    audio_stores: Vec<Option<Box<shared_audio::AudioStore<S>>>>,
     audio_maintenance: usize,
-    midi_stores: Vec<Option<Box<shared_midi::MidiStore>>>,
+    midi_stores: Vec<Option<Box<shared_midi::MidiStore<S>>>>,
     midi_maintenance: usize,
     indexed_midi_stores: Vec<Option<Box<indexed_midi::Store>>>,
     indexed_midi_maintenance: usize,
@@ -233,10 +237,20 @@ fn release<T: Copy>(slots: &mut [Slot<T>], free: &mut Vec<usize>, index: usize) 
     }
 }
 
-impl ResourceStore {
+impl ResourceStore<f32> {
     pub fn new(config: PreparedConfig, quantum: Quantum) -> Result<Self, Error> {
+        Self::new_numeric(config, quantum)
+    }
+}
+
+impl<S: Sample> ResourceStore<S> {
+    /// Prepare media whose audio bytes are little-endian `S` samples. For f32
+    /// these are IEEE-754 bits; Q824 uses signed raw i32 bits. Upload/export byte
+    /// APIs preserve this encoding. Convert device/persistence floats explicitly
+    /// with `Sample::from_f32` / `to_f32` at the owning adapter boundary.
+    pub fn new_numeric(config: PreparedConfig, quantum: Quantum) -> Result<Self, Error> {
         let limits = config.limits();
-        if quantum.frames() > limits.max_frames {
+        if quantum.frames() > limits.max_frames || size_of::<S>() != 4 {
             return Err(Error::InvalidConfig);
         }
         for (count, size) in [
@@ -300,6 +314,7 @@ impl ResourceStore {
     /// Host boundary only; call once per callback, not per command or processor.
     pub fn begin_callback(&mut self) {
         self.audio_graph_work = Default::default();
+
         for audio in self.audio_stores.iter_mut().flatten() {
             audio.reset_work();
         }
@@ -402,6 +417,50 @@ impl ResourceStore {
             0
         })
     }
+    pub fn memory_usage(&self) -> MemoryUsage {
+        MemoryUsage {
+            accounted_bytes: (core::mem::size_of_val(&*self.data)
+                + memory::vec_bytes(&self.pages)
+                + memory::vec_bytes(&self.free_pages)
+                + memory::vec_bytes(&self.resources)
+                + memory::vec_bytes(&self.free_resources)
+                + memory::vec_bytes(&self.versions)
+                + memory::vec_bytes(&self.free_versions)
+                + memory::vec_bytes(&self.snapshots)
+                + memory::vec_bytes(&self.free_snapshots)
+                + core::mem::size_of_val(&*self.snapshot_reservations)
+                + memory::vec_bytes(&self.retired_versions)
+                + memory::vec_bytes(&self.retired_pages)
+                + memory::vec_bytes(&self.audio_stores)
+                + memory::vec_bytes(&self.midi_stores)
+                + memory::vec_bytes(&self.indexed_midi_stores)
+                + self
+                    .audio_stores
+                    .iter()
+                    .flatten()
+                    .map(|store| core::mem::size_of_val(&**store) + store.allocated_bytes())
+                    .sum::<usize>()
+                + self
+                    .midi_stores
+                    .iter()
+                    .flatten()
+                    .map(|store| core::mem::size_of_val(&**store) + store.allocated_bytes())
+                    .sum::<usize>()
+                + self
+                    .indexed_midi_stores
+                    .iter()
+                    .flatten()
+                    .map(|store| core::mem::size_of_val(&**store) + store.allocated_bytes())
+                    .sum::<usize>()
+                + self.midi_indexes.allocated_bytes()
+                + self.capture_groups.allocated_bytes()) as u64,
+            payload_bytes: self.data.len() as u64,
+            page_bytes: self.config.limits().page_bytes as u64,
+            pages: (self.data.len() / self.config.limits().page_bytes) as u64,
+            slots: self.resources.len() as u64,
+            pools: self.usage(),
+        }
+    }
     pub fn usage(&self) -> PoolUsage {
         PoolUsage {
             free_pages: self.free_pages.len(),
@@ -489,7 +548,8 @@ impl ResourceStore {
         if needed > self.free_pages.len() - self.reserved_pages {
             return Err(Error::Capacity);
         }
-        let index = self.free_versions.pop().ok_or(Error::Capacity)?;
+        let index = *self.free_versions.last().ok_or(Error::Capacity)?;
+        self.free_versions.pop();
         self.reserved_pages += needed;
         let slot = &mut self.versions[index];
         slot.value = Some(Version {
@@ -542,6 +602,7 @@ impl ResourceStore {
         if bytes.len() > self.copy_remaining() || validation > self.steps_remaining() {
             return Err(Error::Budget);
         }
+
         self.steps_remaining -= validation;
         self.work.validation_steps += validation;
         let prior_parser = version.parser;

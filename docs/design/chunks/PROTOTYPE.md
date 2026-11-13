@@ -158,3 +158,10 @@ surviving resource/snapshot deletion under heap guards.
 The full native suite remains the repository gate. Native device smoke evidence,
 empirical results and any unavailable external checks are recorded alongside the
 final measurement report.
+
+## FPGA architecture reference
+
+The experimental fourth FPGA-reference renderer has been retired. FPGA behavior
+is now compared against the production backend using its compile-time Q8.24
+policy; float remains the normal application default. See
+[the verification guide](../../../fpga/verification/README.md).

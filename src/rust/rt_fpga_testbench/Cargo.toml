@@ -1,0 +1,37 @@
+[package]
+name = "rt_fpga_testbench"
+version.workspace = true
+edition = "2024"
+publish = false
+description = "Native Marlin component and integration verification benches"
+
+[lints]
+workspace = true
+
+[features]
+default = []
+sim = ["dep:marlin", "dep:quick-xml", "dep:serde", "dep:serde_json", "dep:clap", "dep:libloading", "dep:rt_fpga_sim", "dep:rt_backend_testbench", "dep:rt_fpga_adapter", "dep:rt_audio_math", "dep:rt_runtime", "dep:sha2"]
+
+[dependencies]
+sha2 = { workspace = true, optional = true }
+serde = { workspace = true, features = ["derive", "std"], optional = true }
+serde_json = { workspace = true, optional = true }
+clap = { workspace = true, optional = true }
+libloading = { workspace = true, optional = true }
+rt_backend_testbench = { path = "../rt_backend_testbench", optional = true }
+rt_fpga_adapter = { path = "../rt_fpga_adapter", optional = true }
+rt_audio_math = { path = "../rt_audio_math", optional = true }
+rt_runtime = { path = "../rt_runtime", optional = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+marlin = { version = "=0.21.1", features = ["verilog"], optional = true }
+quick-xml = { version = "0.41.0", optional = true }
+rt_fpga_sim = { path = "../rt_fpga_sim", features = ["sim"], optional = true }
+
+[dev-dependencies]
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
+
+[[bin]]
+name = "fpga-testbench"
+path = "src/main.rs"
+required-features = ["sim"]

@@ -4,6 +4,7 @@ use super::{
     shared_pages::{LeaseId, SharedPages},
     RenderIo, ResourceStore, Slot, WorkClass,
 };
+use crate::Sample;
 use crate::{buffer::MidiBuffer, midi::Message, midi_state::MidiState, Error, Frame, Revision};
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::ops::Range;
@@ -173,7 +174,7 @@ struct Job {
     owner: usize,
 }
 
-pub struct MidiStore {
+pub struct MidiStore<S: Sample = f32> {
     scope: u32,
     store_scope: u32,
     config: Config,
@@ -198,7 +199,7 @@ pub struct MidiStore {
     views: Vec<Slot<View>>,
     initial: Box<[MidiState]>,
     free_views: Vec<usize>,
-    pages: SharedPages,
+    pages: SharedPages<S>,
     reserved: usize,
     debt: usize,
     owners: usize,
@@ -244,9 +245,35 @@ fn jobs(count: usize) -> Vec<Job> {
     result
 }
 
-impl MidiStore {
+impl<S: Sample> MidiStore<S> {
+    pub(super) fn allocated_bytes(&self) -> usize {
+        core::mem::size_of_val(&*self.current)
+            + super::memory::vec_bytes(&self.nodes)
+            + super::memory::vec_bytes(&self.free_nodes)
+            + super::memory::vec_bytes(&self.chunks)
+            + core::mem::size_of_val(&*self.chunk_states)
+            + super::memory::vec_bytes(&self.free_chunks)
+            + super::memory::vec_bytes(&self.blocks)
+            + core::mem::size_of_val(&*self.block_map)
+            + super::memory::vec_bytes(&self.free_blocks)
+            + super::memory::vec_bytes(&self.views)
+            + core::mem::size_of_val(&*self.initial)
+            + super::memory::vec_bytes(&self.free_views)
+            + core::mem::size_of_val(&*self.scratch)
+            + super::memory::vec_bytes(&self.retired)
+            + super::memory::vec_bytes(&self.immediate)
+            + core::mem::size_of_val(&*self.pending)
+            + super::memory::vec_bytes(&self.edits)
+            + super::memory::vec_bytes(&self.free_edits)
+            + core::mem::size_of_val(&*self.edit_records)
+            + core::mem::size_of_val(&*self.edit_states)
+            + super::memory::vec_bytes(&self.bases)
+            + super::memory::vec_bytes(&self.free_bases)
+            + self.pages.allocated_bytes()
+    }
+
     pub fn prepare(
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         config: Config,
         origin: Frame,
         initial: &MidiState,
@@ -348,7 +375,7 @@ impl MidiStore {
             free_bases: (0..base_slots).rev().collect(),
         })
     }
-    fn check(&self, store: &ResourceStore) -> Result<(), Error> {
+    fn check(&self, store: &ResourceStore<S>) -> Result<(), Error> {
         if store.scope != self.store_scope {
             return Err(Error::InvalidId);
         }
@@ -517,12 +544,12 @@ impl MidiStore {
         self.drop_root(root, self.views.len(), false);
         Ok(())
     }
-    pub fn maintain(&mut self, store: &mut ResourceStore) -> Result<usize, Error> {
+    pub fn maintain(&mut self, store: &mut ResourceStore<S>) -> Result<usize, Error> {
         self.maintain_limit(store, usize::MAX)
     }
     pub(super) fn maintain_limit(
         &mut self,
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         limit: usize,
     ) -> Result<usize, Error> {
         if store.scope != self.store_scope {

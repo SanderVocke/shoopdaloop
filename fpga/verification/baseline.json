@@ -1,0 +1,642 @@
+{
+  "revision": "e5c015be8a37a21c8d0590522b1a75d0ca0534c4",
+  "tools": {
+    "rustc": "1.99.1",
+    "verilator": "5.032",
+    "yosys": "0.52",
+    "legacy_python_harness": "1.9.2"
+  },
+  "production_tests": {
+    "passed": 669,
+    "failed": 0,
+    "ignored": 1
+  },
+  "float_cpu": {
+    "revision": "e5c015be8a37a21c8d0590522b1a75d0ca0534c4",
+    "quantum": 32,
+    "buffer": 128,
+    "voices": 4,
+    "sample_rate": 48000,
+    "mode": "current",
+    "measurements": [
+      {
+        "phase": "play",
+        "repeat": 0,
+        "callbacks": 1024,
+        "median_ns": 32847.0,
+        "p99_ns": 171714,
+        "worst_ns": 646063,
+        "allocations": 0,
+        "reallocations": 0,
+        "deallocations": 0
+      },
+      {
+        "phase": "play",
+        "repeat": 1,
+        "callbacks": 1024,
+        "median_ns": 31198.0,
+        "p99_ns": 152492,
+        "worst_ns": 1203177,
+        "allocations": 0,
+        "reallocations": 0,
+        "deallocations": 0
+      },
+      {
+        "phase": "play",
+        "repeat": 2,
+        "callbacks": 1024,
+        "median_ns": 31396.5,
+        "p99_ns": 249671,
+        "worst_ns": 579731,
+        "allocations": 0,
+        "reallocations": 0,
+        "deallocations": 0
+      },
+      {
+        "phase": "record-play",
+        "repeat": 0,
+        "callbacks": 1024,
+        "median_ns": 33120.5,
+        "p99_ns": 106975,
+        "worst_ns": 2033891,
+        "allocations": 0,
+        "reallocations": 0,
+        "deallocations": 0
+      },
+      {
+        "phase": "record-play",
+        "repeat": 1,
+        "callbacks": 1024,
+        "median_ns": 33891.0,
+        "p99_ns": 175492,
+        "worst_ns": 409909,
+        "allocations": 0,
+        "reallocations": 0,
+        "deallocations": 0
+      },
+      {
+        "phase": "record-play",
+        "repeat": 2,
+        "callbacks": 1024,
+        "median_ns": 33622.0,
+        "p99_ns": 165086,
+        "worst_ns": 1165009,
+        "allocations": 0,
+        "reallocations": 0,
+        "deallocations": 0
+      },
+      {
+        "phase": "record",
+        "repeat": 0,
+        "callbacks": 1024,
+        "median_ns": 39448.5,
+        "p99_ns": 174888,
+        "worst_ns": 437791,
+        "allocations": 0,
+        "reallocations": 0,
+        "deallocations": 0
+      },
+      {
+        "phase": "record",
+        "repeat": 1,
+        "callbacks": 1024,
+        "median_ns": 38378.5,
+        "p99_ns": 114831,
+        "worst_ns": 210750,
+        "allocations": 0,
+        "reallocations": 0,
+        "deallocations": 0
+      },
+      {
+        "phase": "record",
+        "repeat": 2,
+        "callbacks": 1024,
+        "median_ns": 39839.0,
+        "p99_ns": 202287,
+        "worst_ns": 1398327,
+        "allocations": 0,
+        "reallocations": 0,
+        "deallocations": 0
+      },
+      {
+        "phase": "clear",
+        "repeat": 0,
+        "callbacks": 1024,
+        "median_ns": 25538.0,
+        "p99_ns": 134801,
+        "worst_ns": 538982,
+        "allocations": 0,
+        "reallocations": 0,
+        "deallocations": 0
+      },
+      {
+        "phase": "clear",
+        "repeat": 1,
+        "callbacks": 1024,
+        "median_ns": 25540.0,
+        "p99_ns": 187797,
+        "worst_ns": 547678,
+        "allocations": 0,
+        "reallocations": 0,
+        "deallocations": 0
+      },
+      {
+        "phase": "clear",
+        "repeat": 2,
+        "callbacks": 1024,
+        "median_ns": 25698.5,
+        "p99_ns": 135247,
+        "worst_ns": 424445,
+        "allocations": 0,
+        "reallocations": 0,
+        "deallocations": 0
+      }
+    ]
+  },
+  "rtl64": {
+    "configuration": {
+      "model": "instant",
+      "fabric_hz": 100000000,
+      "physical_base": 16777216,
+      "fixed_cycles": 7,
+      "axi_data_width": 32,
+      "word_transfers": false,
+      "profile": "/workspace/shoopdaloop/fpga/axi_memory/configs/zynq7010-ddr3-1066-x16.ini",
+      "profile_sha256": "629ccabea75c16ca2faedc921675986ebe878a9e3b2a75872582fe7cc42b640e",
+      "library_sha256": "7c4bf7a0b6ebdafb5b70c6e20b8fb91ccfa7427930c1fc9233e11169a3e28caa",
+      "model_patch_sha256": "0b576afb7d62edc1570bf712c63ee2b762098db8ec2d08dc0a91d12a1ba93eca",
+      "model_revision": "29817593b3389f1337235d63cac515024ab8fd6e",
+      "revision": "e5c015be8a37a21c8d0590522b1a75d0ca0534c4",
+      "working_tree_dirty": false
+    },
+    "seed": 20261110,
+    "random_stalls": false,
+    "loop_slots": 64,
+    "request_slots": 128,
+    "quantum_frames": 32,
+    "chunk_frames": 32,
+    "read_buffers": 128,
+    "write_buffers": 4,
+    "simulation_seconds": 62.26171105600042,
+    "results": [
+      {
+        "raw_cycles": 13955,
+        "active_cycles": 13955,
+        "transition_cycles": 2445,
+        "state_cycles": 1152,
+        "job_cycles": 10353,
+        "other_cycles": 5,
+        "coordinator_phases": {
+          "SETTLE_SEND": 1,
+          "SETTLE_WAIT": 2375,
+          "AUDIO_START": 1,
+          "AUDIO_WAIT": 11509,
+          "FINISH_SEND": 1,
+          "FINISH_WAIT": 68
+        },
+        "job_phases": {
+          "CLEAR_OUTPUT": 256,
+          "FETCH": 193,
+          "DECODE": 192,
+          "MEDIA_COMMAND": 64,
+          "MEDIA_READ": 2688,
+          "MEDIA_DONE": 192,
+          "RAMP_PREPARE": 64,
+          "GAIN_STREAM": 2240,
+          "MIX_STREAM": 3696,
+          "READ_REQUEST": 256,
+          "READ_RESULT": 256,
+          "STORE": 256
+        },
+        "transition_states": {
+          "S_IDLE": 4,
+          "S_DISPATCH": 2,
+          "S_CLEAR": 66,
+          "S_DIRECT_SCAN": 65,
+          "S_R_WAIT": 128,
+          "S_R_GET": 128,
+          "S_DIRECT_CHECK": 64,
+          "S_L_WAIT": 256,
+          "S_L_GET": 256,
+          "S_OFFER_CHECK": 64,
+          "S_OFFER_LOOP": 64,
+          "S_COMPONENT": 65,
+          "S_COMPONENT_END": 64,
+          "S_M_WAIT": 64,
+          "S_M_GET": 64,
+          "S_COMPONENT_END_CHECK": 64,
+          "S_FIRST_MEMBER": 64,
+          "S_FIRST_APPLY": 64,
+          "S_APPLY": 64,
+          "S_APPLY_CHECK": 64,
+          "S_UNLINK_BEGIN": 64,
+          "S_UNLINK_HEAD": 64,
+          "S_UNLINK_NEXT": 64,
+          "S_UNLINK_DONE": 64,
+          "S_APPLY_UNLINK_DONE": 64,
+          "S_FIRST_NATURAL": 64,
+          "S_FIRST_INHERIT": 64,
+          "S_FIND_PULSE": 128,
+          "S_PULSE_EMIT": 64,
+          "S_FOLLOW": 64,
+          "S_FINAL": 1,
+          "S_FINISH_LOOP": 66
+        },
+        "jobs": {
+          "read_view": {
+            "count": 64,
+            "cycles": 3072
+          },
+          "gain": {
+            "count": 64,
+            "cycles": 2432
+          },
+          "mix": {
+            "count": 56,
+            "cycles": 3808
+          },
+          "output": {
+            "count": 8,
+            "cycles": 785
+          }
+        },
+        "demand_fill_wait_cycles": 0,
+        "transfer_active_cycles": 4736,
+        "raw_ddr_bus": null,
+        "active_ddr_bus": null,
+        "quantum": 0,
+        "axi_reads": 128,
+        "axi_writes": 0
+      },
+      {
+        "raw_cycles": 12383,
+        "active_cycles": 12383,
+        "transition_cycles": 873,
+        "state_cycles": 1152,
+        "job_cycles": 10353,
+        "other_cycles": 5,
+        "coordinator_phases": {
+          "SETTLE_SEND": 1,
+          "SETTLE_WAIT": 803,
+          "AUDIO_START": 1,
+          "AUDIO_WAIT": 11509,
+          "FINISH_SEND": 1,
+          "FINISH_WAIT": 68
+        },
+        "job_phases": {
+          "CLEAR_OUTPUT": 256,
+          "FETCH": 193,
+          "DECODE": 192,
+          "MEDIA_COMMAND": 64,
+          "MEDIA_READ": 2688,
+          "MEDIA_DONE": 192,
+          "RAMP_PREPARE": 64,
+          "GAIN_STREAM": 2240,
+          "MIX_STREAM": 3696,
+          "READ_REQUEST": 256,
+          "READ_RESULT": 256,
+          "STORE": 256
+        },
+        "transition_states": {
+          "S_IDLE": 4,
+          "S_DISPATCH": 2,
+          "S_CLEAR": 66,
+          "S_DIRECT_SCAN": 1,
+          "S_COMPONENT": 65,
+          "S_COMPONENT_END": 64,
+          "S_M_WAIT": 64,
+          "S_M_GET": 64,
+          "S_COMPONENT_END_CHECK": 64,
+          "S_FIRST_MEMBER": 64,
+          "S_L_WAIT": 68,
+          "S_L_GET": 68,
+          "S_FIRST_APPLY": 64,
+          "S_FIRST_INHERIT": 64,
+          "S_FIND_PULSE": 68,
+          "S_NATURAL": 4,
+          "S_NATURAL_WRAP": 4,
+          "S_PULSE_EMIT": 4,
+          "S_FOLLOW": 4,
+          "S_FINAL": 1,
+          "S_FINISH_LOOP": 66
+        },
+        "jobs": {
+          "read_view": {
+            "count": 64,
+            "cycles": 3072
+          },
+          "gain": {
+            "count": 64,
+            "cycles": 2432
+          },
+          "mix": {
+            "count": 56,
+            "cycles": 3808
+          },
+          "output": {
+            "count": 8,
+            "cycles": 785
+          }
+        },
+        "demand_fill_wait_cycles": 0,
+        "transfer_active_cycles": 4736,
+        "raw_ddr_bus": null,
+        "active_ddr_bus": null,
+        "quantum": 1,
+        "axi_reads": 128,
+        "axi_writes": 0
+      },
+      {
+        "raw_cycles": 12383,
+        "active_cycles": 12383,
+        "transition_cycles": 873,
+        "state_cycles": 1152,
+        "job_cycles": 10353,
+        "other_cycles": 5,
+        "coordinator_phases": {
+          "SETTLE_SEND": 1,
+          "SETTLE_WAIT": 803,
+          "AUDIO_START": 1,
+          "AUDIO_WAIT": 11509,
+          "FINISH_SEND": 1,
+          "FINISH_WAIT": 68
+        },
+        "job_phases": {
+          "CLEAR_OUTPUT": 256,
+          "FETCH": 193,
+          "DECODE": 192,
+          "MEDIA_COMMAND": 64,
+          "MEDIA_READ": 2688,
+          "MEDIA_DONE": 192,
+          "RAMP_PREPARE": 64,
+          "GAIN_STREAM": 2240,
+          "MIX_STREAM": 3696,
+          "READ_REQUEST": 256,
+          "READ_RESULT": 256,
+          "STORE": 256
+        },
+        "transition_states": {
+          "S_IDLE": 4,
+          "S_DISPATCH": 2,
+          "S_CLEAR": 66,
+          "S_DIRECT_SCAN": 1,
+          "S_COMPONENT": 65,
+          "S_COMPONENT_END": 64,
+          "S_M_WAIT": 64,
+          "S_M_GET": 64,
+          "S_COMPONENT_END_CHECK": 64,
+          "S_FIRST_MEMBER": 64,
+          "S_L_WAIT": 68,
+          "S_L_GET": 68,
+          "S_FIRST_APPLY": 64,
+          "S_FIRST_INHERIT": 64,
+          "S_FIND_PULSE": 68,
+          "S_NATURAL": 4,
+          "S_NATURAL_WRAP": 4,
+          "S_PULSE_EMIT": 4,
+          "S_FOLLOW": 4,
+          "S_FINAL": 1,
+          "S_FINISH_LOOP": 66
+        },
+        "jobs": {
+          "read_view": {
+            "count": 64,
+            "cycles": 3072
+          },
+          "gain": {
+            "count": 64,
+            "cycles": 2432
+          },
+          "mix": {
+            "count": 56,
+            "cycles": 3808
+          },
+          "output": {
+            "count": 8,
+            "cycles": 785
+          }
+        },
+        "demand_fill_wait_cycles": 0,
+        "transfer_active_cycles": 4736,
+        "raw_ddr_bus": null,
+        "active_ddr_bus": null,
+        "quantum": 2,
+        "axi_reads": 128,
+        "axi_writes": 0
+      },
+      {
+        "raw_cycles": 12383,
+        "active_cycles": 12383,
+        "transition_cycles": 873,
+        "state_cycles": 1152,
+        "job_cycles": 10353,
+        "other_cycles": 5,
+        "coordinator_phases": {
+          "SETTLE_SEND": 1,
+          "SETTLE_WAIT": 803,
+          "AUDIO_START": 1,
+          "AUDIO_WAIT": 11509,
+          "FINISH_SEND": 1,
+          "FINISH_WAIT": 68
+        },
+        "job_phases": {
+          "CLEAR_OUTPUT": 256,
+          "FETCH": 193,
+          "DECODE": 192,
+          "MEDIA_COMMAND": 64,
+          "MEDIA_READ": 2688,
+          "MEDIA_DONE": 192,
+          "RAMP_PREPARE": 64,
+          "GAIN_STREAM": 2240,
+          "MIX_STREAM": 3696,
+          "READ_REQUEST": 256,
+          "READ_RESULT": 256,
+          "STORE": 256
+        },
+        "transition_states": {
+          "S_IDLE": 4,
+          "S_DISPATCH": 2,
+          "S_CLEAR": 66,
+          "S_DIRECT_SCAN": 1,
+          "S_COMPONENT": 65,
+          "S_COMPONENT_END": 64,
+          "S_M_WAIT": 64,
+          "S_M_GET": 64,
+          "S_COMPONENT_END_CHECK": 64,
+          "S_FIRST_MEMBER": 64,
+          "S_L_WAIT": 68,
+          "S_L_GET": 68,
+          "S_FIRST_APPLY": 64,
+          "S_FIRST_INHERIT": 64,
+          "S_FIND_PULSE": 68,
+          "S_NATURAL": 4,
+          "S_NATURAL_WRAP": 4,
+          "S_PULSE_EMIT": 4,
+          "S_FOLLOW": 4,
+          "S_FINAL": 1,
+          "S_FINISH_LOOP": 66
+        },
+        "jobs": {
+          "read_view": {
+            "count": 64,
+            "cycles": 3072
+          },
+          "gain": {
+            "count": 64,
+            "cycles": 2432
+          },
+          "mix": {
+            "count": 56,
+            "cycles": 3808
+          },
+          "output": {
+            "count": 8,
+            "cycles": 785
+          }
+        },
+        "demand_fill_wait_cycles": 0,
+        "transfer_active_cycles": 4736,
+        "raw_ddr_bus": null,
+        "active_ddr_bus": null,
+        "quantum": 3,
+        "axi_reads": 128,
+        "axi_writes": 0
+      }
+    ],
+    "memory_statistics": {
+      "cycles": 170336,
+      "reads": 512,
+      "writes": 0,
+      "logical_bytes": 32768,
+      "native_reads": 2048,
+      "native_writes": 0,
+      "native_requested_bytes": 32768,
+      "address_stall_cycles": 0,
+      "write_stall_cycles": 0,
+      "response_stall_cycles": 7680,
+      "native_queue_stall_cycles": 0,
+      "groups": {
+        "read_word": {
+          "latency_cycles": {
+            "count": 0
+          },
+          "first_response_cycles": {
+            "count": 0
+          },
+          "response_available_cycles": {
+            "count": 0
+          },
+          "native_submission_cycles": {
+            "count": 0
+          },
+          "interbeat_cycles": {
+            "count": 0
+          }
+        },
+        "read_burst": {
+          "latency_cycles": {
+            "count": 512,
+            "mean": 31,
+            "median": 31.0,
+            "stddev": 0.0,
+            "min": 31,
+            "max": 31,
+            "p95": 31,
+            "p99": 31
+          },
+          "first_response_cycles": {
+            "count": 512,
+            "mean": 1,
+            "median": 1.0,
+            "stddev": 0.0,
+            "min": 1,
+            "max": 1,
+            "p95": 1,
+            "p99": 1
+          },
+          "response_available_cycles": {
+            "count": 512,
+            "mean": 1,
+            "median": 1.0,
+            "stddev": 0.0,
+            "min": 1,
+            "max": 1,
+            "p95": 1,
+            "p99": 1
+          },
+          "native_submission_cycles": {
+            "count": 512,
+            "mean": 0,
+            "median": 0.0,
+            "stddev": 0.0,
+            "min": 0,
+            "max": 0,
+            "p95": 0,
+            "p99": 0
+          },
+          "interbeat_cycles": {
+            "count": 7680,
+            "mean": 2,
+            "median": 2.0,
+            "stddev": 0.0,
+            "min": 2,
+            "max": 2,
+            "p95": 2,
+            "p99": 2
+          }
+        },
+        "write_word": {
+          "latency_cycles": {
+            "count": 0
+          },
+          "first_response_cycles": {
+            "count": 0
+          },
+          "response_available_cycles": {
+            "count": 0
+          },
+          "native_submission_cycles": {
+            "count": 0
+          },
+          "interbeat_cycles": {
+            "count": 0
+          }
+        },
+        "write_burst": {
+          "latency_cycles": {
+            "count": 0
+          },
+          "first_response_cycles": {
+            "count": 0
+          },
+          "response_available_cycles": {
+            "count": 0
+          },
+          "native_submission_cycles": {
+            "count": 0
+          },
+          "interbeat_cycles": {
+            "count": 0
+          }
+        }
+      },
+      "chunk_fill_cycles": {
+        "count": 256,
+        "mean": 67,
+        "median": 67.0,
+        "stddev": 0.0,
+        "min": 67,
+        "max": 67,
+        "p95": 67,
+        "p99": 67
+      },
+      "chunk_writeback_cycles": {
+        "count": 0
+      }
+    }
+  },
+  "rtl_default_tests": {
+    "tests": 3,
+    "failures": 0
+  }
+}

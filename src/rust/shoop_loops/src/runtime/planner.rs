@@ -1,6 +1,7 @@
 use super::*;
+use rt_runtime::Sample;
 
-impl LoopPlanner {
+impl<S: Sample> LoopPlanner<S> {
     fn validate_graph(&self, graph: &PreparedPlan) -> Result<(), Error> {
         for row in self.rows.iter().flatten() {
             for consumer in [row.binding.playback, row.binding.capture] {
@@ -31,14 +32,14 @@ impl LoopPlanner {
         self.graph_epoch = permit.commit();
         Ok((self.graph_epoch, self.resolver.epoch()))
     }
-    pub(super) fn row(&self, target: LoopId) -> Result<Row, Error> {
+    pub(super) fn row(&self, target: LoopId) -> Result<Row<S>, Error> {
         self.rows
             .get(target.slot() as usize)
             .and_then(|r| *r)
             .filter(|r| r.assigned && r.binding.target == target)
             .ok_or(Error::InvalidId)
     }
-    fn cut(&self, target: LoopId, frame: Frame) -> Result<Cut, Failure> {
+    fn cut(&self, target: LoopId, frame: Frame) -> Result<Cut<S>, Failure> {
         let state = self.resolver.state(target)?;
         if let Ok(row) = self.row(target) {
             let media = self
@@ -79,8 +80,8 @@ impl LoopPlanner {
                 state,
                 playback: None,
                 latest: None,
-                gain: 1.,
-                balance: 0.,
+                gain: S::ONE,
+                balance: S::ZERO,
                 smoothing: crate::audio::Smoothing::None,
                 capture_failure: None,
                 midi_overflows: 0,
@@ -102,7 +103,7 @@ impl LoopPlanner {
                 .ok_or(Error::Capacity)
         }
     }
-    fn cancel_ticks(&mut self, io: &mut PlannerResourceIo<'_>) -> Result<(), Error> {
+    pub(super) fn cancel_ticks(&mut self, io: &mut PlannerResourceIo<'_, S>) -> Result<(), Error> {
         for slot in 0..self.rows.len() {
             if let Some(row) = self.rows[slot] {
                 if let Some(interval) = row.interval {
@@ -116,7 +117,7 @@ impl LoopPlanner {
     fn cancel_prepared(
         &mut self,
         slot: usize,
-        io: &mut PlannerResourceIo<'_>,
+        io: &mut PlannerResourceIo<'_, S>,
     ) -> Result<(), Error> {
         if let Some(take) = self.rows[slot]
             .as_ref()
@@ -138,7 +139,7 @@ impl LoopPlanner {
         }
         Ok(())
     }
-    fn release_edit(take: Take, io: &mut ResourceIo<'_>) -> Result<(), Error> {
+    fn release_edit(take: Take, io: &mut ResourceIo<'_, S>) -> Result<(), Error> {
         for source in [take.auxiliary, take.midi].into_iter().flatten() {
             io.release_snapshot(source.snapshot.id)?;
         }
@@ -156,7 +157,7 @@ impl LoopPlanner {
         decision: Decision,
         id: media::MediaId,
         bank: usize,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<Take, Error> {
         let row = self.rows[slot].ok_or(Error::InvalidId)?;
         if !row.dry_wet {
@@ -241,7 +242,7 @@ impl LoopPlanner {
         &mut self,
         slot: usize,
         decision: Decision,
-        io: &mut PlannerResourceIo<'_>,
+        io: &mut PlannerResourceIo<'_, S>,
     ) -> Result<(), Error> {
         let row = self.rows[slot].ok_or(Error::InvalidId)?;
         if let Some(take) = self.prepare_live_take(slot, decision, io)? {
@@ -369,11 +370,11 @@ impl LoopPlanner {
         self.rows[slot].as_mut().expect("row").failure = Some(error);
         Ok(())
     }
-    fn preflight(
+    pub(super) fn preflight(
         &mut self,
         frame: Frame,
         end: Frame,
-        io: &mut PlannerResourceIo<'_>,
+        io: &mut PlannerResourceIo<'_, S>,
     ) -> Result<bool, Error> {
         if frame.checked_add(self.resolver.quantum().frames())? != end {
             return Err(Error::InvalidFrame);
@@ -449,7 +450,7 @@ impl LoopPlanner {
         slot: usize,
         take: Take,
         frames: u64,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<media::Input, Error> {
         let row = self.rows[slot].ok_or(Error::InvalidId)?;
         let mut position = 0;
@@ -521,7 +522,7 @@ impl LoopPlanner {
         &mut self,
         slot: usize,
         frame: Frame,
-        io: &mut PlannerResourceIo<'_>,
+        io: &mut PlannerResourceIo<'_, S>,
     ) -> Result<media::MediaId, Error> {
         let row = self.rows[slot].ok_or(Error::InvalidId)?;
         let take = row.active.ok_or(Error::InvalidState)?;
@@ -578,7 +579,11 @@ impl LoopPlanner {
         self.ledger.retire(io, take.media)?;
         Ok(take.media)
     }
-    fn settle(&mut self, frame: Frame, io: &mut PlannerResourceIo<'_>) -> Result<(), Error> {
+    pub(super) fn settle(
+        &mut self,
+        frame: Frame,
+        io: &mut PlannerResourceIo<'_, S>,
+    ) -> Result<(), Error> {
         for slot in 0..self.rows.len() {
             // Read only what is needed: copying whole rows every quantum is costly.
             let Some(current) = self.rows[slot].as_ref().filter(|row| row.assigned) else {
@@ -785,7 +790,7 @@ impl LoopPlanner {
         &mut self,
         target: LoopId,
         frame: Frame,
-        io: &mut PlannerResourceIo<'_>,
+        io: &mut PlannerResourceIo<'_, S>,
     ) -> Result<media::ExportId, Error> {
         let row = self.row(target)?;
         let take = row.active.ok_or(Error::InvalidState)?;
@@ -932,10 +937,10 @@ impl LoopPlanner {
     }
     fn query(
         &mut self,
-        operation: Operation,
+        operation: Operation<S>,
         frame: Frame,
-        io: &mut PlannerResourceIo<'_>,
-    ) -> Result<Reply, Failure> {
+        io: &mut PlannerResourceIo<'_, S>,
+    ) -> Result<Reply<S>, Failure> {
         match operation {
             Operation::State { target } => Ok(Reply::State(self.cut(target, frame)?)),
             Operation::Export { target, selection } => {
@@ -961,11 +966,11 @@ impl LoopPlanner {
             _ => Err(Error::InvalidEvent.into()),
         }
     }
-    fn complete(
+    pub(super) fn complete(
         &mut self,
         frame: Frame,
-        io: &mut PlannerResourceIo<'_>,
-        receipts: &mut schedule::ReceiptWriter<'_, Operation, Reply>,
+        io: &mut PlannerResourceIo<'_, S>,
+        receipts: &mut schedule::ReceiptWriter<'_, Operation<S>, Reply<S>>,
     ) -> Result<(), Error> {
         for index in 0..self.pending.len() {
             let Some(pending) = self.pending[index] else {
@@ -1019,7 +1024,7 @@ impl LoopPlanner {
     /// Repeatable after success or partial cleanup. Does not advance/finish
     /// unrendered time or resume execution. Imported resource identities remain
     /// the caller's responsibility.
-    pub fn cleanup(&mut self, resources: &mut ResourceStore) -> Result<(), Error> {
+    pub fn cleanup(&mut self, resources: &mut ResourceStore<S>) -> Result<(), Error> {
         self.resolver.quiesce();
         self.node_pairs.cleanup(&mut resources.io())?;
         self.topologies
@@ -1099,14 +1104,17 @@ impl LoopPlanner {
         Ok(())
     }
 }
-impl Planner for LoopPlanner {
+impl<S: Sample> Planner<S> for LoopPlanner<S> {
     fn validate_quantum(&self, quantum: rt_runtime::Quantum) -> Result<(), Error> {
         if quantum != self.resolver.quantum() {
             return Err(Error::InvalidConfig);
         }
         Ok(())
     }
-    fn begin_tick(&mut self, mut context: PlanContext<'_, Operation, Reply>) -> Result<(), Error> {
+    fn begin_tick(
+        &mut self,
+        mut context: PlanContext<'_, Operation<S>, Reply<S>, S>,
+    ) -> Result<(), Error> {
         let _ = self.prepare_program_inputs(context.frame, &mut context.resources);
         if let Some(shared) = &mut self.shared {
             shared.progress(context.callback_start, &mut context.resources)?;
@@ -1116,24 +1124,42 @@ impl Planner for LoopPlanner {
             return Err(Error::InvalidFrame);
         }
         let end = context.ceiling;
-        if self.settle_boundary(context)? != end {
+        if transitions::TransitionProcessor::settle(self, context)? != end {
             return Err(Error::InvalidFrame);
         }
         Ok(())
     }
     fn finish_tick(
         &mut self,
-        mut context: FinishContext<'_, Operation, Reply>,
+        mut context: FinishContext<'_, Operation<S>, Reply<S>, S>,
     ) -> Result<(), Error> {
         let end = context.interval.end;
-        self.finish_boundary(&mut context)?;
+        state_boundary::StateProcessor::finish(self, &mut context)?;
+        transitions::TransitionProcessor::finish(self, &mut context)?;
         if let Some(shared) = &mut self.shared {
             shared.finish(end, self.graph_epoch, &mut context.resources)?;
         }
         Ok(())
     }
-    type Operation = Operation;
-    type Result = Reply;
+    fn finish_node_state(
+        &mut self,
+        mut context: FinishContext<'_, Operation<S>, Reply<S>, S>,
+    ) -> Result<(), Error> {
+        state_boundary::StateProcessor::finish(self, &mut context)
+    }
+    fn finish_transitions(
+        &mut self,
+        mut context: FinishContext<'_, Operation<S>, Reply<S>, S>,
+    ) -> Result<(), Error> {
+        let end = context.interval.end;
+        transitions::TransitionProcessor::finish(self, &mut context)?;
+        if let Some(shared) = &mut self.shared {
+            shared.finish(end, self.graph_epoch, &mut context.resources)?;
+        }
+        Ok(())
+    }
+    type Operation = Operation<S>;
+    type Result = Reply<S>;
     fn id(&self) -> Option<PlannerId> {
         Some(self.settings.planner)
     }
@@ -1154,7 +1180,7 @@ impl Planner for LoopPlanner {
             Ok(())
         }
     }
-    fn recovery_safe(operation: Operation) -> bool {
+    fn recovery_safe(operation: Operation<S>) -> bool {
         matches!(
             operation,
             Operation::Cancel { .. }
@@ -1170,20 +1196,20 @@ impl Planner for LoopPlanner {
     }
     fn operation(
         &mut self,
-        operation: Operation,
-        context: OperationContext<'_, Operation, Reply>,
-    ) -> Result<Disposition<Reply>, Error> {
+        operation: Operation<S>,
+        context: OperationContext<'_, Operation<S>, Reply<S>, S>,
+    ) -> Result<Disposition<Reply<S>>, Error> {
         self.execute_operation(operation, context)
     }
 }
 
-impl LoopPlanner {
+impl<S: Sample> LoopPlanner<S> {
     fn midi_initial(
         &self,
-        resources: &mut ResourceIo<'_>,
+        resources: &mut ResourceIo<'_, S>,
         export: media::ExportId,
         channel: u8,
-    ) -> Result<Reply, Error> {
+    ) -> Result<Reply<S>, Error> {
         if channel >= 16 {
             return Err(Error::InvalidShape);
         }
@@ -1205,9 +1231,9 @@ impl LoopPlanner {
 
     fn execute_operation(
         &mut self,
-        operation: Operation,
-        mut context: OperationContext<'_, Operation, Reply>,
-    ) -> Result<Disposition<Reply>, Error> {
+        operation: Operation<S>,
+        mut context: OperationContext<'_, Operation<S>, Reply<S>, S>,
+    ) -> Result<Disposition<Reply<S>>, Error> {
         self.graph_epoch = context.graph_epoch;
         self.topologies.callback(context.callback_start);
         self.node_pairs.callback(context.callback_start);
@@ -1218,7 +1244,7 @@ impl LoopPlanner {
             topology,
         } = operation
         {
-            let result = (|| -> Result<Disposition<Reply>, Failure> {
+            let result = (|| -> Result<Disposition<Reply<S>>, Failure> {
                 if graph != context.graph_epoch || topology != self.resolver.epoch() {
                     return Err(Error::StaleEpoch.into());
                 }
@@ -1275,7 +1301,7 @@ impl LoopPlanner {
                 .map(Disposition::Complete);
             return Ok(result.unwrap_or_else(|error| Disposition::Complete(Reply::Failed(error))));
         }
-        let result = (|| -> Result<Disposition<Reply>, Failure> {
+        let result = (|| -> Result<Disposition<Reply<S>>, Failure> {
             if !context.payload.is_empty()
                 && !matches!(
                     operation,
@@ -1421,7 +1447,6 @@ impl LoopPlanner {
                         if state.composite.is_some()
                             || state.mode != Mode::Stopped
                             || state.content_length != 0
-                            || state.capture_frames != 0
                         {
                             return Err(crate::Error::InvalidState.into());
                         }
@@ -1762,7 +1787,7 @@ impl LoopPlanner {
                 }
                 Operation::Balance { target, value } => {
                     self.row(target)?;
-                    if !(-1.0..=1.0).contains(&value) {
+                    if !(-S::ONE..=S::ONE).contains(&value) {
                         return Err(Error::InvalidParameter.into());
                     }
                     self.rows[target.slot() as usize]
@@ -2039,185 +2064,10 @@ impl LoopPlanner {
         })();
         Ok(result.unwrap_or_else(|error| Disposition::Complete(Reply::Failed(error))))
     }
-    fn settle_boundary(
-        &mut self,
-        mut context: PlanContext<'_, Operation, Reply>,
-    ) -> Result<Frame, Error> {
-        self.graph_epoch = context.graph_epoch;
-        self.topologies.callback(context.callback_start);
-        if context.frame != self.resolver.frame() {
-            return Err(Error::InvalidFrame);
-        }
-        self.failures.clear();
-        for row in self.rows.iter().flatten() {
-            if row.aborted {
-                self.failures.push(crate::Observation::CaptureAborted {
-                    target: row.binding.target,
-                    reason: timeline_error(row.failure.unwrap_or(Error::InvalidState)),
-                });
-            } else if row.active.as_ref().is_some_and(|take| take.edit.is_some())
-                && row.failure.is_some()
-            {
-                self.failures.push(crate::Observation::CaptureExhausted {
-                    target: row.binding.target,
-                });
-            }
-        }
-        for pending in self.pending.iter().flatten() {
-            if let PendingKind::Program {
-                request,
-                graph_epoch,
-                graph,
-                ..
-            } = pending.kind
-            {
-                if self
-                    .resolver
-                    .completion(request)
-                    .map_err(runtime_error)?
-                    .is_none()
-                    && (graph_epoch != context.graph_epoch
-                        || graph.is_some_and(|id| {
-                            context.graphs.status(id)
-                                != Ok(GraphStageStatus::Ready {
-                                    validated_epoch: graph_epoch,
-                                })
-                        }))
-                {
-                    self.failures.push(crate::Observation::Refused {
-                        request,
-                        reason: crate::Error::InvalidState,
-                    });
-                }
-            }
-        }
-        loop {
-            self.cancel_ticks(&mut context.resources)?;
-            let interval = self
-                .resolver
-                .preview_tick(&self.failures)
-                .map_err(runtime_error)?;
-            for decision in self.resolver.decisions().map_err(runtime_error)? {
-                self.views[decision.state.id.slot() as usize].decision = *decision;
-            }
-            let selected = self
-                .resolver
-                .preview_program_change()
-                .map_err(runtime_error)?;
-            let graph = selected.and_then(|selected| {
-                self.pending
-                    .iter()
-                    .flatten()
-                    .find_map(|pending| match pending.kind {
-                        PendingKind::Program {
-                            request,
-                            graph: Some(graph),
-                            graph_epoch,
-                            ..
-                        } if selected == request => Some((request, graph, graph_epoch)),
-                        _ => None,
-                    })
-            });
-            let permit = if let Some((request, graph, epoch)) = graph {
-                match context.graphs.prepare_activation(graph, epoch) {
-                    Ok(permit) => Some(permit),
-                    Err(error) => {
-                        if self.failures.len() == self.failures.capacity() {
-                            return Err(Error::InvalidState);
-                        }
-                        self.failures.push(crate::Observation::Refused {
-                            request,
-                            reason: timeline_error(error),
-                        });
-                        continue;
-                    }
-                }
-            } else {
-                None
-            };
-            if !self.preflight(context.frame, interval.end, &mut context.resources)? {
-                continue;
-            }
-            self.settle(context.frame, &mut context.resources)?;
-            self.resolver.commit().map_err(runtime_error)?;
-            let _ = self.prepare_program_inputs(context.frame, &mut context.resources);
-            if let Some(permit) = permit {
-                self.graph_epoch = permit.commit();
-            }
-            self.complete(context.frame, &mut context.resources, &mut context.receipts)?;
-            self.observer.topology_epoch(self.resolver.epoch());
-            self.observer.settled(&self.resolver);
-            self.observer.boundary(
-                context.frame,
-                self.resolver.decisions().map_err(runtime_error)?,
-                self.resolver.events(),
-                self.resolver.dropped_events(),
-            );
-            return Ok(interval.end);
-        }
-    }
-    fn finish_boundary(
-        &mut self,
-        context: &mut FinishContext<'_, Operation, Reply>,
-    ) -> Result<(), Error> {
-        for row in self.rows.iter_mut().flatten().filter(|row| row.assigned) {
-            if let Some(interval) = row.interval {
-                if row.aborted {
-                    context.resources.capture().cancel_tick(interval)?;
-                } else {
-                    context.resources.capture().commit(interval)?;
-                }
-                row.interval = None;
-            }
-            row.reset_input = false;
-        }
-        self.resolver.finish().map_err(runtime_error)?;
-        self.collect_automatic_finishes()?;
-        for row in self.rows.iter().flatten() {
-            if let Some(take) = row.active.as_ref().filter(|take| take.writer.is_some()) {
-                let job = self
-                    .shared
-                    .as_ref()
-                    .ok_or(Error::InvalidState)?
-                    .live_job(take.writer.unwrap())?;
-                if matches!(job.kind, indexed_midi::WriteKind::Growing { .. }) {
-                    self.resolver
-                        .confirm_capture_frames(row.binding.target, take.revision, job.frames)
-                        .map_err(runtime_error)?;
-                }
-            }
-        }
-        for index in 0..self.pending.len() {
-            if let Some(pending) = self.pending[index].filter(|p| p.forwarded) {
-                if let PendingKind::InputBatch = pending.kind {
-                    self.collect_input_batch(&mut context.resources)?;
-                }
-                if let PendingKind::Transition { request, pin, .. } = pending.kind {
-                    self.resolver
-                        .take_completion(request)
-                        .map_err(runtime_error)?
-                        .ok_or(Error::InvalidState)?;
-                    if let Some(pin) = pin {
-                        self.ledger.release_pin(&mut context.resources, pin)?;
-                    }
-                }
-                if let PendingKind::Program { id, request, .. } = pending.kind {
-                    self.topologies
-                        .collect_program(id, request, &mut self.resolver)
-                        .map_err(|error| match error {
-                            Failure::Runtime(error) => error,
-                            Failure::Timeline(error) => runtime_error(error),
-                        })?;
-                }
-                self.pending[index] = None;
-            }
-        }
-        Ok(())
-    }
 }
 
-fn validate_midi_window(
-    resources: &mut rt_runtime::resource::ResourceIo<'_>,
+fn validate_midi_window<S: Sample>(
+    resources: &mut rt_runtime::resource::ResourceIo<'_, S>,
     index: ReadIndex,
     window: crate::windows::ChannelWindow,
     frames: u64,

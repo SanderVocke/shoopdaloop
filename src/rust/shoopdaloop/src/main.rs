@@ -56,6 +56,7 @@ mod browser_preview;
 mod browser_rt_audio;
 #[cfg(target_arch = "wasm32")]
 mod browser_rt_self_test;
+mod copy_probe;
 #[cfg(not(target_arch = "wasm32"))]
 mod engine_backend;
 #[cfg(not(target_arch = "wasm32"))]
@@ -2432,7 +2433,9 @@ impl Runtime {
             settings,
             args,
             |driver, pools, transport| {
-                engine_backend::start_selected_with_processors(
+                engine_backend::start_backend(
+                    args.selected_audio_backend(settings)
+                        .map_err(anyhow::Error::msg)?,
                     driver,
                     pools,
                     transport,
@@ -2518,6 +2521,9 @@ impl Runtime {
             .unwrap()
             .enable_audio_driver_switching(
                 shoop_app_api::HostSettings {
+                    backend: args
+                        .selected_audio_backend(settings)
+                        .map_err(anyhow::Error::msg)?,
                     driver: configured_driver,
                     pools,
                     processors: args.configured_processors(settings)?,
@@ -2535,7 +2541,7 @@ impl Runtime {
                 startup_warnings,
             },
             graph,
-            Some(driver),
+            driver,
         )?;
         let handle = runtime.handle();
         let preview_player = native_preview::NativePreviewPlayer::new(handle.clone())?;
@@ -3239,6 +3245,8 @@ type BrowserCatalogCompletion = (
 #[cfg(target_arch = "wasm32")]
 impl Runtime {
     fn new(settings: &shoop_settings::SettingsSnapshot, args: &AppArgs) -> anyhow::Result<Self> {
+        args.selected_audio_backend(settings)
+            .map_err(anyhow::Error::msg)?;
         args.selected_engine_transport(settings)?;
         anyhow::ensure!(!args.worker, "Worker mode was retired. The browser session service runs on the main thread and renders in an AudioWorklet.");
         let (midi, midi_service) = browser_midi::BrowserMidiController::new()?;
@@ -3722,6 +3730,9 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
     }
     let config = shoop_host::config::HostConfig {
         settings: shoop_host::config::HostSettings {
+            backend: args
+                .selected_audio_backend(&settings)
+                .map_err(anyhow::Error::msg)?,
             processors: args.configured_processors(&settings)?,
             driver: args
                 .configured_audio_driver(&settings)
@@ -5136,6 +5147,7 @@ mod tests {
                 .with(BackendCapability::SessionCapture, true)
                 .with(BackendCapability::SessionContentLoad, true)
                 .with(BackendCapability::LoopContentImport, true)
+                .with(BackendCapability::LoopDuplication, true)
                 .with(BackendCapability::LoopTimingEdits, true)
                 .with(BackendCapability::BusManagement, true)
                 .with(BackendCapability::DryWetModes, true)
@@ -5317,11 +5329,27 @@ mod tests {
         runtime
             .dispatch(AppIntent::Piano(PianoAction::Press(note)))
             .unwrap();
-        thread::sleep(Duration::from_millis(30));
+        wait_for_snapshot(runtime, "MIDI note-on capture", |snapshot| {
+            snapshot
+                .tracks
+                .iter()
+                .find(|track| track.id == keys.id)
+                .and_then(|track| track.controls.latest_input_midi_message)
+                .is_some_and(|message| message.data() == [0x90, note.value(), 100])
+                && first_loop(snapshot, keys.id).mode == LoopMode::Recording
+        });
         runtime
             .dispatch(AppIntent::Piano(PianoAction::Release(note)))
             .unwrap();
-        thread::sleep(Duration::from_millis(30));
+        wait_for_snapshot(runtime, "MIDI note-off capture", |snapshot| {
+            snapshot
+                .tracks
+                .iter()
+                .find(|track| track.id == keys.id)
+                .and_then(|track| track.controls.latest_input_midi_message)
+                .is_some_and(|message| message.data() == [0x80, note.value(), 0])
+                && first_loop(snapshot, keys.id).mode == LoopMode::Recording
+        });
         loop_action(runtime, &keys, LoopAction::PlayClicked);
         wait_for_snapshot(runtime, "immediate MIDI playback", |snapshot| {
             let state = first_loop(snapshot, keys.id);
@@ -6565,3 +6593,6 @@ mod tests {
         }
     }
 }
+
+#[cfg(all(test, feature = "fpga-sim", target_os = "linux"))]
+mod fpga_tests;

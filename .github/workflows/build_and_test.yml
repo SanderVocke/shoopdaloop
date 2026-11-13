@@ -5,7 +5,7 @@ on:
     branches: ["master"]
     tags: "v*.*.*"
   pull_request:
-    branches: ["master", "feat/loop-execution-layer", "feat/engine-ipc", "feat/backend-replacement", "feat/backend-replacement-*", "feat/fixed-quantum-runtime", "feat/runtime-profiling", "feat/zynq-network-deployment"]
+    branches: ["master", "feat/loop-execution-layer", "feat/engine-ipc", "feat/backend-replacement", "feat/backend-replacement-*", "feat/fixed-quantum-runtime", "feat/runtime-profiling", "feat/zynq-network-deployment", "proto/fpga-rust-reference"]
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
     inputs:
@@ -39,6 +39,8 @@ concurrency:
 env:
   RUST_BACKTRACE: "1"
   PIP_BREAK_SYSTEM_PACKAGES: "1"
+  # Keep debug web builds and audits, but disable Node.js and browser test execution.
+  SHOOP_DEBUG_WEB_TESTS: "false"
   # Enable coarse and detailed engine events in every native nextest capture.
   SHOOP_CI_TRACING_ENGINE_DETAIL: "1"
 
@@ -513,6 +515,12 @@ jobs:
           RUSTFLAGS: -D warnings
         run: cargo build --locked -p shoopdaloop -p shoop_host -p shoop_host_manager ${{ matrix.cargo_args }}
 
+      - name: Check unsupported-platform FPGA stub
+        if: (matrix.target == 'windows' || matrix.target == 'macos') && matrix.profile == 'debug'
+        env:
+          RUSTFLAGS: -D warnings
+        run: cargo check --locked -p shoop_host -p shoopdaloop --features fpga-sim
+
       - name: Build web application
         if: matrix.target == 'web'
         working-directory: src/rust/shoopdaloop
@@ -785,11 +793,15 @@ jobs:
         if: matrix.target == 'web'
         run: |
           python3 scripts/check_dependency_boundaries.py --scope engine --target wasm32-unknown-unknown
+
+      - name: Test web artifact contracts
+        if: matrix.target == 'web' && (matrix.profile == 'release' || env.SHOOP_DEBUG_WEB_TESTS == 'true')
+        run: |
           node src/rust/shoopdaloop/rt_worklet_contract.mjs src/rust/shoopdaloop/dist/generated/shoop_rt_host_worklet.wasm
           node --test scripts/tests/trace_chunk_transport.test.mjs
 
       - name: Test retained legacy browser reference contracts
-        if: matrix.target == 'web' && matrix.profile == 'debug'
+        if: matrix.target == 'web' && matrix.profile == 'debug' && env.SHOOP_DEBUG_WEB_TESTS == 'true'
         run: |
           cargo build --locked -p shoop_audio_worklet --target wasm32-unknown-unknown
           node reference/legacy_browser/raw_wasm_host_contract.mjs target/wasm32-unknown-unknown/debug/shoop_audio_worklet.wasm
@@ -813,14 +825,14 @@ jobs:
             --package shoop_worklet_client --package shoopdaloop
 
       - name: Run required Node Wasm suite
-        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
+        if: matrix.target == 'web' && matrix.profile == 'debug' && env.SHOOP_DEBUG_WEB_TESTS == 'true' && env.ACT != 'true'
         env:
           RUSTFLAGS: -D warnings
         run: python3 scripts/run_wasm_tests.py --profile dev --runtime node
 
       - name: Run intentional Node Perfetto failure canaries
         if: >-
-          matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true' &&
+          matrix.target == 'web' && matrix.profile == 'debug' && env.SHOOP_DEBUG_WEB_TESTS == 'true' && env.ACT != 'true' &&
           inputs.perfetto_failure_canary
         shell: bash
         run: |
@@ -862,7 +874,7 @@ jobs:
         run: python3 scripts/run_wasm_tests.py --profile ci --runtime node
 
       - name: Install pinned Chrome for library browser suites
-        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
+        if: matrix.target == 'web' && matrix.profile == 'debug' && env.SHOOP_DEBUG_WEB_TESTS == 'true' && env.ACT != 'true'
         uses: browser-actions/setup-chrome@v2
         id: library_chrome
         with:
@@ -870,7 +882,7 @@ jobs:
           install-chromedriver: true
 
       - name: Run runtime, loop, engine and codec browser suites
-        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
+        if: matrix.target == 'web' && matrix.profile == 'debug' && env.SHOOP_DEBUG_WEB_TESTS == 'true' && env.ACT != 'true'
         env:
           RUSTFLAGS: -D warnings
           CHROME_BIN: ${{ steps.library_chrome.outputs.chrome-path }}
@@ -918,7 +930,7 @@ jobs:
         id: chrome
 
       - name: Exercise browser session service and AudioWorklet
-        if: matrix.target == 'web' && env.ACT != 'true'
+        if: matrix.target == 'web' && (matrix.profile == 'release' || env.SHOOP_DEBUG_WEB_TESTS == 'true') && env.ACT != 'true'
         working-directory: src/rust/shoopdaloop
         shell: bash
         env:

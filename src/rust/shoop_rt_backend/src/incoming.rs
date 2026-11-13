@@ -153,6 +153,17 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
 
     fn telemetry(&mut self, record: Telemetry) {
         match record {
+            Telemetry::AudioBackend(kind) => {
+                self.audio_backend = match kind {
+                    shoop_rt_protocol::AudioBackendKind::NewEngine => {
+                        shoop_app_api::AudioBackendKind::NewEngine
+                    }
+                    shoop_rt_protocol::AudioBackendKind::FpgaRtlSim => {
+                        shoop_app_api::AudioBackendKind::FpgaRtlSim
+                    }
+                }
+            }
+            Telemetry::Memory(report) => self.status.memory = Some(report),
             Telemetry::Composite { .. } => self.composite_telemetry(record),
             Telemetry::Preview { request_id } => self.preview_playing = request_id,
             Telemetry::Engine {

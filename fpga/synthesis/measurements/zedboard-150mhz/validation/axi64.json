@@ -1,0 +1,80 @@
+{
+  "arguments": [
+    "target/debug/fpga-testbench",
+    "axi",
+    "--axi-data-width",
+    "64",
+    "--memory-model",
+    "fixed",
+    "--output",
+    "work/150mhz/verify-axi-dma64"
+  ],
+  "format_version": 1,
+  "provenance": {
+    "models": [
+      {
+        "native_memory": null,
+        "parameters": {
+          "DATA_WIDTH": "64"
+        },
+        "probes": [],
+        "sources_sha256": {
+          "fpga/axi_memory/rtl/axi_master.sv": "45241e8bff575cb49f84375297bf8affc8cffc0db9f749a8636b09ba39fdc9b3",
+          "fpga/axi_memory/rtl/chunk_axi.sv": "d5265918080e4b4f8a8430831b72db9425639a7d29c21aa62b5949fc261e0ecb",
+          "fpga/axi_memory/rtl/chunk_dma.sv": "632ebdfbb262c09c4a0a9a7ab7635a02b45e4b9571731bc9e2b393d1b00a503a",
+          "fpga/axi_memory/rtl/word_axi.sv": "7edfae1a0b97fc5cc4e30f7a64223cd8879e4d27811a98fda3ac8c7fe504a27e",
+          "fpga/axi_memory/rtl/word_dma.sv": "292f48d1fa083a4f4ad5fe09c586043c5e02d4e1cc5b60ed68b14d0cb3eea772",
+          "fpga/state_processor/rtl/state_processor_defs.svh": "62b30dff8aaa507db132e68cc1bb8932dd4cc59c2050164ddbe8aaf2316ca5b7"
+        },
+        "top": "axi_master"
+      },
+      {
+        "native_memory": null,
+        "parameters": {
+          "DATA_WIDTH": "64"
+        },
+        "probes": [],
+        "sources_sha256": {
+          "fpga/axi_memory/rtl/axi_master.sv": "45241e8bff575cb49f84375297bf8affc8cffc0db9f749a8636b09ba39fdc9b3",
+          "fpga/axi_memory/rtl/chunk_axi.sv": "d5265918080e4b4f8a8430831b72db9425639a7d29c21aa62b5949fc261e0ecb",
+          "fpga/axi_memory/rtl/chunk_dma.sv": "632ebdfbb262c09c4a0a9a7ab7635a02b45e4b9571731bc9e2b393d1b00a503a",
+          "fpga/axi_memory/rtl/word_axi.sv": "7edfae1a0b97fc5cc4e30f7a64223cd8879e4d27811a98fda3ac8c7fe504a27e",
+          "fpga/axi_memory/rtl/word_dma.sv": "292f48d1fa083a4f4ad5fe09c586043c5e02d4e1cc5b60ed68b14d0cb3eea772",
+          "fpga/state_processor/rtl/state_processor_defs.svh": "62b30dff8aaa507db132e68cc1bb8932dd4cc59c2050164ddbe8aaf2316ca5b7"
+        },
+        "top": "word_axi"
+      },
+      {
+        "native_memory": null,
+        "parameters": {
+          "DATA_WIDTH": "64"
+        },
+        "probes": [],
+        "sources_sha256": {
+          "fpga/axi_memory/rtl/axi_master.sv": "45241e8bff575cb49f84375297bf8affc8cffc0db9f749a8636b09ba39fdc9b3",
+          "fpga/axi_memory/rtl/chunk_axi.sv": "d5265918080e4b4f8a8430831b72db9425639a7d29c21aa62b5949fc261e0ecb",
+          "fpga/axi_memory/rtl/chunk_dma.sv": "632ebdfbb262c09c4a0a9a7ab7635a02b45e4b9571731bc9e2b393d1b00a503a",
+          "fpga/axi_memory/rtl/word_axi.sv": "7edfae1a0b97fc5cc4e30f7a64223cd8879e4d27811a98fda3ac8c7fe504a27e",
+          "fpga/axi_memory/rtl/word_dma.sv": "292f48d1fa083a4f4ad5fe09c586043c5e02d4e1cc5b60ed68b14d0cb3eea772",
+          "fpga/state_processor/rtl/state_processor_defs.svh": "62b30dff8aaa507db132e68cc1bb8932dd4cc59c2050164ddbe8aaf2316ca5b7"
+        },
+        "top": "chunk_axi"
+      }
+    ],
+    "revision": "01f0946da699dbe40acb170590ca380e288bb44d",
+    "rustc": null,
+    "simulator": "Marlin 0.21.1 / Verilator",
+    "verilator": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1+b2)",
+    "worktree": "M fpga/axi_memory/rtl/axi_master.sv\n M fpga/axi_memory/rtl/chunk_dma.sv\n M fpga/chunk_memory/rtl/chunk_memory.sv\n M fpga/media_store/README.md\n M fpga/media_store/rtl/media_metadata.sv\n M fpga/media_store/rtl/media_reclaimer.sv\n M fpga/media_store/rtl/media_store.sv\n M src/rust/rt_fpga_testbench/src/suites/media/deferred.rs\n M src/rust/rt_fpga_testbench/src/suites/media/mod.rs\n M src/rust/rt_fpga_testbench/src/suites/production.rs\n M src/rust/rt_fpga_testbench/src/suites/production_faults.rs"
+  },
+  "status": "passed",
+  "suites": [
+    {
+      "error": null,
+      "status": "passed",
+      "suite": "Axi",
+      "wall_seconds": 37.646683323
+    }
+  ],
+  "wall_seconds": 37.646804506
+}

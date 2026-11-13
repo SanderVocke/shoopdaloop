@@ -6628,6 +6628,8 @@ impl Backend for EngineBackend {
             composite_receipts: Vec::new(),
             profiling: Default::default(),
             status: BackendStatus {
+                audio_backend: Default::default(),
+                memory: None,
                 dsp_load_percent: 0.0,
                 xruns: self.xruns,
                 buffer_size: if self.port_model == EnginePortModel::Physical {
@@ -7431,6 +7433,7 @@ impl Default for FakeBackend {
         };
         Self {
             status: BackendStatus {
+                audio_backend: Default::default(),
                 buffer_size: 256,
                 sample_rate: 48_000,
                 quantum_frames: 1,
@@ -7929,6 +7932,9 @@ impl Backend for FakeBackend {
             ),
             AudioDriverConfig::WebAudio => {
                 return Err(anyhow!("Web Audio is selected automatically"));
+            }
+            AudioDriverConfig::Simulated(_) => {
+                return Err(anyhow!("a simulated clock is not an audio driver"));
             }
         };
         Ok(ResolvedAudioDriverConfig {

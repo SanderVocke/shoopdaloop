@@ -124,7 +124,7 @@ def build():
         sources += [deployment / "runtime.c", deployment / "boot_state.c", bsp / "common/xil_util.c"]
         sources += [p for p in (drivers / "sdps/src").glob("*.c") if not p.name.endswith("_g.c")]
     if args.app == "host":
-        sources.append(PLATFORM / "sockets.c")
+        sources += [PLATFORM / name for name in ("sockets.c", "diagnostics.c")]
     if args.fixture:
         sources.append(PLATFORM / "fixture.c")
     patches = {}

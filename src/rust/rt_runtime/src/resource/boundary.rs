@@ -1,31 +1,32 @@
 //! Planner-only prepared capture boundary authority.
 use super::*;
+use crate::Sample;
 use crate::{buffer::MidiBuffer, midi_state::MidiState};
 use core::ops::{Deref, DerefMut};
 
-pub struct PlannerResourceIo<'a> {
-    resources: ResourceIo<'a>,
+pub struct PlannerResourceIo<'a, S: Sample = f32> {
+    resources: ResourceIo<'a, S>,
     frame: Frame,
     ceiling: Frame,
 }
-impl<'a> Deref for PlannerResourceIo<'a> {
-    type Target = ResourceIo<'a>;
+impl<'a, S: Sample> Deref for PlannerResourceIo<'a, S> {
+    type Target = ResourceIo<'a, S>;
     fn deref(&self) -> &Self::Target {
         &self.resources
     }
 }
-impl DerefMut for PlannerResourceIo<'_> {
+impl<S: Sample> DerefMut for PlannerResourceIo<'_, S> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.resources
     }
 }
-pub struct CaptureBoundaryIo<'a> {
-    store: &'a mut ResourceStore,
+pub struct CaptureBoundaryIo<'a, S: Sample = f32> {
+    store: &'a mut ResourceStore<S>,
     frame: Frame,
     ceiling: Frame,
 }
-impl ResourceStore {
-    pub fn planner_io(&mut self, frame: Frame, ceiling: Frame) -> PlannerResourceIo<'_> {
+impl<S: Sample> ResourceStore<S> {
+    pub fn planner_io(&mut self, frame: Frame, ceiling: Frame) -> PlannerResourceIo<'_, S> {
         PlannerResourceIo {
             resources: self.io(),
             frame,
@@ -33,8 +34,8 @@ impl ResourceStore {
         }
     }
 }
-impl PlannerResourceIo<'_> {
-    pub fn capture(&mut self) -> CaptureBoundaryIo<'_> {
+impl<S: Sample> PlannerResourceIo<'_, S> {
+    pub fn capture(&mut self) -> CaptureBoundaryIo<'_, S> {
         CaptureBoundaryIo {
             store: self.resources.store,
             frame: self.frame,
@@ -42,7 +43,7 @@ impl PlannerResourceIo<'_> {
         }
     }
 }
-impl CaptureBoundaryIo<'_> {
+impl<S: Sample> CaptureBoundaryIo<'_, S> {
     pub fn check_idle_group(&self, id: CaptureGroupId) -> Result<(), Error> {
         self.store.check_idle_capture_group(id)
     }
@@ -116,12 +117,12 @@ impl CaptureBoundaryIo<'_> {
         Ok(())
     }
 }
-impl RenderIo<'_> {
+impl<S: Sample> RenderIo<'_, S> {
     pub fn stage_audio(
         &mut self,
         interval: CaptureTickId,
         member: usize,
-        samples: &[f32],
+        samples: &[S],
     ) -> Result<(), Error> {
         self.store.stage_capture_audio(interval, member, samples)
     }

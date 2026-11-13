@@ -1,0 +1,248 @@
+{
+  "baseline_revision": "23887b0070fc02b33533b4edbdcf7f4133829a62",
+  "scope": "loop_pipeline core; default word-memory port; AXI master and physical DDR controller excluded",
+  "tools": {
+    "yosys": "0.52",
+    "verilator": "5.032",
+    "legacy_python_harness": "1.9.2"
+  },
+  "parameters": {
+    "loops": 8,
+    "requests": 16,
+    "events": 32,
+    "program": 64,
+    "state": 32,
+    "jobs": 64,
+    "frames": 32,
+    "buffers": 16,
+    "input_ports": 2,
+    "output_ports": 2,
+    "views": 32,
+    "slots": 32,
+    "chunk_frames": 32,
+    "memory_response_cycles": 1
+  },
+  "synthesis": {
+    "target": "ECP5",
+    "placement_and_routing": false,
+    "before": {
+      "$scopeinfo": 78,
+      "CCU2C": 3841,
+      "DP16KD": 93,
+      "L6MUX21": 691,
+      "LUT4": 28472,
+      "MULT18X18D": 4,
+      "PFUMX": 3382,
+      "TRELLIS_DPR16X4": 68,
+      "TRELLIS_FF": 13913
+    },
+    "after": {
+      "$scopeinfo": 77,
+      "CCU2C": 3704,
+      "DP16KD": 91,
+      "L6MUX21": 469,
+      "LUT4": 25304,
+      "MULT18X18D": 4,
+      "PFUMX": 3287,
+      "TRELLIS_DPR16X4": 66,
+      "TRELLIS_FF": 13442
+    }
+  },
+  "transition_workload_cycles": {
+    "quantum": 32,
+    "before": {
+      "tracks_8x8": [
+        928,
+        2917
+      ],
+      "sync_cycle_64": [
+        2320,
+        3728
+      ],
+      "sync_cycle_64_with_130_requests": [
+        2386,
+        3794
+      ]
+    },
+    "after": {
+      "tracks_8x8": [
+        860,
+        2849
+      ],
+      "sync_cycle_64": [
+        2252,
+        3660
+      ],
+      "sync_cycle_64_with_130_requests": [
+        2252,
+        3660
+      ]
+    },
+    "before_source": "Historical streamed-controller checkpoint recorded in the transition processor README at 23887b00"
+  },
+  "rtl_manifest_sha256": {
+    "before": "3b0f8bcf97fb93fcfe37e0014d9db2390faeeb64a017a6ea50374614abd5fdd7",
+    "after": "01ecf02375ee38782e1c927e7347f94c6149b44bf21512eda2eb3eb9db242ce4"
+  },
+  "coordinated_playback_cycles": {
+    "configuration": {
+      "loops": 64,
+      "requests": 128,
+      "events": 256,
+      "program": 256,
+      "state": 512,
+      "jobs": 256,
+      "quantum": 32,
+      "buffers": 256,
+      "input_ports": 8,
+      "output_ports": 8,
+      "views": 64,
+      "slots": 1024,
+      "chunk_frames": 32,
+      "read_buffers": 4,
+      "write_buffers": 4,
+      "axi_data_width": 32,
+      "burst_memory": true,
+      "memory_model": "instant",
+      "seed": 20261110,
+      "random_stalls": false
+    },
+    "before": [
+      {
+        "quantum": 0,
+        "raw_cycles": 22081,
+        "preflight_wait_cycles": 1540,
+        "active_cycles": 20541,
+        "transition_cycles": 2578,
+        "state_cycles": 1152,
+        "job_cycles": 16806
+      },
+      {
+        "quantum": 1,
+        "raw_cycles": 21277,
+        "preflight_wait_cycles": 2308,
+        "active_cycles": 18969,
+        "transition_cycles": 1006,
+        "state_cycles": 1152,
+        "job_cycles": 16806
+      },
+      {
+        "quantum": 2,
+        "raw_cycles": 20557,
+        "preflight_wait_cycles": 1588,
+        "active_cycles": 18969,
+        "transition_cycles": 1006,
+        "state_cycles": 1152,
+        "job_cycles": 16806
+      },
+      {
+        "quantum": 3,
+        "raw_cycles": 20557,
+        "preflight_wait_cycles": 1588,
+        "active_cycles": 18969,
+        "transition_cycles": 1006,
+        "state_cycles": 1152,
+        "job_cycles": 16806
+      }
+    ],
+    "after": [
+      {
+        "quantum": 0,
+        "raw_cycles": 20408,
+        "active_cycles": 20408,
+        "transition_cycles": 2445,
+        "state_cycles": 1152,
+        "job_cycles": 16806
+      },
+      {
+        "quantum": 1,
+        "raw_cycles": 18836,
+        "active_cycles": 18836,
+        "transition_cycles": 873,
+        "state_cycles": 1152,
+        "job_cycles": 16806
+      },
+      {
+        "quantum": 2,
+        "raw_cycles": 18836,
+        "active_cycles": 18836,
+        "transition_cycles": 873,
+        "state_cycles": 1152,
+        "job_cycles": 16806
+      },
+      {
+        "quantum": 3,
+        "raw_cycles": 18836,
+        "active_cycles": 18836,
+        "transition_cycles": 873,
+        "state_cycles": 1152,
+        "job_cycles": 16806
+      }
+    ],
+    "scope": "Accepted run through completion. Before active_cycles excludes verifier preflight pauses; after has no such pauses. Loading, control admission and result readback excluded."
+  },
+  "validation": {
+    "rust_reference_and_testbench_tests": 64,
+    "native_runtime_engine_host_tests_passed": 491,
+    "native_tests_skipped": 1,
+    "python_contract_tests": 19,
+    "rtl_groups": 84,
+    "combined_pipeline_cases": 117,
+    "combined_pipeline_steps": 1735,
+    "dedicated_fault_reset_tests": true,
+    "workspace_warning_denying_build": true,
+    "formal_equivalence": false
+  },
+  "checkpoint_scope": "Isolated simplification based on 23887b00, measured before integrating cached-playback pipelining from 54c616cf.",
+  "upstream_integration": {
+    "upstream_revision": "54c616cf2b69402e9ea2bf572bc0d678e95eecb6",
+    "rtl_manifest_sha256": "4b93dbe565f9d568f9d6c157544950c1fd4bae03c71363b4cb0bd4fb058707a2",
+    "scope": "Simplification rebased onto cached-playback pipelining; same instant-memory AXI32 benchmark configuration.",
+    "coordinated_playback_cycles": [
+      {
+        "quantum": 0,
+        "raw_cycles": 17793,
+        "active_cycles": 17793,
+        "transition_cycles": 2445,
+        "state_cycles": 1152,
+        "job_cycles": 14191
+      },
+      {
+        "quantum": 1,
+        "raw_cycles": 16221,
+        "active_cycles": 16221,
+        "transition_cycles": 873,
+        "state_cycles": 1152,
+        "job_cycles": 14191
+      },
+      {
+        "quantum": 2,
+        "raw_cycles": 16221,
+        "active_cycles": 16221,
+        "transition_cycles": 873,
+        "state_cycles": 1152,
+        "job_cycles": 14191
+      },
+      {
+        "quantum": 3,
+        "raw_cycles": 16221,
+        "active_cycles": 16221,
+        "transition_cycles": 873,
+        "state_cycles": 1152,
+        "job_cycles": 14191
+      }
+    ],
+    "validation": {
+      "rust_reference_and_testbench_tests": 64,
+      "python_contract_tests": 19,
+      "rtl_groups": 45,
+      "combined_pipeline_cases": 42,
+      "combined_pipeline_steps": 385,
+      "dedicated_fault_reset_tests": true,
+      "axi64_fixed_delay_retake_replay": true,
+      "legacy_delayed_retake_replay": true,
+      "both_axi_widths_warning_clean_lint": true,
+      "workspace_warning_denying_build": true
+    }
+  }
+}

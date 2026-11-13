@@ -1180,6 +1180,7 @@ impl ControlEndpoint {
                 });
                 return true;
             }
+
             self.profile_layout.stage(plan.descriptor(), &self.next);
             let epoch = self.graph_epoch;
             self.submit_job(

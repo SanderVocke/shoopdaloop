@@ -1,5 +1,6 @@
 use super::*;
 use crate::buffer::MidiBuffer;
+use crate::Sample;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CaptureId {
@@ -28,7 +29,7 @@ pub struct ResourceInfo {
     pub capture: Option<CaptureInfo>,
 }
 
-impl ResourceStore {
+impl<S: Sample> ResourceStore<S> {
     pub fn info(&self, resource: ResourceId) -> Result<ResourceInfo, Error> {
         let active = get(&self.resources, resource.slot(), resource.generation())?
             .active
@@ -247,7 +248,7 @@ impl ResourceStore {
         &mut self,
         id: CaptureId,
         frame: Frame,
-        samples: &[f32],
+        samples: &[S],
     ) -> Result<Revision, Error> {
         self.capture_audio_with(id, frame, samples, WorkClass::Background)
     }
@@ -255,7 +256,7 @@ impl ResourceStore {
         &mut self,
         id: CaptureId,
         frame: Frame,
-        samples: &[f32],
+        samples: &[S],
         class: WorkClass,
     ) -> Result<Revision, Error> {
         self.note_operation(class);
@@ -280,7 +281,8 @@ impl ResourceStore {
             .ok_or_else(|| self.halt_capture(id, Error::Capacity))?;
         let mut version = self.reserve_capture(id, version, frame, frames, bytes, class)?;
         for sample in samples {
-            self.append_reserved(&mut version, &sample.to_le_bytes(), class);
+            let bytes = sample.to_le_bytes();
+            self.append_reserved(&mut version, &bytes, class);
         }
         Ok(self.publish_capture(id, version))
     }

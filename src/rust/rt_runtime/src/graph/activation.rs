@@ -67,6 +67,14 @@ impl GraphStages {
         self.scope != 0
     }
     pub(crate) fn prepare(count: usize, config: crate::PreparedConfig) -> Result<Self, Error> {
+        Self::prepare_with_extra(count, config, 0)
+    }
+
+    fn prepare_with_extra(
+        count: usize,
+        config: crate::PreparedConfig,
+        extra: usize,
+    ) -> Result<Self, Error> {
         if count == 0 {
             return Err(Error::InvalidConfig);
         }
@@ -78,7 +86,9 @@ impl GraphStages {
             return Err(Error::Capacity);
         }
         let limits = config.limits();
-        let mut plan_bytes = size_of::<PreparedPlan>();
+        let mut plan_bytes = size_of::<PreparedPlan>()
+            .checked_add(extra)
+            .ok_or(Error::Capacity)?;
         for (count, size) in [
             (limits.max_nodes, size_of::<super::NodeStep>()),
             (limits.max_edges, size_of::<super::Connection>()),
@@ -445,5 +455,108 @@ mod tests {
             disabled.prepare_activation(id, Epoch(0)).err(),
             Some(Error::InvalidState)
         );
+    }
+}
+
+/// The ordinary graph staging/ownership rules for an external queue consumer.
+pub struct PreparedGraphs {
+    stages: GraphStages,
+    active: Option<PreparedPlan>,
+    epoch: Epoch,
+    config: crate::PreparedConfig,
+}
+impl PreparedGraphs {
+    pub fn new(count: usize, config: crate::PreparedConfig) -> Result<Self, Error> {
+        Ok(Self {
+            stages: GraphStages::prepare(count, config)?,
+            active: None,
+            epoch: Epoch(0),
+            config,
+        })
+    }
+    pub fn epoch(&self) -> Epoch {
+        self.epoch
+    }
+    pub fn active(&self) -> Option<&PreparedPlan> {
+        self.active.as_ref()
+    }
+    pub fn stage(
+        &mut self,
+        index: usize,
+        expected: Epoch,
+        plan: PreparedPlan,
+        catalog: &super::Catalog,
+    ) -> Result<StageId, (Error, PreparedPlan)> {
+        let validate = || -> Result<(), Error> {
+            if expected != self.epoch {
+                return Err(Error::StaleEpoch);
+            }
+            self.stages.can_stage(index)?;
+            self.stages.accepts(&plan)?;
+            let mut validator = super::PlanValidator::new(self.config);
+            validator.begin();
+            loop {
+                match validator.advance(&plan, catalog, 1024).status {
+                    super::ValidationStatus::Valid => break,
+                    super::ValidationStatus::Invalid(error) => return Err(error),
+                    super::ValidationStatus::Pending => {}
+                }
+            }
+            Ok(())
+        };
+        if let Err(error) = validate() {
+            return Err((error, plan));
+        }
+        Ok(self.stages.install(index, self.epoch, plan))
+    }
+    pub fn candidate(&self, id: StageId) -> Result<&PreparedPlan, Error> {
+        let slot = self.stages.slot(id)?;
+        if slot.phase != Phase::Ready {
+            return Err(Error::InvalidState);
+        }
+        slot.owner.as_ref().ok_or(Error::InvalidState)
+    }
+    pub fn status(&self, id: StageId) -> Result<StageStatus, Error> {
+        let slot = self.stages.slot(id)?;
+        Ok(match slot.phase {
+            Phase::Ready => StageStatus::Ready {
+                validated_epoch: slot.validated_epoch,
+            },
+            Phase::Taken => StageStatus::Taken,
+            Phase::Idle => return Err(Error::InvalidId),
+        })
+    }
+    pub fn preflight(&self, id: StageId, expected: Epoch) -> Result<(), Error> {
+        if expected != self.epoch {
+            return Err(Error::StaleEpoch);
+        }
+        let slot = self.stages.slot(id)?;
+        if slot.phase != Phase::Ready {
+            return Err(Error::InvalidState);
+        }
+        if slot.validated_epoch != expected {
+            return Err(Error::StaleEpoch);
+        }
+        if let Some(active) = &self.active {
+            self.stages.accepts(active)?;
+        }
+        expected.checked_next()?;
+        Ok(())
+    }
+    pub fn activate(&mut self, id: StageId, expected: Epoch) -> Result<Epoch, Error> {
+        let check = |_: &PreparedPlan| Ok(());
+        let mut recovery = [];
+        let mut access = GraphAccess::new(
+            &mut self.stages,
+            &mut self.active,
+            &mut self.epoch,
+            true,
+            &check,
+            &mut recovery,
+        );
+        Ok(access.prepare_activation(id, expected)?.commit())
+    }
+    pub fn release(&mut self, id: StageId) -> Result<Option<PreparedPlan>, Error> {
+        self.stages.release(id)
     }
 }

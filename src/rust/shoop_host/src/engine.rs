@@ -37,7 +37,9 @@ pub fn inventory(driver: &AudioDriverConfig) -> Discovery {
         }
         AudioDriverConfig::Cpal(_) => listed(),
         AudioDriverConfig::Jack(_) => Discovery::default(),
-        AudioDriverConfig::Dummy(_) | AudioDriverConfig::WebAudio => Discovery::default(),
+        AudioDriverConfig::Dummy(_)
+        | AudioDriverConfig::WebAudio
+        | AudioDriverConfig::Simulated(_) => Discovery::default(),
     }
 }
 
@@ -89,6 +91,14 @@ pub fn native_config(
         AudioDriverConfig::WebAudio => {
             warnings.push(
                 "Web Audio is unavailable in native builds; the new engine backend uses the dummy driver"
+                    .to_owned(),
+            );
+            let dummy = DummyAudioDriverConfig::default();
+            (DriverConfig::Dummy(dummy_config(&dummy)), dummy.buffer_size)
+        }
+        AudioDriverConfig::Simulated(_) => {
+            warnings.push(
+                "A simulated clock cannot be started by a host; the new engine backend uses the dummy driver"
                     .to_owned(),
             );
             let dummy = DummyAudioDriverConfig::default();

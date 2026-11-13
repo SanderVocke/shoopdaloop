@@ -1,0 +1,41 @@
+{
+  "revision": "0d5978abb98ede42b63aaad47d9c506c3c677451",
+  "working_tree_dirty": true,
+  "command": [
+    "vivado",
+    "-mode",
+    "batch",
+    "-source",
+    "run.tcl",
+    "-tclargs",
+    "../memory-dma-tag-stage/post_place.dcp"
+  ],
+  "subsystem": "memory",
+  "top": "media_store_axi",
+  "parameters": {
+    "VIEWS": 64,
+    "SLOTS": 2048,
+    "CHUNK_FRAMES": 32,
+    "BLOCK_CHUNKS": 32,
+    "READ_BUFFERS": 4,
+    "WRITE_BUFFERS": 4,
+    "TABLE_LINES": 8,
+    "REF_LINES": 4,
+    "STACK_LINES": 2,
+    "AXI_DATA_WIDTH": 64,
+    "BURST_MEMORY": 1
+  },
+  "part": "xc7z020clg484-1",
+  "clock_mhz": 150,
+  "uncertainty_ns": 0.2,
+  "stage": "route",
+  "threads": 1,
+  "strategy": "timing",
+  "implementation_place_setup_uncertainty_ns": 0.9,
+  "implementation_route_setup_uncertainty_ns": 0.2,
+  "measurement_setup_uncertainty_ns": 0.2,
+  "implementation_strategy": "Timing-driven placement with 0.9 ns setup margin, route at nominal 0.2 ns uncertainty",
+  "input_checkpoint": "work/150mhz/memory-dma-tag-stage/post_place.dcp",
+  "input_checkpoint_sha256": "d714f8d763edf94caa7b947a9718f0aebc5b422623c709b70344a0965fdeb38c",
+  "selected_rtl_revision": "f872a5f7f1acf0c85929931d4421fcc89a22c966"
+}

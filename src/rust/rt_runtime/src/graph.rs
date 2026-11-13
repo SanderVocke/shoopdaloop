@@ -359,6 +359,7 @@ impl PreparedPlan {
         self.descriptor.connections.push(connection);
         Ok(())
     }
+
     pub fn descriptor(&self) -> &PlanDescriptor {
         &self.descriptor
     }

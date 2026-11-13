@@ -8,6 +8,7 @@ use super::{
     shared_pages::{LeaseId, SharedPages},
     slots, RenderIo, ResourceStore, Slot, WorkClass,
 };
+use crate::Sample;
 use crate::{Error, Frame, Revision};
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::ops::Range;
@@ -182,7 +183,7 @@ struct History {
     root: Option<usize>,
 }
 
-pub struct AudioStore {
+pub struct AudioStore<S: Sample = f32> {
     work: AudioPoolWork,
     last_payload: Option<LeaseId>,
     scope: u32,
@@ -203,7 +204,7 @@ pub struct AudioStore {
     debt: usize,
     debt_limit: usize,
     reserved: usize,
-    pages: SharedPages,
+    pages: SharedPages<S>,
     marks: Box<[(u64, usize)]>,
     generation: u64,
     plans: Vec<Plan>,
@@ -217,7 +218,7 @@ pub struct AudioStore {
     base_turn: bool,
 }
 
-impl AudioStore {
+impl<S: Sample> AudioStore<S> {
     pub(super) fn reset_work(&mut self) {
         self.work = AudioPoolWork::default();
     }
@@ -233,7 +234,7 @@ impl AudioStore {
         }
     }
 
-    pub(super) fn chunk_samples(&self, lease: LeaseId) -> Result<&[f32], Error> {
+    pub(super) fn chunk_samples(&self, lease: LeaseId) -> Result<&[S], Error> {
         self.pages.sample_span(lease)
     }
     pub(super) fn retain_chunk(&mut self, lease: LeaseId) -> Result<LeaseId, Error> {
@@ -241,7 +242,7 @@ impl AudioStore {
     }
     pub(super) fn release_chunk(
         &mut self,
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         lease: LeaseId,
     ) -> Result<(), Error> {
         if !self.pages.chunked() {
@@ -259,7 +260,7 @@ impl AudioStore {
         position: u64,
         frames: usize,
         channel: usize,
-    ) -> Result<Option<crate::audio_refs::AudioSequence>, Error> {
+    ) -> Result<Option<crate::audio_refs::AudioSequence<S>>, Error> {
         use crate::audio_refs::{AudioSequence, ChunkRef, ChunkSpan};
         if !self.pages.chunked() {
             return Ok(None);
@@ -302,8 +303,25 @@ impl AudioStore {
         }
         Ok(Some(result))
     }
+    pub(super) fn allocated_bytes(&self) -> usize {
+        core::mem::size_of_val(&*self.histories)
+            + super::memory::vec_bytes(&self.nodes)
+            + super::memory::vec_bytes(&self.free_nodes)
+            + super::memory::vec_bytes(&self.views)
+            + super::memory::vec_bytes(&self.free_views)
+            + core::mem::size_of_val(&*self.marks)
+            + super::memory::vec_bytes(&self.plans)
+            + core::mem::size_of_val(&*self.scratch)
+            + super::memory::vec_bytes(&self.immediate)
+            + super::memory::vec_bytes(&self.retired)
+            + core::mem::size_of_val(&*self.pending)
+            + super::memory::vec_bytes(&self.bases)
+            + super::memory::vec_bytes(&self.retired_bases)
+            + self.pages.allocated_bytes()
+    }
+
     pub fn prepare(
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         config: Config,
         origin: Frame,
     ) -> Result<Self, Error> {
@@ -312,7 +330,7 @@ impl AudioStore {
 
     /// Prepare independent source histories sharing one page/index/owner budget.
     pub fn prepare_histories(
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         config: Config,
         origin: Frame,
         histories: usize,
@@ -331,7 +349,7 @@ impl AudioStore {
         Self::prepare_layout(store, config, origin, histories, layout)
     }
     pub fn prepare_histories_windowed(
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         config: Config,
         origin: Frame,
         histories: usize,
@@ -350,7 +368,7 @@ impl AudioStore {
         Self::prepare_layout(store, config, origin, histories, layout)
     }
     fn prepare_layout(
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         config: Config,
         origin: Frame,
         histories: usize,
@@ -472,7 +490,7 @@ impl AudioStore {
         })
     }
 
-    fn check(&self, store: &ResourceStore) -> Result<(), Error> {
+    fn check(&self, store: &ResourceStore<S>) -> Result<(), Error> {
         if self.store_scope != store.scope {
             return Err(Error::InvalidId);
         }
@@ -527,13 +545,13 @@ impl AudioStore {
     }
 
     /// Start a new complete input segment; retained owners keep their old roots.
-    pub fn discontinuity(&mut self, io: &mut RenderIo<'_>, next: Frame) -> Result<(), Error> {
+    pub fn discontinuity(&mut self, io: &mut RenderIo<'_, S>, next: Frame) -> Result<(), Error> {
         self.history_discontinuity(io, self.history_id(0)?, next)
     }
 
     pub fn history_discontinuity(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         id: HistoryId,
         next: Frame,
     ) -> Result<(), Error> {
@@ -606,13 +624,13 @@ impl AudioStore {
         }
     }
 
-    pub fn grab(&mut self, io: &mut RenderIo<'_>, range: Range<Frame>) -> Result<TakeId, Error> {
+    pub fn grab(&mut self, io: &mut RenderIo<'_, S>, range: Range<Frame>) -> Result<TakeId, Error> {
         self.grab_history(io, self.history_id(0)?, range)
     }
 
     pub fn grab_history(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         id: HistoryId,
         range: Range<Frame>,
     ) -> Result<TakeId, Error> {
@@ -670,7 +688,7 @@ impl AudioStore {
 
     pub fn grab_history_window(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         id: HistoryId,
         range: Range<Frame>,
         frames: u64,
@@ -802,7 +820,7 @@ impl AudioStore {
 
     pub(super) fn import_snapshot(
         &mut self,
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         snapshot: super::SnapshotId,
     ) -> Result<TakeId, Error> {
         self.check(store)?;
@@ -972,7 +990,7 @@ impl AudioStore {
         })
     }
 
-    fn release_immediate(&mut self, store: &mut ResourceStore, root: Option<usize>) {
+    fn release_immediate(&mut self, store: &mut ResourceStore<S>, root: Option<usize>) {
         if let Some(root) = self.unreference(root) {
             self.immediate.push(root);
         }
@@ -1005,12 +1023,12 @@ impl AudioStore {
 
     fn stage(
         &mut self,
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         root: Option<usize>,
         mapping: Mapping,
         frames: usize,
         position: usize,
-        samples: &[f32],
+        samples: &[S],
         wrapping: bool,
         base: Option<usize>,
         selected_channel: Option<usize>,
@@ -1041,10 +1059,10 @@ impl AudioStore {
 
     fn stage_chunk(
         &mut self,
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         root: Option<usize>,
         page: usize,
-        samples: &[f32],
+        samples: &[S],
         reuse: bool,
     ) -> Result<Option<usize>, Error> {
         if page >= self.marks.len()
@@ -1078,9 +1096,9 @@ impl AudioStore {
     }
     fn stage_map(
         &mut self,
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         root: Option<usize>,
-        samples: &[f32],
+        samples: &[S],
         base: Option<usize>,
         selected_channel: Option<usize>,
         physical: impl Fn(usize, usize) -> Option<usize>,
@@ -1198,19 +1216,19 @@ impl AudioStore {
 
     pub fn append(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         frame: Frame,
-        samples: &[f32],
+        samples: &[S],
     ) -> Result<(), Error> {
         self.append_history(io, self.history_id(0)?, frame, samples)
     }
 
     pub fn append_history(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         id: HistoryId,
         frame: Frame,
-        samples: &[f32],
+        samples: &[S],
     ) -> Result<(), Error> {
         self.check(io.store)?;
         if self.keep == 0 {
@@ -1264,10 +1282,10 @@ impl AudioStore {
 
     pub(in crate::resource) fn stage_write(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         take: TakeId,
         position: Option<u64>,
-        samples: &[f32],
+        samples: &[S],
     ) -> Result<Write, Error> {
         self.check(io.store)?;
         let mut view = self.view(take.0)?;
@@ -1323,9 +1341,9 @@ impl AudioStore {
     }
     pub(in crate::resource) fn stage_window_write(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         take: TakeId,
-        samples: &[f32],
+        samples: &[S],
         spans: &[ChannelWrite],
     ) -> Result<Write, Error> {
         self.check(io.store)?;
@@ -1384,7 +1402,7 @@ impl AudioStore {
     }
     pub(in crate::resource) fn cancel_write(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         write: Write,
     ) -> Result<(), Error> {
         self.check(io.store)?;
@@ -1393,7 +1411,7 @@ impl AudioStore {
     }
     pub(in crate::resource) fn commit_write(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         write: Write,
     ) -> Result<Info, Error> {
         self.check(io.store)?;
@@ -1413,10 +1431,10 @@ impl AudioStore {
     /// One atomic edit, including all channels and any loop/page boundary crossings.
     pub fn replace(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         take: TakeId,
         position: u64,
-        samples: &[f32],
+        samples: &[S],
     ) -> Result<Revision, Error> {
         self.check(io.store)?;
         let mut view = self.view(take.0)?;
@@ -1456,11 +1474,11 @@ impl AudioStore {
 
     pub fn replace_channel(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         take: TakeId,
         channel: usize,
         position: u64,
-        samples: &[f32],
+        samples: &[S],
     ) -> Result<Revision, Error> {
         self.check(io.store)?;
         let mut view = self.view(take.0)?;
@@ -1606,9 +1624,9 @@ impl AudioStore {
 
     pub fn append_take(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         take: TakeId,
-        samples: &[f32],
+        samples: &[S],
     ) -> Result<Revision, Error> {
         self.check(io.store)?;
         let mut view = self.view(take.0)?;
@@ -1648,7 +1666,7 @@ impl AudioStore {
 
     pub fn read_bytes(
         &self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         index: ReadIndex,
         position: u64,
         output: &mut [u8],
@@ -1683,7 +1701,7 @@ impl AudioStore {
 
     pub(super) fn read_span(
         &self,
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         index: ReadIndex,
         position: usize,
         output: &mut [u8],
@@ -1828,13 +1846,13 @@ impl AudioStore {
         self.release_view(export.0)
     }
 
-    pub fn maintain(&mut self, store: &mut ResourceStore) -> Result<usize, Error> {
+    pub fn maintain(&mut self, store: &mut ResourceStore<S>) -> Result<usize, Error> {
         self.maintain_limit(store, usize::MAX)
     }
 
     pub(super) fn maintain_limit(
         &mut self,
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         limit: usize,
     ) -> Result<usize, Error> {
         if store.scope != self.store_scope {

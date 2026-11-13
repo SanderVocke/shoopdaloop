@@ -14,6 +14,7 @@ use crate::processor::{ProcessBlock, Processor, ProcessorOperation};
 use crate::resource::{self, ResourceStore};
 use crate::schedule::{self, Action, Execution, Scheduler};
 use crate::transport::{self, ControlEndpoint, Lane, Outcome, RenderEndpoint, TransportConfig};
+use crate::Sample;
 use crate::{Epoch, Error, Frame, NodeId, PreparedConfig, RenderRuntime, Sequence};
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::marker::PhantomData;
@@ -23,15 +24,17 @@ mod referenced_audio;
 
 /// Capture a prepared processor's port signature outside rendering. A runtime slot
 /// can later accept another generation with the same signature, not a larger one.
-pub struct PreparedNode<P, L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
+pub struct PreparedNode<P, L: Planner<S> = NoPlanner, Q: ProcessorOperation = (), S: Sample = f32> {
     id: NodeId,
     ports: PortCounts,
     operation_bytes: usize,
     midi_settings: Result<crate::processor::MidiBufferSettings, Error>,
     processor: P,
-    marker: PhantomData<fn() -> (L, Q)>,
+    marker: PhantomData<fn() -> (L, Q, S)>,
 }
-impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> PreparedNode<P, L, Q> {
+impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
+    PreparedNode<P, L, Q, S>
+{
     pub fn new(id: NodeId, processor: P) -> Self {
         Self {
             id,
@@ -42,6 +45,12 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> PreparedNode<P, L, Q
             marker: PhantomData,
         }
     }
+    pub fn processor(&self) -> &P {
+        &self.processor
+    }
+    pub fn into_processor(self) -> P {
+        self.processor
+    }
     pub fn spec(&self) -> NodeSpec {
         NodeSpec {
             id: self.id,
@@ -50,7 +59,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> PreparedNode<P, L, Q
     }
 }
 
-pub enum Command<P, L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
+pub enum Command<P, L: Planner<S> = NoPlanner, Q: ProcessorOperation = (), S: Sample = f32> {
     StageGraph {
         slot: usize,
         expected_epoch: Epoch,
@@ -69,7 +78,7 @@ pub enum Command<P, L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
         node: NodeId,
     },
     Install {
-        prepared: Option<PreparedNode<P, L, Q>>,
+        prepared: Option<PreparedNode<P, L, Q, S>>,
     },
     Schedule {
         at: Frame,
@@ -83,7 +92,7 @@ pub enum Command<P, L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
     ResetMidi,
     Resource(resource::ResourceCommand),
 }
-impl<P, L: Planner, Q: ProcessorOperation> Command<P, L, Q> {
+impl<P, L: Planner<S>, Q: ProcessorOperation, S: Sample> Command<P, L, Q, S> {
     pub fn stage_graph(slot: usize, expected_epoch: Epoch, plan: PreparedPlan) -> Self {
         Self::StageGraph {
             slot,
@@ -130,35 +139,74 @@ pub struct Diagnostics {
     pub midi_index_work: crate::resource::MidiIndexWork,
 }
 
-pub struct Control<P, L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
-    transport: ControlEndpoint<Command<P, L, Q>, Retired<P>, Diagnostics>,
+pub struct Control<P, L: Planner<S> = NoPlanner, Q: ProcessorOperation = (), S: Sample = f32> {
+    transport: ControlEndpoint<Command<P, L, Q, S>, Retired<P>, Diagnostics>,
     executions: schedule::Results<L::Operation, L::Result, Q, Q::Result>,
     config: PreparedConfig,
 }
-impl<P, L: Planner, Q: ProcessorOperation> Control<P, L, Q> {
+impl<P, L: Planner<S>, Q: ProcessorOperation, S: Sample> Control<P, L, Q, S> {
+    /// Construct the existing owning queues and receipt scheduler for another consumer.
+    pub fn channel(
+        config: PreparedConfig,
+        quantum: crate::Quantum,
+        operation_bytes: usize,
+        planner_operations: bool,
+    ) -> Result<
+        (
+            Self,
+            Ingress<P, L, Q, S>,
+            Scheduler<L::Operation, L::Result, Q, Q::Result>,
+        ),
+        Error,
+    > {
+        if quantum.frames() > config.limits().max_frames {
+            return Err(Error::InvalidConfig);
+        }
+        let limits = config.limits();
+        let (transport, ingress) = transport::channel(TransportConfig {
+            normal_slots: limits.command_slots,
+            recovery_slots: 1,
+            telemetry_slots: 3,
+            operations_per_cycle: limits.budgets.commands,
+            recovery_per_cycle: 1,
+            publications_per_cycle: limits.budgets.publications,
+        })?;
+        let (executions, mut scheduler) =
+            schedule::typed_scheduler(config, operation_bytes, planner_operations)?;
+        scheduler.set_quantum(quantum);
+        Ok((
+            Self {
+                transport,
+                executions,
+                config,
+            },
+            ingress,
+            scheduler,
+        ))
+    }
     pub fn prepare_submissions(&mut self) -> Result<(), Error> {
         self.transport.prepare_submissions()
     }
     pub fn submit(
         &mut self,
         lane: Lane,
-        request: Command<P, L, Q>,
-    ) -> Result<transport::Ticket, transport::SubmitError<Command<P, L, Q>>> {
+        request: Command<P, L, Q, S>,
+    ) -> Result<transport::Ticket, transport::SubmitError<Command<P, L, Q, S>>> {
         self.submit_inner(lane, request, false)
     }
     pub fn submit_prepared(
         &mut self,
         lane: Lane,
-        request: Command<P, L, Q>,
-    ) -> Result<transport::Ticket, transport::SubmitError<Command<P, L, Q>>> {
+        request: Command<P, L, Q, S>,
+    ) -> Result<transport::Ticket, transport::SubmitError<Command<P, L, Q, S>>> {
         self.submit_inner(lane, request, true)
     }
     fn submit_inner(
         &mut self,
         lane: Lane,
-        mut request: Command<P, L, Q>,
+        mut request: Command<P, L, Q, S>,
         prepared: bool,
-    ) -> Result<transport::Ticket, transport::SubmitError<Command<P, L, Q>>> {
+    ) -> Result<transport::Ticket, transport::SubmitError<Command<P, L, Q, S>>> {
         if let Command::Resource(command) = &mut request {
             command.reset_reply();
             if let Err(error) = command.envelope(self.config) {
@@ -176,7 +224,7 @@ impl<P, L: Planner, Q: ProcessorOperation> Control<P, L, Q> {
     }
     pub fn try_completion(
         &mut self,
-    ) -> Option<transport::Completion<Command<P, L, Q>, Retired<P>>> {
+    ) -> Option<transport::Completion<Command<P, L, Q, S>, Retired<P>>> {
         self.transport.try_completion()
     }
     pub fn try_execution(&mut self) -> Option<Execution<L::Operation, L::Result, Q, Q::Result>> {
@@ -192,14 +240,14 @@ impl<P, L: Planner, Q: ProcessorOperation> Control<P, L, Q> {
         self.transport.connected()
     }
 }
-type Ingress<P, L, Q> = RenderEndpoint<Command<P, L, Q>, Retired<P>, Diagnostics>;
+pub type Ingress<P, L, Q, S> = RenderEndpoint<Command<P, L, Q, S>, Retired<P>, Diagnostics>;
 
-struct Buffers {
-    input_sequences: Box<[crate::audio_refs::AudioSequence]>,
-    output_sequences: Box<[crate::audio_refs::AudioSequence]>,
+struct Buffers<S: Sample = f32> {
+    input_sequences: Box<[crate::audio_refs::AudioSequence<S>]>,
+    output_sequences: Box<[crate::audio_refs::AudioSequence<S>]>,
     input_mixed: Box<[bool]>,
-    input: Box<[f32]>,
-    output: Box<[f32]>,
+    input: Box<[S]>,
+    output: Box<[S]>,
     midi_input: Vec<MidiBuffer>,
     midi_output: Vec<MidiBuffer>,
     midi_output_recovery: Vec<bool>,
@@ -208,7 +256,7 @@ struct Buffers {
     midi_settings: crate::processor::MidiBufferSettings,
     midi_forwarded: Vec<bool>,
 }
-impl Buffers {
+impl<S: Sample> Buffers<S> {
     fn new(
         config: PreparedConfig,
         ports: PortCounts,
@@ -242,8 +290,8 @@ impl Buffers {
             ]
             .into_boxed_slice(),
             input_mixed: vec![false; ports.audio_inputs].into_boxed_slice(),
-            input: vec![0.0; ports.audio_inputs * frames].into_boxed_slice(),
-            output: vec![0.0; ports.audio_outputs * frames].into_boxed_slice(),
+            input: vec![S::ZERO; ports.audio_inputs * frames].into_boxed_slice(),
+            output: vec![S::ZERO; ports.audio_outputs * frames].into_boxed_slice(),
             midi_input: midi(ports.midi_inputs, true, true)?,
             midi_output: midi(ports.midi_outputs, false, true)?,
             midi_output_recovery: vec![false; ports.midi_outputs],
@@ -253,7 +301,7 @@ impl Buffers {
             midi_forwarded: vec![false; ports.midi_outputs],
         };
         for sample in buffers.input.iter_mut().chain(&mut buffers.output) {
-            *core::hint::black_box(sample) = 0.0;
+            *core::hint::black_box(sample) = S::ZERO;
         }
         Ok(buffers)
     }
@@ -273,10 +321,10 @@ impl Buffers {
     fn clear(&mut self, stride: usize, start: usize, frames: usize) {
         self.midi_forwarded.fill(false);
         for channel in self.input.chunks_exact_mut(stride) {
-            channel[start..start + frames].fill(0.0);
+            channel[start..start + frames].fill(S::ZERO);
         }
         for channel in self.output.chunks_exact_mut(stride) {
-            channel[start..start + frames].fill(0.0);
+            channel[start..start + frames].fill(S::ZERO);
         }
         for (port, recovery) in self
             .midi_input
@@ -303,16 +351,16 @@ impl Buffers {
         }
     }
 }
-struct Slot<P> {
+struct Slot<P, S: Sample = f32> {
     id: NodeId,
     ports: PortCounts,
     operation_bytes: usize,
     processor: Option<P>,
-    buffers: Buffers,
+    buffers: Buffers<S>,
 }
 
-fn activation_compatible<P>(
-    slots: &[Option<Slot<P>>],
+fn activation_compatible<P, S: Sample>(
+    slots: &[Option<Slot<P, S>>],
     candidate: &PreparedPlan,
 ) -> Result<(), Error> {
     for slot in slots.iter().flatten() {
@@ -324,44 +372,49 @@ fn activation_compatible<P>(
     Ok(())
 }
 
-pub struct GraphRuntime<P, L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
-    audio_arena: Option<crate::audio_refs::RenderArena>,
-    host_sequences: Box<[crate::audio_refs::AudioSequence]>,
+pub struct GraphRuntime<P, L: Planner<S> = NoPlanner, Q: ProcessorOperation = (), S: Sample = f32> {
+    audio_arena: Option<crate::audio_refs::RenderArena<S>>,
+    host_sequences: Box<[crate::audio_refs::AudioSequence<S>]>,
     profiling: rt_profiling::Recorder,
     quantum: crate::Quantum,
     tick_frame: Frame,
     boundary_at: Option<(Sequence, Frame)>,
-    host_buffer: Option<crate::host_buffer::HostBuffer>,
+    host_buffer: Option<crate::host_buffer::HostBuffer<S>>,
     fault: Option<Error>,
     clock: RenderRuntime,
     catalog: Catalog,
-    slots: Vec<Option<Slot<P>>>,
+    slots: Vec<Option<Slot<P, S>>>,
     active: Option<PreparedPlan>,
     graph_stages: GraphStages,
     validator: PlanValidator,
     validating: Option<Sequence>,
     epoch: Epoch,
-    ingress: Ingress<P, L, Q>,
+    ingress: Ingress<P, L, Q, S>,
     diagnostics: Diagnostics,
     emergency: Option<Retired<P>>,
     ingress_fault: bool,
     scheduler: Scheduler<L::Operation, L::Result, Q, Q::Result>,
     recovery: Vec<ResetState>,
     recovery_remaining: Vec<usize>,
-    resources: ResourceStore,
+    resources: ResourceStore<S>,
     planner: L,
     planner_authority: Option<(crate::PlannerId, usize)>,
 }
 
-impl<P: Processor> GraphRuntime<P> {
+impl<P: Processor<NoPlanner, (), S>, S: Sample> GraphRuntime<P, NoPlanner, (), S> {
     /// Allocate slots, buffers, validation scratch, and ownership queues before
     /// callbacks begin. Only declared slots can be reused after startup.
     pub fn prepare(
         config: PreparedConfig,
         quantum: crate::Quantum,
-        nodes: Vec<PreparedNode<P>>,
-    ) -> Result<(Control<P>, Self), Error> {
-        Self::prepare_with_resources(config, quantum, nodes, ResourceStore::new(config, quantum)?)
+        nodes: Vec<PreparedNode<P, NoPlanner, (), S>>,
+    ) -> Result<(Control<P, NoPlanner, (), S>, Self), Error> {
+        Self::prepare_with_resources(
+            config,
+            quantum,
+            nodes,
+            ResourceStore::<S>::new_numeric(config, quantum)?,
+        )
     }
 
     /// Move prepared resource identities/content into the runtime before starting
@@ -369,25 +422,27 @@ impl<P: Processor> GraphRuntime<P> {
     pub fn prepare_with_resources(
         config: PreparedConfig,
         quantum: crate::Quantum,
-        nodes: Vec<PreparedNode<P>>,
-        resources: ResourceStore,
-    ) -> Result<(Control<P>, Self), Error> {
+        nodes: Vec<PreparedNode<P, NoPlanner, (), S>>,
+        resources: ResourceStore<S>,
+    ) -> Result<(Control<P, NoPlanner, (), S>, Self), Error> {
         Self::prepare_with_planner_and_resources(config, quantum, nodes, NoPlanner, resources)
     }
 }
 
-impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q> {
+impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
+    GraphRuntime<P, L, Q, S>
+{
     /// Compile and install the initial graph during off-render preparation.
     /// Returns epoch one at frame zero; no callback, ingress credit, receipt or
     /// planner/processor execution is used. Failure drops inputs off-render.
     pub fn prepare_with_initial_graph(
         config: PreparedConfig,
         quantum: crate::Quantum,
-        nodes: Vec<PreparedNode<P, L, Q>>,
+        nodes: Vec<PreparedNode<P, L, Q, S>>,
         planner: L,
-        resources: ResourceStore,
+        resources: ResourceStore<S>,
         graph: &GraphDescription,
-    ) -> Result<(Control<P, L, Q>, Self), Error> {
+    ) -> Result<(Control<P, L, Q, S>, Self), Error> {
         let (control, mut runtime) =
             Self::prepare_with_planner_and_resources(config, quantum, nodes, planner, resources)?;
         runtime.prepare_initial_graph(graph)?;
@@ -399,6 +454,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
             return Err(Error::InvalidState);
         }
         let plan = compile(&self.catalog, graph)?;
+
         self.planner.admit_graph(&plan)?;
         self.epoch = self.epoch.checked_next()?;
         self.active = Some(plan);
@@ -408,35 +464,35 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
     pub fn prepare_with_planner(
         config: PreparedConfig,
         quantum: crate::Quantum,
-        nodes: Vec<PreparedNode<P, L, Q>>,
+        nodes: Vec<PreparedNode<P, L, Q, S>>,
         planner: L,
-    ) -> Result<(Control<P, L, Q>, Self), Error> {
+    ) -> Result<(Control<P, L, Q, S>, Self), Error> {
         Self::prepare_with_planner_and_resources(
             config,
             quantum,
             nodes,
             planner,
-            ResourceStore::new(config, quantum)?,
+            ResourceStore::<S>::new_numeric(config, quantum)?,
         )
     }
 
     pub fn prepare_with_planner_and_resources(
         config: PreparedConfig,
         quantum: crate::Quantum,
-        nodes: Vec<PreparedNode<P, L, Q>>,
+        nodes: Vec<PreparedNode<P, L, Q, S>>,
         planner: L,
-        resources: ResourceStore,
-    ) -> Result<(Control<P, L, Q>, Self), Error> {
+        resources: ResourceStore<S>,
+    ) -> Result<(Control<P, L, Q, S>, Self), Error> {
         Self::prepare_owned(config, nodes, planner, resources, quantum)
     }
 
     fn prepare_owned(
         config: PreparedConfig,
-        nodes: Vec<PreparedNode<P, L, Q>>,
+        nodes: Vec<PreparedNode<P, L, Q, S>>,
         planner: L,
-        resources: ResourceStore,
+        resources: ResourceStore<S>,
         quantum: crate::Quantum,
-    ) -> Result<(Control<P, L, Q>, Self), Error> {
+    ) -> Result<(Control<P, L, Q, S>, Self), Error> {
         planner.validate_quantum(quantum)?;
         if quantum.frames() > config.limits().max_frames
             || resources.config() != config
@@ -447,7 +503,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         if config
             .limits()
             .max_nodes
-            .checked_mul(size_of::<Option<Slot<P>>>())
+            .checked_mul(size_of::<Option<Slot<P, S>>>())
             .is_none_or(|bytes| bytes > i32::MAX as usize)
         {
             return Err(Error::Capacity);
@@ -516,23 +572,14 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
                 buffers,
             });
         }
-        let (control, ingress) = transport::channel(TransportConfig {
-            normal_slots: limits.command_slots,
-            recovery_slots: 1,
-            telemetry_slots: 3,
-            operations_per_cycle: limits.budgets.commands,
-            recovery_per_cycle: 1,
-            publications_per_cycle: limits.budgets.publications,
-        })?;
-        let (executions, mut scheduler) =
-            schedule::typed_scheduler(config, operation_bytes, planner_authority.is_some())?;
-        scheduler.set_quantum(quantum);
+        let (control, ingress, scheduler) = Control::channel(
+            config,
+            quantum,
+            operation_bytes,
+            planner_authority.is_some(),
+        )?;
         Ok((
-            Control {
-                transport: control,
-                executions,
-                config,
-            },
+            control,
             Self {
                 audio_arena,
                 host_sequences: vec![
@@ -589,17 +636,21 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
     /// Consume a stopped runtime off-render and retain its resource store for
     /// explicit owner/lease cleanup or reuse. Other runtime owners, including the
     /// planner, are destroyed; plain resource handles hidden there are not released.
-    pub fn into_resources(self) -> resource::ResourceStore {
+    pub fn into_resources(self) -> resource::ResourceStore<S> {
         self.resources
     }
 
     /// Consume a stopped runtime off-render, retaining the planner's owner
     /// ledger with its store for explicit domain cleanup. Other owners drop here.
     /// This does not settle pending operations or emit device cleanup messages.
-    pub fn into_planner_and_resources(self) -> (L, resource::ResourceStore) {
+    pub fn into_planner_and_resources(self) -> (L, resource::ResourceStore<S>) {
         (self.planner, self.resources)
     }
 
+    /// Borrow settled domain state between callbacks from the runtime owner.
+    pub fn planner(&self) -> &L {
+        &self.planner
+    }
     pub fn next_frame(&self) -> Frame {
         self.clock.next_frame()
     }
@@ -639,10 +690,10 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         config: PreparedConfig,
         max_host_frames: usize,
         quantum: crate::Quantum,
-        nodes: Vec<PreparedNode<P, L, Q>>,
+        nodes: Vec<PreparedNode<P, L, Q, S>>,
         domain: L,
-        resources: ResourceStore,
-    ) -> Result<(Control<P, L, Q>, Self), Error> {
+        resources: ResourceStore<S>,
+    ) -> Result<(Control<P, L, Q, S>, Self), Error> {
         if config.limits().max_frames != quantum.frames() || max_host_frames == 0 {
             return Err(Error::InvalidConfig);
         }
@@ -665,12 +716,16 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
     pub fn capture_group_usage(&self) -> resource::CaptureGroupUsage {
         self.resources.capture_group_usage()
     }
+    pub fn memory_usage(&self) -> resource::MemoryUsage {
+        self.resources.memory_usage()
+    }
     pub fn resource_usage(&self) -> resource::PoolUsage {
         self.resources.usage()
     }
     pub fn resource_work(&self) -> resource::Work {
         self.resources.work()
     }
+
     pub fn render_work(&self) -> resource::RenderWork {
         self.resources.render_work()
     }
@@ -685,7 +740,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
 
     pub fn process(
         &mut self,
-        mut audio: AudioBlock<'_, '_>,
+        mut audio: AudioBlock<'_, '_, S>,
         mut midi: MidiBlock<'_>,
     ) -> Result<(), Error> {
         if audio.frames == 0 {
@@ -1275,7 +1330,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
     }
     fn run_ticks(
         &mut self,
-        audio: &mut AudioBlock<'_, '_>,
+        audio: &mut AudioBlock<'_, '_, S>,
         midi: &mut MidiBlock<'_>,
         quantum: crate::Quantum,
     ) -> Result<(), Error> {
@@ -1301,7 +1356,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
     }
     fn run_tick(
         &mut self,
-        audio: &mut impl crate::host_buffer::AudioIo,
+        audio: &mut impl crate::host_buffer::AudioIo<S>,
         midi: &mut MidiBlock<'_>,
         start: usize,
         callback_start: Frame,
@@ -1311,6 +1366,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
         let frame = audio.frame().checked_add(start)?;
         let end = frame.checked_add(quantum.frames())?;
         self.profiling.begin_tick(frame.0, quantum.frames() as u32);
+
         self.deliver_actions(frame, callback_start, remaining)?;
         self.planner.begin_tick(PlanContext {
             graph_epoch: self.epoch,
@@ -1339,6 +1395,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
             resources: self.resources.planner_io(end, end),
             receipts: self.scheduler.receipts(end),
         })?;
+
         self.profiling.phase(rt_profiling::Phase::StateAdvanced);
         self.profiling.end_tick(true);
         self.tick_frame = end;
@@ -1350,7 +1407,7 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
     }
     fn run_graph(
         &mut self,
-        audio: &mut impl crate::host_buffer::AudioIo,
+        audio: &mut impl crate::host_buffer::AudioIo<S>,
         midi: &mut MidiBlock<'_>,
         start: usize,
         callback_start: Frame,
@@ -1459,10 +1516,10 @@ impl<P: Processor<L, Q>, L: Planner, Q: ProcessorOperation> GraphRuntime<P, L, Q
     }
 }
 
-fn validate_action<P, O: Copy, Q: Copy>(
+fn validate_action<P, O: Copy, Q: Copy, S: Sample>(
     catalog: &Catalog,
     planner_authority: Option<(crate::PlannerId, usize)>,
-    slots: &[Option<Slot<P>>],
+    slots: &[Option<Slot<P, S>>],
     action: Action<O, Q>,
     bytes: usize,
 ) -> Result<(), Error> {
@@ -1499,8 +1556,8 @@ fn validate_action<P, O: Copy, Q: Copy>(
     Ok(())
 }
 
-fn remove_processor<P>(
-    slots: &mut [Option<Slot<P>>],
+fn remove_processor<P, S: Sample>(
+    slots: &mut [Option<Slot<P, S>>],
     catalog: &mut Catalog,
     epoch: &mut Epoch,
     node: NodeId,
@@ -1521,11 +1578,11 @@ fn remove_processor<P>(
     Ok(processor)
 }
 
-fn install_processor<P, L: Planner, Q: ProcessorOperation>(
-    slots: &mut [Option<Slot<P>>],
+fn install_processor<P, L: Planner<S>, Q: ProcessorOperation, S: Sample>(
+    slots: &mut [Option<Slot<P, S>>],
     catalog: &mut Catalog,
     epoch: &mut Epoch,
-    prepared: &mut Option<PreparedNode<P, L, Q>>,
+    prepared: &mut Option<PreparedNode<P, L, Q, S>>,
 ) -> Result<(), Error> {
     let node = prepared.as_ref().ok_or(Error::InvalidState)?;
     let slot = slots
@@ -1552,10 +1609,10 @@ fn install_processor<P, L: Planner, Q: ProcessorOperation>(
     Ok(())
 }
 
-fn route_offset<P>(
-    slots: &mut [Option<Slot<P>>],
+fn route_offset<P, S: Sample>(
+    slots: &mut [Option<Slot<P, S>>],
     edge: Connection,
-    audio: &mut impl crate::host_buffer::AudioIo,
+    audio: &mut impl crate::host_buffer::AudioIo<S>,
     midi: &mut MidiBlock<'_>,
     stride: usize,
     start: usize,
@@ -1657,17 +1714,23 @@ fn route_offset<P>(
     }
     Ok(())
 }
-fn channel(data: &[f32], endpoint: Endpoint, stride: usize, start: usize, frames: usize) -> &[f32] {
-    let first = endpoint.port as usize * stride + start;
-    &data[first..first + frames]
-}
-fn channel_mut(
-    data: &mut [f32],
+fn channel<S: Sample>(
+    data: &[S],
     endpoint: Endpoint,
     stride: usize,
     start: usize,
     frames: usize,
-) -> &mut [f32] {
+) -> &[S] {
+    let first = endpoint.port as usize * stride + start;
+    &data[first..first + frames]
+}
+fn channel_mut<S: Sample>(
+    data: &mut [S],
+    endpoint: Endpoint,
+    stride: usize,
+    start: usize,
+    frames: usize,
+) -> &mut [S] {
     let first = endpoint.port as usize * stride + start;
     &mut data[first..first + frames]
 }
@@ -1707,8 +1770,8 @@ mod tests {
     }
 }
 
-fn mix(source: &[f32], target: &mut [f32]) {
+fn mix<S: Sample>(source: &[S], target: &mut [S]) {
     for (source, target) in source.iter().zip(target) {
-        *target += source;
+        *target = target.mix(*source);
     }
 }

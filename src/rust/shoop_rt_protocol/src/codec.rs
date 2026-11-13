@@ -123,7 +123,10 @@ tags!(Refusal {
     0 => Refusal::Unsupported, 1 => Refusal::Capacity, 2 => Refusal::InvalidId, 3 => Refusal::InvalidValue,
     4 => Refusal::Busy, 5 => Refusal::Overloaded, 6 => Refusal::NotConnected, 7 => Refusal::Internal,
 });
-tags!(DriverKind { 0 => DriverKind::Dummy, 1 => DriverKind::Cpal, 2 => DriverKind::WebAudio, 3 => DriverKind::Jack });
+tags!(DriverKind {
+    0 => DriverKind::Dummy, 1 => DriverKind::Cpal, 2 => DriverKind::WebAudio, 3 => DriverKind::Jack,
+    4 => DriverKind::Simulated,
+});
 tags!(DriverRunState {
     0 => DriverRunState::Starting, 1 => DriverRunState::Running, 2 => DriverRunState::Stopped, 3 => DriverRunState::Failed,
 });
@@ -1665,9 +1668,71 @@ impl Wire for Limits {
     }
 }
 
+impl Wire for crate::MemoryReport {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        if !self.valid() {
+            return Err(CodecError::Invalid);
+        }
+        w.u64(self.frame)?;
+        self.accounted_bytes.put(w)?;
+        for resource in &self.resources {
+            w.bool(resource.is_some())?;
+            if let Some(resource) = resource {
+                resource.name.put(w)?;
+                w.u8(match resource.unit {
+                    crate::MemoryUnit::Bytes => 0,
+                    crate::MemoryUnit::Entries => 1,
+                    crate::MemoryUnit::Pages => 2,
+                    crate::MemoryUnit::Blocks => 3,
+                })?;
+                w.u64(resource.used)?;
+                w.u64(resource.reserved)?;
+                resource.capacity.put(w)?;
+            }
+        }
+        Ok(())
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        let mut report = Self {
+            frame: r.u64()?,
+            accounted_bytes: Option::get(r)?,
+            ..Self::default()
+        };
+        for resource in &mut report.resources {
+            if r.bool()? {
+                *resource = Some(crate::MemoryResource {
+                    name: Name::get(r)?,
+                    unit: match r.u8()? {
+                        0 => crate::MemoryUnit::Bytes,
+                        1 => crate::MemoryUnit::Entries,
+                        2 => crate::MemoryUnit::Pages,
+                        3 => crate::MemoryUnit::Blocks,
+                        _ => return Err(CodecError::Invalid),
+                    },
+                    used: r.u64()?,
+                    reserved: r.u64()?,
+                    capacity: Option::get(r)?,
+                });
+            }
+        }
+        if !report.valid() {
+            return Err(CodecError::Invalid);
+        }
+        Ok(report)
+    }
+}
+
 impl Wire for Telemetry {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
+            Self::AudioBackend(kind) => {
+                w.u8(7)?;
+                w.u8(*kind as u8)
+            }
+            Self::Memory(report) => {
+                w.u8(6)?;
+                report.put(w)
+            }
             Self::Composite {
                 loop_id,
                 frame,
@@ -1769,6 +1834,12 @@ impl Wire for Telemetry {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            7 => Self::AudioBackend(match r.u8()? {
+                0 => AudioBackendKind::NewEngine,
+                1 => AudioBackendKind::FpgaRtlSim,
+                _ => return Err(CodecError::Invalid),
+            }),
+            6 => Self::Memory(crate::MemoryReport::get(r)?),
             5 => Self::Composite {
                 loop_id: LoopSlotId::get(r)?,
                 frame: r.u64()?,

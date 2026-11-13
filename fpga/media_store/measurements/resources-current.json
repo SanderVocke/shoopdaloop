@@ -1,0 +1,93 @@
+{
+  "revision": "2842301f01639057e291c07e6442d926b8d23ff1",
+  "timing_checked": false,
+  "versions": [
+    "Yosys 0.52 (git sha1 fee39a3284c90249e1d9684cf6944ffbbcbb8f90)",
+    "Verilator 5.032 2025-01-01 rev (Debian 5.032-1+b2)"
+  ],
+  "loop_axi32": {
+    "loops": 8,
+    "requests": 16,
+    "events": 32,
+    "program_depth": 64,
+    "state_depth": 32,
+    "job_depth": 64,
+    "buffers": 16,
+    "input_ports": 2,
+    "output_ports": 2,
+    "views": 32,
+    "slots": 32,
+    "chunk_frames": 32,
+    "read_buffers": 4,
+    "write_buffers": 4,
+    "table_lines": 8,
+    "reference_lines": 4,
+    "stack_lines": 2,
+    "cells": {
+      "$specify2": 19,
+      "LUT4": 29265,
+      "PFUMX": 3311,
+      "$scopeinfo": 88,
+      "TRELLIS_FF": 16142,
+      "CCU2C": 5074,
+      "L6MUX21": 89,
+      "DP16KD": 94,
+      "TRELLIS_DPR16X4": 74,
+      "MULT18X18D": 4
+    }
+  },
+  "media_store": {
+    "$specify2": 19,
+    "CCU2C": 2684,
+    "LUT4": 12545,
+    "PFUMX": 1337,
+    "L6MUX21": 70,
+    "TRELLIS_FF": 5421,
+    "$scopeinfo": 13,
+    "DP16KD": 15,
+    "TRELLIS_DPR16X4": 8
+  },
+  "media_audio_pipeline": {
+    "$specify2": 19,
+    "LUT4": 17702,
+    "TRELLIS_FF": 8484,
+    "$scopeinfo": 29,
+    "PFUMX": 1951,
+    "CCU2C": 3619,
+    "L6MUX21": 121,
+    "DP16KD": 18,
+    "TRELLIS_DPR16X4": 313,
+    "MULT18X18D": 4
+  },
+  "block_profiles": {
+    "media_store": {
+      "views": 32,
+      "slots": 32,
+      "chunk_frames": 32,
+      "table_lines": 8,
+      "reference_lines": 4,
+      "stack_lines": 2,
+      "read_buffers": 4,
+      "write_buffers": 4,
+      "burst_memory": 0
+    },
+    "media_audio_pipeline": {
+      "program_depth": 32,
+      "state_depth": 16,
+      "job_depth": 32,
+      "max_frames": 32,
+      "buffers": 16,
+      "input_ports": 2,
+      "output_ports": 2,
+      "views": 32,
+      "slots": 32,
+      "chunk_frames": 32,
+      "table_lines": 8,
+      "reference_lines": 4,
+      "stack_lines": 2,
+      "read_buffers": 4,
+      "write_buffers": 4,
+      "burst_memory": 0
+    }
+  }
+}

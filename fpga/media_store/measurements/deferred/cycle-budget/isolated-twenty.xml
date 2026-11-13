@@ -1,0 +1,6 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="20261110" />
+    <testcase name="isolated_twenty_releases" classname="test_reclaim_timing" file="/workspace/shoopdaloop/fpga/media_store/tests/test_reclaim_timing.py" lineno="23" time="38.26558995246887" sim_time_ns="482020.001" ratio_time="12596.695924425447" />
+  </testsuite>
+</testsuites>

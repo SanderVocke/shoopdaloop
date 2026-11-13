@@ -1,0 +1,46 @@
+[package]
+name = "rt_fpga_sim"
+version.workspace = true
+edition = "2024"
+publish = false
+description = "Optional native Marlin driver for the FPGA audio pipeline"
+
+[lints]
+workspace = true
+
+[features]
+default = []
+sim = ["dep:serde", "dep:marlin", "dep:rt_backend_testbench", "dep:serde_json"]
+
+[dependencies]
+serde = { workspace = true, features = ["derive", "std"], optional = true }
+shoop_loops = { path = "../shoop_loops" }
+rt_fpga_adapter = { path = "../rt_fpga_adapter" }
+rt_runtime = { path = "../rt_runtime" }
+shoop_rt_engine = { path = "../shoop_rt_engine" }
+rt_audio_math = { path = "../rt_audio_math" }
+rt_backend_testbench = { path = "../rt_backend_testbench", optional = true }
+serde_json = { workspace = true, optional = true }
+
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+marlin = { version = "=0.21.1", features = ["verilog"], optional = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
+
+[[bin]]
+name = "fpga-marlin"
+path = "src/main.rs"
+required-features = ["sim"]
+
+[[bin]]
+name = "fpga-runtime-demo"
+path = "src/queue_main.rs"
+required-features = ["sim"]
+
+[[bin]]
+name = "fpga-mono-demo"
+path = "src/mono_main.rs"
+required-features = ["sim"]

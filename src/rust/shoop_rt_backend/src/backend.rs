@@ -146,6 +146,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 AudioDriverKind::Jack,
                 AudioDriverConfig::Jack(Default::default()),
             ),
+            DriverKind::Simulated => (
+                AudioDriverKind::Simulated,
+                AudioDriverConfig::Simulated(Default::default()),
+            ),
         };
         let mut active = ResolvedAudioDriverConfig {
             configured,
@@ -364,6 +368,10 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     }
     fn capabilities(&self) -> BackendCapabilities {
         BackendCapabilities::NONE
+            .with(
+                BackendCapability::LoopDuplication,
+                self.is_ready() && self.capabilities.contains(Capabilities::CONTENT_UPLOAD),
+            )
             .with(
                 BackendCapability::Grab,
                 self.capabilities.contains(Capabilities::INPUT_BATCH),
@@ -1049,6 +1057,14 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         self.import_content(loop_id, update)
     }
 
+    fn load_loop_content_async(
+        &mut self,
+        loop_id: BackendLoopId,
+        content: &shoop_backend::BackendLoopContent,
+    ) -> Result<BackendAsyncResult<()>> {
+        self.import_payload(loop_id, crate::import::Payload::Captured(content))
+    }
+
     fn replace_loop_family_async(
         &mut self,
         update: &shoop_backend::BackendLoopFamilyUpdate,
@@ -1377,6 +1393,8 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         let driver = self.driver;
         self.status.peaks_fresh = false;
         let status = BackendStatus {
+            audio_backend: self.audio_backend,
+            memory: self.status.memory,
             dsp_load_percent: self.status.load * 100.0,
             xruns: self.status.take_xruns(),
             buffer_size: driver.map_or(0, |driver| driver.buffer_frames),

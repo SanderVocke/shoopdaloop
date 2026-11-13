@@ -777,6 +777,55 @@ pub enum AudioDriverState {
     Stopped,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+pub enum AudioBackendKind {
+    #[default]
+    NewEngine,
+    FpgaRtlSim,
+}
+impl AudioBackendKind {
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::NewEngine => "new_engine",
+            Self::FpgaRtlSim => "fpga_rtl_sim",
+        }
+    }
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::NewEngine => "Native",
+            Self::FpgaRtlSim => "FPGA RTL simulation",
+        }
+    }
+}
+impl core::str::FromStr for AudioBackendKind {
+    type Err = alloc::string::String;
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "new_engine" => Ok(Self::NewEngine),
+            "fpga_rtl_sim" => Ok(Self::FpgaRtlSim),
+            _ => Err(alloc::format!(
+                "unknown audio backend {value:?}; expected new_engine or fpga_rtl_sim"
+            )),
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+pub enum SimulatedInputMode {
+    #[default]
+    Silence,
+    Synthetic,
+}
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(default, deny_unknown_fields))]
+pub struct SimulatedAudioDriverConfig {
+    pub input: SimulatedInputMode,
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AudioDriverKind {
@@ -785,6 +834,8 @@ pub enum AudioDriverKind {
     Jack,
     Cpal,
     WebAudio,
+    /// Unpaced simulation clock without device I/O.
+    Simulated,
 }
 
 impl AudioDriverKind {
@@ -794,6 +845,7 @@ impl AudioDriverKind {
             Self::Jack => "jack",
             Self::Cpal => "cpal",
             Self::WebAudio => "webaudio",
+            Self::Simulated => "simulated",
         }
     }
 
@@ -803,6 +855,7 @@ impl AudioDriverKind {
             Self::Jack => "JACK",
             Self::Cpal => "CPAL",
             Self::WebAudio => "Web Audio",
+            Self::Simulated => "Simulated clock (unpaced)",
         }
     }
 }
@@ -897,6 +950,7 @@ pub enum AudioDriverConfig {
     Jack(JackAudioDriverConfig),
     Cpal(CpalAudioDriverConfig),
     WebAudio,
+    Simulated(SimulatedAudioDriverConfig),
 }
 
 impl AudioDriverConfig {
@@ -945,6 +999,7 @@ impl AudioDriverConfig {
                         <= 768
             }
             Self::WebAudio => false,
+            Self::Simulated(_) => true,
         }
     }
 
@@ -954,6 +1009,7 @@ impl AudioDriverConfig {
             Self::Jack(_) => AudioDriverKind::Jack,
             Self::Cpal(_) => AudioDriverKind::Cpal,
             Self::WebAudio => AudioDriverKind::WebAudio,
+            Self::Simulated(_) => AudioDriverKind::Simulated,
         }
     }
 }
@@ -1038,6 +1094,8 @@ impl ConversionTarget {
 #[derive(Clone, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct StatusState {
+    pub audio_backend: AudioBackendKind,
+    pub memory: Option<MemoryReport>,
     pub version: String,
     pub dsp_load_percent: f32,
     pub xruns: u32,
@@ -2143,7 +2201,7 @@ impl BackendCapability {
                 "The session engine cannot currently switch audio drivers at runtime; restart with other settings instead."
             }
             Self::MidiInjection => "The session engine does not yet support MIDI input injection.",
-            Self::LoopDuplication => "The session engine does not yet support loop duplication.",
+            Self::LoopDuplication => "The active host does not support loop copying.",
             Self::ClickTrackInsertion => "The session engine does not yet support generated click-track insertion.",
         }
     }
@@ -2232,6 +2290,7 @@ pub struct AppNotification {
     pub message: String,
 }
 
+pub use profiling_protocol::memory::{MemoryReport, MemoryResource, MemoryUnit};
 pub use rt_profiling as profiling_data;
 pub use rt_profiling::View as ProfilingView;
 
@@ -4114,6 +4173,7 @@ impl Default for NewEnginePools {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(default, deny_unknown_fields))]
 pub struct HostSettings {
+    pub backend: AudioBackendKind,
     pub driver: AudioDriverConfig,
     pub pools: NewEnginePools,
     pub processors: ProcessorSettings,
@@ -4123,6 +4183,7 @@ pub struct HostSettings {
 impl Default for HostSettings {
     fn default() -> Self {
         Self {
+            backend: AudioBackendKind::NewEngine,
             driver: Default::default(),
             pools: Default::default(),
             processors: ProcessorSettings::default(),
@@ -4133,6 +4194,16 @@ impl Default for HostSettings {
 }
 impl HostSettings {
     pub fn validate(&self) -> Result<(), &'static str> {
+        match (self.backend, &self.driver) {
+            (AudioBackendKind::FpgaRtlSim, AudioDriverConfig::Simulated(_)) => {
+                if self.processors.builtin_fx == ProcessorPolicy::On || self.processors.oxisynth == ProcessorPolicy::On {
+                    return Err("the FPGA RTL profile supports audio only; FX and synth processors are unsupported");
+                }
+            },
+            (AudioBackendKind::FpgaRtlSim, _) => return Err("the FPGA RTL backend requires the Simulated clock driver; real-time device drivers are unsupported"),
+            (AudioBackendKind::NewEngine, AudioDriverConfig::Simulated(_)) => return Err("the Simulated clock driver requires the FPGA RTL backend"),
+            _ => {},
+        }
         self.processors
             .validate()
             .map_err(|_| "invalid processor startup capacities")?;
@@ -4168,3 +4239,34 @@ impl HostSettings {
 }
 
 pub use shoop_processor_protocol::{Policy as ProcessorPolicy, Settings as ProcessorSettings};
+
+#[cfg(test)]
+mod audio_backend_tests {
+    use super::*;
+    use shoop_wasm_test_support::shoop_test;
+
+    #[shoop_test]
+    fn backend_and_driver_pairs_are_validated_together() {
+        let mut settings = HostSettings::default();
+        assert!(settings.validate().is_ok());
+        settings.backend = AudioBackendKind::FpgaRtlSim;
+        assert!(settings.validate().unwrap_err().contains("Simulated clock"));
+        settings.driver = AudioDriverConfig::Cpal(Default::default());
+        assert!(settings
+            .validate()
+            .unwrap_err()
+            .contains("real-time device drivers"));
+        settings.driver = AudioDriverConfig::Simulated(SimulatedAudioDriverConfig {
+            input: SimulatedInputMode::Synthetic,
+        });
+        assert!(settings.validate().is_ok());
+        settings.backend = AudioBackendKind::NewEngine;
+        assert!(settings
+            .validate()
+            .unwrap_err()
+            .contains("requires the FPGA RTL backend"));
+        for kind in [AudioBackendKind::NewEngine, AudioBackendKind::FpgaRtlSim] {
+            assert_eq!(kind.id().parse::<AudioBackendKind>().unwrap(), kind);
+        }
+    }
+}

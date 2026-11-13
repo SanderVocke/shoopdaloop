@@ -6,6 +6,7 @@
 use crate::LoopId;
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::sync::atomic::{AtomicU32, Ordering};
+use rt_runtime::Sample;
 use rt_runtime::{resource::*, Error, Frame, Revision};
 
 #[cfg(test)]
@@ -46,6 +47,24 @@ macro_rules! key {
 key!(MediaId);
 key!(ExportId);
 key!(PinId);
+
+/// Backend-local identities using the same namespace as native ledger handles.
+pub struct IdentityScope(u32);
+impl IdentityScope {
+    pub fn new() -> Result<Self, Error> {
+        Ok(Self(
+            NEXT_SCOPE
+                .try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
+                .map_err(|_| Error::Exhausted)?,
+        ))
+    }
+    pub fn media(&self, slot: u32, generation: u32) -> Result<MediaId, Error> {
+        MediaId::from_parts([self.0, slot, generation])
+    }
+    pub fn export(&self, slot: u32, generation: u32) -> Result<ExportId, Error> {
+        ExportId::from_parts([self.0, slot, generation])
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Description {
@@ -183,9 +202,7 @@ impl Ledger {
         {
             return Err(Error::Capacity);
         }
-        let scope = NEXT_SCOPE
-            .try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
-            .map_err(|_| Error::Exhausted)?;
+        let scope = IdentityScope::new()?.0;
         let mut ledger = Self {
             scope,
             media: vec![
@@ -315,9 +332,9 @@ impl Ledger {
             false,
         )
     }
-    fn validate_input(
+    fn validate_input<S: Sample>(
         &self,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
         input: &Input,
         windows: Option<crate::windows::Windows>,
     ) -> Result<(), Error> {
@@ -406,20 +423,24 @@ impl Ledger {
         }
         Ok(())
     }
-    pub fn adopt(&mut self, io: &mut ResourceIo<'_>, input: Input) -> Result<MediaId, Rejected> {
+    pub fn adopt<S: Sample>(
+        &mut self,
+        io: &mut ResourceIo<'_, S>,
+        input: Input,
+    ) -> Result<MediaId, Rejected> {
         self.adopt_input(io, input, None)
     }
-    pub fn adopt_windowed(
+    pub fn adopt_windowed<S: Sample>(
         &mut self,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
         input: Input,
         windows: crate::windows::Windows,
     ) -> Result<MediaId, Rejected> {
         self.adopt_input(io, input, Some(windows))
     }
-    fn adopt_input(
+    fn adopt_input<S: Sample>(
         &mut self,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
         input: Input,
         windows: Option<crate::windows::Windows>,
     ) -> Result<MediaId, Rejected> {
@@ -442,26 +463,26 @@ impl Ledger {
         })();
         result.map_err(|error| Rejected { error, input })
     }
-    pub fn publish(
+    pub fn publish<S: Sample>(
         &mut self,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
         id: MediaId,
         input: Input,
     ) -> Result<(), Rejected> {
         self.publish_input(io, id, input, None)
     }
-    pub fn publish_windowed(
+    pub fn publish_windowed<S: Sample>(
         &mut self,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
         id: MediaId,
         input: Input,
         windows: crate::windows::Windows,
     ) -> Result<(), Rejected> {
         self.publish_input(io, id, input, Some(windows))
     }
-    fn publish_input(
+    fn publish_input<S: Sample>(
         &mut self,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
         id: MediaId,
         input: Input,
         windows: Option<crate::windows::Windows>,
@@ -505,7 +526,7 @@ impl Ledger {
         }
         Ok(&media.view)
     }
-    fn check_sources(io: &mut ResourceIo<'_>, media: Media) -> Result<(), Error> {
+    fn check_sources<S: Sample>(io: &mut ResourceIo<'_, S>, media: Media) -> Result<(), Error> {
         for source in [media.view.audio, media.view.auxiliary, media.view.midi]
             .into_iter()
             .flatten()
@@ -516,7 +537,7 @@ impl Ledger {
         }
         Ok(())
     }
-    fn check_drop(&self, io: &mut ResourceIo<'_>, id: MediaId) -> Result<(), Error> {
+    fn check_drop<S: Sample>(&self, io: &mut ResourceIo<'_, S>, id: MediaId) -> Result<(), Error> {
         let media = self.media(id)?;
         if media.references == 1 {
             Self::check_sources(io, media)?;
@@ -529,7 +550,11 @@ impl Ledger {
         self.media[id.slot as usize].value = Some(media);
         Ok(())
     }
-    fn drop_ref(&mut self, io: &mut ResourceIo<'_>, id: MediaId) -> Result<(), Error> {
+    fn drop_ref<S: Sample>(
+        &mut self,
+        io: &mut ResourceIo<'_, S>,
+        id: MediaId,
+    ) -> Result<(), Error> {
         let mut media = self.media(id)?;
         if media.references > 1 {
             media.references -= 1;
@@ -554,7 +579,11 @@ impl Ledger {
         Ok(())
     }
     /// Release the single resident/prepared reference, never a playback/export reference.
-    pub fn retire(&mut self, io: &mut ResourceIo<'_>, id: MediaId) -> Result<(), Error> {
+    pub fn retire<S: Sample>(
+        &mut self,
+        io: &mut ResourceIo<'_, S>,
+        id: MediaId,
+    ) -> Result<(), Error> {
         let mut media = self.media(id)?;
         if !media.resident {
             return Err(Error::InvalidState);
@@ -564,9 +593,9 @@ impl Ledger {
         self.media[id.slot as usize].value = Some(media);
         self.drop_ref(io, id)
     }
-    fn select(
+    fn select<S: Sample>(
         &mut self,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
         owner: LoopId,
         id: Option<MediaId>,
         latest: bool,
@@ -598,17 +627,17 @@ impl Ledger {
         }
         Ok(())
     }
-    pub fn set_playback(
+    pub fn set_playback<S: Sample>(
         &mut self,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
         owner: LoopId,
         id: Option<MediaId>,
     ) -> Result<(), Error> {
         self.select(io, owner, id, false)
     }
-    pub fn set_latest(
+    pub fn set_latest<S: Sample>(
         &mut self,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
         owner: LoopId,
         id: Option<MediaId>,
     ) -> Result<(), Error> {
@@ -643,7 +672,11 @@ impl Ledger {
             .and_then(|s| s.value)
             .ok_or(Error::InvalidId)
     }
-    pub fn release_pin(&mut self, io: &mut ResourceIo<'_>, id: PinId) -> Result<(), Error> {
+    pub fn release_pin<S: Sample>(
+        &mut self,
+        io: &mut ResourceIo<'_, S>,
+        id: PinId,
+    ) -> Result<(), Error> {
         let media = self.pinned(id)?;
         self.check_drop(io, media)?;
         self.drop_ref(io, media)?;
@@ -680,7 +713,11 @@ impl Ledger {
             view: self.view(export.media)?,
         })
     }
-    pub fn release_export(&mut self, io: &mut ResourceIo<'_>, id: ExportId) -> Result<(), Error> {
+    pub fn release_export<S: Sample>(
+        &mut self,
+        io: &mut ResourceIo<'_, S>,
+        id: ExportId,
+    ) -> Result<(), Error> {
         let export = self.export_ref(id)?;
         self.check_drop(io, export.media)?;
         self.drop_ref(io, export.media)?;
@@ -695,7 +732,11 @@ impl Ledger {
         Ok(())
     }
     /// Remove internal references. Resident content and outstanding exports remain owned.
-    pub fn unbind(&mut self, io: &mut ResourceIo<'_>, id: LoopId) -> Result<(), Error> {
+    pub fn unbind<S: Sample>(
+        &mut self,
+        io: &mut ResourceIo<'_, S>,
+        id: LoopId,
+    ) -> Result<(), Error> {
         let owner = self.owner(id)?;
         for media in [owner.playback, owner.latest].into_iter().flatten() {
             Self::check_sources(io, self.media(media)?)?;
@@ -706,7 +747,7 @@ impl Ledger {
         Ok(())
     }
     /// Explicit quiescent cleanup. This does not stop music or send MIDI cleanup.
-    pub fn release_all(&mut self, io: &mut ResourceIo<'_>) -> Result<(), Error> {
+    pub fn release_all<S: Sample>(&mut self, io: &mut ResourceIo<'_, S>) -> Result<(), Error> {
         for slot in &self.media {
             if let Some(media) = slot.value {
                 Self::check_sources(io, media)?;

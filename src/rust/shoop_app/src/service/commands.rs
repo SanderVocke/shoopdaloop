@@ -822,11 +822,8 @@ impl Service {
             LoopAction::ComposeIntoEnd(_) | LoopAction::ComposeIntoParallel(_) => {
                 return Err(CommandError::unsupported(BackendCapability::CompositeLoops))
             }
-            LoopAction::Duplicate | LoopAction::DuplicateTo(_) => {
-                return Err(CommandError::unsupported(
-                    BackendCapability::LoopDuplication,
-                ))
-            }
+            LoopAction::Duplicate => return self.duplicate_loop(id, None),
+            LoopAction::DuplicateTo(target) => return self.duplicate_loop(id, Some(target)),
         }
         Ok(Effect::None)
     }

@@ -658,6 +658,7 @@ pub fn run() {
     service
         .set_host_settings(
             HostSettings {
+                backend: shoop_app_api::AudioBackendKind::NewEngine,
                 processors: shoop_app_api::ProcessorSettings::disabled(),
                 driver: AudioDriverConfig::Dummy(DummyAudioDriverConfig {
                     sample_rate: crate::SAMPLE_RATE,

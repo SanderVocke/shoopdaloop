@@ -1,6 +1,7 @@
 //! All-member interval reservation, staging, and publication.
 use super::*;
 use crate::buffer::MidiBuffer;
+use crate::Sample;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CaptureTickId {
@@ -15,7 +16,7 @@ pub(super) struct TickReservation {
     bytes: usize,
     events: usize,
 }
-impl ResourceStore {
+impl<S: Sample> ResourceStore<S> {
     pub(in crate::resource) fn capture_tick_end(
         &self,
         interval: CaptureTickId,
@@ -56,7 +57,8 @@ impl ResourceStore {
             self.capture_groups.member(interval.take.group, ordinal),
         ))
     }
-    fn append_pages(&self, written: usize, bytes: usize) -> Result<usize, Error> {
+    fn append_pages(&self, version: Version, bytes: usize) -> Result<usize, Error> {
+        let written = version.written;
         let end = written.checked_add(bytes).ok_or(Error::Capacity)?;
         let page = self.config.limits().page_bytes;
         Ok(end.div_ceil(page) - written.div_ceil(page))
@@ -138,8 +140,9 @@ impl ResourceStore {
                 .checked_add(frames as u64)
                 .ok_or(Error::Exhausted)?;
             pages = pages
-                .checked_add(self.append_pages(version.written, self.tick_bound(member))?)
+                .checked_add(self.append_pages(version, self.tick_bound(member))?)
                 .ok_or(Error::Capacity)?;
+
             if let Some(owner) = version.midi {
                 self.midi_indexes
                     .preflight(owner, id, member.spec.midi_events as u64)?;
@@ -180,13 +183,14 @@ impl ResourceStore {
             }
         }
         self.reserved_pages += pages;
+
         for index in 0..group.members {
             let mut member = self.capture_groups.member(take.group, index);
             let id = member.take.expect("validated take");
             let version = get(&self.versions, id.slot, id.generation).expect("validated take");
             member.append = Some(TickReservation {
                 pages: self
-                    .append_pages(version.written, self.tick_bound(member))
+                    .append_pages(version, self.tick_bound(member))
                     .expect("validated append size"),
                 revision: if prepared {
                     version
@@ -217,7 +221,9 @@ impl ResourceStore {
         let mut group = self.capture_tick_info(interval)?;
         for index in 0..group.members {
             let mut member = self.capture_groups.member(interval.take.group, index);
-            self.reserved_pages -= member.append.take().expect("interval reservation").pages;
+            let reservation = member.append.take().expect("interval reservation");
+            self.reserved_pages -= reservation.pages;
+
             let slot = self.capture_groups.member_index(interval.take.group, index);
             if let Some(write) = self.capture_groups.audio_writes[slot].take() {
                 self.with_audio(write.store, |store, pool| {
@@ -240,7 +246,7 @@ impl ResourceStore {
         &mut self,
         interval: CaptureTickId,
         ordinal: usize,
-        samples: &[f32],
+        samples: &[S],
     ) -> Result<(), Error> {
         self.note_operation(WorkClass::Render);
         let (_, mut member) = self.tick_member(interval, ordinal)?;
@@ -279,6 +285,7 @@ impl ResourceStore {
             .set_member(interval.take.group, ordinal, member);
         Ok(())
     }
+
     pub fn stage_capture_midi(
         &mut self,
         interval: CaptureTickId,
@@ -358,7 +365,7 @@ impl ResourceStore {
             if version.revision != reservation.revision {
                 return Err(Error::StaleRevision);
             }
-            let actual = self.append_pages(version.written, reservation.bytes)?;
+            let actual = self.append_pages(version, reservation.bytes)?;
             if actual > reservation.pages {
                 return Err(Error::InvalidState);
             }
@@ -373,7 +380,7 @@ impl ResourceStore {
             let id = member.take.expect("validated take");
             let mut version = get(&self.versions, id.slot, id.generation).expect("validated take");
             let actual = self
-                .append_pages(version.written, reservation.bytes)
+                .append_pages(version, reservation.bytes)
                 .expect("validated append size");
             self.reserved_pages -= reservation.pages - actual;
             version.reserved += actual;
@@ -444,6 +451,7 @@ impl ResourceStore {
                 },
                 version,
             );
+
             self.capture_groups
                 .set_member(interval.take.group, index, member);
         }

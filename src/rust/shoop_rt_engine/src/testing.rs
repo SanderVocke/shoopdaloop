@@ -6,11 +6,10 @@
 //! an unconnected client, for an adapter that owns the client. [`OfflineHost`] keeps
 //! both together.
 //!
-//! [`OfflineRender::process`], [`OfflineHost::request`] and [`OfflineHost::receive`]
-//! do not allocate, so callers can guard them with an allocator check.
+//! The standard renderer's callbacks and the control endpoint do not allocate.
 
 use alloc::boxed::Box;
-use alloc::vec;
+use alloc::{vec, vec::Vec};
 
 use core::ops::{Deref, DerefMut};
 use core::time::Duration;
@@ -27,6 +26,69 @@ use shoop_rt_protocol::{
 };
 use shoop_rt_transport::carrier::InProcess;
 use shoop_rt_transport::client::{ClientError, ProtocolClient};
+
+/// Optional control-side capture of the actual typed runtime submissions.
+#[derive(Clone, Debug)]
+pub struct RuntimeCommand {
+    pub description: alloc::string::String,
+    pub payload: Vec<u8>,
+    pub graph: Option<rt_runtime::graph::PlanDescriptor>,
+}
+impl RuntimeCommand {
+    pub(crate) fn observe(command: &crate::EngineCommand) -> Self {
+        use rt_runtime::executor::Command;
+        let mut payload = vec![];
+        let mut graph = None;
+        let description = match command {
+            Command::Schedule {
+                at,
+                action,
+                payload: bytes,
+            } => {
+                payload.extend_from_slice(bytes);
+                alloc::format!("Schedule {at:?} {action:?}")
+            }
+            Command::StageGraph {
+                slot,
+                expected_epoch,
+                plan,
+                ..
+            } => {
+                graph = plan.as_ref().map(|p| p.descriptor().clone());
+                alloc::format!("StageGraph {slot} {expected_epoch:?}")
+            }
+            Command::Commit {
+                expected_epoch,
+                plan,
+            } => {
+                graph = plan.as_ref().map(|p| p.descriptor().clone());
+                alloc::format!("Commit {expected_epoch:?}")
+            }
+            Command::ReleaseGraph { id } => alloc::format!("ReleaseGraph {id:?}"),
+            Command::Resource(_) => "Resource".into(),
+            Command::ResetMidi => "ResetMidi".into(),
+            Command::Cancel { sequence } => alloc::format!("Cancel {sequence:?}"),
+            Command::Remove { node } => alloc::format!("Remove {node:?}"),
+            Command::Install { .. } => "Install".into(),
+        };
+        Self {
+            description,
+            payload,
+            graph,
+        }
+    }
+}
+impl ControlEndpoint {
+    pub fn capture_runtime_commands(&mut self) {
+        self.runtime_trace = Some(vec![]);
+    }
+    pub fn take_runtime_commands(&mut self) -> Vec<RuntimeCommand> {
+        self.runtime_trace
+            .as_mut()
+            .map(core::mem::take)
+            .unwrap_or_default()
+    }
+}
 
 /// A client of the engine through the in-process carrier.
 pub type OfflineClient = ProtocolClient<InProcess<ControlEndpoint>>;

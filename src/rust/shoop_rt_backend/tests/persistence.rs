@@ -366,6 +366,65 @@ fn imported(
     }
     panic!("content update did not settle");
 }
+
+#[shoop_test]
+fn captured_media_can_be_loaded_into_another_stopped_slot_without_replacing_the_session() {
+    let (mut backend, track, _) = fixture();
+    let source = track.loops[0];
+    let target = backend.add_loop_to_track(track.track_id).unwrap();
+    backend.wait_idle();
+    let update = BackendLoopContentUpdate {
+        audio: vec![BackendAudioChannelUpdate {
+            channel: 0,
+            samples: vec![0.25, -0.5, 0.75, 1.].into(),
+            start_offset: Some(1),
+            capture_alignment_frames: Some(0),
+            preplay: Some(1),
+        }],
+        midi: vec![],
+        length: Some(3),
+    };
+    imported(&mut backend, source, &update).unwrap();
+    let captured = loop {
+        match backend.capture_loop_content_async(source).unwrap() {
+            BackendAsyncResult::Ready(content) => break content,
+            BackendAsyncResult::Pending(_) => backend.clock_mut().render(1),
+        }
+    };
+    let copy = BackendLoopContentUpdate {
+        audio: captured
+            .audio
+            .iter()
+            .enumerate()
+            .map(|(channel, content)| BackendAudioChannelUpdate {
+                channel,
+                samples: content.samples.clone(),
+                start_offset: Some(content.start_offset),
+                capture_alignment_frames: Some(content.capture_alignment_frames),
+                preplay: Some(content.preplay),
+            })
+            .collect(),
+        midi: vec![],
+        length: Some(captured.length),
+    };
+    imported(&mut backend, target, &copy).unwrap();
+    let session = backend.capture_session().unwrap();
+    let copied = session.tracks[0]
+        .loops
+        .iter()
+        .find(|c| c.source_id == target.raw())
+        .unwrap();
+    assert_eq!(copied.audio, captured.audio);
+    assert_eq!(copied.length, captured.length);
+    let view = &backend.poll().unwrap().loops[&target];
+    assert_eq!(view.mode, BackendLoopMode::Stopped);
+    assert_eq!(view.position, 0);
+    backend.clear_loop(target).unwrap();
+    backend.wait_idle();
+    let session = backend.capture_session().unwrap();
+    assert_eq!(session.tracks[0].loops[0].audio, captured.audio);
+}
+
 #[shoop_test]
 fn media_updates_preserve_opposite_media_identity_controls_and_playing_mode() {
     let (mut backend, track, mut session) = fixture();

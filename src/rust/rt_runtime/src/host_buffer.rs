@@ -1,56 +1,57 @@
+use crate::Sample;
 use crate::{
     buffer::{AudioBlock, MidiBlock, MidiBuffer},
     Error, Frame, PreparedConfig,
 };
 use alloc::{boxed::Box, vec, vec::Vec};
 
-pub(crate) trait AudioIo {
+pub trait AudioIo<S: Sample = f32> {
     fn frame(&self) -> Frame;
     fn frames(&self) -> usize;
-    fn input(&self, port: usize) -> &[f32];
-    fn output(&mut self, port: usize) -> &mut [f32];
-    fn pair(&mut self, input: usize, output: usize) -> (&[f32], &mut [f32]);
+    fn input(&self, port: usize) -> &[S];
+    fn output(&mut self, port: usize) -> &mut [S];
+    fn pair(&mut self, input: usize, output: usize) -> (&[S], &mut [S]);
 }
 
-impl AudioIo for AudioBlock<'_, '_> {
+impl<S: Sample> AudioIo<S> for AudioBlock<'_, '_, S> {
     fn frame(&self) -> Frame {
         self.frame
     }
     fn frames(&self) -> usize {
         self.frames
     }
-    fn input(&self, port: usize) -> &[f32] {
+    fn input(&self, port: usize) -> &[S] {
         self.inputs[port]
     }
-    fn output(&mut self, port: usize) -> &mut [f32] {
+    fn output(&mut self, port: usize) -> &mut [S] {
         self.outputs[port]
     }
-    fn pair(&mut self, input: usize, output: usize) -> (&[f32], &mut [f32]) {
+    fn pair(&mut self, input: usize, output: usize) -> (&[S], &mut [S]) {
         (self.inputs[input], self.outputs[output])
     }
 }
 
-pub(crate) struct BufferedAudio<'a> {
+pub struct BufferedAudio<'a, S: Sample = f32> {
     frame: Frame,
     frames: usize,
-    inputs: &'a [f32],
-    outputs: &'a mut [f32],
+    inputs: &'a [S],
+    outputs: &'a mut [S],
 }
 
-impl AudioIo for BufferedAudio<'_> {
+impl<S: Sample> AudioIo<S> for BufferedAudio<'_, S> {
     fn frame(&self) -> Frame {
         self.frame
     }
     fn frames(&self) -> usize {
         self.frames
     }
-    fn input(&self, port: usize) -> &[f32] {
+    fn input(&self, port: usize) -> &[S] {
         &self.inputs[port * self.frames..(port + 1) * self.frames]
     }
-    fn output(&mut self, port: usize) -> &mut [f32] {
+    fn output(&mut self, port: usize) -> &mut [S] {
         &mut self.outputs[port * self.frames..(port + 1) * self.frames]
     }
-    fn pair(&mut self, input: usize, output: usize) -> (&[f32], &mut [f32]) {
+    fn pair(&mut self, input: usize, output: usize) -> (&[S], &mut [S]) {
         (
             &self.inputs[input * self.frames..(input + 1) * self.frames],
             &mut self.outputs[output * self.frames..(output + 1) * self.frames],
@@ -59,18 +60,18 @@ impl AudioIo for BufferedAudio<'_> {
 }
 
 /// One-tick stream delay, independent of callback partitioning.
-pub(crate) struct HostBuffer {
+pub struct HostBuffer<S: Sample = f32> {
     q: usize,
     fill: usize,
     processed: Frame,
-    input: Box<[f32]>,
-    output: Box<[f32]>,
+    input: Box<[S]>,
+    output: Box<[S]>,
     midi_input: Vec<MidiBuffer>,
     midi_output: Vec<MidiBuffer>,
     midi_recovery_wait: bool,
     overflows: usize,
 }
-impl HostBuffer {
+impl<S: Sample> HostBuffer<S> {
     pub fn prepare(config: PreparedConfig, quantum: crate::Quantum) -> Result<Self, Error> {
         let c = config.limits();
         Self::prepare_with_output(
@@ -94,10 +95,10 @@ impl HostBuffer {
                 .map(|_| MidiBuffer::new(capacity.events, capacity.bytes))
                 .collect::<Result<Vec<_>, _>>()
         };
-        let mut input = vec![0.; c.audio_inputs * q].into_boxed_slice();
-        let mut output = vec![0.; c.audio_outputs * q].into_boxed_slice();
+        let mut input = vec![S::ZERO; c.audio_inputs * q].into_boxed_slice();
+        let mut output = vec![S::ZERO; c.audio_outputs * q].into_boxed_slice();
         for sample in input.iter_mut().chain(&mut output) {
-            *core::hint::black_box(sample) = 0.;
+            *core::hint::black_box(sample) = S::ZERO;
         }
         Ok(Self {
             q,
@@ -119,9 +120,9 @@ impl HostBuffer {
     }
     pub fn process(
         &mut self,
-        audio: &mut AudioBlock<'_, '_>,
+        audio: &mut AudioBlock<'_, '_, S>,
         midi: &mut MidiBlock<'_>,
-        mut tick: impl FnMut(&mut BufferedAudio<'_>, &mut MidiBlock<'_>) -> Result<(), Error>,
+        mut tick: impl FnMut(&mut BufferedAudio<'_, S>, &mut MidiBlock<'_>) -> Result<(), Error>,
     ) -> Result<(), Error> {
         let q = self.q;
         self.overflows = 0;
@@ -151,7 +152,7 @@ impl HostBuffer {
             at += count;
             self.fill += count;
             if self.fill == q {
-                self.output.fill(0.);
+                self.output.fill(S::ZERO);
                 for m in &mut self.midi_output {
                     m.clear();
                 }

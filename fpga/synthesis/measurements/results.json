@@ -1,0 +1,252 @@
+{
+  "tool": "Vivado 2021.1 (Build 3247384)",
+  "selected_run": "merged-r4-refined",
+  "revision": "bb885ddad1bbaa6a69c229cd0deddcc898d5b84b",
+  "target": "Zybo Z7-20 / xc7z020clg400-1",
+  "clock_mhz": 100,
+  "user_uncertainty_ns": 0.2,
+  "scope": "64-loop core in registered synchronous fabric context; excludes PS7, DDR controller, ARM control adapter and audio I/O.",
+  "setup": {
+    "wns_ns": 0.002,
+    "tns_ns": 0.0,
+    "failing": 0,
+    "endpoints": 58725
+  },
+  "hold": {
+    "whs_ns": 0.005,
+    "ths_ns": 0.0,
+    "failing": 0,
+    "endpoints": 58725
+  },
+  "pulse_width": {
+    "wpws_ns": 3.75,
+    "failing": 0
+  },
+  "core": {
+    "luts": 26347,
+    "flip_flops": 18522,
+    "bram36_equivalent": 56,
+    "dsps": 4
+  },
+  "total": {
+    "luts": 26482,
+    "flip_flops": 23376,
+    "bram36_equivalent": 56,
+    "dsps": 4
+  },
+  "harness_overhead": {
+    "luts": 135,
+    "flip_flops": 4854,
+    "bram36_equivalent": 0,
+    "dsps": 0
+  },
+  "routing": {
+    "routable": 42832,
+    "fully_routed": 42832,
+    "errors": 0
+  },
+  "constraints": {
+    "false_paths": 0,
+    "multicycle_paths": 0,
+    "unconstrained_internal_endpoints": 0
+  },
+  "rtl_hashes_match_measured_revision": true,
+  "rtl_hashes_match_committed_tree": true,
+  "validation": [
+    {
+      "name": "merged-r3-tp",
+      "tests": 20,
+      "profiles": 4,
+      "result": "passed"
+    },
+    {
+      "name": "merged-r3-jp",
+      "tests": 8,
+      "profiles": 2,
+      "result": "passed"
+    },
+    {
+      "name": "merged-r3-cache",
+      "tests": 16,
+      "profiles": 4,
+      "result": "passed"
+    },
+    {
+      "name": "merged-r3-retire",
+      "tests": 1,
+      "profiles": 1,
+      "result": "passed"
+    },
+    {
+      "name": "merged-r4-media",
+      "tests": 9,
+      "profiles": 3,
+      "result": "passed"
+    },
+    {
+      "name": "merged-r4-production",
+      "tests": 2,
+      "profiles": 1,
+      "result": "passed"
+    },
+    {
+      "name": "merged-r4-metadata",
+      "tests": 8,
+      "profiles": 8,
+      "result": "passed"
+    },
+    {
+      "name": "merged-axi",
+      "tests": 10,
+      "profiles": 6,
+      "result": "passed"
+    },
+    {
+      "name": "merged-r4-64",
+      "tests": 1,
+      "profiles": 1,
+      "result": "passed"
+    },
+    {
+      "name": "merged-r4-audio",
+      "tests": 1,
+      "profiles": 1,
+      "result": "passed"
+    }
+  ],
+  "passing_rtl_tests": 76,
+  "previous_merged_runs": [
+    {
+      "run": "merged-r1",
+      "revision": "6e0019e1dee0edf2dec830d16ada714529ccfbdf",
+      "timing": {
+        "part": "xc7z020clg400-1",
+        "clock_mhz": 100,
+        "wns_ns": -4.651,
+        "whs_ns": 0.045,
+        "met_100mhz": false
+      },
+      "core": {
+        "luts": 27094,
+        "flip_flops": 18014,
+        "bram36_equivalent": 57,
+        "dsps": 4
+      }
+    },
+    {
+      "run": "merged-r2",
+      "revision": "d53a5255363cc6ef38e4a31a99499e23539eef4d",
+      "timing": {
+        "part": "xc7z020clg400-1",
+        "clock_mhz": 100,
+        "wns_ns": -0.497,
+        "whs_ns": 0.0,
+        "met_100mhz": false
+      },
+      "core": {
+        "luts": 27005,
+        "flip_flops": 18760,
+        "bram36_equivalent": 57,
+        "dsps": 4
+      }
+    },
+    {
+      "run": "merged-r3",
+      "revision": "c1089b34a26728a1cb422a6d28488d50cd1c1971",
+      "timing": {
+        "part": "xc7z020clg400-1",
+        "clock_mhz": 100,
+        "wns_ns": -0.517,
+        "whs_ns": 0.004,
+        "met_100mhz": false
+      },
+      "core": {
+        "luts": 26707,
+        "flip_flops": 18410,
+        "bram36_equivalent": 56,
+        "dsps": 4
+      }
+    },
+    {
+      "run": "merged-r4",
+      "revision": "bb885ddad1bbaa6a69c229cd0deddcc898d5b84b",
+      "timing": {
+        "part": "xc7z020clg400-1",
+        "clock_mhz": 100,
+        "wns_ns": -0.156,
+        "whs_ns": 0.005,
+        "met_100mhz": false
+      },
+      "core": {
+        "luts": 26345,
+        "flip_flops": 18522,
+        "bram36_equivalent": 56,
+        "dsps": 4
+      }
+    }
+  ],
+  "playback_cycles": {
+    "merged-64": [
+      25680,
+      23344,
+      23344,
+      23344
+    ],
+    "merged-r2-64": [
+      25680,
+      23344,
+      23344,
+      23344
+    ],
+    "merged-r3-64": [
+      25680,
+      23344,
+      23344,
+      23344
+    ],
+    "merged-r4-64": [
+      25682,
+      23346,
+      23346,
+      23346
+    ]
+  },
+  "benchmark_scope": "64-loop playback, q32, block32, AXI64 native instant memory, no stalls; not real DDR/app wall-clock latency.",
+  "artifact_sha256": {
+    "core.xdc": "258afb96eaee849094d06d426f05654078df30ac3b7648bd8fdbd49731cfd8b1",
+    "post_route_check_timing.rpt": "d672a5c54eab9c12479ee61eeadfe98d1169af1de553fbb5949ac8d5a94892ac",
+    "post_route_core_utilization.rpt": "006fa2bfc1d8ae305afb9fff7734cec32154cfb045d9491733d781604e88adf2",
+    "post_route_drc.rpt": "3d98d4b2e90120e3d767a3c8604055e6b5927ca253d160cef34bea210a36b7cd",
+    "post_route_route_status.rpt": "04ff3c4af92fb2ac1ba04ad74065a0f8a76e7fe033f04dd1dfda3626920d5be0",
+    "post_route_timing_summary.rpt": "bac495586ef2f6a52ac52436a41f111f0cd472dc4a2fdaad8de1bee54b03b785",
+    "post_route_utilization.rpt": "f357425110e877f9b93b6e09c4e80879d7c96514451c23ba4a76611b445837df",
+    "provenance.json": "64b34b5a0cd59ee9afe01d2aa25f2b894c051ec0d2324f2941d9f1d5ef8b6231",
+    "refine.tcl": "f0edd8816268076b8cd1f855632987276151765db6c5770c575258062ed00bff",
+    "refinement.json": "3fe13c4d64a9b1c311bc0910371a3e93bc709a280d0332d1a750aafa879bbfe4",
+    "registered_core_context.sv": "c94192e6ea49d2ca49a9c4f1c06e00adfe790f9fa17a98e4f3d3d1c1ac23b0cd",
+    "run.tcl": "317e9902e99d0c421360effc17793cc2b6fd0f1d86c6895d9cea641b52702749",
+    "setup.txt": "0b26b30ecc0fc0145096992dfeed0709bef6a696a5eaafed997d6af5b6e7505c",
+    "source-manifest.json": "6ed7ddc0d8f1fa3a8f2765537cb407779ff9702c79f3824f4b803468d7f664b2",
+    "timing.json": "bd22aa09c5071d1cc8d59ca79cda39714a5e39e7b763ef8a7c00b34a7f51cc32"
+  },
+  "met_100mhz": true,
+  "flow_revision": "9becd0bd39baac6e8e71438d9333f702b6d908ba",
+  "original_artifact_sha256": {
+    "core.xdc": "258afb96eaee849094d06d426f05654078df30ac3b7648bd8fdbd49731cfd8b1",
+    "post_route_check_timing.rpt": "7161c92006495f80de3963caddc43034206980ff4ab569c9d9df5bee8d226cb6",
+    "post_route_core_utilization.rpt": "cc604928b714f986cfa18091d7ed4de1c78b88d328df548f6d0a4fd5be3bf0d6",
+    "post_route_drc.rpt": "7ee8078337ce16130e5831f5ec8a64d369a74c7bf485def775d5baada5261481",
+    "post_route_route_status.rpt": "ca5274afb23360cf7ace093f892a9a3e1bf9c9403225313b9030ddbacfd46892",
+    "post_route_timing_summary.rpt": "532f9407d0fb3148144d41eceebf222d8352f8a9283a2b1ef8ccc923a1ed6135",
+    "post_route_utilization.rpt": "434166226f5566349baed44beb9b00ef575e9f80fdc857bd7aee960cbae72b13",
+    "provenance.json": "64b34b5a0cd59ee9afe01d2aa25f2b894c051ec0d2324f2941d9f1d5ef8b6231",
+    "refine.tcl": "f0edd8816268076b8cd1f855632987276151765db6c5770c575258062ed00bff",
+    "refinement.json": "3fe13c4d64a9b1c311bc0910371a3e93bc709a280d0332d1a750aafa879bbfe4",
+    "registered_core_context.sv": "c94192e6ea49d2ca49a9c4f1c06e00adfe790f9fa17a98e4f3d3d1c1ac23b0cd",
+    "run.tcl": "317e9902e99d0c421360effc17793cc2b6fd0f1d86c6895d9cea641b52702749",
+    "setup.txt": "0b26b30ecc0fc0145096992dfeed0709bef6a696a5eaafed997d6af5b6e7505c",
+    "source-manifest.json": "6ed7ddc0d8f1fa3a8f2765537cb407779ff9702c79f3824f4b803468d7f664b2",
+    "timing.json": "bd22aa09c5071d1cc8d59ca79cda39714a5e39e7b763ef8a7c00b34a7f51cc32"
+  },
+  "report_whitespace_normalized": true
+}

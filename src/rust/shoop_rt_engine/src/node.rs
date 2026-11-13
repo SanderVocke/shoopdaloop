@@ -1,6 +1,7 @@
 //! The engine's node type: the loop library's playback and capture nodes next
 //! to the engine's own strip stages, loop faders and output buses.
 
+use crate::dsp::{Gains, Ramp};
 use alloc::boxed::Box;
 use alloc::vec;
 use core::sync::atomic::Ordering;
@@ -134,90 +135,6 @@ impl Default for EngineOp {
     }
 }
 
-#[derive(Clone, Copy)]
-pub(crate) struct Ramp {
-    value: f32,
-    target: f32,
-    step: f32,
-    remaining: u32,
-}
-impl Ramp {
-    pub(crate) fn at(value: f32) -> Self {
-        Self {
-            value,
-            target: value,
-            step: 0.,
-            remaining: 0,
-        }
-    }
-    pub(crate) fn set(&mut self, target: f32, frames: u32) {
-        self.target = target;
-        if frames == 0 || self.value == target {
-            self.value = target;
-            self.remaining = 0;
-        } else {
-            self.step = (target - self.value) / frames as f32;
-            self.remaining = frames;
-        }
-    }
-    pub(crate) fn target(&self) -> f32 {
-        self.target
-    }
-    /// Advance by one quantum. Ramps are rendered as one linear segment per
-    /// quantum, so a ramp that would end within a quantum ends at its last frame.
-    fn advance(&mut self, frames: usize) {
-        if self.remaining > 0 && frames > 0 {
-            let advance = self.remaining.min(frames as u32);
-            self.remaining -= advance;
-            self.value = if self.remaining == 0 {
-                self.target
-            } else {
-                self.value + self.step * advance as f32
-            };
-        }
-    }
-    fn envelope(&mut self, frames: usize) -> GainEnvelope {
-        let from = self.value;
-        self.advance(frames);
-        segment(from, self.value, frames)
-    }
-    /// Write this ramp's segment for the next quantum, one value per frame.
-    fn fill(&mut self, out: &mut [f32]) {
-        let from = self.value;
-        self.advance(out.len());
-        fill_linear(out, from, self.value);
-    }
-}
-
-/// Values stepping linearly from just after `from` to exactly `to`; constant when
-/// they are equal. Decided once per quantum so the per-frame loop has no branches.
-fn fill_linear(out: &mut [f32], from: f32, to: f32) {
-    if from == to {
-        out.fill(to);
-        return;
-    }
-    let step = (to - from) / out.len() as f32;
-    let mut value = from;
-    for slot in out.iter_mut() {
-        value += step;
-        *slot = value;
-    }
-    if let Some(last) = out.last_mut() {
-        *last = to;
-    }
-}
-
-fn segment(from: f32, to: f32, frames: usize) -> GainEnvelope {
-    GainEnvelope {
-        start: if frames == 1 {
-            to
-        } else {
-            from + (to - from) / frames as f32
-        },
-        end: to,
-    }
-}
-
 /// Largest absolute sample value. Non-negative IEEE 754 floats order like their
 /// bit patterns, so integer max avoids per-sample float compares, which stall
 /// the Cortex-A9 VFP pipeline. A NaN sample reads as the largest value.
@@ -227,74 +144,6 @@ pub(crate) fn peak(samples: &[f32]) -> f32 {
             .iter()
             .fold(0, |peak, sample| peak.max(sample.to_bits() & 0x7FFF_FFFF)),
     )
-}
-
-/// Legacy stereo balance: negative values attenuate the right channel, positive
-/// values the left, linearly.
-fn balance_factors(balance: f32) -> [f32; 2] {
-    [1. - balance.max(0.), 1. + balance.min(0.)]
-}
-
-/// Per-sample gain of each channel from gain and balance ramps, prepared off-render.
-struct Gains {
-    gain: Ramp,
-    balance: Ramp,
-    left: Box<[f32]>,
-    right: Box<[f32]>,
-    plain: Box<[f32]>,
-}
-impl Gains {
-    fn new(frames: usize) -> Self {
-        Self {
-            gain: Ramp::at(1.),
-            balance: Ramp::at(0.),
-            left: vec![0.; frames].into_boxed_slice(),
-            right: vec![0.; frames].into_boxed_slice(),
-            plain: vec![0.; frames].into_boxed_slice(),
-        }
-    }
-    fn reset(&mut self) {
-        self.gain = Ramp::at(1.);
-        self.balance = Ramp::at(0.);
-    }
-    /// Fill the per-sample gains, scaled by a further ramp: one linear segment per
-    /// quantum between the levels at its start and end.
-    fn fill(&mut self, frames: usize, scale: &mut Ramp) {
-        let before = self.levels(scale);
-        self.gain.advance(frames);
-        self.balance.advance(frames);
-        scale.advance(frames);
-        let after = self.levels(scale);
-        fill_linear(&mut self.plain[..frames], before[0], after[0]);
-        fill_linear(&mut self.left[..frames], before[1], after[1]);
-        fill_linear(&mut self.right[..frames], before[2], after[2]);
-    }
-    fn envelopes(&mut self, frames: usize, scale: &mut Ramp) -> [GainEnvelope; 3] {
-        let before = self.levels(scale);
-        self.gain.advance(frames);
-        self.balance.advance(frames);
-        scale.advance(frames);
-        let after = self.levels(scale);
-        core::array::from_fn(|i| segment(before[i], after[i], frames))
-    }
-    fn unity(&self) -> bool {
-        self.gain.remaining == 0
-            && self.gain.value == 1.
-            && self.balance.remaining == 0
-            && self.balance.value == 0.
-    }
-    fn levels(&self, scale: &Ramp) -> [f32; 3] {
-        let gain = self.gain.value * scale.value;
-        let [left, right] = balance_factors(self.balance.value);
-        [gain, gain * left, gain * right]
-    }
-    fn channel(&self, channel: usize, stereo: bool) -> &[f32] {
-        match (stereo, channel) {
-            (true, 0) => &self.left,
-            (true, 1) => &self.right,
-            _ => &self.plain,
-        }
-    }
 }
 
 /// A strip's input stage: two connection banks of host inputs, input gain and
@@ -753,16 +602,10 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
                     return Ok(false);
                 }
                 let frames = block.quantum.frames();
-                let from = node.presence.value;
-                node.presence.advance(frames);
-                let gain = GainEnvelope {
-                    start: if frames == 1 {
-                        node.presence.value
-                    } else {
-                        from + (node.presence.value - from) / frames as f32
-                    },
-                    end: node.presence.value,
-                };
+                if !node.presence.steady() {
+                    return Ok(false);
+                }
+                let gain = node.presence.envelope(frames);
                 let dry = crate::cells::mode_from_code(
                     node.cells.loops[node.slot].mode.load(Ordering::Relaxed),
                 )
@@ -1207,6 +1050,13 @@ impl StripOutput {
         {
             return Ok(false);
         }
+        if !self.gains.steady()
+            || !self.mute.steady()
+            || !self.presence.steady()
+            || !self.bank.steady()
+        {
+            return Ok(false);
+        }
         let frames = block.quantum.frames();
         let bank = self.bank.envelope(frames);
         let mute = self.mute.envelope(frames);
@@ -1402,9 +1252,11 @@ impl LoopFader {
                         }
                     }
                     None => {
-                        for i in 0..frames {
-                            output[i] = input[i] * self.levels[i];
-                        }
+                        rt_audio_math::gain_each(
+                            &input[..frames],
+                            &mut output[..frames],
+                            &self.levels[..frames],
+                        );
                     }
                 }
             }
@@ -1456,6 +1308,13 @@ impl BusMixer {
                 && steady(&self.mute, 1.)
                 && steady(&self.presence, 1.)
                 && (steady(&self.bank, 0.) || steady(&self.bank, 1.)))
+        {
+            return Ok(false);
+        }
+        if !self.gains.steady()
+            || !self.mute.steady()
+            || !self.presence.steady()
+            || !self.bank.steady()
         {
             return Ok(false);
         }
@@ -1628,7 +1487,7 @@ impl BusMixer {
 }
 
 impl EngineNode {
-    pub(crate) fn apply_signal(
+    pub fn apply_signal(
         &mut self,
         operation: EngineOp,
         graph_epoch: rt_runtime::Epoch,
@@ -1692,7 +1551,7 @@ impl EngineNode {
             Self::Reader(node) => node.apply(operation),
         }
     }
-    fn apply_configuration(&mut self, graph_epoch: rt_runtime::Epoch) {
+    pub fn apply_configuration(&mut self, graph_epoch: rt_runtime::Epoch) {
         if let Some(configuration) = self
             .configuration()
             .and_then(|pending| pending.take_if(|configuration| configuration.epoch == graph_epoch))
@@ -1747,11 +1606,11 @@ mod tests {
         gains.balance.set(1., 2);
         scale.set(0.5, 2);
         gains.fill(4, &mut scale);
-        // Ramps render as one linear segment per quantum: these two-frame ramps
-        // end at the quantum's last frame.
-        assert_eq!(&gains.plain[..4], &[0.8125, 0.625, 0.4375, 0.25]);
-        assert_eq!(&gains.left[..4], &[0.75, 0.5, 0.25, 0.]);
-        assert_eq!(&gains.right[..4], &[0.8125, 0.625, 0.4375, 0.25]);
+        // Sample zero uses the original value; duration two reaches its target
+        // at sample two, even inside a larger block.
+        assert_eq!(&gains.plain[..4], &[1., 0.5625, 0.25, 0.25]);
+        assert_eq!(&gains.left[..4], &[1., 0.28125, 0., 0.]);
+        assert_eq!(&gains.right[..4], &[1., 0.5625, 0.25, 0.25]);
         gains.fill(4, &mut scale);
         assert_eq!(&gains.plain[..4], &[0.25; 4]);
         assert_eq!(&gains.left[..4], &[0.; 4]);
@@ -1990,5 +1849,70 @@ mod tests {
         request(&mut host, Request::RemoveLoop { loop_id });
         tick(&mut host);
         assert_eq!(host.output(0)[..16], [0.5; 16]);
+    }
+}
+
+impl EngineNode {
+    /// Immutable signal description; execution and mutable DSP stay with the backend.
+    pub fn signal_kind(&self) -> Result<crate::external::SignalKind, Error> {
+        use crate::external::SignalKind;
+        Ok(match self {
+            Self::Loop(node) => {
+                let binding = node.binding();
+                if matches!(node, LoopNode::Playback(_)) {
+                    SignalKind::Playback {
+                        slot: binding.target.slot(),
+                        channels: binding.channels,
+                        auxiliary: binding.auxiliary_channels,
+                    }
+                } else {
+                    SignalKind::Capture {
+                        slot: binding.target.slot(),
+                        channels: binding.channels,
+                        auxiliary: binding.auxiliary_channels,
+                    }
+                }
+            }
+            Self::StripInput(node) => SignalKind::StripInput {
+                slot: node.slot,
+                channels: node.channels,
+                ramp: node.ramp,
+            },
+            Self::StripOutput(node) => SignalKind::StripOutput {
+                slot: node.slot,
+                channels: node.channels,
+                ramp: node.ramp,
+            },
+            Self::Fader(node) => SignalKind::Fader {
+                slot: node.slot,
+                channels: node.channels,
+                ramp: node.ramp,
+            },
+            Self::BusInput(node) => SignalKind::BusInput {
+                slot: node.slot,
+                channels: node.channels,
+            },
+            Self::Bus(node) => SignalKind::Bus {
+                slot: node.slot,
+                channels: node.channels,
+                ramp: node.ramp,
+            },
+            Self::Reader(_) => SignalKind::Reader,
+            Self::Processor(_) => return Err(Error::InvalidParameter),
+        })
+    }
+}
+
+impl EngineNode {
+    pub fn read_external(
+        &mut self,
+        callback: rt_runtime::Frame,
+        budget: usize,
+        read: impl FnMut(&mut Cursor, &mut [u8]) -> Result<usize, Error>,
+    ) -> Result<(), Error> {
+        let Self::Reader(reader) = self else {
+            return Err(Error::InvalidParameter);
+        };
+        reader.render_external(callback, budget, read)
     }
 }

@@ -1,40 +1,49 @@
 use super::*;
+use rt_runtime::Sample;
 use rt_runtime::{graph::PortCounts, processor::ProcessBlock};
 
 /// A loop's playback or capture node, for wrapping in an application's node type.
-pub enum LoopNode {
-    Playback(PlaybackNode),
-    Capture(CaptureNode),
+pub enum LoopNode<S: Sample = f32> {
+    Playback(PlaybackNode<S>),
+    Capture(CaptureNode<S>),
 }
 /// Every prepared loop node with its runtime identity, including unassigned
 /// node-pair templates that stay outside the initial graph.
-pub struct LoopNodes(pub(super) Vec<(NodeId, LoopNode)>);
-impl LoopNodes {
-    pub fn iter(&self) -> impl Iterator<Item = (NodeId, &LoopNode)> {
+pub struct LoopNodes<S: Sample = f32>(pub(super) Vec<(NodeId, LoopNode<S>)>);
+impl<S: Sample> LoopNode<S> {
+    pub fn binding(&self) -> Binding<S> {
+        match self {
+            Self::Playback(node) => node.binding,
+            Self::Capture(node) => node.binding,
+        }
+    }
+}
+impl<S: Sample> LoopNodes<S> {
+    pub fn iter(&self) -> impl Iterator<Item = (NodeId, &LoopNode<S>)> {
         self.0.iter().map(|(id, node)| (*id, node))
     }
 }
-impl IntoIterator for LoopNodes {
-    type Item = (NodeId, LoopNode);
-    type IntoIter = alloc::vec::IntoIter<(NodeId, LoopNode)>;
+impl<S: Sample> IntoIterator for LoopNodes<S> {
+    type Item = (NodeId, LoopNode<S>);
+    type IntoIter = alloc::vec::IntoIter<(NodeId, LoopNode<S>)>;
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
     }
 }
-pub struct PlaybackNode {
-    binding: Binding,
-    audio: Option<audio::AudioRenderer>,
-    auxiliary: Option<audio::AudioRenderer>,
+pub struct PlaybackNode<S: Sample = f32> {
+    binding: Binding<S>,
+    audio: Option<audio::AudioRenderer<S>>,
+    auxiliary: Option<audio::AudioRenderer<S>>,
     midi: Option<midi::MidiRenderer>,
 }
-pub struct CaptureNode {
-    binding: Binding,
-    audio: Option<audio::AudioCapture>,
-    auxiliary: Option<audio::AudioCapture>,
+pub struct CaptureNode<S: Sample = f32> {
+    binding: Binding<S>,
+    audio: Option<audio::AudioCapture<S>>,
+    auxiliary: Option<audio::AudioCapture<S>>,
     midi: Option<midi::MidiCapture>,
 }
-impl PlaybackNode {
-    pub(super) fn prepare(binding: Binding, frames: usize) -> Result<Self, Error> {
+impl<S: Sample> PlaybackNode<S> {
+    pub(super) fn prepare(binding: Binding<S>, frames: usize) -> Result<Self, Error> {
         Ok(Self {
             binding,
             audio: if binding.channels > 0 {
@@ -63,8 +72,8 @@ impl PlaybackNode {
         })
     }
 }
-impl CaptureNode {
-    pub(super) fn prepare(binding: Binding, frames: usize) -> Result<Self, Error> {
+impl<S: Sample> CaptureNode<S> {
+    pub(super) fn prepare(binding: Binding<S>, frames: usize) -> Result<Self, Error> {
         Ok(Self {
             binding,
             audio: if binding.channels > 0 {
@@ -92,10 +101,10 @@ impl CaptureNode {
         })
     }
 }
-impl Processor<LoopPlanner> for LoopNode {
+impl<S: Sample> Processor<LoopPlanner<S>, (), S> for LoopNode<S> {
     fn process_references(
         &mut self,
-        block: &mut rt_runtime::audio_refs::ReferenceBlock<'_, LoopPlanner>,
+        block: &mut rt_runtime::audio_refs::ReferenceBlock<'_, LoopPlanner<S>, S>,
     ) -> Result<bool, Error> {
         match self {
             Self::Playback(node) => node.process_references(block),
@@ -108,14 +117,14 @@ impl Processor<LoopPlanner> for LoopNode {
             Self::Capture(node) => node.midi_buffer_settings(),
         }
     }
-    fn admit(&self, node: NodeId, domain: &LoopPlanner) -> Result<(), Error> {
+    fn admit(&self, node: NodeId, domain: &LoopPlanner<S>) -> Result<(), Error> {
         match self {
             Self::Playback(processor) => processor.admit(node, domain),
             Self::Capture(processor) => processor.admit(node, domain),
         }
     }
 
-    fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
+    fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner<S>, S>) -> Result<(), Error> {
         match self {
             Self::Playback(node) => node.process(block),
             Self::Capture(node) => node.process(block),
@@ -128,10 +137,10 @@ impl Processor<LoopPlanner> for LoopNode {
         }
     }
 }
-impl Processor<LoopPlanner> for PlaybackNode {
+impl<S: Sample> Processor<LoopPlanner<S>, (), S> for PlaybackNode<S> {
     fn process_references(
         &mut self,
-        block: &mut rt_runtime::audio_refs::ReferenceBlock<'_, LoopPlanner>,
+        block: &mut rt_runtime::audio_refs::ReferenceBlock<'_, LoopPlanner<S>, S>,
     ) -> Result<bool, Error> {
         use rt_runtime::audio_refs::{AudioSequence, GainEnvelope};
         let view = *block
@@ -161,14 +170,14 @@ impl Processor<LoopPlanner> for PlaybackNode {
                 };
                 let balance = if view.audio_widths[0] == 2 {
                     if channel == 0 {
-                        1. - view.balance.max(0.)
+                        S::ONE - view.balance.max(S::ZERO)
                     } else {
-                        1. + view.balance.min(0.)
+                        S::ONE + view.balance.min(S::ZERO)
                     }
                 } else {
-                    1.
+                    S::ONE
                 };
-                let gain = view.gain * balance * f32::from_bits(window.gain_bits);
+                let gain = view.gain * balance * S::from_f32(f32::from_bits(window.gain_bits));
                 block.outputs[channel] = sequence.scaled(GainEnvelope::constant(gain));
             }
             renderer.set_smoothing(view.smoothing);
@@ -200,7 +209,7 @@ impl Processor<LoopPlanner> for PlaybackNode {
             ..Default::default()
         })
     }
-    fn admit(&self, node: NodeId, domain: &LoopPlanner) -> Result<(), Error> {
+    fn admit(&self, node: NodeId, domain: &LoopPlanner<S>) -> Result<(), Error> {
         let row = domain
             .rows
             .get(self.binding.target.slot() as usize)
@@ -219,7 +228,7 @@ impl Processor<LoopPlanner> for PlaybackNode {
         Ok(())
     }
 
-    fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
+    fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner<S>, S>) -> Result<(), Error> {
         let slot = self.binding.target.slot() as usize;
         let view = block.domain.views.get(slot).ok_or(Error::InvalidId)?;
         if block.node != self.binding.playback
@@ -316,8 +325,8 @@ impl Processor<LoopPlanner> for PlaybackNode {
         }
     }
 }
-impl Processor<LoopPlanner> for CaptureNode {
-    fn admit(&self, node: NodeId, domain: &LoopPlanner) -> Result<(), Error> {
+impl<S: Sample> Processor<LoopPlanner<S>, (), S> for CaptureNode<S> {
+    fn admit(&self, node: NodeId, domain: &LoopPlanner<S>) -> Result<(), Error> {
         let row = domain
             .rows
             .get(self.binding.target.slot() as usize)
@@ -336,7 +345,7 @@ impl Processor<LoopPlanner> for CaptureNode {
         Ok(())
     }
 
-    fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
+    fn process(&mut self, block: &mut ProcessBlock<'_, LoopPlanner<S>, S>) -> Result<(), Error> {
         let slot = self.binding.target.slot() as usize;
         let view = *block.domain.views.get(slot).ok_or(Error::InvalidId)?;
         if block.node != self.binding.capture

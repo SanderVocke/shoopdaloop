@@ -16,6 +16,7 @@ use shoop_rt_protocol::*;
 
 pub fn description() -> EngineDescription {
     EngineDescription {
+        audio_backend: shoop_rt_protocol::AudioBackendKind::NewEngine,
         audio_render_mode: Default::default(),
         audio_bench_only: false,
         history: shoop_rt_protocol::host::InputHistorySettings {

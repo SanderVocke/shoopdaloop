@@ -438,6 +438,7 @@ impl TrackWidget {
                                 ui,
                                 &drop_zone.response,
                                 loop_state,
+                                state,
                                 dropped.is_some(),
                                 &mut result,
                             );
@@ -552,6 +553,7 @@ impl TrackWidget {
         ui: &mut egui::Ui,
         response: &egui::Response,
         target_state: &crate::LoopState,
+        track_state: &TrackState,
         open: bool,
         result: &mut TrackWidgetResponse,
     ) {
@@ -563,6 +565,11 @@ impl TrackWidget {
         }
         let popup_id = ui.scope_id().with(("loop_drop_menu", target));
         let source_is_in_track = self.loop_widgets.contains_key(&source);
+        let compatible = track_state
+            .loops
+            .iter()
+            .find(|state| state.id == source)
+            .is_some_and(|source| !source.sync);
         let mut action = None;
         let mut confirm_clone = false;
         egui::Popup::menu(response)
@@ -571,15 +578,15 @@ impl TrackWidget {
             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
             .show(|ui| {
                 let clone = source_is_in_track.then(|| {
-                    add_with_capabilities(
-                        ui,
-                        &[
-                            BackendCapability::SessionCapture,
-                            BackendCapability::LoopContentImport,
+                    ui.add_enabled_ui(compatible, |ui| {
+                        add_with_capability(
+                            ui,
                             BackendCapability::LoopDuplication,
-                        ],
-                        egui::Button::new("Clone into"),
-                    )
+                            egui::Button::new("Clone into"),
+                        )
+                    })
+                    .inner
+                    .on_disabled_hover_text("The sync loop cannot be cloned.")
                 });
                 let compose_end = add_with_capability(
                     ui,
@@ -643,6 +650,20 @@ impl TrackWidget {
             .find(|loop_state| loop_state.id == target)
             .map(|loop_state| loop_state.name.as_str())
             .unwrap_or("target loop");
+        let clear_first = state
+            .loops
+            .iter()
+            .find(|loop_state| loop_state.id == source)
+            .zip(
+                state
+                    .loops
+                    .iter()
+                    .find(|loop_state| loop_state.id == target),
+            )
+            .is_some_and(|(source, target)| {
+                (source.composite_kind == crate::CompositeKind::None)
+                    != (target.composite_kind == crate::CompositeKind::None)
+            });
         let mut confirmed = false;
         let mut cancelled = false;
         let modal = egui::Modal::new(egui::Id::unique(("clone_loop_confirmation", state.id))).show(
@@ -652,6 +673,9 @@ impl TrackWidget {
                 ui.label(format!(
                     "“{target_name}” already contains data. Cloning into it will replace its contents."
                 ));
+                if clear_first {
+                    ui.label("The target will be cleared first because the loop types differ. If copying fails, its previous contents will not be restored.");
+                }
                 ui.horizontal(|ui| {
                     let confirm = ui.button("Clone into");
                     let cancel = ui.button("Cancel");
@@ -1979,69 +2003,78 @@ mod tests {
 
     #[shoop_wasm_test_support::shoop_test]
     fn cloning_into_a_loop_with_data_requires_confirmation() {
-        let context = egui::Context::default();
-        crate::initialize(&context);
-        let source = LoopId::from_raw(1);
-        let target = LoopId::from_raw(2);
-        let state = TrackState {
-            id: TrackId::from_raw(1),
-            loops: vec![
-                LoopState {
-                    id: source,
-                    ..Default::default()
-                },
-                LoopState {
-                    id: target,
-                    name: "Occupied".to_owned(),
-                    empty: false,
-                    ..Default::default()
-                },
-            ],
-            ..Default::default()
-        };
-        let mut widget = TrackWidget::default();
-        let _ = frame(&context, &mut widget, &state, Vec::new());
-        let target_center = widget.test_loop_rects[1].center();
-        egui::DragAndDrop::set_payload(&context, LoopDragPayload { loop_id: source });
-        let _ = frame(
-            &context,
-            &mut widget,
-            &state,
-            vec![
-                egui::Event::PointerMoved(target_center),
-                egui::Event::PointerButton {
+        for (source_kind, target_kind) in [
+            (crate::CompositeKind::None, crate::CompositeKind::None),
+            (crate::CompositeKind::Regular, crate::CompositeKind::None),
+            (crate::CompositeKind::None, crate::CompositeKind::Script),
+            (crate::CompositeKind::Regular, crate::CompositeKind::Script),
+        ] {
+            let context = egui::Context::default();
+            crate::initialize(&context);
+            let source = LoopId::from_raw(1);
+            let target = LoopId::from_raw(2);
+            let state = TrackState {
+                id: TrackId::from_raw(1),
+                loops: vec![
+                    LoopState {
+                        id: source,
+                        composite_kind: source_kind,
+                        ..Default::default()
+                    },
+                    LoopState {
+                        id: target,
+                        composite_kind: target_kind,
+                        name: "Occupied".to_owned(),
+                        empty: false,
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            };
+            let mut widget = TrackWidget::default();
+            let _ = frame(&context, &mut widget, &state, Vec::new());
+            let target_center = widget.test_loop_rects[1].center();
+            egui::DragAndDrop::set_payload(&context, LoopDragPayload { loop_id: source });
+            let _ = frame(
+                &context,
+                &mut widget,
+                &state,
+                vec![
+                    egui::Event::PointerMoved(target_center),
+                    egui::Event::PointerButton {
+                        pos: target_center,
+                        button: egui::PointerButton::Primary,
+                        pressed: true,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+            );
+            let response = frame(
+                &context,
+                &mut widget,
+                &state,
+                vec![egui::Event::PointerButton {
                     pos: target_center,
                     button: egui::PointerButton::Primary,
-                    pressed: true,
+                    pressed: false,
                     modifiers: egui::Modifiers::NONE,
-                },
-            ],
-        );
-        let response = frame(
-            &context,
-            &mut widget,
-            &state,
-            vec![egui::Event::PointerButton {
-                pos: target_center,
-                button: egui::PointerButton::Primary,
-                pressed: false,
-                modifiers: egui::Modifiers::NONE,
-            }],
-        );
-        assert!(response.loop_actions.is_empty());
-        let _ = frame(&context, &mut widget, &state, Vec::new());
-        let clone = widget.test_drop_clone_rect.unwrap().center();
-        assert!(click(&context, &mut widget, &state, clone)
-            .loop_actions
-            .is_empty());
-        assert_eq!(widget.pending_clone_confirmation, Some((source, target)));
-        let _ = frame(&context, &mut widget, &state, Vec::new());
-        let confirm = widget.test_clone_confirm_rect.unwrap().center();
-        assert_eq!(
-            click(&context, &mut widget, &state, confirm).loop_actions,
-            [(source, LoopWidgetAction::DuplicateTo(target))]
-        );
-        assert!(widget.pending_clone_confirmation.is_none());
+                }],
+            );
+            assert!(response.loop_actions.is_empty());
+            let _ = frame(&context, &mut widget, &state, Vec::new());
+            let clone = widget.test_drop_clone_rect.unwrap().center();
+            assert!(click(&context, &mut widget, &state, clone)
+                .loop_actions
+                .is_empty());
+            assert_eq!(widget.pending_clone_confirmation, Some((source, target)));
+            let _ = frame(&context, &mut widget, &state, Vec::new());
+            let confirm = widget.test_clone_confirm_rect.unwrap().center();
+            assert_eq!(
+                click(&context, &mut widget, &state, confirm).loop_actions,
+                [(source, LoopWidgetAction::DuplicateTo(target))]
+            );
+            assert!(widget.pending_clone_confirmation.is_none());
+        }
     }
 
     #[shoop_wasm_test_support::shoop_test]

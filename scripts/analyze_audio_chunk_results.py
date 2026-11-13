@@ -208,7 +208,7 @@ def main():
         'runs': len(runs), 'callbacks': sum(r['callbacks'] for r in runs),
         'matrices': matrices, 'build_manifest_sha256': manifest_sha,
         'verified_member_hashes': verified_members,
-        'overruns': {mode: sum(r['overruns'] for r in runs if r['mode'] == mode) for mode in MODES},
+        'overruns': {mode: sum(r['overruns'] for r in runs if r['mode'] == mode) for mode in sorted({r['mode'] for r in runs})},
         'validated': ['callback identity/continuity/frame counts and zero selected-window render faults',
                       'zero recorder drops and complete CSV termination',
                       'scenario modes, controls, stereo readback and capture completeness',

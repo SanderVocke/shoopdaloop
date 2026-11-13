@@ -1,4 +1,5 @@
 use super::*;
+use rt_runtime::Sample;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PlaybackChange {
@@ -6,18 +7,18 @@ pub struct PlaybackChange {
     pub media: MediaId,
 }
 
-pub struct PlaybackActivation<'a, 'store, I> {
+pub struct PlaybackActivation<'a, 'store, I, S: Sample = f32> {
     ledger: &'a mut Ledger,
-    io: &'a mut ResourceIo<'store>,
+    io: &'a mut ResourceIo<'store, S>,
     changes: I,
 }
 
 impl Ledger {
-    pub fn prepare_playback_activation<'a, 'store, I>(
+    pub fn prepare_playback_activation<'a, 'store, I, S: Sample>(
         &'a mut self,
-        io: &'a mut ResourceIo<'store>,
+        io: &'a mut ResourceIo<'store, S>,
         changes: I,
-    ) -> Result<PlaybackActivation<'a, 'store, I>, Error>
+    ) -> Result<PlaybackActivation<'a, 'store, I, S>, Error>
     where
         I: Iterator<Item = PlaybackChange> + Clone,
     {
@@ -55,7 +56,7 @@ impl Ledger {
     }
 }
 
-impl<I: Iterator<Item = PlaybackChange>> PlaybackActivation<'_, '_, I> {
+impl<I: Iterator<Item = PlaybackChange>, S: Sample> PlaybackActivation<'_, '_, I, S> {
     pub fn commit(self) {
         for change in self.changes {
             self.ledger

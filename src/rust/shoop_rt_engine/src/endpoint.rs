@@ -43,6 +43,7 @@ use shoop_rt_transport::carrier::{Endpoint, Outbox};
 pub(crate) const PLANNED: usize = 8;
 
 pub(crate) struct Settings {
+    pub audio_backend: shoop_rt_protocol::AudioBackendKind,
     pub external_dry_wet: bool,
     pub ramp: u32,
     pub lead: u32,
@@ -162,6 +163,9 @@ impl Work {
 }
 
 pub struct ControlEndpoint {
+    pub(crate) capability_mask: Capabilities,
+    #[cfg(feature = "testing")]
+    pub(crate) runtime_trace: Option<Vec<crate::testing::RuntimeCommand>>,
     pub(crate) projected_timing: Box<[Option<(LoopSlotId, shoop_rt_protocol::TimingState)>]>,
     pub(crate) projected_recorded: Box<[Option<(LoopSlotId, u64, bool)>]>,
     pub(crate) processor_catalog: crate::ProcessorCatalog,
@@ -235,6 +239,7 @@ pub struct ControlEndpoint {
     pub(crate) input: crate::input::Stage,
     pub(crate) composite: crate::composite::Stage,
     pub(crate) telemetry_frame: Option<u64>,
+    pub(crate) memory_frame: Option<u64>,
     pub(crate) dirty: Box<[bool]>,
     pub(crate) limits_changed: bool,
     pub(crate) protocol_error: bool,
@@ -443,7 +448,7 @@ impl ControlEndpoint {
         if !self.processor_catalog.kinds.is_empty() {
             capabilities = capabilities.union(Capabilities::TRACK_PROCESSORS);
         }
-        capabilities
+        Capabilities(capabilities.0 & self.capability_mask.0)
     }
 
     fn free_pending(&self) -> usize {
@@ -463,6 +468,10 @@ impl ControlEndpoint {
         purpose: Purpose,
         expects: bool,
     ) -> Result<Sequence, Refusal> {
+        #[cfg(feature = "testing")]
+        if let Some(trace) = &mut self.runtime_trace {
+            trace.push(crate::testing::RuntimeCommand::observe(&command));
+        }
         let Some(slot) = self.pending.iter().position(Option::is_none) else {
             self.reclaim(command);
             return Err(Refusal::Overloaded);
@@ -1421,6 +1430,15 @@ impl ControlEndpoint {
         if !self.connected {
             return;
         }
+        if let Some(report) = self.cells.memory.read() {
+            if self.memory_frame != Some(report.frame)
+                && out
+                    .push(EngineMessage::Telemetry(Telemetry::Memory(report)))
+                    .is_ok()
+            {
+                self.memory_frame = Some(report.frame);
+            }
+        }
         let frame = self.next_frame().0;
         let interval = u64::from(self.settings.telemetry_interval.max(1));
         let periodic = self
@@ -1428,6 +1446,9 @@ impl ControlEndpoint {
             .is_none_or(|last| frame >= last.saturating_add(interval));
         if periodic {
             self.telemetry_frame = Some(frame);
+            let _ = out.push(EngineMessage::Telemetry(Telemetry::AudioBackend(
+                self.settings.audio_backend,
+            )));
             let _ = out.push(EngineMessage::Telemetry(Telemetry::Preview {
                 request_id: self.cells.preview_playing.load(Ordering::Acquire),
             }));
@@ -1584,6 +1605,7 @@ impl Endpoint for ControlEndpoint {
                 self.reset_connection();
                 self.connected = true;
                 self.telemetry_frame = None;
+                self.memory_frame = None;
                 self.profile_status = None;
                 self.profile_catalog = false;
                 self.profile_generation = 0;

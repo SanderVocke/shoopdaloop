@@ -71,7 +71,6 @@ impl Limits {
             self.program_entries,
             self.program_segments,
             self.loop_slots,
-            self.loop_slots,
         )
     }
 }

@@ -1,0 +1,247 @@
+name: FPGA simulation memory
+
+on:
+  pull_request:
+    paths:
+      - 'fpga/**'
+      - 'PLAN_SIM_MEM.md'
+      - 'PLAN_METADATA_CACHE.md'
+      - 'PLAN_RETAKE_CLEAR.md'
+      - 'AUDIO_IO.md'
+      - 'scripts/rt_backend_testbench/**'
+      - 'scripts/*fpga*'
+      - 'Cargo.lock'
+      - 'src/rust/rt_audio_math/**'
+      - 'src/rust/rt_backend_testbench/**'
+      - 'src/rust/rt_fpga_sim/**'
+      - 'src/rust/rt_fpga_testbench/**'
+      - 'third_party/marlin-verilator/**'
+      - 'src/rust/rt_runtime/**'
+      - 'src/rust/shoop_loops/**'
+      - 'src/rust/shoop_rt_engine/**'
+      - '.github/workflows/fpga_simulation.yml'
+      - 'src/rust/shoop_rt_host_fpga_sim/**'
+      - 'src/rust/shoop_host/**'
+      - 'src/rust/shoop_host_manager/**'
+      - 'src/rust/shoopdaloop/**'
+      - 'src/rust/shoop_app_api/**'
+      - 'src/rust/shoop_rt_protocol/**'
+      - 'src/rust/shoop_app_protocol/**'
+      - 'src/rust/shoop_egui/**'
+      - 'src/rust/rt_fpga_adapter/**'
+      - 'scripts/build_verilator.sh'
+      - 'scripts/check_dependency_boundaries.py'
+      - 'PLAN_FPGA_RTL_BACKEND.md'
+      - 'PLAN_MARLIN_TESTBENCHES.md'
+  push:
+    branches: [master, proto/fpga-rust-reference]
+    paths:
+      - 'fpga/**'
+      - 'src/rust/rt_fpga_sim/**'
+      - 'src/rust/rt_fpga_testbench/**'
+      - 'third_party/marlin-verilator/**'
+      - '.github/workflows/fpga_simulation.yml'
+      - 'scripts/build_verilator.sh'
+      - 'src/rust/shoop_rt_host_fpga_sim/**'
+      - 'src/rust/shoop_host/**'
+      - 'src/rust/shoopdaloop/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fpga-memory-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  marlin:
+    name: Complete native Marlin verification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      RUSTFLAGS: -D warnings
+      CARGO_BUILD_JOBS: "2"
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: production-fpga
+      - name: Install simulation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes autoconf flex bison libfl-dev zlib1g-dev g++ cmake patch python3-venv
+          python3 -m venv .venv
+          .venv/bin/pip install -r scripts/rt_backend_testbench/requirements.txt
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+      - name: Cache Verilator 5.032
+        id: verilator
+        uses: actions/cache@v4
+        with:
+          path: work/verilator
+          key: verilator-8ff77e9d47351b0a59114929880687839a51840b-ubuntu-24.04
+      - name: Build Verilator 5.032
+        if: steps.verilator.outputs.cache-hit != 'true'
+        run: bash scripts/build_verilator.sh
+      - name: Select Verilator
+        run: echo "$PWD/work/verilator/bin" >> "$GITHUB_PATH"
+      - name: Build DRAMsim3
+        run: python fpga/axi_memory/build_dramsim3.py
+      - name: Check coverage and generated RTL
+        run: |
+          python scripts/check_fpga_testbench_coverage.py
+          python scripts/check_shoop_test_usage.py
+          python fpga/axi_memory/generate_tops.py --check
+          python fpga/audio_io/generate_top.py --check
+          python fpga/audio_io/generate_demo.py --check
+          python fpga/audio_io/prepare_demo.py --check
+          python fpga/zedboard/generate.py --check
+      - name: Run all component and integration matrices
+        run: |
+          mkdir -p work/marlin-suite
+          set -o pipefail
+          cargo test --locked -p rt_fpga_testbench --features sim -- --nocapture 2>&1 | tee work/marlin-suite/regression.log
+          cargo test --locked -p rt_fpga_sim --features sim -- --test-threads=1
+          cargo check --locked -p rt_fpga_testbench
+      - name: Replay long sessions, alternate geometries and 64-loop workloads
+        run: |
+          python scripts/generate_fpga_scenarios.py --long-sessions --output work/native-ci/long.jsonl
+          python scripts/generate_fpga_scenarios.py --geometry-cases --output work/native-ci/geometry.jsonl
+          cargo run --locked -p rt_fpga_testbench --features sim -- production --case work/native-ci/long.jsonl --output work/native-ci/long
+          cargo run --locked -p rt_fpga_testbench --features sim -- production --config wide --case work/native-ci/geometry.jsonl --axi-data-width 32 --memory-model fixed --output work/native-ci/geometry
+          cargo run --locked -p rt_fpga_testbench --features sim -- production --config 8x8 --benchmark64 --slots 2048 --block-chunks 32 --output work/native-ci/scale-original
+          cargo run --locked -p rt_fpga_testbench --features sim -- production --config 8x8 --benchmark64 --scale-workload streaming --slots 4096 --block-chunks 32 --memory-model dramsim3 --output work/native-ci/scale-streaming
+          cargo run --locked -p rt_fpga_testbench --features sim -- production --config 8x8 --benchmark64 --scale-workload mixed --slots 3072 --block-chunks 32 --memory-model fixed --output work/native-ci/scale-mixed
+      - name: Check continuous 16-channel audio with realistic memory
+        run: cargo run --locked -p rt_fpga_testbench --features sim -- continuous --p 16 --frame-cycles 1600 --stalls --memory-model dramsim3 --output work/native-ci/continuous-16
+      - name: Check independent float accuracy bounds
+        run: python scripts/check_fpga_float_accuracy.py work/marlin-suite work/native-ci
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: marlin-fpga-verification
+          path: |
+            work/marlin-suite/**/*.log
+            work/marlin-suite/**/*.json
+            work/marlin-suite/prepared/**/*.hex
+            work/marlin-continuous/*.json
+            work/native-ci/**/*.json
+          if-no-files-found: warn
+
+  audio-synthesis:
+    name: Audio I/O lint and synthesis (${{ matrix.target }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ contains(matrix.target, 'map') && 90 || 45 }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [q16, q32, q64, map, demo, demo-map, media]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install RTL tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes autoconf flex bison libfl-dev zlib1g-dev g++
+      - name: Install pinned synthesis tools
+        uses: YosysHQ/setup-oss-cad-suite@853bb54f52246aa8fb4fab963f104cfb6676197a # v4
+        with:
+          version: '2025-04-15'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Report synthesis tool version
+        run: yosys -V
+      - name: Cache synthesis Verilator 5.032
+        id: verilator
+        uses: actions/cache@v4
+        with:
+          path: work/verilator
+          key: verilator-8ff77e9d47351b0a59114929880687839a51840b-ubuntu-24.04
+      - name: Build synthesis Verilator 5.032
+        if: steps.verilator.outputs.cache-hit != 'true'
+        run: bash scripts/build_verilator.sh
+      - name: Select synthesis Verilator
+        run: echo "$PWD/work/verilator/bin" >> "$GITHUB_PATH"
+      - name: Check complete audio top variant
+        if: startsWith(matrix.target, 'q')
+        run: |
+          case '${{ matrix.target }}' in
+            q16) python3 fpga/audio_io/check.py --quantum 16 --generic-only ;;
+            q32) python3 fpga/audio_io/check.py --quantum 32 --generic-only ;;
+            q64) python3 fpga/audio_io/check.py --quantum 64 --generic-only ;;
+          esac
+      - name: Map complete audio top
+        if: matrix.target == 'map'
+        run: python3 fpga/audio_io/check.py --mapping-only
+      - name: Check prepared demo inference
+        if: matrix.target == 'demo'
+        run: python3 fpga/audio_io/check.py --demo --generic-only --output work/audio-demo-synthesis
+      - name: Map prepared demo
+        if: matrix.target == 'demo-map'
+        run: python3 fpga/audio_io/check.py --demo --mapping-only --output work/audio-demo-synthesis
+      - name: Check media ownership synthesis
+        if: matrix.target == 'media'
+        run: bash fpga/media_store/check.sh work/media-synthesis
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: audio-synthesis-${{ matrix.target }}
+          path: |
+            work/audio-synthesis/*.log
+            work/audio-synthesis/*generic.json
+            work/audio-synthesis/resources.json
+            work/audio-demo-synthesis/*.log
+            work/audio-demo-synthesis/*generic.json
+            work/audio-demo-synthesis/resources.json
+            work/media-synthesis/*.log
+            work/media-synthesis/*ecp5.json
+          if-no-files-found: warn
+
+  rtl-host:
+    name: Regular FPGA RTL host and application
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      RUSTFLAGS: -D warnings
+      CARGO_BUILD_JOBS: "2"
+      RUST_TEST_THREADS: "2"
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: production-fpga-host
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes autoconf flex bison libfl-dev zlib1g-dev g++ pkg-config libasound2-dev libjack-jackd2-dev libudev-dev libclang-dev libgl1-mesa-dev libx11-dev libxkbcommon-dev libwayland-dev
+      - name: Cache Verilator 5.032
+        id: verilator
+        uses: actions/cache@v4
+        with:
+          path: work/verilator
+          key: verilator-8ff77e9d47351b0a59114929880687839a51840b-ubuntu-24.04
+      - name: Build Verilator 5.032
+        if: steps.verilator.outputs.cache-hit != 'true'
+        run: bash scripts/build_verilator.sh
+      - name: Select Verilator
+        run: echo "$PWD/work/verilator/bin" >> "$GITHUB_PATH"
+      - name: Check default dependency isolation
+        run: |
+          cargo tree --locked -p shoop_host -p shoopdaloop -e normal,build > default-tree.txt
+          if grep -i marlin default-tree.txt; then exit 1; fi
+          python3 scripts/check_dependency_boundaries.py --package shoop_rt_host_fpga_sim --package shoop_host --package shoopdaloop
+      - name: Build regular feature-enabled binaries
+        run: cargo build --locked -p shoop_host -p shoopdaloop --features fpga-sim
+      - name: Check RTL adapter, application replay and storage contracts
+        run: cargo test --locked -p shoop_rt_host_fpga_sim --features sim --tests
+      - name: Check standalone host, both carriers and cold readiness
+        run: cargo test --locked -p shoop_host --features fpga-sim --test fpga_rtl
+      - name: Check normal in-process application
+        run: |
+          cargo test --locked -p shoopdaloop --features fpga-sim fpga_tests::

@@ -1,0 +1,38 @@
+{
+  "implementation_parent": "446fb638",
+  "memory": "instant AXI32 burst; native SystemVerilog memory",
+  "source": "work/unify-stage4-rtl",
+  "cases": [
+    {
+      "name": "mono-record-stop-play-wrap-q32",
+      "quanta": 9,
+      "output_samples": 288,
+      "media_samples": 64,
+      "rtl_exact": true,
+      "float_max_abs": 5.960464477539063e-08,
+      "float_rms": 3.4412757706023796e-08,
+      "float_bias": -1.241763432820638e-09
+    },
+    {
+      "name": "unconnected-output-is-silent",
+      "quanta": 3,
+      "output_samples": 96,
+      "media_samples": 0,
+      "rtl_exact": true,
+      "float_max_abs": 0.0,
+      "float_rms": 0.0,
+      "float_bias": 0.0
+    },
+    {
+      "name": "production-gain-ramps",
+      "quanta": 10,
+      "output_samples": 320,
+      "media_samples": 0,
+      "rtl_exact": true,
+      "float_max_abs": 6.146728992462158e-08,
+      "float_rms": 2.8575475372559275e-08,
+      "float_bias": -9.04671870749496e-10
+    }
+  ],
+  "note": "Initial observed float errors; full checked budgets, clipping diagnostics and drift coverage remain required in stage 5."
+}

@@ -1,0 +1,86 @@
+{
+  "baseline": "821ba859bc7ba52e67afdd09cb312628830c0174",
+  "source": "8a2adb2573cbc93ad2e494246565db07fe958100",
+  "scope": "Same default media-store and media/audio tops, ECP5 mapping only; no routed timing or Zynq fit claim",
+  "versions": [
+    "Yosys 0.52 (git sha1 fee39a3284c90249e1d9684cf6944ffbbcbb8f90)",
+    "Verilator 5.032 2025-01-01 rev (Debian 5.032-1+b2)"
+  ],
+  "tops": {
+    "media_store": {
+      "baseline": {
+        "$scopeinfo": 13,
+        "CCU2C": 2412,
+        "DP16KD": 15,
+        "L6MUX21": 741,
+        "LUT4": 13187,
+        "PFUMX": 2495,
+        "TRELLIS_DPR16X4": 8,
+        "TRELLIS_FF": 6811
+      },
+      "current": {
+        "$scopeinfo": 14,
+        "CCU2C": 3014,
+        "DP16KD": 15,
+        "L6MUX21": 179,
+        "LUT4": 13816,
+        "PFUMX": 1696,
+        "TRELLIS_DPR16X4": 8,
+        "TRELLIS_FF": 7693
+      },
+      "delta": {
+        "$scopeinfo": 1,
+        "CCU2C": 602,
+        "DP16KD": 0,
+        "L6MUX21": -562,
+        "LUT4": 629,
+        "PFUMX": -799,
+        "TRELLIS_DPR16X4": 0,
+        "TRELLIS_FF": 882
+      },
+      "netlist_sha256": [
+        "2a9f86003d9d5e72cf27de15767baf05ccdf3f0309a45a31e8a3c577dd72db69",
+        "26dfd8d1d23fd86c4fcb789f5dbc36aeb43f961779b7e3384bb47d3245fa8d31"
+      ]
+    },
+    "media_audio_pipeline": {
+      "baseline": {
+        "$scopeinfo": 29,
+        "CCU2C": 3422,
+        "DP16KD": 18,
+        "L6MUX21": 417,
+        "LUT4": 17813,
+        "MULT18X18D": 4,
+        "PFUMX": 2647,
+        "TRELLIS_DPR16X4": 315,
+        "TRELLIS_FF": 9924
+      },
+      "current": {
+        "$scopeinfo": 30,
+        "CCU2C": 3985,
+        "DP16KD": 18,
+        "L6MUX21": 406,
+        "LUT4": 19706,
+        "MULT18X18D": 4,
+        "PFUMX": 2449,
+        "TRELLIS_DPR16X4": 315,
+        "TRELLIS_FF": 10806
+      },
+      "delta": {
+        "$scopeinfo": 1,
+        "CCU2C": 563,
+        "DP16KD": 0,
+        "L6MUX21": -11,
+        "LUT4": 1893,
+        "MULT18X18D": 0,
+        "PFUMX": -198,
+        "TRELLIS_DPR16X4": 0,
+        "TRELLIS_FF": 882
+      },
+      "netlist_sha256": [
+        "9f304617acec89aae7552d1ce2e8051f2bf9c67c469aa1775fdcaf42cc105d1c",
+        "5a85b1ef6130474972f068c9e03dd18719092d0431ff2847510646c0c62d66b7"
+      ]
+    }
+  }
+}

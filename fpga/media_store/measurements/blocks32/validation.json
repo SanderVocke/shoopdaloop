@@ -1,0 +1,110 @@
+{
+  "suites": [
+    {
+      "scope": "native AXI32 block ownership, ranges, capacity and restore",
+      "artifact_directory": "work/block-media-first",
+      "configurations": 1,
+      "test_functions": 1,
+      "result": "passed"
+    },
+    {
+      "scope": "realistic AXI64 block ownership, all profiles",
+      "artifact_directory": "work/block-media-ddr64",
+      "configurations": 3,
+      "test_functions": 3,
+      "result": "passed"
+    },
+    {
+      "scope": "native AXI64 blocked audio",
+      "artifact_directory": "work/block-audio-first",
+      "configurations": 1,
+      "test_functions": 1,
+      "result": "passed"
+    },
+    {
+      "scope": "realistic AXI32 blocked audio, all profiles",
+      "artifact_directory": "work/block-audio-ddr32",
+      "configurations": 3,
+      "test_functions": 3,
+      "result": "passed"
+    },
+    {
+      "scope": "native AXI64 small connected loops",
+      "artifact_directory": "work/block-loop-first",
+      "configurations": 1,
+      "test_functions": 1,
+      "result": "passed"
+    },
+    {
+      "scope": "native AXI32 connected loops, all profiles, cross-block recording",
+      "artifact_directory": "work/block-loops-native32",
+      "configurations": 3,
+      "test_functions": 3,
+      "result": "passed"
+    },
+    {
+      "scope": "realistic AXI64 odd/stereo connected loops and fault/reset",
+      "artifact_directory": "work/block-loop-ddr64",
+      "configurations": 1,
+      "test_functions": 1,
+      "result": "passed"
+    },
+    {
+      "scope": "native AXI64 grouped retirement, backpressure, prefetch and writeback faults",
+      "artifact_directory": "work/block-retire-first",
+      "configurations": 1,
+      "test_functions": 1,
+      "result": "passed"
+    },
+    {
+      "scope": "realistic AXI32 grouped retirement",
+      "artifact_directory": "work/block-retire-ddr32",
+      "configurations": 1,
+      "test_functions": 1,
+      "result": "passed"
+    },
+    {
+      "scope": "scalar AXI64, odd metadata cache, minimum sample/count/stack caches, physical base +8",
+      "artifact_directory": "work/block-word-odd",
+      "configurations": 1,
+      "test_functions": 1,
+      "result": "passed"
+    },
+    {
+      "scope": "legacy scalar media diagnostic, blocked allocation",
+      "artifact_directory": "work/block-legacy-port",
+      "configurations": 1,
+      "test_functions": 1,
+      "result": "passed"
+    },
+    {
+      "scope": "native AXI32 minimum chunk-cache regression, one-chunk retirement",
+      "artifact_directory": "work/block-legacy-chunks",
+      "configurations": 1,
+      "test_functions": 4,
+      "result": "passed"
+    },
+    {
+      "scope": "native AXI64 one-chunk loop regression",
+      "artifact_directory": "work/block-legacy-loops",
+      "configurations": 1,
+      "test_functions": 3,
+      "result": "passed"
+    }
+  ],
+  "note": "Each historical RTL test function bundles multiple requests or complete Rust cases.",
+  "rust_targeted": "cargo test --locked -p rt_fpga_reference -p rt_fpga_testbench: passed",
+  "wire_contract_tests": 19,
+  "warning_denied_workspace_build": "passed",
+  "formatting_and_test_attribute_policy": "passed",
+  "workspace_nextest": {
+    "command": "SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci",
+    "passed": 3264,
+    "failed": 1,
+    "skipped": 11,
+    "failed_test": "shoop_host::lan exported_profiles_become_visible_complete_and_never_overwrite_an_existing_profile",
+    "reason": "LAN host did not publish its profile within 15 seconds",
+    "isolated_retry": "passed in 9.273 seconds with one test worker"
+  },
+  "synthesis": "both-width warning-clean lint and default integrated generic/ECP5 synthesis passed"
+}

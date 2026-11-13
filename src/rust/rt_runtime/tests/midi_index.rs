@@ -32,7 +32,7 @@ fn store(
     page: usize,
     steps: usize,
 ) -> ResourceStore {
-    ResourceStore::with_midi_indexing(
+    ResourceStore::<f32>::with_midi_indexing(
         config(page, steps),
         rt_runtime::Quantum::new(1).unwrap(),
         MidiIndexConfig {
@@ -608,7 +608,7 @@ fn preparation_bounds_and_legacy_unindexed_media_are_explicit() {
         },
     ] {
         assert!(matches!(
-            ResourceStore::with_midi_indexing(
+            ResourceStore::<f32>::with_midi_indexing(
                 config(16, 1),
                 rt_runtime::Quantum::new(1).unwrap(),
                 indexing
@@ -617,7 +617,7 @@ fn preparation_bounds_and_legacy_unindexed_media_are_explicit() {
         ));
     }
     assert!(matches!(
-        ResourceStore::with_midi_indexing(
+        ResourceStore::<f32>::with_midi_indexing(
             config(16, 1),
             rt_runtime::Quantum::new(1).unwrap(),
             MidiIndexConfig {

@@ -107,6 +107,7 @@ impl Service {
                 BackendCapability::SessionCapture,
                 BackendCapability::SessionContentLoad,
                 BackendCapability::LoopContentImport,
+                BackendCapability::LoopDuplication,
                 BackendCapability::DryWetTracks,
                 BackendCapability::DryWetModes,
                 BackendCapability::TrackFx,
@@ -914,6 +915,8 @@ pub(super) fn status(state: &BackendStatus) -> StatusState {
         BackendDriverState::Stopped => AudioDriverState::Stopped,
     };
     StatusState {
+        audio_backend: state.audio_backend,
+        memory: state.memory,
         version: env!("CARGO_PKG_VERSION").to_owned(),
         dsp_load_percent: state.dsp_load_percent,
         xruns: state.xruns,

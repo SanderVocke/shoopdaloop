@@ -1,0 +1,78 @@
+diff --git a/src/controller.cc b/src/controller.cc
+index a582dcc..198227c 100644
+--- a/src/controller.cc
++++ b/src/controller.cc
+@@ -144,0 +145,5 @@ void Controller::ClockTick() {
++    while (!bus_events_.empty() && bus_events_.begin()->first <= clk_) {
++        if (bus_events_.begin()->second) ++bus_counters_.write_cycles;
++        else ++bus_counters_.read_cycles;
++        bus_events_.erase(bus_events_.begin());
++    }
+@@ -236,0 +242,8 @@ void Controller::IssueCommand(const Command &cmd) {
++    ++bus_counters_.command_cycles;
++    if (cmd.IsReadWrite()) {
++        if (cmd.IsWrite()) ++bus_counters_.write_commands;
++        else ++bus_counters_.read_commands;
++        auto delay = cmd.IsWrite() ? config_.write_delay : config_.read_delay;
++        for (int cycle = 0; cycle < config_.burst_cycle; ++cycle)
++            bus_events_.emplace(clk_ + delay - config_.burst_cycle + cycle, cmd.IsWrite());
++    }
+@@ -258,0 +272 @@ void Controller::IssueCommand(const Command &cmd) {
++        write_done_ = std::max(write_done_, clk_ + config_.write_delay);
+diff --git a/src/controller.h b/src/controller.h
+index 77bd6af..812ba59 100644
+--- a/src/controller.h
++++ b/src/controller.h
+@@ -21,0 +22,5 @@ enum class RowBufPolicy { OPEN_PAGE, CLOSE_PAGE, SIZE };
++struct BusCounters {
++    uint64_t read_cycles = 0, write_cycles = 0;
++    uint64_t read_commands = 0, write_commands = 0, command_cycles = 0;
++};
++
+@@ -33,0 +39,6 @@ class Controller {
++    BusCounters GetBusCounters() const { return bus_counters_; }
++    bool IsIdle() const {
++        return pending_rd_q_.empty() && pending_wr_q_.empty() && return_queue_.empty()
++            && unified_queue_.empty() && read_queue_.empty() && write_buffer_.empty()
++            && cmd_queue_.QueueEmpty() && clk_ >= write_done_ && bus_events_.empty();
++    }
+@@ -43,0 +55,3 @@ class Controller {
++    uint64_t write_done_ = 0;
++    BusCounters bus_counters_;
++    std::multimap<uint64_t, bool> bus_events_;
+diff --git a/src/dram_system.h b/src/dram_system.h
+index 7864b2c..226bb0f 100644
+--- a/src/dram_system.h
++++ b/src/dram_system.h
+@@ -29,0 +30,16 @@ class BaseDRAMSystem {
++    BusCounters GetBusCounters() const {
++        BusCounters result;
++        for (const auto* controller : ctrls_) {
++            auto counters = controller->GetBusCounters();
++            result.read_cycles += counters.read_cycles;
++            result.write_cycles += counters.write_cycles;
++            result.read_commands += counters.read_commands;
++            result.write_commands += counters.write_commands;
++            result.command_cycles += counters.command_cycles;
++        }
++        return result;
++    }
++    bool IsIdle() const {
++        for (const auto* controller : ctrls_) if (!controller->IsIdle()) return false;
++        return true;
++    }
+diff --git a/src/memory_system.cc b/src/memory_system.cc
+index 739ea1a..11e9437 100644
+--- a/src/memory_system.cc
++++ b/src/memory_system.cc
+@@ -52,0 +53,3 @@ void MemorySystem::ResetStats() { dram_system_->ResetStats(); }
++bool MemorySystem::IsIdle() const { return dram_system_->IsIdle(); }
++BusCounters MemorySystem::GetBusCounters() const { return dram_system_->GetBusCounters(); }
++
+diff --git a/src/memory_system.h b/src/memory_system.h
+index 57eeca1..e311286 100644
+--- a/src/memory_system.h
++++ b/src/memory_system.h
+@@ -28,0 +29,2 @@ class MemorySystem {
++    bool IsIdle() const;
++    BusCounters GetBusCounters() const;
