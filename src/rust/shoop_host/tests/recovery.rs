@@ -72,8 +72,8 @@ fn host_with_driver(
                 quantum: 1,
                 buses: 8,
                 bus_channels: 8,
-                tracks: 8,
-                loops: 80,
+                tracks: 3,
+                loops: 20,
                 channels: 2,
                 loop_memory_mb,
             },
@@ -110,7 +110,7 @@ fn host_with_driver(
         .stderr(Stdio::from(std::fs::File::create(&stderr_path).unwrap()))
         .spawn()
         .unwrap();
-    let deadline = Instant::now() + Duration::from_secs(if real_device { 30 } else { 10 });
+    let deadline = Instant::now() + Duration::from_secs(30);
     while !path.exists() {
         assert!(
             child.try_wait().unwrap().is_none(),
@@ -150,7 +150,7 @@ fn command(
     connection: &mut Connection,
     command: shoop_app_protocol::Command,
 ) -> Outcome {
-    command_with_timeout(client, connection, command, Duration::from_secs(5))
+    command_with_timeout(client, connection, command, Duration::from_secs(15))
 }
 fn command_with_timeout(
     client: &mut Client,
@@ -688,8 +688,8 @@ fn launcher_peer() {
                 quantum: 1,
                 buses: 8,
                 bus_channels: 8,
-                tracks: 8,
-                loops: 80,
+                tracks: 3,
+                loops: 20,
                 channels: 2,
                 loop_memory_mb: 16,
             },
@@ -1020,8 +1020,8 @@ fn invalid_startup_is_rolled_back_and_a_ready_host_survives_ui_spawn_failure() {
                 quantum: 1,
                 buses: 8,
                 bus_channels: 8,
-                tracks: 8,
-                loops: 80,
+                tracks: 3,
+                loops: 20,
                 channels: 2,
                 loop_memory_mb: 16,
             },

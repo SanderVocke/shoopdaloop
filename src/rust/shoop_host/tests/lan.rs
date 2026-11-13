@@ -31,7 +31,20 @@ impl Drop for Host {
 fn host(ip: IpAddr) -> Host {
     let root = tempfile::tempdir().unwrap();
     let config = root.path().join("config.json");
-    std::fs::write(&config, b"{}").unwrap();
+    let settings = shoop_host::config::HostConfig {
+        settings: shoop_host::config::HostSettings {
+            processors: shoop_app_api::ProcessorSettings::disabled(),
+            pools: shoop_app_api::NewEnginePools {
+                tracks: 3,
+                loops: 20,
+                loop_memory_mb: 16,
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    std::fs::write(&config, serde_json::to_vec(&settings).unwrap()).unwrap();
 
     let path = root.path().join("profile.json");
     let mut child = Command::new(env!("CARGO_BIN_EXE_shoop_host"))
@@ -683,10 +696,10 @@ fn saved_endpoint_profile_and_client_accept_a_restarted_host_without_old_state()
         ManagementReply::Refused(Refusal::StaleAuthority)
     ));
     let report = connection::host_report(&profile, Duration::from_secs(5)).unwrap();
-    assert_eq!(
-        report.requested.unwrap(),
-        shoop_host::config::HostSettings::default()
-    );
+    let configured: shoop_host::config::HostConfig =
+        serde_json::from_slice(&std::fs::read(host._root.path().join("config.json")).unwrap())
+            .unwrap();
+    assert_eq!(report.requested.unwrap(), configured.settings);
     assert_eq!(report.effective.sample_rate, 48000);
     assert!(report
         .restart_required_fields

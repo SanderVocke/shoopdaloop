@@ -28,6 +28,7 @@ enum Phase {
     Idle,
     Input,
     Working,
+    PreparingScripts,
     Capture,
     CaptureSent,
     Reading(Read),
@@ -36,6 +37,7 @@ enum Phase {
     Staging,
     Ready,
     Committed(OperationId),
+    Unresolved,
     Output,
 }
 struct Task {
@@ -64,6 +66,10 @@ pub(super) struct Provider {
     output: Option<ApplicationFileOutput>,
     pending_cancel: Option<transfer::Key>,
     family: Option<family::Context>,
+    save_scripts: shoop_script_resources::session::SessionScripts,
+    prepared_scripts: Option<shoop_scripting::PreparedSessionScripts>,
+    script_preparation: Option<(Arc<image::Image>, shoop_scripting::SessionScriptPreparation)>,
+    installed_epoch: Option<u64>,
 }
 impl Provider {
     pub fn new() -> Self {
@@ -78,6 +84,10 @@ impl Provider {
             output: None,
             pending_cancel: None,
             family: None,
+            save_scripts: Default::default(),
+            prepared_scripts: None,
+            script_preparation: None,
+            installed_epoch: None,
         }
     }
     fn start(
@@ -169,6 +179,7 @@ impl Provider {
     }
     fn work(&mut self, work: Work) -> Result<()> {
         let kind = match &work {
+            Work::EncodeSession { .. } => "encode_session",
             Work::Assemble(_) => "assemble",
             Work::GenerateClick { .. } => "generate_click",
             Work::Decode { .. } => "decode",
@@ -190,6 +201,9 @@ impl Provider {
     fn finish(&mut self, status: IoTaskStatus, message: impl Into<String>) {
         self.codec.reset();
         self.family = None;
+        self.save_scripts = Default::default();
+        self.prepared_scripts = None;
+        self.script_preparation = None;
         #[cfg(target_arch = "wasm32")]
         {
             self.worker = None;
@@ -211,9 +225,11 @@ impl Provider {
                 Phase::Idle
                     | Phase::Input
                     | Phase::Working
+                    | Phase::PreparingScripts
                     | Phase::Decoded(_)
                     | Phase::Captured(_)
                     | Phase::Output
+                    | Phase::Unresolved
             ) {
                 self.pending_cancel = Some(task.key);
             }
@@ -359,12 +375,19 @@ impl Provider {
         t.view.status = IoTaskStatus::Running;
         t.view.audio_channel_selection = None;
         t.view.message = "Encoding captured media".into();
-        let work = Work::Encode {
-            image,
-            kind: t.view.kind,
-            wav: t.wav,
-            standard: t.standard,
-            channels,
+        let work = if t.view.kind == IoTaskKind::SaveSession {
+            Work::EncodeSession {
+                image,
+                scripts: self.save_scripts.clone(),
+            }
+        } else {
+            Work::Encode {
+                image,
+                kind: t.view.kind,
+                wav: t.wav,
+                standard: t.standard,
+                channels,
+            }
         };
         self.work(work)
     }
@@ -372,70 +395,218 @@ impl Provider {
         &mut self,
         intent: AppIntent,
         state: &SessionSnapshot,
-        scripts: bool,
+        scripts: &mut shoop_scripting::ScriptManager,
     ) -> Result<()> {
         let importing_audio = matches!(intent, AppIntent::ImportLoopAudioBytes { .. });
         match intent {
-            AppIntent::RequestSaveSession | AppIntent::RequestLoadSessionPicker | AppIntent::RequestLoadSessionUrl | AppIntent::RequestLoadSessionSource { .. } if scripts => bail!("Session-owned script persistence is still unavailable (P16); remove or convert session scripts before saving or loading"),
-            AppIntent::RequestSaveSession => { self.start(state, IoTaskKind::SaveSession, None)?; self.phase = Phase::Capture; }
+            AppIntent::RequestSaveSession => {
+                self.start(state, IoTaskKind::SaveSession, None)?;
+                self.save_scripts = scripts.session_data();
+                self.phase = Phase::Capture;
+            }
             AppIntent::RequestLoadSessionSource { source } => {
                 self.start(state, IoTaskKind::LoadSession, None)?;
-                self.requests.push_back(ApplicationFileRequest { task_id: self.task.as_ref().unwrap().view.id, kind: ApplicationFileRequestKind::SessionSource, source: Some(source) });
+                self.requests.push_back(ApplicationFileRequest {
+                    task_id: self.task.as_ref().unwrap().view.id,
+                    kind: ApplicationFileRequestKind::SessionSource,
+                    source: Some(source),
+                });
                 self.phase = Phase::Input;
             }
             AppIntent::RequestLoadSessionPicker | AppIntent::RequestLoadSessionUrl => {
-                let kind = if matches!(intent, AppIntent::RequestLoadSessionUrl) { ApplicationFileRequestKind::SessionUrl } else { ApplicationFileRequestKind::Session };
+                let kind = if matches!(intent, AppIntent::RequestLoadSessionUrl) {
+                    ApplicationFileRequestKind::SessionUrl
+                } else {
+                    ApplicationFileRequestKind::Session
+                };
                 self.start(state, IoTaskKind::LoadSession, None)?;
-                self.requests.push_back(ApplicationFileRequest { task_id: self.task.as_ref().unwrap().view.id, kind, source: None }); self.phase = Phase::Input;
+                self.requests.push_back(ApplicationFileRequest {
+                    task_id: self.task.as_ref().unwrap().view.id,
+                    kind,
+                    source: None,
+                });
+                self.phase = Phase::Input;
             }
-            AppIntent::RequestLoopAudioImportPicker { loop_id } | AppIntent::RequestLoopMidiImportPicker { loop_id } => {
+            AppIntent::RequestLoopAudioImportPicker { loop_id }
+            | AppIntent::RequestLoopMidiImportPicker { loop_id } => {
                 let audio = matches!(intent, AppIntent::RequestLoopAudioImportPicker { .. });
-                self.start(state, if audio { IoTaskKind::ImportLoopAudio } else { IoTaskKind::ImportLoopMidi }, Some(loop_id))?;
-                self.requests.push_back(ApplicationFileRequest { task_id: self.task.as_ref().unwrap().view.id, kind: if audio { ApplicationFileRequestKind::Audio } else { ApplicationFileRequestKind::Midi }, source: None }); self.phase = Phase::Input;
+                self.start(
+                    state,
+                    if audio {
+                        IoTaskKind::ImportLoopAudio
+                    } else {
+                        IoTaskKind::ImportLoopMidi
+                    },
+                    Some(loop_id),
+                )?;
+                self.requests.push_back(ApplicationFileRequest {
+                    task_id: self.task.as_ref().unwrap().view.id,
+                    kind: if audio {
+                        ApplicationFileRequestKind::Audio
+                    } else {
+                        ApplicationFileRequestKind::Midi
+                    },
+                    source: None,
+                });
+                self.phase = Phase::Input;
             }
-            AppIntent::RequestLoopAudioExport { loop_id, format } => { self.start(state, IoTaskKind::ExportLoopAudio, Some(loop_id))?; self.task.as_mut().unwrap().wav = format == LoopAudioExportFormat::FloatWav; self.phase = Phase::Capture; }
-            AppIntent::RequestLoopMidiExport { loop_id, standard } => { self.start(state, IoTaskKind::ExportLoopMidi, Some(loop_id))?; self.task.as_mut().unwrap().standard = standard; self.phase = Phase::Capture; }
+            AppIntent::RequestLoopAudioExport { loop_id, format } => {
+                self.start(state, IoTaskKind::ExportLoopAudio, Some(loop_id))?;
+                self.task.as_mut().unwrap().wav = format == LoopAudioExportFormat::FloatWav;
+                self.phase = Phase::Capture;
+            }
+            AppIntent::RequestLoopMidiExport { loop_id, standard } => {
+                self.start(state, IoTaskKind::ExportLoopMidi, Some(loop_id))?;
+                self.task.as_mut().unwrap().standard = standard;
+                self.phase = Phase::Capture;
+            }
             AppIntent::LoadSessionBytes { bytes, .. } => {
-                ensure!(!scripts, "session-owned scripts must be removed or converted before loading (P16)");
-                self.start(state, IoTaskKind::LoadSession, None)?; self.work(Work::Decode { kind: IoTaskKind::LoadSession, bytes, rate: state.status.sample_rate })?;
+                self.start(state, IoTaskKind::LoadSession, None)?;
+                self.work(Work::Decode {
+                    kind: IoTaskKind::LoadSession,
+                    bytes,
+                    rate: state.status.sample_rate,
+                })?;
             }
-            AppIntent::ImportLoopAudioBytes { loop_id, bytes, update_loop_length, .. } | AppIntent::ImportLoopMidiBytes { loop_id, bytes, update_loop_length, .. } => {
-                let kind = if importing_audio { IoTaskKind::ImportLoopAudio } else { IoTaskKind::ImportLoopMidi };
-                self.start(state, kind, Some(loop_id))?; self.task.as_mut().unwrap().update_length = update_loop_length;
-                self.work(Work::Decode { kind, bytes, rate: state.status.sample_rate })?;
+            AppIntent::ImportLoopAudioBytes {
+                loop_id,
+                bytes,
+                update_loop_length,
+                ..
+            }
+            | AppIntent::ImportLoopMidiBytes {
+                loop_id,
+                bytes,
+                update_loop_length,
+                ..
+            } => {
+                let kind = if importing_audio {
+                    IoTaskKind::ImportLoopAudio
+                } else {
+                    IoTaskKind::ImportLoopMidi
+                };
+                self.start(state, kind, Some(loop_id))?;
+                self.task.as_mut().unwrap().update_length = update_loop_length;
+                self.work(Work::Decode {
+                    kind,
+                    bytes,
+                    rate: state.status.sample_rate,
+                })?;
             }
             AppIntent::GenerateClickTrack { loop_id, request } => {
-                ensure!(!state.tracks.iter().flat_map(|t| &t.loops).any(|l| matches!(l.mode, LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet)), "click generation is unavailable while recording or replacing");
-                let entry = state.tracks.iter().flat_map(|t| &t.loops).find(|l| l.id == loop_id).ok_or_else(|| anyhow!("the target loop no longer exists"))?;
-                ensure!(entry.composite_kind == CompositeKind::None, "click tracks require a primitive loop");
-                let kind = match request.kind { ClickTrackKind::Audio => IoTaskKind::ImportLoopAudio, ClickTrackKind::Midi => IoTaskKind::ImportLoopMidi };
+                ensure!(
+                    !state.tracks.iter().flat_map(|t| &t.loops).any(|l| matches!(
+                        l.mode,
+                        LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
+                    )),
+                    "click generation is unavailable while recording or replacing"
+                );
+                let entry = state
+                    .tracks
+                    .iter()
+                    .flat_map(|t| &t.loops)
+                    .find(|l| l.id == loop_id)
+                    .ok_or_else(|| anyhow!("the target loop no longer exists"))?;
+                ensure!(
+                    entry.composite_kind == CompositeKind::None,
+                    "click tracks require a primitive loop"
+                );
+                let kind = match request.kind {
+                    ClickTrackKind::Audio => IoTaskKind::ImportLoopAudio,
+                    ClickTrackKind::Midi => IoTaskKind::ImportLoopMidi,
+                };
                 self.start(state, kind, Some(loop_id))?;
                 self.task.as_mut().unwrap().view.kind = IoTaskKind::GenerateClickTrack;
-                self.work(Work::GenerateClick { request, rate: state.status.sample_rate })?;
+                self.work(Work::GenerateClick {
+                    request,
+                    rate: state.status.sample_rate,
+                })?;
             }
-            AppIntent::CompleteIoInput { task_id, bytes, .. } if self.matches(task_id) && matches!(self.phase, Phase::Input) => {
-                self.current(state)?; let t = self.task.as_ref().unwrap(); self.work(Work::Decode { kind: t.view.kind, bytes, rate: t.format.sample_rate })?;
-            }
-            AppIntent::ConfirmFormatConversion { task_id, accept } if self.matches(task_id) && self.task.as_ref().unwrap().view.status == IoTaskStatus::AwaitingFormatConversionConfirmation => {
-                if !accept { self.finish(IoTaskStatus::Cancelled, "Format conversion declined; session unchanged"); }
-                else { self.current(state)?; let Phase::Decoded(decoded) = std::mem::replace(&mut self.phase, Phase::Idle) else { bail!("no decoded media") }; self.task.as_mut().unwrap().view.status = IoTaskStatus::Running; self.convert(decoded)?; }
-            }
-            AppIntent::ConfirmAudioChannelMapping { task_id, source_for_destination } if self.matches(task_id) && self.task.as_ref().unwrap().view.status == IoTaskStatus::AwaitingChannelMapping => {
+            AppIntent::CompleteIoInput { task_id, bytes, .. }
+                if self.matches(task_id) && matches!(self.phase, Phase::Input) =>
+            {
                 self.current(state)?;
-                ensure!(source_for_destination.len() == self.task.as_ref().unwrap().audio_channels, "map exactly one source for each destination");
-                let Phase::Decoded(decoded) = std::mem::replace(&mut self.phase, Phase::Idle) else { bail!("no decoded audio") };
-                self.task.as_mut().unwrap().view.status = IoTaskStatus::Running; self.task.as_mut().unwrap().view.audio_channel_mapping = None;
-                self.task.as_mut().unwrap().mapping = Some(source_for_destination); self.inspect(decoded)?;
+                let t = self.task.as_ref().unwrap();
+                self.work(Work::Decode {
+                    kind: t.view.kind,
+                    bytes,
+                    rate: t.format.sample_rate,
+                })?;
             }
-            AppIntent::ConfirmAudioChannelSelection { task_id, channels } if self.matches(task_id) && matches!(self.phase, Phase::Captured(_)) => {
-                let Phase::Captured(image) = std::mem::replace(&mut self.phase, Phase::Idle) else { unreachable!() }; self.encode(image, channels)?;
+            AppIntent::ConfirmFormatConversion { task_id, accept }
+                if self.matches(task_id)
+                    && self.task.as_ref().unwrap().view.status
+                        == IoTaskStatus::AwaitingFormatConversionConfirmation =>
+            {
+                if !accept {
+                    self.finish(
+                        IoTaskStatus::Cancelled,
+                        "Format conversion declined; session unchanged",
+                    );
+                } else {
+                    self.current(state)?;
+                    let Phase::Decoded(decoded) = std::mem::replace(&mut self.phase, Phase::Idle)
+                    else {
+                        bail!("no decoded media")
+                    };
+                    self.task.as_mut().unwrap().view.status = IoTaskStatus::Running;
+                    self.convert(decoded)?;
+                }
+            }
+            AppIntent::ConfirmAudioChannelMapping {
+                task_id,
+                source_for_destination,
+            } if self.matches(task_id)
+                && self.task.as_ref().unwrap().view.status
+                    == IoTaskStatus::AwaitingChannelMapping =>
+            {
+                self.current(state)?;
+                ensure!(
+                    source_for_destination.len() == self.task.as_ref().unwrap().audio_channels,
+                    "map exactly one source for each destination"
+                );
+                let Phase::Decoded(decoded) = std::mem::replace(&mut self.phase, Phase::Idle)
+                else {
+                    bail!("no decoded audio")
+                };
+                self.task.as_mut().unwrap().view.status = IoTaskStatus::Running;
+                self.task.as_mut().unwrap().view.audio_channel_mapping = None;
+                self.task.as_mut().unwrap().mapping = Some(source_for_destination);
+                self.inspect(decoded)?;
+            }
+            AppIntent::ConfirmAudioChannelSelection { task_id, channels }
+                if self.matches(task_id) && matches!(self.phase, Phase::Captured(_)) =>
+            {
+                let Phase::Captured(image) = std::mem::replace(&mut self.phase, Phase::Idle) else {
+                    unreachable!()
+                };
+                self.encode(image, channels)?;
             }
             AppIntent::CancelIoTask { task_id } if self.matches(task_id) => {
-                if matches!(self.phase, Phase::Committed(_) | Phase::Output) { self.task.as_mut().unwrap().view.message = "Already handed off; awaiting the actual operation or file-output result".into(); }
-                else { self.finish(IoTaskStatus::Cancelled, "Cancelled before commit; session unchanged"); }
+                if matches!(self.phase, Phase::Unresolved) {
+                    self.finish(IoTaskStatus::Cancelled, "Discarded pending local scripts only; the prior musical outcome remains unknown");
+                    return Ok(());
+                }
+                if matches!(self.phase, Phase::Committed(_) | Phase::Output) {
+                    self.task.as_mut().unwrap().view.message =
+                        "Already handed off; awaiting the actual operation or file-output result"
+                            .into();
+                } else {
+                    self.finish(
+                        IoTaskStatus::Cancelled,
+                        "Cancelled before commit; session unchanged",
+                    );
+                }
             }
-            intent @ (AppIntent::FailIoTask { .. } | AppIntent::CompleteIoOutput { .. }) => self.complete_platform(intent),
-            AppIntent::FailIoWorkflow { kind, message } if self.task.as_ref().is_some_and(|t| t.view.kind == kind) && matches!(self.phase, Phase::Input) => self.finish(IoTaskStatus::Failed, message),
+            intent @ (AppIntent::FailIoTask { .. } | AppIntent::CompleteIoOutput { .. }) => {
+                self.complete_platform(intent)
+            }
+            AppIntent::FailIoWorkflow { kind, message }
+                if self.task.as_ref().is_some_and(|t| t.view.kind == kind)
+                    && matches!(self.phase, Phase::Input) =>
+            {
+                self.finish(IoTaskStatus::Failed, message)
+            }
             _ => {}
         }
         Ok(())
@@ -519,7 +690,12 @@ impl PersistenceIo for Provider {
             _ => {}
         }
     }
-    fn apply(&mut self, intent: AppIntent, state: &SessionSnapshot, scripts: bool) -> Result<()> {
+    fn apply(
+        &mut self,
+        intent: AppIntent,
+        state: &SessionSnapshot,
+        scripts: &mut shoop_scripting::ScriptManager,
+    ) -> Result<()> {
         if preview::Preview::handles(&intent) {
             return self.preview.apply(intent, state);
         }
@@ -540,6 +716,20 @@ impl PersistenceIo for Provider {
                 | AppIntent::ImportLoopMidiBytes { .. }
                 | AppIntent::GenerateClickTrack { .. }
         );
+        if matches!(self.phase, Phase::Unresolved)
+            && matches!(
+                intent,
+                AppIntent::RequestLoadSessionPicker
+                    | AppIntent::RequestLoadSessionUrl
+                    | AppIntent::RequestLoadSessionSource { .. }
+                    | AppIntent::LoadSessionBytes { .. }
+            )
+        {
+            self.finish(
+                IoTaskStatus::Failed,
+                "Discarded the prior local candidate; its musical outcome remains unknown",
+            );
+        }
         if starting && (!matches!(self.phase, Phase::Idle) || self.worker.is_some()) {
             bail!("another file workflow is still active");
         }
@@ -597,35 +787,52 @@ impl PersistenceIo for Provider {
         }
         Ok(())
     }
-    fn tick(&mut self, client: &mut Client, delivery: &mut dyn Delivery, session_scripts: bool) {
+    fn tick(
+        &mut self,
+        client: &mut Client,
+        delivery: &mut dyn Delivery,
+        scripts: &mut shoop_scripting::ScriptManager,
+    ) {
         self.preview.tick(client, delivery);
         let _span = tracing::trace_span!(
             "frontend.persistence.pump",
             task = self.task.as_ref().map_or(0, |t| t.view.id.raw())
         )
         .entered();
-        if session_scripts
-            && self.task.as_ref().is_some_and(|task| {
-                matches!(
-                    task.view.kind,
-                    IoTaskKind::SaveSession | IoTaskKind::LoadSession
-                )
-            })
-            && !matches!(
-                self.phase,
-                Phase::Idle | Phase::Committed(_) | Phase::Output
-            )
-        {
-            self.finish(
-                IoTaskStatus::Failed,
-                "Session-owned script persistence is still unavailable (P16)",
-            );
-        }
-        if let Err(error) = self.pump(client, delivery) {
-            self.finish(IoTaskStatus::Failed, error.to_string());
+        if let Err(error) = self.pump_scripts(client, delivery, scripts) {
+            if matches!(self.phase, Phase::Committed(_)) && self.prepared_scripts.is_some() {
+                self.messages.clear();
+                self.pending_cancel = None;
+                client.disconnect();
+                for script in scripts.states() {
+                    let _ = scripts.stop(script.id);
+                }
+                scripts.take_control_operations();
+                if let Some(task) = &mut self.task {
+                    task.view.message = format!("Commit delivery is uncertain ({error}); retaining local scripts inactive without replay");
+                }
+            } else {
+                self.finish(IoTaskStatus::Failed, error.to_string());
+            }
         }
     }
+    fn scripting_suspended(&self) -> bool {
+        self.prepared_scripts.is_some()
+            && matches!(
+                self.phase,
+                Phase::Staging | Phase::Ready | Phase::Committed(_) | Phase::Unresolved
+            )
+    }
+    fn take_installed_epoch(&mut self) -> Option<u64> {
+        self.installed_epoch.take()
+    }
     fn dismiss_completed(&mut self) {
+        if matches!(self.phase, Phase::Unresolved) {
+            self.finish(
+                IoTaskStatus::Failed,
+                "Discarded pending local scripts; the prior musical outcome remains unknown",
+            );
+        }
         if matches!(self.phase, Phase::Idle) {
             self.task = None;
         }

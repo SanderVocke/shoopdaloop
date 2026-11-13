@@ -18,6 +18,7 @@ use crate::Runtime;
 mod composite_roles;
 mod composites;
 mod input;
+mod scripts;
 
 const STEP_TIMEOUT: Duration = Duration::from_secs(30);
 const SYNC_RECORDING: Duration = Duration::from_millis(600);
@@ -70,6 +71,9 @@ enum Step {
     Cleared,
     Loaded,
     Resaving,
+    ScriptStarted,
+    ScriptConverted,
+    ScriptIncluded,
     RestoredPlayback,
     Input,
     InputFinished,
@@ -852,6 +856,17 @@ impl NewEngineSelfTest {
                 if first_loop(snapshot, ids.sync)?.mode != LoopMode::Playing {
                     return Err("clearing stopped the sync loop".to_owned());
                 }
+                let mut bundle = self.saved_bundle.as_ref().unwrap().clone();
+                scripts::fixture(&mut bundle)?;
+                self.saved_file = Some(Arc::new(
+                    shoop_session::encode_session_bounded(
+                        &bundle,
+                        "browser-p16-fixture",
+                        shoop_persistence_codec::codec::codec_limits(),
+                    )
+                    .map_err(|error| error.to_string())?,
+                ));
+                self.saved_bundle = Some(bundle);
                 send(AppIntent::LoadSessionBytes {
                     name: "browser-roundtrip.shoop".into(),
                     bytes: Arc::clone(self.saved_file.as_ref().unwrap()),
@@ -907,6 +922,7 @@ impl NewEngineSelfTest {
                 {
                     return Err("save/load changed timing windows".into());
                 }
+                scripts::stopped(snapshot)?;
                 self.ids.sync = Some((snapshot.tracks[0].id, snapshot.tracks[0].loops[0].id));
                 self.ids.audio = Some((snapshot.tracks[1].id, snapshot.tracks[1].loops[0].id));
                 self.ids.keys = Some((snapshot.tracks[2].id, snapshot.tracks[2].loops[0].id));
@@ -926,6 +942,42 @@ impl NewEngineSelfTest {
                 {
                     return Err("save/load/save changed recorded PCM or exact MIDI".into());
                 }
+                if before.scripts != after.scripts
+                    || before.document.scripts != after.document.scripts
+                {
+                    return Err("browser save/load/save changed client script resources".into());
+                }
+                send(AppIntent::RestartScript {
+                    script_id: scripts::script(snapshot)?.id,
+                })?;
+                Step::ScriptStarted
+            }
+            Step::ScriptStarted => {
+                if !scripts::image(snapshot)? {
+                    return Ok(None);
+                }
+                send(AppIntent::ConvertScriptKind {
+                    script_id: scripts::script(snapshot)?.id,
+                    kind: shoop_app_api::ScriptKind::Ephemeral,
+                })?;
+                Step::ScriptConverted
+            }
+            Step::ScriptConverted => {
+                let script = scripts::script(snapshot)?;
+                if script.kind != shoop_app_api::ScriptKind::Ephemeral {
+                    return Ok(None);
+                }
+                send(AppIntent::ConvertScriptKind {
+                    script_id: script.id,
+                    kind: shoop_app_api::ScriptKind::Session,
+                })?;
+                Step::ScriptIncluded
+            }
+            Step::ScriptIncluded => {
+                if scripts::script(snapshot)?.kind != shoop_app_api::ScriptKind::Session {
+                    return Ok(None);
+                }
+                scripts::stopped(snapshot)?;
                 send(AppIntent::Global(GlobalControlAction::SetSync(false)))?;
                 send(loop_intent(ids.audio, LoopAction::PlayClicked)?)?;
                 self.position = None;

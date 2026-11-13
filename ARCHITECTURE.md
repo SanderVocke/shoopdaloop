@@ -12,12 +12,19 @@
 ## Current application composition
 
 The [session recovery plan](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/PLAN_NATIVE_SESSION_RECOVERY.md) introduces the production
-application architecture. UI and Lua use `shoop_app_client`; `shoop_app` owns session
-state/admitted work; `shoop_rt_backend` is its engine adapter. `shoop_host` owns those
+application architecture. UI and Lua use `shoop_app_client`; `shoop_app` owns musical
+session state/admitted work; `shoop_rt_backend` is its engine adapter. `shoop_host` owns those
 components and a native RT host independently of external UIs. Typed local delivery
 uses the same contract. In the browser, client/service/Lua stay on the main thread
 and the RT engine stays in the AudioWorklet. Generic `shoop_transport*` carriers are
 shared below application and engine protocol lifecycles.
+
+The agreed [P16 contract](docs/native_session_recovery/p16-client-scripts.md) keeps
+script source, resources and execution client-owned. The client composes the saved
+project file from a backend musical capture and its own script additions, and sends
+only musical data on load. Backend reattachment recovers music, not another
+client's scripts. Bounded client archive workers and prepared, stopped installation
+implement this boundary; P16 qualification is tracked in the implementation plan.
 
 The RT engine is the sole production stack. Old application/engine/worklet code is
 isolated as development/reference evidence. Temporary feature gaps and their retained
@@ -923,3 +930,7 @@ snapshots/revisions, scoped to the active attachment, bounded and fair across
 sources. The client owns typed decoding and the Audio/Host profiling panels.
 See the [protocol contract](docs/profiling/protocol.md) and
 [profiling guide](docs/runtime_profiling.md) for capacities and measurement limits.
+
+Bounded storage-accounting values also live in `profiling_protocol`. The engine
+and application protocols reuse those neutral definitions; portable application
+code does not depend on the RT protocol to display memory usage.
