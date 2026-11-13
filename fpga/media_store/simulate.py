@@ -24,6 +24,8 @@ def main():
     parser.add_argument("--case", type=Path)
     parser.add_argument("--waves", action="store_true")
     parser.add_argument("--pipeline", action="store_true")
+    parser.add_argument("--statistics", action="store_true", help="run focused storage-counter checks")
+    parser.add_argument("--reuse-views", action="store_true", help="reuse invalid physical view descriptors (statistics only)")
     parser.add_argument("--read-buffers", type=int, default=4)
     parser.add_argument("--write-buffers", type=int, default=4)
     parser.add_argument("--response-cycles", type=int, default=1,
@@ -39,6 +41,10 @@ def main():
         memory_env = environment(args)
     except ValueError as error:
         parser.error(str(error))
+    if args.statistics and (args.pipeline or args.timing or args.config != "small" or args.metadata_pages != 2):
+        parser.error("statistics checks require --config small --metadata-pages 2 and no pipeline/timing")
+    if args.reuse_views and not args.statistics:
+        parser.error("--reuse-views requires --statistics")
     axi = args.memory_model != "legacy"
     if axi and args.response_cycles != 1:
         parser.error("--response-cycles is for --memory-model legacy; AXI fixed mode uses --memory-cycles")
@@ -74,7 +80,7 @@ def main():
         sources = [ROOT / "fpga/chunk_memory/rtl/chunk_ram.sv", ROOT / "fpga/chunk_memory/rtl/chunk_memory.sv",
                    HERE / "rtl/media_ram.sv", HERE / "rtl/metadata_cache.sv", HERE / "rtl/media_metadata.sv", HERE / "rtl/media_prefetch_resolver.sv", HERE / "rtl/media_store.sv"]
         parameters = dict(zip(("VIEWS", "SLOTS", "CHUNK_FRAMES"), capacities))
-        parameters.update(BLOCK_CHUNKS=args.block_chunks,TABLE_LINES=args.metadata_lines,REF_LINES=args.reference_lines,STACK_LINES=args.stack_lines)
+        parameters.update(REUSE_VIEWS=int(args.reuse_views), BLOCK_CHUNKS=args.block_chunks,TABLE_LINES=args.metadata_lines,REF_LINES=args.reference_lines,STACK_LINES=args.stack_lines)
         if args.metadata_pages is not None:parameters['TABLE_PAGES']=args.metadata_pages
         parameters.update(READ_BUFFERS=args.read_buffers, WRITE_BUFFERS=args.write_buffers)
         audio = (32, 16, 32, 32, 16, 2, 2) if name == "default" else (16, 8, 16, capacities[2], 8, 2, 2)
@@ -101,11 +107,14 @@ def main():
         block_test=args.block_chunks>1
         testcase=None if block_test else ['directed_pipeline','randomized_pipeline','pipeline_protocol','playback_stream_protocol'] if args.pipeline else None
         module=('test_block_audio' if args.pipeline else 'test_block_media') if block_test else ('test_media_pipeline' if args.pipeline else 'test_media_store')
+        if args.statistics:
+            module = 'test_media_statistics'
+            testcase = None
         result = runner.test(hdl_toplevel=top, test_module=module,
                              testcase=testcase, seed=args.seed,
                              test_dir=output, waves=args.waves, log_file=output / "simulation.log",
                              extra_env={"MEDIA_CAPACITIES": ",".join(map(str, capacities)),
-                                        "MEDIA_CONFIG": name,
+                                        "MEDIA_CONFIG": name, "MEDIA_REUSE_VIEWS": str(int(args.reuse_views)),
                                         "MEDIA_READ_BUFFERS": str(args.read_buffers), "MEDIA_WRITE_BUFFERS": str(args.write_buffers),
                                         "AUDIO_CAPACITIES": ",".join(map(str, audio)),
                                         "MEDIA_SEED": str(args.seed), "MEDIA_RANDOM_CASES": str(args.random_cases),
@@ -115,7 +124,7 @@ def main():
         if not result.is_file():
             raise SystemExit(f"No results; see {output / 'simulation.log'}")
         report = ET.parse(result).getroot()
-        if (len(list(report.iter("testcase"))) != (1 if block_test else 4 if args.pipeline else 3)
+        if (len(list(report.iter("testcase"))) != (1 if args.statistics or block_test else 4 if args.pipeline else 3)
                 or any(list(report.iter(tag)) for tag in ("failure", "error", "skipped"))):
             raise SystemExit(f"Media simulation failed; see {output / 'simulation.log'}")
         print(f"{name}: media store passed; results in {output}", flush=True)

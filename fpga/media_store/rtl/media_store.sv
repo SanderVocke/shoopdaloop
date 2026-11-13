@@ -83,6 +83,9 @@ module media_store #(
     reg [31:0] table_data, reference_data, free_data;
     reg [31:0] allocation_view;
     reg [31:0] view_count, slot_count, free_count, slot_limit;
+    reg [VIEWS-1:0] valid_views;
+    wire [31:0] views_used = REUSE_VIEWS != 0 ? 32'($countones(valid_views)) : view_count;
+    wire [31:0] metadata_pages_used;
     reg cfg_pending, cfg_result_valid, faulted, cfg_was_write;
     reg cfg_request_valid, cfg_request_write, cfg_request_in_range, cfg_request_value_valid;
     reg [2:0] cfg_request_space;
@@ -118,6 +121,7 @@ module media_store #(
     wire cfg_in_range = (cfg_space == 0) ? cfg_address < 4
         : (cfg_space == 1) ? cfg_address < 32'(VIEWS)
         : (cfg_space == 2) ? ((cfg_address >> SLOT_BITS) < 32'(VIEWS) && (cfg_address & ((32'd1 << SLOT_BITS)-1)) < 32'(BLOCKS))
+        : (cfg_space == 6) ? cfg_address < 2 && !cfg_write
         : (cfg_space == 5) ? cfg_address == 0 && cfg_write
         : ((cfg_space == 3) || (cfg_space == 4)) && (cfg_address < 32'(BLOCKS));
     wire cfg_value_valid = !cfg_write || (cfg_space == 1)
@@ -183,7 +187,7 @@ module media_store #(
     assign cfg_ready = !busy && !cfg_request_valid && !cfg_pending && !cfg_result_valid && !reset && advance;
     assign cfg_response_valid = cfg_result_valid && !reset;
     wire [159:0] cfg_result = (cfg_response_error || cfg_was_write) ? 160'b0
-        : (cfg_response_space == 0) ? cfg_globals_data
+        : ((cfg_response_space == 0) || (cfg_response_space == 6)) ? cfg_globals_data
         : (cfg_response_space == 1) ? descriptor_data
         : (cfg_response_space == 2) ? {128'b0, table_data}
         : (cfg_response_space == 3) ? {128'b0, reference_data} : {128'b0, free_data};
@@ -294,6 +298,7 @@ module media_store #(
         .request_view(metadata_request_view),.request_index(metadata_request_index),.request_data(metadata_request_data),
         .response_valid(metadata_valid),.response_ready(metadata_pending),
         .response_data(metadata_result),.response_error(metadata_result_error),.fault(metadata_fault),
+        .pages_used(metadata_pages_used),
         .memory_valid(memory_meta_valid),.memory_ready(memory_meta_ready),.memory_write(memory_meta_write),
         .memory_address(memory_meta_address),.memory_write_data(memory_meta_write_data),.memory_count(memory_meta_count),
         .memory_write_valid(memory_meta_write_valid),.memory_write_ready(memory_meta_write_ready),
@@ -411,7 +416,7 @@ module media_store #(
             error_code <= OK;
             result_view <= 0;
             result_empty <= 0;
-            view_count <= 0; allocation_view <= 0;
+            view_count <= 0; allocation_view <= 0; valid_views <= 0;
             slot_count <= 0;
             free_count <= 0;
             slot_limit <= 32'(BLOCKS);
@@ -455,6 +460,7 @@ module media_store #(
             arena_bound <= 0;
         end else begin
             done <= 0; cfg_pending <= 0;
+            if (descriptor_write && advance) valid_views[descriptor_write_address] <= descriptor_write_data[0];
             if (advance && metadata_error == 0) begin
             if (cm_command && cm_cmd_ready) arena_bound <= 1;
             if (hint_valid && hint_ready && hint_base_valid) begin
@@ -475,6 +481,11 @@ module media_store #(
                 cfg_was_write <= cfg_request_write;
                 cfg_response_space <= cfg_request_space;
                 cfg_response_error <= !cfg_request_in_range || !cfg_request_value_valid;
+                if (cfg_request_in_range && cfg_request_value_valid && (cfg_request_space == 6)) begin
+                    cfg_globals_data <= cfg_request_address == 0
+                        ? {views_used, 32'(TABLE_PAGES), metadata_pages_used, slot_limit, slot_count-free_count}
+                        : {32'(VIEWS), 32'(BLOCK_CHUNKS), 32'(CHUNK_FRAMES), ARENA_BYTES};
+                end
                 if (cfg_request_in_range && cfg_request_value_valid && (cfg_request_space == 0)) begin
                     case (cfg_request_address)
                         0: if (cfg_request_write) view_count <= cfg_request_data[31:0]; else cfg_globals_data <= {128'b0, view_count};

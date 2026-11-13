@@ -11,6 +11,7 @@ module media_metadata #(
     input wire [31:0] request_view, input wire [31:0] request_index, input wire [31:0] request_data,
     output wire response_valid, input wire response_ready,
     output reg [31:0] response_data, output reg [7:0] response_error, output wire fault,
+    output wire [31:0] pages_used,
     output wire memory_valid, input wire memory_ready, output wire memory_write,
     output wire [63:0] memory_address, output wire [31:0] memory_write_data, output wire [31:0] memory_count,
     output wire memory_write_valid, input wire memory_write_ready,
@@ -56,6 +57,7 @@ module media_metadata #(
     wire [191:0] bus_address;
     wire [95:0] bus_write_data, bus_count, bus_read_data;
     assign fault = |cache_fault;
+    assign pages_used = high_water - free_pages;
     assign request_ready = phase == IDLE && !reset && !fault;
     assign response_valid = phase == RESPONSE && !reset;
     assign memory_valid = bank < 3 && bus_valid[bank];
