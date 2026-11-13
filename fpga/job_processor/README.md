@@ -52,15 +52,20 @@ larger because of block-RAM granularity. Sample RAM contents are not reset.
 ## Arithmetic
 
 Samples/gains are raw signed Q8.24 i32 values. Mix uses a 33-bit sum and clamps
-to i32. Gain multiplies unsigned magnitudes using one registered 32x32 multiplier,
+to i32. Gain multiplies unsigned magnitudes using one pipelined 32x32 multiplier,
 drops 24 low product bits, reapplies the sign, and saturates. This truncates toward
 zero, including negative products smaller than one raw sample unit.
+Four registered 16x16 partial products feed a separate 64-bit assembly register.
+Operand preparation, multiplication, assembly and result scaling have separate
+timing boundaries.
 
 For a live ramp, initialization divides
 `abs(target - start) * elapsed / duration` to obtain the initial change/remainder,
 and `abs(target - start) / duration` for the step. The unsigned 64-bit product
 covers extreme i32 endpoints and u32 counters. Subsequent samples advance the
-quotient/remainder by addition, comparison, and subtraction. Descending ramps
+quotient/remainder by addition, comparison, and subtraction. The threshold
+`duration - step_remainder` is prepared once; each sample compares the current
+fraction against it and selects independently computed gain additions. Descending ramps
 subtract the magnitude, preserving Rust's truncation. At duration the gain is
 the exact target. Constant, zero-duration, and ended ramps skip the divisions.
 The job snapshot is immutable; the state processor advances ramps between quanta.
@@ -90,7 +95,9 @@ per active smoothing job. Per-sample addition and carry generate exactly
 including lengths shorter than Q and lengths that cross quantum boundaries.
 Each active sample uses the shared multiplier once to evaluate
 `anchor + trunc0((raw - anchor) * weight / 2^24)`, keeping the signed difference
-wide and clamping only the final result. At the end of the ramp, samples pass
+wide and clamping only the final result. Difference formation, magnitude
+conversion, multiplication, accumulation and final saturation are registered
+separately. At the end of the ramp, samples pass
 through exactly. This changes fixed-point rounding from the previous two-product
 crossfade; production Rust uses the same operation.
 
@@ -120,9 +127,9 @@ when both sources refer to the same buffer. No RAM port or multiplier is added.
 Both paths drain their last write before publishing destination readiness and
 accepting the next job. Reset clears validity; an asynchronous media fault
 aborts in-flight work and suppresses further stream writes. `job_enable` still
-gates admission only, leaving accepted streams running. For quantum Q, constant
-gain job intervals are Q+6 clocks and mix intervals are 2Q+4, including job
-handoffs. Live ramps retain the existing divider initialization before streaming.
+gates admission only, leaving accepted streams running. Job handoffs include
+descriptor validation and pipeline fill/drain cycles. Live ramps initialize the
+shared divider before streaming.
 
 ## Interfaces
 
@@ -135,6 +142,9 @@ other logical counts can be zero and must fit physical capacity. After admission
 it clears readiness and every logical output sample, then accepts exactly the
 declared number of 256-bit job descriptors. Packing is defined in
 `fpga/state_processor/README.md`. Jobs execute serially.
+Buffer and port checks are captured before dispatch. Admission checks full-width
+run inputs before storing frame, buffer and port counts at their capacity widths.
+Media positions use the configured chunk shift after validating the run geometry.
 
 `job_enable` gates ready during descriptor fetch. Tie it high normally, or low
 to pause acceptance. Accepted jobs finish normally. Producers retain valid/data
