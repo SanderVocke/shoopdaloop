@@ -106,3 +106,27 @@ Loop metrics count compiled instructions, state words and TP/media configuration
 payload separately from device configuration time. These are service-thread
 measurements, not ARM callback or FPGA worst-case deadline guarantees. See the
 simulator README for replayable queue-driven comparisons with production Q8.24.
+
+## Memory reporting
+
+After activation, `LoopAdapter::memory_report()` queries the device between
+quanta and returns the shared backend `MemoryReport`. The simulator reads actual
+RTL allocation counters through read-only configuration space 6; Rust does not
+infer occupancy from recording lengths or host leases. Sample storage is measured
+in bytes using the configured block geometry and logical limit. Metadata pages
+and view slots have independent capacities. Queries preserve the audio frame,
+media state, and compiled program, and are refused before activation or after an
+adapter fault. Unsupported device implementations can refuse the query.
+
+The FPGA report deliberately leaves the aggregate accounted byte count absent.
+The shared UI then displays the largest individual pool commitment as a percentage,
+with a resource breakdown in the tooltip/profiling view. This measures storage
+pressure, not a percentage of total RAM or remaining recording duration. Retained
+exports and unused block tails still occupy physical capacity.
+
+The mono replay includes these reports in each `result.json` frame's `memory`
+entry, with readable pool names, counts, limits, and `pressure_percent`. Readback
+advances device service clocks, not audio frames; replay clock totals include
+that diagnostic work. A host can poll at a lower rate such as 5 Hz. The existing
+mono adapter is still a queue-driven demonstrator; this change does not introduce
+an app-selectable FPGA backend or a physical board transport.

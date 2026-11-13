@@ -4791,6 +4791,7 @@ dependencies = [
  "serde",
  "shoop_loops",
  "shoop_rt_engine",
+ "shoop_rt_protocol",
  "shoop_wasm_test_support",
 ]
 

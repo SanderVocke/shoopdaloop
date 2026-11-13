@@ -339,4 +339,11 @@ eight named resources, each with units, used/reserved counts and an optional
 capacity. An absent capacity means no known fixed ceiling; it does not mean
 unlimited memory. Missing resources/footprints remain unavailable rather than
 being synthesized as zero. Counts are 64-bit integers on the wire; percentages
-are derived for display. This first implementation reports Rust storage only.
+are derived for display. The Rust reporter uses these fields for its prepared resource pools.
+
+A backend that reports bounded storage resources without an aggregate byte count
+uses the **MEM** headline for storage pressure: the highest individual commitment
+percentage. The tooltip and Memory section retain the separate resource limits.
+The FPGA mono adapter supplies this form of report from physical RTL allocators;
+its replay JSON also exposes the counters. The ordinary application still uses
+the Rust backend until an FPGA application-host integration is supplied.

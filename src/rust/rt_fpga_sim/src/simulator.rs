@@ -572,6 +572,26 @@ pub fn get<const N: usize>(words: &[u32; N], offset: usize, width: usize) -> u64
 }
 
 impl rt_fpga_adapter::looping::LoopDevice for Simulator<'_> {
+    fn memory_report(
+        &mut self,
+    ) -> Result<rt_fpga_adapter::memory::MemoryReport, rt_runtime::Error> {
+        if self.model.faulted != 0 {
+            return Err(rt_runtime::Error::Disconnected);
+        }
+        let result = (|| {
+            let usage = self.store_config(6, 0, None)?;
+            let geometry = self.store_config(6, 1, None)?;
+            Ok::<_, Box<dyn std::error::Error>>((usage, geometry))
+        })();
+        let (usage, geometry) = result.map_err(|error| {
+            self.last_error = Some(error.to_string());
+            rt_runtime::Error::Disconnected
+        })?;
+        if self.model.faulted != 0 {
+            return Err(rt_runtime::Error::Disconnected);
+        }
+        rt_fpga_adapter::memory::decode(self.frame(), usage, geometry)
+    }
     fn tp(
         &mut self,
         opcode: u8,

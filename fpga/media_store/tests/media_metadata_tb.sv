@@ -61,7 +61,9 @@ module media_metadata_tb #(parameter integer DATA_WIDTH = 64, parameter integer 
     wire [31:0] memory_read_data;
     wire [31:0] memory_meta_read_data;
     wire unused_sample = &{1'b0,memory_ready,memory_write_ready,memory_read_valid,memory_response_valid,memory_response_error,memory_read_data};
+    wire [31:0] unused_pages_used;
     media_metadata #(.VIEWS(4),.SLOTS(LARGE != 0 ? 512 : 256),.CHUNK_FRAMES(1),.TABLE_PAGES(LARGE != 0 ? 32 : 8),.TABLE_LINES(2),.REF_LINES(1),.STACK_LINES(1)) metadata (
+        .pages_used(unused_pages_used),
         .clk(clk),
         .reset(reset),
         .arena_base(64'h01000000),
