@@ -4,9 +4,9 @@ Individual ZedBoard measurements use Vivado 2021.1 and the
 `xc7z020clg484-1` device:
 
 ```sh
-python3 fpga/synthesis/subsystems.py state --vivado /path/to/vivado --output work/state-150
-python3 fpga/synthesis/subsystems.py job --vivado /path/to/vivado --output work/job-150
-python3 fpga/synthesis/subsystems.py memory --vivado /path/to/vivado --output work/memory-150
+python3 fpga/synthesis/subsystems.py state --threads 2 --vivado /path/to/vivado --output work/state-150
+python3 fpga/synthesis/subsystems.py job --threads 2 --vivado /path/to/vivado --output work/job-150
+python3 fpga/synthesis/subsystems.py memory --threads 2 --vivado /path/to/vivado --output work/memory-150
 ```
 
 Each run freezes its sources and timing context in an empty output directory,
@@ -65,10 +65,10 @@ smoothing use additional per-sample stages.
 | --- | --- | --- |
 | State processor | Capture run checks, state RAM operands, ramp elapsed sums and shared-loop responses before evaluation. | Admission and affected operand/loop operations take additional cycles. |
 | Job processor | Capture buffer/port checks, RAM samples and signed operands; register four 16x16 partial products before assembly and scaling. Prepare fraction thresholds and parallel gain additions. | Additional dispatch, fill/drain and arithmetic stages; Gain/Mix sample cadence is retained. |
-| Media store | Register metadata requirements after phase/configuration changes and buffer physical chunk commands. Separate sample Fence completion from metadata flushing. | One preparation cycle per phase/configuration transition and one per physical chunk command; active sample-stream cadence is retained. |
-| Metadata | Separate node counting, capacity arithmetic and capacity comparison. | Three planning stages before the initial tree walk for writes/capacity checks. |
+| Media store | Capture command checks, metadata requirements, append capacity and slice offsets. Buffer physical chunk commands and retain shared RAM results. Separate sample Fence completion from metadata flushing. | Additional admission/planning cycles, one preparation cycle per phase/configuration transition and one per physical chunk command; active sample-stream cadence is retained. |
+| Metadata | Capture root RAM and tag matches; separate tree checks, node counting, capacity arithmetic/comparison and trim decisions. Bound line/scan/tree-level counters. | Additional setup cycles per metadata/cache operation and trim iteration; sample-word cadence is retained. |
 | AXI | Capture logical addresses before offset mapping, then validate captured bounds before burst preparation. Validate endpoint commands after admission. | Additional descriptor/command setup cycles, independent of the number of sample beats. |
-| Prefetch/cache | Bound stored tags to physical capacity; register pressured/quiet writeback scheduling and maintenance grant/accounting paths. | Writeback scheduling and grant activation can begin one cycle later. |
+| Prefetch/cache | Bound physical IDs and progress counters; balance parallel replacement searches; stage hint validation and speculative directory updates. Reserve the sample RAM port by stream phase. Register maintenance grant/accounting eligibility. | Additional hint setup/directory cycles; writeback scheduling and grant activation can begin one cycle later. Demand stream cadence is retained. |
 
 The earlier integrated 100 MHz measurements retain their own frozen RTL
 and hashes. Their measured cycle counts predate these 150 MHz pipeline stages.

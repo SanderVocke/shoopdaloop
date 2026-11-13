@@ -82,6 +82,9 @@ unstalled reader receives one sample per clock. Issued and consumed indices are
 separate, so arbitrary stalls preserve data/last and completion follows the last
 accepted sample. A line stays pinned throughout the stream. Shared write-pool
 port arbitration also protects a pending RAM result while the output is stalled.
+The write-pool port remains reserved throughout a foreground read or write
+stream; unrelated fills resume when that stream releases it. Speculative read
+launches reserve their line before a separate directory-update stage.
 
 The demand and transfer FSMs run concurrently. Demand fills have priority. Dirty
 writeback runs after a quiet interval of `CHUNK_FRAMES+8` periods, or earlier for

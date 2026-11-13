@@ -27,8 +27,8 @@ module media_reclaimer #(
     reg budget_above_guard, budget_above_next;
     wire budget_permitted = maintenance_charge ? budget_above_next : budget_above_guard;
     assign maintenance_cycles = maintenance_count + 64'(maintenance_charge);
-    reg block_limited;
-    wire permitted = enable && (drain || (budget_permitted && (!block_limited || blocks_left != 0)));
+    reg block_limited, blocks_available;
+    wire permitted = enable && (drain || (budget_permitted && (!block_limited || blocks_available)));
     wire transaction_pending = phase == LOOKUP_WAIT || phase == REFERENCE_WAIT || phase == WRITE_WAIT
         || phase == RETIRE_WAIT || phase == ZERO_WAIT || phase == PUSH_WAIT || phase == TRIM_WAIT;
     wire maintenance_work = !reset && !fault && (lock_held || transaction_pending
@@ -56,6 +56,7 @@ module media_reclaimer #(
             active_block <= 0; lock_held <= 0; freed <= 0; released <= 0; fault <= 0;
             released_blocks <= 0; freed_blocks <= 0; maintenance_count <= 0; maintenance_charge <= 0;
             budget_above_guard <= 0; budget_above_next <= 0;
+            blocks_available <= 0;
         end else begin
             freed <= 0;
             maintenance_charge <= maintenance_work;
@@ -69,6 +70,7 @@ module media_reclaimer #(
                 budget_above_guard <= grant_cycles > 32'(GUARD_CYCLES);
                 budget_above_next <= grant_cycles > 32'(GUARD_CYCLES)+1;
                 blocks_left <= grant_blocks; block_limited <= grant_blocks != 0;
+                blocks_available <= grant_blocks != 0;
             end
             if (maintenance_charge) maintenance_count <= maintenance_count+1;
             case (phase)
@@ -110,6 +112,7 @@ module media_reclaimer #(
                     released_blocks <= released_blocks+1; released <= 0;
                     if (grant) blocks_left <= grant_blocks == 0 ? 0 : grant_blocks-1;
                     else if (blocks_left != 0) blocks_left <= blocks_left-1;
+                    blocks_available <= grant ? grant_blocks > 1 : blocks_left > 1;
                     phase <= IDLE;
                 end
                 FAULT: phase <= FAULT;

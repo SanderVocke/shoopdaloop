@@ -65,6 +65,9 @@ change. The frontend waits for this preparation before advancing or transferring
 samples; successive samples in the same phase retain their original cadence.
 Physical chunk commands pass through a one-entry register before cache admission.
 Fence drains sample buffers before a separate metadata-flush phase.
+Append capacity, slice offsets and terminal-sample decisions have separate
+register boundaries. Metadata captures root RAM results and tag matches before
+decoding; tree capacity and trim arithmetic are staged before their decisions.
 
 | Opcode | Operation | Operands | Result |
 | --- | --- | --- | --- |

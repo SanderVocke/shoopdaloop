@@ -20,18 +20,23 @@ module metadata_cache #(
 );
     localparam integer SHIFT = $clog2(LINE_WORDS*4);
     localparam integer WORD_BITS = $clog2(LINE_WORDS);
-    typedef enum logic [3:0] {IDLE, LOOKUP, ACCESS, RESULT, RESPONSE, ZERO,
+    localparam integer LINE_BITS = LINES < 2 ? 1 : $clog2(LINES);
+    localparam integer SCAN_BITS = $clog2(LINES+1);
+    typedef enum logic [3:0] {IDLE, MATCH, LOOKUP, ACCESS, RESULT, RESPONSE, ZERO,
         FILL_REQUEST, FILL_DATA, FILL_ACK, WRITE_REQUEST, WRITE_READ, WRITE_DATA, WRITE_ACK, SCAN} phase_t;
     phase_t phase;
     reg [LINES-1:0] valid, dirty;
+    reg [LINES-1:0] matched_lines;
     reg [63:0] tags [0:LINES-1];
     reg [63:0] address;
-    reg [31:0] payload, target, victim, scan;
+    reg [31:0] payload;
+    reg [LINE_BITS-1:0] target, victim;
+    reg [SCAN_BITS-1:0] scan;
     reg [WORD_BITS-1:0] index;
     reg [1:0] opcode;
     reg invalidate, flushing;
     reg hit;
-    reg [31:0] hit_line;
+    reg [LINE_BITS-1:0] hit_line;
     wire [63:0] tag = (address >> SHIFT) << SHIFT;
     wire [31:0] word_index = 32'((address-tag) >> 2);
     wire read_ram = phase == WRITE_READ || (phase == ACCESS && opcode == 0);
@@ -56,20 +61,20 @@ module metadata_cache #(
         || phase == WRITE_REQUEST || phase == WRITE_READ || phase == WRITE_DATA;
     media_ram #(.DEPTH(LINES*LINE_WORDS),.ADDR_BITS(ADDRESS_BITS)) data_ram (
         .clk(clk),.read_enable(read_ram),
-        .read_address(ADDRESS_BITS'(target*32'(LINE_WORDS)+(phase == ACCESS ? word_index : 32'(index)))),
+        .read_address(ADDRESS_BITS'(32'(target)*32'(LINE_WORDS)+(phase == ACCESS ? word_index : 32'(index)))),
         .read_data(ram_read),.write_enable(ram_write),
-        .write_address(ADDRESS_BITS'(target*32'(LINE_WORDS)+ram_index)),.write_data(ram_data)
+        .write_address(ADDRESS_BITS'(32'(target)*32'(LINE_WORDS)+ram_index)),.write_data(ram_data)
     );
     always @* begin
         hit = 0; hit_line = 0;
         for (integer i=0; i<LINES; i=i+1)
-            if (valid[i] && tags[i] == tag) begin hit = 1; hit_line = 32'(i); end
+            if (matched_lines[i]) begin hit = 1; hit_line = LINE_BITS'(i); end
     end
     initial if (LINES < 1 || LINE_WORDS < 2 || (LINE_WORDS & (LINE_WORDS-1)) != 0)
         $fatal(1,"Invalid metadata cache dimensions");
     always @(posedge clk) begin
         if (reset) begin
-            phase <= IDLE; valid <= 0; dirty <= 0; address <= 0; payload <= 0;
+            phase <= IDLE; valid <= 0; dirty <= 0; matched_lines <= 0; address <= 0; payload <= 0;
             target <= 0; victim <= 0; index <= 0; scan <= 0; opcode <= 0;
             invalidate <= 0; flushing <= 0; response_data <= 0; response_error <= 0; fault <= 0;
             hits <= 0; misses <= 0; fills <= 0; writebacks <= 0;
@@ -79,7 +84,11 @@ module metadata_cache #(
                     opcode <= request_opcode; address <= request_address; payload <= request_data;
                     invalidate <= request_invalidate; response_data <= 0; response_error <= 0;
                     flushing <= request_opcode == 3; scan <= 0;
-                    phase <= request_opcode == 3 ? SCAN : LOOKUP;
+                    phase <= request_opcode == 3 ? SCAN : MATCH;
+                end
+                MATCH: begin
+                    for (integer i=0; i<LINES; i=i+1) matched_lines[i] <= valid[i] && tags[i] == tag;
+                    phase <= LOOKUP;
                 end
                 LOOKUP: begin
                     index <= 0;
@@ -87,7 +96,7 @@ module metadata_cache #(
                         hits <= hits+1; target <= hit_line; phase <= opcode == 2 ? ZERO : ACCESS;
                     end else begin
                         misses <= misses+1; target <= victim;
-                        victim <= victim+1 == 32'(LINES) ? 0 : victim+1;
+                        victim <= victim == LINE_BITS'(LINES-1) ? 0 : victim+1'b1;
                         if (valid[victim] && dirty[victim]) phase <= BURST_MEMORY != 0 ? WRITE_REQUEST : WRITE_READ;
                         else begin
                             tags[victim] <= tag; valid[victim] <= 0;
@@ -133,15 +142,15 @@ module metadata_cache #(
                     else if (BURST_MEMORY == 0 && index != WORD_BITS'(LINE_WORDS-1)) begin index <= index+1'b1; phase <= WRITE_READ; end
                     else begin
                         writebacks <= writebacks+1; dirty[target] <= 0; index <= 0;
-                        if (flushing) begin valid[target] <= !invalidate; scan <= scan+1; phase <= SCAN; end
+                        if (flushing) begin valid[target] <= !invalidate; scan <= scan+1'b1; phase <= SCAN; end
                         else begin tags[target] <= tag; valid[target] <= 0; phase <= opcode == 2 ? ZERO : FILL_REQUEST; end
                     end
                 end
                 SCAN: begin
-                    if (scan == 32'(LINES)) phase <= RESPONSE;
-                    else if (valid[scan] && dirty[scan]) begin
-                        target <= scan; index <= 0; phase <= BURST_MEMORY != 0 ? WRITE_REQUEST : WRITE_READ;
-                    end else begin if (invalidate) valid[scan] <= 0; scan <= scan+1; end
+                    if (scan == SCAN_BITS'(LINES)) phase <= RESPONSE;
+                    else if (valid[LINE_BITS'(scan)] && dirty[LINE_BITS'(scan)]) begin
+                        target <= LINE_BITS'(scan); index <= 0; phase <= BURST_MEMORY != 0 ? WRITE_REQUEST : WRITE_READ;
+                    end else begin if (invalidate) valid[LINE_BITS'(scan)] <= 0; scan <= scan+1'b1; end
                 end
                 default: begin fault <= 1; response_error <= 1; phase <= RESPONSE; end
             endcase

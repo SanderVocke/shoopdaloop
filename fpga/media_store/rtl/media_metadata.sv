@@ -31,7 +31,7 @@ module media_metadata #(
     localparam [63:0] QUEUE_BASE = PAGE_BASE+64'(TABLE_PAGES)*64;
     typedef enum logic [5:0] {IDLE, ROOT_CAPTURE, ROOT, WALK, CHILD, ACCESS_DONE, PUBLISH, RESPONSE,
         CACHE_SEND, CACHE_WAIT, ALLOCATE, ALLOCATE_LINK, ALLOCATE_ZERO, ALLOCATE_ATTACH,
-        TRIM_NEXT, FREE_PAGE, FREE_LINK, SCAN_START, SCAN_WORD, SCAN_RESULT, FLUSH_NEXT,
+        TRIM_COUNT, TRIM_CHECK, TRIM_NEXT, FREE_PAGE, FREE_LINK, SCAN_START, SCAN_WORD, SCAN_RESULT, FLUSH_NEXT,
         CHECK_TREE, COUNT_NODES, CAPACITY, CHECK_CAPACITY, DETACH_ROOT, DETACH_COUNT, DETACH_COMMIT,
         GC_ROOT, GC_COUNT, GC_WALK, GC_SAVE_ROOT, GC_SAVE_COUNT, GC_COMMIT} phase_t;
     phase_t phase, resume;
@@ -56,6 +56,8 @@ module media_metadata #(
     reg [31:0] path_page [0:LEVELS-1];
     reg [63:0] path_address [0:LEVELS-1];
     reg [31:0] trim_count, trim_start;
+    reg [31:0] trim_used_pages, trim_requested_pages;
+    reg trim_finished;
     reg root_exists, checked;
     reg [3:0] opcode;
     reg [1:0] bank, cache_opcode;
@@ -133,6 +135,7 @@ module media_metadata #(
             root <= 0; used <= 0; page <= 0; level <= 0; high_water <= 0; free_head <= 0; free_pages <= 0;
             invalid_tree_request <= 0; invalid_read_extent <= 0; invalid_write_extent <= 0; cached_leaf_match <= 0;
             allocated <= 0; parent_page <= 0; cached_leaf <= 0; cached_index <= 0; parent_address <= 0; trim_count <= 0; trim_start <= 0;
+            trim_used_pages <= 0; trim_requested_pages <= 0; trim_finished <= 0;
             new_count <= 0; required_nodes <= 0; existing_nodes <= 0;
             retired_head <= 0; retired_tail <= 0; retired_count <= 0; retired_high_water <= 0;
             retired_references <= 0; pages_freed <= 0; gc_root <= 0; gc_used <= 0; gc_loaded <= 0;
@@ -173,7 +176,7 @@ module media_metadata #(
                         if (!gc_loaded || gc_used == 0) begin response_error <= 2; phase <= RESPONSE; end
                         else begin
                             root <= gc_root; used <= gc_used; cached_leaf <= 0;
-                            trim_count <= gc_used-1; phase <= TRIM_NEXT;
+                            trim_count <= gc_used-1; phase <= TRIM_COUNT;
                         end
                     end else if (opcode == 13) begin
                         if (ordinal >= 32'(RETIRED_TABLES)*16) begin response_error <= 1; phase <= RESPONSE; end
@@ -231,7 +234,7 @@ module media_metadata #(
                     end else if (invalid_read_extent) begin response_error <= 1; phase <= RESPONSE; end
                     else if (invalid_write_extent) begin response_error <= 4; phase <= RESPONSE; end
                     else if (opcode == 7) phase <= RESPONSE;
-                    else if (opcode == 6) begin trim_count <= ordinal; phase <= TRIM_NEXT; end
+                    else if (opcode == 6) begin trim_count <= ordinal; phase <= TRIM_COUNT; end
                     else if (!checked && cached_leaf_match) begin
                         page <= cached_leaf; level <= 0;
                     end else if (page == 0) begin
@@ -319,8 +322,13 @@ module media_metadata #(
                     if (cache_error[bank]) begin response_error <= 5; phase <= RESPONSE; end
                     else phase <= resume;
                 end
+                TRIM_COUNT: begin
+                    trim_used_pages <= (used+15) >> 4; trim_requested_pages <= (trim_count+15) >> 4;
+                    phase <= TRIM_CHECK;
+                end
+                TRIM_CHECK: begin trim_finished <= trim_used_pages <= trim_requested_pages; phase <= TRIM_NEXT; end
                 TRIM_NEXT: begin
-                    if (((used+15) >> 4) <= ((trim_count+15) >> 4)) begin used <= trim_count; phase <= PUBLISH; end
+                    if (trim_finished) begin used <= trim_count; phase <= PUBLISH; end
                     else begin
                         ordinal <= ((used-1) >> 4) << 4; trim_start <= ((used-1) >> 4) << 4;
                         page <= root; level <= LEVEL_BITS'(LEVELS-1); parent_page <= 0;
@@ -336,14 +344,14 @@ module media_metadata #(
                 FREE_PAGE: access_cache(0,1,page_address(page),free_head,FREE_LINK);
                 FREE_LINK: begin
                     free_head <= page; free_pages <= free_pages+1; pages_freed <= pages_freed+1;
-                    if (32'(level)+1 == 32'(LEVELS)) begin root <= 0; used <= trim_start; phase <= TRIM_NEXT; end
+                    if (32'(level)+1 == 32'(LEVELS)) begin root <= 0; used <= trim_start; phase <= TRIM_COUNT; end
                     else begin
                         page <= path_page[32'(level)+1]; level <= level+1'b1;
                         if (((ordinal >> ((32'(level)+1)*4)) & 15) == 0) phase <= FREE_PAGE;
                         else access_cache(0,1,path_address[32'(level)+1],0,SCAN_RESULT);
                     end
                 end
-                SCAN_RESULT: begin used <= trim_start; phase <= TRIM_NEXT; end
+                SCAN_RESULT: begin used <= trim_start; phase <= TRIM_COUNT; end
                 FLUSH_NEXT: begin
                     if (bank == 3) phase <= RESPONSE;
                     else access_cache(bank,3,0,0,SCAN_WORD);

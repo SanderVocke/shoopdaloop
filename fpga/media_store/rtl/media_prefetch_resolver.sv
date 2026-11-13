@@ -16,7 +16,7 @@ module media_prefetch_resolver #(
     localparam integer SHIFT = $clog2(CHUNK_FRAMES);
     localparam integer BLOCK_SHIFT = $clog2(BLOCK_CHUNKS);
     localparam integer SLOT_BITS = (SLOTS < 2) ? 1 : $clog2(SLOTS);
-    typedef enum logic [2:0] { IDLE, DESCRIPTOR_REQUEST, DESCRIPTOR_WAIT, DESCRIPTOR_CAPTURE,
+    typedef enum logic [2:0] { IDLE, HINT_CHECK, DESCRIPTOR_REQUEST, DESCRIPTOR_WAIT, DESCRIPTOR_CAPTURE,
         TABLE_REQUEST, TABLE_WAIT, SEND } phase_t;
     phase_t phase;
     reg [31:0] view_index, remaining, first_offset, chunk;
@@ -27,6 +27,7 @@ module media_prefetch_resolver #(
     reg descriptor_valid_value;
     reg [31:0] descriptor_offset;
     reg [63:0] descriptor_frames;
+    reg hint_shape_valid;
     wire unused_descriptor = &{1'b0,descriptor_data[159:128],descriptor_data[31:1]};
     wire [63:0] absolute_sample = {32'b0,first_offset} + cursor;
     wire [31:0] chunk_left = 32'(CHUNK_FRAMES) - (absolute_sample[31:0] & 32'(CHUNK_FRAMES-1));
@@ -47,12 +48,16 @@ module media_prefetch_resolver #(
             first_offset <= 0; chunk <= 0; cursor <= 0; length <= 0;
             until_wrap <= 0; span_contiguous <= 0; span <= 0; wraps <= 0;
             descriptor_valid_value <= 0; descriptor_offset <= 0; descriptor_frames <= 0;
+            hint_shape_valid <= 0;
         end else case (phase)
-            IDLE: if (hint_valid && hint_ready && hint_view < {32'b0,view_count}
-                && hint_length != 0 && hint_position < hint_length && hint_count != 0) begin
+            IDLE: begin
                 view_index <= hint_view[31:0]; cursor <= hint_position;
-                length <= hint_length; remaining <= hint_count; phase <= DESCRIPTOR_REQUEST;
+                length <= hint_length; remaining <= hint_count;
+                hint_shape_valid <= hint_view < {32'b0,view_count}
+                    && hint_length != 0 && hint_position < hint_length && hint_count != 0;
+                if (hint_valid && hint_ready) phase <= HINT_CHECK;
             end
+            HINT_CHECK: phase <= hint_shape_valid ? DESCRIPTOR_REQUEST : IDLE;
             DESCRIPTOR_REQUEST: if (descriptor_ready) phase <= DESCRIPTOR_WAIT;
             DESCRIPTOR_WAIT: if (descriptor_response) begin
                 descriptor_offset <= descriptor_data[63:32]; descriptor_frames <= descriptor_data[127:64];

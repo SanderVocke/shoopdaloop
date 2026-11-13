@@ -74,8 +74,8 @@ module media_store #(
     localparam [63:0] ARENA_BYTES = (((64'(SLOTS)*64'(CHUNK_FRAMES)+15)/16)*16 + 2*((64'(BLOCKS)+15)/16)*16 + 64'(TABLE_PAGES)*16+64'(RETIRED_TABLES)*16)*4;
     typedef enum logic [5:0] {
         IDLE, ADMIT, DESCRIPTOR_READ, DESCRIPTOR_RESULT, CHECK, FREE_VIEW_READ, FREE_VIEW_RESULT,
-        APPEND_END, APPEND_CHUNKS, APPEND_REQUIRED, APPEND_GROWTH, APPEND_EXTENT, APPEND_CHECK,
-        SLICE_START, SLICE_END, SLICE_CHUNKS, SLICE_CHECK, SLICE_CAPACITY, RECLAIM_END, RECLAIM_FRAMES, RECLAIM_CHECK,
+        APPEND_END, APPEND_CHUNKS, APPEND_REQUIRED, APPEND_GROWTH, APPEND_EXTENT, APPEND_VALIDATE, APPEND_CHECK,
+        SLICE_START, SLICE_OFFSET, SLICE_END, SLICE_CHUNKS, SLICE_CHECK, SLICE_CAPACITY, RECLAIM_END, RECLAIM_FRAMES, RECLAIM_CHECK,
         TABLE_READ, TABLE_RESULT, REF_READ, REF_RESULT, UPDATE_REFERENCE,
         BEGIN_CREATE, PUBLISH, DETACH_ROOT, DRAIN_WAIT, ALLOCATE, FREE_RESULT, ALLOCATE_WRITE,
         ZERO_REQUEST, ZERO_DATA, ZERO_WAIT, SAMPLE_TABLE_READ,
@@ -109,6 +109,8 @@ module media_store #(
     reg admission_view_greater, admission_view_at_end, admission_view_outside, admission_view_full;
     reg [31:0] view_index, count, index, first_chunk, remaining, append_index;
     reg [31:0] chunk, sample_block, sample_index;
+    reg [31:0] sample_last;
+    reg samples_finished;
     reg [SPAN_BITS-1:0] zero_index;
     reg [SPAN_BITS-1:0] span_count, span_index;
     reg [OFFSET_BITS-1:0] sample_offset;
@@ -124,8 +126,9 @@ module media_store #(
     reg [63:0] absolute_start, slice_available, slice_end;
     reg slice_out_of_bounds;
     reg [63:0] append_end, append_chunks, required_chunks, growth, append_extent;
+    reg append_capacity_ok;
     wire [63:0] absolute_sample = {32'b0, offset} + cursor;
-    wire [31:0] range_offset = (length == 0) ? 32'b0 : (absolute_start[31:0] & 32'(BLOCK_FRAMES-1));
+    reg [31:0] range_offset;
     reg [63:0] range_chunks;
     reg [63:0] retained_end;
     reg [63:0] retained_frames;
@@ -353,8 +356,7 @@ module media_store #(
     reg [3:0] metadata_opcode;
     reg [31:0] metadata_view, metadata_index, metadata_data;
     reg [1:0] metadata_selected;
-    wire checking = (phase == APPEND_CHECK && count != 0 && !descriptor[1]
-        && append_chunks <= {32'b0,slot_limit} && append_extent <= {32'b0,slot_limit})
+    wire checking = (phase == APPEND_CHECK && count != 0 && !descriptor[1] && append_capacity_ok)
         || phase == SLICE_CAPACITY;
     wire trimming = phase == PUBLISH && opcode == RECLAIM;
     wire detaching = phase == DETACH_ROOT;
@@ -571,6 +573,7 @@ module media_store #(
             append_index <= 0;
             chunk <= 0; sample_block <= 0;
             sample_index <= 0;
+            sample_last <= 0; samples_finished <= 0;
             zero_index <= 0;
             span_count <= 0; span_index <= 0;
             sample_offset <= 0;
@@ -586,12 +589,15 @@ module media_store #(
             new_frames <= 0;
             absolute_start <= 0; slice_available <= 0; slice_end <= 0; slice_out_of_bounds <= 0;
             append_end <= 0; append_chunks <= 0; required_chunks <= 0; growth <= 0; append_extent <= 0;
+            append_capacity_ok <= 0;
             range_chunks <= 0; retained_end <= 0; retained_frames <= 0;
+            range_offset <= 0;
             length_last <= 0; span_until_wrap <= 0; span_contiguous <= 0;
             fresh <= 0;
             arena_bound <= 0;
         end else begin
             done <= 0;
+            if (cfg_pending) cfg_read_data <= cfg_result;
             if (descriptor_write && advance) valid_views[descriptor_write_address] <= descriptor_write_data[0];
             if (advance && metadata_error == 0) begin
             if (cm_command && cm_cmd_ready) arena_bound <= 1;
@@ -607,7 +613,6 @@ module media_store #(
             end
             cfg_pending <= cfg_request_valid;
             cfg_result_valid <= cfg_pending;
-            if (cfg_pending) cfg_read_data <= cfg_result;
             if (cfg_request_valid) begin
                 cfg_globals_data <= 0;
                 cfg_was_write <= cfg_request_write;
@@ -664,6 +669,7 @@ module media_store #(
                     result_empty <= 0;
                     index <= 0;
                     sample_index <= 0;
+                    sample_last <= cmd_count-1'b1; samples_finished <= 0;
                     if (manual_grant) begin done <= 1; phase <= IDLE; end
                     else phase <= ADMIT;
                 end
@@ -746,9 +752,13 @@ module media_store #(
                     growth <= required_chunks > {32'b0,free_count} ? required_chunks-{32'b0,free_count} : 64'b0;
                     phase <= APPEND_EXTENT;
                 end
-                APPEND_EXTENT: begin append_extent <= {32'b0,slot_count}+growth; phase <= APPEND_CHECK; end
+                APPEND_EXTENT: begin append_extent <= {32'b0,slot_count}+growth; phase <= APPEND_VALIDATE; end
+                APPEND_VALIDATE: begin
+                    append_capacity_ok <= append_chunks <= {32'b0,slot_limit} && append_extent <= {32'b0,slot_limit};
+                    phase <= APPEND_CHECK;
+                end
                 APPEND_CHECK: begin
-                    if (append_chunks > {32'b0,slot_limit} || append_extent > {32'b0,slot_limit}) begin
+                    if (!append_capacity_ok) begin
                         error_code <= MEMORY_FULL; phase <= FINISH;
                     end else if (count == 0) phase <= FINISH;
                     else begin
@@ -761,6 +771,10 @@ module media_store #(
                     slice_out_of_bounds <= start > frames;
                     slice_available <= frames-start;
                     absolute_start <= {32'b0,offset}+start;
+                    phase <= SLICE_OFFSET;
+                end
+                SLICE_OFFSET: begin
+                    range_offset <= length == 0 ? 32'b0 : (absolute_start[31:0] & 32'(BLOCK_FRAMES-1));
                     phase <= SLICE_END;
                 end
                 SLICE_END: begin slice_end <= {32'b0,range_offset}+length; phase <= SLICE_CHUNKS; end
@@ -877,6 +891,7 @@ module media_store #(
                 end
                 SAMPLE_DATA: if ((cm_data_read && cm_read_valid && read_ready) || (cm_data_write && write_valid && cm_write_ready)) begin
                     sample_index <= sample_index + 1;
+                    samples_finished <= sample_index == sample_last;
                     span_index <= span_index+1'b1;
                     cursor <= opcode == READ && cursor == length_last ? 64'b0 : cursor+1;
                     if (span_index+1'b1 == span_count) phase <= SAMPLE_WAIT;
@@ -886,7 +901,7 @@ module media_store #(
                         error_code <= cm_response_error; phase <= FINISH;
                         faulted <= 1;
                     end
-                    else phase <= sample_index == count ? (opcode == READ ? FINISH : PUBLISH) : SAMPLE_TABLE_READ;
+                    else phase <= samples_finished ? (opcode == READ ? FINISH : PUBLISH) : SAMPLE_TABLE_READ;
                 end
                 RETIRE_REQUEST: if (cm_cmd_ready) phase <= RETIRE_WAIT;
                 RETIRE_WAIT: if (cm_response_valid) begin
