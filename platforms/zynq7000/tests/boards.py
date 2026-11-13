@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise board isolation, memory admission and the shared C boot record ABI."""
 import copy
+import importlib.util
 import json
 from pathlib import Path
 import subprocess
@@ -18,6 +19,29 @@ from layout import header
 
 
 class Contracts(unittest.TestCase):
+    def test_fpga_trace_rejects_memory_overcommit_before_building(self):
+        result = subprocess.run([sys.executable, PLATFORM / "build.py", "--app", "host", "--board", "zedboard",
+                                 "--fpga", "--fpga-trace", "2000000"], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("remaining Rust memory budget", result.stderr)
+
+    def test_fpga_arena_is_outside_the_heap_and_builds_are_isolated(self):
+        board = boards.load("zedboard", fpga=True)
+        self.assertEqual((board.heap_end, board.arena_bytes), (0x17800000, 8 * boards.MIB))
+        self.assertNotEqual(board.build_dir(Path("/tmp")), boards.load("zedboard").build_dir(Path("/tmp")))
+        self.assertIn("#define SHOOP_RUST_END 0x17800000u", board.header())
+        self.assertIn("#define SHOOP_FPGA_ARENA_BASE 0x17800000u", board.header())
+        with self.assertRaisesRegex(ValueError, "no FPGA arena"):
+            boards.load("qemu", fpga=True)
+        spec = importlib.util.spec_from_file_location("zedboard_host", PLATFORM.parents[1] / "fpga/zedboard/configure_host.py")
+        host = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(host)
+        with tempfile.TemporaryDirectory() as temporary:
+            configured = host.configure(temporary)
+            self.assertEqual(configured["arena_base"], board.heap_end)
+            self.assertLessEqual(configured["arena_bytes"], board.arena_bytes)
+            self.assertIn(f".PHYSICAL_BASE(32'h{board.heap_end:08x})", configured["top"].read_text())
+
     def test_reference_layout_and_zedboard_fit(self):
         reference, zed = boards.load(), boards.load("zedboard")
         self.assertEqual((reference.platform_end, reference.rust_end, reference.stage, reference.loader_min),

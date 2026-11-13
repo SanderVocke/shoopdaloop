@@ -11,6 +11,7 @@ workspace = true
 fixture = []
 usb-midi = []
 fpga = ["dep:rt_fpga_adapter"]
+fpga-trace = ["fpga"]
 
 [dependencies]
 profiling_protocol = { path = "../profiling_protocol" }

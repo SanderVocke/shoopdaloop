@@ -72,7 +72,10 @@ mod fpga {
             unsafe { core::ptr::write_volatile((BRIDGE + offset as usize) as *mut u32, value) }
         }
     }
+    #[cfg(not(feature = "fpga-trace"))]
     pub type Device = Bridge<Mmio>;
+    #[cfg(feature = "fpga-trace")]
+    pub type Device = Bridge<rt_fpga_adapter::bridge::trace::RecordingBus<Mmio>>;
 
     fn read(address: usize) -> u32 {
         unsafe { core::ptr::read_volatile(address as *const u32) }
@@ -91,7 +94,10 @@ mod fpga {
         for section in (crate::FPGA_ARENA_BASE..end).step_by(1 << 20) {
             unsafe { Xil_SetTlbAttributes(section as usize, NORM_NONCACHE) };
         }
-        let bridge = Bridge::new(Mmio)?;
+        let bus = Mmio;
+        #[cfg(feature = "fpga-trace")]
+        let bus = rt_fpga_adapter::bridge::trace::RecordingBus::new(bus, crate::FPGA_TRACE_RECORDS);
+        let bridge = Bridge::new(bus)?;
         if bridge.physical_base() != crate::FPGA_ARENA_BASE {
             return Err(format!(
                 "bitstream arena {:#x} differs from the reserved {:#x}",
@@ -642,6 +648,10 @@ impl StoppedDummy {
 }
 unsafe fn retire_render(owner: *mut c_void) -> StoppedDummy {
     let dummy = Box::from_raw(owner.cast::<Dummy>());
+    #[cfg(feature = "fpga-trace")]
+    let mut dummy = dummy;
+    #[cfg(feature = "fpga-trace")]
+    let _ = dummy.fpga.device_mut().counters();
     #[cfg(feature = "fpga")]
     log("SHOOP_FPGA_RENDER_STOPPED\n");
     #[cfg(not(feature = "fpga"))]
@@ -770,6 +780,8 @@ pub fn run() {
     let owner = Box::into_raw(dummy).cast::<c_void>();
     let mut render_owner = Some(owner);
     let mut stopped_owner: Option<StoppedDummy> = None;
+    #[cfg(feature = "fpga-trace")]
+    let mut fpga_capture = None;
     unsafe {
         shoop_start_render(owner);
     }
@@ -949,6 +961,10 @@ pub fn run() {
                 render_cleaned = render_cleaned
                     || (cleanup == 1 && stopped_owner.as_mut().is_some_and(StoppedDummy::cleanup));
                 if render_cleaned {
+                    #[cfg(feature = "fpga-trace")]
+                    if let Some(stopped) = stopped_owner.as_mut() {
+                        fpga_capture = Some(stopped.fpga.device_mut().bus_mut().take_capture());
+                    }
                     stopped_owner.take();
                 }
                 let cleaned = render_cleaned
@@ -995,6 +1011,10 @@ pub fn run() {
         }
     }
     log("SHOOP_HOST_STOPPED\n");
+    #[cfg(feature = "fpga-trace")]
+    if let Some(capture) = fpga_capture {
+        capture.dump(&mut TerminalLog).expect("FPGA trace dump");
+    }
     unsafe {
         shoop_memory_report();
     }

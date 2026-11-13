@@ -9,10 +9,13 @@ use rt_fpga_adapter::port::PortIo;
 struct DirectTop;
 #[verilog(src = "rtl/marlin_bridge.sv", name = "marlin_bridge_external")]
 struct ExternalTop;
+#[verilog(src = "rtl/marlin_bridge.sv", name = "marlin_bridge_board")]
+struct BoardTop;
 
 enum Top<'ctx> {
     Direct(DirectTop<'ctx>),
     External(ExternalTop<'ctx>),
+    Board(BoardTop<'ctx>),
 }
 
 macro_rules! pins {
@@ -20,6 +23,7 @@ macro_rules! pins {
         match $top {
             Top::Direct($model) => $body,
             Top::External($model) => $body,
+            Top::Board($model) => $body,
         }
     };
 }
@@ -43,6 +47,16 @@ impl<'ctx> MarlinBus<'ctx> {
         } else {
             Top::Direct(runtime.create_model::<DirectTop>(&config)?)
         };
+        Ok(Self::initialize(top))
+    }
+    /// Uses the board's arena address and core-generated audio for firmware trace replay.
+    pub fn board(runtime: &'ctx VerilatorRuntime) -> SimResult<Self> {
+        let config = VerilatedModelConfig::default();
+        Ok(Self::initialize(Top::Board(
+            runtime.create_model::<BoardTop>(&config)?,
+        )))
+    }
+    fn initialize(top: Top<'ctx>) -> Self {
         let mut bus = Self {
             top,
             cycles: 0,
@@ -61,7 +75,7 @@ impl<'ctx> MarlinBus<'ctx> {
         bus.cycle();
         pins!(&mut bus.top, |m| m.reset = 0);
         bus.cycle();
-        Ok(bus)
+        bus
     }
     fn cycle(&mut self) {
         pins!(&mut self.top, |m| {

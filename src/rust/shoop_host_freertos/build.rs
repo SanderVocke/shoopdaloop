@@ -42,12 +42,14 @@ fn main() {
     };
     let arena_base = address("SHOOP_FPGA_ARENA_BASE");
     let arena_bytes = address("SHOOP_FPGA_ARENA_BYTES");
+    let trace_records = setting("SHOOP_FPGA_TRACE_RECORDS", 1_048_576);
+    assert!((1..=4_194_304).contains(&trace_records));
     assert!(arena_base.is_multiple_of(1024 * 1024) && arena_bytes.is_multiple_of(1024 * 1024));
     let output = PathBuf::from(env::var_os("OUT_DIR").unwrap()).join("memory.rs");
     fs::write(
         output,
         format!(
-            "pub const FPGA_ARENA_BASE: u32 = {arena_base};\npub const FPGA_ARENA_BYTES: u32 = {arena_bytes};\npub const RECORDING_BYTES: usize = {recording};\npub const MEDIA_BYTES: u64 = {media};\npub const ENGINE_TRACKS: u32 = {tracks};\npub const ENGINE_LOOPS: u32 = {loops};\npub const INPUT_HISTORY: shoop_rt_protocol::host::InputHistorySettings = shoop_rt_protocol::host::InputHistorySettings {{ seconds: {seconds}, audio_take_pages: {audio_take_pages}, midi_pages: {midi_pages}, midi_records: {midi_records}, writers: {writers} }};\n"
+            "pub const FPGA_ARENA_BASE: u32 = {arena_base};\npub const FPGA_ARENA_BYTES: u32 = {arena_bytes};\npub const FPGA_TRACE_RECORDS: usize = {trace_records};\npub const RECORDING_BYTES: usize = {recording};\npub const MEDIA_BYTES: u64 = {media};\npub const ENGINE_TRACKS: u32 = {tracks};\npub const ENGINE_LOOPS: u32 = {loops};\npub const INPUT_HISTORY: shoop_rt_protocol::host::InputHistorySettings = shoop_rt_protocol::host::InputHistorySettings {{ seconds: {seconds}, audio_take_pages: {audio_take_pages}, midi_pages: {midi_pages}, midi_records: {midi_records}, writers: {writers} }};\n"
         ),
     )
     .unwrap();

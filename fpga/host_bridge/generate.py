@@ -2,6 +2,7 @@
 """Generate the CPU host bridge top and its register map from the canonical AXI pipeline."""
 import argparse
 import importlib.util
+import json
 from pathlib import Path
 import re
 
@@ -28,6 +29,9 @@ PROFILE = dict(REUSE_VIEWS=1, LOOP_DEPTH=4, REQUEST_DEPTH=32, EVENT_DEPTH=64, PR
                RETIRED_TABLES=256, AXI_DATA_WIDTH=64)
 PROFILE['TABLE_PAGES'] = (2*PROFILE['SLOTS']//PROFILE['BLOCK_CHUNKS']+14)//15 + 8*PROFILE['VIEWS'] + 16
 SIMULATION_BASE = 0x01000000
+BOARD = json.loads((ROOT/'platforms/zynq7000/boards/zedboard.json').read_text())
+BOARD_BASE = (BOARD['memory']['platform_mib'] + BOARD['memory']['rust_mib']
+              - BOARD['fpga']['arena_mib'])*1024*1024
 
 
 def arena_bytes():
@@ -52,9 +56,12 @@ AXI_LITE_PORTS = '''input wire [11:0] s_axi_awaddr, input wire s_axi_awvalid, ou
 
 def marlin_top():
     words = arena_bytes()//4
+    parameters = profile_parameters(0, SIMULATION_BASE).replace('.EXTERNAL_IO(0)', '.EXTERNAL_IO(EXTERNAL_IO)')
+    parameters = parameters.replace(f".PHYSICAL_BASE(32'h{SIMULATION_BASE:08x})", '.PHYSICAL_BASE(PHYSICAL_BASE)')
     return f'''// Generated Marlin top for the CPU host bridge; do not edit by hand.
 // The shared core profile behind the AXI-lite register map, with a functional DDR model.
-module marlin_bridge #(parameter integer EXTERNAL_IO = 0) (
+module marlin_bridge #(parameter integer EXTERNAL_IO = 0,
+    parameter [31:0] PHYSICAL_BASE = 32'h{SIMULATION_BASE:08x}) (
     input wire clk, input wire reset, output wire irq,
     {AXI_LITE_PORTS}
 );
@@ -68,7 +75,7 @@ module marlin_bridge #(parameter integer EXTERNAL_IO = 0) (
     wire m_axi_arvalid, m_axi_arready, m_axi_rlast, m_axi_rvalid, m_axi_rready;
     wire [{PROFILE['AXI_DATA_WIDTH']-1}:0] m_axi_wdata, m_axi_rdata;
     wire [{PROFILE['AXI_DATA_WIDTH']//8-1}:0] m_axi_wstrb;
-    host_core #({profile_parameters(0, SIMULATION_BASE).replace('.EXTERNAL_IO(0)', '.EXTERNAL_IO(EXTERNAL_IO)')}) bridge (
+    host_core #({parameters}) bridge (
         .clk, .reset, .irq, .s_axi_awaddr, .s_axi_awvalid, .s_axi_awready, .s_axi_wdata,
         .s_axi_wstrb(4'hf), .s_axi_wvalid, .s_axi_wready, .s_axi_bresp, .s_axi_bvalid, .s_axi_bready,
         .s_axi_araddr, .s_axi_arvalid, .s_axi_arready, .s_axi_rdata, .s_axi_rresp, .s_axi_rvalid,
@@ -78,7 +85,7 @@ module marlin_bridge #(parameter integer EXTERNAL_IO = 0) (
         .m_axi_arid, .m_axi_araddr, .m_axi_arlen, .m_axi_arsize, .m_axi_arburst, .m_axi_arvalid,
         .m_axi_arready, .m_axi_rid, .m_axi_rdata, .m_axi_rresp, .m_axi_rlast, .m_axi_rvalid,
         .m_axi_rready);
-    axi_direct_memory #(.DATA_WIDTH({PROFILE['AXI_DATA_WIDTH']}), .WORDS({words}), .BASE(32'h{SIMULATION_BASE:08x})) memory (
+    axi_direct_memory #(.DATA_WIDTH({PROFILE['AXI_DATA_WIDTH']}), .WORDS({words}), .BASE(PHYSICAL_BASE)) memory (
         .clk, .reset, .sim_image_request(2'b0), .sim_image_done(), .sim_control(5'b0),
         .sim_fail_token(32'b0), .sim_fail_seen(), .sim_busy(), .sim_active(), .sim_error(), .sim_write(),
         .sim_index(), .sim_reads(), .sim_writes(), .sim_capacity(), .m_axi_awid, .m_axi_awaddr,
@@ -94,6 +101,13 @@ module marlin_bridge_external (
     {AXI_LITE_PORTS}
 );
     marlin_bridge #(.EXTERNAL_IO(1)) top (.*);
+endmodule
+
+module marlin_bridge_board (
+    input wire clk, input wire reset, output wire irq,
+    {AXI_LITE_PORTS}
+);
+    marlin_bridge #(.EXTERNAL_IO(1), .PHYSICAL_BASE(32'h{BOARD_BASE:08x})) top (.*);
 endmodule
 '''
 

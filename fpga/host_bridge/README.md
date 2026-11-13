@@ -82,3 +82,8 @@ verilator --lint-only -sv --top-module host_core -Ifpga/state_processor/rtl \
 
 The core sources are the same list `rt_fpga_sim` builds. `rt_fpga_adapter`'s
 `tests/bridge.rs` checks the driver's register traffic against a scripted bus.
+
+`bridge::trace::RecordingBus` provides bounded, allocation-free register capture
+after construction. The FreeRTOS diagnostic build dumps it after shutdown;
+`fpga-bridge-replay` replays it through the Marlin bridge top with exact read
+comparison. See [capture, replay and current timing limits](../../platforms/zynq7000/FPGA.md).

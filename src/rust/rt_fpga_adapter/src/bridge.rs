@@ -1,5 +1,6 @@
 //! `PortIo` through the CPU host bridge's AXI-lite register map.
 pub mod map;
+pub mod trace;
 
 use crate::{
     looping::{MediaCommand, MediaResult, TpReply},

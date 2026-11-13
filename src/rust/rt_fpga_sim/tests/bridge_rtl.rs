@@ -6,7 +6,10 @@ use rt_backend_testbench::{
     spec::{Action, Samples, Scenario, Timing, Transition},
 };
 use rt_fpga_adapter::{
-    bridge::{Bridge, Bus, map},
+    bridge::{
+        Bridge, Bus, map,
+        trace::{self, RecordingBus},
+    },
     image::{Image, View},
     looping::MediaCommand,
     port::{self, Capacities, PortIo},
@@ -64,7 +67,7 @@ fn gain_fixtures<D: PortIo + Probe>(device: &mut D) {
 }
 
 /// Replays the original record/stop/play case through any port and returns the captured media.
-fn record_stop_play<D: PortIo + Probe>(device: &mut D, check_audio: bool) -> Vec<i32> {
+fn record_stop_play<D: PortIo>(device: &mut D, check_audio: bool) -> Vec<i32> {
     let (case, image) = scenario(include_str!(
         "../../../../fpga/verification/scenarios/mono-record.json"
     ));
@@ -122,7 +125,9 @@ fn record_stop_play<D: PortIo + Probe>(device: &mut D, check_audio: bool) -> Vec
                 "quantum {i}"
             );
         }
-        assert_eq!(device.frame(), expected.quanta[i].next_frame);
+        let row = device.transition(0, 0, [0; 20]).unwrap();
+        assert_eq!(row.error, 0);
+        assert_eq!(get(&row.words, 0, 64), expected.quanta[i].next_frame);
         for state in &expected.quanta[i].states {
             let row = device.transition(12, state.id.slot, [0; 20]).unwrap();
             assert_eq!(row.error, 0);
@@ -288,4 +293,36 @@ fn external_audio_runs_quanta_without_sample_traffic_and_digests_deterministical
         runs.push(counters);
     }
     assert_eq!(runs[0], runs[1]);
+}
+
+#[shoop_test]
+fn board_profile_trace_replays_every_read_including_the_output_digest() {
+    let rt = runtime(&cache()).unwrap();
+    let bus = RecordingBus::new(MarlinBus::board(&rt).unwrap(), 1_000_000);
+    let mut bridge = Bridge::new(bus).unwrap();
+    assert_eq!(bridge.physical_base(), 0x1780_0000);
+    assert!(bridge.capacities().external_audio);
+    record_stop_play(&mut bridge, false);
+    let counters = bridge.counters();
+    assert!(counters.quanta > 0 && counters.output_words > 0 && counters.digest != 0);
+    assert_eq!(bridge.bus().dropped(), 0);
+    let mut log = String::new();
+    bridge.bus().dump(&mut log).unwrap();
+    let path = cache().join("board-register-trace.log");
+    std::fs::write(&path, &log).unwrap();
+    let mut records = trace::parse(&log).unwrap();
+    let mut replay = MarlinBus::board(&rt).unwrap();
+    trace::replay(&mut replay, &records).unwrap();
+    let mut replay = Bridge::new(replay).unwrap();
+    assert_eq!(replay.counters(), counters);
+
+    let last = records.len() - 1;
+    let trace::Access::Read { value, .. } = &mut records[last] else {
+        panic!("digest read");
+    };
+    *value ^= 1;
+    let mut replay = MarlinBus::board(&rt).unwrap();
+    let error = trace::replay(&mut replay, &records).unwrap_err();
+    assert_eq!(error.index, last);
+    assert_eq!(error.offset, map::DIGEST + 4);
 }

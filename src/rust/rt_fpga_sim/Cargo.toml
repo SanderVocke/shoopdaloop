@@ -44,6 +44,11 @@ marlin = { version = "=0.21.1", features = ["verilog"], optional = true }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 
 [[bin]]
+name = "fpga-bridge-replay"
+path = "src/bridge_replay_main.rs"
+required-features = ["sim"]
+
+[[bin]]
 name = "fpga-marlin"
 path = "src/main.rs"
 required-features = ["sim"]

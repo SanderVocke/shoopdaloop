@@ -272,12 +272,46 @@ Each stage ends green on its listed checks and is committed.
   a bitstream.
 - [x] Reserve the arena region in the ZedBoard profile, without cached ARM
   access (heap ends at 0x17800000; 8 MiB arena mapped non-cacheable).
-- [ ] Add bus transaction logging behind a diagnostic switch.
-- [ ] Add `proto/fpga-rust-reference` to the Zynq workflow triggers.
+- [x] Add bounded bus transaction logging behind `--fpga-trace [RECORDS]`.
+  The recorder preallocates before execution, retains the ordered prefix on
+  overflow, and dumps indexed accesses after shutdown acknowledgement. It reads
+  counters/digest before core reset. An overflowed or incomplete capture cannot
+  be accepted by the replay tool.
+- [x] Add `proto/fpga-rust-reference` to the Zynq workflow triggers.
+  The ZedBoard job now builds/audits both FPGA variants and checks bounded
+  missing-bitstream refusal in QEMU through `fpga_check.py`.
 - Verification:
   - the CPU variant passes the QEMU suite;
   - the FPGA variant builds and audits;
   - booted in QEMU, the FPGA variant reports the missing bridge without hanging.
+
+Offline follow-up on 2026-11-13:
+
+- Added `fpga-bridge-replay` and a board-address Marlin top. The arena address
+  comes from the ZedBoard memory profile; the existing simulation-address tops
+  remain available. A simulated record/stop/play capture replays every register
+  read, including the final counters and digest, against a fresh model. A changed
+  digest is rejected at the exact access index. CI also runs the replay CLI.
+- Adapter tests (including capture overflow, malformed/truncated logs and read
+  mismatch and heap-free capture/buffer transfer), the ARM `no_std` check,
+  all `--features sim` tests, board/policy
+  contracts, and both FPGA firmware builds/missing-bridge QEMU boots pass with
+  Rust 1.99.1, Verilator 5.032, Arm GCC 14.2.1 and QEMU 10.0.13.
+- The CPU firmware production/restart QEMU integration passes, including
+  authentication, control, fresh attachment, task profiling, confirmed shutdown
+  and refusal of previous-boot authority. The full UI/recovery/fixture QEMU suite
+  was not rerun during this follow-up.
+- The documented short `--features app` regression passes: 49 tests, including
+  all three app bridge cases and ten app RTL cases. The separate long
+  five-second retained-take capacity case was interrupted and not completed.
+- This is exact **simulation-to-simulation** replay evidence. Hardware captures
+  contain no fabric timestamps, and the functional DDR model does not reproduce
+  CPU scheduling gaps or silicon DDR latency. Raw busy polls and cycle counts
+  can differ. No read masks or poll skipping were introduced; acceptance
+  criterion 4 still requires timing alignment/modeling and a real board capture.
+- Build, capture, replay commands and limitations are documented in
+  `platforms/zynq7000/FPGA.md`. No bitstream was rebuilt or hardware check rerun
+  during this follow-up.
 
 ### 6. Hardware end-to-end
 

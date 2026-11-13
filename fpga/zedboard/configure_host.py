@@ -24,7 +24,7 @@ def tcl(value):
     return '"'+value+'"'
 
 
-def configure(output, fabric_mhz=100, physical_base=0x17800000):
+def configure(output, fabric_mhz=100, physical_base=host_bridge.BOARD_BASE):
     output = Path(output).resolve()
     output.mkdir(parents=True, exist_ok=True)
     arena = host_bridge.arena_bytes()
@@ -47,7 +47,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, default=ROOT/'work/zedboard/host')
     parser.add_argument('--fabric-mhz', type=float, default=100)
-    parser.add_argument('--physical-base', type=lambda v: int(v, 0), default=0x17800000)
+    parser.add_argument('--physical-base', type=lambda v: int(v, 0), default=host_bridge.BOARD_BASE)
     args = parser.parse_args()
     result = configure(args.output, args.fabric_mhz, args.physical_base)
     print(f"{result['top']}: arena {result['arena_bytes']} bytes at {result['arena_base']:#010x}")

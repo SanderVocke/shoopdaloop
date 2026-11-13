@@ -6,6 +6,8 @@ DDR with reduced budgets. Physical ZedBoard qualification is the final, pending
 stage. Both profiles currently use dummy audio.
 
 For physical ZedBoard bring-up, see [JTAG development without Vivado](boards/jtag-development.md).
+The [FPGA host variant](FPGA.md) drives the PL core through its GP0 register bridge
+and provides optional register capture and offline replay.
 It distinguishes direct-load development (no SD) from the signed SD/network
 workflow. The direct-load commands in this README otherwise exercise QEMU;
 they do not initialize a physical board's PS/DDR.

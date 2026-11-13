@@ -16,6 +16,7 @@ on:
       - 'src/rust/rt_runtime/**'
       - 'src/rust/shoop_loops/**'
       - 'src/rust/shoop_rt_engine/**'
+      - 'platforms/zynq7000/boards/zedboard.json'
       - '.github/workflows/fpga_simulation.yml'
   push:
     branches: [master, proto/fpga-rust-reference]
@@ -191,6 +192,11 @@ jobs:
         env:
           RUSTFLAGS: -D warnings
         run: cargo test --locked -p rt_fpga_sim --features sim -- --test-threads=1
+      - name: Replay the captured board-profile register session
+        if: matrix.model == 'instant'
+        env:
+          RUSTFLAGS: -D warnings
+        run: cargo run --locked -p rt_fpga_sim --features sim --bin fpga-bridge-replay -- work/marlin-tests/board-register-trace.log work/marlin-tests board
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -200,6 +206,7 @@ jobs:
             work/reclamation/**/results.xml
             work/reclamation/**/*timing.json
             work/reclamation/**/stress-*.json
+            work/marlin-tests/board-register-trace.log
           if-no-files-found: warn
 
   audio-synthesis:

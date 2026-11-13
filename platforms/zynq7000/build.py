@@ -37,6 +37,8 @@ def build():
     parser.add_argument("--fixture", action="store_true")
     parser.add_argument("--usb", action="store_true", help="Use the TinyUSB USB0 MIDI host")
     parser.add_argument("--fpga", action="store_true", help="Execute on the PL core through its host bridge")
+    parser.add_argument("--fpga-trace", nargs="?", const=1_048_576, type=int, metavar="RECORDS",
+                        help="Capture up to RECORDS register accesses and dump on shutdown (default 1048576)")
     parser.add_argument("--deployment", action="store_true")
     parser.add_argument("--build-id", default="direct-dev")
     parser.add_argument("--engine-config", type=Path, help="JSON engine pool and input-history policy")
@@ -45,10 +47,18 @@ def build():
     args = parser.parse_args()
     if args.fpga and (args.app != "host" or args.fixture or args.usb or args.deployment):
         parser.error("--fpga builds the host app without fixture, USB MIDI or deployment")
+    if args.fpga_trace is not None and (not args.fpga or not 1 <= args.fpga_trace <= 4_194_304):
+        parser.error("--fpga-trace requires --fpga and 1..4194304 records")
     try:
         board = boards.load(args.board, fpga=args.fpga)
     except ValueError as error:
         parser.error(str(error))
+    if args.fpga_trace is not None:
+        reserve = (board.recording_mib + 3 * board.firmware["media_mib"]
+                   + board.firmware["runtime_reserve_mib"]) * boards.MIB
+        trace_budget = board.heap_end - board.platform_end - reserve
+        if args.fpga_trace * 12 > trace_budget:
+            parser.error(f"FPGA trace exceeds the remaining Rust memory budget ({trace_budget // 12} records)")
     policy = engine_policy.load(args.engine_config)
     global BUILD
     BUILD = board.build_dir(ROOT)
@@ -166,6 +176,8 @@ def build():
         rust_flags = "-D warnings -C target-cpu=cortex-a9 -C target-feature=+neon"
         cargo = ["cargo", "+" + PINS["rust"], "build", "--locked", "--release", "--target", "armv7a-none-eabihf", "--manifest-path", manifest]
         features = (["fixture"] if args.fixture else []) + (["usb-midi"] if args.usb else []) + (["fpga"] if args.fpga else [])
+        if args.fpga_trace is not None:
+            features.append("fpga-trace")
         if features:
             cargo += ["--features", ",".join(features)]
         rust_target = (PLATFORM / "firmware/target" if board.name == boards.DEFAULT else BUILD.parent / "firmware-target")
@@ -174,6 +186,7 @@ def build():
             "SHOOP_RECORDING_BYTES": str(board.recording_mib * boards.MIB),
             "SHOOP_MEDIA_BYTES": str(board.firmware["media_mib"] * boards.MIB),
             "SHOOP_FPGA_ARENA_BASE": str(board.heap_end if args.fpga else 0),
+            "SHOOP_FPGA_TRACE_RECORDS": str(args.fpga_trace or 1_048_576),
             "SHOOP_FPGA_ARENA_BYTES": str(board.arena_bytes)})
         rust_library = rust_target / "armv7a-none-eabihf/release/libshoop_zynq_firmware.a"
     cc = os.environ.get("ARM_CC", "arm-none-eabi-gcc")
@@ -208,7 +221,7 @@ def build():
     if errors:
         raise SystemExit("\n".join(errors))
     objects = [obj for obj, _ in results]
-    elf = BUILD / (args.app + ("-fpga" if args.fpga else "") + ("-usb" if args.usb else "") + ("-fixture" if args.fixture else "") + ("-deployment" if args.deployment else "") +
+    elf = BUILD / (args.app + ("-fpga" if args.fpga else "") + ("-trace" if args.fpga_trace is not None else "") + ("-usb" if args.usb else "") + ("-fixture" if args.fixture else "") + ("-deployment" if args.deployment else "") +
                    ("-test" if args.deployment_test_fault else "") + ".elf")
     # Rust's compiler_builtins defines weak, generic memory routines. Pull newlib's optimized
     # strong ones from libc before the Rust library so they win for both C and Rust callers.
@@ -229,6 +242,10 @@ def build():
         raise SystemExit("Generic firmware contains a compiled credential")
     if not args.deployment_test_fault and b"SHOOP_DEPLOY_TEST_" in image:
         raise SystemExit("Deployment fault hooks leaked into production firmware")
+    if args.fpga_trace is None and b"SHOOP_FPGA_TRACE_BEGIN" in image:
+        raise SystemExit("FPGA trace hooks leaked into uninstrumented firmware")
+    if args.fpga_trace is not None and b"SHOOP_FPGA_TRACE_BEGIN" not in image:
+        raise SystemExit("FPGA diagnostic firmware is missing its trace dump")
     if image[:6] != b"\x7fELF\x01\x01":
         raise SystemExit("Expected little-endian ELF32")
     phoff = struct.unpack_from("<I", image, 28)[0]
@@ -266,6 +283,7 @@ def build():
         "git_head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "rust_target": "armv7a-none-eabihf" if rust_library else None,
         "fixture": args.fixture, "deployment": args.deployment, "build_id": args.build_id,
+        "fpga": args.fpga, "fpga_trace_records": args.fpga_trace,
         "deployment_test_fault": args.deployment_test_fault,
         "ram_bytes": board.ram, "load_regions": regions, "elf": str(elf.relative_to(ROOT))}, indent=2) + "\n")
     if args.usb:
