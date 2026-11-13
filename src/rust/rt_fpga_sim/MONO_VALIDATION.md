@@ -102,9 +102,8 @@ the profile into the GUI, a board endpoint or DRAMsim3.
 
 ## Delivery
 
-Work is committed on `feat/fpga-mono-looper`. The main implementation was pushed
-through `09e717b4`; final regression/fault-diagnostic and validation commits remain
-local because GitHub rejected the environment's supplied credential. Two GitHub
-connector requests also stalled until the environment was restarted. No PR or
-review result is claimed while that access is unavailable. Publication targets
-`proto/fpga-rust-reference`, with no direct upstream push or autonomous merge.
+All work is committed and pushed on `feat/fpga-mono-looper`.
+[PR #981](https://github.com/SanderVocke/shoopdaloop/pull/981) targets
+`proto/fpga-rust-reference`. Review submissions, inline comments and conversation
+comments were checked; no actionable findings were present at delivery. Only the
+working branch was pushed. No PR CI was inspected and no merge was attempted.

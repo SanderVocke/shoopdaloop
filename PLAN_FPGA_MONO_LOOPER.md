@@ -1,7 +1,7 @@
 # Queue-driven mono looper through Marlin
 
-Status: implementation and local validation complete on `feat/fpga-mono-looper`;
-final publication/review blocked by GitHub authentication.
+Status: complete. [PR #981](https://github.com/SanderVocke/shoopdaloop/pull/981)
+targets `proto/fpga-rust-reference` from `feat/fpga-mono-looper`.
 
 ## Goal and scope
 
@@ -191,7 +191,7 @@ claim or GUI integration requirement.
   final milestone; keep host test binaries stable during execution and isolate
   failed cases before diagnosing regressions. Do not overlap feature-changing
   workspace builds with host integration tests.
-- [ ] Commit/push milestones and open a PR onto `proto/fpga-rust-reference`. Check
+- [x] Commit/push milestones and open a PR onto `proto/fpga-rust-reference`. Check
   incoming automated review and address applicable feedback until approval or no
   actionable findings remain. Under the standing user instruction, do not inspect
   PR CI; use the recorded local gates. Do not merge autonomously.
@@ -217,8 +217,8 @@ while retaining exact end-to-end checks for every supported looping operation.
 
 The native contract probe confirms that State/Export queries complete at the
 settled pre-audio boundary. The integrated RTL previously exposed host access
-only after finishing the quantum. Add an explicit settle/pause command on the
-existing coordinator port, then resume with the normal run request. This keeps
+only after finishing the quantum. An explicit settle/pause command on the
+existing coordinator port now permits queries before the normal run resumes. This keeps
 TP state authoritative and preserves native observation cuts without predicting
 loop state in Rust or introducing a second sample-processing path.
 
@@ -234,8 +234,8 @@ EOF, stale handles, retained exports and many recordings in an eight-chunk arena
 
 Final local gates and replay measurements are recorded in
 `src/rust/rt_fpga_sim/MONO_VALIDATION.md`. All eight deadline failures from the
-3,222-test native run passed in one isolated retry. Main implementation commits
-are on the working branch remotely through `09e717b4`; final commits are retained
-locally. GitHub rejected the supplied credential and its connector stalled twice,
-so opening the PR and checking review remain the sole incomplete delivery step.
-No PR CI was inspected and no merge was attempted.
+3,222-test native run passed in one isolated retry. All work is pushed to
+`feat/fpga-mono-looper` and [PR #981](https://github.com/SanderVocke/shoopdaloop/pull/981)
+targets `proto/fpga-rust-reference`. Review submissions, inline comments and
+conversation comments were checked; no actionable findings were present at
+delivery. No PR CI was inspected and no merge was attempted.
