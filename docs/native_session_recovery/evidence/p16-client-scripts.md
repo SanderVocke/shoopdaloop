@@ -1,10 +1,11 @@
 # P16 acceptance evidence
 
-Implementation is published through `4c23274b` (2026-11-13), integrating upstream
-`60d8f21c`. Latest local integration gates pass as recorded below.
+Qualified production implementation:
+`d71fa27f73310aee67da8d085b6091a07e9855f3` (2026-11-13). Upstream is integrated
+through `fedfe40f`; its final test-only merge is qualified below.
 PR [#977](https://github.com/SanderVocke/shoopdaloop/pull/977) targets
-`feat/backend-replacement`. All implementation commits are published; final CI and review
-are in progress. P16 remains OPEN.
+`feat/backend-replacement`. P16 is COMPLETE within the agreed scope. See
+[final delivery](#final-delivery) for CI and review status.
 
 Implementation milestones: `d6bd336e`, `7e16fa40`, `0c7a0b4b`, `f8925062`,
 `8039b33f`, `5b4bcfce`. The final two correct an existing native loop-readiness
@@ -13,7 +14,12 @@ complete qualification. Product deadlines and defaults are unchanged.
 
 ## Ownership and observable behavior
 
-The service/RT schemas are unchanged. `SessionScripts` and the codec worker's script parts are client-only values. `Work::Prepare` separates resources before producing the musical image. Only that image is staged at the host. Resource provider namespaces include a client-manager identity, so independent clients cannot unregister each other's resources.
+Script persistence adds no script data to service/RT schemas. Upstream's separate
+memory telemetry changes are retained. `SessionScripts` and the codec worker's
+script parts are client-only values. `Work::Prepare` separates resources before
+producing the musical image. Only that image is staged at the host. Resource
+provider namespaces include a client-manager identity, so independent clients
+cannot unregister each other's resources.
 
 | Criterion | Implementation and evidence |
 | --- | --- |
@@ -83,6 +89,10 @@ Local raw logs are retained under `/tmp/p16-*`: notably
 records, not committed evidence or substitutes for final CI.
 
 ## Qualification findings and delivery limits
+
+The following history preserves failed runs and the status at each milestone.
+Later qualification supersedes its pending checks; it does not relabel a failed
+run as successful. Current delivery status is recorded at the end.
 
 Earlier native failures exposed a real readiness race in the retained native
 adapter: waiting for a callback count did not prove that a newly created loop
@@ -345,6 +355,14 @@ passes on `76de30aa` without firmware changes, including both previously failing
 scenarios. Earlier failed runs remain failed in the historical record. Final
 cross-platform CI and parity closure remain pending.
 
+At `d71fa27f`, the USB job in
+[run `43413431915`](https://github.com/SanderVocke/shoopdaloop/actions/runs/43413431915/job/131845432591)
+also fails an output-completion drain, this time in the direct full-speed
+scenario. Exact MIDI input/output passed first; client queues are empty and one
+HCD output owner remains pending. Artifact `14030298793` preserves the evidence.
+Firmware sources are unchanged from the successful `76de30aa` job above. The
+focused retry passes as recorded in the final delivery section.
+
 ## Deliberate limits
 
 No VM migration, automatic start, server script catalog, attachment transfer of
@@ -354,10 +372,32 @@ client additions. Reconnect retains local context only for the same verified
 host instance. Browser device evidence uses fake microphone/MIDI endpoints; it
 cannot qualify an arbitrary physical controller or grant another user's permissions.
 
-## Delivery progress
+## Final delivery
 
-GitHub access was refreshed on 2026-11-13 and all implementation commits through
-`5b4bcfce` plus local acceptance evidence were pushed to PR #977. The initial
-review/review-thread inspection found no submissions or inline feedback.
-Final CI and any subsequent automated review are being checked before parity
-closure. No PR has been merged.
+All five workflows pass on the qualified production implementation `d71fa27f`:
+
+| Workflow | Result and evidence |
+| --- | --- |
+| [Build and Test ShoopDaLoop](https://github.com/SanderVocke/shoopdaloop/actions/runs/43413431854) | Passed: Linux/Windows/macOS debug and release application, runtime and host tests; Linux complete workspace and coverage; native packaging, JACK and process inspection; web builds/audits, Chromium hosted/self-contained/composite/preview/large-media workflows, and Firefox Web Audio. |
+| [Hosted track processors](https://github.com/SanderVocke/shoopdaloop/actions/runs/43413431783) | Passed: Rust feature variants, Miri, portable DSP and actual AudioWorklet acceptance. |
+| [Zynq firmware, attempt 2](https://github.com/SanderVocke/shoopdaloop/actions/runs/43413431915/attempts/2) | Passed: firmware, both board profiles, network deployment/SD recovery and the isolated USB retry. [USB job `131866518376`](https://github.com/SanderVocke/shoopdaloop/actions/runs/43413431915/job/131866518376) passes every phase without source or test-setting changes. Attempt 1 remains failed, with its artifact preserved above. |
+| [Documentation](https://github.com/SanderVocke/shoopdaloop/actions/runs/43413431797) | Passed. |
+| [CodeQL](https://github.com/SanderVocke/shoopdaloop/actions/runs/43413431897) | Passed. |
+
+This follows upstream's debug-web build/audit and release-browser execution policy;
+it does not claim debug-browser execution or optional nightly jobs ran. Firmware
+USB evidence is emulated, not physical-hardware qualification.
+
+Upstream then advanced to `fedfe40f`, replacing the bus-FX test's manual protocol
+pin with the canonical Rust version and correctly encoding/checking its full
+16-bit value. The only merge conflict was that pin. Keeping upstream's complete
+fixture passes the actual Chromium worklet test: all five signal regions match,
+with no render-memory growth (`/tmp/p16-upstream-canonical-worklet.log`). This final
+integration changes test fixtures and documentation only; production code is
+identical to the fully qualified implementation above. Current published-head
+checks are available on PR #977.
+
+The plan, parity row and contract are complete within A1–A8 and the deliberate
+limits above. PR #977 remains ready for review against `feat/backend-replacement`.
+Review/review-thread inspections found no submissions or inline feedback. No
+automated reviewer has supplied an approval.

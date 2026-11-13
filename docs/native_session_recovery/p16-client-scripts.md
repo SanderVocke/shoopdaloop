@@ -1,6 +1,7 @@
 # P16 contract: client-owned session scripts and resources
 
-Status: implementation and local validation complete; final CI and review remain OPEN.
+Status: COMPLETE within the scope below. See the
+[acceptance and delivery evidence](evidence/p16-client-scripts.md#final-delivery).
 The ownership revision was agreed on 2026-11-12.
 This contract supersedes the earlier proposal to store script data in the service.
 See the [investigation](p16-investigation.md) and

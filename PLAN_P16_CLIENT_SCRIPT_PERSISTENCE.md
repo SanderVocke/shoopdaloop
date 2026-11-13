@@ -1,11 +1,13 @@
 # P16: client-owned script persistence
 
-Status: implementation complete; upstream integration qualification and final
-CI/review in progress. PR [#977](https://github.com/SanderVocke/shoopdaloop/pull/977). The ownership contract
-was revised with user approval on 2026-11-12. P16 remains OPEN.
+Status: complete within A1–A8 and the scope below. P16 is COMPLETE.
+PR [#977](https://github.com/SanderVocke/shoopdaloop/pull/977) is ready for review
+against `feat/backend-replacement`. The ownership contract was revised with user
+approval on 2026-11-12. See the final delivery record and
+[acceptance evidence](docs/native_session_recovery/evidence/p16-client-scripts.md#final-delivery).
 
 Base: `feat/backend-replacement` at `9aee7496`; production behavior was compared
-with `master` at `9134eb20`. Upstream is now integrated through `60d8f21c`.
+with `master` at `9134eb20`. Upstream is now integrated through `fedfe40f`.
 Follow
 [Write Plan](.agents/prompts/write_plan.md), the
 [P16 contract](docs/native_session_recovery/p16-client-scripts.md), and the
@@ -236,13 +238,13 @@ Depends on Stage 5.
 - [x] Run affected portable/Node tests, required Wasm builds and browser smoke tests;
   check that production dependency boundaries and musical service/RT wire schemas
   still exclude script data. Validate the feature-parity ledger.
-- [ ] Push the implementation and obtain green required CI on the final head,
+- [x] Push the implementation and obtain green required CI on the final head,
   including supported platform builds. Inspect automated PR review after pushes;
   address actionable feedback and repeat until approval, or report an unavailable
   reviewer/remaining blocker explicitly. Rerun checks affected by material fixes.
 - [x] Record commands, final implementation SHA and limitations; update
   user/developer/persistence docs and P16 acceptance evidence.
-- [ ] Close the parity row after A1–A8 and final delivery gates pass.
+- [x] Close the parity row after A1–A8 and final delivery gates pass.
   Keep the PR ready for user review; do not merge autonomously.
 
 Testing cadence: run focused changed-package and failure-path tests during each
@@ -259,7 +261,10 @@ the selected platform plus browser/portable paths affected by P16.
 - Design rules may be revised for a documented, well-supported reason.
 - Goals and acceptance criteria must not be changed without explicit user approval.
 
-## Execution notes
+## Execution history
+
+Entries record the status at each milestone, including failures and checks that
+were pending then. The status above and final delivery entry describe completion.
 
 - 2026-11-12: agreed contract committed as `6ed9ee10`; implementation branch
   created and draft PR #977 opened against `feat/backend-replacement`.
@@ -422,3 +427,22 @@ the selected platform plus browser/portable paths affected by P16.
   11 skipped in **799.661 seconds**. The firmware USB job passes all phases on
   `76de30aa` without a firmware change; both prior USB failure artifacts remain
   recorded. Final cross-platform CI and parity closure remain pending.
+
+## Final delivery
+
+- Qualified production implementation:
+  `d71fa27f73310aee67da8d085b6091a07e9855f3`. The full normal-profile local native
+  suite passes **3,241 tests, 11 skipped**, without a test-thread override.
+- All five workflows pass for that implementation: native/platform/browser and
+  coverage, hosted processors, firmware, documentation and CodeQL. The isolated
+  firmware USB retry (attempt 2) passes every phase without firmware or test-setting
+  changes; failed attempt artifacts remain recorded in the evidence.
+- Upstream `fedfe40f` replaces the conflicting manual bus-FX protocol pin with
+  the canonical Rust version. The merged fixture passes the actual Chromium
+  worklet scenario, including all five signal regions and no render-memory growth.
+  This last integration changes test fixtures and documentation only; production
+  code remains identical to the qualified implementation.
+- P16's parity row and contract are closed within the agreed client-owned scope.
+  PR #977 targets `feat/backend-replacement` and remains ready for user review.
+  Review and inline-thread inspection found no submissions; an automated reviewer
+  has not supplied an approval. Current published-head checks are visible on the PR.

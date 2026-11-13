@@ -1,5 +1,6 @@
-// Canonical RT protocol v26 and worklet configuration v7 records.
-const protocolVersion = 26;
+// Canonical RT protocol and worklet configuration v7 records.
+import { protocolVersion } from '/protocol.js';
+const u16 = value => [value & 255, (value >>> 8) & 255];
 const u32 = value => [value & 255, (value >>> 8) & 255, (value >>> 16) & 255, value >>> 24];
 const u64 = value => [...u32(value), 0, 0, 0, 0];
 const id = [...u32(0), ...u32(1)];
@@ -44,7 +45,7 @@ export async function run() {
       const message = bytes.slice(at + 2, at + length);
       records.push(message);
       if (message[0] === 0) {
-        if (message[1] !== protocolVersion || message[2] !== 0) failure = 'protocol version mismatch';
+        if (new DataView(message.buffer).getUint16(1, true) !== protocolVersion) failure = 'protocol version mismatch';
         welcomed = true;
       }
       if (message[0] === 2) outcomes.set(Number(new DataView(message.buffer).getBigUint64(1, true)), message.slice(9));
@@ -67,7 +68,7 @@ export async function run() {
     await paused;
     await new Promise(resolve => setTimeout(resolve, 0));
   }
-  send([0, protocolVersion, 0]);
+  send([0, ...u16(protocolVersion)]);
   for (let n = 0; !welcomed && n < 100; n++) await tick();
   if (!welcomed) throw new Error('no Welcome');
   async function request(payload) {
