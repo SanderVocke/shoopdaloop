@@ -29,8 +29,9 @@ For an idle configured service, public request checks preserve this order:
 2. Validate a timed source identity, then its configured target relationship.
 3. Refuse a sequence retained by any pending or terminal request.
 4. Select a reusable slot or refuse capacity.
-5. Let FPGA clamp/round the requested frame against its actual frame and detect
-   overflow, then insert the pending action through its existing list logic.
+5. Publish ARM-prepared membership including the reserved empty cell. Then let
+   FPGA INSTALL clamp/round against its actual frame and detect overflow. Only
+   successful INSTALL acknowledges public admission.
 
 Raw INSTALL applies hardware checks before mutation:
 
@@ -43,11 +44,12 @@ Raw INSTALL applies hardware checks before mutation:
 | Source differs from the configured sync relationship | `missing_sync` (7) |
 | Zero, retired or stale request generation token | `invalid_id` (3) |
 | Matching request slot still occupied, including a terminal record | `invalid_state` (5) |
+| Stale publication or absent/mismatched membership generation | `invalid_id` (3) |
 | Effective timestamp rounding overflows | `invalid_frame` (6) |
 
 The FPGA does not scan for free slots or duplicate sequences. Raw INSTALL is a
 trusted lower-level action interface; public duplicate/capacity admission belongs
-to the Rust service. Hardware initializes outcome, frame, countdown and list
+to the Rust service. Hardware initializes outcome, frame and countdown
 fields itself and retains execution-time operation validation, arbitration,
 supersession, stop cancellation and synchronization.
 
@@ -66,7 +68,13 @@ same Rust owner. Streams that never Collect cannot assume credit reuse; they
 check the total reserved count before emitting indexed INSTALL packets. Prepared
 streams from the previous submission contract must be regenerated.
 
-Pending lists and result retention remain. Records are compact, and fabric
-execution uses an independent start/done path so held host replies cannot gate
-already-runnable work. Service-pause tests consume acknowledgements before
-pausing the owner. Removing per-quantum fences and host settlement pauses remains later work.
+Records are compact. ARM publishes generation-qualified membership into an
+inactive bank, then commits it atomically; FPGA never inserts or unlinks nodes.
+One synchronous public operation can use a bounded sequence of transfers with
+`Progress::Transfer` / `Progress::Reply`. Static preparation publishes one boot
+forest and reserves all credits without predicting outcomes. See [COMPACT.md](COMPACT.md)
+for opcodes, bank ownership, terminal retention and traversal bounds.
+
+Fabric execution uses an independent start/done path. Service-pause comparisons
+include held INSTALL replies and partially written membership over 1,024 quanta.
+Removing per-quantum fences and host settlement pauses remains later work.

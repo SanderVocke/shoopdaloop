@@ -102,15 +102,22 @@ def prepare(output, q=32, chunk=None, channels=16, monitoring=False, routing="id
     for i, value in enumerate([0, 0, 0, slots//block_chunks]):
         boot.append(packet(kind=2, opcode=0, index=i, data=value))
     boot.append(packet(kind=3))
-    events, sequence = [], 0
+    originals = []
     for n, step in enumerate(scenario['steps']):
         for action in step['actions']:
-            sequence += 1
             command = {k: action[k] for k in ('target', 'at', 'timing', 'operation')}
-            command['sequence'] = sequence
-            prepared = service.request(kind='static', words=wire.port_words(tp.encode_command(command),20))
-            if 'error' in prepared: raise ValueError(f"prepared action refused: {prepared['error']}")
-            transfer = prepared['transfer']
+            command['sequence'] = len(originals) + 1
+            originals.append(wire.port_words(tp.encode_command(command), 20))
+    prepared = service.request(kind='static_batch', words=originals)
+    if 'error' in prepared:
+        raise ValueError(f"prepared actions refused: {prepared['error']}")
+    program = prepared['program']
+    boot[-1:-1] = [packet(opcode=t['opcode'], index=t['index'], data=wire.port_value(t['words'])) for t in program['setup']]
+    actions = iter(program['actions'])
+    events = []
+    for n, step in enumerate(scenario['steps']):
+        for _ in step['actions']:
+            transfer = next(actions)
             events.append(packet(sequence=n, opcode=transfer['opcode'], index=transfer['index'], data=wire.port_value(transfer['words'])))
         events.append(packet(sequence=n, kind=2))
     service.close()

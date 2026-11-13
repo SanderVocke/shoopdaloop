@@ -2,7 +2,8 @@
 use crate::protocol::{get, put};
 use rt_runtime::Error;
 
-pub const ABI: u32 = 2;
+pub const ABI: u32 = 3;
+pub const PUBLICATION: usize = 429;
 pub const TARGET: usize = 45;
 pub const SEQUENCE: usize = 109;
 pub const AT: usize = 173;

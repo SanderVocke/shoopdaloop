@@ -1,5 +1,8 @@
 use crate::{bits::Bits, random::Random, sim::Sim};
-use rt_fpga_adapter::{looping::TpReply, transition_service::TransitionService};
+use rt_fpga_adapter::{
+    looping::TpReply,
+    transition_service::{Progress, TransitionService},
+};
 use serde_json::{Value, json};
 
 pub const ERRORS: &[&str] = &[
@@ -22,6 +25,34 @@ pub fn request_service(image: &Value) -> crate::Result<TransitionService> {
         json!({"description":image["description"],"limits":image["limits"],"dependency_order":image["dependency_order"]}),
     )?;
     Ok(TransitionService::new(&image)?)
+}
+pub fn ready_install(
+    owner: &mut TransitionService,
+    d: &mut Transition,
+    s: &mut Sim<'_>,
+    mut transfer: rt_fpga_adapter::transition_service::Transfer,
+) -> rt_fpga_adapter::transition_service::Transfer {
+    while transfer.opcode != 4 {
+        let (error, value) = d.raw_command(
+            s,
+            u64::from(transfer.opcode),
+            u64::from(transfer.index),
+            &Bits(transfer.words.to_vec()),
+            None,
+            false,
+        );
+        transfer = match owner
+            .finish(TpReply {
+                error: error as u8,
+                words: value.0.try_into().unwrap(),
+            })
+            .unwrap()
+        {
+            Progress::Transfer(next) => next,
+            Progress::Reply(reply) => panic!("setup refused {reply:?}"),
+        };
+    }
+    transfer
 }
 pub fn identity(v: &Value) -> u64 {
     v["slot"].as_u64().unwrap() | (v["generation"].as_u64().unwrap() << 32)
@@ -150,6 +181,7 @@ pub struct Transition {
     pub requests: u64,
     random: Random,
     pub last_cycles: u64,
+    pub last_transfers: u64,
     pub phase_cycles: Vec<u64>,
     pub service: Option<TransitionService>,
     pub service_timings: Option<Vec<Value>>,
@@ -163,6 +195,7 @@ impl Transition {
             requests: 0,
             random: Random::new(20261110),
             last_cycles: 0,
+            last_transfers: 0,
             phase_cycles: Vec::new(),
             service: None,
             service_timings: None,
@@ -205,7 +238,8 @@ impl Transition {
         stall: Option<u64>,
         intrude: bool,
     ) -> (u64, Bits) {
-        if matches!(opcode, 4..=6 | 13) && self.service.is_some() {
+        self.last_transfers = 0;
+        if matches!(opcode, 4..=6 | 13 | 22) && self.service.is_some() {
             let mut service = self.service.take().unwrap();
             let mut words = [0; 20];
             let count = data.0.len().min(words.len());
@@ -227,41 +261,53 @@ impl Transition {
                     self.last_cycles = 0;
                     (u64::from(error), Bits::zero(832))
                 }
-                Ok(transfer) => {
-                    let (error, value) = self.raw_command(
-                        s,
-                        u64::from(transfer.opcode),
-                        u64::from(transfer.index),
-                        &Bits(transfer.words.to_vec()),
-                        stall,
-                        intrude,
-                    );
-                    let mut words = [0; 26];
-                    words.copy_from_slice(&value.0);
-                    let start = self
-                        .service_timings
-                        .as_ref()
-                        .map(|_| std::time::Instant::now());
-                    let reply = service
-                        .finish(TpReply {
-                            error: error as u8,
-                            words,
-                        })
-                        .expect("shared request service response");
-                    if let Some(start) = start {
-                        let ns = start.elapsed().as_nanos() as u64;
-                        self.service_timings
-                            .as_mut()
-                            .unwrap()
-                            .push(json!({"kind":"finish","ns":ns}));
+                Ok(mut transfer) => {
+                    let mut cycles = 0;
+                    let mut transfers = 0;
+                    loop {
+                        let (error, value) = self.raw_command(
+                            s,
+                            u64::from(transfer.opcode),
+                            u64::from(transfer.index),
+                            &Bits(transfer.words.to_vec()),
+                            stall,
+                            intrude,
+                        );
+                        cycles += self.last_cycles;
+                        transfers += 1;
+                        let start = self
+                            .service_timings
+                            .as_ref()
+                            .map(|_| std::time::Instant::now());
+                        let progress = service
+                            .finish(TpReply {
+                                error: error as u8,
+                                words: value.0.try_into().unwrap(),
+                            })
+                            .expect("shared request service response");
+                        if let Some(start) = start {
+                            let ns = start.elapsed().as_nanos() as u64;
+                            self.service_timings
+                                .as_mut()
+                                .unwrap()
+                                .push(json!({"kind":"finish","ns":ns}));
+                        }
+                        match progress {
+                            Progress::Transfer(next) => transfer = next,
+                            Progress::Reply(reply) => {
+                                self.last_cycles = cycles;
+                                self.last_transfers = transfers;
+                                break (u64::from(reply.error), Bits(reply.words.to_vec()));
+                            }
+                        }
                     }
-                    (u64::from(reply.error), Bits(reply.words.to_vec()))
                 }
             };
             self.service = Some(service);
             return reply;
         }
         let reply = self.raw_command(s, opcode, index, data, stall, intrude);
+        self.last_transfers = 1;
         if matches!(opcode, 0 | 9 | 11 | 16) {
             if let Some(service) = &mut self.service {
                 let mut words = [0; 26];
