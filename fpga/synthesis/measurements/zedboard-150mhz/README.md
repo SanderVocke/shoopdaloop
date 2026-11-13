@@ -107,3 +107,7 @@ cycles for its first quantum and 21,842–21,854 for the next three in the
 instant-memory model. These are functional simulation cycles, not measured DDR
 service or full-board 150 MHz results. Final memory timing and final workload
 measurements remain pending.
+
+`validation/` retains native runner records with exact arguments, results, model
+parameters and RTL source hashes for the state, audio, smoothing and AXI suites.
+Those subsystem hashes match the current branch.
