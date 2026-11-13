@@ -39,6 +39,8 @@ concurrency:
 env:
   RUST_BACKTRACE: "1"
   PIP_BREAK_SYSTEM_PACKAGES: "1"
+  # Keep debug web builds and audits, but disable Node.js and browser test execution.
+  SHOOP_DEBUG_WEB_TESTS: "false"
   # Enable coarse and detailed engine events in every native nextest capture.
   SHOOP_CI_TRACING_ENGINE_DETAIL: "1"
 
@@ -324,7 +326,7 @@ jobs:
           node-version: 22.22.2
 
       - name: Install pinned Chrome and matching ChromeDriver
-        if: matrix.target == 'web' && env.ACT != 'true'
+        if: matrix.target == 'web' && (matrix.profile == 'release' || env.SHOOP_DEBUG_WEB_TESTS == 'true') && env.ACT != 'true'
         id: pinned-chrome
         uses: browser-actions/setup-chrome@v2
         with:
@@ -332,7 +334,7 @@ jobs:
           install-chromedriver: true
 
       - name: Select pinned Chrome
-        if: matrix.target == 'web' && env.ACT != 'true'
+        if: matrix.target == 'web' && (matrix.profile == 'release' || env.SHOOP_DEBUG_WEB_TESTS == 'true') && env.ACT != 'true'
         shell: bash
         run: |
           chrome='${{ steps.pinned-chrome.outputs.chrome-path }}'
@@ -349,7 +351,7 @@ jobs:
           tool: wasm-pack@0.15.0
 
       - name: Detect browser-runtime changes
-        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
+        if: matrix.target == 'web' && matrix.profile == 'debug' && env.SHOOP_DEBUG_WEB_TESTS == 'true' && env.ACT != 'true'
         id: wasm-browser-policy
         uses: dorny/paths-filter@v4
         with:
@@ -955,6 +957,10 @@ jobs:
           python3 scripts/check_worklet_client_dependencies.py --target wasm32-unknown-unknown
           if grep -E '(^| )((cpal|midir|jack|lilv|lv2_raw|firewheel) v)' /tmp/worklet-tree.txt; then exit 1; fi
           if grep -E '(^| )((cpal|midir|jack|lilv|lv2_raw|firewheel) v)' /tmp/browser-tree.txt; then exit 1; fi
+
+      - name: Test web artifact contracts
+        if: matrix.target == 'web' && (matrix.profile == 'release' || env.SHOOP_DEBUG_WEB_TESTS == 'true')
+        run: |
           node -e "const fs=require('fs'); const m=new WebAssembly.Module(fs.readFileSync('src/rust/shoopdaloop/dist/generated/shoop_audio_worklet.wasm')); if (WebAssembly.Module.imports(m).length) throw new Error('worklet Wasm has imports')"
           node src/rust/shoopdaloop/raw_wasm_host_contract.mjs src/rust/shoopdaloop/dist/generated/shoop_audio_worklet.wasm
 
@@ -972,14 +978,14 @@ jobs:
             --package shoop_worklet_client --package shoopdaloop
 
       - name: Run required Node Wasm suite
-        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
+        if: matrix.target == 'web' && matrix.profile == 'debug' && env.SHOOP_DEBUG_WEB_TESTS == 'true' && env.ACT != 'true'
         env:
           RUSTFLAGS: -D warnings
         run: python3 scripts/run_wasm_tests.py --profile dev --runtime node
 
       - name: Run policy-triggered Chromium Wasm suite
         if: >-
-          matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true' &&
+          matrix.target == 'web' && matrix.profile == 'debug' && env.SHOOP_DEBUG_WEB_TESTS == 'true' && env.ACT != 'true' &&
           (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
           steps.wasm-browser-policy.outputs.browser == 'true')
         env:
@@ -988,7 +994,7 @@ jobs:
 
       - name: Run intentional Node and Chromium Perfetto failure canaries
         if: >-
-          matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true' &&
+          matrix.target == 'web' && matrix.profile == 'debug' && env.SHOOP_DEBUG_WEB_TESTS == 'true' && env.ACT != 'true' &&
           inputs.perfetto_failure_canary
         shell: bash
         run: |
@@ -1043,12 +1049,12 @@ jobs:
           retention-days: 14
 
       - name: Run retained hosted Chrome AudioWorklet smoke
-        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
+        if: matrix.target == 'web' && matrix.profile == 'debug' && env.SHOOP_DEBUG_WEB_TESTS == 'true' && env.ACT != 'true'
         working-directory: src/rust/shoopdaloop
         run: OUTPUT_ONLY=1 BROWSER_SIZE=900,600 node --experimental-websocket browser_smoke.mjs
 
       - name: Run hosted Chromium multirealm Perfetto smokes
-        if: matrix.target == 'web' && matrix.profile == 'debug' && env.ACT != 'true'
+        if: matrix.target == 'web' && matrix.profile == 'debug' && env.SHOOP_DEBUG_WEB_TESTS == 'true' && env.ACT != 'true'
         working-directory: src/rust/shoopdaloop
         run: |
           TRACE_REALM=worker WEB_PORT=19890 DEBUG_PORT=19891 \
