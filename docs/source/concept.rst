@@ -52,11 +52,14 @@ bus-mediated routes may coexist. Native host ports come from JACK or
 CPAL+midir. Browser host ports come from Web Audio and permission-gated Web
 MIDI. Connection state is explicit and kept separate from pending changes.
 
-A new session starts with a disconnected stereo Master. The **buses** button in
+A new session creates an ordinary stereo bus named Master; the auto-connect
+preference controls its initial system outputs. The **buses** button in
 the bottom bar opens a resizable mixer pane. It can add named buses with mono,
 stereo, or larger channel shapes, drag their horizontal mixer strips into a
 persisted visual order, and remove them after confirmation. Master is removable
-and zero buses is valid. Bus order is presentation-only; all routes remain
+and zero buses is valid, including save/load. The replacement backend prepares
+up to eight buses with at most eight channels each; startup settings may choose
+smaller pools. Bus order is presentation-only; all routes remain
 explicit.
 
 Recording and grabbing

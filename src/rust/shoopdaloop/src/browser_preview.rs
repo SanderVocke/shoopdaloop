@@ -1,12 +1,14 @@
-use shoop_app::ApplicationAudioPreview;
+use crate::application::ApplicationAudioPreview;
 use shoop_egui::AppIntent;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::time::Duration;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use web_sys::{
     AudioBufferSourceNode, AudioContext, AudioContextState, AudioScheduledSourceNode, Event,
 };
+use web_time::Instant;
 
 pub fn is_available() -> bool {
     web_sys::window().is_some_and(|window| {
@@ -20,6 +22,10 @@ pub fn is_available() -> bool {
 
 struct ActivePreview {
     request_id: u64,
+    context: AudioContext,
+    resume_error: Rc<RefCell<Option<String>>>,
+    queued_at: Instant,
+    started: bool,
     source: AudioBufferSourceNode,
     ended: Closure<dyn FnMut(Event)>,
     done: Rc<Cell<bool>>,
@@ -56,10 +62,18 @@ impl BrowserPreviewPlayer {
                     .clone()
             }
         };
+        let resume_error = Rc::new(RefCell::new(None));
         if context.state() != AudioContextState::Running {
-            let _resume = context
+            let resume = context
                 .resume()
                 .map_err(|error| format!("Could not resume preview audio: {error:?}"))?;
+            let error_slot = Rc::clone(&resume_error);
+            wasm_bindgen_futures::spawn_local(async move {
+                if let Err(error) = wasm_bindgen_futures::JsFuture::from(resume).await {
+                    *error_slot.borrow_mut() =
+                        Some(format!("Could not resume preview audio: {error:?}"));
+                }
+            });
         }
         let frame_count = u32::try_from(preview.samples.len())
             .map_err(|_| "Click preview is too large for Web Audio".to_owned())?;
@@ -88,6 +102,10 @@ impl BrowserPreviewPlayer {
             .map_err(|error| format!("Could not start click preview: {error:?}"))?;
         self.active = Some(ActivePreview {
             request_id: preview.request_id,
+            context,
+            resume_error,
+            queued_at: Instant::now(),
+            started: false,
             source,
             ended,
             done,
@@ -96,11 +114,34 @@ impl BrowserPreviewPlayer {
     }
 
     pub fn update(&mut self) -> Option<AppIntent> {
-        let request_id = self
-            .active
-            .as_ref()
-            .filter(|active| active.done.get())
-            .map(|active| active.request_id)?;
+        let active = self.active.as_mut()?;
+        let request_id = active.request_id;
+        let error = active.resume_error.borrow_mut().take().or_else(|| {
+            if active.context.state() == AudioContextState::Closed {
+                Some("Preview audio output was closed".to_owned())
+            } else if active.context.state() != AudioContextState::Running
+                && active.queued_at.elapsed() > Duration::from_secs(5)
+            {
+                Some("Preview audio is suspended. Enable browser audio and try again".to_owned())
+            } else {
+                None
+            }
+        });
+        if let Some(message) = error {
+            self.stop_active();
+            return Some(AppIntent::CompleteClickTrackPreview {
+                request_id,
+                success: false,
+                message,
+            });
+        }
+        if !active.started && active.context.state() == AudioContextState::Running {
+            active.started = true;
+            return Some(AppIntent::ClickTrackPreviewStarted { request_id });
+        }
+        if !active.done.get() {
+            return None;
+        }
         self.stop_active();
         Some(AppIntent::CompleteClickTrackPreview {
             request_id,

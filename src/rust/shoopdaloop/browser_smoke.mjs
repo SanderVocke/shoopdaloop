@@ -28,13 +28,23 @@ if (outputOnly && denyFirst) {
 if (directFileMicrophone && !selfContained) {
   throw new Error('DIRECT_FILE_MIC requires SELF_CONTAINED=1');
 }
+const previewOnly = process.env.PREVIEW_ONLY === '1';
+const previewResume = process.env.PREVIEW_RESUME || '';
+let previewSuspended = false;
 const lifecycle = process.env.LIFECYCLE === '1';
 const stress = process.env.STRESS === '1';
+const largeMedia = process.env.LARGE_MEDIA === '1';
+const composites = process.env.COMPOSITES === '1';
+let compositeStalled = false;
+let inputStalled = false;
 const settingsOnly = process.env.SETTINGS_ONLY === '1';
 const settingsUnavailable = process.env.SETTINGS_UNAVAILABLE === '1';
 const webMidi = process.env.WEB_MIDI === '1';
 const webMidiDenyFirst = process.env.WEB_MIDI_DENY_FIRST === '1';
 const webMidiOpenFail = process.env.WEB_MIDI_OPEN_FAIL === '1';
+// The core workflow on the new engine backend, with the fake microphone as capture.
+const newEngine = !settingsOnly;
+if (workerEngine) throw new Error('Worker mode was retired; its canaries are preserved under reference/');
 if ((webMidiDenyFirst || webMidiOpenFail) && !webMidi) {
   throw new Error('Web MIDI failure modes require WEB_MIDI=1');
 }
@@ -43,6 +53,7 @@ if (settingsUnavailable && !settingsOnly) {
 }
 const selfContainedPath = process.env.SELF_CONTAINED_PATH
   || join(process.cwd(), 'dist', 'shoopdaloop.html');
+const selfContainedUrl = process.env.SELF_CONTAINED_URL || pathToFileURL(selfContainedPath).href;
 const profile = await mkdtemp(join(tmpdir(), 'shoopdaloop-chrome-'));
 const fakeAudio = join(profile, 'fake-microphone.wav');
 const children = [];
@@ -169,6 +180,7 @@ try {
   let nextId = 1;
   const pending = new Map();
   const failures = [];
+  let profiledUpload = false;
   websocket.onmessage = event => {
     const message = JSON.parse(event.data);
     if (message.id && pending.has(message.id)) {
@@ -177,6 +189,23 @@ try {
       request.resolve(message);
       pending.delete(message.id);
       return;
+    }
+    if (process.env.UPLOAD_DIAGNOSTICS === '1' && message.method === 'Runtime.consoleAPICalled') {
+      for (const argument of message.params.args) {
+        if (typeof argument.value === 'string' && (argument.value.includes('backend.rt.content_write') || argument.value.includes('ContentBegin') || argument.value.includes('ContentFinish') || argument.value.includes('service.persistence.prepare_refused'))) {
+          console.log(`${new Date(message.params.timestamp).toISOString()} ${argument.value}`);
+          if (process.env.UPLOAD_PROFILE && !profiledUpload && argument.value.includes('bytes: 69206016')) {
+            profiledUpload = true;
+            (async () => {
+              await call('Profiler.enable');
+              await call('Profiler.start');
+              await delay(2000);
+              const response = await call('Profiler.stop');
+              await writeFile(process.env.UPLOAD_PROFILE, JSON.stringify(response.result.profile));
+            })().catch(error => console.error(error));
+          }
+        }
+      }
     }
     if (message.method === 'Runtime.exceptionThrown') failures.push(message);
     if (message.method === 'Runtime.consoleAPICalled' && message.params.type === 'error') {
@@ -229,8 +258,53 @@ try {
   async function waitFor(predicate, description, timeout = 30_000) {
     const deadline = Date.now() + timeout;
     let state;
+    let diagnosticAt = 0;
     while (Date.now() < deadline) {
       state = await evaluate(statusExpression);
+      if (!inputStalled && state?.inputSelfTest === 'Stall') {
+        inputStalled = true;
+        await evaluate(`(() => { const end = performance.now() + 2000; while (performance.now() < end) {} document.getElementById('runtime_status').setAttribute('data-input-stalled', 'true'); })()`);
+      }
+      if (['Saving', 'Resaving'].includes(state?.inputSelfTest)) {
+        await evaluate("document.getElementById('rfd-output')?.click()");
+      }
+      if (composites && !compositeStalled && state?.compositeSelfTest === 'Stall') {
+        compositeStalled = true;
+        await evaluate(`(() => {
+          const end = performance.now() + 1800;
+          while (performance.now() < end) {}
+          document.getElementById('runtime_status').setAttribute('data-composite-stalled', 'true');
+        })()`);
+      }
+      if (composites && ['Saving', 'Resaving', 'P17Saving', 'P17Resaving'].includes(state?.compositeSelfTest)) {
+        await evaluate("document.getElementById('rfd-output')?.click()");
+      }
+      if (process.env.UPLOAD_DIAGNOSTICS === '1' && Date.now() >= diagnosticAt) {
+        console.log('Timer diagnostic', await evaluate('({time:performance.now(),ticks:globalThis.shoopTimerProbe?.ticks,visibility:document.visibilityState})'));
+        diagnosticAt = Date.now() + 10000;
+      }
+      if (newEngine && ['CancelSaving', 'Saving', 'Resaving', 'LargeSaving', 'LargeResaving', 'BusZeroSaving', 'HostedSaving', 'HostedResaving'].includes(state?.newEngineSelfTest)) {
+        await evaluate(`(() => {
+          const output = document.getElementById('rfd-output');
+          if (!output) return;
+          if (document.getElementById('runtime_status')?.getAttribute('data-new-engine-self-test') === 'CancelSaving') {
+            [...document.querySelectorAll('#rfd-card .rfd-button')].find(button => button.textContent === 'Cancel')?.click();
+          } else output.click();
+        })()`);
+      }
+      if (previewOnly && previewResume && !previewSuspended && state?.newEngineSelfTest === 'PreviewReady') {
+        previewSuspended = true;
+        await evaluateAwait(`(async () => {
+          const context = globalThis.shoopPreviewContext;
+          if (!context) throw new Error('missing preview AudioContext');
+          await context.suspend();
+          const resume = context.resume.bind(context);
+          context.resume = () => {
+            context.resume = resume;
+            return ${previewResume === 'pending' ? 'new Promise(() => {})' : "Promise.reject(new DOMException('preview denied by acceptance probe', 'NotAllowedError'))"};
+          };
+        })()`);
+      }
       if (predicate(state)) return state;
       if (state?.driver === 'Failed') {
         throw new Error(`${description}: ${JSON.stringify({ state, failures })}`);
@@ -255,6 +329,17 @@ try {
 
   await call('Runtime.enable');
   await call('Page.enable');
+  if (process.env.UPLOAD_DIAGNOSTICS === '1') {
+    await call('Page.addScriptToEvaluateOnNewDocument', { source: 'globalThis.shoopTimerProbe={ticks:0};setInterval(()=>shoopTimerProbe.ticks++,4)' });
+  }
+  if (previewOnly) {
+    await call('Page.addScriptToEvaluateOnNewDocument', { source: `(() => {
+      const Original = globalThis.AudioContext;
+      globalThis.AudioContext = class extends Original {
+        constructor(...args) { super(...args); globalThis.shoopPreviewContext = this; }
+      };
+    })()` });
+  }
   if (webMidi) {
     await call('Page.addScriptToEvaluateOnNewDocument', {
       source: `(() => {
@@ -362,13 +447,18 @@ try {
     });
   }
   let entryUrl;
-  if (selfContained) {
+  const newEngineQuery = `?new-engine-self-test=1${previewOnly ? '&preview-only=1' : ''}${previewResume ? '&preview-denied=1' : ''}${stress ? '&stress=1' : ''}${largeMedia ? '&persistence-large=1' : ''}${composites ? '&composites=1' : ''}`;
+  if (newEngine) {
+    entryUrl = selfContained
+      ? `${selfContainedUrl}${newEngineQuery}`
+      : `${origin}/${newEngineQuery}`;
+  } else if (selfContained) {
     const query = workerEngine
       ? '?worker=1&self-test=1'
       : settingsOnly
         ? settingsUnavailable
-        ? '?offline=1&settings-test=unavailable'
-        : '?offline=1&settings-test=write'
+        ? '?settings-test=unavailable'
+        : '?settings-test=write'
       : webMidi
         ? '?web-midi-test=1'
         : directFileMicrophone
@@ -376,12 +466,12 @@ try {
           : outputOnly
             ? ''
             : '?offline=1&self-test=1';
-    entryUrl = `${pathToFileURL(selfContainedPath).href}${query}`;
+    entryUrl = `${selfContainedUrl}${query}`;
   } else {
     entryUrl = settingsOnly
       ? settingsUnavailable
-        ? `${origin}/?offline=1&settings-test=unavailable`
-        : `${origin}/?offline=1&settings-test=write`
+        ? `${origin}/?settings-test=unavailable`
+        : `${origin}/?settings-test=write`
       : workerEngine
         ? `${origin}/?worker=1&self-test=1`
         : outputOnly
@@ -449,9 +539,76 @@ try {
     outputEnableGranted: document.getElementById('enable_output_audio')?.hasAttribute('data-permission-granted'),
     canvasWidth: document.getElementById('shoop_canvas')?.width,
     canvasHeight: document.getElementById('shoop_canvas')?.height,
+    newEngine: document.getElementById('runtime_status')?.getAttribute('data-new-engine'),
+    newEngineMicrophone: document.getElementById('runtime_status')?.getAttribute('data-new-engine-microphone'),
+    newEngineSelfTest: document.getElementById('runtime_status')?.getAttribute('data-new-engine-self-test'),
+    compositeSelfTest: document.getElementById('runtime_status')?.getAttribute('data-composite-self-test'),
+    inputSelfTest: document.getElementById('runtime_status')?.getAttribute('data-input-self-test'),
   })`;
 
-  if (settingsOnly && settingsUnavailable) {
+  async function navigateWithAudio(url) {
+    await call('Page.navigate', { url });
+    await waitFor(candidate => candidate.driver === 'AwaitingGesture', 'audio enable action was not presented');
+    await clickEnable('enable_output_audio');
+  }
+  if (settingsOnly) {
+    await waitFor(candidate => candidate.driver === 'AwaitingGesture', 'settings audio enable action was not presented');
+    await clickEnable('enable_output_audio');
+  }
+  if (newEngine) {
+    await waitFor(
+      candidate => candidate.driver === 'AwaitingGesture' && candidate.newEngine === 'AwaitingGesture',
+      'the new engine audio action was not presented',
+    );
+    if (webMidi) {
+      await clickEnable('enable_midi');
+      if (webMidiDenyFirst) {
+        await waitFor(candidate => candidate.webMidi === 'Denied', 'Web MIDI denial was not visible');
+        await clickEnable('enable_midi');
+      }
+      await waitFor(candidate => candidate.webMidiEndpoints === 2, 'mock Web MIDI endpoints were not discovered');
+    }
+    await clickEnable(outputOnly ? 'enable_output_audio' : 'enable_audio');
+    if (denyFirst) {
+      const denied = await waitFor(candidate => candidate.driver === 'Denied' || candidate.newEngineMicrophone === 'Denied', 'microphone denial was not visible');
+      if (denied.enableDisabled || denied.enableGranted) {
+        throw new Error('retry action was unavailable after denial');
+      }
+      await call('Browser.resetPermissions');
+      await call('Browser.grantPermissions', { permissions: ['audioCapture'], origin });
+      await clickEnable('enable_audio');
+    }
+    let step;
+    let compositeStep;
+    const state = await waitFor(
+      candidate => {
+        if (candidate.newEngineSelfTest !== step) {
+          step = candidate.newEngineSelfTest;
+          console.log(`new engine self-test: ${step}`);
+        }
+        if (composites && candidate.compositeSelfTest !== compositeStep) {
+          compositeStep = candidate.compositeSelfTest;
+          console.log(`composite self-test: ${compositeStep}`);
+        }
+        if (candidate.newEngineSelfTest?.startsWith('failed')) {
+          throw new Error(`new engine workflow failed: ${JSON.stringify({ candidate, failures })}`);
+        }
+        return candidate.newEngineSelfTest === 'passed';
+      },
+      'the new engine workflow did not finish',
+      largeMedia ? 900_000 : 300_000,
+    );
+    if (!previewOnly && (!inputStalled || state.inputSelfTest !== 'Passed')) { throw new Error(`input acceptance incomplete: ${JSON.stringify(state)}`); }
+    if (composites && (!compositeStalled || state.compositeSelfTest !== 'Passed')) {
+      throw new Error(`composite acceptance incomplete: ${JSON.stringify(state)}`);
+    }
+    if (state.newEngine !== 'Running' || (!outputOnly && state.newEngineMicrophone !== 'Connected') || state.quantum !== 128) {
+      throw new Error(`new engine evidence is incomplete: ${JSON.stringify(state)}`);
+    }
+    if (state.renderMemoryGrowths !== 0 || state.overflows !== 0) throw new Error(`render boundary invariant failed: ${JSON.stringify(state)}`);
+    if (webMidi && (state.webMidiTrackDrops !== 0 || state.webMidiTrackRefusals !== 0 || !state.webMidiInputHandler)) throw new Error(`Web MIDI bridge evidence failed: ${JSON.stringify(state)}`);
+    console.log(`${selfContained ? (process.env.SELF_CONTAINED_URL ? 'single-file URL' : 'direct-file') : 'hosted'} new engine workflow passed at ${browserSize}, xruns ${state.xruns}`);
+  } else if (settingsOnly && settingsUnavailable) {
     const state = await waitFor(
       candidate => candidate.settingsTest === 'unavailable'
         && candidate.settingsRecovery === 'true'
@@ -475,7 +632,7 @@ try {
       throw new Error(`browser settings text was not persisted: ${stored}`);
     }
     const baseUrl = entryUrl.split('?')[0];
-    await call('Page.navigate', { url: `${baseUrl}?offline=1&settings-test=verify` });
+    await navigateWithAudio(`${baseUrl}?settings-test=verify`);
     state = await waitFor(
       candidate => candidate.settingsTest === 'passed'
         && candidate.settingsChannels === 6
@@ -493,7 +650,7 @@ try {
       values: { 'tracks.new.default_audio_channels': 9 },
     });
     await evaluate(`localStorage.setItem('${settingsKey}', ${JSON.stringify(rejectedDocument)})`);
-    await call('Page.navigate', { url: `${baseUrl}?offline=1&settings-test=rejected` });
+    await navigateWithAudio(`${baseUrl}?settings-test=rejected`);
     state = await waitFor(
       candidate => candidate.settingsTest === 'rejected'
         && candidate.settingsRecovery === 'true'
@@ -519,7 +676,7 @@ try {
       },
     });
     await evaluate(`localStorage.setItem('${settingsKey}', ${JSON.stringify(invalidDocument)})`);
-    await call('Page.navigate', { url: `${baseUrl}?offline=1&settings-test=invalid` });
+    await navigateWithAudio(`${baseUrl}?settings-test=invalid`);
     state = await waitFor(
       candidate => candidate.settingsTest === 'invalid'
         && candidate.settingsRecovery === 'false'
@@ -531,9 +688,7 @@ try {
     );
 
     await evaluate(`localStorage.removeItem('${settingsKey}')`);
-    await call('Page.navigate', {
-      url: `${baseUrl}?offline=1&settings-test=save-failure&settings-save-failure=1`,
-    });
+    await navigateWithAudio(`${baseUrl}?settings-test=save-failure&settings-save-failure=1`);
     state = await waitFor(
       candidate => candidate.settingsTest === 'save-failed'
         && candidate.settingsChannels === 2

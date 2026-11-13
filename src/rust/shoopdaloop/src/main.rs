@@ -27,21 +27,13 @@ use web_time::Instant;
 
 use eframe::egui;
 use settings::SettingsManager;
-#[cfg(not(target_arch = "wasm32"))]
-use shoop_backend::NativeBackend;
-#[cfg(all(not(target_arch = "wasm32"), feature = "native-fx"))]
-use shoop_backend::{
-    configure_carla_hosting_mode, configure_carla_ui_dispatcher, CarlaMainThreadUiService,
-};
 #[cfg(test)]
 use shoop_egui::register_audio_settings;
 #[cfg(target_arch = "wasm32")]
 use shoop_egui::register_bundled_script_settings;
-#[cfg(all(not(target_arch = "wasm32"), any(feature = "native-fx", test)))]
-use shoop_egui::register_carla_settings;
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_egui::register_script_settings;
-#[cfg(all(test, not(target_arch = "wasm32")))]
+#[cfg(test)]
 use shoop_egui::register_settings;
 #[cfg(not(target_arch = "wasm32"))]
 use shoop_egui::AudioDriverConfig;
@@ -53,26 +45,36 @@ use shoop_egui::{
 use shoop_egui::{TracingStatus, TracingStopped};
 
 #[cfg(target_arch = "wasm32")]
-use shoop_app::CooperativeApplicationRuntime;
+use application::BrowserApplicationRuntime as CooperativeApplicationRuntime;
 mod app_args;
-#[cfg(target_arch = "wasm32")]
-mod browser_audio;
+mod application;
 #[cfg(any(target_arch = "wasm32", test))]
 mod browser_midi;
 #[cfg(target_arch = "wasm32")]
 mod browser_preview;
+#[cfg(any(target_arch = "wasm32", test))]
+mod browser_rt_audio;
 #[cfg(target_arch = "wasm32")]
-mod browser_trace;
-#[cfg(target_arch = "wasm32")]
-mod browser_worker;
+mod browser_rt_self_test;
+mod copy_probe;
+#[cfg(not(target_arch = "wasm32"))]
+mod engine_backend;
 #[cfg(not(target_arch = "wasm32"))]
 mod native_preview;
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod native_recovery_tests;
+mod persistence_io;
+mod platform_input;
+#[cfg(not(target_arch = "wasm32"))]
+mod recovery;
+#[cfg(not(target_arch = "wasm32"))]
+mod session_probe;
 mod settings;
 use app_args::AppArgs;
 #[cfg(not(target_arch = "wasm32"))]
-use shoop_app::StartupScript;
+use application::StartupScript;
 #[cfg(not(target_arch = "wasm32"))]
-use shoop_app::{ApplicationHandle, ApplicationRuntime};
+use application::{ApplicationHandle, ApplicationRuntime};
 
 #[cfg(any(target_arch = "wasm32", test))]
 const WEB_CANVAS_ID: &str = "shoop_canvas";
@@ -332,15 +334,6 @@ fn download_browser_trace(bytes: &[u8], filename: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-struct PendingAudioSettings {
-    request_id: Option<u64>,
-    config: AudioDriverConfig,
-    draft: shoop_settings::SettingsDraft,
-    saving: bool,
-    retry_requested: bool,
-}
-
 #[cfg(target_arch = "wasm32")]
 struct BrowserEphemeralFile {
     name: String,
@@ -401,12 +394,17 @@ fn show_about_dialog(
 }
 
 struct UnifiedApp {
+    #[cfg(not(target_arch = "wasm32"))]
+    exit: recovery::ExitController,
+    #[cfg(not(target_arch = "wasm32"))]
+    host_panel: recovery::HostPanel,
     runtime: Runtime,
     widget: AppWidget,
     about_open: bool,
     settings: SettingsManager,
+    pending_profiling_preference: Option<bool>,
     #[cfg(not(target_arch = "wasm32"))]
-    pending_audio_settings: Option<PendingAudioSettings>,
+    pending_audio_settings: Option<u64>,
     #[cfg(not(target_arch = "wasm32"))]
     tracing: Option<SharedNativeTracing>,
     #[cfg(target_arch = "wasm32")]
@@ -421,11 +419,14 @@ struct UnifiedApp {
     session_url_input: String,
     session_url_error: Option<String>,
     session_url_prompt_open: bool,
+    session_url_task: Option<shoop_egui::TaskId>,
+    file_input: platform_input::InputSlot,
+    file_output: platform_input::OutputSlot,
     session_url_confirmation: Option<String>,
     #[cfg(target_arch = "wasm32")]
-    browser_self_test: BrowserSelfTest,
-    #[cfg(target_arch = "wasm32")]
     browser_settings_test: BrowserSettingsSelfTest,
+    #[cfg(target_arch = "wasm32")]
+    new_engine_self_test: browser_rt_self_test::NewEngineSelfTest,
     #[cfg(target_arch = "wasm32")]
     args: AppArgs,
     #[cfg(target_arch = "wasm32")]
@@ -476,7 +477,13 @@ fn load_settings_manager(
 
 #[cfg(all(not(target_arch = "wasm32"), not(test)))]
 fn default_audio_driver_kind() -> AudioDriverKind {
-    shoop_backend::default_native_audio_driver_kind()
+    if cfg!(feature = "cpal") {
+        AudioDriverKind::Cpal
+    } else if cfg!(feature = "jack") {
+        AudioDriverKind::Jack
+    } else {
+        AudioDriverKind::Dummy
+    }
 }
 
 #[cfg(all(not(target_arch = "wasm32"), test))]
@@ -495,6 +502,18 @@ impl UnifiedApp {
         touch_mode_default: bool,
         args: &AppArgs,
     ) -> anyhow::Result<Self> {
+        Self::new_with_runtime(ui_scale_default, touch_mode_default, args, Runtime::new)
+    }
+
+    fn new_with_runtime(
+        ui_scale_default: f64,
+        touch_mode_default: bool,
+        args: &AppArgs,
+        make_runtime: impl FnOnce(
+            &shoop_settings::SettingsSnapshot,
+            &AppArgs,
+        ) -> anyhow::Result<Runtime>,
+    ) -> anyhow::Result<Self> {
         let _span = tracing::info_span!("frontend.egui.initialize").entered();
         #[cfg(not(target_arch = "wasm32"))]
         let (pending_file_intent_tx, pending_file_intent_rx) = mpsc::channel();
@@ -508,8 +527,7 @@ impl UnifiedApp {
             &mut settings_builder,
             default_audio_driver_kind(),
         )?;
-        #[cfg(all(not(target_arch = "wasm32"), feature = "native-fx"))]
-        register_carla_settings(&mut settings_builder)?;
+        shoop_egui::register_audio_backend_settings(&mut settings_builder)?;
         #[cfg(not(target_arch = "wasm32"))]
         register_script_settings(&mut settings_builder)?;
         #[cfg(target_arch = "wasm32")]
@@ -517,16 +535,18 @@ impl UnifiedApp {
         let settings_registry = settings_builder.finish();
         let settings = load_settings_manager(settings_registry.clone(), args);
         let mut widget = AppWidget::new(std::sync::Arc::new(settings_registry));
-        #[cfg(not(target_arch = "wasm32"))]
-        let runtime = Runtime::new(&settings.active())?;
-        #[cfg(target_arch = "wasm32")]
-        let runtime = Runtime::new(&settings.active(), args)?;
+        let runtime = make_runtime(&settings.active(), args)?;
         widget.set_click_track_preview_available(runtime.audio_preview_available());
         Ok(Self {
+            #[cfg(not(target_arch = "wasm32"))]
+            exit: Default::default(),
+            #[cfg(not(target_arch = "wasm32"))]
+            host_panel: Default::default(),
             runtime,
             widget,
             about_open: false,
             settings,
+            pending_profiling_preference: None,
             #[cfg(not(target_arch = "wasm32"))]
             pending_audio_settings: None,
             #[cfg(not(target_arch = "wasm32"))]
@@ -552,11 +572,18 @@ impl UnifiedApp {
             session_url_input: String::new(),
             session_url_error: None,
             session_url_prompt_open: false,
+            session_url_task: None,
+            file_input: platform_input::InputSlot::default(),
+            file_output: platform_input::OutputSlot::default(),
             session_url_confirmation: None,
             #[cfg(target_arch = "wasm32")]
-            browser_self_test: BrowserSelfTest::from_args(args),
-            #[cfg(target_arch = "wasm32")]
             browser_settings_test: BrowserSettingsSelfTest::from_args(args),
+            #[cfg(target_arch = "wasm32")]
+            new_engine_self_test: browser_rt_self_test::NewEngineSelfTest::new(
+                args.new_engine_self_test || args.self_test,
+                args.stress,
+                args.persistence_large,
+            ),
             #[cfg(target_arch = "wasm32")]
             args: args.clone(),
             #[cfg(target_arch = "wasm32")]
@@ -590,7 +617,7 @@ impl UnifiedApp {
             StartupSessionAction::FetchUrl(source) => self.fetch_session_url(source),
             StartupSessionAction::LoadPath(source) => {
                 #[cfg(not(target_arch = "wasm32"))]
-                load_session_path(source, self.pending_file_intent_tx.clone());
+                self.handle_ui_intent(AppIntent::RequestLoadSessionSource { source });
                 #[cfg(target_arch = "wasm32")]
                 tracing::warn!(source = %source, "frontend.session.filesystem_path_unavailable");
             }
@@ -619,6 +646,7 @@ impl UnifiedApp {
             if cancel {
                 self.session_url_prompt_open = false;
                 self.session_url_error = None;
+                self.cancel_session_url_task();
             } else if submit {
                 let source = self.session_url_input.trim().to_owned();
                 if is_http_url(&source) {
@@ -650,28 +678,93 @@ impl UnifiedApp {
                 self.fetch_session_url(url);
             } else if cancel {
                 self.session_url_confirmation = None;
+                self.cancel_session_url_task();
             }
         }
     }
 
-    fn fetch_session_url(&self, url: String) {
+    fn cancel_session_url_task(&mut self) {
+        if let Some(task_id) = self.session_url_task.take() {
+            self.handle_ui_intent(AppIntent::CancelIoTask { task_id });
+        }
+    }
+    fn fetch_session_url(&mut self, url: String) {
+        if let Some(task_id) = self.session_url_task.take() {
+            self.fetch_session_url_for_task(url, task_id);
+        } else {
+            self.handle_ui_intent(AppIntent::RequestLoadSessionSource { source: url });
+        }
+    }
+    fn reserve_file_input(
+        &mut self,
+        task_id: shoop_egui::TaskId,
+    ) -> Option<platform_input::InputLease> {
+        match self.file_input.reserve(task_id) {
+            Ok(lease) => Some(lease),
+            Err(error) => {
+                self.handle_ui_intent(AppIntent::FailIoTask {
+                    task_id,
+                    message: error.to_string(),
+                });
+                None
+            }
+        }
+    }
+    fn fetch_session_url_for_task(&mut self, url: String, task_id: shoop_egui::TaskId) {
+        let Some(lease) = self.reserve_file_input(task_id) else {
+            return;
+        };
+        let download = SessionDownload {
+            task_id,
+            name: session_source_name(&url),
+            bytes: Vec::new(),
+        };
         #[cfg(not(target_arch = "wasm32"))]
         {
             let pending = self.pending_file_intent_tx.clone();
-            let name = session_source_name(&url);
-            ehttp::fetch(ehttp::Request::get(&url), move |result| {
-                let _ = pending.send(session_fetch_result(name, result));
+            let download = std::sync::Mutex::new(download);
+            ehttp::streaming::fetch(ehttp::Request::get(&url), move |part| {
+                if lease.check().is_err() {
+                    return std::ops::ControlFlow::Break(());
+                }
+                match download
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .part(part)
+                {
+                    Ok(None) => std::ops::ControlFlow::Continue(()),
+                    Ok(Some(intent)) => {
+                        let _ = pending.send(intent);
+                        std::ops::ControlFlow::Break(())
+                    }
+                    Err(error) => {
+                        let _ = pending.send(AppIntent::FailIoTask {
+                            task_id,
+                            message: error.to_string(),
+                        });
+                        std::ops::ControlFlow::Break(())
+                    }
+                }
             });
         }
         #[cfg(target_arch = "wasm32")]
         {
             let pending = Rc::clone(&self.pending_file_intents);
-            let name = session_source_name(&url);
+            let registration = lease.registration();
             wasm_bindgen_futures::spawn_local(async move {
-                let result = ehttp::fetch_async(ehttp::Request::get(&url)).await;
-                pending
-                    .borrow_mut()
-                    .push_back(session_fetch_result(name, result));
+                let result = futures_util::future::Abortable::new(
+                    read_browser_session_url(&url, download, &lease),
+                    registration,
+                )
+                .await;
+                match result {
+                    Ok(Ok(intent)) => pending.borrow_mut().push_back(intent),
+                    Ok(Err(error)) => pending.borrow_mut().push_back(AppIntent::FailIoTask {
+                        task_id,
+                        message: error.to_string(),
+                    }),
+                    Err(_) => {}
+                }
             });
         }
     }
@@ -811,7 +904,11 @@ impl UnifiedApp {
         }
         if self.args.tracing_smoke_test && status.active {
             let started = self.tracing_smoke_started.get_or_insert_with(Instant::now);
-            let received_records = self.runtime.trace_received_records();
+            let received_records = self
+                .tracing
+                .capture
+                .as_ref()
+                .map_or(0, |capture| capture.emitted_records());
             let ready = self.runtime.tracing_realm_ready() && received_records > 8192;
             let timed_out = started.elapsed() >= Duration::from_secs(60);
             if let Some(body) = web_sys::window()
@@ -824,7 +921,7 @@ impl UnifiedApp {
                     let _ = body.set_attribute(
                         "data-perfetto-trace-error",
                         &format!(
-                            "Timed out waiting for an active realm with more than 8192 trace records; received {received_records}"
+                            "Timed out waiting for the local UI trace to emit more than 8192 records; received {received_records}"
                         ),
                     );
                 }
@@ -862,9 +959,49 @@ impl UnifiedApp {
             }
             action => action,
         };
+        if matches!(
+            &action,
+            SettingsAction::Save(_)
+                | SettingsAction::SaveTrackDefaults { .. }
+                | SettingsAction::RecoverWithDefaults
+        ) {
+            if self.audio_settings_busy() {
+                if let SettingsAction::SaveTrackDefaults { request_id, .. } = &action {
+                    self.widget.notify_track_default_save_result(
+                        *request_id,
+                        TrackDefaultSaveResult::Retry,
+                    );
+                }
+                self.settings.report_action_error(
+                    "Wait for the audio-driver operation to finish before saving settings",
+                );
+                return;
+            }
+            if !matches!(&action, SettingsAction::RecoverWithDefaults)
+                && !self.reconcile_audio_settings(&self.runtime.snapshot())
+            {
+                return;
+            }
+        }
+        if matches!(
+            &action,
+            SettingsAction::RequestAudioDriverSwitch { .. }
+                | SettingsAction::RetryAudioDriverPersistence { .. }
+        ) && self.settings.view().persistence == shoop_settings::SettingsPersistenceState::Saving
+        {
+            self.settings.report_action_error(
+                "Wait for the settings save to finish before updating audio preferences",
+            );
+            return;
+        }
         let kind = action.kind();
         let _span = tracing::debug_span!("frontend.egui.settings_action", action = kind).entered();
+        let action = self.preserve_profiling_preference(action);
         let result = match action {
+            SettingsAction::SetProfiling(enabled) => {
+                self.request_profiling(enabled);
+                return;
+            }
             SettingsAction::Save(draft) => validate_script_draft(&draft)
                 .and_then(|()| self.settings.request_save(draft).map_err(Into::into)),
             SettingsAction::SaveTrackDefaults { request_id, draft } => {
@@ -907,29 +1044,14 @@ impl UnifiedApp {
             SettingsAction::RequestAudioDriverSwitch { config, draft } => {
                 validate_script_draft(&draft).and_then(|()| {
                     self.runtime
-                        .dispatch(AppIntent::RequestAudioDriverSwitch {
-                            config: config.clone(),
-                        })
+                        .dispatch(AppIntent::RequestAudioDriverSwitch { config })
                         .map_err(Into::into)
-                        .map(|()| {
-                            self.pending_audio_settings = Some(PendingAudioSettings {
-                                request_id: None,
-                                config,
-                                draft,
-                                saving: false,
-                                retry_requested: false,
-                            });
-                        })
                 })
             }
-            SettingsAction::RetryAudioDriverPersistence { request_id } => {
-                let pending = self
-                    .pending_audio_settings
-                    .as_mut()
-                    .filter(|pending| pending.request_id == Some(request_id))
-                    .ok_or_else(|| anyhow::anyhow!("stale audio settings retry {request_id}"));
-                pending.map(|pending| pending.retry_requested = true)
-            }
+            SettingsAction::RetryAudioDriverPersistence { request_id } => self
+                .runtime
+                .dispatch(AppIntent::RetryAudioDriverPersistence { request_id })
+                .map_err(Into::into),
             SettingsAction::RequestBrowserPermissions => {
                 self.settings
                     .report_action_error("Browser permissions are unavailable in native builds");
@@ -995,7 +1117,12 @@ impl UnifiedApp {
         };
         let kind = action.kind();
         let _span = tracing::debug_span!("frontend.egui.settings_action", action = kind).entered();
+        let action = self.preserve_profiling_preference(action);
         let result = match action {
+            SettingsAction::SetProfiling(enabled) => {
+                self.request_profiling(enabled);
+                return;
+            }
             SettingsAction::Save(draft) => self.settings.request_save(draft),
             SettingsAction::SaveTrackDefaults { request_id, draft } => {
                 match self.settings.request_save(draft) {
@@ -1076,90 +1203,40 @@ impl UnifiedApp {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn reconcile_audio_settings(&mut self, snapshot: &AppSnapshot) {
-        let Some(mut pending) = self.pending_audio_settings.take() else {
-            return;
-        };
-        let switch = &snapshot.audio_drivers.switch;
-        if pending.request_id.is_none()
-            && switch
+    fn audio_settings_busy(&self) -> bool {
+        self.runtime.handle.has_pending_audio_driver_commands()
+            || matches!(
+                self.runtime.snapshot().audio_drivers.switch.status,
+                shoop_egui::AudioDriverSwitchStatus::Switching
+                    | shoop_egui::AudioDriverSwitchStatus::Resampling
+                    | shoop_egui::AudioDriverSwitchStatus::Restoring
+                    | shoop_egui::AudioDriverSwitchStatus::Persisting
+            )
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn reconcile_audio_settings(&mut self, snapshot: &AppSnapshot) -> bool {
+        let state = &snapshot.audio_drivers.switch;
+        if self.runtime.remote_entry.is_some()
+            || state.status != shoop_egui::AudioDriverSwitchStatus::Completed
+            || self.pending_audio_settings == Some(state.request_id)
+            || !state
                 .target
                 .as_ref()
-                .is_some_and(|target| target.configured == pending.config)
+                .zip(snapshot.audio_drivers.active.as_ref())
+                .is_some_and(|(target, active)| target.configured == active.configured)
         {
-            pending.request_id = Some(switch.request_id);
+            return true;
         }
-        let Some(request_id) = pending.request_id else {
-            self.pending_audio_settings = Some(pending);
-            return;
-        };
-        if switch.request_id != request_id {
-            self.pending_audio_settings = Some(pending);
-            return;
+        if self.settings.view().persistence == shoop_settings::SettingsPersistenceState::Saving {
+            return false;
         }
-        if switch.status == shoop_egui::AudioDriverSwitchStatus::Completed {
-            return;
+        if let Err(error) = self.settings.reload_driver_preferences() {
+            self.settings.report_action_error(error.to_string());
+            return false;
         }
-        let view = self.settings.view();
-        let desired_settings_saved = view.persistence
-            == shoop_settings::SettingsPersistenceState::Saved
-            && view.active.revision() > pending.draft.base_revision()
-            && shoop_egui::selected_audio_driver(&view.active).ok() == Some(pending.config.kind())
-            && shoop_egui::audio_driver_config_from_snapshot(&view.active, pending.config.kind())
-                .ok()
-                == Some(pending.config.clone());
-        if desired_settings_saved {
-            let _ = self
-                .runtime
-                .dispatch(AppIntent::CompleteAudioDriverSwitchPersistence {
-                    request_id,
-                    success: true,
-                    message: "Audio driver switched and saved for the next launch".to_owned(),
-                });
-            return;
-        }
-        if switch.status == shoop_egui::AudioDriverSwitchStatus::Persisting && !pending.saving {
-            shoop_egui::set_selected_audio_driver(&mut pending.draft, pending.config.kind());
-            match self.settings.request_save(pending.draft.clone()) {
-                Ok(()) => pending.saving = true,
-                Err(error) => {
-                    let _ =
-                        self.runtime
-                            .dispatch(AppIntent::CompleteAudioDriverSwitchPersistence {
-                                request_id,
-                                success: false,
-                                message: format!(
-                            "The new audio driver is active, but settings were not saved: {error}"
-                        ),
-                            });
-                }
-            }
-        }
-        if pending.saving {
-            let view = self.settings.view();
-            if view.persistence == shoop_settings::SettingsPersistenceState::Failed {
-                let _ = self.runtime.dispatch(
-                    AppIntent::CompleteAudioDriverSwitchPersistence {
-                        request_id,
-                        success: false,
-                        message: "The new audio driver is active, but settings were not saved. Retry saving without switching again."
-                            .to_owned(),
-                    },
-                );
-                pending.saving = false;
-            }
-        }
-        if pending.retry_requested
-            && !pending.saving
-            && self.settings.view().persistence != shoop_settings::SettingsPersistenceState::Saving
-        {
-            pending.retry_requested = false;
-            match self.settings.request_save(pending.draft.clone()) {
-                Ok(()) => pending.saving = true,
-                Err(error) => self.settings.report_action_error(error.to_string()),
-            }
-        }
-        self.pending_audio_settings = Some(pending);
+        self.pending_audio_settings = Some(state.request_id);
+        true
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -1251,12 +1328,88 @@ impl UnifiedApp {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    fn clear_connection_state(&mut self, context: &egui::Context) {
+        context.memory_mut(|memory| {
+            memory.data.clear();
+            if let Some(id) = memory.focused() {
+                memory.surrender_focus(id);
+            }
+        });
+        self.file_input.reconcile(None);
+        let (sender, receiver) = mpsc::channel();
+        self.pending_file_intent_tx = sender;
+        self.pending_file_intent_rx = receiver;
+        self.startup_session = None;
+        self.session_url_task = None;
+        self.session_url_confirmation = None;
+        self.session_url_prompt_open = false;
+        self.session_url_input.clear();
+        self.session_url_error = None;
+        self.pending_audio_settings = None;
+        self.widget.reset_connection();
+        self.exit = Default::default();
+        self.host_panel = Default::default();
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    fn use_connection(&mut self, runtime: Runtime, context: &egui::Context) {
+        self.clear_connection_state(context);
+        self.runtime = runtime;
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    fn open_remote_profile(&mut self, context: &egui::Context) {
+        if let Some(path) = rfd::FileDialog::new()
+            .add_filter("Remote host profile", &["json"])
+            .pick_file()
+        {
+            match shoop_host::remote::RemoteProfile::read(&path)
+                .and_then(|profile| Runtime::attach(&self.settings.active(), profile))
+            {
+                Ok(runtime) => {
+                    self.use_connection(runtime, context);
+                }
+                Err(error) => self.settings.report_action_error(error.to_string()),
+            }
+        }
+    }
     fn show(&mut self, ui: &mut egui::Ui) {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            if let Some(entry) = self.runtime.remote_entry.clone() {
+                self.exit.intercept_close(ui.ctx());
+                self.exit.show(ui.ctx(), &entry, &self.runtime.handle);
+                self.host_panel.show(ui.ctx(), &entry);
+            }
+            let status = self.runtime.handle.status();
+            self.widget.set_host_state(recovery::host_ui_state(
+                self.runtime.remote_entry.as_ref(),
+                &status,
+                &self.exit,
+            ));
+            if self.runtime.remote_entry.is_some() && status.state != shoop_app_client::State::Ready
+            {
+                let settings_state = self.settings.view();
+                let response =
+                    self.widget
+                        .show(ui, &self.runtime.snapshot(), &settings_state, None);
+                self.about_open |= response.about_requested;
+                show_about_dialog(
+                    ui.ctx(),
+                    &mut self.about_open,
+                    BuildIdentity::CURRENT,
+                    &settings_state.storage_location,
+                );
+                self.handle_host_actions(ui.ctx(), response.host_actions);
+                ui.ctx().request_repaint_after(Duration::from_millis(50));
+                return;
+            }
+        }
         if let Some((source, force_url_session)) = self.startup_session.take() {
             self.process_startup_session_source(source, force_url_session);
         }
         let _span = tracing::trace_span!("frontend.egui.update").entered();
         self.settings.poll();
+        self.save_profiling_preference();
         if let Err(error) = self
             .runtime
             .reconcile_audio_settings(&self.settings.active())
@@ -1296,19 +1449,29 @@ impl UnifiedApp {
         #[cfg(not(target_arch = "wasm32"))]
         let pending: Vec<_> = self.pending_file_intent_rx.try_iter().collect();
         for intent in pending {
-            if let Err(error) = self.runtime.dispatch(intent) {
-                tracing::error!(error = %error, "frontend.egui.file_intent_dispatch_failed");
+            match self.runtime.dispatch(intent.clone()) {
+                Ok(()) => {}
+                Err(application::DispatchError::Full) => {
+                    #[cfg(not(target_arch = "wasm32"))]
+                    let _ = self.pending_file_intent_tx.send(intent);
+                    #[cfg(target_arch = "wasm32")]
+                    self.pending_file_intents.borrow_mut().push_back(intent);
+                }
+                Err(error) => {
+                    tracing::error!(error = %error, "frontend.egui.file_intent_dispatch_failed")
+                }
             }
         }
         let snapshot = self.runtime.snapshot();
+        self.file_input.reconcile(snapshot.io_task.as_ref());
         #[cfg(not(target_arch = "wasm32"))]
         self.reconcile_audio_settings(&snapshot);
         #[cfg(target_arch = "wasm32")]
-        self.browser_self_test
-            .update(&mut self.runtime, &snapshot, &mut self.widget, &self.args);
-        #[cfg(target_arch = "wasm32")]
         self.browser_settings_test
             .update(&mut self.settings, &mut self.widget, &self.runtime);
+        #[cfg(target_arch = "wasm32")]
+        self.new_engine_self_test
+            .update(&mut self.runtime, &snapshot);
         let settings_state = self.settings.view();
         #[cfg(not(target_arch = "wasm32"))]
         let script_paths = Some(self.runtime.script_paths());
@@ -1332,191 +1495,160 @@ impl UnifiedApp {
         );
         self.show_file_drop_overlay(ui.ctx());
         self.show_session_url_dialogs(ui.ctx());
-        #[cfg(not(target_arch = "wasm32"))]
-        let drain_file_outputs = true;
-        #[cfg(target_arch = "wasm32")]
-        let drain_file_outputs = matches!(
-            self.browser_self_test,
-            BrowserSelfTest::Disabled | BrowserSelfTest::Complete | BrowserSelfTest::Failed
-        );
-        if drain_file_outputs {
-            while let Some(output) = self.runtime.take_file_output() {
-                #[cfg(not(target_arch = "wasm32"))]
-                save_file_output(output, self.pending_file_intent_tx.clone());
-                #[cfg(target_arch = "wasm32")]
-                save_file_output(output, Rc::clone(&self.pending_file_intents));
-            }
+        while let Some(request) = self.runtime.take_file_request() {
+            self.handle_file_request(request);
         }
+        while let Some(output) = self.runtime.take_file_output() {
+            #[cfg(target_arch = "wasm32")]
+            self.new_engine_self_test.file_output(&output);
+            let lease = match self.file_output.reserve() {
+                Ok(lease) => lease,
+                Err(error) => {
+                    let intent = AppIntent::FailIoTask {
+                        task_id: output.task_id,
+                        message: error.to_string(),
+                    };
+                    #[cfg(not(target_arch = "wasm32"))]
+                    let _ = self.pending_file_intent_tx.send(intent);
+                    #[cfg(target_arch = "wasm32")]
+                    self.pending_file_intents.borrow_mut().push_back(intent);
+                    continue;
+                }
+            };
+            #[cfg(not(target_arch = "wasm32"))]
+            save_file_output(output, self.pending_file_intent_tx.clone(), lease);
+            #[cfg(target_arch = "wasm32")]
+            save_file_output(output, Rc::clone(&self.pending_file_intents), lease);
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        self.handle_host_actions(ui.ctx(), response.host_actions);
         ui.ctx().request_repaint_after(UPDATE_INTERVAL);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn handle_ui_intent(&mut self, intent: AppIntent) {
-        let kind = intent.kind();
-        let _span = tracing::debug_span!("frontend.egui.intent_dispatch", intent = kind).entered();
-        let intent = match intent {
-            AppIntent::RequestLoadSessionPicker => {
-                let path = rfd::FileDialog::new()
-                    .add_filter("Shoop session", &["shoop"])
-                    .pick_file();
-                if let Some(path) = path {
-                    let sender = self.pending_file_intent_tx.clone();
-                    std::thread::spawn(move || match std::fs::read(&path) {
-                        Ok(bytes) => {
-                            let _ = sender.send(AppIntent::LoadSessionBytes {
-                                name: file_name(&path),
-                                bytes: std::sync::Arc::from(bytes),
-                            });
-                        }
-                        Err(error) => {
-                            let message = format!("Could not read {}: {error}", path.display());
-                            let _ = sender.send(AppIntent::FailIoWorkflow {
-                                kind: shoop_egui::IoTaskKind::LoadSession,
-                                message,
-                            });
-                        }
-                    });
+    fn handle_host_actions(
+        &mut self,
+        context: &egui::Context,
+        actions: Vec<shoop_egui::HostAction>,
+    ) {
+        for action in actions {
+            match action {
+                shoop_egui::HostAction::OpenProfiling => self.widget.open_profiling(),
+                shoop_egui::HostAction::OpenManager => {
+                    if let Err(error) = shoop_host::launch::launch_manager() {
+                        self.settings.report_action_error(error.to_string());
+                    }
                 }
-                None
-            }
-            AppIntent::RequestLoadSessionUrl => {
-                self.session_url_prompt_open = true;
-                None
-            }
-            AppIntent::RequestLoopAudioImportPicker { loop_id } => {
-                let path = rfd::FileDialog::new()
-                    .add_filter("Loop audio", &["shoop-audio", "wav"])
-                    .pick_file();
-                if let Some(path) = path {
-                    let sender = self.pending_file_intent_tx.clone();
-                    std::thread::spawn(move || match std::fs::read(&path) {
-                        Ok(bytes) => {
-                            let _ = sender.send(AppIntent::ImportLoopAudioBytes {
-                                loop_id,
-                                name: file_name(&path),
-                                bytes: std::sync::Arc::from(bytes),
-                                update_loop_length: true,
-                            });
+                shoop_egui::HostAction::ImportProfile => self.open_remote_profile(context),
+                shoop_egui::HostAction::OpenSettings => self.host_panel.open = true,
+                shoop_egui::HostAction::CloseUi => self.exit.close_ui(context),
+                shoop_egui::HostAction::CloseUiAndHost => self.exit.open = true,
+                shoop_egui::HostAction::Reconnect => {
+                    if let Some(entry) = self.runtime.remote_entry.clone() {
+                        match Runtime::attach(&self.settings.active(), entry) {
+                            Ok(runtime) => self.use_connection(runtime, context),
+                            Err(error) => self.settings.report_action_error(error.to_string()),
                         }
-                        Err(error) => {
-                            let message = format!("Could not read {}: {error}", path.display());
-                            let _ = sender.send(AppIntent::FailIoWorkflow {
-                                kind: shoop_egui::IoTaskKind::ImportLoopAudio,
-                                message,
-                            });
-                        }
-                    });
+                    }
                 }
-                None
-            }
-            AppIntent::RequestLoopMidiImportPicker { loop_id } => {
-                let path = rfd::FileDialog::new()
-                    .add_filter("Loop MIDI", &["shoop-midi", "mid"])
-                    .pick_file();
-                if let Some(path) = path {
-                    let sender = self.pending_file_intent_tx.clone();
-                    std::thread::spawn(move || match std::fs::read(&path) {
-                        Ok(bytes) => {
-                            let _ = sender.send(AppIntent::ImportLoopMidiBytes {
-                                loop_id,
-                                name: file_name(&path),
-                                bytes: std::sync::Arc::from(bytes),
-                                update_loop_length: true,
-                            });
-                        }
-                        Err(error) => {
-                            let message = format!("Could not read {}: {error}", path.display());
-                            let _ = sender.send(AppIntent::FailIoWorkflow {
-                                kind: shoop_egui::IoTaskKind::ImportLoopMidi,
-                                message,
-                            });
-                        }
-                    });
-                }
-                None
-            }
-            other => Some(other),
-        };
-        if let Some(intent) = intent {
-            if let Err(error) = self.runtime.dispatch(intent) {
-                tracing::error!(error = %error, "frontend.egui.intent_dispatch_failed");
             }
         }
     }
 
-    #[cfg(target_arch = "wasm32")]
+    fn preserve_profiling_preference(&self, mut action: SettingsAction) -> SettingsAction {
+        let enabled = self
+            .runtime
+            .profiling_requested_override
+            .or(self.runtime.applied_profiling_preference)
+            .unwrap_or_else(|| {
+                self.settings
+                    .active()
+                    .get(shoop_egui::RUNTIME_PROFILING)
+                    .unwrap_or(false)
+            });
+        match &mut action {
+            SettingsAction::Save(draft)
+            | SettingsAction::SaveTrackDefaults { draft, .. }
+            | SettingsAction::RequestAudioDriverSwitch { draft, .. } => {
+                draft.set(shoop_egui::RUNTIME_PROFILING, enabled);
+            }
+            _ => {}
+        }
+        action
+    }
+
+    fn request_profiling(&mut self, enabled: bool) {
+        if let Err(error) = self.runtime.dispatch(AppIntent::SetProfiling(enabled)) {
+            self.settings.report_action_error(error.to_string());
+            return;
+        }
+        self.runtime.profiling_requested_override = Some(enabled);
+        self.runtime.applied_profiling_preference = Some(enabled);
+        self.pending_profiling_preference = Some(enabled);
+    }
+
+    fn save_profiling_preference(&mut self) {
+        if self.settings.view().persistence == shoop_settings::SettingsPersistenceState::Saving {
+            return;
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.audio_settings_busy() || !self.reconcile_audio_settings(&self.runtime.snapshot()) {
+            return;
+        }
+        let Some(enabled) = self.pending_profiling_preference.take() else {
+            return;
+        };
+        let active = self.settings.active();
+        if active.get(shoop_egui::RUNTIME_PROFILING).unwrap_or(false) == enabled {
+            return;
+        }
+        let mut draft = shoop_settings::SettingsDraft::from_snapshot(&active);
+        draft.set(shoop_egui::RUNTIME_PROFILING, enabled);
+        if let Err(error) = self.settings.request_save(draft) {
+            self.settings.report_action_error(error.to_string());
+        }
+    }
+
     fn handle_ui_intent(&mut self, intent: AppIntent) {
+        #[cfg(not(target_arch = "wasm32"))]
+        if shoop_app_client::runtime::writes_audio_preferences(&intent)
+            && self.settings.view().persistence == shoop_settings::SettingsPersistenceState::Saving
+        {
+            self.settings.report_action_error(
+                "Wait for the settings save to finish before updating audio preferences",
+            );
+            return;
+        }
         let kind = intent.kind();
         let _span = tracing::debug_span!("frontend.egui.intent_dispatch", intent = kind).entered();
-        match intent {
-            AppIntent::RequestLoadSessionPicker => {
-                let pending = Rc::clone(&self.pending_file_intents);
-                wasm_bindgen_futures::spawn_local(async move {
-                    if let Some(file) = rfd::AsyncFileDialog::new()
-                        .add_filter("Shoop session", &["shoop"])
-                        .pick_file()
-                        .await
-                    {
-                        let name = file.file_name();
-                        let bytes = file.read().await;
-                        pending.borrow_mut().push_back(AppIntent::LoadSessionBytes {
-                            name,
-                            bytes: std::sync::Arc::from(bytes),
-                        });
-                    }
-                });
-            }
-            AppIntent::RequestLoadSessionUrl => {
-                self.session_url_prompt_open = true;
-            }
-            AppIntent::RequestLoopAudioImportPicker { loop_id } => {
-                let pending = Rc::clone(&self.pending_file_intents);
-                wasm_bindgen_futures::spawn_local(async move {
-                    if let Some(file) = rfd::AsyncFileDialog::new()
-                        .add_filter("Loop audio", &["shoop-audio", "wav"])
-                        .pick_file()
-                        .await
-                    {
-                        let name = file.file_name();
-                        let bytes = file.read().await;
-                        pending
-                            .borrow_mut()
-                            .push_back(AppIntent::ImportLoopAudioBytes {
-                                loop_id,
-                                name,
-                                bytes: std::sync::Arc::from(bytes),
-                                update_loop_length: true,
-                            });
-                    }
-                });
-            }
-            AppIntent::RequestLoopMidiImportPicker { loop_id } => {
-                let pending = Rc::clone(&self.pending_file_intents);
-                wasm_bindgen_futures::spawn_local(async move {
-                    if let Some(file) = rfd::AsyncFileDialog::new()
-                        .add_filter("Loop MIDI", &["shoop-midi", "mid"])
-                        .pick_file()
-                        .await
-                    {
-                        let name = file.file_name();
-                        let bytes = file.read().await;
-                        pending
-                            .borrow_mut()
-                            .push_back(AppIntent::ImportLoopMidiBytes {
-                                loop_id,
-                                name,
-                                bytes: std::sync::Arc::from(bytes),
-                                update_loop_length: true,
-                            });
-                    }
-                });
-            }
-            other => {
-                if let Err(error) = self.runtime.dispatch(other) {
-                    tracing::error!(error = %error, "frontend.egui.intent_dispatch_failed");
-                }
-            }
+        if let Err(error) = self.runtime.dispatch(intent) {
+            tracing::error!(error = %error, "frontend.egui.intent_dispatch_failed");
         }
+    }
+
+    fn handle_file_request(&mut self, request: application::ApplicationFileRequest) {
+        use application::ApplicationFileRequestKind as Kind;
+        if self.runtime.snapshot().io_task.as_ref().is_none_or(|task| {
+            task.id != request.task_id || task.status != shoop_egui::IoTaskStatus::Running
+        }) {
+            return;
+        }
+        if request.kind == Kind::SessionUrl {
+            self.session_url_task = Some(request.task_id);
+            self.session_url_prompt_open = true;
+            return;
+        }
+        if let Some(source) = request.source.as_ref().filter(|source| is_http_url(source)) {
+            self.fetch_session_url_for_task(source.clone(), request.task_id);
+            return;
+        }
+        let Some(lease) = self.reserve_file_input(request.task_id) else {
+            return;
+        };
+        #[cfg(not(target_arch = "wasm32"))]
+        request_file_input(request, self.pending_file_intent_tx.clone(), lease);
+        #[cfg(target_arch = "wasm32")]
+        request_file_input(request, Rc::clone(&self.pending_file_intents), lease);
     }
 }
 
@@ -1550,20 +1682,34 @@ fn load_ephemeral_script_path(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn save_file_output(output: shoop_app::ApplicationFileOutput, sender: Sender<AppIntent>) {
+fn save_file_output(
+    output: application::ApplicationFileOutput,
+    sender: Sender<AppIntent>,
+    lease: std::sync::Arc<()>,
+) {
     let Some(path) = rfd::FileDialog::new()
         .set_file_name(&output.suggested_name)
         .save_file()
     else {
+        let _ = sender.send(AppIntent::CompleteIoOutput {
+            task_id: output.task_id,
+            outcome: shoop_egui::FileOutputOutcome::Cancelled,
+        });
         return;
     };
     std::thread::spawn(move || {
-        if let Err(error) = atomic_replace(&path, &output.bytes, output.task_id.raw()) {
-            let _ = sender.send(AppIntent::FailIoTask {
+        let _lease = lease;
+        let result = match atomic_replace(&path, &output.bytes, output.task_id.raw()) {
+            Ok(()) => AppIntent::CompleteIoOutput {
+                task_id: output.task_id,
+                outcome: shoop_egui::FileOutputOutcome::Saved,
+            },
+            Err(error) => AppIntent::FailIoTask {
                 task_id: output.task_id,
                 message: format!("Could not save {}: {error}", path.display()),
-            });
-        }
+            },
+        };
+        let _ = sender.send(result);
     });
 }
 
@@ -1597,88 +1743,390 @@ fn session_source_name(source: &str) -> String {
         .to_owned()
 }
 
-fn session_fetch_result(name: String, result: ehttp::Result<ehttp::Response>) -> AppIntent {
-    match result {
-        Ok(response) if response.ok => AppIntent::LoadSessionBytes {
-            name,
-            bytes: std::sync::Arc::from(response.bytes),
-        },
-        Ok(response) => AppIntent::FailIoWorkflow {
-            kind: shoop_egui::IoTaskKind::LoadSession,
-            message: format!("Could not fetch session: HTTP {}", response.status),
-        },
-        Err(error) => AppIntent::FailIoWorkflow {
-            kind: shoop_egui::IoTaskKind::LoadSession,
-            message: format!("Could not fetch session: {error}"),
-        },
+fn reserve_file_bytes(bytes: &mut Vec<u8>, additional: usize, limit: u64) -> anyhow::Result<()> {
+    let required = bytes
+        .len()
+        .checked_add(additional)
+        .filter(|n| *n as u64 <= limit)
+        .ok_or_else(|| anyhow::anyhow!("file input exceeds its byte budget"))?;
+    if required > bytes.capacity() {
+        let capacity = required
+            .max(bytes.capacity().saturating_mul(2))
+            .min(usize::try_from(limit).unwrap_or(usize::MAX));
+        bytes.try_reserve_exact(capacity - bytes.len())?;
+    }
+    Ok(())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn read_session_input(path: &Path, lease: &platform_input::InputLease) -> anyhow::Result<Vec<u8>> {
+    use std::io::Read;
+    let file = std::fs::File::open(path)?;
+    let limit = shoop_app_protocol::persistence::MAX_SESSION_FILE_BYTES;
+    let metadata = file.metadata()?;
+    anyhow::ensure!(metadata.is_file(), "session input must be a regular file");
+    if metadata.len() > limit {
+        anyhow::bail!("file exceeds the 512 MiB input limit");
+    }
+    let mut bytes = Vec::new();
+    let mut reader = file.take(limit + 1);
+    let mut chunk = [0; 64 * 1024];
+    loop {
+        lease.check()?;
+        let n = reader.read(&mut chunk)?;
+        if n == 0 {
+            break;
+        }
+        anyhow::ensure!(
+            bytes.len() as u64 + n as u64 <= limit,
+            "file exceeds the 512 MiB input limit"
+        );
+        reserve_file_bytes(&mut bytes, n, limit)?;
+        bytes.extend_from_slice(&chunk[..n]);
+    }
+    if bytes.len() as u64 > limit {
+        anyhow::bail!("file exceeds the 512 MiB input limit");
+    }
+    Ok(bytes)
+}
+#[cfg(not(target_arch = "wasm32"))]
+fn request_file_input(
+    request: application::ApplicationFileRequest,
+    sender: Sender<AppIntent>,
+    lease: platform_input::InputLease,
+) {
+    use application::ApplicationFileRequestKind as Kind;
+    let path = if let Some(source) = request.source {
+        Some(std::path::PathBuf::from(source))
+    } else {
+        let dialog = rfd::FileDialog::new();
+        match request.kind {
+            Kind::Audio => dialog.add_filter("Loop audio", &["shoop-audio", "wav"]),
+            Kind::Midi => dialog.add_filter("Loop MIDI", &["shoop-midi", "mid"]),
+            _ => dialog.add_filter("Shoop session", &["shoop"]),
+        }
+        .pick_file()
+    };
+    let Some(path) = path else {
+        let _ = sender.send(AppIntent::CancelIoTask {
+            task_id: request.task_id,
+        });
+        return;
+    };
+    std::thread::spawn(move || {
+        let intent = match read_session_input(&path, &lease) {
+            Ok(bytes) => AppIntent::CompleteIoInput {
+                task_id: request.task_id,
+                name: file_name(&path),
+                bytes: bytes.into(),
+            },
+            Err(error) => AppIntent::FailIoTask {
+                task_id: request.task_id,
+                message: format!("Could not read {}: {error}", path.display()),
+            },
+        };
+        let _ = sender.send(intent);
+    });
+}
+#[cfg(target_arch = "wasm32")]
+fn request_file_input(
+    request: application::ApplicationFileRequest,
+    pending: Rc<RefCell<VecDeque<AppIntent>>>,
+    lease: platform_input::InputLease,
+) {
+    use application::ApplicationFileRequestKind as Kind;
+    wasm_bindgen_futures::spawn_local(async move {
+        let result: anyhow::Result<Option<(String, Vec<u8>)>> = async {
+            anyhow::ensure!(
+                request.source.is_none(),
+                "filesystem paths are unavailable in the browser; choose a file instead"
+            );
+            let dialog = rfd::AsyncFileDialog::new();
+            let file = match request.kind {
+                Kind::Audio => dialog.add_filter("Loop audio", &["shoop-audio", "wav"]),
+                Kind::Midi => dialog.add_filter("Loop MIDI", &["shoop-midi", "mid"]),
+                _ => dialog.add_filter("Shoop session", &["shoop"]),
+            }
+            .pick_file()
+            .await;
+            let Some(file) = file else { return Ok(None) };
+            lease.check()?;
+            let size = file.inner().size() as u64;
+            anyhow::ensure!(
+                size <= shoop_app_protocol::persistence::MAX_SESSION_FILE_BYTES,
+                "file exceeds the 512 MiB input limit"
+            );
+            let mut bytes = Vec::new();
+            bytes.try_reserve_exact(size as usize)?;
+            for offset in (0..size).step_by(64 * 1024) {
+                lease.check()?;
+                let blob = file
+                    .inner()
+                    .slice_with_f64_and_f64(offset as f64, (offset + 64 * 1024).min(size) as f64)
+                    .map_err(|e| anyhow::anyhow!("could not read file slice: {e:?}"))?;
+                let buffer = wasm_bindgen_futures::JsFuture::from(blob.array_buffer())
+                    .await
+                    .map_err(|e| anyhow::anyhow!("could not read file: {e:?}"))?;
+                let chunk = js_sys::Uint8Array::new(&buffer);
+                let start = bytes.len();
+                bytes.resize(start + chunk.length() as usize, 0);
+                chunk.copy_to(&mut bytes[start..]);
+            }
+            Ok(Some((file.file_name(), bytes)))
+        }
+        .await;
+        let intent = match result {
+            Ok(Some((name, bytes))) => AppIntent::CompleteIoInput {
+                task_id: request.task_id,
+                name,
+                bytes: bytes.into(),
+            },
+            Ok(None) => AppIntent::CancelIoTask {
+                task_id: request.task_id,
+            },
+            Err(error) => AppIntent::FailIoTask {
+                task_id: request.task_id,
+                message: error.to_string(),
+            },
+        };
+        pending.borrow_mut().push_back(intent);
+    });
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn read_browser_session_url(
+    url: &str,
+    mut download: SessionDownload,
+    lease: &platform_input::InputLease,
+) -> anyhow::Result<AppIntent> {
+    use ehttp::streaming::Part;
+    use futures_util::StreamExt;
+    lease.check()?;
+    let request = ehttp::Request::get(url);
+    let stream = ehttp::streaming::fetch_async_streaming(&request)
+        .await
+        .map_err(|e| anyhow::anyhow!(e))?;
+    futures_util::pin_mut!(stream);
+    while let Some(part) = stream.next().await {
+        lease.check()?;
+        if matches!(&part, Ok(Part::Chunk(chunk)) if chunk.is_empty()) {
+            continue;
+        }
+        if let Some(intent) = download.part(part)? {
+            return Ok(intent);
+        }
+    }
+    lease.check()?;
+    download
+        .part(Ok(Part::Chunk(Vec::new())))?
+        .ok_or_else(|| anyhow::anyhow!("session download did not complete"))
+}
+
+struct SessionDownload {
+    task_id: shoop_egui::TaskId,
+    name: String,
+    bytes: Vec<u8>,
+}
+impl SessionDownload {
+    fn part(
+        &mut self,
+        part: ehttp::Result<ehttp::streaming::Part>,
+    ) -> anyhow::Result<Option<AppIntent>> {
+        use ehttp::streaming::Part;
+        let limit = shoop_app_protocol::persistence::MAX_SESSION_FILE_BYTES;
+        match part.map_err(|e| anyhow::anyhow!("Could not fetch session: {e}"))? {
+            Part::Response(response) => {
+                anyhow::ensure!(
+                    response.ok,
+                    "Could not fetch session: HTTP {}",
+                    response.status
+                );
+                if let Some(length) = response
+                    .headers
+                    .get("content-length")
+                    .and_then(|s| s.parse::<u64>().ok())
+                {
+                    anyhow::ensure!(length <= limit, "download exceeds the 512 MiB input limit");
+                }
+                Ok(None)
+            }
+            Part::Chunk(chunk) if chunk.is_empty() => Ok(Some(AppIntent::CompleteIoInput {
+                task_id: self.task_id,
+                name: std::mem::take(&mut self.name),
+                bytes: std::mem::take(&mut self.bytes).into(),
+            })),
+            Part::Chunk(chunk) => {
+                anyhow::ensure!(
+                    (self.bytes.len() as u64).saturating_add(chunk.len() as u64) <= limit,
+                    "download exceeds the 512 MiB input limit"
+                );
+                reserve_file_bytes(&mut self.bytes, chunk.len(), limit)?;
+                self.bytes.extend_from_slice(&chunk);
+                Ok(None)
+            }
+        }
     }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn load_session_path(source: String, sender: Sender<AppIntent>) {
-    std::thread::spawn(move || {
-        let path = Path::new(&source);
-        match std::fs::read(path) {
-            Ok(bytes) => {
-                let _ = sender.send(AppIntent::LoadSessionBytes {
-                    name: file_name(path),
-                    bytes: std::sync::Arc::from(bytes),
-                });
-            }
-            Err(error) => {
-                let _ = sender.send(AppIntent::FailIoWorkflow {
-                    kind: shoop_egui::IoTaskKind::LoadSession,
-                    message: format!("Could not read {}: {error}", path.display()),
-                });
-            }
-        }
-    });
-}
-
-#[cfg(not(target_arch = "wasm32"))]
 fn atomic_replace(path: &Path, bytes: &[u8], task_id: u64) -> std::io::Result<()> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT_TEMPORARY: AtomicU64 = AtomicU64::new(1);
     let extension = path.extension().unwrap_or_default().to_string_lossy();
-    let temporary = path.with_extension(format!("{extension}.tmp-{task_id}"));
-    let _ = std::fs::remove_file(&temporary);
-    let result = (|| {
-        let mut file = std::fs::OpenOptions::new()
+    let mut opened = None;
+    for _ in 0..16 {
+        let serial = NEXT_TEMPORARY.fetch_add(1, Ordering::Relaxed);
+        let temporary = path.with_extension(format!(
+            "{extension}.tmp-{task_id}-{}-{serial}",
+            std::process::id()
+        ));
+        match std::fs::OpenOptions::new()
             .create_new(true)
             .write(true)
-            .open(&temporary)?;
+            .open(&temporary)
+        {
+            Ok(file) => {
+                opened = Some((temporary, file));
+                break;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(error),
+        }
+    }
+    let (temporary, mut file) = opened.ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            "could not reserve a unique temporary output file",
+        )
+    })?;
+    let mut renamed = false;
+    let result = (|| {
         file.write_all(bytes)?;
         file.sync_all()?;
         drop(file);
         std::fs::rename(&temporary, path)?;
+        renamed = true;
         #[cfg(unix)]
         if let Some(parent) = path.parent() {
-            std::fs::File::open(parent)?.sync_all()?;
+            let parent = if parent.as_os_str().is_empty() {
+                Path::new(".")
+            } else {
+                parent
+            };
+            std::fs::File::open(parent)
+                .and_then(|directory| directory.sync_all())
+                .map_err(|error| {
+                    std::io::Error::other(format!(
+                        "file replacement completed, but directory synchronization failed: {error}"
+                    ))
+                })?;
         }
         Ok(())
     })();
-    if result.is_err() {
+    if result.is_err() && !renamed {
         let _ = std::fs::remove_file(&temporary);
     }
     result
 }
 
 #[cfg(target_arch = "wasm32")]
+async fn write_browser_file(
+    file: &rfd::FileHandle,
+    bytes: &[u8],
+) -> anyhow::Result<shoop_egui::FileOutputOutcome> {
+    use wasm_bindgen::{closure::Closure, JsCast};
+    let document = web_sys::window()
+        .and_then(|window| window.document())
+        .ok_or_else(|| anyhow::anyhow!("browser document is unavailable"))?;
+    let handed_off = Rc::new(std::cell::Cell::new(false));
+    let clicked = Rc::clone(&handed_off);
+    let download_url = Rc::new(RefCell::new(None));
+    let observed_url = Rc::clone(&download_url);
+    let listener = Closure::<dyn FnMut(web_sys::Event)>::new(move |event: web_sys::Event| {
+        let Some(target) = event
+            .target()
+            .and_then(|target| target.dyn_into::<web_sys::Element>().ok())
+        else {
+            return;
+        };
+        let Some(card) = target.closest("#rfd-card").ok().flatten() else {
+            return;
+        };
+        if let Some(output) = card.query_selector("#rfd-output").ok().flatten() {
+            *observed_url.borrow_mut() = output.get_attribute("href");
+            clicked.set(target.closest("#rfd-output").ok().flatten().is_some());
+        }
+    });
+    document
+        .add_event_listener_with_callback_and_bool("click", listener.as_ref().unchecked_ref(), true)
+        .map_err(|error| anyhow::anyhow!("could not observe browser download: {error:?}"))?;
+    let result = file.write(bytes).await;
+    let removed = document.remove_event_listener_with_callback_and_bool(
+        "click",
+        listener.as_ref().unchecked_ref(),
+        true,
+    );
+    if let Err(error) = removed {
+        listener.forget();
+        anyhow::bail!("could not release browser download listener: {error:?}");
+    }
+    if handed_off.get() {
+        let window = web_sys::window().unwrap();
+        let turn = js_sys::Promise::new(&mut |resolve, reject| {
+            if let Err(error) =
+                window.set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, 0)
+            {
+                let _ = reject.call1(&wasm_bindgen::JsValue::UNDEFINED, &error);
+            }
+        });
+        wasm_bindgen_futures::JsFuture::from(turn)
+            .await
+            .map_err(|error| {
+                anyhow::anyhow!("download was handed off but cleanup could not finish: {error:?}")
+            })?;
+    }
+    if let Some(url) = download_url.borrow().as_ref() {
+        web_sys::Url::revoke_object_url(url)
+            .map_err(|error| anyhow::anyhow!("could not release browser download: {error:?}"))?;
+    }
+    result?;
+    Ok(if handed_off.get() {
+        shoop_egui::FileOutputOutcome::DownloadHandedOff
+    } else {
+        shoop_egui::FileOutputOutcome::Cancelled
+    })
+}
+
+#[cfg(target_arch = "wasm32")]
 fn save_file_output(
-    output: shoop_app::ApplicationFileOutput,
+    output: application::ApplicationFileOutput,
     pending: Rc<RefCell<VecDeque<AppIntent>>>,
+    lease: std::sync::Arc<()>,
 ) {
     wasm_bindgen_futures::spawn_local(async move {
-        if let Some(file) = rfd::AsyncFileDialog::new()
+        let _lease = lease;
+        let result = if let Some(file) = rfd::AsyncFileDialog::new()
             .set_file_name(&output.suggested_name)
             .save_file()
             .await
         {
-            if let Err(error) = file.write(&output.bytes).await {
-                pending.borrow_mut().push_back(AppIntent::FailIoTask {
+            match write_browser_file(&file, &output.bytes).await {
+                Ok(outcome) => AppIntent::CompleteIoOutput {
+                    task_id: output.task_id,
+                    outcome,
+                },
+                Err(error) => AppIntent::FailIoTask {
                     task_id: output.task_id,
                     message: format!("Could not save browser file: {error}"),
-                });
+                },
             }
-        }
+        } else {
+            AppIntent::CompleteIoOutput {
+                task_id: output.task_id,
+                outcome: shoop_egui::FileOutputOutcome::Cancelled,
+            }
+        };
+        pending.borrow_mut().push_back(result);
     });
 }
 
@@ -1881,10 +2329,41 @@ fn script_kind_has_file_identity(kind: ScriptKind) -> bool {
     )
 }
 
+fn builtin_script_settings(
+    settings: &shoop_settings::SettingsSnapshot,
+) -> (String, shoop_settings::StringToggleList) {
+    (
+        settings
+            .get(shoop_egui::BUILTINS_LOCATION)
+            .unwrap_or_default(),
+        settings
+            .get(shoop_egui::BUILTIN_SCRIPTS)
+            .unwrap_or_default(),
+    )
+}
+
+fn reconcile_profiling_settings(
+    settings: &shoop_settings::SettingsSnapshot,
+    applied: &mut Option<bool>,
+    requested_override: &mut Option<bool>,
+    mut dispatch: impl FnMut(AppIntent) -> Result<(), application::DispatchError>,
+) -> anyhow::Result<()> {
+    let stored = settings.get(shoop_egui::RUNTIME_PROFILING).unwrap_or(false);
+    if *requested_override == Some(stored) {
+        *requested_override = None;
+    }
+    let enabled = requested_override.unwrap_or(stored);
+    if *applied != Some(enabled) {
+        dispatch(AppIntent::SetProfiling(enabled))?;
+        *applied = Some(enabled);
+    }
+    Ok(())
+}
+
 fn reconcile_loop_smoothing_settings(
     settings: &shoop_settings::SettingsSnapshot,
     applied_revision: &mut u64,
-    mut dispatch: impl FnMut(AppIntent) -> Result<(), shoop_app::DispatchError>,
+    mut dispatch: impl FnMut(AppIntent) -> Result<(), application::DispatchError>,
 ) -> anyhow::Result<()> {
     if settings.revision() == *applied_revision {
         return Ok(());
@@ -1919,18 +2398,26 @@ fn reconcile_loop_smoothing_settings(
 struct Runtime {
     _runtime: ApplicationRuntime,
     handle: ApplicationHandle,
-    #[cfg(feature = "native-fx")]
-    carla_ui_service: CarlaMainThreadUiService,
     script_paths: std::collections::BTreeMap<shoop_egui::ScriptId, String>,
     pending_script_paths: std::collections::VecDeque<(String, ScriptKind, String)>,
     catalog_scan_generation: u64,
     catalog_scan_tx: std::sync::mpsc::Sender<CatalogScanCompletion>,
     catalog_scan_rx: std::sync::mpsc::Receiver<CatalogScanCompletion>,
     preview_player: native_preview::NativePreviewPlayer,
-    pending_preview: Option<shoop_app::ApplicationAudioPreview>,
+    system_preview_request: Option<u64>,
+    pending_preview: Option<application::ApplicationAudioPreview>,
     preview_availability: std::cell::Cell<Option<(Instant, bool)>>,
     applied_audio_settings_revision: u64,
+    applied_profiling_preference: Option<bool>,
+    profiling_requested_override: Option<bool>,
     applied_settings_revision: u64,
+    applied_builtin_settings: (String, shoop_settings::StringToggleList),
+    applied_user_scripts: shoop_settings::StringToggleList,
+    applied_audio_preferences: (u32, bool),
+    /// The new engine backend's host. It is declared after the application runtime so that
+    /// it stops after the backend is gone.
+    _engine_host: Option<engine_backend::EngineHost>,
+    remote_entry: Option<shoop_host::remote::Target>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -1939,50 +2426,59 @@ type CatalogScanCompletion = (
     Result<(Vec<StartupScript>, Vec<String>, Vec<String>, bool), String>,
 );
 
-#[cfg(all(not(target_arch = "wasm32"), feature = "native-fx"))]
-impl Drop for Runtime {
-    fn drop(&mut self) {
-        let service = &mut self.carla_ui_service;
-        self._runtime.shutdown_with_idle(|| service.pump());
-        configure_carla_ui_dispatcher(None);
-        service.pump();
-    }
-}
-
 #[cfg(not(target_arch = "wasm32"))]
 impl Runtime {
-    fn new(settings: &shoop_settings::SettingsSnapshot) -> anyhow::Result<Self> {
-        #[cfg(feature = "native-fx")]
-        let (carla_ui_service, carla_ui_dispatcher) = CarlaMainThreadUiService::new();
-        #[cfg(feature = "native-fx")]
-        configure_carla_ui_dispatcher(Some(carla_ui_dispatcher));
-        #[cfg(feature = "native-fx")]
-        let carla_configuration_warning = {
-            let (carla_hosting_mode, warning) =
-                match shoop_egui::carla_hosting_mode_from_snapshot(settings) {
-                    Ok(mode) => (mode, None),
-                    Err(error) => (
-                        shoop_settings::CarlaHostingMode::InProcess,
-                        Some(format!(
-                            "Could not use Carla hosting setting: {error}; using in_process"
-                        )),
-                    ),
-                };
-            configure_carla_hosting_mode(carla_hosting_mode);
-            warning
-        };
-        let configured_driver = shoop_egui::selected_audio_driver(settings)
-            .and_then(|kind| shoop_egui::audio_driver_config_from_snapshot(settings, kind));
-        let (configured_driver, configuration_warning) = match configured_driver {
-            Ok(configured) => (configured, None),
-            Err(error) => (
-                AudioDriverConfig::default(),
-                Some(format!(
+    fn new(settings: &shoop_settings::SettingsSnapshot, args: &AppArgs) -> anyhow::Result<Self> {
+        Self::new_with_engine_start(
+            settings,
+            args,
+            |driver, pools, transport| {
+                engine_backend::start_selected_with_processors(
+                    driver,
+                    pools,
+                    transport,
+                    args.configured_processors(settings)?,
+                )
+            },
+            None,
+        )
+    }
+
+    fn new_with_engine_start(
+        settings: &shoop_settings::SettingsSnapshot,
+        args: &AppArgs,
+        start_engine: impl FnOnce(
+            &AudioDriverConfig,
+            &shoop_egui::NewEnginePools,
+            shoop_egui::EngineTransportKind,
+        ) -> anyhow::Result<engine_backend::NewEngine>,
+        preferences: Option<shoop_host::audio_driver::PreferenceWriter>,
+    ) -> anyhow::Result<Self> {
+        if let Some(target) = args.host_target()? {
+            return Self::attach(settings, target);
+        }
+        let mut startup_warnings = Vec::new();
+        let configured_driver = match args.configured_audio_driver(settings) {
+            Ok(driver) => driver,
+            Err(error) if args.audio.audio_driver.is_some() => anyhow::bail!(error),
+            Err(error) => {
+                startup_warnings.push(format!(
                     "Could not use preferred audio settings: {error}; using dummy / offline"
-                )),
-            ),
+                ));
+                AudioDriverConfig::default()
+            }
         };
-        let (mut backend, backend_warning) = NativeBackend::new_with_fallback(configured_driver)?;
+        let pools = shoop_egui::new_engine_pools_from_snapshot(settings).unwrap_or_else(|error| {
+            startup_warnings.push(format!(
+                "Could not use engine capacities: {error}; using defaults"
+            ));
+            shoop_egui::NewEnginePools::default()
+        });
+        let transport = args.selected_engine_transport(settings)?;
+        let started = start_engine(&configured_driver, &pools, transport)?;
+        startup_warnings.extend(started.warnings);
+        let mut engine_host = Some(started.host);
+        let backend = started.backend;
         let (loop_smoothing_ms, loop_smoothing_warning) =
             match shoop_egui::loop_edge_smoothing_ms(settings) {
                 Ok(milliseconds) => (milliseconds, None),
@@ -1993,13 +2489,8 @@ impl Runtime {
                     )),
                 ),
             };
-        shoop_backend::Backend::set_loop_smoothing_ms(&mut backend, loop_smoothing_ms)?;
         let (startup_scripts, script_paths, mut warnings) = configured_startup_scripts(settings)?;
-        warnings.extend(configuration_warning);
         warnings.extend(loop_smoothing_warning);
-        #[cfg(feature = "native-fx")]
-        warnings.extend(carla_configuration_warning);
-        warnings.extend(backend_warning);
         let master_auto_connect = match shoop_egui::master_auto_connect(settings) {
             Ok(enabled) => enabled,
             Err(error) => {
@@ -2010,12 +2501,42 @@ impl Runtime {
                 true
             }
         };
+        let graph = engine_host
+            .as_ref()
+            .and_then(|host| host.graph_controller());
+        #[cfg(not(test))]
+        let preferences = match preferences {
+            Some(preferences) => preferences,
+            None => {
+                shoop_settings::default_settings_path().map(settings::driver_preference_writer)?
+            }
+        };
+        #[cfg(test)]
+        let preferences = preferences
+            .unwrap_or_else(|| Box::new(|_| anyhow::bail!("test runtime has no preference store")));
+        let driver = engine_host
+            .as_mut()
+            .unwrap()
+            .enable_audio_driver_switching(
+                shoop_app_api::HostSettings {
+                    driver: configured_driver,
+                    pools,
+                    processors: args.configured_processors(settings)?,
+                    master_auto_connect,
+                    loop_smoothing_ms,
+                },
+                preferences,
+            )?;
         let runtime = ApplicationRuntime::start_with_options(
-            Box::new(backend),
-            shoop_app::ApplicationStartOptions {
+            backend,
+            application::ApplicationStartOptions {
                 startup_scripts,
+                loop_smoothing_ms,
                 master_auto_connect,
+                startup_warnings,
             },
+            graph,
+            Some(driver),
         )?;
         let handle = runtime.handle();
         let preview_player = native_preview::NativePreviewPlayer::new(handle.clone())?;
@@ -2028,24 +2549,89 @@ impl Runtime {
         Ok(Self {
             _runtime: runtime,
             handle,
-            #[cfg(feature = "native-fx")]
-            carla_ui_service,
             script_paths,
             pending_script_paths: std::collections::VecDeque::new(),
             catalog_scan_generation: 1,
             catalog_scan_tx,
             catalog_scan_rx,
             preview_player,
+            system_preview_request: None,
             pending_preview: None,
             preview_availability: std::cell::Cell::new(None),
             applied_audio_settings_revision: settings.revision(),
+            applied_profiling_preference: None,
+            profiling_requested_override: None,
             applied_settings_revision: settings.revision(),
+            applied_builtin_settings: builtin_script_settings(settings),
+            applied_user_scripts: settings.get(shoop_egui::USER_SCRIPTS).unwrap_or_default(),
+            applied_audio_preferences: (
+                shoop_egui::loop_edge_smoothing_ms(settings).unwrap_or(3),
+                shoop_egui::master_auto_connect(settings).unwrap_or(true),
+            ),
+            _engine_host: engine_host,
+            remote_entry: None,
+        })
+    }
+
+    fn attach(
+        settings: &shoop_settings::SettingsSnapshot,
+        entry: impl Into<shoop_host::remote::Target>,
+    ) -> anyhow::Result<Self> {
+        let entry = entry.into();
+        let entry = if entry.process.is_none() {
+            shoop_host::connection::resolve_target(&entry, Duration::from_secs(3))?
+        } else {
+            entry
+        };
+        let (startup_scripts, _paths, warnings) = configured_startup_scripts(settings)?;
+        let pending_script_paths = startup_scripts
+            .iter()
+            .filter_map(|script| {
+                script
+                    .source_path
+                    .clone()
+                    .map(|path| (script.name.clone(), script.kind, path))
+            })
+            .collect();
+        let runtime = ApplicationRuntime::attach(
+            entry.clone(),
+            application::ApplicationStartOptions {
+                startup_scripts,
+                startup_warnings: warnings,
+                ..Default::default()
+            },
+        )?;
+        let handle = runtime.handle();
+        let preview_player = native_preview::NativePreviewPlayer::new(handle.clone())?;
+        let (catalog_scan_tx, catalog_scan_rx) = std::sync::mpsc::channel();
+        Ok(Self {
+            _runtime: runtime,
+            handle,
+            script_paths: Default::default(),
+            pending_script_paths,
+            catalog_scan_generation: 1,
+            catalog_scan_tx,
+            catalog_scan_rx,
+            preview_player,
+            system_preview_request: None,
+            pending_preview: None,
+            preview_availability: std::cell::Cell::new(None),
+            applied_audio_settings_revision: settings.revision(),
+            applied_profiling_preference: None,
+            profiling_requested_override: None,
+            applied_settings_revision: settings.revision(),
+            applied_builtin_settings: builtin_script_settings(settings),
+            applied_user_scripts: settings.get(shoop_egui::USER_SCRIPTS).unwrap_or_default(),
+            applied_audio_preferences: (
+                shoop_egui::loop_edge_smoothing_ms(settings).unwrap_or(3),
+                shoop_egui::master_auto_connect(settings).unwrap_or(true),
+            ),
+            _engine_host: None,
+            remote_entry: Some(entry),
         })
     }
 
     fn tick(&mut self, _elapsed: Duration) {
-        #[cfg(feature = "native-fx")]
-        self.carla_ui_service.pump();
         while let Ok((generation, result)) = self.catalog_scan_rx.try_recv() {
             if generation != self.catalog_scan_generation {
                 continue;
@@ -2131,11 +2717,32 @@ impl Runtime {
         settings: &shoop_settings::SettingsSnapshot,
     ) -> anyhow::Result<()> {
         let handle = self.handle.clone();
+        reconcile_profiling_settings(
+            settings,
+            &mut self.applied_profiling_preference,
+            &mut self.profiling_requested_override,
+            move |intent| handle.dispatch(intent),
+        )?;
+        if self.remote_entry.is_some() {
+            self.applied_audio_settings_revision = settings.revision();
+            return Ok(());
+        }
+        let preferences = (
+            shoop_egui::loop_edge_smoothing_ms(settings).unwrap_or(3),
+            shoop_egui::master_auto_connect(settings).unwrap_or(true),
+        );
+        if preferences == self.applied_audio_preferences {
+            self.applied_audio_settings_revision = settings.revision();
+            return Ok(());
+        }
+        let handle = self.handle.clone();
         reconcile_loop_smoothing_settings(
             settings,
             &mut self.applied_audio_settings_revision,
             move |intent| handle.dispatch(intent),
-        )
+        )?;
+        self.applied_audio_preferences = preferences;
+        Ok(())
     }
 
     fn reconcile_script_settings(
@@ -2145,7 +2752,16 @@ impl Runtime {
         if settings.revision() == self.applied_settings_revision {
             return Ok(());
         }
-        self.request_builtin_rescan(settings);
+        let builtins = builtin_script_settings(settings);
+        if builtins != self.applied_builtin_settings {
+            self.request_builtin_rescan(settings);
+            self.applied_builtin_settings = builtins;
+        }
+        let user_scripts = settings.get(shoop_egui::USER_SCRIPTS)?;
+        if user_scripts == self.applied_user_scripts {
+            self.applied_settings_revision = settings.revision();
+            return Ok(());
+        }
         let mut desired = std::collections::BTreeMap::new();
         let mut warnings = Vec::new();
         for configured in settings.get(shoop_egui::USER_SCRIPTS)?.0 {
@@ -2218,6 +2834,7 @@ impl Runtime {
             }
         }
         self.applied_settings_revision = settings.revision();
+        self.applied_user_scripts = user_scripts;
         Ok(())
     }
 
@@ -2258,21 +2875,29 @@ impl Runtime {
         self.handle.snapshot()
     }
 
-    fn dispatch(&mut self, intent: AppIntent) -> Result<(), shoop_app::DispatchError> {
+    fn dispatch(&mut self, intent: AppIntent) -> Result<(), application::DispatchError> {
         self.handle.dispatch(intent)
     }
 
-    fn take_file_output(&self) -> Option<shoop_app::ApplicationFileOutput> {
+    fn take_file_output(&self) -> Option<application::ApplicationFileOutput> {
         self.handle.take_file_output()
+    }
+    fn take_file_request(&self) -> Option<application::ApplicationFileRequest> {
+        self.handle.take_file_request()
     }
 
     fn process_audio_previews(&mut self) {
         let state = self.handle.snapshot();
-        if !matches!(
-            state.click_track.preview_status,
-            shoop_egui::ClickTrackPreviewStatus::Queued
-                | shoop_egui::ClickTrackPreviewStatus::Playing
-        ) {
+        if self
+            .system_preview_request
+            .is_some_and(|id| id != state.click_track.preview_request_id)
+            || state.click_track.preview_output != Some(shoop_egui::ClickTrackPreviewOutput::System)
+            || !matches!(
+                state.click_track.preview_status,
+                shoop_egui::ClickTrackPreviewStatus::Queued
+                    | shoop_egui::ClickTrackPreviewStatus::Playing
+            )
+        {
             if let Err(error) = self.preview_player.stop() {
                 tracing::warn!(%error, "frontend.preview.stop_failed");
             }
@@ -2303,7 +2928,10 @@ impl Runtime {
                 continue;
             }
             match preview.output {
-                shoop_egui::ClickTrackPreviewOutput::System => self.preview_player.play(preview),
+                shoop_egui::ClickTrackPreviewOutput::System => {
+                    self.system_preview_request = Some(request_id);
+                    self.preview_player.play(preview);
+                }
                 shoop_egui::ClickTrackPreviewOutput::MasterBus => {
                     if let Err(error) =
                         self.handle
@@ -2313,7 +2941,7 @@ impl Runtime {
                                 samples: Arc::clone(&preview.samples),
                             })
                     {
-                        if error == shoop_app::DispatchError::Full {
+                        if error == application::DispatchError::Full {
                             self.pending_preview = Some(preview);
                         } else {
                             tracing::warn!(%error, "frontend.preview.actor_disconnected");
@@ -2567,25 +3195,33 @@ async fn fetch_browser_catalog(
     Ok((scripts, warnings, preserve_identities))
 }
 
+/// What the application needs to start once the new engine is connected.
 #[cfg(target_arch = "wasm32")]
-enum BrowserRuntimeMode {
-    WebAudio(browser_audio::BrowserAudioController),
-    Worker(browser_worker::BrowserWorkerDriver),
+struct PendingNewEngineStart {
+    midi_service: Box<dyn shoop_scripting::MidiControlService>,
+    master_auto_connect: bool,
+    loop_smoothing_ms: u32,
+    warnings: Vec<String>,
 }
 
 #[cfg(target_arch = "wasm32")]
 struct Runtime {
-    runtime: CooperativeApplicationRuntime,
-    mode: BrowserRuntimeMode,
+    /// Absent until the new engine backend is connected.
+    runtime: Option<CooperativeApplicationRuntime>,
+    pending_start: Option<PendingNewEngineStart>,
+    /// The snapshot shown while the application has not started.
+    waiting_snapshot: std::sync::Arc<AppSnapshot>,
+    audio: browser_rt_audio::BrowserRtAudio,
     midi: browser_midi::BrowserMidiController,
     preview_player: browser_preview::BrowserPreviewPlayer,
+    system_preview_request: Option<u64>,
     catalog_scan_generation: u64,
     catalog_completions: Rc<RefCell<VecDeque<BrowserCatalogCompletion>>>,
     applied_audio_settings_revision: u64,
+    applied_profiling_preference: Option<bool>,
+    profiling_requested_override: Option<bool>,
     applied_settings_revision: u64,
-    tracing_requested: bool,
-    tracing_engine_detail: bool,
-    tracing_realm_active: bool,
+    applied_builtin_settings: (String, shoop_settings::StringToggleList),
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -2604,174 +3240,216 @@ type BrowserCatalogCompletion = (
 #[cfg(target_arch = "wasm32")]
 impl Runtime {
     fn new(settings: &shoop_settings::SettingsSnapshot, args: &AppArgs) -> anyhow::Result<Self> {
-        let offline = args.offline;
-        let worker = args.worker;
+        args.selected_engine_transport(settings)?;
+        anyhow::ensure!(!args.worker, "Worker mode was retired. The browser session service runs on the main thread and renders in an AudioWorklet.");
         let (midi, midi_service) = browser_midi::BrowserMidiController::new()?;
-        let (mut backend, transport) = shoop_worklet_client::RemoteWorkletBackend::new(midi.hub());
-        let loop_smoothing_ms = match shoop_egui::loop_edge_smoothing_ms(settings) {
-            Ok(milliseconds) => milliseconds,
-            Err(error) => {
-                tracing::warn!(
-                    error = %error,
-                    "frontend.audio.loop_smoothing_settings_fallback"
-                );
+        Self::new_engine(settings, args.offline, midi, midi_service)
+    }
+
+    /// The new engine backend: the application starts once browser audio is enabled and
+    /// the engine is connected.
+    fn new_engine(
+        settings: &shoop_settings::SettingsSnapshot,
+        offline: bool,
+        midi: browser_midi::BrowserMidiController,
+        midi_service: Box<dyn shoop_scripting::MidiControlService>,
+    ) -> anyhow::Result<Self> {
+        let mut warnings = Vec::new();
+        let pools = shoop_egui::new_engine_pools_from_snapshot(settings).unwrap_or_else(|error| {
+            warnings.push(format!(
+                "Could not use the new engine's capacity settings: {error}; using the defaults"
+            ));
+            shoop_egui::NewEnginePools::default()
+        });
+        let loop_smoothing_ms =
+            shoop_egui::loop_edge_smoothing_ms(settings).unwrap_or_else(|error| {
+                warnings.push(format!(
+                    "Could not use loop edge smoothing setting: {error}; using 3 ms"
+                ));
                 3
-            }
-        };
-        shoop_backend::Backend::set_loop_smoothing_ms(&mut backend, loop_smoothing_ms)?;
-        let master_auto_connect = match shoop_egui::master_auto_connect(settings) {
-            Ok(enabled) => enabled,
-            Err(error) => {
-                tracing::warn!(
-                    error = %error,
-                    "frontend.audio.master_auto_connect_settings_fallback"
-                );
+            });
+        let master_auto_connect =
+            shoop_egui::master_auto_connect(settings).unwrap_or_else(|error| {
+                warnings.push(format!(
+                "Could not use Master auto-connect setting: {error}; using automatic connection"
+            ));
                 true
-            }
-        };
-        let mode = if worker || offline {
+            });
+        let controller = browser_rt_audio::BrowserRtAudio::new(
+            midi.hub(),
+            pools,
+            shoop_egui::processor_settings_from_snapshot(settings).map_err(anyhow::Error::msg)?,
+        )?;
+        if offline {
             set_offline_audio_permission_presentation();
-            BrowserRuntimeMode::Worker(browser_worker::BrowserWorkerDriver::new(transport)?)
-        } else {
-            BrowserRuntimeMode::WebAudio(browser_audio::BrowserAudioController::new(transport)?)
-        };
+            controller.refuse(
+                "Audio is disabled in offline mode. Reload without offline to enable the session engine.".to_owned(),
+            );
+        }
         let mut runtime = Self {
-            runtime: CooperativeApplicationRuntime::start_with_options_and_midi(
-                Box::new(backend),
-                shoop_app::ApplicationStartOptions {
-                    startup_scripts: Vec::new(),
-                    master_auto_connect,
-                },
+            runtime: None,
+            pending_start: Some(PendingNewEngineStart {
                 midi_service,
-            )?,
-            mode,
+                master_auto_connect,
+                loop_smoothing_ms,
+                warnings,
+            }),
+            waiting_snapshot: Default::default(),
+            audio: controller,
             midi,
             preview_player: browser_preview::BrowserPreviewPlayer::default(),
+            system_preview_request: None,
             catalog_scan_generation: 0,
             catalog_completions: Rc::new(RefCell::new(VecDeque::new())),
             applied_audio_settings_revision: settings.revision(),
+            applied_profiling_preference: None,
+            profiling_requested_override: None,
             applied_settings_revision: settings.revision(),
-            tracing_requested: false,
-            tracing_engine_detail: false,
-            tracing_realm_active: false,
+            applied_builtin_settings: builtin_script_settings(settings),
         };
+        runtime.update_waiting_snapshot();
         runtime.request_builtin_rescan(settings);
         Ok(runtime)
     }
 
-    fn set_repaint_context(&self, context: egui::Context) {
-        match &self.mode {
-            BrowserRuntimeMode::WebAudio(controller) => {
-                controller.set_repaint_context(context);
-            }
-            BrowserRuntimeMode::Worker(driver) => driver.set_repaint_context(context),
+    /// Starts the application on the new engine backend once it is connected.
+    fn start_new_engine(&mut self) {
+        let controller = &self.audio;
+        if self.runtime.is_some() {
+            return;
         }
+        let Some((backend, host_warnings)) = controller.take_backend() else {
+            return;
+        };
+        let Some(pending) = self.pending_start.take() else {
+            return;
+        };
+        let mut warnings = pending.warnings;
+        warnings.extend(host_warnings);
+        for warning in &warnings {
+            tracing::warn!(warning = %warning, "frontend.startup.fallback");
+        }
+        match CooperativeApplicationRuntime::start_with_options_and_midi(
+            backend,
+            application::ApplicationStartOptions {
+                startup_scripts: Vec::new(),
+                master_auto_connect: pending.master_auto_connect,
+                loop_smoothing_ms: pending.loop_smoothing_ms,
+                startup_warnings: warnings,
+            },
+            pending.midi_service,
+        ) {
+            Ok(runtime) => {
+                controller.set_pump_wake(runtime.wake());
+                self.runtime = Some(runtime);
+            }
+            Err(error) => controller.refuse(format!(
+                "The application could not start on the new engine backend: {error:#}"
+            )),
+        }
+    }
+
+    fn update_waiting_snapshot(&mut self) {
+        let controller = &self.audio;
+        let audio_driver = controller.driver_state();
+        let (error, message) = controller.notice();
+        let current = &self.waiting_snapshot;
+        if current.status.audio_driver == audio_driver
+            && current
+                .notifications
+                .first()
+                .is_some_and(|notification| notification.message == message)
+        {
+            return;
+        }
+        self.waiting_snapshot = std::sync::Arc::new(AppSnapshot {
+            revision: current.revision + 1,
+            status: shoop_egui::StatusState {
+                version: env!("CARGO_PKG_VERSION").to_owned(),
+                audio_driver,
+                ..Default::default()
+            },
+            capabilities: shoop_egui::BackendCapabilities::NONE,
+            notifications: std::sync::Arc::from([shoop_egui::AppNotification {
+                id: current.revision + 1,
+                level: if error {
+                    shoop_egui::NotificationLevel::Error
+                } else {
+                    shoop_egui::NotificationLevel::Warning
+                },
+                message,
+            }]),
+            ..Default::default()
+        });
+    }
+
+    fn new_engine_microphone(&self) -> bool {
+        self.audio.microphone_connected()
+    }
+
+    fn set_repaint_context(&self, context: egui::Context) {
+        self.audio.set_repaint_context(context);
     }
 
     fn start_tracing(&mut self, engine_detail: bool) -> anyhow::Result<()> {
-        self.tracing_requested = true;
-        self.tracing_engine_detail = engine_detail;
-        self.ensure_tracing_realm()
+        let _ = engine_detail;
+        Ok(())
     }
 
     fn ensure_tracing_realm(&mut self) -> anyhow::Result<()> {
-        if self.tracing_realm_active {
-            self.tracing_realm_active = match &self.mode {
-                BrowserRuntimeMode::WebAudio(controller) => controller.has_active_trace(),
-                BrowserRuntimeMode::Worker(driver) => driver.has_active_trace(),
-            };
-        }
-        if !self.tracing_requested || self.tracing_realm_active {
-            return Ok(());
-        }
-        self.tracing_realm_active = match &self.mode {
-            BrowserRuntimeMode::WebAudio(controller) => {
-                controller.start_tracing(self.tracing_engine_detail)?
-            }
-            BrowserRuntimeMode::Worker(driver) => {
-                driver.start_tracing(self.tracing_engine_detail)?
-            }
-        };
         Ok(())
     }
 
     fn poll_tracing(&self) -> anyhow::Result<()> {
-        match &self.mode {
-            BrowserRuntimeMode::WebAudio(controller) => controller.poll_tracing(),
-            BrowserRuntimeMode::Worker(driver) => driver.poll_tracing(),
-        }
+        Ok(())
     }
 
-    fn cancel_tracing_request(&mut self) {
-        self.tracing_requested = false;
-        match &self.mode {
-            BrowserRuntimeMode::WebAudio(controller) => controller.discard_tracing(),
-            BrowserRuntimeMode::Worker(driver) => driver.discard_tracing(),
-        }
-        self.tracing_realm_active = false;
-    }
+    fn cancel_tracing_request(&mut self) {}
 
     fn tracing_realm_ready(&self) -> bool {
-        match &self.mode {
-            BrowserRuntimeMode::WebAudio(controller) => {
-                controller.state() == shoop_backend::BackendDriverState::Running
-            }
-            BrowserRuntimeMode::Worker(driver) => {
-                driver.state() == shoop_backend::BackendDriverState::Dummy
-            }
-        }
-    }
-
-    fn trace_received_records(&self) -> usize {
-        match &self.mode {
-            BrowserRuntimeMode::WebAudio(controller) => controller.trace_received_records(),
-            BrowserRuntimeMode::Worker(driver) => driver.trace_received_records(),
-        }
+        self.audio_running()
     }
 
     fn request_stop_tracing(&mut self) -> anyhow::Result<()> {
-        self.tracing_requested = false;
-        match &self.mode {
-            BrowserRuntimeMode::WebAudio(controller) => controller.request_stop_tracing(),
-            BrowserRuntimeMode::Worker(driver) => driver.request_stop_tracing(),
-        }
+        Ok(())
     }
 
     fn trace_stopped(&self) -> bool {
-        match &self.mode {
-            BrowserRuntimeMode::WebAudio(controller) => controller.trace_stopped(),
-            BrowserRuntimeMode::Worker(driver) => driver.trace_stopped(),
-        }
+        true
     }
 
     fn take_trace_realms(
         &mut self,
     ) -> anyhow::Result<Option<Vec<shoop_tracing::BrowserRealmData>>> {
-        if !self.tracing_realm_active {
-            if let BrowserRuntimeMode::WebAudio(controller) = &self.mode {
-                if let Some(realms) = controller.take_traces()? {
-                    return Ok(Some(realms));
-                }
-            }
-            return Ok(Some(Vec::new()));
-        }
-        let realms = match &self.mode {
-            BrowserRuntimeMode::WebAudio(controller) => controller.take_traces()?,
-            BrowserRuntimeMode::Worker(driver) => driver.take_trace()?.map(|realm| vec![realm]),
-        };
-        let Some(realms) = realms else {
-            return Ok(None);
-        };
-        self.tracing_realm_active = false;
-        Ok(Some(realms))
+        Ok(Some(Vec::new()))
     }
 
     fn tick(&mut self, elapsed: Duration) {
-        let completions = self
-            .catalog_completions
-            .borrow_mut()
-            .drain(..)
-            .collect::<Vec<_>>();
+        self.start_new_engine();
+        if self.runtime.is_none() {
+            self.midi.update_presentation();
+            self.audio.update_presentation();
+            self.update_waiting_snapshot();
+            let message = format!(
+                "Browser audio (new engine): {:?}",
+                self.waiting_snapshot.status.audio_driver
+            );
+            set_browser_status(&message, Some(&self.waiting_snapshot));
+            self.publish_midi_status();
+            return;
+        }
+        let completions = if self
+            .runtime
+            .as_ref()
+            .is_some_and(|runtime| runtime.is_ready())
+        {
+            self.catalog_completions
+                .borrow_mut()
+                .drain(..)
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
         for (generation, result) in completions {
             if generation != self.catalog_scan_generation {
                 continue;
@@ -2781,7 +3459,7 @@ impl Runtime {
                     for warning in warnings {
                         tracing::warn!(warning = %warning, "frontend.scripting.catalog_scan_warning");
                     }
-                    let _ = self.runtime.dispatch(AppIntent::ReconcileCatalogScripts {
+                    let _ = self.dispatch(AppIntent::ReconcileCatalogScripts {
                         scripts: scripts.into(),
                         preserve_identities: preserve_identities.into(),
                     });
@@ -2791,20 +3469,18 @@ impl Runtime {
                 }
             }
         }
-        self.runtime.tick(elapsed);
+        if let Some(runtime) = self.runtime.as_mut() {
+            runtime.tick(elapsed);
+        }
         self.midi.update_presentation();
-        let snapshot = self.runtime.snapshot();
-        let message = match &self.mode {
-            BrowserRuntimeMode::WebAudio(controller) => {
-                controller.update_presentation();
-                format!("Browser audio: {:?}", controller.state())
-            }
-            BrowserRuntimeMode::Worker(driver) => {
-                driver.update_presentation();
-                format!("Browser offline Worker engine: {:?}", driver.state())
-            }
-        };
+        let snapshot = self.snapshot();
+        self.audio.update_presentation();
+        let message = format!("Browser audio: {:?}", snapshot.status.audio_driver);
         set_browser_status(&message, Some(&snapshot));
+        self.publish_midi_status();
+    }
+
+    fn publish_midi_status(&self) {
         if let Some(element) = browser_status_element() {
             let _ = element.set_attribute("data-web-midi", &format!("{:?}", self.midi.state()));
             let _ = element.set_attribute(
@@ -2826,7 +3502,15 @@ impl Runtime {
         &mut self,
         settings: &shoop_settings::SettingsSnapshot,
     ) -> anyhow::Result<()> {
-        let runtime = &mut self.runtime;
+        let Some(runtime) = self.runtime.as_mut() else {
+            return Ok(());
+        };
+        reconcile_profiling_settings(
+            settings,
+            &mut self.applied_profiling_preference,
+            &mut self.profiling_requested_override,
+            |intent| runtime.dispatch(intent),
+        )?;
         reconcile_loop_smoothing_settings(
             settings,
             &mut self.applied_audio_settings_revision,
@@ -2841,7 +3525,11 @@ impl Runtime {
         if settings.revision() == self.applied_settings_revision {
             return Ok(());
         }
-        self.request_builtin_rescan(settings);
+        let builtins = builtin_script_settings(settings);
+        if builtins != self.applied_builtin_settings {
+            self.request_builtin_rescan(settings);
+            self.applied_builtin_settings = builtins;
+        }
         self.applied_settings_revision = settings.revision();
         Ok(())
     }
@@ -2867,15 +3555,24 @@ impl Runtime {
     }
 
     fn snapshot(&self) -> std::sync::Arc<AppSnapshot> {
-        self.runtime.snapshot()
+        match &self.runtime {
+            Some(runtime) => runtime.snapshot(),
+            None => std::sync::Arc::clone(&self.waiting_snapshot),
+        }
     }
 
-    fn dispatch(&mut self, intent: AppIntent) -> Result<(), shoop_app::DispatchError> {
-        self.runtime.dispatch(intent)
+    fn dispatch(&mut self, intent: AppIntent) -> Result<(), application::DispatchError> {
+        match &mut self.runtime {
+            Some(runtime) => runtime.dispatch(intent),
+            None => Err(application::DispatchError::Disconnected),
+        }
     }
 
-    fn take_file_output(&self) -> Option<shoop_app::ApplicationFileOutput> {
-        self.runtime.take_file_output()
+    fn take_file_output(&self) -> Option<application::ApplicationFileOutput> {
+        self.runtime.as_ref()?.take_file_output()
+    }
+    fn take_file_request(&self) -> Option<application::ApplicationFileRequest> {
+        self.runtime.as_ref()?.take_file_request()
     }
 
     fn audio_preview_available(&self) -> bool {
@@ -2883,45 +3580,55 @@ impl Runtime {
     }
 
     fn process_audio_previews(&mut self) {
-        if !matches!(
-            self.runtime.snapshot().click_track.preview_status,
-            shoop_egui::ClickTrackPreviewStatus::Queued
-                | shoop_egui::ClickTrackPreviewStatus::Playing
-        ) {
+        let Some(runtime) = self.runtime.as_mut() else {
+            return;
+        };
+        let state = runtime.snapshot();
+        if self
+            .system_preview_request
+            .is_some_and(|id| id != state.click_track.preview_request_id)
+            || state.click_track.preview_output != Some(shoop_egui::ClickTrackPreviewOutput::System)
+            || !matches!(
+                state.click_track.preview_status,
+                shoop_egui::ClickTrackPreviewStatus::Queued
+                    | shoop_egui::ClickTrackPreviewStatus::Playing
+            )
+        {
             self.preview_player.stop_active();
         }
         if let Some(intent) = self.preview_player.update() {
-            let _ = self.runtime.dispatch(intent);
+            let _ = runtime.dispatch(intent);
         }
-        while let Some(preview) = self.runtime.take_audio_preview() {
+        while let Some(preview) = runtime.take_audio_preview() {
             let request_id = preview.request_id;
-            let context = match &self.mode {
-                BrowserRuntimeMode::WebAudio(controller) => controller.audio_context(),
-                BrowserRuntimeMode::Worker(_) => None,
-            };
-            if let Err(message) = self.preview_player.play(context, preview) {
-                let _ = self.runtime.dispatch(AppIntent::CompleteClickTrackPreview {
-                    request_id,
-                    success: false,
-                    message,
-                });
+            let state = runtime.snapshot();
+            if state.click_track.preview_request_id != request_id
+                || state.click_track.preview_status != shoop_egui::ClickTrackPreviewStatus::Queued
+            {
+                continue;
+            }
+            self.system_preview_request = Some(request_id);
+            let context = self.audio.audio_context();
+            match self.preview_player.play(context, preview) {
+                Ok(()) => {}
+                Err(message) => {
+                    let _ = runtime.dispatch(AppIntent::CompleteClickTrackPreview {
+                        request_id,
+                        success: false,
+                        message,
+                    });
+                }
             }
         }
     }
 
     fn audio_running(&self) -> bool {
-        match &self.mode {
-            BrowserRuntimeMode::WebAudio(controller) => {
-                controller.state() == shoop_backend::BackendDriverState::Running
-            }
-            BrowserRuntimeMode::Worker(driver) => {
-                matches!(
-                    driver.state(),
-                    shoop_backend::BackendDriverState::Running
-                        | shoop_backend::BackendDriverState::Dummy
-                )
-            }
-        }
+        self.audio.running() && self.runtime.is_some()
+    }
+    fn session_operations_pending(&self) -> bool {
+        self.runtime
+            .as_ref()
+            .is_none_or(CooperativeApplicationRuntime::has_pending_operations)
     }
 }
 
@@ -2990,18 +3697,135 @@ fn create_app(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
+    use anyhow::Context;
+    use shoop_host::{config::AppTransport, serve::StartOptions};
+    if args.shutdown_host {
+        let target = args.host_target()?.context("Host target required")?;
+        shoop_host::connection::shutdown_ownerless(&target, Duration::from_secs(15))?;
+        println!("Host cleanup confirmed");
+        return Ok(true);
+    }
+    if args.ui_only || args.remote_profile.is_some() || args.host_address.is_some() {
+        return Ok(false);
+    }
+    let executable = std::env::current_exe()?;
+    let companion = shoop_host::launch::companion_path(&executable)?;
+    let mut builder = SettingsRegistryBuilder::default();
+    register_settings_with_appearance_defaults(&mut builder, 1.0, false)?;
+    register_audio_settings_with_default_driver(&mut builder, default_audio_driver_kind())?;
+    shoop_egui::register_audio_backend_settings(&mut builder)?;
+    let settings = load_settings_manager(builder.finish(), args);
+    let settings = settings.active();
+    let transport = args.selected_engine_transport(&settings)?;
+    if transport == shoop_egui::EngineTransportKind::InProcess {
+        return Ok(false);
+    }
+    let config = shoop_host::config::HostConfig {
+        settings: shoop_host::config::HostSettings {
+            processors: args.configured_processors(&settings)?,
+            driver: args
+                .configured_audio_driver(&settings)
+                .map_err(anyhow::Error::msg)?,
+            pools: shoop_egui::new_engine_pools_from_snapshot(&settings)
+                .map_err(anyhow::Error::msg)?,
+            master_auto_connect: shoop_egui::master_auto_connect(&settings)
+                .map_err(anyhow::Error::msg)?,
+            loop_smoothing_ms: shoop_egui::loop_edge_smoothing_ms(&settings)
+                .map_err(anyhow::Error::msg)?,
+            ..Default::default()
+        },
+        transport: if transport == shoop_egui::EngineTransportKind::Socket {
+            AppTransport::Socket
+        } else {
+            AppTransport::SharedMemory
+        },
+        ..Default::default()
+    };
+    let mut options = StartOptions::new()?;
+    if let Some(endpoint) = args.endpoint {
+        options.endpoint = endpoint;
+    }
+    options.export_profile = args.export_profile.clone();
+    options.log_file = args.log_file.clone();
+    let original =
+        shoop_host::audio_args::AudioArgs::without_overrides(std::env::args_os().skip(1));
+    shoop_host::launch::pair(&config, options, &companion, |_target| {
+        let mut command = std::process::Command::new(&executable);
+        command.args(&original).arg("--ui-only").arg("--host-stdin");
+        command
+    })?;
+    Ok(true)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 fn main() {
-    #[cfg(feature = "native-fx")]
-    match shoop_backend::run_carla_worker_if_requested(std::env::args_os()) {
-        Ok(true) => return,
-        Ok(false) => {}
-        Err(error) => {
-            eprintln!("Carla worker failed: {error:#}");
-            std::process::exit(2);
+    let cli = AppArgs::parse();
+    if !cli.probe_engine_transport
+        && !cli.probe_persistence
+        && !cli.probe_bus_fx
+        && !cli.probe_hosted_processors
+        && !cli.probe_composites
+        && !cli.probe_input
+        && !cli.probe_builtins
+        && !cli.tracing_smoke_test
+    {
+        match independent_roles(&cli) {
+            Ok(true) => return,
+            Ok(false) => {}
+            Err(error) => {
+                eprintln!("Session launch failed: {error:#}");
+                std::process::exit(1);
+            }
         }
     }
 
-    let cli = AppArgs::parse();
+    if cli.probe_engine_transport
+        || cli.probe_persistence
+        || cli.probe_bus_fx
+        || cli.probe_hosted_processors
+        || cli.probe_composites
+        || cli.probe_input
+    {
+        let result = if cli.probe_bus_fx {
+            session_probe::bus_fx(cli.engine_transport.unwrap())
+        } else if cli.probe_input {
+            session_probe::input(cli.engine_transport.unwrap())
+        } else if cli.probe_hosted_processors {
+            cli.audio
+                .apply_processors(Default::default())
+                .map_err(anyhow::Error::msg)
+                .and_then(|settings| session_probe::hosted(cli.engine_transport.unwrap(), settings))
+        } else if cli.probe_composites {
+            session_probe::composites(cli.engine_transport.unwrap())
+        } else if cli.probe_persistence {
+            session_probe::files(cli.engine_transport.unwrap())
+        } else {
+            session_probe::run(cli.engine_transport.unwrap())
+        };
+        match result {
+            Ok(()) => {
+                println!(
+                    "Session {} {}: workflow and graceful shutdown passed",
+                    if cli.probe_input {
+                        "input"
+                    } else if cli.probe_composites {
+                        "composites"
+                    } else if cli.probe_persistence {
+                        "persistence"
+                    } else {
+                        "transport"
+                    },
+                    cli.engine_transport.unwrap().id()
+                );
+                return;
+            }
+            Err(error) => {
+                eprintln!("Engine transport probe failed: {error:#}");
+                std::process::exit(5);
+            }
+        }
+    }
     if cli.probe_builtins {
         let root = shoop_egui::default_builtins_location();
         let result = shoop_script_resources::scan_builtin_directory(
@@ -3035,44 +3859,7 @@ fn main() {
             }
         }
     }
-    #[cfg(feature = "native-fx")]
-    if cli.probe_carla_native || cli.probe_carla_native_ui {
-        let mut probe_tracing = match NativeTracing::initialize(&cli) {
-            Ok(mut tracing) => match tracing.start_requested_capture() {
-                Ok(()) => tracing,
-                Err(error) => {
-                    eprintln!("Could not start tracing for Carla probe: {error:#}");
-                    std::process::exit(1);
-                }
-            },
-            Err(error) => {
-                eprintln!("Could not initialize tracing for Carla probe: {error:#}");
-                std::process::exit(1);
-            }
-        };
-        let result = if cli.probe_carla_native_ui {
-            shoop_backend::smoke_test_carla_ui()
-        } else {
-            shoop_backend::smoke_test_carla_runtime()
-        };
-        if let Err(error) = probe_tracing.shutdown() {
-            eprintln!("Could not finalize Carla probe trace: {error:#}");
-            std::process::exit(1);
-        }
-        match result {
-            Ok(()) => {
-                let path = shoop_backend::carla_runtime_path()
-                    .map(|path| path.display().to_string())
-                    .unwrap_or_else(|_| "<unknown>".to_owned());
-                println!("Carla Native runtime is available: {path}");
-                return;
-            }
-            Err(error) => {
-                eprintln!("Carla Native runtime probe failed: {error:#}");
-                std::process::exit(3);
-            }
-        }
-    }
+
     let tracing_runtime = match NativeTracing::initialize(&cli) {
         Ok(tracing) => Arc::new(Mutex::new(tracing)),
         Err(error) => {
@@ -3157,6 +3944,9 @@ impl BrowserSettingsSelfTest {
         widget: &mut AppWidget,
         runtime: &Runtime,
     ) {
+        if runtime.snapshot().scripting.scripts.is_empty() {
+            return;
+        }
         let result = match *self {
             Self::Disabled | Self::Complete | Self::Failed => return,
             Self::Write => {
@@ -3352,284 +4142,7 @@ fn set_browser_settings_test_status(status: &str, channels: u32, midi: bool, rec
     }
 }
 
-#[cfg(target_arch = "wasm32")]
-const BROWSER_SESSION_SCRIPT_NAME: &str = "browser-self-test-session.lua";
-#[cfg(target_arch = "wasm32")]
-const BROWSER_SESSION_SCRIPT_SOURCE: &str =
-    "shoop_announce_api_version(1, 0); local shoop_control = require('shoop_control'); local dialog = require('shoop_dialog'); local markdown = dialog.markdown_file('help.md'); shoop_control.register_keyboard_event_cb(function(_) end)";
-#[cfg(target_arch = "wasm32")]
-const BROWSER_SESSION_MARKDOWN: &[u8] = b"# Browser bundle\n\n![resource](image.png)";
-#[cfg(target_arch = "wasm32")]
-const BROWSER_SESSION_IMAGE: &[u8] = &[
-    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
-    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
-    0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x08, 0xd7, 0x63, 0xf8, 0xcf, 0xc0, 0xf0,
-    0x1f, 0x00, 0x05, 0x00, 0x01, 0xff, 0x89, 0x99, 0x3d, 0x1d, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45,
-    0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
-];
-
-#[cfg(target_arch = "wasm32")]
-fn browser_session_script_bundle() -> std::sync::Arc<shoop_scripting::ScriptResourceBundle> {
-    use shoop_script_resources::{
-        NormalizedRelativePath, ResourceKind, ResourceLimits, ScriptResource, ScriptResourceBundle,
-    };
-
-    let entrypoint = NormalizedRelativePath::parse("main.lua").unwrap();
-    std::sync::Arc::new(
-        ScriptResourceBundle::new(
-            entrypoint.clone(),
-            std::collections::BTreeMap::from([
-                (
-                    entrypoint,
-                    ScriptResource::new(
-                        ResourceKind::Lua,
-                        std::sync::Arc::<[u8]>::from(BROWSER_SESSION_SCRIPT_SOURCE.as_bytes()),
-                    ),
-                ),
-                (
-                    NormalizedRelativePath::parse("help.md").unwrap(),
-                    ScriptResource::new(
-                        ResourceKind::Markdown,
-                        std::sync::Arc::<[u8]>::from(BROWSER_SESSION_MARKDOWN),
-                    ),
-                ),
-                (
-                    NormalizedRelativePath::parse("image.png").unwrap(),
-                    ScriptResource::new(
-                        ResourceKind::Image,
-                        std::sync::Arc::<[u8]>::from(BROWSER_SESSION_IMAGE),
-                    ),
-                ),
-            ]),
-            ResourceLimits::default(),
-        )
-        .expect("browser self-test resources must form a valid bundle"),
-    )
-}
-
-#[cfg(target_arch = "wasm32")]
-fn browser_unsupported_session_bytes(
-    sample_rate: u32,
-    carla: bool,
-) -> Result<std::sync::Arc<[u8]>, String> {
-    use shoop_session::{
-        encode_session, DefaultPlaybackModeDocument, FxChainDocument, FxChainTypeDocument,
-        SessionBundle, SessionDocument, TrackControlsDocument, TrackDocument, TrackGroupDocument,
-        TrackTopologyDocument,
-    };
-
-    let mut document = SessionDocument::empty(sample_rate);
-    let (name, port_name_base, topology, fx_chain) = if carla {
-        (
-            "Unsupported browser Carla",
-            "unsupported_browser_carla",
-            TrackTopologyDocument::Carla {
-                chain_type: FxChainTypeDocument::CarlaRack,
-                audio_channels: 1,
-                midi: true,
-                dry_audio_channels: Some(1),
-                wet_audio_channels: Some(1),
-            },
-            Some(FxChainDocument {
-                id: 100,
-                title: "Unavailable".to_owned(),
-                chain_type: FxChainTypeDocument::CarlaRack,
-                ports: Vec::new(),
-                internal_state: "opaque browser rejection state".to_owned(),
-                builtin_fx_midi_cc_assignments: Vec::new(),
-                midi_cc_assignments: Vec::new(),
-            }),
-        )
-    } else {
-        (
-            "Unsupported browser External",
-            "unsupported_browser_external",
-            TrackTopologyDocument::DryWetExternal {
-                dry_audio_channels: 1,
-                wet_audio_channels: 1,
-                dry_midi: true,
-            },
-            None,
-        )
-    };
-    document.track_groups.push(TrackGroupDocument {
-        name: "main".to_owned(),
-        tracks: vec![TrackDocument {
-            id: 99,
-            name: name.to_owned(),
-            port_name_base: port_name_base.to_owned(),
-            is_sync: false,
-            width: None,
-            topology,
-            default_playback_mode: DefaultPlaybackModeDocument::Regular,
-            controls: TrackControlsDocument::default(),
-            latency: Default::default(),
-            loops: Vec::new(),
-            ports: Vec::new(),
-            fx_chain,
-        }],
-    });
-    encode_session(&SessionBundle::new(document), "browser-capability-test")
-        .map(std::sync::Arc::from)
-        .map_err(|error| format!("could not encode browser capability fixture: {error}"))
-}
-
-#[cfg(target_arch = "wasm32")]
-fn set_browser_web_midi_test_status(status: &str) {
-    if let Some(element) = browser_status_element() {
-        let _ = element.set_attribute("data-web-midi-self-test", status);
-    }
-}
-
-#[cfg(target_arch = "wasm32")]
-fn browser_click_request(kind: shoop_egui::ClickTrackKind) -> shoop_egui::ClickTrackRequest {
-    shoop_egui::ClickTrackRequest {
-        kind,
-        bpm: 1_000.0,
-        click_count: 1,
-        midi_note: 67,
-        ..Default::default()
-    }
-}
-
-#[cfg(target_arch = "wasm32")]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum BrowserSelfTest {
-    Disabled,
-    WaitForAudio,
-    WaitForDryWetForm,
-    WaitForWebMidi,
-    WaitForWebMidiControlBeforeAudio,
-    AddWebMidiTrack,
-    WaitForWebMidiTrack,
-    WaitForWebMidiTrackReady {
-        track_id: shoop_egui::TrackId,
-        loop_id: shoop_egui::LoopId,
-        input_port: shoop_egui::PortId,
-        output_port: shoop_egui::PortId,
-        tiny_input_port: shoop_egui::PortId,
-        callbacks_before: u64,
-    },
-    WaitForWebMidiConnections {
-        track_id: shoop_egui::TrackId,
-        loop_id: shoop_egui::LoopId,
-        input_port: shoop_egui::PortId,
-        output_port: shoop_egui::PortId,
-        tiny_input_port: shoop_egui::PortId,
-    },
-    WaitForWebMidiControl {
-        track_id: shoop_egui::TrackId,
-        loop_id: shoop_egui::LoopId,
-    },
-    WaitForWebMidiRecorded {
-        track_id: shoop_egui::TrackId,
-        loop_id: shoop_egui::LoopId,
-        callbacks_after_control: Option<u64>,
-    },
-    WaitForWebMidiInput {
-        track_id: shoop_egui::TrackId,
-        loop_id: shoop_egui::LoopId,
-    },
-    WaitForWebMidiStopped {
-        track_id: shoop_egui::TrackId,
-        loop_id: shoop_egui::LoopId,
-    },
-    WaitForWebMidiSessionLoad {
-        callbacks_before: u64,
-    },
-    WaitForWebMidiSave {
-        track_id: shoop_egui::TrackId,
-        loop_id: shoop_egui::LoopId,
-        callbacks_before: u64,
-    },
-    WaitForWebMidiPlayback {
-        track_id: shoop_egui::TrackId,
-        loop_id: shoop_egui::LoopId,
-        callbacks_before: u64,
-    },
-    AddTrack,
-    WaitForTrack,
-    WaitForRecording,
-    WaitForPianoPress {
-        callbacks_before: u64,
-    },
-    WaitForPianoRelease {
-        callbacks_before: u64,
-    },
-    WaitForStopped,
-    WaitForDetails,
-    WaitForPlaying,
-    WaitForDisconnectedOutput {
-        left: shoop_egui::PortId,
-        right: shoop_egui::PortId,
-        callbacks_before: u64,
-    },
-    WaitForReconnectedOutput {
-        left: shoop_egui::PortId,
-        right: shoop_egui::PortId,
-        callbacks_before: u64,
-    },
-    SaveSession {
-        callbacks_before: u64,
-    },
-    WaitForSessionSave {
-        callbacks_before: u64,
-    },
-    WaitForSessionLoad {
-        callbacks_before: u64,
-    },
-    SaveLoadedScriptSession {
-        callbacks_before: u64,
-    },
-    WaitForLoadedScriptSave {
-        callbacks_before: u64,
-    },
-    PlayLoadedLoop,
-    WaitForLoadedPlayback,
-    WaitForMediaStopped,
-    ExportLoopAudio,
-    WaitForLoopAudioSelection,
-    WaitForLoopAudioExport,
-    WaitForLoopAudioMapping,
-    WaitForLoopAudioImport,
-    ExportLoopMidi,
-    WaitForLoopMidiExport,
-    WaitForLoopMidiImport,
-    GenerateClickAudio,
-    WaitForClickAudio {
-        previous_task: shoop_egui::TaskId,
-        request_revision: u64,
-    },
-    WaitForClickAudioSelection,
-    WaitForClickAudioExport,
-    PreviewClickAudio,
-    WaitForClickPreview,
-    GenerateClickMidi,
-    WaitForClickMidi {
-        previous_task: shoop_egui::TaskId,
-        request_revision: u64,
-    },
-    WaitForClickMidiExport,
-    RejectProcessedSession,
-    RejectExternalSession,
-    WaitForProcessedSessionRejection {
-        audio_progress_before: u64,
-        external: bool,
-    },
-    AddLuaVersionChecks,
-    WaitForLuaVersionChecks,
-    WaitForLuaDialogs,
-    WaitForLuaDialogCallback {
-        script_id: shoop_egui::ScriptId,
-        welcome: shoop_egui::ScriptDialogId,
-        guide: shoop_egui::ScriptDialogId,
-    },
-    WaitForLuaDialogsStopped,
-    Complete,
-    Failed,
-}
-
-#[cfg(any(target_arch = "wasm32", test))]
+#[cfg(test)]
 fn click_request_was_rejected(
     snapshot_revision: u64,
     io_task: Option<&shoop_egui::IoTaskState>,
@@ -3642,7 +4155,7 @@ fn click_request_was_rejected(
         })
 }
 
-#[cfg(any(target_arch = "wasm32", test))]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 fn lua_version_rejection_is_expected(script: &shoop_egui::ScriptState) -> bool {
     let lifecycle = if script.name == "lua-api-unannounced.lua" {
         shoop_egui::ScriptLifecycle::Error
@@ -3650,1934 +4163,6 @@ fn lua_version_rejection_is_expected(script: &shoop_egui::ScriptState) -> bool {
         shoop_egui::ScriptLifecycle::Incompatible
     };
     script.lifecycle == lifecycle && script.latest_error.is_some()
-}
-
-#[cfg(target_arch = "wasm32")]
-impl BrowserSelfTest {
-    fn from_args(args: &AppArgs) -> Self {
-        if args.web_midi_test {
-            set_browser_self_test_status("web-midi");
-            set_browser_web_midi_test_status("awaiting-permission");
-            Self::WaitForWebMidi
-        } else if args.self_test {
-            set_browser_self_test_status("awaiting-audio");
-            Self::WaitForAudio
-        } else {
-            Self::Disabled
-        }
-    }
-
-    fn update(
-        &mut self,
-        runtime: &mut Runtime,
-        snapshot: &AppSnapshot,
-        widget: &mut AppWidget,
-        args: &AppArgs,
-    ) {
-        let result = match *self {
-            Self::Disabled | Self::Complete | Self::Failed => return,
-            Self::WaitForAudio => {
-                if !runtime.audio_running() {
-                    return;
-                }
-                if !widget.browser_test_open_builtin_synth_form(&snapshot.track_processors) {
-                    return self.fail(
-                        "browser dry/wet form did not expose the Built-in Synth processor contract",
-                    );
-                }
-                mark_browser_dry_wet_capability_check();
-                Ok(Self::WaitForDryWetForm)
-            }
-            Self::WaitForDryWetForm => {
-                let builtin_fx = snapshot.track_processors.iter().find(|processor| {
-                    processor.id.as_str() == shoop_egui::TrackProcessorTypeId::BUILTIN_FX
-                });
-                let builtin_synth = snapshot.track_processors.iter().find(|processor| {
-                    processor.id.as_str() == shoop_egui::TrackProcessorTypeId::OXISYNTH
-                });
-                if snapshot.track_processors.len() != 2
-                    || !builtin_fx.is_some_and(|processor| {
-                        [1, 2, 3, 6]
-                            .into_iter()
-                            .all(|channels| processor.constraints.accepts(channels, channels, true))
-                            && !processor.constraints.accepts(2, 2, false)
-                            && !processor.constraints.accepts(2, 1, true)
-                            && processor.features.state
-                            && processor.features.embedded_ui
-                    })
-                    || builtin_synth.is_none()
-                {
-                    return self.fail("browser built-in processor catalog changed unexpectedly");
-                }
-                widget.browser_test_close_add_track();
-                widget.browser_test_open_global_connections();
-                Ok(Self::AddTrack)
-            }
-            Self::WaitForWebMidi => {
-                if runtime.midi.state() != browser_midi::BrowserMidiState::Running {
-                    return;
-                }
-                let Some(apc) = snapshot
-                    .scripting
-                    .scripts
-                    .iter()
-                    .find(|script| script.name == APC_MINI_SCRIPT_FILENAME)
-                else {
-                    return self.fail("bundled APC script is missing");
-                };
-                runtime
-                    .dispatch(AppIntent::SetScriptEnabled {
-                        script_id: apc.id,
-                        enabled: true,
-                    })
-                    .map(|()| Self::WaitForWebMidiControlBeforeAudio)
-            }
-            Self::WaitForWebMidiControlBeforeAudio => {
-                let ready = snapshot
-                    .scripting
-                    .scripts
-                    .iter()
-                    .find(|script| script.name == APC_MINI_SCRIPT_FILENAME)
-                    .is_some_and(|script| {
-                        script.lifecycle == shoop_egui::ScriptLifecycle::Listening
-                            && script.midi.connections == 2
-                    });
-                if !ready {
-                    return;
-                }
-                set_browser_web_midi_test_status("control-ready-without-audio");
-                if !runtime.audio_running() {
-                    return;
-                }
-                widget.browser_test_open_global_connections();
-                Ok(Self::AddWebMidiTrack)
-            }
-            Self::AddWebMidiTrack => runtime
-                .dispatch(AppIntent::Global(shoop_egui::GlobalControlAction::SetSync(
-                    false,
-                )))
-                .and_then(|()| {
-                    runtime.dispatch(AppIntent::AddTrack(shoop_egui::DirectTrackSpec {
-                        name: "Browser Web MIDI test".to_owned(),
-                        audio_channels: 0,
-                        midi: true,
-                    }))
-                })
-                .and_then(|()| {
-                    runtime.dispatch(AppIntent::AddTrackWithTopology(shoop_egui::TrackSpec {
-                        name: "Browser Web MIDI Tiny".to_owned(),
-                        topology: shoop_egui::TrackSpecTopology::DryWet {
-                            dry_audio_channels: 0,
-                            wet_audio_channels: 0,
-                            dry_midi: true,
-                            processor_type: shoop_egui::TrackProcessorTypeId::new(
-                                shoop_egui::TrackProcessorTypeId::OXISYNTH,
-                            ),
-                            default_playback_mode: shoop_egui::DefaultPlaybackMode::Regular,
-                        },
-                        latency: shoop_egui::TrackLatencySpec::default(),
-                        initial_output_bus_names: Vec::new(),
-                        creation_request_id: None,
-                    }))
-                })
-                .map(|()| Self::WaitForWebMidiTrack),
-            Self::WaitForWebMidiTrack => {
-                let Some(track) = snapshot.tracks.iter().find(|track| !track.is_sync) else {
-                    return;
-                };
-                let Some(loop_state) = track.loops.first() else {
-                    return;
-                };
-                let input_port = snapshot.connections.application_ports.iter().find(|port| {
-                    matches!(
-                        port.owner,
-                        shoop_egui::ApplicationPortOwner::Track { track_id, .. }
-                            if track_id == track.id
-                    ) && port.role == shoop_egui::PortRole::MidiInput
-                });
-                let output_port = snapshot.connections.application_ports.iter().find(|port| {
-                    matches!(
-                        port.owner,
-                        shoop_egui::ApplicationPortOwner::Track { track_id, .. }
-                            if track_id == track.id
-                    ) && port.role == shoop_egui::PortRole::MidiOutput
-                });
-                let (Some(input_port), Some(output_port)) = (input_port, output_port) else {
-                    return;
-                };
-                let Some(tiny) = snapshot.tracks.iter().find(|candidate| {
-                    candidate.fx.as_ref().is_some_and(|fx| {
-                        fx.processor_type.as_str()
-                            == shoop_egui::TrackProcessorTypeId::OXISYNTH
-                    })
-                }) else {
-                    return;
-                };
-                let Some(tiny_midi_input) =
-                    snapshot.connections.application_ports.iter().find(|port| {
-                        matches!(
-                            port.owner,
-                            shoop_egui::ApplicationPortOwner::Track { track_id, .. }
-                                if track_id == tiny.id
-                        ) && port.role == shoop_egui::PortRole::MidiInput
-                    })
-                else {
-                    return;
-                };
-                runtime
-                    .dispatch(AppIntent::SetPortConnected {
-                        port_id: tiny_midi_input.id,
-                        host_port_id: shoop_egui::HostPortId::new("webmidi:source:test-input"),
-                        connected: true,
-                    })
-                    .and_then(|()| {
-                        runtime.dispatch(AppIntent::Track {
-                            track_id: tiny.id,
-                            action: shoop_egui::TrackAction::InputMonitoringChanged {
-                                enabled: true,
-                                respect_auto_mute: false,
-                            },
-                        })
-                    })
-                    .and_then(|()| {
-                        runtime.dispatch(AppIntent::Track {
-                            track_id: tiny.id,
-                            action: shoop_egui::TrackAction::OxiSynth(
-                                shoop_egui::OxiSynthControl::SelectPreset("0:40".to_owned()),
-                            ),
-                        })
-                    })
-                    .map(|()| Self::WaitForWebMidiTrackReady {
-                        track_id: track.id,
-                        loop_id: loop_state.id,
-                        input_port: input_port.id,
-                        output_port: output_port.id,
-                        tiny_input_port: tiny_midi_input.id,
-                        callbacks_before: snapshot.status.callback_count,
-                    })
-            }
-            Self::WaitForWebMidiTrackReady {
-                track_id,
-                loop_id,
-                input_port,
-                output_port,
-                tiny_input_port,
-                callbacks_before,
-            } => {
-                if snapshot.status.callback_count <= callbacks_before.saturating_add(10) {
-                    return;
-                }
-                runtime
-                    .dispatch(AppIntent::SetPortConnected {
-                        port_id: input_port,
-                        host_port_id: shoop_egui::HostPortId::new("webmidi:source:test-input"),
-                        connected: true,
-                    })
-                    .and_then(|()| {
-                        runtime.dispatch(AppIntent::SetPortConnected {
-                            port_id: output_port,
-                            host_port_id: shoop_egui::HostPortId::new("webmidi:sink:test-output"),
-                            connected: true,
-                        })
-                    })
-                    .map(|()| Self::WaitForWebMidiConnections {
-                        track_id,
-                        loop_id,
-                        input_port,
-                        output_port,
-                        tiny_input_port,
-                    })
-            }
-            Self::WaitForWebMidiConnections {
-                track_id,
-                loop_id,
-                input_port,
-                output_port,
-                tiny_input_port,
-            } => {
-                let track_input_connected =
-                    snapshot.connections.confirmed_links.iter().any(|link| {
-                        link.application_port_id == input_port
-                            && link.host_port_id.as_str() == "webmidi:source:test-input"
-                    });
-                let track_output_connected =
-                    snapshot.connections.confirmed_links.iter().any(|link| {
-                        link.application_port_id == output_port
-                            && link.host_port_id.as_str() == "webmidi:sink:test-output"
-                    });
-                let tiny_input_connected =
-                    snapshot.connections.confirmed_links.iter().any(|link| {
-                        link.application_port_id == tiny_input_port
-                            && link.host_port_id.as_str() == "webmidi:source:test-input"
-                    });
-                let Some(apc) = snapshot
-                    .scripting
-                    .scripts
-                    .iter()
-                    .find(|script| script.name == APC_MINI_SCRIPT_FILENAME)
-                else {
-                    return;
-                };
-                let control_ports = snapshot
-                    .connections
-                    .application_ports
-                    .iter()
-                    .filter(|port| {
-                        matches!(
-                            port.owner,
-                            shoop_egui::ApplicationPortOwner::LuaControl { script_id, .. }
-                                if script_id == apc.id
-                        )
-                    })
-                    .map(|port| port.id)
-                    .collect::<Vec<_>>();
-                let control_links = snapshot
-                    .connections
-                    .confirmed_links
-                    .iter()
-                    .filter(|link| control_ports.contains(&link.application_port_id))
-                    .count();
-                if !track_input_connected {
-                    let _ = runtime.dispatch(AppIntent::SetPortConnected {
-                        port_id: input_port,
-                        host_port_id: shoop_egui::HostPortId::new("webmidi:source:test-input"),
-                        connected: true,
-                    });
-                }
-                if !track_output_connected {
-                    let _ = runtime.dispatch(AppIntent::SetPortConnected {
-                        port_id: output_port,
-                        host_port_id: shoop_egui::HostPortId::new("webmidi:sink:test-output"),
-                        connected: true,
-                    });
-                }
-                if !tiny_input_connected {
-                    let _ = runtime.dispatch(AppIntent::SetPortConnected {
-                        port_id: tiny_input_port,
-                        host_port_id: shoop_egui::HostPortId::new("webmidi:source:test-input"),
-                        connected: true,
-                    });
-                }
-                if !track_input_connected
-                    || !track_output_connected
-                    || !tiny_input_connected
-                    || apc.lifecycle != shoop_egui::ScriptLifecycle::Listening
-                    || control_ports.len() != 2
-                    || control_links != 2
-                {
-                    return;
-                }
-                runtime
-                    .dispatch(AppIntent::Track {
-                        track_id,
-                        action: shoop_egui::TrackAction::InputMonitoringChanged {
-                            enabled: true,
-                            respect_auto_mute: false,
-                        },
-                    })
-                    .and_then(|()| {
-                        runtime.dispatch(AppIntent::Loop {
-                            track_id,
-                            loop_id,
-                            action: shoop_egui::LoopAction::IconClicked(Default::default()),
-                        })
-                    })
-                    .and_then(|()| {
-                        runtime.dispatch(AppIntent::Loop {
-                            track_id,
-                            loop_id,
-                            action: shoop_egui::LoopAction::RecordClicked,
-                        })
-                    })
-                    .map(|()| Self::WaitForWebMidiControl { track_id, loop_id })
-            }
-            Self::WaitForWebMidiControl { track_id, loop_id } => {
-                let Some(track) = snapshot.tracks.iter().find(|track| track.id == track_id) else {
-                    return;
-                };
-                let Some(loop_state) = track.loops.iter().find(|loop_| loop_.id == loop_id) else {
-                    return;
-                };
-                if loop_state.mode != shoop_egui::LoopMode::Recording {
-                    return;
-                }
-                set_browser_web_midi_test_status("awaiting-input");
-                Ok(Self::WaitForWebMidiRecorded {
-                    track_id,
-                    loop_id,
-                    callbacks_after_control: None,
-                })
-            }
-            Self::WaitForWebMidiRecorded {
-                track_id,
-                loop_id,
-                callbacks_after_control,
-            } => {
-                if !snapshot.global_controls.solo {
-                    return;
-                }
-                if let Some(callbacks_after_control) = callbacks_after_control {
-                    if snapshot.status.callback_count <= callbacks_after_control.saturating_add(100)
-                    {
-                        return;
-                    }
-                    runtime
-                        .dispatch(AppIntent::Loop {
-                            track_id,
-                            loop_id,
-                            action: shoop_egui::LoopAction::StopClicked,
-                        })
-                        .map(|()| Self::WaitForWebMidiInput { track_id, loop_id })
-                } else {
-                    Ok(Self::WaitForWebMidiRecorded {
-                        track_id,
-                        loop_id,
-                        callbacks_after_control: Some(snapshot.status.callback_count),
-                    })
-                }
-            }
-            Self::WaitForWebMidiInput { track_id, loop_id } => {
-                let Some(track) = snapshot.tracks.iter().find(|track| track.id == track_id) else {
-                    return;
-                };
-                let Some(loop_state) = track.loops.iter().find(|loop_| loop_.id == loop_id) else {
-                    return;
-                };
-                if loop_state.mode != shoop_egui::LoopMode::Stopped {
-                    return;
-                }
-                runtime
-                    .dispatch(AppIntent::RequestSaveSession)
-                    .map(|()| Self::WaitForWebMidiStopped { track_id, loop_id })
-            }
-            Self::WaitForWebMidiStopped {
-                track_id: _,
-                loop_id: _,
-            } => {
-                let Some(output) = runtime.take_file_output() else {
-                    return;
-                };
-                let bundle = match shoop_session::decode_session(&output.bytes) {
-                    Ok(bundle) => bundle,
-                    Err(error) => {
-                        return self.fail(&format!("could not decode Web MIDI session: {error}"));
-                    }
-                };
-                let recorded = bundle.media.values().any(|payload| {
-                    matches!(
-                        payload,
-                        shoop_session::MediaPayload::Midi(midi)
-                            if midi.events.iter().any(|event| event.data == [0x90, 83, 0x7f])
-                    )
-                });
-                let routes = bundle
-                    .document
-                    .track_groups
-                    .iter()
-                    .flat_map(|group| &group.tracks)
-                    .flat_map(|track| {
-                        track.ports.iter().flat_map(|port| {
-                            port.external_connections
-                                .iter()
-                                .filter(|endpoint| endpoint.starts_with("webmidi:"))
-                                .map(|endpoint| {
-                                    format!("{}:{:?}:{endpoint}", track.name, port.role)
-                                })
-                        })
-                    })
-                    .collect::<Vec<_>>();
-                if !recorded || routes.len() != 3 {
-                    return self.fail(&format!(
-                        "Web MIDI recording or persisted routes are missing: recorded={recorded}, routes={routes:?}"
-                    ));
-                }
-                runtime
-                    .dispatch(AppIntent::LoadSessionBytes {
-                        name: output.suggested_name,
-                        bytes: output.bytes,
-                    })
-                    .map(|()| Self::WaitForWebMidiSessionLoad {
-                        callbacks_before: snapshot.status.callback_count,
-                    })
-            }
-            Self::WaitForWebMidiSessionLoad { callbacks_before } => {
-                if snapshot.io_task.as_ref().is_none_or(|task| {
-                    task.kind != shoop_egui::IoTaskKind::LoadSession
-                        || task.status != shoop_egui::IoTaskStatus::Completed
-                }) {
-                    return;
-                }
-                let Some(track) = snapshot
-                    .tracks
-                    .iter()
-                    .find(|track| track.name == "Browser Web MIDI test")
-                else {
-                    return self.fail("loaded Web MIDI session lost its track");
-                };
-                let Some(loop_state) = track.loops.first() else {
-                    return self.fail("loaded Web MIDI session lost its loop");
-                };
-                let track_ports = snapshot
-                    .connections
-                    .application_ports
-                    .iter()
-                    .filter(|port| {
-                        matches!(
-                            port.owner,
-                            shoop_egui::ApplicationPortOwner::Track { track_id, .. }
-                                if track_id == track.id
-                        )
-                    })
-                    .map(|port| port.id)
-                    .collect::<Vec<_>>();
-                let restored_routes = snapshot
-                    .connections
-                    .confirmed_links
-                    .iter()
-                    .filter(|link| {
-                        track_ports.contains(&link.application_port_id)
-                            && link.host_port_id.as_str().starts_with("webmidi:")
-                    })
-                    .count();
-                if restored_routes < 2 {
-                    return;
-                }
-                if restored_routes > 2 {
-                    return self
-                        .fail("loaded Web MIDI session restored duplicate direct-track routes");
-                }
-                let all_track_ports = snapshot
-                    .connections
-                    .application_ports
-                    .iter()
-                    .filter(|port| {
-                        matches!(port.owner, shoop_egui::ApplicationPortOwner::Track { .. })
-                    })
-                    .map(|port| port.id)
-                    .collect::<Vec<_>>();
-                let all_restored_routes = snapshot
-                    .connections
-                    .confirmed_links
-                    .iter()
-                    .filter(|link| {
-                        all_track_ports.contains(&link.application_port_id)
-                            && link.host_port_id.as_str().starts_with("webmidi:")
-                    })
-                    .count();
-                if all_restored_routes < 3 {
-                    return;
-                }
-                if all_restored_routes > 3 {
-                    return self.fail("loaded Web MIDI session restored duplicate track routes");
-                }
-                if snapshot.status.callback_count <= callbacks_before {
-                    return;
-                }
-                set_browser_web_midi_test_status("ready-for-playback");
-                Ok(Self::WaitForWebMidiSave {
-                    track_id: track.id,
-                    loop_id: loop_state.id,
-                    callbacks_before: snapshot.status.callback_count,
-                })
-            }
-            Self::WaitForWebMidiSave {
-                track_id,
-                loop_id,
-                callbacks_before: _,
-            } => {
-                let ready = browser_status_element().is_some_and(|element| {
-                    element
-                        .get_attribute("data-web-midi-playback-ready")
-                        .as_deref()
-                        == Some("true")
-                });
-                if !ready {
-                    return;
-                }
-                runtime
-                    .dispatch(AppIntent::Loop {
-                        track_id,
-                        loop_id,
-                        action: shoop_egui::LoopAction::PlayClicked,
-                    })
-                    .map(|()| {
-                        set_browser_web_midi_test_status("awaiting-playback-output");
-                        Self::WaitForWebMidiPlayback {
-                            track_id,
-                            loop_id,
-                            callbacks_before: snapshot.status.callback_count,
-                        }
-                    })
-            }
-            Self::WaitForWebMidiPlayback {
-                track_id,
-                loop_id,
-                callbacks_before,
-            } => {
-                let playing = snapshot
-                    .tracks
-                    .iter()
-                    .find(|track| track.id == track_id)
-                    .and_then(|track| track.loops.iter().find(|loop_| loop_.id == loop_id))
-                    .is_some_and(|loop_| loop_.mode == shoop_egui::LoopMode::Playing);
-                if !playing
-                    || snapshot.status.callback_count <= callbacks_before.saturating_add(100)
-                {
-                    return;
-                }
-                set_browser_web_midi_test_status("passed");
-                mark_browser_self_test_nonzero_io();
-                Ok(Self::Complete)
-            }
-            Self::AddTrack => runtime
-                .dispatch(AppIntent::Global(shoop_egui::GlobalControlAction::SetSync(
-                    false,
-                )))
-                .and_then(|()| {
-                    runtime.dispatch(AppIntent::AddTrack(shoop_egui::DirectTrackSpec {
-                        name: "Browser self-test stereo".to_owned(),
-                        audio_channels: 2,
-                        midi: true,
-                    }))
-                })
-                .and_then(|()| {
-                    runtime.dispatch(AppIntent::AddTrack(shoop_egui::DirectTrackSpec {
-                        name: "Browser self-test mono".to_owned(),
-                        audio_channels: 1,
-                        midi: false,
-                    }))
-                })
-                .and_then(|()| {
-                    runtime.dispatch(AppIntent::AddTrackWithTopology(shoop_egui::TrackSpec {
-                        name: "Browser Built-in FX".to_owned(),
-                        topology: shoop_egui::TrackSpecTopology::DryWet {
-                            dry_audio_channels: 3,
-                            wet_audio_channels: 3,
-                            dry_midi: true,
-                            processor_type: shoop_egui::TrackProcessorTypeId::new(
-                                shoop_egui::TrackProcessorTypeId::BUILTIN_FX,
-                            ),
-                            default_playback_mode: shoop_egui::DefaultPlaybackMode::Regular,
-                        },
-                        latency: shoop_egui::TrackLatencySpec::default(),
-                        initial_output_bus_names: Vec::new(),
-                        creation_request_id: None,
-                    }))
-                })
-                .and_then(|()| {
-                    runtime.dispatch(AppIntent::AddTrackWithTopology(shoop_egui::TrackSpec {
-                        name: "Browser Built-in Synth".to_owned(),
-                        topology: shoop_egui::TrackSpecTopology::DryWet {
-                            dry_audio_channels: 2,
-                            wet_audio_channels: 2,
-                            dry_midi: true,
-                            processor_type: shoop_egui::TrackProcessorTypeId::new(
-                                shoop_egui::TrackProcessorTypeId::OXISYNTH,
-                            ),
-                            default_playback_mode: shoop_egui::DefaultPlaybackMode::Regular,
-                        },
-                        latency: shoop_egui::TrackLatencySpec::default(),
-                        initial_output_bus_names: Vec::new(),
-                        creation_request_id: None,
-                    }))
-                })
-                .map(|()| Self::WaitForTrack),
-            Self::WaitForTrack => {
-                let Some(track) = snapshot.tracks.iter().find(|track| !track.is_sync) else {
-                    return;
-                };
-                let Some(loop_state) = track.loops.first() else {
-                    return;
-                };
-                let Some(builtin_fx) = snapshot.tracks.iter().find(|track| {
-                    track.fx.as_ref().is_some_and(|fx| {
-                        fx.processor_type.as_str()
-                            == shoop_egui::TrackProcessorTypeId::BUILTIN_FX
-                    })
-                }) else {
-                    return;
-                };
-                let builtin_fx_controls = [
-                    shoop_egui::TrackAction::InputMonitoringChanged {
-                        enabled: true,
-                        respect_auto_mute: false,
-                    },
-                    shoop_egui::TrackAction::BuiltInFx(
-                        shoop_egui::BuiltInFxControl::SetReverbEnabled(false),
-                    ),
-                    shoop_egui::TrackAction::BuiltInFx(
-                        shoop_egui::BuiltInFxControl::SetStageEnabled(
-                            shoop_egui::BuiltInFxStage::Drive,
-                            true,
-                        ),
-                    ),
-                    shoop_egui::TrackAction::BuiltInFx(
-                        shoop_egui::BuiltInFxControl::SetDriveType(
-                            shoop_egui::BuiltInFxDriveType::Fuzz,
-                        ),
-                    ),
-                    shoop_egui::TrackAction::BuiltInFx(
-                        shoop_egui::BuiltInFxControl::SetParameter(
-                            shoop_egui::BuiltInFxParameter::Drive,
-                            24.0,
-                        ),
-                    ),
-                    shoop_egui::TrackAction::BuiltInFx(
-                        shoop_egui::BuiltInFxControl::AssignMidiCc(
-                            shoop_egui::BuiltInFxMidiCcAssignment {
-                                parameter: shoop_egui::BuiltInFxParameter::Drive,
-                                channel: 2,
-                                controller: 17,
-                            },
-                        ),
-                    ),
-                    shoop_egui::TrackAction::FxVisibilityChanged(true),
-                ]
-                .into_iter()
-                .try_for_each(|action| {
-                    runtime.dispatch(AppIntent::Track {
-                        track_id: builtin_fx.id,
-                        action,
-                    })
-                });
-                let Some(tiny) = snapshot.tracks.iter().find(|track| {
-                    track.fx.as_ref().is_some_and(|fx| {
-                        fx.processor_type.as_str()
-                            == shoop_egui::TrackProcessorTypeId::OXISYNTH
-                    })
-                }) else {
-                    return;
-                };
-                let tiny_controls = [
-                    shoop_egui::TrackAction::InputMonitoringChanged {
-                        enabled: true,
-                        respect_auto_mute: false,
-                    },
-                    shoop_egui::TrackAction::OxiSynth(
-                        shoop_egui::OxiSynthControl::SelectPreset("0:40".to_owned()),
-                    ),
-                    shoop_egui::TrackAction::OxiSynth(
-                        shoop_egui::OxiSynthControl::SetReverbSend(0.4),
-                    ),
-                    shoop_egui::TrackAction::OxiSynth(
-                        shoop_egui::OxiSynthControl::SetChorusSend(0.6),
-                    ),
-                    shoop_egui::TrackAction::OxiSynth(shoop_egui::OxiSynthControl::Panic),
-                    shoop_egui::TrackAction::FxVisibilityChanged(true),
-                    shoop_egui::TrackAction::FxVisibilityChanged(false),
-                    shoop_egui::TrackAction::FxVisibilityChanged(true),
-                ]
-                .into_iter()
-                .try_for_each(|action| {
-                    runtime.dispatch(AppIntent::Track {
-                        track_id: tiny.id,
-                        action,
-                    })
-                });
-                let tiny_audio_inputs = snapshot
-                    .connections
-                    .application_ports
-                    .iter()
-                    .filter(|port| {
-                        matches!(
-                            port.owner,
-                            shoop_egui::ApplicationPortOwner::Track { track_id, .. }
-                                if track_id == tiny.id
-                        ) && port.role == shoop_egui::PortRole::AudioInput
-                    })
-                    .map(|port| port.id)
-                    .collect::<Vec<_>>();
-                let tiny_audio_links = snapshot
-                    .connections
-                    .confirmed_links
-                    .iter()
-                    .filter(|link| tiny_audio_inputs.contains(&link.application_port_id))
-                    .map(|link| (link.application_port_id, link.host_port_id.clone()))
-                    .collect::<Vec<_>>();
-                builtin_fx_controls
-                    .and_then(|()| tiny_controls)
-                    .and_then(|()| {
-                        tiny_audio_links
-                            .into_iter()
-                            .try_for_each(|(port_id, host_port_id)| {
-                                runtime.dispatch(AppIntent::SetPortConnected {
-                                    port_id,
-                                    host_port_id,
-                                    connected: false,
-                                })
-                            })
-                    })
-                    .and_then(|()| {
-                        if snapshot.status.audio_driver == shoop_egui::AudioDriverState::Dummy {
-                            Ok(Self::SaveSession {
-                                callbacks_before: snapshot.status.callback_count,
-                            })
-                        } else {
-                            runtime
-                                .dispatch(AppIntent::Track {
-                                    track_id: track.id,
-                                    action: shoop_egui::TrackAction::InputMonitoringChanged {
-                                        enabled: true,
-                                        respect_auto_mute: false,
-                                    },
-                                })
-                                .and_then(|()| {
-                                    runtime.dispatch(AppIntent::Loop {
-                                        track_id: track.id,
-                                        loop_id: loop_state.id,
-                                        action: shoop_egui::LoopAction::IconClicked(
-                                            Default::default(),
-                                        ),
-                                    })
-                                })
-                                .and_then(|()| {
-                                    runtime.dispatch(AppIntent::Loop {
-                                        track_id: track.id,
-                                        loop_id: loop_state.id,
-                                        action: shoop_egui::LoopAction::RecordClicked,
-                                    })
-                                })
-                                .map(|()| Self::WaitForRecording)
-                        }
-                    })
-            }
-            Self::WaitForRecording => {
-                let Some((track, loop_state)) = first_main_loop(snapshot) else {
-                    return;
-                };
-                if loop_state.mode != shoop_egui::LoopMode::Recording
-                    || loop_state.empty
-                    || args.stress && snapshot.status.callback_count < 1_500
-                {
-                    return;
-                }
-                let Some(tiny) = snapshot.tracks.iter().find(|candidate| {
-                    candidate.fx.as_ref().is_some_and(|fx| {
-                        fx.processor_type.as_str()
-                            == shoop_egui::TrackProcessorTypeId::OXISYNTH
-                    })
-                }) else {
-                    return;
-                };
-                let tiny_audio_inputs = snapshot
-                    .connections
-                    .application_ports
-                    .iter()
-                    .filter(|port| {
-                        matches!(
-                            port.owner,
-                            shoop_egui::ApplicationPortOwner::Track { track_id, .. }
-                                if track_id == tiny.id
-                        ) && port.role == shoop_egui::PortRole::AudioInput
-                    })
-                    .map(|port| port.id)
-                    .collect::<Vec<_>>();
-                if let Some(link) = snapshot
-                    .connections
-                    .confirmed_links
-                    .iter()
-                    .find(|link| tiny_audio_inputs.contains(&link.application_port_id))
-                {
-                    if let Err(error) = runtime.dispatch(AppIntent::SetPortConnected {
-                        port_id: link.application_port_id,
-                        host_port_id: link.host_port_id.clone(),
-                        connected: false,
-                    }) {
-                        return self.fail(&format!(
-                            "could not isolate browser Built-in Synth audio input: {error}"
-                        ));
-                    }
-                    return;
-                }
-                runtime
-                    .dispatch(AppIntent::Track {
-                        track_id: track.id,
-                        action: shoop_egui::TrackAction::OutputMuteChanged(true),
-                    })
-                    .and_then(|()| {
-                        (48..=65).try_for_each(|note| {
-                            runtime.dispatch(AppIntent::Piano(shoop_egui::PianoAction::Press(
-                                shoop_egui::MidiNote::new(note).unwrap(),
-                            )))
-                        })
-                    })
-                    .map(|()| Self::WaitForPianoPress {
-                        callbacks_before: snapshot.status.callback_count,
-                    })
-            }
-            Self::WaitForPianoPress { callbacks_before } => {
-                if snapshot.status.callback_count <= callbacks_before
-                    || snapshot.status.output_peak <= 0.000_001
-                {
-                    return;
-                }
-                (48..=65)
-                    .try_for_each(|note| {
-                        runtime.dispatch(AppIntent::Piano(shoop_egui::PianoAction::Release(
-                            shoop_egui::MidiNote::new(note).unwrap(),
-                        )))
-                    })
-                    .map(|()| Self::WaitForPianoRelease {
-                        callbacks_before: snapshot.status.callback_count,
-                    })
-            }
-            Self::WaitForPianoRelease { callbacks_before } => {
-                if snapshot.status.callback_count <= callbacks_before {
-                    return;
-                }
-                let Some((track, loop_state)) = first_main_loop(snapshot) else {
-                    return;
-                };
-                runtime
-                    .dispatch(AppIntent::Track {
-                        track_id: track.id,
-                        action: shoop_egui::TrackAction::OutputMuteChanged(false),
-                    })
-                    .and_then(|()| {
-                        runtime.dispatch(AppIntent::Loop {
-                            track_id: track.id,
-                            loop_id: loop_state.id,
-                            action: shoop_egui::LoopAction::StopClicked,
-                        })
-                    })
-                    .map(|()| Self::WaitForStopped)
-            }
-            Self::WaitForStopped => {
-                let Some((track, loop_state)) = first_main_loop(snapshot) else {
-                    return;
-                };
-                if loop_state.mode != shoop_egui::LoopMode::Stopped {
-                    return;
-                }
-                runtime
-                    .dispatch(AppIntent::Loop {
-                        track_id: track.id,
-                        loop_id: loop_state.id,
-                        action: shoop_egui::LoopAction::IconClicked(Default::default()),
-                    })
-                    .and_then(|()| {
-                        runtime.dispatch(AppIntent::Loop {
-                            track_id: track.id,
-                            loop_id: loop_state.id,
-                            action: shoop_egui::LoopAction::IconClicked(Default::default()),
-                        })
-                    })
-                    .map(|()| Self::WaitForDetails)
-            }
-            Self::WaitForDetails => {
-                let Some((track, loop_state)) = first_main_loop(snapshot) else {
-                    return;
-                };
-                let waveform_ready = snapshot.details.as_ref().is_some_and(|details| {
-                    details.loop_id == loop_state.id
-                        && details.channels.first().is_some_and(|channel| {
-                            !channel.samples.is_empty()
-                                && channel
-                                    .samples
-                                    .iter()
-                                    .any(|sample| sample.abs() > 0.000_001)
-                        })
-                });
-                if !waveform_ready {
-                    return;
-                }
-                runtime
-                    .dispatch(AppIntent::Loop {
-                        track_id: track.id,
-                        loop_id: loop_state.id,
-                        action: shoop_egui::LoopAction::PlayClicked,
-                    })
-                    .map(|()| Self::WaitForPlaying)
-            }
-            Self::WaitForPlaying => {
-                let Some((track, loop_state)) = first_main_loop(snapshot) else {
-                    return;
-                };
-                if loop_state.mode != shoop_egui::LoopMode::Playing
-                    || snapshot.status.output_peak <= 0.000_001
-                    || snapshot.status.callback_count == 0
-                    || snapshot
-                        .details
-                        .as_ref()
-                        .is_none_or(|details| details.loop_id != loop_state.id)
-                {
-                    return;
-                }
-                mark_browser_self_test_nonzero_io();
-                let mut outputs: Vec<_> = snapshot
-                    .connections
-                    .application_ports
-                    .iter()
-                    .filter(|port| {
-                        matches!(
-                            port.owner,
-                            shoop_egui::ApplicationPortOwner::Track { track_id, .. }
-                                if track_id == track.id
-                        ) && port.role == shoop_egui::PortRole::AudioOutput
-                    })
-                    .map(|port| port.id)
-                    .collect();
-                outputs.sort();
-                if outputs.len() < 2 {
-                    return self.fail("browser stereo route ports are missing");
-                }
-                runtime
-                    .dispatch(AppIntent::SetPortConnected {
-                        port_id: outputs[0],
-                        host_port_id: shoop_egui::HostPortId::new("webaudio:destination_1"),
-                        connected: false,
-                    })
-                    .and_then(|()| {
-                        runtime.dispatch(AppIntent::SetPortConnected {
-                            port_id: outputs[1],
-                            host_port_id: shoop_egui::HostPortId::new("webaudio:destination_2"),
-                            connected: false,
-                        })
-                    })
-                    .map(|()| Self::WaitForDisconnectedOutput {
-                        left: outputs[0],
-                        right: outputs[1],
-                        callbacks_before: snapshot.status.callback_count,
-                    })
-            }
-            Self::WaitForDisconnectedOutput {
-                left,
-                right,
-                callbacks_before,
-            } => {
-                let disconnected = !snapshot.connections.confirmed_links.iter().any(|link| {
-                    (link.application_port_id == left
-                        && link.host_port_id.as_str() == "webaudio:destination_1")
-                        || (link.application_port_id == right
-                            && link.host_port_id.as_str() == "webaudio:destination_2")
-                });
-                if !disconnected
-                    || snapshot.status.callback_count <= callbacks_before.saturating_add(5)
-                    || snapshot.status.output_peak > 0.000_001
-                {
-                    return;
-                }
-                runtime
-                    .dispatch(AppIntent::SetPortConnected {
-                        port_id: left,
-                        host_port_id: shoop_egui::HostPortId::new("webaudio:destination_1"),
-                        connected: true,
-                    })
-                    .and_then(|()| {
-                        runtime.dispatch(AppIntent::SetPortConnected {
-                            port_id: right,
-                            host_port_id: shoop_egui::HostPortId::new("webaudio:destination_2"),
-                            connected: true,
-                        })
-                    })
-                    .map(|()| Self::WaitForReconnectedOutput {
-                        left,
-                        right,
-                        callbacks_before: snapshot.status.callback_count,
-                    })
-            }
-            Self::WaitForReconnectedOutput {
-                left,
-                right,
-                callbacks_before,
-            } => {
-                let left_connected = snapshot.connections.confirmed_links.iter().any(|link| {
-                    link.application_port_id == left
-                        && link.host_port_id.as_str() == "webaudio:destination_1"
-                });
-                let right_connected = snapshot.connections.confirmed_links.iter().any(|link| {
-                    link.application_port_id == right
-                        && link.host_port_id.as_str() == "webaudio:destination_2"
-                });
-                if !left_connected
-                    || !right_connected
-                    || snapshot.status.callback_count <= callbacks_before
-                    || snapshot.status.output_peak <= 0.000_001
-                {
-                    return;
-                }
-                let Some(tiny) = snapshot.tracks.iter().find(|track| {
-                    track.fx.as_ref().is_some_and(|fx| {
-                        fx.processor_type.as_str()
-                            == shoop_egui::TrackProcessorTypeId::OXISYNTH
-                    })
-                }) else {
-                    return;
-                };
-                runtime
-                    .dispatch(AppIntent::Track {
-                        track_id: tiny.id,
-                        action: shoop_egui::TrackAction::InputMonitoringChanged {
-                            enabled: true,
-                            respect_auto_mute: false,
-                        },
-                    })
-                    .map(|()| Self::SaveSession {
-                        callbacks_before: snapshot.status.callback_count,
-                    })
-            }
-            Self::SaveSession { callbacks_before } => runtime
-                .dispatch(AppIntent::RequestSaveSession)
-                .map(|()| Self::WaitForSessionSave { callbacks_before }),
-            Self::WaitForSessionSave { callbacks_before } => {
-                if snapshot.status.audio_driver != shoop_egui::AudioDriverState::Dummy
-                    && snapshot.status.callback_count <= callbacks_before
-                {
-                    return;
-                }
-                let Some(output) = runtime.take_file_output() else {
-                    return;
-                };
-                if !output.suggested_name.ends_with(".shoop") || output.bytes.is_empty() {
-                    return self.fail("browser session output is invalid");
-                }
-                let mut bundle = match shoop_session::decode_session(&output.bytes) {
-                    Ok(bundle) => bundle,
-                    Err(error) => {
-                        return self.fail(&format!("could not decode browser session: {error}"));
-                    }
-                };
-                bundle.document.scripts.push(shoop_session::ScriptDocument {
-                    id: 9_000_001,
-                    name: BROWSER_SESSION_SCRIPT_NAME.to_owned(),
-                    entrypoint: "main.lua".to_owned(),
-                    enabled: true,
-                });
-                bundle
-                    .scripts
-                    .insert(9_000_001, browser_session_script_bundle());
-                let bytes = match shoop_session::encode_session(&bundle, env!("CARGO_PKG_VERSION"))
-                {
-                    Ok(bytes) => bytes,
-                    Err(error) => {
-                        return self.fail(&format!("could not encode browser session: {error}"));
-                    }
-                };
-                runtime
-                    .dispatch(AppIntent::LoadSessionBytes {
-                        name: output.suggested_name,
-                        bytes: bytes.into(),
-                    })
-                    .map(|()| Self::WaitForSessionLoad { callbacks_before })
-            }
-            Self::WaitForSessionLoad { callbacks_before } => {
-                if snapshot.io_task.as_ref().is_none_or(|task| {
-                    task.kind != shoop_egui::IoTaskKind::LoadSession
-                        || task.status != shoop_egui::IoTaskStatus::Completed
-                }) {
-                    return;
-                }
-                if snapshot
-                    .tracks
-                    .iter()
-                    .filter(|track| !track.is_sync)
-                    .count()
-                    != 4
-                {
-                    return self.fail("loaded browser session lost tracks");
-                }
-                let builtin_fx_state = snapshot.tracks.iter().find_map(|track| {
-                    let fx = track.fx.as_ref()?;
-                    if fx.processor_type.as_str()
-                        != shoop_egui::TrackProcessorTypeId::BUILTIN_FX
-                    {
-                        return None;
-                    }
-                    match fx.editor.as_ref()? {
-                        shoop_egui::TrackProcessorEditorState::BuiltInFx(editor) => {
-                            Some((
-                                fx.visible,
-                                editor.reverb_enabled,
-                                editor.drive_enabled,
-                                editor.drive_type,
-                                editor.drive_db,
-                                editor.midi_cc_assignments.len(),
-                            ))
-                        }
-                        shoop_egui::TrackProcessorEditorState::OxiSynth(_) => None,
-                    }
-                });
-                let Some((
-                    builtin_fx_visible,
-                    reverb_enabled,
-                    drive_enabled,
-                    drive_type,
-                    drive_db,
-                    assignments,
-                )) = builtin_fx_state
-                else {
-                    return;
-                };
-                if builtin_fx_visible
-                    || reverb_enabled
-                    || !drive_enabled
-                    || drive_type != shoop_egui::BuiltInFxDriveType::Fuzz
-                    || (drive_db - 24.0).abs() > f32::EPSILON
-                    || assignments != 1
-                {
-                    return self.fail("loaded browser Built-in FX state changed");
-                }
-                let synth_state = snapshot.tracks.iter().find_map(|track| {
-                    let fx = track.fx.as_ref()?;
-                    if fx.processor_type.as_str() != shoop_egui::TrackProcessorTypeId::OXISYNTH {
-                        return None;
-                    }
-                    match fx.editor.as_ref()? {
-                        shoop_egui::TrackProcessorEditorState::BuiltInFx(_) => None,
-                        shoop_egui::TrackProcessorEditorState::OxiSynth(editor) => {
-                            Some((fx.visible, editor))
-                        }
-                    }
-                });
-                let Some((synth_visible, synth_state)) = synth_state else {
-                    return;
-                };
-                if synth_visible {
-                    return self.fail("loaded browser Built-in Synth editor visibility persisted");
-                }
-                if synth_state.selected_preset_id != "0:40"
-                    || synth_state.reverb_send != 0.4
-                    || synth_state.chorus_send != 0.6
-                {
-                    return self.fail(&format!(
-                        "loaded browser Built-in Synth state changed: {synth_state:?}"
-                    ));
-                }
-                if !snapshot.scripting.scripts.iter().any(|script| {
-                    script.kind == ScriptKind::Session
-                        && script.name == BROWSER_SESSION_SCRIPT_NAME
-                        && script.enabled
-                        && script.lifecycle == shoop_egui::ScriptLifecycle::Listening
-                }) {
-                    return self.fail(&format!(
-                        "loaded browser session lost its active Lua script: {:?}",
-                        snapshot.scripting.scripts
-                    ));
-                }
-                let resource_base_uri = snapshot
-                    .scripting
-                    .scripts
-                    .iter()
-                    .find(|script| script.name == BROWSER_SESSION_SCRIPT_NAME)
-                    .and_then(|script| script.resource_base_uri.as_deref());
-                let Some(resource_base_uri) = resource_base_uri else {
-                    return self.fail("browser session Markdown lost its bundle resource origin");
-                };
-                let image_uri = format!("{resource_base_uri}image.png");
-                if !matches!(
-                    shoop_script_resources::read_resource_uri(&image_uri),
-                    Ok(Some(bytes)) if bytes.as_ref() == BROWSER_SESSION_IMAGE
-                ) {
-                    return self.fail("browser session image was unavailable from its bundle");
-                }
-                if snapshot.status.audio_driver != shoop_egui::AudioDriverState::Dummy
-                    && snapshot.status.callback_count <= callbacks_before
-                {
-                    return self.fail("audio callbacks did not advance through session reload");
-                }
-                if args.stress {
-                    // Ordinary hosted/direct-file workflows verify exact script resave.
-                    // Avoid a duplicate capture here so the stress case remains focused on
-                    // sustained render/capture and reload.
-                    Ok(Self::PlayLoadedLoop)
-                } else {
-                    Ok(Self::SaveLoadedScriptSession {
-                        callbacks_before: snapshot.status.callback_count,
-                    })
-                }
-            }
-            Self::SaveLoadedScriptSession { callbacks_before } => runtime
-                .dispatch(AppIntent::RequestSaveSession)
-                .map(|()| Self::WaitForLoadedScriptSave { callbacks_before }),
-            Self::WaitForLoadedScriptSave { callbacks_before } => {
-                if snapshot.status.audio_driver != shoop_egui::AudioDriverState::Dummy
-                    && snapshot.status.callback_count <= callbacks_before
-                {
-                    return;
-                }
-                let Some(output) = runtime.take_file_output() else {
-                    return;
-                };
-                let bundle = match shoop_session::decode_session(&output.bytes) {
-                    Ok(bundle) => bundle,
-                    Err(error) => {
-                        return self.fail(&format!(
-                            "could not decode browser script round trip: {error}"
-                        ));
-                    }
-                };
-                if !bundle.document.scripts.iter().any(|script| {
-                    script.name == BROWSER_SESSION_SCRIPT_NAME
-                        && script.enabled
-                        && bundle.scripts.get(&script.id).is_some_and(|resources| {
-                            resources.entrypoint_resource().bytes.as_ref()
-                                == BROWSER_SESSION_SCRIPT_SOURCE.as_bytes()
-                                && resources
-                                    .resources
-                                    .get(
-                                        &shoop_script_resources::NormalizedRelativePath::parse(
-                                            "help.md",
-                                        )
-                                        .unwrap(),
-                                    )
-                                    .is_some_and(|resource| {
-                                        resource.bytes.as_ref() == BROWSER_SESSION_MARKDOWN
-                                    })
-                                && resources
-                                    .resources
-                                    .get(
-                                        &shoop_script_resources::NormalizedRelativePath::parse(
-                                            "image.png",
-                                        )
-                                        .unwrap(),
-                                    )
-                                    .is_some_and(|resource| {
-                                        resource.bytes.as_ref() == BROWSER_SESSION_IMAGE
-                                    })
-                        })
-                }) {
-                    return self.fail("browser session Lua source did not round trip exactly");
-                }
-                if snapshot.status.audio_driver == shoop_egui::AudioDriverState::Dummy {
-                    Ok(Self::ExportLoopAudio)
-                } else {
-                    Ok(Self::PlayLoadedLoop)
-                }
-            }
-            Self::PlayLoadedLoop => {
-                let Some((track, loop_state)) = first_main_loop(snapshot) else {
-                    return;
-                };
-                runtime
-                    .dispatch(AppIntent::Loop {
-                        track_id: track.id,
-                        loop_id: loop_state.id,
-                        action: shoop_egui::LoopAction::PlayClicked,
-                    })
-                    .map(|()| Self::WaitForLoadedPlayback)
-            }
-            Self::WaitForLoadedPlayback => {
-                let Some((_, loop_state)) = first_main_loop(snapshot) else {
-                    return;
-                };
-                if loop_state.mode != shoop_egui::LoopMode::Playing
-                    || snapshot.status.audio_driver != shoop_egui::AudioDriverState::Dummy
-                        && snapshot.status.output_peak <= 0.000_001
-                {
-                    return;
-                }
-                if args.stress || args.session_only {
-                    Ok(Self::RejectProcessedSession)
-                } else {
-                    let Some((track, loop_state)) = first_main_loop(snapshot) else {
-                        return;
-                    };
-                    runtime
-                        .dispatch(AppIntent::Global(
-                            shoop_egui::GlobalControlAction::DeselectAll,
-                        ))
-                        .and_then(|()| {
-                            runtime.dispatch(AppIntent::Loop {
-                                track_id: track.id,
-                                loop_id: loop_state.id,
-                                action: shoop_egui::LoopAction::StopClicked,
-                            })
-                        })
-                        .map(|()| Self::WaitForMediaStopped)
-                }
-            }
-            Self::WaitForMediaStopped => {
-                let Some((_, loop_state)) = first_main_loop(snapshot) else {
-                    return;
-                };
-                if loop_state.mode != shoop_egui::LoopMode::Stopped
-                    || snapshot
-                        .tracks
-                        .iter()
-                        .flat_map(|track| &track.loops)
-                        .any(|loop_| loop_.selected)
-                    || snapshot.details.is_some()
-                {
-                    return;
-                }
-                Ok(Self::ExportLoopAudio)
-            }
-            Self::ExportLoopAudio => {
-                let Some((_, loop_state)) = first_main_loop(snapshot) else {
-                    return;
-                };
-                runtime
-                    .dispatch(AppIntent::RequestLoopAudioExport {
-                        loop_id: loop_state.id,
-                        format: shoop_egui::LoopAudioExportFormat::Exact,
-                    })
-                    .map(|()| Self::WaitForLoopAudioSelection)
-            }
-            Self::WaitForLoopAudioSelection => {
-                let Some(task) = &snapshot.io_task else {
-                    return;
-                };
-                let Some(selection) = &task.audio_channel_selection else {
-                    return;
-                };
-                runtime
-                    .dispatch(AppIntent::ConfirmAudioChannelSelection {
-                        task_id: task.id,
-                        channels: selection.default_selection.clone(),
-                    })
-                    .map(|()| Self::WaitForLoopAudioExport)
-            }
-            Self::WaitForLoopAudioExport => {
-                let Some(output) = runtime.take_file_output() else {
-                    return;
-                };
-                let Some((_, loop_state)) = first_main_loop(snapshot) else {
-                    return;
-                };
-                runtime
-                    .dispatch(AppIntent::ImportLoopAudioBytes {
-                        loop_id: loop_state.id,
-                        name: output.suggested_name,
-                        bytes: output.bytes,
-                        update_loop_length: true,
-                    })
-                    .map(|()| Self::WaitForLoopAudioMapping)
-            }
-            Self::WaitForLoopAudioMapping => {
-                let Some(task) = &snapshot.io_task else {
-                    return;
-                };
-                let Some(mapping) = &task.audio_channel_mapping else {
-                    return;
-                };
-                runtime
-                    .dispatch(AppIntent::ConfirmAudioChannelMapping {
-                        task_id: task.id,
-                        source_for_destination: mapping.default_mapping.clone(),
-                    })
-                    .map(|()| Self::WaitForLoopAudioImport)
-            }
-            Self::WaitForLoopAudioImport => {
-                if snapshot.io_task.as_ref().is_some_and(|task| {
-                    task.kind == shoop_egui::IoTaskKind::ImportLoopAudio
-                        && task.status == shoop_egui::IoTaskStatus::Failed
-                }) {
-                    return self.fail(&format!(
-                        "browser loop audio import failed: {:?}",
-                        snapshot.io_task
-                    ));
-                }
-                if snapshot.io_task.as_ref().is_none_or(|task| {
-                    task.kind != shoop_egui::IoTaskKind::ImportLoopAudio
-                        || task.status != shoop_egui::IoTaskStatus::Completed
-                }) {
-                    return;
-                }
-                Ok(Self::ExportLoopMidi)
-            }
-            Self::ExportLoopMidi => {
-                let Some((_, loop_state)) = first_main_loop(snapshot) else {
-                    return;
-                };
-                runtime
-                    .dispatch(AppIntent::RequestLoopMidiExport {
-                        loop_id: loop_state.id,
-                        standard: false,
-                    })
-                    .map(|()| Self::WaitForLoopMidiExport)
-            }
-            Self::WaitForLoopMidiExport => {
-                let Some(output) = runtime.take_file_output() else {
-                    return;
-                };
-                let Some((_, loop_state)) = first_main_loop(snapshot) else {
-                    return;
-                };
-                runtime
-                    .dispatch(AppIntent::ImportLoopMidiBytes {
-                        loop_id: loop_state.id,
-                        name: output.suggested_name,
-                        bytes: output.bytes,
-                        update_loop_length: true,
-                    })
-                    .map(|()| Self::WaitForLoopMidiImport)
-            }
-            Self::WaitForLoopMidiImport => {
-                if snapshot.io_task.as_ref().is_some_and(|task| {
-                    task.kind == shoop_egui::IoTaskKind::ImportLoopMidi
-                        && task.status == shoop_egui::IoTaskStatus::Failed
-                }) {
-                    return self.fail(&format!(
-                        "browser loop MIDI import failed: {:?}",
-                        snapshot.io_task
-                    ));
-                }
-                if snapshot.io_task.as_ref().is_none_or(|task| {
-                    task.kind != shoop_egui::IoTaskKind::ImportLoopMidi
-                        || task.status != shoop_egui::IoTaskStatus::Completed
-                }) {
-                    return;
-                }
-                Ok(Self::GenerateClickAudio)
-            }
-            Self::GenerateClickAudio => {
-                let Some((_, loop_state)) = first_mixed_main_loop(snapshot) else {
-                    return;
-                };
-                if !widget.browser_test_open_click_track(snapshot, loop_state.id) {
-                    self.fail("production click-track dialog did not open");
-                    return;
-                }
-                let previous_task = snapshot
-                    .io_task
-                    .as_ref()
-                    .map(|task| task.id)
-                    .unwrap_or_default();
-                runtime
-                    .dispatch(AppIntent::GenerateClickTrack {
-                        loop_id: loop_state.id,
-                        request: browser_click_request(shoop_egui::ClickTrackKind::Audio),
-                    })
-                    .map(|()| Self::WaitForClickAudio {
-                        previous_task,
-                        request_revision: snapshot.revision,
-                    })
-            }
-            Self::WaitForClickAudio {
-                previous_task,
-                request_revision,
-            } => {
-                if click_request_was_rejected(
-                    snapshot.revision,
-                    snapshot.io_task.as_ref(),
-                    previous_task,
-                    request_revision,
-                ) {
-                    return self.fail("browser audio click request was rejected before task creation");
-                }
-                let Some(task) = &snapshot.io_task else {
-                    return;
-                };
-                if task.id != previous_task
-                    && task.kind == shoop_egui::IoTaskKind::GenerateClickTrack
-                    && task.status == shoop_egui::IoTaskStatus::Failed
-                {
-                    return self.fail(&format!(
-                        "browser audio click generation failed: {:?}",
-                        snapshot.io_task
-                    ));
-                }
-                if task.id == previous_task
-                    || task.kind != shoop_egui::IoTaskKind::GenerateClickTrack
-                    || task.status != shoop_egui::IoTaskStatus::Completed
-                {
-                    return;
-                }
-                let Some((_, loop_state)) = first_mixed_main_loop(snapshot) else {
-                    return;
-                };
-                let expected = u64::from(snapshot.status.sample_rate) * 3 / 50;
-                if loop_state.length_frames != expected || loop_state.empty {
-                    self.fail("generated browser audio click length/state is incorrect");
-                    return;
-                }
-                runtime
-                    .dispatch(AppIntent::RequestLoopAudioExport {
-                        loop_id: loop_state.id,
-                        format: shoop_egui::LoopAudioExportFormat::Exact,
-                    })
-                    .map(|()| Self::WaitForClickAudioSelection)
-            }
-            Self::WaitForClickAudioSelection => {
-                let Some(task) = &snapshot.io_task else {
-                    return;
-                };
-                let Some(selection) = &task.audio_channel_selection else {
-                    return;
-                };
-                runtime
-                    .dispatch(AppIntent::ConfirmAudioChannelSelection {
-                        task_id: task.id,
-                        channels: selection.default_selection.clone(),
-                    })
-                    .map(|()| Self::WaitForClickAudioExport)
-            }
-            Self::WaitForClickAudioExport => {
-                let Some(output) = runtime.take_file_output() else {
-                    return;
-                };
-                let Ok(audio) = shoop_session::decode_loop_audio(&output.bytes) else {
-                    self.fail("generated browser click audio did not decode");
-                    return;
-                };
-                let expected = (u64::from(snapshot.status.sample_rate) * 3 / 50) as usize;
-                if audio.channels.len() != 2
-                    || audio
-                        .channels
-                        .iter()
-                        .any(|channel| channel.samples.len() != expected)
-                    || audio
-                        .channels
-                        .iter()
-                        .any(|channel| !channel.samples.iter().any(|sample| *sample != 0.0))
-                {
-                    self.fail("generated browser click audio payload is incorrect");
-                    return;
-                }
-                Ok(Self::PreviewClickAudio)
-            }
-            Self::PreviewClickAudio => {
-                let Some((_, loop_state)) = first_mixed_main_loop(snapshot) else {
-                    return;
-                };
-                runtime
-                    .dispatch(AppIntent::PreviewClickTrack {
-                output: shoop_egui::ClickTrackPreviewOutput::System,
-                        loop_id: loop_state.id,
-                        request: browser_click_request(shoop_egui::ClickTrackKind::Audio),
-                    })
-                    .map(|()| Self::WaitForClickPreview)
-            }
-            Self::WaitForClickPreview => match snapshot.click_track.preview_status {
-                shoop_egui::ClickTrackPreviewStatus::Completed => Ok(Self::GenerateClickMidi),
-                shoop_egui::ClickTrackPreviewStatus::Failed => {
-                    self.fail("browser click preview failed");
-                    return;
-                }
-                _ => return,
-            },
-            Self::GenerateClickMidi => {
-                let Some((_, loop_state)) = first_mixed_main_loop(snapshot) else {
-                    return;
-                };
-                let previous_task = snapshot
-                    .io_task
-                    .as_ref()
-                    .map(|task| task.id)
-                    .unwrap_or_default();
-                runtime
-                    .dispatch(AppIntent::GenerateClickTrack {
-                        loop_id: loop_state.id,
-                        request: browser_click_request(shoop_egui::ClickTrackKind::Midi),
-                    })
-                    .map(|()| Self::WaitForClickMidi {
-                        previous_task,
-                        request_revision: snapshot.revision,
-                    })
-            }
-            Self::WaitForClickMidi {
-                previous_task,
-                request_revision,
-            } => {
-                if click_request_was_rejected(
-                    snapshot.revision,
-                    snapshot.io_task.as_ref(),
-                    previous_task,
-                    request_revision,
-                ) {
-                    return self.fail("browser MIDI click request was rejected before task creation");
-                }
-                let Some(task) = &snapshot.io_task else {
-                    return;
-                };
-                if task.id != previous_task
-                    && task.kind == shoop_egui::IoTaskKind::GenerateClickTrack
-                    && task.status == shoop_egui::IoTaskStatus::Failed
-                {
-                    return self.fail(&format!(
-                        "browser MIDI click generation failed: {:?}",
-                        snapshot.io_task
-                    ));
-                }
-                if task.id == previous_task
-                    || task.kind != shoop_egui::IoTaskKind::GenerateClickTrack
-                    || task.status != shoop_egui::IoTaskStatus::Completed
-                {
-                    return;
-                }
-                let Some((_, loop_state)) = first_mixed_main_loop(snapshot) else {
-                    return;
-                };
-                runtime
-                    .dispatch(AppIntent::RequestLoopMidiExport {
-                        loop_id: loop_state.id,
-                        standard: false,
-                    })
-                    .map(|()| Self::WaitForClickMidiExport)
-            }
-            Self::WaitForClickMidiExport => {
-                let Some(output) = runtime.take_file_output() else {
-                    return;
-                };
-                let Ok(midi) = shoop_session::decode_exact_midi(&output.bytes) else {
-                    self.fail("generated browser click MIDI did not decode");
-                    return;
-                };
-                if midi.length_frames != u64::from(snapshot.status.sample_rate) * 3 / 50
-                    || midi.events.len() != 2
-                    || midi.events[0].data != [0x90, 67, 127]
-                {
-                    self.fail("generated browser click MIDI payload is incorrect");
-                    return;
-                }
-                Ok(Self::RejectProcessedSession)
-            }
-            Self::RejectProcessedSession | Self::RejectExternalSession => {
-                let external = matches!(*self, Self::RejectExternalSession);
-                match browser_unsupported_session_bytes(snapshot.status.sample_rate, !external) {
-                    Ok(bytes) => runtime
-                        .dispatch(AppIntent::LoadSessionBytes {
-                            name: "unsupported-processed.shoop".to_owned(),
-                            bytes,
-                        })
-                        .map(|()| Self::WaitForProcessedSessionRejection {
-                            audio_progress_before: snapshot
-                                .status
-                                .callback_count
-                                .max(snapshot.status.processed_frames),
-                            external,
-                        }),
-                    Err(error) => return self.fail(&error),
-                }
-            }
-            Self::WaitForProcessedSessionRejection {
-                audio_progress_before,
-                external,
-            } => {
-                if snapshot.io_task.as_ref().is_none_or(|task| {
-                    task.kind != shoop_egui::IoTaskKind::LoadSession
-                        || task.status != shoop_egui::IoTaskStatus::Failed
-                }) {
-                    return;
-                }
-                if snapshot
-                    .status
-                    .callback_count
-                    .max(snapshot.status.processed_frames)
-                    <= audio_progress_before
-                {
-                    return;
-                }
-                let Some((_, loop_state)) = first_main_loop(snapshot) else {
-                    return self.fail("processed-session rejection removed direct tracks");
-                };
-                if snapshot.status.audio_driver != shoop_egui::AudioDriverState::Dummy
-                    && loop_state.empty
-                {
-                    return self.fail("processed-session rejection removed direct loop media");
-                }
-                if external {
-                    Ok(Self::AddLuaVersionChecks)
-                } else {
-                    Ok(Self::RejectExternalSession)
-                }
-            }
-            Self::AddLuaVersionChecks => runtime
-                .dispatch(AppIntent::Global(
-                    shoop_egui::GlobalControlAction::SetSolo(false),
-                ))
-                .and_then(|()| {
-                    [
-                        (
-                            "lua-api-higher-minor.lua",
-                            "shoop_announce_api_version(1, 7); require('shoop_control').set_solo(true)",
-                        ),
-                        (
-                            "lua-api-lower-major.lua",
-                            "shoop_announce_api_version(0, 0); require('shoop_control').set_solo(true)",
-                        ),
-                        (
-                            "lua-api-higher-major.lua",
-                            "shoop_announce_api_version(2, 0); require('shoop_control').set_solo(true)",
-                        ),
-                        (
-                            "lua-api-unannounced.lua",
-                            "require('shoop_control').set_solo(true)",
-                        ),
-                    ]
-                    .into_iter()
-                    .try_for_each(|(name, source)| {
-                        runtime.dispatch(AppIntent::AddScriptSource {
-                            name: name.to_owned(),
-                            source: std::sync::Arc::from(source),
-                            kind: ScriptKind::User,
-                            enabled: true,
-                        })
-                    })
-                })
-                .map(|()| Self::WaitForLuaVersionChecks),
-            Self::WaitForLuaVersionChecks => {
-                let rejected = snapshot
-                    .scripting
-                    .scripts
-                    .iter()
-                    .filter(|script| script.name.starts_with("lua-api-"))
-                    .collect::<Vec<_>>();
-                if rejected.len() != 4
-                    || rejected
-                        .iter()
-                        .any(|script| !lua_version_rejection_is_expected(script))
-                    || snapshot.global_controls.solo
-                    || !snapshot.scripting.dialogs.is_empty()
-                {
-                    return;
-                }
-                runtime
-                    .dispatch(AppIntent::AddScriptSource {
-                        name: "dialogs.lua".to_owned(),
-                        source: std::sync::Arc::from(
-                            "shoop_announce_api_version(1, 0); local c=require('shoop_control'); local d=require('shoop_dialog'); d.simple('Lua dialog example', {d.button('Toggle Solo and show guide', function() c.set_solo(true); d.open('Lua dialog guide') end)}); d.paged('Lua dialog guide', {{d.markdown('Page one')}, {d.markdown('Page two')}}); d.open('Lua dialog example')",
-                        ),
-                        kind: ScriptKind::User,
-                        enabled: true,
-                    })
-                    .and_then(|()| {
-                        runtime.dispatch(AppIntent::AddScriptSource {
-                            name: "dialog-survivor.lua".to_owned(),
-                            source: std::sync::Arc::from(
-                                "shoop_announce_api_version(1, 0); local d=require('shoop_dialog'); d.simple('Survivor', {d.rich_text('Still active')})",
-                            ),
-                            kind: ScriptKind::User,
-                            enabled: true,
-                        })
-                    })
-                    .map(|()| Self::WaitForLuaDialogs)
-            }
-            Self::WaitForLuaDialogs => {
-                let Some(welcome) = snapshot
-                    .scripting
-                    .dialogs
-                    .iter()
-                    .find(|dialog| dialog.name == "Lua dialog example")
-                else {
-                    return;
-                };
-                let Some(guide) = snapshot
-                    .scripting
-                    .dialogs
-                    .iter()
-                    .find(|dialog| dialog.name == "Lua dialog guide")
-                else {
-                    return;
-                };
-                if snapshot.scripting.dialogs.len() != 3
-                    || widget.browser_test_lua_dialog_count() != 3
-                    || widget.browser_test_lua_dialog_state(welcome.id) != Some((true, 0))
-                    || widget.browser_test_lua_dialog_state(guide.id) != Some((false, 0))
-                {
-                    return;
-                }
-                let shoop_egui::ScriptDialogKind::Simple(content) = &welcome.kind else {
-                    return self.fail("browser Lua simple dialog has the wrong flavor");
-                };
-                let Some(button_id) = content.elements.iter().find_map(|element| match element {
-                    shoop_egui::ScriptDialogElement::Button { id, .. } => *id,
-                    _ => None,
-                }) else {
-                    return self.fail("browser Lua dialog callback button is missing");
-                };
-                widget.browser_test_close_lua_dialog(welcome.id);
-                widget.browser_test_set_lua_dialog_page(guide.id, 1);
-                runtime
-                    .dispatch(AppIntent::InvokeScriptDialogButton {
-                        script_id: welcome.owner_script_id,
-                        dialog_id: welcome.id,
-                        button_id,
-                    })
-                    .map(|()| Self::WaitForLuaDialogCallback {
-                        script_id: welcome.owner_script_id,
-                        welcome: welcome.id,
-                        guide: guide.id,
-                    })
-            }
-            Self::WaitForLuaDialogCallback {
-                script_id,
-                welcome,
-                guide,
-            } => {
-                let guide_opened = snapshot
-                    .scripting
-                    .dialogs
-                    .iter()
-                    .find(|dialog| dialog.id == guide)
-                    .is_some_and(|dialog| dialog.open_request == 1);
-                if !snapshot.global_controls.solo
-                    || !guide_opened
-                    || widget.browser_test_lua_dialog_state(welcome) != Some((false, 0))
-                    || widget.browser_test_lua_dialog_state(guide) != Some((true, 1))
-                {
-                    return;
-                }
-                widget.browser_test_close_lua_dialog(guide);
-                widget.browser_test_open_lua_dialog_from_list(guide);
-                if widget.browser_test_lua_dialog_state(guide) != Some((true, 1)) {
-                    return self.fail("browser Lua dialog page state did not survive close/reopen");
-                }
-                runtime
-                    .dispatch(AppIntent::StopScript { script_id })
-                    .map(|()| Self::WaitForLuaDialogsStopped)
-            }
-            Self::WaitForLuaDialogsStopped => {
-                if snapshot.scripting.dialogs.len() != 1
-                    || snapshot.scripting.dialogs[0].name != "Survivor"
-                    || widget.browser_test_lua_dialog_count() != 1
-                {
-                    return;
-                }
-                Ok(Self::Complete)
-            }
-        };
-
-        match result {
-            Ok(next) => {
-                *self = next;
-                if next == Self::Complete {
-                    set_browser_self_test_status("passed");
-                } else {
-                    set_browser_self_test_status(&format!("{next:?}"));
-                }
-            }
-            Err(error) => {
-                *self = Self::Failed;
-                set_browser_self_test_status("failed");
-                log::error!("browser dummy-engine self-test dispatch failed: {error}");
-            }
-        }
-    }
-
-    fn fail(&mut self, message: &str) {
-        *self = Self::Failed;
-        set_browser_self_test_status("failed");
-        if let Some(element) = browser_status_element() {
-            let _ = element.set_attribute("data-self-test-error", message);
-        }
-        log::error!("browser self-test failed: {message}");
-    }
-}
-
-#[cfg(target_arch = "wasm32")]
-fn first_main_loop(
-    snapshot: &AppSnapshot,
-) -> Option<(&shoop_egui::TrackState, &shoop_egui::LoopState)> {
-    let track = snapshot.tracks.iter().find(|track| !track.is_sync)?;
-    Some((track, track.loops.first()?))
-}
-
-#[cfg(target_arch = "wasm32")]
-fn first_mixed_main_loop(
-    snapshot: &AppSnapshot,
-) -> Option<(&shoop_egui::TrackState, &shoop_egui::LoopState)> {
-    snapshot
-        .tracks
-        .iter()
-        .filter(|track| !track.is_sync)
-        .find_map(|track| {
-            track
-                .loops
-                .iter()
-                .find(|loop_| loop_.has_audio && loop_.has_midi)
-                .map(|loop_| (track, loop_))
-        })
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -5616,36 +4201,6 @@ fn browser_status_element() -> Option<web_sys::Element> {
     web_sys::window()
         .and_then(|window| window.document())
         .and_then(|document| document.get_element_by_id("runtime_status"))
-}
-
-#[cfg(target_arch = "wasm32")]
-fn set_browser_self_test_status(status: &str) {
-    if let Some(element) = browser_status_element() {
-        let _ = element.set_attribute("data-self-test", status);
-        if status == "awaiting-audio" {
-            let _ = element.set_attribute("data-self-test-nonzero-io", "false");
-        }
-        if status == "passed" {
-            element.set_text_content(Some("Web Audio non-zero I/O self-test passed"));
-        }
-    }
-}
-
-#[cfg(target_arch = "wasm32")]
-fn mark_browser_dry_wet_capability_check() {
-    if let Some(element) = web_sys::window()
-        .and_then(|window| window.document())
-        .and_then(|document| document.get_element_by_id("runtime_status"))
-    {
-        let _ = element.set_attribute("data-dry-wet-form", "built-in-synth");
-    }
-}
-
-#[cfg(target_arch = "wasm32")]
-fn mark_browser_self_test_nonzero_io() {
-    if let Some(element) = browser_status_element() {
-        let _ = element.set_attribute("data-self-test-nonzero-io", "true");
-    }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -5896,109 +4451,6 @@ mod tests {
         assert!(bytes.len() > 128);
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
-    #[shoop_wasm_test_support::shoop_test(no_wasm = "uses the native backend")]
-    fn native_application_builtin_fx_save_reload_smoke() {
-        use shoop_app::CooperativeApplicationRuntime;
-        use shoop_backend::NativeBackend;
-        use shoop_egui::{
-            AppIntent, AudioDriverConfig, BuiltInFxControl, BuiltInFxDriveType,
-            BuiltInFxMidiCcAssignment, BuiltInFxParameter, BuiltInFxStage, BuiltInFxState,
-            DummyAudioDriverConfig, TrackProcessorEditorState, TrackProcessorTypeId, TrackSpec,
-            TrackSpecTopology,
-        };
-
-        let backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
-            sample_rate: 48_000,
-            buffer_size: 128,
-        }))
-        .unwrap();
-        let mut runtime = CooperativeApplicationRuntime::start(Box::new(backend)).unwrap();
-        runtime.tick(Duration::ZERO);
-        runtime
-            .dispatch(AppIntent::AddTrackWithTopology(TrackSpec {
-                name: "Native Built-in FX".to_owned(),
-                topology: TrackSpecTopology::DryWet {
-                    dry_audio_channels: 3,
-                    wet_audio_channels: 3,
-                    dry_midi: true,
-                    processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::BUILTIN_FX),
-                    default_playback_mode: shoop_egui::DefaultPlaybackMode::Regular,
-                },
-                latency: shoop_egui::TrackLatencySpec::default(),
-                initial_output_bus_names: Vec::new(),
-                creation_request_id: None,
-            }))
-            .unwrap();
-        for _ in 0..3 {
-            runtime.tick(Duration::ZERO);
-        }
-        let track = runtime.snapshot().tracks[1].clone();
-        runtime
-            .dispatch(AppIntent::Track {
-                track_id: track.id,
-                action: TrackAction::BuiltInFx(BuiltInFxControl::SetReverbEnabled(false)),
-            })
-            .unwrap();
-        runtime.tick(Duration::ZERO);
-        let assignment = BuiltInFxMidiCcAssignment {
-            parameter: BuiltInFxParameter::Drive,
-            channel: 2,
-            controller: 17,
-        };
-        for control in [
-            BuiltInFxControl::SetStageEnabled(BuiltInFxStage::Drive, true),
-            BuiltInFxControl::SetDriveType(BuiltInFxDriveType::Fuzz),
-            BuiltInFxControl::SetParameter(BuiltInFxParameter::Drive, 24.0),
-            BuiltInFxControl::AssignMidiCc(assignment),
-        ] {
-            runtime
-                .dispatch(AppIntent::Track {
-                    track_id: track.id,
-                    action: TrackAction::BuiltInFx(control),
-                })
-                .unwrap();
-        }
-        runtime.tick(Duration::ZERO);
-        let expected = BuiltInFxState {
-            drive_enabled: true,
-            drive_type: BuiltInFxDriveType::Fuzz,
-            drive_db: 24.0,
-            reverb_enabled: false,
-            midi_cc_assignments: Arc::from([assignment]),
-            ..BuiltInFxState::default()
-        };
-        assert_eq!(
-            runtime.snapshot().tracks[1]
-                .fx
-                .as_ref()
-                .and_then(|fx| fx.editor.as_ref()),
-            Some(&TrackProcessorEditorState::BuiltInFx(expected.clone()))
-        );
-
-        runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
-        for _ in 0..4 {
-            runtime.tick(Duration::ZERO);
-        }
-        let output = runtime.take_file_output().unwrap();
-        runtime
-            .dispatch(AppIntent::LoadSessionBytes {
-                name: "native-builtin-fx.shoop".to_owned(),
-                bytes: output.bytes,
-            })
-            .unwrap();
-        for _ in 0..5 {
-            runtime.tick(Duration::ZERO);
-        }
-        assert_eq!(
-            runtime.snapshot().tracks[1]
-                .fx
-                .as_ref()
-                .and_then(|fx| fx.editor.as_ref()),
-            Some(&TrackProcessorEditorState::BuiltInFx(expected))
-        );
-    }
-
     #[shoop_wasm_test_support::shoop_test]
     fn session_sources_recognize_http_urls_and_names() {
         assert!(is_http_url("https://example.com/session.shoop"));
@@ -6052,9 +4504,75 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn profiling_settings_persist_default_off_and_retry_failed_dispatch() {
+        let mut builder = SettingsRegistryBuilder::default();
+        register_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        let defaults = registry.defaults(1);
+        assert_eq!(defaults.get(shoop_egui::RUNTIME_PROFILING), Ok(false));
+        let mut draft = shoop_settings::SettingsDraft::from_snapshot(&defaults);
+        draft.set(shoop_egui::RUNTIME_PROFILING, true);
+        let document = registry
+            .document_from_draft(
+                &shoop_settings::SettingsDocument::empty("test"),
+                &draft,
+                "test",
+            )
+            .unwrap();
+        let saved = shoop_settings::encode_settings(&document).unwrap();
+        let restored = registry
+            .resolve(&shoop_settings::decode_settings(&saved).unwrap(), 2)
+            .snapshot;
+        assert_eq!(restored.get(shoop_egui::RUNTIME_PROFILING), Ok(true));
+        let mut applied = None;
+        assert!(
+            reconcile_profiling_settings(&restored, &mut applied, &mut None, |_| {
+                Err(application::DispatchError::Full)
+            })
+            .is_err()
+        );
+        assert_eq!(applied, None);
+        reconcile_profiling_settings(&restored, &mut applied, &mut None, |intent| {
+            assert_eq!(intent, AppIntent::SetProfiling(true));
+            Ok(())
+        })
+        .unwrap();
+        reconcile_profiling_settings(&restored, &mut applied, &mut None, |_| {
+            panic!("duplicate control")
+        })
+        .unwrap();
+        reconcile_profiling_settings(&defaults, &mut applied, &mut None, |intent| {
+            assert_eq!(intent, AppIntent::SetProfiling(false));
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(applied, Some(false));
+        let mut requested = Some(true);
+        applied = Some(true);
+        reconcile_profiling_settings(&defaults, &mut applied, &mut requested, |_| {
+            panic!("pending preference must not undo an immediate toggle")
+        })
+        .unwrap();
+        assert_eq!(requested, Some(true));
+        reconcile_profiling_settings(&restored, &mut applied, &mut requested, |_| {
+            panic!("saving must not dispatch a second toggle")
+        })
+        .unwrap();
+        assert_eq!(requested, None);
+        requested = Some(false);
+        applied = Some(false);
+        reconcile_profiling_settings(&restored, &mut applied, &mut requested, |_| {
+            panic!("latest rapid toggle wins over an earlier save")
+        })
+        .unwrap();
+        assert_eq!(requested, Some(false));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn loop_smoothing_settings_retry_failed_dispatch_and_apply_zero() {
         let mut builder = SettingsRegistryBuilder::default();
         register_audio_settings(&mut builder).unwrap();
+        shoop_egui::register_audio_backend_settings(&mut builder).unwrap();
         let registry = builder.finish();
         let mut document = shoop_settings::SettingsDocument::empty("test");
         document.values.insert(
@@ -6066,7 +4584,7 @@ mod tests {
 
         assert!(
             reconcile_loop_smoothing_settings(&settings, &mut applied_revision, |_| Err(
-                shoop_app::DispatchError::Full
+                application::DispatchError::Full
             ),)
             .is_err()
         );
@@ -6187,188 +4705,13 @@ mod tests {
 
     #[cfg(not(target_arch = "wasm32"))]
     #[shoop_wasm_test_support::shoop_test]
-    fn confirmed_driver_switch_is_saved_once_and_completed_after_persistence() {
-        let mut app = UnifiedApp::new(1.0, false, &AppArgs::default()).unwrap();
-        app.runtime.tick(Duration::ZERO);
-        let mut draft = shoop_settings::SettingsDraft::from_snapshot(&app.settings.active());
-        draft.set(shoop_egui::DUMMY_SAMPLE_RATE, 32_000);
-        draft.set(shoop_egui::DUMMY_BUFFER_SIZE, 128);
-        let config =
-            shoop_egui::audio_driver_config_from_draft(&draft, shoop_egui::AudioDriverKind::Dummy)
-                .unwrap();
-        app.handle_settings_action(SettingsAction::RequestAudioDriverSwitch { config, draft });
-        let deadline = Instant::now() + Duration::from_secs(3);
-        let prepared = loop {
-            app.runtime.tick(Duration::ZERO);
-            let snapshot = app.runtime.snapshot();
-            if snapshot.audio_drivers.switch.status
-                == shoop_egui::AudioDriverSwitchStatus::AwaitingConfirmation
-            {
-                break snapshot;
-            }
-            assert!(Instant::now() < deadline, "driver preflight timed out");
-            thread::sleep(Duration::from_millis(5));
-        };
-        assert_eq!(
-            prepared.audio_drivers.switch.status,
-            shoop_egui::AudioDriverSwitchStatus::AwaitingConfirmation
-        );
-        let request_id = prepared.audio_drivers.switch.request_id;
-        app.runtime
-            .dispatch(AppIntent::ConfirmAudioDriverSwitch {
-                request_id,
-                accept: true,
-            })
-            .unwrap();
-        let deadline = Instant::now() + Duration::from_secs(3);
-        loop {
-            app.runtime.tick(Duration::ZERO);
-            if app.runtime.snapshot().audio_drivers.switch.status
-                == shoop_egui::AudioDriverSwitchStatus::Persisting
-            {
-                break;
-            }
-            assert!(Instant::now() < deadline, "driver switch timed out");
-            thread::sleep(Duration::from_millis(5));
-        }
-
-        let deadline = Instant::now() + Duration::from_secs(3);
-        loop {
-            app.settings.poll();
-            let snapshot = app.runtime.snapshot();
-            app.reconcile_audio_settings(&snapshot);
-            app.runtime.tick(Duration::ZERO);
-            if app.runtime.snapshot().audio_drivers.switch.status
-                == shoop_egui::AudioDriverSwitchStatus::Completed
-            {
-                break;
-            }
-            assert!(Instant::now() < deadline, "driver settings save timed out");
-            thread::sleep(Duration::from_millis(5));
-        }
-        let active = app.settings.active();
-        assert_eq!(active.get(shoop_egui::DUMMY_SAMPLE_RATE).unwrap(), 32_000);
-        assert_eq!(
-            active.get(shoop_egui::SELECTED_AUDIO_DRIVER).unwrap(),
-            "dummy"
-        );
-        assert!(app.pending_audio_settings.is_none());
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    #[shoop_wasm_test_support::shoop_test]
-    fn failed_driver_settings_save_retries_without_switching_backend_again() {
-        let directory = tempfile::tempdir().unwrap();
-        let blocker = directory.path().join("blocked");
-        let path = blocker.join("settings.json");
-        let mut builder = SettingsRegistryBuilder::default();
-        register_settings(&mut builder).unwrap();
-        register_audio_settings(&mut builder).unwrap();
-        register_carla_settings(&mut builder).unwrap();
-        register_script_settings(&mut builder).unwrap();
-        let manager = SettingsManager::load_from_path(builder.finish(), "test", path);
-        std::fs::write(&blocker, b"not a directory").unwrap();
-
-        let mut app = UnifiedApp::new(1.0, false, &AppArgs::default()).unwrap();
-        app.settings = manager;
-        let mut draft = shoop_settings::SettingsDraft::from_snapshot(&app.settings.active());
-        draft.set(shoop_egui::DUMMY_SAMPLE_RATE, 32_000);
-        draft.set(shoop_egui::DUMMY_BUFFER_SIZE, 128);
-        let config =
-            shoop_egui::audio_driver_config_from_draft(&draft, shoop_egui::AudioDriverKind::Dummy)
-                .unwrap();
-        app.handle_settings_action(SettingsAction::RequestAudioDriverSwitch { config, draft });
-        let deadline = Instant::now() + Duration::from_secs(10);
-        let request_id = loop {
-            app.runtime.tick(Duration::ZERO);
-            let snapshot = app.runtime.snapshot();
-            if snapshot.audio_drivers.switch.status
-                == shoop_egui::AudioDriverSwitchStatus::AwaitingConfirmation
-            {
-                break snapshot.audio_drivers.switch.request_id;
-            }
-            assert!(Instant::now() < deadline, "driver preflight timed out");
-            thread::sleep(Duration::from_millis(5));
-        };
-        app.runtime
-            .dispatch(AppIntent::ConfirmAudioDriverSwitch {
-                request_id,
-                accept: true,
-            })
-            .unwrap();
-        let deadline = Instant::now() + Duration::from_secs(10);
-        loop {
-            app.settings.poll();
-            app.runtime.tick(Duration::ZERO);
-            let snapshot = app.runtime.snapshot();
-            app.reconcile_audio_settings(&snapshot);
-            if app.runtime.snapshot().audio_drivers.switch.status
-                == shoop_egui::AudioDriverSwitchStatus::Failed
-            {
-                break;
-            }
-            assert!(Instant::now() < deadline, "injected save failure timed out");
-            thread::sleep(Duration::from_millis(5));
-        }
-        let failed = app.runtime.snapshot();
-        assert_eq!(
-            failed.audio_drivers.active.as_ref().unwrap().sample_rate,
-            32_000
-        );
-        assert!(failed.audio_drivers.switch.persistence_retry_available);
-        assert_eq!(failed.audio_drivers.switch.request_id, request_id);
-
-        std::fs::remove_file(&blocker).unwrap();
-        app.handle_settings_action(SettingsAction::RetryAudioDriverPersistence { request_id });
-        let deadline = Instant::now() + Duration::from_secs(30);
-        loop {
-            app.settings.poll();
-            app.runtime.tick(Duration::ZERO);
-            let snapshot = app.runtime.snapshot();
-            app.reconcile_audio_settings(&snapshot);
-            if app.runtime.snapshot().audio_drivers.switch.status
-                == shoop_egui::AudioDriverSwitchStatus::Completed
-            {
-                break;
-            }
-            if Instant::now() >= deadline {
-                let view = app.settings.view();
-                let current = app.runtime.snapshot();
-                let pending = app
-                    .pending_audio_settings
-                    .as_ref()
-                    .map(|pending| (pending.request_id, pending.saving));
-                panic!(
-                    "driver save retry timed out: persistence={:?}, switch={:?}, pending={pending:?}",
-                    view.persistence, current.audio_drivers.switch.status
-                );
-            }
-            thread::sleep(Duration::from_millis(5));
-        }
-        let completed = app.runtime.snapshot();
-        assert_eq!(completed.audio_drivers.switch.request_id, request_id);
-        assert_eq!(
-            completed.audio_drivers.active.as_ref().unwrap().sample_rate,
-            32_000
-        );
-        assert_eq!(
-            app.settings
-                .active()
-                .get(shoop_egui::DUMMY_SAMPLE_RATE)
-                .unwrap(),
-            32_000
-        );
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    #[shoop_wasm_test_support::shoop_test]
     fn persisted_dummy_configuration_is_used_on_restart() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("settings.json");
         let mut builder = SettingsRegistryBuilder::default();
         register_settings(&mut builder).unwrap();
         register_audio_settings(&mut builder).unwrap();
-        register_carla_settings(&mut builder).unwrap();
+        shoop_egui::register_audio_backend_settings(&mut builder).unwrap();
         register_script_settings(&mut builder).unwrap();
         let registry = builder.finish();
         let mut manager = SettingsManager::load_from_path(registry.clone(), "test", path.clone());
@@ -6389,7 +4732,7 @@ mod tests {
                 .unwrap(),
             32_000
         );
-        let runtime = Runtime::new(&restarted.active()).unwrap();
+        let runtime = Runtime::new(&restarted.active(), &AppArgs::default()).unwrap();
         let deadline = Instant::now() + Duration::from_secs(3);
         loop {
             let snapshot = runtime.snapshot();
@@ -6405,50 +4748,1079 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "native-fx")]
+    #[cfg(not(target_arch = "wasm32"))]
+    fn new_engine_args() -> AppArgs {
+        AppArgs {
+            ..AppArgs::default()
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    /// Waits until `done`; prints how long each step took, to compare structural latency
+    /// across changes (`--no-capture`).
+    fn wait_for_snapshot(
+        runtime: &Runtime,
+        what: &str,
+        done: impl Fn(&AppSnapshot) -> bool,
+    ) -> std::sync::Arc<AppSnapshot> {
+        let start = Instant::now();
+        let deadline = start + Duration::from_secs(20);
+        loop {
+            let snapshot = runtime.snapshot();
+            if done(&snapshot) {
+                eprintln!("new engine smoke: {what} after {:?}", start.elapsed());
+                return snapshot;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "{what} timed out; notifications: {:?}",
+                snapshot.notifications
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn first_loop(snapshot: &AppSnapshot, track_id: shoop_egui::TrackId) -> &shoop_egui::LoopState {
+        &snapshot
+            .tracks
+            .iter()
+            .find(|track| track.id == track_id)
+            .expect("the track exists")
+            .loops[0]
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn track_ports(
+        snapshot: &AppSnapshot,
+        track_id: shoop_egui::TrackId,
+        role: PortRole,
+    ) -> Vec<shoop_egui::PortId> {
+        snapshot
+            .connections
+            .application_ports
+            .iter()
+            .filter(|port| {
+                matches!(port.owner, ApplicationPortOwner::Track { track_id: owner, .. } if owner == track_id)
+                    && port.role == role
+            })
+            .map(|port| port.id)
+            .collect()
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn loop_action(runtime: &mut Runtime, track: &shoop_egui::TrackState, action: LoopAction) {
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track.id,
+                loop_id: track.loops[0].id,
+                action,
+            })
+            .unwrap();
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     #[shoop_wasm_test_support::shoop_test]
-    fn runtime_applies_carla_hosting_setting_before_backend_start() {
+    fn new_engine_backend_runs_the_core_workflow_in_the_application() {
+        application_core_workflow(UnifiedApp::new(1.0, false, &new_engine_args()).unwrap());
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn driver_preference_retry_serializes_all_native_settings_writers() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let location = Arc::new(Mutex::new(None::<std::path::PathBuf>));
+        let writer_location = location.clone();
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let writer_attempts = attempts.clone();
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let preferences: shoop_host::audio_driver::PreferenceWriter = Box::new(move |config| {
+            if writer_attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                anyhow::bail!("injected initial preference failure");
+            }
+            entered_tx.send(())?;
+            release_rx.recv_timeout(Duration::from_secs(30))?;
+            let path = writer_location.lock().unwrap().clone().unwrap();
+            settings::driver_preference_writer(path)(config)
+        });
+        let mut app =
+            UnifiedApp::new_with_runtime(1.0, false, &new_engine_args(), |settings, args| {
+                Runtime::new_with_engine_start(
+                    settings,
+                    args,
+                    |driver, pools, transport| {
+                        engine_backend::start_selected_with_processors(
+                            driver,
+                            pools,
+                            transport,
+                            Default::default(),
+                        )
+                    },
+                    Some(preferences),
+                )
+            })
+            .unwrap();
+        let path = std::path::PathBuf::from(app.settings.view().storage_location);
+        *location.lock().unwrap() = Some(path.clone());
+        wait_for_snapshot(&app.runtime, "driver discovery", |s| {
+            s.audio_drivers.catalog.len() == 3
+        });
+        app.handle_settings_action(SettingsAction::RequestAudioDriverSwitch {
+            config: AudioDriverConfig::Dummy(shoop_egui::DummyAudioDriverConfig {
+                sample_rate: 32_000,
+                buffer_size: 128,
+            }),
+            draft: shoop_settings::SettingsDraft::from_snapshot(&app.settings.active()),
+        });
+        let confirmation = wait_for_snapshot(&app.runtime, "driver confirmation", |s| {
+            s.audio_drivers.switch.status
+                == shoop_egui::AudioDriverSwitchStatus::AwaitingConfirmation
+        });
+        let request_id = confirmation.audio_drivers.switch.request_id;
+        app.handle_ui_intent(AppIntent::ConfirmAudioDriverSwitch {
+            request_id,
+            accept: true,
+        });
+        wait_for_snapshot(&app.runtime, "failed preference write", |s| {
+            s.audio_drivers.switch.persistence_retry_available && s.status.sample_rate == 32_000
+        });
+        let wait_idle = |app: &UnifiedApp| {
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while app.audio_settings_busy() {
+                assert!(
+                    Instant::now() < deadline,
+                    "audio preference command did not finish"
+                );
+                thread::sleep(Duration::from_millis(2));
+            }
+        };
+        wait_idle(&app);
+        for recover in [false, true] {
+            let action = if recover {
+                SettingsAction::RecoverWithDefaults
+            } else {
+                SettingsAction::Save(shoop_settings::SettingsDraft::from_snapshot(
+                    &app.settings.active(),
+                ))
+            };
+            app.handle_settings_action(action);
+            assert_eq!(
+                app.settings.view().persistence,
+                shoop_settings::SettingsPersistenceState::Saving
+            );
+            for _ in 0..2 {
+                app.handle_settings_action(SettingsAction::RetryAudioDriverPersistence {
+                    request_id,
+                });
+                assert_eq!(
+                    app.settings.view().persistence,
+                    shoop_settings::SettingsPersistenceState::Saving
+                );
+                assert!(!app.runtime.handle.has_pending_audio_driver_commands());
+            }
+            app.handle_ui_intent(AppIntent::ConfirmAudioDriverSwitch {
+                request_id,
+                accept: true,
+            });
+            assert!(!app.runtime.handle.has_pending_audio_driver_commands());
+            wait_for_settings_save(&mut app.settings);
+        }
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+        let mut draft = shoop_settings::SettingsDraft::from_snapshot(&app.settings.active());
+        draft.set(shoop_egui::TOUCH_MODE, true);
+        app.handle_settings_action(SettingsAction::Save(draft));
+        wait_for_settings_save(&mut app.settings);
+        let stale = shoop_settings::SettingsDraft::from_snapshot(&app.settings.active());
+        let before = std::fs::read(&path).unwrap();
+        app.handle_settings_action(SettingsAction::RetryAudioDriverPersistence { request_id });
+        assert!(app.runtime.handle.has_pending_audio_driver_commands());
+        app.handle_settings_action(SettingsAction::Save(stale.clone()));
+        app.handle_settings_action(SettingsAction::RecoverWithDefaults);
+        app.pending_profiling_preference = Some(true);
+        app.save_profiling_preference();
+        assert_eq!(app.pending_profiling_preference, Some(true));
+        assert_ne!(
+            app.settings.view().persistence,
+            shoop_settings::SettingsPersistenceState::Saving
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        entered_rx.recv_timeout(Duration::from_secs(10)).unwrap();
+        release_tx.send(()).unwrap();
+        wait_for_snapshot(&app.runtime, "saved driver preference", |s| {
+            s.audio_drivers.switch.status == shoop_egui::AudioDriverSwitchStatus::Completed
+        });
+        wait_idle(&app);
+        let saved_driver = std::fs::read(&path).unwrap();
+        app.handle_settings_action(SettingsAction::Save(stale));
+        assert_eq!(std::fs::read(&path).unwrap(), saved_driver);
+        assert_eq!(
+            app.settings
+                .active()
+                .get(shoop_egui::DUMMY_SAMPLE_RATE)
+                .unwrap(),
+            32_000
+        );
+        app.save_profiling_preference();
+        wait_for_settings_save(&mut app.settings);
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+        assert_eq!(
+            app.settings
+                .active()
+                .get(shoop_egui::DUMMY_SAMPLE_RATE)
+                .unwrap(),
+            32_000
+        );
+        assert!(app.settings.active().get(shoop_egui::TOUCH_MODE).unwrap());
+        assert!(app
+            .settings
+            .active()
+            .get(shoop_egui::RUNTIME_PROFILING)
+            .unwrap());
+        let stored =
+            shoop_settings::decode_settings(&std::fs::read_to_string(path).unwrap()).unwrap();
+        assert_eq!(
+            stored.values["audio.dummy.sample_rate"],
+            serde_json::json!(32_000)
+        );
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn embedded_driver_switch_keeps_the_live_lua_vm_and_application_ids() {
+        let mut app = UnifiedApp::new(1.0, false, &new_engine_args()).unwrap();
+        let runtime = &mut app.runtime;
+        wait_for_snapshot(runtime, "driver discovery", |s| {
+            s.audio_drivers.catalog.len() == 3
+        });
+        runtime.dispatch(AppIntent::AddScriptSource {
+            name: "switch-survivor.lua".into(),
+            source: std::sync::Arc::from("shoop_announce_api_version(1, 0); print('started once'); local d=require('shoop_dialog'); d.simple('Switch survivor', {d.rich_text('VM still running')})"),
+            kind: ScriptKind::User,
+            enabled: true,
+        }).unwrap();
+        let before = wait_for_snapshot(runtime, "Lua survivor dialog", |s| {
+            s.scripting
+                .dialogs
+                .iter()
+                .any(|d| d.name == "Switch survivor")
+        });
+        let script = before
+            .scripting
+            .scripts
+            .iter()
+            .find(|s| s.name == "switch-survivor.lua")
+            .unwrap()
+            .clone();
+        let dialogs = before.scripting.dialogs.clone();
+        runtime
+            .dispatch(AppIntent::RequestLoadSessionPicker)
+            .unwrap();
+        let file = wait_for_snapshot(runtime, "active file picker", |s| s.io_task.is_some());
+        runtime
+            .dispatch(AppIntent::RequestAudioDriverSwitch {
+                config: AudioDriverConfig::Dummy(shoop_egui::DummyAudioDriverConfig {
+                    sample_rate: 32_000,
+                    buffer_size: 128,
+                }),
+            })
+            .unwrap();
+        let busy = wait_for_snapshot(runtime, "file workflow refusal", |s| {
+            s.notifications.iter().any(|n| {
+                n.message
+                    .contains("Finish the active file workflow before switching")
+            })
+        });
+        assert_eq!(busy.status.sample_rate, 48_000);
+        assert_ne!(
+            busy.audio_drivers.switch.status,
+            shoop_egui::AudioDriverSwitchStatus::AwaitingConfirmation
+        );
+        runtime
+            .dispatch(AppIntent::CancelIoTask {
+                task_id: file.io_task.as_ref().unwrap().id,
+            })
+            .unwrap();
+        wait_for_snapshot(runtime, "cancelled file picker", |s| {
+            s.io_task
+                .as_ref()
+                .is_some_and(|t| t.status == shoop_egui::IoTaskStatus::Cancelled)
+        });
+
+        runtime
+            .dispatch(AppIntent::RequestAudioDriverSwitch {
+                config: AudioDriverConfig::Dummy(shoop_egui::DummyAudioDriverConfig {
+                    sample_rate: 32_000,
+                    buffer_size: 128,
+                }),
+            })
+            .unwrap();
+        let prepared = wait_for_snapshot(runtime, "switch confirmation", |s| {
+            s.audio_drivers.switch.status
+                == shoop_egui::AudioDriverSwitchStatus::AwaitingConfirmation
+        });
+        runtime
+            .dispatch(AppIntent::RequestLoadSessionPicker)
+            .unwrap();
+        let file = wait_for_snapshot(runtime, "file workflow during confirmation", |s| {
+            s.io_task
+                .as_ref()
+                .is_some_and(|t| t.status == shoop_egui::IoTaskStatus::Running)
+        });
+        let notifications = file.notifications.len();
+        runtime
+            .dispatch(AppIntent::ConfirmAudioDriverSwitch {
+                request_id: prepared.audio_drivers.switch.request_id,
+                accept: true,
+            })
+            .unwrap();
+        let busy = wait_for_snapshot(runtime, "confirmation file workflow refusal", |s| {
+            s.notifications.len() > notifications
+        });
+        assert_eq!(
+            busy.audio_drivers.switch.status,
+            shoop_egui::AudioDriverSwitchStatus::AwaitingConfirmation
+        );
+        assert_eq!(busy.status.sample_rate, 48_000);
+        runtime
+            .dispatch(AppIntent::CancelIoTask {
+                task_id: file.io_task.as_ref().unwrap().id,
+            })
+            .unwrap();
+        wait_for_snapshot(runtime, "cancelled second file picker", |s| {
+            s.io_task
+                .as_ref()
+                .is_some_and(|t| t.status == shoop_egui::IoTaskStatus::Cancelled)
+        });
+        runtime
+            .dispatch(AppIntent::ConfirmAudioDriverSwitch {
+                request_id: prepared.audio_drivers.switch.request_id,
+                accept: true,
+            })
+            .unwrap();
+        let after = wait_for_snapshot(
+            runtime,
+            "runtime switch and unsaved test preferences",
+            |s| {
+                s.status.sample_rate == 32_000 && s.audio_drivers.switch.persistence_retry_available
+            },
+        );
+        let survivor = after
+            .scripting
+            .scripts
+            .iter()
+            .find(|s| s.id == script.id)
+            .unwrap();
+        assert_eq!(survivor.lifecycle, script.lifecycle);
+        assert_eq!(survivor.logs, script.logs);
+        assert_eq!(after.scripting.dialogs, dialogs);
+        assert_eq!(after.tracks[0].id, before.tracks[0].id);
+        assert_eq!(after.tracks[0].loops[0].id, before.tracks[0].loops[0].id);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn application_core_workflow(mut app: UnifiedApp) {
+        use shoop_egui::{
+            BackendCapabilities, BackendCapability, BusAction, ConfirmedConnectionState,
+            GlobalControlAction, IoTaskStatus, MixerRouteState, StructuralState,
+        };
+
+        let runtime = &mut app.runtime;
+        let snapshot = wait_for_snapshot(runtime, "startup", |snapshot| {
+            snapshot.tracks.len() == 1 && snapshot.connections.backend_available
+        });
+        assert_eq!(
+            snapshot.capabilities,
+            BackendCapabilities::NONE
+                .with(BackendCapability::MidiInjection, true)
+                .with(BackendCapability::AudioDriverSwitching, true)
+                .with(BackendCapability::SessionCapture, true)
+                .with(BackendCapability::SessionContentLoad, true)
+                .with(BackendCapability::LoopContentImport, true)
+                .with(BackendCapability::LoopDuplication, true)
+                .with(BackendCapability::LoopTimingEdits, true)
+                .with(BackendCapability::BusManagement, true)
+                .with(BackendCapability::DryWetModes, true)
+                .with(BackendCapability::DryWetTracks, true)
+                .with(
+                    BackendCapability::BusFx,
+                    snapshot
+                        .bus_processors
+                        .iter()
+                        .any(|processor| processor.available),
+                )
+                .with(
+                    BackendCapability::TrackFx,
+                    snapshot
+                        .track_processors
+                        .iter()
+                        .any(|processor| processor.available),
+                )
+                .with(BackendCapability::CompositeLoops, true)
+                .with(BackendCapability::Grab, true)
+                .with(BackendCapability::ReplacingMode, true)
+                .with(BackendCapability::ClickTrackInsertion, true)
+        );
+        assert_eq!(
+            runtime.audio_preview_available(),
+            native_preview::is_available()
+        );
+        assert_eq!(snapshot.status.sample_rate, 48_000);
+        assert!(
+            snapshot.notifications.is_empty(),
+            "{:?}",
+            snapshot.notifications
+        );
+
+        runtime.dispatch(AppIntent::RequestNewSession).unwrap();
+        let snapshot = wait_for_snapshot(runtime, "a new session", |snapshot| {
+            snapshot
+                .io_task
+                .as_ref()
+                .is_some_and(|task| task.status == IoTaskStatus::Completed)
+        });
+        let sync = snapshot.tracks[0].clone();
+        assert!(sync.is_sync);
+        let master = snapshot.buses[0].clone();
+        assert_eq!(master.name, "Master");
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(true)))
+            .unwrap();
+        for (name, audio_channels, midi) in [("Audio", 2, false), ("Keys", 0, true)] {
+            runtime
+                .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                    name: name.to_owned(),
+                    audio_channels,
+                    midi,
+                }))
+                .unwrap();
+        }
+        let snapshot = wait_for_snapshot(runtime, "two new tracks", |snapshot| {
+            snapshot.tracks.len() == 3
+                && snapshot.tracks.iter().all(|track| {
+                    track.structural_state == StructuralState::Confirmed
+                        && track
+                            .loops
+                            .iter()
+                            .all(|state| state.structural_state == StructuralState::Confirmed)
+                })
+        });
+        let audio = snapshot.tracks[1].clone();
+        let keys = snapshot.tracks[2].clone();
+
+        let audio_inputs = track_ports(&snapshot, audio.id, PortRole::AudioInput);
+        let audio_outputs = track_ports(&snapshot, audio.id, PortRole::AudioOutput);
+        let keys_input = track_ports(&snapshot, keys.id, PortRole::MidiInput);
+        assert_eq!((audio_inputs.len(), audio_outputs.len()), (2, 2));
+        let mut links = Vec::new();
+        for (port, host) in audio_inputs
+            .iter()
+            .map(|port| (*port, "audio_in_1"))
+            .chain(keys_input.iter().map(|port| (*port, "midi_in_1")))
+        {
+            runtime
+                .dispatch(AppIntent::SetPortConnected {
+                    port_id: port,
+                    host_port_id: HostPortId::new(host),
+                    connected: true,
+                })
+                .unwrap();
+            links.push(ConfirmedConnectionState {
+                application_port_id: port,
+                host_port_id: HostPortId::new(host),
+            });
+        }
+        let routes = audio_outputs
+            .iter()
+            .zip(master.channels.iter())
+            .map(|(port, channel)| MixerRouteState {
+                source_port_id: *port,
+                destination_channel_id: channel.id,
+            })
+            .collect::<Vec<_>>();
+        for route in &routes {
+            runtime
+                .dispatch(AppIntent::SetMixerRouteConnected {
+                    source_port_id: route.source_port_id,
+                    destination_channel_id: route.destination_channel_id,
+                    connected: true,
+                })
+                .unwrap();
+        }
+        wait_for_snapshot(runtime, "connections and routes", |snapshot| {
+            let connections = &snapshot.connections;
+            links
+                .iter()
+                .all(|link| connections.confirmed_links.contains(link))
+                && routes
+                    .iter()
+                    .all(|route| connections.mixer_links.contains(route))
+                && connections
+                    .confirmed_links
+                    .iter()
+                    .any(|link| link.host_port_id == HostPortId::new("audio_out_1"))
+        });
+
+        loop_action(runtime, &sync, LoopAction::RecordClicked);
+        wait_for_snapshot(runtime, "sync recording", |snapshot| {
+            first_loop(snapshot, sync.id).mode == LoopMode::Recording
+        });
+        wait_for_snapshot(runtime, "sync captured frames", |snapshot| {
+            let state = first_loop(snapshot, sync.id);
+            state.mode == LoopMode::Recording && state.length_frames >= 4_800
+        });
+        loop_action(runtime, &sync, LoopAction::PlayClicked);
+        let snapshot = wait_for_snapshot(runtime, "sync playback", |snapshot| {
+            first_loop(snapshot, sync.id).mode == LoopMode::Playing
+        });
+        let sync_length = first_loop(&snapshot, sync.id).length_frames;
+        assert!(sync_length >= 4_800, "sync length {sync_length}");
+        let position = first_loop(&snapshot, sync.id).position;
+        wait_for_snapshot(runtime, "loop progress", |snapshot| {
+            first_loop(snapshot, sync.id).position != position
+        });
+
+        loop_action(runtime, &audio, LoopAction::RecordClicked);
+        wait_for_snapshot(runtime, "a synchronized recording request", |snapshot| {
+            let state = first_loop(snapshot, audio.id);
+            (state.mode == LoopMode::Stopped && state.next_mode == LoopMode::Recording)
+                || state.mode == LoopMode::Recording
+        });
+        wait_for_snapshot(runtime, "synchronized recording", |snapshot| {
+            first_loop(snapshot, audio.id).mode == LoopMode::Recording
+        });
+        loop_action(runtime, &audio, LoopAction::PlayClicked);
+        let snapshot = wait_for_snapshot(runtime, "synchronized playback", |snapshot| {
+            first_loop(snapshot, audio.id).mode == LoopMode::Playing
+        });
+        let audio_length = first_loop(&snapshot, audio.id).length_frames;
+        assert!(
+            audio_length > 0 && audio_length % sync_length == 0,
+            "{audio_length} frames for a sync loop of {sync_length}"
+        );
+
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+            .unwrap();
+        runtime
+            .dispatch(AppIntent::Track {
+                track_id: keys.id,
+                action: TrackAction::InputMonitoringChanged {
+                    enabled: true,
+                    respect_auto_mute: false,
+                },
+            })
+            .unwrap();
+        loop_action(runtime, &keys, LoopAction::RecordClicked);
+        wait_for_snapshot(runtime, "immediate MIDI recording", |snapshot| {
+            first_loop(snapshot, keys.id).mode == LoopMode::Recording
+        });
+        let note = MidiNote::new(60).unwrap();
+        runtime
+            .dispatch(AppIntent::Piano(PianoAction::Press(note)))
+            .unwrap();
+        thread::sleep(Duration::from_millis(30));
+        runtime
+            .dispatch(AppIntent::Piano(PianoAction::Release(note)))
+            .unwrap();
+        thread::sleep(Duration::from_millis(30));
+        loop_action(runtime, &keys, LoopAction::PlayClicked);
+        wait_for_snapshot(runtime, "immediate MIDI playback", |snapshot| {
+            let state = first_loop(snapshot, keys.id);
+            state.mode == LoopMode::Playing && state.length_frames > 0
+        });
+
+        for action in [
+            TrackAction::OutputGainChanged(-6.0),
+            TrackAction::OutputBalanceChanged(0.5),
+            TrackAction::InputMonitoringChanged {
+                enabled: true,
+                respect_auto_mute: false,
+            },
+        ] {
+            runtime
+                .dispatch(AppIntent::Track {
+                    track_id: audio.id,
+                    action,
+                })
+                .unwrap();
+        }
+        for action in [
+            BusAction::GainChanged(-3.0),
+            BusAction::BalanceChanged(-0.25),
+        ] {
+            runtime
+                .dispatch(AppIntent::Bus {
+                    bus_id: master.id,
+                    action,
+                })
+                .unwrap();
+        }
+        wait_for_snapshot(runtime, "controls and meters", |snapshot| {
+            let track = snapshot
+                .tracks
+                .iter()
+                .find(|track| track.id == audio.id)
+                .unwrap();
+            let controls = &track.controls;
+            let master = &snapshot.buses[0];
+            controls.output_gain_db == -6.0
+                && controls.output_balance == 0.5
+                && controls.input_monitoring
+                && controls.input_peak_left_db > -20.0
+                && controls.output_peak_left_db > -100.0
+                && first_loop(snapshot, audio.id).peak_left_db > -100.0
+                && master.gain_db == -3.0
+                && master.balance == -0.25
+                && !master.control_pending
+                && master.output_peaks_db.iter().all(|peak| *peak > -100.0)
+        });
+
+        loop_action(
+            runtime,
+            &audio,
+            LoopAction::IconClicked(SelectionModifiers::default()),
+        );
+        let snapshot = wait_for_snapshot(runtime, "the waveform", |snapshot| {
+            snapshot.details.as_ref().is_some_and(|details| {
+                details.loop_id == audio.loops[0].id
+                    && details.channels.len() == 2
+                    && details
+                        .channels
+                        .iter()
+                        .all(|channel| channel.samples.len() as u64 == audio_length)
+            })
+        });
+        let details = snapshot.details.as_ref().unwrap();
+        assert!(details.channels[0]
+            .samples
+            .iter()
+            .all(|sample| { (*sample - engine_backend::tests::DUMMY_SIGNAL).abs() < 1e-6 }));
+        loop_action(
+            runtime,
+            &keys,
+            LoopAction::IconClicked(SelectionModifiers::default()),
+        );
+        wait_for_snapshot(runtime, "the MIDI detail", |snapshot| {
+            snapshot.details.as_ref().is_some_and(|details| {
+                details.loop_id == keys.loops[0].id
+                    && details
+                        .midi_channels
+                        .first()
+                        .is_some_and(|channel| channel.events.len() == 2)
+            })
+        });
+
+        runtime
+            .dispatch(AppIntent::RequestAudioDriverSwitch {
+                config: AudioDriverConfig::Dummy(shoop_egui::DummyAudioDriverConfig {
+                    sample_rate: 44_100,
+                    buffer_size: 128,
+                }),
+            })
+            .unwrap();
+        let pending = wait_for_snapshot(runtime, "driver-switch confirmation", |snapshot| {
+            snapshot.audio_drivers.switch.status
+                == shoop_egui::AudioDriverSwitchStatus::AwaitingConfirmation
+        });
+        let request_id = pending.audio_drivers.switch.request_id;
+        runtime
+            .dispatch(AppIntent::ConfirmAudioDriverSwitch {
+                request_id,
+                accept: false,
+            })
+            .unwrap();
+        wait_for_snapshot(runtime, "cancelled driver switch", |snapshot| {
+            snapshot.audio_drivers.switch.status == shoop_egui::AudioDriverSwitchStatus::Completed
+        });
+
+        loop_action(runtime, &audio, LoopAction::StopClicked);
+        wait_for_snapshot(runtime, "immediate stop", |snapshot| {
+            first_loop(snapshot, audio.id).mode == LoopMode::Stopped
+        });
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::ClearRecordings {
+                include_sync: false,
+            }))
+            .unwrap();
+        let snapshot = wait_for_snapshot(runtime, "cleared loops", |snapshot| {
+            [audio.id, keys.id].iter().all(|id| {
+                let state = first_loop(snapshot, *id);
+                state.mode == LoopMode::Stopped && state.length_frames == 0
+            })
+        });
+        assert_eq!(first_loop(&snapshot, sync.id).mode, LoopMode::Playing);
+        assert!(
+            snapshot.notifications.is_empty(),
+            "{:?}",
+            snapshot.notifications
+        );
+
+        let host = app.runtime._engine_host.take().unwrap();
+        drop(app);
+        let problems = host.stop();
+        assert!(
+            !problems
+                .iter()
+                .any(|problem| problem.contains("MIDI") || problem.contains("fault")),
+            "{problems:?}"
+        );
+    }
+
+    /// Opt-in, because it opens the default audio devices: set `SHOOP_TEST_CPAL_DEVICE=1`.
+    #[cfg(all(not(target_arch = "wasm32"), feature = "cpal"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn new_engine_backend_runs_the_core_workflow_on_a_cpal_device() {
+        cpal_core_workflow(shoop_egui::EngineTransportKind::InProcess);
+    }
+
+    #[cfg(all(not(target_arch = "wasm32"), feature = "cpal"))]
+    fn cpal_core_workflow(transport: shoop_egui::EngineTransportKind) {
+        use shoop_egui::{
+            BusAction, GlobalControlAction, IoTaskStatus, NotificationLevel, StructuralState,
+        };
+
+        if std::env::var_os("SHOOP_TEST_CPAL_DEVICE").is_none() {
+            eprintln!("skipping the CPAL device workflow; set SHOOP_TEST_CPAL_DEVICE=1");
+            return;
+        }
         let mut builder = SettingsRegistryBuilder::default();
         register_settings(&mut builder).unwrap();
         register_audio_settings(&mut builder).unwrap();
-        register_carla_settings(&mut builder).unwrap();
+        shoop_egui::register_audio_backend_settings(&mut builder).unwrap();
         register_script_settings(&mut builder).unwrap();
-        let settings = builder.finish().defaults(1);
-        configure_carla_hosting_mode(shoop_settings::CarlaHostingMode::Subprocess);
-        let runtime = Runtime::new(&settings).unwrap();
+        let registry = builder.finish();
+        let mut draft = shoop_settings::SettingsDraft::from_snapshot(&registry.defaults(1));
+        shoop_egui::set_selected_audio_driver(&mut draft, shoop_egui::AudioDriverKind::Cpal);
+        if let Ok(host) = std::env::var("SHOOP_TEST_CPAL_HOST") {
+            draft.set(shoop_egui::CPAL_HOST, host);
+        }
+        let document = registry
+            .document_from_draft(
+                &shoop_settings::SettingsDocument::empty("test"),
+                &draft,
+                "test",
+            )
+            .unwrap();
+        let settings = registry.resolve(&document, 2).snapshot;
+        let args = AppArgs {
+            engine_transport: Some(transport),
+            ..new_engine_args()
+        };
+        let mut runtime = Runtime::new_with_engine_start(
+            &settings,
+            &args,
+            |driver, pools, kind| {
+                engine_backend::start_selected_with_processors(
+                    driver,
+                    pools,
+                    kind,
+                    Default::default(),
+                )
+            },
+            None,
+        )
+        .unwrap();
+        let snapshot = wait_for_snapshot(&runtime, "startup", |snapshot| {
+            snapshot.tracks.len() == 1 && snapshot.connections.backend_available
+        });
         assert_eq!(
-            shoop_backend::configured_carla_hosting_mode(),
-            shoop_settings::CarlaHostingMode::InProcess
+            snapshot
+                .audio_drivers
+                .active
+                .as_ref()
+                .unwrap()
+                .configured
+                .kind(),
+            shoop_egui::AudioDriverKind::Cpal,
+            "{:?}",
+            snapshot.notifications
         );
+        eprintln!(
+            "CPAL device: {} Hz, {} frames, host ports {:?}",
+            snapshot.status.sample_rate,
+            snapshot.status.buffer_size,
+            snapshot
+                .connections
+                .host_ports
+                .iter()
+                .map(|port| port.name.as_str())
+                .collect::<Vec<_>>()
+        );
+
+        runtime.dispatch(AppIntent::RequestNewSession).unwrap();
+        let snapshot = wait_for_snapshot(&runtime, "a new session", |snapshot| {
+            snapshot
+                .io_task
+                .as_ref()
+                .is_some_and(|task| task.status == IoTaskStatus::Completed)
+        });
+        let sync = snapshot.tracks[0].clone();
+        let master = snapshot.buses[0].clone();
+        runtime
+            .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                name: "Audio".to_owned(),
+                audio_channels: 2,
+                midi: false,
+            }))
+            .unwrap();
+        let snapshot = wait_for_snapshot(&runtime, "a new track", |snapshot| {
+            snapshot.tracks.len() == 2
+                && snapshot
+                    .tracks
+                    .iter()
+                    .all(|track| track.structural_state == StructuralState::Confirmed)
+        });
+        let audio = snapshot.tracks[1].clone();
+        let captures = snapshot
+            .connections
+            .host_ports
+            .iter()
+            .filter(|port| port.name.contains(":capture_"))
+            .map(|port| port.id.clone())
+            .collect::<Vec<_>>();
+        for (port, capture) in track_ports(&snapshot, audio.id, PortRole::AudioInput)
+            .into_iter()
+            .zip(captures.iter().cycle())
+        {
+            runtime
+                .dispatch(AppIntent::SetPortConnected {
+                    port_id: port,
+                    host_port_id: capture.clone(),
+                    connected: true,
+                })
+                .unwrap();
+        }
+        for (port, channel) in track_ports(&snapshot, audio.id, PortRole::AudioOutput)
+            .into_iter()
+            .zip(master.channels.iter())
+        {
+            runtime
+                .dispatch(AppIntent::SetMixerRouteConnected {
+                    source_port_id: port,
+                    destination_channel_id: channel.id,
+                    connected: true,
+                })
+                .unwrap();
+        }
+
+        loop_action(&mut runtime, &sync, LoopAction::RecordClicked);
+        wait_for_snapshot(&runtime, "sync recording", |snapshot| {
+            first_loop(snapshot, sync.id).mode == LoopMode::Recording
+        });
+        thread::sleep(Duration::from_millis(300));
+        loop_action(&mut runtime, &sync, LoopAction::PlayClicked);
+        let snapshot = wait_for_snapshot(&runtime, "sync playback", |snapshot| {
+            first_loop(snapshot, sync.id).mode == LoopMode::Playing
+        });
+        let sync_length = first_loop(&snapshot, sync.id).length_frames;
+        assert!(sync_length > 0);
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(true)))
+            .unwrap();
+        loop_action(&mut runtime, &audio, LoopAction::RecordClicked);
+        wait_for_snapshot(&runtime, "synchronized recording", |snapshot| {
+            first_loop(snapshot, audio.id).mode == LoopMode::Recording
+        });
+        loop_action(&mut runtime, &audio, LoopAction::PlayClicked);
+        let snapshot = wait_for_snapshot(&runtime, "synchronized playback", |snapshot| {
+            first_loop(snapshot, audio.id).mode == LoopMode::Playing
+        });
+        let audio_length = first_loop(&snapshot, audio.id).length_frames;
+        assert!(
+            audio_length > 0 && audio_length % sync_length == 0,
+            "{audio_length} frames for a sync loop of {sync_length}"
+        );
+        runtime
+            .dispatch(AppIntent::Bus {
+                bus_id: master.id,
+                action: BusAction::GainChanged(-3.0),
+            })
+            .unwrap();
+        loop_action(
+            &mut runtime,
+            &audio,
+            LoopAction::IconClicked(SelectionModifiers::default()),
+        );
+        wait_for_snapshot(&runtime, "the waveform", |snapshot| {
+            snapshot.details.as_ref().is_some_and(|details| {
+                details.loop_id == audio.loops[0].id
+                    && details.channels.len() == 2
+                    && details
+                        .channels
+                        .iter()
+                        .all(|channel| channel.samples.len() as u64 == audio_length)
+            })
+        });
+        let before = runtime.snapshot().status.clone();
+        thread::sleep(Duration::from_millis(1000));
+        let after = runtime.snapshot().status.clone();
+        eprintln!(
+            "CPAL device: {} frames and {} xruns in one second, load {:.1}%",
+            after
+                .processed_frames
+                .saturating_sub(before.processed_frames),
+            after.xruns,
+            after.dsp_load_percent
+        );
+        assert!(after.processed_frames > before.processed_frames);
+
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+            .unwrap();
+        loop_action(&mut runtime, &audio, LoopAction::StopClicked);
+        wait_for_snapshot(&runtime, "immediate stop", |snapshot| {
+            first_loop(snapshot, audio.id).mode == LoopMode::Stopped
+        });
+        runtime
+            .dispatch(AppIntent::Global(GlobalControlAction::ClearRecordings {
+                include_sync: false,
+            }))
+            .unwrap();
+        let snapshot = wait_for_snapshot(&runtime, "a cleared loop", |snapshot| {
+            first_loop(snapshot, audio.id).length_frames == 0
+        });
+        assert!(
+            snapshot
+                .notifications
+                .iter()
+                .all(|notification| notification.level != NotificationLevel::Error),
+            "{:?}",
+            snapshot.notifications
+        );
+        let host = runtime._engine_host.take().unwrap();
         drop(runtime);
+        let problems = host.stop();
+        assert!(
+            !problems.iter().any(|problem| problem.contains("fault")),
+            "{problems:?}"
+        );
     }
 
-    #[cfg(feature = "native-fx")]
     #[cfg(not(target_arch = "wasm32"))]
     #[shoop_wasm_test_support::shoop_test]
-    fn carla_hosting_mode_persists_but_does_not_change_the_running_backend() {
+    fn new_engine_capacity_settings_bound_the_application_visibly() {
+        let mut builder = SettingsRegistryBuilder::default();
+        register_settings(&mut builder).unwrap();
+        register_audio_settings(&mut builder).unwrap();
+        shoop_egui::register_audio_backend_settings(&mut builder).unwrap();
+        register_script_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        let mut draft = shoop_settings::SettingsDraft::from_snapshot(&registry.defaults(1));
+        draft.set(shoop_egui::NEW_ENGINE_TRACKS, 2);
+        draft.set(shoop_egui::NEW_ENGINE_LOOPS, 9);
+        draft.set(shoop_egui::NEW_ENGINE_CHANNELS, 1);
+        draft.set(shoop_egui::NEW_ENGINE_LOOP_MEMORY_MB, 16);
+        let document = registry
+            .document_from_draft(
+                &shoop_settings::SettingsDocument::empty("test"),
+                &draft,
+                "test",
+            )
+            .unwrap();
+        let settings = registry.resolve(&document, 2).snapshot;
+        let mut runtime = Runtime::new(&settings, &AppArgs::default()).unwrap();
+        wait_for_snapshot(&runtime, "startup", |snapshot| {
+            snapshot.tracks.len() == 1 && snapshot.connections.backend_available
+        });
+        for (name, audio_channels) in [("Wide", 2), ("One", 1), ("Two", 1)] {
+            runtime
+                .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+                    name: name.to_owned(),
+                    audio_channels,
+                    midi: false,
+                }))
+                .unwrap();
+        }
+        let refused = |snapshot: &AppSnapshot, text: &str| {
+            snapshot.notifications.iter().any(|notification| {
+                notification.level == shoop_egui::NotificationLevel::Error
+                    && notification.message.contains(text)
+            })
+        };
+        let snapshot = wait_for_snapshot(&runtime, "capacity refusals", |snapshot| {
+            refused(snapshot, "at most 1 audio channels")
+                && refused(snapshot, "all 2 prepared track slots")
+        });
+        assert_eq!(snapshot.tracks.len(), 2);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn new_engine_driver_settings_saved_without_switching_apply_on_restart() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("settings.json");
         let mut builder = SettingsRegistryBuilder::default();
-        register_carla_settings(&mut builder).unwrap();
+        register_settings(&mut builder).unwrap();
+        register_audio_settings(&mut builder).unwrap();
+        shoop_egui::register_audio_backend_settings(&mut builder).unwrap();
+        register_script_settings(&mut builder).unwrap();
         let registry = builder.finish();
         let mut manager = SettingsManager::load_from_path(registry.clone(), "test", path.clone());
-        configure_carla_hosting_mode(shoop_settings::CarlaHostingMode::InProcess);
         let mut draft = shoop_settings::SettingsDraft::from_snapshot(&manager.active());
-        draft.set(shoop_egui::CARLA_HOSTING_MODE, "subprocess".to_owned());
+        draft.set(shoop_egui::NEW_ENGINE_TRACKS, 2);
+        draft.set(shoop_egui::NEW_ENGINE_LOOPS, 9);
+        draft.set(shoop_egui::NEW_ENGINE_LOOP_MEMORY_MB, 16);
+        shoop_egui::set_selected_audio_driver(&mut draft, shoop_egui::AudioDriverKind::Dummy);
+        draft.set(shoop_egui::DUMMY_SAMPLE_RATE, 32_000);
+        draft.set(shoop_egui::DUMMY_BUFFER_SIZE, 64);
         manager.request_save(draft).unwrap();
         wait_for_settings_save(&mut manager);
-        assert_eq!(
-            shoop_backend::configured_carla_hosting_mode(),
-            shoop_settings::CarlaHostingMode::InProcess
-        );
         drop(manager);
 
         let restarted = SettingsManager::load_from_path(registry, "test-2", path);
+        let runtime = Runtime::new(&restarted.active(), &AppArgs::default()).unwrap();
+        let snapshot = wait_for_snapshot(&runtime, "the saved driver", |snapshot| {
+            snapshot.status.sample_rate == 32_000 && snapshot.status.buffer_size == 64
+        });
+        assert!(snapshot
+            .capabilities
+            .supports(shoop_egui::BackendCapability::AudioDriverSwitching));
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn new_engine_startup_fallbacks_are_shown_to_the_user() {
+        let mut builder = SettingsRegistryBuilder::default();
+        register_settings(&mut builder).unwrap();
+        register_audio_settings(&mut builder).unwrap();
+        shoop_egui::register_audio_backend_settings(&mut builder).unwrap();
+        register_script_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        let mut draft = shoop_settings::SettingsDraft::from_snapshot(&registry.defaults(1));
+        shoop_egui::set_selected_audio_driver(&mut draft, shoop_egui::AudioDriverKind::Cpal);
+        draft.set(shoop_egui::CPAL_OUTPUT_DEVICE, "none".to_owned());
+        draft.set(shoop_egui::CPAL_MIDI_INPUTS, "none".to_owned());
+        draft.set(shoop_egui::CPAL_MIDI_OUTPUTS, "none".to_owned());
+        let document = registry
+            .document_from_draft(
+                &shoop_settings::SettingsDocument::empty("test"),
+                &draft,
+                "test",
+            )
+            .unwrap();
+        let settings = registry.resolve(&document, 2).snapshot;
+        let runtime = Runtime::new(&settings, &new_engine_args()).unwrap();
+        let snapshot = wait_for_snapshot(&runtime, "startup", |snapshot| {
+            snapshot.tracks.len() == 1 && snapshot.connections.backend_available
+        });
+        assert!(
+            snapshot.notifications.iter().any(|notification| {
+                notification.level == shoop_egui::NotificationLevel::Warning
+                    && notification.message.contains("using the dummy driver")
+            }),
+            "{:?}",
+            snapshot.notifications
+        );
         assert_eq!(
-            shoop_egui::carla_hosting_mode_from_snapshot(&restarted.active()).unwrap(),
-            shoop_settings::CarlaHostingMode::Subprocess
+            snapshot
+                .audio_drivers
+                .active
+                .as_ref()
+                .unwrap()
+                .configured
+                .kind(),
+            shoop_egui::AudioDriverKind::Dummy
         );
     }
 
@@ -6458,7 +5830,7 @@ mod tests {
         let mut builder = SettingsRegistryBuilder::default();
         register_settings(&mut builder).unwrap();
         register_audio_settings(&mut builder).unwrap();
-        register_carla_settings(&mut builder).unwrap();
+        shoop_egui::register_audio_backend_settings(&mut builder).unwrap();
         register_script_settings(&mut builder).unwrap();
         let registry = builder.finish();
         let mut draft = shoop_settings::SettingsDraft::from_snapshot(&registry.defaults(1));
@@ -6472,7 +5844,7 @@ mod tests {
             )
             .unwrap();
         let settings = registry.resolve(&document, 2).snapshot;
-        let runtime = Runtime::new(&settings).unwrap();
+        let runtime = Runtime::new(&settings, &AppArgs::default()).unwrap();
         let deadline = Instant::now() + Duration::from_secs(3);
         loop {
             let snapshot = runtime.snapshot();
@@ -6536,6 +5908,8 @@ mod tests {
         let missing = directory.path().join("missing.lua");
         let mut builder = SettingsRegistryBuilder::default();
         register_settings(&mut builder).unwrap();
+        register_audio_settings(&mut builder).unwrap();
+        shoop_egui::register_audio_backend_settings(&mut builder).unwrap();
         register_script_settings(&mut builder).unwrap();
         let registry = builder.finish();
         let mut draft = shoop_settings::SettingsDraft::from_snapshot(&registry.defaults(1));
@@ -6617,6 +5991,8 @@ mod tests {
         std::fs::write(directory.path().join("invalid.lua"), "function(").unwrap();
         let mut builder = SettingsRegistryBuilder::default();
         register_settings(&mut builder).unwrap();
+        register_audio_settings(&mut builder).unwrap();
+        shoop_egui::register_audio_backend_settings(&mut builder).unwrap();
         register_script_settings(&mut builder).unwrap();
         let registry = builder.finish();
         let mut draft = shoop_settings::SettingsDraft::from_snapshot(&registry.defaults(1));
@@ -6663,10 +6039,12 @@ mod tests {
         let settings_path = settings_directory.join("settings.json");
         let mut builder = SettingsRegistryBuilder::default();
         register_settings(&mut builder).unwrap();
+        register_audio_settings(&mut builder).unwrap();
+        shoop_egui::register_audio_backend_settings(&mut builder).unwrap();
         register_script_settings(&mut builder).unwrap();
         let registry = builder.finish();
         let mut manager = SettingsManager::load_from_path(registry, "test", settings_path.clone());
-        let mut runtime = Runtime::new(&manager.active()).unwrap();
+        let mut runtime = Runtime::new(&manager.active(), &AppArgs::default()).unwrap();
 
         let mut draft = shoop_settings::SettingsDraft::from_snapshot(&manager.active());
         draft.set(
@@ -6843,15 +6221,27 @@ mod tests {
         assert!(!script_kind_has_file_identity(ScriptKind::Ephemeral));
     }
 
+    #[shoop_wasm_test_support::shoop_test]
+    fn file_input_capacity_stays_within_the_limit_when_growth_would_double_it() {
+        let mut bytes = vec![1; 45];
+        reserve_file_bytes(&mut bytes, 20, 70).unwrap();
+        bytes.extend_from_slice(&[2; 20]);
+        assert!(bytes.capacity() <= 70);
+        assert!(reserve_file_bytes(&mut bytes, 6, 70).is_err());
+        assert_eq!(bytes.len(), 65);
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     #[shoop_wasm_test_support::shoop_test]
     fn native_atomic_replace_overwrites_and_cleans_up_failed_temporary_files() {
         let directory = tempfile::tempdir().unwrap();
         let target = directory.path().join("session.shoop");
         std::fs::write(&target, b"old").unwrap();
+        let unrelated = directory.path().join("session.shoop.tmp-7");
+        std::fs::write(&unrelated, b"unrelated").unwrap();
         atomic_replace(&target, b"new", 7).unwrap();
         assert_eq!(std::fs::read(&target).unwrap(), b"new");
-        assert!(!directory.path().join("session.shoop.tmp-7").exists());
+        assert_eq!(std::fs::read(&unrelated).unwrap(), b"unrelated");
 
         let missing_target = directory.path().join("missing").join("session.shoop");
         assert!(atomic_replace(&missing_target, b"partial", 8).is_err());
@@ -6861,6 +6251,38 @@ mod tests {
             .join("missing")
             .join("session.shoop.tmp-8")
             .exists());
+        let blocked = directory.path().join("blocked.shoop");
+        std::fs::create_dir(&blocked).unwrap();
+        std::fs::write(blocked.join("keep"), b"keep").unwrap();
+        assert!(atomic_replace(&blocked, b"partial", 9).is_err());
+        assert_eq!(std::fs::read(blocked.join("keep")).unwrap(), b"keep");
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 3);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[shoop_wasm_test_support::shoop_test]
+    fn native_file_input_enforces_cancellation_and_the_file_ceiling() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("input.shoop");
+        std::fs::write(&path, b"input").unwrap();
+        let mut slot = platform_input::InputSlot::default();
+        let lease = slot.reserve(shoop_egui::TaskId::from_raw(1)).unwrap();
+        assert_eq!(read_session_input(&path, &lease).unwrap(), b"input");
+        slot.reconcile(None);
+        assert!(read_session_input(&path, &lease)
+            .unwrap_err()
+            .to_string()
+            .contains("cancelled"));
+        drop(lease);
+        let lease = slot.reserve(shoop_egui::TaskId::from_raw(2)).unwrap();
+        std::fs::File::create(&path)
+            .unwrap()
+            .set_len(shoop_app_protocol::persistence::MAX_SESSION_FILE_BYTES + 1)
+            .unwrap();
+        assert!(read_session_input(&path, &lease)
+            .unwrap_err()
+            .to_string()
+            .contains("512 MiB"));
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -7031,7 +6453,7 @@ mod tests {
     fn native_preview_waits_for_actor_snapshot_publication() {
         let mut app = UnifiedApp::new(1.0, false, &AppArgs::default()).unwrap();
         let request_id = app.runtime.snapshot().click_track.preview_request_id + 1;
-        app.runtime.pending_preview = Some(shoop_app::ApplicationAudioPreview {
+        app.runtime.pending_preview = Some(application::ApplicationAudioPreview {
             output: shoop_egui::ClickTrackPreviewOutput::MasterBus,
             request_id,
             sample_rate: 48_000,
@@ -7046,614 +6468,102 @@ mod tests {
             Some(request_id)
         );
     }
-
     #[cfg(not(target_arch = "wasm32"))]
     #[shoop_wasm_test_support::shoop_test]
-    fn native_preview_buttons_share_cancellation_and_ignore_stale_results() {
-        let mut app = UnifiedApp::new(1.0, false, &AppArgs::default()).unwrap();
-        let wait = |app: &mut UnifiedApp, predicate: &dyn Fn(&shoop_egui::AppSnapshot) -> bool| {
-            let start = Instant::now();
-            loop {
-                app.runtime.process_audio_previews();
-                let snapshot = app.runtime.snapshot();
-                if predicate(&snapshot) {
-                    break snapshot;
-                }
-                assert!(
-                    start.elapsed() < Duration::from_secs(5),
-                    "preview timed out: {:?}",
-                    snapshot.click_track
-                );
-                thread::sleep(Duration::from_millis(5));
+    fn native_actor_delivers_system_preview_pcm_without_using_the_host_driver() {
+        let mut app = UnifiedApp::new(1.0, false, &new_engine_args()).unwrap();
+        let state = wait_for_snapshot(&app.runtime, "preview target", |s| !s.tracks.is_empty());
+        let loop_id = state.tracks[0].loops[0].id;
+        app.runtime
+            .dispatch(AppIntent::PreviewClickTrack {
+                loop_id,
+                request: Default::default(),
+                output: shoop_egui::ClickTrackPreviewOutput::System,
+            })
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let preview = loop {
+            if let Some(preview) = app.runtime.handle.take_audio_preview() {
+                break preview;
             }
+            assert!(
+                Instant::now() < deadline,
+                "preview mailbox timed out: {:?}",
+                app.runtime.snapshot().notifications
+            );
+            thread::sleep(Duration::from_millis(5));
         };
-        let initial = wait(&mut app, &|snapshot| {
-            snapshot.status.sample_rate > 0 && !snapshot.tracks.is_empty()
-        });
-        let before = initial.tracks[0].loops[0].clone();
-        let loop_id = before.id;
-        let request = shoop_egui::ClickTrackRequest {
-            bpm: 600.0,
-            click_count: 1,
-            ..Default::default()
-        };
-        app.runtime
-            .dispatch(AppIntent::PreviewClickTrack {
-                loop_id,
-                request: request.clone(),
-                output: shoop_egui::ClickTrackPreviewOutput::MasterBus,
-            })
-            .unwrap();
-        let done = wait(&mut app, &|snapshot| {
-            snapshot.click_track.preview_status == shoop_egui::ClickTrackPreviewStatus::Completed
-        });
-        assert_eq!(done.tracks[0].loops[0].length_frames, before.length_frames);
-        assert_eq!(done.tracks[0].loops[0].empty, before.empty);
-        let long = shoop_egui::ClickTrackRequest {
-            bpm: 60.0,
-            click_count: 8,
-            ..Default::default()
-        };
-        app.runtime
-            .dispatch(AppIntent::PreviewClickTrack {
-                loop_id,
-                request: long.clone(),
-                output: shoop_egui::ClickTrackPreviewOutput::MasterBus,
-            })
-            .unwrap();
-        let playing = wait(&mut app, &|snapshot| {
-            snapshot.click_track.preview_status == shoop_egui::ClickTrackPreviewStatus::Playing
-        });
-        let first_id = playing.click_track.preview_request_id;
+        assert_eq!(preview.output, shoop_egui::ClickTrackPreviewOutput::System);
+        assert!(preview.samples.iter().any(|v| v.abs() > 0.));
         app.runtime
             .dispatch(AppIntent::StopClickTrackPreview)
             .unwrap();
-        wait(&mut app, &|snapshot| {
-            snapshot.click_track.preview_status == shoop_egui::ClickTrackPreviewStatus::Cancelled
-        });
-        app.runtime
-            .dispatch(AppIntent::CompleteClickTrackPreview {
-                request_id: first_id,
-                success: true,
-                message: "late completion".to_owned(),
-            })
-            .unwrap();
-        app.runtime
-            .dispatch(AppIntent::StartMasterClickTrackPreview {
-                request_id: first_id,
-                sample_rate: initial.status.sample_rate,
-                samples: Arc::from([0.5; 64]),
-            })
-            .unwrap();
-        app.runtime
-            .dispatch(AppIntent::PreviewClickTrack {
-                loop_id,
-                request,
-                output: shoop_egui::ClickTrackPreviewOutput::System,
-            })
-            .unwrap();
-        let system = wait(&mut app, &|snapshot| {
-            snapshot.click_track.preview_request_id > first_id
-                && matches!(
-                    snapshot.click_track.preview_status,
-                    shoop_egui::ClickTrackPreviewStatus::Completed
-                        | shoop_egui::ClickTrackPreviewStatus::Failed
-                )
-        });
-        let system_id = system.click_track.preview_request_id;
-        app.runtime
-            .dispatch(AppIntent::PreviewClickTrack {
-                loop_id,
-                request: long,
-                output: shoop_egui::ClickTrackPreviewOutput::MasterBus,
-            })
-            .unwrap();
-        wait(&mut app, &|snapshot| {
-            snapshot.click_track.preview_request_id > system_id
-                && snapshot.click_track.preview_status
-                    == shoop_egui::ClickTrackPreviewStatus::Playing
-        });
-        app.runtime.dispatch(AppIntent::RequestNewSession).unwrap();
-        wait(&mut app, &|snapshot| {
-            snapshot.click_track.preview_status == shoop_egui::ClickTrackPreviewStatus::Cancelled
+        wait_for_snapshot(&app.runtime, "preview cancellation", |s| {
+            s.click_track.preview_status == shoop_egui::ClickTrackPreviewStatus::Cancelled
         });
     }
-
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(not(target_arch = "wasm32"), feature = "system-preview"))]
     #[shoop_wasm_test_support::shoop_test]
-    fn native_dummy_workflow_creates_records_and_controls_tracks_and_loops() {
-        let mut app = UnifiedApp::new(1.0, false, &AppArgs::default()).unwrap();
-        let track_specs = [
-            ("Native stereo + MIDI", 2, true),
-            ("Native mono", 1, false),
-            ("Native MIDI", 0, true),
-            ("Native disabled", 0, false),
-            ("Native custom", 4, false),
-        ];
-        for (name, audio_channels, midi) in track_specs {
+    #[ignore = "requires an isolated system audio device and external signal capture"]
+    fn native_system_preview_device_acceptance() {
+        let mut app = UnifiedApp::new(1.0, false, &new_engine_args()).unwrap();
+        let state = wait_for_snapshot(&app.runtime, "preview target", |s| !s.tracks.is_empty());
+        let loop_id = state.tracks[0].loops[0].id;
+        let before = state.tracks[0].loops[0].content_revision;
+        for stop in [false, true] {
             app.runtime
-                .dispatch(AppIntent::AddTrack(DirectTrackSpec {
-                    name: name.to_owned(),
-                    audio_channels,
-                    midi,
-                }))
-                .unwrap();
-        }
-        let started = Instant::now();
-        let snapshot = loop {
-            let snapshot = app.runtime.snapshot();
-            if snapshot.tracks.len() == track_specs.len() + 1 {
-                break snapshot;
-            }
-            assert!(started.elapsed() < Duration::from_secs(3));
-            thread::sleep(Duration::from_millis(5));
-        };
-        assert!(snapshot.tracks[1..]
-            .iter()
-            .all(|track| track.loops.len() == 8));
-        assert!(snapshot.tracks[1].controls.output_stereo);
-        assert!(!snapshot.tracks[3].controls.has_output_audio);
-        assert!(!snapshot.tracks[4].controls.has_output);
-
-        let snapshot = loop {
-            let snapshot = app.runtime.snapshot();
-            if snapshot.connections.application_ports.iter().any(|port| {
-                matches!(
-                    port.owner,
-                    ApplicationPortOwner::Track { track_id, .. }
-                        if track_id == snapshot.tracks[1].id
-                ) && port.role == PortRole::MidiInput
-                    && snapshot.connections.host_ports.iter().any(|host| {
-                        host.data_type == port.data_type && host.direction != port.direction
-                    })
-            }) {
-                break snapshot;
-            }
-            assert!(started.elapsed() < Duration::from_secs(3));
-            thread::sleep(Duration::from_millis(5));
-        };
-        let connection_targets: Vec<_> = [
-            (
-                snapshot.tracks[0].id,
-                PortRole::AudioInput,
-                "system:capture_1",
-            ),
-            (
-                snapshot.tracks[1].id,
-                PortRole::AudioInput,
-                "system:capture_2",
-            ),
-            (
-                snapshot.tracks[1].id,
-                PortRole::MidiInput,
-                "controller:midi_out",
-            ),
-        ]
-        .into_iter()
-        .map(|(track_id, role, endpoint)| {
-            let port_id = snapshot
-                .connections
-                .application_ports
-                .iter()
-                .find(|port| {
-                    matches!(
-                        port.owner,
-                        ApplicationPortOwner::Track { track_id: owner, .. }
-                            if owner == track_id
-                    ) && port.role == role
-                })
-                .unwrap()
-                .id;
-            (port_id, endpoint)
-        })
-        .collect();
-        for (port_id, endpoint) in &connection_targets {
-            app.runtime
-                .dispatch(AppIntent::SetPortConnected {
-                    port_id: *port_id,
-                    host_port_id: HostPortId::new(*endpoint),
-                    connected: true,
-                })
-                .unwrap();
-        }
-        let started_connections = Instant::now();
-        loop {
-            let snapshot = app.runtime.snapshot();
-            let all_connected = connection_targets.iter().all(|(port_id, endpoint)| {
-                snapshot.connections.confirmed_links.iter().any(|link| {
-                    link.application_port_id == *port_id && link.host_port_id.as_str() == *endpoint
-                }) && !snapshot.connections.pending_links.iter().any(|link| {
-                    link.application_port_id == *port_id && link.host_port_id.as_str() == *endpoint
-                })
-            });
-            if all_connected {
-                break;
-            }
-            assert!(started_connections.elapsed() < Duration::from_secs(3));
-            thread::sleep(Duration::from_millis(5));
-        }
-        app.runtime
-            .dispatch(AppIntent::SetPortConnected {
-                port_id: connection_targets[1].0,
-                host_port_id: HostPortId::new(connection_targets[1].1),
-                connected: false,
-            })
-            .unwrap();
-
-        let track_id = snapshot.tracks[1].id;
-        let loop_id = snapshot.tracks[1].loops[0].id;
-        app.runtime
-            .dispatch(AppIntent::Global(shoop_egui::GlobalControlAction::SetSync(
-                false,
-            )))
-            .unwrap();
-        app.runtime
-            .dispatch(AppIntent::Track {
-                track_id,
-                action: TrackAction::OutputGainChanged(-3.0),
-            })
-            .unwrap();
-        for monitored_track in [snapshot.tracks[1].id, snapshot.tracks[3].id] {
-            app.runtime
-                .dispatch(AppIntent::Track {
-                    track_id: monitored_track,
-                    action: TrackAction::InputMonitoringChanged {
-                        enabled: true,
-                        respect_auto_mute: false,
+                .dispatch(AppIntent::PreviewClickTrack {
+                    loop_id,
+                    request: shoop_egui::ClickTrackRequest {
+                        click_count: if stop { 16 } else { 2 },
+                        ..Default::default()
                     },
+                    output: shoop_egui::ClickTrackPreviewOutput::System,
                 })
                 .unwrap();
-        }
-        app.runtime
-            .dispatch(AppIntent::Loop {
-                track_id,
-                loop_id,
-                action: LoopAction::IconClicked(SelectionModifiers::default()),
-            })
-            .unwrap();
-        app.runtime
-            .dispatch(AppIntent::Loop {
-                track_id,
-                loop_id,
-                action: LoopAction::BalanceChanged(0.25),
-            })
-            .unwrap();
-        app.runtime
-            .dispatch(AppIntent::Loop {
-                track_id,
-                loop_id,
-                action: LoopAction::RecordClicked,
-            })
-            .unwrap();
-        let started = Instant::now();
-        loop {
-            let snapshot = app.runtime.snapshot();
-            if snapshot.tracks[1].controls.output_gain_db == -3.0
-                && snapshot.tracks[1].loops[0].balance == 0.25
-                && snapshot.tracks[1].loops[0].mode == LoopMode::Recording
-                && snapshot.details.is_some()
-            {
-                break;
+            let deadline = Instant::now() + Duration::from_secs(15);
+            loop {
+                app.runtime.process_audio_previews();
+                let state = app.runtime.snapshot();
+                assert_ne!(
+                    state.click_track.preview_status,
+                    shoop_egui::ClickTrackPreviewStatus::Failed,
+                    "{:?}",
+                    state.click_track
+                );
+                if state.click_track.preview_status == shoop_egui::ClickTrackPreviewStatus::Playing
+                {
+                    break;
+                }
+                assert!(Instant::now() < deadline, "preview did not start");
+                thread::sleep(Duration::from_millis(5));
             }
-            assert!(started.elapsed() < Duration::from_secs(3));
-            thread::sleep(Duration::from_millis(5));
-        }
-
-        let piano_note = MidiNote::new(65).unwrap();
-        app.runtime
-            .dispatch(AppIntent::Piano(PianoAction::Press(piano_note)))
-            .unwrap();
-        thread::sleep(Duration::from_millis(20));
-        app.runtime
-            .dispatch(AppIntent::Piano(PianoAction::Release(piano_note)))
-            .unwrap();
-        thread::sleep(Duration::from_millis(30));
-        app.runtime
-            .dispatch(AppIntent::Loop {
-                track_id,
-                loop_id,
-                action: LoopAction::StopClicked,
-            })
-            .unwrap();
-        wait_for_loop_mode(&app, track_id, loop_id, LoopMode::Stopped);
-        app.runtime
-            .dispatch(AppIntent::Loop {
-                track_id,
-                loop_id,
-                action: LoopAction::PlayClicked,
-            })
-            .unwrap();
-        wait_for_loop_mode(&app, track_id, loop_id, LoopMode::Playing);
-        let frames_before_save = app.runtime.snapshot().status.processed_frames;
-        app.runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
-        let started = Instant::now();
-        let output = loop {
-            if let Some(output) = app.runtime.take_file_output() {
-                break output;
-            }
-            assert!(started.elapsed() < Duration::from_secs(5));
-            thread::sleep(Duration::from_millis(5));
-        };
-        let started = Instant::now();
-        let after_save = loop {
-            let snapshot = app.runtime.snapshot();
-            if snapshot.status.processed_frames > frames_before_save {
-                break snapshot;
-            }
-            assert!(started.elapsed() < Duration::from_secs(3));
-            thread::sleep(Duration::from_millis(5));
-        };
-        let saved_loop = after_save
-            .tracks
-            .iter()
-            .find(|track| track.id == track_id)
-            .and_then(|track| track.loops.iter().find(|loop_| loop_.id == loop_id))
-            .unwrap();
-        assert_eq!(saved_loop.mode, LoopMode::Playing);
-        assert!(output.suggested_name.ends_with(".shoop"));
-        let saved = shoop_session::decode_session(&output.bytes).unwrap();
-        let saved_piano_loop = saved
-            .document
-            .track_groups
-            .iter()
-            .flat_map(|group| &group.tracks)
-            .flat_map(|track| &track.loops)
-            .find(|loop_| loop_.id == loop_id.raw())
-            .unwrap();
-        let recorded_midi = saved_piano_loop
-            .channels
-            .iter()
-            .filter_map(|channel| channel.media_id.as_ref())
-            .find_map(|id| match &saved.media[id] {
-                shoop_session::MediaPayload::Midi(midi) => Some(midi),
-                shoop_session::MediaPayload::Audio(_) => None,
-            })
-            .unwrap();
-        assert!(recorded_midi
-            .events
-            .iter()
-            .any(|event| event.data == [0x90, 65, 100]));
-        assert!(recorded_midi
-            .events
-            .iter()
-            .any(|event| event.data == [0x80, 65, 0]));
-
-        app.runtime
-            .dispatch(AppIntent::LoadSessionBytes {
-                name: output.suggested_name,
-                bytes: output.bytes,
-            })
-            .unwrap();
-        let started = Instant::now();
-        loop {
-            let loaded = app.runtime.snapshot();
-            if loaded.io_task.as_ref().is_some_and(|task| {
-                task.kind == shoop_egui::IoTaskKind::LoadSession
-                    && task.status == shoop_egui::IoTaskStatus::Completed
-            }) {
-                assert_eq!(loaded.tracks.len(), track_specs.len() + 1);
-                assert!(loaded
-                    .tracks
-                    .iter()
-                    .flat_map(|track| &track.loops)
-                    .all(|loop_| {
-                        loop_.mode == LoopMode::Stopped || loop_.mode == LoopMode::Unknown
-                    }));
-                assert!(loaded.tracks.iter().any(|track| {
-                    track.name == "Native stereo + MIDI"
-                        && (track.controls.output_gain_db + 3.0).abs() < 0.001
-                }));
-                break;
-            }
-            assert!(started.elapsed() < Duration::from_secs(5));
-            thread::sleep(Duration::from_millis(5));
-        }
-
-        let loaded = app.runtime.snapshot();
-        let target = loaded
-            .tracks
-            .iter()
-            .find(|track| track.name == "Native stereo + MIDI")
-            .unwrap();
-        let generated_track = target.id;
-        let generated_loop = target.loops[1].id;
-        let mut request = shoop_egui::ClickTrackRequest::default();
-        request.bpm = 600.0;
-        request.click_count = 2;
-        let before_preview = target.loops[1].clone();
-        app.runtime
-            .dispatch(AppIntent::PreviewClickTrack {
-                output: shoop_egui::ClickTrackPreviewOutput::System,
-                loop_id: generated_loop,
-                request: request.clone(),
-            })
-            .unwrap();
-        let preview_started = Instant::now();
-        loop {
-            app.runtime.process_audio_previews();
-            let snapshot = app.runtime.snapshot();
-            if matches!(
-                snapshot.click_track.preview_status,
-                shoop_egui::ClickTrackPreviewStatus::Completed
-                    | shoop_egui::ClickTrackPreviewStatus::Failed
-            ) {
-                let after_preview = snapshot
-                    .tracks
-                    .iter()
-                    .flat_map(|track| &track.loops)
-                    .find(|loop_| loop_.id == generated_loop)
+            if stop {
+                thread::sleep(Duration::from_millis(250));
+                app.runtime
+                    .dispatch(AppIntent::StopClickTrackPreview)
                     .unwrap();
-                assert_eq!(after_preview.id, before_preview.id);
-                assert_eq!(after_preview.length_frames, before_preview.length_frames);
-                assert_eq!(after_preview.empty, before_preview.empty);
-                break;
+                wait_for_snapshot(&app.runtime, "preview stop", |s| {
+                    s.click_track.preview_status == shoop_egui::ClickTrackPreviewStatus::Cancelled
+                });
+                app.runtime.process_audio_previews();
+                thread::sleep(Duration::from_millis(750));
+            } else {
+                loop {
+                    app.runtime.process_audio_previews();
+                    if app.runtime.snapshot().click_track.preview_status
+                        == shoop_egui::ClickTrackPreviewStatus::Completed
+                    {
+                        break;
+                    }
+                    assert!(Instant::now() < deadline, "preview did not finish");
+                    thread::sleep(Duration::from_millis(5));
+                }
             }
-            assert!(preview_started.elapsed() < Duration::from_secs(5));
-            thread::sleep(Duration::from_millis(5));
-        }
-        app.runtime
-            .dispatch(AppIntent::GenerateClickTrack {
-                loop_id: generated_loop,
-                request: request.clone(),
-            })
-            .unwrap();
-        wait_for_click_generation(&app, generated_loop, 9_600, None);
-        let first_task = app.runtime.snapshot().io_task.as_ref().unwrap().id;
-        request.kind = shoop_egui::ClickTrackKind::Midi;
-        request.midi_note = 67;
-        app.runtime
-            .dispatch(AppIntent::GenerateClickTrack {
-                loop_id: generated_loop,
-                request,
-            })
-            .unwrap();
-        wait_for_click_generation(&app, generated_loop, 9_600, Some(first_task));
-        app.runtime
-            .dispatch(AppIntent::Loop {
-                track_id: generated_track,
-                loop_id: generated_loop,
-                action: LoopAction::PlayClicked,
-            })
-            .unwrap();
-        wait_for_loop_mode(&app, generated_track, generated_loop, LoopMode::Playing);
-        app.runtime.dispatch(AppIntent::RequestSaveSession).unwrap();
-        let save_started = Instant::now();
-        let generated_session = loop {
-            if let Some(output) = app.runtime.take_file_output() {
-                break output;
-            }
-            assert!(save_started.elapsed() < Duration::from_secs(5));
-            thread::sleep(Duration::from_millis(5));
-        };
-        let decoded = shoop_session::decode_session(&generated_session.bytes).unwrap();
-        let saved_generated = decoded
-            .document
-            .track_groups
-            .iter()
-            .flat_map(|group| &group.tracks)
-            .flat_map(|track| &track.loops)
-            .find(|loop_| loop_.id == generated_loop.raw())
-            .unwrap();
-        assert_eq!(saved_generated.length_frames, 9_600);
-        assert_eq!(
-            saved_generated
-                .channels
-                .iter()
-                .filter(|channel| channel.media_id.is_some())
-                .count(),
-            3
-        );
-        let generated_media = saved_generated
-            .channels
-            .iter()
-            .filter_map(|channel| channel.media_id.as_ref())
-            .map(|id| &decoded.media[id])
-            .collect::<Vec<_>>();
-        let audio = generated_media
-            .iter()
-            .filter_map(|payload| match payload {
-                shoop_session::MediaPayload::Audio(audio) => Some(&audio.samples),
-                shoop_session::MediaPayload::Midi(_) => None,
-            })
-            .collect::<Vec<_>>();
-        assert_eq!(audio.len(), 2);
-        assert_eq!(audio[0], audio[1]);
-        assert!(audio[0].iter().any(|sample| *sample != 0.0));
-        let midi = generated_media
-            .iter()
-            .find_map(|payload| match payload {
-                shoop_session::MediaPayload::Midi(midi) => Some(midi),
-                shoop_session::MediaPayload::Audio(_) => None,
-            })
-            .unwrap();
-        assert_eq!(midi.length_frames, 9_600);
-        assert_eq!(
-            midi.events
-                .iter()
-                .map(|event| (event.frame, event.data.as_slice()))
-                .collect::<Vec<_>>(),
-            vec![
-                (0, [0x90, 67, 127].as_slice()),
-                (4_800, [0x80, 67, 127].as_slice()),
-                (4_800, [0x90, 67, 127].as_slice()),
-                (9_599, [0x80, 67, 127].as_slice()),
-            ]
-        );
-        app.runtime
-            .dispatch(AppIntent::LoadSessionBytes {
-                name: generated_session.suggested_name,
-                bytes: generated_session.bytes,
-            })
-            .unwrap();
-        let reload_started = Instant::now();
-        loop {
-            let snapshot = app.runtime.snapshot();
-            if snapshot.io_task.as_ref().is_some_and(|task| {
-                task.kind == shoop_egui::IoTaskKind::LoadSession
-                    && task.status == shoop_egui::IoTaskStatus::Completed
-            }) && snapshot
-                .tracks
-                .iter()
-                .flat_map(|track| &track.loops)
-                .find(|loop_| loop_.id == generated_loop)
-                .is_some_and(|loop_| loop_.length_frames == 9_600 && !loop_.empty)
-            {
-                break;
-            }
-            assert!(reload_started.elapsed() < Duration::from_secs(5));
-            thread::sleep(Duration::from_millis(5));
-        }
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    fn wait_for_click_generation(
-        app: &UnifiedApp,
-        loop_id: shoop_egui::LoopId,
-        length: u64,
-        previous_task: Option<shoop_egui::TaskId>,
-    ) {
-        let started = Instant::now();
-        loop {
-            let snapshot = app.runtime.snapshot();
-            if snapshot.io_task.as_ref().is_some_and(|task| {
-                task.kind == shoop_egui::IoTaskKind::GenerateClickTrack
-                    && task.status == shoop_egui::IoTaskStatus::Completed
-                    && Some(task.id) != previous_task
-            }) && snapshot
-                .tracks
-                .iter()
-                .flat_map(|track| &track.loops)
-                .find(|loop_| loop_.id == loop_id)
-                .is_some_and(|loop_| loop_.length_frames == length && !loop_.empty)
-            {
-                return;
-            }
-            assert!(started.elapsed() < Duration::from_secs(5));
-            thread::sleep(Duration::from_millis(5));
-        }
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    fn wait_for_loop_mode(
-        app: &UnifiedApp,
-        track_id: shoop_egui::TrackId,
-        loop_id: shoop_egui::LoopId,
-        expected: LoopMode,
-    ) {
-        let started = Instant::now();
-        loop {
-            let snapshot = app.runtime.snapshot();
-            if snapshot
-                .tracks
-                .iter()
-                .find(|track| track.id == track_id)
-                .and_then(|track| track.loops.iter().find(|loop_| loop_.id == loop_id))
-                .is_some_and(|loop_| loop_.mode == expected)
-            {
-                return;
-            }
-            assert!(started.elapsed() < Duration::from_secs(3));
-            thread::sleep(Duration::from_millis(5));
+            assert_eq!(
+                app.runtime.snapshot().tracks[0].loops[0].content_revision,
+                before
+            );
         }
     }
 }

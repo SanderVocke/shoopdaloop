@@ -1,0 +1,199 @@
+"""Bounded bootloader execution with a persistent SD card and Ethernet."""
+import hashlib
+import argparse
+import json
+import os
+from pathlib import Path
+import socket
+import signal
+import shlex
+import subprocess
+import sys
+import threading
+import tempfile
+import time
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from qemu import Qemu, ROOT
+import boards
+
+
+class BootQemu(Qemu):
+    def __init__(self, loader, card, directory, port_base=15400, updater_port=15554, tftp=None, qemu=None, first_stage=False, block_url=None, board=None):
+        self.board = board or boards.load()
+        self.directory = Path(directory).resolve()
+        self.directory.mkdir(parents=True, exist_ok=True)
+        self.serial = self.directory / "serial.log"
+        self._sockets = tempfile.TemporaryDirectory(prefix="shoop-zynq-")
+        self.qmp_path = Path(self._sockets.name) / "qmp.sock"
+        self.driver_path = self.directory / "unused-driver.sock"
+        self.console_path = Path(self._sockets.name) / "console.sock"
+        for path in [self.qmp_path, self.console_path]:
+            path.unlink(missing_ok=True)
+        binary = Path(qemu or ROOT / "work/zynq/qemu-build/qemu-system-arm").resolve()
+        manifest_path = binary.parent / "shoop-build.json"
+        manifest = json.loads(manifest_path.read_text())
+        patch = ROOT / "platforms/zynq7000/patches/qemu-cadence-watchdog.patch"
+        if manifest["patch_sha256"] != hashlib.sha256(patch.read_bytes()).hexdigest() or manifest["binary_sha256"] != hashlib.sha256(binary.read_bytes()).hexdigest():
+            raise RuntimeError("Deployment QEMU does not match its watchdog model manifest")
+        board_patch = ROOT / "platforms/zynq7000/patches/qemu-board-phy.patch"
+        if manifest.get("board_patch_sha256") != hashlib.sha256(board_patch.read_bytes()).hexdigest():
+            raise RuntimeError("Deployment QEMU does not match the board PHY model manifest")
+        (self.directory / "emulator.json").write_text(json.dumps(manifest, indent=2) + "\n")
+        network = f"user,id=lan,hostfwd=tcp:127.0.0.1:{port_base}-10.0.2.15:15400,hostfwd=tcp:127.0.0.1:{port_base+1}-10.0.2.15:15401,hostfwd=udp:127.0.0.1:{updater_port}-10.0.2.15:5554"
+        if tftp is not None:
+            network += ",tftp=" + str(Path(tftp).resolve())
+        entry = f"loader,file={Path(loader).resolve()},cpu-num=0"
+        if not first_stage:
+            entry += ",addr=0x04000000"
+        self.command = [str(binary), "-M", "xilinx-zynq-a9,boot-mode=sd,phy-address=" + str(self.board.bsp["phy_address"]), "-accel", "tcg", "-smp", "1", "-m", str(self.board.ram // boards.MIB) + "M",
+                        "-display", "none", "-monitor", "none", "-serial", "null",
+                        "-serial", f"unix:{self.console_path},server=on,wait=on",
+                        "-qmp", f"unix:{self.qmp_path},server=on,wait=off", "-watchdog-action", "reset",
+                        "-device", entry, "-drive", f"file={block_url or Path(card).resolve()},if=sd,format=raw,cache=directsync",
+                        "-netdev", network, "-net", "nic,netdev=lan",
+                        "-object", f"filter-dump,id=trace,netdev=lan,file={self.directory / 'ethernet.pcap'}"]
+        (self.directory / "command.json").write_text(json.dumps(self.command, indent=2) + "\n")
+        self.log = (self.directory / "qemu.log").open("w")
+        self.connection = self.messages = None
+        self.events = []
+        self._stop = threading.Event()
+        self._serial_socket = None
+        self._reader = None
+        self.process = subprocess.Popen(self.command, stdout=self.log, stderr=self.log)
+        try:
+            deadline = time.monotonic() + 10
+            while not self.console_path.exists():
+                if self.process.poll() is not None or time.monotonic() >= deadline:
+                    raise RuntimeError("QEMU boot console did not start")
+                time.sleep(.02)
+            self._serial_socket = socket.socket(socket.AF_UNIX)
+            self._serial_socket.connect(str(self.console_path))
+            self._serial_socket.settimeout(.1)
+            self._reader = threading.Thread(target=self._capture, daemon=True)
+            self._reader.start()
+        except BaseException:
+            self.close()
+            raise
+
+    def _capture(self):
+        with self.serial.open("wb") as stream:
+            while not self._stop.is_set():
+                try:
+                    data = self._serial_socket.recv(65536)
+                except socket.timeout:
+                    continue
+                except OSError:
+                    break
+                if not data:
+                    break
+                stream.write(data)
+                stream.flush()
+
+    def qmp(self, command, arguments=None):
+        if self.connection is None:
+            self.connection = socket.socket(socket.AF_UNIX)
+            self.connection.settimeout(5)
+            self.connection.connect(str(self.qmp_path))
+            self.messages = self.connection.makefile("rwb", buffering=0)
+            json.loads(self.messages.readline())
+            self.qmp("qmp_capabilities")
+        request = {"execute": command}
+        if arguments is not None:
+            request["arguments"] = arguments
+        self.messages.write(json.dumps(request).encode() + b"\n")
+        while True:
+            response = json.loads(self.messages.readline())
+            if "event" in response:
+                self.events.append(response)
+            if "error" in response:
+                raise RuntimeError(response["error"])
+            if "return" in response:
+                return response["return"]
+
+    def ready(self, marker, timeout=60, after=0):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            content = self.serial.read_text(errors="replace") if self.serial.exists() else ""
+            if marker in content[after:]:
+                memory, cpus = self.qmp("query-memory-size-summary"), self.qmp("query-cpus-fast")
+                if memory["base-memory"] != self.board.ram or len(cpus) != 1:
+                    raise RuntimeError("Deployment VM violates the board CPU/RAM contract")
+                (self.directory / "machine.json").write_text(json.dumps({"memory": memory, "cpus": cpus}, indent=2) + "\n")
+                return content.index(marker, after)
+            if self.process.poll() is not None:
+                raise RuntimeError("Deployment VM exited:\n" + content[-12000:])
+            time.sleep(.05)
+        raise TimeoutError("Boot marker missing: " + marker + "\n" + content[-12000:])
+
+    def close(self):
+        try:
+            super().close()
+        finally:
+            self._stop.set()
+            if self._serial_socket is not None:
+                self._serial_socket.close()
+            if self._reader is not None:
+                self._reader.join(timeout=2)
+            self.console_path.unlink(missing_ok=True)
+            self._sockets.cleanup()
+            (self.directory / "events.json").write_text(json.dumps(self.events, indent=2) + "\n")
+
+    def power_cut(self):
+        """A blocked storage fault may hold QEMU's lock, so QMP is unavailable."""
+        (self.directory / "power-cut.json").write_text(json.dumps({"injected": True, "process_restart": "cold", "qmp_diagnostics": "unavailable at blocked SD write"}) + "\n")
+        if self.process.poll() is None:
+            self.process.kill()
+            self.process.wait(timeout=5)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Keep a provisioned SD-backed Zynq host running for Ethernet deployment")
+    parser.add_argument("--loader", required=True, type=Path, help="Public-key-bearing u-boot.bin")
+    parser.add_argument("--card", required=True, type=Path, help="Exclusively owned 512 MiB regular-file SD image")
+    parser.add_argument("--credential-file", type=Path, help="Workstation copy of the card's credential, for profile export")
+    parser.add_argument("--directory", type=Path, default=ROOT / "work/zynq/deployment-interactive")
+    parser.add_argument("--port-base", type=int, default=16400)
+    parser.add_argument("--updater-port", type=int, default=16554)
+    parser.add_argument("--tftp", type=Path, help="Public bundle directory for an already-provisioned one-shot RAM boot")
+    boards.argument(parser)
+    args = parser.parse_args()
+    board = boards.load(args.board)
+    if not args.card.is_file() or args.card.stat().st_size != 512 << 20:
+        parser.error("--card must be a provisioned 512 MiB regular file")
+    if not 1 <= args.port_base < 65535 or not 1 <= args.updater_port <= 65535:
+        parser.error("invalid forwarded port")
+    loader_board = json.loads((args.loader.parent / "board.json").read_text())
+    card_board = json.loads(args.card.with_suffix(".json").read_text())
+    if loader_board != board.manifest() or any(card_board.get(k) != v for k, v in board.manifest().items()):
+        parser.error("Loader and SD image must match the selected board")
+    directory = args.directory.resolve(); directory.mkdir(parents=True, exist_ok=True)
+    stopped = threading.Event()
+    signal.signal(signal.SIGTERM, lambda number, frame: stopped.set())
+    try:
+        with BootQemu(args.loader, args.card, directory, args.port_base, args.updater_port, tftp=args.tftp, board=board) as vm:
+            memory, cpus = vm.qmp("query-memory-size-summary"), vm.qmp("query-cpus-fast")
+            if memory["base-memory"] != board.ram or len(cpus) != 1:
+                raise RuntimeError("Deployment VM violates the board CPU/RAM contract")
+            (directory / "machine.json").write_text(json.dumps({"memory": memory, "cpus": cpus}, indent=2) + "\n")
+            print("Guest serial:", vm.serial, flush=True)
+            print(f"Updater: target/debug/shoop-deploy --updater 127.0.0.1:{args.updater_port} updater-status", flush=True)
+            if args.credential_file:
+                from remote_profile import write_profile
+                profile = directory / "profile.json"
+                write_profile(profile, args.credential_file.resolve(), args.port_base)
+                quoted = shlex.quote(str(profile))
+                print(f"UI: cargo run -p shoopdaloop -- --remote-profile {quoted}", flush=True)
+                print(f"Deploy: target/debug/shoop-deploy --profile {quoted} --updater 127.0.0.1:{args.updater_port} deploy IMAGE.itb", flush=True)
+            print("Ctrl+C stops QEMU and retains the card; confirmed host shutdown also exits.", flush=True)
+            while not stopped.wait(.25):
+                if vm.process.poll() is not None:
+                    raise RuntimeError("QEMU exited; inspect " + str(directory))
+                if vm.serial.exists() and "SHOOP_HOST_RETURNED" in vm.serial.read_text(errors="replace"):
+                    break
+    except KeyboardInterrupt:
+        pass
+
+
+if __name__ == "__main__":
+    main()

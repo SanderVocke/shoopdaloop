@@ -7,24 +7,8 @@ retries = 0
 success-output = "never"
 failure-output = "immediate-final"
 
-# Carla worker integration tests spawn full child processes and include paced
-# scheduler measurements. Running them against each other distorts deadlines
-# and can make an OS kill an otherwise independent sibling under runner load.
-[test-groups]
-carla-worker = { max-threads = 1 }
-
-[[profile.default.overrides]]
-filter = 'binary_id(/shoopdaloop::carla_worker/)'
-test-group = 'carla-worker'
-threads-required = "num-test-threads"
-
 [[profile.default.overrides]]
 filter = 'test(/carla_processor::tests::bridge_/)'
-threads-required = "num-test-threads"
-
-[[profile.ci.overrides]]
-filter = 'binary_id(/shoopdaloop::carla_worker/)'
-test-group = 'carla-worker'
 threads-required = "num-test-threads"
 
 [[profile.ci.overrides]]
@@ -32,9 +16,24 @@ filter = 'test(/carla_processor::tests::bridge_/)'
 threads-required = "num-test-threads"
 
 [[profile.ci.overrides]]
-filter = 'test(=native::tests::native_dummy_satisfies_topology_capture_and_same_driver_switch)'
+filter = 'test(=legacy::native::tests::native_dummy_satisfies_topology_capture_and_same_driver_switch)'
 threads-required = "num-test-threads"
 
 [[profile.ci.overrides]]
 filter = 'binary_id(/shoopdaloop::bin.shoopdaloop/) & test(/^settings::tests::/)'
 threads-required = "num-test-threads"
+
+[[profile.ci.overrides]]
+filter = 'binary_id(=shoop_host::recovery)'
+threads-required = "num-test-threads"
+
+[test-groups.native-hosts]
+max-threads = 1
+
+[[profile.default.overrides]]
+filter = 'binary_id(/^shoop_host::/) | binary_id(=shoop_rt_host_native::jack) | binary_id(=shoop_engine::jack_app_backend)'
+test-group = "native-hosts"
+
+[[profile.ci.overrides]]
+filter = 'binary_id(/^shoop_host::/) | binary_id(=shoop_rt_host_native::jack) | binary_id(=shoop_engine::jack_app_backend)'
+test-group = "native-hosts"

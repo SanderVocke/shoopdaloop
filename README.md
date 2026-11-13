@@ -13,17 +13,18 @@ Releases before 1.0 remain development releases: I wouldn't recommend relying on
 
 ## Current features
 
-- Run on any major OS and in the browser. Browser distributions use the hosted bundle so the external built-ins catalog and resource tree remain available.
-- Audio and MIDI loops grouped in track columns which share input/output ports.
-- A sync loop controls synchronization. Others are multiples of its length.
-- Record/play MIDI and/or audio live, through FX/synth racks if desired.
-- For tracks with FX/synth racks, you can re-play recorded content through the synth/FX live and e.g. adjust parameters or switch instruments on-the-fly.
-- FX/synth options include built-in Carla plugin host integration, externally routed (e.g. external JACK apps/equipment), or a built-in demonstration mini-suite of (bad) synths and effects.
-- Audio drivers on desktop are multi-platform based on CPAL + midir, or a dedicated JACK driver for advanced port routing.
-- Web Audio/AudioWorklet and Web MIDI in supported browsers.
-- Session load/save plus loop audio/MIDI import and export.
-- Generated audio or MIDI click tracks.
-- Sandboxed Lua scripting for control, with externally packaged keyboard and APC Mini built-ins plus self-contained session-script bundles.
+The RT session engine is now the sole production stack. It supports core audio/MIDI
+looping, sync, tracks, routes, musical selection/targeting, controls and client-side
+Lua. Native socket hosts keep playback and recording running when a UI exits or
+crashes; a replacement UI can attach to the live session.
+
+Host-advertised dry/wet tracks support External routing, built-in FunDSP FX and
+OxiSynth, including editors, MIDI Learn, dry playback/rerecording and session files.
+Both DSP backends are independently optional at build and host startup. Composites,
+grab, Carla, bus FX and other temporary gaps are explicitly tracked
+in the [feature parity ledger](docs/native_session_recovery/feature-parity.md), with
+preserved UI/code, reference tests and completion criteria. Existing feature UI and
+configuration are retained for restoration; unavailable operations are refused.
 
 ## Screenshot
 
@@ -32,11 +33,16 @@ Releases before 1.0 remain development releases: I wouldn't recommend relying on
 ## Run from source
 
 ```sh
-# Native application with native FX support.
+# Native application with CPAL+midir.
+cargo build -p shoopdaloop -p shoop_host
 cargo run -p shoopdaloop
 
-# Native application without Carla hosting.
+# Dummy-driver build without CPAL or Rodio.
 cargo run -p shoopdaloop --no-default-features
+
+# Optional DSP without native audio drivers; build the companion with the same features.
+cargo build -p shoopdaloop -p shoop_host --no-default-features --features builtin-fx,oxisynth
+target/debug/shoopdaloop --builtin-fx on --oxisynth off
 ```
 
 For browser development:
@@ -50,12 +56,27 @@ trunk serve --open
 
 See [INSTALL.md](INSTALL.md) for prerequisites and artifact details. The application-specific [technical README](src/rust/shoopdaloop/README.md) documents settings, drivers, browser permissions, files, CI, and verification workflows.
 
+Run `shoopdaloop --manage-hosts` to discover running local hosts or configure and
+start a detached host. Discovery uses live OS process/socket inspection. No profile
+files, keys, registry or saved host history are required. See the
+[host manager guide](src/rust/shoopdaloop/README.md#host-manager).
+
 ## Builds and platforms
 
-The main workflow builds Linux x86_64, Windows x86_64, macOS arm64, and WebAssembly in debug and release. Native outputs are unsigned application archives. Web outputs include a complete hosted bundle and a core-only single HTML file that explicitly omits the external built-ins tree. Browser media and MIDI access depend on browser support, permissions, secure-context policy, and device availability.
+The main workflow builds Linux x86_64, Windows x86_64, macOS arm64, and WebAssembly in debug and release. Native outputs are unsigned application archives. Web outputs include a complete hosted bundle and a self-contained HTML file with embedded built-ins and RT worklet. Browser media and MIDI access depend on browser support, permissions, secure-context policy, and device availability.
+
+## Development planning and architecture
+
+- [Remaining work](PLAN.md): unfinished requirements and qualification work.
+- [Architecture](ARCHITECTURE.md): implemented stack and governing contracts.
+- [Testing](VALIDATION.md): commands, prerequisites and current limitations.
+- [Application feature backlog](docs/native_session_recovery/feature-parity.md).
+
+Historical plans and run records remain available in Git history and the original PRs.
+Public library guides and application operating instructions describe current usage.
 
 ## License and credits
 
 Copyright © Sander Vocke (2023–present) and other credited contributors. See [LICENSE](LICENSE).
 
-ShoopDaLoop is made possible by Rust, egui/eframe, JACK, CPAL, midir, libsndfile-compatible tooling, Carla, omniLua, Perfetto, and many other open-source projects represented in `Cargo.lock`. Native archives include the pinned GPL-2.0-or-later Carla runtime and its corresponding-source information.
+ShoopDaLoop is made possible by Rust, egui/eframe, JACK, CPAL, midir, libsndfile-compatible tooling, Carla, omniLua, Perfetto, and many other open-source projects represented in `Cargo.lock`. Carla sources, build recipes and license information remain available for the forthcoming FX parity work.

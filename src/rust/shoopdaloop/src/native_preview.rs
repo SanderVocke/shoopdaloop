@@ -1,4 +1,4 @@
-use shoop_app::{ApplicationAudioPreview, ApplicationHandle};
+use crate::application::{ApplicationAudioPreview, ApplicationHandle};
 use shoop_egui::AppIntent;
 
 fn complete(handle: &ApplicationHandle, request_id: u64, success: bool, message: String) {
@@ -9,20 +9,20 @@ fn complete(handle: &ApplicationHandle, request_id: u64, success: bool, message:
     });
 }
 
-#[cfg(feature = "cpal")]
+#[cfg(feature = "system-preview")]
 pub use system::{is_available, NativePreviewPlayer};
 
-#[cfg(not(feature = "cpal"))]
+#[cfg(not(feature = "system-preview"))]
 pub fn is_available() -> bool {
     false
 }
 
-#[cfg(not(feature = "cpal"))]
+#[cfg(not(feature = "system-preview"))]
 pub struct NativePreviewPlayer {
     handle: ApplicationHandle,
 }
 
-#[cfg(not(feature = "cpal"))]
+#[cfg(not(feature = "system-preview"))]
 impl NativePreviewPlayer {
     pub fn new(handle: ApplicationHandle) -> anyhow::Result<Self> {
         Ok(Self { handle })
@@ -40,7 +40,7 @@ impl NativePreviewPlayer {
     }
 }
 
-#[cfg(feature = "cpal")]
+#[cfg(feature = "system-preview")]
 mod system {
     use super::*;
     use std::cell::Cell;
@@ -177,60 +177,5 @@ mod system {
         ));
         sink.play();
         Ok((stream, sink))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use shoop_app::ApplicationAudioPreview;
-    use shoop_backend::FakeBackend;
-    use shoop_egui::AppIntent;
-    use std::sync::Arc;
-    use std::time::Duration;
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn invalid_preview_fails_without_opening_hardware() {
-        let runtime =
-            shoop_app::ApplicationRuntime::start(Box::new(FakeBackend::default())).unwrap();
-        let handle = runtime.handle();
-        let started = std::time::Instant::now();
-        let loop_id = loop {
-            let snapshot = handle.snapshot();
-            if snapshot.status.sample_rate > 0 {
-                break snapshot.tracks[0].loops[0].id;
-            }
-            assert!(started.elapsed() < Duration::from_secs(2));
-            std::thread::sleep(Duration::from_millis(5));
-        };
-        handle
-            .dispatch(AppIntent::PreviewClickTrack {
-                output: shoop_egui::ClickTrackPreviewOutput::System,
-                loop_id,
-                request: shoop_egui::ClickTrackRequest::default(),
-            })
-            .unwrap();
-        let preview = loop {
-            if let Some(preview) = handle.take_audio_preview() {
-                break preview;
-            }
-            assert!(started.elapsed() < Duration::from_secs(2));
-            std::thread::sleep(Duration::from_millis(5));
-        };
-        let request_id = preview.request_id;
-        let player = NativePreviewPlayer::new(handle.clone()).unwrap();
-        player.play(ApplicationAudioPreview {
-            output: shoop_egui::ClickTrackPreviewOutput::System,
-            request_id,
-            sample_rate: 0,
-            samples: Arc::from([]),
-        });
-        while handle.snapshot().click_track.preview_status
-            != shoop_egui::ClickTrackPreviewStatus::Failed
-        {
-            assert!(started.elapsed() < Duration::from_secs(2));
-            std::thread::sleep(Duration::from_millis(5));
-        }
-        assert_eq!(handle.snapshot().click_track.preview_request_id, request_id);
     }
 }

@@ -1,0 +1,29 @@
+[package]
+name = "shoop_port_graph"
+version.workspace = true
+edition = "2021"
+description = "Portable external port graph contract and bounded control channel"
+
+[lints]
+workspace = true
+
+[package.metadata.shoop-wasm-test]
+enabled = true
+browser-feature = "wasm-test-browser"
+
+[features]
+default = []
+std = []
+serde = ["dep:serde"]
+testing = ["std"]
+wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
+
+[dependencies]
+serde = { workspace = true, features = ["derive", "rc"], optional = true }
+
+[dev-dependencies]
+shoop_port_graph = { path = ".", features = ["testing"] }
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "=0.3.77"

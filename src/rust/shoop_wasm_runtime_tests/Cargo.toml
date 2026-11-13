@@ -13,11 +13,11 @@ default = []
 wasm-test-browser = []
 
 [dependencies]
-anyhow = { workspace = true }
-shoop_app = { path = "../shoop_app" }
+anyhow = { workspace = true, features = ["std"] }
+shoop_app_reference = { path = "../shoop_app_reference" }
 shoop_app_api = { path = "../shoop_app_api" }
 shoop_audio_protocol = { path = "../shoop_audio_protocol" }
-shoop_backend = { path = "../shoop_backend" }
+shoop_backend = { path = "../shoop_backend", default-features = false, features = ["legacy"] }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 shoop_worklet_client = { path = "../shoop_worklet_client" }
 

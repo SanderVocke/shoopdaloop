@@ -8,25 +8,34 @@ enabled = true
 browser-feature = "wasm-test-browser"
 
 [features]
-default = []
+std = ["shoop_app_protocol/std", "anyhow/std", "tracing/std"]
+default = ["std"]
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
+profiling_protocol = { path = "../profiling_protocol" }
+
+shoop_loop_plan = { path = "../shoop_loop_plan" }
+shoop_port_graph = { path = "../shoop_port_graph" }
+shoop_app_protocol = { path = "../shoop_app_protocol", default-features = false }
+shoop_deployment_protocol = { path = "../shoop_deployment_protocol", default-features = false }
 anyhow = { workspace = true }
 shoop_app_api = { path = "../shoop_app_api" }
-shoop_backend = { path = "../shoop_backend" }
-shoop_latency = { path = "../shoop_latency" }
-shoop_session = { path = "../shoop_session" }
-shoop_scripting = { path = "../shoop_scripting" }
-shoop_script_resources = { path = "../shoop_script_resources" }
+shoop_backend = { path = "../shoop_backend", default-features = false }
 tracing = { workspace = true }
 
 [dev-dependencies]
+shoop_port_graph = { path = "../shoop_port_graph", features = ["testing"] }
+shoop_scripting = { path = "../shoop_scripting" }
+shoop_rt_transport = { path = "../shoop_rt_transport" }
+shoop_rt_protocol = { path = "../shoop_rt_protocol" }
+shoop_transport = { path = "../shoop_transport" }
+shoop_app_client = { path = "../shoop_app_client", features = ["runtime"] }
+shoop_rt_backend = { path = "../shoop_rt_backend", default-features = false }
+shoop_rt_engine = { path = "../shoop_rt_engine", features = ["testing"] }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 
-[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
-midir.workspace = true
-tempfile.workspace = true
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "=0.3.77"

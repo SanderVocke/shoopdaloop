@@ -80,10 +80,12 @@ class MacOSPackageMetadataTests(unittest.TestCase):
             root = Path(directory)
             binary = root / "shoopdaloop"
             binary.write_bytes(macho())
+            binary.with_name("shoop_host").write_bytes(macho())
+            binary.with_name("shoop_host_manager").write_bytes(macho())
             stage = root / "stage"
             stage.mkdir()
-            with patch.object(package_artifacts, "stage_carla_runtime"):
-                args = ("macos", binary, root / "carla", stage)
+            args = ("macos", binary, stage)
+            with patch.object(Path, "symlink_to"):
                 if minimum is None:
                     package_artifacts.create_native_stage(*args)
                 else:

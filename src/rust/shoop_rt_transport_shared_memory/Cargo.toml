@@ -1,0 +1,15 @@
+[package]
+name = "shoop_rt_transport_shared_memory"
+version.workspace = true
+edition = "2021"
+description = "Process-shared queues for the common engine record transport"
+[lints]
+workspace = true
+[dependencies]
+shoop_transport_shared_memory = { path = "../shoop_transport_shared_memory" }
+shoop_rt_transport = { path = "../shoop_rt_transport" }
+[dev-dependencies]
+shoop_rt_protocol = { path = "../shoop_rt_protocol" }
+shoop_rt_transport = { path = "../shoop_rt_transport", features = ["contracts"] }
+shoop_rt_transport_socket = { path = "../shoop_rt_transport_socket" }
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }

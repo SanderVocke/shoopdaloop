@@ -1,0 +1,11 @@
+{
+  "tracks": 3,
+  "loops": 20,
+  "input_history": {
+    "seconds": 30,
+    "audio_take_pages": 2048,
+    "midi_pages": 512,
+    "midi_records": 8192,
+    "writers": 2
+  }
+}

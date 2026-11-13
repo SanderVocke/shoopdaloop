@@ -1,0 +1,12 @@
+[package]
+name = "shoop_jack"
+version.workspace = true
+edition = "2021"
+description = "JACK notification forwarding and native port identity metadata"
+
+[lints]
+workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+jack = { workspace = true }
+jack-sys = { workspace = true }

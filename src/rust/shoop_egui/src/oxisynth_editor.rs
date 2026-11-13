@@ -414,6 +414,7 @@ mod tests {
             },
         ]);
         let processor = TrackProcessorDescriptor {
+            resources: None,
             id: TrackProcessorTypeId::new(TrackProcessorTypeId::OXISYNTH),
             label: "Built-in Synth".to_owned(),
             available: true,

@@ -1,0 +1,136 @@
+diff --git a/hw/usb/chipidea.c b/hw/usb/chipidea.c
+index b1c8540..8718301 100644
+--- a/hw/usb/chipidea.c
++++ b/hw/usb/chipidea.c
+@@ -89,12 +89,54 @@ static const struct MemoryRegionOps chipidea_dc_ops = {
+     },
+ };
+ 
++static uint64_t chipidea_ulpi_read(void *opaque, hwaddr offset, unsigned size)
++{
++    ChipideaState *ci = opaque;
++    return ci->viewport;
++}
++
++static void chipidea_ulpi_write(void *opaque, hwaddr offset, uint64_t value, unsigned size)
++{
++    ChipideaState *ci = opaque;
++    unsigned address = (value >> 16) & 255;
++    if (value & BIT(30)) {
++        if (value & BIT(29)) {
++            if (address == 5 || address == 8 || address == 11) {
++                ci->phy[address - 1] |= value;
++            } else if (address == 6 || address == 9 || address == 12) {
++                ci->phy[address - 2] &= ~value;
++            } else if (address >= 4) {
++                ci->phy[address] = value;
++            }
++        }
++        ci->viewport = BIT(27) | ((uint32_t)ci->phy[address] << 8);
++    } else {
++        ci->viewport = BIT(27);
++    }
++}
++
++static const MemoryRegionOps chipidea_ulpi_ops = {
++    .read = chipidea_ulpi_read,
++    .write = chipidea_ulpi_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++    .valid.min_access_size = 4,
++    .valid.max_access_size = 4,
++};
++
+ static void chipidea_init(Object *obj)
+ {
+     EHCIState *ehci = &SYS_BUS_EHCI(obj)->ehci;
+     ChipideaState *ci = CHIPIDEA(obj);
++    ehci->integrated_tt = true;
+     int i;
+ 
++    ci->phy[0] = 0x24;
++    ci->phy[1] = 0x04;
++    ci->phy[2] = 0x07;
++    memory_region_init_io(&ci->ulpi, obj, &chipidea_ulpi_ops, ci,
++                          TYPE_CHIPIDEA ".ulpi", 4);
++    memory_region_add_subregion_overlap(&ehci->mem, 0x170, &ci->ulpi, 1);
++
+     for (i = 0; i < ARRAY_SIZE(ci->iomem); i++) {
+         const struct {
+             const char *name;
+diff --git a/hw/usb/hcd-ehci.c b/hw/usb/hcd-ehci.c
+index b090f25..f36f735 100644
+--- a/hw/usb/hcd-ehci.c
++++ b/hw/usb/hcd-ehci.c
+@@ -932,6 +932,14 @@ static uint64_t ehci_port_read(void *ptr, hwaddr addr,
+     uint32_t val;
+ 
+     val = s->portsc[addr >> 2];
++    if (s->integrated_tt) {
++        USBDevice *dev = s->ports[addr >> 2].dev;
++        if (dev && dev->attached) {
++            unsigned speed = dev->speed == USB_SPEED_HIGH ? 2 :
++                             dev->speed == USB_SPEED_LOW ? 1 : 0;
++            val = (val & ~(3u << 26)) | (speed << 26);
++        }
++    }
+     trace_usb_ehci_portsc_read(addr + s->portscbase, addr >> 2, val);
+     return val;
+ }
+@@ -999,7 +1007,8 @@ static void ehci_port_write(void *ptr, hwaddr addr,
+          *  Table 2.16 Set the enable bit(and enable bit change) to indicate
+          *  to SW that this port has a high speed device attached
+          */
+-        if (dev && dev->attached && (dev->speedmask & USB_SPEED_MASK_HIGH)) {
++        if (dev && dev->attached &&
++            ((dev->speedmask & USB_SPEED_MASK_HIGH) || s->integrated_tt)) {
+             val |= PORTSC_PED;
+         }
+     }
+@@ -2530,7 +2539,8 @@ void usb_ehci_realize(EHCIState *s, DeviceState *dev, Error **errp)
+                 &ehci_bus_ops_companion : &ehci_bus_ops_standalone, dev);
+     for (i = 0; i < s->portnr; i++) {
+         usb_register_port(&s->bus, &s->ports[i], s, i, &ehci_port_ops,
+-                          USB_SPEED_MASK_HIGH);
++                          USB_SPEED_MASK_HIGH |
++                          (s->integrated_tt ? USB_SPEED_MASK_FULL | USB_SPEED_MASK_LOW : 0));
+         s->ports[i].dev = 0;
+     }
+ 
+diff --git a/hw/usb/hcd-ehci.h b/hw/usb/hcd-ehci.h
+index ffd6c51..5a8883f 100644
+--- a/hw/usb/hcd-ehci.h
++++ b/hw/usb/hcd-ehci.h
+@@ -261,6 +261,7 @@ struct EHCIState {
+     MemoryRegion mem_ports;
+     int companion_count;
+     bool companion_enable;
++    bool integrated_tt;
+     uint16_t capsbase;
+     uint16_t opregbase;
+     uint16_t portscbase;
+diff --git a/hw/usb/meson.build b/hw/usb/meson.build
+index 17360a5..eba8088 100644
+--- a/hw/usb/meson.build
++++ b/hw/usb/meson.build
+@@ -9,6 +9,7 @@ system_ss.add(when: 'CONFIG_USB', if_true: files(
+   'desc-msos.c',
+   'libhw.c',
+   'pcap.c',
++  'dev-shoop-midi.c',
+ ), if_false: files('bus-stub.c'))
+ 
+ # usb host adapters
+diff --git a/include/hw/usb/chipidea.h b/include/hw/usb/chipidea.h
+index fe4113e..7efc3ad 100644
+--- a/include/hw/usb/chipidea.h
++++ b/include/hw/usb/chipidea.h
+@@ -9,6 +9,9 @@ struct ChipideaState {
+     EHCISysBusState parent_obj;
+ 
+     MemoryRegion iomem[3];
++    MemoryRegion ulpi;
++    uint32_t viewport;
++    uint8_t phy[256];
+ };
+ 
+ #define TYPE_CHIPIDEA "usb-chipidea"

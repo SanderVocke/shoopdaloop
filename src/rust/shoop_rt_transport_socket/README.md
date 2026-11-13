@@ -1,0 +1,17 @@
+# Socket transport
+
+Native `client` and `server` aliases compose one bounded `Port` with the common
+record client/server. It adapts loopback TCP streams to canonical protocol records
+with fixed-capacity reliable/telemetry/bulk queues, retained partial writes and
+incremental length-prefix parsing. Reliable and bulk queues refuse when full;
+telemetry may replace an older queued record. EOF and malformed/truncated records
+are terminal errors, distinct from idle. All socket work runs outside rendering.
+
+`setup::Listener` binds an ephemeral loopback endpoint. Peers negotiate a versioned
+compatibility greeting without key material. Each host decides connection and engine lifetime. This carrier has no
+engine, application or process-management dependency. The independent application host can opt into trusted-LAN setup through the
+shared native carrier; these internal engine/process setup APIs stay local-only.
+
+```sh
+cargo test -p shoop_rt_transport_socket
+```

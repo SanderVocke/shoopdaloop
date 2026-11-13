@@ -7,6 +7,7 @@ use crate::document::{
     DOCUMENT_VERSION, FORMAT_MAJOR, FORMAT_MINOR, MIDI_FORMAT, SESSION_DOCUMENT_VERSION,
     SESSION_FORMAT,
 };
+use crate::limits::{read_midi, Budget, CodecLimits, LimitedWriter, OutputCursor};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use shoop_app_api::{
@@ -31,6 +32,7 @@ const PRE_BUILTIN_FX_SESSION_DOCUMENT_VERSION: u16 = 9;
 const PRE_EXPANDED_BUILTIN_FX_SESSION_DOCUMENT_VERSION: u16 = 10;
 const PRE_CURRENT_COMBINED_SESSION_DOCUMENT_VERSION: u16 = 11;
 const PRE_DYNAMIC_BUS_SESSION_DOCUMENT_VERSION: u16 = 12;
+const PRE_COMPOSITE_TIMING_SESSION_DOCUMENT_VERSION: u16 = 13;
 const MIN_BUS_GAIN_DB: f32 = -30.0;
 const MAX_BUS_GAIN_DB: f32 = 20.0;
 const DEFAULT_MAX_ENTRIES: usize = 1_000_000;
@@ -75,6 +77,15 @@ pub enum SessionError {
     HashMismatch { id: String },
     #[error("media payload {id} has an invalid shape")]
     InvalidMediaShape { id: String },
+}
+
+impl From<shoop_format_conversion::Error> for SessionError {
+    fn from(error: shoop_format_conversion::Error) -> Self {
+        match error {
+            shoop_format_conversion::Error::Validation(message) => Self::Validation(message),
+            shoop_format_conversion::Error::ResourceLimit(message) => Self::ResourceLimit(message),
+        }
+    }
 }
 
 impl From<zip::result::ZipError> for SessionError {
@@ -140,7 +151,36 @@ pub fn encode_session(
     bundle: &SessionBundle,
     writer_app_version: &str,
 ) -> Result<Vec<u8>, SessionError> {
+    encode_session_inner(bundle, writer_app_version, None)
+}
+pub fn encode_session_bounded(
+    bundle: &SessionBundle,
+    writer_app_version: &str,
+    limits: CodecLimits,
+) -> Result<Vec<u8>, SessionError> {
+    encode_session_inner(bundle, writer_app_version, Some(limits))
+}
+fn encode_session_inner(
+    bundle: &SessionBundle,
+    writer_app_version: &str,
+    limits: Option<CodecLimits>,
+) -> Result<Vec<u8>, SessionError> {
     validate_bundle(bundle)?;
+    if let Some(limits) = limits {
+        if bundle.media.len() + 1 > limits.entries || !bundle.scripts.is_empty() {
+            return Err(SessionError::ResourceLimit(
+                "encoded entry/script budget exceeded".into(),
+            ));
+        }
+        let mut budget = Budget::new(limits);
+        for media in bundle.media.values() {
+            match media {
+                MediaPayload::Audio(a) => budget.charge(a.samples.len() as u64 * 4)?,
+                MediaPayload::Midi(m) => budget.midi(m)?,
+            }
+        }
+    }
+    let mut remaining = limits.map_or(u64::MAX, |l| l.expanded_bytes);
     let mut payloads = BTreeMap::<String, Vec<u8>>::new();
     let mut records = Vec::with_capacity(bundle.media.len());
     for (id, payload) in &bundle.media {
@@ -156,10 +196,12 @@ pub fn encode_session(
                 MediaKind::ExactMidiJson,
                 "json",
                 midi.length_frames,
-                serde_json::to_vec(midi)
-                    .map_err(|error| SessionError::Manifest(error.to_string()))?,
+                limited_json(midi, remaining)?,
             ),
         };
+        remaining = remaining
+            .checked_sub(bytes.len() as u64)
+            .ok_or_else(|| SessionError::ResourceLimit("encoded payload budget exceeded".into()))?;
         let folder = match kind {
             MediaKind::AudioF32Le => "audio",
             MediaKind::ExactMidiJson => "midi",
@@ -205,7 +247,12 @@ pub fn encode_session(
         media: records,
         scripts: script_records,
     };
-    encode_zip(&manifest, payloads)
+    encode_zip_bounded(
+        &manifest,
+        payloads,
+        limits.map_or(u64::MAX, |l| l.file_bytes),
+        limits.map_or(u64::MAX, |l| l.metadata_bytes),
+    )
 }
 
 pub fn decode_session(bytes: &[u8]) -> Result<SessionBundle, SessionError> {
@@ -216,13 +263,47 @@ pub fn decode_session_with_limits(
     bytes: &[u8],
     limits: DecodeLimits,
 ) -> Result<SessionBundle, SessionError> {
+    decode_session_inner(bytes, limits, None, |_| Ok(()))
+}
+
+pub fn decode_session_bounded(
+    bytes: &[u8],
+    limits: CodecLimits,
+    document_policy: impl FnOnce(&SessionDocument) -> Result<(), SessionError>,
+) -> Result<SessionBundle, SessionError> {
+    if bytes.len() as u64 > limits.file_bytes {
+        return Err(SessionError::ResourceLimit(
+            "input file budget exceeded".into(),
+        ));
+    }
+    decode_session_inner(
+        bytes,
+        DecodeLimits {
+            max_entries: limits.entries,
+            max_uncompressed_bytes: limits.expanded_bytes,
+        },
+        Some(limits),
+        document_policy,
+    )
+}
+
+fn decode_session_inner(
+    bytes: &[u8],
+    limits: DecodeLimits,
+    codec: Option<CodecLimits>,
+    document_policy: impl FnOnce(&SessionDocument) -> Result<(), SessionError>,
+) -> Result<SessionBundle, SessionError> {
     if !bytes.starts_with(b"PK") {
         return Err(SessionError::UnsupportedFormat);
     }
     inspect_central_directory(bytes, limits)?;
     let mut archive = ZipArchive::new(Cursor::new(bytes))?;
     let archive_paths = inspect_archive(&mut archive, limits)?;
-    let manifest_bytes = read_entry(&mut archive, MANIFEST_PATH, limits.max_uncompressed_bytes)?;
+    let manifest_bytes = read_entry(
+        &mut archive,
+        MANIFEST_PATH,
+        codec.map_or(limits.max_uncompressed_bytes, |c| c.metadata_bytes),
+    )?;
     let manifest_value: serde_json::Value = serde_json::from_slice(&manifest_bytes)
         .map_err(|error| SessionError::Manifest(error.to_string()))?;
     let header: SessionManifestHeader = serde_json::from_value(manifest_value.clone())
@@ -238,6 +319,7 @@ pub fn decode_session_with_limits(
                 | PRE_EXPANDED_BUILTIN_FX_SESSION_DOCUMENT_VERSION
                 | PRE_CURRENT_COMBINED_SESSION_DOCUMENT_VERSION
                 | PRE_DYNAMIC_BUS_SESSION_DOCUMENT_VERSION
+                | PRE_COMPOSITE_TIMING_SESSION_DOCUMENT_VERSION
                 | SESSION_DOCUMENT_VERSION
         )
     {
@@ -247,7 +329,7 @@ pub fn decode_session_with_limits(
             minor: header.format_version.minor,
         });
     }
-    if header.document_version == SESSION_DOCUMENT_VERSION {
+    if header.document_version >= PRE_COMPOSITE_TIMING_SESSION_DOCUMENT_VERSION {
         require_mixer_document_fields(&manifest_value)?;
         require_current_bus_control_fields(&manifest_value)?;
     }
@@ -293,6 +375,13 @@ pub fn decode_session_with_limits(
                 .collect::<Vec<_>>()
         )));
     }
+    document_policy(&manifest.document)?;
+    if codec.is_some() && !manifest.scripts.is_empty() {
+        return Err(SessionError::Validation(
+            "session scripts/resources (P16) are not supported".into(),
+        ));
+    }
+    let mut budget = codec.map(Budget::new);
     let script_bundles =
         decode_script_bundles(&mut archive, &manifest.document, manifest.scripts, limits)?;
     let mut media = BTreeMap::new();
@@ -304,6 +393,42 @@ pub fn decode_session_with_limits(
             return Err(SessionError::Validation(
                 "duplicate media ID or path".to_owned(),
             ));
+        }
+        if let Some(budget) = &mut budget {
+            let payload = match record.kind {
+                MediaKind::AudioF32Le => {
+                    budget.charge(record.uncompressed_bytes)?;
+                    let payload_bytes = checked_record_bytes(&mut archive, &record)?;
+                    let samples = decode_audio_samples(&record.id, &payload_bytes)?;
+                    if samples.len() as u64 != record.frames {
+                        return Err(SessionError::InvalidMediaShape { id: record.id });
+                    }
+                    MediaPayload::Audio(AudioPayload { samples })
+                }
+                MediaKind::ExactMidiJson => {
+                    let file = archive.by_name(&record.path)?;
+                    if file.size() != record.uncompressed_bytes {
+                        return Err(SessionError::InvalidMediaShape { id: record.id });
+                    }
+                    let mut reader = HashReader {
+                        inner: file,
+                        hash: Sha256::new(),
+                        bytes: 0,
+                    };
+                    let midi = read_midi(&mut reader, budget)?;
+                    if reader.bytes != record.uncompressed_bytes
+                        || digest_hex(reader.hash.finalize()) != record.sha256
+                    {
+                        return Err(SessionError::HashMismatch { id: record.id });
+                    }
+                    if midi.length_frames != record.frames {
+                        return Err(SessionError::InvalidMediaShape { id: record.id });
+                    }
+                    MediaPayload::Midi(midi)
+                }
+            };
+            media.insert(record.id, payload);
+            continue;
         }
         let payload_bytes = read_entry(&mut archive, &record.path, record.uncompressed_bytes)?;
         if payload_bytes.len() as u64 != record.uncompressed_bytes {
@@ -341,6 +466,32 @@ pub fn decode_session_with_limits(
     };
     validate_bundle(&bundle)?;
     Ok(bundle)
+}
+
+struct HashReader<R> {
+    inner: R,
+    hash: Sha256,
+    bytes: u64,
+}
+impl<R: Read> Read for HashReader<R> {
+    fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.inner.read(out)?;
+        self.hash.update(&out[..n]);
+        self.bytes += n as u64;
+        Ok(n)
+    }
+}
+fn checked_record_bytes(
+    archive: &mut ZipArchive<Cursor<&[u8]>>,
+    record: &MediaRecord,
+) -> Result<Vec<u8>, SessionError> {
+    let bytes = read_entry(archive, &record.path, record.uncompressed_bytes)?;
+    if bytes.len() as u64 != record.uncompressed_bytes || sha256(&bytes) != record.sha256 {
+        return Err(SessionError::HashMismatch {
+            id: record.id.clone(),
+        });
+    }
+    Ok(bytes)
 }
 
 fn migrate_pre_alignment_document(document: &mut SessionDocument) {
@@ -716,20 +867,33 @@ fn encode_zip<T: Serialize>(
     manifest: &T,
     payloads: BTreeMap<String, Vec<u8>>,
 ) -> Result<Vec<u8>, SessionError> {
-    let cursor = Cursor::new(Vec::new());
-    let mut writer = ZipWriter::new(cursor);
+    encode_zip_bounded(manifest, payloads, u64::MAX, u64::MAX)
+}
+pub(crate) fn encode_zip_bounded<T: Serialize>(
+    manifest: &T,
+    payloads: BTreeMap<String, Vec<u8>>,
+    file_limit: u64,
+    manifest_limit: u64,
+) -> Result<Vec<u8>, SessionError> {
+    let mut writer = ZipWriter::new(OutputCursor::new(file_limit));
     let options = SimpleFileOptions::default()
         .compression_method(CompressionMethod::Deflated)
         .large_file(true);
     writer.start_file(MANIFEST_PATH, options)?;
-    let manifest_bytes = serde_json::to_vec_pretty(manifest)
+    serde_json::to_writer_pretty(LimitedWriter::new(&mut writer, manifest_limit), manifest)
         .map_err(|error| SessionError::Manifest(error.to_string()))?;
-    writer.write_all(&manifest_bytes)?;
     for (path, payload) in payloads {
         writer.start_file(path, options)?;
         writer.write_all(&payload)?;
     }
     Ok(writer.finish()?.into_inner())
+}
+
+fn limited_json(value: &impl Serialize, limit: u64) -> Result<Vec<u8>, SessionError> {
+    let mut bytes = OutputCursor::new(limit);
+    serde_json::to_writer(&mut bytes, value)
+        .map_err(|e| SessionError::ResourceLimit(e.to_string()))?;
+    Ok(bytes.into_inner())
 }
 
 fn inspect_central_directory(bytes: &[u8], limits: DecodeLimits) -> Result<(), SessionError> {
@@ -1453,7 +1617,7 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                                 loop_.id
                             )));
                         }
-                        if event.start_cycle > u64::from(u32::MAX) {
+                        if composite.timing.is_none() && event.start_cycle > u64::from(u32::MAX) {
                             return Err(SessionError::Validation(format!(
                                 "composite loop {} has an out-of-range start cycle",
                                 loop_.id
@@ -1507,10 +1671,11 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
                         let duration = event.n_cycles.map(u64::from).unwrap_or_else(|| {
                             loop_lengths[&event.loop_id].div_ceil(sync_length).max(1)
                         });
-                        if event
-                            .start_cycle
-                            .checked_add(duration)
-                            .is_none_or(|end| end > u64::from(u32::MAX))
+                        if composite.timing.is_none()
+                            && event
+                                .start_cycle
+                                .checked_add(duration)
+                                .is_none_or(|end| end > u64::from(u32::MAX))
                         {
                             return Err(SessionError::Validation(format!(
                                 "composite loop {} has an out-of-range instance end cycle",
@@ -1522,6 +1687,7 @@ pub fn validate_bundle(bundle: &SessionBundle) -> Result<(), SessionError> {
             }
         }
     }
+    crate::composite::validate_composite_documents(&bundle.document)?;
     Ok(())
 }
 
@@ -1933,7 +2099,10 @@ fn decode_audio_samples(id: &str, bytes: &[u8]) -> Result<Vec<f32>, SessionError
 }
 
 fn sha256(bytes: &[u8]) -> String {
-    let digest = Sha256::digest(bytes);
+    digest_hex(Sha256::digest(bytes))
+}
+fn digest_hex(digest: impl AsRef<[u8]>) -> String {
+    let digest = digest.as_ref();
     let mut result = String::with_capacity(digest.len() * 2);
     for byte in digest {
         use std::fmt::Write as _;
@@ -1967,9 +2136,15 @@ pub(crate) fn inspect_standalone_archive(
     if !bytes.starts_with(b"PK") {
         return Err(SessionError::UnsupportedFormat);
     }
-    inspect_central_directory(bytes, DecodeLimits::default())?;
+    inspect_standalone_archive_with_limits(bytes, DecodeLimits::default())
+}
+pub(crate) fn inspect_standalone_archive_with_limits(
+    bytes: &[u8],
+    limits: DecodeLimits,
+) -> Result<ZipArchive<Cursor<&[u8]>>, SessionError> {
+    inspect_central_directory(bytes, limits)?;
     let mut archive = ZipArchive::new(Cursor::new(bytes))?;
-    inspect_archive(&mut archive, DecodeLimits::default())?;
+    inspect_archive(&mut archive, limits)?;
     Ok(archive)
 }
 

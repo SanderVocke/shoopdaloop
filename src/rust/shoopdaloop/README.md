@@ -1,260 +1,440 @@
 # ShoopDaLoop application
 
-This is the shared native and browser application composition root.
+One session service owns musical state and admitted work. The UI and its local Lua
+runtime use a confirmed client projection in every deployment. The RT engine is
+the sole production backend. Its current core looping capability set is smaller
+than the old stack's; [the feature parity ledger](../../../docs/native_session_recovery/feature-parity.md)
+tracks each temporary gap, reference implementation/test and restoration criterion.
+Feature editors, document/configuration fields and reference behavior are retained
+for upcoming parity work. Recovery is independent of disk persistence.
 
-The `macos-intel-10.15` nightly flavor uploads an experimental CPAL/Rodio-free
-release archive containing `shoopdaloop/ShoopDaLoop.app`, built-ins, and the pinned
-Carla runtime. It can also be selected through the workflow's `nightly_flavor`
-manual-run input. Extract the archive and launch the application from Finder, or run
-`shoopdaloop/ShoopDaLoop.app/Contents/MacOS/shoopdaloop` from a terminal for
-diagnostics. Use a Catalina-compatible JACK installation for audio. Click-track
-preview uses the Master bus; System preview is unavailable in this build.
-CI checks the Intel binaries' minimum OS versions and dependency paths, then
-probes the extracted bundle on a newer macOS runner. A stakeholder confirmed that
-the initial distribution worked on an actual Catalina system. The application
-archive is unsigned and not notarized.
+For remote native UI connections, see [trusted-LAN setup and the Cortex-A adapter contract](../../../docs/trusted-lan-networking.md).
 
-- Native builds use the existing threaded JACK, CPAL+midir, or dummy/offline engine backend selected from persistent settings and provide actor-owned Lua scripting, keyboard control, and script-created native MIDI control ports.
-- Browser builds use a repository-owned Web Audio/AudioWorklet backend after an explicit microphone or output-only enable action and run the same omniLua-backed scripting manager cooperatively on the application owner.
-- A separate explicit Web MIDI action discovers physical browser endpoints. One bounded main-thread hub serves direct-track MIDI recording/playback and Lua-created control ports while the AudioWorklet retains track-route truth.
+## Hosted track processors
 
-## Native
+Default native and browser worklet builds include `builtin-fx` and `oxisynth`.
+Native `--no-default-features` builds include neither; add either Cargo feature
+independently to the app/host packages. For browser worklets, `build_worklet.py
+--no-default-features --features builtin-fx` includes only FX. The UI reads the
+connected host catalog, including unavailable reasons, widths and instance usage.
 
-From the repository root:
+Host launch settings and the Host Manager expose independent `auto`/`on`/`off`
+policies. CLI equivalents are `--builtin-fx`, `--oxisynth`, `--fx-instances`,
+`--synth-instances` and `--processor-memory-mb`. Defaults allow two instances of
+each type within 256 MiB, with another complete bank reserved for session loads.
+Off prepares no instances; On fails clearly when unsupported; Auto enables each
+compiled implementation at supported rates. Settings apply to a newly started
+host. Existing hosts keep their own configuration.
+
+Built-in FX accepts matching mono/N dry and wet sides up to the host limit.
+OxiSynth uses two dry/two wet audio channels and dry MIDI. Both run synchronously
+in the host render graph with one quantum of processor buffering; host buffering
+is reported separately. Regular playback uses the recorded wet take. Dry playback
+feeds recorded dry audio/MIDI through the processor; rerecord changes wet media
+and preserves dry media. Embedded editors, MIDI Learn, track/bus global control
+MIDI, recorded-state restoration and role-aware files use the production service.
+External supports independent side widths. Built-in bus FX supports the negotiated FX width and shares track FX slots; Carla remains unavailable. See the [bus FX contract](../../../docs/native_session_recovery/bus-fx.md).
+
+The packaged `--probe-hosted-processors --engine-transport socket` canary exercises
+UI/Lua commands, real DSP audio, role imports, save/reload and recovery. The `--probe-bus-fx --engine-transport socket` canary covers bus audio, bypass, Lua, files and reattachment. The native
+archive smoke runs both canaries over socket/shared memory and independent startup policies.
+Browser acceptance includes the corresponding AudioWorklet workflow. See the
+[processor contract and evidence](../../../docs/native_session_recovery/track-processors.md)
+for resource, timing and platform limits.
+
+## Native roles and delivery
 
 ```sh
-# Native drivers with dynamically loaded Carla Native hosting (default).
+cargo build -p shoopdaloop -p shoop_host -p shoop_host_manager
 cargo run -p shoopdaloop
-
-# Native drivers without Carla hosting.
-cargo run -p shoopdaloop --no-default-features
+# Detached host and UI siblings, with configuration exchanged over pipes.
+target/debug/shoopdaloop --session-transport socket
+# Shared memory permits one data attachment.
+target/debug/shoopdaloop --session-transport shared_memory
+# Configure and manage detached hosts from the GUI.
+target/debug/shoop_host_manager
 ```
 
-A startup session URL normally requires confirmation before it is fetched. Pass `--force-url-session` together with `--session` only when the URL is trusted to bypass that startup confirmation:
+The default is `in_process`. **Settings → Audio → Session delivery** selects the
+next launch's placement. `--engine-transport` remains a CLI alias. A detached host
+survives its launcher and UI. Socket delivery supports reattachment; a shared-memory
+host supports its first attachment only. Hosts do not restart automatically.
+
+The manager discovers local `shoop_host` processes and their owned TCP listeners
+through the OS. It probes only those sockets and retains OS-assigned ports. Discovery
+and status queries do not take control or consume a shared-memory attachment.
+There is no registry, port scan, advertisement file or remembered host list.
+
+For CLI use, start the roles separately (the host defaults to dummy audio):
 
 ```sh
-cargo run -p shoopdaloop -- \
-  --session https://example.com/demo.shoop \
-  --force-url-session
+target/debug/shoop_host
+# Use the management address printed by the host, or select it in Host Manager.
+target/debug/shoopdaloop --ui-only --host-address 127.0.0.1:PORT
 ```
 
-URL sessions opened later from the application still require confirmation.
+`shoop_host --config PATH` accepts an optional host configuration.
+`--endpoint`, `--management-endpoint`, `--name` and `--log-file` remain explicit host
+options. Advanced connection profiles can be exported with `--export-profile PATH`
+and imported with `--host-profile PATH` (`--remote-profile` is an alias). Profiles
+select endpoints, never process or session identities, and are never saved or loaded
+automatically. The launcher exchanges bounded startup/readiness messages over pipes.
+Manager and sibling UI launches pass the live endpoint through a bounded stdin pipe;
+normal creation and attachment require no configuration or profile files.
 
-Native Cargo builds place a `SHOOP_SRC_TREE` marker beside the executable. The marker contains the relative path back to the repository root, so binaries run directly from `target/debug` or `target/release` load `resources/builtins` from the checkout. Runtime resolution checks only that exact sibling marker; it does not search parent directories. Packaged applications omit the marker and use their packaged `builtins` directory instead.
+Compatible clients connect without keys, certificates or trust records. Protocol
+checks, controller generations and exclusive control still apply. A second controller
+is refused while the current owner remains healthy.
 
-`--tracing` captures standard Perfetto profiling data in process and writes a numbered `.pftrace` file below `./traces` after the application exits normally. It does not require a tracing daemon or external capture tool:
+Every connection obtains a fresh snapshot of the endpoint's current state. The
+**Reconnect to host** action uses the same flow after loss or host restart.
+Previous pending requests are discarded and commands are not replayed. Configured
+scripts remain visible but disabled; start them explicitly in Scripts. Connection
+does not apply local preferences or initialize the host's session.
+
+The main menu's **Host → Connected host settings…** panel queries the host's startup
+settings, effective audio status and diagnostics. Local preference saves change
+future local launch defaults, independently of the connected host.
+
+The backend status LED in the bottom bar shows audio health. Hover for host name,
+location, connection state, audio driver and what happens when the UI closes. Click
+to keep these details open and access Host Manager or connected host settings.
+After connection loss, the indicator reports unknown audio state; the host may
+still be playing and recording. The main menu and status popover stay available
+while session controls are disabled. Socket hosts offer **Reconnect to host**;
+shared-memory hosts cannot reattach.
+
+For an external host, the main menu and window/platform close offer:
+
+- **Close UI — keep host running** releases control and exits this UI.
+- **Close UI and stop host…** waits for MIDI reset, render stop and cleanup.
+- **Cancel** keeps the UI open.
+
+After data loss, shutdown uses a separate management connection with
+the last owner's generation. A replacement UI fences that authority. Failure is
+reported with retry and UI-only options; an uncertain retry checks the same operation.
+A host with no live UI owner can be closed explicitly with
+`shoopdaloop --shutdown-host --host-address HOST:PORT`. This acquires a new
+shutdown generation; a live owner refuses it. It also manages a shared-memory host
+after its single data connection is lost, without enabling shared-memory reattachment.
+The UI never uses this claim as a fallback for stale-owner shutdown.
+Product shutdown does not kill a PID. In-process mode ends with its process; browser
+mode ends with its page. Shared-memory mode cannot reattach after UI exit.
+
+## Drivers, controls and files
+
+Default native builds include CPAL+midir and native JACK audio/MIDI. The application
+and Host Manager default to CPAL, or JACK in a JACK-only build; the standalone host
+defaults to Dummy. Driver-free builds use Dummy. Lua controller MIDI remains client-local.
+JACK connects directly to the JACK server; CPAL's JACK API is a separate CPAL selection.
+Unusable device settings fall back to Dummy with a visible warning and do not
+overwrite the saved preference.
+
+**Settings → Audio** selects the preferred startup driver and can request a
+confirmed live switch on a native host. The confirmation describes interruption,
+conversion and stopped transport. Cancellation leaves runtime and saved preferences
+unchanged. Saving preferences alone still changes only future startup behavior.
+In Host Manager, **New host → Audio driver → JACK** configures the client-name
+hint. Audio/MIDI ports follow the tracks and buses in the session; connections are
+managed in the application's connection dialog or a JACK patchbay. The JACK server
+supplies sample rate and buffer size. No profile files are required.
+
+Both native launch executables accept the same audio overrides:
 
 ```sh
-cargo run -p shoopdaloop -- --tracing
+shoop_host --audio-driver jack --jack-client-name Studio
+shoopdaloop --audio-driver jack --session-transport socket
 ```
 
-Add detailed engine instrumentation when needed:
+`--audio-driver` accepts `dummy`, `cpal`, or `jack`. `--jack-client-name` overrides
+the chosen JACK profile for this launch only. For `shoop_host --config FILE`, flags
+override the JSON driver configuration. Explicitly selecting a driver omitted from
+the build fails with a diagnostic. Audio overrides cannot be used when attaching to
+an existing host. `--help` lists the available options.
 
-```sh
-cargo run -p shoopdaloop -- \
-  --tracing \
-  --tracing-engine-detail
+The JACK JSON configuration contains only the client-name hint:
+
+```json
+{"driver":{"Jack":{"client_name":"Studio"}}}
 ```
 
-`--tracing-engine-detail` requires `--tracing` and increases callback overhead and capture volume. Abort, fatal signals, forced termination, OOM, and power loss cannot finalize an in-process trace.
+Fixed audio/MIDI port lists and startup connection pairs have been removed from
+settings, Host Manager, CLI and JSON profiles. Obsolete JSON fields are rejected.
+Connections are persisted in the session through dynamically published ports.
 
-On first run this starts the first available native engine in JACK, CPAL, then dummy/offline preference order with a stereo **Master**. Browser runs use Web Audio unless explicit offline mode is requested. Fresh sessions connect Master to the first complete preferred playback group reported by the active driver when one is available. The bottom bar's **buses** button opens a resizable mixer pane that supports adding named mono/stereo/multichannel buses, confirmation-gated removal (including Master), and persisted visual-only horizontal drag ordering. Each mixer strip provides vertical post-sum output meters, a vertical volume fader, mute, and stereo-only balance without creating an implicit route. Open **Settings** and select **Audio** to configure every driver family supported by the build and currently discovered JACK/CPAL devices, then use **Switch** for a confirmation-gated runtime change. The warning identifies the resolved source and target rates; a changed rate explicitly resamples all loop audio, exact MIDI, lengths, offsets, preplay, ring-buffer durations, and cycle timing through the session resampler. Successful switches are saved for the next launch, while unavailable saved drivers fall back to dummy with a diagnostic without overwriting the preference. Native MIDI controller discovery uses the host MIDI service. Select **Scripts** to manage scripts discovered from the external built-ins tree or path-based user scripts. This is the only script-management dialog. The packaged default is `builtins` beside the executable on Linux/Windows and `Contents/Resources/builtins` on macOS. Change the global location or use **Rescan built-in scripts** to reconcile additions, changes, and removals without restarting. New identities are disabled until enabled; dynamic identity toggles and ordered user path/enabled entries are preserved after **Save**. The tab groups scripts by kind in collapsible tables with runtime-only icon controls for start/restart, stop, and reload. Built-in groups start expanded; the Example scripts group starts collapsed and exposes bundled examples such as `dialogs.lua` for on-demand execution. Separate per-script windows show Markdown documentation extracted from each Lua source's leading comment block, logs, callbacks/timers, MIDI connections, dropped messages, and failures.
+Capacity changes apply at host startup. Live native driver switching preserves
+supported session content and public identities; failure restores the prior driver
+or reports an explicit fatal recovery failure. Preference-save errors keep the new
+driver active and offer retry. Attached hosts save their own startup preference,
+independently of the client's local settings. See the
+[switching contract](../../../docs/native_session_recovery/audio-driver-switching.md)
+for supported drivers, resource limits and recovery semantics.
+The authoritative capability checks refuse remaining unsupported operations.
 
-Packaged native archives carry a pinned Carla runtime. Source builds need no Carla SDK and report Carla processors unavailable when no runtime can be loaded. `--probe-carla-native` validates the runtime without starting the GUI and `--probe-carla-native-ui` exercises every external UI lifecycle; `SHOOP_CARLA_NATIVE_LIBRARY` and `SHOOP_CARLA_RESOURCE_DIR` select an exact development/test runtime and must be absolute paths.
+Audio/MIDI click generation and insertion are supported. Audio clicks can be
+previewed through the client's native/Web Audio System output or through Master
+on the RT host, including an attached host. Master preview follows the bus's
+gain, balance, mute and output routes. P15 is complete; see the
+[preview contract and completion evidence](../../../docs/native_session_recovery/preview.md).
 
-The **Add Track** dialog offers **Regular**, channel-free **Trigger**, and **Dry + Wet**. Native capabilities advertise External, **Built-in FX**, and **Built-in Synth**; builds with `native-fx` also advertise Carla Rack, Patchbay, and Patchbay 16x. Built-in FX is a matching mono/stereo/N-channel rack powered by [FunDSP](https://github.com/SamiPerttu/fundsp), with one required MIDI input. Its fixed order is Compressor, Drive, three-band EQ, Chorus, Tremolo/Flanger/Phaser Modulation, and Room/Hall/Plate Reverb. Each stage is independently bypassable without running disabled effect DSP. The embedded editor exposes the rack, FunDSP attribution, and learn-only absolute MIDI CC mappings for continuous controls; toggles/types are not MIDI targets and notes are ignored. Built-in Synth has a fixed two-dry/two-wet/one-MIDI shape and ignores dry audio samples. External tracks expose dry input/send and wet return/output ports in **Connections**; hosted processors keep FX endpoints internal and expose dry inputs, wet outputs, and dry MIDI when supported. The default-on top-bar **Auto-arm track inputs** control monitors each input-capable track one cycle before a script-composite child records or replaces and through capture completion. It restores only tracks it enabled, permits simultaneous demanded tracks independently of exclusive-input mode, and intentionally does not claim sample-exact switching. The all-tracks dialog also exposes **Global FX Control MIDI In**: supported control traffic fans out to MIDI-capable FX without recording, automation, or waking sleeping DSP; inactive chains retain mapped values until normal processing resumes, with bounded restore under saturation. Mappings remain processor-owned, and dual routing is additive. Built-in Synth opens an embedded preset editor with Panic, additive reverb/chorus sends, MIDI Learn, and clickable OxiSynth attribution. It forwards only CC 1 modulation, CC 11 expression, CC 64 sustain, pitch bend, and supported non-CC note/pressure messages to OxiSynth; other CC and bank/program traffic is filtered after MIDI Learn observes it.
+Direct audio/MIDI/trigger tracks, primitive loop controls, shared musical selection,
+targets/policies, supported track/bus controls, routes/connections, piano MIDI and
+bounded waveform/MIDI detail reads are available. Configured track/loop/channel/media
+pools are prepared at startup; exhausted capacity produces a refusal.
+Regular and explicit Play/Stop/Record composite arrangements support public Lua
+composition, nesting, editor operations, automatic monitoring and socket recovery.
+Their prepared frame timeline continues through source changes and UI loss.
+Replacing/dry-wet events remain gated under P05/P06/P07; full P03 remains open.
 
-Application Lua sources are not compiled into the native binary. Packaged startup discovers the complete external `builtins` tree, so it does not depend on the source checkout. User-file reads and settings writes stay in this composition root. Session scripts are staged as independent Lua/Markdown/PNG bundles before transactional commit and round-trip in ``.shoop`` without machine paths.
+Core session save/load and standalone WAV, loop-audio, exact-MIDI and Standard MIDI
+import/export use the session service. Save while playing is supported; active or
+scheduled recording refuses without stopping it. Load starts restored loops stopped
+and asks before resampling or retiming to the prepared sample rate and quantum.
+Live length-changing imports retime retained media and sync dependents in one
+atomic family cut; other playback, recording and controls remain active. Source
+files and the prepared device format are unchanged. Unsupported
+FX/dry-wet/session-script documents and buses exceeding prepared limits refuse as a whole. Composite
+files preserve authored event IDs, the original basis and frozen frame geometry.
+Audio mapping, channel
+selection, optional import length changes and SMF loss warnings remain explicit.
+Native output replaces its target atomically; browser completion means download
+handoff. Limits and supported fields are in the
+[persistence contract](../../../docs/native_session_recovery/persistence-contract.md).
+Full feature parity remains tracked by the ledger.
 
-The Shoop Lua API is versioned at major/minor ``1.6``. Every script must begin its Shoop API use with ``shoop_announce_api_version(1, 6)``; equal-major scripts with an equal or older minor run, while different majors, newer minors, missing calls, and malformed/repeated calls are cancelled before versioned side effects. The `shoop_control` module exposes buses in ascending stable-ID order, independent of visual order, with linear gain, fader-position, stereo balance, and mute getters/setters using the same authoritative application/backend path as the UI; Master is index `0` while it exists. Scripts may require ``shoop_dialog`` to create any number of named simple or paged windows containing portable rich text, Markdown with callback-backed links, file-backed Markdown, and optional-callback buttons. Files can be loaded only from paths below the Lua script's directory, either directly through ``shoop_file`` or with ``shoop_dialog.markdown_file``. When definitions are active, the top bar shows one count-bearing **Script Dialog(s)** menu; it is hidden when none exist. Scripts can request opening at startup or from callbacks; users control closing, reopening, and page selection until the owning script stops. See ``../../../docs/lua_dialog_api.md``.
+The Scripts tab manages external built-ins, examples, native user files and run-once
+Lua sources. Script source export is available. Lua reads confirmed state; a write
+becomes visible on a subsequent confirmed pump. VM, timers, controller connections,
+dialogs and file/resource handling stay in the UI. See [Lua dialogs](../../../docs/lua_dialog_api.md).
+Session script ownership conversion/resource persistence remains in the parity ledger.
 
-## Application settings
+Source builds use a sibling `SHOOP_SRC_TREE` marker to locate built-ins. Native
+packages omit it and carry built-ins beside the executable on Linux/Windows or in
+`Contents/Resources` on macOS. `shoop_host` ships beside the UI executable, including
+inside `Contents/MacOS`. `shoop_host_manager` ships beside both executables. The macOS
+archive also provides **ShoopDaLoop Host Manager.app**; Windows includes a manager
+shortcut in the extracted folder. Linux includes `shoop_host_manager.desktop` and
+`icon.png` for installation into the desktop applications/icon directories, with
+the executables on `PATH` and the icon installed as `shoopdaloop.png`. Keep the
+three executables together when installing. On macOS, keep both app bundles
+together, for example by copying both to Applications.
+Carla runtime payloads and old worker/worklet payloads are
+not shipped; their sources/recipes and behavioral fixtures are preserved for parity.
 
-Choose **Settings** from the main menu to edit application-wide preferences. The Audio tab retains an independent configuration for dummy, JACK, and CPAL+midir; ordinary Save stores profiles without changing the running backend, while Switch preflights, confirms, transactionally restores the session, and only then updates the preferred startup driver. In `native-fx` builds, the **Carla** tab selects `in_process` (default) or one supervised `subprocess` per chain. This global machine preference is validated and applied before native backend construction on the next launch; Save does not migrate running chains, and the value is never session data. The packaged executable also serves as its hidden Carla worker before GUI startup.
+## Runtime profiling
 
-Carla Native UI callbacks are serviced on the application main thread, separately from DSP processing, at a bounded UI cadence. A missed processing deadline produces silent wet output for that block and an amber **Degraded** state while Shoop automatically resynchronizes; the next successful block returns the processor to **Running**. Deadline and stale-completion totals are shown in the FX tooltip. Red **Crashed** is reserved for an unrecoverable plugin, protocol, or worker failure and offers explicit recovery; normal FX clicks only show or hide the UI. `--probe-carla-native-ui` processes audio continuously while opening, idling, hiding, and reopening every bundled Carla UI.
+The backend status LED panel provides **Profiling…**, below **Host Manager…**.
+Its dedicated window has an immediate persisted on/off switch, overall DSP load
+bar, and Node / Avg / Worst / Stddev table in µs or % of the fixed quantum budget. Every graph rebuild resets the
+interval. Xruns automatically retain bounded recent timing while profiling is on;
+Graph and Table tabs share Live/Latest xrun selection. The graph shows measured
+cumulative output readiness; xrun callbacks/ticks can be inspected in its timeline. See the [profiling guide](../../../docs/runtime_profiling.md)
+for timing semantics, overhead measurements and browser clock availability.
 
-The track defaults control topology, audio channels, MIDI, default playback, latency values, and the output bus name used the next time the Add Track dialog opens. The factory output bus is `Master`. Equal-width tracks map one-to-one and mono tracks fan out to every channel; missing or incompatible buses leave the new track unconnected. New tracks never connect directly to system outputs by default. Dry+wet tracks may default ordinary actions to wet playback or dry playback through live effects; other track types always use regular playback. Defaults do not alter existing tracks, an Add Track draft that is already open, or `.shoop` session data. **Appearance** provides a **UI size** slider displayed as a percentage; moving it only edits the draft, while **Save** applies and persists the size of text and controls. Every settings tab uses **Save**; **Cancel** or closing the dialog discards unsaved preference edits. Driver profiles are saved for future launches; **Switch audio driver** explicitly confirms and applies a runtime driver change. Track creation and Track defaults group recording alignment and processor latency under **Advanced timing**, initially collapsed unless nonzero timing values need attention. Missing scale settings default to 1.25 when the detected screen's shortest side is at most 800 UI points and 1.3 otherwise; a stored value always wins. The dialog keeps edits in a draft until **Save**; **Cancel** or closing it discards the draft, and reset actions restore registered defaults.
+## Output buses
 
-Native builds store application settings in `settings.json` below the OS configuration directory resolved using the retained `org` / `ShoopDaLoop` / `ShoopDaLoop egui` compatibility identity. The dialog displays the authoritative resolved path. Browser builds use origin-scoped `localStorage` key `org.shoopdaloop.egui.settings`; direct-file persistence is browser-policy-dependent and must not be assumed to carry across URLs or origins.
+The mixer supports ordinary named buses, persisted display order, gain/mute,
+stereo balance and per-channel meters. The startup pool defaults to eight buses
+with up to eight channels each; Audio settings configure the prepared count and
+width for the next start. The add dialog uses the running host's negotiated limits.
+Master is the default stereo bus and can be removed. Zero-bus sessions save/load
+normally; New Session creates a fresh default even after every bus was removed.
+Track defaults map matching widths one-to-one and mono to every destination
+channel; absent/incompatible names leave a track unconnected. Explicit bus and
+direct system routes coexist. Lua bus indices follow stable logical order rather
+than mixer drag order, including after save/load. Built-in bus FX uses the
+negotiated FX width and shared track/bus instance budget. Carla is out of scope.
 
-Missing settings use stereo/MIDI-off defaults. Invalid known values use their defaults with a warning. Malformed, unreadable, or unsupported-version documents are not overwritten automatically; use the explicit replacement action after reviewing the diagnostic. The application never imports predecessor settings formats. See `../../../docs/settings_format_v1.md` for the format, locations, migration boundary, and recovery contract.
-
-## Hosted browser audio
-
-Install the Rust target and [Trunk](https://trunkrs.dev/):
+## Browser
 
 ```sh
 rustup target add wasm32-unknown-unknown
 cargo install --locked trunk --version 0.21.14
-```
-
-Serve the application from localhost:
-
-```sh
+cargo install --locked wasm-pack --version 0.15.0
 cd src/rust/shoopdaloop
 trunk serve --open
 ```
 
-Multirealm Perfetto tracing uses transferable buffers and requires no
-cross-origin isolation. Build and serve the hosted output normally:
+Audio needs an explicit microphone or output-only enable gesture. Web MIDI has a
+separate permission action. The app client, Lua and service pump cooperatively on
+the main thread; only the prepared RT engine renders in the AudioWorklet. File
+codecs run in a dedicated client Worker so decoding/encoding does not block that
+service. `offline` disables the session engine; the retired `worker`
+mode produces a diagnostic. Audio/MIDI access depends on browser secure-context and
+permission policies. Physical port inventory is fixed at engine preparation; reload
+when new MIDI endpoints need engine ports. Same-page UI recovery is not provided.
+
+Hosted bundles carry external built-ins, the RT worklet and the client codec module.
+Release packaging also embeds them in a single HTML file, subject to browser restrictions on `file:` URLs.
+
+## Verification
 
 ```sh
-trunk build
-cd ../../..
-python3 scripts/serve_web.py src/rust/shoopdaloop/dist --port 8080
-```
-
-The `browser_tracing_smoke.mjs` harness waits for the active Worker or
-AudioWorklet trace to deliver more than 8,192 records before saving. Rebuilt
-AudioWorklets must meet this threshold in their new segment. A 60-second capture
-deadline saves the available trace and reports the received record count on
-failure; dropped records and import errors remain CI failures.
-
-The same startup options are available as query parameters. For example, `?session=https%3A%2F%2Fexample.com%2Fdemo.shoop&force-url-session=1` fetches that trusted startup URL without confirmation. URL sessions opened later from the application still require confirmation.
-
-For reliable browser behavior, use HTTPS or `localhost`, which browsers treat as a secure context. The browser permissions dialog opens at app startup, reports exceptional audio, microphone, and Web MIDI permission states, and can be reopened from **Settings → Audio**. Click **Enable microphone audio** to create one `AudioContext`, request the default microphone, and configure microphone and destination channels as visible host ports around the AudioWorklet. Click **Enable output-only audio** to skip microphone capture; destination host ports remain available while capture inventory is empty, and microphone access can be requested later from the dialog. Click **Enable Web MIDI + SysEx** independently to request MIDI and SysEx access. Granted capabilities remain visible as disabled green **Granted** buttons. Permission denial, unsupported APIs, and driver failure leave the application responsive and expose truthful retry or unavailable state.
-
-The optional single-file HTML embeds the application and AudioWorklet Wasm modules, the worklet script, and the complete built-ins catalog/tree. It may be opened directly through `file:` and attempts both output-only and microphone modes without rejecting the URL. Browser security and media-permission behavior for local files varies, so HTTPS or `localhost` remains the portable option. Both physical-audio modes still require an explicit click because of browser autoplay policies.
-
-The browser requests echo cancellation, noise suppression, and automatic gain control off, but the browser may negotiate different settings. The engine runs at the context's actual sample rate and render quantum. The Connections dialog has a Tracks tab showing System inputs → Tracks → either Buses or System outputs and a Bus outputs tab showing Buses → System outputs. The destination toggle is presentation-only and never displays buses and system outputs simultaneously. Negotiated endpoints include `webaudio:capture_N`, `webaudio:destination_N`, and stable `webmidi:source|sink:<MIDIPort.id>` host ports. External ports remain grouped by client/device and application ports by track/script owner; ShoopDaLoop-owned host rows are omitted from the outer system columns. Audio, MIDI, and track filters reduce the overview without changing routes. Audio and MIDI endpoint labels, connectors, and routes use consistent type colors instead of `A`/`M` label prefixes, with explicit type names retained in hover help. Drag from a source connector to a compatible sink to connect, or click a user-managed connection line to disconnect. Script-owned autoconnections are visible but not editable here. Audio and track-MIDI connection commands mutate authoritative worklet routes. Web MIDI input is assigned to frame zero of the next available quantum and output preserves engine order with browser scheduling latency; sample-exact timing is not claimed. All routed audio tracks sum with final clipping to `[-1, 1]`; input monitoring defaults off. See `../../../docs/port_model.md` and `../../../docs/web_midi_contract.md`.
-
-The browser renders the same Regular/Dry + Wet form and advertises **Built-in FX** and **Built-in Synth** from the AudioWorklet-backed processor catalog. They use the same processor topology rules, embedded editors, MIDI Learn, and session state as native builds; Built-in FX may have N internal channels while the physical Web Audio device boundary remains stereo. Capture/destination ports are not presented as an External processor. Loading External, Carla, or another unavailable processor fails capability validation before worklet mutation and retains tracks, media, routes, and callback progress. Built-in FX rack state/assignments and Built-in Synth preset, sends, and MIDI assignments transfer unchanged between browser and native builds.
-
-Browser recording storage is hard-bounded per channel to 120 seconds at the actual sample rate. Its full reserve is prepared on the worklet control path when a loop is armed for recording, so dormant loop slots do not exhaust Wasm memory. Exhaustion stops further channel recording work and is reported in diagnostics instead of growing Wasm memory in the render callback. Unexpected render-time memory growth is reported as a warning and the worklet rebinds its audio views without stopping the backend.
-
-The browser application embeds omniLua and Shoop's host API modules, but no application scripts. It fetches `builtins/catalog.json`, validates declared sizes and SHA-256 values, then fetches external Lua/Markdown/PNG files into isolated immutable bundles. The Scripts tab persists dynamic identity toggles in `localStorage`, supports catalog rescan/reconciliation, and keeps path-based startup scripts native-only. Native and browser builds can load a UTF-8 `.lua` file through the run-once picker or OS drag and drop after explicit confirmation. Native Wayland drag and drop is unavailable until winit ships Wayland file-drop support; the picker remains available. Run-once sources remain restartable in memory, are independent of session replacement and serialization, and disappear at app shutdown. Loading another version with the same source name stops active matching versions and retains each version under a unique display suffix. Source-bearing `.shoop` scripts use the same syntax-check/transaction/save path as native builds. API-version rejection and `shoop_dialog` definitions/opening/button callbacks use the same application-owner implementation and ordinary application windows as native; no browser popup API is used.
-
-## Loop details and on-screen MIDI piano
-
-Touch mode can be toggled in the Appearance settings. Browser builds default it on when the device has no hover capability; native builds default it off. It keeps each loop's play, record, and stop controls visible, disables their hover-only action variants, and retains the stationary long-touch context menu. The bottom bar has **details**, **piano**, and **buses** buttons selecting one resizable bottom pane. For one selected primitive loop, **details** shows existing audio waveforms followed by a read-only piano-roll lane for each MIDI channel. MIDI lanes display note pitch, timing, duration, loop region, and playback position. Audio and MIDI lanes share one zoom control and frame range; horizontal dragging any lane pans every lane together. MIDI-only and mixed loops are both supported on native and browser builds. Non-note controller, bend, pressure, program, and SysEx messages remain preserved but are not drawn by this basic view. A loop's context menu can clone it into the first empty slot below it. Dropping one loop onto another offers composing it at the end or alongside the latest-starting block, including between tracks. Drops within the same track also offer cloning into the target slot or swapping their slot order. Composition converts a primitive target into a regular composite, while cloning over existing data requires confirmation. Loops can also be dropped on the white insertion lines between rows to reorder them within a track. Main tracks can be dragged horizontally onto insertion lines to reorder them.
-
-For one selected regular or script composite loop, **details** instead shows its timeline. Main tracks appear as horizontal rows, scheduled source loops appear as named rectangles, and overlapping loops on the same track stack into additional swimlanes. The timeline supports bounded horizontal zoom plus horizontal and vertical scrolling. A primitive loop can be changed into an empty regular composite with **Convert to composite** in its context menu; this intentionally clears its recorded media. The empty timeline displays a bordered drop area and instructions. Drag any loop widget onto the displayed composite timeline to place it at the highlighted sync-cycle column without using a MIDI controller or Lua script. A pointer tooltip previews the source track and starting cycle; composite sources retain their own source tracks. Dropping on the ruler, track labels, or the target composite itself is rejected with guidance. Parallel-drop gestures, removal, resizing, duplication, and mode/kind editing remain deferred.
-
-The primitive-loop details toolbar groups zoom, editing tools, channel scope, and grid controls. **Set start** and **Set preplay** can affect the hovered channel or all channels; all-channel start edits preserve relative channel offsets. **Set end** always changes the shared loop length. A snapped white hover marker previews the exact edit in each affected lane. Black indicates no stored content and grey indicates stored content, including silent audio and event-free MIDI time; playback and preplay colors overlay the stored interval. Moving a boundary keeps the viewport scale and grid reference fixed. Grid divisions use the Sync loop length when available; with Sync empty, they use the edited loop's initial length or stored content duration and keep that unit fixed during edits. The grid initially uses each channel's start when the loop is selected; **Re-anchor grid to current starts** explicitly changes that reference. **Grid: None** disables grid lines and snapping. Wheel and pinch zoom keep the frame under the pointer fixed, horizontal scrolling and middle/right dragging pan, and **Fit** shows stored content and the loop range with a margin. Dragging a lane's bottom edge resizes it.
-
-The piano covers MIDI notes 0–127 in a horizontally scrollable keyboard, initially centered on middle C (MIDI 60/C4); every C key carries its scientific-pitch octave marking from C-1 through C9.
-
-Pointer press/release sends channel-1 note-on at velocity 100 and zero-velocity note-off. The application fans each press out once to every track whose input monitoring is enabled (input mute is off) and which owns a MIDI input port. Releases follow the tracks that received the press, including when monitoring changes while a note is held; pane close/switch and pointer/focus cancellation release held notes. The pane shows the current destination names, alongside arrows pointing toward receiving tracks. With no destination, it explains how to add a MIDI-enabled track and turn on input monitoring. The top-bar MIDI panic button sends All Sound Off on all 16 channels to those monitored MIDI tracks and clears held piano-note state.
-
-Piano messages enter ordinary track MIDI input processing at frame zero of the next available engine process iteration. This soft timing is not sample-exact, but the path is driver-independent: native dummy/offline, JACK, and CPAL+midir need no physical MIDI source, while Web Audio and browser offline mode need no Web MIDI permission or host route. The piano creates no host endpoint and changes no connection or session setting.
-
-## Session and loop files
-
-The main menu saves and loads `.shoop` major-version 1 sessions with session document version 13. Loop context menus import/export exact `.shoop-audio` and `.shoop-midi`, float WAV, and standard MIDI. Audio import requires explicit destination mapping; audio export presents an ordered channel selection. Direct, dry, and wet role labels are preserved, including dry-only, wet-only, mixed, and reordered exports; exact/standard MIDI targets dry MIDI. Different-rate assets require confirmation before deterministic audio/MIDI/timing conversion. Predecessor session/media formats are deliberately unsupported.
-
-Right-click a primitive loop and choose **Generate click track...** to create embedded audio or MIDI click content with primary/secondary sounds, fractional tempo, click count, odd-click delay, and loop-length fitting. Audio preview is non-mutating. The **Preview** group contains **Master** (the app's current audio driver and Master bus), **System** (Rodio's default system playback device), and **Stop**. The dialog does not display preview-state text. Master and System are independently disabled when unavailable; the CPAL-free build disables System. Stop is enabled while a preview is queued or playing. Master previews mix with ongoing playback, also run while loops are stopped, and respect Master effects, gain, balance, mute, and output connections. Dummy/offline mode is treated normally. **Stop**, closing the dialog, starting another preview, loading a session, or switching audio drivers stops the current preview. There is no preview-output preference, and preview buffers are never saved in a session. Hosted browser preview uses the running Web Audio context; explicit offline mode creates a bounded fallback context subject to browser autoplay policy. Generated content persists as ordinary loop media without storing the dialog draft.
-
-Default build with both preview outputs available:
-
-![Native click preview controls with system output available](../../../docs/images/click-preview-system.png)
-
-CPAL-free build during Master-bus preview:
-
-![Master preview remains available without CPAL or Rodio](../../../docs/images/click-preview-without-cpal.png)
-
-Native picker reads and atomic temporary-file replacement run outside the application actor. Browser pickers use asynchronous upload/download file handles; ordinary hosted and direct-file artifacts do not require the File System Access API. Session/media and generated preview bytes stay outside immutable GUI snapshots. See `../../../docs/session_format_v1.md` for formats, limits, timing, and recovery behavior.
-
-## Builds and artifacts
-
-Trunk builds the UI and dedicated worklet with matching profiles:
-
-```sh
-cd src/rust/shoopdaloop
-trunk build                 # debug UI and worklet
-trunk build --release       # release UI and worklet
-python3 build_single_file_app.py dist
-```
-
-CI application archives can also be produced locally from already-built outputs:
-
-```sh
-# From the repository root after a native debug build.
-python3 src/rust/shoopdaloop/package_artifacts.py native \
-  --platform linux --arch x86_64 --profile debug \
-  --binary target/debug/shoopdaloop --carla-runtime /path/to/normalized-carla \
-  --output-dir artifacts
-
-# From src/rust/shoopdaloop after a Trunk release build.
-python3 package_artifacts.py web \
-  --profile release --dist dist --output-dir ../../../artifacts
-```
-
-Native CI outputs are unsigned application archives rather than installers. They include the normalized, manifest-verified Carla runtime component; `scripts/carla_runtime.py` creates and verifies that component from the pinned upstream payload. The hosted web archive supports physical browser audio and contains the complete UI, external built-ins catalog/tree, shared raw Wasm host bridge, AudioWorklet, and Worker assets. The separately generated release HTML embeds those executable assets and the built-ins tree, and attempts physical output or microphone audio when directly opened from `file:`. Open it with `?offline=1` (or `?worker=1`) to select the remote Worker dummy instead. It runs the same import-free Wasm engine and production protocol/client as the AudioWorklet, uses 48 kHz/128-frame realtime-paced quanta, and requests no physical audio permission. Debug web builds produce only the hosted archive to avoid materializing their large symbol-bearing Wasm modules as base64 strings in a browser page.
-
-`raw_wasm_host.js` is the single owner of module instantiation, ABI buffers, command/response bytes, process calls, memory-view recovery, and destruction. The AudioWorklet adapter supplies physical callbacks. The Worker adapter has isolated engine/timer/port ownership and supports realtime-paced production operation plus explicit and cooperative modes only through an explicitly transferred fixture-control port. Fixture batches and realtime catch-up are bounded and yield to command/shutdown delivery.
-
-Generated `dist`, worklet, staging, and artifact files are not committed.
-
-## Cross-target CI
-
-`.github/workflows/build_and_test.yml` has one eight-cell matrix: Linux x86_64, Windows x86_64, macOS arm64, and WebAssembly, each in debug and release. Every cell builds, packages, uploads, and then tests. Native cells upload unsigned application archives, both web cells upload a complete hosted bundle archive, and web release additionally uploads a core-only single-file HTML artifact. Linux debug remains the authoritative complete native suite and coverage source. Web debug runs the complete shared suite in pinned Node 22.22.2 on every PR; Chromium runs when Wasm harness, Worker, host, worklet, or client paths change. Scheduled and manual workflows also execute optimized Node and Chromium suites. Raw logs, aggregate JSON, and per-package JUnit are retained as CI artifacts.
-
-For fast workflow iteration with `nektos/act` 0.2.89 or newer, run the Linux and web debug cells on a suitable self-hosted development environment:
-
-```sh
-act pull_request -W .github/workflows/build_and_test.yml \
-  -j build_and_test --matrix target:linux --matrix profile:debug \
-  -P ubuntu-24.04=-self-hosted --artifact-server-path .act/artifacts
-
-act pull_request -W .github/workflows/build_and_test.yml \
-  -j build_and_test --matrix target:web --matrix profile:debug \
-  -P ubuntu-24.04=-self-hosted --artifact-server-path .act/artifacts
-```
-
-The web command needs Trunk 0.21.14 and `wasm32-unknown-unknown`; the local workflow skips GitHub cache/upload actions and browser/device automation while still building, packaging, validating, and checking dependency isolation. GitHub-hosted runners remain authoritative for uploads, caches, Chrome/Firefox, Windows, and macOS.
-
-## Cross-target test workflow
-
-Install Node 22.22.2, wasm-pack 0.15.0, the repository Rust toolchain, and the `wasm32-unknown-unknown` target. From the repository root:
-
-```sh
-# Complete shared suite in one runtime.
-python3 scripts/run_wasm_tests.py --runtime node --profile dev
-python3 scripts/run_wasm_tests.py --runtime chrome --profile dev
-
-# One package and optional wasm-bindgen name filters for iteration.
-python3 scripts/run_wasm_tests.py --runtime node --profile dev \
-  --package shoop_worklet_client --filter restart
-
-# Attribute policy and parser gates.
+cargo fmt --all -- --check
+RUSTFLAGS='-D warnings' cargo build --workspace
+SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci
+python3 scripts/check_dependency_boundaries.py --scope engine
 python3 scripts/check_shoop_test_usage.py
-python3 -m unittest scripts.tests.test_wasm_test_report
-
-# Explicit failure reproduction; this command must exit nonzero and retain JUnit.
-python3 scripts/run_wasm_tests.py --runtime node --profile ci \
-  --package shoop_wasm_test_support \
-  --feature wasm-test-failure-canary \
-  --filter shared_failure_canary_is_ignored_by_default
+python3 scripts/run_wasm_tests.py --runtime node --profile dev
 ```
 
-Every Rust testcase must use `#[shoop_test]` from `shoop_wasm_test_support`. It runs with per-test Perfetto capture under native nextest and the Node/Chromium Wasm harnesses. Native-only tests use `no_wasm = "reason"`, lifecycle/allocation tests that cannot tolerate an outer trace use `no_trace = "reason"`, and Wasm-only tests use `wasm_only = "reason"`. Each modifier requires a non-empty reason. `SHOOP_TEST_TRACE=off|failure|always` and `--trace` on the Wasm runner select retention. Keep unsupported imports behind narrow target gates.
+The workspace suite includes the isolated `shoop_app_reference` and independent old
+engine fixtures for parity evidence. `shoop_engine/app_backend` in that test command
+is a reference-test feature, never a production frontend dependency.
 
-The engine library's Chromium tests run in a dedicated Worker. CPU-heavy DSP
-tests can then run without blocking WebDriver progress collection on the main
-thread. Per-test capture and the existing runner deadlines still apply.
+The replacement and retained engine libraries' Chromium tests run in dedicated
+Workers. CPU-heavy DSP tests can then run without blocking WebDriver progress
+collection on the main thread. Per-test capture and the existing runner deadlines
+still apply.
 
-The orchestrator discovers package opt-in metadata, builds one profile-specific production worklet artifact, stages hashed assets outside the source tree, and runs each package with `--package-timeout` (600 seconds by default) inside a `--global-timeout` execution budget (3,600 seconds by default). Reports live under `target/wasm-tests/<profile>/reports/<runtime>`. A compile error, missing tool, malformed/truncated output, runner/browser/Worker failure, timeout, zero discovery, count mismatch, test failure, or teardown failure exits nonzero and retains JUnit where a runner log exists.
-
-## Browser verification
-
-Domain, Worker, settings, Web MIDI, lifecycle, and stress behavior belongs in the shared Wasm suite. Packaged-browser CI retains only these irreducible physical AudioWorklet smokes after building artifacts:
+A packaged, windowless canary exercises the actual companion, keyless attach,
+recorded audio/MIDI reads, socket reattachment, and confirmed host cleanup:
 
 ```sh
-cd src/rust/shoopdaloop
-OUTPUT_ONLY=1 node --experimental-websocket browser_smoke.mjs
-SELF_CONTAINED=1 OUTPUT_ONLY=1 \
-  SELF_CONTAINED_PATH=$(find ../../../artifacts -maxdepth 1 -type f \
-    -name 'shoopdaloop-web-wasm32-release-*.html' -print -quit) \
-  node --experimental-websocket browser_smoke.mjs
-xvfb-run -a python3 browser_firefox_smoke.py
+target/debug/shoopdaloop --probe-engine-transport --session-transport socket
+target/debug/shoopdaloop --probe-engine-transport --session-transport shared_memory
+# Separate large-file canaries; the transport canary retains its existing deadline.
+target/debug/shoopdaloop --probe-persistence --session-transport socket
+target/debug/shoopdaloop --probe-persistence --session-transport shared_memory
+# Grab/Replace controls, keyboard/Lua, detached finish and exact file round trip:
+target/debug/shoopdaloop --probe-input --session-transport socket
+target/debug/shoopdaloop --probe-input --session-transport shared_memory
+# Composite Lua/editor, exact recording during client absence and file round trip:
+target/debug/shoopdaloop --probe-composites --session-transport socket
+target/debug/shoopdaloop --probe-composites --session-transport shared_memory
 ```
 
-The Firefox command also requires Selenium and geckodriver. Set `CHROME_BIN` or `FIREFOX_BIN` for non-standard executable paths. These smokes assert only packaged loading, application-to-worklet startup commands, genuine 128-frame callback progress, hosted/self-contained policy, and clean process teardown.
-
-Compiler-only checks from the repository root:
+Browser core workflow after a Trunk build (Chromium and pinned Node 22.22.2):
 
 ```sh
-cargo check -p shoopdaloop --no-default-features --target wasm32-unknown-unknown
-cargo build -p shoop_audio_worklet --target wasm32-unknown-unknown --release
+NEW_ENGINE=1 CHROME_BIN=chromium node --experimental-websocket browser_smoke.mjs
+# After release packaging:
+NEW_ENGINE=1 SELF_CONTAINED=1 CHROME_BIN=chromium node --experimental-websocket browser_smoke.mjs
+python3 browser_firefox_smoke.py --backend new_engine
+# After a release Trunk build, test the >32 MiB file round-trip through the codec worker and AudioWorklet:
+NEW_ENGINE=1 LARGE_MEDIA=1 CHROME_BIN=chromium node --experimental-websocket browser_smoke.mjs
+# Composite public authoring and recording through a blocked browser main thread:
+COMPOSITES=1 CHROME_BIN=chromium node --experimental-websocket browser_smoke.mjs
+COMPOSITES=1 SELF_CONTAINED=1 CHROME_BIN=chromium node --experimental-websocket browser_smoke.mjs
 ```
+
+`SELF_CONTAINED_URL` can point the self-contained smoke at an already served HTML
+URL. Serve a directory containing only that HTML to test its embedded bundle
+independently of hosted assets.
+
+The file canaries compare exact PCM/MIDI after save/load/save, check stopped fresh
+identities, and resume playback. Native file canaries use actual atomic output and
+bounded file input. The socket case also abandons upload/capture and reconciles an
+accepted load without replay. Browser canaries cancel the first output, retry by
+clicking the actual download link, and require a browser-handoff result. The large
+browser case has separate deadlines; normal canary workloads/deadlines are retained.
+
+`--tracing` captures the local UI/control process in Perfetto format; optional
+`--tracing-engine-detail` adds available local instrumentation. External hosts and
+RT worklets do not become traced application-model realms through UI attachment.
+The browser tracing smoke waits for more than 8,192 records from the local UI
+capture. After 60 seconds it saves the available trace and reports a failure with
+the observed record count.
+Forced process termination cannot finalize an in-process trace.
+
+## Host Manager
+
+Run `shoop_host_manager`, or choose **main menu → Host → Host Manager…** in the
+native looper UI. The three native entry points are `shoopdaloop` (looper),
+`shoop_host` (headless host), and `shoop_host_manager` (management GUI).
+The manager runs in its own process without starting audio
+or taking control of a session. Closing the manager leaves hosts and UIs running.
+
+**New host…** configures and starts a detached companion. Set its name and audio
+settings, then Start host. Expand capacity/session defaults, channels/MIDI,
+connection or optional logging when needed. The form uses OS-assigned local ports;
+no profile, key or configuration path is required. Driver and capacity changes
+require a new host/session.
+
+The manager automatically enumerates local host processes and their actual
+listening sockets. Scans run in the background with bounded concurrency. A fresh
+manager rediscovers hosts started through the GUI or CLI; closing
+the manager leaves their processes and sessions running. Exited hosts disappear
+through OS observation. Inspection failures are surfaced separately from exits;
+processes that cannot answer a compatible greeting are not presented as ready.
+
+**Advanced** contains **Connect to address…**, **Import profile…** and
+**Export profile…**. Manual targets exist only for the current manager session.
+Local and manual connections to the same live instance appear once. Remote hosts
+are added explicitly; LAN-wide discovery is outside scope.
+
+Select a host to inspect effective audio state, DSP load, xruns, startup settings
+and diagnostics. The sidebar distinguishes intentional **Dummy audio** from
+**Audio fallback**. **Open UI** is available when the host can accept an attachment
+and has no controller. Socket hosts can reattach; shared-memory hosts can attach
+once. **••• → Stop host…** requests orderly cleanup after confirmation; the server
+refuses this while a controller is live. **Force stop…** is available only for an
+OS-identified local process, requires separate confirmation and terminates without
+session cleanup. Its PID, creation identity and executable are revalidated before
+termination. Remote descriptor PIDs cannot select a local process to kill. Tray
+integration is not included.
+
+Disk logging is opt-in: enable it in **New host…** or pass `--log-file PATH` to the
+host. This writes a rotating file only at the requested path, including
+startup errors. Logs rotate at
+1 MiB with three backups and remain until manually removed. Without `--log-file`,
+host diagnostics go to stderr and no persistent host logs or records are created.
+`RUST_LOG` controls verbosity (default `info`). An explicitly exported local profile
+includes its requested log path; a manually authored profile can set `log_file`.
+The **Logs** tab reads the latest 64 KiB from that explicit path. Remote log files
+stay on the host computer. **Open saved log…** opens only a file explicitly chosen
+by the user. **••• → Copy diagnostics** copies the current report with current process and connection information.
+Success messages dismiss after five seconds without moving the layout; errors stay
+visible until dismissed.
+
+Screenshots from the native manager (800 × 500):
+
+![Configure and start a detached host](../../../docs/screenshots/host-manager-new-host.png)
+
+![Host Manager status and audio details](../../../docs/screenshots/host-manager-status.png)
+
+![Host Manager persistent log viewer](../../../docs/screenshots/host-manager-logs.png)
+
+![Host Manager observing a connected controller](../../../docs/screenshots/host-manager-controller.png)
+
+![Host Manager warning for an audio fallback](../../../docs/screenshots/host-manager-fallback.png)
+
+![Host Manager with no running hosts](../../../docs/screenshots/host-manager-empty.png)
+
+![Advanced connection and profile actions](../../../docs/screenshots/host-manager-advanced.png)
+
+![Explicit local forced termination](../../../docs/screenshots/host-manager-force-stop.png)
+
+The hosted preview canary uses the real codec worker and AudioWorklet, switches
+System → Master → System, checks Master signal, Stop and natural completion, and
+requires unchanged loop media/transport. It can run with output-only permission:
+
+```sh
+PREVIEW_ONLY=1 OUTPUT_ONLY=1 CHROME_BIN=chromium node browser_smoke.mjs
+PREVIEW_ONLY=1 OUTPUT_ONLY=1 PREVIEW_RESUME=reject CHROME_BIN=chromium node browser_smoke.mjs
+PREVIEW_ONLY=1 DENY_FIRST=1 PREVIEW_RESUME=pending CHROME_BIN=chromium node browser_smoke.mjs
+```
+
+`PREVIEW_RESUME=reject` injects a rejected Web Audio resume after suspending the
+actual context. `pending` leaves the resume unresolved to model autoplay gating.
+Both require a visible failure without a false Playing state and a successful
+retry. `DENY_FIRST=1` additionally checks browser microphone denial and retry.
+These flags select acceptance probes; they do not alter production playback.
+
+### Loop timing
+
+The details editor supports single/all-channel start and pre-play tools plus a
+shared loop end. All-channel starts preserve relative channel offsets. Timing
+metadata remains available while recording; length changes refuse during active
+or scheduled recording. Other timing edits preserve capture progress.
+
+Shortening a loop retains raw audio and MIDI for later re-extension and exact
+exports. Save/load preserves independent offsets, capture alignment and pre-play.
+Display coordinates include capture alignment. Audio outside retained storage is
+silent. Scheduled stopped playback can emit retained pickup material before its
+start, with MIDI pickup notes continuing across that boundary.
+
+Periods must align to the host quantum (default 32; browser 128). The editor previews
+a valid effective end. Nonaligned API length requests refuse explicitly; offsets,
+pre-play and raw MIDI timestamps keep frame precision. See the
+[P12 evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/loop-timing.md).

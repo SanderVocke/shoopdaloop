@@ -1,0 +1,167 @@
+diff --git a/configs/devices/arm-softmmu/shoop.mak b/configs/devices/arm-softmmu/shoop.mak
+new file mode 100644
+index 0000000..b473f92
+--- /dev/null
++++ b/configs/devices/arm-softmmu/shoop.mak
+@@ -0,0 +1 @@
++CONFIG_ZYNQ=y
+diff --git a/hw/arm/xilinx_zynq.c b/hw/arm/xilinx_zynq.c
+index b891666..dbd1225 100644
+--- a/hw/arm/xilinx_zynq.c
++++ b/hw/arm/xilinx_zynq.c
+@@ -390,7 +390,7 @@ static void zynq_init(MachineState *machine)
+     create_unimplemented_device("zynq.dma_ns", 0xF8004000, 4 * KiB);
+ 
+     /* System Watchdog Timer Registers */
+-    create_unimplemented_device("zynq.swdt", 0xF8005000, 4 * KiB);
++    sysbus_create_simple("cadence-wdt", 0xF8005000, pic[41 - GIC_INTERNAL]);
+ 
+     /* DDR memory controller */
+     create_unimplemented_device("zynq.ddrc", 0xF8006000, 4 * KiB);
+diff --git a/hw/watchdog/cadence_wdt.c b/hw/watchdog/cadence_wdt.c
+new file mode 100644
+index 0000000..7f55e7b
+--- /dev/null
++++ b/hw/watchdog/cadence_wdt.c
+@@ -0,0 +1,132 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++/* Cadence watchdog register interface used by Zynq-7000 (UG585). */
++#include "qemu/osdep.h"
++#include "qemu/module.h"
++#include "qapi/error.h"
++#include "qemu/timer.h"
++#include "qemu/host-utils.h"
++#include "hw/sysbus.h"
++#include "hw/irq.h"
++#include "hw/qdev-properties.h"
++#include "migration/vmstate.h"
++#include "system/watchdog.h"
++
++#define TYPE_CADENCE_WDT "cadence-wdt"
++OBJECT_DECLARE_SIMPLE_TYPE(CadenceWdtState, CADENCE_WDT)
++struct CadenceWdtState {
++    SysBusDevice parent_obj;
++    MemoryRegion iomem;
++    qemu_irq irq;
++    QEMUTimer *timer;
++    uint64_t frequency;
++    uint32_t mode, control, status;
++};
++static void restart(CadenceWdtState *s)
++{
++    static const unsigned prescale[] = { 8, 64, 512, 4096 };
++    uint64_t count = MAX(1, (s->control >> 2) & 0xfff);
++    timer_del(s->timer);
++    s->status = 0;
++    qemu_set_irq(s->irq, 0);
++    if (s->mode & 1) {
++        uint64_t ns = muldiv64(count * 4096 * prescale[s->control & 3],
++                              NANOSECONDS_PER_SECOND, s->frequency);
++        timer_mod(s->timer, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + ns);
++    }
++}
++static void expired(void *opaque)
++{
++    CadenceWdtState *s = opaque;
++    s->status = 1;
++    qemu_set_irq(s->irq, !!(s->mode & 4));
++    if (s->mode & 2) {
++        watchdog_perform_action();
++    }
++}
++static uint64_t read_reg(void *opaque, hwaddr offset, unsigned size)
++{
++    CadenceWdtState *s = opaque;
++    switch (offset) {
++    case 0: return s->mode;
++    case 4: return s->control;
++    case 12: return s->status;
++    default: return 0;
++    }
++}
++static void write_reg(void *opaque, hwaddr offset, uint64_t value, unsigned size)
++{
++    CadenceWdtState *s = opaque;
++    if (offset == 0 && ((value >> 12) & 0xfff) == 0xabc) {
++        s->mode = value & 0x1ff;
++        restart(s);
++    } else if (offset == 4 && ((value >> 14) & 0xfff) == 0x248) {
++        s->control = value & 0x3fff;
++        restart(s);
++    } else if (offset == 8 && value == 0x1999) {
++        restart(s);
++    }
++}
++static const MemoryRegionOps ops = {
++    .read = read_reg, .write = write_reg, .endianness = DEVICE_LITTLE_ENDIAN,
++    .valid = { .min_access_size = 4, .max_access_size = 4 },
++};
++static void reset(DeviceState *dev)
++{
++    CadenceWdtState *s = CADENCE_WDT(dev);
++    s->mode = 0;
++    s->control = 0x3ffc;
++    restart(s);
++}
++static int post_load(void *opaque, int version_id)
++{
++    CadenceWdtState *s = opaque;
++    qemu_set_irq(s->irq, !!(s->status && (s->mode & 4)));
++    return 0;
++}
++static const VMStateDescription vmstate = {
++    .name = TYPE_CADENCE_WDT, .version_id = 1, .minimum_version_id = 1,
++    .post_load = post_load,
++    .fields = (const VMStateField[]) {
++        VMSTATE_UINT32(mode, CadenceWdtState),
++        VMSTATE_UINT32(control, CadenceWdtState),
++        VMSTATE_UINT32(status, CadenceWdtState),
++        VMSTATE_TIMER_PTR(timer, CadenceWdtState),
++        VMSTATE_END_OF_LIST()
++    },
++};
++static void init(Object *obj)
++{
++    CadenceWdtState *s = CADENCE_WDT(obj);
++    s->timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, expired, s);
++    memory_region_init_io(&s->iomem, obj, &ops, s, TYPE_CADENCE_WDT, 0x1000);
++    sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->iomem);
++    sysbus_init_irq(SYS_BUS_DEVICE(obj), &s->irq);
++}
++static void finalize(Object *obj)
++{
++    timer_free(CADENCE_WDT(obj)->timer);
++}
++static const Property properties[] = {
++    DEFINE_PROP_UINT64("clock-frequency", CadenceWdtState, frequency, 111111111),
++};
++static void realize(DeviceState *dev, Error **errp)
++{
++    if (!CADENCE_WDT(dev)->frequency) {
++        error_setg(errp, "Cadence watchdog clock must be nonzero");
++    }
++}
++static void class_init(ObjectClass *klass, void *data)
++{
++    DeviceClass *dc = DEVICE_CLASS(klass);
++    device_class_set_legacy_reset(dc, reset);
++    device_class_set_props(dc, properties);
++    dc->vmsd = &vmstate;
++    dc->realize = realize;
++}
++static const TypeInfo info = {
++    .name = TYPE_CADENCE_WDT, .parent = TYPE_SYS_BUS_DEVICE,
++    .instance_size = sizeof(CadenceWdtState), .instance_init = init,
++    .instance_finalize = finalize, .class_init = class_init,
++};
++static void register_types(void) { type_register_static(&info); }
++type_init(register_types)
+diff --git a/hw/watchdog/meson.build b/hw/watchdog/meson.build
+index 1537056..a4bacab 100644
+--- a/hw/watchdog/meson.build
++++ b/hw/watchdog/meson.build
+@@ -8,3 +8,4 @@ system_ss.add(when: 'CONFIG_ASPEED_SOC', if_true: files('wdt_aspeed.c'))
+ system_ss.add(when: 'CONFIG_WDT_IMX2', if_true: files('wdt_imx2.c'))
+ system_ss.add(when: 'CONFIG_WDT_SBSA', if_true: files('sbsa_gwdt.c'))
+ specific_ss.add(when: 'CONFIG_PSERIES', if_true: files('spapr_watchdog.c'))
++system_ss.add(when: 'CONFIG_ZYNQ', if_true: files('cadence_wdt.c'))

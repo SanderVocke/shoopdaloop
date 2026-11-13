@@ -1,11 +1,27 @@
+//! Resource bundles and validation support `no_std` with `alloc`. The default
+//! `std` feature adds the global URI registry and native filesystem access.
+#![cfg_attr(not(feature = "std"), no_std)]
+extern crate alloc;
+
+#[cfg(test)]
+extern crate std;
+
+use alloc::borrow::ToOwned;
+use alloc::format;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
+
 #[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
+use alloc::collections::{BTreeMap, BTreeSet};
+use alloc::sync::Arc;
+use core::fmt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::{BTreeMap, BTreeSet};
-use std::fmt;
-use std::sync::{Arc, OnceLock, RwLock};
+#[cfg(feature = "std")]
+use std::sync::{OnceLock, RwLock};
 use thiserror::Error;
 
 #[derive(Clone, Debug, Error, Eq, PartialEq)]
@@ -289,19 +305,23 @@ impl ResourceOrigin {
     }
 }
 
+#[cfg(feature = "std")]
 #[derive(Clone, Debug)]
 pub enum RegisteredResourceProvider {
     Filesystem(std::path::PathBuf),
     Bundle(Arc<ScriptResourceBundle>),
 }
 
+#[cfg(feature = "std")]
 static RESOURCE_REGISTRY: OnceLock<RwLock<BTreeMap<(String, u64), RegisteredResourceProvider>>> =
     OnceLock::new();
 
+#[cfg(feature = "std")]
 fn resource_registry() -> &'static RwLock<BTreeMap<(String, u64), RegisteredResourceProvider>> {
     RESOURCE_REGISTRY.get_or_init(|| RwLock::new(BTreeMap::new()))
 }
 
+#[cfg(feature = "std")]
 pub fn register_resource_provider(
     origin: &ResourceOrigin,
     provider: RegisteredResourceProvider,
@@ -337,6 +357,7 @@ pub fn register_resource_provider(
     Ok(())
 }
 
+#[cfg(feature = "std")]
 pub fn unregister_resource_scope(scope: &str) {
     resource_registry()
         .write()
@@ -344,6 +365,7 @@ pub fn unregister_resource_scope(scope: &str) {
         .retain(|(registered, _), _| registered != scope);
 }
 
+#[cfg(feature = "std")]
 pub fn read_resource_uri(uri: &str) -> Result<Option<Arc<[u8]>>, String> {
     let Some(rest) = uri.strip_prefix("shoop-script-resource://") else {
         return Ok(None);
@@ -406,6 +428,7 @@ fn percent_encode_path(path: &NormalizedRelativePath) -> String {
     encoded
 }
 
+#[cfg(feature = "std")]
 fn percent_decode_path(encoded: &str) -> Result<String, String> {
     if encoded.is_empty() {
         return Err("script resource URI path is empty".to_owned());
@@ -439,6 +462,7 @@ fn percent_decode_path(encoded: &str) -> Result<String, String> {
     String::from_utf8(decoded).map_err(|_| "script resource URI path is not UTF-8".to_owned())
 }
 
+#[cfg(feature = "std")]
 fn hex_value(byte: u8) -> Option<u8> {
     match byte {
         b'0'..=b'9' => Some(byte - b'0'),
@@ -479,7 +503,7 @@ pub fn sha256(bytes: &[u8]) -> String {
         .collect()
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "std", not(target_arch = "wasm32")))]
 #[derive(Debug, Error)]
 pub enum ScanError {
     #[error("could not resolve script root {path}: {source}")]
@@ -495,7 +519,7 @@ pub enum ScanError {
     EntryLimit(usize),
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "std", not(target_arch = "wasm32")))]
 pub fn scan_builtin_directory(
     root: &std::path::Path,
     generation: u64,
@@ -614,7 +638,7 @@ pub fn scan_builtin_directory(
     })
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "std", not(target_arch = "wasm32")))]
 pub fn capture_filesystem_bundle(
     script_path: &std::path::Path,
     current_source: impl Into<Arc<[u8]>>,
@@ -769,7 +793,7 @@ pub fn capture_filesystem_bundle(
     ScriptResourceBundle::new(entrypoint, resources, limits).map_err(ScanError::from)
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "std", not(target_arch = "wasm32")))]
 fn read_file_limited(
     path: &std::path::Path,
     declared_bytes: u64,
@@ -795,7 +819,7 @@ fn read_file_limited(
     Ok(bytes)
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "std", not(target_arch = "wasm32")))]
 fn collect_regular_files(
     root: &std::path::Path,
     directory: &std::path::Path,
@@ -1083,6 +1107,7 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    #[cfg(feature = "std")]
     fn registry_is_generation_scoped_and_rejects_malformed_uris() {
         let bundle = Arc::new(
             ScriptResourceBundle::source_only("main.lua", Arc::<[u8]>::from(&b"one"[..])).unwrap(),
@@ -1121,7 +1146,7 @@ mod tests {
         unregister_resource_scope("script-1");
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(feature = "std", not(target_arch = "wasm32")))]
     #[shoop_wasm_test_support::shoop_test]
     fn filesystem_registry_and_uri_parser_cover_success_and_error_boundaries() {
         let temporary = tempfile::tempdir().unwrap();
@@ -1188,7 +1213,7 @@ mod tests {
         unregister_resource_scope("filesystem");
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(feature = "std", not(target_arch = "wasm32")))]
     #[shoop_wasm_test_support::shoop_test]
     fn native_scan_reports_structural_and_resource_limit_failures() {
         let root_file = tempfile::NamedTempFile::new().unwrap();
@@ -1237,7 +1262,7 @@ mod tests {
             .any(|diagnostic| diagnostic.message.contains("aggregate")));
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(feature = "std", not(target_arch = "wasm32")))]
     #[shoop_wasm_test_support::shoop_test]
     fn native_scan_is_recursive_deterministic_and_isolates_bad_utf8() {
         let temporary = tempfile::tempdir().unwrap();
@@ -1263,7 +1288,7 @@ mod tests {
         assert!(catalog.deletions_safe);
     }
 
-    #[cfg(all(not(target_arch = "wasm32"), unix))]
+    #[cfg(all(feature = "std", not(target_arch = "wasm32"), unix))]
     #[shoop_wasm_test_support::shoop_test]
     fn scan_marks_incomplete_directory_enumeration_as_unsafe_for_deletions() {
         let temporary = tempfile::tempdir().unwrap();
@@ -1281,7 +1306,7 @@ mod tests {
             .any(|diagnostic| diagnostic.message.contains("directory symlinks")));
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(feature = "std", not(target_arch = "wasm32")))]
     #[shoop_wasm_test_support::shoop_test]
     fn conversion_captures_nested_supported_companions_and_current_source() {
         let temporary = tempfile::tempdir().unwrap();
@@ -1312,7 +1337,7 @@ mod tests {
         );
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(feature = "std", not(target_arch = "wasm32")))]
     #[shoop_wasm_test_support::shoop_test]
     fn conversion_enforces_count_and_aggregate_limits_before_retaining_files() {
         let temporary = tempfile::tempdir().unwrap();
@@ -1361,7 +1386,7 @@ mod tests {
         ));
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(feature = "std", not(target_arch = "wasm32")))]
     #[shoop_wasm_test_support::shoop_test]
     fn conversion_rejects_source_companion_and_limited_read_edges() {
         let temporary = tempfile::tempdir().unwrap();
@@ -1413,7 +1438,7 @@ mod tests {
         assert!(read_file_limited(&temporary.path().join("missing"), 0, 1).is_err());
     }
 
-    #[cfg(all(not(target_arch = "wasm32"), unix))]
+    #[cfg(all(feature = "std", not(target_arch = "wasm32"), unix))]
     #[shoop_wasm_test_support::shoop_test]
     fn native_path_and_symlink_edge_failures_are_bounded() {
         use std::os::unix::ffi::OsStringExt as _;
@@ -1491,7 +1516,7 @@ mod tests {
         assert!(catalog.diagnostics.is_empty());
     }
 
-    #[cfg(all(not(target_arch = "wasm32"), unix))]
+    #[cfg(all(feature = "std", not(target_arch = "wasm32"), unix))]
     #[shoop_wasm_test_support::shoop_test]
     fn conversion_rejects_an_escaping_symlink_atomically() {
         let temporary = tempfile::tempdir().unwrap();

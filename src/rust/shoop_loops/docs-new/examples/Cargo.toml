@@ -1,0 +1,39 @@
+[package]
+name = "shoop-loops-book-examples"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+rt_runtime = { path = "../../../rt_runtime" }
+shoop_loops = { path = "../.." }
+
+[[bin]]
+name = "first_loop"
+path = "first_loop.rs"
+
+[[bin]]
+name = "seek_loop"
+path = "seek_loop.rs"
+
+[[bin]]
+name = "overdub_loop"
+path = "overdub_loop.rs"
+
+[[bin]]
+name = "sync_loops"
+path = "sync_loops.rs"
+
+[[bin]]
+name = "sync_record"
+path = "sync_record.rs"
+
+[[bin]]
+name = "program_loop"
+path = "program_loop.rs"
+
+[[bin]]
+name = "midi_loop"
+path = "midi_loop.rs"

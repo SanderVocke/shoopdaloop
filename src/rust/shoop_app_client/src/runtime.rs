@@ -1,0 +1,1669 @@
+//! UI-local workflows and Lua execution over a confirmed session projection.
+use crate::{Client, Error, State};
+use shoop_app_api::*;
+use shoop_app_protocol::*;
+use shoop_scripting::{ControlSnapshot, MidiControlService, ScriptManager};
+use std::{
+    collections::{BTreeMap, BTreeSet, VecDeque},
+    sync::Arc,
+    time::Duration,
+};
+
+pub trait Delivery {
+    fn send(&mut self, message: ClientMessage) -> Result<(), Error>;
+    fn poll(&mut self, client: &mut Client) -> Result<usize, Error>;
+}
+
+/// Client-local file tasks. The application supplies codecs without coupling the
+/// session client or service to file formats or platform APIs.
+pub trait PersistenceIo {
+    fn click_track(&self) -> ClickTrackState;
+    fn take_preview(&mut self) -> Option<ApplicationAudioPreview> {
+        None
+    }
+    fn handles(&self, intent: &AppIntent) -> bool;
+    fn complete_platform(&mut self, intent: AppIntent);
+    fn apply(
+        &mut self,
+        intent: AppIntent,
+        state: &SessionSnapshot,
+        session_scripts: bool,
+    ) -> anyhow::Result<()>;
+    fn tick(&mut self, client: &mut Client, delivery: &mut dyn Delivery, session_scripts: bool);
+    fn dismiss_completed(&mut self);
+    fn task(&self) -> Option<IoTaskState>;
+    fn take_output(&mut self) -> Option<ApplicationFileOutput>;
+    fn take_request(&mut self) -> Option<ApplicationFileRequest>;
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ApplicationFileRequestKind {
+    Session,
+    SessionUrl,
+    Audio,
+    Midi,
+    SessionSource,
+}
+#[derive(Clone, Debug)]
+pub struct ApplicationFileRequest {
+    pub task_id: TaskId,
+    pub kind: ApplicationFileRequestKind,
+    pub source: Option<String>,
+}
+impl Delivery for local::ClientPort {
+    fn send(&mut self, message: ClientMessage) -> Result<(), Error> {
+        self.commands
+            .try_send(message)
+            .map_err(|error| match error {
+                std::sync::mpsc::TrySendError::Full(_) => Error::Full,
+                std::sync::mpsc::TrySendError::Disconnected(_) => Error::Disconnected,
+            })
+    }
+    fn poll(&mut self, client: &mut Client) -> Result<usize, Error> {
+        client.pump_local(self)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StartupScript {
+    pub name: String,
+    pub identity: Option<String>,
+    pub source: String,
+    pub source_path: Option<String>,
+    pub kind: ScriptKind,
+    pub enabled: bool,
+}
+#[derive(Clone, Debug)]
+pub struct ApplicationFileOutput {
+    pub task_id: TaskId,
+    pub suggested_name: String,
+    pub mime_type: String,
+    pub bytes: Arc<Vec<u8>>,
+}
+#[derive(Clone, Debug)]
+pub struct ApplicationAudioPreview {
+    pub output: ClickTrackPreviewOutput,
+    pub request_id: u64,
+    pub sample_rate: u32,
+    pub samples: Arc<[f32]>,
+}
+
+pub enum Startup {
+    Fresh(Vec<StartupScript>),
+    Connected(Vec<StartupScript>),
+}
+
+pub fn writes_audio_preferences(intent: &AppIntent) -> bool {
+    matches!(
+        intent,
+        AppIntent::RequestAudioDriverSwitch { .. }
+            | AppIntent::ConfirmAudioDriverSwitch { accept: true, .. }
+            | AppIntent::RetryAudioDriverPersistence { .. }
+    )
+}
+
+pub struct Runtime {
+    pending_audio_profiling: Option<bool>,
+    client: Client,
+    delivery: Box<dyn Delivery>,
+    scripts: ScriptManager,
+    previous: ControlSnapshot,
+    startup: Option<Startup>,
+    startup_ids: Vec<Option<ScriptId>>,
+    connected: bool,
+    explicitly_started_scripts: BTreeSet<String>,
+    reset_operation: Option<OperationId>,
+    reset_queued: bool,
+    io_task: Option<IoTaskState>,
+    intents: VecDeque<(u64, AppIntent)>,
+    commands: VecDeque<(u64, Command, Option<(u64, bool)>)>,
+    audio_driver_operations: BTreeSet<OperationId>,
+    creations: BTreeMap<OperationId, (u64, bool)>,
+    seen_results: BTreeSet<OperationId>,
+    track_results: VecDeque<TrackCreationResult>,
+    bus_results: VecDeque<BusCreationResult>,
+    notifications: VecDeque<AppNotification>,
+    next_notice: u64,
+    outputs: VecDeque<ApplicationFileOutput>,
+    snapshot: Arc<AppSnapshot>,
+    requested_media: Option<(LoopId, u64, bool)>,
+    media_refusal_notified: bool,
+    loss_reported: bool,
+    controls_suspended: bool,
+    persistence_io: Option<Box<dyn PersistenceIo>>,
+    command_epoch: Option<u64>,
+}
+
+impl Runtime {
+    pub fn new(
+        mut client: Client,
+        mut delivery: Box<dyn Delivery>,
+        midi: Box<dyn MidiControlService>,
+        startup: Startup,
+    ) -> Result<Self, Error> {
+        delivery.send(client.attach()?)?;
+        let connected = matches!(startup, Startup::Connected(_));
+        let mut scripts = ScriptManager::new_with_midi(midi);
+        scripts.use_confirmed_control_reads();
+        let mut runtime = Self {
+            pending_audio_profiling: None,
+            client,
+            delivery,
+            scripts,
+            previous: ControlSnapshot::default(),
+            startup: Some(startup),
+            startup_ids: Vec::new(),
+            connected,
+            explicitly_started_scripts: BTreeSet::new(),
+            reset_operation: None,
+            reset_queued: false,
+            io_task: None,
+            intents: VecDeque::new(),
+            commands: VecDeque::new(),
+            audio_driver_operations: BTreeSet::new(),
+            creations: BTreeMap::new(),
+            seen_results: BTreeSet::new(),
+            track_results: VecDeque::new(),
+            bus_results: VecDeque::new(),
+            notifications: VecDeque::new(),
+            next_notice: 1,
+            outputs: VecDeque::new(),
+            snapshot: Arc::new(AppSnapshot::default()),
+            requested_media: None,
+            media_refusal_notified: false,
+            loss_reported: false,
+            controls_suspended: false,
+            persistence_io: None,
+            command_epoch: None,
+        };
+        if connected {
+            runtime.notify("Connected to the endpoint. Start scripts explicitly when needed.");
+        }
+        Ok(runtime)
+    }
+    pub fn with_persistence_io(mut self, provider: Box<dyn PersistenceIo>) -> Self {
+        self.persistence_io = Some(provider);
+        self
+    }
+    pub fn state(&self) -> State {
+        self.client.state()
+    }
+    pub fn client(&self) -> &Client {
+        &self.client
+    }
+    pub fn startup_script_ids(&self) -> &[Option<ScriptId>] {
+        &self.startup_ids
+    }
+    pub fn snapshot(&self) -> Arc<AppSnapshot> {
+        Arc::clone(&self.snapshot)
+    }
+    pub fn has_pending_commands(&self) -> bool {
+        !self.intents.is_empty() || !self.commands.is_empty()
+    }
+    pub fn has_pending_audio_driver_commands(&self) -> bool {
+        self.intents
+            .iter()
+            .any(|(_, intent)| writes_audio_preferences(intent))
+            || self
+                .commands
+                .iter()
+                .any(|(_, command, _)| matches!(command, Command::AudioDriver(_)))
+            || !self.audio_driver_operations.is_empty()
+    }
+    pub fn take_file_output(&mut self) -> Option<ApplicationFileOutput> {
+        self.outputs
+            .pop_front()
+            .or_else(|| self.persistence_io.as_mut()?.take_output())
+    }
+    pub fn take_file_request(&mut self) -> Option<ApplicationFileRequest> {
+        self.persistence_io.as_mut()?.take_request()
+    }
+    pub fn take_audio_preview(&mut self) -> Option<ApplicationAudioPreview> {
+        self.persistence_io.as_mut()?.take_preview()
+    }
+    pub fn dispatch(&mut self, intent: AppIntent) -> Result<(), Error> {
+        if matches!(
+            intent,
+            AppIntent::CompleteIoOutput { .. }
+                | AppIntent::FailIoTask { .. }
+                | AppIntent::CompleteClickTrackPreview { .. }
+                | AppIntent::ClickTrackPreviewStarted { .. }
+        ) {
+            let handled = self
+                .persistence_io
+                .as_ref()
+                .is_some_and(|provider| provider.handles(&intent));
+            if handled {
+                self.persistence_io
+                    .as_mut()
+                    .unwrap()
+                    .complete_platform(intent);
+            } else if let AppIntent::FailIoTask { message, .. } = intent {
+                self.notify(message);
+            }
+            self.project();
+            return Ok(());
+        }
+        if self.client.state() != State::Ready || self.controls_suspended {
+            return Err(Error::Disconnected);
+        }
+        if self.intents.len() == QUEUE_CAPACITY {
+            return Err(Error::Full);
+        }
+        if let Some(bytes) = file_input_bytes(&intent) {
+            if bytes > persistence::MAX_SESSION_FILE_BYTES as usize {
+                return Err(Error::Protocol);
+            }
+            if self
+                .intents
+                .iter()
+                .any(|(_, intent)| file_input_bytes(intent).is_some())
+            {
+                return Err(Error::Full);
+            }
+        }
+        let epoch = self
+            .client
+            .snapshot()
+            .ok_or(Error::NotReady)?
+            .persistence_epoch;
+        self.intents.push_back((epoch, intent));
+        Ok(())
+    }
+    pub fn fail(&mut self, message: String) {
+        self.pending_audio_profiling = None;
+        if self.client.state() != State::Lost {
+            self.notify(message);
+        }
+        self.client.disconnect();
+    }
+    pub fn notify(&mut self, message: impl Into<String>) {
+        if self.notifications.len() == 64 {
+            self.notifications.pop_front();
+        }
+        let mut message = message.into();
+        if message.len() > 1024 {
+            let mut end = 1024;
+            while !message.is_char_boundary(end) {
+                end -= 1;
+            }
+            message.truncate(end);
+        }
+        self.notifications.push_back(AppNotification {
+            id: self.next_notice,
+            level: NotificationLevel::Warning,
+            message,
+        });
+        self.next_notice = self.next_notice.saturating_add(1);
+    }
+    pub fn tick(&mut self, elapsed: Duration) {
+        self.client.advance_diagnostics(elapsed);
+        let _span = tracing::trace_span!("app.client.tick").entered();
+        if self.client.state() != State::Lost {
+            if let Err(error) = self.delivery.poll(&mut self.client) {
+                self.lost(error);
+            }
+        }
+        if self.client.state() == State::Ready {
+            self.audio_driver_operations
+                .retain(|operation| self.client.operation_in_flight(*operation));
+        }
+        if let Some(message) = self.client.ready_message() {
+            match self.delivery.send(message) {
+                Ok(()) => {
+                    let _ = self.client.ready_sent();
+                }
+                Err(Error::Full) => {}
+                Err(error) => self.lost(error),
+            }
+        }
+        if self.client.state() != State::Ready {
+            if let Some(provider) = &mut self.persistence_io {
+                let session_scripts = self
+                    .scripts
+                    .states()
+                    .iter()
+                    .any(|script| script.kind == ScriptKind::Session);
+                provider.tick(&mut self.client, &mut *self.delivery, session_scripts);
+            }
+            self.project();
+            return;
+        }
+        self.reconcile_results();
+        if self.controls_suspended {
+            self.project();
+            return;
+        }
+        let control = self.control_snapshot();
+        self.scripts.set_control_snapshot(control);
+        if let Some(startup) = self.startup.take() {
+            {
+                let scripts = match startup {
+                    Startup::Fresh(scripts) => scripts,
+                    Startup::Connected(mut scripts) => {
+                        for script in &mut scripts {
+                            script.enabled = false;
+                        }
+                        scripts
+                    }
+                };
+                for script in scripts {
+                    let result = if let Some(identity) = script.identity {
+                        self.scripts.add_catalog_script(
+                            identity,
+                            script.source,
+                            script.kind,
+                            script.enabled,
+                            script.source_path,
+                            None,
+                        )
+                    } else {
+                        self.scripts.add_with_source_path(
+                            script.name,
+                            script.source,
+                            script.kind,
+                            script.enabled,
+                            script.source_path,
+                        )
+                    };
+                    match result {
+                        Ok(id) => self.startup_ids.push(Some(id)),
+                        Err(error) => {
+                            self.startup_ids.push(None);
+                            self.notify(error.to_string());
+                        }
+                    }
+                }
+                self.queue_script_operations();
+            }
+        }
+        for _ in 0..MAX_MESSAGES_PER_TURN {
+            let Some((epoch, intent)) = self.intents.pop_front() else {
+                break;
+            };
+            if self
+                .client
+                .snapshot()
+                .is_some_and(|s| s.persistence_epoch != epoch)
+                && !matches!(
+                    intent,
+                    AppIntent::CompleteIoInput { .. }
+                        | AppIntent::CompleteIoOutput { .. }
+                        | AppIntent::ConfirmFormatConversion { .. }
+                        | AppIntent::ConfirmAudioChannelMapping { .. }
+                        | AppIntent::ConfirmAudioChannelSelection { .. }
+                        | AppIntent::CancelIoTask { .. }
+                        | AppIntent::FailIoTask { .. }
+                )
+            {
+                self.notify("Discarded an intent from the previous session");
+                continue;
+            }
+            self.command_epoch = Some(epoch);
+            if let Err(error) = self.apply_intent(intent) {
+                self.notify(error.to_string());
+            }
+            self.command_epoch = None;
+            self.queue_script_operations();
+        }
+        if self.pending_audio_profiling.is_some()
+            && self
+                .profiling_request(profiling_data::wire::subscribe(false))
+                .is_some()
+        {
+            let value = self
+                .pending_audio_profiling
+                .take()
+                .expect("pending preference");
+            if let Err(error) = self.apply_intent(AppIntent::SetProfiling(value)) {
+                self.notify(error.to_string());
+            }
+        }
+        self.advance_scripting(elapsed);
+        self.queue_script_operations();
+        for _ in 0..MAX_MESSAGES_PER_TURN {
+            let Some((epoch, command, creation)) = self.commands.front().cloned() else {
+                break;
+            };
+            let resetting = matches!(command, Command::NewSession);
+            let audio_driver = matches!(command, Command::AudioDriver(_));
+            let mut message = match self.client.command(command, None) {
+                Ok(message) => message,
+                Err(Error::Full) => break,
+                Err(error) => {
+                    self.lost(error);
+                    break;
+                }
+            };
+            let ClientMessage::Submit {
+                operation,
+                session_epoch,
+                ..
+            } = &mut message
+            else {
+                unreachable!()
+            };
+            let operation = *operation;
+            *session_epoch = epoch;
+            match self.delivery.send(message) {
+                Ok(()) => {
+                    self.commands.pop_front();
+                    if audio_driver {
+                        self.audio_driver_operations.insert(operation);
+                    }
+                    if resetting {
+                        self.reset_operation = Some(operation);
+                        self.reset_queued = false;
+                    }
+                    if let Some(creation) = creation {
+                        self.creations.insert(operation, creation);
+                    }
+                }
+                Err(Error::Full) => {
+                    self.client.unsent(operation);
+                    break;
+                }
+                Err(error) => {
+                    self.client.unsent(operation);
+                    self.lost(error);
+                    break;
+                }
+            }
+        }
+        if let Some(provider) = &mut self.persistence_io {
+            let session_scripts = self
+                .scripts
+                .states()
+                .iter()
+                .any(|script| script.kind == ScriptKind::Session);
+            provider.tick(&mut self.client, &mut *self.delivery, session_scripts);
+        }
+        self.update_media();
+        self.project();
+    }
+    fn stop_scripts(&mut self) {
+        for script in self.scripts.states() {
+            let _ = self.scripts.stop(script.id);
+        }
+    }
+    fn lost(&mut self, error: Error) {
+        self.pending_audio_profiling = None;
+        if !self.loss_reported {
+            self.notify(format!(
+                "Session connection lost ({error:?}). Admitted work remains with its host."
+            ));
+            self.stop_scripts();
+            self.loss_reported = true;
+        }
+        self.client.disconnect();
+        self.reconcile_results();
+        self.requested_media = None;
+        self.intents.clear();
+        self.commands.clear();
+        if let Some(task) = &mut self.io_task {
+            if task.status == IoTaskStatus::Running {
+                task.status = IoTaskStatus::Failed;
+                task.message =
+                    "Connection lost; use the next session snapshot to determine the outcome."
+                        .into();
+            }
+        }
+    }
+    pub fn detach(&mut self) -> Result<(), Error> {
+        self.pending_audio_profiling = None;
+        let message = self.client.detach()?;
+        self.stop_scripts();
+        self.delivery.send(message)
+    }
+    pub fn shutdown(&mut self) -> Result<OperationId, Error> {
+        let message = self.client.shutdown()?;
+        let ClientMessage::Shutdown { operation, .. } = message else {
+            unreachable!()
+        };
+        if let Err(error) = self.delivery.send(message) {
+            self.client.unsent(operation);
+            return Err(error);
+        }
+        Ok(operation)
+    }
+    pub fn prepare_shutdown(&mut self) -> Result<ClientMessage, Error> {
+        let message = self.client.management_shutdown()?;
+        self.controls_suspended = true;
+        self.intents.clear();
+        self.commands.clear();
+        self.stop_scripts();
+        Ok(message)
+    }
+    pub fn resume_controls(&mut self) {
+        self.controls_suspended = false;
+    }
+    fn queue(&mut self, command: Command, creation: Option<(u64, bool)>) -> anyhow::Result<()> {
+        if !command.bounded() {
+            anyhow::bail!("command exceeds session protocol bounds");
+        }
+        if self.commands.len() == QUEUE_CAPACITY {
+            anyhow::bail!("session command queue is full");
+        }
+        if matches!(command, Command::NewSession) {
+            if self.reset_operation.is_some() || self.reset_queued {
+                anyhow::bail!("a session reset is already pending");
+            }
+            self.reset_queued = true;
+            self.io_task = Some(IoTaskState {
+                id: TaskId::from_raw(self.next_notice),
+                kind: IoTaskKind::LoadSession,
+                status: IoTaskStatus::Running,
+                progress: 0.0,
+                message: "Starting a fresh session".into(),
+                format_conversion_warning: None,
+                audio_channel_mapping: None,
+                audio_channel_selection: None,
+            });
+            self.next_notice = self.next_notice.saturating_add(1);
+        }
+        let epoch = self
+            .command_epoch
+            .or_else(|| self.client.snapshot().map(|s| s.persistence_epoch))
+            .ok_or_else(|| anyhow::anyhow!("session is not ready"))?;
+        self.commands.push_back((epoch, command, creation));
+        Ok(())
+    }
+    fn queue_script_operations(&mut self) {
+        for operation in self.scripts.take_control_operations() {
+            if let Err(error) = self.queue(Command::Control(operation), None) {
+                self.notify(error.to_string());
+            }
+        }
+    }
+    fn reconcile_results(&mut self) {
+        if let Some(outcome) = self
+            .reset_operation
+            .and_then(|id| self.client.results().get(&id))
+            .cloned()
+        {
+            let state_ready = !matches!(outcome, Outcome::Confirmed { revision } | Outcome::AncestorsStopped { revision, .. }
+                if self.client.state() != State::Lost && self.client.snapshot().is_none_or(|state| state.revision < revision));
+            if state_ready {
+                if let Some(task) = &mut self.io_task {
+                    task.progress = 1.0;
+                    task.status = if matches!(outcome, Outcome::Refused { .. }) {
+                        IoTaskStatus::Failed
+                    } else {
+                        IoTaskStatus::Completed
+                    };
+                    task.message = match &outcome {
+                        Outcome::Refused { message, .. } => message.clone(),
+                        _ if self.client.state() == State::Lost => {
+                            "Fresh session committed; reconnect to inspect the session".into()
+                        }
+                        _ => "Fresh session ready".into(),
+                    };
+                }
+                self.reset_operation = None;
+            }
+        }
+        let results: Vec<_> = self
+            .client
+            .results()
+            .iter()
+            .map(|(id, outcome)| (*id, outcome.clone()))
+            .collect();
+        for (id, outcome) in results {
+            if !self.seen_results.insert(id) {
+                continue;
+            }
+            if let Some((request_id, bus)) = self.creations.remove(&id) {
+                let success = !matches!(outcome, Outcome::Refused { .. });
+                if bus {
+                    if self.bus_results.len() == MAX_RETAINED_RESULTS {
+                        self.bus_results.pop_front();
+                    }
+                    self.bus_results.push_back(BusCreationResult {
+                        request_id,
+                        success,
+                    });
+                } else {
+                    if self.track_results.len() == MAX_RETAINED_RESULTS {
+                        self.track_results.pop_front();
+                    }
+                    self.track_results.push_back(TrackCreationResult {
+                        request_id,
+                        success,
+                    });
+                }
+            }
+            if let Outcome::Refused { message, .. } = outcome {
+                self.notify(message);
+                if let Some(notice) = self.notifications.back_mut() {
+                    notice.level = NotificationLevel::Error;
+                }
+            }
+        }
+        self.seen_results
+            .retain(|id| self.client.results().contains_key(id));
+    }
+    fn profiling_request(
+        &self,
+        mut request: profiling_protocol::Request,
+    ) -> Option<profiling_protocol::Request> {
+        let source = self
+            .client
+            .diagnostics()
+            .sources
+            .iter()
+            .find(|s| s.descriptor.stream.source == request.source)?;
+        request.epoch = source.descriptor.stream.epoch;
+        Some(request)
+    }
+    fn project(&mut self) {
+        let mut view = self
+            .client
+            .snapshot()
+            .map(|state| AppSnapshot {
+                profiling: self.client.profiling().clone(),
+                diagnostics: self.client.diagnostics().clone(),
+                bus_limits: state.bus_limits,
+                tracks: state.tracks.clone(),
+                buses: Arc::clone(&state.buses),
+                track_processors: Arc::clone(&state.track_processors),
+                bus_processors: Arc::clone(&state.bus_processors),
+                global_controls: state.global.clone(),
+                status: state.status.clone(),
+                audio_drivers: state.audio_drivers.clone(),
+                capabilities: state.capabilities,
+                connections: Arc::clone(&state.connections),
+                host_graph: Arc::clone(&state.host_graph),
+                ..Default::default()
+            })
+            .unwrap_or_default();
+        if let Some(authority) = self.client.authority() {
+            view.profiling.lease = authority.lease.0;
+            view.profiling.attachment = authority.generation.0;
+        }
+        view.details = self.details();
+        view.io_task = self.io_task.clone();
+        if let Some(provider) = &self.persistence_io {
+            view.click_track = provider.click_track();
+            if let Some(task) = provider.task() {
+                view.io_task = Some(task);
+            }
+        } else {
+            for capability in [
+                BackendCapability::SessionCapture,
+                BackendCapability::SessionContentLoad,
+                BackendCapability::LoopContentImport,
+            ] {
+                view.capabilities = view.capabilities.with(capability, false);
+            }
+        }
+        view.capabilities = view.capabilities.with(
+            BackendCapability::ClickTrackInsertion,
+            self.persistence_io.is_some()
+                && view
+                    .capabilities
+                    .supports(BackendCapability::LoopContentImport),
+        );
+        view.revision = self.snapshot.revision.saturating_add(1);
+        view.notifications = self
+            .notifications
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>()
+            .into();
+        view.track_creation_results = self
+            .track_results
+            .iter()
+            .copied()
+            .collect::<Vec<_>>()
+            .into();
+        view.bus_creation_results = self.bus_results.iter().copied().collect::<Vec<_>>().into();
+        view.scripting = Arc::new(ScriptingState {
+            supported: true,
+            scripts: self.scripts.states().into(),
+            dialogs: self.scripts.dialogs().into(),
+            ..Default::default()
+        });
+        view.connections = self.with_script_connections(&view.connections, &view.scripting.scripts);
+        self.snapshot = Arc::new(view);
+    }
+
+    fn with_script_connections(
+        &self,
+        shared: &ConnectionViewState,
+        scripts: &[ScriptState],
+    ) -> Arc<ConnectionViewState> {
+        let mut view = shared.clone();
+        let mut ports = view.application_ports.to_vec();
+        let mut hosts: BTreeMap<_, _> = view
+            .host_ports
+            .iter()
+            .map(|host| (host.id.clone(), host.clone()))
+            .collect();
+        let mut links: BTreeSet<_> = view
+            .confirmed_links
+            .iter()
+            .map(|link| (link.application_port_id, link.host_port_id.clone()))
+            .collect();
+        for script in scripts {
+            for (registration, rule) in script.midi.rule_states.iter().enumerate() {
+                let Ok(registration) = u32::try_from(registration) else {
+                    continue;
+                };
+                let (direction, role, host_direction, endpoint_direction, label) =
+                    match rule.direction {
+                        ScriptMidiRuleDirection::Input => (
+                            PortDirection::Input,
+                            PortRole::MidiInput,
+                            PortDirection::Output,
+                            shoop_scripting::MidiEndpointDirection::Output,
+                            "source",
+                        ),
+                        ScriptMidiRuleDirection::Output => (
+                            PortDirection::Output,
+                            PortRole::MidiOutput,
+                            PortDirection::Input,
+                            shoop_scripting::MidiEndpointDirection::Input,
+                            "sink",
+                        ),
+                    };
+                let port = PortId::from_raw(
+                    (1 << 63)
+                        | ((script.id.raw() & 0x7fff_ffff) << 32)
+                        | u64::from(registration.saturating_add(1)),
+                );
+                ports.push(ApplicationPortState {
+                    publication: None,
+                    id: port,
+                    owner: ApplicationPortOwner::LuaControl {
+                        script_id: script.id,
+                        registration,
+                    },
+                    name: format!(
+                        "{}: MIDI {} {}",
+                        script.name,
+                        label,
+                        registration.saturating_add(1)
+                    ),
+                    data_type: PortDataType::Midi,
+                    direction,
+                    role,
+                    connection_policy: ConnectionPolicy::OwnerManaged,
+                });
+                for endpoint in rule.endpoints.iter() {
+                    let host = HostPortId::new(shoop_scripting::midi_endpoint_host_id(
+                        endpoint_direction,
+                        &endpoint.id,
+                    ));
+                    hosts.entry(host.clone()).or_insert_with(|| HostPortState {
+                        id: host.clone(),
+                        name: endpoint.name.clone(),
+                        data_type: PortDataType::Midi,
+                        direction: host_direction,
+                        available: true,
+                    });
+                    if endpoint.connected {
+                        links.insert((port, host));
+                    }
+                }
+            }
+        }
+        view.application_ports = ports.into();
+        view.host_ports = hosts.into_values().collect::<Vec<_>>().into();
+        view.confirmed_links = links
+            .into_iter()
+            .map(
+                |(application_port_id, host_port_id)| ConfirmedConnectionState {
+                    application_port_id,
+                    host_port_id,
+                },
+            )
+            .collect::<Vec<_>>()
+            .into();
+        Arc::new(view)
+    }
+
+    fn update_media(&mut self) {
+        if !self.media_refusal_notified {
+            if let Some(Err(reason)) = self.client.media() {
+                self.notify(format!(
+                    "The selected loop's media view is unavailable ({reason:?})."
+                ));
+                self.media_refusal_notified = true;
+            }
+        }
+        let selected = self.client.snapshot().and_then(|state| {
+            let mut selected = state
+                .tracks
+                .iter()
+                .flat_map(|track| &track.loops)
+                .filter(|entry| entry.selected);
+            let entry = selected.next()?;
+            if selected.next().is_some()
+                || state.composites.iter().any(|view| view.loop_id == entry.id)
+            {
+                return None;
+            }
+            Some((
+                entry.id,
+                entry.content_revision,
+                entry.mode == LoopMode::Recording,
+            ))
+        });
+        if self.requested_media == selected {
+            return;
+        }
+        let message = if let Some((id, _, false)) = selected {
+            self.client.read_media(id)
+        } else {
+            self.client.cancel_media()
+        };
+        match message.and_then(|message| self.delivery.send(message)) {
+            Ok(()) => {
+                self.requested_media = selected;
+                self.media_refusal_notified = false;
+            }
+            Err(Error::Full) => {}
+            Err(error) => self.lost(error),
+        }
+    }
+    fn details(&self) -> Option<LoopDetailsState> {
+        let state = self.client.snapshot()?;
+        let mut selected = state
+            .tracks
+            .iter()
+            .flat_map(|track| &track.loops)
+            .filter(|entry| entry.selected);
+        let entry = selected.next()?;
+        if selected.next().is_some() {
+            return None;
+        }
+        let track = state
+            .tracks
+            .iter()
+            .find(|track| track.loops.iter().any(|item| item.id == entry.id))?;
+        let composite = state
+            .composites
+            .iter()
+            .find(|view| view.loop_id == entry.id)
+            .and_then(|view| {
+                let plan = view.pending.as_ref().or(view.active.as_ref())?;
+                let (document, prepared) = view
+                    .working
+                    .as_ref()
+                    .map(|content| (&content.document, &content.prepared))
+                    .unwrap_or((&plan.document, &plan.prepared));
+                let tracks = state
+                    .tracks
+                    .iter()
+                    .filter(|track| !track.is_sync)
+                    .map(|track| CompositeTrackDetailsState {
+                        id: track.id,
+                        name: track.name.clone(),
+                    })
+                    .collect();
+                let events = document
+                    .instances
+                    .iter()
+                    .zip(&prepared.instances)
+                    .filter_map(|(event, geometry)| {
+                        let (track, child) = state.tracks.iter().find_map(|track| {
+                            track
+                                .loops
+                                .iter()
+                                .find(|child| child.id == event.loop_id)
+                                .map(|child| (track, child))
+                        })?;
+                        Some(CompositeEventDetailsState {
+                            loop_id: event.loop_id,
+                            loop_name: child.name.clone(),
+                            track_id: track.id,
+                            start_frame: geometry.start_frame,
+                            end_frame: geometry.end_frame,
+                            instance_id: event.instance_id,
+                            mode: event.mode.map(|mode| {
+                                match mode {
+                                    LoopMode::Playing => "playing",
+                                    LoopMode::Recording => "recording",
+                                    LoopMode::Stopped => "stopped",
+                                    LoopMode::Replacing => "replacing",
+                                    LoopMode::PlayingDryThroughWet => "playing_dry_through_wet",
+                                    LoopMode::RecordingDryIntoWet => "recording_dry_into_wet",
+                                    LoopMode::Unknown => "unknown",
+                                }
+                                .to_owned()
+                            }),
+                            forced_n_cycles: event.n_cycles,
+                            loop_mode: child.mode,
+                        })
+                    })
+                    .collect();
+                Some(CompositeDetailsState {
+                    kind: document.kind,
+                    available_event_modes: {
+                        let mut modes =
+                            vec![LoopMode::Playing, LoopMode::Recording, LoopMode::Stopped];
+                        if state
+                            .capabilities
+                            .supports(BackendCapability::ReplacingMode)
+                        {
+                            modes.push(LoopMode::Replacing);
+                        }
+                        if state.capabilities.supports(BackendCapability::DryWetModes) {
+                            modes.extend([
+                                LoopMode::PlayingDryThroughWet,
+                                LoopMode::RecordingDryIntoWet,
+                            ]);
+                        }
+                        modes
+                    },
+                    timing: Some(CompositeTimingState {
+                        basis_sample_rate: document.basis.sample_rate,
+                        basis_frames: document.basis.unit_frames,
+                        render_sample_rate: prepared.sample_rate,
+                        quantum_frames: prepared.quantum,
+                    }),
+                    execution: CompositeExecutionState {
+                        active_version: view.active.as_ref().map(|active| active.version),
+                        pending_version: view.pending.as_ref().map(|pending| pending.version),
+                        pending_stage: view.pending_stage.map(|stage| {
+                            match stage {
+                                shoop_app_protocol::composite::PendingStage::Queued => "queued",
+                                shoop_app_protocol::composite::PendingStage::Staging => "preparing",
+                                shoop_app_protocol::composite::PendingStage::AwaitingRestart => {
+                                    "waiting for restart"
+                                }
+                                shoop_app_protocol::composite::PendingStage::Confirming => {
+                                    "confirming"
+                                }
+                                shoop_app_protocol::composite::PendingStage::Cancelling => {
+                                    "cancelling"
+                                }
+                            }
+                            .to_owned()
+                        }),
+                        waiting_repeat: view.waiting_repeat,
+                        restoring: view.working.is_some(),
+                        error: view.error.clone(),
+                    },
+                    cycle_length_frames: u64::try_from(
+                        u128::from(document.basis.unit_frames) * u128::from(prepared.sample_rate)
+                            / u128::from(document.basis.sample_rate),
+                    )
+                    .unwrap_or(u64::MAX)
+                    .max(1),
+                    timeline_length_frames: prepared.unit_frames * prepared.iterations,
+                    played_frame: (view.mode == LoopMode::Playing).then_some(view.position_frames),
+                    tracks,
+                    events,
+                })
+            });
+        let data = self
+            .client
+            .media()
+            .and_then(|result| result.as_ref().ok())
+            .filter(|data| {
+                data.loop_id == entry.id && data.content_revision == entry.content_revision
+            });
+        let played = matches!(
+            entry.mode,
+            LoopMode::Playing | LoopMode::PlayingDryThroughWet
+        )
+        .then_some((entry.position * entry.length_frames as f32) as i64);
+        Some(LoopDetailsState {
+            generation: entry.content_revision,
+            quantum_frames: state.status.quantum_frames,
+            length_frames: entry.length_frames,
+            loop_id: entry.id,
+            title: entry.name.clone(),
+            loading: composite.is_none() && data.is_none() && self.client.media().is_none(),
+            midi_loading: composite.is_none() && data.is_none() && self.client.media().is_none(),
+            channels: if entry.channel_timings.is_empty() {
+                data.map(|data| {
+                    data.audio
+                        .iter()
+                        .enumerate()
+                        .map(|(index, channel)| WaveformChannelState {
+                            id: ChannelId::from_raw((entry.id.raw() << 8) | (index as u64 + 1)),
+                            label: track.topology.audio_channel_labels(data.audio.len())[index]
+                                .clone(),
+                            samples: Arc::clone(&channel.samples),
+                            start_offset: i64::from(channel.start_offset)
+                                + i64::from(channel.capture_alignment_frames),
+                            preplay_samples: u64::from(channel.preplay),
+                            loop_length: entry.length_frames,
+                            played_sample: played,
+                        })
+                        .collect()
+                })
+                .unwrap_or_default()
+            } else {
+                entry
+                    .channel_timings
+                    .iter()
+                    .filter(|timing| !timing.is_midi)
+                    .enumerate()
+                    .map(|(index, timing)| WaveformChannelState {
+                        id: timing.id,
+                        label: format!("Audio {}", index + 1),
+                        samples: data
+                            .and_then(|data| data.audio.get(index))
+                            .map_or_else(|| Arc::from([]), |channel| Arc::clone(&channel.samples)),
+                        start_offset: timing.start_offset,
+                        preplay_samples: timing.preplay_samples,
+                        loop_length: entry.length_frames,
+                        played_sample: played,
+                    })
+                    .collect()
+            },
+            midi_channels: if entry.channel_timings.is_empty() {
+                data.map(|data| {
+                    data.midi
+                        .iter()
+                        .enumerate()
+                        .map(|(index, channel)| MidiSequenceChannelState {
+                            id: ChannelId::from_raw((entry.id.raw() << 8) | (index as u64 + 129)),
+                            label: format!("MIDI {}", index + 1),
+                            content_revision: channel.content_revision,
+                            data_length: u64::from(channel.length),
+                            capture_alignment_frames: i64::from(channel.capture_alignment_frames),
+                            events: Arc::clone(&channel.events),
+                            start_offset: i64::from(channel.start_offset)
+                                + i64::from(channel.capture_alignment_frames),
+                            preplay_samples: u64::from(channel.preplay),
+                            loop_length: entry.length_frames,
+                            played_sample: played,
+                        })
+                        .collect()
+                })
+                .unwrap_or_default()
+            } else {
+                entry
+                    .channel_timings
+                    .iter()
+                    .filter(|timing| timing.is_midi)
+                    .enumerate()
+                    .map(|(index, timing)| MidiSequenceChannelState {
+                        id: timing.id,
+                        label: format!("MIDI {}", index + 1),
+                        content_revision: entry.content_revision,
+                        data_length: timing.data_length,
+                        capture_alignment_frames: timing.capture_alignment_frames,
+                        events: data
+                            .and_then(|data| data.midi.get(index))
+                            .map_or_else(|| Arc::from([]), |channel| Arc::clone(&channel.events)),
+                        start_offset: timing.start_offset,
+                        preplay_samples: timing.preplay_samples,
+                        loop_length: entry.length_frames,
+                        played_sample: played,
+                    })
+                    .collect()
+            },
+            sync_loop_length: state
+                .tracks
+                .iter()
+                .find(|track| track.is_sync)
+                .and_then(|track| track.loops.first())
+                .map_or(0, |entry| entry.length_frames),
+            composite,
+        })
+    }
+    fn apply_intent(&mut self, intent: AppIntent) -> anyhow::Result<()> {
+        if matches!(
+            intent,
+            AppIntent::SetLoopTimeline { .. } | AppIntent::SetLoopChannelTimings { .. }
+        ) && !self.client.snapshot().is_some_and(|state| {
+            state
+                .capabilities
+                .supports(BackendCapability::LoopTimingEdits)
+        }) {
+            anyhow::bail!(BackendCapability::LoopTimingEdits.unavailable_reason());
+        }
+        if matches!(intent, AppIntent::RequestNewSession) {
+            if self
+                .scripts
+                .states()
+                .iter()
+                .any(|script| script.kind == ScriptKind::Session)
+            {
+                anyhow::bail!(
+                    "Remove or convert session-owned scripts before replacing the session (P16)"
+                );
+            }
+            if self
+                .persistence_io
+                .as_ref()
+                .and_then(|provider| provider.task())
+                .is_some_and(|task| {
+                    !matches!(
+                        task.status,
+                        IoTaskStatus::Completed | IoTaskStatus::Failed | IoTaskStatus::Cancelled
+                    )
+                })
+            {
+                anyhow::bail!("Finish the active file workflow before starting a new session");
+            }
+            if let Some(provider) = &mut self.persistence_io {
+                provider.dismiss_completed();
+            }
+        }
+        if let Some(provider) = &mut self.persistence_io {
+            if provider.handles(&intent) {
+                let state = self
+                    .client
+                    .snapshot()
+                    .ok_or_else(|| anyhow::anyhow!("session is not ready"))?;
+                let session_scripts = self
+                    .scripts
+                    .states()
+                    .iter()
+                    .any(|script| script.kind == ScriptKind::Session);
+                return provider.apply(intent, state, session_scripts);
+            }
+        }
+        if matches!(
+            &intent,
+            AppIntent::RequestAudioDriverSwitch { .. }
+                | AppIntent::ConfirmAudioDriverSwitch { accept: true, .. }
+        ) && self
+            .persistence_io
+            .as_ref()
+            .and_then(|provider| provider.task())
+            .is_some_and(|task| {
+                !matches!(
+                    task.status,
+                    IoTaskStatus::Completed | IoTaskStatus::Failed | IoTaskStatus::Cancelled
+                )
+            })
+        {
+            anyhow::bail!("Finish the active file workflow before switching audio drivers");
+        }
+        let command = match intent {
+            AppIntent::RefreshAudioDriverDiscovery { config } => {
+                Command::AudioDriver(audio_driver::Command::Discover(config))
+            }
+            AppIntent::RequestAudioDriverSwitch { config } => {
+                Command::AudioDriver(audio_driver::Command::Request(config))
+            }
+            AppIntent::ConfirmAudioDriverSwitch { request_id, accept } => {
+                Command::AudioDriver(audio_driver::Command::Confirm { request_id, accept })
+            }
+            AppIntent::RetryAudioDriverPersistence { request_id } => {
+                Command::AudioDriver(audio_driver::Command::RetryPersistence { request_id })
+            }
+            AppIntent::AddTrack(spec) => Command::AddTrack(spec.into()),
+            AppIntent::AddTrackWithTopology(spec) => {
+                let creation = spec.creation_request_id.map(|id| (id, false));
+                return self.queue(Command::AddTrack(spec), creation);
+            }
+            AppIntent::AddBus(spec) => {
+                let creation = spec.creation_request_id.map(|id| (id, true));
+                return self.queue(Command::AddBus(spec), creation);
+            }
+            AppIntent::Track { track_id, action } => Command::Track {
+                track: track_id,
+                action,
+            },
+            AppIntent::Loop {
+                track_id,
+                loop_id,
+                action,
+            } => Command::Loop {
+                track: track_id,
+                loop_id,
+                action,
+            },
+            AppIntent::Bus { bus_id, action } => Command::Bus {
+                bus: bus_id,
+                action,
+            },
+            AppIntent::AddLoop { track_id } => Command::AddLoop { track: track_id },
+            AppIntent::ComposeLoopSerial {
+                target_loop_id,
+                source_loop_id,
+            } => Command::Composite(shoop_app_protocol::composite::Edit::Append {
+                target: target_loop_id,
+                add: vec![source_loop_id],
+                parallel: false,
+                convert_if_empty: false,
+            }),
+            AppIntent::ComposeLoopAt {
+                target_loop_id,
+                source_loop_id,
+                start_iteration,
+            } => Command::Composite(shoop_app_protocol::composite::Edit::Insert {
+                target: target_loop_id,
+                source: source_loop_id,
+                start_cycle: start_iteration,
+            }),
+            AppIntent::DeleteCompositeEvents {
+                target_loop_id,
+                events,
+            } => Command::Composite(shoop_app_protocol::composite::Edit::Delete {
+                target: target_loop_id,
+                events: events.into_iter().map(|event| event.instance_id).collect(),
+            }),
+            AppIntent::RelocateCompositeEvents {
+                target_loop_id,
+                events,
+                start_iteration,
+                duplicate,
+            } => Command::Composite(shoop_app_protocol::composite::Edit::Relocate {
+                target: target_loop_id,
+                events: events.into_iter().map(|event| event.instance_id).collect(),
+                start_cycle: start_iteration,
+                duplicate,
+            }),
+            AppIntent::SetCompositeLoopCycles {
+                target_loop_id,
+                event,
+                n_cycles,
+            } => Command::Composite(shoop_app_protocol::composite::Edit::Duration {
+                target: target_loop_id,
+                event: event.instance_id,
+                n_cycles,
+            }),
+            AppIntent::SetCompositeKind {
+                target_loop_id,
+                kind,
+            } => Command::Composite(shoop_app_protocol::composite::Edit::Kind {
+                target: target_loop_id,
+                kind,
+            }),
+            AppIntent::SetCompositeTimingBasis {
+                target_loop_id,
+                sample_rate,
+                unit_frames,
+            } => Command::Composite(shoop_app_protocol::composite::Edit::Timing {
+                target: target_loop_id,
+                basis: shoop_app_protocol::composite::TimingBasis {
+                    sample_rate,
+                    unit_frames,
+                },
+            }),
+            AppIntent::CancelCompositeEdit {
+                target_loop_id,
+                version,
+            } => Command::Composite(shoop_app_protocol::composite::Edit::Cancel {
+                target: target_loop_id,
+                version,
+            }),
+            AppIntent::SetCompositeEventMode {
+                target_loop_id,
+                event,
+                mode,
+            } => Command::Composite(shoop_app_protocol::composite::Edit::Mode {
+                target: target_loop_id,
+                event: event.instance_id,
+                mode,
+            }),
+            AppIntent::Global(action) => Command::Global(action),
+            AppIntent::Piano(action) => Command::Piano(action),
+            AppIntent::SetHostGraphConnected(request) => Command::SetHostGraphConnected(request),
+            AppIntent::SetPortConnected {
+                port_id,
+                host_port_id,
+                connected,
+            } => Command::SetPortConnected {
+                port: port_id,
+                host_port: host_port_id,
+                connected,
+            },
+            AppIntent::SetMixerRouteConnected {
+                source_port_id,
+                destination_channel_id,
+                connected,
+            } => Command::SetMixerRoute {
+                source: source_port_id,
+                destination: destination_channel_id,
+                connected,
+            },
+            AppIntent::SetProfiling(value) => {
+                if let Some(request) =
+                    self.profiling_request(profiling_data::wire::subscribe(value))
+                {
+                    self.pending_audio_profiling = None;
+                    Command::Diagnostic(request)
+                } else {
+                    self.pending_audio_profiling = Some(value);
+                    Command::Diagnostic(profiling_protocol::Request {
+                        source: 0,
+                        epoch: 0,
+                        action: profiling_protocol::Action::Discover,
+                    })
+                }
+            }
+            AppIntent::ControlProfiling(request) => Command::Diagnostic(request),
+            AppIntent::InspectProfiling(request) => Command::Diagnostic(
+                self.profiling_request(profiling_data::wire::inspect(request))
+                    .ok_or_else(|| anyhow::anyhow!("Audio profiling source is unavailable"))?,
+            ),
+            AppIntent::SetMasterAutoConnect(value) => Command::SetMasterAutoConnect(value),
+            AppIntent::SetLoopSmoothingMs(value) => Command::SetLoopSmoothingMs(value),
+            AppIntent::ResetXruns => Command::ResetXruns,
+            AppIntent::RequestNewSession => Command::NewSession,
+            AppIntent::KeyEvent(event) => {
+                self.scripts
+                    .dispatch_key_event(shoop_scripting::ScriptKeyEvent {
+                        event_type: match event.event_type {
+                            KeyEventType::Pressed => 0,
+                            KeyEventType::Released => 1,
+                        },
+                        key: event.key,
+                        modifiers: event.modifiers,
+                    });
+                return Ok(());
+            }
+            AppIntent::AddScriptSource {
+                name,
+                source,
+                kind,
+                enabled,
+            } => {
+                self.scripts.add(name, source.to_string(), kind, enabled)?;
+                return Ok(());
+            }
+            AppIntent::AddScriptFileSource {
+                name,
+                source,
+                source_path,
+                kind,
+                enabled,
+            } => {
+                self.scripts.add_with_source_path(
+                    name,
+                    source.to_string(),
+                    kind,
+                    enabled,
+                    Some(source_path),
+                )?;
+                return Ok(());
+            }
+            AppIntent::AddEphemeralScript {
+                name,
+                source,
+                source_path,
+            } => {
+                self.scripts.add_ephemeral_with_source_path(
+                    name,
+                    source.to_string(),
+                    source_path,
+                )?;
+                return Ok(());
+            }
+            AppIntent::ReconcileCatalogScripts {
+                scripts,
+                preserve_identities,
+            } => {
+                let mut scripts = scripts.to_vec();
+                if self.connected {
+                    for script in &mut scripts {
+                        script.enabled &=
+                            self.explicitly_started_scripts.contains(&script.identity);
+                    }
+                }
+                self.scripts
+                    .reconcile_catalog_scripts(&scripts, &preserve_identities)?;
+                return Ok(());
+            }
+            AppIntent::SetScriptEnabled { script_id, enabled } => {
+                self.allow_script_restart(script_id, enabled);
+                self.scripts.set_enabled(script_id, enabled)?;
+                return Ok(());
+            }
+            AppIntent::RestartScript { script_id } => {
+                self.allow_script_restart(script_id, true);
+                self.scripts.stop(script_id)?;
+                self.scripts.start(script_id)?;
+                return Ok(());
+            }
+            AppIntent::ReplaceScriptSource { script_id, source } => {
+                self.scripts
+                    .replace_user_source(script_id, source.to_string())?;
+                return Ok(());
+            }
+            AppIntent::SetLoopTimeline {
+                loop_id,
+                start_offset,
+                preplay_samples,
+                loop_length,
+            } => Command::SetLoopTimeline {
+                loop_id,
+                start_offset,
+                preplay_samples,
+                loop_length,
+            },
+            AppIntent::SetLoopChannelTimings { loop_id, updates } => {
+                Command::SetLoopChannelTimings { loop_id, updates }
+            }
+            AppIntent::StopScript { script_id } => {
+                self.scripts.stop(script_id)?;
+                return Ok(());
+            }
+            AppIntent::ForgetScript { script_id } => {
+                self.allow_script_restart(script_id, false);
+                self.scripts.forget(script_id)?;
+                return Ok(());
+            }
+            AppIntent::ConvertScriptKind { script_id, kind } => {
+                self.scripts.convert_kind(script_id, kind)?;
+                return Ok(());
+            }
+            AppIntent::RemoveSessionScript { script_id } => {
+                self.scripts.remove_session_script(script_id)?;
+                return Ok(());
+            }
+            AppIntent::InvokeScriptDialogButton {
+                script_id,
+                dialog_id,
+                button_id,
+            } => {
+                self.scripts
+                    .invoke_dialog_button(script_id, dialog_id, button_id)?;
+                return Ok(());
+            }
+            AppIntent::ExportScript { script_id } => {
+                if self.outputs.len() == 8 {
+                    anyhow::bail!("file output queue is full");
+                }
+                let (name, source) = self.scripts.source(script_id)?;
+                self.outputs.push_back(ApplicationFileOutput {
+                    task_id: TaskId::from_raw(self.next_notice),
+                    suggested_name: format!("{name}.lua"),
+                    mime_type: "text/x-lua".into(),
+                    bytes: Arc::new(source.as_bytes().to_vec()),
+                });
+                self.next_notice = self.next_notice.saturating_add(1);
+                return Ok(());
+            }
+            AppIntent::DismissNotification { id } => {
+                self.notifications.retain(|notice| notice.id != id);
+                return Ok(());
+            }
+            AppIntent::FailIoTask { message, .. } | AppIntent::FailIoWorkflow { message, .. } => {
+                self.notify(message);
+                return Ok(());
+            }
+            AppIntent::StopClickTrackPreview
+            | AppIntent::CompleteClickTrackPreview { .. }
+            | AppIntent::ClickTrackPreviewStarted { .. } => return Ok(()),
+            other => {
+                let capability = match other {
+                    AppIntent::RequestSaveSession
+                    | AppIntent::RequestLoopAudioExport { .. }
+                    | AppIntent::RequestLoopMidiExport { .. } => BackendCapability::SessionCapture,
+                    AppIntent::RequestLoadSessionPicker
+                    | AppIntent::RequestLoadSessionUrl
+                    | AppIntent::LoadSessionBytes { .. } => BackendCapability::SessionContentLoad,
+                    AppIntent::RequestLoopAudioImportPicker { .. }
+                    | AppIntent::ImportLoopAudioBytes { .. }
+                    | AppIntent::RequestLoopMidiImportPicker { .. }
+                    | AppIntent::ImportLoopMidiBytes { .. } => BackendCapability::LoopContentImport,
+                    AppIntent::GenerateClickTrack { .. } => BackendCapability::ClickTrackInsertion,
+                    AppIntent::SetTrackLatency { .. } => BackendCapability::LatencyCompensation,
+                    AppIntent::SetTakeAlignment { .. }
+                    | AppIntent::SetTakeProcessorAlignment { .. } => {
+                        BackendCapability::TakeAlignment
+                    }
+                    AppIntent::CompleteAudioDriverSwitchPersistence { .. } => {
+                        BackendCapability::AudioDriverSwitching
+                    }
+                    _ => anyhow::bail!("{} is unavailable with this engine", other.kind()),
+                };
+                anyhow::bail!(capability.unavailable_reason());
+            }
+        };
+        self.queue(command, None)
+    }
+    fn allow_script_restart(&mut self, id: ScriptId, enabled: bool) {
+        if let Some(identity) = self
+            .scripts
+            .states()
+            .iter()
+            .find(|script| script.id == id)
+            .and_then(|script| script.identity.as_ref())
+        {
+            if enabled {
+                self.explicitly_started_scripts.insert(identity.to_string());
+            } else {
+                self.explicitly_started_scripts.remove(identity.as_ref());
+            }
+        }
+    }
+    fn control_snapshot(&self) -> ControlSnapshot {
+        use shoop_scripting::{ControlBus, ControlLoop, ControlTrack};
+        let Some(state) = self.client.snapshot() else {
+            return ControlSnapshot::default();
+        };
+        let mut tracks = Vec::new();
+        let mut loops = Vec::new();
+        let mut main_index = 0;
+        for track in &state.tracks {
+            let index = if track.is_sync {
+                -1
+            } else {
+                let index = main_index;
+                main_index += 1;
+                index
+            };
+            let controls = &track.controls;
+            tracks.push(ControlTrack {
+                id: track.id,
+                index,
+                output_gain_db: controls.output_gain_db,
+                output_balance: controls.output_balance,
+                output_muted: controls.output_muted,
+                input_gain_db: controls.input_gain_db,
+                input_balance: controls.input_balance,
+                input_muted: !controls.input_monitoring,
+            });
+            for (row, entry) in track.loops.iter().enumerate() {
+                loops.push(ControlLoop {
+                    id: entry.id,
+                    coords: [index, row as i64],
+                    default_playback_mode: LoopMode::Playing,
+                    mode: entry.mode,
+                    next_mode: entry.next_transition_delay.and_then(|_| {
+                        (entry.next_mode != LoopMode::Unknown).then_some(entry.next_mode)
+                    }),
+                    next_mode_delay: entry.next_transition_delay,
+                    length: entry.length_frames.min(u64::from(u32::MAX)) as u32,
+                    gain: entry.gain,
+                    balance: entry.balance,
+                    selected: entry.selected,
+                    targeted: entry.targeted,
+                });
+            }
+        }
+        ControlSnapshot {
+            loops,
+            tracks,
+            buses: {
+                let mut buses = state.buses.iter().collect::<Vec<_>>();
+                buses.sort_by_key(|bus| bus.id);
+                buses
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, bus)| ControlBus {
+                        id: bus.id,
+                        index: index as i64,
+                        channel_count: bus.channels.len(),
+                        gain_db: bus.gain_db,
+                        balance: bus.balance,
+                        muted: bus.muted,
+                    })
+                    .collect()
+            },
+            apply_n_cycles: state.global.apply_n_cycles,
+            solo: state.global.solo,
+            sync_active: state.global.sync,
+            play_after_record: state.global.play_after_record,
+            auto_mute_other_track_inputs: state.global.auto_mute_other_track_inputs,
+            default_recording_action: state.global.default_recording_action,
+        }
+    }
+    fn advance_scripting(&mut self, elapsed: Duration) {
+        let current = self.control_snapshot();
+        self.scripts.set_control_snapshot(current.clone());
+        for loop_ in &current.loops {
+            let previous = self
+                .previous
+                .loops
+                .iter()
+                .find(|candidate| candidate.id == loop_.id);
+            let mut event_types = Vec::new();
+            match previous {
+                Some(previous) => {
+                    if previous.mode != loop_.mode {
+                        event_types.push(0);
+                    }
+                    if previous.length != loop_.length {
+                        event_types.push(1);
+                    }
+                    if previous.selected != loop_.selected {
+                        event_types.push(2);
+                    }
+                    if previous.targeted != loop_.targeted {
+                        event_types.push(3);
+                    }
+                    if previous.coords != loop_.coords {
+                        event_types.push(4);
+                    }
+                }
+                None => event_types.extend([0, 1, 2, 3, 4]),
+            }
+            for event_type in event_types {
+                self.scripts
+                    .dispatch_loop_event(&shoop_scripting::ScriptLoopEvent {
+                        coords: loop_.coords,
+                        event_type,
+                        mode: loop_.mode,
+                        length: loop_.length,
+                        selected: loop_.selected,
+                        targeted: loop_.targeted,
+                    });
+            }
+        }
+        if current.apply_n_cycles != self.previous.apply_n_cycles
+            || current.solo != self.previous.solo
+            || current.sync_active != self.previous.sync_active
+            || current.play_after_record != self.previous.play_after_record
+            || current.auto_mute_other_track_inputs != self.previous.auto_mute_other_track_inputs
+            || current.default_recording_action != self.previous.default_recording_action
+        {
+            self.scripts.dispatch_global_event();
+        }
+        self.scripts.advance_timers(elapsed);
+        self.scripts.advance_midi(elapsed);
+        self.previous = current;
+    }
+}
+
+fn file_input_bytes(intent: &AppIntent) -> Option<usize> {
+    match intent {
+        AppIntent::LoadSessionBytes { bytes, .. }
+        | AppIntent::ImportLoopAudioBytes { bytes, .. }
+        | AppIntent::ImportLoopMidiBytes { bytes, .. }
+        | AppIntent::CompleteIoInput { bytes, .. } => Some(bytes.len()),
+        _ => None,
+    }
+}

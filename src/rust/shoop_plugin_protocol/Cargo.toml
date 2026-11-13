@@ -12,7 +12,7 @@ default = []
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
-serde = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["std", "derive"] }
 serde_json = { workspace = true }
 
 [dev-dependencies]

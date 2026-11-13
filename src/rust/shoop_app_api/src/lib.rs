@@ -1,12 +1,28 @@
+#![no_std]
+extern crate alloc;
+
+mod host_graph;
+pub use host_graph::*;
+
+#[cfg(test)]
+extern crate std;
+
+use alloc::borrow::ToOwned;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
+
 #[cfg(all(test, target_arch = "wasm32", feature = "wasm-test-browser"))]
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
-use std::fmt;
-use std::sync::Arc;
+use alloc::sync::Arc;
+use core::fmt;
 
 macro_rules! entity_id {
     ($name:ident) => {
         #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+        #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
         pub struct $name(u64);
 
         impl $name {
@@ -45,6 +61,7 @@ entity_id!(ScriptDialogId);
 entity_id!(ScriptDialogButtonId);
 
 #[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct HostPortId(String);
 
 impl HostPortId {
@@ -64,6 +81,7 @@ impl fmt::Display for HostPortId {
 }
 
 #[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TrackProcessorTypeId(String);
 
 impl TrackProcessorTypeId {
@@ -90,6 +108,7 @@ impl fmt::Display for TrackProcessorTypeId {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TrackProcessorFeatures {
     pub state: bool,
     pub external_ui: bool,
@@ -99,6 +118,7 @@ pub struct TrackProcessorFeatures {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TrackProcessorMidiPolicy {
     #[default]
     Unsupported,
@@ -107,6 +127,7 @@ pub enum TrackProcessorMidiPolicy {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TrackProcessorConstraints {
     pub min_dry_audio_channels: Option<u32>,
     pub max_dry_audio_channels: Option<u32>,
@@ -139,12 +160,14 @@ impl TrackProcessorConstraints {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TrackProcessorPresetDescriptor {
     pub id: String,
     pub name: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TrackProcessorEditorDescriptor {
     BuiltInFx,
     OxiSynth {
@@ -152,8 +175,21 @@ pub enum TrackProcessorEditorDescriptor {
     },
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct HostedProcessorResources {
+    pub instance_limit: u16,
+    pub instances_in_use: u16,
+    pub buffering_frames: u32,
+    pub reserved_host_bytes: u64,
+    pub budget_host_bytes: u64,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TrackProcessorDescriptor {
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub resources: Option<HostedProcessorResources>,
     pub id: TrackProcessorTypeId,
     pub label: String,
     pub available: bool,
@@ -164,6 +200,7 @@ pub struct TrackProcessorDescriptor {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum FxLifecycle {
     #[default]
     Unavailable,
@@ -176,6 +213,7 @@ pub enum FxLifecycle {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FxGenerationLogState {
     pub generation: u64,
     pub stdout: Arc<str>,
@@ -188,6 +226,21 @@ pub struct FxGenerationLogState {
 pub struct LatestMidiMessage {
     pub bytes: [u8; 4],
     pub len: u8,
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for LatestMidiMessage {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serde::Serialize::serialize(&(self.bytes, self.len), serializer)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for LatestMidiMessage {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let (bytes, len) = <([u8; 4], u8) as serde::Deserialize>::deserialize(deserializer)?;
+        Self::new(bytes, len).ok_or_else(|| serde::de::Error::custom("invalid MIDI message length"))
+    }
 }
 
 impl LatestMidiMessage {
@@ -217,6 +270,7 @@ impl LatestMidiMessage {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum OxiSynthParameter {
     ReverbSend,
     ChorusSend,
@@ -234,6 +288,7 @@ impl OxiSynthParameter {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct OxiSynthMidiCcAssignment {
     pub parameter: OxiSynthParameter,
     pub channel: u8,
@@ -241,6 +296,7 @@ pub struct OxiSynthMidiCcAssignment {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct OxiSynthState {
     pub selected_preset_id: String,
     pub reverb_send: f32,
@@ -249,6 +305,7 @@ pub struct OxiSynthState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BuiltInFxStage {
     Compressor,
     Drive,
@@ -259,6 +316,7 @@ pub enum BuiltInFxStage {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BuiltInFxDriveType {
     #[default]
     Saturation,
@@ -268,6 +326,7 @@ pub enum BuiltInFxDriveType {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BuiltInFxModulationType {
     #[default]
     Tremolo,
@@ -276,6 +335,7 @@ pub enum BuiltInFxModulationType {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BuiltInFxReverbType {
     #[default]
     Room,
@@ -284,6 +344,7 @@ pub enum BuiltInFxReverbType {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BuiltInFxParameter {
     CompressorThreshold,
     CompressorRatio,
@@ -397,6 +458,7 @@ impl BuiltInFxParameter {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BuiltInFxMidiCcAssignment {
     pub parameter: BuiltInFxParameter,
     pub channel: u8,
@@ -404,6 +466,7 @@ pub struct BuiltInFxMidiCcAssignment {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BuiltInFxState {
     pub compressor_enabled: bool,
     pub compressor_threshold_db: f32,
@@ -481,12 +544,14 @@ impl Default for BuiltInFxState {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TrackProcessorEditorState {
     BuiltInFx(BuiltInFxState),
     OxiSynth(OxiSynthState),
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TrackFxState {
     pub processor_type: TrackProcessorTypeId,
     pub active: bool,
@@ -501,6 +566,80 @@ pub struct TrackFxState {
     pub editor: Option<TrackProcessorEditorState>,
 }
 
+impl TrackProcessorEditorState {
+    pub fn canonical_state(&self) -> Result<String, shoop_processor_protocol::state::InvalidState> {
+        use shoop_processor_protocol::{
+            state::{InvalidState, State},
+            Kind,
+        };
+        let state = match self {
+            Self::BuiltInFx(fx) => {
+                let mut state = State::new(Kind::BuiltInFx)?;
+                state.values[..23].copy_from_slice(&[
+                    fx.compressor_threshold_db,
+                    fx.compressor_ratio,
+                    fx.compressor_attack_ms,
+                    fx.compressor_release_ms,
+                    fx.compressor_makeup_db,
+                    fx.drive_db,
+                    fx.drive_tone,
+                    fx.drive_mix,
+                    fx.drive_output_db,
+                    fx.eq_low_db,
+                    fx.eq_mid_db,
+                    fx.eq_high_db,
+                    fx.chorus_rate_hz,
+                    fx.chorus_depth,
+                    fx.chorus_mix,
+                    fx.chorus_width,
+                    fx.modulation_rate_hz,
+                    fx.modulation_depth,
+                    fx.modulation_mix,
+                    fx.modulation_feedback,
+                    fx.modulation_spread,
+                    fx.reverb_amount,
+                    fx.reverb_tone,
+                ]);
+                for (index, enabled) in [
+                    fx.compressor_enabled,
+                    fx.drive_enabled,
+                    fx.eq_enabled,
+                    fx.chorus_enabled,
+                    fx.modulation_enabled,
+                    fx.reverb_enabled,
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    state.values[23 + index] = u8::from(enabled) as f32;
+                }
+                state.values[29] = fx.drive_type as u8 as f32;
+                state.values[30] = fx.modulation_type as u8 as f32;
+                state.values[31] = fx.reverb_type as u8 as f32;
+                state
+            }
+            Self::OxiSynth(synth) => {
+                let (bank, program) = synth
+                    .selected_preset_id
+                    .split_once(':')
+                    .ok_or(InvalidState)?;
+                let bank = bank.parse::<u32>().map_err(|_| InvalidState)?;
+                let program = program.parse::<u32>().map_err(|_| InvalidState)?;
+                if bank > 65535 || program > 127 {
+                    return Err(InvalidState);
+                }
+                let mut state = State::new(Kind::OxiSynth)?;
+                state.values[0] = synth.reverb_send;
+                state.values[1] = synth.chorus_send;
+                state.values[2] = (bank * 128 + program) as f32;
+                state
+            }
+        };
+        state.validate()?;
+        Ok(state.encode())
+    }
+}
+
 pub const MIN_TRACK_GAIN_DB: f32 = -30.0;
 pub const MAX_TRACK_GAIN_DB: f32 = 20.0;
 pub const MIN_BUS_GAIN_DB: f32 = MIN_TRACK_GAIN_DB;
@@ -509,6 +648,7 @@ pub const MIN_OXISYNTH_SEND: f32 = 0.0;
 pub const MAX_OXISYNTH_SEND: f32 = 1.0;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum RecordingOffsetAdjustmentState {
     Automatic,
     #[default]
@@ -517,6 +657,7 @@ pub enum RecordingOffsetAdjustmentState {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ProcessorLatencyAdjustmentState {
     Automatic,
     #[default]
@@ -525,6 +666,7 @@ pub enum ProcessorLatencyAdjustmentState {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TrackLatencyState {
     pub automatic_offset_frames: Option<i32>,
     pub adjustment: RecordingOffsetAdjustmentState,
@@ -556,6 +698,7 @@ impl Default for TrackLatencyState {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DefaultRecordingAction {
     #[default]
     Record,
@@ -563,6 +706,7 @@ pub enum DefaultRecordingAction {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DefaultPlaybackMode {
     #[default]
     Regular,
@@ -570,6 +714,7 @@ pub enum DefaultPlaybackMode {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LoopMode {
     #[default]
     Unknown,
@@ -582,6 +727,7 @@ pub enum LoopMode {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum CompositeKind {
     #[default]
     None,
@@ -589,7 +735,8 @@ pub enum CompositeKind {
     Script,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GlobalControlState {
     pub default_recording_action: DefaultRecordingAction,
     pub play_after_record: bool,
@@ -615,6 +762,7 @@ impl Default for GlobalControlState {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AudioDriverState {
     #[default]
     Dummy,
@@ -630,6 +778,7 @@ pub enum AudioDriverState {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AudioDriverKind {
     #[default]
     Dummy,
@@ -659,6 +808,7 @@ impl AudioDriverKind {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DummyAudioDriverConfig {
     pub sample_rate: u32,
     pub buffer_size: u32,
@@ -674,6 +824,8 @@ impl Default for DummyAudioDriverConfig {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(default, deny_unknown_fields))]
 pub struct JackAudioDriverConfig {
     pub client_name: String,
 }
@@ -686,18 +838,37 @@ impl Default for JackAudioDriverConfig {
     }
 }
 
+impl JackAudioDriverConfig {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.client_name.trim().is_empty()
+            || self.client_name.len() > 63
+            || self.client_name.contains([':', '\0'])
+        {
+            return Err(
+                "JACK client name must contain 1 to 63 bytes without a colon or NUL".to_owned(),
+            );
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CpalAudioDriverConfig {
     pub client_name: String,
     pub host: String,
+    /// Audio selector; `=name` selects one exact device name.
     pub output_device: String,
+    /// Audio selector; `=name` selects one exact device name.
     pub input_device: String,
     pub sample_rate: u32,
     pub buffer_size: u32,
     pub output_channels: String,
     pub input_channels: String,
     pub capture_ring_frames: u32,
+    /// MIDI selectors; `=name` selects one exact port name.
     pub midi_inputs: Vec<String>,
+    /// MIDI selectors; `=name` selects one exact port name.
     pub midi_outputs: Vec<String>,
 }
 
@@ -720,6 +891,7 @@ impl Default for CpalAudioDriverConfig {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AudioDriverConfig {
     Dummy(DummyAudioDriverConfig),
     Jack(JackAudioDriverConfig),
@@ -728,6 +900,54 @@ pub enum AudioDriverConfig {
 }
 
 impl AudioDriverConfig {
+    pub fn bounded(&self) -> bool {
+        let text = |value: &str| value.len() <= 128 && !value.contains('\0');
+        match self {
+            Self::Dummy(config) => {
+                (1..=768_000).contains(&config.sample_rate)
+                    && (1..=65_536).contains(&config.buffer_size)
+            }
+            Self::Jack(config) => text(&config.client_name) && config.validate().is_ok(),
+            Self::Cpal(config) => {
+                [
+                    &config.client_name,
+                    &config.host,
+                    &config.output_device,
+                    &config.input_device,
+                    &config.output_channels,
+                    &config.input_channels,
+                ]
+                .into_iter()
+                .all(|value| text(value))
+                    && config.sample_rate <= 768_000
+                    && config.buffer_size <= 65_536
+                    && config.capture_ring_frames <= 1_048_576
+                    && config.midi_inputs.len() <= 32
+                    && config.midi_outputs.len() <= 32
+                    && config
+                        .midi_inputs
+                        .iter()
+                        .chain(&config.midi_outputs)
+                        .all(|value| text(value))
+                    && [
+                        &config.client_name,
+                        &config.host,
+                        &config.output_device,
+                        &config.input_device,
+                        &config.output_channels,
+                        &config.input_channels,
+                    ]
+                    .into_iter()
+                    .chain(config.midi_inputs.iter())
+                    .chain(config.midi_outputs.iter())
+                    .map(String::len)
+                    .sum::<usize>()
+                        <= 768
+            }
+            Self::WebAudio => false,
+        }
+    }
+
     pub const fn kind(&self) -> AudioDriverKind {
         match self {
             Self::Dummy(_) => AudioDriverKind::Dummy,
@@ -745,6 +965,7 @@ impl Default for AudioDriverConfig {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AudioDriverDescriptor {
     pub kind: AudioDriverKind,
     pub available: bool,
@@ -757,14 +978,17 @@ pub struct AudioDriverDescriptor {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ResolvedAudioDriverConfig {
     pub configured: AudioDriverConfig,
     pub sample_rate: u32,
+    /// Zero during preflight means that the device chooses its callback size on open.
     pub buffer_size: u32,
     pub instance_name: String,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AudioDriverSwitchStatus {
     #[default]
     Idle,
@@ -779,6 +1003,7 @@ pub enum AudioDriverSwitchStatus {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AudioDriverSwitchState {
     pub request_id: u64,
     pub status: AudioDriverSwitchStatus,
@@ -789,6 +1014,7 @@ pub struct AudioDriverSwitchState {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AudioDriverRuntimeState {
     pub supported: bool,
     pub catalog: Arc<[AudioDriverDescriptor]>,
@@ -796,13 +1022,28 @@ pub struct AudioDriverRuntimeState {
     pub switch: AudioDriverSwitchState,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ConversionTarget {
+    pub sample_rate: u32,
+    pub quantum_frames: u32,
+}
+
+impl ConversionTarget {
+    pub fn is_valid(self) -> bool {
+        self.sample_rate > 0 && matches!(self.quantum_frames, 1 | 16 | 32 | 64 | 128)
+    }
+}
+
 #[derive(Clone, Debug, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct StatusState {
     pub version: String,
     pub dsp_load_percent: f32,
     pub xruns: u32,
     pub buffer_size: u32,
     pub sample_rate: u32,
+    pub quantum_frames: u32,
     pub audio_driver: AudioDriverState,
     pub callback_count: u64,
     pub processed_frames: u64,
@@ -817,12 +1058,21 @@ pub struct StatusState {
 }
 
 impl StatusState {
+    pub fn conversion_target(&self) -> Option<ConversionTarget> {
+        let target = ConversionTarget {
+            sample_rate: self.sample_rate,
+            quantum_frames: self.quantum_frames,
+        };
+        target.is_valid().then_some(target)
+    }
+
     pub fn latency_ms(&self) -> Option<f32> {
         (self.sample_rate > 0).then(|| self.buffer_size as f32 * 1000.0 / self.sample_rate as f32)
     }
 }
 
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TrackControlState {
     pub has_output: bool,
     pub has_output_audio: bool,
@@ -885,6 +1135,7 @@ impl TrackControlState {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum StructuralState {
     #[default]
     Confirmed,
@@ -892,8 +1143,26 @@ pub enum StructuralState {
     Removing,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct LoopChannelTimingState {
+    pub id: ChannelId,
+    pub is_midi: bool,
+    pub data_length: u64,
+    pub start_offset: i64,
+    pub capture_alignment_frames: i64,
+    pub preplay_samples: u64,
+}
+
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LoopState {
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub capture_incomplete: bool,
+    pub repeat_sync: bool,
+    pub timing_revision: u64,
+    pub channel_timings: Arc<[LoopChannelTimingState]>,
+    pub content_revision: u64,
     pub id: LoopId,
     pub name: String,
     pub structural_state: StructuralState,
@@ -929,6 +1198,11 @@ pub struct LoopState {
 impl Default for LoopState {
     fn default() -> Self {
         Self {
+            capture_incomplete: false,
+            repeat_sync: false,
+            timing_revision: 0,
+            channel_timings: Arc::from([]),
+            content_revision: 0,
             id: LoopId::INVALID,
             name: "Loop".to_owned(),
             structural_state: StructuralState::Confirmed,
@@ -964,18 +1238,7 @@ impl Default for LoopState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub enum PortDataType {
-    Audio,
-    Midi,
-}
-
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub enum PortDirection {
-    Input,
-    Output,
-}
-
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PortRole {
     AudioInput,
     AudioOutput,
@@ -1011,12 +1274,14 @@ impl PortRole {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TrackPortOwnerKind {
     Sync,
     Main,
 }
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ApplicationPortOwner {
     GlobalFxControl,
     Bus {
@@ -1033,13 +1298,17 @@ pub enum ApplicationPortOwner {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ConnectionPolicy {
     UserManaged,
     OwnerManaged,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ApplicationPortState {
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub publication: Option<HostGraphLocalKey>,
     pub id: PortId,
     pub owner: ApplicationPortOwner,
     pub name: String,
@@ -1050,11 +1319,33 @@ pub struct ApplicationPortState {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct HostPortState {
     pub id: HostPortId,
     pub name: String,
     pub data_type: PortDataType,
     pub direction: PortDirection,
+    pub available: bool,
+}
+
+pub const MASTER_BUS_NAME: &str = "Master";
+pub const MASTER_BUS_CHANNEL_LABELS: [&str; 2] = ["Left", "Right"];
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct BusLimits {
+    pub buses: u32,
+    pub channels: u32,
+    pub total_channels: u32,
+}
+impl Default for BusLimits {
+    fn default() -> Self {
+        Self {
+            buses: MAX_BUSES as u32,
+            channels: MAX_BUS_CHANNELS as u32,
+            total_channels: MAX_TOTAL_BUS_CHANNELS as u32,
+        }
+    }
 }
 
 pub const MAX_BUS_NAME_BYTES: usize = 128;
@@ -1065,6 +1356,7 @@ pub const MAX_MIXER_ROUTES: usize = 4_096;
 pub const MAX_BUS_HOST_LINKS: usize = 4_096;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BusChannelState {
     pub id: BusChannelId,
     pub label: String,
@@ -1072,7 +1364,9 @@ pub struct BusChannelState {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BusState {
+    pub latest_input_midi_message: Option<LatestMidiMessage>,
     pub id: BusId,
     pub name: String,
     pub structural_state: StructuralState,
@@ -1094,30 +1388,35 @@ impl BusState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MixerRouteState {
     pub source_port_id: PortId,
     pub destination_channel_id: BusChannelId,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PendingMixerRouteState {
     pub route: MixerRouteState,
     pub desired_connected: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MixerRouteErrorState {
     pub route: MixerRouteState,
     pub message: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ConfirmedConnectionState {
     pub application_port_id: PortId,
     pub host_port_id: HostPortId,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PendingConnectionState {
     pub application_port_id: PortId,
     pub host_port_id: HostPortId,
@@ -1125,6 +1424,7 @@ pub struct PendingConnectionState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ConnectionErrorKind {
     StaleLocalPort,
     EndpointUnavailable,
@@ -1136,6 +1436,7 @@ pub enum ConnectionErrorKind {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ConnectionErrorState {
     pub port_id: Option<PortId>,
     pub external_port: Option<String>,
@@ -1144,6 +1445,7 @@ pub struct ConnectionErrorState {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ConnectionViewState {
     pub revision: u64,
     pub loading: bool,
@@ -1186,6 +1488,7 @@ pub enum TrackChannelRole {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TrackTopology {
     #[default]
     Direct,
@@ -1196,8 +1499,26 @@ pub enum TrackTopology {
         processor_type: TrackProcessorTypeId,
     },
 }
+impl TrackTopology {
+    pub fn audio_channel_labels(&self, direct_channels: usize) -> Vec<String> {
+        match self {
+            Self::Direct => (1..=direct_channels)
+                .map(|index| format!("Audio {index}"))
+                .collect(),
+            Self::DryWet {
+                dry_audio_channels,
+                wet_audio_channels,
+                ..
+            } => (1..=*dry_audio_channels)
+                .map(|index| format!("Dry {index}"))
+                .chain((1..=*wet_audio_channels).map(|index| format!("Wet {index}")))
+                .collect(),
+        }
+    }
+}
 
 #[derive(Clone, Debug, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TrackState {
     pub id: TrackId,
     pub name: String,
@@ -1237,7 +1558,8 @@ impl Default for WaveformChannelState {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MidiEventState {
     pub frame: u32,
     pub data: Arc<[u8]>,
@@ -1298,9 +1620,30 @@ pub struct CompositeEventDetailsState {
     pub loop_mode: LoopMode,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct CompositeTimingState {
+    pub basis_sample_rate: u32,
+    pub basis_frames: u64,
+    pub render_sample_rate: u32,
+    pub quantum_frames: u32,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct CompositeExecutionState {
+    pub active_version: Option<u64>,
+    pub pending_version: Option<u64>,
+    pub pending_stage: Option<String>,
+    pub waiting_repeat: bool,
+    pub restoring: bool,
+    pub error: Option<String>,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct CompositeDetailsState {
+    pub timing: Option<CompositeTimingState>,
+    pub execution: CompositeExecutionState,
     pub kind: CompositeKind,
+    pub available_event_modes: Vec<LoopMode>,
     pub cycle_length_frames: u64,
     pub timeline_length_frames: u64,
     pub played_frame: Option<u64>,
@@ -1308,8 +1651,37 @@ pub struct CompositeDetailsState {
     pub events: Vec<CompositeEventDetailsState>,
 }
 
+impl CompositeDetailsState {
+    pub fn frame_cycles(&self, frame: u64) -> f64 {
+        if let Some(timing) = self
+            .timing
+            .filter(|timing| timing.basis_frames != 0 && timing.render_sample_rate != 0)
+        {
+            frame as f64 * f64::from(timing.basis_sample_rate)
+                / (timing.basis_frames as f64 * f64::from(timing.render_sample_rate))
+        } else {
+            frame as f64 / self.cycle_length_frames.max(1) as f64
+        }
+    }
+    pub fn cycles_ceil(&self, frame: u64) -> u64 {
+        if let Some(timing) = self
+            .timing
+            .filter(|timing| timing.basis_frames != 0 && timing.render_sample_rate != 0)
+        {
+            let numerator = u128::from(frame) * u128::from(timing.basis_sample_rate);
+            let denominator =
+                u128::from(timing.basis_frames) * u128::from(timing.render_sample_rate);
+            u64::try_from(numerator.div_ceil(denominator)).unwrap_or(u64::MAX)
+        } else {
+            frame.div_ceil(self.cycle_length_frames.max(1))
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct LoopDetailsState {
+    pub quantum_frames: u32,
+    pub length_frames: u64,
     pub generation: u64,
     pub loop_id: LoopId,
     pub title: String,
@@ -1342,7 +1714,7 @@ pub enum IoTaskKind {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum IoTaskStatus {
     Running,
-    AwaitingSampleRateConfirmation,
+    AwaitingFormatConversionConfirmation,
     AwaitingChannelMapping,
     AwaitingChannelSelection,
     Completed,
@@ -1350,8 +1722,15 @@ pub enum IoTaskStatus {
     Failed,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FileOutputOutcome {
+    Saved,
+    DownloadHandedOff,
+    Cancelled,
+}
+
 #[derive(Clone, Debug, PartialEq)]
-pub struct SampleRateWarning {
+pub struct FormatConversionWarning {
     pub source_rate: u32,
     pub target_rate: u32,
     pub affected_media: String,
@@ -1377,7 +1756,7 @@ pub struct IoTaskState {
     pub status: IoTaskStatus,
     pub progress: f32,
     pub message: String,
-    pub sample_rate_warning: Option<SampleRateWarning>,
+    pub format_conversion_warning: Option<FormatConversionWarning>,
     pub audio_channel_mapping: Option<AudioChannelMappingState>,
     pub audio_channel_selection: Option<AudioChannelSelectionState>,
 }
@@ -1447,7 +1826,7 @@ pub fn ephemeral_script_display_name<'a>(
 ) -> String {
     let existing_names = existing_names
         .into_iter()
-        .collect::<std::collections::BTreeSet<_>>();
+        .collect::<alloc::collections::BTreeSet<_>>();
     if !existing_names.contains(source_name) {
         return source_name.to_owned();
     }
@@ -1615,12 +1994,14 @@ impl Default for ScriptingState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ClickTrackPreviewOutput {
     System,
     MasterBus,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ClickTrackPreviewStatus {
     Cancelled,
     #[default]
@@ -1632,12 +2013,14 @@ pub enum ClickTrackPreviewStatus {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ClickSoundDescriptor {
     pub id: String,
     pub name: String,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ClickTrackState {
     pub preview_output: Option<ClickTrackPreviewOutput>,
     pub master_preview_available: bool,
@@ -1650,18 +2033,21 @@ pub struct ClickTrackState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TrackCreationResult {
     pub request_id: u64,
     pub success: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BusCreationResult {
     pub request_id: u64,
     pub success: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BusSpec {
     pub name: String,
     pub channel_count: u32,
@@ -1670,12 +2056,206 @@ pub struct BusSpec {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BusFxSpec {
     pub processor_type: TrackProcessorTypeId,
 }
 
+/// An optional backend feature. Every feature outside the core looping workflow is one of these.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum BackendCapability {
+    SessionCapture,
+    /// Loading sessions whose loops carry content. Structure-only documents need no capability.
+    SessionContentLoad,
+    /// Prepared composite arrangements executed by the session engine.
+    CompositeLoops,
+    Grab,
+    ReplacingMode,
+    /// Playing dry through wet and recording dry into wet, as loop modes and track defaults.
+    DryWetModes,
+    /// Dry/wet tracks, with an external or a hosted processor.
+    DryWetTracks,
+    TrackFx,
+    BusFx,
+    LatencyCompensation,
+    TakeAlignment,
+    /// Replacing loop content from standalone audio/MIDI imports.
+    LoopContentImport,
+    /// Editing loop length, start offset and pre-play.
+    LoopTimingEdits,
+    /// Creating and removing buses other than Master.
+    BusManagement,
+    AudioDriverSwitching,
+    MidiInjection,
+    LoopDuplication,
+    ClickTrackInsertion,
+}
+
+impl BackendCapability {
+    pub const ALL: [Self; 18] = [
+        Self::SessionCapture,
+        Self::SessionContentLoad,
+        Self::CompositeLoops,
+        Self::Grab,
+        Self::ReplacingMode,
+        Self::DryWetModes,
+        Self::DryWetTracks,
+        Self::TrackFx,
+        Self::BusFx,
+        Self::LatencyCompensation,
+        Self::TakeAlignment,
+        Self::LoopContentImport,
+        Self::LoopTimingEdits,
+        Self::BusManagement,
+        Self::AudioDriverSwitching,
+        Self::MidiInjection,
+        Self::LoopDuplication,
+        Self::ClickTrackInsertion,
+    ];
+
+    const fn bit(self) -> u32 {
+        1 << self as u32
+    }
+
+    pub const fn unavailable_reason(self) -> &'static str {
+        match self {
+            Self::SessionCapture => "The session engine cannot currently save sessions.",
+            Self::SessionContentLoad => {
+                "The session engine cannot currently load sessions with loop content."
+            }
+            Self::CompositeLoops => "The session engine does not yet support composite loops.",
+            Self::Grab => "The session engine does not yet support grabbing.",
+            Self::ReplacingMode => "The session engine does not yet support replacing.",
+            Self::DryWetModes => "The session engine does not yet support the dry/wet loop modes.",
+            Self::DryWetTracks => "The session engine does not yet support dry/wet tracks.",
+            Self::TrackFx => "The session engine does not yet support track FX.",
+            Self::BusFx => "The session engine does not yet support bus FX.",
+            Self::LatencyCompensation => {
+                "The session engine does not yet support latency compensation."
+            }
+            Self::TakeAlignment => "The session engine does not yet support take alignment.",
+            Self::LoopContentImport => "The session engine cannot currently replace loop content.",
+            Self::LoopTimingEdits => {
+                "The session engine does not yet support editing loop length or timing."
+            }
+            Self::BusManagement => "Additional buses are temporarily unavailable in the session engine.",
+            Self::AudioDriverSwitching => {
+                "The session engine cannot currently switch audio drivers at runtime; restart with other settings instead."
+            }
+            Self::MidiInjection => "The session engine does not yet support MIDI input injection.",
+            Self::LoopDuplication => "The active host does not support loop copying.",
+            Self::ClickTrackInsertion => "The session engine does not yet support generated click-track insertion.",
+        }
+    }
+}
+
+/// The set of optional features a backend supports. The application presents the others as
+/// unavailable, refuses them and rejects documents that need them. Defaults to every feature.
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct BackendCapabilities {
+    supported: u32,
+}
+
+impl BackendCapabilities {
+    pub const FULL: Self = {
+        let mut supported = 0;
+        let mut index = 0;
+        while index < BackendCapability::ALL.len() {
+            supported |= BackendCapability::ALL[index].bit();
+            index += 1;
+        }
+        Self { supported }
+    };
+    pub const NONE: Self = Self { supported: 0 };
+
+    pub const fn supports(self, capability: BackendCapability) -> bool {
+        self.supported & capability.bit() != 0
+    }
+
+    #[must_use]
+    pub const fn with(self, capability: BackendCapability, supported: bool) -> Self {
+        Self {
+            supported: if supported {
+                self.supported | capability.bit()
+            } else {
+                self.supported & !capability.bit()
+            },
+        }
+    }
+
+    pub fn require(self, capability: BackendCapability) -> Result<(), String> {
+        if self.supports(capability) {
+            Ok(())
+        } else {
+            Err(capability.unavailable_reason().to_owned())
+        }
+    }
+
+    pub fn unsupported(self) -> impl Iterator<Item = BackendCapability> {
+        BackendCapability::ALL
+            .into_iter()
+            .filter(move |capability| !self.supports(*capability))
+    }
+}
+
+impl Default for BackendCapabilities {
+    fn default() -> Self {
+        Self::FULL
+    }
+}
+
+impl fmt::Debug for BackendCapabilities {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_set()
+            .entries(
+                BackendCapability::ALL
+                    .into_iter()
+                    .filter(|capability| self.supports(*capability)),
+            )
+            .finish()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NotificationLevel {
+    Warning,
+    Error,
+}
+
+/// A message for the user about a refused or failed action, shown until dismissed.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AppNotification {
+    pub id: u64,
+    pub level: NotificationLevel,
+    pub message: String,
+}
+
+pub use rt_profiling as profiling_data;
+pub use rt_profiling::View as ProfilingView;
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ProfilingSource {
+    pub descriptor: profiling_protocol::Descriptor,
+    pub status: Option<profiling_protocol::Status>,
+    pub age_ms: u64,
+    pub assembly_losses: u64,
+    pub supported: bool,
+}
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DiagnosticsView {
+    pub sources: Vec<ProfilingSource>,
+    pub tasks: freertos_profiling::View,
+}
+pub use freertos_profiling as task_profiling;
+pub use profiling_protocol as diagnostics_protocol;
+
 #[derive(Clone, Debug, Default)]
 pub struct AppSnapshot {
+    pub diagnostics: DiagnosticsView,
+    pub profiling: ProfilingView,
+    pub bus_limits: BusLimits,
     pub revision: u64,
     pub tracks: Vec<TrackState>,
     pub buses: Arc<[BusState]>,
@@ -1686,8 +2266,11 @@ pub struct AppSnapshot {
     pub global_controls: GlobalControlState,
     pub status: StatusState,
     pub audio_drivers: AudioDriverRuntimeState,
+    pub capabilities: BackendCapabilities,
+    pub notifications: Arc<[AppNotification]>,
     pub details: Option<LoopDetailsState>,
     pub connections: Arc<ConnectionViewState>,
+    pub host_graph: Arc<HostGraphState>,
     pub scripting: Arc<ScriptingState>,
     pub click_track: ClickTrackState,
     pub io_task: Option<IoTaskState>,
@@ -1698,6 +2281,7 @@ pub type AppState = AppSnapshot;
 pub const MAX_TRACK_LATENCY_FRAMES: i32 = shoop_latency::MAX_COMPENSATION_FRAMES as i32;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TrackLatencySpec {
     pub adjustment: RecordingOffsetAdjustmentState,
     pub manual_frames: i32,
@@ -1706,6 +2290,7 @@ pub struct TrackLatencySpec {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TrackSpec {
     pub name: String,
     pub topology: TrackSpecTopology,
@@ -1715,6 +2300,7 @@ pub struct TrackSpec {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TrackSpecTopology {
     Direct {
         audio_channels: u32,
@@ -1828,6 +2414,7 @@ pub enum TrackSpecError {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DirectTrackSpec {
     pub name: String,
     pub audio_channels: u32,
@@ -1864,6 +2451,7 @@ pub enum DirectTrackSpecError {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SelectionModifiers {
     pub additive: bool,
 }
@@ -1875,6 +2463,7 @@ pub enum LoopAudioExportFormat {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ClickTrackKind {
     #[default]
     Audio,
@@ -1882,6 +2471,7 @@ pub enum ClickTrackKind {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ClickTrackRequest {
     pub kind: ClickTrackKind,
     pub primary_sound_id: String,
@@ -1911,6 +2501,7 @@ impl Default for ClickTrackRequest {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LoopAction {
     NameChanged(String),
     IconClicked(SelectionModifiers),
@@ -1921,6 +2512,7 @@ pub enum LoopAction {
     RecordClicked,
     GrabClicked,
     RerecordClicked,
+    ReplaceClicked,
     StopClicked,
     GainChanged(f32),
     BalanceChanged(f32),
@@ -1937,6 +2529,7 @@ pub enum LoopAction {
 pub type LoopWidgetAction = LoopAction;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BuiltInFxControl {
     SetStageEnabled(BuiltInFxStage, bool),
     SetDriveType(BuiltInFxDriveType),
@@ -1950,6 +2543,7 @@ pub enum BuiltInFxControl {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum OxiSynthControl {
     SelectPreset(String),
     SetReverbSend(f32),
@@ -1961,6 +2555,7 @@ pub enum OxiSynthControl {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TrackAction {
     Remove,
     MoveBefore(Option<TrackId>),
@@ -1987,6 +2582,7 @@ pub enum TrackAction {
 pub type TrackWidgetAction = TrackAction;
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BusAction {
     Remove,
     MoveBefore(Option<BusId>),
@@ -2003,6 +2599,7 @@ pub enum BusAction {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum GlobalControlAction {
     StopAll,
     MidiPanic,
@@ -2021,6 +2618,21 @@ pub enum GlobalControlAction {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct MidiNote(u8);
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for MidiNote {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_u8(self.0)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for MidiNote {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = <u8 as serde::Deserialize>::deserialize(deserializer)?;
+        Self::new(value).ok_or_else(|| serde::de::Error::custom("invalid MIDI note"))
+    }
+}
+
 impl MidiNote {
     pub const fn new(value: u8) -> Option<Self> {
         if value <= 127 {
@@ -2036,13 +2648,17 @@ impl MidiNote {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PianoAction {
     Press(MidiNote),
     Release(MidiNote),
     ReleaseAll,
 }
 
+pub const MAX_LOOP_CHANNEL_TIMING_UPDATES: usize = 17;
+
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ChannelTimelineUpdate {
     pub channel_id: ChannelId,
     pub start_offset: Option<i64>,
@@ -2051,6 +2667,9 @@ pub struct ChannelTimelineUpdate {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AppIntent {
+    ControlProfiling(profiling_protocol::Request),
+    SetProfiling(bool),
+    InspectProfiling(profiling_data::CaptureRequest),
     SetLoopSmoothingMs(u32),
     SetMasterAutoConnect(bool),
     SetLoopTimeline {
@@ -2127,6 +2746,15 @@ pub enum AppIntent {
         target_loop_id: LoopId,
         kind: CompositeKind,
     },
+    SetCompositeTimingBasis {
+        target_loop_id: LoopId,
+        sample_rate: u32,
+        unit_frames: u64,
+    },
+    CancelCompositeEdit {
+        target_loop_id: LoopId,
+        version: u64,
+    },
     SetCompositeEventMode {
         target_loop_id: LoopId,
         event: CompositeEventId,
@@ -2187,6 +2815,7 @@ pub enum AppIntent {
         dialog_id: ScriptDialogId,
         button_id: ScriptDialogButtonId,
     },
+    SetHostGraphConnected(HostGraphRequest),
     SetPortConnected {
         port_id: PortId,
         host_port_id: HostPortId,
@@ -2212,16 +2841,34 @@ pub enum AppIntent {
         success: bool,
         message: String,
     },
+    RetryAudioDriverPersistence {
+        request_id: u64,
+    },
     ResetXruns,
+    DismissNotification {
+        id: u64,
+    },
     RequestNewSession,
     RequestSaveSession,
     RequestLoadSessionPicker,
     RequestLoadSessionUrl,
+    RequestLoadSessionSource {
+        source: String,
+    },
     LoadSessionBytes {
         name: String,
-        bytes: Arc<[u8]>,
+        bytes: Arc<Vec<u8>>,
     },
-    ConfirmSampleRateConversion {
+    CompleteIoInput {
+        task_id: TaskId,
+        name: String,
+        bytes: Arc<Vec<u8>>,
+    },
+    CompleteIoOutput {
+        task_id: TaskId,
+        outcome: FileOutputOutcome,
+    },
+    ConfirmFormatConversion {
         task_id: TaskId,
         accept: bool,
     },
@@ -2277,7 +2924,7 @@ pub enum AppIntent {
     ImportLoopAudioBytes {
         loop_id: LoopId,
         name: String,
-        bytes: Arc<[u8]>,
+        bytes: Arc<Vec<u8>>,
         update_loop_length: bool,
     },
     RequestLoopMidiExport {
@@ -2290,7 +2937,7 @@ pub enum AppIntent {
     ImportLoopMidiBytes {
         loop_id: LoopId,
         name: String,
-        bytes: Arc<[u8]>,
+        bytes: Arc<Vec<u8>>,
         update_loop_length: bool,
     },
 }
@@ -2307,6 +2954,7 @@ impl LoopAction {
             Self::RecordClicked => "loop.record",
             Self::GrabClicked => "loop.grab",
             Self::RerecordClicked => "loop.rerecord",
+            Self::ReplaceClicked => "loop.replace",
             Self::StopClicked => "loop.stop",
             Self::GainChanged(_) => "loop.gain",
             Self::BalanceChanged(_) => "loop.balance",
@@ -2427,6 +3075,9 @@ impl PianoAction {
 impl AppIntent {
     pub const fn kind(&self) -> &'static str {
         match self {
+            Self::SetProfiling(_) | Self::InspectProfiling(_) | Self::ControlProfiling(_) => {
+                "developer.profiling"
+            }
             Self::SetLoopSmoothingMs(_) => "audio.loop_smoothing",
             Self::SetMasterAutoConnect(_) => "audio.master_auto_connect",
             Self::SetLoopTimeline { .. } | Self::SetLoopChannelTimings { .. } => "loop.timeline",
@@ -2449,6 +3100,8 @@ impl AppIntent {
             Self::SetCompositeLoopCycles { .. } => "loop.composite.set_loop_cycles",
             Self::SetCompositeKind { .. } => "loop.composite.set_kind",
             Self::SetCompositeEventMode { .. } => "loop.composite.set_event_mode",
+            Self::SetCompositeTimingBasis { .. } => "loop.composite.set_timing_basis",
+            Self::CancelCompositeEdit { .. } => "loop.composite.cancel_edit",
             Self::KeyEvent(_) => "scripting.key_event",
             Self::AddScriptSource { .. } => "scripting.add_source",
             Self::AddScriptFileSource { .. } => "scripting.add_file_source",
@@ -2463,6 +3116,7 @@ impl AppIntent {
             Self::ConvertScriptKind { .. } => "scripting.convert_kind",
             Self::RemoveSessionScript { .. } => "scripting.remove_session",
             Self::InvokeScriptDialogButton { .. } => "scripting.dialog_button",
+            Self::SetHostGraphConnected(_) => "host_graph.set",
             Self::SetPortConnected { .. } => "connection.set",
             Self::SetMixerRouteConnected { .. } => "mixer.connection.set",
             Self::RefreshAudioDriverDiscovery { .. } => "audio_driver.refresh_discovery",
@@ -2471,14 +3125,19 @@ impl AppIntent {
             Self::CompleteAudioDriverSwitchPersistence { .. } => {
                 "audio_driver.complete_persistence"
             }
+            Self::RetryAudioDriverPersistence { .. } => "audio_driver.retry_persistence",
             Self::ResetXruns => "audio.reset_xruns",
+            Self::DismissNotification { .. } => "app.dismiss_notification",
             Self::RequestNewSession => "session.request_new",
             Self::RequestSaveSession => "session.request_save",
             Self::RequestLoadSessionPicker => "session.request_load_picker",
             Self::RequestLoadSessionUrl => "session.request_load_url",
             Self::LoadSessionBytes { .. } => "session.load_bytes",
-            Self::ConfirmSampleRateConversion { .. } => "io.confirm_sample_rate",
+            Self::ConfirmFormatConversion { .. } => "io.confirm_format_conversion",
             Self::ConfirmAudioChannelMapping { .. } => "io.confirm_channel_mapping",
+            Self::CompleteIoInput { .. } => "io.input_complete",
+            Self::RequestLoadSessionSource { .. } => "session.load_source",
+            Self::CompleteIoOutput { .. } => "io.output_complete",
             Self::ConfirmAudioChannelSelection { .. } => "io.confirm_channel_selection",
             Self::CancelIoTask { .. } => "io.cancel",
             Self::FailIoTask { .. } => "io.fail",
@@ -2504,6 +3163,38 @@ pub type AppAction = AppIntent;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::string::ToString;
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn backend_capabilities_toggle_each_capability_independently() {
+        assert_eq!(BackendCapabilities::default(), BackendCapabilities::FULL);
+        assert_eq!(BackendCapabilities::FULL.unsupported().count(), 0);
+        assert_eq!(
+            BackendCapabilities::NONE.unsupported().collect::<Vec<_>>(),
+            BackendCapability::ALL
+        );
+        for capability in BackendCapability::ALL {
+            let reduced = BackendCapabilities::FULL.with(capability, false);
+            assert!(!reduced.supports(capability));
+            assert_eq!(reduced.unsupported().collect::<Vec<_>>(), [capability]);
+            assert_eq!(
+                reduced.require(capability),
+                Err(capability.unavailable_reason().to_owned())
+            );
+            assert_eq!(reduced.with(capability, true), BackendCapabilities::FULL);
+            assert!(BackendCapabilities::NONE
+                .with(capability, true)
+                .require(capability)
+                .is_ok());
+        }
+        assert_eq!(
+            format!(
+                "{:?}",
+                BackendCapabilities::NONE.with(BackendCapability::Grab, true)
+            ),
+            "{Grab}"
+        );
+    }
 
     #[shoop_wasm_test_support::shoop_test]
     fn bus_state_derives_stereo_capability_from_ordered_channel_count() {
@@ -2513,6 +3204,7 @@ mod tests {
             output_port_id: PortId::from_raw(id),
         };
         let mut state = BusState {
+            latest_input_midi_message: None,
             id: BusId::from_raw(1),
             name: "Master".to_owned(),
             structural_state: StructuralState::Confirmed,
@@ -2549,7 +3241,7 @@ mod tests {
             "controller.lua"
         ));
         assert_eq!(
-            ephemeral_script_display_name("controller.lua", std::iter::empty()),
+            ephemeral_script_display_name("controller.lua", core::iter::empty()),
             "controller.lua"
         );
         assert_eq!(
@@ -2573,6 +3265,7 @@ mod tests {
 
     fn synthetic_processor() -> TrackProcessorDescriptor {
         TrackProcessorDescriptor {
+            resources: None,
             id: TrackProcessorTypeId::new("browser_native_test"),
             label: "Browser native test".to_owned(),
             available: true,
@@ -2616,7 +3309,7 @@ mod tests {
             spec.validate(&[]),
             Err(TrackSpecError::ProcessorUnavailable)
         );
-        assert!(spec.validate(std::slice::from_ref(&processor)).is_ok());
+        assert!(spec.validate(core::slice::from_ref(&processor)).is_ok());
         assert_eq!(
             spec.topology.channel_roles(),
             vec![
@@ -2640,7 +3333,7 @@ mod tests {
             ..spec.clone()
         };
         assert_eq!(
-            unsupported.validate(std::slice::from_ref(&processor)),
+            unsupported.validate(core::slice::from_ref(&processor)),
             Err(TrackSpecError::UnsupportedShape)
         );
 
@@ -2925,7 +3618,7 @@ mod tests {
         let labels = BuiltInFxParameter::ALL
             .into_iter()
             .map(BuiltInFxParameter::label)
-            .collect::<std::collections::BTreeSet<_>>();
+            .collect::<alloc::collections::BTreeSet<_>>();
         assert_eq!(labels.len(), BuiltInFxParameter::ALL.len());
         assert_eq!(BuiltInFxState::default().midi_cc_assignments.len(), 0);
     }
@@ -3081,6 +3774,7 @@ mod tests {
         let track_id = TrackId::from_raw(3);
         let endpoint = "client:name:with:colons".to_owned();
         let port = ApplicationPortState {
+            publication: None,
             id: port_id,
             owner: ApplicationPortOwner::Track {
                 track_id,
@@ -3097,6 +3791,7 @@ mod tests {
             name: endpoint.clone(),
             data_type: PortDataType::Audio,
             direction: PortDirection::Output,
+            available: true,
         };
         let pending = PendingConnectionState {
             application_port_id: port_id,
@@ -3214,3 +3909,262 @@ mod tests {
         assert_eq!(StatusState::default().latency_ms(), None);
     }
 }
+
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum ControlOperation {
+    Transition {
+        loops: Vec<LoopId>,
+        mode: LoopMode,
+        cycles_delay: Option<u32>,
+        align_to_sync_at: Option<u32>,
+    },
+    Trigger {
+        loops: Vec<LoopId>,
+        mode: LoopMode,
+    },
+    TriggerDefaultPlayback {
+        loops: Vec<LoopId>,
+    },
+    Grab {
+        loops: Vec<LoopId>,
+    },
+    RecordN {
+        loops: Vec<LoopId>,
+        n_cycles: u32,
+        cycles_delay: u32,
+    },
+    RecordWithTargeted {
+        loops: Vec<LoopId>,
+    },
+    SetLoopGain {
+        loops: Vec<LoopId>,
+        gain: f32,
+    },
+    SetLoopBalance {
+        loops: Vec<LoopId>,
+        balance: f32,
+    },
+    SetLoopSelection {
+        loops: Vec<LoopId>,
+        selected: bool,
+        clear_others: bool,
+    },
+    SetTarget {
+        target: Option<LoopId>,
+    },
+    ClearLoops {
+        loops: Vec<LoopId>,
+    },
+    AdoptRingbuffers {
+        loops: Vec<LoopId>,
+        reverse_cycle_start: u32,
+        cycles_length: u32,
+        go_to_cycle: u32,
+        go_to_mode: LoopMode,
+    },
+    ComposeAddToEnd {
+        target: LoopId,
+        add: Vec<LoopId>,
+        parallel: bool,
+    },
+    SetRepeatSync {
+        loops: Vec<LoopId>,
+        active: bool,
+    },
+    SetTrackGain {
+        tracks: Vec<TrackId>,
+        gain_db: f32,
+    },
+    SetTrackBalance {
+        tracks: Vec<TrackId>,
+        balance: f32,
+    },
+    SetTrackMuted {
+        tracks: Vec<TrackId>,
+        muted: bool,
+    },
+    SetTrackInputGain {
+        tracks: Vec<TrackId>,
+        gain_db: f32,
+    },
+    SetTrackInputBalance {
+        tracks: Vec<TrackId>,
+        balance: f32,
+    },
+    SetTrackInputMuted {
+        tracks: Vec<TrackId>,
+        muted: bool,
+        respect_auto_mute: bool,
+    },
+    SetBusGain {
+        buses: Vec<BusId>,
+        gain_db: f32,
+    },
+    SetBusBalance {
+        buses: Vec<BusId>,
+        balance: f32,
+    },
+    SetBusMuted {
+        buses: Vec<BusId>,
+        muted: bool,
+    },
+    SetApplyNCycles(u32),
+    SetSolo(bool),
+    SetSyncActive(bool),
+    SetPlayAfterRecord(bool),
+    SetAutoMuteOtherTrackInputs(bool),
+    SetDefaultRecordingAction(DefaultRecordingAction),
+}
+
+impl ControlOperation {
+    pub fn bounded(&self) -> bool {
+        match self {
+            Self::Transition { loops, .. }
+            | Self::Trigger { loops, .. }
+            | Self::TriggerDefaultPlayback { loops }
+            | Self::Grab { loops }
+            | Self::RecordN { loops, .. }
+            | Self::RecordWithTargeted { loops }
+            | Self::SetLoopGain { loops, .. }
+            | Self::SetLoopBalance { loops, .. }
+            | Self::SetLoopSelection { loops, .. }
+            | Self::ClearLoops { loops }
+            | Self::AdoptRingbuffers { loops, .. }
+            | Self::SetRepeatSync { loops, .. } => loops.len() <= 128,
+            Self::ComposeAddToEnd { add, .. } => add.len() <= 128,
+            Self::SetTrackGain { tracks, .. }
+            | Self::SetTrackBalance { tracks, .. }
+            | Self::SetTrackMuted { tracks, .. }
+            | Self::SetTrackInputGain { tracks, .. }
+            | Self::SetTrackInputBalance { tracks, .. }
+            | Self::SetTrackInputMuted { tracks, .. } => tracks.len() <= 128,
+            Self::SetBusGain { buses, .. }
+            | Self::SetBusBalance { buses, .. }
+            | Self::SetBusMuted { buses, .. } => buses.len() <= 128,
+            _ => true,
+        }
+    }
+}
+
+/// Host-local admission ceilings within the shared protocol limits.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HostResourceLimits {
+    pub media_bytes: u64,
+    pub metadata_bytes: u64,
+    pub objects: u32,
+    pub midi_events: usize,
+}
+
+impl Default for HostResourceLimits {
+    fn default() -> Self {
+        Self {
+            media_bytes: 256 * 1024 * 1024,
+            metadata_bytes: 8 * 1024 * 1024,
+            objects: 4096,
+            midi_events: 1_000_000,
+        }
+    }
+}
+
+impl HostResourceLimits {
+    pub fn is_valid(self) -> bool {
+        let ceiling = Self::default();
+        (1..=ceiling.media_bytes).contains(&self.media_bytes)
+            && (1..=ceiling.metadata_bytes).contains(&self.metadata_bytes)
+            && (1..=ceiling.objects).contains(&self.objects)
+            && (1..=ceiling.midi_events).contains(&self.midi_events)
+    }
+}
+
+/// Capacities the new engine backend prepares at startup.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(default))]
+pub struct NewEnginePools {
+    /// Graph tick in frames; immutable during a running session.
+    pub quantum: u32,
+    pub buses: u32,
+    pub bus_channels: u32,
+    /// Tracks, including the sync track.
+    pub tracks: u32,
+    /// Loop slots shared by all tracks.
+    pub loops: u32,
+    /// Audio channels per track direction.
+    pub channels: u32,
+    pub loop_memory_mb: u32,
+}
+
+impl Default for NewEnginePools {
+    fn default() -> Self {
+        Self {
+            quantum: 32,
+            buses: 8,
+            bus_channels: 8,
+            tracks: 16,
+            loops: 128,
+            channels: 2,
+            loop_memory_mb: 256,
+        }
+    }
+}
+
+/// Host-owned startup settings shared by native configuration and UI launch defaults.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(default, deny_unknown_fields))]
+pub struct HostSettings {
+    pub driver: AudioDriverConfig,
+    pub pools: NewEnginePools,
+    pub processors: ProcessorSettings,
+    pub master_auto_connect: bool,
+    pub loop_smoothing_ms: u32,
+}
+impl Default for HostSettings {
+    fn default() -> Self {
+        Self {
+            driver: Default::default(),
+            pools: Default::default(),
+            processors: ProcessorSettings::default(),
+            master_auto_connect: true,
+            loop_smoothing_ms: 3,
+        }
+    }
+}
+impl HostSettings {
+    pub fn validate(&self) -> Result<(), &'static str> {
+        self.processors
+            .validate()
+            .map_err(|_| "invalid processor startup capacities")?;
+        if !matches!(self.pools.quantum, 1 | 16 | 32 | 64 | 128) {
+            return Err("processing quantum must be 1, 16, 32, 64 or 128 frames");
+        }
+        if !(1..=8).contains(&self.pools.buses)
+            || !(2..=8).contains(&self.pools.bus_channels)
+            || !(1..=64).contains(&self.pools.tracks)
+            || !(1..=256).contains(&self.pools.loops)
+            || !(1..=8).contains(&self.pools.channels)
+            || !(1..=1024).contains(&self.pools.loop_memory_mb)
+        {
+            return Err("session engine capacities exceed supported bounds");
+        }
+        if let AudioDriverConfig::Jack(config) = &self.driver {
+            config
+                .validate()
+                .map_err(|_| "invalid JACK driver configuration")?;
+        }
+        if self.loop_smoothing_ms > 100 {
+            return Err("loop smoothing exceeds 100 ms");
+        }
+        if let AudioDriverConfig::Dummy(driver) = &self.driver {
+            if !(8000..=384000).contains(&driver.sample_rate)
+                || !(1..=16384).contains(&driver.buffer_size)
+            {
+                return Err("invalid dummy driver configuration");
+            }
+        }
+        Ok(())
+    }
+}
+
+pub use shoop_processor_protocol::{Policy as ProcessorPolicy, Settings as ProcessorSettings};

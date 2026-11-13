@@ -5,10 +5,10 @@ use egui_material_icons::icons::{
 use egui_material_icons::MaterialIcon;
 
 use crate::{
-    colors, composite_loop_widget::LoopDragPayload, dial::paint_dial,
-    meter_ballistics::PeakMeterAnimation, optimistic_value::OptimisticValue, AppIntent,
-    CompositeKind, GlobalControlState, LoopAudioExportFormat, LoopMode, LoopState,
-    LoopWidgetAction, SelectionModifiers,
+    add_with_capabilities, add_with_capability, colors, composite_loop_widget::LoopDragPayload,
+    dial::paint_dial, meter_ballistics::PeakMeterAnimation, optimistic_value::OptimisticValue,
+    AppIntent, BackendCapability, CompositeKind, GlobalControlState, LoopAudioExportFormat,
+    LoopMode, LoopState, LoopWidgetAction, SelectionModifiers,
 };
 
 const TOUCH_MODE_ID: &str = "shoop_touch_mode";
@@ -52,6 +52,8 @@ pub struct LoopWidget {
     #[cfg(test)]
     test_record_popup_rect: Option<egui::Rect>,
     #[cfg(test)]
+    test_record_variant_count: Option<usize>,
+    #[cfg(test)]
     test_gain_rect: Option<egui::Rect>,
     #[cfg(test)]
     test_balance_rect: Option<egui::Rect>,
@@ -59,6 +61,8 @@ pub struct LoopWidget {
     test_duplicate_rect: Option<egui::Rect>,
     #[cfg(test)]
     test_convert_rect: Option<egui::Rect>,
+    #[cfg(test)]
+    test_replace_rect: Option<egui::Rect>,
     #[cfg(test)]
     test_drag_preview_rect: Option<egui::Rect>,
 }
@@ -100,7 +104,9 @@ fn icon_for_state(
             false,
         ),
         LoopMode::PlayingDryThroughWet => (ICON_PLAY_ARROW, colors::DRY_THROUGH_WET, true),
-        LoopMode::Recording => (ICON_FIBER_MANUAL_RECORD, colors::RECORD_ACTION, false),
+        LoopMode::Recording | LoopMode::Replacing => {
+            (ICON_FIBER_MANUAL_RECORD, colors::RECORD_ACTION, false)
+        }
         LoopMode::RecordingDryIntoWet => (ICON_FIBER_MANUAL_RECORD, colors::DRY_THROUGH_WET, true),
         LoopMode::Stopped if regular_composite => (ICON_VIEW_LIST, colors::DARK_BACKGROUND, false),
         LoopMode::Stopped if script_composite => (ICON_EDIT_NOTE, colors::DARK_BACKGROUND, false),
@@ -324,8 +330,32 @@ impl LoopWidget {
             }
         }
         ui.separator();
+        if state.composite_kind == CompositeKind::None {
+            let replace = ui
+                .add_enabled_ui(!state.empty, |ui| {
+                    add_with_capability(
+                        ui,
+                        BackendCapability::ReplacingMode,
+                        egui::Button::new("Replace input"),
+                    )
+                })
+                .inner;
+            #[cfg(test)]
+            {
+                self.test_replace_rect = Some(replace.rect);
+            }
+            if replace.clicked() {
+                result.actions.push(LoopWidgetAction::ReplaceClicked);
+                ui.close();
+            }
+            ui.separator();
+        }
         if !state.sync {
-            let duplicate = ui.button("Clone");
+            let duplicate = add_with_capabilities(
+                ui,
+                &[BackendCapability::LoopDuplication],
+                egui::Button::new("Clone"),
+            ).on_hover_text("Copy into a stopped slot below. Supports primitive loops and Play/Stop/Record composites. Replacing and dry/wet composite modes cannot be copied yet.");
             #[cfg(test)]
             {
                 self.test_duplicate_rect = Some(duplicate.rect);
@@ -337,7 +367,11 @@ impl LoopWidget {
             ui.separator();
         }
         if can_convert_to_composite(state) {
-            let convert = ui.button("Convert to composite");
+            let convert = add_with_capability(
+                ui,
+                BackendCapability::CompositeLoops,
+                egui::Button::new("Convert to composite"),
+            );
             #[cfg(test)]
             {
                 self.test_convert_rect = Some(convert.rect);
@@ -349,56 +383,108 @@ impl LoopWidget {
             ui.separator();
         }
         if can_generate_click_track(state) {
-            if ui.button("Generate click track…").clicked() {
+            if add_with_capabilities(
+                ui,
+                &[
+                    BackendCapability::LoopContentImport,
+                    BackendCapability::ClickTrackInsertion,
+                ],
+                egui::Button::new("Generate click track…"),
+            )
+            .clicked()
+            {
                 result.click_track_requested = true;
                 ui.close();
             }
             ui.separator();
         }
         if state.has_audio {
-            if ui.button("Save audio…").clicked() {
+            if add_with_capability(
+                ui,
+                BackendCapability::SessionCapture,
+                egui::Button::new("Save audio…"),
+            )
+            .clicked()
+            {
                 result.io_intents.push(AppIntent::RequestLoopAudioExport {
                     loop_id: state.id,
                     format: LoopAudioExportFormat::Exact,
                 });
                 ui.close();
             }
-            if ui.button("Save float WAV…").clicked() {
+            if add_with_capability(
+                ui,
+                BackendCapability::SessionCapture,
+                egui::Button::new("Save float WAV…"),
+            )
+            .clicked()
+            {
                 result.io_intents.push(AppIntent::RequestLoopAudioExport {
                     loop_id: state.id,
                     format: LoopAudioExportFormat::FloatWav,
                 });
                 ui.close();
             }
-            if ui.button("Load audio…").clicked() {
+            if add_with_capability(
+                ui,
+                BackendCapability::LoopContentImport,
+                egui::Button::new("Load audio…"),
+            )
+            .clicked()
+            {
                 result
                     .io_intents
                     .push(AppIntent::RequestLoopAudioImportPicker { loop_id: state.id });
                 ui.close();
             }
         }
-        if state.has_recorded_fx_state && ui.button("Restore recorded FX state").clicked() {
+        if state.has_recorded_fx_state
+            && add_with_capability(
+                ui,
+                BackendCapability::TrackFx,
+                egui::Button::new("Restore recorded FX state"),
+            )
+            .clicked()
+        {
             result
                 .actions
                 .push(LoopWidgetAction::RestoreRecordedFxState);
             ui.close();
         }
         if state.has_midi {
-            if ui.button("Save exact MIDI…").clicked() {
+            if add_with_capability(
+                ui,
+                BackendCapability::SessionCapture,
+                egui::Button::new("Save exact MIDI…"),
+            )
+            .clicked()
+            {
                 result.io_intents.push(AppIntent::RequestLoopMidiExport {
                     loop_id: state.id,
                     standard: false,
                 });
                 ui.close();
             }
-            if ui.button("Save standard MIDI…").clicked() {
+            if add_with_capability(
+                ui,
+                BackendCapability::SessionCapture,
+                egui::Button::new("Save standard MIDI…"),
+            )
+            .clicked()
+            {
                 result.io_intents.push(AppIntent::RequestLoopMidiExport {
                     loop_id: state.id,
                     standard: true,
                 });
                 ui.close();
             }
-            if ui.button("Load MIDI…").clicked() {
+            if add_with_capability(
+                ui,
+                BackendCapability::LoopContentImport,
+                egui::Button::new("Load MIDI…"),
+            )
+            .clicked()
+            {
                 result
                     .io_intents
                     .push(AppIntent::RequestLoopMidiImportPicker { loop_id: state.id });
@@ -469,7 +555,7 @@ impl LoopWidget {
         let rounding = egui::CornerRadius::same(2);
         let background = if matches!(
             state.mode,
-            LoopMode::Recording | LoopMode::RecordingDryIntoWet
+            LoopMode::Recording | LoopMode::Replacing | LoopMode::RecordingDryIntoWet
         ) {
             colors::LOOP_RECORDING_BACKGROUND
         } else if state.composite_kind == CompositeKind::Regular {
@@ -487,7 +573,7 @@ impl LoopWidget {
             let progress_color = match state.mode {
                 LoopMode::Playing => colors::LOOP_PROGRESS_PLAYING,
                 LoopMode::PlayingDryThroughWet => colors::LOOP_PROGRESS_PLAYING_DRY,
-                LoopMode::Recording => colors::LOOP_PROGRESS_RECORDING,
+                LoopMode::Recording | LoopMode::Replacing => colors::LOOP_PROGRESS_RECORDING,
                 LoopMode::RecordingDryIntoWet => colors::LOOP_PROGRESS_RECORDING_DRY,
                 _ => colors::LOOP_PROGRESS_OTHER,
             };
@@ -566,6 +652,22 @@ impl LoopWidget {
             egui::StrokeKind::Inside,
         );
 
+        if state.capture_incomplete {
+            ui.painter().text(
+                rect.right_top() + egui::vec2(-5.0, 4.0),
+                egui::Align2::RIGHT_TOP,
+                "!",
+                egui::FontId::proportional(18.0),
+                egui::Color32::YELLOW,
+            );
+            response.clone().on_hover_text(
+                "Recording stopped before completion. The last complete take is preserved.",
+            );
+        } else if state.mode == LoopMode::Replacing {
+            response
+                .clone()
+                .on_hover_text("Replacing input over the current loop");
+        }
         let icon_rect = egui::Rect::from_min_size(rect.min, egui::vec2(24.0, 24.0));
         let has_transition = state.next_transition_delay.is_some() && state.mode != state.next_mode;
         if has_transition {
@@ -712,13 +814,17 @@ impl LoopWidget {
         if primitive && record_hovered {
             self.record_popup_until = now + 0.08;
         }
+        let grab_supported = crate::supports(ui.ctx(), BackendCapability::Grab);
+        let dry_wet_modes_supported = crate::supports(ui.ctx(), BackendCapability::DryWetModes);
         let show_play_popup = loop_visible
             && hover_allowed
             && primitive
+            && dry_wet_modes_supported
             && (play_hovered || now < self.play_popup_until);
         let show_record_popup = loop_visible
             && hover_allowed
             && primitive
+            && (grab_supported || dry_wet_modes_supported)
             && (record_hovered || now < self.record_popup_until);
         let controls_visible = touch_mode || hovered || show_play_popup || show_record_popup;
         let icon_size = button_width.min(button_height) * 0.95;
@@ -854,45 +960,55 @@ impl LoopWidget {
                 .constrain(false)
                 .show(ui.ctx(), |ui| {
                     ui.spacing_mut().item_spacing.y = 0.0;
-                    let grab = popup_icon_button(
-                        ui,
-                        egui::vec2(button_width, button_height),
-                        ICON_ARROW_DOWNWARD,
-                        icon_size,
-                        colors::RECORD_ACTION,
-                        background,
-                        &grab_tooltip,
-                    );
-                    if state.play_after_record {
-                        paint_icon(
-                            &ui.painter().with_clip_rect(egui::Rect::from_min_max(
-                                egui::pos2(grab.rect.left(), grab.rect.center().y),
-                                grab.rect.max,
-                            )),
-                            grab.rect.center(),
+                    let grab = grab_supported.then(|| {
+                        let grab = popup_icon_button(
+                            ui,
+                            egui::vec2(button_width, button_height),
                             ICON_ARROW_DOWNWARD,
                             icon_size,
-                            colors::PLAY_ACTION,
+                            colors::RECORD_ACTION,
+                            background,
+                            &grab_tooltip,
                         );
+                        if state.play_after_record {
+                            paint_icon(
+                                &ui.painter().with_clip_rect(egui::Rect::from_min_max(
+                                    egui::pos2(grab.rect.left(), grab.rect.center().y),
+                                    grab.rect.max,
+                                )),
+                                grab.rect.center(),
+                                ICON_ARROW_DOWNWARD,
+                                icon_size,
+                                colors::PLAY_ACTION,
+                            );
+                        }
+                        if grab.clicked() {
+                            result.actions.push(LoopWidgetAction::GrabClicked);
+                        }
+                        grab
+                    });
+                    let rerecord = dry_wet_modes_supported.then(|| {
+                        let rerecord = popup_icon_button(
+                            ui,
+                            egui::vec2(button_width, button_height),
+                            ICON_FIBER_MANUAL_RECORD,
+                            icon_size,
+                            colors::DRY_THROUGH_WET,
+                            background,
+                            "Re-record dry through live effects for one loop cycle",
+                        );
+                        if rerecord.clicked() {
+                            result.actions.push(LoopWidgetAction::RerecordClicked);
+                        }
+                        rerecord
+                    });
+                    let buttons = grab.iter().chain(&rerecord);
+                    #[cfg(test)]
+                    {
+                        self.test_record_variant_count = Some(buttons.clone().count());
                     }
-                    if grab.clicked() {
-                        result.actions.push(LoopWidgetAction::GrabClicked);
-                    }
-                    let rerecord = popup_icon_button(
-                        ui,
-                        egui::vec2(button_width, button_height),
-                        ICON_FIBER_MANUAL_RECORD,
-                        icon_size,
-                        colors::DRY_THROUGH_WET,
-                        background,
-                        "Re-record dry through live effects for one loop cycle",
-                    );
-                    if rerecord.clicked() {
-                        result.actions.push(LoopWidgetAction::RerecordClicked);
-                    }
-                    let contains_pointer = grab.contains_pointer() || rerecord.contains_pointer();
-                    let secondary_clicked = grab.secondary_clicked()
-                        || rerecord.secondary_clicked()
+                    let contains_pointer = buttons.clone().any(egui::Response::contains_pointer);
+                    let secondary_clicked = buttons.clone().any(egui::Response::secondary_clicked)
                         || (contains_pointer
                             && ui.input(|input| {
                                 input
@@ -1482,6 +1598,10 @@ mod tests {
     fn context_menu_labels_clone_and_requests_duplication_for_non_sync_loops() {
         let context = egui::Context::default();
         crate::initialize(&context);
+        crate::set_backend_capabilities(
+            &context,
+            crate::BackendCapabilities::NONE.with(BackendCapability::LoopDuplication, true),
+        );
         let mut widget = LoopWidget::default();
         let state = state();
         let mut initial_response = LoopWidgetResponse::default();
@@ -1599,6 +1719,133 @@ mod tests {
         let _ = context_menu_frame(&context, &mut widget, &composite, 2.0, Vec::new());
         assert!(widget.test_convert_rect.is_none());
         assert!(!can_convert_to_composite(&composite));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn context_menu_exposes_replacing_for_a_supported_primitive_loop() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        crate::set_backend_capabilities(
+            &context,
+            crate::BackendCapabilities::NONE.with(BackendCapability::ReplacingMode, true),
+        );
+        let mut widget = LoopWidget::default();
+        let state = LoopState {
+            empty: false,
+            length_frames: 128,
+            ..state()
+        };
+        let _ = context_menu_frame(&context, &mut widget, &state, 1.0, Vec::new());
+        let item = widget.test_replace_rect.expect("replace menu item");
+        let press = |pressed| egui::Event::PointerButton {
+            pos: item.center(),
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        let _ = context_menu_frame(
+            &context,
+            &mut widget,
+            &state,
+            2.0,
+            vec![pointer(item.center()), press(true)],
+        );
+        let result = context_menu_frame(
+            &context,
+            &mut widget,
+            &state,
+            2.1,
+            vec![pointer(item.center()), press(false)],
+        );
+        assert_eq!(result.actions, vec![LoopWidgetAction::ReplaceClicked]);
+        assert_eq!(
+            icon_for_state(LoopMode::Replacing, false, false, false)
+                .0
+                .codepoint,
+            ICON_FIBER_MANUAL_RECORD.codepoint
+        );
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn context_menu_disables_items_the_backend_cannot_perform() {
+        for capabilities in [
+            crate::BackendCapabilities::NONE,
+            crate::BackendCapabilities::NONE
+                .with(BackendCapability::SessionCapture, true)
+                .with(BackendCapability::LoopContentImport, true),
+        ] {
+            let context = egui::Context::default();
+            crate::initialize(&context);
+            crate::set_backend_capabilities(&context, capabilities);
+            let mut widget = LoopWidget::default();
+            let primitive = state();
+            let _ = context_menu_frame(&context, &mut widget, &primitive, 1.0, Vec::new());
+            let items = [
+                widget.test_convert_rect.expect("conversion menu item"),
+                widget.test_duplicate_rect.expect("clone menu item"),
+                widget.test_replace_rect.expect("replace menu item"),
+            ];
+            for (index, item) in items.into_iter().enumerate() {
+                let time = 2.0 + index as f64;
+                let press = |pressed| egui::Event::PointerButton {
+                    pos: item.center(),
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                };
+                let _ = context_menu_frame(
+                    &context,
+                    &mut widget,
+                    &primitive,
+                    time,
+                    vec![pointer(item.center()), press(true)],
+                );
+                let response = context_menu_frame(
+                    &context,
+                    &mut widget,
+                    &primitive,
+                    time + 0.1,
+                    vec![pointer(item.center()), press(false)],
+                );
+                assert!(response.actions.is_empty());
+            }
+        }
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn hover_variants_are_hidden_without_grab_and_dry_wet_modes() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        crate::set_backend_capabilities(
+            &context,
+            crate::BackendCapabilities::FULL
+                .with(BackendCapability::Grab, false)
+                .with(BackendCapability::DryWetModes, false),
+        );
+        let state = state();
+        let mut widget = LoopWidget::default();
+        let _ = frame(&context, &mut widget, &state, 1.0, Vec::new());
+        let _ = frame(
+            &context,
+            &mut widget,
+            &state,
+            1.05,
+            vec![pointer(egui::pos2(100.0, 13.0))],
+        );
+        let play = widget.test_play_rect.unwrap().center();
+        let _ = frame(&context, &mut widget, &state, 1.1, vec![pointer(play)]);
+        assert!(widget.test_play_popup_button_rect.is_none());
+        let record = widget.test_record_rect.unwrap().center();
+        let _ = frame(&context, &mut widget, &state, 2.0, vec![pointer(record)]);
+        assert_eq!(widget.test_record_variant_count, None);
+
+        crate::set_backend_capabilities(
+            &context,
+            crate::BackendCapabilities::FULL.with(BackendCapability::DryWetModes, false),
+        );
+        let _ = frame(&context, &mut widget, &state, 3.0, vec![pointer(record)]);
+        assert_eq!(widget.test_record_variant_count, Some(1));
+        assert!(widget.test_play_popup_button_rect.is_none());
     }
 
     #[shoop_wasm_test_support::shoop_test]

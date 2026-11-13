@@ -165,116 +165,28 @@ impl Default for ControlSnapshot {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum ControlOperation {
-    Transition {
-        loops: Vec<LoopId>,
-        mode: LoopMode,
-        cycles_delay: Option<u32>,
-        align_to_sync_at: Option<u32>,
-    },
-    Trigger {
-        loops: Vec<LoopId>,
-        mode: LoopMode,
-    },
-    TriggerDefaultPlayback {
-        loops: Vec<LoopId>,
-    },
-    Grab {
-        loops: Vec<LoopId>,
-    },
-    RecordN {
-        loops: Vec<LoopId>,
-        n_cycles: u32,
-        cycles_delay: u32,
-    },
-    RecordWithTargeted {
-        loops: Vec<LoopId>,
-    },
-    SetLoopGain {
-        loops: Vec<LoopId>,
-        gain: f32,
-    },
-    SetLoopBalance {
-        loops: Vec<LoopId>,
-        balance: f32,
-    },
-    SetLoopSelection {
-        loops: Vec<LoopId>,
-        selected: bool,
-        clear_others: bool,
-    },
-    SetTarget {
-        target: Option<LoopId>,
-    },
-    ClearLoops {
-        loops: Vec<LoopId>,
-    },
-    AdoptRingbuffers {
-        loops: Vec<LoopId>,
-        reverse_cycle_start: u32,
-        cycles_length: u32,
-        go_to_cycle: u32,
-        go_to_mode: LoopMode,
-    },
-    ComposeAddToEnd {
-        target: LoopId,
-        add: Vec<LoopId>,
-        parallel: bool,
-    },
-    SetRepeatSync {
-        loops: Vec<LoopId>,
-        active: bool,
-    },
-    SetTrackGain {
-        tracks: Vec<TrackId>,
-        gain_db: f32,
-    },
-    SetTrackBalance {
-        tracks: Vec<TrackId>,
-        balance: f32,
-    },
-    SetTrackMuted {
-        tracks: Vec<TrackId>,
-        muted: bool,
-    },
-    SetTrackInputGain {
-        tracks: Vec<TrackId>,
-        gain_db: f32,
-    },
-    SetTrackInputBalance {
-        tracks: Vec<TrackId>,
-        balance: f32,
-    },
-    SetTrackInputMuted {
-        tracks: Vec<TrackId>,
-        muted: bool,
-        respect_auto_mute: bool,
-    },
-    SetBusGain {
-        buses: Vec<BusId>,
-        gain_db: f32,
-    },
-    SetBusBalance {
-        buses: Vec<BusId>,
-        balance: f32,
-    },
-    SetBusMuted {
-        buses: Vec<BusId>,
-        muted: bool,
-    },
-    SetApplyNCycles(u32),
-    SetSolo(bool),
-    SetSyncActive(bool),
-    SetPlayAfterRecord(bool),
-    SetAutoMuteOtherTrackInputs(bool),
-    SetDefaultRecordingAction(DefaultRecordingAction),
-}
+pub use shoop_app_api::ControlOperation;
 
 #[derive(Default)]
 pub struct ControlBridge {
     pub snapshot: ControlSnapshot,
     pub operations: Vec<ControlOperation>,
+    pub confirmed: Option<ControlSnapshot>,
+}
+
+impl ControlBridge {
+    fn enqueue(&mut self, operation: ControlOperation) -> omnilua::Result<()> {
+        if let Some(confirmed) = &self.confirmed {
+            self.snapshot = confirmed.clone();
+        }
+        if self.operations.len() >= 128 {
+            return Err(runtime_error(
+                "script control queue is full; wait for a later callback",
+            ));
+        }
+        self.operations.push(operation);
+        Ok(())
+    }
 }
 
 pub type SharedControlBridge = Rc<RefCell<ControlBridge>>;
@@ -1017,12 +929,12 @@ fn install_loop_mutations(
                 let cycles_delay = optional_u32(delay, LOOP_DONT_WAIT_FOR_SYNC)?;
                 let align_to_sync_at = optional_u32(align, LOOP_DONT_ALIGN_TO_SYNC_IMMEDIATELY)?;
                 shadow_transition(&mut bridge.snapshot, &ids, mode, cycles_delay);
-                bridge.operations.push(ControlOperation::Transition {
+                bridge.enqueue(ControlOperation::Transition {
                     loops: ids,
                     mode,
                     cycles_delay,
                     align_to_sync_at,
-                });
+                })?;
                 Ok(())
             },
         )?,
@@ -1035,9 +947,7 @@ fn install_loop_mutations(
             let ids = selected_loop_ids(&bridge.snapshot, &selector)?;
             let mode = parse_mode(mode)?;
             shadow_transition(&mut bridge.snapshot, &ids, mode, None);
-            bridge
-                .operations
-                .push(ControlOperation::Trigger { loops: ids, mode });
+            bridge.enqueue(ControlOperation::Trigger { loops: ids, mode })?;
             Ok(())
         })?,
     )?;
@@ -1052,9 +962,7 @@ fn install_loop_mutations(
                 loop_.next_mode = Some(loop_.default_playback_mode);
                 loop_.next_mode_delay = None;
             }
-            bridge
-                .operations
-                .push(ControlOperation::TriggerDefaultPlayback { loops: ids });
+            bridge.enqueue(ControlOperation::TriggerDefaultPlayback { loops: ids })?;
             Ok(())
         })?,
     )?;
@@ -1068,11 +976,11 @@ fn install_loop_mutations(
             move |_, (selector, n_cycles, cycles_delay): (Value, u32, u32)| {
                 let mut bridge = bridge_.borrow_mut();
                 let loops = selected_loop_ids(&bridge.snapshot, &selector)?;
-                bridge.operations.push(ControlOperation::RecordN {
+                bridge.enqueue(ControlOperation::RecordN {
                     loops,
                     n_cycles,
                     cycles_delay,
-                });
+                })?;
                 Ok(())
             },
         )?,
@@ -1136,11 +1044,11 @@ fn install_loop_mutations(
             for loop_ in loops_mut(&mut bridge.snapshot, &ids) {
                 loop_.selected = true;
             }
-            bridge.operations.push(ControlOperation::SetLoopSelection {
+            bridge.enqueue(ControlOperation::SetLoopSelection {
                 loops: ids,
                 selected: true,
                 clear_others: clear,
-            });
+            })?;
             Ok(())
         })?,
     )?;
@@ -1154,9 +1062,7 @@ fn install_loop_mutations(
         lua.create_function(move |_, ()| {
             let mut bridge = bridge_.borrow_mut();
             let loops = bridge.snapshot.loops.iter().map(|loop_| loop_.id).collect();
-            bridge
-                .operations
-                .push(ControlOperation::ClearLoops { loops });
+            bridge.enqueue(ControlOperation::ClearLoops { loops })?;
             Ok(())
         })?,
     )?;
@@ -1172,13 +1078,13 @@ fn install_loop_mutations(
                 let go_mode = i64::from_lua(go_mode, lua)?;
                 let mut bridge = bridge_.borrow_mut();
                 let loops = selected_loop_ids(&bridge.snapshot, &selector)?;
-                bridge.operations.push(ControlOperation::AdoptRingbuffers {
+                bridge.enqueue(ControlOperation::AdoptRingbuffers {
                     loops,
                     reverse_cycle_start: reverse,
                     cycles_length: length,
                     go_to_cycle: go_cycle,
                     go_to_mode: parse_mode(go_mode)?,
-                });
+                })?;
                 Ok(())
             },
         )?,
@@ -1193,11 +1099,11 @@ fn install_loop_mutations(
                 .next()
                 .ok_or_else(|| runtime_error("composition target is empty"))?;
             let add = selected_loop_ids(&bridge.snapshot, &add)?;
-            bridge.operations.push(ControlOperation::ComposeAddToEnd {
+            bridge.enqueue(ControlOperation::ComposeAddToEnd {
                 target,
                 add,
                 parallel,
-            });
+            })?;
             Ok(())
         })?,
     )?;
@@ -1207,9 +1113,7 @@ fn install_loop_mutations(
         lua.create_function(move |_, (selector, active): (Value, bool)| {
             let mut bridge = bridge_.borrow_mut();
             let loops = selected_loop_ids(&bridge.snapshot, &selector)?;
-            bridge
-                .operations
-                .push(ControlOperation::SetRepeatSync { loops, active });
+            bridge.enqueue(ControlOperation::SetRepeatSync { loops, active })?;
             Ok(())
         })?,
     )?;
@@ -1249,9 +1153,7 @@ fn install_target_functions(
                 for loop_ in &mut bridge.snapshot.loops {
                     loop_.targeted = Some(loop_.id) == target;
                 }
-                bridge
-                    .operations
-                    .push(ControlOperation::SetTarget { target });
+                bridge.enqueue(ControlOperation::SetTarget { target })?;
                 Ok(())
             })?,
         )?;
@@ -1264,9 +1166,7 @@ fn install_target_functions(
             for loop_ in &mut bridge.snapshot.loops {
                 loop_.targeted = false;
             }
-            bridge
-                .operations
-                .push(ControlOperation::SetTarget { target: None });
+            bridge.enqueue(ControlOperation::SetTarget { target: None })?;
             Ok(())
         })?,
     )?;
@@ -1287,11 +1187,11 @@ fn install_target_functions(
                         loop_.selected
                     });
                 if let Some(selected) = selected {
-                    bridge.operations.push(ControlOperation::SetLoopSelection {
+                    bridge.enqueue(ControlOperation::SetLoopSelection {
                         loops: vec![id],
                         selected,
                         clear_others: false,
-                    });
+                    })?;
                 }
             }
             Ok(())
@@ -1368,13 +1268,11 @@ fn install_track_api(
                 }
             }
             shadow_track_bool(&mut bridge.snapshot, &ids, "track_set_input_muted", muted);
-            bridge
-                .operations
-                .push(ControlOperation::SetTrackInputMuted {
-                    tracks: ids,
-                    muted,
-                    respect_auto_mute,
-                });
+            bridge.enqueue(ControlOperation::SetTrackInputMuted {
+                tracks: ids,
+                muted,
+                respect_auto_mute,
+            })?;
             Ok(())
         })?,
     )?;
@@ -1559,9 +1457,7 @@ fn install_global_api(
             };
             let mut bridge = bridge_.borrow_mut();
             bridge.snapshot.default_recording_action = action;
-            bridge
-                .operations
-                .push(ControlOperation::SetDefaultRecordingAction(action));
+            bridge.enqueue(ControlOperation::SetDefaultRecordingAction(action))?;
             Ok(())
         })?,
     )?;
@@ -1811,7 +1707,7 @@ fn set_loop_ids_op(
         lua.create_function(move |_, selector: Value| {
             let mut bridge = bridge.borrow_mut();
             let ids = selected_loop_ids(&bridge.snapshot, &selector)?;
-            bridge.operations.push(make(ids));
+            bridge.enqueue(make(ids))?;
             Ok(())
         })?,
     )?;
@@ -1832,7 +1728,7 @@ fn set_loop_value(
             let mut bridge = bridge.borrow_mut();
             let ids = selected_loop_ids(&bridge.snapshot, &selector)?;
             let operation = make(&mut bridge, ids, value as f32);
-            bridge.operations.push(operation);
+            bridge.enqueue(operation)?;
             Ok(())
         })?,
     )?;
@@ -1854,7 +1750,7 @@ fn set_track_bool(
             let mut bridge = bridge.borrow_mut();
             let ids = selected_track_ids(&bridge.snapshot, &selector)?;
             shadow_track_bool(&mut bridge.snapshot, &ids, &operation_name, value);
-            bridge.operations.push(make(ids, value));
+            bridge.enqueue(make(ids, value))?;
             Ok(())
         })?,
     )?;
@@ -1876,7 +1772,7 @@ fn set_track_number(
             let ids = selected_track_ids(&bridge.snapshot, &selector)?;
             let operation = make(ids.clone(), value as f32);
             shadow_track_operation(&mut bridge.snapshot, &operation);
-            bridge.operations.push(operation);
+            bridge.enqueue(operation)?;
             Ok(())
         })?,
     )?;
@@ -1910,7 +1806,7 @@ fn set_bus_number(
             let ids = buses.iter().map(|bus| bus.id).collect::<Vec<_>>();
             let operation = make(ids, normalize(value));
             shadow_bus_operation(&mut bridge.snapshot, &operation);
-            bridge.operations.push(operation);
+            bridge.enqueue(operation)?;
             Ok(())
         })?,
     )?;
@@ -1932,7 +1828,7 @@ fn set_bus_bool(
             let ids = selected_bus_ids(&bridge.snapshot, &selector)?;
             let operation = make(ids, value);
             shadow_bus_operation(&mut bridge.snapshot, &operation);
-            bridge.operations.push(operation);
+            bridge.enqueue(operation)?;
             Ok(())
         })?,
     )?;
@@ -1959,7 +1855,7 @@ fn set_global_pair_bool(
         lua.create_function(move |_, value: bool| {
             let mut bridge = bridge_.borrow_mut();
             let operation = set(&mut bridge, value);
-            bridge.operations.push(operation);
+            bridge.enqueue(operation)?;
             Ok(())
         })?,
     )?;
@@ -1986,7 +1882,7 @@ fn set_global_pair_u32(
         lua.create_function(move |_, value: u32| {
             let mut bridge = bridge_.borrow_mut();
             let operation = set(&mut bridge, value);
-            bridge.operations.push(operation);
+            bridge.enqueue(operation)?;
             Ok(())
         })?,
     )?;

@@ -1,0 +1,120 @@
+name: Hosted track processors
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+  push:
+    branches: [master]
+permissions:
+  contents: read
+concurrency:
+  group: hosted-processors-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  features:
+    name: DSP build and startup (${{ matrix.label }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: neither
+            features: ''
+          - label: FX
+            features: builtin-fx
+          - label: synth
+            features: oxisynth
+          - label: both
+            features: builtin-fx,oxisynth
+    env:
+      RUSTFLAGS: -D warnings
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+      DSP_FEATURES: ${{ matrix.features }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: hosted-processors-${{ matrix.label }}
+      - name: Test real DSP, public service and four startup policies
+        run: cargo test --locked -p shoop_host_processors --no-default-features --features "$DSP_FEATURES"
+      - name: Build minimal native host and matching worklet
+        run: |
+          cargo build --locked -p shoop_host --no-default-features --features "$DSP_FEATURES"
+          cargo build --locked -p shoop_rt_host_worklet --target wasm32-unknown-unknown --no-default-features --features "exports,$DSP_FEATURES"
+          python3 scripts/check_dependency_boundaries.py --scope dsp --target x86_64-unknown-linux-gnu --target wasm32-unknown-unknown
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.22.2
+      - name: Install pinned Wasm test runner
+        if: matrix.label == 'both'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack@0.15.0
+      - name: Install Wasm test build dependencies
+        if: matrix.label == 'both'
+        run: sudo apt-get update && sudo apt-get install --yes protobuf-compiler
+      - name: Verify optional assets and sole profiling-clock import
+        run: |
+          python3 - <<'PYTHON'
+          import os
+          from pathlib import Path
+          font = Path('third_party/timgm6mb/TimGM6mb.sf2').read_bytes()[:64]
+          synth = 'oxisynth' in os.environ['DSP_FEATURES'].split(',')
+          for name in ['target/debug/shoop_host', 'target/wasm32-unknown-unknown/debug/shoop_rt_host_worklet.wasm']:
+              assert (font in Path(name).read_bytes()) == synth, name
+          PYTHON
+          node --input-type=module -e 'import fs from "node:fs"; const module = new WebAssembly.Module(fs.readFileSync("target/wasm32-unknown-unknown/debug/shoop_rt_host_worklet.wasm")); const imports = WebAssembly.Module.imports(module); if (imports.length !== 1 || imports[0].module !== "shoop_profiling" || imports[0].name !== "now" || imports[0].kind !== "function") throw new Error(`unexpected worklet imports: ${JSON.stringify(imports)}`);'
+      - name: Run both real DSP backends through Node Wasm
+        if: matrix.label == 'both'
+        run: |
+          if ! python3 scripts/run_wasm_tests.py --runtime node --package shoop_host_processors --feature builtin-fx --feature oxisynth --trace off; then
+            cat target/wasm-tests/dev/reports/node/shoop_host_processors-node.log
+            exit 1
+          fi
+      - name: Upload hosted Wasm test reports
+        if: always() && matrix.label == 'both'
+        uses: actions/upload-artifact@v7
+        with:
+          name: hosted-processor-wasm-tests-${{ github.run_id }}
+          path: target/wasm-tests/dev/reports/node
+          if-no-files-found: warn
+      - name: Run Built-in bus FX in an actual AudioWorklet
+        if: matrix.label == 'both'
+        run: |
+          mkdir -p target/hosted-evidence
+          CHROME_BIN=google-chrome node --experimental-websocket tests/bus_fx_worklet/run.mjs > target/hosted-evidence/bus-fx-worklet.json
+      - name: Record cold startup and reserved memory
+        if: matrix.label == 'both'
+        run: |
+          mkdir -p target/hosted-evidence
+          git rev-parse HEAD > target/hosted-evidence/source.txt
+          rustc -vV > target/hosted-evidence/toolchain.txt
+          lscpu > target/hosted-evidence/hardware.txt
+          cargo test --locked -p shoop_host_processors --features "$DSP_FEATURES" --lib measured_preparation_peak -- --nocapture > target/hosted-evidence/startup-memory.txt
+          cargo test --locked -p shoop_host_processors --features "$DSP_FEATURES" --test graph --release hosted_callback_measurement -- --ignored --nocapture > target/hosted-evidence/callback.txt
+          cargo test --locked -p shoop_host_processors --features "$DSP_FEATURES" --test graph --release bus_fx_mixed_callback_measurement -- --ignored --nocapture > target/hosted-evidence/bus-fx-callback.txt
+      - uses: actions/upload-artifact@v7
+        if: always() && matrix.label == 'both'
+        with:
+          name: hosted-processor-measurements-${{ github.run_id }}
+          path: target/hosted-evidence
+          if-no-files-found: error
+  miri:
+    name: Portable processor ownership (Miri)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-05-04
+          components: miri
+      - name: Check bounded host processor ownership and buffer leases
+        run: |
+          cargo +nightly-2026-05-04 miri test --locked -p rt_runtime --test host_processor
+          cargo +nightly-2026-05-04 miri test --locked -p rt_buffered --test processor buffered_reset_and_discontinuity_refusal_preserve_stream_identity

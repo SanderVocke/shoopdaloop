@@ -268,9 +268,37 @@ fn exact_jack_capture_latency_is_available_as_one_recording_offset() {
     let source = peer
         .register_port("source", jack::AudioOut::default())
         .unwrap();
+    unsafe extern "C" fn capture_latency(
+        mode: jack_sys::jack_latency_callback_mode_t,
+        data: *mut std::ffi::c_void,
+    ) {
+        if mode == jack_sys::JackCaptureLatency {
+            let port = unsafe { &*(data as *const jack::Port<jack::AudioOut>) };
+            port.set_latency_range(jack::LatencyType::Capture, (37, 37));
+        }
+    }
+    // Publish the physical source latency whenever JACK recomputes the graph.
+    assert_eq!(
+        unsafe {
+            jack_sys::jack_set_latency_callback(
+                peer.raw(),
+                Some(capture_latency),
+                &source as *const _ as *mut std::ffi::c_void,
+            )
+        },
+        0
+    );
+    let peer = peer
+        .activate_async(
+            (),
+            jack::contrib::ClosureProcessHandler::new(
+                |_: &jack::Client, _: &jack::ProcessScope| jack::Control::Continue,
+            ),
+        )
+        .unwrap();
     source.set_latency_range(jack::LatencyType::Capture, (37, 37));
     connect_checked(
-        &peer,
+        peer.as_client(),
         &source.name().unwrap(),
         &format!("{app_name}:latency_in"),
     );

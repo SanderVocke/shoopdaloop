@@ -2,6 +2,9 @@ extern crate self as shoop_wasm_test_support;
 
 pub use shoop_test_macros::shoop_test;
 
+/// Allocator instrumentation for native/Wasm tests, not production callbacks.
+pub mod heap;
+
 #[cfg(not(target_arch = "wasm32"))]
 pub use futures::executor::block_on;
 #[cfg(not(target_arch = "wasm32"))]

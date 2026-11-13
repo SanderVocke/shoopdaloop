@@ -3,6 +3,7 @@
 resolver = "2"
 
 members = ["src/rust/*"]
+exclude = ["third_party/egui_graph"]
 
 [workspace.package]
 version = "0.3.0"
@@ -12,7 +13,7 @@ unknown_lints = "allow"
 semicolon_in_expressions_from_non_local_macros = "allow"
 
 [workspace.dependencies]
-anyhow = "1.0"
+anyhow = { version = "1.0", default-features = false }
 log = "0.4"
 colored = "3.1"
 humantime = "2.1"
@@ -20,12 +21,12 @@ lazy_static = "1.5"
 ctor = "1.0"
 toml = "1.1"
 regex = "1.10"
-serde = "1.0"
+serde = { version = "1.0", default-features = false, features = ["alloc"] }
 uuid = { version = "1.17", features = ["v4"] }
 tempfile = "3.20"
 serde_json = "1.0"
 base64 = "0.23"
-bincode = { version = "2.0.1", default-features = false, features = ["std", "serde"] }
+bincode = { version = "2.0.1", default-features = false, features = ["alloc", "serde"] }
 libloading = "0.9"
 memmap2 = "0.9"
 egui = "0.37"
@@ -46,7 +47,8 @@ libc = "0.2"
 assert2 = "0.4"
 assert_no_alloc = "1.1"
 arc-swap = "1.7"
-rtrb = "0.4"
+rtrb = { version = "0.4", default-features = false }
+arrayvec = { version = "0.7", default-features = false }
 jack = "0.13"
 jack-sys = { version = "0.5", features = ["dynamic_loading"] }
 # Enable all known cross-platform CPAL host features so that `--list-cpal-hosts`
@@ -54,12 +56,13 @@ jack-sys = { version = "0.5", features = ["dynamic_loading"] }
 cpal = { version = "0.18", features = ["jack", "asio"] }
 midir = "0.11"
 rubato = "5.0"
-thiserror = "2.0"
+libm = { version = "0.2", default-features = false }
+thiserror = { version = "2.0", default-features = false }
 sha2 = "0.11"
-zip = { version = "9.0", default-features = false, features = ["deflate"] }
+zip = { version = "9.2", default-features = false, features = ["deflate"] }
 hound = "3.5"
 rfd = { version = "0.16", default-features = false }
-tracing = "0.1"
+tracing = { version = "0.1", default-features = false, features = ["attributes"] }
 ehttp = "0.7"
 tracing-log = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
@@ -71,3 +74,9 @@ fundsp = { version = "=0.23.0", default-features = false, features = ["std"] }
 [profile.release-with-debug]
 inherits = "release"
 debug = true
+
+[patch.crates-io]
+fundsp = { path = "third_party/fundsp" }
+oxisynth = { path = "third_party/oxisynth" }
+oxisynth-reverb = { path = "third_party/oxisynth-reverb" }
+oxisynth-chorus = { path = "third_party/oxisynth-chorus" }

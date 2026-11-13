@@ -1,0 +1,12 @@
+--- a/XilinxProcessorIPLib/drivers/emacps/src/xemacps_intr.c
++++ b/XilinxProcessorIPLib/drivers/emacps/src/xemacps_intr.c
+@@ -142,7 +142,8 @@
+ 
+ 	/* Read all queues ISR */
+ 	/* Iterate over all queues and get status in array */
+-	for (i=0; i < InstancePtr->MaxQueues; i++)
++	RegQiISR[0] = RegISR;
++	for (i=1; i < InstancePtr->MaxQueues; i++)
+ 		RegQiISR[i] = XEmacPs_ReadReg(InstancePtr->Config.BaseAddress,
+ 					      XEmacPs_GetQxOffset(INTQI_STS, i));
+ 

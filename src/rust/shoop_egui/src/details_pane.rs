@@ -1,6 +1,6 @@
 use crate::{
-    colors, AppIntent, ChannelId, ChannelTimelineUpdate, CompositeLoopWidget, LoopDetailsState,
-    LoopId, MidiSequenceWidget, TimelineEditTool, WaveformWidget,
+    colors, AppIntent, BackendCapability, ChannelId, ChannelTimelineUpdate, CompositeLoopWidget,
+    LoopDetailsState, LoopId, MidiSequenceWidget, TimelineEditTool, WaveformWidget,
 };
 use egui_material_icons::icons::{ICON_MORE_HORIZ, ICON_SEARCH, ICON_ZOOM_IN, ICON_ZOOM_OUT};
 use std::collections::BTreeMap;
@@ -320,6 +320,11 @@ fn resolve_timeline_edit(
     let delta = frame.checked_sub(current_start)?;
     if tool == TimelineEditTool::LoopEnd {
         let length = u64::try_from(delta).ok().filter(|length| *length > 0)?;
+        let quantum = u64::from(details.quantum_frames.max(1));
+        let length = length.checked_add(quantum / 2)? / quantum * quantum;
+        if length == 0 {
+            return None;
+        }
         let markers = lane_timings(details)
             .map(|(id, start, ..)| Some((id, start.checked_add_unsigned(length)?)))
             .collect::<Option<Vec<_>>>()?;
@@ -438,10 +443,32 @@ impl DetailsPane {
             ui.label("MIDI data is loading.");
         }
         if details.channels.is_empty() && details.midi_channels.is_empty() {
+            let mut length = details.length_frames;
+            let enabled = crate::supports(ui.ctx(), BackendCapability::LoopTimingEdits);
+            let response = ui.add_enabled(
+                enabled,
+                egui::DragValue::new(&mut length)
+                    .prefix("Length (frames): ")
+                    .speed(f64::from(details.quantum_frames.max(1))),
+            );
+            if response.changed() {
+                let quantum = u64::from(details.quantum_frames.max(1));
+                length = length / quantum * quantum;
+                return vec![AppIntent::SetLoopTimeline {
+                    loop_id: details.loop_id,
+                    start_offset: None,
+                    preplay_samples: None,
+                    loop_length: Some(length),
+                }];
+            }
             if !details.loading && !details.midi_loading {
                 ui.label("The selected loop has no audio or MIDI data.");
             }
             return Vec::new();
+        }
+        let timing_edits = crate::supports(ui.ctx(), BackendCapability::LoopTimingEdits);
+        if !timing_edits {
+            self.edit_tool = None;
         }
         let bounds = media_bounds(details);
         let width = ui.available_width();
@@ -636,7 +663,7 @@ impl DetailsPane {
                 });
             });
             ui.separator();
-            ui.horizontal(|ui| {
+            ui.add_enabled_ui(crate::supports(ui.ctx(), BackendCapability::LoopTimingEdits), |ui| {
                 ui.label("Tool:");
                 egui::ComboBox::from_id_salt("details_tool")
                     .width(96.0)
@@ -804,7 +831,7 @@ mod tests {
     use super::*;
     use crate::{
         CompositeDetailsState, CompositeEventDetailsState, CompositeKind,
-        CompositeTrackDetailsState, MidiEventState, MidiSequenceChannelState, TrackId,
+        CompositeTrackDetailsState, LoopMode, MidiEventState, MidiSequenceChannelState, TrackId,
         WaveformChannelState,
     };
     use std::sync::Arc;
@@ -819,6 +846,13 @@ mod tests {
             loop_id,
             title: "Arrangement".to_owned(),
             composite: Some(CompositeDetailsState {
+                timing: None,
+                execution: Default::default(),
+                available_event_modes: vec![
+                    LoopMode::Playing,
+                    LoopMode::Recording,
+                    LoopMode::Stopped,
+                ],
                 kind: CompositeKind::Script,
                 cycle_length_frames: 100,
                 timeline_length_frames: 200,
@@ -1051,6 +1085,23 @@ mod tests {
         assert_eq!(media_bounds(&details), (0.0, 200.0));
         details.midi_channels[0].data_length = 300;
         assert_eq!(media_bounds(&details), (0.0, 300.0));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn unavailable_timing_edits_clear_the_tool_while_preserving_media_lanes() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        crate::set_backend_capabilities(&context, crate::BackendCapabilities::NONE);
+        let details = details();
+        let mut pane = DetailsPane::default();
+        pane.edit_tool = Some(TimelineEditTool::LoopStart);
+        let mut output = context.run_ui(Default::default(), |ui| {
+            assert!(pane.show(ui, Some(&details), &[]).is_empty());
+        });
+        output.textures_delta.clear();
+        assert!(pane.edit_tool.is_none());
+        assert_eq!(pane.waveforms.len(), details.channels.len());
+        assert_eq!(pane.midi_sequences.len(), details.midi_channels.len());
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -1395,5 +1446,51 @@ mod tests {
         assert_eq!(pane.snap_frame(&details, details.channels[0].id, 96), 100);
         details.sync_loop_length = 80;
         assert_eq!(pane.grid_length(&details), 80);
+    }
+}
+
+#[cfg(test)]
+mod quantum_timing_tests {
+    use super::*;
+    use shoop_wasm_test_support::shoop_test;
+    #[shoop_test]
+    fn end_preview_uses_effective_quantum_and_rejects_nonpositive_range() {
+        for quantum in [1, 16, 32, 64, 128] {
+            let channel = ChannelId::from_raw(1);
+            let details = LoopDetailsState {
+                quantum_frames: quantum,
+                channels: vec![crate::WaveformChannelState {
+                    id: channel,
+                    start_offset: -3,
+                    ..Default::default()
+                }],
+                ..Default::default()
+            };
+            assert!(resolve_timeline_edit(
+                &details,
+                TimelineEditTool::LoopEnd,
+                ChannelScope::All,
+                channel,
+                -3
+            )
+            .is_none());
+            let edit = resolve_timeline_edit(
+                &details,
+                TimelineEditTool::LoopEnd,
+                ChannelScope::All,
+                channel,
+                i64::from(quantum) * 3 - 2,
+            )
+            .unwrap();
+            let AppIntent::SetLoopTimeline {
+                loop_length: Some(length),
+                ..
+            } = edit.intent
+            else {
+                panic!()
+            };
+            assert_eq!(length % u64::from(quantum), 0);
+            assert_eq!(edit.markers[0].1, -3 + length as i64);
+        }
     }
 }

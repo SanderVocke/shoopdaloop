@@ -1,0 +1,268 @@
+# Composite execution and ownership
+
+Status: the direct-track core is COMPLETE under [P03](feature-parity.md) and
+[the implementation plan](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/PLAN_P03_COMPOSITES.md). The public composite
+capability covers regular programs and explicit Play/Stop/Record events. Authored
+Replacing runs on Direct and negotiated dry/wet primitive targets. Authored dry
+playback and wet rerecord run on dry/wet primitives. These interactions are
+complete under
+[P17](feature-parity.md#p17-composite-mode-integration);
+[PR #952](https://github.com/SanderVocke/shoopdaloop/pull/952) records native,
+packaged and AudioWorklet acceptance, with the approved web-debug CI exception.
+See [acceptance evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/composites.md#final-acceptance-and-closure) for
+the approved scope and final implementation checks.
+
+## Frames and synchronization
+
+One render-owned loop resolver advances primitives and composites on the engine's
+immutable quantum. A prepared composite describes sparse child actions on a
+frame timeline. Its stored unit is the actual frame duration of one program
+iteration. Source pulses, client elapsed time and child positions do not advance
+that timeline.
+
+The unit is captured when the arrangement is prepared. Cycle-authored positions
+use that stored basis; changing the sync source's length or phase never implicitly
+retimes an accepted arrangement. Gridless serial Lua composition uses the maximum
+child duration per parallel section and sums sequential sections. Its compiled
+unit must represent these spans exactly on the engine's quantum grid. Explicit
+timing edits are admitted, versioned changes to the arrangement.
+
+A start applies its complete child snapshot at the effective engine frame.
+Every subsequent iteration begins after its prepared unit has elapsed. Stop,
+seek and retrigger are authoritative controls. All decisions are speculative until
+capture/graph preflight succeeds and the resolver commits. A retry cannot advance
+the cursor or emit an action twice. No callback allocation or application timer
+is involved.
+
+Synchronization has two separate uses:
+
+- A scheduled command may await a configured source boundary. Skipping n edges
+  executes on edge n+1. A stopped source leaves that command pending.
+- Repeat alignment may hold a playing loop at the end of its own pass. Earlier
+  source edges never truncate the pass. At its end, an aligned loop waits only
+  while its source is actively playing and no source boundary occurs. Without
+  alignment or an active source, it repeats independently. If the source stops
+  during a wait, the next settled quantum releases the wait.
+
+Primitives and regular composites share that repeat rule. Configured source,
+command timing and repeat intent are distinct. An explicit-mode composite ends
+after one pass; an empty composite starts as a successful stopped operation.
+Recording continues in frames until an admitted transition ends it.
+
+Composite outer transport accepts Play and Stop. The legacy `play_after_record`
+option is accepted for API compatibility and has no effect on that transport;
+child recording and its follow-up actions are authored explicitly in the program.
+
+At pass end, completed authored child occurrences end even if the parent waits.
+The parent remains Playing with its playhead at the end and explicit wait state.
+Completed-pass accounting happens once; entering iteration zero happens only when
+the next pass really starts. A coincident end/source boundary preserves permitted
+same-mode continuations; a gap ends them and a later restart emits a new snapshot.
+Internal unit boundaries are not external synchronization pulses. A composite's
+own start/retrigger and repeating pass boundaries supply its own musical edges.
+
+## Controls, edits and accepted work
+
+Explicit child commands outrank competing inherited or explicit program actions
+at the same frame. An independently controlled child never advances its parent.
+Later authored actions may affect that child through normal arbitration. Nested
+starts and seeks establish descendant snapshots in the same quantum.
+At a new parent pass, a completed one-pass child enters again. A still-running
+nested child retains its own phase, including across shorter parent passes.
+A coincident one-pass ending permits the next authored entry at that boundary.
+
+Prepared edits carry active/pending versions. Safe changes strictly beyond the
+current and next unit may activate before wrap if they preserve current ownership
+and state. Other running changes wait for an actual pass restart, or use an
+explicit structural stop/reconfiguration. Waiting at the end is not permission
+to emit a new plan's first section. Cancellation/refusal retains the working plan
+and reliably returns the candidate owner; activation returns the displaced owner.
+
+The session service owns authored data, timing basis, repeat and monitoring intent,
+accepted operations and retained results. The adapter owns identity mappings;
+the resolver owns actual execution. A disconnected UI or lost Lua VM does not
+cancel accepted playback, schedules, edits or automatic monitoring. Future VM
+commands are not accepted work, and reconnect does not restart scripts.
+
+Persistence records the accepted timing basis and confirmed plan, including after
+the source has changed length. Pending edits cannot be mixed into active capture.
+Load remaps child identities and starts stopped. Legacy migration derives missing
+timing from the saved session, not the destination's running sync source.
+
+## Prepared capacity
+
+The initial production budget is 256 program entries, 1024 compiled segments and
+512 timing/action relations across the engine. Composite count uses the negotiated
+logical loop slots; composites consume no playback/capture nodes or host ports.
+These budgets do not reduce existing primitive slots or recording media capacity.
+Engine preparation exposes them as configurable, finite negotiated limits.
+
+The production engine carries these through protocol v13, native setup v7 and
+worklet configuration v4. The relation capacity is at least the prepared logical
+loop count, so adding composite budgets never removes existing primitive capacity.
+For N loop slots, E entries and S segments, the prepared LTP image holds at most
+`1 + 4*N + E + S` records of 64 bytes. Payload pools cover that image and append
+it in bounded batches when it exceeds the command window. The active, next and
+private replacement models each prepare S owned-span slots; the ingress stage
+prepares S plain spans. Their byte sizes use the target ABI's `size_of` values.
+Runtime candidate/retirement storage remains checked by the loop library's limits.
+
+Account separately for active metadata, staging receivers, candidate/displaced
+owners, pending requests and reliable results. Use the loop library's checked
+storage calculations rather than estimating only raw entry bytes. Existing
+single-owner program staging may serialize edit publication; saturation refuses
+new work before acceptance and never stops admitted autonomous playback.
+
+Authored Replacing reserves one prepared writer per referenced primitive target,
+including empty children, stopped programs and candidates. Empty children reserve
+writer slots before a future Record can begin. Reservations share the negotiated
+writer/media pools with primitive input edits. Admission waits for bounded MIDI
+index preparation and refuses if the complete candidate cannot be prepared.
+A failed candidate releases its partial reservations and leaves playback intact.
+Dry-media/timing changes invalidate an inactive reservation; cancellation, removal
+and shutdown release it. A graph/source-generation change can rebind an inactive
+writer only for the same physical source and unchanged media/timing fence.
+
+Each active dry/wet replacement writes retained dry audio/MIDI and processed wet
+audio as one prepared transaction. Wet and dry have separate channel windows and
+immutable snapshot owners, including unequal widths. Record→Replace attaches the
+completed recording at the actual cut. Processor settings are captured at that
+render-owned boundary. Replacing never depends on a controller at event boundaries.
+
+Normal Record replaces an unused fixed cache with a streaming MIDI follower.
+Stopping seals that prepared index, so a short gap before Replacing requires no
+reimport. Wet rerecord preserves the dry/MIDI cache and refreshes the wet fork at
+the actual cut; a partial subsequent Replace retains the newly rerecorded wet tail.
+
+## Production preparation and publication
+
+The pure `shoop_loop_plan` compiler is shared by loop preparation and adapters.
+It contains no runtime or application dependency. The dependency audit checks that
+boundary separately; the render runtime continues to forbid every Shoop crate.
+Sparse spans, rather than authored documents, cross the RT protocol. The endpoint
+checks counts, quantum/sample rate, identities, modes, ordering and version fences;
+the prepared LTP receiver independently validates the complete timing/action DAG.
+
+Program staging IDs increase over the endpoint lifetime. Full resync publishes
+their floor, including cancelled stages. An edit names the exact current loop
+generation and active version; rejected/cancelled candidates do not replace it.
+An empty timing slot has version zero. Conversion also fences the old primitive
+identity and reserves a fresh generation. At the render-owned activation cut,
+`ConvertEmpty` rechecks that it is still empty and stopped before changing any
+owners. A recording admitted during preparation survives a refused conversion.
+
+Composite slots have no active capture/playback/fader bindings. Their optional
+strip owner controls lifecycle only; standalone composites need no strip. Private
+replacement prepares their plans alongside primitive media and publishes all new
+identities stopped. Repeat intent is installed with replacement activation.
+
+Loop telemetry reads one checked atomic publication without spinning. It includes
+the settled topology epoch so the endpoint cannot combine a newly active frame
+state with an older document. Composite telemetry carries its frame, mode,
+position, length, cursor/pass/wait state and confirmed active/pending versions.
+Resync carries the complete active spans, source, ownership and repeat policy.
+
+## Reference disposition
+
+| Behavior | Disposition |
+| --- | --- |
+| Stable event IDs, serial/parallel layout, move/copy/delete, nesting and child control | Preserve and test through production UI/Lua. |
+| Deterministic arbitration, contiguous playback and owning publication | Preserve under frame-driven execution. |
+| Source ticks advancing every internal iteration or stalling a running program | Superseded by frame progression. |
+| Application elapsed-time fallback, one section per pump and discarded overshoot | Superseded by render-owned frame progression. |
+| Safe future-only live edits and deferred wrap edits | Preserve using the prepared frame timeline and real restart eligibility. |
+| Automatic monitoring, persistence and socket recovery | Restore with authoritative service/host ownership. |
+| Replacing/dry-wet script events | All three modes are integrated through production service, adapter, engine and files. P17 completes their nested, role-aware and platform interaction acceptance. P03 remains closed for its approved direct-track core. |
+
+Retain old-stack fixtures as historical evidence. New-library and production tests
+must describe the new contract explicitly, including source stop/restart/resize,
+repeat waiting, transactional preflight and callback-partition invariance.
+
+### Adapter transactions
+
+Prepared edits reserve one logical mutation ticket. Begin/span/commit/cancel wire
+requests do not consume application mutation sequences. Uploads retain a bounded
+32-record window, including plans larger than the mutation-result pool. Reliable
+receipts carry the actual render activation frame; projection publishes a new
+version only with matching generation/version telemetry. Reliable resync includes
+active spans, the ingress ID floor, candidate header/spans and admission phase.
+
+When a pending plan would block a structural change, the production adapter
+cancels the retained RT candidate, allows that structural transaction to finish,
+and restages the accepted immutable spans against the new topology. This changes
+no musical time. Later explicit source reassignment wins over the earlier edit's
+source selection. Stop clears transport requests while preserving owning plan
+edits so they can publish after Stop. A combined program/source update is atomic
+and uses stopped/restart eligibility instead of early future-only adoption.
+
+Clear retires a track-owned composite's timing identity, stops its authored child
+occurrences, and installs an empty primitive with a fresh runtime generation. Its
+public backend identity remains stable. `CompositeLoops` is published when the
+negotiated core program budgets are available. Replacing and dry/wet capabilities
+remain independent; unsupported modes refuse before a candidate is accepted.
+
+## Automatic monitoring
+
+The service owns the automatic monitoring policy and preserves manual monitoring
+separately. The render owner derives demand from actual primitive recording,
+admitted starts whose countdown reached zero, and upcoming recording sections of
+the active prepared program. Nested starts inspect their initial sections; a
+continuous nested Play keeps its own phase. An accepted pending edit contributes
+automatic demand only after it becomes the active program.
+
+Recording onset and release do not depend on application polling. A direct child
+Stop releases its automatic demand while the parent clock continues. Other
+recorders on that track retain their demand, and manually monitored tracks remain
+on. Repeat waiting ends outgoing recording demand; an actual restart establishes
+new demand. Disabling the automatic policy changes monitoring while capture keeps
+following its own transport.
+
+Demand traversal uses prepared slot-sized arrays and a fixed queue, with at most
+one queued inspection per composite. Loop ownership and strip policies use two
+generation banks. Preparing a private replacement preserves active ownership;
+activation selects the new generation without overwriting a policy already
+confirmed for it. No render allocation, journal replay or application timer drives
+this policy. The backend retains manual intent for capture and publishes automatic
+monitoring from rendered state. File capture preserves manual intent separately.
+
+## Frozen file timing and replacement
+
+The service persistence image carries unversioned authored documents and their
+confirmed effective geometry, explicit sync assignments and repeat policy. File
+document version 14 stores both the original sample-clock basis and the prepared
+sample rate, quantum, unit, instance endpoints and normalized spans. Runtime plan
+versions are fresh identities after loading; authored event IDs remain stable.
+Ordinary edits preserve unchanged instance geometry, including copied durations.
+An explicit timing update recompiles it. A natural-content refresh updates only
+the affected natural-duration instances in a new accepted version.
+
+Legacy timing is resolved from saved data. A complete set of forced durations can
+recover an integral basis from the saved total length; otherwise migration uses
+the saved central loop length, or the legacy one-frame sample-clock grid when no
+length exists. Destination sync state never supplies a missing basis. Conversion
+rounds each effective endpoint independently to the destination quantum, retains
+the original authored basis and requires the existing format-conversion consent
+when timing changes. A collapsed nonempty event/span refuses the whole document.
+
+Capture waits for structural/media changes, but can save a confirmed active plan
+while a newer non-recording edit awaits restart. A capture notice reports the
+pending edit. If an existing edit activates during asynchronous media reads,
+capture takes a new complete metadata cut. Active, scheduled or nested future
+recording demand refuses capture; selected-child export also checks its parents.
+Manual input monitoring is saved separately from automatic demand.
+
+Primitive sync-family imports can coexist with composite programs. Only the
+primitive periods are retimed; accepted composite geometry stays frozen. A
+conversion family containing a composite member still refuses as a whole.
+
+Private replacement creates every loop identity before binding composite spans,
+checks the complete action/sync DAG and aggregate capacities, and installs all
+loops stopped at one activation. Its strip preset includes automatic-monitoring
+policy, so the first recording quantum after load needs no policy-repair poll.
+Primitive topology seed lengths remain stable through subsequent program edits;
+current media lengths continue to come from render-owned content state. Invalid
+or cancelled candidates retain the old playing plans and monitoring policy.
+Dry/wet composite files preserve named media roles, processor state and frozen
+geometry. Unsupported target modes/topologies refuse the whole document. Private
+replacement also prepares future Replacing writers before publication; a loaded
+program can start on its first Play without a repair poll.

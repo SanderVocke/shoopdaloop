@@ -12,6 +12,7 @@ import json
 import re
 import shutil
 import stat
+import struct
 import subprocess
 import sys
 import tarfile
@@ -30,7 +31,6 @@ NATIVE_PLATFORMS = ("linux", "windows", "macos")
 APPLICATION_ICON = ROOT / "resources" / "iconset" / "icon.png"
 BUILTINS = ROOT / "resources" / "builtins"
 sys.path.insert(0, str(ROOT / "scripts"))
-from carla_runtime import verify_component  # noqa: E402
 from check_macos_compatibility import inspect_macho, verify_payloads  # noqa: E402
 ROBOTO_FILES = (
     "LICENSE.txt",
@@ -43,11 +43,10 @@ ROBOTO_FILES = (
 WEB_REQUIRED_FILES = (
     "index.html",
     "icon.png",
-    "raw_wasm_host.js",
-    "audio_worklet.js",
-    "audio_worker.js",
-    "worker_fixture_contract.js",
-    "generated/shoop_audio_worklet.wasm",
+    "rt_audio_worklet.js",
+    "generated/shoop_rt_host_worklet.wasm",
+    "generated/shoop_persistence_codec_bg.wasm",
+    "generated/shoop_persistence_codec.js",
     *(f"roboto/{name}" for name in ROBOTO_FILES),
 )
 
@@ -82,16 +81,26 @@ def executable_name(platform: str) -> str:
     return "shoopdaloop.exe" if platform == "windows" else "shoopdaloop"
 
 
-def stage_carla_runtime(platform: str, component: Path, root: Path) -> None:
-    verify_component(component, platform)
-    if platform == "macos":
-        destination = root / "ShoopDaLoop.app" / "Contents" / "Frameworks" / "carla-runtime"
-    else:
-        destination = root / "carla-runtime"
-    shutil.copytree(component, destination)
+def engine_executable_name(platform: str) -> str:
+    return "shoop_host.exe" if platform == "windows" else "shoop_host"
 
 
-def create_native_stage(platform: str, binary: Path, carla_runtime: Path, stage: Path, macos_minimum_version: str = "11.0") -> None:
+def manager_executable_name(platform: str) -> str:
+    return "shoop_host_manager.exe" if platform == "windows" else "shoop_host_manager"
+
+
+def windows_manager_shortcut() -> bytes:
+    # MS-SHLLINK: Unicode RelativePath resolves against the shortcut's own directory.
+    header = struct.pack(
+        "<I16sIIQQQIiIHHII", 76,
+        bytes.fromhex("0114020000000000c000000000000046"),
+        0x88, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0,
+    )
+    target = manager_executable_name("windows").encode("utf-16-le")
+    return header + struct.pack("<H", len(target) // 2) + target + bytes(4)
+
+
+def create_native_stage(platform: str, binary: Path, stage: Path, macos_minimum_version: str = "11.0") -> None:
     root = stage / ARCHIVE_ROOT
     root.mkdir()
     copy_metadata(root)
@@ -127,7 +136,37 @@ def create_native_stage(platform: str, binary: Path, carla_runtime: Path, stage:
         if platform == "linux":
             target.chmod(target.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
         shutil.copytree(BUILTINS, root / "builtins")
-    stage_carla_runtime(platform, carla_runtime, root)
+    for name in (engine_executable_name(platform), manager_executable_name(platform)):
+        companion = binary.with_name(name)
+        if not companion.is_file():
+            raise RuntimeError(f"companion executable does not exist: {companion}")
+        destination = target.with_name(name)
+        shutil.copy2(companion, destination)
+        if platform != "windows":
+            destination.chmod(destination.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    if platform == "macos":
+        manager_contents = root / "ShoopDaLoop Host Manager.app" / "Contents"
+        manager_bin = manager_contents / "MacOS"
+        manager_resources = manager_contents / "Resources"
+        manager_bin.mkdir(parents=True)
+        manager_resources.mkdir()
+        (manager_bin / manager_executable_name(platform)).symlink_to(
+            "../../../ShoopDaLoop.app/Contents/MacOS/shoop_host_manager"
+        )
+        shutil.copy2(ROOT / "resources/iconset/icon.icns", manager_resources / "icon.icns")
+        plist.update(
+            CFBundleDisplayName="ShoopDaLoop Host Manager",
+            CFBundleExecutable=manager_executable_name(platform),
+            CFBundleIdentifier="org.shoopdaloop.host-manager",
+            CFBundleName="ShoopDaLoop Host Manager",
+        )
+        with (manager_contents / "Info.plist").open("wb") as handle:
+            plistlib.dump(plist, handle, sort_keys=True)
+    elif platform == "windows":
+        (root / "ShoopDaLoop Host Manager.lnk").write_bytes(windows_manager_shortcut())
+    else:
+        shutil.copy2(APPLICATION_ICON, root / "icon.png")
+        shutil.copy2(PACKAGE / "shoop_host_manager.desktop", root / "shoop_host_manager.desktop")
 
 
 def write_tar(source: Path, output: Path) -> None:
@@ -162,7 +201,7 @@ def package_native(args: argparse.Namespace) -> list[Path]:
     output.unlink(missing_ok=True)
     with tempfile.TemporaryDirectory(prefix="shoop-package-") as temporary:
         stage = Path(temporary)
-        create_native_stage(args.platform, binary, args.carla_runtime.resolve(), stage, args.macos_minimum_version or "11.0")
+        create_native_stage(args.platform, binary, stage, args.macos_minimum_version or "11.0")
         staged_executable = (
             stage / ARCHIVE_ROOT / "ShoopDaLoop.app" / "Contents" / "MacOS" / "shoopdaloop"
             if args.platform == "macos"
@@ -173,6 +212,29 @@ def package_native(args: argparse.Namespace) -> list[Path]:
             cwd=stage,
             check=True,
         )
+        subprocess.run(
+            [str(staged_executable.with_name(manager_executable_name(args.platform))), "--help"],
+            cwd=stage, check=True, timeout=30,
+        )
+        for transport in ("socket", "shared_memory"):
+            subprocess.run(
+                [str(staged_executable), "--probe-engine-transport", "--engine-transport", transport],
+                cwd=stage, check=True, timeout=60,
+            )
+            subprocess.run(
+                [str(staged_executable), "--probe-persistence", "--session-transport", transport],
+                cwd=stage, check=True, timeout=600,
+            )
+            subprocess.run(
+                [str(staged_executable), "--probe-composites", "--session-transport", transport],
+                cwd=stage, check=True, timeout=300,
+            )
+        for probe, timeout in (("--probe-engine-transport", 60), ("--probe-persistence", 600)):
+            subprocess.run(
+                [str(staged_executable), probe, "--session-transport", "socket"],
+                cwd=stage, check=True, timeout=timeout,
+                env={**os.environ, "SHOOP_PROBE_LAN": "1"},
+            )
         if args.platform == "windows":
             write_zip(stage / ARCHIVE_ROOT, output)
         else:
@@ -236,7 +298,7 @@ def archive_names(path: Path) -> tuple[set[str], dict[str, int]]:
             }
             return files, modes
     with tarfile.open(path, "r:gz") as archive:
-        files = {member.name for member in archive.getmembers() if member.isfile()}
+        files = {member.name for member in archive.getmembers() if member.isfile() or member.issym()}
         modes = {
             member.name: member.mode & 0o777
             for member in archive.getmembers()
@@ -327,16 +389,6 @@ def require_application_icon(binary: bytes, artifact: str) -> None:
         raise RuntimeError(f"{artifact} is missing the embedded application icon")
 
 
-def require_click_assets(binary: bytes, artifact: str) -> None:
-    missing = [
-        name
-        for name in (b"click_high", b"click_low", b"shaker_primary", b"shaker_secondary")
-        if name not in binary
-    ]
-    if missing:
-        raise RuntimeError(f"{artifact} is missing embedded click assets: {missing}")
-
-
 def require_native_architecture(binary: bytes, platform: str, artifact: str, arch: str | None = None) -> None:
     if platform == "linux":
         valid = (
@@ -371,13 +423,6 @@ def reject_carla_native_payload(binary: bytes, artifact: str) -> None:
         raise RuntimeError(f"{artifact} contains Carla Native payload markers: {present}")
 
 
-def carla_archive_path(platform: str, relative: str) -> str:
-    root = f"{ARCHIVE_ROOT}/"
-    if platform == "macos":
-        return f"{root}ShoopDaLoop.app/Contents/Frameworks/carla-runtime/{relative}"
-    return f"{root}carla-runtime/{relative}"
-
-
 def verify_native(path: Path, platform: str, arch: str | None = None, macos_minimum_version: str | None = None) -> None:
     names, modes = archive_names(path)
     payloads = archive_payloads(path)
@@ -394,39 +439,40 @@ def verify_native(path: Path, platform: str, arch: str | None = None, macos_mini
         executable = f"{app}MacOS/shoopdaloop"
         source_tree_marker = f"{app}MacOS/{SOURCE_TREE_MARKER}"
         builtins_prefix = f"{app}Resources/builtins/"
-        component_manifest_path = f"{app}Frameworks/carla-runtime/manifest.json"
     else:
         executable = f"{root}{executable_name(platform)}"
         source_tree_marker = f"{root}{SOURCE_TREE_MARKER}"
         required = metadata | fonts | {executable}
         builtins_prefix = f"{root}builtins/"
-        component_manifest_path = f"{root}carla-runtime/manifest.json"
+    companion = str(PurePosixPath(executable).with_name(engine_executable_name(platform)))
+    required.add(companion)
+    manager = str(PurePosixPath(executable).with_name(manager_executable_name(platform)))
+    required.add(manager)
+    if platform == "macos":
+        manager_app = f"{root}ShoopDaLoop Host Manager.app/Contents/"
+        required.update({
+            f"{manager_app}Info.plist", f"{manager_app}Resources/icon.icns",
+            f"{manager_app}MacOS/shoop_host_manager",
+        })
+        manager_plist = plistlib.loads(payloads[f"{manager_app}Info.plist"])
+        if manager_plist.get("CFBundleExecutable") != "shoop_host_manager":
+            raise RuntimeError("macOS manager bundle has the wrong entry point")
+        with tarfile.open(path, "r:gz") as archive:
+            entry = archive.getmember(f"{manager_app}MacOS/shoop_host_manager")
+            if not entry.issym() or entry.linkname != "../../../ShoopDaLoop.app/Contents/MacOS/shoop_host_manager":
+                raise RuntimeError("macOS manager bundle has an invalid executable link")
+    elif platform == "windows":
+        shortcut = f"{root}ShoopDaLoop Host Manager.lnk"
+        required.add(shortcut)
+        if payloads[shortcut] != windows_manager_shortcut():
+            raise RuntimeError("Windows manager shortcut has the wrong relative target")
+    else:
+        required.update({f"{root}icon.png", f"{root}shoop_host_manager.desktop"})
+        if payloads[f"{root}shoop_host_manager.desktop"] != (PACKAGE / "shoop_host_manager.desktop").read_bytes():
+            raise RuntimeError("Linux manager desktop entry differs from its source")
     if source_tree_marker in names:
         raise RuntimeError("native archive contains a source-tree marker")
-    try:
-        component_manifest = json.loads(
-            payloads[component_manifest_path].decode("utf-8")
-        )
-    except (KeyError, UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise RuntimeError("native archive has no valid Carla component manifest") from error
-    if component_manifest.get("platform") != platform:
-        raise RuntimeError("native archive contains the wrong Carla component platform")
-    lock_path = carla_archive_path(platform, "runtime-lock.json")
-    notice_path = carla_archive_path(platform, "licenses/README.md")
-    if payloads.get(lock_path) != (ROOT / "third_party" / "carla" / "runtime-lock.json").read_bytes():
-        raise RuntimeError("native archive contains an unreviewed Carla runtime lock")
-    if payloads.get(notice_path) != (ROOT / "third_party" / "carla" / "README.md").read_bytes():
-        raise RuntimeError("native archive contains an unreviewed Carla notice")
-    required.add(component_manifest_path)
     required.update(verify_builtins(payloads, builtins_prefix))
-    for entry in component_manifest.get("files", []):
-        archived = carla_archive_path(platform, entry["path"])
-        required.add(archived)
-        payload = payloads[archived]
-        if len(payload) != entry["size"] or hashlib.sha256(payload).hexdigest() != entry["sha256"]:
-            raise RuntimeError(f"packaged Carla checksum mismatch: {archived}")
-        if platform != "windows" and entry["executable"] and modes.get(archived, 0) & 0o111 == 0:
-            raise RuntimeError(f"packaged Carla helper has no execute bit: {archived}")
     if names != required:
         raise RuntimeError(
             f"unexpected {platform} archive manifest; missing={sorted(required - names)}, "
@@ -434,17 +480,24 @@ def verify_native(path: Path, platform: str, arch: str | None = None, macos_mini
         )
     if platform != "windows" and modes.get(executable, 0) & 0o111 == 0:
         raise RuntimeError(f"archive executable has no execute bit: {executable}")
+    if platform != "windows" and modes.get(companion, 0) & 0o111 == 0:
+        raise RuntimeError(f"companion has no execute bit: {companion}")
+    require_native_architecture(payloads[companion], platform, "engine companion", arch)
+    require_native_architecture(payloads[manager], platform, "host manager", arch)
+    if platform != "windows" and modes.get(manager, 0) & 0o111 == 0:
+        raise RuntimeError(f"manager has no execute bit: {manager}")
+    require_application_icon(payloads[manager], "host manager")
+    reject_carla_native_payload(payloads[manager], "host manager")
     binary = payloads[executable]
     require_native_architecture(binary, platform, "native executable", arch)
-    carla_library = payloads[carla_archive_path(platform, component_manifest["library"])]
-    require_native_architecture(carla_library, platform, "Carla Native library", arch)
     if platform == "macos" and macos_minimum_version:
         plist = plistlib.loads(payloads[f"{root}ShoopDaLoop.app/Contents/Info.plist"])
         if plist.get("LSMinimumSystemVersion") != macos_minimum_version:
             raise RuntimeError("macOS bundle has the wrong minimum OS version")
         print("\n".join(verify_payloads(payloads, arch or "arm64", macos_minimum_version)))
     require_application_icon(binary, "native executable")
-    require_click_assets(binary, "native executable")
+    reject_carla_native_payload(binary, "native executable")
+    reject_carla_native_payload(payloads[companion], "session host")
     reject_application_script_payload(binary, "native executable")
 
 
@@ -465,11 +518,14 @@ def verify_web(bundle: Path, html: Path | None) -> None:
     if icon != APPLICATION_ICON.read_bytes():
         raise RuntimeError("hosted web archive contains the wrong application icon")
     hosted_application = archive_file(bundle, wasm[0])
-    hosted_worklet = archive_file(bundle, f"{root}generated/shoop_audio_worklet.wasm")
-    require_click_assets(hosted_application, "hosted application Wasm")
+    hosted_rt_worklet = archive_file(bundle, f"{root}generated/shoop_rt_host_worklet.wasm")
     reject_carla_native_payload(hosted_application, "hosted application Wasm")
     reject_application_script_payload(hosted_application, "hosted application Wasm")
-    reject_carla_native_payload(hosted_worklet, "hosted AudioWorklet Wasm")
+    reject_carla_native_payload(hosted_rt_worklet, "hosted new engine AudioWorklet Wasm")
+    hosted_codec = archive_file(bundle, f"{root}generated/shoop_persistence_codec_bg.wasm")
+    reject_carla_native_payload(hosted_codec, "hosted client file codec worker Wasm")
+    if not hosted_codec.startswith(b"\0asm"):
+        raise RuntimeError("hosted client codec worker is not a Wasm module")
     if html is None:
         return
     text = html.read_text(encoding="utf-8")
@@ -486,7 +542,7 @@ def verify_web(bundle: Path, html: Path | None) -> None:
         raise RuntimeError("self-contained HTML does not contain Web MIDI access")
     if (
         "shoopEmbeddedAudioWorklet" not in text
-        or "shoopAudioWorkletWasmBytes" not in text
+        or "shoopRtWorkletBinary" not in text
     ):
         raise RuntimeError("self-contained HTML does not contain embedded browser audio")
     external_fonts = (
@@ -506,7 +562,7 @@ def verify_web(bundle: Path, html: Path | None) -> None:
     ) != APPLICATION_ICON.read_bytes():
         raise RuntimeError("self-contained HTML does not contain the application icon")
     application_binary = None
-    for variable in ("shoopWasmBinary", "shoopAudioWorkletBinary"):
+    for variable in ("shoopWasmBinary", "shoopRtWorkletBinary", "shoopCodecWorkerBinary"):
         match = re.search(rf'const {variable} = atob\("([A-Za-z0-9+/=]+)"\);', text)
         if not match:
             raise RuntimeError(f"self-contained HTML is missing {variable}")
@@ -516,18 +572,21 @@ def verify_web(bundle: Path, html: Path | None) -> None:
         reject_carla_native_payload(binary, f"self-contained {variable}")
         if variable == "shoopWasmBinary":
             application_binary = binary
-    require_click_assets(application_binary or b"", "single-file core application Wasm")
     reject_application_script_payload(
         application_binary or b"", "single-file core application Wasm"
     )
-    worklet = re.search(
-        r'const shoopAudioWorkletModuleUrl = "data:text/javascript;base64,([A-Za-z0-9+/=]+)";',
-        text,
-    )
-    if not worklet or b"registerProcessor" not in base64.b64decode(
-        worklet.group(1), validate=True
+    codec_bindings = re.search(r'codecBindingsUrl: "data:text/javascript;base64,([A-Za-z0-9+/=]+)"', text)
+    if (
+        not codec_bindings
+        or base64.b64decode(codec_bindings.group(1), validate=True)
+        != archive_file(bundle, f"{root}generated/shoop_persistence_codec.js")
     ):
-        raise RuntimeError("self-contained HTML has an invalid AudioWorklet script")
+        raise RuntimeError("self-contained HTML has invalid client codec bindings")
+    rt_worklet = re.search(r'rtModuleUrl: "data:text/javascript;base64,([A-Za-z0-9+/=]+)"', text)
+    if not rt_worklet or b"shoop-rt-audio-processor" not in base64.b64decode(
+        rt_worklet.group(1), validate=True
+    ):
+        raise RuntimeError("self-contained HTML has an invalid new engine AudioWorklet script")
     if html.stat().st_size <= 0:
         raise RuntimeError("self-contained HTML is empty")
 
@@ -551,7 +610,6 @@ def parser() -> argparse.ArgumentParser:
     native.add_argument("--arch", required=True)
     native.add_argument("--profile", choices=PROFILES, required=True)
     native.add_argument("--binary", type=Path, required=True)
-    native.add_argument("--carla-runtime", type=Path, required=True)
     native.add_argument("--output-dir", type=Path, required=True)
     native.add_argument("--macos-minimum-version")
     native.set_defaults(function=package_native)
