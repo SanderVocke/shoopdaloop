@@ -4,7 +4,7 @@
     "rustc": "1.99.1",
     "verilator": "5.032",
     "yosys": "0.52",
-    "cocotb": "1.9.2"
+    "legacy_python_harness": "1.9.2"
   },
   "production_tests": {
     "passed": 669,

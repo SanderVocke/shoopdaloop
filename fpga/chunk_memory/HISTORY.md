@@ -10,7 +10,7 @@ their original workload and revision assumptions.
 
 `chunk_case` / `chunk_trace` are additive format-version-2 payloads. Requests contain
 an ID and tagged operation; results contain ID, status, read samples and logical
-arena contents. Rust supplies expected values. Cocotb drives independently stalled
+arena contents. Rust supplies expected values. Python harness drives independently stalled
 memory and sample streams, compares reads/statuses and checks complete backing
 contents after fences. It also checks whole-chunk grouping on the memory port.
 
@@ -51,7 +51,7 @@ frequency or worst-case DDR service bound.
 
 ## Verification checkpoint
 
-Verilator 5.032, cocotb 1.9.2 and Yosys 0.52; seeds 20261110/20261111:
+Verilator 5.032, historical Python harness 1.9.2 and Yosys 0.52; seeds 20261110/20261111:
 
 | Comparison | Cases | Requests or quanta |
 | --- | ---: | ---: |

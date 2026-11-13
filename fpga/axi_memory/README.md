@@ -1,5 +1,15 @@
 # AXI sample and metadata memory
 
+Simulation now uses the complete [Rust/Marlin testbench suite](../../src/rust/rt_fpga_testbench/README.md):
+
+```sh
+cargo run --locked -p rt_fpga_testbench --features sim -- axi
+```
+
+The Python simulator entry names are aliases for this runner and accept its
+current options. The native suite guide describes profiles, replay, VCDs and
+reports. Historical measurements are marked separately.
+
 The endpoint and timing model follow [PLAN_DDR3.md](../../PLAN_DDR3.md). The
 subsequent chunk-burst implementation extends its original word-only producer.
 Integrated tops now use whole-chunk descriptors and sample streams through the
@@ -17,89 +27,39 @@ single-client adapter.
 
 ## Functional and realistic simulation
 
-`--memory-model instant` is the default **functional direct simulation**. Its
-AXI responder and sample array live in the simulator as non-synthesizable
-SystemVerilog. Cocotb still supplies fixtures, host commands and Rust comparisons,
-but does not schedule memory transactions each clock. No DRAMsim3 library or
-DPI-C binding is used. The generated tops in `tests/direct/` preserve the DUT
-hierarchy and expose AXI signals as read-only probes; production RTL and its
-synthesis source lists are unchanged.
+The shared Rust/Marlin runner drives clocks, host commands, protocol monitors,
+memory agents and production comparisons. `--memory-model instant` uses a
+non-synthesizable SV AXI responder and sample array. The elaborated adapter
+instantiates it alongside the actual production top; it is absent from synthesis
+source lists. Host image administration reads and writes that backing store at
+explicit quiescent checkpoints rather than comparing a shadow copy.
 
-`--memory-model dramsim3` is the **realistic memory simulation**. It retains the
-Python AXI service, native DDR timing, refresh, drain and physical bus counters.
-Use this mode for memory latency, bandwidth and feasibility conclusions.
-`fixed` and `legacy` remain artificial-delay/protocol diagnostics. Direct-mode
-cycle counts describe its simple functional service and need not match any
-other backend or earlier instant-memory measurements.
+`--memory-model dramsim3` uses the Rust AXI agent and the pinned native DDR timing
+library. Use it for memory latency, bandwidth, refresh and physical-drain
+measurements. `fixed` and `legacy` provide deterministic-delay and scalar-port
+diagnostics. Functional-mode cycles do not establish realistic memory timing.
 
-The SV model supports the existing 32-/64-bit, ID-zero, single-outstanding,
-1–16-beat INCR subset, including narrow lanes, byte strobes, independent AW/W,
-R/B backpressure and reset. It has no random memory delays, DDR bank model or
-per-transaction history. Basic counters and explicit pause, response-pause,
-channel-hold and next-transfer-error controls support ordinary protocol tests.
-Mid-beat error injection and native timing/statistics tests run on Python.
-Active-arithmetic fault placement uses the Python backend and a >=16-frame
-profile: a shorter job can finish before draining a failed burst reports its
-fault. Ordinary fault propagation remains checked in the smaller profiles.
+Both AXI implementations support 32-/64-bit data, ID zero, one outstanding
+transaction, 1–16-beat INCR bursts, narrow lanes, byte strobes, independent AW/W,
+R/B backpressure and coordinated reset. Shared controls support pauses and
+fault placement. The Rust agent additionally supports mid-burst error injection.
 
-Samples are exchanged at explicit checkpoints through `sim-memory.hex` in the
-test directory. Python writes a complete word image and requests an SV import;
-fenced snapshots request an SV export and read the actual backing array. Image
-operations require quiescence; reset cancels protocol state and preserves samples.
-Separate test directories keep parallel runs independent. Do not inspect a
-live Python shadow list as if it were the SV store; use the async image helpers.
-
-Use Verilator 5.032 (the version pinned in CI), a C++ compiler, Make and Cargo.
-Install both the simulator and Rust fixture helper's Python requirements in
-your environment. Realistic runs additionally need the native timing library
-built as described below.
+Install Rust, Verilator 5.032, a C++ compiler and Make. Functional/fixed native
+runs need no Python packages or DRAM library. The optional input generators use
+`scripts/rt_backend_testbench/requirements.txt`. Realistic runs need the timing
+library built below.
 
 ```sh
-python -m pip install -r fpga/axi_memory/requirements.txt -r scripts/rt_backend_testbench/requirements.txt
-python fpga/axi_memory/simulate_direct.py
-python fpga/chunk_memory/simulate.py --config all --axi-data-width 64
-python fpga/loop_pipeline/simulate.py --media --config small
-python fpga/loop_pipeline/simulate.py --media --config small --memory-model dramsim3
+cargo run --locked -p rt_fpga_testbench --features sim -- direct
+cargo run --locked -p rt_fpga_testbench --features sim -- chunk --axi-data-width 32
+cargo run --locked -p rt_fpga_testbench --features sim -- pipeline --config small
+cargo run --locked -p rt_fpga_testbench --features sim -- production --memory-model dramsim3
 ```
 
-Reports record `backend=systemverilog,purpose=functional` for direct mode and
-`backend=cocotb,purpose=realistic` for DRAMsim3. Direct mode supplies basic AXI
-counts and omits DDR utilization/service data. Host execution time and simulated
-cycle time are separate quantities. See [PLAN_SIM_MEM.md](../../PLAN_SIM_MEM.md)
-for the implementation/validation record.
-
-Native-memory validation at the migration checkpoint:
-
-- Standalone SV RAM and all ten endpoint/adapter tests pass at both widths.
-  Direct chunk tests pass all four capacity profiles at 32 and 64 bits (56 Rust
-  cases, 4,800 seeded requests), plus the word-transfer profile and protocol
-  checks. The direct run also passes with a deliberately missing DDR library.
-- Direct media/audio comparisons cover shared ranges, wrap, recording, reuse,
-  forwarding, reset and faults, including a single-read/single-write-buffer
-  multi-chunk profile. Connected direct runs pass 102 cases / 808 quanta across
-  both widths and all three capacity profiles.
-- Realistic mode passes the full endpoint suites, 37 audio cases / 93 quanta,
-  and 39 connected cases / 254 quanta, including the full-size active-arithmetic
-  fault-placement checks. Generated-wrapper consistency checks pass.
-- The same four-quantum 64-loop fixture matches Rust in native direct, Python
-  zero-delay diagnostic (`fixed --memory-cycles 0`), and DRAMsim3 modes. All
-  three happen to retain 14,088 active cycles at startup and 12,516 subsequently;
-  equality between functional and realistic timing is not promised.
-
-One local run of that fixture, including host setup/readback and Rust comparison
-but excluding compilation, measured:
-
-| Backend | Host simulation time |
-| --- | ---: |
-| Native SV functional | 21.19 s |
-| Python zero-delay diagnostic | 33.33 s |
-| Python + DRAMsim3 realistic | 36.05 s |
-
-The native/Python zero-delay comparison is about 1.57x in this observation;
-host load varies and no speedup threshold is required. Cocotb still handles
-clocks, host traffic and probes. These host times do not change the simulated
-FPGA's processing time. The realistic report retains DDR bus/service statistics;
-the native report has only basic AXI counts and functional-backend metadata.
+Reports distinguish functional SV memory from realistic DRAM timing. Only the
+latter supplies physical DDR utilization/service data. Host execution time and
+simulated cycle time are separate quantities. VCD is opt-in through `--waves`;
+routine regression and CI do not enable it.
 
 ## Endpoint contract
 
@@ -162,9 +122,9 @@ requires a separate system drain/reset policy.
 ## DDR3 model assumptions
 
 DRAMsim3 is pinned in `dramsim3.lock` (MIT; retain its upstream license in the
-downloaded source). It models timing, not sample contents. A shared Python store
-owns the bytes and applies WSTRB. Cocotb serves AXI; ctypes calls a small native
-C ABI, polls completions and advances multiple DRAM clocks per fabric cycle.
+downloaded source). It models timing, not sample contents. A shared Rust store
+owns the bytes and applies WSTRB. The Rust AXI agent calls the native C ABI,
+polls completions and advances multiple DRAM clocks per fabric cycle.
 
 The supplied profile assumes one 4 Gbit x16 device, eight banks, 32,768 rows,
 1,024 columns, one rank, and 512 MiB total. Its 1.875 ns clock gives DDR3-1066
@@ -191,11 +151,11 @@ concurrent CPU traffic. Observed maxima are measurements, not hard WCET bounds.
 
 ## Isolated checks
 
-With Verilator, Yosys, a C++ compiler and the Python requirements installed:
+With Verilator, Yosys and a C++ compiler installed:
 
 ```sh
-python fpga/axi_memory/simulate.py
-python fpga/axi_memory/simulate.py --memory-model fixed --memory-cycles 7 --output work/axi-fixed
+cargo run --locked -p rt_fpga_testbench --features sim -- axi
+cargo run --locked -p rt_fpga_testbench --features sim -- axi --memory-model fixed --output work/axi-fixed
 bash fpga/axi_memory/check.sh
 ```
 
@@ -215,8 +175,8 @@ compiler. It is not required for the instant/fixed suites.
 
 ```sh
 python fpga/axi_memory/build_dramsim3.py
-python fpga/axi_memory/tests/test_timing.py
-python fpga/axi_memory/simulate.py --memory-model dramsim3 --output work/axi-dram
+cargo test --locked -p rt_fpga_testbench --features sim --test timing
+cargo run --locked -p rt_fpga_testbench --features sim -- axi --memory-model dramsim3 --output work/axi-dram
 ```
 
 The build fetches the exact lock revision into `work/dramsim3/source`, retains
@@ -238,32 +198,24 @@ the 5 1/3 DRAM ticks per 100 MHz fabric cycle, and generation-tagged reset.
 
 ## Integrated pipeline
 
-The chunk, media-store, media-audio and full-loop runners use AXI with native SV
-functional memory by default. `--memory-model fixed --memory-cycles 7` selects a deterministic
-native-block delay; `--memory-model dramsim3` selects detailed timing. All these
-modes use chunk bursts by default. `--axi-data-width 64` enables packed beats;
-`--physical-base 0x02000000` changes DDR placement. `--word-transfers` selects
-the original narrow word transactions through the same endpoint/model.
+Component, media/audio and production suites use the same memory agents. Select
+`--memory-model fixed` for deterministic native-block delay or `dramsim3` for
+realistic timing. `--axi-data-width 32|64` selects the transport width. Internal
+suite configurations exercise the original word adapter and legacy scalar port.
+The native runner's `--help` is the current option reference.
 
 ```sh
-python fpga/chunk_memory/simulate.py --config all
-python fpga/media_store/simulate.py --pipeline --config all
-python fpga/loop_pipeline/simulate.py --media --config all
-python fpga/loop_pipeline/simulate.py --media --config small --memory-model dramsim3
+cargo run --locked -p rt_fpga_testbench --features sim -- chunk
+cargo run --locked -p rt_fpga_testbench --features sim -- pipeline
+cargo run --locked -p rt_fpga_testbench --features sim -- production --memory-model dramsim3
 python fpga/axi_memory/generate_tops.py --check
 bash fpga/axi_memory/check_pipeline.sh
 ```
 
-`--memory-model legacy` retains the original word-slave fixtures, including the
-old `--response-cycles` floor. That option is rejected in AXI mode to avoid
-stacking delays. Fixed AXI timing includes the endpoint's handshake overhead;
-its delay number is not directly comparable to the old word-response floor.
-
-The checked-in thin wrappers expose only AXI for external transactions and
-preserve the cores' public host ports. The generator checks for interface drift.
-The full-loop testbench has internal memory-port probes for protocol checks, not
-an alternate external memory service. Both manual-clock and free-running tests
-use the same AXI state machine and functional store.
+The full Cargo regression covers both AXI widths, constrained cache geometries,
+word and chunk transfers, faults and reset across all supported memory backends.
+The wrappers under `rtl/` are generated production RTL; the Rust model builder
+creates simulation adapters from elaborated port widths.
 
 ## Measurements
 
@@ -288,18 +240,16 @@ physical service histograms. Finalization drains and prints native statistics
 once; DRAMsim3's final-statistics printer is not idempotent. Final drain ticks
 are reported separately and do not extend the measured logical quantum.
 
-Reproduce the aligned 64-loop/Q=32 case for each model:
+Replay the production 64-loop/Q=32 workload with the native runner:
 
 ```sh
-python fpga/media_store/simulate.py --pipeline --config 8x8 --timing \
-  --prefetch-analysis --read-buffers 128 --memory-model instant --output work/ddr3-bench-instant
-python fpga/media_store/simulate.py --pipeline --config 8x8 --timing \
-  --prefetch-analysis --read-buffers 128 --memory-model fixed --memory-cycles 7 --output work/ddr3-bench-fixed
-python fpga/media_store/simulate.py --pipeline --config 8x8 --timing \
-  --prefetch-analysis --read-buffers 128 --memory-model dramsim3 --output work/ddr3-bench-dram
-python fpga/media_store/simulate.py --pipeline --config default --timing \
-  --memory-model dramsim3 --output work/ddr3-record-dram
+cargo run --locked -p rt_fpga_testbench --features sim -- production --config 8x8 --benchmark64 --slots 2048 --block-chunks 32 --memory-model dramsim3 --output work/ddr3-bench
 ```
+
+The following measurements are historical checkpoints from earlier RTL and the
+retired Python harness. Their values and workload assumptions are preserved;
+commands in those historical sections refer to their recorded revisions. Use
+the native runner above for current measurements.
 
 Initial word-transfer results at assumed 100 MHz, 128 read buffers and four write
 buffers (reproduce with `--word-transfers`):
@@ -347,7 +297,7 @@ quantum, so these results do not depend on reusing the previous quantum's chunk.
 
 Detailed setup was also rebuilt from a fresh pinned dependency checkout. There
 are no Rust source changes. The checks above are local; PR CI is deliberately
-not inspected. Existing cocotb waveform clocks are normalized to ten nanoseconds;
+not inspected. The historical harness waveform clocks are normalized to ten nanoseconds;
 `--fabric-hz` controls the modeled DRAM clock ratio and report time conversion.
 Waveform timestamps represent physical time directly at the default 100 MHz.
 
@@ -434,7 +384,7 @@ The isolated chunk adapter, including its endpoint, synthesizes to 713 LUT4s /
 240 flip-flops at 32 bits, or 902 LUT4s / 251 flip-flops at 64 bits, with no
 BRAM or DSP blocks. These are ECP5 synthesis estimates, without place and route.
 
-Validation with Verilator 5.032, cocotb 1.9.2 and Yosys 0.52:
+Validation with Verilator 5.032, historical Python harness 1.9.2 and Yosys 0.52:
 
 - All ten isolated endpoint/adapter tests pass in fixed-delay and DRAMsim3 modes
   at both bus widths, including page splitting with different logical/physical

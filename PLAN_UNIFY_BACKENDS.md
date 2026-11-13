@@ -1,5 +1,9 @@
 # Unify production Rust and FPGA behavioral verification
 
+This is a historical implementation record. Current simulation uses the shared
+Rust/Marlin suite described in [PLAN_MARLIN_TESTBENCHES.md](PLAN_MARLIN_TESTBENCHES.md);
+its native drivers and memory agents supersede the Python harness described below.
+
 Status: executed, starting from upstream `e5c015be`; final evidence and validation
 limitations are in `fpga/verification/RESULTS.md`. Subsequent upstream metadata,
 block allocation and fabric-I/O changes are incorporated. The repeated 64-loop
@@ -54,7 +58,7 @@ comparison profile must remain available in the normal floating-point backend.
 - `rt_fpga_reference` independently implements a compiler, state processor, job
   processor, transitions, media storage and chunk access. `rt_fpga_testbench`
   exposes it through the `fpga-reference` executable and generated JSON schema.
-  `scripts/fpga_testbench` and the cocotb runners depend on that executable/schema.
+  `scripts/fpga_testbench` and the Python harness runners depend on that executable/schema.
 - `rt_runtime::AudioRenderMode::FpgaReference` is also connected to the app. It
   uses `rt_runtime/src/fpga.rs`, `executor_fpga.rs`, processor hooks and a
   reference-backed elastic audio store. It is not an independent production oracle.
@@ -204,7 +208,7 @@ Stages are ordered; pass each dependent gate before retiring its old coverage.
 - [x] Start from the latest upstream feature state and preserve concurrent work.
   Record revision/tool versions. Reuse the current branch/PR if appropriate;
   otherwise create a dedicated branch from that feature base and open a PR.
-- [x] Inventory old crate/mode dependencies, every cocotb runner/schema/fixture,
+- [x] Inventory old crate/mode dependencies, every Python harness runner/schema/fixture,
   app selector, benchmark and shared helper. Record each item's migration,
   retention or deletion destination and its replacement coverage.
 - [x] Specify the common input/output contract and supported-feature matrix,
@@ -259,7 +263,7 @@ Stages are ordered; pass each dependent gate before retiring its old coverage.
   supported-node definitions to RTL program/state/buffer bindings and TP setup.
   Add only necessary read-only compiler exports; do not copy a second resolver
   or graph-ordering algorithm. Check bounded operands and hardware capacities.
-- [x] Adapt the existing cocotb drivers to load that image and run the common
+- [x] Adapt the existing Python harness drivers to load that image and run the common
   scenario through `loop_pipeline_axi`, including real media preflight, cache
   and AXI. Implement semantic result collection and raw fixed media readback.
 - [x] Gate with schema roundtrip/rejection tests and one complete mono Q=32

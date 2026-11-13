@@ -145,7 +145,7 @@ The following direct-memory measurements precede chunk-memory integration
 (commit `59186a5f`). Current interfaces and validation are described in
 [chunk memory](../chunk_memory/README.md).
 
-Verilator 5.032 / cocotb 1.9.2, seed 20261110; Yosys 0.52, default capacities:
+Verilator 5.032 / historical Python harness 1.9.2, seed 20261110; Yosys 0.52, default capacities:
 
 | Behavioral comparison | Cases | Compared commands/quanta |
 | --- | ---: | ---: |

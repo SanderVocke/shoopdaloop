@@ -126,7 +126,9 @@ backpressure, forwarding, reuse and late faults. See
 The integrated RTL tops use a shared synthesizable AXI master for external
 sample and metadata memory. Separate DMA clients alternate at complete AXI burst
 boundaries, with one outstanding transaction. Native direct simulation uses an SV
-backing store; realistic simulation uses cocotb and a ctypes-wrapped DRAMsim3 model. See
+backing store; realistic simulation uses the shared Rust/Marlin AXI agent and
+the DRAMsim3 C ABI. The [native testbench suite](src/rust/rt_fpga_testbench/README.md)
+covers the component and complete-pipeline contracts. See
 [AXI memory](fpga/axi_memory/README.md).
 
 ## Storage model

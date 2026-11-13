@@ -57,12 +57,13 @@ The common runner compares production Rust and RTL processing, output/media
 samples, loop state, events and outcomes. Useful targeted checks are:
 
 ```sh
-python fpga/verification/simulate.py --config odd --block-chunks 32 \
-  --directed --random-cases 3 --stalls --faults --axi-data-width 64
-python fpga/verification/simulate.py --config 8x8 --benchmark64 \
+cargo run --locked -p rt_fpga_testbench --features sim -- production --config odd --block-chunks 32 \
+  --directed --random-cases 3 --axi-data-width 64
+cargo run --locked -p rt_fpga_testbench --features sim -- production-faults --block-chunks 32
+cargo run --locked -p rt_fpga_testbench --features sim -- production --config 8x8 --benchmark64 \
   --block-chunks 32 --axi-data-width 64
-python fpga/media_store/simulate_metadata.py
-python fpga/audio_io/simulate_pipeline.py --p 16 --frame-cycles 1600 \
+cargo run --locked -p rt_fpga_testbench --features sim -- metadata
+cargo run --locked -p rt_fpga_testbench --features sim -- continuous --p 16 --frame-cycles 1600 \
   --axi-data-width 64 --stalls
 python fpga/axi_memory/generate_tops.py --check
 ```

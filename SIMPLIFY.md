@@ -216,7 +216,7 @@ Reproduce with `python fpga/loop_pipeline/simulate.py --media --config 8x8 --tim
 
 Validation passed: 64 reference/testbench Rust tests, 491 selected native
 runtime/engine/host tests (one additional test skipped), 19 Python contract tests,
-and 84 cocotb test groups across transition/state/job/media/pipeline/AXI profiles.
+and 84 RTL test groups across transition/state/job/media/pipeline/AXI profiles.
 The combined pipeline exercised 117 cases / 1,735 steps plus dedicated fatal-fault
 and reset tests. Additional runs used fixed seven-cycle AXI64 responses and the
 legacy seven-cycle word port. The warning-denying workspace build, format check,
@@ -227,7 +227,7 @@ After rebasing onto upstream `54c616cf`, the same instant-memory AXI32 benchmark
 passes at 17,793 cycles for the first quantum and 16,221 cycles for each following
 quantum. This integrated result includes both simplification and upstream playback
 pipelining; the synthesis table above remains the isolated earlier checkpoint.
-Revalidation passed 64 Rust tests, 19 Python tests and 45 cocotb groups, including
+Revalidation passed 64 Rust tests, 19 Python tests and 45 RTL groups, including
 42 combined-pipeline cases / 385 steps plus fault/reset suites, playback cadence,
 chunk streaming, delayed AXI64 and legacy retake replays. Both-width lint and the
 warning-denying workspace build also passed.

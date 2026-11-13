@@ -213,15 +213,15 @@ These tests check execution and counter boundaries, not expected audio results:
 python fpga/zedboard/generate.py --check
 python fpga/zedboard/prepare.py --loops 4 --tracks 2 --record-quanta 2 \
   --output work/zedboard/smoke-workload
-python fpga/zedboard/simulate.py --workload work/zedboard/smoke-workload \
+cargo run --locked -p rt_fpga_testbench --features sim -- zedboard --workload work/zedboard/smoke-workload \
   --control-tests --output work/zedboard/runner-native
-python fpga/zedboard/simulate.py --workload work/zedboard/smoke-workload \
-  --memory-model fixed --memory-cycles 25 --output work/zedboard/runner-fixed
+cargo run --locked -p rt_fpga_testbench --features sim -- zedboard --workload work/zedboard/smoke-workload \
+  --memory-model fixed --output work/zedboard/runner-fixed
 ```
 
 The same runner accepts `--memory-model dramsim3` with the existing native
-library and a board-appropriate `--dram-config`. Supply `--fabric-hz` matching
-the deployment, and enough `--quanta` to exceed the prepared warmup. Simulation
+library and its recorded DDR profile. Keep the assumed fabric clock at 100 MHz
+and supply enough `--quanta` to exceed the prepared warmup. Simulation
 compares the hardware counters with observed run/done edges and starts from
 nonzero memory. Control checks withhold an accepted response, verify watchdog
 drain, release it, restart, snapshot and stop. All results are written as JSON.

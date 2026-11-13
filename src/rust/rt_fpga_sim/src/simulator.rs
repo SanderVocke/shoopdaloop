@@ -14,6 +14,25 @@ struct Pipeline;
 pub fn runtime(artifacts: &Path) -> SimResult<VerilatorRuntime> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
     let mut sources = vec![Path::new(env!("CARGO_MANIFEST_DIR")).join("rtl/marlin_pipeline.sv")];
+    sources.extend(pipeline_sources());
+    sources.push(root.join("fpga/axi_memory/tests/axi_direct_memory.sv"));
+    Ok(VerilatorRuntime::new2(
+        artifacts,
+        &sources,
+        &[root.join("fpga/state_processor/rtl")],
+        [],
+        VerilatorRuntimeOptions::default().verilator_executable(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("verilator-wrapper")
+                .into(),
+        ),
+    )?)
+}
+
+/// Processing and AXI modules shared by native simulation tops.
+pub fn pipeline_sources() -> Vec<PathBuf> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let mut sources = Vec::new();
     for (directory, names) in [
         (
             "state_processor",
@@ -44,18 +63,7 @@ pub fn runtime(artifacts: &Path) -> SimResult<VerilatorRuntime> {
                 .map(|name| root.join(format!("fpga/{directory}/rtl/{name}.sv"))),
         );
     }
-    sources.push(root.join("fpga/axi_memory/tests/axi_direct_memory.sv"));
-    Ok(VerilatorRuntime::new2(
-        artifacts,
-        &sources,
-        &[root.join("fpga/state_processor/rtl")],
-        [],
-        VerilatorRuntimeOptions::default().verilator_executable(
-            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("verilator-wrapper")
-                .into(),
-        ),
-    )?)
+    sources
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

@@ -1,0 +1,5896 @@
+[
+  {
+    "minimum_loops": 1,
+    "minimum_requests": 1,
+    "bounded_requests": true,
+    "case": {
+      "name": "single-loop-modes-q1",
+      "plan": {
+        "description": {
+          "quantum": 1,
+          "loops": [
+            {
+              "id": {
+                "slot": 0,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 2,
+              "sync_source": null,
+              "repeat_sync": false,
+              "timeline": null
+            }
+          ]
+        },
+        "limits": {
+          "loop_slots": 1,
+          "pending_requests": 32,
+          "events": 34
+        }
+      },
+      "steps": [
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 1,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 2,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "seek",
+                "position": 1,
+                "retrigger": false
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 3,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 99,
+                "retrigger": false
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 4,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "stop"
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 5,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "seek",
+                "position": 0,
+                "retrigger": false
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 6,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "record"
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 7,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 8,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "stop"
+              }
+            }
+          ]
+        }
+      ],
+      "format_version": 1
+    }
+  },
+  {
+    "minimum_loops": 1,
+    "minimum_requests": 1,
+    "bounded_requests": true,
+    "case": {
+      "name": "single-loop-modes-q16",
+      "plan": {
+        "description": {
+          "quantum": 16,
+          "loops": [
+            {
+              "id": {
+                "slot": 0,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 32,
+              "sync_source": null,
+              "repeat_sync": false,
+              "timeline": null
+            }
+          ]
+        },
+        "limits": {
+          "loop_slots": 1,
+          "pending_requests": 32,
+          "events": 34
+        }
+      },
+      "steps": [
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 1,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 2,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "seek",
+                "position": 16,
+                "retrigger": false
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 3,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 1584,
+                "retrigger": false
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 4,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "stop"
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 5,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "seek",
+                "position": 0,
+                "retrigger": false
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 6,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "record"
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 7,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 8,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "stop"
+              }
+            }
+          ]
+        }
+      ],
+      "format_version": 1
+    }
+  },
+  {
+    "minimum_loops": 1,
+    "minimum_requests": 1,
+    "bounded_requests": true,
+    "case": {
+      "name": "single-loop-modes-q32",
+      "plan": {
+        "description": {
+          "quantum": 32,
+          "loops": [
+            {
+              "id": {
+                "slot": 0,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 64,
+              "sync_source": null,
+              "repeat_sync": false,
+              "timeline": null
+            }
+          ]
+        },
+        "limits": {
+          "loop_slots": 1,
+          "pending_requests": 32,
+          "events": 34
+        }
+      },
+      "steps": [
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 1,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 2,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "seek",
+                "position": 32,
+                "retrigger": false
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 3,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 3168,
+                "retrigger": false
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 4,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "stop"
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 5,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "seek",
+                "position": 0,
+                "retrigger": false
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 6,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "record"
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 7,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 8,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "stop"
+              }
+            }
+          ]
+        }
+      ],
+      "format_version": 1
+    }
+  },
+  {
+    "minimum_loops": 1,
+    "minimum_requests": 1,
+    "bounded_requests": true,
+    "case": {
+      "name": "single-loop-modes-q64",
+      "plan": {
+        "description": {
+          "quantum": 64,
+          "loops": [
+            {
+              "id": {
+                "slot": 0,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 128,
+              "sync_source": null,
+              "repeat_sync": false,
+              "timeline": null
+            }
+          ]
+        },
+        "limits": {
+          "loop_slots": 1,
+          "pending_requests": 32,
+          "events": 34
+        }
+      },
+      "steps": [
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 1,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 2,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "seek",
+                "position": 64,
+                "retrigger": false
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 3,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 6336,
+                "retrigger": false
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 4,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "stop"
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 5,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "seek",
+                "position": 0,
+                "retrigger": false
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 6,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "record"
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 7,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 8,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "stop"
+              }
+            }
+          ]
+        }
+      ],
+      "format_version": 1
+    }
+  },
+  {
+    "minimum_loops": 1,
+    "minimum_requests": 1,
+    "bounded_requests": true,
+    "case": {
+      "name": "single-loop-modes-q128",
+      "plan": {
+        "description": {
+          "quantum": 128,
+          "loops": [
+            {
+              "id": {
+                "slot": 0,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 256,
+              "sync_source": null,
+              "repeat_sync": false,
+              "timeline": null
+            }
+          ]
+        },
+        "limits": {
+          "loop_slots": 1,
+          "pending_requests": 32,
+          "events": 34
+        }
+      },
+      "steps": [
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 1,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 2,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "seek",
+                "position": 128,
+                "retrigger": false
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 3,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 12672,
+                "retrigger": false
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 4,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "stop"
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 5,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "seek",
+                "position": 0,
+                "retrigger": false
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 6,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "record"
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 7,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 8,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "stop"
+              }
+            }
+          ]
+        }
+      ],
+      "format_version": 1
+    }
+  },
+  {
+    "minimum_loops": 1,
+    "minimum_requests": 1,
+    "bounded_requests": true,
+    "case": {
+      "name": "empty-and-invalid-positions",
+      "plan": {
+        "description": {
+          "quantum": 16,
+          "loops": [
+            {
+              "id": {
+                "slot": 0,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 0,
+              "sync_source": null,
+              "repeat_sync": false,
+              "timeline": null
+            }
+          ]
+        },
+        "limits": {
+          "loop_slots": 1,
+          "pending_requests": 32,
+          "events": 34
+        }
+      },
+      "steps": [
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 1,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 2,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "record"
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 3,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "seek",
+                "position": 1,
+                "retrigger": false
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 4,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "stop"
+              }
+            }
+          ]
+        }
+      ],
+      "format_version": 1
+    }
+  },
+  {
+    "minimum_loops": 1,
+    "minimum_requests": 1,
+    "bounded_requests": false,
+    "case": {
+      "name": "terminal-retention-stale-id-and-generation",
+      "plan": {
+        "description": {
+          "quantum": 16,
+          "loops": [
+            {
+              "id": {
+                "slot": 0,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 32,
+              "sync_source": null,
+              "repeat_sync": false,
+              "timeline": null
+            }
+          ]
+        },
+        "limits": {
+          "loop_slots": 1,
+          "pending_requests": 1,
+          "events": 3
+        }
+      },
+      "steps": [
+        {
+          "collect_completed": false,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 1,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": false,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 1,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 2,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": false,
+          "collect": [
+            {
+              "slot": 0,
+              "generation": 1
+            }
+          ],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 3,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "stop"
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": false,
+          "collect": [],
+          "cancel": [
+            {
+              "slot": 0,
+              "generation": 1
+            },
+            {
+              "slot": 0,
+              "generation": 2
+            }
+          ],
+          "commands": []
+        },
+        {
+          "collect_completed": false,
+          "collect": [
+            {
+              "slot": 0,
+              "generation": 2
+            }
+          ],
+          "cancel": [],
+          "commands": []
+        }
+      ],
+      "format_version": 1
+    }
+  },
+  {
+    "minimum_loops": 1,
+    "minimum_requests": 1,
+    "bounded_requests": true,
+    "case": {
+      "name": "off-grid-schedule-and-wide-integers",
+      "plan": {
+        "description": {
+          "quantum": 32,
+          "loops": [
+            {
+              "id": {
+                "slot": 0,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 18446744073709551584,
+              "sync_source": null,
+              "repeat_sync": false,
+              "timeline": null
+            }
+          ]
+        },
+        "limits": {
+          "loop_slots": 1,
+          "pending_requests": 32,
+          "events": 34
+        }
+      },
+      "steps": [
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 18446744073709551615,
+              "at": 1,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 18446744073709551552,
+                "retrigger": true
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        }
+      ],
+      "format_version": 1
+    }
+  },
+  {
+    "minimum_loops": 1,
+    "minimum_requests": 1,
+    "bounded_requests": true,
+    "case": {
+      "name": "self-sync-delays-consumed-once-per-boundary",
+      "plan": {
+        "description": {
+          "quantum": 16,
+          "loops": [
+            {
+              "id": {
+                "slot": 0,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 16,
+              "sync_source": {
+                "slot": 0,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            }
+          ]
+        },
+        "limits": {
+          "loop_slots": 1,
+          "pending_requests": 32,
+          "events": 34
+        }
+      },
+      "steps": [
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 1,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 2,
+              "at": 0,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 0,
+                  "generation": 3
+                },
+                "skip": 18446744073709551615
+              },
+              "operation": {
+                "kind": "seek",
+                "position": 0,
+                "retrigger": true
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        }
+      ],
+      "format_version": 1
+    }
+  },
+  {
+    "minimum_loops": 1,
+    "minimum_requests": 1,
+    "bounded_requests": true,
+    "case": {
+      "name": "empty-logical-topology",
+      "plan": {
+        "description": {
+          "quantum": 16,
+          "loops": []
+        },
+        "limits": {
+          "loop_slots": 1,
+          "pending_requests": 32,
+          "events": 34
+        }
+      },
+      "steps": [
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 1,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            }
+          ]
+        }
+      ],
+      "format_version": 1
+    }
+  },
+  {
+    "minimum_loops": 1,
+    "minimum_requests": 2,
+    "bounded_requests": true,
+    "case": {
+      "name": "invalid-target-source-and-generation",
+      "plan": {
+        "description": {
+          "quantum": 16,
+          "loops": [
+            {
+              "id": {
+                "slot": 0,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 32,
+              "sync_source": null,
+              "repeat_sync": false,
+              "timeline": null
+            }
+          ]
+        },
+        "limits": {
+          "loop_slots": 1,
+          "pending_requests": 32,
+          "events": 34
+        }
+      },
+      "steps": [
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 0
+              },
+              "sequence": 1,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 4294967295,
+                "generation": 3
+              },
+              "sequence": 2,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 3,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 1,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 4,
+              "at": 18446744073709551615,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 5,
+              "at": 0,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 0,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            }
+          ]
+        }
+      ],
+      "format_version": 1
+    }
+  },
+  {
+    "minimum_loops": 2,
+    "minimum_requests": 2,
+    "bounded_requests": true,
+    "case": {
+      "name": "repeat-wait-until-source-pulse",
+      "plan": {
+        "description": {
+          "quantum": 16,
+          "loops": [
+            {
+              "id": {
+                "slot": 0,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 64,
+              "sync_source": null,
+              "repeat_sync": false,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 1,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 16,
+              "sync_source": {
+                "slot": 0,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            }
+          ]
+        },
+        "limits": {
+          "loop_slots": 2,
+          "pending_requests": 32,
+          "events": 36
+        }
+      },
+      "steps": [
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 1,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 1,
+                "generation": 3
+              },
+              "sequence": 2,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        }
+      ],
+      "format_version": 1
+    }
+  },
+  {
+    "minimum_loops": 2,
+    "minimum_requests": 2,
+    "bounded_requests": true,
+    "case": {
+      "name": "stop-cancels-older-future-request",
+      "plan": {
+        "description": {
+          "quantum": 16,
+          "loops": [
+            {
+              "id": {
+                "slot": 0,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 32,
+              "sync_source": null,
+              "repeat_sync": false,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 1,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 16,
+              "sync_source": {
+                "slot": 0,
+                "generation": 3
+              },
+              "repeat_sync": false,
+              "timeline": null
+            }
+          ]
+        },
+        "limits": {
+          "loop_slots": 2,
+          "pending_requests": 32,
+          "events": 36
+        }
+      },
+      "steps": [
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 1,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 1,
+                "generation": 3
+              },
+              "sequence": 2,
+              "at": 0,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 0,
+                  "generation": 3
+                },
+                "skip": 2
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 1,
+                "generation": 3
+              },
+              "sequence": 3,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "stop"
+              }
+            },
+            {
+              "target": {
+                "slot": 1,
+                "generation": 3
+              },
+              "sequence": 4,
+              "at": 160,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        }
+      ],
+      "format_version": 1
+    }
+  },
+  {
+    "minimum_loops": 2,
+    "minimum_requests": 4,
+    "bounded_requests": true,
+    "case": {
+      "name": "same-boundary-direct-vs-delayed-priority",
+      "plan": {
+        "description": {
+          "quantum": 16,
+          "loops": [
+            {
+              "id": {
+                "slot": 0,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 32,
+              "sync_source": null,
+              "repeat_sync": false,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 1,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 32,
+              "sync_source": {
+                "slot": 0,
+                "generation": 3
+              },
+              "repeat_sync": false,
+              "timeline": null
+            }
+          ]
+        },
+        "limits": {
+          "loop_slots": 2,
+          "pending_requests": 32,
+          "events": 36
+        }
+      },
+      "steps": [
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 1,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 1,
+                "generation": 3
+              },
+              "sequence": 4,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 1,
+                "generation": 3
+              },
+              "sequence": 2,
+              "at": 0,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 0,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "record"
+              }
+            },
+            {
+              "target": {
+                "slot": 1,
+                "generation": 3
+              },
+              "sequence": 5,
+              "at": 0,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 0,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "seek",
+                "position": 0,
+                "retrigger": true
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        }
+      ],
+      "format_version": 1
+    }
+  },
+  {
+    "minimum_loops": 3,
+    "minimum_requests": 4,
+    "bounded_requests": true,
+    "case": {
+      "name": "record-play-same-boundary-sync-chain",
+      "plan": {
+        "description": {
+          "quantum": 16,
+          "loops": [
+            {
+              "id": {
+                "slot": 0,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 64,
+              "sync_source": null,
+              "repeat_sync": false,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 1,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 0,
+              "sync_source": {
+                "slot": 0,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 2,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 16,
+              "sync_source": {
+                "slot": 1,
+                "generation": 3
+              },
+              "repeat_sync": false,
+              "timeline": null
+            }
+          ]
+        },
+        "limits": {
+          "loop_slots": 3,
+          "pending_requests": 32,
+          "events": 38
+        }
+      },
+      "steps": [
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 1,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 1,
+                "generation": 3
+              },
+              "sequence": 2,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "record"
+              }
+            },
+            {
+              "target": {
+                "slot": 1,
+                "generation": 3
+              },
+              "sequence": 3,
+              "at": 0,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 0,
+                  "generation": 3
+                },
+                "skip": 1
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 2,
+                "generation": 3
+              },
+              "sequence": 4,
+              "at": 0,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 1,
+                  "generation": 3
+                },
+                "skip": 1
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        }
+      ],
+      "format_version": 1
+    }
+  },
+  {
+    "minimum_loops": 3,
+    "minimum_requests": 4,
+    "bounded_requests": true,
+    "case": {
+      "name": "sync-chain-self-sync",
+      "plan": {
+        "description": {
+          "quantum": 16,
+          "loops": [
+            {
+              "id": {
+                "slot": 0,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 16,
+              "sync_source": {
+                "slot": 0,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 1,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 32,
+              "sync_source": {
+                "slot": 0,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 2,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 16,
+              "sync_source": {
+                "slot": 2,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            }
+          ]
+        },
+        "limits": {
+          "loop_slots": 3,
+          "pending_requests": 32,
+          "events": 38
+        }
+      },
+      "steps": [
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 1,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 1,
+                "generation": 3
+              },
+              "sequence": 2,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 2,
+                "generation": 3
+              },
+              "sequence": 3,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        }
+      ],
+      "format_version": 1
+    }
+  },
+  {
+    "minimum_loops": 3,
+    "minimum_requests": 4,
+    "bounded_requests": true,
+    "case": {
+      "name": "reversed-declarations",
+      "plan": {
+        "description": {
+          "quantum": 16,
+          "loops": [
+            {
+              "id": {
+                "slot": 2,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 16,
+              "sync_source": {
+                "slot": 2,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 1,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 32,
+              "sync_source": {
+                "slot": 0,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 0,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 16,
+              "sync_source": {
+                "slot": 0,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            }
+          ]
+        },
+        "limits": {
+          "loop_slots": 3,
+          "pending_requests": 32,
+          "events": 38
+        }
+      },
+      "steps": [
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 1,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 1,
+                "generation": 3
+              },
+              "sequence": 2,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 2,
+                "generation": 3
+              },
+              "sequence": 3,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        }
+      ],
+      "format_version": 1
+    }
+  },
+  {
+    "minimum_loops": 3,
+    "minimum_requests": 4,
+    "bounded_requests": true,
+    "case": {
+      "name": "source-order-opposes-slot-order",
+      "plan": {
+        "description": {
+          "quantum": 16,
+          "loops": [
+            {
+              "id": {
+                "slot": 0,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 16,
+              "sync_source": {
+                "slot": 2,
+                "generation": 3
+              },
+              "repeat_sync": false,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 1,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 16,
+              "sync_source": {
+                "slot": 0,
+                "generation": 3
+              },
+              "repeat_sync": false,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 2,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 16,
+              "sync_source": {
+                "slot": 2,
+                "generation": 3
+              },
+              "repeat_sync": false,
+              "timeline": null
+            }
+          ]
+        },
+        "limits": {
+          "loop_slots": 3,
+          "pending_requests": 32,
+          "events": 38
+        }
+      },
+      "steps": [
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 2,
+                "generation": 3
+              },
+              "sequence": 1,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 2,
+              "at": 0,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 2,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 1,
+                "generation": 3
+              },
+              "sequence": 3,
+              "at": 0,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 0,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        }
+      ],
+      "format_version": 1
+    }
+  },
+  {
+    "minimum_loops": 3,
+    "minimum_requests": 4,
+    "bounded_requests": true,
+    "case": {
+      "name": "stop-masks-inherited-pulse-at-current-boundary",
+      "plan": {
+        "description": {
+          "quantum": 16,
+          "loops": [
+            {
+              "id": {
+                "slot": 0,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 16,
+              "sync_source": null,
+              "repeat_sync": false,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 1,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 16,
+              "sync_source": {
+                "slot": 0,
+                "generation": 3
+              },
+              "repeat_sync": false,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 2,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 16,
+              "sync_source": {
+                "slot": 1,
+                "generation": 3
+              },
+              "repeat_sync": false,
+              "timeline": null
+            }
+          ]
+        },
+        "limits": {
+          "loop_slots": 3,
+          "pending_requests": 32,
+          "events": 38
+        }
+      },
+      "steps": [
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 1,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 1,
+                "generation": 3
+              },
+              "sequence": 2,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "stop"
+              }
+            },
+            {
+              "target": {
+                "slot": 2,
+                "generation": 3
+              },
+              "sequence": 3,
+              "at": 0,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 1,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        }
+      ],
+      "format_version": 1
+    }
+  },
+  {
+    "minimum_loops": 3,
+    "minimum_requests": 7,
+    "bounded_requests": true,
+    "case": {
+      "name": "pending-list-head-middle-removal-reuse-and-retry",
+      "plan": {
+        "description": {
+          "quantum": 16,
+          "loops": [
+            {
+              "id": {
+                "slot": 0,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 16,
+              "sync_source": null,
+              "repeat_sync": false,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 1,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 16,
+              "sync_source": {
+                "slot": 0,
+                "generation": 3
+              },
+              "repeat_sync": false,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 2,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 16,
+              "sync_source": {
+                "slot": 0,
+                "generation": 3
+              },
+              "repeat_sync": false,
+              "timeline": null
+            }
+          ]
+        },
+        "limits": {
+          "loop_slots": 3,
+          "pending_requests": 32,
+          "events": 38
+        }
+      },
+      "steps": [
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 1,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 1,
+                "generation": 3
+              },
+              "sequence": 2,
+              "at": 0,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 0,
+                  "generation": 3
+                },
+                "skip": 3
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 2,
+                "generation": 3
+              },
+              "sequence": 3,
+              "at": 0,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 0,
+                  "generation": 3
+                },
+                "skip": 4
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 1,
+                "generation": 3
+              },
+              "sequence": 4,
+              "at": 0,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 0,
+                  "generation": 3
+                },
+                "skip": 1
+              },
+              "operation": {
+                "kind": "record"
+              }
+            },
+            {
+              "target": {
+                "slot": 1,
+                "generation": 3
+              },
+              "sequence": 5,
+              "at": 48,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "stop"
+              }
+            },
+            {
+              "target": {
+                "slot": 1,
+                "generation": 3
+              },
+              "sequence": 6,
+              "at": 0,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 0,
+                  "generation": 3
+                },
+                "skip": 1
+              },
+              "operation": {
+                "kind": "seek",
+                "position": 0,
+                "retrigger": true
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [
+            {
+              "slot": 1,
+              "generation": 1
+            }
+          ],
+          "commands": [
+            {
+              "target": {
+                "slot": 2,
+                "generation": 3
+              },
+              "sequence": 7,
+              "at": 0,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 0,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 1,
+                "generation": 3
+              },
+              "sequence": 8,
+              "at": 0,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 0,
+                  "generation": 3
+                },
+                "skip": 2
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 1,
+                "generation": 3
+              },
+              "sequence": 9,
+              "at": 0,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 0,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 1,
+                "generation": 3
+              },
+              "sequence": 10,
+              "at": 32,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "record"
+              }
+            },
+            {
+              "target": {
+                "slot": 2,
+                "generation": 3
+              },
+              "sequence": 12,
+              "at": 32,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "stop"
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        }
+      ],
+      "format_version": 1
+    }
+  },
+  {
+    "minimum_loops": 130,
+    "minimum_requests": 4,
+    "bounded_requests": false,
+    "case": {
+      "name": "source-order-sparse-slots-across-word-boundary",
+      "plan": {
+        "description": {
+          "quantum": 16,
+          "loops": [
+            {
+              "id": {
+                "slot": 129,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 16,
+              "sync_source": null,
+              "repeat_sync": false,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 64,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 16,
+              "sync_source": {
+                "slot": 129,
+                "generation": 3
+              },
+              "repeat_sync": false,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 0,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 32,
+              "sync_source": {
+                "slot": 129,
+                "generation": 3
+              },
+              "repeat_sync": false,
+              "timeline": null
+            },
+            {
+              "id": {
+                "slot": 63,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 16,
+              "sync_source": {
+                "slot": 0,
+                "generation": 3
+              },
+              "repeat_sync": true,
+              "timeline": null
+            }
+          ]
+        },
+        "limits": {
+          "loop_slots": 130,
+          "pending_requests": 8,
+          "events": 268
+        }
+      },
+      "steps": [
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 129,
+                "generation": 3
+              },
+              "sequence": 1,
+              "at": 0,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 2,
+              "at": 0,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 129,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 63,
+                "generation": 3
+              },
+              "sequence": 3,
+              "at": 0,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 0,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 64,
+                "generation": 3
+              },
+              "sequence": 4,
+              "at": 0,
+              "timing": {
+                "kind": "after_ticks",
+                "source": {
+                  "slot": 129,
+                  "generation": 3
+                },
+                "skip": 0
+              },
+              "operation": {
+                "kind": "record"
+              }
+            },
+            {
+              "target": {
+                "slot": 64,
+                "generation": 3
+              },
+              "sequence": 5,
+              "at": 64,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        }
+      ],
+      "format_version": 1
+    }
+  },
+  {
+    "minimum_loops": 3,
+    "minimum_requests": 130,
+    "bounded_requests": false,
+    "case": {
+      "name": "absolute-priority-high-request-slot-reuse",
+      "plan": {
+        "description": {
+          "quantum": 16,
+          "loops": [
+            {
+              "id": {
+                "slot": 0,
+                "generation": 3
+              },
+              "kind": "primitive",
+              "length": 16,
+              "sync_source": {
+                "slot": 0,
+                "generation": 3
+              },
+              "repeat_sync": false,
+              "timeline": null
+            }
+          ]
+        },
+        "limits": {
+          "loop_slots": 1,
+          "pending_requests": 130,
+          "events": 132
+        }
+      },
+      "steps": [
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 1,
+              "at": 2080,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 2,
+              "at": 2064,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 3,
+              "at": 2048,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 4,
+              "at": 2032,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 5,
+              "at": 2016,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 6,
+              "at": 2000,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 7,
+              "at": 1984,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 8,
+              "at": 1968,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 9,
+              "at": 1952,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 10,
+              "at": 1936,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 11,
+              "at": 1920,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 12,
+              "at": 1904,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 13,
+              "at": 1888,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 14,
+              "at": 1872,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 15,
+              "at": 1856,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 16,
+              "at": 1840,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 17,
+              "at": 1824,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 18,
+              "at": 1808,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 19,
+              "at": 1792,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 20,
+              "at": 1776,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 21,
+              "at": 1760,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 22,
+              "at": 1744,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 23,
+              "at": 1728,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 24,
+              "at": 1712,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 25,
+              "at": 1696,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 26,
+              "at": 1680,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 27,
+              "at": 1664,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 28,
+              "at": 1648,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 29,
+              "at": 1632,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 30,
+              "at": 1616,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 31,
+              "at": 1600,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 32,
+              "at": 1584,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 33,
+              "at": 1568,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 34,
+              "at": 1552,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 35,
+              "at": 1536,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 36,
+              "at": 1520,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 37,
+              "at": 1504,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 38,
+              "at": 1488,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 39,
+              "at": 1472,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 40,
+              "at": 1456,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 41,
+              "at": 1440,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 42,
+              "at": 1424,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 43,
+              "at": 1408,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 44,
+              "at": 1392,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 45,
+              "at": 1376,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 46,
+              "at": 1360,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 47,
+              "at": 1344,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 48,
+              "at": 1328,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 49,
+              "at": 1312,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 50,
+              "at": 1296,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 51,
+              "at": 1280,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 52,
+              "at": 1264,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 53,
+              "at": 1248,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 54,
+              "at": 1232,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 55,
+              "at": 1216,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 56,
+              "at": 1200,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 57,
+              "at": 1184,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 58,
+              "at": 1168,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 59,
+              "at": 1152,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 60,
+              "at": 1136,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 61,
+              "at": 1120,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 62,
+              "at": 1104,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 63,
+              "at": 1088,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 64,
+              "at": 1072,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 65,
+              "at": 1056,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 66,
+              "at": 1040,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 67,
+              "at": 1024,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 68,
+              "at": 1008,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 69,
+              "at": 992,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 70,
+              "at": 976,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 71,
+              "at": 960,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 72,
+              "at": 944,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 73,
+              "at": 928,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 74,
+              "at": 912,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 75,
+              "at": 896,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 76,
+              "at": 880,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 77,
+              "at": 864,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 78,
+              "at": 848,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 79,
+              "at": 832,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 80,
+              "at": 816,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 81,
+              "at": 800,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 82,
+              "at": 784,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 83,
+              "at": 768,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 84,
+              "at": 752,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 85,
+              "at": 736,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 86,
+              "at": 720,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 87,
+              "at": 704,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 88,
+              "at": 688,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 89,
+              "at": 672,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 90,
+              "at": 656,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 91,
+              "at": 640,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 92,
+              "at": 624,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 93,
+              "at": 608,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 94,
+              "at": 592,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 95,
+              "at": 576,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 96,
+              "at": 560,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 97,
+              "at": 544,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 98,
+              "at": 528,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 99,
+              "at": 512,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 100,
+              "at": 496,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 101,
+              "at": 480,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 102,
+              "at": 464,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 103,
+              "at": 448,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 104,
+              "at": 432,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 105,
+              "at": 416,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 106,
+              "at": 400,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 107,
+              "at": 384,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 108,
+              "at": 368,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 109,
+              "at": 352,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 110,
+              "at": 336,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 111,
+              "at": 320,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 112,
+              "at": 304,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 113,
+              "at": 288,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 114,
+              "at": 272,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 115,
+              "at": 256,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 116,
+              "at": 240,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 117,
+              "at": 224,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 118,
+              "at": 208,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 119,
+              "at": 192,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 120,
+              "at": 176,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 121,
+              "at": 160,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 122,
+              "at": 144,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 123,
+              "at": 128,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 124,
+              "at": 112,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 125,
+              "at": 96,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 126,
+              "at": 80,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 127,
+              "at": 64,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 128,
+              "at": 48,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 129,
+              "at": 32,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            },
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 130,
+              "at": 16,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": [
+            {
+              "target": {
+                "slot": 0,
+                "generation": 3
+              },
+              "sequence": 131,
+              "at": 32,
+              "timing": {
+                "kind": "at"
+              },
+              "operation": {
+                "kind": "play",
+                "position": 0,
+                "retrigger": true
+              }
+            }
+          ]
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        },
+        {
+          "collect_completed": true,
+          "collect": [],
+          "cancel": [],
+          "commands": []
+        }
+      ],
+      "format_version": 1
+    }
+  }
+]

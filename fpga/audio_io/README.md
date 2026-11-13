@@ -75,21 +75,21 @@ remain ordinary jobs. Monitoring and playback fan-in is an explicit graph mix.
 
 ## Build and replay
 
-Use Rust stable, Verilator 5.032, Python with the existing cocotb requirements,
-and Yosys for synthesis. Run from the repository root:
+Use Rust stable, Verilator 5.032 and a C++ compiler. Python prepares hardware
+images; Yosys is needed for synthesis. Run from the repository root:
 
 ```sh
 cargo build --locked -p rt_backend_testbench
 python fpga/audio_io/prepare_demo.py --output work/prepared-audio
-python fpga/audio_io/simulate.py
-python fpga/audio_io/simulate.py --q 1 --banks 2 --audio-period 10
-python fpga/audio_io/simulate.py --q 3 --p 1
-python fpga/audio_io/simulate.py --control
-python fpga/audio_io/simulate_pipeline.py
-python fpga/audio_io/simulate_pipeline.py --overrun --output work/audio-overrun
-python fpga/audio_io/simulate_pipeline.py --q 16 --chunk 8 --p 8 --banks 2 \
+cargo run --locked -p rt_fpga_testbench --features sim -- audio-io
+cargo run --locked -p rt_fpga_testbench --features sim -- audio-io --config custom --q 1 --banks 2 --audio-period 10
+cargo run --locked -p rt_fpga_testbench --features sim -- audio-io --config custom --q 3 --p 1
+cargo run --locked -p rt_fpga_testbench --features sim -- control
+cargo run --locked -p rt_fpga_testbench --features sim -- continuous
+cargo run --locked -p rt_fpga_testbench --features sim -- continuous --overrun --output work/audio-overrun
+cargo run --locked -p rt_fpga_testbench --features sim -- continuous --q 16 --chunk 8 --p 8 --banks 2 \
   --monitoring --frame-cycles 1024 --output work/audio-q16
-python fpga/audio_io/simulate_pipeline.py --demo --output work/audio-demo
+cargo run --locked -p rt_fpga_testbench --features sim -- demo --output work/audio-demo
 python fpga/audio_io/check.py
 python fpga/audio_io/check.py --demo --output work/audio-demo-synthesis
 ```

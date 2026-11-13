@@ -50,7 +50,7 @@ use tracing::Waveform;
 
 use crate::{
     dynamic::DynamicPortInfo,
-    ffi_names::{DPI_INIT_CALLBACK, TRACE_EVER_ON},
+    ffi_names::DPI_INIT_CALLBACK,
 };
 
 pub mod reexports {
@@ -502,7 +502,6 @@ static THREAD_LOCKS_PER_BUILD_DIR: LazyLock<
 fn one_time_library_setup(
     library: &Library,
     dpi_functions: &[&'static dyn DpiFunction],
-    tracing_enabled: bool,
 ) -> Result<(), VerilatorError> {
     if !dpi_functions.is_empty() {
         let dpi_init_callback: extern "C" fn(*const *const ffi::c_void) =
@@ -519,15 +518,6 @@ fn one_time_library_setup(
             .collect::<Vec<_>>();
 
         (dpi_init_callback)(function_pointers.as_ptr_range().start);
-    }
-
-    if tracing_enabled {
-        let trace_ever_on_callback: extern "C" fn(bool) =
-            *unsafe { library.get(TRACE_EVER_ON.as_bytes()) }
-                .whatever_context(
-                    "Model was not configured with tracing enabled",
-                )?;
-        trace_ever_on_callback(true);
     }
 
     Ok(())
@@ -804,22 +794,17 @@ impl VerilatorRuntime {
                     "Failed to load evalulator for module {name}"
                 ))?;
 
-        let main = new_main();
-
         let ports = ports
             .iter()
-            .copied()
-            .map(|(port, high, low, direction)| {
-                (
-                    port.to_string(),
-                    DynamicPortInfo {
-                        width: high + 1 - low,
-                        direction,
-                    },
-                )
+            .map(|&(port, high, low, direction)| {
+                DynamicPortInfo::bind(
+                    library, name, port, high + 1 - low, direction,
+                ).map(|info| (port.to_string(), info))
             })
-            .collect();
+            .collect::<Result<_, _>>()
+            .whatever_context("Failed to bind dynamic model ports")?;
 
+        let main = new_main();
         self.model_deallocators.borrow_mut().push(ModelDeallocator {
             model: main,
             deallocator: delete_main,
@@ -831,6 +816,7 @@ impl VerilatorRuntime {
             main,
             eval_main,
             library,
+            opened_trace: false,
         })
     }
 
@@ -1028,7 +1014,6 @@ impl VerilatorRuntime {
                 one_time_library_setup(
                     &library,
                     &self.dpi_functions,
-                    config.enable_tracing.is_some(),
                 )?;
 
                 let library_idx = self.library_arena.push(library);
