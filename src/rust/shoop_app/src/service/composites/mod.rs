@@ -368,13 +368,10 @@ impl Service {
         self.submit_composite_geometry(target, document, &geometry, unit)
     }
 
-    pub(super) fn submit_composite_geometry(
-        &mut self,
-        target: LoopId,
-        document: Document,
-        geometry: &BTreeMap<u64, (u64, u64)>,
-        unit: Option<u64>,
-    ) -> core::result::Result<(), CommandError> {
+    pub(super) fn validate_composite_events(
+        &self,
+        document: &Document,
+    ) -> Result<(), CommandError> {
         for event in &document.instances {
             self.loop_entry(event.loop_id)?;
             match event.mode {
@@ -412,6 +409,17 @@ impl Service {
                 _ => {}
             }
         }
+        Ok(())
+    }
+
+    pub(super) fn submit_composite_geometry(
+        &mut self,
+        target: LoopId,
+        document: Document,
+        geometry: &BTreeMap<u64, (u64, u64)>,
+        unit: Option<u64>,
+    ) -> core::result::Result<(), CommandError> {
+        self.validate_composite_events(&document)?;
         self.validate_composite_dependencies(target, &document)?;
         let prepared = prepare::compile_with_geometry(
             target,

@@ -433,9 +433,9 @@ pub fn run_transition_oracle(case: TransitionCase) -> Result<TransitionTrace, Tr
     )
     .map_err(error)?;
     let components: Vec<Vec<_>> = prepared
-        .components()
+        .dependency_order()
         .iter()
-        .map(|c| c.iter().copied().map(loop_id).collect())
+        .map(|id| vec![loop_id(*id)])
         .collect();
     assert_eq!(components, plan.components, "compiled timing order");
     let mut resolver = native::Resolver::prepare(
@@ -515,9 +515,9 @@ pub fn compile(input: &TransitionPlanInput) -> Result<TransitionPlanImage, Trans
         description,
         limits,
         components: prepared
-            .components()
+            .dependency_order()
             .iter()
-            .map(|c| c.iter().copied().map(loop_id).collect())
+            .map(|id| vec![loop_id(*id)])
             .collect(),
     })
 }

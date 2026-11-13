@@ -915,6 +915,7 @@ pub(super) fn status(state: &BackendStatus) -> StatusState {
         BackendDriverState::Stopped => AudioDriverState::Stopped,
     };
     StatusState {
+        memory: state.memory,
         version: env!("CARGO_PKG_VERSION").to_owned(),
         dsp_load_percent: state.dsp_load_percent,
         xruns: state.xruns,

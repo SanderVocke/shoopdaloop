@@ -30,7 +30,7 @@ fn description(explicit: bool) -> TopologyDescription {
                 },
                 length: [2, 0, 3, 5, 0][slot as usize],
                 sync_source: match slot {
-                    0 | 1 => Some(id(4)),
+                    1 => Some(id(4)),
                     4 => Some(id(0)),
                     _ => None,
                 },

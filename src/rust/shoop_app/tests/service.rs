@@ -24,6 +24,8 @@ enum CopyFailure {
     Gain,
     Repeat,
     Disconnect,
+    Clear,
+    ClearDisconnect,
 }
 impl CopyFailure {
     fn matches(self, request: shoop_rt_protocol::Request) -> bool {
@@ -35,6 +37,10 @@ impl CopyFailure {
                     mode: LoopMode::Stopped,
                     ..
                 }
+            ),
+            Self::Clear | Self::ClearDisconnect => matches!(
+                request,
+                Request::LoopClear { .. } | Request::ResetComposite { .. }
             ),
             Self::Apply | Self::Disconnect => matches!(request, Request::ContentApply { .. }),
             Self::Gain => matches!(request, Request::LoopGain { .. }),
@@ -76,6 +82,7 @@ struct Fixture {
     refuse_next_monitoring: Rc<Cell<bool>>,
     refuse_copy: Rc<Cell<Option<CopyFailure>>>,
     content_applies: Rc<Cell<usize>>,
+    clear_requests: Rc<Cell<usize>>,
 }
 fn fixture() -> Fixture {
     fixture_with_inventory(None)
@@ -144,6 +151,7 @@ fn fixture_configured(
     let refuse_next_monitoring = Rc::new(Cell::new(false));
     let refuse_copy = Rc::new(Cell::new(None));
     let content_applies = Rc::new(Cell::new(0));
+    let clear_requests = Rc::new(Cell::new(0));
     let client = shoop_rt_transport::client::ProtocolClient::new(RefuseLoop {
         inner: client.into_carrier(),
         refuse: Rc::clone(&refuse_next_loop),
@@ -153,6 +161,7 @@ fn fixture_configured(
         refuse_monitoring: Rc::clone(&refuse_next_monitoring),
         refuse_copy: Rc::clone(&refuse_copy),
         content_applies: Rc::clone(&content_applies),
+        clear_requests: Rc::clone(&clear_requests),
         reply: None,
     });
     let mut backend = RtBackend::connect(client, clock).unwrap();
@@ -193,6 +202,7 @@ fn fixture_configured(
         refuse_next_monitoring,
         refuse_copy,
         content_applies,
+        clear_requests,
     }
 }
 fn wire_message(client: &mut Client, message: WireMessage) {
@@ -1837,6 +1847,7 @@ struct RefuseLoop<C> {
     refuse_monitoring: Rc<Cell<bool>>,
     refuse_copy: Rc<Cell<Option<CopyFailure>>>,
     content_applies: Rc<Cell<usize>>,
+    clear_requests: Rc<Cell<usize>>,
     reply: Option<shoop_rt_protocol::EngineMessage>,
 }
 impl<C: shoop_rt_transport::carrier::Carrier> shoop_rt_transport::carrier::Carrier
@@ -1846,6 +1857,16 @@ impl<C: shoop_rt_transport::carrier::Carrier> shoop_rt_transport::carrier::Carri
         &mut self,
         message: shoop_rt_protocol::ClientMessage,
     ) -> Result<(), shoop_transport::CarrierError> {
+        if matches!(
+            message,
+            shoop_rt_protocol::ClientMessage::Request {
+                request: shoop_rt_protocol::Request::LoopClear { .. }
+                    | shoop_rt_protocol::Request::ResetComposite { .. },
+                ..
+            }
+        ) {
+            self.clear_requests.set(self.clear_requests.get() + 1);
+        }
         if matches!(
             message,
             shoop_rt_protocol::ClientMessage::Request {
@@ -1867,7 +1888,7 @@ impl<C: shoop_rt_transport::carrier::Carrier> shoop_rt_transport::carrier::Carri
             {
                 let disconnected = matches!(
                     self.refuse_copy.replace(None),
-                    Some(CopyFailure::Disconnect)
+                    Some(CopyFailure::Disconnect | CopyFailure::ClearDisconnect)
                 );
                 assert!(self.reply.is_none());
                 self.reply = Some(if disconnected {
@@ -4624,4 +4645,30 @@ fn dsp_load_keeps_the_peak_while_snapshot_publication_is_paced() {
         panic!("missing next snapshot")
     };
     assert_eq!(state.status.dsp_load_percent, 12.5);
+}
+
+#[shoop_test]
+fn memory_statistics_reach_typed_and_encoded_application_snapshots() {
+    for encoded in [false, true] {
+        let mut f = fixture();
+        let connection = ConnectionId(1);
+        let mut client = attach(&mut f.service, 1, connection, encoded);
+        for _ in 0..20 {
+            f.service.tick(STEP);
+            drain(&mut f.service, &mut client, connection, encoded);
+        }
+        let snapshot = client.snapshot().unwrap();
+        let memory = snapshot
+            .status
+            .memory
+            .expect("backend memory in application status");
+        assert!(memory.valid());
+        assert!(memory.frame > 0);
+        assert!(memory.accounted_bytes.unwrap() > 0);
+        assert!(memory
+            .resources
+            .iter()
+            .flatten()
+            .any(|pool| pool.name.as_str() == "Media payload"));
+    }
 }

@@ -35,7 +35,7 @@ impl<R> Prepared<R> {
         let limits = self.endpoint.limits();
         shoop_rt_transport::carrier::Outbox::new(
             2 * usize::from(limits.reliable_credits) + 8,
-            limits.strips as usize + 2 * limits.loops as usize + limits.buses as usize + 2,
+            limits.strips as usize + 2 * limits.loops as usize + limits.buses as usize + 3,
             usize::from(limits.bulk_credits),
         )
     }
@@ -69,6 +69,7 @@ impl Preparation {
             ],
             self.max_frames,
             self.description.resource_pages + 128,
+            self.description.sample_rate,
         )?;
         Ok(Consumer {
             control,

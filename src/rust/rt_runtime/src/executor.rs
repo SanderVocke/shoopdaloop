@@ -716,6 +716,9 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
     pub fn capture_group_usage(&self) -> resource::CaptureGroupUsage {
         self.resources.capture_group_usage()
     }
+    pub fn memory_usage(&self) -> resource::MemoryUsage {
+        self.resources.memory_usage()
+    }
     pub fn resource_usage(&self) -> resource::PoolUsage {
         self.resources.usage()
     }

@@ -249,6 +249,7 @@ pub(crate) fn mode_from_code(code: u32) -> Mode {
 }
 
 pub(crate) struct Cells {
+    pub memory: crate::memory::Memory,
     pub profiling: Option<rt_runtime::profiling::Control>,
     #[cfg(test)]
     pub fail_reader_tick: AtomicBool,
@@ -280,6 +281,7 @@ impl Cells {
         frames: usize,
     ) -> Arc<Self> {
         let cells = Self {
+            memory: Default::default(),
             profiling: None,
             #[cfg(test)]
             fail_reader_tick: AtomicBool::new(false),

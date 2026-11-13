@@ -12,6 +12,7 @@
 #include <string.h>
 #include "deployment/runtime.h"
 #include "profiling.h"
+#include "diagnostics.h"
 #ifdef SHOOP_USB_MIDI
 #include "usb/host.h"
 #endif
@@ -39,10 +40,6 @@ extern uint32_t shoop_fixture_input(void);
 extern uint32_t shoop_fixture_midi(void);
 #endif
 
-void shoop_log(const unsigned char *bytes, size_t len) {
-    extern void outbyte(char);
-    for (size_t i = 0; i < len; ++i) outbyte(bytes[i]);
-}
 void shoop_halt(void) {
     portDISABLE_INTERRUPTS();
     for (;;) { __asm__ volatile("wfi"); }
@@ -193,7 +190,7 @@ int shoop_cleanup_allowed(void) {
 #endif
 #if defined(SHOOP_DEPLOYMENT) && SHOOP_DEPLOY_FAULT == 6
     static unsigned failed;
-    if (!failed++) { xil_printf("SHOOP_DEPLOY_TEST_CLEANUP_REFUSED\r\n"); return 0; }
+    if (!failed++) { shoop_logf("SHOOP_DEPLOY_TEST_CLEANUP_REFUSED\r\n"); return 0; }
 #endif
 #ifdef SHOOP_FIXTURE
     extern int shoop_fixture_fail_cleanup(void);
@@ -208,10 +205,10 @@ void shoop_memory_report(void) {
     extern unsigned shoop_socket_count(void);
     size_t used, peak;
     shoop_heap_stats(&used, &peak);
-    xil_printf("SHOOP_MEMORY used=%u peak=%u c_free=%u c_min_free=%u control_stack_free=%u render_stack_free=%u uptime_ms=%u\r\n",
+    shoop_logf("SHOOP_MEMORY used=%u peak=%u c_free=%u c_min_free=%u control_stack_free=%u render_stack_free=%u uptime_ms=%u\r\n",
         (unsigned)used, (unsigned)peak, (unsigned)xPortGetFreeHeapSize(), (unsigned)xPortGetMinimumEverFreeHeapSize(),
         (unsigned)uxTaskGetStackHighWaterMark(NULL), (unsigned)(render_task ? uxTaskGetStackHighWaterMark(render_task) : render_stack_remaining), (unsigned)shoop_millis());
-    xil_printf("SHOOP_C_MEMORY newlib_committed=%u lwip_used=%u lwip_peak=%u tcp_pcbs=%u netconns=%u sockets=%u\r\n",
+    shoop_logf("SHOOP_C_MEMORY newlib_committed=%u lwip_used=%u lwip_peak=%u tcp_pcbs=%u netconns=%u sockets=%u\r\n",
         (unsigned)shoop_c_heap_committed(), (unsigned)lwip_stats.mem.used, (unsigned)lwip_stats.mem.max,
         (unsigned)lwip_stats.memp[MEMP_TCP_PCB]->used, (unsigned)lwip_stats.memp[MEMP_NETCONN]->used,
         shoop_socket_count());
@@ -221,7 +218,7 @@ static void stacks_report(void) {
     unsigned count = uxTaskGetSystemState(tasks, 32, NULL);
     configASSERT(count > 0);
     for (unsigned i = 0; i < count; ++i) {
-        xil_printf("SHOOP_STACK name=%s free_words=%u\r\n", tasks[i].pcTaskName, (unsigned)tasks[i].usStackHighWaterMark);
+        shoop_logf("SHOOP_STACK name=%s free_words=%u\r\n", tasks[i].pcTaskName, (unsigned)tasks[i].usStackHighWaterMark);
     }
 }
 
@@ -247,14 +244,14 @@ static void network(void *unused) {
     extern void shoop_network_stop(void);
     shoop_network_stop();
     shoop_memory_report();
-    xil_printf("SHOOP_HOST_RETURNED\r\n");
+    shoop_logf("SHOOP_HOST_RETURNED\r\n");
     vTaskDelete(NULL);
 }
 int main(void) {
     shoop_platform_init();
-    xil_printf("SHOOP_BOOT FreeRTOS AMD-lwIP board=%s ram_mib=%u\r\n",
+    shoop_logf("SHOOP_BOOT FreeRTOS AMD-lwIP board=%s ram_mib=%u\r\n",
                SHOOP_BOARD_PROFILE, (unsigned)(SHOOP_RAM_BYTES / (1024 * 1024)));
-    xil_printf("SHOOP_BUILD %s\r\n", shoop_build_identity);
+    shoop_logf("SHOOP_BUILD %s\r\n", shoop_build_identity);
 #ifdef SHOOP_USB_MIDI
     shoop_usb_start();
 #endif

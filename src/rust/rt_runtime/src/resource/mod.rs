@@ -6,6 +6,8 @@ use crate::Sample;
 mod external;
 mod reservation;
 pub use external::ExternalReadScope;
+pub(crate) mod memory;
+pub use memory::MemoryUsage;
 pub use reservation::ReservedSnapshotId;
 mod boundary;
 pub use boundary::{CaptureBoundaryIo, PlannerResourceIo};
@@ -414,6 +416,50 @@ impl<S: Sample> ResourceStore<S> {
         } else {
             0
         })
+    }
+    pub fn memory_usage(&self) -> MemoryUsage {
+        MemoryUsage {
+            accounted_bytes: (core::mem::size_of_val(&*self.data)
+                + memory::vec_bytes(&self.pages)
+                + memory::vec_bytes(&self.free_pages)
+                + memory::vec_bytes(&self.resources)
+                + memory::vec_bytes(&self.free_resources)
+                + memory::vec_bytes(&self.versions)
+                + memory::vec_bytes(&self.free_versions)
+                + memory::vec_bytes(&self.snapshots)
+                + memory::vec_bytes(&self.free_snapshots)
+                + core::mem::size_of_val(&*self.snapshot_reservations)
+                + memory::vec_bytes(&self.retired_versions)
+                + memory::vec_bytes(&self.retired_pages)
+                + memory::vec_bytes(&self.audio_stores)
+                + memory::vec_bytes(&self.midi_stores)
+                + memory::vec_bytes(&self.indexed_midi_stores)
+                + self
+                    .audio_stores
+                    .iter()
+                    .flatten()
+                    .map(|store| core::mem::size_of_val(&**store) + store.allocated_bytes())
+                    .sum::<usize>()
+                + self
+                    .midi_stores
+                    .iter()
+                    .flatten()
+                    .map(|store| core::mem::size_of_val(&**store) + store.allocated_bytes())
+                    .sum::<usize>()
+                + self
+                    .indexed_midi_stores
+                    .iter()
+                    .flatten()
+                    .map(|store| core::mem::size_of_val(&**store) + store.allocated_bytes())
+                    .sum::<usize>()
+                + self.midi_indexes.allocated_bytes()
+                + self.capture_groups.allocated_bytes()) as u64,
+            payload_bytes: self.data.len() as u64,
+            page_bytes: self.config.limits().page_bytes as u64,
+            pages: (self.data.len() / self.config.limits().page_bytes) as u64,
+            slots: self.resources.len() as u64,
+            pools: self.usage(),
+        }
     }
     pub fn usage(&self) -> PoolUsage {
         PoolUsage {

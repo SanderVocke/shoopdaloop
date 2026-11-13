@@ -18,11 +18,21 @@ enum Stage {
     Stall,
     CopyPrimitive,
     OverwritePrimitive,
+    CrossKindComposite,
+    CrossKindPrimitive,
+    OccupyCompositeTarget,
     CopyComposite,
     CopiesReady,
     Saving,
     Loaded,
     Resaving,
+    P17Mode,
+    P17Copy,
+    P17Saving,
+    P17Loaded,
+    P17Resaving,
+    P17Playback,
+    P17Stopped,
     Playback,
     Stopped,
     Passed,
@@ -45,11 +55,13 @@ pub struct Canary {
 impl Canary {
     pub fn file_output(&mut self, output: &crate::application::ApplicationFileOutput) {
         match shoop_session::decode_session(&output.bytes) {
-            Ok(bundle) if self.stage == Stage::Saving => {
+            Ok(bundle) if matches!(self.stage, Stage::Saving | Stage::P17Saving) => {
                 self.before = Some(bundle);
                 self.bytes = Some(output.bytes.clone());
             }
-            Ok(bundle) if self.stage == Stage::Resaving => self.after = Some(bundle),
+            Ok(bundle) if matches!(self.stage, Stage::Resaving | Stage::P17Resaving) => {
+                self.after = Some(bundle)
+            }
             Ok(_) => self.error = Some("unexpected composite file output".into()),
             Err(error) => self.error = Some(format!("composite file decode: {error}")),
         }
@@ -73,7 +85,15 @@ impl Canary {
         pending: bool,
         send: &mut impl FnMut(AppIntent) -> Result<(), String>,
     ) -> Result<bool, String> {
-        let timeout = if matches!(self.stage, Stage::Saving | Stage::Loaded | Stage::Resaving) {
+        let timeout = if matches!(
+            self.stage,
+            Stage::Saving
+                | Stage::Loaded
+                | Stage::Resaving
+                | Stage::P17Saving
+                | Stage::P17Loaded
+                | Stage::P17Resaving
+        ) {
             Duration::from_secs(120)
         } else {
             STEP_TIMEOUT
@@ -248,10 +268,44 @@ impl Canary {
                     self.loops[1],
                     LoopAction::DuplicateTo(self.loops[6]),
                 ))?;
+                self.next(Stage::CrossKindComposite);
+            }
+            Stage::CrossKindComposite => {
+                if track.loops[6].name != track.loops[1].name {
+                    return Ok(false);
+                }
+                send(action(
+                    self.loops[3],
+                    LoopAction::DuplicateTo(self.loops[6]),
+                ))?;
+                self.next(Stage::CrossKindPrimitive);
+            }
+            Stage::CrossKindPrimitive => {
+                if track.loops[6].name != track.loops[3].name
+                    || track.loops[6].composite_kind == CompositeKind::None
+                {
+                    return Ok(false);
+                }
+                send(action(
+                    self.loops[1],
+                    LoopAction::DuplicateTo(self.loops[6]),
+                ))?;
+                self.next(Stage::OccupyCompositeTarget);
+            }
+            Stage::OccupyCompositeTarget => {
+                if track.loops[6].name != track.loops[1].name
+                    || track.loops[6].composite_kind != CompositeKind::None
+                {
+                    return Ok(false);
+                }
+                send(action(
+                    self.loops[0],
+                    LoopAction::DuplicateTo(self.loops[7]),
+                ))?;
                 self.next(Stage::CopyComposite);
             }
             Stage::CopyComposite => {
-                if track.loops[6].name != track.loops[1].name {
+                if track.loops[7].name != track.loops[0].name {
                     return Ok(false);
                 }
                 send(action(
@@ -386,6 +440,109 @@ impl Canary {
                             "composite round trip changed frozen timing or event IDs".into()
                         );
                     }
+                }
+                if !track.loops[4].selected {
+                    send(action(
+                        track.loops[4].id,
+                        LoopAction::IconClicked(SelectionModifiers::default()),
+                    ))?;
+                }
+                send(AppIntent::SetCompositeEventMode {
+                    target_loop_id: track.loops[4].id,
+                    event: CompositeEventId {
+                        instance_id: self.event,
+                    },
+                    mode: LoopMode::Replacing,
+                })?;
+                self.next(Stage::P17Mode);
+            }
+            Stage::P17Mode => {
+                if !details.is_some_and(|d| {
+                    d.events
+                        .first()
+                        .is_some_and(|event| event.mode.as_deref() == Some("replacing"))
+                        && d.execution.pending_version.is_none()
+                }) {
+                    return Ok(false);
+                }
+                send(action(
+                    track.loops[4].id,
+                    LoopAction::DuplicateTo(track.loops[6].id),
+                ))?;
+                self.next(Stage::P17Copy);
+            }
+            Stage::P17Copy => {
+                if track.loops[6].composite_kind != CompositeKind::Script
+                    || track.loops[6].name != track.loops[4].name
+                {
+                    return Ok(false);
+                }
+                self.before = None;
+                self.after = None;
+                send(AppIntent::RequestSaveSession)?;
+                self.next(Stage::P17Saving);
+            }
+            Stage::P17Saving => {
+                let Some(before) = &self.before else {
+                    return Ok(false);
+                };
+                if !output_completed(snapshot)? {
+                    return Ok(false);
+                }
+                crate::copy_probe::verify_definition(before, 4, 6)?;
+                self.track = Some(track.id);
+                send(AppIntent::LoadSessionBytes {
+                    name: "p17-copy.shoop".into(),
+                    bytes: self.bytes.as_ref().unwrap().clone(),
+                })?;
+                self.next(Stage::P17Loaded);
+            }
+            Stage::P17Loaded => {
+                if track.id == self.track.unwrap()
+                    || !snapshot.io_task.as_ref().is_some_and(|task| {
+                        task.kind == shoop_egui::IoTaskKind::LoadSession
+                            && task.status == IoTaskStatus::Completed
+                    })
+                {
+                    return Ok(false);
+                }
+                send(AppIntent::RequestSaveSession)?;
+                self.next(Stage::P17Resaving);
+            }
+            Stage::P17Resaving => {
+                let Some(after) = &self.after else {
+                    return Ok(false);
+                };
+                if !output_completed(snapshot)? {
+                    return Ok(false);
+                }
+                crate::copy_probe::verify_definition(after, 4, 6)?;
+                if self
+                    .before
+                    .as_ref()
+                    .unwrap()
+                    .media
+                    .values()
+                    .collect::<Vec<_>>()
+                    != after.media.values().collect::<Vec<_>>()
+                {
+                    return Err("P17 copy round trip changed media".into());
+                }
+                send(action(track.loops[6].id, LoopAction::PlayClicked))?;
+                self.next(Stage::P17Playback);
+            }
+            Stage::P17Playback => {
+                if track.loops[5].mode != LoopMode::Replacing {
+                    return Ok(false);
+                }
+                send(action(track.loops[6].id, LoopAction::StopClicked))?;
+                self.next(Stage::P17Stopped);
+            }
+            Stage::P17Stopped => {
+                if track.loops[5].mode != LoopMode::Stopped
+                    || track.loops[6].mode != LoopMode::Stopped
+                {
+                    return Ok(false);
                 }
                 send(action(track.loops[3].id, LoopAction::PlayClicked))?;
                 self.next(Stage::Playback);
