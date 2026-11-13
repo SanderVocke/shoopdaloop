@@ -412,3 +412,13 @@ the selected platform plus browser/portable paths affected by P16.
   no remaining current-browser protocol-25 pins; the legacy reference's separate
   protocol remains 28. The complete client-codec/worklet clock/timestamp/xrun/
   runtime-toggle contract and trace-chunk transport check both pass locally.
+- Full Linux/Windows-debug and coverage CI at `76de30aa` expose the same three
+  upstream memory-reporting fixture errors: two canonical application byte
+  vectors still expect version 34 after the bump to 35, and a headless GUI test
+  drops an unapplied font-texture update. The independent byte vectors now pin
+  35; the GUI fixture explicitly clears its renderer-less texture updates while
+  retaining both label assertions. Warning-denying build, formatting and test
+  policy pass. The full normal-profile native gate passes **3,241/3,241** with
+  11 skipped in **799.661 seconds**. The firmware USB job passes all phases on
+  `76de30aa` without a firmware change; both prior USB failure artifacts remain
+  recorded. Final cross-platform CI and parity closure remain pending.

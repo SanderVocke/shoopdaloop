@@ -328,6 +328,23 @@ client-codec/worklet clock/timestamp/xrun/runtime-toggle contract and trace-chun
 transport test pass locally. Logs: `/tmp/p16-rt-contract-v26.log` and
 `/tmp/p16-trace-chunk-contract.log`.
 
+Linux full-workspace, Windows debug and coverage CI at `76de30aa` identify the
+same three upstream fixture failures. Two independent application-protocol byte
+vectors still pin 34 after upstream's bump to 35. The memory-label GUI test
+discards a font-texture update without clearing it, which egui rejects in debug
+builds. The vectors now pin 35; the headless fixture clears texture updates while
+preserving its unavailable-versus-zero text assertions. Product behavior and
+wire versions are unchanged by these corrections.
+
+After these fixes, the normal CI-profile local native command passes
+**3,241/3,241 tests, 11 skipped, 799.661 seconds**, without a test-thread override.
+Logs: `/tmp/p16-upstream-fixtures-native-build.log` and
+`/tmp/p16-final-fixtures-full-native.log`. The full firmware USB job
+[`131826752100`](https://github.com/SanderVocke/shoopdaloop/actions/runs/43407897378/job/131826752100)
+passes on `76de30aa` without firmware changes, including both previously failing
+scenarios. Earlier failed runs remain failed in the historical record. Final
+cross-platform CI and parity closure remain pending.
+
 ## Deliberate limits
 
 No VM migration, automatic start, server script catalog, attachment transfer of
