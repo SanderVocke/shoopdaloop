@@ -3,7 +3,9 @@
 Status: milestone 1 is implemented in [PR #990](https://github.com/SanderVocke/shoopdaloop/pull/990).
 Milestones 2–3 are implemented in the stacked [PR #993](https://github.com/SanderVocke/shoopdaloop/pull/993),
 with broad local verification and targeted corrected reruns complete. CI is unreviewed by instruction.
-Milestone 4 is next; milestones 4–6 have not started.
+The [completion plan](PLAN_FPGA_BOUNDARY_COMPLETION.md) adds a measured TP area
+pass before milestones 4–6, then covers autonomy, application integration and
+physical qualification. Those implementation stages have not started.
 Target integration branch: `proto/fpga-rust-reference`.
 Investigated baseline: `5b7dd0a5b242884f86862991dc7b456a5b091df7`.
 
@@ -94,14 +96,32 @@ M1 baseline this is **17.6% more LUTs**, 8.2% more FF and only 0.5 fewer BRAM.
 Publication banks and guards offset much of the TP storage saving. The matched
 complete-core geometry separately saves 592 LUTs (2.0%), but setup worsens from
 -1.353 to -1.845 ns; both miss 100 MHz. Milestone 6 owns that timing closure.
-Neither the TP result nor the next roadmap step promises an area reduction.
+M2–3 do not establish TP LUT reduction. The completion plan makes a measured
+reduction against the current TP a deliverable before autonomy/integration,
+with final verification after timing and board work.
 
 Detailed [execution plan](PLAN_FPGA_COMPACT_ACTIONS_AND_MEMBERSHIP.md),
 [wire/ownership contract](fpga/transition_processor/COMPACT.md) and
 [measurements](fpga/transition_processor/measurements/COMPACT_ACTIONS_AND_MEMBERSHIP.md)
 record the checkpoint separation, tradeoffs and remaining qualification.
 
+### 3a. Attribute and reduce TP area
+
+- [ ] Attribute the M3 LUT increase with controlled, matched experiments; separate
+  publication/mask/mux costs from resolver datapaths and synthesis mapping.
+- [ ] Implement the smallest sufficient publication contract for one trusted ARM
+  producer, preserving device safety, atomicity, generation lifetimes and service
+  independence. Publish a routed area checkpoint before M4.
+- [ ] Demonstrate final TP LUT reduction against the 13,312-LUT M2–3 result at
+  unchanged capacities and 100 MHz; target recovery toward the 11,320-LUT M1
+  baseline. Account for final observation, timing and board integration costs.
+
+Detailed stages, acceptance gates and resource comparisons are in the
+[completion plan](PLAN_FPGA_BOUNDARY_COMPLETION.md).
+
 ### 4. Autonomous audio progression
+
+Execution is covered by the [completion plan](PLAN_FPGA_BOUNDARY_COMPLETION.md).
 
 - [ ] Remove the need for ARM-produced per-quantum fences. With no published
   update, process normally using installed state and actions. Publish complete
@@ -115,6 +135,9 @@ record the checkpoint separation, tradeoffs and remaining qualification.
 
 ### 5. Application integration
 
+The completion plan makes device-side observation/media continuity a prerequisite
+for moving application command and response work off the deadline path.
+
 - [ ] Put command management and response service outside the ARM audio callback.
   Replace the application adapter's per-quantum settlement pause with autonomous,
   frame-stamped observations that ARM can consume later.
@@ -126,6 +149,10 @@ record the checkpoint separation, tradeoffs and remaining qualification.
   which the observation or action actually occurred.
 
 ### 6. Qualification
+
+The completion plan includes the real ARM control/audio integration currently
+absent from the halted-CPU benchmark and dummy-audio firmware. Physical board
+evidence remains required for completion; simulation is an independent gate.
 
 - [ ] Run broad production/RTL and application regressions, long sessions,
   adversarial command traffic, service stalls, exhaustion and reset checks.
@@ -153,7 +180,8 @@ record the checkpoint separation, tradeoffs and remaining qualification.
   production Rust.
 - Record exact source revisions, capacities, tool versions and constraints for
   comparisons. Keep command, processing, observation and host-service costs
-  separate. Do not impose an unmeasured area-saving claim on early milestones.
+  separate. Preserve the early milestone measurements and verify the explicit
+  final area target in the completion plan without claiming an unmeasured saving.
 - Follow the milestone plan's commit, validation, PR and review process. Update
   this roadmap as milestones finish; revise implementation choices when evidence
   warrants it without silently relaxing the goal or acceptance criteria.
