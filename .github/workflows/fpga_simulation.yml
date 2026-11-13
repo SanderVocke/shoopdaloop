@@ -201,7 +201,7 @@ jobs:
   audio-synthesis:
     name: Audio I/O lint and synthesis (${{ matrix.target }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: ${{ matrix.target == 'map' && 90 || 45 }}
     strategy:
       fail-fast: false
       matrix:
