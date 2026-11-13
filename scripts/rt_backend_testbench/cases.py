@@ -84,9 +84,9 @@ def directed():
     value['steps']=[step(ordinal=i,actions=controls.get(i,())) for i in range(13)]
     yield value
     for count in (1,3):
-        value=loaded(base('self-sync' if count==1 else 'legal-sync-cycle',loops=count),64)
-        for i,row in enumerate(value['loops']):row['sync_source']=lid((i+1)%count);row['repeat_sync']=True
-        controls={0:[action(f'play-{i}',i,0,'play') for i in range(count)],3:[action('delayed-retrigger',0,96,'seek',position=32,retrigger=True,source=(1%count),skip=1)]}
+        value=loaded(base('self-sync' if count==1 else 'sync-chain',loops=count),64)
+        for i,row in enumerate(value['loops']):row['sync_source']=lid(max(0,i-1));row['repeat_sync']=True
+        controls={0:[action(f'play-{i}',i,0,'play') for i in range(count)],3:[action('delayed-retrigger',count-1,96,'seek',position=32,retrigger=True,source=max(0,count-2),skip=1)]}
         value['steps']=[step(ordinal=i,actions=controls.get(i,())) for i in range(14)]
         yield value
     value=loaded(base('unread-completions-retain-admission-credit',requests=2),64)

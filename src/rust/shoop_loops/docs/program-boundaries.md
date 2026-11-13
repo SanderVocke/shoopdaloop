@@ -6,7 +6,7 @@ program or trigger actions are emitted**. It returns a copy-valued
 `ProgramBoundary { frame, topology_epoch, state }`. This is an informational cut, not candidate ownership or activation authority.
 The owning transaction uses this mechanism internally before actual publication.
 
-The probe uses the resolver's ordinary retained requests, observations, component
+The probe uses the resolver's ordinary retained requests, observations, dependency
 order, direct/reactive arbitration, repeat alignment and checked frame-cursor
 advancement. Incoming nested-program actions are resolved normally. The target's
 old iteration-zero child actions are not executed and then undone. Normal preview
@@ -42,7 +42,7 @@ countdown, apply a request, advance a pass count or publish an event twice. A la
 ordinary preview starts from committed inputs again. Existing decision borrows
 cannot cross this mutable call.
 
-The work is a finite prefix of the existing component settlement, with the same
+The work is a finite prefix of the existing ordered loop settlement, with the same
 per-source clock coalescing and prepared bounds. No allocations, destruction,
 producer waits, propagation quota or fixed time quantum are added. This is not a
 cheap constant-time query or a host deadline guarantee. It belongs to the single

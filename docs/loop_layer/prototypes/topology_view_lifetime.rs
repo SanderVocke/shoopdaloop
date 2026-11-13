@@ -42,7 +42,7 @@ fn prepared() -> PreparedTopology {
 }
 
 fn main() {
-    let mut resolver = Resolver::prepare(prepared()).unwrap();
+    let mut resolver = Resolver::prepare(prepared(), rt_runtime::Quantum::new(1).unwrap()).unwrap();
     let candidate = prepared();
     #[cfg(compile_fail_program)]
     let held = resolver.topology().program(id(1)).unwrap();
@@ -53,9 +53,9 @@ fn main() {
         .unwrap()
         .target(id(0))
         .unwrap();
-    #[cfg(compile_fail_component)]
-    let held = resolver.topology().components().get(0).unwrap();
-    #[cfg(not(any(compile_fail_program, compile_fail_target, compile_fail_component)))]
+    #[cfg(compile_fail_order)]
+    let held = resolver.topology().dependency_order();
+    #[cfg(not(any(compile_fail_program, compile_fail_target, compile_fail_order)))]
     {
         let program: shoop_loops::program::CompiledProgram<'_> =
             resolver.topology().program(id(1)).unwrap();
@@ -63,17 +63,16 @@ fn main() {
         let target: shoop_loops::program::TargetTimeline<'_> = targets.get(0).unwrap();
         assert_eq!(target.target, id(0));
         assert_eq!(target.at(2).unwrap().end, 6);
-        let components: shoop_loops::topology::Components<'_> =
-            resolver.topology().components();
-        assert_eq!(components.get(0).unwrap(), &[id(1)]);
+        let order = resolver.topology().dependency_order();
+        assert_eq!(order, &[id(1), id(0)]);
     }
     let retired = resolver.replace_topology(Epoch(0), candidate).unwrap();
     #[cfg(compile_fail_program)]
     assert_eq!(held.target(id(0)).unwrap().at(2).unwrap().end, 6);
     #[cfg(compile_fail_target)]
     assert_eq!(held.at(2).unwrap().end, 6);
-    #[cfg(compile_fail_component)]
-    assert_eq!(held.len(), 1);
+    #[cfg(compile_fail_order)]
+    assert_eq!(held.len(), 2);
     assert_eq!(resolver.epoch(), Epoch(1));
     assert_eq!(retired.program(id(1)).unwrap().iterations, 6);
     drop(retired);

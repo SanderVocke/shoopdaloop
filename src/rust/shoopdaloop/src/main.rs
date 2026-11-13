@@ -5319,11 +5319,27 @@ mod tests {
         runtime
             .dispatch(AppIntent::Piano(PianoAction::Press(note)))
             .unwrap();
-        thread::sleep(Duration::from_millis(30));
+        wait_for_snapshot(runtime, "MIDI note-on capture", |snapshot| {
+            snapshot
+                .tracks
+                .iter()
+                .find(|track| track.id == keys.id)
+                .and_then(|track| track.controls.latest_input_midi_message)
+                .is_some_and(|message| message.data() == [0x90, note.value(), 100])
+                && first_loop(snapshot, keys.id).mode == LoopMode::Recording
+        });
         runtime
             .dispatch(AppIntent::Piano(PianoAction::Release(note)))
             .unwrap();
-        thread::sleep(Duration::from_millis(30));
+        wait_for_snapshot(runtime, "MIDI note-off capture", |snapshot| {
+            snapshot
+                .tracks
+                .iter()
+                .find(|track| track.id == keys.id)
+                .and_then(|track| track.controls.latest_input_midi_message)
+                .is_some_and(|message| message.data() == [0x80, note.value(), 0])
+                && first_loop(snapshot, keys.id).mode == LoopMode::Recording
+        });
         loop_action(runtime, &keys, LoopAction::PlayClicked);
         wait_for_snapshot(runtime, "immediate MIDI playback", |snapshot| {
             let state = first_loop(snapshot, keys.id);

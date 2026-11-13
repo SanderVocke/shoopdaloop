@@ -1447,7 +1447,6 @@ impl<S: Sample> LoopPlanner<S> {
                         if state.composite.is_some()
                             || state.mode != Mode::Stopped
                             || state.content_length != 0
-                            || state.capture_frames != 0
                         {
                             return Err(crate::Error::InvalidState.into());
                         }
