@@ -206,17 +206,17 @@ wire-interface cutover coherent across all callers.
 
 ### 5. Measure the boundary change
 
-- [ ] Replay matched baseline/candidate workloads at identical capacities and
+- [x] Replay matched baseline/candidate workloads at identical capacities and
   logical cuts. Report INSTALL, CANCEL, COLLECT, PROCESS and observation cycles
   separately, plus Rust service wall time, metadata size and transfer bytes.
   Include different pool depths and long per-loop lists: insertion is still
   variable work even after removing the allocation scan.
-- [ ] Use `measure.py` on frozen baseline/candidate RTL with identical Vivado,
+- [x] Use `measure.py` on frozen baseline/candidate RTL with identical Vivado,
   harness, part, parameters, thread count and constraints. At minimum use the
   existing integrated 64-loop/272-request/400-event, 100 MHz TP context and retain
   LUT/FF/BRAM, setup/hold and source/tool manifests. Run lint/generic synthesis
   across supported capacities, and check the integrated core for regressions.
-- [ ] Commit a concise report and machine-readable summaries. Report increases or
+- [x] Commit a concise report and machine-readable summaries. Report increases or
   unchanged BRAM honestly; do not shrink capacities or change constraints to
   manufacture a saving. Record and resolve measurement blockers before declaring
   the milestone complete. Existing core timing limitations remain visible.
@@ -233,6 +233,11 @@ wire-interface cutover coherent across all callers.
   opcode encoding, service ownership, replay commands, measured results and the
   remaining autonomy dependencies. Check every immutable acceptance criterion
   against linked evidence and update the parent roadmap.
+- [ ] Integrate the new `7e855f70` target-branch head, which arrived during this
+  investigation. Preserve the shared owner across the regular host's FPGA
+  backend, migrate application replay commands to `shoop_rt_host_fpga_sim`, and
+  rerun affected host/application, pipeline and workspace checks. The isolated
+  TP RTL baseline is unchanged by these upstream commits.
 
 ### 7. Publish, complete CI and address review
 
@@ -287,3 +292,39 @@ seeds, tool versions and outcomes with the evidence.
 - Implementation steps may be revised when new evidence warrants it.
 - Design rules may be revised for a documented, well-supported reason.
 - Goals and acceptance criteria must not be changed without explicit user approval.
+
+## Evidence index
+
+- Admission/lifecycle and error precedence: [installation contract](fpga/transition_processor/INSTALL.md)
+  and [shared owner tests](src/rust/rt_fpga_adapter/src/transition_service/tests.rs).
+- The wire cutover, unchanged record capacities and real-time resolver:
+  [RTL](fpga/transition_processor/rtl/transition_processor.sv).
+- One Rust owner above both transports: [service](src/rust/rt_fpga_adapter/src/transition_service.rs),
+  [JSONL bridge](src/rust/rt_backend_testbench/src/transition_service.rs) and
+  [cocotb transport](scripts/rt_backend_testbench/__init__.py).
+- Independent service/audio scheduling, retained results, captured media and
+  authoritative late admission: [Marlin boundary tests](src/rust/rt_fpga_sim/tests/transition_boundary.rs).
+- Public application/mono ownership and behavior: existing queue-driven Marlin
+  replays, full application-feature suite, common production/RTL comparisons and
+  regenerated prepared audio/board workloads.
+- Matched baseline/candidate cycles, resource/timing results, source/tool
+  manifests and full validation accounting: [measurement report](fpga/transition_processor/measurements/ARM_REQUEST_SLOTS.md)
+  and [machine-readable evidence](fpga/transition_processor/measurements/arm-request-slots.json).
+- Publication and CI: [PR #990](https://github.com/SanderVocke/shoopdaloop/pull/990),
+  targeting `proto/fpga-rust-reference`; detailed local logs/checkpoints are under
+  `work/fpga-boundary/`.
+
+The complete native sweep found two baseline app-protocol golden vectors still
+expecting version 34 while `VERSION` already equals 36. Correcting only those
+bytes makes all nine codec tests pass; the report retains the full sweep's
+3,252-pass/two-failure accounting. Prepared-demo recovery also failed at the
+frozen baseline: fault injection preceded epoch reset completion. Waiting for
+the fresh boot before injecting preserves all fault-stage, recovery-count and
+held-response drain assertions, and passes for both baseline and candidate.
+
+The initial indexed-install implementation copied slot/generation into redundant
+registers. A controlled cleanup reuses the latched command identity, reducing
+Vivado synthesis from 12,075 to 11,287 LUTs and from 7,943 to 7,886 flip-flops.
+The original baseline uses 11,208 LUTs and 7,979 flip-flops. Preserving old binary
+state values alone instead increases synthesis to 12,206 LUTs and is not adopted.
+None of these trials changes capacities, record layouts, constraints or semantics.

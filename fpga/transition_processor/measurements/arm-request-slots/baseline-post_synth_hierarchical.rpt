@@ -1,0 +1,33 @@
+Copyright 1986-2021 Xilinx, Inc. All Rights Reserved.
+------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2021.1 (lin64) Build 3247384 Thu Jun 10 19:36:07 MDT 2021
+| Date         : Fri Nov 13 15:08:33 2026
+| Host         : d633e07be70a running 64-bit Ubuntu 20.04.4 LTS
+| Command      : report_utilization -hierarchical -file post_synth_hierarchical.rpt
+| Design       : registered_core_context
+| Device       : 7z020clg484-1
+| Design State : Synthesized
+------------------------------------------------------------------------------------
+
+Utilization Design Information
+
+Table of Contents
+-----------------
+1. Utilization by Hierarchy
+
+1. Utilization by Hierarchy
+---------------------------
+
++-----------------------------+------------------------+------------+------------+---------+------+------+--------+--------+------------+
+|           Instance          |         Module         | Total LUTs | Logic LUTs | LUTRAMs | SRLs |  FFs | RAMB36 | RAMB18 | DSP Blocks |
++-----------------------------+------------------------+------------+------------+---------+------+------+--------+--------+------------+
+| registered_core_context     |                  (top) |      11222 |      11222 |       0 |    0 | 9858 |     28 |      2 |          0 |
+|   (registered_core_context) |                  (top) |         14 |         14 |       0 |    0 | 1879 |      0 |      0 |          0 |
+|   core_under_test           |   transition_processor |      11208 |      11208 |       0 |    0 | 7979 |     28 |      2 |          0 |
+|     (core_under_test)       |   transition_processor |       4829 |       4829 |       0 |    0 | 7979 |      0 |      0 |          0 |
+|     dependency_order        | tp_ram__parameterized2 |        131 |        131 |       0 |    0 |    0 |      0 |      1 |          0 |
+|     events                  | tp_ram__parameterized3 |        400 |        400 |       0 |    0 |    0 |      4 |      0 |          0 |
+|     loops                   |                 tp_ram |       1228 |       1228 |       0 |    0 |    0 |     12 |      0 |          0 |
+|     requests                | tp_ram__parameterized0 |       4082 |       4082 |       0 |    0 |    0 |      9 |      1 |          0 |
+|     specs                   | tp_ram__parameterized1 |        538 |        538 |       0 |    0 |    0 |      3 |      0 |          0 |
++-----------------------------+------------------------+------------+------------+---------+------+------+--------+--------+------------+

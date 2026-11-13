@@ -17,6 +17,8 @@ JSONL service bridge; production expected results still come from the independen
 Rust resolver/runtime. Static demo preparation reserves credits through the same
 owner without predicting execution outcomes. See the
 [installation contract](../../../fpga/transition_processor/INSTALL.md).
+Matched FPGA costs, native service characterization and verification evidence are
+in the [request-slot report](../../../fpga/transition_processor/measurements/ARM_REQUEST_SLOTS.md).
 
 This first boundary change retains full hardware records and terminal storage.
 Held responses, fabric fences and application settlement pauses keep their

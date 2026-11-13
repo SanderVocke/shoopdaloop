@@ -1,0 +1,943 @@
+{
+  "measured_date": "2026-11-13",
+  "revisions": {
+    "baseline": "5b7dd0a5b242884f86862991dc7b456a5b091df7",
+    "candidate": "8964470cfc3acd84ae22bec8837ab52020467c61"
+  },
+  "route_context": {
+    "part": "xc7z020clg484-1",
+    "loops": 64,
+    "requests": 272,
+    "events": 400,
+    "integrated": true,
+    "clock_ns": 10,
+    "uncertainty_ns": 0.2,
+    "threads": 4
+  },
+  "route": {
+    "baseline": {
+      "source_manifest": {
+        "tp_priority.sv": "4838f6a3c517f162ef52a58b4d7f31dda9ad8a02c5dedef9e4f5a422da0e683a",
+        "tp_ram.sv": "ff9efc9e523668e4635062c12e002bdf9545f52e450161c57394d996bbc50303",
+        "transition_processor.sv": "83f802d6ca564263fe81a314fb0fc2dbb3adceeb93a00966a771a4bf2612a043"
+      },
+      "artifact_manifest": {
+        "context.sv": "bdc26c22be7d787134c41e1feaacbfebc6ce5abcfadb0192cd9fe18ffa869906",
+        "context.xdc": "258afb96eaee849094d06d426f05654078df30ac3b7648bd8fdbd49731cfd8b1",
+        "run.tcl": "4979635aff68625d4669cc8073db9173bf080a56041aceb5b7d6cfa6ca037413"
+      },
+      "post_synth": {
+        "cells": {
+          "LUT1": 91,
+          "LUT2": 1114,
+          "LUT3": 1153,
+          "LUT4": 2964,
+          "LUT5": 2070,
+          "LUT6": 5829,
+          "LUT6_2": 0,
+          "FDRE": 7979,
+          "FDSE": 0,
+          "FDCE": 0,
+          "FDPE": 0,
+          "RAMB36E1": 28,
+          "RAMB18E1": 2,
+          "CARRY4": 497,
+          "MUXF7": 95,
+          "MUXF8": 23
+        },
+        "wns_ns": 1.096,
+        "whs_ns": 0.063,
+        "utilization": {
+          "luts": 11208,
+          "flip_flops": 7979,
+          "bram36_equivalent": 29.0,
+          "dsps": 0
+        }
+      },
+      "post_route": {
+        "cells": {
+          "LUT1": 72,
+          "LUT2": 1128,
+          "LUT3": 1153,
+          "LUT4": 2964,
+          "LUT5": 2070,
+          "LUT6": 5840,
+          "LUT6_2": 0,
+          "FDRE": 8402,
+          "FDSE": 0,
+          "FDCE": 0,
+          "FDPE": 0,
+          "RAMB36E1": 28,
+          "RAMB18E1": 2,
+          "CARRY4": 497,
+          "MUXF7": 95,
+          "MUXF8": 23
+        },
+        "wns_ns": 0.131,
+        "whs_ns": 0.006,
+        "utilization": {
+          "luts": 11297,
+          "flip_flops": 8402,
+          "bram36_equivalent": 29.0,
+          "dsps": 0
+        }
+      },
+      "source_report_sha256": {
+        "post_route_tp_utilization.rpt": "abec769e826170a9228c7933cd73e30f5480bd3541839698b9fd113b0f1b2845",
+        "post_route_timing.rpt": "ff4ab8933fbb494e190beb1109f974b9ca0d3d8b635f7ea2eecdebf45960207c",
+        "post_route_route_status.rpt": "05145876199f642df2cfc85c8176cb9ef5b2ab475ecfef268d23fa71af8e4fe8",
+        "post_route_drc.rpt": "97d175e86f6968d42baa91b0645f411f7280ca61f194d6b498a1a6a562e7724a",
+        "post_synth_hierarchical.rpt": "0e0c8b600d3fec0d9f8f943f06e8a4b4a133800cab7d57e636689272159d3dbc",
+        "setup.txt": "8fac69bfed22d7c09ff3db78dcbf358f2ece911414196e18f8acbc937e447b21"
+      },
+      "published_report_sha256": {
+        "post_route_tp_utilization.rpt": "a86c1a81ef1a2488330c0b628dcf0b815e19cb8770e770f58def6f2a4a7f110a",
+        "post_route_timing.rpt": "5686c813594a8f5d8a8675b5a86252433ccf2bfd1a7e05b40b70a42dbd127f33",
+        "post_route_route_status.rpt": "eb1b043a4168828d8748f989657dfc02a68e82da8c45e09b319e001c5e4ce9a6",
+        "post_route_drc.rpt": "2864efc6017efb70348d5fda1e543b40aa18e1d40a9dfd79545dca5ca78a4abe",
+        "post_synth_hierarchical.rpt": "ed7f4c66365f0357e48ea19c51778beb580c0b589efa21a9ce451c24ff8269ad",
+        "setup.txt": "8fac69bfed22d7c09ff3db78dcbf358f2ece911414196e18f8acbc937e447b21"
+      },
+      "capture_provenance": {
+        "revision": "5b7dd0a5b242884f86862991dc7b456a5b091df7",
+        "working_tree_dirty": true,
+        "command": [
+          "fpga/transition_processor/measure.py",
+          "--vivado",
+          "/workspace/shoopdaloop/work/fpga-boundary/tools/vivado/vivado-container",
+          "--source",
+          "work/fpga-boundary/baseline/fpga/transition_processor/rtl",
+          "--stage",
+          "route",
+          "--output",
+          "work/fpga-boundary/baseline/route-runtime-v2"
+        ],
+        "part": "xc7z020clg484-1",
+        "loops": 64,
+        "requests": 272,
+        "events": 400,
+        "integrated": 1,
+        "clock_ns": 10,
+        "uncertainty_ns": 0.2,
+        "threads": 4,
+        "stage": "route"
+      },
+      "validated_rtl_revision": "5b7dd0a5b242884f86862991dc7b456a5b091df7"
+    },
+    "candidate": {
+      "source_manifest": {
+        "tp_priority.sv": "4838f6a3c517f162ef52a58b4d7f31dda9ad8a02c5dedef9e4f5a422da0e683a",
+        "tp_ram.sv": "ff9efc9e523668e4635062c12e002bdf9545f52e450161c57394d996bbc50303",
+        "transition_processor.sv": "30f36635d89503ce5fb45a142ac84c3f18d82d5ee2b5213ae7157501285036fd"
+      },
+      "artifact_manifest": {
+        "context.sv": "bdc26c22be7d787134c41e1feaacbfebc6ce5abcfadb0192cd9fe18ffa869906",
+        "context.xdc": "258afb96eaee849094d06d426f05654078df30ac3b7648bd8fdbd49731cfd8b1",
+        "run.tcl": "4979635aff68625d4669cc8073db9173bf080a56041aceb5b7d6cfa6ca037413"
+      },
+      "post_synth": {
+        "cells": {
+          "LUT1": 74,
+          "LUT2": 915,
+          "LUT3": 1370,
+          "LUT4": 2873,
+          "LUT5": 2149,
+          "LUT6": 5811,
+          "LUT6_2": 0,
+          "FDRE": 7886,
+          "FDSE": 0,
+          "FDCE": 0,
+          "FDPE": 0,
+          "RAMB36E1": 28,
+          "RAMB18E1": 2,
+          "CARRY4": 482,
+          "MUXF7": 84,
+          "MUXF8": 25
+        },
+        "wns_ns": 0.4,
+        "whs_ns": 0.063,
+        "utilization": {
+          "luts": 11287,
+          "flip_flops": 7886,
+          "bram36_equivalent": 29.0,
+          "dsps": 0
+        }
+      },
+      "post_route": {
+        "cells": {
+          "LUT1": 73,
+          "LUT2": 929,
+          "LUT3": 1370,
+          "LUT4": 2873,
+          "LUT5": 2149,
+          "LUT6": 5818,
+          "LUT6_2": 0,
+          "FDRE": 8299,
+          "FDSE": 0,
+          "FDCE": 0,
+          "FDPE": 0,
+          "RAMB36E1": 28,
+          "RAMB18E1": 2,
+          "CARRY4": 482,
+          "MUXF7": 84,
+          "MUXF8": 25
+        },
+        "wns_ns": 0.103,
+        "whs_ns": 0.006,
+        "utilization": {
+          "luts": 11310,
+          "flip_flops": 8299,
+          "bram36_equivalent": 29.0,
+          "dsps": 0
+        }
+      },
+      "source_report_sha256": {
+        "post_route_tp_utilization.rpt": "a7718b6aa88adf43daab8945e2c55fca5172ca88135ac13cb0091dc56a07595a",
+        "post_route_timing.rpt": "b75554446a4c3970bd1436179c2a4211d24bd0c5423825d3a58b9d36536f6c68",
+        "post_route_route_status.rpt": "20a7c02c0efd0792a8c5cf5ec7386781afa44e12b85fd32502313a6b1db1f845",
+        "post_route_drc.rpt": "e3c31c4f1fc7f19a761e1ab7a71d6d0311dbce4dfdcad88e1707b0ebdfe22312",
+        "post_synth_hierarchical.rpt": "2a60470ecaa62e8760931639cded402acea2da973e5b694d1e43997888247fbb",
+        "setup.txt": "8fac69bfed22d7c09ff3db78dcbf358f2ece911414196e18f8acbc937e447b21"
+      },
+      "published_report_sha256": {
+        "post_route_tp_utilization.rpt": "c54db1d2fefb080cd72e00170d2c6bc9482948931fb80b32ffd45aa72c8e3351",
+        "post_route_timing.rpt": "bb30e42d5c7142320d28aff7ddf973c5e509dbda8afa669eb63d79cd014c78d0",
+        "post_route_route_status.rpt": "ff1d579ecfb9f04220f0a389c2f773e4382b95090a2e35ca2fd6a3461e4b000e",
+        "post_route_drc.rpt": "50f70f52860fb9b54b7d5bf1c20286c5fccb7ef86cb71996ea97e0b633a7cc47",
+        "post_synth_hierarchical.rpt": "997879c8af9638026a475d80f149a86f24550a3cd01e73813a0dcf6912477827",
+        "setup.txt": "8fac69bfed22d7c09ff3db78dcbf358f2ece911414196e18f8acbc937e447b21"
+      },
+      "capture_provenance": {
+        "revision": "fdb5cffdc1b98598a8c7ab77608907051b3ef286",
+        "working_tree_dirty": true,
+        "command": [
+          "fpga/transition_processor/measure.py",
+          "--vivado",
+          "/workspace/shoopdaloop/work/fpga-boundary/tools/vivado/vivado-container",
+          "--stage",
+          "route",
+          "--output",
+          "work/fpga-boundary/candidate/route-final"
+        ],
+        "part": "xc7z020clg484-1",
+        "loops": 64,
+        "requests": 272,
+        "events": 400,
+        "integrated": 1,
+        "clock_ns": 10,
+        "uncertainty_ns": 0.2,
+        "threads": 4,
+        "stage": "route"
+      },
+      "validated_rtl_revision": "8964470cfc3acd84ae22bec8837ab52020467c61"
+    }
+  },
+  "commands": {
+    "baseline_11": {
+      "provenance": {
+        "source_manifest": {
+          "/workspace/shoopdaloop/work/fpga-boundary/baseline/fpga/transition_processor/rtl/tp_ram.sv": "ff9efc9e523668e4635062c12e002bdf9545f52e450161c57394d996bbc50303",
+          "/workspace/shoopdaloop/work/fpga-boundary/baseline/fpga/transition_processor/rtl/tp_priority.sv": "4838f6a3c517f162ef52a58b4d7f31dda9ad8a02c5dedef9e4f5a422da0e683a",
+          "/workspace/shoopdaloop/work/fpga-boundary/baseline/fpga/transition_processor/rtl/transition_processor.sv": "83f802d6ca564263fe81a314fb0fc2dbb3adceeb93a00966a771a4bf2612a043"
+        },
+        "depths": [
+          64,
+          11,
+          400
+        ],
+        "revision": "2a3b6b95e408a06ce65853f44d230db178975db2",
+        "verilator": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1+b2)",
+        "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+        "command": [
+          "fpga/transition_processor/measure_commands.py",
+          "--source",
+          "work/fpga-boundary/baseline/fpga/transition_processor",
+          "--requests",
+          "11",
+          "--output",
+          "work/fpga-boundary/baseline/commands-11-complete"
+        ],
+        "service_profile": "dev; native host; JSON transport excluded from service_ns"
+      },
+      "empty_list": {
+        "install": 59,
+        "process": 44,
+        "read_state": 4,
+        "status": 1,
+        "collect": 4,
+        "cancel": 11,
+        "cancelled_collect": 4
+      },
+      "duplicate_cycles": 48,
+      "full_cycles": 50,
+      "retained_full_cycles": 50,
+      "dense_last_install_cycles": 102,
+      "dense_process_cycles": 245,
+      "host_metadata_bytes": null,
+      "host_service": {},
+      "payload_bytes": {
+        "install": 80,
+        "cancel": 80,
+        "collect_response": 104
+      }
+    },
+    "baseline_272": {
+      "provenance": {
+        "source_manifest": {
+          "/workspace/shoopdaloop/work/fpga-boundary/baseline/fpga/transition_processor/rtl/tp_ram.sv": "ff9efc9e523668e4635062c12e002bdf9545f52e450161c57394d996bbc50303",
+          "/workspace/shoopdaloop/work/fpga-boundary/baseline/fpga/transition_processor/rtl/tp_priority.sv": "4838f6a3c517f162ef52a58b4d7f31dda9ad8a02c5dedef9e4f5a422da0e683a",
+          "/workspace/shoopdaloop/work/fpga-boundary/baseline/fpga/transition_processor/rtl/transition_processor.sv": "83f802d6ca564263fe81a314fb0fc2dbb3adceeb93a00966a771a4bf2612a043"
+        },
+        "depths": [
+          64,
+          272,
+          400
+        ],
+        "revision": "2a3b6b95e408a06ce65853f44d230db178975db2",
+        "verilator": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1+b2)",
+        "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+        "command": [
+          "fpga/transition_processor/measure_commands.py",
+          "--source",
+          "work/fpga-boundary/baseline/fpga/transition_processor",
+          "--requests",
+          "272",
+          "--output",
+          "work/fpga-boundary/baseline/commands-272-complete"
+        ],
+        "service_profile": "dev; native host; JSON transport excluded from service_ns"
+      },
+      "empty_list": {
+        "install": 1103,
+        "process": 44,
+        "read_state": 4,
+        "status": 1,
+        "collect": 4,
+        "cancel": 11,
+        "cancelled_collect": 4
+      },
+      "duplicate_cycles": 1092,
+      "full_cycles": 1094,
+      "retained_full_cycles": 1094,
+      "dense_last_install_cycles": 2190,
+      "dense_process_cycles": 5465,
+      "host_metadata_bytes": null,
+      "host_service": {},
+      "payload_bytes": {
+        "install": 80,
+        "cancel": 80,
+        "collect_response": 104
+      }
+    },
+    "candidate_11": {
+      "provenance": {
+        "source_manifest": {
+          "/workspace/shoopdaloop/fpga/transition_processor/rtl/tp_ram.sv": "ff9efc9e523668e4635062c12e002bdf9545f52e450161c57394d996bbc50303",
+          "/workspace/shoopdaloop/fpga/transition_processor/rtl/tp_priority.sv": "4838f6a3c517f162ef52a58b4d7f31dda9ad8a02c5dedef9e4f5a422da0e683a",
+          "/workspace/shoopdaloop/fpga/transition_processor/rtl/transition_processor.sv": "30f36635d89503ce5fb45a142ac84c3f18d82d5ee2b5213ae7157501285036fd"
+        },
+        "depths": [
+          64,
+          11,
+          400
+        ],
+        "revision": "fdb5cffdc1b98598a8c7ab77608907051b3ef286",
+        "verilator": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1+b2)",
+        "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+        "command": [
+          "fpga/transition_processor/measure_commands.py",
+          "--requests",
+          "11",
+          "--output",
+          "work/fpga-boundary/candidate/commands-11-cleanup"
+        ],
+        "service_profile": "dev; native host; JSON transport excluded from service_ns"
+      },
+      "empty_list": {
+        "install": 16,
+        "process": 44,
+        "read_state": 4,
+        "status": 1,
+        "collect": 4,
+        "cancel": 11,
+        "cancelled_collect": 4
+      },
+      "duplicate_cycles": 0,
+      "full_cycles": 0,
+      "retained_full_cycles": 0,
+      "dense_last_install_cycles": 59,
+      "dense_process_cycles": 245,
+      "host_metadata_bytes": 1321,
+      "host_service": {
+        "begin": {
+          "samples": 56,
+          "min_ns": 161,
+          "median_ns": 3164.5,
+          "p95_ns": 8293,
+          "max_ns": 13150
+        },
+        "finish": {
+          "samples": 53,
+          "min_ns": 111,
+          "median_ns": 1021,
+          "p95_ns": 3986,
+          "max_ns": 15944
+        }
+      },
+      "payload_bytes": {
+        "install": 80,
+        "cancel": 80,
+        "collect_response": 104
+      }
+    },
+    "candidate_272": {
+      "provenance": {
+        "source_manifest": {
+          "/workspace/shoopdaloop/fpga/transition_processor/rtl/tp_ram.sv": "ff9efc9e523668e4635062c12e002bdf9545f52e450161c57394d996bbc50303",
+          "/workspace/shoopdaloop/fpga/transition_processor/rtl/tp_priority.sv": "4838f6a3c517f162ef52a58b4d7f31dda9ad8a02c5dedef9e4f5a422da0e683a",
+          "/workspace/shoopdaloop/fpga/transition_processor/rtl/transition_processor.sv": "30f36635d89503ce5fb45a142ac84c3f18d82d5ee2b5213ae7157501285036fd"
+        },
+        "depths": [
+          64,
+          272,
+          400
+        ],
+        "revision": "fdb5cffdc1b98598a8c7ab77608907051b3ef286",
+        "verilator": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1+b2)",
+        "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+        "command": [
+          "fpga/transition_processor/measure_commands.py",
+          "--requests",
+          "272",
+          "--output",
+          "work/fpga-boundary/candidate/commands-272-cleanup"
+        ],
+        "service_profile": "dev; native host; JSON transport excluded from service_ns"
+      },
+      "empty_list": {
+        "install": 16,
+        "process": 44,
+        "read_state": 4,
+        "status": 1,
+        "collect": 4,
+        "cancel": 11,
+        "cancelled_collect": 4
+      },
+      "duplicate_cycles": 0,
+      "full_cycles": 0,
+      "retained_full_cycles": 0,
+      "dense_last_install_cycles": 1103,
+      "dense_process_cycles": 5465,
+      "host_metadata_bytes": 24289,
+      "host_service": {
+        "begin": {
+          "samples": 317,
+          "min_ns": 580,
+          "median_ns": 76786,
+          "p95_ns": 198490,
+          "max_ns": 436518
+        },
+        "finish": {
+          "samples": 314,
+          "min_ns": 150,
+          "median_ns": 701.0,
+          "p95_ns": 3966,
+          "max_ns": 43466
+        }
+      },
+      "payload_bytes": {
+        "install": 80,
+        "cancel": 80,
+        "collect_response": 104
+      }
+    }
+  },
+  "vivado": {
+    "image": "siliconbootcamp/xilinx-vivado:stable",
+    "image_digest": "sha256:d24586405894b07f6af006d5cb15ba01c7e8585de97b28b6121fcf6282db7a5f",
+    "config_digest": "sha256:329b47483f395bee304a316a222b3414554b0623782f0beb1224b5a1000db784",
+    "vendor_layer": {
+      "mediaType": "application/vnd.docker.image.rootfs.diff.tar.gzip",
+      "size": 5729231096,
+      "digest": "sha256:187ac31317b800d0b7782a3aff7fdedd200a27303a22121d7c3a6a623b36bf26"
+    },
+    "vendor_diff_id": "sha256:76d65a6433dbde9549ef74115f68345be53d822a09cc25de6623f01e365ff78d",
+    "vendor_base_tcl_sha256": "8cc0d09e628be4ebaa97c35a4553849bcf1f719f8658055be76cbf7e23792766",
+    "vendor_files_modified": false,
+    "later_image_overlays_applied": false,
+    "runtime_layers": [
+      {
+        "mediaType": "application/vnd.docker.image.rootfs.diff.tar.gzip",
+        "size": 28564099,
+        "digest": "sha256:08c01a0ec47e82ebe2bec112f373d160983a6d1e9e66627f66a3322bc403221b"
+      },
+      {
+        "mediaType": "application/vnd.docker.image.rootfs.diff.tar.gzip",
+        "size": 325072884,
+        "digest": "sha256:87e2f8fcd73dbbaab585bee85ef14cb015054b622da62b3121ee2d38dc2dff07"
+      }
+    ],
+    "vivado": "2021.1",
+    "sw_build": 3247384,
+    "complete_vendor_layer_extracted": true,
+    "catalog_ips_available": false,
+    "runtime_image_id": "sha256:969ec3b7a50702f7b31a42bde4028706892fa44fbbf6dc762f4c18febaec23be",
+    "runtime": "original Ubuntu 20.04 runtime layers; uid/gid 1000; vendor files mounted read-only; network disabled; original libudev.so.1 preloaded"
+  },
+  "commands_harness_sha256": {
+    "fpga/transition_processor/measure_commands.py": "7cdea27ded962224202811c520ebd534fdf207fcbe777beba4945c05cad2eaa4",
+    "fpga/transition_processor/tests/test_command_measurements.py": "e65f77d18da36bd640d64d7307fdeba6de273b73bc3501f250d5e2c460564338"
+  },
+  "limitations": [
+    "Host service timing is native x86_64 dev profile, opt-level=0, debug=0, and excludes JSON RPC/transport/serialization; not an ARM deadline claim.",
+    "Command measurements use one logical loop with physical depths 64/R/400.",
+    "TP standalone timing is not full-core or board timing closure.",
+    "Pending list insertion, full records, collection, fabric fences and held-response coupling are unchanged.",
+    "Earlier acyclic-sync.json has a different baseline and is not substituted for this matched pair."
+  ],
+  "encoding_experiment": {
+    "description": "Candidate with surviving states retaining their original binary values (two unused enum values); not adopted.",
+    "source_manifest": {
+      "tp_priority.sv": "4838f6a3c517f162ef52a58b4d7f31dda9ad8a02c5dedef9e4f5a422da0e683a",
+      "tp_ram.sv": "ff9efc9e523668e4635062c12e002bdf9545f52e450161c57394d996bbc50303",
+      "transition_processor.sv": "bc2b811173953a1fec03d77e9235b13d8091e1977d685bbd0f453e7eb96b134f"
+    },
+    "artifact_manifest": {
+      "context.sv": "bdc26c22be7d787134c41e1feaacbfebc6ce5abcfadb0192cd9fe18ffa869906",
+      "context.xdc": "258afb96eaee849094d06d426f05654078df30ac3b7648bd8fdbd49731cfd8b1",
+      "run.tcl": "4979635aff68625d4669cc8073db9173bf080a56041aceb5b7d6cfa6ca037413"
+    },
+    "post_synth": {
+      "cells": {
+        "LUT1": 83,
+        "LUT2": 972,
+        "LUT3": 1981,
+        "LUT4": 2136,
+        "LUT5": 2389,
+        "LUT6": 6726,
+        "LUT6_2": 0,
+        "FDRE": 7954,
+        "FDSE": 0,
+        "FDCE": 0,
+        "FDPE": 0,
+        "RAMB36E1": 28,
+        "RAMB18E1": 2,
+        "CARRY4": 483,
+        "MUXF7": 287,
+        "MUXF8": 28
+      },
+      "wns_ns": 0.29,
+      "whs_ns": 0.063,
+      "utilization": {
+        "luts": 12206,
+        "flip_flops": 7954,
+        "bram36_equivalent": 29.0,
+        "dsps": 0
+      }
+    },
+    "conclusion": "Preserving state values alone increases LUTs further (12075 to 12206), so it does not resolve the increase."
+  },
+  "validation": {
+    "tp": [
+      {
+        "local_artifact": "work/fpga-boundary/candidate/transition-final/default/results.xml",
+        "sha256": "fcde069efc736d86573d8d51352842ca4c6a66df6273231bf105cb62867d2189",
+        "test_groups": 6,
+        "status": "passed"
+      },
+      {
+        "local_artifact": "work/fpga-boundary/candidate/transition-final/small/results.xml",
+        "sha256": "d2a1cce67e298fc742a2f175db5c6490f97b18b66e4dcc4650683c85e2fe2860",
+        "test_groups": 6,
+        "status": "passed"
+      },
+      {
+        "local_artifact": "work/fpga-boundary/candidate/transition-final/minimum/results.xml",
+        "sha256": "b8920189497ebe49fd8dd3f9c222beb96c1af0388c4511add8d4c230fa9e604b",
+        "test_groups": 6,
+        "status": "passed"
+      },
+      {
+        "local_artifact": "work/fpga-boundary/candidate/transition-final/deployment/results.xml",
+        "sha256": "954bef62e8fcc515323edfbd65ba7dd9c8e4d3282ba69ce666a47deac24bd26d",
+        "test_groups": 6,
+        "status": "passed"
+      },
+      {
+        "local_artifact": "work/fpga-boundary/candidate/transition-final/wide/results.xml",
+        "sha256": "1752081929540b157dbc78b45d84191dcc51c58537240f1ce3ede579e39511d4",
+        "test_groups": 6,
+        "status": "passed"
+      }
+    ],
+    "pipeline": [
+      {
+        "local_artifact": "work/fpga-boundary/candidate/pipeline-final/results.xml",
+        "sha256": "16249851abde314fdc46f7bc407de98e7734aee2b85f7c41bc35622789e0a3fc",
+        "test_groups": 3,
+        "status": "passed"
+      }
+    ],
+    "pipeline_stalled": [
+      {
+        "local_artifact": "work/fpga-boundary/candidate/pipeline-stalled/results.xml",
+        "sha256": "ba31d72ab1beab100f21aab06f23d9ec3a811768811af9b0fc34a7bbaebc29eb",
+        "test_groups": 3,
+        "status": "passed"
+      }
+    ],
+    "benchmark64": [
+      {
+        "local_artifact": "work/fpga-boundary/candidate/benchmark64/results.xml",
+        "sha256": "fbbd1d69a956f8183d3f59b829e287b198a39af29a76c277a07475ce44bd7def",
+        "test_groups": 2,
+        "status": "passed"
+      }
+    ],
+    "audio": [
+      {
+        "local_artifact": "work/fpga-boundary/candidate/audio/results.xml",
+        "sha256": "78cbb3c959158cb0e21be622fb887379c2ee9751cb03421d33fe40962304f5f6",
+        "test_groups": 1,
+        "status": "passed"
+      }
+    ],
+    "demo": [
+      {
+        "local_artifact": "work/fpga-boundary/candidate/audio-demo/results.xml",
+        "sha256": "37391ed93f0e8cfc35eaea38a2c629093304af9f685c4b9ca4bec03450dad4ff",
+        "test_groups": 1,
+        "status": "passed"
+      }
+    ],
+    "native": {
+      "command": "SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci --test-threads 2",
+      "run": 3254,
+      "passed": 3252,
+      "failed": 2,
+      "skipped": 11,
+      "failures": [
+        "shoop_app_protocol::codec attachment_and_greeting_carry_no_host_or_session_identifiers",
+        "shoop_app_protocol::codec heartbeat_records_have_a_canonical_cross_platform_representation"
+      ],
+      "resolution": "Baseline golden vectors expected protocol 34, baseline VERSION is 36. Corrected literals only; all 9 codec tests pass on targeted rerun. Full sweep not repeated."
+    },
+    "rust": {
+      "service_tests": 7,
+      "marlin_sim": "passed full sim suite",
+      "marlin_app": "passed full app-feature suite",
+      "service_pause": "passed both transition_boundary tests, including 1024 quanta with no service calls",
+      "workspace_build": "RUSTFLAGS=-D warnings cargo build --workspace passed",
+      "policy": "cargo fmt --all -- --check and scripts/check_shoop_test_usage.py passed"
+    },
+    "lint_and_mapping": {
+      "five_capacities": "Verilator lint and generic Yosys synthesis pass",
+      "default_capacity": "ECP5 mapping passes",
+      "versions": [
+        "Yosys 0.52 (git sha1 fee39a3284c90249e1d9684cf6944ffbbcbb8f90)",
+        "Verilator 5.032 2025-01-01 rev (Debian 5.032-1+b2)"
+      ]
+    },
+    "final_cleanup": {
+      "tp": "All five capacities, all protocol/directed groups and 20 seeded cases per capacity pass again.",
+      "marlin": "Both transition_boundary cases and bounded application replay pass again.",
+      "pipeline": "Full common pipeline corpus passes again, now also with stalls.",
+      "cycles": "Both pool depths reproduce all earlier cycle counts exactly.",
+      "lint": "All five lint/generic configurations and default ECP5 mapping pass again."
+    }
+  },
+  "initial_indexed_install": {
+    "revision": "2a3b6b95e408a06ce65853f44d230db178975db2",
+    "source_manifest": {
+      "tp_priority.sv": "4838f6a3c517f162ef52a58b4d7f31dda9ad8a02c5dedef9e4f5a422da0e683a",
+      "tp_ram.sv": "ff9efc9e523668e4635062c12e002bdf9545f52e450161c57394d996bbc50303",
+      "transition_processor.sv": "9b50e410261541ec70dade4362cc00e3e6f36a98b89c4d95134797fa5a7657f2"
+    },
+    "artifact_manifest": {
+      "context.sv": "bdc26c22be7d787134c41e1feaacbfebc6ce5abcfadb0192cd9fe18ffa869906",
+      "context.xdc": "258afb96eaee849094d06d426f05654078df30ac3b7648bd8fdbd49731cfd8b1",
+      "run.tcl": "4979635aff68625d4669cc8073db9173bf080a56041aceb5b7d6cfa6ca037413"
+    },
+    "post_synth": {
+      "cells": {
+        "LUT1": 88,
+        "LUT2": 835,
+        "LUT3": 1049,
+        "LUT4": 2499,
+        "LUT5": 2284,
+        "LUT6": 6947,
+        "LUT6_2": 0,
+        "FDRE": 7943,
+        "FDSE": 0,
+        "FDCE": 0,
+        "FDPE": 0,
+        "RAMB36E1": 28,
+        "RAMB18E1": 2,
+        "CARRY4": 482,
+        "MUXF7": 83,
+        "MUXF8": 27
+      },
+      "wns_ns": 1.071,
+      "whs_ns": 0.063,
+      "utilization": {
+        "luts": 12075,
+        "flip_flops": 7943,
+        "bram36_equivalent": 29.0,
+        "dsps": 0
+      }
+    },
+    "post_route": {
+      "cells": {
+        "LUT1": 73,
+        "LUT2": 849,
+        "LUT3": 1049,
+        "LUT4": 2500,
+        "LUT5": 2285,
+        "LUT6": 6946,
+        "LUT6_2": 0,
+        "FDRE": 8067,
+        "FDSE": 0,
+        "FDCE": 0,
+        "FDPE": 0,
+        "RAMB36E1": 28,
+        "RAMB18E1": 2,
+        "CARRY4": 482,
+        "MUXF7": 83,
+        "MUXF8": 27
+      },
+      "wns_ns": 0.045,
+      "whs_ns": 0.037,
+      "utilization": {
+        "luts": 12039,
+        "flip_flops": 8067,
+        "bram36_equivalent": 29.0,
+        "dsps": 0
+      }
+    },
+    "report_sha256": {
+      "post_route_tp_utilization.rpt": "6364372316385394b8235bcba45ee6f626dba6708d76a65f91d198473e719570",
+      "post_route_timing.rpt": "7dda73762aa68c8833f6a4c8184bb146dd36d00632b1f0e87652b2bc6556f24d",
+      "post_route_route_status.rpt": "bd2aa4f21de7947c200f56f929da89ec78206f435518f0c01e04e396d73cb365",
+      "post_route_drc.rpt": "a07c5234ffd539a8147b47e48e0fb5137f1dc30fedadedcfe2de446e9bc112ba",
+      "setup.txt": "8fac69bfed22d7c09ff3db78dcbf358f2ece911414196e18f8acbc937e447b21"
+    }
+  },
+  "identity_cleanup_experiment": {
+    "description": "Reuse the latched command slot/generation instead of copying them into allocator-era identity registers; adopted.",
+    "source_manifest": {
+      "tp_priority.sv": "4838f6a3c517f162ef52a58b4d7f31dda9ad8a02c5dedef9e4f5a422da0e683a",
+      "tp_ram.sv": "ff9efc9e523668e4635062c12e002bdf9545f52e450161c57394d996bbc50303",
+      "transition_processor.sv": "30f36635d89503ce5fb45a142ac84c3f18d82d5ee2b5213ae7157501285036fd"
+    },
+    "post_synth": {
+      "cells": {
+        "LUT1": 74,
+        "LUT2": 915,
+        "LUT3": 1370,
+        "LUT4": 2873,
+        "LUT5": 2149,
+        "LUT6": 5811,
+        "LUT6_2": 0,
+        "FDRE": 7886,
+        "FDSE": 0,
+        "FDCE": 0,
+        "FDPE": 0,
+        "RAMB36E1": 28,
+        "RAMB18E1": 2,
+        "CARRY4": 482,
+        "MUXF7": 84,
+        "MUXF8": 25
+      },
+      "wns_ns": 0.4,
+      "whs_ns": 0.063,
+      "utilization": {
+        "luts": 11287,
+        "flip_flops": 7886,
+        "bram36_equivalent": 29.0,
+        "dsps": 0
+      }
+    }
+  },
+  "report_note": "Published Vivado text reports normalize trailing whitespace at line ends and EOF only; source_report_sha256 refers to the original local reports and published_report_sha256 to the committed copies.",
+  "multi_loop_processing": {
+    "default": {
+      "depths": [
+        64,
+        64,
+        192
+      ],
+      "cases": {
+        "8x8-tracks-record-play-and-repeat-sync": {
+          "quantum_frames": 32,
+          "baseline_process_cycles": [
+            2249,
+            952,
+            985,
+            1018,
+            2621,
+            920,
+            953,
+            986,
+            1201,
+            920,
+            953,
+            986,
+            1201,
+            920,
+            953,
+            986
+          ],
+          "candidate_process_cycles": [
+            2249,
+            952,
+            985,
+            1018,
+            2621,
+            920,
+            953,
+            986,
+            1201,
+            920,
+            953,
+            986,
+            1201,
+            920,
+            953,
+            986
+          ],
+          "min_cycles": 920,
+          "max_cycles": 2621
+        },
+        "64-member-sync-chain-all-active": {
+          "quantum_frames": 32,
+          "baseline_process_cycles": [
+            2249,
+            2569,
+            1033,
+            1033,
+            1033,
+            1033,
+            1033,
+            1033
+          ],
+          "candidate_process_cycles": [
+            2249,
+            2569,
+            1033,
+            1033,
+            1033,
+            1033,
+            1033,
+            1033
+          ],
+          "min_cycles": 1033,
+          "max_cycles": 2569
+        }
+      }
+    },
+    "deployment": {
+      "depths": [
+        64,
+        272,
+        400
+      ],
+      "cases": {
+        "8x8-tracks-record-play-and-repeat-sync": {
+          "quantum_frames": 32,
+          "baseline_process_cycles": [
+            2249,
+            952,
+            985,
+            1018,
+            2621,
+            920,
+            953,
+            986,
+            1201,
+            920,
+            953,
+            986,
+            1201,
+            920,
+            953,
+            986
+          ],
+          "candidate_process_cycles": [
+            2249,
+            952,
+            985,
+            1018,
+            2621,
+            920,
+            953,
+            986,
+            1201,
+            920,
+            953,
+            986,
+            1201,
+            920,
+            953,
+            986
+          ],
+          "min_cycles": 920,
+          "max_cycles": 2621
+        },
+        "64-member-sync-chain-all-active": {
+          "quantum_frames": 32,
+          "baseline_process_cycles": [
+            2249,
+            2569,
+            1033,
+            1033,
+            1033,
+            1033,
+            1033,
+            1033
+          ],
+          "candidate_process_cycles": [
+            2249,
+            2569,
+            1033,
+            1033,
+            1033,
+            1033,
+            1033,
+            1033
+          ],
+          "min_cycles": 1033,
+          "max_cycles": 2569
+        },
+        "64-loop-chain-with-130-request-slots": {
+          "quantum_frames": 32,
+          "baseline_process_cycles": [
+            2249,
+            2569,
+            1033,
+            1033,
+            1033,
+            1033,
+            1033,
+            1033
+          ],
+          "candidate_process_cycles": [
+            2249,
+            2569,
+            1033,
+            1033,
+            1033,
+            1033,
+            1033,
+            1033
+          ],
+          "min_cycles": 1033,
+          "max_cycles": 2569
+        }
+      }
+    }
+  },
+  "measurer_sha256": {
+    "fpga/transition_processor/measure.py": "ee70054dd92872dcc9585ae85ca34f61fe0ec77c344189cd1df235e4c369565c",
+    "fpga/transition_processor/measure.tcl": "4979635aff68625d4669cc8073db9173bf080a56041aceb5b7d6cfa6ca037413"
+  }
+}

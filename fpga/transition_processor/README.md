@@ -171,6 +171,8 @@ compare revisions under the same parameters.
 
 The [acyclic synchronization experiment](measurements/ACYCLIC_SYNC.md) records
 matched resource measurements, processing cycles and verification evidence.
+The [ARM-owned request-slot experiment](measurements/ARM_REQUEST_SLOTS.md) records
+the indexed-installation boundary, matched admission costs, resources and timing.
 
 ## Application adapter extensions
 
