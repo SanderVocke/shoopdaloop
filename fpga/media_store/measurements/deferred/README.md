@@ -67,6 +67,12 @@ unrouted ECP5 mappings, not Zynq timing or fit results; see
 `cycle-budget/resources.json`. The historical resource report below compares
 the earlier implementation against its earlier base.
 
+All 16 remote CI checks pass on implementation commit `a14f99fb`, including both
+memory models, reclamation, the separated audio/demo inference and mapping
+stages, hosted DSP variants and Miri. No review feedback was submitted. The final
+publication update changes documentation/evidence only, so GitHub may repeat
+the checks automatically. Exact CI links are recorded in `validation.json`.
+
 An isolated profiling override of 20 releases and 100,000 cycles measures the
 trade-off independently of the automatic budget:
 

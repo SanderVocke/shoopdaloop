@@ -12,8 +12,10 @@ This plan was investigated against `proto/fpga-rust-reference` at `bc833fc310817
 
 Implementation and local FPGA validation are complete on `proto/deferred-retake-clear`.
 The branch is pushed and [PR #982](https://github.com/SanderVocke/shoopdaloop/pull/982)
-is open against `proto/fpga-rust-reference`. Remote CI and automated review
-are in progress; GitHub access is restored. The latest full native suite
+is open against `proto/fpga-rust-reference`. All 16 remote CI checks passed on
+implementation commit `a14f99fb`; no review feedback was submitted. The final
+publication update changes documentation/evidence only and may trigger an
+automatic CI repeat. The latest full native suite
 reports 3,200 passes, 22 failures and 11 skips. Host startup/recovery and legacy
 native-FX pending-creation failures remain recorded as failures. No merge has
 been performed.
@@ -238,7 +240,7 @@ Depends on all previous stages.
 - [x] When Rust tests change, run `python3 scripts/check_shoop_test_usage.py` (passes after integrating the target branch's new Marlin tests).
 - [x] Report resource/timing changes and any unqualified hardware-memory assumptions.
 - [x] Push the feature branch and create a PR with implementation and validation evidence.
-- [ ] Monitor CI and automated review; address failures and review feedback until resolved.
+- [x] Monitor CI and automated review; address failures and review feedback until resolved. All 16 checks pass on `a14f99fb`; no review feedback was submitted.
 - [x] Leave merging as a separate user decision.
 
 ## Execution contract
@@ -286,4 +288,5 @@ Implementation refinements:
 - The final-source 64-loop retake peak is 26,523 cycles (265.23 microseconds at 100 MHz). All 32 short old takes finish release during that quantum, charging 3,328 cleanup cycles. Its source and modeled scope are recorded separately from the historical policy above.
 - The latest full native workspace run reports 3,200 passes, 22 failures and 11 skips. Twenty-one failures involve host startup/recovery; the legacy native-FX pending-creation failure also fails an isolated retry. These are retained as failed gates. The relevant host/legacy-backend source is unchanged from the integrated target; no base-branch native rerun establishes baseline status.
 - Refreshed resource comparison against target `821ba859` passes strict lint and generic/ECP5 mapping for both default tops. The store adds 629 LUT4 and 882 flip-flops; media/audio adds 1,893 LUT4 and 882 flip-flops. Block RAM counts remain 15/18. This is neither routed timing nor Zynq board-fit qualification.
+- All 16 remote checks pass on `a14f99fb`, including both memory models, both reclamation jobs, all inference/mapping stages, hosted DSP variants and Miri. Reviews and review threads were checked; none were submitted. The final evidence-only update preserves the tested implementation.
 - Remote FPGA/native-memory, DRAMsim3, reclamation and hosted-processor checks passed on `47d9f227`. The original synthesis job exhausted its 25-minute limit. On `8a2adb25`, 13 checks passed; the remaining q32 job spent about 20 minutes in inference before mapping exceeded its remaining 45-minute allowance. On `98abb030`, all 14 other checks passed, including standalone full-audio mapping; the combined demo job also spent about 20 minutes in inference before mapping exhausted its remaining build allowance. All inference and mapping stages now run independently. Both standalone mappings have 90-minute build allowances; the others retain 45-minute limits. No synthesis assertion or test deadline was relaxed.

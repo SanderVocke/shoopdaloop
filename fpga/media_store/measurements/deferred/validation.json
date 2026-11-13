@@ -616,10 +616,10 @@
   },
   "native_limit": "Host startup/recovery failures occur in unchanged host code. No base-branch native rerun establishes baseline status.",
   "publication": {
-    "status": "in_progress",
+    "status": "complete",
     "pull_request": "https://github.com/SanderVocke/shoopdaloop/pull/982",
     "branch_pushed": true,
-    "ci": "pending_after_demo_stage_split",
+    "ci": "passed_for_code_commit",
     "automated_review": "checked_no_feedback_submitted",
     "prior_ci_source": "98abb0301e12da27d0ffd412788c6be1a45badb9",
     "prior_ci": {
@@ -627,7 +627,95 @@
       "cancelled": 1,
       "reason": "Demo inference plus mapping exceeded 45-minute job limit"
     },
-    "expected_ci_checks": 16
+    "expected_ci_checks": 16,
+    "ci_source_commit": "a14f99fbc09556d81b50c88817e06a692d7add32",
+    "ci_checks": [
+      {
+        "name": "FPGA instant memory",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/43392606478/job/131775878698"
+      },
+      {
+        "name": "DSP build and startup (neither)",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/43392606508/job/131775878978"
+      },
+      {
+        "name": "FPGA dramsim3 memory",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/43392606478/job/131775878750"
+      },
+      {
+        "name": "DSP build and startup (FX)",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/43392606508/job/131775878835"
+      },
+      {
+        "name": "DSP build and startup (synth)",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/43392606508/job/131775879097"
+      },
+      {
+        "name": "DSP build and startup (both)",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/43392606508/job/131775878741"
+      },
+      {
+        "name": "Deferred reclamation (instant)",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/43392606478/job/131775879077"
+      },
+      {
+        "name": "Portable processor ownership (Miri)",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/43392606508/job/131775878497"
+      },
+      {
+        "name": "Deferred reclamation (dramsim3)",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/43392606478/job/131775878535"
+      },
+      {
+        "name": "Audio I/O lint and synthesis (q16)",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/43392606478/job/131775878876"
+      },
+      {
+        "name": "Audio I/O lint and synthesis (q32)",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/43392606478/job/131775878730"
+      },
+      {
+        "name": "Audio I/O lint and synthesis (q64)",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/43392606478/job/131775878716"
+      },
+      {
+        "name": "Audio I/O lint and synthesis (map)",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/43392606478/job/131775878869"
+      },
+      {
+        "name": "Audio I/O lint and synthesis (demo)",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/43392606478/job/131775879036"
+      },
+      {
+        "name": "Audio I/O lint and synthesis (demo-map)",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/43392606478/job/131775879099"
+      },
+      {
+        "name": "Audio I/O lint and synthesis (media)",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/43392606478/job/131775878924"
+      }
+    ],
+    "final_update": "Documentation and evidence only; GitHub may automatically repeat checks after publication.",
+    "workflow_runs": [
+      43392606508,
+      43392606478
+    ]
   },
   "toolchain": {
     "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
