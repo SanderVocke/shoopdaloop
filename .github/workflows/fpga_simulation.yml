@@ -59,13 +59,7 @@ jobs:
           key: verilator-8ff77e9d47351b0a59114929880687839a51840b-ubuntu-24.04
       - name: Build Verilator 5.032
         if: steps.verilator.outputs.cache-hit != 'true'
-        run: |
-          git clone --depth 1 --branch v5.032 https://github.com/verilator/verilator.git work/verilator
-          test "$(git -C work/verilator rev-parse HEAD)" = 8ff77e9d47351b0a59114929880687839a51840b
-          cd work/verilator
-          autoconf
-          ./configure
-          make -C src -j2 opt
+        run: bash scripts/build_verilator.sh
       - name: Select Verilator
         run: |
           echo "$PWD/work/verilator/bin" >> "$GITHUB_PATH"
@@ -152,13 +146,7 @@ jobs:
           key: verilator-8ff77e9d47351b0a59114929880687839a51840b-ubuntu-24.04
       - name: Build Verilator 5.032
         if: steps.verilator.outputs.cache-hit != 'true'
-        run: |
-          git clone --depth 1 --branch v5.032 https://github.com/verilator/verilator.git work/verilator
-          test "$(git -C work/verilator rev-parse HEAD)" = 8ff77e9d47351b0a59114929880687839a51840b
-          cd work/verilator
-          autoconf
-          ./configure
-          make -C src -j2 opt
+        run: bash scripts/build_verilator.sh
       - name: Select Verilator
         run: echo "$PWD/work/verilator/bin" >> "$GITHUB_PATH"
       - name: Build the realistic timing model
@@ -227,13 +215,7 @@ jobs:
           key: verilator-8ff77e9d47351b0a59114929880687839a51840b-ubuntu-24.04
       - name: Build synthesis Verilator 5.032
         if: steps.verilator.outputs.cache-hit != 'true'
-        run: |
-          git clone --depth 1 --branch v5.032 https://github.com/verilator/verilator.git work/verilator
-          test "$(git -C work/verilator rev-parse HEAD)" = 8ff77e9d47351b0a59114929880687839a51840b
-          cd work/verilator
-          autoconf
-          ./configure
-          make -C src -j2 opt
+        run: bash scripts/build_verilator.sh
       - name: Select synthesis Verilator
         run: echo "$PWD/work/verilator/bin" >> "$GITHUB_PATH"
       - name: Check complete audio top variant

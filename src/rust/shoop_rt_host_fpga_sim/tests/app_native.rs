@@ -1,7 +1,8 @@
-#![cfg(all(feature = "app", not(target_arch = "wasm32")))]
-use rt_fpga_sim::app::Native;
+#![cfg(all(feature = "sim", target_os = "linux"))]
+mod support;
 use shoop_app_api::{LoopAction, LoopMode};
 use shoop_wasm_test_support::shoop_test;
+use support::app::Native;
 #[shoop_test]
 fn actual_app_bootstrap_and_sync_loop_contract() {
     let mut native = Native::new().unwrap();
@@ -58,8 +59,10 @@ fn actual_app_bootstrap_and_sync_loop_contract() {
 
 #[shoop_test]
 fn common_app_trace_covers_real_input_controls_waveform_clear_and_scheduled_stop() {
-    let trace: rt_fpga_sim::app::Trace =
-        serde_json::from_str(include_str!("../fixtures/app-sync-loop.json")).unwrap();
+    let trace: support::app::Trace = serde_json::from_str(include_str!(
+        "../../rt_fpga_sim/fixtures/app-sync-loop.json"
+    ))
+    .unwrap();
     let mut native = Native::new().unwrap();
     let states = native.replay(&trace).unwrap();
     assert_eq!(states[3].mode, LoopMode::Recording);
@@ -97,7 +100,7 @@ fn common_app_trace_covers_real_input_controls_waveform_clear_and_scheduled_stop
 
 #[shoop_test]
 fn native_long_recording_still_supports_details_selection() {
-    use rt_fpga_sim::app::Action;
+    use support::app::Action;
     let mut native = Native::new().unwrap();
     for action in [
         Action::ConnectInput,

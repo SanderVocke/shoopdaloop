@@ -517,7 +517,8 @@ pub fn build_library(
 
     let mut verilator_command = Command::new(&options.verilator_executable);
     verilator_command
-        .args(["--cc", "-sv", "-j", "0", "--build"])
+        .args(["--cc", "-sv", "--build"])
+        .args(["-j", &options.build_jobs.max(1).to_string()])
         .args(["-CFLAGS", &cflags_string])
         .args(["-MAKEFLAGS", &makeflags])
         .args(["--Mdir", verilator_artifact_directory.as_str()])

@@ -1,11 +1,14 @@
-#![cfg(all(feature = "app", not(target_arch = "wasm32")))]
+#![cfg(all(feature = "sim", target_os = "linux"))]
+mod support;
 use rt_audio_math::{Q824, Sample};
 use rt_fpga_adapter::{image::*, protocol};
 use rt_fpga_sim::{Simulator, runtime, value_words};
 use shoop_wasm_test_support::shoop_test;
 fn base() -> Image {
-    let case: rt_backend_testbench::spec::Scenario =
-        serde_json::from_str(include_str!("../fixtures/instant-gains.json")).unwrap();
+    let case: rt_backend_testbench::spec::Scenario = serde_json::from_str(include_str!(
+        "../../rt_fpga_sim/fixtures/instant-gains.json"
+    ))
+    .unwrap();
     rt_backend_testbench::rtl::compile(&case).unwrap()
 }
 #[shoop_test]

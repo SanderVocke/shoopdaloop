@@ -1,4 +1,5 @@
-#![cfg(all(feature = "app", not(target_arch = "wasm32")))]
+#![cfg(all(feature = "sim", target_os = "linux"))]
+mod support;
 use rt_audio_math::{Q824, Sample};
 use rt_fpga_adapter::{image::*, loop_media::Media, protocol};
 use rt_fpga_sim::{Simulator, runtime};
@@ -35,8 +36,10 @@ fn float_media_reads_preserve_interleaving_partial_pages_leases_and_scopes() {
     let cache = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../work/marlin-app");
     let runtime = runtime(&cache).unwrap();
     let mut sim = Simulator::new(&runtime, None, true).unwrap();
-    let case: rt_backend_testbench::spec::Scenario =
-        serde_json::from_str(include_str!("../fixtures/instant-gains.json")).unwrap();
+    let case: rt_backend_testbench::spec::Scenario = serde_json::from_str(include_str!(
+        "../../rt_fpga_sim/fixtures/instant-gains.json"
+    ))
+    .unwrap();
     let mut image = rt_backend_testbench::rtl::compile(&case).unwrap();
     image.buffers = 2;
     image.input_ports = 2;
@@ -187,8 +190,10 @@ fn large_preset_has_metadata_for_two_retained_stereo_capacity_takes() {
     let runtime = runtime(&cache).unwrap();
     let mut sim = Simulator::new(&runtime, None, false).unwrap();
     sim.arena_capacity(32768).unwrap();
-    let case: rt_backend_testbench::spec::Scenario =
-        serde_json::from_str(include_str!("../fixtures/instant-gains.json")).unwrap();
+    let case: rt_backend_testbench::spec::Scenario = serde_json::from_str(include_str!(
+        "../../rt_fpga_sim/fixtures/instant-gains.json"
+    ))
+    .unwrap();
     let mut image = rt_backend_testbench::rtl::compile(&case).unwrap();
     image.media.views = vec![
         View {

@@ -4799,7 +4799,6 @@ dependencies = [
 name = "rt_fpga_sim"
 version = "0.3.0"
 dependencies = [
- "eframe",
  "marlin",
  "rt_audio_math",
  "rt_backend_testbench",
@@ -4807,19 +4806,8 @@ dependencies = [
  "rt_runtime",
  "serde",
  "serde_json",
- "shoop_app",
- "shoop_app_api",
- "shoop_app_client",
- "shoop_app_protocol",
- "shoop_backend",
- "shoop_egui",
  "shoop_loops",
- "shoop_rt_backend",
  "shoop_rt_engine",
- "shoop_rt_protocol",
- "shoop_rt_transport",
- "shoop_scripting",
- "shoop_settings",
  "shoop_wasm_test_support",
 ]
 
@@ -5679,6 +5667,32 @@ dependencies = [
  "shoop_session",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",
+]
+
+[[package]]
+name = "shoop_rt_host_fpga_sim"
+version = "0.3.0"
+dependencies = [
+ "rt_audio_math",
+ "rt_backend_testbench",
+ "rt_fpga_adapter",
+ "rt_fpga_sim",
+ "rt_runtime",
+ "serde",
+ "serde_json",
+ "shoop_app",
+ "shoop_app_api",
+ "shoop_app_client",
+ "shoop_app_protocol",
+ "shoop_backend",
+ "shoop_loops",
+ "shoop_rt_backend",
+ "shoop_rt_engine",
+ "shoop_rt_protocol",
+ "shoop_rt_transport",
+ "shoop_scripting",
+ "shoop_wasm_test_support",
+ "tracing",
 ]
 
 [[package]]

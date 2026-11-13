@@ -29,6 +29,15 @@ The wrapper caps C++ build parallelism at two jobs. Set `SHOOP_VERILATOR` and
 compiled model separately from graph/configuration data. Loading another graph
 or changing a gain does not rebuild C++.
 
+Build the validated Verilator locally with `bash scripts/build_verilator.sh`.
+It requires autoconf, flex, bison, a C++ compiler and zlib headers. On NixOS run
+it inside `nix develop` with those packages available (for example,
+`nix shell nixpkgs#autoconf nixpkgs#flex nixpkgs#bison nixpkgs#zlib nixpkgs#gcc`).
+Then add `$PWD/work/verilator/bin` to `PATH`, or set `SHOOP_VERILATOR` to that
+absolute executable path. `SHOOP_VERILATOR_JOBS` defaults to two. CI uses the
+same script and pinned source revision. Runtime startup rejects versions other
+than 5.032 with a diagnostic naming the supported version.
+
 Validated with Rust 1.99.1, Verilator 5.032 and GCC 14.2 on Linux x86_64.
 Marlin is behind `sim`; ordinary production and Wasm builds do not depend on it.
 Simulation wall time is not evidence of a board deadline.

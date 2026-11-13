@@ -1,7 +1,7 @@
 //! One owner for the Verilator context, model and application queue consumer.
-use crate::{SimResult, Simulator, app, runtime};
+use crate::Config;
 use rt_fpga_adapter::engine::Adapter;
-use shoop_rt_backend::EngineClock;
+use rt_fpga_sim::{SimResult, Simulator, runtime_with_config};
 use shoop_rt_engine::{
     PrepareError,
     external::{Consumer, Prepared},
@@ -40,7 +40,7 @@ pub struct SimulationMetrics {
 struct Status {
     frame: AtomicU64,
     metrics: Mutex<rt_fpga_adapter::engine::Metrics>,
-    store: Mutex<crate::StoreUsage>,
+    store: Mutex<rt_fpga_sim::StoreUsage>,
     simulation: Mutex<SimulationMetrics>,
 }
 #[derive(Clone)]
@@ -57,7 +57,7 @@ impl Handle {
     pub fn frame(&self) -> u64 {
         self.status.frame.load(Ordering::Relaxed)
     }
-    pub fn store_usage(&self) -> crate::StoreUsage {
+    pub fn store_usage(&self) -> rt_fpga_sim::StoreUsage {
         *self.status.store.lock().unwrap()
     }
     pub fn simulation_metrics(&self) -> SimulationMetrics {
@@ -75,7 +75,6 @@ pub struct Worker {
     join: Option<thread::JoinHandle<()>>,
     mode: RunMode,
     status: Arc<Status>,
-    remainder: u128,
     pub output: Arc<Mutex<Vec<[f32; 2]>>>,
     pub failure: Arc<Mutex<Option<String>>>,
 }
@@ -88,6 +87,17 @@ impl Worker {
         mode: RunMode,
         wave: Option<PathBuf>,
     ) -> SimResult<Prepared<Self>> {
+        Self::prepare_config(Config {
+            artifacts,
+            mode,
+            wave,
+            capture_output: true,
+            ..Default::default()
+        })
+    }
+    pub fn prepare_config(config: Config) -> SimResult<Prepared<Self>> {
+        let mode = config.mode;
+        let wave = config.wave.clone();
         let (send, receive) = mpsc::channel();
         let (ready_send, ready_receive) =
             mpsc::sync_channel::<Result<shoop_rt_engine::EngineControl, PrepareError>>(1);
@@ -99,7 +109,7 @@ impl Worker {
         let worker_failure = failure.clone();
         let diagnostic = failure.clone();
         let prepared = prepare_with_consumer(
-            &app::description(),
+            &rt_fpga_adapter::engine::profile_description(),
             // This worker clocks the RTL model unpaced; no device driver exists.
             DriverStatus {
                 kind: shoop_rt_protocol::DriverKind::Simulated,
@@ -113,7 +123,13 @@ impl Worker {
                     .spawn(move || {
                         let result = (|| -> SimResult<()> {
                             let model_started = Instant::now();
-                            let runtime = runtime(&artifacts)?;
+                            tracing::info!("building/loading FPGA RTL model");
+                            let runtime = runtime_with_config(&rt_fpga_sim::RuntimeConfig {
+                                artifacts: config.artifacts.clone(),
+                                rtl_directory: config.rtl_directory.clone(),
+                                verilator: config.verilator.clone(),
+                                jobs: config.jobs,
+                            })?;
                             let mut sim = Simulator::new(&runtime, wave.as_deref(), false)?;
                             sim.arena_capacity(32768)?;
                             worker_status.simulation.lock().unwrap().model_build_load =
@@ -129,7 +145,8 @@ impl Worker {
                             ready_send
                                 .send(Ok(control))
                                 .map_err(|_| "startup receiver closed")?;
-                            let mut signal = false;
+                            tracing::info!("FPGA RTL backend ready");
+                            let mut signal = config.synthetic_input;
                             loop {
                                 let request = if mode == RunMode::Continuous {
                                     match receive.try_recv() {
@@ -155,7 +172,7 @@ impl Worker {
                                             frames,
                                             signal,
                                             &worker_output,
-                                            true,
+                                            config.capture_output,
                                             &worker_status,
                                         )
                                         .map_err(|e| e.to_string());
@@ -185,9 +202,13 @@ impl Worker {
                         }
                     })
                     .map_err(|_| PrepareError::Runtime(rt_runtime::Error::Disconnected))?;
-                let control = ready_receive
-                    .recv()
-                    .map_err(|_| PrepareError::Runtime(rt_runtime::Error::Disconnected))??;
+                let control = match ready_receive.recv() {
+                    Ok(Ok(control)) => control,
+                    _ => {
+                        let _ = join.join();
+                        return Err(PrepareError::Runtime(rt_runtime::Error::Disconnected));
+                    }
+                };
                 Ok(Consumer {
                     control,
                     execution: Worker {
@@ -195,7 +216,6 @@ impl Worker {
                         join: Some(join),
                         mode,
                         status,
-                        remainder: 0,
                         output,
                         failure,
                     },
@@ -211,6 +231,9 @@ impl Worker {
             )
         })?;
         Ok(prepared)
+    }
+    pub fn mode(&self) -> RunMode {
+        self.mode
     }
     pub fn handle(&self) -> Handle {
         Handle {
@@ -243,7 +266,7 @@ fn run(
                 (0..count)
                     .map(|offset| {
                         if signal {
-                            app::input(ch, start + offset as u64)
+                            crate::input(ch, start + offset as u64)
                         } else {
                             0.
                         }
@@ -274,29 +297,6 @@ fn run(
     }
     *status.store.lock().unwrap() = execution.device_mut().store_usage()?;
     Ok(())
-}
-impl EngineClock for Worker {
-    fn advance(&mut self, elapsed: Duration) {
-        if self.mode == RunMode::Stepped {
-            self.remainder += elapsed.as_nanos() * 48_000;
-            let frames = (self.remainder / 1_000_000_000) as usize;
-            self.remainder %= 1_000_000_000;
-            if let Err(error) = self.run(frames) {
-                self.failure
-                    .lock()
-                    .unwrap()
-                    .get_or_insert_with(|| error.to_string());
-            }
-        }
-    }
-    fn wait(&mut self) -> bool {
-        if self.mode == RunMode::Stepped {
-            self.run(32).is_ok()
-        } else {
-            thread::yield_now();
-            self.failure.lock().unwrap().is_none()
-        }
-    }
 }
 impl Drop for Worker {
     fn drop(&mut self) {

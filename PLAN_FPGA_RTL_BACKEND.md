@@ -145,18 +145,18 @@ renamed "Audio driver", and an "Audio backend" line is added.
 
 - [x] Branch `feat/fpga-rtl-backend` from `proto/fpga-rust-reference` (`5b7dd0a5`,
       which includes #987) and open a draft PR with this plan.
-- [ ] Add `proto/fpga-rust-reference` to `build_and_test.yml`'s `pull_request`
+- [x] Add `proto/fpga-rust-reference` to `build_and_test.yml`'s `pull_request`
       branches.
-- [ ] Move the Verilator 5.032 source build into `scripts/build_verilator.sh`,
+- [x] Move the Verilator 5.032 source build into `scripts/build_verilator.sh`,
       used by `fpga_simulation.yml` and documented for local use (including
       NixOS).
-- [ ] Add the runtime version check.
+- [x] Add the runtime version check.
 - [ ] Verify: the workflow runs on this PR; the script builds 5.032 locally; the
       check rejects another version with a clear message.
 
 ### 2. Host-usable RTL backend crate
 
-- [ ] Create `shoop_rt_host_fpga_sim`, which depends on `rt_fpga_adapter`,
+- [x] Create `shoop_rt_host_fpga_sim`, which depends on `rt_fpga_adapter`,
       `rt_fpga_sim/sim` and `shoop_rt_engine` and nothing app-level. Move into it
       the reusable parts of `app_worker` and the profile description:
       - the worker thread that owns the runtime, model and adapter;
@@ -164,12 +164,12 @@ renamed "Audio driver", and an "Audio backend" line is added.
       - the input mode (silence or deterministic synthetic), with output
         discarded;
       - stop and join.
-- [ ] Expose `start(config) -> Started`, mirroring `shoop_rt_host_native::start`
+- [x] Expose `start(config) -> Started`, mirroring `shoop_rt_host_native::start`
       (client, host status, stop handle), with readiness reporting and
       configurable RTL, cache and Verilator paths. Replace the `verilator-wrapper`
       shell script with Marlin options.
-- [ ] Add a non-Linux stub and a boundary-script rule for the new crate.
-- [ ] Re-base `rt_fpga_sim`'s app tests on the new crate. The `Fpga` composition
+- [x] Add a non-Linux stub and a boundary-script rule for the new crate.
+- [x] Re-base `rt_fpga_sim`'s app tests on the new crate. The `Fpga` composition
       may remain as a test-only harness.
 - [ ] Verify: crate unit tests; the existing `app_rtl`/`app_*` suites unchanged in
       outcome; `cargo tree` shows no Marlin without the feature.
@@ -216,7 +216,7 @@ renamed "Audio driver", and an "Audio backend" line is added.
 
 ### 6. Retire the demo
 
-- [ ] Remove the `fpga-app-demo` binary, the `app-ui` feature and the demo-only
+- [x] Remove the `fpga-app-demo` binary, the `app-ui` feature and the demo-only
       window code.
 - [ ] Keep the deterministic replay and comparison as tests, through the new
       composition.
@@ -264,3 +264,22 @@ renamed "Audio driver", and an "Audio backend" line is added.
 - Implementation steps may be revised when new evidence warrants it.
 - Design rules may be revised for a documented, well-supported reason.
 - Goals and acceptance criteria must not be changed without explicit user approval.
+
+## Execution notes
+
+- The environment exposes five CPUs; local builds/tests use affinity `0-1` and
+  two jobs/threads, respecting the half-core limit.
+- The shared script built the pinned Verilator 5.032 locally. The version-check
+  regression accepts 5.032 and refuses 5.030/5.050 and malformed output.
+- The reusable worker and app suites now live in `shoop_rt_host_fpga_sim`.
+  The application replay harness is under its `tests/support`, with application
+  dependencies only in dev-dependencies. Keeping it in `rt_fpga_sim` would create
+  a production dependency cycle through the new host crate. The obsolete demo
+  entry points were removed during this extraction; documentation retirement
+  remains in stage 6.
+- Marlin runtime options now select C++ build jobs and remap the statically
+  declared bridge source to a cache-local embedded copy. FPGA RTL sources remain
+  configurable through `SHOOP_FPGA_RTL`; no shell wrapper is needed.
+- Initial extraction validation: host production boundary audit passes; the
+  native app trace (3 tests), protocol refusal/ownership tests (5 tests), and a
+  cold RTL application bootstrap pass. The cold model build took 14.5 seconds.

@@ -20,6 +20,9 @@ retaining leaked models or serializing tests to conceal the failure.
 `src/lib.rs` adds a cache discriminator so old compiled bridges are rebuilt.
 Two syntax-only fixes keep this local dependency warning-free on Rust 1.99
 (an explicit elided lifetime and statement-position error macro).
-No signal layout or public Rust API changes. Remove this vendor patch when an
+Runtime options additionally expose bounded C++ build parallelism and explicit
+source-path relocation for statically declared models. This lets the host use
+configurable source/cache locations without a shell executable wrapper.
+No signal layout changes. Remove this vendor patch when an
 upstream bridge release provides equivalent context ownership; retain the
 multiple-model, multiple-runtime and waveform regressions when upgrading.

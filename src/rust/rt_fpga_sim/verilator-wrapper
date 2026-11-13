@@ -1,2 +1,0 @@
-#!/bin/sh
-exec "${SHOOP_VERILATOR:-verilator}" "$@" -j "${SHOOP_VERILATOR_JOBS:-2}"
