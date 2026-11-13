@@ -30,7 +30,7 @@ on:
       - 'PLAN_FPGA_RTL_BACKEND.md'
       - '.github/workflows/fpga_simulation.yml'
   push:
-    branches: [master, proto/fpga-rust-reference, "feat/fpga-*"]
+    branches: [master, proto/fpga-rust-reference]
     paths:
       - 'fpga/**'
       - 'scripts/build_verilator.sh'
@@ -315,4 +315,5 @@ jobs:
       - name: Check standalone host, both carriers and cold readiness
         run: cargo test --locked -p shoop_host --features fpga-sim --test fpga_rtl
       - name: Check normal in-process application
-        run: cargo test --locked -p shoopdaloop --features fpga-sim fpga_tests::
+        run: |
+          cargo test --locked -p shoopdaloop --features fpga-sim fpga_tests::

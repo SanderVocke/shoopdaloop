@@ -342,12 +342,10 @@ renamed "Audio driver", and an "Audio backend" line is added.
   backend defaults missing in native/worklet test fixtures and the no-std
   FreeRTOS composition; those constructors are updated, and the Cortex-A
   no-std host build passes locally.
-- The FPGA workflow is registered but absent from the default branch. GitHub
-  produced no PR run and rejected dispatch with "Workflow does not have
-  workflow_dispatch trigger" despite the prototype branch's trigger. Push
-  coverage now includes `feat/fpga-*`, allowing its branch-local workflow to run
-  while it remains off the default branch.
-
+- FPGA workflow validation found an unquoted command ending in `::`, which
+  prevented GitHub from parsing the workflow. It is now a block command, all
+  workflow YAML files parse locally, and the temporary feature-branch push
+  workaround was removed.
 - The long retained-take RTL regression passes (752.95 seconds with concurrent
   compilation on the two-core cap). It records two five-second takes, checks
   retained media and exercises storage reuse.
@@ -355,3 +353,11 @@ renamed "Audio driver", and an "Audio backend" line is added.
   incremental artifacts. Incremental caches were removed and local final gates
   now set `CARGO_INCREMENTAL=0`; the new FPGA CI job also disables incremental
   output and large debug data. The runtime suite itself has not yet completed.
+
+- Merged the updated prototype base `0f9a31b1` (#989). The sole content conflict
+  was in the RTL application contract; both the new crossfade contract and the
+  regular host composition documentation are retained. The renamed arithmetic
+  and media fixtures merged without conflicts. Targeted arithmetic and RTL
+  comparison validation passes against the merged tree: four arithmetic tests,
+  eight loop-audio tests, three RTL arithmetic tests and the common native/RTL
+  replay. The feature-enabled host crate also builds with warnings denied.
