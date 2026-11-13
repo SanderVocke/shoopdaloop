@@ -1,10 +1,31 @@
 #![cfg(all(feature = "sim", not(target_arch = "wasm32")))]
 use rt_audio_math::Q824;
 use rt_backend_testbench::{production, rtl, spec::*};
-use rt_fpga_adapter::{looping::LoopDevice, protocol, transition_service::TransitionService};
+use rt_fpga_adapter::{
+    looping::{LoopDevice, TpReply},
+    protocol,
+    transition_service::{Progress, Transfer, TransitionService},
+};
 use rt_fpga_sim::{Simulator, runtime};
 use shoop_wasm_test_support::shoop_test;
 use std::path::Path;
+
+fn ready_install(
+    owner: &mut TransitionService,
+    sim: &mut Simulator<'_>,
+    mut transfer: Transfer,
+) -> Transfer {
+    while transfer.opcode != 4 {
+        let reply = sim
+            .tp(transfer.opcode, transfer.index, transfer.words)
+            .unwrap();
+        transfer = match owner.finish(reply).unwrap() {
+            Progress::Transfer(next) => next,
+            Progress::Reply(reply) => panic!("publication failed: {reply:?}"),
+        };
+    }
+    transfer
+}
 
 fn id(slot: u32) -> Identity {
     Identity {
@@ -222,6 +243,49 @@ fn request(action: &Action, sequence: u64) -> shoop_loops::Request {
 
 #[shoop_test]
 fn admitted_actions_and_audio_survive_1024_quanta_without_arm_service() {
+    exercise_service_pause(false, false);
+}
+#[shoop_test]
+fn a_held_install_reply_cannot_stall_1024_quanta_of_admitted_audio() {
+    exercise_service_pause(true, false);
+}
+#[shoop_test]
+fn a_held_settlement_reply_does_not_gate_the_fabric_boundary() {
+    let mut case = scenario();
+    case.steps.truncate(8);
+    let expected = production::run::<Q824>(&case).unwrap();
+    let image = rtl::compile(&case).unwrap();
+    let cache = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../work/marlin-boundary");
+    let rt = runtime(&cache).unwrap();
+    let mut sim = Simulator::new(&rt, None, true).unwrap();
+    sim.load(&image).unwrap();
+    let mut owner = TransitionService::new(&image.transition).unwrap();
+    for (index, action) in case.steps[0].actions.iter().enumerate() {
+        let words = protocol::kernel_transition(request(action, index as u64 + 1)).unwrap();
+        owner
+            .exchange(4, 0, words, |transfer| {
+                sim.tp(transfer.opcode, transfer.index, transfer.words)
+            })
+            .unwrap();
+    }
+    let held = sim.hold_command(16, 0, [0; 20]).unwrap();
+    assert_eq!(held.0, 0);
+    sim.cycle();
+    for (step, expected) in case.steps.iter().zip(&expected.quanta) {
+        assert_eq!(
+            Samples::Q824(sim.run(&image, &step.inputs).unwrap()),
+            expected.outputs
+        );
+        assert_eq!(sim.held_response(), Some(held));
+    }
+    assert_eq!(sim.frame(), 256);
+    assert_eq!(sim.consume_response().unwrap(), held);
+}
+#[shoop_test]
+fn a_partly_staged_membership_keeps_the_old_view_running_for_1024_quanta() {
+    exercise_service_pause(false, true);
+}
+fn exercise_service_pause(hold_install_reply: bool, partial: bool) {
     let case = scenario();
     let expected = production::run::<Q824>(&case).unwrap();
     let image = rtl::compile(&case).unwrap();
@@ -232,15 +296,41 @@ fn admitted_actions_and_audio_survive_1024_quanta_without_arm_service() {
     sim.load(&image).unwrap();
     let mut owner = TransitionService::new(&image.transition).unwrap();
     let mut identities = vec![];
+    let mut held = None;
     for (index, action) in case.steps[0].actions.iter().enumerate() {
         let words = protocol::kernel_transition(request(action, index as u64 + 1)).unwrap();
-        let reply = owner
-            .exchange(4, 0, words, |transfer| {
-                sim.tp(transfer.opcode, transfer.index, transfer.words)
-            })
-            .unwrap();
+        let reply = if hold_install_reply && index + 1 == case.steps[0].actions.len() {
+            let transfer = owner.begin(4, 0, words).unwrap();
+            let transfer = ready_install(&mut owner, &mut sim, transfer);
+            let (error, words) = sim
+                .hold_command(transfer.opcode, transfer.index, transfer.words)
+                .unwrap();
+            let reply = TpReply { error, words };
+            held = Some(reply);
+            reply
+        } else {
+            owner
+                .exchange(4, 0, words, |transfer| {
+                    sim.tp(transfer.opcode, transfer.index, transfer.words)
+                })
+                .unwrap()
+        };
         assert_eq!(reply.error, 0);
         identities.push((reply.words[0], reply.words[1]));
+    }
+    let mut staged = None;
+    if partial {
+        let mut transfer = owner.begin(22, 0, [0; 20]).unwrap();
+        for _ in 0..2 {
+            let reply = sim
+                .tp(transfer.opcode, transfer.index, transfer.words)
+                .unwrap();
+            transfer = match owner.finish(reply).unwrap() {
+                Progress::Transfer(next) => next,
+                other => panic!("incomplete publication ended early: {other:?}"),
+            };
+        }
+        staged = Some(transfer);
     }
     let before = sim.cycles;
     for (step, expected) in case.steps.iter().zip(&expected.quanta) {
@@ -250,9 +340,30 @@ fn admitted_actions_and_audio_survive_1024_quanta_without_arm_service() {
             "frame {}",
             expected.frame
         );
+        if let Some(reply) = held {
+            assert_eq!(sim.held_response(), Some((reply.error, reply.words)));
+        }
+    }
+    if let Some(reply) = held {
+        assert_eq!(sim.consume_response().unwrap(), (reply.error, reply.words));
+        owner.finish(reply).unwrap();
     }
     assert!(sim.cycles > before);
     assert_eq!(sim.frame(), 1024 * 32);
+    if let Some(mut transfer) = staged {
+        loop {
+            let reply = sim
+                .tp(transfer.opcode, transfer.index, transfer.words)
+                .unwrap();
+            match owner.finish(reply).unwrap() {
+                Progress::Transfer(next) => transfer = next,
+                Progress::Reply(reply) => {
+                    assert_eq!(reply.error, 0);
+                    break;
+                }
+            }
+        }
+    }
     let status = sim.command(0, 0, [0; 20]).unwrap();
     let events = &expected.quanta.last().unwrap().events;
     assert_eq!(protocol::get(&status, 192, 32) as usize, events.len());
@@ -346,6 +457,7 @@ fn admitted_actions_and_audio_survive_1024_quanta_without_arm_service() {
         );
     }
     let reused = owner.begin(4, 0, extra).unwrap();
+    let reused = ready_install(&mut owner, &mut sim, reused);
     assert_eq!((reused.index, protocol::get(&reused.words, 1, 32)), (0, 2));
     for binding in &image.loop_views {
         let media = expected
@@ -387,6 +499,7 @@ fn prepared_install_uses_the_actual_device_frame_after_service_delay() {
             protocol::kernel_transition(request(&action, 1)).unwrap(),
         )
         .unwrap();
+    let transfer = ready_install(&mut owner, &mut sim, transfer);
     for step in &case.steps[..3] {
         assert_eq!(sim.run(&image, &step.inputs).unwrap(), vec![vec![0; 32]]);
     }
@@ -394,9 +507,17 @@ fn prepared_install_uses_the_actual_device_frame_after_service_delay() {
     let reply = sim
         .tp(transfer.opcode, transfer.index, transfer.words)
         .unwrap();
-    assert_eq!(owner.finish(reply).unwrap().error, 0);
+    assert!(matches!(
+        owner.finish(reply).unwrap(),
+        Progress::Reply(TpReply { error: 0, .. })
+    ));
     sim.run(&image, &case.steps[3].inputs).unwrap();
-    let observed = sim.command(13, 0, [0; 20]).unwrap();
+    let observed = owner
+        .exchange(13, 0, [0; 20], |transfer| {
+            sim.tp(transfer.opcode, transfer.index, transfer.words)
+        })
+        .unwrap()
+        .words;
     let mut steps = vec![
         serde_json::json!({"collect_completed":false,"collect":[],"cancel":[],"commands":[]});
         4

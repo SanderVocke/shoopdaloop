@@ -1,0 +1,311 @@
+--- a/fpga/transition_processor/rtl/transition_processor.sv
++++ b/fpga/transition_processor/rtl/transition_processor.sv
+@@ -5,0 +6 @@
++    parameter integer FLAT_MEMBERSHIP = 0,
+@@ -55 +56 @@
+-        W_SKIP=301, W_POSITION=365, W_PUBLICATION=429;
++        W_SKIP=301, W_POSITION=365, W_PUBLICATION=429, W_MEMBER_POSITION=493;
+@@ -62 +63,2 @@
+-    localparam integer H=PA+1, RW=397, NW=32+H, HW=2*H;
++    localparam integer H=PA+1, RW=397, MID=FLAT_MEMBERSHIP != 0 ? PA : H,
++        NW=32+MID, HW=FLAT_MEMBERSHIP != 0 ? 4*H : 2*H;
+@@ -75 +77 @@
+-        S_MEMBER_VALIDATE,
++        S_N_WAIT, S_N_GET, S_INSTALL_MEMBER, S_MEMBER_VALIDATE, S_REACT_NODE, S_CANCEL_NODE,
+@@ -87 +89 @@
+-    state_t state, read_return, offer_return, apply_return, natural_return, react_return;
++    state_t state, read_return, offer_return, apply_return, natural_return, react_return, member_return;
+@@ -124 +126 @@
+-    reg [31:0] stage_declared, stage_written, stage_heads;
++    reg [31:0] stage_declared, stage_written, stage_heads, stage_head_end, active_count;
+@@ -125,0 +128 @@
++    reg [H-1:0] membership_cursor, membership_end;
+@@ -127 +130 @@
+-    reg [HW-1:0] member_heads;
++    reg [4*H-1:0] member_heads;
+@@ -137,2 +140,2 @@
+-    wire [31:0] member_successor = 32'(member_row[0+:H]);
+-    wire membership_finished = request_cursor == 32'(NO_REQUEST);
++    wire [31:0] member_successor = FLAT_MEMBERSHIP != 0 ? 32'(membership_cursor)+1'b1 : 32'(member_row[0+:H]);
++    wire membership_finished = FLAT_MEMBERSHIP != 0 ? membership_cursor == membership_end : request_cursor == 32'(NO_REQUEST);
+@@ -368 +371 @@
+-            nr_en <= 1; nr_address <= request_address(slot);
++            if (FLAT_MEMBERSHIP == 0) begin nr_en <= 1; nr_address <= request_address(slot); end
+@@ -404 +407 @@
+-        member_start = member_heads[(ticks ? H : 0)+:H];
++        member_start = member_heads[(ticks ? (FLAT_MEMBERSHIP != 0 ? 2*H : H) : 0)+:H];
+@@ -408 +411,4 @@
+-            request_cursor <= 32'(member_start(ticks));
++            if (FLAT_MEMBERSHIP != 0) begin
++                membership_cursor <= member_start(ticks);
++                membership_end <= member_heads[(ticks ? 3*H : H)+:H];
++            end else request_cursor <= 32'(member_start(ticks));
+@@ -413 +419,2 @@
+-            request_cursor <= next_cursor;
++            if (FLAT_MEMBERSHIP != 0) membership_cursor <= H'(next_cursor);
++            else request_cursor <= next_cursor;
+@@ -414,0 +422,6 @@
++        end
++    endtask
++    task automatic read_member(input [31:0] position, input state_t destination);
++        begin
++            nr_en <= 1; nr_address <= request_address(position);
++            member_return <= destination; state <= S_N_WAIT;
+@@ -430 +443,2 @@
+-            lr_en <= 0; lw_en <= 0; rr_en <= 0; rw_en <= 0;
++        reg [4*H-1:0] unused_temporary_heads;
++        lr_en <= 0; lw_en <= 0; rr_en <= 0; rw_en <= 0;
+@@ -445,2 +459,2 @@
+-            stage_declared <= 0; stage_written <= 0; stage_heads <= 0;
+-            staging_seen <= 0; active_seen <= 0;
++            stage_declared <= 0; stage_written <= 0; stage_heads <= 0; stage_head_end <= 0; active_count <= 0;
++            staging_seen <= 0; active_seen <= 0; membership_cursor <= 0; membership_end <= 0;
+@@ -525 +539 @@
+-                            stage_declared <= 0; stage_written <= 0; stage_heads <= 0;
++                            stage_declared <= 0; stage_written <= 0; stage_heads <= 0; stage_head_end <= 0; active_count <= 0;
+@@ -544 +558 @@
+-                                stage_written <= 0; stage_heads <= 0; staging_seen <= 0;
++                                stage_written <= 0; stage_heads <= 0; stage_head_end <= 0; staging_seen <= 0;
+@@ -553 +567,5 @@
+-                            else if (staging_seen[PA'(index)]) reply(INVALID_STATE, 0);
++                            else if (FLAT_MEMBERSHIP != 0) begin
++                                if (index != stage_written || payload[127:96] >= request_slots) reply(INVALID_ID, 0);
++                                else if (staging_seen[PA'(payload[127:96])]) reply(INVALID_STATE, 0);
++                                else read_request(payload[127:96], S_MEMBER_VALIDATE);
++                            end else if (staging_seen[PA'(index)]) reply(INVALID_STATE, 0);
+@@ -563 +581,4 @@
+-                            else if ((
++                            else if (FLAT_MEMBERSHIP != 0 && (payload[95:64] != stage_head_end
++                                || payload[127:96] < payload[95:64] || payload[159:128] != payload[127:96]
++                                || payload[191:160] < payload[159:128] || payload[191:160] > stage_declared)) reply(INVALID_CONFIG, 0);
++                            else if (FLAT_MEMBERSHIP == 0 && (
+@@ -567 +588,8 @@
+-                                hw_address <= SA'(index); hw_data <= {H'(payload[159:128]), H'(payload[95:64])};
++                                unused_temporary_heads = 0;
++                                unused_temporary_heads[0+:H] = H'(payload[95:64]);
++                                unused_temporary_heads[H+:H] = FLAT_MEMBERSHIP != 0 ? H'(payload[127:96]) : H'(payload[159:128]);
++                                if (FLAT_MEMBERSHIP != 0) begin
++                                    unused_temporary_heads[2*H+:H] = H'(payload[159:128]);
++                                    unused_temporary_heads[3*H+:H] = H'(payload[191:160]);
++                                end
++                                hw_address <= SA'(index); hw_data <= HW'(unused_temporary_heads);
+@@ -569 +597 @@
+-                                stage_heads <= stage_heads+1'b1;
++                                stage_heads <= stage_heads+1'b1; stage_head_end <= payload[191:160];
+@@ -576 +604,2 @@
+-                            else if (stage_written != stage_declared || stage_heads != loop_slots) reply(INVALID_STATE, 0);
++                            else if (stage_written != stage_declared || stage_heads != loop_slots
++                                || (FLAT_MEMBERSHIP != 0 && stage_head_end != stage_declared)) reply(INVALID_STATE, 0);
+@@ -579 +608 @@
+-                                active_publication <= stage_counter; staging_open <= 0;
++                                active_publication <= stage_counter; active_count <= stage_declared; staging_open <= 0;
+@@ -635 +664 @@
+-                        member_heads <= active_bank ? hr1_data : hr0_data;
++                        member_heads <= (4*H)'(active_bank ? hr1_data : hr0_data);
+@@ -643 +672 @@
+-                    member_row <= active_bank ? nr1_data : nr0_data;
++                    if (FLAT_MEMBERSHIP == 0) member_row <= active_bank ? nr1_data : nr0_data;
+@@ -650 +679 @@
+-                    if (opcode == INSTALL) member_heads <= active_bank ? hr1_data : hr0_data;
++                    if (opcode == INSTALL) member_heads <= (4*H)'(active_bank ? hr1_data : hr0_data);
+@@ -652,0 +682,2 @@
++                S_N_WAIT: state <= S_N_GET;
++                S_N_GET: begin member_row <= active_bank ? nr1_data : nr0_data; state <= member_return; end
+@@ -657 +688 @@
+-                        nw_data <= {payload[95:64],H'(payload[127:96])};
++                        nw_data <= {payload[95:64],MID'(payload[127:96])};
+@@ -659 +690 @@
+-                        staging_seen[PA'(index)] <= 1;
++                        staging_seen[PA'(FLAT_MEMBERSHIP != 0 ? payload[127:96] : index)] <= 1;
+@@ -701 +732 @@
+-                    hw_address <= SA'(cursor); hw_data <= {HW{1'b1}};
++                    hw_address <= SA'(cursor); hw_data <= FLAT_MEMBERSHIP != 0 ? 0 : {HW{1'b1}};
+@@ -758 +789,10 @@
+-                    else if (member_row[H+:32] != payload[R_GEN+:32]) reply(INVALID_ID, 0);
++                    else if (FLAT_MEMBERSHIP != 0) begin
++                        if (payload[W_MEMBER_POSITION+:32] >= active_count) reply(INVALID_ID, 0);
++                        else read_member(payload[W_MEMBER_POSITION+:32], S_INSTALL_MEMBER);
++                    end else if (member_row[MID+:32] != payload[R_GEN+:32]) reply(INVALID_ID, 0);
++                    else begin submit_frame <= payload[W_AT+:64] > frame ? payload[W_AT+:64] : frame; state <= S_INSTALL_ROUND; end
++                end
++                S_INSTALL_MEMBER: begin
++                    if (32'(member_row[0+:MID]) != index || member_row[MID+:32] != payload[R_GEN+:32]
++                        || payload[W_MEMBER_POSITION+:32] < 32'(member_start(payload[R_TICKS]))
++                        || payload[W_MEMBER_POSITION+:32] >= 32'(member_heads[(payload[R_TICKS] ? 3*H : H)+:H])) reply(INVALID_ID, 0);
+@@ -900 +940,4 @@
+-                    else if (request_cursor >= request_slots || !active_seen[PA'(request_cursor)]) reply(INVALID_CONFIG, 0);
++                    else if (FLAT_MEMBERSHIP != 0) begin
++                        if (membership_cursor >= membership_end || 32'(membership_cursor) >= active_count) reply(INVALID_CONFIG, 0);
++                        else read_member(32'(membership_cursor), S_REACT_NODE);
++                    end else if (request_cursor >= request_slots || !active_seen[PA'(request_cursor)]) reply(INVALID_CONFIG, 0);
+@@ -901,0 +945,4 @@
++                end
++                S_REACT_NODE: begin
++                    if (32'(member_row[0+:MID]) >= request_slots || !active_seen[PA'(member_row[0+:MID])]) reply(INVALID_CONFIG, 0);
++                    else begin request_cursor <= 32'(member_row[0+:MID]); read_request(32'(member_row[0+:MID]), S_REACT_CHECK); end
+@@ -907 +954 @@
+-                        && request_row[R_GEN+:32] == member_row[H+:32]
++                        && request_row[R_GEN+:32] == member_row[MID+:32]
+@@ -959,0 +1007,3 @@
++                    end else if (FLAT_MEMBERSHIP != 0) begin
++                        if (membership_cursor >= membership_end || 32'(membership_cursor) >= active_count) reply(INVALID_CONFIG, 0);
++                        else read_member(32'(membership_cursor), S_CANCEL_NODE);
+@@ -961,0 +1012,4 @@
++                end
++                S_CANCEL_NODE: begin
++                    if (32'(member_row[0+:MID]) >= request_slots || !active_seen[PA'(member_row[0+:MID])]) reply(INVALID_CONFIG, 0);
++                    else begin request_cursor <= 32'(member_row[0+:MID]); read_request(32'(member_row[0+:MID]), S_CANCEL_OLDER_CHECK); end
+@@ -966 +1020 @@
+-                        && request_row[R_GEN+:32] == member_row[H+:32]
++                        && request_row[R_GEN+:32] == member_row[MID+:32]
+@@ -1036 +1090 @@
+-    wire unused_reserved_bits = &{1'b0, payload, order_slot, spec_row, loop_row, request_row, member_row, member_heads};
++    wire unused_reserved_bits = &{1'b0, payload, order_slot, spec_row, loop_row, request_row, member_row, member_heads, membership_cursor, membership_end, active_count};
+--- a/src/rust/rt_fpga_adapter/src/transition_service.rs
++++ b/src/rust/rt_fpga_adapter/src/transition_service.rs
+@@ -14,0 +15 @@
++pub use membership::Layout as MembershipLayout;
+@@ -73,0 +75,6 @@
++        Self::new_with_layout(image, MembershipLayout::Linked)
++    }
++    pub fn new_with_layout(
++        image: &TransitionImage,
++        layout: MembershipLayout,
++    ) -> Result<Self, Error> {
+@@ -100 +107,5 @@
+-            membership: Membership::new(image.limits.loop_slots, image.limits.pending_requests),
++            membership: Membership::new(
++                image.limits.loop_slots,
++                image.limits.pending_requests,
++                layout,
++            ),
+@@ -192,2 +203 @@
+-            words[2] = head[0];
+-            words[4] = head[1];
++            words[2..6].copy_from_slice(head);
+@@ -216 +226,7 @@
+-                let installed = wire::install(&words, self.slots[slot].generation);
++                let mut installed = wire::install(&words, self.slots[slot].generation);
++                put(
++                    &mut installed,
++                    wire::MEMBER_POSITION,
++                    32,
++                    u64::from(self.membership.position(slot as u32).ok_or(3u8)?),
++                );
+@@ -438,0 +455,10 @@
++                put(
++                    &mut words,
++                    wire::MEMBER_POSITION,
++                    32,
++                    u64::from(
++                        self.membership
++                            .position(slot as u32)
++                            .expect("reserved member"),
++                    ),
++                );
+--- a/src/rust/rt_fpga_adapter/src/transition_service/membership.rs
++++ b/src/rust/rt_fpga_adapter/src/transition_service/membership.rs
+@@ -4,0 +5,5 @@
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub enum Layout {
++    Linked,
++    Flat,
++}
+@@ -25,0 +31 @@
++    pub slot: u32,
+@@ -27,0 +34 @@
++    pub layout: Layout,
+@@ -29 +36 @@
+-    pub heads: Vec<[u32; 2]>,
++    pub heads: Vec<[u32; 4]>,
+@@ -33 +40 @@
+-    pub fn new(loops: u32, requests: u32) -> Self {
++    pub fn new(loops: u32, requests: u32, layout: Layout) -> Self {
+@@ -34,0 +42 @@
++            layout,
+@@ -38,0 +47 @@
++                    slot: 0
+@@ -42 +51 @@
+-            heads: vec![[NONE, NONE]; loops as usize],
++            heads: vec![[NONE, 0, NONE, 0]; loops as usize],
+@@ -48 +57 @@
+-            + self.heads.capacity() * std::mem::size_of::<[u32; 2]>()
++            + self.heads.capacity() * std::mem::size_of::<[u32; 4]>()
+@@ -67,0 +77 @@
++            slot: 0,
+@@ -69,8 +79,37 @@
+-        self.heads.fill([NONE, NONE]);
+-        for member in self.members.iter().rev() {
+-            let head = &mut self.heads[member.target as usize][usize::from(member.ticks)];
+-            self.nodes[member.slot as usize] = Node {
+-                generation: member.generation,
+-                value: *head,
+-            };
+-            *head = member.slot;
++        match self.layout {
++            Layout::Linked => {
++                self.heads.fill([NONE, 0, NONE, 0]);
++                for member in self.members.iter().rev() {
++                    let head =
++                        &mut self.heads[member.target as usize][usize::from(member.ticks) * 2];
++                    self.nodes[member.slot as usize] = Node {
++                        generation: member.generation,
++                        value: *head,
++                        slot: member.slot,
++                    };
++                    *head = member.slot;
++                }
++            }
++            Layout::Flat => {
++                self.members
++                    .sort_unstable_by_key(|m| (m.target, m.ticks, m.slot));
++                let mut cursor = 0;
++                for (target, heads) in self.heads.iter_mut().enumerate() {
++                    for ticks in [false, true] {
++                        let class = usize::from(ticks) * 2;
++                        heads[class] = cursor as u32;
++                        while let Some(member) = self.members.get(cursor) {
++                            if member.target as usize != target || member.ticks != ticks {
++                                break;
++                            }
++                            self.nodes[cursor] = Node {
++                                generation: member.generation,
++                                value: member.slot,
++                                slot: member.slot,
++                            };
++                            cursor += 1;
++                        }
++                        heads[class + 1] = cursor as u32;
++                    }
++                }
++            }
+@@ -82,0 +122,14 @@
++    pub fn position(&self, slot: u32) -> Option<u32> {
++        match self.layout {
++            Layout::Linked => self
++                .nodes
++                .get(slot as usize)
++                .filter(|n| n.generation != 0)
++                .map(|_| slot),
++            Layout::Flat => self
++                .nodes
++                .iter()
++                .position(|n| n.generation != 0 && n.slot == slot)
++                .map(|i| i as u32),
++        }
++    }
+--- a/src/rust/rt_fpga_adapter/src/transition_service/wire.rs
++++ b/src/rust/rt_fpga_adapter/src/transition_service/wire.rs
+@@ -6,0 +7 @@
++pub const MEMBER_POSITION: usize = 493;
+--- a/src/rust/rt_fpga_testbench/src/drivers/transition.rs
++++ b/src/rust/rt_fpga_testbench/src/drivers/transition.rs
+@@ -4 +4 @@
+-    transition_service::{Progress, TransitionService},
++    transition_service::{MembershipLayout, Progress, TransitionService},
+@@ -27 +27,4 @@
+-    Ok(TransitionService::new(&image)?)
++    let layout = if std::env::var("SHOOP_TP_MEMBERSHIP").as_deref() == Ok("flat") {
++        MembershipLayout::Flat
++    } else { MembershipLayout::Linked };
++    Ok(TransitionService::new_with_layout(&image,layout)?)

@@ -8,6 +8,7 @@ use crate::{
 };
 use rt_backend_testbench::transition_fixture as production;
 use serde_json::{Value, json};
+mod control;
 
 pub const CONFIGS: &[(&str, [u64; 3])] = &[
     ("default", [64, 64, 192]),
@@ -18,7 +19,7 @@ pub const CONFIGS: &[(&str, [u64; 3])] = &[
 ];
 pub fn design(depths: [u64; 3]) -> Design {
     let root = crate::root();
-    Design::new(
+    let design = Design::new(
         "transition_processor",
         ["tp_ram", "tp_priority", "transition_processor"]
             .iter()
@@ -30,7 +31,12 @@ pub fn design(depths: [u64; 3]) -> Design {
         ("REQUEST_DEPTH", depths[1]),
         ("EVENT_DEPTH", depths[2]),
     ])
-    .probes(vec![Probe::inject("frame"), Probe::inject("phase")])
+    .probes(vec![
+        Probe::inject("frame"),
+        Probe::inject("phase"),
+        Probe::inject("stage_counter"),
+    ]);
+    design
 }
 pub fn lid(slot: u64) -> Value {
     json!({"slot":slot,"generation":3})
@@ -283,6 +289,11 @@ pub fn compare(d: &mut Transition, s: &mut Sim<'_>, value: &Value) -> Result<Vec
 pub fn run(name: &str, depths: [u64; 3], random_cases: u64) -> Result<()> {
     let compiled = design(depths).build(&crate::root().join("work/marlin-suite/transition"))?;
     let mut s = Sim::new(compiled.session(None)?, &[("clk", 10_000, 0)]);
+    s.agent(crate::protocol::ReadyValid::new(
+        "response_valid",
+        "response_ready",
+        &["response_error", "response_data"],
+    ));
     let mut d = Transition::new(depths);
     for case in directed(depths) {
         compare(&mut d, &mut s, &case)?;
@@ -291,6 +302,8 @@ pub fn run(name: &str, depths: [u64; 3], random_cases: u64) -> Result<()> {
         compare(&mut d, &mut s, &seeded(depths, seed))?;
     }
     indexed_install_guards(&mut d, &mut s)?;
+    control::held_replies(&mut d, &mut s)?;
+    control::publication(&mut d, &mut s)?;
     transport_and_negative_cases(&mut d, &mut s)?;
     dependency_order_validation(&mut d, &mut s);
     scratch_initialization_and_reset(&mut d, &mut s)?;
@@ -312,12 +325,12 @@ pub fn run(name: &str, depths: [u64; 3], random_cases: u64) -> Result<()> {
             std::fs::write(
                 output,
                 serde_json::to_vec_pretty(
-                    &json!({"quantum_frames":32,"clock_hz":150_000_000,"quantum_cycles":cycles}),
+                    &json!({"quantum_frames":32,"clock_hz":100_000_000,"quantum_cycles":cycles}),
                 )?,
             )?;
         }
     }
-    println!("transition/{name}: 7 regression groups, {random_cases} seeds x 80 quanta");
+    println!("transition/{name}: 9 regression groups, {random_cases} seeds x 80 quanta");
     Ok(())
 }
 fn transport_case() -> Value {
@@ -336,36 +349,87 @@ fn load(d: &mut Transition, s: &mut Sim<'_>, value: &Value) -> Result<()> {
     d.load(s, &serde_json::to_value(image)?);
     Ok(())
 }
+fn raw_requests(d: &mut Transition, s: &mut Sim<'_>) -> Vec<Bits> {
+    (0..d.requests)
+        .map(|slot| d.raw_command(s, 13, slot, &Bits::default(), None, false).1)
+        .collect()
+}
 fn indexed_install_guards(d: &mut Transition, s: &mut Sim<'_>) -> Result<()> {
+    fn reserve(
+        d: &mut Transition,
+        s: &mut Sim<'_>,
+        original: [u32; 20],
+    ) -> rt_fpga_adapter::transition_service::Transfer {
+        let mut owner = d.service.take().unwrap();
+        let first = owner.begin(4, 0, original).unwrap();
+        let final_transfer = abi::ready_install(&mut owner, d, s, first);
+        d.service = Some(owner);
+        final_transfer
+    }
+    fn finish(d: &mut Transition, reply: (u64, Bits)) {
+        assert_eq!(reply.0, 0);
+        assert!(matches!(
+            d.service
+                .as_mut()
+                .unwrap()
+                .finish(rt_fpga_adapter::looping::TpReply {
+                    error: 0,
+                    words: reply.1.0.try_into().unwrap()
+                })
+                .unwrap(),
+            rt_fpga_adapter::transition_service::Progress::Reply(_)
+        ));
+    }
     let value = transport_case();
+    d.reset(s);
+    d.ok(s, 1, 0, &abi::spec(&spec(0, 64, None, false)));
+    d.ok(s, 2, 0, &Bits::default());
+    let mut prepare = Bits(vec![1, 1, 3, 1, 16, 0]);
+    assert_eq!(d.raw_command(s, 3, 0, &prepare, None, false).0, 1);
+    assert_eq!(d.status(s)["configured"], false);
+    prepare.set(
+        160,
+        32,
+        u64::from(rt_fpga_adapter::transition_service::wire::ABI),
+    );
+    assert_eq!(d.raw_command(s, 3, 0, &prepare, None, false).0, 0);
     load(d, s, &value)?;
-    let empty = d.requests(s);
-    let mut packet = abi::command(&value["steps"][0]["commands"][0]);
+    let original: [u32; 20] = abi::command(&value["steps"][0]["commands"][0])
+        .0
+        .try_into()
+        .unwrap();
+    let transfer = reserve(d, s, original);
+    let empty = raw_requests(d, s);
+    let mut packet = Bits(transfer.words.to_vec());
     for (slot, generation) in [(1, 1), (0, 0), (0, 2)] {
         packet.set(1, 32, generation);
         assert_eq!(d.raw_command(s, 4, slot, &packet, None, false).0, 3);
-        assert_eq!(d.requests(s), empty);
+        assert_eq!(raw_requests(d, s), empty);
     }
     packet.set(1, 32, 1);
-    assert_eq!(d.raw_command(s, 4, 0, &packet, None, false).0, 0);
-    let pending = d.requests(s);
+    let reply = d.raw_command(s, 4, 0, &packet, None, false);
+    finish(d, reply);
+    let pending = raw_requests(d, s);
     assert_eq!(d.raw_command(s, 4, 0, &packet, None, false).0, 5);
-    assert_eq!(d.requests(s), pending);
-    assert_eq!(d.raw_command(s, 9, 0, &Bits::default(), None, false).0, 0);
-    let terminal = d.requests(s);
+    assert_eq!(raw_requests(d, s), pending);
+    d.ok(s, 9, 0, &Bits::default());
+    let terminal = raw_requests(d, s);
     assert_eq!(d.raw_command(s, 4, 0, &packet, None, false).0, 5);
-    assert_eq!(d.requests(s), terminal);
-    assert_eq!(d.raw_command(s, 6, 0, &Bits::from_u64(1), None, false).0, 0);
+    assert_eq!(raw_requests(d, s), terminal);
+    d.ok(s, 6, 0, &Bits::from_u64(1));
     assert_eq!(d.raw_command(s, 4, 0, &packet, None, false).0, 3);
-    packet.set(1, 32, 2);
-    assert_eq!(d.raw_command(s, 4, 0, &packet, None, false).0, 0);
-    assert_eq!(d.raw_command(s, 5, 0, &Bits::from_u64(2), None, false).0, 0);
-    assert_eq!(d.raw_command(s, 6, 0, &Bits::from_u64(2), None, false).0, 0);
-    let before = d.requests(s);
-    packet.set(1, 32, 3);
+    let next = reserve(d, s, original);
+    packet = Bits(next.words.to_vec());
+    let reply = d.raw_command(s, 4, 0, &packet, None, false);
+    finish(d, reply);
+    d.ok(s, 5, 0, &Bits::from_u64(2));
+    d.ok(s, 6, 0, &Bits::from_u64(2));
+    let next = reserve(d, s, original);
+    packet = Bits(next.words.to_vec());
+    let before = raw_requests(d, s);
     s.model.inject("phase", Some(&Bits::from_u64(2)));
     assert_eq!(d.raw_command(s, 4, 0, &packet, None, false).0, 5);
-    assert_eq!(d.requests(s), before);
+    assert_eq!(raw_requests(d, s), before);
     s.model.inject("phase", None);
     Ok(())
 }
@@ -448,6 +512,7 @@ fn prepare(
             (2 * slots + 1) as u32,
             order.len() as u32,
             16,
+            rt_fpga_adapter::transition_service::wire::ABI,
         ]),
         None,
         false,

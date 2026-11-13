@@ -71,6 +71,9 @@ pub fn run(requests: u64, source: Option<&Path>, legacy: bool, output: &Path) ->
     let depths = [64, requests, 400];
     let mut design = transition::design(depths);
     design.sources.clear();
+    if legacy {
+        design.probes.retain(|p| p.path != "stage_counter");
+    }
     for name in ["tp_ram.sv", "tp_priority.sv", "transition_processor.sv"] {
         let target = frozen.join(name);
         std::fs::copy(original.join(name), &target)?;
@@ -136,7 +139,10 @@ pub fn run(requests: u64, source: Option<&Path>, legacy: bool, output: &Path) ->
     }
     let mut identities = Vec::new();
     let mut dense_installs = Vec::new();
+    let mut dense_transfers = Vec::new();
+    let mut dense_elapsed_cycles = Vec::new();
     for sequence in 100..100 + requests {
+        let start = sim.cycles;
         identities.push(accepted(
             &mut driver,
             &mut sim,
@@ -146,6 +152,8 @@ pub fn run(requests: u64, source: Option<&Path>, legacy: bool, output: &Path) ->
             &action(sequence, true, 0),
         ));
         dense_installs.push(driver.last_cycles);
+        dense_transfers.push(driver.last_transfers);
+        dense_elapsed_cycles.push(sim.cycles - start);
     }
     assert_eq!(
         transaction(
@@ -206,7 +214,56 @@ pub fn run(requests: u64, source: Option<&Path>, legacy: bool, output: &Path) ->
         &action(101 + requests, false, 0),
     );
     assert_eq!(reused.get(0, 32), 0);
-    let result = json!({"depths":depths,"repeated":repeated,"duplicate_cycles":duplicate_cycles,"full_cycles":full_cycles,"retained_full_cycles":retained_full_cycles,"dense_process":dense_process,"dense_installs":dense_installs,"reused_install_cycles":driver.last_cycles,"host_service_ns":driver.service_timings.take().unwrap_or_default(),"host_metadata_bytes":if legacy {None} else {driver.service.as_ref().map(|owner|owner.metadata_bytes())},"payload_bytes":{"install":80,"cancel":80,"collect_response":104}});
+    let reused_install_cycles = driver.last_cycles;
+    let mut stale = json!(null);
+    if !legacy {
+        let fixture = transition::case(
+            "stale-self-sync",
+            vec![transition::spec(0, 32, Some(0), true)],
+            vec![],
+            32,
+            None,
+            requests,
+        );
+        let fixture: rt_backend_testbench::transition_fixture::TransitionCase =
+            serde_json::from_value(fixture)?;
+        let image = rt_backend_testbench::transition_fixture::compile(&fixture.plan)
+            .map_err(|e| format!("stale fixture {e:?}"))?;
+        driver.load(&mut sim, &serde_json::to_value(image)?);
+        for sequence in 0..requests {
+            let command = transition::command(
+                0,
+                sequence + 1,
+                transition::play(0, true),
+                0,
+                (sequence != 0).then_some(0),
+                0,
+            );
+            accepted(&mut driver, &mut sim, false, 4, 0, &abi::command(&command));
+        }
+        for _ in 0..3 {
+            accepted(&mut driver, &mut sim, false, 9, 0, &Bits::default());
+        }
+        let mut retained = Vec::new();
+        for _ in 0..16 {
+            accepted(&mut driver, &mut sim, false, 9, 0, &Bits::default());
+            retained.push(driver.last_cycles);
+        }
+        for slot in 0..requests {
+            let row = accepted(&mut driver, &mut sim, false, 13, slot, &Bits::default());
+            assert_ne!(row.get(37, 3), 0, "stale fixture must be terminal");
+        }
+        accepted(&mut driver, &mut sim, false, 22, 0, &Bits::default());
+        let compact_cycles = driver.last_cycles;
+        let compact_transfers = driver.last_transfers;
+        let mut compacted = Vec::new();
+        for _ in 0..16 {
+            accepted(&mut driver, &mut sim, false, 9, 0, &Bits::default());
+            compacted.push(driver.last_cycles);
+        }
+        stale = json!({"retained_process":retained,"compacted_process":compacted,"compaction_cycles":compact_cycles,"compaction_transfers":compact_transfers});
+    }
+    let result = json!({"depths":depths,"repeated":repeated,"duplicate_cycles":duplicate_cycles,"full_cycles":full_cycles,"retained_full_cycles":retained_full_cycles,"dense_process":dense_process,"dense_installs":dense_installs,"reused_install_cycles":reused_install_cycles,"dense_admission_transfers":dense_transfers,"dense_elapsed_cycles":dense_elapsed_cycles,"stale_membership":stale,"host_service_ns":driver.service_timings.take().unwrap_or_default(),"host_metadata_bytes":if legacy {None} else {driver.service.as_ref().map(|owner|owner.metadata_bytes())},"payload_bytes":{"install":80,"cancel":80,"collect_response":104}});
     std::fs::write(
         output.join("commands.json"),
         serde_json::to_vec_pretty(&result)?,

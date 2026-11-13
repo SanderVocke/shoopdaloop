@@ -1,0 +1,51 @@
+Copyright 1986-2021 Xilinx, Inc. All Rights Reserved.
+------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2021.1 (lin64) Build 3247384 Thu Jun 10 19:36:07 MDT 2021
+| Date         : Fri Nov 13 18:57:33 2026
+| Host         : 2283f1e1f0b3 running 64-bit Ubuntu 20.04.4 LTS
+| Command      : report_drc -file post_route_drc.rpt
+| Design       : registered_core_context
+| Device       : xc7z020clg484-1
+| Speed File   : -1
+| Design State : Fully Routed
+------------------------------------------------------------------------------------
+
+Report DRC
+
+Table of Contents
+-----------------
+1. REPORT SUMMARY
+2. REPORT DETAILS
+
+1. REPORT SUMMARY
+-----------------
+            Netlist: registered_core_context
+          Floorplan: design_1
+      Design limits: <entire design considered>
+           Ruledeck: default
+             Max violations: <unlimited>
+             Violations found: 2
++-----------+----------+--------------------+------------+
+| Rule      | Severity | Description        | Violations |
++-----------+----------+--------------------+------------+
+| RTSTAT-10 | Warning  | No routable loads  | 1          |
+| ZPS7-1    | Warning  | PS7 block required | 1          |
++-----------+----------+--------------------+------------+
+
+2. REPORT DETAILS
+-----------------
+RTSTAT-10#1 Warning
+No routable loads
+1044 net(s) have no routable loads. The problem bus(es) and/or net(s) are unused_capture_busy, unused_capture_command_ready,
+unused_capture_configured_quantum[31:0], unused_capture_execute_done,
+unused_capture_execute_error[3:0], unused_capture_execute_ready,
+unused_capture_loop_read_ready, unused_capture_loop_response_data[163:0],
+unused_capture_loop_response_error, unused_capture_loop_response_valid,
+unused_capture_response_data[831:0], unused_capture_response_error[3:0]
+unused_capture_response_valid.
+Related violations: <none>
+
+ZPS7-1#1 Warning
+PS7 block required
+The PS7 cell must be used in this Zynq design in order to enable correct default configuration.
+Related violations: <none>

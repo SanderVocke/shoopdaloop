@@ -8,8 +8,11 @@ use crate::{
 };
 use rt_runtime::Error;
 use serde::{Deserialize, Serialize};
+mod membership;
 #[cfg(test)]
 mod tests;
+pub mod wire;
+use membership::{Member, Membership};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Transfer {
@@ -17,24 +20,45 @@ pub struct Transfer {
     pub index: u32,
     pub words: [u32; 20],
 }
-
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Progress {
+    Transfer(Transfer),
+    Reply(TpReply),
+}
+#[derive(Serialize)]
+pub struct StaticProgram {
+    pub setup: Vec<Transfer>,
+    pub actions: Vec<Transfer>,
+}
 struct Slot {
     generation: u32,
     request: Option<[u32; 20]>,
+    terminal: bool,
 }
-
+struct Transaction {
+    operation: u8,
+    slot: usize,
+    original: [u32; 20],
+    at: usize,
+    stage: Option<u64>,
+}
 pub struct TransitionService {
     image: TransitionImage,
     slots: Vec<Slot>,
-    outstanding: Option<(Transfer, [u32; 20])>,
+    outstanding: Option<Transaction>,
+    program: Vec<Transfer>,
+    membership: Membership,
+    stage_counter: u64,
+    published: u64,
     faulted: bool,
     settled: bool,
 }
-
 impl TransitionService {
     pub fn metadata_bytes(&self) -> usize {
         std::mem::size_of::<Self>()
             + self.slots.capacity() * std::mem::size_of::<Slot>()
+            + self.program.capacity() * std::mem::size_of::<Transfer>()
+            + self.membership.metadata_bytes()
             + self.image.description.loops.capacity()
                 * std::mem::size_of::<crate::image::LoopSpec>()
             + self
@@ -66,14 +90,20 @@ impl TransitionService {
                 .map(|_| Slot {
                     generation: 1,
                     request: None,
+                    terminal: false,
                 })
                 .collect(),
             outstanding: None,
+            program: Vec::with_capacity(
+                image.limits.pending_requests as usize + image.limits.loop_slots as usize + 3,
+            ),
+            membership: Membership::new(image.limits.loop_slots, image.limits.pending_requests),
+            stage_counter: 0,
+            published: 0,
             faulted: false,
             settled: false,
         })
     }
-
     fn select(&self, words: &[u32; 20]) -> Result<usize, u8> {
         let target = get(words, 64, 64);
         let spec = self
@@ -110,7 +140,7 @@ impl TransitionService {
             .slots
             .iter()
             .filter_map(|slot| slot.request.as_ref())
-            .any(|request| get(request, 128, 64) == sequence)
+            .any(|r| get(r, 128, 64) == sequence)
         {
             return Err(4);
         }
@@ -119,90 +149,217 @@ impl TransitionService {
             .position(|slot| slot.generation != 0 && slot.request.is_none())
             .ok_or(2)
     }
-
+    fn publication(&mut self, reserved: Option<(usize, [u32; 20])>) -> Result<(), u8> {
+        let slots = &self.slots;
+        self.membership
+            .rebuild(slots.iter().enumerate().filter_map(|(i, slot)| {
+                if let Some((selected, words)) = reserved {
+                    if selected == i {
+                        return Some(Member::new(i as u32, slot.generation, &words));
+                    }
+                }
+                slot.request
+                    .as_ref()
+                    .filter(|_| !slot.terminal)
+                    .map(|r| Member::new(i as u32, slot.generation, r))
+            }))?;
+        let mut begin = [0; 20];
+        put(&mut begin, 0, 64, self.published);
+        begin[2] = self.membership.len() as u32;
+        self.program.push(Transfer {
+            opcode: 18,
+            index: 0,
+            words: begin,
+        });
+        for (index, node) in self
+            .membership
+            .nodes
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| n.generation != 0)
+        {
+            let mut words = [0; 20];
+            words[2] = node.generation;
+            words[3] = node.value;
+            self.program.push(Transfer {
+                opcode: 19,
+                index: index as u32,
+                words,
+            });
+        }
+        for (index, head) in self.membership.heads.iter().enumerate() {
+            let mut words = [0; 20];
+            words[2] = head[0];
+            words[4] = head[1];
+            self.program.push(Transfer {
+                opcode: 20,
+                index: index as u32,
+                words,
+            });
+        }
+        self.program.push(Transfer {
+            opcode: 21,
+            index: 0,
+            words: [0; 20],
+        });
+        Ok(())
+    }
     pub fn begin(&mut self, opcode: u8, index: u32, words: [u32; 20]) -> Result<Transfer, u8> {
-        if self.faulted || self.settled || self.outstanding.is_some() {
+        if ((self.faulted || self.settled) && opcode != 13) || self.outstanding.is_some() {
             return Err(5);
         }
-        let transfer = match opcode {
+        self.program.clear();
+        let slot = match opcode {
             4 => {
                 let slot = self.select(&words)?;
-                let mut installed = words;
-                put(
-                    &mut installed,
-                    1,
-                    32,
-                    u64::from(self.slots[slot].generation),
-                );
-                Transfer {
+                self.publication(Some((slot, words)))?;
+                let installed = wire::install(&words, self.slots[slot].generation);
+                self.program.push(Transfer {
                     opcode,
                     index: slot as u32,
                     words: installed,
-                }
+                });
+                slot
             }
             5 | 6 => {
                 let slot = self.slots.get(index as usize).ok_or(3u8)?;
                 if slot.request.is_none() || slot.generation != words[0] {
                     return Err(3);
                 }
-                Transfer {
+                self.program.push(Transfer {
                     opcode,
                     index,
                     words,
-                }
+                });
+                index as usize
+            }
+            13 => {
+                self.slots.get(index as usize).ok_or(3u8)?;
+                self.program.push(Transfer {
+                    opcode,
+                    index,
+                    words,
+                });
+                index as usize
+            }
+            22 => {
+                self.publication(None)?;
+                0
             }
             _ => return Err(10),
         };
-        self.outstanding = Some((transfer, words));
-        Ok(transfer)
+        self.outstanding = Some(Transaction {
+            operation: opcode,
+            slot,
+            original: words,
+            at: 0,
+            stage: None,
+        });
+        Ok(self.program[0])
     }
-
-    pub fn finish(&mut self, reply: TpReply) -> Result<TpReply, Error> {
-        let Some((transfer, original)) = self.outstanding.take() else {
+    pub fn finish(&mut self, mut reply: TpReply) -> Result<Progress, Error> {
+        let Some(mut tx) = self.outstanding.take() else {
             return self.disconnected();
         };
+        let transfer = self.program[tx.at];
         if reply.error > 10 || (reply.error != 0 && reply.words != [0; 26]) {
             return self.disconnected();
         }
         if reply.error != 0 {
-            return Ok(reply);
+            return Ok(Progress::Reply(reply));
         }
-        let slot = &mut self.slots[transfer.index as usize];
         match transfer.opcode {
-            4 => {
-                if reply.words[0] != transfer.index || reply.words[1] != slot.generation {
+            18 => {
+                let nonce = get(&reply.words, 0, 64);
+                if nonce <= self.stage_counter || reply.words[2..].iter().any(|&v| v != 0) {
                     return self.disconnected();
                 }
-                slot.request = Some(original);
+                self.stage_counter = nonce;
+                tx.stage = Some(nonce);
+                for step in &mut self.program[tx.at + 1..] {
+                    if matches!(step.opcode, 19..=21) {
+                        put(&mut step.words, 0, 64, nonce);
+                    } else if step.opcode == 4 {
+                        put(&mut step.words, wire::PUBLICATION, 64, nonce);
+                    }
+                }
             }
-            5 => {
-                if reply.words[0] > 1 || reply.words[1..].iter().any(|&word| word != 0) {
+            19 | 20 => {
+                if reply.words != [0; 26] {
                     return self.disconnected();
                 }
             }
-            6 if reply.words != [0; 26] => {
-                if get(&reply.words, 0, 1) != 1
-                    || get(&reply.words, 1, 32) != u64::from(slot.generation)
-                    || !(1..=4).contains(&get(&reply.words, 37, 3))
-                    || get(&reply.words, 128, 64)
-                        != get(slot.request.as_ref().expect("owned request"), 128, 64)
+            21 => {
+                if Some(get(&reply.words, 0, 64)) != tx.stage
+                    || reply.words[2..].iter().any(|&v| v != 0)
                 {
                     return self.disconnected();
                 }
-                slot.request = None;
-                slot.generation = slot.generation.checked_add(1).unwrap_or(0);
+                self.published = tx.stage.expect("acknowledged publication");
+                if tx.operation == 22 {
+                    reply.words = [0; 26];
+                }
             }
-            _ => {}
+            4 => {
+                let slot = &mut self.slots[tx.slot];
+                if reply.words[0] != tx.slot as u32
+                    || reply.words[1] != slot.generation
+                    || reply.words[2..].iter().any(|&v| v != 0)
+                {
+                    return self.disconnected();
+                }
+                slot.request = Some(tx.original);
+                slot.terminal = false;
+            }
+            5 => {
+                if reply.words[0] > 1 || reply.words[1..].iter().any(|&v| v != 0) {
+                    return self.disconnected();
+                }
+                self.slots[tx.slot].terminal = true;
+            }
+            6 | 13 => {
+                let slot = &self.slots[tx.slot];
+                if transfer.opcode == 6 && reply.words == [0; 26] {
+                    if slot.terminal {
+                        return self.disconnected();
+                    }
+                } else {
+                    let Ok(words) =
+                        wire::result(&reply.words, slot.request.as_ref(), slot.generation)
+                    else {
+                        return self.disconnected();
+                    };
+                    let outcome = get(&words, 37, 3);
+                    if (transfer.opcode == 6 || slot.terminal) && outcome == 0 {
+                        return self.disconnected();
+                    }
+                    reply.words = words;
+                    let slot = &mut self.slots[tx.slot];
+                    if transfer.opcode == 6 {
+                        slot.request = None;
+                        slot.terminal = false;
+                        slot.generation = slot.generation.checked_add(1).unwrap_or(0);
+                    } else {
+                        slot.terminal |= outcome != 0;
+                    }
+                }
+            }
+            _ => return self.disconnected(),
         }
-        Ok(reply)
+        tx.at += 1;
+        if tx.at < self.program.len() {
+            let next = self.program[tx.at];
+            self.outstanding = Some(tx);
+            Ok(Progress::Transfer(next))
+        } else {
+            Ok(Progress::Reply(reply))
+        }
     }
-
     pub fn disconnected<T>(&mut self) -> Result<T, Error> {
         self.faulted = true;
         self.outstanding = None;
         Err(Error::Disconnected)
     }
-
     pub fn exchange(
         &mut self,
         opcode: u8,
@@ -210,8 +367,8 @@ impl TransitionService {
         words: [u32; 20],
         mut exchange: impl FnMut(Transfer) -> Result<TpReply, Error>,
     ) -> Result<TpReply, Error> {
-        let transfer = match self.begin(opcode, index, words) {
-            Ok(transfer) => transfer,
+        let mut transfer = match self.begin(opcode, index, words) {
+            Ok(t) => t,
             Err(error) => {
                 return Ok(TpReply {
                     error,
@@ -219,12 +376,17 @@ impl TransitionService {
                 });
             }
         };
-        match exchange(transfer) {
-            Ok(reply) => self.finish(reply),
-            Err(_) => self.disconnected(),
+        loop {
+            let reply = match exchange(transfer) {
+                Ok(r) => r,
+                Err(_) => return self.disconnected(),
+            };
+            match self.finish(reply)? {
+                Progress::Transfer(t) => transfer = t,
+                Progress::Reply(r) => return Ok(r),
+            }
         }
     }
-
     pub fn observe(&mut self, opcode: u8, reply: &TpReply) {
         if opcode == 0 && reply.error == 0 {
             self.settled = get(&reply.words, 128, 2) == 2;
@@ -237,25 +399,53 @@ impl TransitionService {
             self.faulted = true;
         }
     }
-
-    pub fn prepare_static(&mut self, words: [u32; 20]) -> Result<Transfer, u8> {
-        if self.faulted || self.settled || self.outstanding.is_some() {
+    pub fn prepare_static_batch(&mut self, requests: &[[u32; 20]]) -> Result<StaticProgram, u8> {
+        if self.faulted
+            || self.settled
+            || self.outstanding.is_some()
+            || self.stage_counter != 0
+            || self.slots.iter().any(|s| s.request.is_some())
+        {
             return Err(5);
         }
-        let slot = self.select(&words)?;
-        self.slots[slot].request = Some(words);
-        let mut installed = words;
-        put(
-            &mut installed,
-            1,
-            32,
-            u64::from(self.slots[slot].generation),
-        );
-        Ok(Transfer {
-            opcode: 4,
-            index: slot as u32,
-            words: installed,
-        })
+        let mut identities = Vec::with_capacity(requests.len().min(self.slots.len()));
+        for &original in requests {
+            let slot = match self.select(&original) {
+                Ok(i) => i,
+                Err(e) => {
+                    for slot in &mut self.slots {
+                        slot.request = None;
+                    }
+                    return Err(e);
+                }
+            };
+            self.slots[slot].request = Some(original);
+            identities.push(slot);
+        }
+        self.program.clear();
+        self.publication(None)?;
+        for step in &mut self.program {
+            if matches!(step.opcode, 19..=21) {
+                put(&mut step.words, 0, 64, 1);
+            }
+        }
+        let setup = self.program.clone();
+        let actions = identities
+            .into_iter()
+            .zip(requests)
+            .map(|(slot, original)| {
+                let mut words = wire::install(original, self.slots[slot].generation);
+                put(&mut words, wire::PUBLICATION, 64, 1);
+                Transfer {
+                    opcode: 4,
+                    index: slot as u32,
+                    words,
+                }
+            })
+            .collect();
+        self.stage_counter = 1;
+        self.published = 1;
+        Ok(StaticProgram { setup, actions })
     }
 }
 
@@ -306,7 +496,7 @@ impl<D: Device> Device for ManagedDevice<D> {
 
 impl<D: LoopDevice> LoopDevice for ManagedDevice<D> {
     fn tp(&mut self, opcode: u8, index: u32, words: [u32; 20]) -> Result<TpReply, Error> {
-        if matches!(opcode, 4..=6) {
+        if matches!(opcode, 4..=6 | 13 | 22) {
             let Some(service) = &mut self.service else {
                 return Ok(TpReply {
                     error: 5,

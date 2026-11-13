@@ -2,8 +2,11 @@ set stage [lindex $argv 0]
 set_param general.maxThreads [lindex $argv 1]
 set part xc7z020clg484-1
 set generics "LOOP_DEPTH=[lindex $argv 2] REQUEST_DEPTH=[lindex $argv 3] EVENT_DEPTH=[lindex $argv 4] INTEGRATED=[lindex $argv 5]"
+if {[llength $argv] > 6} { append generics " HAS_EXEC_INTERFACE=[lindex $argv 6]" }
 create_project -in_memory -part $part
-read_verilog -sv [concat [lsort [glob source/*.sv]] context.sv]
+read_verilog -sv [lsort [glob source/*.sv]]
+if {[file exists measurement_adapter.sv]} { read_verilog -sv measurement_adapter.sv }
+read_verilog -sv context.sv
 read_xdc context.xdc
 set f [open setup.txt w]
 puts $f "Vivado: [version]\nPart: $part\nGenerics: $generics"

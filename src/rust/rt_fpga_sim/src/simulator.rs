@@ -137,6 +137,7 @@ pub struct Simulator<'ctx> {
     pub stalls: bool,
     pub timeout: u64,
     pub last_error: Option<String>,
+    held_reply: Option<(u8, [u32; 26])>,
 }
 impl<'ctx> Simulator<'ctx> {
     pub fn new(
@@ -156,6 +157,7 @@ impl<'ctx> Simulator<'ctx> {
             stalls,
             timeout: 100_000,
             last_error: None,
+            held_reply: None,
         };
         sim.reset();
         Ok(sim)
@@ -180,6 +182,7 @@ impl<'ctx> Simulator<'ctx> {
         Ok(())
     }
     pub fn reset(&mut self) {
+        self.held_reply = None;
         self.last_error = None;
         self.model.run_valid = 0;
         self.model.cfg_valid = 0;
@@ -206,6 +209,15 @@ impl<'ctx> Simulator<'ctx> {
         for (offset, clock) in [(0, 0), (5, 1), (9, 0)] {
             self.model.clk = clock;
             self.model.eval();
+            if let Some((error, words)) = self.held_reply {
+                assert_ne!(self.model.response_valid, 0, "held TP valid disappeared");
+                assert_eq!(self.model.response_error, error);
+                assert_eq!(
+                    *self.model.response_data.value(),
+                    words,
+                    "held TP payload changed"
+                );
+            }
             if let Some(trace) = &mut self.trace {
                 trace.dump(self.cycles * 10 + offset);
             }
@@ -222,12 +234,15 @@ impl<'ctx> Simulator<'ctx> {
         }
         Ok(value)
     }
-    pub fn command_raw(
+    pub fn hold_command(
         &mut self,
         opcode: u8,
         index: u32,
         data: [u32; 20],
     ) -> SimResult<(u8, [u32; 26])> {
+        if self.held_reply.is_some() {
+            return Err("a TP reply is already held".into());
+        }
         self.model.command_opcode = opcode;
         self.model.command_index = index;
         self.model.command_data = WideIn::new(data);
@@ -255,19 +270,36 @@ impl<'ctx> Simulator<'ctx> {
         }
         let value = *self.model.response_data.value();
         let error = self.model.response_error;
-        for _ in 0..if self.stalls { 3 } else { 0 } {
-            self.cycle();
-            if self.model.response_valid == 0
-                || *self.model.response_data.value() != value
-                || self.model.response_error != error
-            {
-                return Err("TP response changed while stalled".into());
-            }
-        }
+        self.held_reply = Some((error, value));
+        Ok((error, value))
+    }
+    pub fn held_response(&mut self) -> Option<(u8, [u32; 26])> {
+        self.model.eval();
+        (self.model.response_valid != 0)
+            .then(|| (self.model.response_error, *self.model.response_data.value()))
+    }
+    pub fn consume_response(&mut self) -> SimResult<(u8, [u32; 26])> {
+        let response = self.held_response().ok_or("no held TP response")?;
+        self.held_reply = None;
         self.model.response_ready = 1;
         self.cycle();
         self.model.response_ready = 0;
-        Ok((error, value))
+        Ok(response)
+    }
+    pub fn command_raw(
+        &mut self,
+        opcode: u8,
+        index: u32,
+        data: [u32; 20],
+    ) -> SimResult<(u8, [u32; 26])> {
+        let response = self.hold_command(opcode, index, data)?;
+        for _ in 0..if self.stalls { 3 } else { 0 } {
+            self.cycle();
+            if self.held_response() != Some(response) {
+                return Err("TP response changed while stalled".into());
+            }
+        }
+        self.consume_response()
     }
     pub fn state(
         &mut self,
@@ -382,6 +414,7 @@ impl<'ctx> Simulator<'ctx> {
         prepare[2] = image.transition.limits.events;
         prepare[3] = image.transition.dependency_order.len() as u32;
         prepare[4] = image.program.quantum;
+        prepare[5] = rt_fpga_adapter::transition_service::wire::ABI;
         self.command(3, 0, prepare)?;
         self.store_config(0, 3, Some([self.media_slots, 0, 0, 0, 0]))?;
         for i in 0..image.media.views.len() {

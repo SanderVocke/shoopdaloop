@@ -1,0 +1,35 @@
+Copyright 1986-2021 Xilinx, Inc. All Rights Reserved.
+------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2021.1 (lin64) Build 3247384 Thu Jun 10 19:36:07 MDT 2021
+| Date         : Fri Nov 13 18:52:25 2026
+| Host         : 2283f1e1f0b3 running 64-bit Ubuntu 20.04.4 LTS
+| Command      : report_utilization -hierarchical -file post_synth_hierarchical.rpt
+| Design       : registered_core_context
+| Device       : 7z020clg484-1
+| Design State : Synthesized
+------------------------------------------------------------------------------------
+
+Utilization Design Information
+
+Table of Contents
+-----------------
+1. Utilization by Hierarchy
+
+1. Utilization by Hierarchy
+---------------------------
+
++-----------------------------------------+----------------------------+------------+------------+---------+------+------+--------+--------+------------+
+|                 Instance                |           Module           | Total LUTs | Logic LUTs | LUTRAMs | SRLs |  FFs | RAMB36 | RAMB18 | DSP Blocks |
++-----------------------------------------+----------------------------+------------+------------+---------+------+------+--------+--------+------------+
+| registered_core_context                 |                      (top) |      11303 |      11303 |       0 |    0 | 9835 |     28 |      2 |          0 |
+|   (registered_core_context)             |                      (top) |         16 |         16 |       0 |    0 | 1949 |      0 |      0 |          0 |
+|   core_under_test                       | transition_measure_adapter |      11287 |      11287 |       0 |    0 | 7886 |     28 |      2 |          0 |
+|     (core_under_test)                   | transition_measure_adapter |          0 |          0 |       0 |    0 |    0 |      0 |      0 |          0 |
+|     shared_host_execution.processor     |       transition_processor |      11287 |      11287 |       0 |    0 | 7886 |     28 |      2 |          0 |
+|       (shared_host_execution.processor) |       transition_processor |       4434 |       4434 |       0 |    0 | 7886 |      0 |      0 |          0 |
+|       dependency_order                  |     tp_ram__parameterized2 |        121 |        121 |       0 |    0 |    0 |      0 |      1 |          0 |
+|       events                            |     tp_ram__parameterized3 |        401 |        401 |       0 |    0 |    0 |      4 |      0 |          0 |
+|       loops                             |                     tp_ram |       1258 |       1258 |       0 |    0 |    0 |     12 |      0 |          0 |
+|       requests                          |     tp_ram__parameterized0 |       4578 |       4578 |       0 |    0 |    0 |      9 |      1 |          0 |
+|       specs                             |     tp_ram__parameterized1 |        495 |        495 |       0 |    0 |    0 |      3 |      0 |          0 |
++-----------------------------------------+----------------------------+------------+------------+---------+------+------+--------+--------+------------+

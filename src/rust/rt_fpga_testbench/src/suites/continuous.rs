@@ -269,6 +269,17 @@ pub fn run(name: &str, c: &Config, mode: Mode, output: &Path) -> Result<Value> {
     transition.busy_signal = "transition_busy";
     s.model.set_all(&[("epoch", 1), ("job_enable", 1)]);
     transition.load(&mut s, &prepared.image["transition"]);
+    for transfer in &prepared.membership {
+        let (error, _) = transition.raw_command(
+            &mut s,
+            u64::from(transfer.opcode),
+            u64::from(transfer.index),
+            &Bits(transfer.words.to_vec()),
+            Some(0),
+            false,
+        );
+        assert_eq!(error, 0, "prepared membership");
+    }
     let mut program = Program::new([256, 128, 256]);
     let mut case = prepared.image.clone();
     case["queue_capacity"] = json!(256);

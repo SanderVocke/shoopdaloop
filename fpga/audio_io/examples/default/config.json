@@ -3,7 +3,7 @@
   "channels": 16,
   "block_chunks": 32,
   "slots": 1024,
-  "boot_words": 166,
+  "boot_words": 240,
   "event_words": 74,
   "instructions": 64,
   "states": 32,

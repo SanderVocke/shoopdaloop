@@ -38,6 +38,7 @@ def main():
     parser.add_argument('--vivado', default='vivado')
     parser.add_argument('--source', type=Path, default=HERE / 'rtl')
     parser.add_argument('--stage', choices=('synth', 'route'), default='synth')
+    parser.add_argument('--context', choices=('native', 'shared'), default='native')
     parser.add_argument('--loops', type=int, default=64)
     parser.add_argument('--requests', type=int, default=272)
     parser.add_argument('--events', type=int, default=400)
@@ -58,13 +59,22 @@ def main():
     for path in sorted(source.glob('*.sv')):
         shutil.copyfile(path, output / 'source' / path.name)
         hashes[path.name] = hashlib.sha256(path.read_bytes()).hexdigest()
-    generated = context((source / 'transition_processor.sv').read_text(), 'transition_processor')
+    rtl = (source / 'transition_processor.sv').read_text()
+    independent_execution = 'input wire execute_valid' in rtl
+    if args.context == 'shared':
+        adapter = HERE / 'measurement_adapter.sv'
+        shutil.copyfile(adapter, output / adapter.name)
+        generated = context(adapter.read_text(), 'transition_measure_adapter')
+    else:
+        generated = context(rtl, 'transition_processor')
     generated = generated.replace('`include "state_processor_defs.svh"\n', '')
     (output / 'context.sv').write_text(generated)
     shutil.copyfile(HERE / 'measure.tcl', output / 'run.tcl')
     shutil.copyfile(ROOT / 'fpga/synthesis/core.xdc', output / 'context.xdc')
     (output / 'source-manifest.json').write_text(json.dumps(hashes, indent=2) + '\n')
     artifacts = [output / name for name in ('context.sv', 'context.xdc', 'run.tcl')]
+    if args.context == 'shared':
+        artifacts.append(output / 'measurement_adapter.sv')
     (output / 'artifact-manifest.json').write_text(json.dumps({
         path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in artifacts
     }, indent=2) + '\n')
@@ -73,11 +83,14 @@ def main():
         working_tree_dirty=bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True)),
         command=sys.argv, part='xc7z020clg484-1', loops=args.loops, requests=args.requests,
         events=args.events, integrated=args.integrated, clock_ns=10, uncertainty_ns=0.2,
-        threads=args.threads, stage=args.stage,
+        threads=args.threads, stage=args.stage, context=args.context,
+        independent_execution=independent_execution,
     ), indent=2) + '\n')
     command = [args.vivado, '-mode', 'batch', '-nojournal', '-log', 'vivado.log',
                '-source', 'run.tcl', '-tclargs', args.stage, str(args.threads),
                str(args.loops), str(args.requests), str(args.events), str(args.integrated)]
+    if args.context == 'shared':
+        command.append(str(int(independent_execution)))
     if sys.platform == 'linux':
         import ctypes
         if ctypes.CDLL(None).prctl(36, 1, 0, 0, 0) != 0:

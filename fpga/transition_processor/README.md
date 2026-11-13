@@ -59,14 +59,15 @@ signals, not a finalized ARM register map. Errors return zero payload.
 | 0 | Status | Ignored | Status row |
 | 1 | Write spec | Slot / 192-bit spec | Zero |
 | 2 | Write order | Index / loop slot in low u32; next u32 must be zero | Zero |
-| 3 | Prepare | Five u32: loops, requests, events, ordered loops, quantum | Zero |
-| 4 | Install | Request slot / command fields, generation token at bits 1–32 | Slot u32 at 0, generation u32 at 32 |
+| 3 | Prepare | Six u32: loops, requests, events, ordered loops, quantum, ABI=3 | Zero |
+| 4 | Install | Request slot / compact fields, generation and committed publication | Slot u32 at 0, generation u32 at 32 |
 | 5 | Cancel | Slot / generation low u32 | Cancelled bit at 0 |
 | 6 | Collect | Slot / generation low u32 | Terminal request, or zero |
 | 9 | Process | Ignored | Zero |
 | 12 | Read state | Loop slot | Current loop row |
-| 13 | Read request | Request slot | Current request, including empty generation |
+| 13 | Read request | Request slot | Compact cell, including empty generation |
 | 15 | Read event | Journal index | Current event row |
+| 18–21 | Membership BEGIN/NODE/ROOT/COMMIT | See [COMPACT.md](COMPACT.md) | Nonce or zero |
 
 Opcodes 7, 8, 10 and 14 are unsupported. Opcode 11 is private to integrated use
 and refused in standalone mode. Configuration loads all spec slots (including
@@ -80,7 +81,7 @@ mutation; status/readback remain available. Reset is required to reconfigure.
 
 The ARM service preserves public submission, capacity, duplicate detection and
 request ownership. INSTALL checks the selected empty slot's generation and all
-existing target/source/frame guards, then uses the existing pending lists. It
+target/source/frame guards and committed membership generation. It
 does not search for a free slot or duplicate sequence. See
 [the installation contract](INSTALL.md) for ownership, error precedence, prepared
 streams and the distinction between public submission and raw fabric traffic.
@@ -90,7 +91,7 @@ Codes: 0 success, 1 invalid_config, 2 capacity, 3 invalid_id, 4 duplicate_id,
 10 unsupported. Bounds checks precede RAM address narrowing.
 
 The synchronous shared port transfers on `loop_read_valid && loop_read_ready`
-only while settled, with no outstanding command/response. A response pulses in
+only while settled; held host replies do not gate this independent read path. A response pulses in
 the following cycle without backpressure. The **164-bit** record packs valid at
 0, generation u32 at 1, mode at 33, length u64 at 35, position u64 at 99, and
 capture-start at 163 (`capture_frames == 0`). The consumer validates generation
@@ -112,24 +113,14 @@ revision, revision watermark, last-pulse frame. Boundary metadata starts at bit
 576: intent-present, intent slot u32 at 577, intent sequence u64 at 609,
 protected-present at 673, protected sequence u64 at 674, origin-present at 738,
 origin slot/generation u32 at 739/771, and discontinuity at 803. Other bits are
-reserved except for private pending-list heads described below.
+reserved. Membership roots live in separate publication banks.
 
-A request row has valid at bit 0, generation u32 at bit 1, after-ticks at bit 33,
-operation at bits 34–35 (0 stop, 1 play, 2 record, 3 seek), retrigger at bit 36,
-outcome at bits 37–39 (0 pending, 1 applied, 2 superseded, 3 cancelled, 4 failed),
-and error reason at bits 40–43. Nine u64 fields start at bits 64 through 576:
-target ID, sequence, requested frame, source ID, original skip, requested
-position, effective frame, remaining ticks, outcome frame. An ID packs slot low
-and generation high. Empty slots retain their next generation; zero generation
-retires the slot. Terminal/absolute requests export null remaining ticks in JSON.
-
-The architectural request response remains 640 bits. Internal records append
-next/previous pointers at offsets `640` and `640 + H`, where
-`H = max(1, ceil(log2(REQUEST_DEPTH))) + 1`. Each pointer uses H bits; all ones means
-no entry. Per-loop absolute/source-timed heads use H bits at offsets 37/804 in the
-existing 832-bit loop row. Those heads survive per-quantum transient-field clearing.
-They are private metadata, like the intent/protected fields, and do not appear in
-JSON snapshots.
+The public reconstructed request has a 640-bit representation. Device action and
+result cells use 397 bits; Rust retains originals and reconstructs requested/source
+fields from authoritative compact results. Membership uses separate immutable,
+double-buffered generation-qualified nodes and roots. The exact wire fields,
+publication opcodes, storage and traversal bounds are in [COMPACT.md](COMPACT.md).
+There are no device insertion/unlink states or request next/previous writebacks.
 
 Spec RAM is 192 bits per loop. The dependency-order RAM stores one loop slot per
 entry using `max(1, ceil(log2(LOOP_DEPTH)))` bits. There are no component tags,
@@ -146,8 +137,8 @@ Status has frame u64 at 0, fault code at 64 (4 bits), phase at 128 (2 bits:
 192, and loop/request/event/ordered-loop/quantum counts u32 at 256/288/320/352/384.
 Three u32 diagnostics at 416/448/480 report request checks, follower visits and
 pulse deliveries for the latest process operation. The follower-visit diagnostic
-now counts source-pulse reactions, including self-sync. There is no serial or bank
-selector. Reserved fields return zero. `../abi/transition.py` decodes these rows.
+counts source-pulse reactions, including self-sync. ABI revision 3 is at bits
+144–159. Bank versions are acknowledged by publication commands. Reserved fields return zero. `../abi/transition.py` decodes these rows.
 
 ## Verification
 

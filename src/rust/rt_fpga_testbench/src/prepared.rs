@@ -14,6 +14,7 @@ pub struct Prepared {
     pub expected: Value,
     pub boot: Vec<Bits>,
     pub events: Vec<Bits>,
+    pub membership: Vec<rt_fpga_adapter::transition_service::Transfer>,
     pub directory: PathBuf,
 }
 pub fn scenario(q: u64, cf: u64, channels: u64, monitoring: bool, routing: &str) -> Value {
@@ -86,6 +87,7 @@ pub fn prepare_with_views(scenario: Value, bc: u64, slots: u64, views: u64) -> R
         limits["events"].as_u64().unwrap(),
         order.len() as u64,
         q,
+        u64::from(rt_fpga_adapter::transition_service::wire::ABI),
     ]
     .into_iter()
     .enumerate()
@@ -122,18 +124,34 @@ pub fn prepare_with_views(scenario: Value, bc: u64, slots: u64, views: u64) -> R
         boot.push(control_packet(0, 2, &Bits::from_u64(v), 0, i as u64));
     }
     boot.push(control_packet(0, 3, &Bits::default(), 0, 0));
-    let mut events = Vec::new();
     let mut owner = transition::request_service(t)?;
-    let mut sequence = 0;
-    for (n, step) in scenario["steps"].as_array().unwrap().iter().enumerate() {
+    let mut originals = Vec::new();
+    for step in scenario["steps"].as_array().unwrap() {
         for action in step["actions"].as_array().unwrap() {
-            sequence += 1;
             let mut c = action.clone();
-            c["sequence"] = json!(sequence);
-            let command = transition::command(&c);
-            let transfer = owner
-                .prepare_static(command.0.try_into().unwrap())
-                .map_err(|error| format!("prepared action refused: {error}"))?;
+            c["sequence"] = json!(originals.len() + 1);
+            originals.push(transition::command(&c).0.try_into().unwrap());
+        }
+    }
+    let program = owner
+        .prepare_static_batch(&originals)
+        .map_err(|error| format!("prepared actions refused: {error}"))?;
+    let activate = boot.pop().unwrap();
+    for transfer in &program.setup {
+        boot.push(control_packet(
+            0,
+            0,
+            &Bits(transfer.words.to_vec()),
+            u64::from(transfer.opcode),
+            u64::from(transfer.index),
+        ));
+    }
+    boot.push(activate);
+    let mut actions = program.actions.into_iter();
+    let mut events = Vec::new();
+    for (n, step) in scenario["steps"].as_array().unwrap().iter().enumerate() {
+        for _ in step["actions"].as_array().unwrap() {
+            let transfer = actions.next().unwrap();
             events.push(control_packet(
                 n as u64,
                 0,
@@ -147,6 +165,7 @@ pub fn prepare_with_views(scenario: Value, bc: u64, slots: u64, views: u64) -> R
     use std::hash::{Hash, Hasher};
     let mut hash = std::hash::DefaultHasher::new();
     scenario.to_string().hash(&mut hash);
+    rt_fpga_adapter::transition_service::wire::ABI.hash(&mut hash);
     bc.hash(&mut hash);
     slots.hash(&mut hash);
     views.hash(&mut hash);
@@ -191,6 +210,7 @@ pub fn prepare_with_views(scenario: Value, bc: u64, slots: u64, views: u64) -> R
         expected,
         boot,
         events,
+        membership: program.setup,
         directory,
     })
 }

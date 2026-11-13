@@ -1,5 +1,7 @@
 use rt_fpga_adapter::{
-    image::TransitionImage, looping::TpReply, transition_service::TransitionService,
+    image::TransitionImage,
+    looping::TpReply,
+    transition_service::{Progress, TransitionService},
 };
 use serde::Deserialize;
 use std::io::{self, BufRead, Write};
@@ -22,8 +24,8 @@ enum Command {
         opcode: u8,
         reply: TpReply,
     },
-    Static {
-        words: [u32; 20],
+    StaticBatch {
+        words: Vec<[u32; 20]>,
     },
     Disconnect,
 }
@@ -36,7 +38,7 @@ pub fn run() -> Result<(), String> {
             serde_json::from_str(&line.map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
         let output = if let Command::Configure { image } = input {
             service = Some(TransitionService::new(&image).map_err(|e| e.to_string())?);
-            serde_json::json!({"ok":true,"metadata_bytes":service.as_ref().expect("configured").metadata_bytes()})
+            serde_json::json!({"ok":true,"abi":rt_fpga_adapter::transition_service::wire::ABI,"metadata_bytes":service.as_ref().expect("configured").metadata_bytes()})
         } else {
             let service = service.as_mut().ok_or("service is not configured")?;
             match input {
@@ -60,7 +62,12 @@ pub fn run() -> Result<(), String> {
                     let result = service.finish(reply);
                     let service_ns = start.elapsed().as_nanos() as u64;
                     match result {
-                        Ok(reply) => serde_json::json!({"reply":reply,"service_ns":service_ns}),
+                        Ok(Progress::Reply(reply)) => {
+                            serde_json::json!({"reply":reply,"service_ns":service_ns})
+                        }
+                        Ok(Progress::Transfer(transfer)) => {
+                            serde_json::json!({"transfer":transfer,"service_ns":service_ns})
+                        }
                         Err(error) => {
                             serde_json::json!({"fault":error.to_string(),"service_ns":service_ns})
                         }
@@ -70,8 +77,8 @@ pub fn run() -> Result<(), String> {
                     service.observe(opcode, &reply);
                     serde_json::json!({"ok":true})
                 }
-                Command::Static { words } => match service.prepare_static(words) {
-                    Ok(transfer) => serde_json::json!({"transfer":transfer}),
+                Command::StaticBatch { words } => match service.prepare_static_batch(&words) {
+                    Ok(program) => serde_json::json!({"program":program}),
                     Err(error) => serde_json::json!({"error":error}),
                 },
                 Command::Disconnect => {

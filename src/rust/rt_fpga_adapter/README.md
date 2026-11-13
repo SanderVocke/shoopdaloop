@@ -5,7 +5,8 @@
 `transition_service::TransitionService` selects request slots, checks duplicate
 sequences and retains original commands until terminal collection. Its indexed
 INSTALL traffic names a slot and nonzero reuse token. FPGA retains frame rounding,
-dynamic operation validation, lists, synchronization and transition resolution.
+dynamic operation validation, synchronization and transition resolution. ARM
+prepares ordered membership and publishes it atomically before final INSTALL.
 `ManagedDevice<D>` attaches this owner to the mono/application adapters without
 changing their public queues or supported operation profiles. Signal-program-only
 updates retain the owner; successful device reload constructs a new one after
@@ -19,11 +20,15 @@ Rust or through its JSONL service bridge for Python input generators, without
 predicting execution outcomes. See the
 [installation contract](../../../fpga/transition_processor/INSTALL.md).
 Matched FPGA costs, native service characterization and verification evidence are
-in the [request-slot report](../../../fpga/transition_processor/measurements/ARM_REQUEST_SLOTS.md).
+in the [combined report](../../../fpga/transition_processor/measurements/COMPACT_ACTIONS_AND_MEMBERSHIP.md).
 
-This first boundary change retains full hardware records and terminal storage.
-Held responses, fabric fences and application settlement pauses keep their
-existing behavior; full continuous-audio autonomy is a later milestone.
+FPGA stores compact actions/results and generation-qualified membership. Rust
+reconstructs public completions from retained originals and authoritative results.
+A multitransfer exchange returns `Progress::Transfer` until `Progress::Reply`;
+`exchange` drives the synchronous sequence. Optional compaction (service operation
+22) omits known terminals without releasing their credits. Fabric execution is
+independent of held host replies. Fences and application settlement pauses remain
+for later milestones.
 
 `Adapter<D>` consumes the same `rt_runtime::executor::Control` requests as the
 native `GraphRuntime`. It is an ARM/service-thread bridge: it may allocate during
