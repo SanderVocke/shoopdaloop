@@ -7,6 +7,12 @@ fn application_bootstraps_its_real_sync_graph_on_rtl() {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../work/marlin-app");
     let mut fpga = Fpga::new(artifacts, RunMode::Stepped).unwrap();
     assert_eq!(fpga.app.snapshot().tracks[0].name, "Sync");
+    let drivers = fpga.app.snapshot().audio_drivers.clone();
+    assert!(!drivers.supported);
+    assert_eq!(
+        drivers.active.unwrap().configured,
+        shoop_app_api::AudioDriverConfig::Simulated
+    );
     assert_eq!(fpga.hardware.store_usage().slot_limit, 32768);
     assert!(fpga.app.loop_state().empty);
     fpga.app.pump(20);

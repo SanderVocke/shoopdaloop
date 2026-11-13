@@ -982,6 +982,9 @@ fn audio_driver_config(
             Ok(AudioDriverConfig::Cpal(config))
         }
         AudioDriverKind::WebAudio => Ok(AudioDriverConfig::WebAudio),
+        AudioDriverKind::Simulated => {
+            Err("a simulated clock cannot be selected as an audio driver".to_owned())
+        }
     }
 }
 
@@ -1436,10 +1439,16 @@ impl AppWidget {
         self.host_controls.state = Some(state);
     }
 
+    /// Describes where audio runs while no host state is set, replacing the platform default.
+    pub fn set_local_runtime_description(&mut self, description: impl Into<String>) {
+        self.host_controls.local_runtime = Some(description.into());
+    }
+
     pub fn reset_connection(&mut self) {
         let mut fresh = Self::new(self.settings.registry());
         core::mem::swap(&mut fresh.settings, &mut self.settings);
         fresh.settings.reset_connection();
+        fresh.host_controls.local_runtime = self.host_controls.local_runtime.take();
         fresh.profiling = core::mem::take(&mut self.profiling);
         fresh.logo = self.logo.take();
         fresh.tracing_status = self.tracing_status;

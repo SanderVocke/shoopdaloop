@@ -146,6 +146,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 AudioDriverKind::Jack,
                 AudioDriverConfig::Jack(Default::default()),
             ),
+            DriverKind::Simulated => (AudioDriverKind::Simulated, AudioDriverConfig::Simulated),
         };
         let mut active = ResolvedAudioDriverConfig {
             configured,

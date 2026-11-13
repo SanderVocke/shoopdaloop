@@ -126,13 +126,14 @@ fn host_text_and_record_bounds_are_checked() {
 }
 
 #[shoop_test]
-fn jack_driver_identity_appends_a_tag_without_changing_existing_drivers() {
+fn driver_identities_append_tags_without_changing_existing_drivers() {
     let mut bytes = [0; MAX_RECORD_BYTES];
     for (kind, tag) in [
         (DriverKind::Dummy, 0),
         (DriverKind::Cpal, 1),
         (DriverKind::WebAudio, 2),
         (DriverKind::Jack, 3),
+        (DriverKind::Simulated, 4),
     ] {
         let reply = HostReply::Ready(DriverStatus {
             kind,
