@@ -319,6 +319,15 @@ match their expected signals; render-memory growth is false. Logs:
 `/tmp/p16-busfx-version-worklet-build.log` and
 `/tmp/p16-busfx-version-browser.log`. No product protocol or timeout changes.
 
+Hosted-processor [run `43405024376`](https://github.com/SanderVocke/shoopdaloop/actions/runs/43405024376)
+passes on `4c41fdba`. The release web job found a second stale version pin in
+`rt_worklet_contract.mjs`, missed by the earlier case-sensitive search. It now
+uses 26. Scanning the current browser fixtures finds no remaining protocol-25
+pins; protocol 28 belongs to the unchanged legacy reference. The complete
+client-codec/worklet clock/timestamp/xrun/runtime-toggle contract and trace-chunk
+transport test pass locally. Logs: `/tmp/p16-rt-contract-v26.log` and
+`/tmp/p16-trace-chunk-contract.log`.
+
 ## Deliberate limits
 
 No VM migration, automatic start, server script catalog, attachment transfer of

@@ -406,3 +406,9 @@ the selected platform plus browser/portable paths affected by P16.
   locked worklet build and the actual Chromium scenario pass all five exact
   audio regions with no render-memory growth. This changes no product protocol
   or timeout; the next matrix includes the fixture correction.
+- Hosted-processor CI passes on `4c41fdba`. The release web artifact contract
+  exposed a second hand-written protocol-25 pin (`engineProtocolVersion`) that
+  the earlier case-sensitive search missed. It now uses 26. A broader scan found
+  no remaining current-browser protocol-25 pins; the legacy reference's separate
+  protocol remains 28. The complete client-codec/worklet clock/timestamp/xrun/
+  runtime-toggle contract and trace-chunk transport check both pass locally.
