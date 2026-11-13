@@ -178,6 +178,10 @@ impl Transition {
             ("command_data", 0),
             ("response_ready", 0),
         ]);
+        if s.model.has("execute_valid") {
+            s.model
+                .set_all(&[("execute_valid", 0), ("execute_finish", 0)]);
+        }
         if s.model.has("loop_read_valid") {
             s.model
                 .set_all(&[("loop_read_valid", 0), ("loop_read_slot", 0)]);
@@ -273,13 +277,12 @@ impl Transition {
         }
         reply
     }
-    pub fn raw_command(
+    pub fn hold_raw_command(
         &mut self,
         s: &mut Sim<'_>,
         opcode: u64,
         index: u64,
         data: &Bits,
-        stall: Option<u64>,
         intrude: bool,
     ) -> (u64, Bits) {
         s.model.eval();
@@ -318,6 +321,18 @@ impl Transition {
         let status = s.model.get("response_error");
         let value = s.model.bits("response_data");
         assert_eq!(s.model.get("command_ready"), 0);
+        (status, value)
+    }
+    pub fn raw_command(
+        &mut self,
+        s: &mut Sim<'_>,
+        opcode: u64,
+        index: u64,
+        data: &Bits,
+        stall: Option<u64>,
+        intrude: bool,
+    ) -> (u64, Bits) {
+        let (status, value) = self.hold_raw_command(s, opcode, index, data, intrude);
         let stall = stall.unwrap_or_else(|| self.random.below(4));
         for _ in 0..stall {
             s.idle(1);

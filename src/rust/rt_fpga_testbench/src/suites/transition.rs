@@ -8,6 +8,7 @@ use crate::{
 };
 use rt_backend_testbench::transition_fixture as production;
 use serde_json::{Value, json};
+mod control;
 
 pub const CONFIGS: &[(&str, [u64; 3])] = &[
     ("default", [64, 64, 192]),
@@ -283,6 +284,11 @@ pub fn compare(d: &mut Transition, s: &mut Sim<'_>, value: &Value) -> Result<Vec
 pub fn run(name: &str, depths: [u64; 3], random_cases: u64) -> Result<()> {
     let compiled = design(depths).build(&crate::root().join("work/marlin-suite/transition"))?;
     let mut s = Sim::new(compiled.session(None)?, &[("clk", 10_000, 0)]);
+    s.agent(crate::protocol::ReadyValid::new(
+        "response_valid",
+        "response_ready",
+        &["response_error", "response_data"],
+    ));
     let mut d = Transition::new(depths);
     for case in directed(depths) {
         compare(&mut d, &mut s, &case)?;
@@ -291,6 +297,7 @@ pub fn run(name: &str, depths: [u64; 3], random_cases: u64) -> Result<()> {
         compare(&mut d, &mut s, &seeded(depths, seed))?;
     }
     indexed_install_guards(&mut d, &mut s)?;
+    control::held_replies(&mut d, &mut s)?;
     transport_and_negative_cases(&mut d, &mut s)?;
     dependency_order_validation(&mut d, &mut s);
     scratch_initialization_and_reset(&mut d, &mut s)?;
@@ -317,7 +324,7 @@ pub fn run(name: &str, depths: [u64; 3], random_cases: u64) -> Result<()> {
             )?;
         }
     }
-    println!("transition/{name}: 7 regression groups, {random_cases} seeds x 80 quanta");
+    println!("transition/{name}: 8 regression groups, {random_cases} seeds x 80 quanta");
     Ok(())
 }
 fn transport_case() -> Value {

@@ -130,9 +130,10 @@ module loop_pipeline #(
     phase_t phase;
     wire host_access = phase == IDLE || phase == FAULT || phase == HOST_SETTLE_WAIT || phase == BOUNDARY;
     wire coordinator_send = (phase == SETTLE_SEND || phase == FINISH_SEND) && !memory_fault;
-    wire coordinator_wait = phase == SETTLE_WAIT || phase == FINISH_WAIT;
     wire reserved_command = command_opcode == 9 || command_opcode == 11;
     wire tp_command_ready, tp_response_valid;
+    wire tp_execute_ready, tp_execute_done;
+    wire [3:0] tp_execute_error;
     wire [3:0] tp_response_error;
     wire [831:0] tp_response_data;
     wire tp_busy;
@@ -156,9 +157,9 @@ module loop_pipeline #(
     assign transition_busy = tp_busy;
 
     assign busy = (phase != IDLE && phase != FAULT) || audio_busy;
-    assign run_ready = (phase == IDLE || phase == BOUNDARY) && audio_run_ready && tp_command_ready && !command_valid && !reset;
-    assign command_ready = host_access && !reserved_command && !(command_opcode == 16 && phase != IDLE) && tp_command_ready && !reset;
-    assign response_valid = host_access && tp_response_valid && !reset;
+    assign run_ready = (phase == IDLE || phase == BOUNDARY) && audio_run_ready && tp_execute_ready && !reset;
+    assign command_ready = host_access && !reserved_command && !(command_opcode == 16 && phase != IDLE) && tp_command_ready && !(run_valid && run_ready) && !reset;
+    assign response_valid = tp_response_valid && !reset;
     assign response_error = tp_response_error;
     assign response_data = tp_response_data;
     assign cfg_ready = configure && state_cfg_ready;
@@ -170,12 +171,14 @@ module loop_pipeline #(
 
     transition_processor #(.LOOP_DEPTH(LOOP_DEPTH), .REQUEST_DEPTH(REQUEST_DEPTH), .EVENT_DEPTH(EVENT_DEPTH), .INTEGRATED(1)) timing (
         .clk(clk), .reset(reset),
-        .command_valid(coordinator_send || (host_access && command_valid && !reserved_command && !(command_opcode == 16 && phase != IDLE))),
+        .command_valid(host_access && command_valid && !reserved_command && !(command_opcode == 16 && phase != IDLE) && !(run_valid && run_ready)),
         .command_ready(tp_command_ready),
-        .command_opcode(coordinator_send ? (phase == SETTLE_SEND ? 8'd9 : 8'd11) : (command_opcode == 16 ? 8'd9 : command_opcode)),
-        .command_index(coordinator_send ? 32'b0 : command_index),
-        .command_data(coordinator_send ? 640'b0 : command_data),
-        .response_valid(tp_response_valid), .response_ready(coordinator_wait || (host_access && response_ready)),
+        .command_opcode(command_opcode == 16 ? 8'd9 : command_opcode),
+        .command_index(command_index),
+        .command_data(command_data),
+        .response_valid(tp_response_valid), .response_ready(response_ready),
+        .execute_valid(coordinator_send), .execute_ready(tp_execute_ready),
+        .execute_finish(phase == FINISH_SEND), .execute_done(tp_execute_done), .execute_error(tp_execute_error),
         .response_error(tp_response_error), .response_data(tp_response_data), .busy(tp_busy),
         .loop_read_valid(loop_read_valid), .loop_read_ready(loop_read_ready), .loop_read_slot(loop_read_slot),
         .loop_response_valid(loop_response_valid), .loop_response_error(loop_response_error), .loop_response_data(loop_response_data),
@@ -247,7 +250,7 @@ module loop_pipeline #(
             if (memory_fault && phase != FAULT) begin
                 error_code <= 8; error_stage <= 3; fault_report_pending <= 1; output_valid <= 0; phase <= FAULT;
             end else case (phase)
-                HOST_SETTLE_WAIT: if (tp_response_valid && response_ready) begin
+                HOST_SETTLE_WAIT: if (tp_response_valid) begin
                     if (tp_response_error != 0) begin
                         error_stage <= 1; error_code <= {4'b0,tp_response_error};
                         output_valid <= 0; done <= 1; phase <= FAULT;
@@ -268,10 +271,10 @@ module loop_pipeline #(
                     end
                 end
                 else if (phase == IDLE && command_valid && command_ready && command_opcode == 16) phase <= HOST_SETTLE_WAIT;
-                SETTLE_SEND: if (tp_command_ready) phase <= SETTLE_WAIT;
-                SETTLE_WAIT: if (tp_response_valid) begin
-                    if (tp_response_error != 0) begin
-                        error_stage <= 1; error_code <= {4'b0,tp_response_error}; done <= 1; phase <= FAULT;
+                SETTLE_SEND: if (tp_execute_ready) phase <= SETTLE_WAIT;
+                SETTLE_WAIT: if (tp_execute_done) begin
+                    if (tp_execute_error != 0) begin
+                        error_stage <= 1; error_code <= {4'b0,tp_execute_error}; done <= 1; phase <= FAULT;
                     end else phase <= AUDIO_START;
                 end
                 AUDIO_START: if (audio_run_ready) phase <= AUDIO_WAIT;
@@ -281,12 +284,12 @@ module loop_pipeline #(
                         error_code <= audio_error; done <= 1; phase <= FAULT;
                     end else phase <= FINISH_SEND;
                 end
-                FINISH_SEND: if (tp_command_ready) phase <= FINISH_WAIT;
-                FINISH_WAIT: if (tp_response_valid) begin
-                    error_stage <= tp_response_error == 0 ? 2'd0 : 2'd1;
-                    error_code <= {4'b0,tp_response_error}; done <= 1;
-                    output_valid <= tp_response_error == 0;
-                    phase <= tp_response_error == 0 ? IDLE : FAULT;
+                FINISH_SEND: if (tp_execute_ready) phase <= FINISH_WAIT;
+                FINISH_WAIT: if (tp_execute_done) begin
+                    error_stage <= tp_execute_error == 0 ? 2'd0 : 2'd1;
+                    error_code <= {4'b0,tp_execute_error}; done <= 1;
+                    output_valid <= tp_execute_error == 0;
+                    phase <= tp_execute_error == 0 ? IDLE : FAULT;
                 end
                 FAULT: if (fault_report_pending && !audio_busy) begin done <= 1; fault_report_pending <= 0; end
                 default: phase <= FAULT;

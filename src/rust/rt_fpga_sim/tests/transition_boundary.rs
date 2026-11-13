@@ -1,7 +1,11 @@
 #![cfg(all(feature = "sim", not(target_arch = "wasm32")))]
 use rt_audio_math::Q824;
 use rt_backend_testbench::{production, rtl, spec::*};
-use rt_fpga_adapter::{looping::LoopDevice, protocol, transition_service::TransitionService};
+use rt_fpga_adapter::{
+    looping::{LoopDevice, TpReply},
+    protocol,
+    transition_service::TransitionService,
+};
 use rt_fpga_sim::{Simulator, runtime};
 use shoop_wasm_test_support::shoop_test;
 use std::path::Path;
@@ -222,6 +226,45 @@ fn request(action: &Action, sequence: u64) -> shoop_loops::Request {
 
 #[shoop_test]
 fn admitted_actions_and_audio_survive_1024_quanta_without_arm_service() {
+    exercise_service_pause(false);
+}
+#[shoop_test]
+fn a_held_install_reply_cannot_stall_1024_quanta_of_admitted_audio() {
+    exercise_service_pause(true);
+}
+#[shoop_test]
+fn a_held_settlement_reply_does_not_gate_the_fabric_boundary() {
+    let mut case = scenario();
+    case.steps.truncate(8);
+    let expected = production::run::<Q824>(&case).unwrap();
+    let image = rtl::compile(&case).unwrap();
+    let cache = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../work/marlin-boundary");
+    let rt = runtime(&cache).unwrap();
+    let mut sim = Simulator::new(&rt, None, true).unwrap();
+    sim.load(&image).unwrap();
+    let mut owner = TransitionService::new(&image.transition).unwrap();
+    for (index, action) in case.steps[0].actions.iter().enumerate() {
+        let words = protocol::kernel_transition(request(action, index as u64 + 1)).unwrap();
+        owner
+            .exchange(4, 0, words, |transfer| {
+                sim.tp(transfer.opcode, transfer.index, transfer.words)
+            })
+            .unwrap();
+    }
+    let held = sim.hold_command(16, 0, [0; 20]).unwrap();
+    assert_eq!(held.0, 0);
+    sim.cycle();
+    for (step, expected) in case.steps.iter().zip(&expected.quanta) {
+        assert_eq!(
+            Samples::Q824(sim.run(&image, &step.inputs).unwrap()),
+            expected.outputs
+        );
+        assert_eq!(sim.held_response(), Some(held));
+    }
+    assert_eq!(sim.frame(), 256);
+    assert_eq!(sim.consume_response().unwrap(), held);
+}
+fn exercise_service_pause(hold_install_reply: bool) {
     let case = scenario();
     let expected = production::run::<Q824>(&case).unwrap();
     let image = rtl::compile(&case).unwrap();
@@ -232,13 +275,24 @@ fn admitted_actions_and_audio_survive_1024_quanta_without_arm_service() {
     sim.load(&image).unwrap();
     let mut owner = TransitionService::new(&image.transition).unwrap();
     let mut identities = vec![];
+    let mut held = None;
     for (index, action) in case.steps[0].actions.iter().enumerate() {
         let words = protocol::kernel_transition(request(action, index as u64 + 1)).unwrap();
-        let reply = owner
-            .exchange(4, 0, words, |transfer| {
-                sim.tp(transfer.opcode, transfer.index, transfer.words)
-            })
-            .unwrap();
+        let reply = if hold_install_reply && index + 1 == case.steps[0].actions.len() {
+            let transfer = owner.begin(4, 0, words).unwrap();
+            let (error, words) = sim
+                .hold_command(transfer.opcode, transfer.index, transfer.words)
+                .unwrap();
+            let reply = TpReply { error, words };
+            held = Some(reply);
+            reply
+        } else {
+            owner
+                .exchange(4, 0, words, |transfer| {
+                    sim.tp(transfer.opcode, transfer.index, transfer.words)
+                })
+                .unwrap()
+        };
         assert_eq!(reply.error, 0);
         identities.push((reply.words[0], reply.words[1]));
     }
@@ -250,6 +304,13 @@ fn admitted_actions_and_audio_survive_1024_quanta_without_arm_service() {
             "frame {}",
             expected.frame
         );
+        if let Some(reply) = held {
+            assert_eq!(sim.held_response(), Some((reply.error, reply.words)));
+        }
+    }
+    if let Some(reply) = held {
+        assert_eq!(sim.consume_response().unwrap(), (reply.error, reply.words));
+        owner.finish(reply).unwrap();
     }
     assert!(sim.cycles > before);
     assert_eq!(sim.frame(), 1024 * 32);

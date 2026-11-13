@@ -19,6 +19,11 @@ module transition_processor #(
     input wire response_ready,
     output reg [3:0] response_error,
     output reg [831:0] response_data,
+    input wire execute_valid,
+    output wire execute_ready,
+    input wire execute_finish,
+    output reg execute_done,
+    output reg [3:0] execute_error,
     output wire busy,
     input wire loop_read_valid,
     output wire loop_read_ready,
@@ -83,7 +88,7 @@ module transition_processor #(
         S_READ_LOOP_REPLY, S_READ_REQUEST_REPLY, S_READ_EVENT_REPLY, S_SET_REPEAT
     } state_t;
     state_t state, read_return, offer_return, apply_return, natural_return, react_return, list_return;
-    reg configured;
+    reg configured, execution_command;
     reg [3:0] fault_error;
     reg [1:0] phase;
     reg [63:0] frame;
@@ -164,9 +169,11 @@ module transition_processor #(
         clk, er_en, er_address, er_data, ew_en, ew_address, ew_data);
 
     assign busy = state != S_IDLE;
-    assign command_ready = !reset && state == S_IDLE && !response_valid && !loop_response_valid;
+    assign execute_ready = !reset && state == S_IDLE && !loop_response_valid
+        && !(phase == SETTLED && loop_read_valid);
+    assign command_ready = execute_ready && !execute_valid && !response_valid;
     assign loop_read_ready = !reset && state == S_IDLE && phase == SETTLED
-        && !response_valid && !loop_response_valid && !command_valid;
+        && !loop_response_valid && !execute_valid;
     assign loop_response_data = loop_response_error ? 164'b0 :
         {(lr_data[CAPTURE+:64] == 0), lr_data[POSITION+:64], lr_data[LENGTH+:64], lr_data[MODE+:2], lr_data[GENERATION+:32], lr_data[VALID]};
     assign configured_quantum = configured ? quantum : 0;
@@ -304,9 +311,14 @@ module transition_processor #(
 
     task automatic reply(input [3:0] error, input [831:0] data);
         begin
-            response_valid <= 1;
-            response_error <= error;
-            response_data <= data;
+            if (execution_command) begin
+                execute_done <= 1;
+                execute_error <= error;
+            end else begin
+                response_valid <= 1;
+                response_error <= error;
+                response_data <= data;
+            end
             state <= S_IDLE;
             if (error != OK && (phase == EXECUTING || (phase == SETTLED && opcode == FINISH))) begin
                 phase <= FAULTED; fault_error <= error;
@@ -387,10 +399,12 @@ module transition_processor #(
         er_en <= 0; ew_en <= 0;
         loop_stream_valid <= 0;
         finish_valid <= 0;
+        execute_done <= 0;
         if (response_valid && response_ready) response_valid <= 0;
         if (reset) begin
             state <= S_IDLE;
-            configured <= 0; fault_error <= 0;
+            configured <= 0; fault_error <= 0; execution_command <= 0;
+            execute_done <= 0; execute_error <= 0;
             phase <= IDLE_PHASE; frame <= 0;
             loop_slots <= 0; request_slots <= 0; event_limit <= 0; order_count <= 0; quantum <= 0;
             quantum_mask <= 0; submit_frame <= 0; submit_sum <= 0;
@@ -407,7 +421,13 @@ module transition_processor #(
             response_valid <= 0; response_error <= OK; response_data <= 0;
         end else begin
             case (state)
-                S_IDLE: if (command_valid && command_ready) begin
+                S_IDLE: if (execute_valid && execute_ready) begin
+                    execution_command <= 1;
+                    opcode <= execute_finish ? FINISH : PROCESS;
+                    index <= 0; payload <= 0;
+                    state <= S_DISPATCH;
+                end else if (command_valid && command_ready) begin
+                    execution_command <= 0;
                     opcode <= command_opcode; index <= command_index; payload <= command_data;
                     prepare_events <= ({1'b0,command_data[31:0]} << 1)+{1'b0,command_data[63:32]};
                     state <= S_DISPATCH;
