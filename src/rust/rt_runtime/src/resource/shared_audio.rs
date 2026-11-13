@@ -206,6 +206,23 @@ pub struct AudioStore<S: Sample = f32> {
 }
 
 impl<S: Sample> AudioStore<S> {
+    pub(super) fn allocated_bytes(&self) -> usize {
+        core::mem::size_of_val(&*self.histories)
+            + super::memory::vec_bytes(&self.nodes)
+            + super::memory::vec_bytes(&self.free_nodes)
+            + super::memory::vec_bytes(&self.views)
+            + super::memory::vec_bytes(&self.free_views)
+            + core::mem::size_of_val(&*self.marks)
+            + super::memory::vec_bytes(&self.plans)
+            + core::mem::size_of_val(&*self.scratch)
+            + super::memory::vec_bytes(&self.immediate)
+            + super::memory::vec_bytes(&self.retired)
+            + core::mem::size_of_val(&*self.pending)
+            + super::memory::vec_bytes(&self.bases)
+            + super::memory::vec_bytes(&self.retired_bases)
+            + self.pages.allocated_bytes()
+    }
+
     pub fn prepare(
         store: &mut ResourceStore<S>,
         config: Config,

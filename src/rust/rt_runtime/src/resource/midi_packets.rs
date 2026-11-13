@@ -155,6 +155,20 @@ fn retired(count: usize) -> Vec<NonZeroU32> {
     queue
 }
 impl Packets {
+    pub(crate) fn allocated_bytes(&self) -> usize {
+        super::memory::vec_bytes(&self.slabs)
+            + super::memory::vec_bytes(&self.free_slabs)
+            + super::memory::vec_bytes(&self.bodies)
+            + super::memory::vec_bytes(&self.free_bodies)
+            + super::memory::vec_bytes(&self.retired_bodies)
+            + super::memory::vec_bytes(&self.records)
+            + super::memory::vec_bytes(&self.free_records)
+            + super::memory::vec_bytes(&self.retired_records)
+            + super::memory::vec_bytes(&self.bases)
+            + super::memory::vec_bytes(&self.free_bases)
+            + super::memory::vec_bytes(&self.retired_bases)
+    }
+
     pub fn prepare<S: Sample>(
         resources: &mut ResourceStore<S>,
         config: Config,
