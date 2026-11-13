@@ -9,6 +9,7 @@ browser-feature = "wasm-test-browser"
 no-default-features = true
 
 [features]
+fpga-sim = ["shoop_host/fpga-sim", "shoop_host_manager/fpga-sim", "shoop_egui/fpga-sim"]
 builtin-fx = ["shoop_host/builtin-fx", "shoop_host_manager/builtin-fx", "shoop_rt_host_native/builtin-fx"]
 oxisynth = ["shoop_host/oxisynth", "shoop_host_manager/oxisynth", "shoop_rt_host_native/oxisynth"]
 default = ["cpal", "jack", "system-preview", "builtin-fx", "oxisynth"]

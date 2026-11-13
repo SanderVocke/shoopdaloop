@@ -1,7 +1,7 @@
 # Native FPGA testbenches
 
 This crate owns the complete RTL regression suite in Rust/Marlin. It covers
-the 75 test definitions at revision `0f9a31b1`, including their protocol,
+the 75 test definitions at revision `7e855f70`, including their protocol,
 fault, reset, ownership, arithmetic and production comparisons. The historical
 mapping, definition hashes and Cargo targets are in [coverage.json](coverage.json).
 `scripts/check_fpga_testbench_coverage.py` checks that every row still names a

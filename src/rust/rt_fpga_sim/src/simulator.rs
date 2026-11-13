@@ -11,27 +11,77 @@ pub type SimResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 #[verilog(src = "rtl/marlin_pipeline.sv", name = "marlin_pipeline")]
 struct Pipeline;
 
+#[derive(Clone, Debug)]
+pub struct RuntimeConfig {
+    pub artifacts: PathBuf,
+    pub rtl_directory: PathBuf,
+    pub verilator: std::ffi::OsString,
+    pub jobs: usize,
+}
+impl RuntimeConfig {
+    pub fn development(artifacts: &Path) -> Self {
+        Self {
+            artifacts: artifacts.into(),
+            rtl_directory: std::env::var_os("SHOOP_FPGA_RTL")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../fpga")),
+            verilator: std::env::var_os("SHOOP_VERILATOR").unwrap_or_else(|| "verilator".into()),
+            jobs: std::env::var("SHOOP_VERILATOR_JOBS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(2),
+        }
+    }
+}
 pub fn runtime(artifacts: &Path) -> SimResult<VerilatorRuntime> {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
-    let mut sources = vec![Path::new(env!("CARGO_MANIFEST_DIR")).join("rtl/marlin_pipeline.sv")];
-    sources.extend(pipeline_sources());
-    sources.push(root.join("fpga/axi_memory/tests/axi_direct_memory.sv"));
+    runtime_with_config(&RuntimeConfig::development(artifacts))
+}
+pub fn runtime_with_config(config: &RuntimeConfig) -> SimResult<VerilatorRuntime> {
+    crate::check_verilator(&config.verilator)?;
+    if !config.rtl_directory.is_dir() {
+        return Err(format!(
+            "FPGA RTL source directory is missing: {}",
+            config.rtl_directory.display()
+        )
+        .into());
+    }
+    if config.jobs == 0 {
+        return Err("Verilator build jobs must be positive".into());
+    }
+    std::fs::create_dir_all(&config.artifacts)?;
+    let artifacts = config.artifacts.canonicalize()?;
+    let root = config.rtl_directory.canonicalize()?;
+    let top = artifacts.join("marlin_pipeline.sv");
+    let source = include_str!("../rtl/marlin_pipeline.sv");
+    if std::fs::read_to_string(&top).ok().as_deref() != Some(source) {
+        std::fs::write(&top, source)?;
+    }
+    let mut sources = vec![top.clone()];
+    sources.extend(pipeline_sources_at(&root));
+    sources.push(root.join("axi_memory/tests/axi_direct_memory.sv"));
+    let options = VerilatorRuntimeOptions {
+        verilator_executable: config.verilator.clone(),
+        build_jobs: config.jobs,
+        source_path_overrides: vec![(
+            Pipeline::source_path().into(),
+            top.to_str().ok_or("RTL path is not UTF-8")?.into(),
+        )],
+        ..Default::default()
+    };
     Ok(VerilatorRuntime::new2(
         artifacts,
         &sources,
-        &[root.join("fpga/state_processor/rtl")],
+        &[root.join("state_processor/rtl")],
         [],
-        VerilatorRuntimeOptions::default().verilator_executable(
-            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("verilator-wrapper")
-                .into(),
-        ),
+        options,
     )?)
 }
 
 /// Processing and AXI modules shared by native simulation tops.
 pub fn pipeline_sources() -> Vec<PathBuf> {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    pipeline_sources_at(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../fpga"))
+}
+fn pipeline_sources_at(root: &Path) -> Vec<PathBuf> {
     let mut sources = Vec::new();
     for (directory, names) in [
         (
@@ -60,7 +110,7 @@ pub fn pipeline_sources() -> Vec<PathBuf> {
         sources.extend(
             names
                 .split_whitespace()
-                .map(|name| root.join(format!("fpga/{directory}/rtl/{name}.sv"))),
+                .map(|name| root.join(format!("{directory}/rtl/{name}.sv"))),
         );
     }
     sources

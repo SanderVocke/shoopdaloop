@@ -26,6 +26,13 @@ that lifetime boundary without opening VCD files.
 `src/lib.rs` adds a cache discriminator so old compiled bridges are rebuilt.
 Two syntax-only fixes keep this local dependency warning-free on Rust 1.99
 (an explicit elided lifetime and statement-position error macro).
+Runtime options additionally expose bounded C++ build parallelism and explicit
+source-path relocation for statically declared models. This lets the host use
+configurable source/cache locations without a shell executable wrapper.
+The model cache key includes runtime source and include paths so switching RTL
+roots cannot reuse a model from an older source location.
+Build diagnostics go to stderr so framed host readiness on stdout stays intact.
+
 The full parameterized test suite also uses the dynamic model API:
 
 - `dynamic.rs` binds typed getter/setter function pointers once, avoiding repeated

@@ -146,7 +146,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 AudioDriverKind::Jack,
                 AudioDriverConfig::Jack(Default::default()),
             ),
-            DriverKind::Simulated => (AudioDriverKind::Simulated, AudioDriverConfig::Simulated),
+            DriverKind::Simulated => (
+                AudioDriverKind::Simulated,
+                AudioDriverConfig::Simulated(Default::default()),
+            ),
         };
         let mut active = ResolvedAudioDriverConfig {
             configured,
@@ -1390,6 +1393,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         let driver = self.driver;
         self.status.peaks_fresh = false;
         let status = BackendStatus {
+            audio_backend: self.audio_backend,
             memory: self.status.memory,
             dsp_load_percent: self.status.load * 100.0,
             xruns: self.status.take_xruns(),

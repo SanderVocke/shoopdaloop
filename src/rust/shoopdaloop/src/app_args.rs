@@ -67,7 +67,7 @@ pub struct AppArgs {
     pub tracing_engine_detail: bool,
     #[arg(long, hide = true, requires = "tracing")]
     pub tracing_smoke_test: bool,
-    /// Compatibility option: new_engine is the sole application backend.
+    /// Audio graph backend: new_engine or fpga_rtl_sim.
     #[arg(long, value_parser = |value: &str| value.parse::<shoop_egui::AudioBackendKind>())]
     pub audio_backend: Option<shoop_egui::AudioBackendKind>,
     /// Session delivery: in_process, socket (recoverable) or shared_memory (restart required).
@@ -143,11 +143,42 @@ pub struct AppArgs {
 }
 
 impl AppArgs {
+    pub fn selected_audio_backend(
+        &self,
+        settings: &shoop_settings::SettingsSnapshot,
+    ) -> Result<shoop_egui::AudioBackendKind, String> {
+        let kind = self.audio_backend.map(Ok).unwrap_or_else(|| {
+            settings
+                .get(shoop_egui::AUDIO_BACKEND)
+                .unwrap_or_else(|_| "new_engine".into())
+                .parse()
+        })?;
+        if kind == shoop_egui::AudioBackendKind::FpgaRtlSim {
+            if !cfg!(feature = "fpga-sim") {
+                return Err("FPGA RTL simulation requires --features fpga-sim".into());
+            }
+            if !cfg!(target_os = "linux") {
+                return Err(
+                    "FPGA RTL simulation is unsupported on this platform; Linux is required".into(),
+                );
+            }
+        }
+        Ok(kind)
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     pub fn configured_audio_driver(
         &self,
         settings: &shoop_settings::SettingsSnapshot,
     ) -> Result<shoop_egui::AudioDriverConfig, String> {
+        if self.selected_audio_backend(settings)? == shoop_egui::AudioBackendKind::FpgaRtlSim
+            && self.audio.audio_driver.is_none()
+        {
+            return self
+                .audio
+                .apply(shoop_egui::AudioDriverConfig::Simulated(Default::default()))
+                .map_err(|error| error.to_string());
+        }
         let kind = self
             .audio
             .audio_driver

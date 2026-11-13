@@ -1,5 +1,5 @@
 //! The real application service/client driven by an explicit, device-free clock.
-use crate::SimResult;
+use rt_fpga_sim::SimResult;
 use shoop_app::{ConnectionId, Service, ServiceOptions};
 use shoop_app_api::{AppIntent, AppSnapshot, GlobalControlAction, LoopAction, LoopState};
 use shoop_app_client::{
@@ -9,7 +9,7 @@ use shoop_app_client::{
 use shoop_app_protocol::local;
 use shoop_rt_backend::{EngineClock, RtBackend};
 use shoop_rt_engine::{
-    ControlEndpoint, EngineDescription, HostPorts, Segment,
+    ControlEndpoint, EngineDescription,
     testing::{OfflineRender, RuntimeCommand},
 };
 use shoop_rt_protocol::{ClientMessage, EngineMessage};
@@ -17,25 +17,12 @@ use shoop_rt_transport::{
     carrier::{Carrier, CarrierError, InProcess},
     client::ProtocolClient,
 };
+use std::thread;
 use std::{cell::RefCell, rc::Rc, sync::Arc, time::Duration};
 
 pub const STEP: Duration = Duration::from_millis(1);
 pub fn description() -> EngineDescription {
-    EngineDescription {
-        host: HostPorts::numbered(2, 2, 0),
-        segments: vec![Segment {
-            strips: 1,
-            loops: 1,
-        }],
-        buses: 1,
-        bus_channels: 2,
-        master_connections: vec![],
-        telemetry_interval_frames: 0,
-        reliable_credits: 32,
-        bulk_credits: 2,
-        pending_transitions: 16,
-        ..EngineDescription::default()
-    }
+    rt_fpga_adapter::engine::profile_description()
 }
 
 pub struct TraceCarrier {
@@ -443,7 +430,7 @@ impl Native {
 /// The same application bootstrap with the hardware queue consumer.
 pub struct Fpga {
     pub app: Application,
-    pub hardware: crate::app_worker::Handle,
+    pub hardware: shoop_rt_host_fpga_sim::Handle,
     pub readiness: Duration,
     pub trace: Rc<RefCell<Vec<RuntimeCommand>>>,
     pub messages: Rc<RefCell<Vec<String>>>,
@@ -451,17 +438,21 @@ pub struct Fpga {
     pub failure: Arc<std::sync::Mutex<Option<String>>>,
 }
 impl Fpga {
-    pub fn new(artifacts: std::path::PathBuf, mode: crate::app_worker::RunMode) -> SimResult<Self> {
+    pub fn new(
+        artifacts: std::path::PathBuf,
+        mode: shoop_rt_host_fpga_sim::RunMode,
+    ) -> SimResult<Self> {
         Self::with_trace(artifacts, mode, None)
     }
     pub fn with_trace(
         artifacts: std::path::PathBuf,
-        mode: crate::app_worker::RunMode,
+        mode: shoop_rt_host_fpga_sim::RunMode,
         wave: Option<std::path::PathBuf>,
     ) -> SimResult<Self> {
         let ready_started = std::time::Instant::now();
-        let mut prepared = crate::app_worker::Worker::prepare_with_trace(artifacts, mode, wave)?;
-        let enabled = mode == crate::app_worker::RunMode::Stepped;
+        let mut prepared =
+            shoop_rt_host_fpga_sim::Worker::prepare_with_trace(artifacts, mode, wave)?;
+        let enabled = mode == shoop_rt_host_fpga_sim::RunMode::Stepped;
         if enabled {
             prepared.endpoint.capture_runtime_commands();
         }
@@ -477,7 +468,13 @@ impl Fpga {
             trace: trace.clone(),
             messages: messages.clone(),
         });
-        let backend = RtBackend::connect(client, prepared.execution)?;
+        let backend = RtBackend::connect(
+            client,
+            Clock {
+                worker: prepared.execution,
+                remainder: 0,
+            },
+        )?;
         let mut app = Application::new(backend).map_err(|e| {
             format!(
                 "{e}; simulation failure={:?}; commands={:#?}",
@@ -636,4 +633,33 @@ pub fn compare(fpga: &mut Fpga, trace: &Trace) -> SimResult<Comparison> {
         };
     }
     Ok(report)
+}
+
+struct Clock {
+    worker: shoop_rt_host_fpga_sim::Worker,
+    remainder: u128,
+}
+impl EngineClock for Clock {
+    fn advance(&mut self, elapsed: Duration) {
+        if self.worker.mode() == shoop_rt_host_fpga_sim::RunMode::Stepped {
+            self.remainder += elapsed.as_nanos() * 48_000;
+            let frames = (self.remainder / 1_000_000_000) as usize;
+            self.remainder %= 1_000_000_000;
+            if let Err(error) = self.worker.run(frames) {
+                self.worker
+                    .failure
+                    .lock()
+                    .unwrap()
+                    .get_or_insert_with(|| error.to_string());
+            }
+        }
+    }
+    fn wait(&mut self) -> bool {
+        if self.worker.mode() == shoop_rt_host_fpga_sim::RunMode::Stepped {
+            self.worker.run(self.worker.quantum()).is_ok()
+        } else {
+            thread::yield_now();
+            self.worker.failure.lock().unwrap().is_none()
+        }
+    }
 }

@@ -394,6 +394,10 @@ pub struct VerilatorRuntimeOptions {
     /// Whether Verilator should always be invoked instead of only when the
     /// source files or DPI functions change.
     pub force_verilator_rebuild: bool,
+    /// Maximum C++ build parallelism.
+    pub build_jobs: usize,
+    /// Runtime locations for statically declared model source paths.
+    pub source_path_overrides: Vec<(String, String)>,
 }
 
 impl Default for VerilatorRuntimeOptions {
@@ -402,6 +406,8 @@ impl Default for VerilatorRuntimeOptions {
             verilator_executable: "verilator".into(),
             allow_unsupported_verilator: None,
             force_verilator_rebuild: false,
+            build_jobs: 2,
+            source_path_overrides: Vec::new(),
         }
     }
 }
@@ -852,6 +858,10 @@ impl VerilatorRuntime {
         ports: &[(&str, usize, usize, PortDirection)],
         config: &VerilatedModelConfig,
     ) -> Result<&Library, VerilatorError> {
+        let source_path = self.options.source_path_overrides.iter()
+            .find(|(original, _)| original == source_path)
+            .map(|(_, replacement)| replacement.as_str())
+            .unwrap_or(source_path);
         if !self.source_files.iter().any(|source_file| {
             match (
                 source_file.canonicalize_utf8(),
@@ -886,6 +896,8 @@ impl VerilatorRuntime {
         "shoop-owned-context-v1".hash(&mut hasher);
         ports.hash(&mut hasher);
         config.hash(&mut hasher);
+        self.source_files.hash(&mut hasher);
+        self.include_directories.hash(&mut hasher);
         let library_key = LibraryArenaKey {
             name: name.to_owned(),
             source_path: source_path.to_owned(),

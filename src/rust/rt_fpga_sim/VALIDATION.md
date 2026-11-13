@@ -156,20 +156,23 @@ MIDI, FX, imported media, file persistence and live audio adapters remain outsid
 the fixed-session profile. The FPGA endpoint does not invent the native backend's
 new resource-memory report; simulator allocator counters are reported separately.
 
-Reproduce from the repository root:
+Reproduce the retained replay tests from the repository root:
 
 ```sh
-cargo run -p rt_fpga_sim --features app --bin fpga-app-demo -- \
-  --compare src/rust/rt_fpga_sim/fixtures/app-sync-loop.json
-cargo run -p rt_fpga_sim --features app-ui --bin fpga-app-demo
-cargo test -p rt_fpga_sim --features app -- --skip application_store_holds_a_five_second_take_while_recording_another_and_reuses_it
-cargo test -p rt_fpga_sim --features app --test app_rtl \
+cargo test -p shoop_rt_host_fpga_sim --features sim --test app_rtl \
+  common_app_replay_matches_native_audio_and_loop_observations
+cargo test -p shoop_rt_host_fpga_sim --features sim --tests -- \
+  --skip application_store_holds_a_five_second_take_while_recording_another_and_reuses_it
+cargo test -p shoop_rt_host_fpga_sim --features sim --test app_rtl \
   application_store_holds_a_five_second_take_while_recording_another_and_reuses_it
+cargo test -p shoop_host --features fpga-sim --test fpga_rtl
+cargo test -p shoopdaloop --features fpga-sim fpga_tests::
 ```
 
-Add `--vcd work/app.vcd` to replay/comparison for a diagnostic trace. VCD can be
-large. The long app case and isolated metadata capacity test need not be repeated
-for documentation-only changes; their storage RTL/preset remains unchanged.
+The following measurements describe the original demo implementation. That
+entry point and its window have been retired; regular startup is documented in
+[README.md](README.md). Current validation is recorded in
+`PLAN_FPGA_RTL_BACKEND.md` at the repository root.
 
 After merging upstream through `e8c43c6d`, all 38 short simulator tests pass.
 The affected adapter/testbench/runtime/loop/engine library gate passes 192 tests
@@ -180,7 +183,7 @@ policy pass. The final merged-state CLI replay reproduces the same 13776 output
 frames, 4412127 clocks and numeric errors above. A separate one-action VCD smoke
 passed, producing a 17 MiB trace through normal model destruction.
 
-The `app-ui` window was exercised on an X11 virtual display: connect logical input
+The retired demo window was exercised on an X11 virtual display: connect logical input
 to Sync and Sync to Master, toggle synthetic input, record, play, select the loop
 and view its nonzero waveform/meters, clear recordings and record/play again.
 The new take's waveform also appears. A normal window-close event exits with

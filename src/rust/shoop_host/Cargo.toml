@@ -9,6 +9,7 @@ description = "Independent native session service and RT engine composition"
 workspace = true
 
 [features]
+fpga-sim = ["dep:shoop_rt_host_fpga_sim", "shoop_rt_host_fpga_sim/sim"]
 builtin-fx = ["shoop_rt_host_native/builtin-fx"]
 oxisynth = ["shoop_rt_host_native/oxisynth"]
 default = ["cpal", "jack", "builtin-fx", "oxisynth"]
@@ -17,6 +18,7 @@ cpal = ["shoop_rt_host_native/cpal"]
 testing = []
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+shoop_rt_host_fpga_sim = { path = "../shoop_rt_host_fpga_sim", optional = true, default-features = false }
 directories = { workspace = true }
 shoop_format_conversion = { path = "../shoop_format_conversion" }
 shoop_port_graph = { path = "../shoop_port_graph", features = ["std"] }

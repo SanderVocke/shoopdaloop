@@ -146,3 +146,13 @@ fn driver_identities_append_tags_without_changing_existing_drivers() {
         assert_eq!(decode_host_reply(&bytes[..len]), Ok(reply));
     }
 }
+
+#[shoop_test]
+fn audio_backend_telemetry_round_trips_independently_of_driver_status() {
+    let mut bytes = [0; MAX_RECORD_BYTES];
+    for backend in [AudioBackendKind::NewEngine, AudioBackendKind::FpgaRtlSim] {
+        let record = EngineMessage::Telemetry(Telemetry::AudioBackend(backend));
+        let size = encode_engine(&record, &mut bytes).unwrap();
+        assert_eq!(decode_engine(&bytes[..size]).unwrap(), record);
+    }
+}

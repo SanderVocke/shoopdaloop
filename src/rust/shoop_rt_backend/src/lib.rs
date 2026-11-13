@@ -179,6 +179,7 @@ pub struct RtBackend<C, K> {
 
     limits: Option<Limits>,
     driver: Option<DriverStatus>,
+    audio_backend: shoop_app_api::AudioBackendKind,
     driver_profile: Option<shoop_app_api::ResolvedAudioDriverConfig>,
     status: Status,
     mirror: Mirror,
@@ -241,6 +242,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             processor_presets: Vec::new(),
             limits: None,
             driver: None,
+            audio_backend: Default::default(),
             driver_profile: None,
             status: Status::default(),
             mirror: Mirror::new(),

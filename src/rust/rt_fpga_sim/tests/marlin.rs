@@ -102,8 +102,10 @@ mod fifo {
     fn odd_depth_fifo_wrap_wide_words_and_backpressure() {
         let here = Path::new(env!("CARGO_MANIFEST_DIR"));
         let root = here.join("../../..");
+        let config = rt_fpga_sim::RuntimeConfig::development(&root.join("work/marlin-fifo"));
+        rt_fpga_sim::check_verilator(&config.verilator).unwrap();
         let rt = VerilatorRuntime::new2(
-            root.join("work/marlin-fifo"),
+            &config.artifacts,
             &[
                 here.join("rtl/fifo_probe.sv"),
                 root.join("fpga/audio_io/rtl/audio_command_fifo.sv"),
@@ -111,8 +113,11 @@ mod fifo {
             ],
             &[] as &[&Path],
             [],
-            VerilatorRuntimeOptions::default()
-                .verilator_executable(here.join("verilator-wrapper").into()),
+            VerilatorRuntimeOptions {
+                verilator_executable: config.verilator,
+                build_jobs: config.jobs,
+                ..Default::default()
+            },
         )
         .unwrap();
         let mut m = rt
@@ -347,4 +352,54 @@ fn rtl_fault_is_latched_and_future_controls_receive_terminal_cancellation() {
             .contains("pipeline fault stage")
     );
     assert_eq!(c.try_execution().unwrap().result, Err(Error::Cancelled));
+}
+
+#[shoop_test]
+fn changing_the_rtl_root_cannot_reuse_a_cached_model_with_older_source_timestamps() {
+    use rt_fpga_sim::{RuntimeConfig, runtime_with_config};
+    use std::fs::{File, FileTimes};
+    use std::time::SystemTime;
+    let root = tempfile::tempdir().unwrap();
+    let mut config = RuntimeConfig::development(&root.path().join("cache"));
+    {
+        let runtime = runtime_with_config(&config).unwrap();
+        let _model = Simulator::new(&runtime, None, false).unwrap();
+    }
+    fn copy_rtl(source: &Path, destination: &Path) {
+        std::fs::create_dir_all(destination).unwrap();
+        for entry in std::fs::read_dir(source).unwrap() {
+            let entry = entry.unwrap();
+            let to = destination.join(entry.file_name());
+            if entry.file_type().unwrap().is_dir() {
+                copy_rtl(&entry.path(), &to);
+            } else if matches!(
+                entry.path().extension().and_then(|s| s.to_str()),
+                Some("sv" | "svh" | "vh")
+            ) {
+                std::fs::copy(entry.path(), &to).unwrap();
+                File::open(to)
+                    .unwrap()
+                    .set_times(FileTimes::new().set_modified(SystemTime::UNIX_EPOCH))
+                    .unwrap();
+            }
+        }
+    }
+    let alternate = root.path().join("alternate-rtl");
+    copy_rtl(&config.rtl_directory, &alternate);
+    let broken = alternate.join("state_processor/rtl/sp_engine.sv");
+    std::fs::write(&broken, "this is deliberately invalid RTL").unwrap();
+    File::open(broken)
+        .unwrap()
+        .set_times(FileTimes::new().set_modified(SystemTime::UNIX_EPOCH))
+        .unwrap();
+    config.rtl_directory = alternate;
+    let runtime = runtime_with_config(&config).unwrap();
+    let error = Simulator::new(&runtime, None, false)
+        .err()
+        .expect("the selected invalid RTL must be compiled instead of reusing the previous model")
+        .to_string();
+    assert!(
+        error.contains("verilator") || error.contains("Verilator"),
+        "{error}"
+    );
 }

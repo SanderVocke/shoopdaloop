@@ -378,6 +378,13 @@ pub enum Outcome {
     Refused(Refusal),
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum AudioBackendKind {
+    #[default]
+    NewEngine,
+    FpgaRtlSim,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DriverKind {
     Dummy,
@@ -491,6 +498,7 @@ pub struct Limits {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Telemetry {
+    AudioBackend(AudioBackendKind),
     Memory(crate::MemoryReport),
     Composite {
         loop_id: LoopSlotId,
