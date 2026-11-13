@@ -7343,11 +7343,11 @@ mod tests {
         app.runtime
             .dispatch(AppIntent::Piano(PianoAction::Press(piano_note)))
             .unwrap();
-        thread::sleep(Duration::from_millis(20));
+        wait_for_recorded_midi_input(&app, track_id, loop_id, &[0x90, piano_note.value(), 100]);
         app.runtime
             .dispatch(AppIntent::Piano(PianoAction::Release(piano_note)))
             .unwrap();
-        thread::sleep(Duration::from_millis(30));
+        wait_for_recorded_midi_input(&app, track_id, loop_id, &[0x80, piano_note.value(), 0]);
         app.runtime
             .dispatch(AppIntent::Loop {
                 track_id,
@@ -7629,6 +7629,41 @@ mod tests {
                 return;
             }
             assert!(started.elapsed() < Duration::from_secs(5));
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn wait_for_recorded_midi_input(
+        app: &UnifiedApp,
+        track_id: shoop_egui::TrackId,
+        loop_id: shoop_egui::LoopId,
+        expected: &[u8],
+    ) {
+        let started = Instant::now();
+        loop {
+            let snapshot = app.runtime.snapshot();
+            let captured = snapshot
+                .tracks
+                .iter()
+                .find(|track| track.id == track_id)
+                .is_some_and(|track| {
+                    track
+                        .controls
+                        .latest_input_midi_message
+                        .is_some_and(|message| message.data() == expected)
+                        && track
+                            .loops
+                            .iter()
+                            .any(|loop_| loop_.id == loop_id && loop_.mode == LoopMode::Recording)
+                });
+            if captured {
+                return;
+            }
+            assert!(
+                started.elapsed() < Duration::from_secs(3),
+                "MIDI input {expected:?} was not observed while recording"
+            );
             thread::sleep(Duration::from_millis(5));
         }
     }
