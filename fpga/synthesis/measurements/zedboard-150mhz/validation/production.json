@@ -1,0 +1,309 @@
+{
+  "arguments": [
+    "target/debug/fpga-testbench",
+    "production",
+    "--config",
+    "odd",
+    "--block-chunks",
+    "32",
+    "--memory-model",
+    "fixed",
+    "--random-cases",
+    "3",
+    "--directed",
+    "--output",
+    "work/150mhz/verify-production-dma-tag"
+  ],
+  "format_version": 1,
+  "provenance": {
+    "models": [
+      {
+        "native_memory": null,
+        "parameters": {
+          "AXI_DATA_WIDTH": "64",
+          "BLOCK_CHUNKS": "32",
+          "BUFFERS": "61",
+          "CHUNK_FRAMES": "32",
+          "EVENT_DEPTH": "25",
+          "INPUT_PORTS": "4",
+          "JOB_DEPTH": "128",
+          "LOOP_DEPTH": "7",
+          "MAX_FRAMES": "32",
+          "MEMORY_RESPONSE_CYCLES": "1",
+          "OUTPUT_PORTS": "4",
+          "PHYSICAL_BASE": "16777216",
+          "PROGRAM_DEPTH": "128",
+          "READ_BUFFERS": "4",
+          "RECLAIM_BLOCKS": "0",
+          "RECLAIM_CYCLES": "5000",
+          "RECLAIM_GUARD": "1024",
+          "REF_LINES": "4",
+          "REQUEST_DEPTH": "11",
+          "RETIRED_TABLES": "256",
+          "REUSE_VIEWS": "0",
+          "SLOTS": "352",
+          "STACK_LINES": "2",
+          "STATE_DEPTH": "128",
+          "TABLE_LINES": "8",
+          "TABLE_PAGES": "73",
+          "VIEWS": "7",
+          "WRITE_BUFFERS": "4"
+        },
+        "probes": [
+          {
+            "injection": false,
+            "path": "core.phase"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.reclaimer.phase"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.reclaimer.cycle_budget"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.reclaimer.maintenance_charge"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.reclaimer.lock_held"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.reclaimer.lock_request"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.reclaimer.lock_grant"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.reclaimer.request_valid"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.reclaimer.request_ready"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.reclaimer.retire_valid"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.reclaimer.retire_ready"
+          },
+          {
+            "injection": false,
+            "path": "core.timing.state"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.pipeline.sample_engine.phase"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.sample_memory.phase"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.sample_memory.opcode"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.sample_memory.dma_phase"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.advance"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.metadata.phase"
+          },
+          {
+            "injection": false,
+            "path": "memory_endpoint.scheduler.reads[0]"
+          },
+          {
+            "injection": false,
+            "path": "memory_endpoint.scheduler.writes[0]"
+          },
+          {
+            "injection": false,
+            "path": "memory_endpoint.scheduler.bytes[0]"
+          },
+          {
+            "injection": false,
+            "path": "memory_endpoint.scheduler.wait_cycles[0]"
+          },
+          {
+            "injection": false,
+            "path": "memory_endpoint.scheduler.reads[1]"
+          },
+          {
+            "injection": false,
+            "path": "memory_endpoint.scheduler.writes[1]"
+          },
+          {
+            "injection": false,
+            "path": "memory_endpoint.scheduler.bytes[1]"
+          },
+          {
+            "injection": false,
+            "path": "memory_endpoint.scheduler.wait_cycles[1]"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.metadata.banks[0].cache.hits"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.metadata.banks[0].cache.misses"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.metadata.banks[0].cache.fills"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.metadata.banks[0].cache.writebacks"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.metadata.banks[1].cache.hits"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.metadata.banks[1].cache.misses"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.metadata.banks[1].cache.fills"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.metadata.banks[1].cache.writebacks"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.metadata.banks[2].cache.hits"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.metadata.banks[2].cache.misses"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.metadata.banks[2].cache.fills"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.metadata.banks[2].cache.writebacks"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.metadata.directory_reads"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.metadata.table_reads"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.metadata.operations[0]"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.metadata.operations[1]"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.metadata.operations[2]"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.metadata.operations[3]"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.metadata.operations[4]"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.metadata.operations[5]"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.metadata.operations[6]"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.metadata.operations[7]"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.metadata.operations[8]"
+          },
+          {
+            "injection": false,
+            "path": "core.audio.media.metadata.operations[9]"
+          }
+        ],
+        "sources_sha256": {
+          "fpga/axi_memory/rtl/axi_burst_mux.sv": "61ce3d023b9fb61109645eb9b6741088f14389e381ea63116fcbf670dfb79b91",
+          "fpga/axi_memory/rtl/axi_master.sv": "45241e8bff575cb49f84375297bf8affc8cffc0db9f749a8636b09ba39fdc9b3",
+          "fpga/axi_memory/rtl/chunk_axi.sv": "d5265918080e4b4f8a8430831b72db9425639a7d29c21aa62b5949fc261e0ecb",
+          "fpga/axi_memory/rtl/chunk_dma.sv": "632ebdfbb262c09c4a0a9a7ab7635a02b45e4b9571731bc9e2b393d1b00a503a",
+          "fpga/axi_memory/rtl/loop_pipeline_axi.sv": "a801a5cf3b9f3fa4f11ae3992f77127ad744526017527e3469917e5992b653ad",
+          "fpga/axi_memory/rtl/media_audio_pipeline_axi.sv": "45a8c0864521f93b232e5b8517766f2e31896dae41a513787307a922c21c02f6",
+          "fpga/axi_memory/rtl/media_store_axi.sv": "994218f9c840591aac6c0a72c17a00d5ab4c68d96a5f25f5d556fe150bec8c9d",
+          "fpga/axi_memory/rtl/shared_axi.sv": "39e04665ee3d0ae82ba545250008df3ff77432d8b9c193582a8eff0df49a5cc9",
+          "fpga/axi_memory/rtl/word_axi.sv": "7edfae1a0b97fc5cc4e30f7a64223cd8879e4d27811a98fda3ac8c7fe504a27e",
+          "fpga/axi_memory/rtl/word_dma.sv": "292f48d1fa083a4f4ad5fe09c586043c5e02d4e1cc5b60ed68b14d0cb3eea772",
+          "fpga/chunk_memory/rtl/chunk_memory.sv": "99e7a88cb0b93a1a5a07dc97dde65b240b9980096c68e7bce2b3ae765c150801",
+          "fpga/chunk_memory/rtl/chunk_priority.sv": "d3fbac8752264aa70127c9b9e5df4e3c9d363a2606e3c808100eb43a93263a75",
+          "fpga/chunk_memory/rtl/chunk_ram.sv": "b3c85ff265ced37296ee0fbda1dd231efc56b40e3ebff6454c982f6f25021464",
+          "fpga/job_processor/rtl/audio_pipeline.sv": "3a6b4764b9f1785e0aa7090b1f43d72686090749e547bb135876934337dc2db6",
+          "fpga/job_processor/rtl/job_processor.sv": "f9788208549a52119be2d5b7a4fe086159e6a868cad0040f0de6e52aaa5fd0cf",
+          "fpga/job_processor/rtl/jp_divider.sv": "330878c7b8eef450b44569df49bbb7501d913fcafc2038fbd58cbaf8ac1034e1",
+          "fpga/job_processor/rtl/jp_sample_ram.sv": "ce2509eec993043129e6210ed470b1e40c9478dd0d32e589146e099daae7a854",
+          "fpga/loop_pipeline/rtl/loop_pipeline.sv": "7d17881f233c3e5682a455e6f4eb20b49afe8a8f4d0db977d3050bf2fe5a5254",
+          "fpga/media_store/rtl/media_audio_pipeline.sv": "7dd87503a6e9f97e39794d9b58887348a7a742c397455f4f7586e2718de43e7d",
+          "fpga/media_store/rtl/media_metadata.sv": "388a402c4cf41fc0c52885ada7fa04985e44a9b39d33151d7ce09268b62484ce",
+          "fpga/media_store/rtl/media_prefetch_resolver.sv": "fb4763a25b20688734b3636560b8808fafceadcb2d89025cd5d333773de8190e",
+          "fpga/media_store/rtl/media_ram.sv": "2c1f253e53ad420768598616da4a7ed5e8c246f786d9c9a56d25e64b46ee5178",
+          "fpga/media_store/rtl/media_reclaimer.sv": "89ce60b91ab62fd4b95e5204c922749fb39a5fc7417bb5918ffb77d42df63932",
+          "fpga/media_store/rtl/media_store.sv": "35c370e68cf4bce3d951e540feebe72166499471801a42206b0765489e475178",
+          "fpga/media_store/rtl/memory_delay.sv": "426bfea9b6bd377a5efdfc2fb98cfe15995a821810d23d60b7911dfe3788bee9",
+          "fpga/media_store/rtl/metadata_cache.sv": "f4961a393bdbe2fb6873bb012c95ef66356c43244e5a9dfd8a13f25ec67946f1",
+          "fpga/state_processor/rtl/sp_engine.sv": "8116f4454f84837bccb6554664b751f01ec34eac414a482fc8779331fe97dd51",
+          "fpga/state_processor/rtl/sp_job_fifo.sv": "a39d66df7ebeb34b113ecfe42a0ed25e338613aabd7fc88493ad3704db727c7f",
+          "fpga/state_processor/rtl/sp_ram.sv": "0ada36fe7fc4bb515469c32c3cb2f6b7cbefd16b35349950c93f9bc2c925ff73",
+          "fpga/state_processor/rtl/state_processor.sv": "2b4bf5e174de880481114ed5e230ddceea5bcfe6475944703409e2d972a7b7d5",
+          "fpga/state_processor/rtl/state_processor_defs.svh": "62b30dff8aaa507db132e68cc1bb8932dd4cc59c2050164ddbe8aaf2316ca5b7",
+          "fpga/transition_processor/rtl/tp_priority.sv": "4838f6a3c517f162ef52a58b4d7f31dda9ad8a02c5dedef9e4f5a422da0e683a",
+          "fpga/transition_processor/rtl/tp_ram.sv": "1ef615a4b148be6d348174b0533250fe7b1756cc066f4e5d68c16b46ee32e9ca",
+          "fpga/transition_processor/rtl/transition_processor.sv": "83f802d6ca564263fe81a314fb0fc2dbb3adceeb93a00966a771a4bf2612a043"
+        },
+        "top": "loop_pipeline_axi"
+      }
+    ],
+    "revision": "0d5978abb98ede42b63aaad47d9c506c3c677451",
+    "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+    "simulator": "Marlin 0.21.1 / Verilator",
+    "verilator": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1+b2)",
+    "worktree": "M fpga/chunk_memory/rtl/chunk_memory.sv\n?? fpga/synthesis/measurements/zedboard-150mhz/"
+  },
+  "status": "passed",
+  "suites": [
+    {
+      "error": null,
+      "status": "passed",
+      "suite": "Production",
+      "wall_seconds": 39.686991889
+    }
+  ],
+  "wall_seconds": 39.687020261
+}

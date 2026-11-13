@@ -1,0 +1,70 @@
+{
+  "arguments": [
+    "target/debug/fpga-testbench",
+    "chunk",
+    "--config",
+    "small",
+    "--memory-model",
+    "legacy",
+    "--random-cases",
+    "8",
+    "--output",
+    "work/150mhz/verify-chunk-word-dma-tag"
+  ],
+  "format_version": 1,
+  "provenance": {
+    "models": [
+      {
+        "native_memory": null,
+        "parameters": {
+          "CHUNK_FRAMES": "4",
+          "READ_BUFFERS": "2",
+          "RETIRE_CHUNKS": "1",
+          "SLOTS": "8",
+          "WRITE_BUFFERS": "2"
+        },
+        "probes": [],
+        "sources_sha256": {
+          "fpga/chunk_memory/rtl/chunk_memory.sv": "99e7a88cb0b93a1a5a07dc97dde65b240b9980096c68e7bce2b3ae765c150801",
+          "fpga/chunk_memory/rtl/chunk_priority.sv": "d3fbac8752264aa70127c9b9e5df4e3c9d363a2606e3c808100eb43a93263a75",
+          "fpga/chunk_memory/rtl/chunk_ram.sv": "b3c85ff265ced37296ee0fbda1dd231efc56b40e3ebff6454c982f6f25021464",
+          "fpga/state_processor/rtl/state_processor_defs.svh": "62b30dff8aaa507db132e68cc1bb8932dd4cc59c2050164ddbe8aaf2316ca5b7"
+        },
+        "top": "chunk_memory"
+      },
+      {
+        "native_memory": null,
+        "parameters": {
+          "CHUNK_FRAMES": "4",
+          "READ_BUFFERS": "2",
+          "RETIRE_CHUNKS": "32",
+          "SLOTS": "256",
+          "WRITE_BUFFERS": "2"
+        },
+        "probes": [],
+        "sources_sha256": {
+          "fpga/chunk_memory/rtl/chunk_memory.sv": "99e7a88cb0b93a1a5a07dc97dde65b240b9980096c68e7bce2b3ae765c150801",
+          "fpga/chunk_memory/rtl/chunk_priority.sv": "d3fbac8752264aa70127c9b9e5df4e3c9d363a2606e3c808100eb43a93263a75",
+          "fpga/chunk_memory/rtl/chunk_ram.sv": "b3c85ff265ced37296ee0fbda1dd231efc56b40e3ebff6454c982f6f25021464",
+          "fpga/state_processor/rtl/state_processor_defs.svh": "62b30dff8aaa507db132e68cc1bb8932dd4cc59c2050164ddbe8aaf2316ca5b7"
+        },
+        "top": "chunk_memory"
+      }
+    ],
+    "revision": "e5bdf6058801b9ddfaea3adf328ce6d465c41f03",
+    "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+    "simulator": "Marlin 0.21.1 / Verilator",
+    "verilator": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1+b2)",
+    "worktree": ""
+  },
+  "status": "passed",
+  "suites": [
+    {
+      "error": null,
+      "status": "passed",
+      "suite": "Chunk",
+      "wall_seconds": 13.123210764
+    }
+  ],
+  "wall_seconds": 13.123229352
+}
