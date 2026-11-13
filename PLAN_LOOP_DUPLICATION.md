@@ -1,6 +1,10 @@
 # P17 duplication and cross-kind clear-then-copy
 
-Status: implementation in progress on `feat/p17-clear-then-copy`.
+Status: implementation and duplication-specific acceptance are complete on
+`feat/p17-clear-then-copy`. Delivery: [PR #980](https://github.com/SanderVocke/shoopdaloop/pull/980).
+The final browser-harness correction and this acceptance update still need to be
+pushed; GitHub authorization expired before publication completed. Broad validation
+has the limits recorded below. This is not a claim that all CI is green.
 
 Written using [.agents/prompts/write_plan.md](.agents/prompts/write_plan.md).
 Basis: the [P11 investigation](docs/investigations/p11-backend-parity.md) and the
@@ -224,11 +228,11 @@ documentation as a meaningful milestone.
 
 ## Stage 5 — Final end-to-end validation, PR and review
 
-- [ ] Run the implementation branch's documented formatting, warning-denying build
+- [x] Run the implementation branch's documented formatting, warning-denying build
   and native suite in its prescribed environment. Use Nix's development shell
   where required. Run `python3 scripts/check_shoop_test_usage.py` if Rust tests
   changed and relevant dependency-boundary checks if layering changed.
-- [ ] Exercise packaged native typed and socket delivery, applicable shared-memory
+- [x] Exercise packaged native typed and socket delivery, applicable shared-memory
   delivery, and an actual browser AudioWorklet using the repository's existing
   acceptance harnesses. Cover a P17 definition copy, both cross-kind directions,
   a copy failure after clear, service reattachment and a saved/reloaded result.
@@ -236,7 +240,7 @@ documentation as a meaningful milestone.
 - [ ] Record the tested source SHA and material validation limits in the PR and
   parity evidence. Run relevant retained reference duplication fixtures as well
   as production acceptance; do not treat reference-only coverage as completion.
-- [ ] Push the implementation branch and create a PR targeting
+- [x] Push the implementation branch and create a PR targeting
   `feat/backend-replacement`, describing same-kind preservation, cross-kind
   destructive-clear semantics, delivered P17 coverage and deferred MIDI scope.
 - [ ] Monitor required CI until green. Inspect automated PR review; address
@@ -254,6 +258,44 @@ present, then run the full required gates at the final milestone. Repeat or wide
 tests after new changes or unresolved failures, not after unchanged successful runs.
 Follow the fetched branch's test guide rather than copying commands from master:
 its workspace features and browser host target differ in this migration.
+
+## Acceptance and remaining delivery work
+
+The tested implementation is `f985e0b2c9bc90e9b3eb199cda4a03698ac52a61`;
+the final change in that revision only adds the P17 save states to the browser
+harness's existing platform-output confirmation handler. The production Rust
+sources are unchanged since `a5604c41d4301a865b8ec560dcd213173b1cde72`.
+
+Focused production fixtures cover typed/encoded copying, the manual Clear/Copy
+oracle, clear/apply failures, retained operations and copied-definition save/load.
+Packaged socket and shared-memory probes passed. The actual release AudioWorklet
+composite canary reached `Passed`, including both occupied cross-kind directions,
+P17 definition copying, save/load/resave and execution of the loaded copy. CI's
+standard hosted workflow also completed the External, built-in FX and OxiSynth
+copy/playback/persistence canaries before the separate composite harness failure
+that the final correction addresses. The retained reference duplication fixture
+was exercised as part of the full native run.
+
+The warning-denying workspace build used the configured Rust 1.95 toolchain.
+Formatting, test-attribute, parity, dependency-boundary and Python checks passed.
+The full native run is not clean: targeted reruns resolved the sandbox IPC and
+companion test-feature mismatches, but unchanged LAN/host-startup and driver-switch
+fixtures still fail locally. The overall local browser workflow later exceeded
+its deadline in a hosted-track phase after the composite canary passed. Detailed
+commands and outcomes are prepared for the PR; do not treat these broader runs as
+successful gates.
+
+Two independent CI blockers were reproduced using the unchanged upstream base:
+Cargo 1.100's native `OUT_DIR` layout is rejected by `shoopdaloop/build.rs`, and
+firmware metadata resolution rejects its lock file under `--locked`. These remain
+outside this plan's host/CI-repair scope. No automated review had arrived at the
+last successful public PR read; no review approval is claimed.
+
+Finish delivery by refreshing GitHub access, pushing the local harness correction
+and this document, publishing the prepared PR validation details, and checking
+final-head CI/review. CLI access returned HTTP 401 and Git could not authenticate;
+the published PR still pointed to `de698bc6` at the last check. Keep P11 open for
+MIDI history and do not merge autonomously.
 
 ## Execution contract
 
