@@ -1,11 +1,12 @@
 # P16: client-owned script persistence
 
-Status: implementation and local validation complete; final CI and review
-in progress. PR [#977](https://github.com/SanderVocke/shoopdaloop/pull/977). The ownership contract
+Status: implementation complete; upstream integration qualification and final
+CI/review in progress. PR [#977](https://github.com/SanderVocke/shoopdaloop/pull/977). The ownership contract
 was revised with user approval on 2026-11-12. P16 remains OPEN.
 
 Base: `feat/backend-replacement` at `9aee7496`; production behavior was compared
-with `master` at `9134eb20`. Follow
+with `master` at `9134eb20`. Upstream is now integrated through `563a6b0d`.
+Follow
 [Write Plan](.agents/prompts/write_plan.md), the
 [P16 contract](docs/native_session_recovery/p16-client-scripts.md), and the
 [code investigation](docs/native_session_recovery/p16-investigation.md).
@@ -313,3 +314,19 @@ the selected platform plus browser/portable paths affected by P16.
   two-event assertion. Twenty local baseline and twenty corrected repetitions
   passed; warning-denying workspace build, formatting and test policy passed.
   Runtime code and product deadlines are unchanged; final CI rerun is pending.
+- At the user's request, merged `origin/feat/backend-replacement` at `563a6b0d`
+  into this branch as `e638cc27`. The merge retains the client-owned P16 contract,
+  upstream's P11 duplication changes and its stricter tested Cargo layout check.
+  Formatting, test attributes, parity, three source-marker tests, warning-denying
+  workspace build and four-target dependency audits pass. The full merged native
+  suite ran 3,230 tests: 3,227 passed and three startup/driver-switch tests
+  failed on timing. Repeated serial qualification is in progress before claiming
+  the merged gate green; no product deadline has been changed.
+- Pre-merge CI at `ae2ddfbc` completed 2,672 Node tests (two ignored) across
+  43 packages and all 682 Chrome library tests across four packages. Release
+  browser workflows, including Firefox, and the entire firmware workflow passed.
+  Debug application execution passed the P16 script/resource steps, then timed
+  out on a hosted-processor MIDI import. Upstream `563a6b0d` now disables debug
+  web execution while retaining debug builds/audits and release browser tests.
+  The next CI run follows that imported policy; no viewport or deadline change
+  has been added for P16.

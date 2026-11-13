@@ -154,6 +154,40 @@ as do the warning-denying workspace build, formatting and test-attribute checks.
 No runtime code, wire schema or product deadline changed. Final Windows CI
 qualification remains pending on the follow-up head.
 
+## Upstream integration and CI policy
+
+The user requested upstream integration on 2026-11-13. Merge `e638cc27` includes
+`feat/backend-replacement` at `563a6b0d`, preserving the client-owned P16 contract
+and upstream's P11 copying semantics and tested Cargo layout handling. The merged
+workspace build, formatting, test policy, parity, three source-marker tests and
+four-target production dependency audits pass. The merged native suite ran
+3,230 tests: 3,227 passed, three startup/driver-switch cases failed, and 11 were
+skipped. Serial repetition is in progress to distinguish timing sensitivity from
+deterministic failures. This run is not claimed green; final-head CI is pending.
+
+Pre-merge CI at `ae2ddfbc` also completed these broader checks:
+
+- **2,672 Node tests passed, two ignored**, across 43 packages.
+- **682 Chrome library tests passed**, across four packages.
+- All release browser workflows passed, including Firefox.
+- The complete firmware workflow passed, including USB, both board profiles,
+  networking and recovery; coverage and all native platform jobs except the
+  Windows core-workflow case described above passed.
+
+The machine-readable Wasm results are artifact `14016897293`,
+`wasm-test-reports-debug-43373017234`. The debug application workflow passed all
+P16 script/resource steps, then timed out at `HostedMidi` during a later hosted
+processor import awaiting host commit. It reported zero xruns, discontinuities,
+overflows and memory growth. Its log is artifact `14017441071`,
+`browser-workflow-debug-43373017234-1`. This debug workflow is not claimed green.
+
+Upstream commit `563a6b0d` disables debug web test execution through
+`SHOOP_DEBUG_WEB_TESTS=false`, retaining debug builds/audits and release browser
+execution. The imported CI policy governs subsequent qualification. P16 adds no
+viewport or product-deadline exception. The previously collected Node/Chrome
+results identify their exact pre-merge revision rather than claiming execution
+on the merged head.
+
 ## Deliberate limits
 
 No VM migration, automatic start, server script catalog, attachment transfer of
