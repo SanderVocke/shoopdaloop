@@ -23,6 +23,8 @@ Rust sample executor substitutes for RTL. Each cycle evaluates low/high/low,
 and a VCD records all three phases with monotonic timestamps. Reset drops host
 valids before asserting reset. Models borrow their Marlin runtime; they must be
 dropped before it. Create/build the runtime before starting any audio callback.
+`Simulator` implements only the adapter's per-port `PortIo` transactions; image
+loading, packing and quantum sequencing are shared with other port implementations.
 
 The wrapper caps C++ build parallelism at two jobs. Set `SHOOP_VERILATOR` and
 `SHOOP_VERILATOR_JOBS` to override the executable and job count. Marlin caches the

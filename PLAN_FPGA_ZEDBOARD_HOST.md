@@ -68,6 +68,11 @@ The board then runs exactly the driver code that Marlin runs against the bridge
 top. Board-specific code is limited to MMIO access, PS/PL bring-up and firmware
 composition.
 
+Implementation note (stage 1): `PortDevice` is the shared driver in
+`rt_fpga_adapter::port`. It provides blanket `Device`, `LoopDevice` and
+`EngineDevice` impls for every `PortIo`, so port implementations need no
+wrapper type and existing simulator call sites stay unchanged.
+
 ### Existing FreeRTOS CPU engine
 
 Keep it as a firmware build variant next to the FPGA variant.
@@ -139,10 +144,20 @@ Each stage ends green on its listed checks and is committed.
 
 ### 1. Separate the driver from the simulator
 
-- [ ] Move load sequencing, packing and the run/wait logic from
+- [x] Move load sequencing, packing and the run/wait logic from
   `rt_fpga_sim/src/simulator.rs` into `PortDevice<P: PortIo>`.
-- [ ] Make `Simulator` implement `PortIo` only.
-- [ ] Port `rt_fpga_adapter` to `no_std` + `alloc` with a default `std` feature.
+- [x] Make `Simulator` implement `PortIo` only.
+- [x] Port `rt_fpga_adapter` to `no_std` + `alloc` with a default `std` feature.
+- Evidence: with Verilator 5.032 in WSL, all of the following pass, matching the
+  baseline before the change:
+  - `cargo test -p rt_fpga_sim --features sim` (CI's command);
+  - `--features app`, including all 11 `app_rtl` tests;
+  - the adapter's unit tests;
+  - the ARM `no_std` check.
+
+  `app_arithmetic` and `app_media` did not compile on `proto` after #986 renamed
+  `components` to `dependency_order`; both are updated. The `app` tests are not
+  in CI.
 - Verification:
   - `rt_fpga_sim` tests with `sim` and `app` features (Linux);
   - workspace tests for the adapter;

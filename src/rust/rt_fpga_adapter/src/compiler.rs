@@ -1,7 +1,8 @@
 //! Static lowering in the exact production connection and node order.
 use crate::image::*;
+use alloc::collections::BTreeMap;
+use alloc::{string::String, vec, vec::Vec};
 use rt_runtime::graph::PlanDescriptor;
-use std::collections::BTreeMap;
 type Checked<T> = Result<T, String>;
 #[derive(Clone, Copy)]
 pub struct NodeDescriptor {

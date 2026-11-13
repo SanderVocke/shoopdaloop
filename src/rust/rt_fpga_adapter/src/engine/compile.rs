@@ -2,12 +2,13 @@ use crate::{
     compiler::{self, Builder},
     image::*,
 };
+use alloc::collections::BTreeMap;
+use alloc::{format, string::String, vec, vec::Vec};
 use rt_runtime::{
     Error, NodeId,
     graph::{PlanDescriptor, PortType},
 };
 use shoop_rt_engine::{EngineNode, NodeConfiguration, external::SignalKind};
-use std::collections::BTreeMap;
 
 pub const ONE: i32 = 1 << 24;
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -40,13 +41,13 @@ pub struct Signal {
     pub generation: u32,
     pub ramps: BTreeMap<Parameter, Ramp>,
 }
-impl std::ops::Deref for Node {
+impl core::ops::Deref for Node {
     type Target = Signal;
     fn deref(&self) -> &Signal {
         &self.signal
     }
 }
-impl std::ops::DerefMut for Node {
+impl core::ops::DerefMut for Node {
     fn deref_mut(&mut self) -> &mut Signal {
         &mut self.signal
     }

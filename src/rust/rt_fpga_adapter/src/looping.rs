@@ -1,4 +1,5 @@
 //! A primitive loop profile over the production owning transport.
+use alloc::{vec, vec::Vec};
 use rt_runtime::{
     PlannerId, Q824,
     executor::{Command, Control, PreparedNode},
@@ -54,6 +55,7 @@ pub trait LoopDevice: crate::adapter::Device {
     fn chunk_limit(&mut self, limit: u32) -> Result<(), rt_runtime::Error>;
 }
 
+use crate::stopwatch::Stopwatch;
 use crate::{
     adapter::Metrics,
     compiler::{self, NodeDescriptor},
@@ -71,7 +73,6 @@ use shoop_loops::{
     self as loops, RequestId, State,
     runtime::{Failure, Operation as LoopOperation, Reply, Selection},
 };
-use std::time::Instant;
 struct Pending {
     token: ReceiptToken,
     sequence: Sequence,
@@ -247,7 +248,7 @@ impl<D: LoopDevice> LoopAdapter<D> {
                             return Err(Error::Busy);
                         }
                         let next = self.epoch.checked_next()?;
-                        let time = Instant::now();
+                        let time = Stopwatch::start();
                         // The request is borrowed independently of the compiler's immutable inputs.
                         let catalog = Catalog::new(
                             self.config,
@@ -263,7 +264,7 @@ impl<D: LoopDevice> LoopAdapter<D> {
                         )?;
                         self.metrics.compile_time += time.elapsed();
                         self.metrics.compilations += 1;
-                        let time = Instant::now();
+                        let time = Stopwatch::start();
                         if let Err(error) = self
                             .device
                             .load(&image)

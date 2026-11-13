@@ -1,5 +1,7 @@
 //! The application's real owning queues, backed by TP/SP/JP execution.
+use alloc::{vec, vec::Vec};
 mod compile;
+use crate::stopwatch::Stopwatch;
 use crate::{
     image::{Image, Ramp, Value},
     loop_media,
@@ -7,6 +9,7 @@ use crate::{
     protocol,
 };
 use compile::{Compiled, Node, ONE, Parameter};
+use core::time::Duration;
 use rt_audio_math::{Q824, Sample};
 use rt_runtime::{
     Epoch, Error, Frame, NodeId, PlannerId, PreparedConfig,
@@ -28,7 +31,6 @@ use shoop_rt_engine::{
     EngineCommand, EngineNode, EngineOp,
     external::{Consumer, Observations, Preparation, SignalKind},
 };
-use std::time::{Duration, Instant};
 
 pub trait EngineDevice: LoopDevice {
     fn program(&mut self, image: &Image) -> Result<(), Error>;
@@ -819,7 +821,7 @@ impl<D: EngineDevice> Core<D> {
                         node.configure(configuration);
                     }
                 }
-                let time = Instant::now();
+                let time = Stopwatch::start();
                 let image = compile::lower(
                     self.graphs.candidate(graph)?.descriptor(),
                     &self.nodes,
@@ -838,7 +840,7 @@ impl<D: EngineDevice> Core<D> {
 
                 self.metrics.compile_time += time.elapsed();
                 self.metrics.compilations += 1;
-                let time = Instant::now();
+                let time = Stopwatch::start();
                 self.device
                     .load(&image.image)
                     .map_err(|_| Error::Disconnected)?;
@@ -853,7 +855,7 @@ impl<D: EngineDevice> Core<D> {
                 self.metrics.state_words = self.image.image.initial_state.memory.len();
                 self.metrics.buffers = self.image.image.buffers;
                 self.loaded = true;
-                self.retired_topology = Some(std::mem::replace(
+                self.retired_topology = Some(core::mem::replace(
                     &mut self.topology,
                     self.ready_topology.take().ok_or(Error::InvalidState)?,
                 ));
@@ -885,7 +887,7 @@ impl<D: EngineDevice> Core<D> {
                 }
                 self.graphs.preflight(id, graph_epoch)?;
                 self.snapshot_parameters()?;
-                let time = Instant::now();
+                let time = Stopwatch::start();
                 let image = compile::lower(
                     self.graphs.candidate(id)?.descriptor(),
                     &self.nodes,
@@ -895,7 +897,7 @@ impl<D: EngineDevice> Core<D> {
                 .map_err(|_| Error::InvalidGraph)?;
                 self.metrics.compile_time += time.elapsed();
                 self.metrics.compilations += 1;
-                let time = Instant::now();
+                let time = Stopwatch::start();
                 self.device
                     .program(&image.image)
                     .map_err(|_| Error::Disconnected)?;
@@ -1180,7 +1182,7 @@ impl<D: EngineDevice> Core<D> {
             }
         }
         let mut collected = vec![];
-        let mut pending = std::mem::take(&mut self.pending);
+        let mut pending = core::mem::take(&mut self.pending);
         pending.sort_by_key(|p| u8::from(p.lane == Lane::Recovery));
         for pending in pending {
             let reply = match pending.kind {
