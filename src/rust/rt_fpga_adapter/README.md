@@ -192,3 +192,13 @@ batches. Its larger external-memory preset admits two five-second takes with the
 previous waveform retained; smaller gain/mono fixtures retain their bounded
 logical presets. See the simulator README for offline GUI and comparison commands,
 capacity details and the remaining metadata-walk timing limitation.
+
+## Regular RTL host
+
+The optional Linux backend is composed by `shoop_rt_host_fpga_sim`, selected by
+`--audio-backend fpga_rtl_sim` in `shoop_host` or `shoopdaloop` built with
+`--features fpga-sim`. It pairs with the unpaced Simulated clock and takes the
+host description, ports and pool limits from `engine::profile_description()`.
+See [regular startup](../rt_fpga_sim/README.md#regular-application-backend) and
+[numeric contract](../rt_fpga_sim/APP_CONTRACT.md). Ordinary native builds do not
+include Marlin; the simulator requires Linux and Verilator 5.032.

@@ -1,0 +1,39 @@
+[package]
+name = "shoop_rt_host_fpga_sim"
+version.workspace = true
+edition = "2024"
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+default = []
+sim = ["dep:rt_fpga_sim", "dep:rt_fpga_adapter", "dep:rt_runtime"]
+
+[dependencies]
+shoop_rt_engine = { path = "../shoop_rt_engine" }
+shoop_rt_protocol = { path = "../shoop_rt_protocol" }
+shoop_rt_transport = { path = "../shoop_rt_transport" }
+tracing = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+rt_fpga_sim = { path = "../rt_fpga_sim", features = ["sim"], optional = true }
+rt_fpga_adapter = { path = "../rt_fpga_adapter", optional = true }
+rt_runtime = { path = "../rt_runtime", optional = true }
+
+[dev-dependencies]
+shoop_loops = { path = "../shoop_loops" }
+shoop_rt_engine = { path = "../shoop_rt_engine", features = ["testing"] }
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
+serde = { workspace = true, features = ["derive", "std"] }
+serde_json = { workspace = true }
+rt_audio_math = { path = "../rt_audio_math" }
+rt_backend_testbench = { path = "../rt_backend_testbench" }
+shoop_backend = { path = "../shoop_backend", default-features = false }
+shoop_app = { path = "../shoop_app" }
+shoop_app_api = { path = "../shoop_app_api" }
+shoop_app_client = { path = "../shoop_app_client", features = ["runtime"] }
+shoop_app_protocol = { path = "../shoop_app_protocol" }
+shoop_rt_backend = { path = "../shoop_rt_backend" }
+shoop_scripting = { path = "../shoop_scripting" }

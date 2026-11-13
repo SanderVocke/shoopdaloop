@@ -38,10 +38,19 @@ and a VCD records all three phases with monotonic timestamps. Reset drops host
 valids before asserting reset. Models borrow their Marlin runtime; they must be
 dropped before it. Create/build the runtime before starting any audio callback.
 
-The wrapper caps C++ build parallelism at two jobs. Set `SHOOP_VERILATOR` and
+Marlin options cap C++ build parallelism at two jobs. Set `SHOOP_VERILATOR` and
 `SHOOP_VERILATOR_JOBS` to override the executable and job count. Marlin caches the
 compiled model separately from graph/configuration data. Loading another graph
 or changing a gain does not rebuild C++.
+
+Build the validated Verilator locally with `bash scripts/build_verilator.sh`.
+It requires autoconf, flex, bison, a C++ compiler and zlib headers. On NixOS run
+`nix develop --command bash scripts/build_verilator.sh`; the development shell
+supplies these build dependencies.
+Then add `$PWD/work/verilator/bin` to `PATH`, or set `SHOOP_VERILATOR` to that
+absolute executable path. `SHOOP_VERILATOR_JOBS` defaults to two. CI uses the
+same script and pinned source revision. Runtime startup rejects versions other
+than 5.032 with a diagnostic naming the supported version.
 
 Validated with Rust 1.99.1, Verilator 5.032 and GCC 14.2 on Linux x86_64.
 Marlin is behind `sim`; ordinary production and Wasm builds do not depend on it.
@@ -81,7 +90,7 @@ runtime/model tests verify this ownership; no test serialization is required.
 
 [Validation measurements](VALIDATION.md) distinguish C++ build/load, runtime graph
 validation/lowering, configuration and clock counts. Ordinary CPU/Wasm dependency
-trees contain no Marlin; normal app code still uses its native runtime.
+trees contain no Marlin; the optional regular application backend uses the RTL consumer.
 
 ## Queue-driven mono looper
 
@@ -132,37 +141,52 @@ are independent regressions, not dependencies of this runner. Supported protocol
 and capacity details are in the adapter README; local results and separate model,
 graph/configuration measurements are in [mono validation](MONO_VALIDATION.md).
 
-## Offline application Sync loop
+## Regular application backend
 
-The optional application composition uses the real application service, client,
-engine endpoint and owning runtime queues. Its external consumer compiles the
-submitted production graph and topology for the RTL pipeline. It neither runs a
-CPU graph runtime nor executes the native loop planner. The real prepared node
-objects supply their fixed signal descriptions and control validation.
+Build and select the optional backend on Linux:
 
 ```sh
-cargo run -p rt_fpga_sim --features app-ui --bin fpga-app-demo
-cargo run -p rt_fpga_sim --features app --bin fpga-app-demo -- \
-  --compare src/rust/rt_fpga_sim/fixtures/app-sync-loop.json
+bash scripts/build_verilator.sh
+export PATH="$PWD/work/verilator/bin:$PATH"
+cargo build -p shoop_host -p shoopdaloop --features fpga-sim
+# In-process host:
+target/debug/shoopdaloop --audio-backend fpga_rtl_sim --simulated-input synthetic
+# Independent host, then the regular application:
+target/debug/shoop_host --audio-backend fpga_rtl_sim --simulated-input synthetic \
+  --export-profile work/fpga-host.json
+target/debug/shoopdaloop --host-profile work/fpga-host.json --ui-only
+# The regular companion-host path:
+target/debug/shoopdaloop --audio-backend fpga_rtl_sim --session-transport socket
 ```
 
-Use `--replay` instead of `--compare` to run hardware alone. Add `--vcd work/app.vcd`
-to either command for a trace on the worker's model thread; comparisons report the
-first differing action/frame/channel. VCD files can be large.
+The restart-required Audio backend setting accepts `fpga_rtl_sim`; native
+processing remains `new_engine`. Selecting RTL on the CLI defaults to its
+Simulated clock. An explicitly selected CPAL/JACK/dummy driver is refused.
+The input mode is `silence` (default) or `synthetic`, configured through
+`--simulated-input` or `driver.Simulated.input` in host JSON. Output is discarded.
+There are no RTL-specific windows or controls.
 
-The window uses the ordinary application widgets. It starts with the default
-mono Sync strip and loop. Use the connections dialog to connect logical
-`audio_in_1` to Sync and route Sync to Master; Master connects to the logical
-outputs. The synthetic-input checkbox switches between deterministic in-memory
-samples and silence. There is no host process, JACK/CPAL connection, device
-enumeration or audible output. The engine reports a simulated-clock driver, and
-the status overlay names the RTL simulation. The MEM headline shows RTL storage
-pressure from the hardware allocators, refreshed every 200 ms of audio time; at
-simulation speed that is several seconds of wall time. Additional tracks, MIDI,
-FX, imported sessions, composites, preview and metronome audio are outside this
-fixed-session profile.
+`SHOOP_FPGA_RTL` selects the FPGA source directory (default: repository `fpga/`),
+`SHOOP_FPGA_CACHE` selects the model cache (default: `work/marlin-host`), and
+`SHOOP_VERILATOR` selects the executable. Startup validates Verilator 5.032 and
+logs model preparation. Companion readiness allows three minutes for a cold
+build. Builds on other platforms return an unsupported-platform startup error.
 
-A worker owns the Marlin runtime, model and queue consumer. The normal window
+The ordinary connections dialog connects logical `audio_in_1` to Sync and routes
+Sync to Master; Master connects to the logical outputs. The supported fresh
+session is one mono Sync strip and loop with stereo Master, Q=32 and audio only.
+Extra tracks/loops, MIDI, FX, composites, preview and metronome audio are outside
+the fixed profile. Prepared pools and host ports use the adapter's profile.
+The status overlay reports Audio backend and Audio driver independently. MEM
+shows allocator pressure, refreshed every 200 ms of simulated audio (several
+seconds of wall time). No audio device is opened and there is no audible output.
+
+The deterministic replay harness uses the same host worker through
+`shoop_rt_host_fpga_sim` tests, with the real service, client, endpoint and queues.
+It compiles the submitted graph and topology to RTL without a CPU graph runtime
+or native loop planner. Numeric bounds remain in [APP_CONTRACT.md](APP_CONTRACT.md).
+
+A worker owns the Marlin runtime, model and queue consumer. The regular application
 runs continuously, starting each 32-frame iteration immediately after its
 predecessor. UI polling uses its own elapsed time and imposes no sample-rate
 pacing or quantum deadline on the worker. Deterministic replays use bounded
@@ -186,7 +210,7 @@ twice that many mappings, including snapshot/primary-view overlap. It includes
 both prepared channels; the second channel is inactive in the mono session. This admits two five-second
 takes at 48 kHz while retaining the previous take. `Handle::store_usage` reports
 issued views, the slot high-water mark, free slots and the logical limit from
-actual device registers. The headless demo prints these alongside compiler and
+actual device registers. The replay tests record these alongside compiler and
 activation timings. This is bounded FPGA storage, independently of native
 elastic media storage.
 
@@ -199,11 +223,11 @@ board. No DRAM timing simulation is used by this composition.
 Focused application validation:
 
 ```sh
-cargo test -p rt_fpga_sim --features app --test app_native --test app_protocol \
+cargo test -p shoop_rt_host_fpga_sim --features sim --test app_native --test app_protocol \
   --test app_arithmetic --test app_media
-cargo test -p rt_fpga_sim --features app --test app_rtl -- \
+cargo test -p shoop_rt_host_fpga_sim --features sim --test app_rtl -- \
   --skip application_store_holds_a_five_second_take_while_recording_another_and_reuses_it
-cargo test -p rt_fpga_sim --features app --test app_rtl \
+cargo test -p shoop_rt_host_fpga_sim --features sim --test app_rtl \
   application_store_holds_a_five_second_take_while_recording_another_and_reuses_it
 ```
 

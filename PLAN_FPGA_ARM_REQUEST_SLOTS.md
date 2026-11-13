@@ -113,7 +113,8 @@ The service-pause tests here finish outstanding transfers before pausing ARM.
 - `src/rust/rt_fpga_adapter/src/{protocol,looping,engine}.rs`: current packing,
   adapter request ownership and submission/read/cancel/collect call sites.
 - `src/rust/rt_fpga_sim/src/simulator.rs`, `rtl/marlin_pipeline.sv` and
-  `tests/{marlin,mono_rtl,app_rtl}.rs`: native RTL transport and comparisons.
+  `tests/{marlin,mono_rtl}.rs`, plus
+  `src/rust/shoop_rt_host_fpga_sim/tests/app_rtl.rs`: native RTL transport and comparisons.
   The default Marlin top has four loop slots; application adapters admit one.
   Exercise a short sync chain directly without expanding the application profile.
 - `fpga/transition_processor/tests/{driver,cases,test_transition_processor}.py`
@@ -268,7 +269,7 @@ Principal existing gates, supplemented by the new service/bridge tests:
 cargo test --locked -p rt_fpga_adapter
 cargo test --locked -p rt_backend_testbench
 cargo test --locked -p rt_fpga_sim --features sim -- --test-threads=1
-cargo test --locked -p rt_fpga_sim --features app --test app_rtl -- --test-threads=1
+cargo test --locked -p shoop_rt_host_fpga_sim --features sim --tests -- --test-threads=1
 python fpga/transition_processor/simulate.py --config all --random-cases 20
 python fpga/verification/simulate.py --directed --random-cases 30 --faults
 python fpga/axi_memory/generate_tops.py --check
@@ -328,3 +329,15 @@ Vivado synthesis from 12,075 to 11,287 LUTs and from 7,943 to 7,886 flip-flops.
 The original baseline uses 11,208 LUTs and 7,979 flip-flops. Preserving old binary
 state values alone instead increases synthesis to 12,206 LUTs and is not adopted.
 None of these trials changes capacities, record layouts, constraints or semantics.
+
+The integration refresh preserves the new host profile and protocol version 37,
+including the upstream codec fixtures. Application replays now run from
+`shoop_rt_host_fpga_sim --features sim`; the workflow's regular-host job covers
+the full relocated suite, while reclamation keeps the shared-owner/kernel checks.
+The repeated-runtime kernel test exposed a redundant Marlin global tracing
+initializer blocked in `VerilatedContext::calcUnusedSigs`. Each generated model
+already enables tracing on its owned context. Removing the global initialization
+makes both mono RTL tests pass in 0.73 seconds; the complete kernel suite and
+relocated bounded replay also pass. The warning-denying workspace build, regular
+host/carrier tests, normal application workflow and 45 pipeline cases pass after
+integration. A fresh full native sweep and final CI remain in progress.

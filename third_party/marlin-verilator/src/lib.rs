@@ -50,7 +50,7 @@ use tracing::Waveform;
 
 use crate::{
     dynamic::DynamicPortInfo,
-    ffi_names::{DPI_INIT_CALLBACK, TRACE_EVER_ON},
+    ffi_names::DPI_INIT_CALLBACK,
 };
 
 pub mod reexports {
@@ -394,6 +394,10 @@ pub struct VerilatorRuntimeOptions {
     /// Whether Verilator should always be invoked instead of only when the
     /// source files or DPI functions change.
     pub force_verilator_rebuild: bool,
+    /// Maximum C++ build parallelism.
+    pub build_jobs: usize,
+    /// Runtime locations for statically declared model source paths.
+    pub source_path_overrides: Vec<(String, String)>,
 }
 
 impl Default for VerilatorRuntimeOptions {
@@ -402,6 +406,8 @@ impl Default for VerilatorRuntimeOptions {
             verilator_executable: "verilator".into(),
             allow_unsupported_verilator: None,
             force_verilator_rebuild: false,
+            build_jobs: 2,
+            source_path_overrides: Vec::new(),
         }
     }
 }
@@ -502,7 +508,6 @@ static THREAD_LOCKS_PER_BUILD_DIR: LazyLock<
 fn one_time_library_setup(
     library: &Library,
     dpi_functions: &[&'static dyn DpiFunction],
-    tracing_enabled: bool,
 ) -> Result<(), VerilatorError> {
     if !dpi_functions.is_empty() {
         let dpi_init_callback: extern "C" fn(*const *const ffi::c_void) =
@@ -519,15 +524,6 @@ fn one_time_library_setup(
             .collect::<Vec<_>>();
 
         (dpi_init_callback)(function_pointers.as_ptr_range().start);
-    }
-
-    if tracing_enabled {
-        let trace_ever_on_callback: extern "C" fn(bool) =
-            *unsafe { library.get(TRACE_EVER_ON.as_bytes()) }
-                .whatever_context(
-                    "Model was not configured with tracing enabled",
-                )?;
-        trace_ever_on_callback(true);
     }
 
     Ok(())
@@ -866,6 +862,10 @@ impl VerilatorRuntime {
         ports: &[(&str, usize, usize, PortDirection)],
         config: &VerilatedModelConfig,
     ) -> Result<&Library, VerilatorError> {
+        let source_path = self.options.source_path_overrides.iter()
+            .find(|(original, _)| original == source_path)
+            .map(|(_, replacement)| replacement.as_str())
+            .unwrap_or(source_path);
         if !self.source_files.iter().any(|source_file| {
             match (
                 source_file.canonicalize_utf8(),
@@ -900,6 +900,8 @@ impl VerilatorRuntime {
         "shoop-owned-context-v1".hash(&mut hasher);
         ports.hash(&mut hasher);
         config.hash(&mut hasher);
+        self.source_files.hash(&mut hasher);
+        self.include_directories.hash(&mut hasher);
         let library_key = LibraryArenaKey {
             name: name.to_owned(),
             source_path: source_path.to_owned(),
@@ -1025,11 +1027,7 @@ impl VerilatorRuntime {
                         "Failed to load verilator dynamic library",
                     )?;
 
-                one_time_library_setup(
-                    &library,
-                    &self.dpi_functions,
-                    config.enable_tracing.is_some(),
-                )?;
+                one_time_library_setup(&library, &self.dpi_functions)?;
 
                 let library_idx = self.library_arena.push(library);
                 entry.insert(library_idx);

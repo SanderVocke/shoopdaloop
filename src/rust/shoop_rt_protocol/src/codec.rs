@@ -1725,6 +1725,10 @@ impl Wire for crate::MemoryReport {
 impl Wire for Telemetry {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
+            Self::AudioBackend(kind) => {
+                w.u8(7)?;
+                w.u8(*kind as u8)
+            }
             Self::Memory(report) => {
                 w.u8(6)?;
                 report.put(w)
@@ -1830,6 +1834,11 @@ impl Wire for Telemetry {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            7 => Self::AudioBackend(match r.u8()? {
+                0 => AudioBackendKind::NewEngine,
+                1 => AudioBackendKind::FpgaRtlSim,
+                _ => return Err(CodecError::Invalid),
+            }),
             6 => Self::Memory(crate::MemoryReport::get(r)?),
             5 => Self::Composite {
                 loop_id: LoopSlotId::get(r)?,

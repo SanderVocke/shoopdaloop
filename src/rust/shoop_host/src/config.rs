@@ -24,7 +24,8 @@ impl core::ops::DerefMut for HostConfig {
 }
 impl HostConfig {
     pub fn validate(&self) -> Result<()> {
-        self.settings.validate().map_err(anyhow::Error::msg)
+        self.settings.validate().map_err(anyhow::Error::msg)?;
+        crate::fpga::validate_available(&self.settings)
     }
 }
 
@@ -113,5 +114,44 @@ mod jack_tests {
         assert!(jack.validate().is_ok());
         jack.client_name.push('\0');
         assert!(jack.validate().is_err());
+    }
+}
+
+#[cfg(test)]
+mod backend_tests {
+    use super::*;
+    use shoop_app_api::{AudioBackendKind, AudioDriverConfig};
+    use shoop_wasm_test_support::shoop_test;
+
+    #[shoop_test(no_wasm = "native host startup")]
+    fn backend_config_defaults_and_availability_are_explicit() {
+        let native: HostConfig = serde_json::from_str("{}").unwrap();
+        assert_eq!(native.backend, AudioBackendKind::NewEngine);
+        let config: HostConfig = serde_json::from_str(
+            r#"{"backend":"fpga_rtl_sim","driver":{"Simulated":{"input":"synthetic"}}}"#,
+        )
+        .unwrap();
+        assert!(matches!(config.driver, AudioDriverConfig::Simulated(_)));
+        assert_eq!(
+            serde_json::from_slice::<HostConfig>(&serde_json::to_vec(&config).unwrap())
+                .unwrap()
+                .settings,
+            config.settings
+        );
+        if !cfg!(feature = "fpga-sim") {
+            assert!(config
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("--features fpga-sim"));
+        } else if !cfg!(target_os = "linux") {
+            assert!(config
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("unsupported on this platform"));
+        } else {
+            config.validate().unwrap();
+        }
     }
 }

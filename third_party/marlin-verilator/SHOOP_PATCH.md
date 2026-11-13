@@ -17,9 +17,20 @@ clears Verilator's current-thread pointer. The Rust driver closes traces before
 destroying models. This establishes model/trace/context ownership without
 retaining leaked models or serializing tests to conceal the failure.
 
+Library setup does not enable tracing through Verilator's global current
+context. Tracing is enabled on each owned context before model construction.
+The redundant global call can block in `calcUnusedSigs` when a traced library
+is loaded again after an earlier runtime and its context have been destroyed.
+
 `src/lib.rs` adds a cache discriminator so old compiled bridges are rebuilt.
 Two syntax-only fixes keep this local dependency warning-free on Rust 1.99
 (an explicit elided lifetime and statement-position error macro).
-No signal layout or public Rust API changes. Remove this vendor patch when an
+Runtime options additionally expose bounded C++ build parallelism and explicit
+source-path relocation for statically declared models. This lets the host use
+configurable source/cache locations without a shell executable wrapper.
+The model cache key includes runtime source and include paths so switching RTL
+roots cannot reuse a model from an older source location.
+Build diagnostics go to stderr so framed host readiness on stdout stays intact.
+No signal layout changes. Remove this vendor patch when an
 upstream bridge release provides equivalent context ownership; retain the
 multiple-model, multiple-runtime and waveform regressions when upgrading.

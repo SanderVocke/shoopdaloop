@@ -154,7 +154,7 @@ impl Engine {
         let limits = self.endpoint.limits();
         shoop_rt_transport::carrier::Outbox::new(
             2 * usize::from(self.endpoint.settings.max_reliable) + 8,
-            limits.strips as usize + 2 * limits.loops as usize + limits.buses as usize + 3,
+            limits.strips as usize + 2 * limits.loops as usize + limits.buses as usize + 4,
             usize::from(self.endpoint.settings.max_bulk),
         )
     }
@@ -805,6 +805,7 @@ fn prepare_complete_using<R>(
         },
         cells: cells.clone(),
         settings: Settings {
+            audio_backend: description.audio_backend,
             external_dry_wet: description.external_dry_wet,
             ramp: description.ramp_frames,
             lead: description.control_lead_frames,

@@ -6,6 +6,7 @@ use std::ffi::OsString;
 
 #[derive(Clone, Copy, Debug, clap::ValueEnum)]
 pub enum NativeDriver {
+    Simulated,
     Dummy,
     Jack,
     Cpal,
@@ -13,6 +14,7 @@ pub enum NativeDriver {
 impl NativeDriver {
     pub fn kind(self) -> AudioDriverKind {
         match self {
+            Self::Simulated => AudioDriverKind::Simulated,
             Self::Dummy => AudioDriverKind::Dummy,
             Self::Jack => AudioDriverKind::Jack,
             Self::Cpal => AudioDriverKind::Cpal,
@@ -55,6 +57,9 @@ pub struct AudioArgs {
     /// Audio driver for this launch; does not change saved preferences.
     #[arg(long, value_enum, help_heading = "Audio")]
     pub audio_driver: Option<NativeDriver>,
+    /// Input for the unpaced simulation clock.
+    #[arg(long, value_parser = ["silence", "synthetic"], help_heading = "Audio")]
+    pub simulated_input: Option<String>,
     /// JACK client-name hint.
     #[arg(long, requires = "audio_driver", help_heading = "JACK")]
     pub jack_client_name: Option<String>,
@@ -84,7 +89,14 @@ impl AudioArgs {
     }
 
     pub fn apply(&self, base: AudioDriverConfig) -> Result<AudioDriverConfig> {
-        let Some(driver) = self.audio_driver else {
+        let driver = self.audio_driver.or_else(|| {
+            matches!(base, AudioDriverConfig::Simulated(_)).then_some(NativeDriver::Simulated)
+        });
+        let Some(driver) = driver else {
+            ensure!(
+                self.simulated_input.is_none(),
+                "--simulated-input requires a Simulated clock"
+            );
             return Ok(base);
         };
         let kind = driver.kind();
@@ -103,9 +115,24 @@ impl AudioArgs {
                 AudioDriverKind::Dummy => AudioDriverConfig::Dummy(Default::default()),
                 AudioDriverKind::Jack => AudioDriverConfig::Jack(Default::default()),
                 AudioDriverKind::Cpal => AudioDriverConfig::Cpal(Default::default()),
-                AudioDriverKind::WebAudio | AudioDriverKind::Simulated => unreachable!(),
+                AudioDriverKind::Simulated => AudioDriverConfig::Simulated(Default::default()),
+                AudioDriverKind::WebAudio => unreachable!(),
             }
         };
+        if let AudioDriverConfig::Simulated(simulated) = &mut config {
+            if let Some(mode) = &self.simulated_input {
+                simulated.input = if mode == "synthetic" {
+                    shoop_app_api::SimulatedInputMode::Synthetic
+                } else {
+                    shoop_app_api::SimulatedInputMode::Silence
+                };
+            }
+        } else {
+            ensure!(
+                self.simulated_input.is_none(),
+                "--simulated-input requires a Simulated clock"
+            );
+        }
         let has_jack_options = self.jack_client_name.is_some();
         if let AudioDriverConfig::Jack(jack) = &mut config {
             if let Some(name) = &self.jack_client_name {

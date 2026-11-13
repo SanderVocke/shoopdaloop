@@ -1,6 +1,6 @@
-# Offline application contract
+# RTL application backend contract
 
-The common version-1 trace in `fixtures/app-sync-loop.json` uses the actual
+The common version-1 trace in `rt_fpga_sim/fixtures/app-sync-loop.json` uses the actual
 application service and UI client. It connects the logical Sync input and one
 Sync output to Master, then exercises record/play, gain, mute, stop, waveform
 selection, clear, another recording and a self-synchronized stop. Inputs are
@@ -9,7 +9,7 @@ explicit for replay. Nothing opens an audio device. Normal simulator execution
 will run continuously at maximum speed; the replay bounds iterations for exact
 comparison cuts and never sleeps to meet an audio rate.
 
-`app::description()` retains Q=32, 48 kHz, a 240-frame control ramp, two prepared
+The adapter profile (`rt_fpga_adapter::engine::profile_description`) retains Q=32, 48 kHz, a 240-frame control ramp, two prepared
 strip channels and stereo Master. It bounds the prepared pool to one strip,
 one loop and one Master bus, with no MIDI ports. The real service creates one
 mono MIDI-free Sync strip and configures 3 ms (144 frames) of loop smoothing.
@@ -51,3 +51,26 @@ to a failing comparison. Exact silence/identity cases and intermediate Q8.24
 production-vs-RTL operations retain bitwise comparisons. Saturation, boundary
 frames and lifecycle results are checked separately and cannot be hidden by the
 float tolerance.
+
+Restart smoothing retains the requested sample duration. Its Q8.24 crossfade
+rounds once after multiplying a wide sample difference by the Q0.24 weight;
+it no longer rounds and saturates two weighted samples separately. The FPGA
+steps weights by quotient/remainder addition and stores histories in synchronous
+RAM. Native Q8.24 rendering uses the same crossfade; float rendering evaluates
+the difference in f64 before returning f32.
+
+## Regular composition
+
+`shoop_rt_host_fpga_sim` owns the thread-affine runtime, model and adapter.
+`shoop_host --audio-backend fpga_rtl_sim` and the normal in-process application
+use that host with the ordinary service/client path. The test-only replay
+harness lives under `shoop_rt_host_fpga_sim/tests/support`; its bounded clock
+and captured output provide the native comparison. Production continuous mode
+discards output and retains no replay history.
+
+Reproduce the comparison with:
+
+```sh
+cargo test -p shoop_rt_host_fpga_sim --features sim --test app_rtl \
+  common_app_replay_matches_native_audio_and_loop_observations
+```

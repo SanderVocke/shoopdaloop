@@ -1,4 +1,5 @@
-#![cfg(all(feature = "app", not(target_arch = "wasm32")))]
+#![cfg(all(feature = "sim", target_os = "linux"))]
+mod support;
 use rt_fpga_adapter::{
     adapter::Device,
     engine::{Adapter, EngineDevice},
@@ -97,7 +98,7 @@ fn prepare(
     let mut parts = None;
     let _: Result<shoop_rt_engine::external::Prepared<()>, _> =
         shoop_rt_engine::prepare_with_consumer(
-            &rt_fpga_sim::app::description(),
+            &support::app::description(),
             shoop_rt_protocol::DriverStatus {
                 kind: shoop_rt_protocol::DriverKind::Dummy,
                 state: shoop_rt_protocol::DriverRunState::Running,
