@@ -66,12 +66,28 @@ pub fn transition(command: loops::Request) -> Result<[u32; 20], Error> {
         Transition::Record {
             monitor_previous: false,
         } => 2,
+        Transition::Replace {
+            length: 0,
+            preserve_position: false,
+            ..
+        } => 3,
         _ => return Err(Error::InvalidParameter),
     };
-    if command.timing != loops::Timing::At {
-        return Err(Error::InvalidParameter);
-    }
     let mut w = [0; 20];
+    if let loops::Timing::AfterTicks { source, skip } = command.timing {
+        put(&mut w, 33, 1, 1);
+        put(
+            &mut w,
+            256,
+            64,
+            u64::from(source.slot()) | (u64::from(source.generation()) << 32),
+        );
+        put(&mut w, 320, 64, skip);
+    }
+    if let Transition::Replace { revision, .. } = command.transition {
+        put(&mut w, 44, 1, 1);
+        put(&mut w, 384, 64, revision.0);
+    }
     put(&mut w, 34, 2, code);
     put(
         &mut w,
@@ -117,6 +133,11 @@ pub fn event(words: &[u32; 26]) -> Result<Event, Error> {
             },
             2 => Transition::Record {
                 monitor_previous: false,
+            },
+            3 if get(words, 195, 1) != 0 => Transition::Replace {
+                length: 0,
+                revision: Revision(get(words, 128, 64)),
+                preserve_position: false,
             },
             _ => return Err(Error::InvalidState),
         }),

@@ -91,8 +91,8 @@ owns its content. Once all owners disappear, its view/chunks retire and the old
 cursor fails even after slot reuse. Reads return their original owning buffer,
 respect page boundaries, preserve unwritten bytes and handle partial words/EOF.
 
-The Marlin device has 128 physical chunks, eight views, four TP loop slots,
-eight TP request slots and sixteen events. This profile admits one loop, four
+The mono profile uses a 128-chunk logical arena within the shared Marlin model,
+with four TP loop slots, eight TP request slots and sixteen events. It admits one loop, four
 normal pending planner queries/transitions and one recovery request, up to four
 exports, and a configured chunk limit in 1..128. Retained exports consume real
 chunk capacity. Host leases permit the device's opt-in view reuse; raw view IDs
@@ -128,5 +128,35 @@ The mono replay includes these reports in each `result.json` frame's `memory`
 entry, with readable pool names, counts, limits, and `pressure_percent`. Readback
 advances device service clocks, not audio frames; replay clock totals include
 that diagnostic work. A host can poll at a lower rate such as 5 Hz. The existing
-mono adapter is still a queue-driven demonstrator; this change does not introduce
-an app-selectable FPGA backend or a physical board transport.
+mono adapter remains independently available alongside the application profile
+below. Memory readback does not introduce a physical board transport.
+
+## Default application Sync-loop profile
+
+`engine::Adapter<D: EngineDevice>` consumes the production engine's actual
+`EngineNode`, `LoopPlanner` and `EngineOp` queues. Production preparation supplies
+the endpoint, node descriptions and observation cells through `external::Preparation`.
+It does not construct a CPU graph executor or run the native loop planner.
+
+This fixed audio-only session has one mono primitive Sync loop, one strip,
+stereo Master, two prepared audio channels and no MIDI/FX. The compiler lowers
+the submitted ordered graph and staged topology, including strip and bus stages,
+240-frame control ramps and 144-frame restart smoothing. TP executes immediate
+and scheduled record/play/stop, self-sync/repeat and clear; SP/JP execute samples.
+Gain, balance, mute, monitoring and mode changes update state without recompiling.
+Permitted routing activations install a new signal program while retaining TP
+time, media and smoothing history. General session replacement remains unsupported.
+
+The existing endpoint, owning queue protocol, receipt cuts, graph validation and
+callback-to-quantum buffering are reused. Configuration/activation is acknowledged
+after the device succeeds. Node installs and arbitrary Rust processors are refused.
+The adapter retains staging owners, generation-checked media leases and bulk-read
+bookkeeping on the host. Waveform bytes come from FPGA media and convert Q8.24 to
+the app's float format. Faults terminate pending receipts and publish failed state.
+
+The optional `rt_fpga_sim` application composition runs continuously as fast as
+possible, without audio deadlines or rate pacing. Deterministic tests use stepped
+batches. Its larger external-memory preset admits two five-second takes with the
+previous waveform retained; smaller gain/mono fixtures retain their bounded
+logical presets. See the simulator README for offline GUI and comparison commands,
+capacity details and the remaining metadata-walk timing limitation.

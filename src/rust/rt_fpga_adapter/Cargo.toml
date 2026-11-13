@@ -8,10 +8,10 @@ publish = false
 workspace = true
 
 [dependencies]
-shoop_rt_protocol = { path = "../shoop_rt_protocol" }
 shoop_loops = { path = "../shoop_loops" }
 rt_audio_math = { path = "../rt_audio_math" }
 rt_runtime = { path = "../rt_runtime" }
+shoop_rt_protocol = { path = "../shoop_rt_protocol" }
 shoop_rt_engine = { path = "../shoop_rt_engine" }
 serde = { workspace = true, features = ["derive", "std"] }
 schemars = "1"

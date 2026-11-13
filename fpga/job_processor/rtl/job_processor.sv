@@ -57,11 +57,13 @@ module job_processor #(
     output reg [63:0] media_hint_view, output reg [63:0] media_hint_position, output reg [63:0] media_hint_length
 );
     localparam [7:0] OK = 0, INVALID_BUFFER = 1, INVALID_SHAPE = 2, UNSUPPORTED = 3, INVALID_JOB = 4;
-    typedef enum logic [4:0] {
+    typedef enum logic [5:0] {
         IDLE, CLEAR_OUTPUT, FETCH, DECODE, READ_REQUEST, READ_RESULT,
         RAMP_PREPARE, RAMP_MULTIPLY,
         INITIAL_DIVIDE, INITIAL_WAIT, STEP_DIVIDE, STEP_WAIT,
         STORE, GAIN_STREAM, MIX_STREAM,
+        ARITH_B_REQUEST, ARITH_B_RESULT, ARITH_MULTIPLY, ARITH_RESULT,
+        SMOOTH_RATIO, SMOOTH_WAIT, SMOOTH_ANCHOR_MULTIPLY, SMOOTH_ANCHOR_RESULT, SMOOTH_RAW_MULTIPLY, SMOOTH_RAW_RESULT,
         MEDIA_COMMAND, MEDIA_READ, MEDIA_SOURCE_REQUEST, MEDIA_SOURCE_RESULT, MEDIA_WRITE, MEDIA_DONE
     } phase_t;
     reg [5:0] chunk_shift;
@@ -97,6 +99,9 @@ module job_processor #(
     reg product_negative;
     reg hint_pending, hinted_head;
     assign media_hint_valid = (ENABLE_MEDIA != 0) && hint_pending && !media_fault && !reset;
+    reg [31:0] smooth_last[0:BUFFERS-1], smooth_anchor[0:BUFFERS-1], smooth_elapsed[0:BUFFERS-1], smooth_duration[0:BUFFERS-1];
+    reg [BUFFER_BITS-1:0] smooth_index;
+    reg [31:0] anchor_value;
     reg [31:0] multiply_a, multiply_b;
     reg multiply_negative;
     wire [63:0] multiplied = multiply_a * multiply_b;
@@ -128,10 +133,10 @@ module job_processor #(
     wire playback_write = (ENABLE_MEDIA != 0) && phase == MEDIA_READ
         && media_read_valid && media_read_ready && !media_fault;
     wire scratch_read = ((phase == READ_REQUEST) && (opcode != `SHOOP_SP_JOB_INPUT))
-        || stream_read || (phase == MEDIA_SOURCE_REQUEST);
+        || stream_read || (phase == MEDIA_SOURCE_REQUEST) || (phase == ARITH_B_REQUEST);
     wire scratch_write = ((phase == STORE) && (opcode != `SHOOP_SP_JOB_OUTPUT)) || stream_write || playback_write;
     wire output_write = (phase == CLEAR_OUTPUT) || ((phase == STORE) && (opcode == `SHOOP_SP_JOB_OUTPUT));
-    wire [SCRATCH_BITS-1:0] scratch_read_address = SCRATCH_BITS'(32'((phase == MIX_STREAM && mix_second) ? source_b : source_a)
+    wire [SCRATCH_BITS-1:0] scratch_read_address = SCRATCH_BITS'(32'(((phase == MIX_STREAM && mix_second) || phase == ARITH_B_REQUEST) ? source_b : source_a)
         * 32'(MAX_FRAMES) + frame);
     wire [SCRATCH_BITS-1:0] scratch_write_address = SCRATCH_BITS'(32'(destination) * 32'(MAX_FRAMES)
         + (streaming ? stream_frame : frame));
@@ -195,8 +200,8 @@ module job_processor #(
     assign media_read_ready = (ENABLE_MEDIA != 0) && (phase == MEDIA_READ) && !reset;
 
     jp_divider divide (
-        .clk(clk), .reset(reset), .start((phase == INITIAL_DIVIDE) || (phase == STEP_DIVIDE)),
-        .numerator((phase == STEP_DIVIDE) ? {32'b0, delta_magnitude} : product),
+        .clk(clk), .reset(reset), .start((phase == INITIAL_DIVIDE) || (phase == STEP_DIVIDE) || phase == SMOOTH_RATIO),
+        .numerator(phase == SMOOTH_RATIO ? {8'b0,elapsed,24'b0} : (phase == STEP_DIVIDE) ? {32'b0, delta_magnitude} : product),
         .denominator(duration), .done(divide_done), .quotient(divide_quotient), .remainder(divide_remainder)
     );
     generate if (EXTERNAL_IO == 0) begin : local_io
@@ -264,6 +269,8 @@ module job_processor #(
     always @(posedge clk) begin
         if (reset) begin
             phase <= IDLE;
+            for (integer h=0;h<BUFFERS;h=h+1) begin smooth_last[h]<=0;smooth_anchor[h]<=0;smooth_elapsed[h]<=0;smooth_duration[h]<=0;end
+            smooth_index<=0;anchor_value<=0;
             done <= 0;
             error_code <= OK;
             buffer_ready <= 0;
@@ -371,15 +378,40 @@ module job_processor #(
                                 phase <= READ_REQUEST;
                             end
                         end
-                        `SHOOP_SP_JOB_SILENCE: begin
+                        `SHOOP_SP_JOB_CONSTANT, `SHOOP_SP_JOB_SILENCE: begin
                             if (!destination_valid(id0)) begin
                                 error_code <= INVALID_BUFFER;
                                 done <= 1;
                                 phase <= IDLE;
                             end else begin
                                 destination <= id0;
-                                result_sample <= 0;
+                                result_sample <= opcode == `SHOOP_SP_JOB_CONSTANT ? packet[95:64] : 0;
                                 phase <= STORE;
+                            end
+                        end
+                        `SHOOP_SP_JOB_SMOOTHING: begin
+                            if (!source_valid(id0) || !destination_valid(id1) || packet[95:64]>=32'(BUFFERS)) begin
+                                error_code<=INVALID_BUFFER;done<=1;phase<=IDLE;
+                            end else begin
+                                source_a<=id0;destination<=id1;smooth_index<=BUFFER_BITS'(packet[95:64]);
+                                if (!packet[128]) begin
+                                    smooth_last[BUFFER_BITS'(packet[95:64])]<=0;
+                                    smooth_anchor[BUFFER_BITS'(packet[95:64])]<=0;
+                                    smooth_elapsed[BUFFER_BITS'(packet[95:64])]<=packet[127:96];
+                                    smooth_duration[BUFFER_BITS'(packet[95:64])]<=packet[127:96];
+                                    result_sample<=0;phase<=STORE;
+                                end else begin
+                                    if (packet[129]) begin
+                                        anchor_value<=smooth_last[BUFFER_BITS'(packet[95:64])];
+                                        smooth_anchor[BUFFER_BITS'(packet[95:64])]<=smooth_last[BUFFER_BITS'(packet[95:64])];
+                                        elapsed<=0;duration<=packet[127:96];
+                                        smooth_duration[BUFFER_BITS'(packet[95:64])]<=packet[127:96];
+                                    end else begin
+                                        anchor_value<=smooth_anchor[BUFFER_BITS'(packet[95:64])];
+                                        elapsed<=smooth_elapsed[BUFFER_BITS'(packet[95:64])];duration<=smooth_duration[BUFFER_BITS'(packet[95:64])];
+                                    end
+                                    phase<=READ_REQUEST;
+                                end
                             end
                         end
                         `SHOOP_SP_JOB_GAIN: begin
@@ -391,6 +423,13 @@ module job_processor #(
                                 source_a <= id0;
                                 destination <= id1;
                                 phase <= RAMP_PREPARE;
+                            end
+                        end
+                        `SHOOP_SP_JOB_ARITHMETIC: begin
+                            if (!source_valid(id0) || !source_valid(id1) || !destination_valid(packet[79:64]) || packet[95:80]>3) begin
+                                error_code <= INVALID_BUFFER; done <= 1; phase <= IDLE;
+                            end else begin
+                                source_a <= id0; source_b <= id1; destination <= packet[79:64]; phase <= READ_REQUEST;
                             end
                         end
                         `SHOOP_SP_JOB_MIX: begin
@@ -450,9 +489,45 @@ module job_processor #(
                 end
                 READ_REQUEST: phase <= READ_RESULT;
                 READ_RESULT: begin
-                    result_sample <= (opcode == `SHOOP_SP_JOB_INPUT) ? input_data : scratch_data;
-                    phase <= STORE;
+                    if (opcode == `SHOOP_SP_JOB_SMOOTHING) begin
+                        if (duration==0 || elapsed>=duration) begin result_sample<=scratch_data;phase<=STORE;end
+                        else begin sample_a<=scratch_data;phase<=SMOOTH_RATIO;end
+                    end else if (opcode == `SHOOP_SP_JOB_ARITHMETIC && packet[95:80]!=3) begin
+                        sample_a <= scratch_data; phase <= ARITH_B_REQUEST;
+                    end else begin
+                        result_sample <= opcode == `SHOOP_SP_JOB_ARITHMETIC ? 32'h01000000-scratch_data
+                            : (opcode == `SHOOP_SP_JOB_INPUT) ? input_data : scratch_data;
+                        phase <= STORE;
+                    end
                 end
+                SMOOTH_RATIO: phase<=SMOOTH_WAIT;
+                SMOOTH_WAIT: if (divide_done) begin
+                    current_gain<=divide_quotient[31:0];
+                    multiply_a<=anchor_value[31] ? -anchor_value : anchor_value;
+                    multiply_b<=32'h01000000-divide_quotient[31:0];multiply_negative<=anchor_value[31];
+                    phase<=SMOOTH_ANCHOR_MULTIPLY;
+                end
+                SMOOTH_ANCHOR_MULTIPLY: begin product<=multiplied;product_negative<=multiply_negative;phase<=SMOOTH_ANCHOR_RESULT;end
+                SMOOTH_ANCHOR_RESULT: begin
+                    result_sample<=scaled_product(product[63:24],product_negative);
+                    multiply_a<=sample_a[31] ? -sample_a : sample_a;multiply_b<=current_gain;multiply_negative<=sample_a[31];
+                    phase<=SMOOTH_RAW_MULTIPLY;
+                end
+                SMOOTH_RAW_MULTIPLY: begin product<=multiplied;product_negative<=multiply_negative;phase<=SMOOTH_RAW_RESULT;end
+                SMOOTH_RAW_RESULT: begin result_sample<=saturating_mix(result_sample,scaled_product(product[63:24],product_negative));phase<=STORE;end
+                ARITH_B_REQUEST: phase <= ARITH_B_RESULT;
+                ARITH_B_RESULT: begin : arithmetic_operand
+                    reg [31:0] factor;
+                    factor = packet[95:80]==1 ? (scratch_data[31] ? 32'h01000000 : 32'h01000000-scratch_data)
+                        : packet[95:80]==2 ? (scratch_data[31] ? 32'h01000000+scratch_data : 32'h01000000)
+                        : scratch_data;
+                    multiply_a <= sample_a[31] ? -sample_a : sample_a;
+                    multiply_b <= factor[31] ? -factor : factor;
+                    multiply_negative <= sample_a[31]^factor[31];
+                    phase <= ARITH_MULTIPLY;
+                end
+                ARITH_MULTIPLY: begin product <= multiplied; product_negative <= multiply_negative; phase <= ARITH_RESULT; end
+                ARITH_RESULT: begin result_sample <= scaled_product(product[63:24],product_negative); phase <= STORE; end
                 RAMP_PREPARE: begin
                     ramp_start <= packet[95:64];
                     ramp_target <= packet[127:96];
@@ -540,6 +615,11 @@ module job_processor #(
                     end
                 end
                 STORE: begin
+                    if (opcode==`SHOOP_SP_JOB_SMOOTHING && packet[128]) begin
+                        smooth_last[smooth_index]<=result_sample;
+                        if (elapsed<duration) begin elapsed<=elapsed+1;smooth_elapsed[smooth_index]<=elapsed+1;end
+                        else smooth_elapsed[smooth_index]<=elapsed;
+                    end
                     if (frame + 1 == quantum) begin
                         if (opcode != `SHOOP_SP_JOB_OUTPUT)
                             buffer_ready[BUFFER_BITS'(destination)] <= 1;
@@ -547,7 +627,7 @@ module job_processor #(
                         phase <= FETCH;
                     end else begin
                         frame <= frame + 1;
-                        phase <= (opcode == `SHOOP_SP_JOB_SILENCE) ? STORE : READ_REQUEST;
+                        phase <= (opcode == `SHOOP_SP_JOB_SILENCE || opcode == `SHOOP_SP_JOB_CONSTANT || (opcode==`SHOOP_SP_JOB_SMOOTHING && !packet[128])) ? STORE : READ_REQUEST;
                     end
                 end
                 MEDIA_COMMAND: if (media_cmd_valid && media_cmd_ready)

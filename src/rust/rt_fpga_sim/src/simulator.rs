@@ -58,11 +58,24 @@ pub fn runtime(artifacts: &Path) -> SimResult<VerilatorRuntime> {
     )?)
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct StoreUsage {
+    pub issued_views: u32,
+    pub high_water_slots: u32,
+    pub free_slots: u32,
+    pub slot_limit: u32,
+}
+impl StoreUsage {
+    pub fn live_slots(self) -> u32 {
+        self.high_water_slots - self.free_slots
+    }
+}
 pub struct Simulator<'ctx> {
     // Close the trace while its model is still alive (fields drop in order).
     trace: Option<TraceFile<'ctx>>,
     model: Pipeline<'ctx>,
     pub cycles: u64,
+    media_slots: u32,
     pub stalls: bool,
     pub timeout: u64,
     pub last_error: Option<String>,
@@ -81,12 +94,32 @@ impl<'ctx> Simulator<'ctx> {
             model,
             trace,
             cycles: 0,
+            media_slots: 128,
             stalls,
             timeout: 100_000,
             last_error: None,
         };
         sim.reset();
         Ok(sim)
+    }
+    pub fn store_usage(&mut self) -> SimResult<StoreUsage> {
+        let mut values = [0; 4];
+        for (address, value) in values.iter_mut().enumerate() {
+            *value = self.store_config(0, address as u32, None)?[0];
+        }
+        Ok(StoreUsage {
+            issued_views: values[0],
+            high_water_slots: values[1],
+            free_slots: values[2],
+            slot_limit: values[3],
+        })
+    }
+    pub fn arena_capacity(&mut self, slots: u32) -> SimResult<()> {
+        if slots == 0 || slots > 32768 {
+            return Err("invalid simulation arena capacity".into());
+        }
+        self.media_slots = slots;
+        Ok(())
     }
     pub fn reset(&mut self) {
         self.last_error = None;
@@ -228,21 +261,21 @@ impl<'ctx> Simulator<'ctx> {
         Ok(value)
     }
     pub fn load(&mut self, image: &Image) -> SimResult<()> {
-        if image.program.instructions.len() > 64
-            || image.initial_state.memory.len() > 32
-            || image.buffers > 16
+        if image.program.instructions.len() > 256
+            || image.initial_state.memory.len() > 256
+            || image.buffers > 128
             || image.program.quantum > 32
             || image.input_ports > 2
             || image.output_ports > 2
             || image.transition.limits.loop_slots > 4
-            || image.transition.limits.pending_requests > 8
-            || image.transition.limits.events > 16
+            || image.transition.limits.pending_requests > 32
+            || image.transition.limits.events > 64
         {
             return Err("image exceeds simulation capacities".into());
         }
         if !image.media.samples.is_empty()
             || !image.media.free_chunks.is_empty()
-            || image.media.views.len() > 8
+            || image.media.views.len() > 32
             || image
                 .media
                 .views
@@ -297,7 +330,7 @@ impl<'ctx> Simulator<'ctx> {
         prepare[3] = members;
         prepare[4] = image.program.quantum;
         self.command(3, 0, prepare)?;
-        self.store_config(0, 3, Some([128, 0, 0, 0, 0]))?;
+        self.store_config(0, 3, Some([self.media_slots, 0, 0, 0, 0]))?;
         for i in 0..image.media.views.len() {
             self.store_config(1, i as u32, Some([1, 0, 0, 0, 0]))?;
         }
@@ -358,6 +391,55 @@ impl<'ctx> Simulator<'ctx> {
         self.cycle();
         Ok(words)
     }
+    pub fn append_view(&mut self, view: u32, samples: &[i32]) -> SimResult<()> {
+        self.model.store_cmd_opcode = 5;
+        self.model.store_cmd_view = u64::from(view);
+        self.model.store_cmd_start = 0;
+        self.model.store_cmd_length = 0;
+        self.model.store_cmd_count = u32::try_from(samples.len())?;
+        self.model.store_cmd_valid = 1;
+        let mut accepted = false;
+        for _ in 0..self.timeout {
+            self.model.eval();
+            let ready = self.model.store_cmd_ready != 0;
+            self.cycle();
+            if ready {
+                accepted = true;
+                break;
+            }
+        }
+        self.model.store_cmd_valid = 0;
+        if !accepted {
+            return Err("append admission timeout".into());
+        }
+        let mut offset = 0;
+        for _ in 0..self.maintenance_budget(u64::from(self.media_slots)) {
+            if self.model.store_done != 0 {
+                break;
+            }
+            self.model.store_write_valid = u8::from(offset < samples.len());
+            self.model.store_write_data = samples.get(offset).copied().unwrap_or(0) as u32;
+            self.model.eval();
+            let write = self.model.store_write_valid != 0 && self.model.store_write_ready != 0;
+            self.cycle();
+            if write {
+                offset += 1;
+            }
+        }
+        self.model.store_write_valid = 0;
+        if self.model.store_done == 0 {
+            return Err(format!("append completion timeout after {offset} samples").into());
+        }
+        let code = self.model.store_error_code;
+        self.cycle();
+        if code != 0 {
+            return Err(format!("append error {code} after {offset} samples").into());
+        }
+        if offset != samples.len() {
+            return Err("append completed before all samples".into());
+        }
+        Ok(())
+    }
     pub fn read_view(&mut self, view: u64, frames: u32) -> SimResult<Vec<i32>> {
         self.model.eval();
         if self.model.store_cmd_ready == 0 {
@@ -399,6 +481,13 @@ impl<'ctx> Simulator<'ctx> {
         self.cycle();
         Ok(samples)
     }
+    fn maintenance_budget(&self, chunks: u64) -> u64 {
+        if self.timeout == 0 {
+            0
+        } else {
+            self.timeout.saturating_add(chunks.saturating_mul(1024))
+        }
+    }
     pub fn run(&mut self, image: &Image, inputs: &[Vec<i32>]) -> SimResult<Vec<Vec<i32>>> {
         let q = image.program.quantum;
         if inputs.len() != usize::from(image.input_ports)
@@ -426,7 +515,7 @@ impl<'ctx> Simulator<'ctx> {
         self.model.run_valid = 1;
         self.cycle();
         self.model.run_valid = 0;
-        for _ in 0..self.timeout {
+        for _ in 0..self.maintenance_budget(u64::from(self.media_slots)) {
             if self.model.done != 0 {
                 break;
             }
@@ -469,6 +558,30 @@ pub fn instruction_words(value: Instruction) -> SimResult<[u32; 5]> {
             source,
             destination,
         } => (2, vec![ramp, source, destination]),
+        Instruction::ProcessSmoothing {
+            loop_id,
+            control,
+            source,
+        } => (
+            11,
+            vec![
+                u16::try_from(loop_id.slot)?,
+                loop_id.generation as u16,
+                (loop_id.generation >> 16) as u16,
+                control,
+                source,
+            ],
+        ),
+        Instruction::ProcessConstant { value, destination } => (
+            9,
+            vec![value as u16, (value as u32 >> 16) as u16, destination],
+        ),
+        Instruction::ProcessArithmetic {
+            left,
+            right,
+            destination,
+            mode,
+        } => (10, vec![left, right, destination, mode as u16]),
         Instruction::ProcessMix {
             left,
             right,
@@ -643,7 +756,11 @@ impl rt_fpga_adapter::looping::LoopDevice for Simulator<'_> {
             return Err(Error::Disconnected);
         }
         let mut result = rt_fpga_adapter::looping::MediaResult::default();
-        for _ in 0..self.timeout {
+        for _ in 0..self.maintenance_budget(if command.opcode == 1 {
+            command.length.div_ceil(32)
+        } else {
+            u64::from(self.media_slots)
+        }) {
             if self.model.store_done != 0 {
                 break;
             }
@@ -656,7 +773,10 @@ impl rt_fpga_adapter::looping::LoopDevice for Simulator<'_> {
         }
         self.model.store_read_ready = 0;
         if self.model.store_done == 0 {
-            self.last_error = Some("media completion timeout".into());
+            self.last_error = Some(format!(
+                "media completion timeout: opcode {}, view {}, frames {}",
+                command.opcode, command.view, command.length
+            ));
             return Err(Error::Disconnected);
         }
         let code = self.model.store_error_code;
@@ -698,5 +818,59 @@ mod tests {
         assert_eq!(sim.model.faulted, 0);
         assert_eq!(sim.model.error_stage, 0);
         assert_eq!(sim.model.error_code, 0);
+    }
+}
+
+impl rt_fpga_adapter::engine::EngineDevice for Simulator<'_> {
+    fn program(&mut self, image: &Image) -> Result<(), rt_runtime::Error> {
+        let result = (|| -> SimResult<()> {
+            if image.program.instructions.len() > 256
+                || image.initial_state.memory.len() > 256
+                || image.buffers > 128
+            {
+                return Err("program exceeds model capacity".into());
+            }
+            for (address, &instruction) in image.program.instructions.iter().enumerate() {
+                self.state(address as u16, Some(instruction_words(instruction)?), true)?;
+            }
+            for (address, &value) in image.initial_state.memory.iter().enumerate() {
+                self.state(address as u16, Some(value_words(value)), false)?;
+            }
+            Ok(())
+        })();
+        result.map_err(|error| {
+            self.last_error = Some(error.to_string());
+            rt_runtime::Error::Disconnected
+        })
+    }
+    fn read_state(&mut self, address: u16) -> Result<Value, rt_runtime::Error> {
+        self.state(address, None, false)
+            .map(|words| {
+                if words[4] & 1 != 0 {
+                    Value::Ramp(rt_fpga_adapter::image::Ramp {
+                        start: words[0] as i32,
+                        target: words[1] as i32,
+                        duration: words[2],
+                        elapsed: words[3],
+                    })
+                } else {
+                    Value::Word(u64::from(words[0]) | (u64::from(words[1]) << 32))
+                }
+            })
+            .map_err(|error| {
+                self.last_error = Some(error.to_string());
+                rt_runtime::Error::Disconnected
+            })
+    }
+    fn scratch(&mut self, buffer: u16) -> Result<Vec<i32>, rt_runtime::Error> {
+        (0..32)
+            .map(|frame| {
+                self.sample(2, u32::from(buffer) * 32 + frame, None)
+                    .map_err(|error| {
+                        self.last_error = Some(error.to_string());
+                        rt_runtime::Error::Disconnected
+                    })
+            })
+            .collect()
     }
 }
