@@ -1,7 +1,7 @@
 # P16: client-owned script persistence
 
-Status: implementation and local validation complete; final push, CI and review
-blocked by expired GitHub access. Draft PR [#977](https://github.com/SanderVocke/shoopdaloop/pull/977). The ownership contract
+Status: implementation and local validation complete; final CI and review
+in progress. PR [#977](https://github.com/SanderVocke/shoopdaloop/pull/977). The ownership contract
 was revised with user approval on 2026-11-12. P16 remains OPEN.
 
 Base: `feat/backend-replacement` at `9aee7496`; production behavior was compared
@@ -291,8 +291,6 @@ the selected platform plus browser/portable paths affected by P16.
 - See [acceptance evidence](docs/native_session_recovery/evidence/p16-client-scripts.md)
   for commands, recovery scenarios and limits. The implementation remains client
   owned: no backend script catalog, transfer or automatic execution was added.
-- Final delivery is blocked: GitHub API returns HTTP 401 “Bad credentials”, Git
-  push cannot obtain a username, and the GitHub connector times out. Workspace
-  access refresh has been requested. Last published head is `7e16fa40`; final
-  implementation head `5b4bcfce` and evidence updates remain local. Final-head CI,
-  automated review and parity closure remain unchecked. P16 stays OPEN.
+- GitHub access was refreshed on 2026-11-13. All implementation milestones and
+  local acceptance evidence have been pushed to PR #977. Final-head CI and
+  automated review are being checked; parity closure remains pending.

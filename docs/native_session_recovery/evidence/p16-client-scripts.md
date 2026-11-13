@@ -1,9 +1,9 @@
 # P16 acceptance evidence
 
 Implementation and local validation are complete at `5b4bcfce` (2026-11-13).
-Draft PR [#977](https://github.com/SanderVocke/shoopdaloop/pull/977) targets
-`feat/backend-replacement`. Its last published head is `7e16fa40`; final pushes,
-CI and review are blocked by expired GitHub access. P16 remains OPEN.
+PR [#977](https://github.com/SanderVocke/shoopdaloop/pull/977) targets
+`feat/backend-replacement`. All implementation commits are published; final CI and review
+are in progress. P16 remains OPEN.
 
 Implementation milestones: `d6bd336e`, `7e16fa40`, `0c7a0b4b`, `f8925062`,
 `8039b33f`, `5b4bcfce`. The final two correct an existing native loop-readiness
@@ -116,11 +116,10 @@ client additions. Reconnect retains local context only for the same verified
 host instance. Browser device evidence uses fake microphone/MIDI endpoints; it
 cannot qualify an arbitrary physical controller or grant another user's permissions.
 
-## Delivery access blocker
+## Delivery progress
 
-Last published PR head: `7e16fa40`. Final local implementation head: `5b4bcfce`.
-GitHub API returns HTTP 401 “Bad credentials”; Git push cannot obtain a username,
-and the connected GitHub tool times out. A workspace access refresh has been
-requested. The remaining steps are to push the local commits, inspect/fix final
-CI and automated review, record final results, and close P16 with the PR ready
-for user review. The plan is not fully executed while those steps are blocked.
+GitHub access was refreshed on 2026-11-13 and all implementation commits through
+`5b4bcfce` plus local acceptance evidence were pushed to PR #977. The initial
+review/review-thread inspection found no submissions or inline feedback.
+Final CI and any subsequent automated review are being checked before parity
+closure. No PR has been merged.
