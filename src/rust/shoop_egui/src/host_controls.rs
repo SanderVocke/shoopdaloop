@@ -1,5 +1,11 @@
 use crate::colors;
 
+/// Default description of audio that runs without a separate host.
+#[cfg(target_arch = "wasm32")]
+const LOCAL_RUNTIME: &str = "Audio runs in this browser page and stops when it closes.";
+#[cfg(not(target_arch = "wasm32"))]
+const LOCAL_RUNTIME: &str = "Audio runs in this application process and stops when it closes.";
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HostConnectionState {
     Connecting,
@@ -60,6 +66,8 @@ pub enum HostAction {
 #[derive(Default)]
 pub(crate) struct HostControls {
     pub state: Option<HostUiState>,
+    /// Replaces [`LOCAL_RUNTIME`] while no host state is set.
+    pub local_runtime: Option<String>,
     pub actions: Vec<HostAction>,
     #[cfg(test)]
     pub status_rect: Option<egui::Rect>,
@@ -179,7 +187,7 @@ impl HostControls {
                 ui.label(error);
             }
         } else {
-            ui.label("Audio runs in this browser page and stops when it closes.");
+            ui.label(self.local_runtime.as_deref().unwrap_or(LOCAL_RUNTIME));
         }
     }
 
@@ -426,7 +434,23 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn browser_status_has_audio_details_without_native_host_actions() {
+    fn local_runtime_description_replaces_the_platform_default() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let mut host = HostControls {
+            local_runtime: Some("Audio runs in an RTL simulation.".into()),
+            ..Default::default()
+        };
+        frame(&context, &mut host, Vec::new());
+        let status = host.status_rect.unwrap().center();
+        click(&context, &mut host, status);
+        let text = frame(&context, &mut host, Vec::new());
+        assert!(text.contains("Audio runs in an RTL simulation."));
+        assert!(!text.contains(LOCAL_RUNTIME));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn local_status_has_audio_details_without_native_host_actions() {
         let context = egui::Context::default();
         crate::initialize(&context);
         let mut host = HostControls::default();
@@ -434,7 +458,8 @@ mod tests {
         let status = host.status_rect.unwrap().center();
         click(&context, &mut host, status);
         let text = frame(&context, &mut host, Vec::new());
-        assert!(text.contains("Audio runs in this browser page"));
+        assert!(text.contains(LOCAL_RUNTIME));
+        assert_eq!(text.contains("browser page"), cfg!(target_arch = "wasm32"));
         assert!(text.contains("Driver status: Running"));
         assert_eq!(
             host.action_rects

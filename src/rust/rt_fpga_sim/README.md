@@ -141,8 +141,12 @@ mono Sync strip and loop. Use the connections dialog to connect logical
 `audio_in_1` to Sync and route Sync to Master; Master connects to the logical
 outputs. The synthetic-input checkbox switches between deterministic in-memory
 samples and silence. There is no host process, JACK/CPAL connection, device
-enumeration or audible output. Additional tracks, MIDI, FX, imported sessions,
-composites, preview and metronome audio are outside this fixed-session profile.
+enumeration or audible output. The engine reports a simulated-clock driver, and
+the status overlay names the RTL simulation. The MEM headline shows RTL storage
+pressure from the hardware allocators, refreshed every 200 ms of audio time; at
+simulation speed that is several seconds of wall time. Additional tracks, MIDI,
+FX, imported sessions, composites, preview and metronome audio are outside this
+fixed-session profile.
 
 A worker owns the Marlin runtime, model and queue consumer. The normal window
 runs continuously, starting each 32-frame iteration immediately after its

@@ -100,8 +100,9 @@ impl Worker {
         let diagnostic = failure.clone();
         let prepared = prepare_with_consumer(
             &app::description(),
+            // This worker clocks the RTL model unpaced; no device driver exists.
             DriverStatus {
-                kind: shoop_rt_protocol::DriverKind::Dummy,
+                kind: shoop_rt_protocol::DriverKind::Simulated,
                 state: shoop_rt_protocol::DriverRunState::Running,
                 sample_rate: 48_000,
                 buffer_frames: 512,

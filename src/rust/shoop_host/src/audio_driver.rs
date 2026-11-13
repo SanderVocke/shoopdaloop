@@ -345,7 +345,7 @@ fn available(kind: AudioDriverKind) -> bool {
         AudioDriverKind::Dummy => true,
         AudioDriverKind::Cpal => cfg!(feature = "cpal"),
         AudioDriverKind::Jack => cfg!(feature = "jack"),
-        AudioDriverKind::WebAudio => false,
+        AudioDriverKind::WebAudio | AudioDriverKind::Simulated => false,
     }
 }
 

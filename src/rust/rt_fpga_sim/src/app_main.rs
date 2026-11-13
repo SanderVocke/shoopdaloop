@@ -130,9 +130,15 @@ mod ui {
             recovery_required: false,
             persistence: shoop_settings::SettingsPersistenceState::Idle,
         };
+        let mut widget = shoop_egui::AppWidget::new(registry);
+        widget.set_local_runtime_description(
+            "Audio is processed by an RTL simulation of the FPGA pipeline (Verilator, via Marlin) \
+             inside this application. It runs as fast as possible without audio devices and \
+             stops when the application closes.",
+        );
         let demo = Demo {
             fpga,
-            widget: shoop_egui::AppWidget::new(registry),
+            widget,
             settings,
             error: None,
             last: std::time::Instant::now(),

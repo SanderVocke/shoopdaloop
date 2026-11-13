@@ -309,6 +309,7 @@ impl Cells {
             DriverKind::Cpal => 1,
             DriverKind::WebAudio => 2,
             DriverKind::Jack => 3,
+            DriverKind::Simulated => 4,
         };
         let state = match driver.state {
             DriverRunState::Starting => 0,
@@ -332,6 +333,7 @@ impl Cells {
                 1 => DriverKind::Cpal,
                 2 => DriverKind::WebAudio,
                 3 => DriverKind::Jack,
+                4 => DriverKind::Simulated,
                 _ => DriverKind::Dummy,
             },
             state: match state {
@@ -527,6 +529,25 @@ mod tests {
         peak.raise(1, 0.5);
         assert!(peak.take(0).as_slice().is_empty());
         assert_eq!(peak.take(2).as_slice(), &[0., 0.]);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn driver_status_round_trips_every_driver_kind() {
+        for kind in [
+            DriverKind::Dummy,
+            DriverKind::Cpal,
+            DriverKind::WebAudio,
+            DriverKind::Jack,
+            DriverKind::Simulated,
+        ] {
+            let driver = DriverStatus {
+                kind,
+                state: DriverRunState::Running,
+                sample_rate: 48_000,
+                buffer_frames: 512,
+            };
+            assert_eq!(Cells::new(0, 0, 0, 64, driver, 32).driver(), driver);
+        }
     }
 }
 

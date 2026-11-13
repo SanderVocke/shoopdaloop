@@ -384,6 +384,8 @@ pub enum DriverKind {
     Cpal,
     WebAudio,
     Jack,
+    /// A simulation harness advances the engine without device I/O or real-time pacing.
+    Simulated,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

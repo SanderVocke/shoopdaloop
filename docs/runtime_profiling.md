@@ -345,5 +345,8 @@ A backend that reports bounded storage resources without an aggregate byte count
 uses the **MEM** headline for storage pressure: the highest individual commitment
 percentage. The tooltip and Memory section retain the separate resource limits.
 The FPGA mono adapter supplies this form of report from physical RTL allocators;
-its replay JSON also exposes the counters. The ordinary application still uses
-the Rust backend until an FPGA application-host integration is supplied.
+its replay JSON also exposes the counters. The offline FPGA application adapter
+publishes the same report through the engine once after activation and then every
+200 ms of audio time, so the application's MEM headline and Memory section show
+RTL storage pressure. External engine consumers publish complete reports with
+`Observations::memory`; they replace the native Rust pool counters.
