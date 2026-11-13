@@ -175,50 +175,50 @@ adding UI streaming. Use focused tests until the final integration gates.
 
 ### 2. Expose an offline engine/adapter composition seam
 
-- [ ] Factor production preparation so its endpoint, prepared node descriptions,
+- [x] Factor production preparation so its endpoint, prepared node descriptions,
   queues and observation publications can pair with a CPU or device consumer.
   Provide an optional native offline simulator composition with `EngineClock`
   and an in-process carrier; preserve the ordinary CPU preparation APIs.
-- [ ] Reuse the app's actual typed command family. Add narrowly scoped immutable
+- [x] Reuse the app's actual typed command family. Add narrowly scoped immutable
   node/configuration descriptions and observation hooks as needed. Define which
   helpers are reusable without introducing crate cycles or executing CPU DSP.
-- [ ] Supply logical port inventory and synthetic/zero sample buffers without
+- [x] Supply logical port inventory and synthetic/zero sample buffers without
   any host adapter/device discovery. Make unsupported features/capacities visible
   through existing capability/limit/refusal paths.
-- [ ] Verify endpoint connection/resync, ordinary queue ownership and unchanged
+- [x] Verify endpoint connection/resync, ordinary queue ownership and unchanged
   CPU construction with a recording/stalling device. Check native/Wasm dependency
   trees for simulator leakage before undertaking the larger consumer extension.
 
 ### 3. Implement staged startup and boundary activation
 
-- [ ] Consume the required node-pair, topology, graph and configuration staging
+- [x] Consume the required node-pair, topology, graph and configuration staging
   operations, including owning payloads, candidate IDs, validation, cancellation
   and release. Reuse native staging codecs/validators and checked descriptions.
   Keep preparation and eligible bookkeeping responses in Rust.
-- [ ] Compile the app's submitted ordered graph and TP topology. Support every
+- [x] Compile the app's submitted ordered graph and TP topology. Support every
   required startup activation/virtual-route transaction at its effective boundary,
   with silence while no app graph is active and a continuously correct clock.
   Preserve loop/media/control state during any later permitted configuration.
-- [ ] Separate transport admission, staging validation, scheduled delivery and
+- [x] Separate transport admission, staging validation, scheduled delivery and
   device activation acknowledgements. Keep bound identities/generations stable
   and publish graph/topology epochs at the native cuts.
-- [ ] Verify through recording/stalling/failing devices: no early activation,
+- [x] Verify through recording/stalling/failing devices: no early activation,
   activation after frame zero, invalid/stale candidates, incomplete payloads,
   queue pressure, cancellation, owner return and partial-load failure. Then run
   the captured startup through Marlin and reach an idle confirmed app model.
 
 ### 4. Execute the default signal graph and Sync loop controls
 
-- [ ] Lower supported strip input/output, loop fader, Master/bus and loop nodes
+- [x] Lower supported strip input/output, loop fader, Master/bus and loop nodes
   to shared hardware operations, preserving the active/prepared channel layout,
   routing and arithmetic order. Handle inactive auxiliary/MIDI ports explicitly.
-- [ ] Implement the applicable gain/balance/mute/monitoring operations, including
+- [x] Implement the applicable gain/balance/mute/monitoring operations, including
   automatic monitoring, configuration/presence changes and default control ramps.
   Reuse existing gain/mix machinery; add RTL behavior only where necessary.
-- [ ] Complete record, stop, play, clear/re-record, self-pulse/repeat and scheduled
+- [x] Complete record, stop, play, clear/re-record, self-pulse/repeat and scheduled
   sync-loop transition translation. Implement default loop boundary smoothing,
   including durations that are not multiples of 32, and correct wrap behavior.
-- [ ] Reuse/factor only supported production arithmetic for exact Q8.24 expectations.
+- [x] Reuse/factor only supported production arithmetic for exact Q8.24 expectations.
   Verify small deterministic sample vectors, gain/ramp changes at boundaries,
   smoothing around short loops, monitoring/mute, cancellation/supersession and
   requested/effective/terminal frames before extending the full app replay.
@@ -226,35 +226,35 @@ adding UI streaming. Use focused tests until the final integration gates.
 
 ### 5. Publish app observations and service recording reads
 
-- [ ] Populate existing observation cells/hooks from actual TP state, publications
+- [x] Populate existing observation cells/hooks from actual TP state, publications
   and device results. Match native frame/epoch cuts, loop modes/length/position,
   revisions, pending actions and pulse counts. Publish sample-derived meters and
   truthful fault/status information so readiness and `wait_idle` can progress.
-- [ ] Bridge the app's reader start/stop and bulk ring in Rust using existing FPGA
+- [x] Bridge the app's reader start/stop and bulk ring in Rust using existing FPGA
   exports, checked leases and read commands. Convert raw Q8.24 words to the float
   byte/sample encoding expected by the app. Retain read budgets/backpressure.
-- [ ] Parameterize hard-coded adapter/driver/top limits from a checked preset large
+- [x] Parameterize hard-coded adapter/driver/top limits from a checked preset large
   enough for two five-second mono takes plus metadata/views. Preserve a small
   regression preset and report allocator/view usage without claiming elastic RTL.
-- [ ] Verify observations/dirty telemetry and streaming under unread-result pressure,
+- [x] Verify observations/dirty telemetry and streaming under unread-result pressure,
   partial reads/EOF, cancellation, retained takes, release/reuse and stale handles.
   Include coherent disconnect/fault/shutdown and no leaking candidate/read owners.
   Exercise the long-capacity workload once after short correctness cases pass.
 
 ### 6. Connect the actual offline app and UI
 
-- [ ] Add an optional native entry point composing the existing application
+- [x] Add an optional native entry point composing the existing application
   service/client/UI with the simulator-backed engine endpoint. Reuse application
   controls; keep simulator details out of ordinary product interactions.
   Provide in-memory silence/test-signal selection and continuous execution at
   maximum speed, with app/UI polling independent of engine iteration timing. It must launch without a host process or JACK/CPAL initialization.
-- [ ] Adapt the existing callback-to-quantum buffering for logical offline blocks
+- [x] Adapt the existing callback-to-quantum buffering for logical offline blocks
   larger than or not divisible by 32. Preserve time remainders, processing latency,
   scheduling and partial output; perform no new live audio input/output.
-- [ ] Run actual app-client intents to create the default session, record, stop,
+- [x] Run actual app-client intents to create the default session, record, stop,
   play through wraps, change supported controls, fetch a waveform, clear and
   re-record. Verify snapshots, structural confirmation and public refusal messages.
-- [ ] Verify disconnect/reconnect/resync and orderly close with no physical host
+- [x] Verify disconnect/reconnect/resync and orderly close with no physical host
   facilities. Perform an interactive or automated GUI smoke of the same workflow;
   retain headless service/client coverage for deterministic regression testing.
 
@@ -310,3 +310,18 @@ are recorded in `src/rust/rt_fpga_sim/APP_CONTRACT.md`. The production preparati
 seam reuses the native render owner and observation publisher; native library
 regressions remain passing. Default simulator execution is explicitly unpaced
 under the user's clarification; deterministic replay uses bounded logical runs.
+
+Stages 2–6 now run the actual service/client against the hardware consumer.
+The app compiler preserves production signal order and maps controls to installed
+state; TP/SP/JP perform transitions, smoothing and samples. The optional window
+uses a continuously advancing worker without timing deadlines; stepped execution
+is limited to deterministic replay. Short arithmetic, protocol, app and media
+fixtures pass, including exact production-Q8.24 ramps/smoothing and the declared
+float bounds. The full retained-take app case passed in 1000.08 seconds: two
+five-second takes, waveform retrieval, clear/re-record and reuse, with a peak
+of 30032 physical slots out of 32768. An isolated metadata-capacity fixture also
+holds both stereo-prepared takes and their snapshots concurrently.
+
+Final delivery validation is in progress. The broad native suite reported 3219
+passes and four failures; isolated retries still fail. Baseline diagnosis is
+required before attributing those failures to this change or the environment.

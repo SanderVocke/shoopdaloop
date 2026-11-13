@@ -14,6 +14,7 @@ pub struct Preparation {
     pub resources: ResourceStore,
     pub observations: Observations,
     pub loop_limits: LoopLimits,
+    pub initial_media: Vec<shoop_loops::media::MediaId>,
     pub description: EngineDescription,
     pub(crate) recorder: Option<rt_runtime::profiling::Recorder>,
     pub(crate) midi_output: rt_runtime::buffer::MidiCapacity,
@@ -22,6 +23,7 @@ pub struct Consumer<R> {
     pub control: EngineControl,
     pub execution: R,
     pub latency_frames: usize,
+    pub capabilities: shoop_rt_protocol::Capabilities,
 }
 pub struct Prepared<R> {
     pub endpoint: ControlEndpoint,
@@ -72,6 +74,7 @@ impl Preparation {
             control,
             execution: render,
             latency_frames,
+            capabilities: shoop_rt_protocol::Capabilities(u32::MAX),
         })
     }
 }
@@ -114,6 +117,39 @@ impl Observations {
         }
     }
 
+    pub fn monitoring(
+        &self,
+        slot: usize,
+        generation: u32,
+        manual: bool,
+        recording: bool,
+        playing: bool,
+        pre_recording: bool,
+    ) -> bool {
+        let Some(row) = self.cells.strips.get(slot) else {
+            return manual;
+        };
+        let automatic = row.policy_enabled(generation) && (recording || pre_recording);
+        row.automatic_demand
+            .store(recording || pre_recording, Ordering::Relaxed);
+        row.automatic_monitoring.store(automatic, Ordering::Relaxed);
+        let monitor = manual || automatic;
+        row.routing_state.store(
+            u32::from(monitor)
+                | (u32::from(recording) << 1)
+                | (u32::from(pre_recording) << 2)
+                | (u32::from(playing) << 3),
+            Ordering::Relaxed,
+        );
+        monitor
+    }
+    pub fn loop_peaks(&self, slot: usize, peaks: &[f32]) {
+        if let Some(row) = self.cells.loops.get(slot) {
+            for (ch, &peak) in peaks.iter().enumerate() {
+                row.peaks.raise(ch, peak);
+            }
+        }
+    }
     pub fn strip_peaks(&self, slot: usize, input: &[f32], output: &[f32]) {
         if let Some(row) = self.cells.strips.get(slot) {
             for (ch, &peak) in input.iter().enumerate() {
@@ -188,4 +224,43 @@ mod tests {
         assert_eq!(left, [0.; 32]);
         assert_eq!(right, [0.; 32]);
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SignalKind {
+    Playback {
+        slot: u32,
+        channels: usize,
+        auxiliary: usize,
+    },
+    Capture {
+        slot: u32,
+        channels: usize,
+        auxiliary: usize,
+    },
+    StripInput {
+        slot: usize,
+        channels: usize,
+        ramp: u32,
+    },
+    StripOutput {
+        slot: usize,
+        channels: usize,
+        ramp: u32,
+    },
+    Fader {
+        slot: usize,
+        channels: usize,
+        ramp: u32,
+    },
+    BusInput {
+        slot: usize,
+        channels: usize,
+    },
+    Bus {
+        slot: usize,
+        channels: usize,
+        ramp: u32,
+    },
+    Reader,
 }

@@ -39,6 +39,7 @@ pub fn description() -> EngineDescription {
 }
 
 pub struct TraceCarrier {
+    enabled: bool,
     pub inner: InProcess<ControlEndpoint>,
     pub trace: Rc<RefCell<Vec<RuntimeCommand>>>,
     pub messages: Rc<RefCell<Vec<String>>>,
@@ -52,14 +53,18 @@ impl TraceCarrier {
 }
 impl Carrier for TraceCarrier {
     fn send(&mut self, message: ClientMessage) -> Result<(), CarrierError> {
-        self.messages.borrow_mut().push(format!("send {message:?}"));
+        if self.enabled {
+            self.messages.borrow_mut().push(format!("send {message:?}"));
+        }
         let result = self.inner.send(message);
         self.drain();
         result
     }
     fn receive(&mut self) -> Option<EngineMessage> {
         let message = self.inner.receive();
-        if let Some(message) = &message {
+        if let Some(message) = &message
+            && self.enabled
+        {
             self.messages
                 .borrow_mut()
                 .push(format!("receive {message:?}"));
@@ -127,7 +132,12 @@ impl Application {
                 loop_smoothing_ms: 3,
             },
         )?;
-        for _ in 0..1000 {
+        let deadline = std::time::Instant::now() + Duration::from_secs(30);
+        for _ in 0..10000 {
+            if std::time::Instant::now() >= deadline {
+                break;
+            }
+            std::thread::yield_now();
             if service.is_ready() {
                 break;
             }
@@ -155,18 +165,41 @@ impl Application {
     }
     pub fn pump(&mut self, count: usize) {
         for _ in 0..count {
-            self.service.pump_local(ConnectionId(1), &self.port, STEP);
-            self.client.tick(STEP);
+            self.pump_elapsed(STEP);
         }
     }
+    pub fn pump_elapsed(&mut self, elapsed: Duration) {
+        self.service
+            .pump_local(ConnectionId(1), &self.port, elapsed);
+        self.client.tick(elapsed);
+    }
     pub fn ready(&mut self) -> SimResult<()> {
-        for _ in 0..1000 {
+        let deadline = std::time::Instant::now() + Duration::from_secs(30);
+        for _ in 0..10000 {
+            if std::time::Instant::now() >= deadline {
+                break;
+            }
+            std::thread::yield_now();
             self.pump(1);
             if self.service.is_ready() && self.client.state() == shoop_app_client::State::Ready {
                 return Ok(());
             }
         }
         Err(format!("app startup did not finish: {:?}", self.client.snapshot()).into())
+    }
+    pub fn reconnect(&mut self) -> SimResult<()> {
+        self.client.detach().map_err(|e| format!("{e:?}"))?;
+        self.pump(4);
+        let (delivery, port) = local::channel();
+        self.client = Runtime::new(
+            Client::new(),
+            Box::new(delivery),
+            Box::new(shoop_scripting::NullMidiService),
+            Startup::Connected(vec![]),
+        )
+        .map_err(|e| format!("{e:?}"))?;
+        self.port = port;
+        self.ready()
     }
     pub fn snapshot(&self) -> Arc<AppSnapshot> {
         self.client.snapshot()
@@ -216,6 +249,7 @@ impl Native {
         let output = Rc::new(RefCell::new(vec![]));
         let signal = Rc::new(RefCell::new(false));
         let client = ProtocolClient::new(TraceCarrier {
+            enabled: true,
             inner: client.into_carrier(),
             trace: trace.clone(),
             messages: messages.clone(),
@@ -269,6 +303,13 @@ pub enum Action {
     GlobalSync { enabled: bool },
     LoopGain { value: f32 },
     LoopBalance { value: f32 },
+    InputGain { value: f32 },
+    InputBalance { value: f32 },
+    OutputBalance { value: f32 },
+    MasterGain { value: f32 },
+    MasterBalance { value: f32 },
+    MasterMute { enabled: bool },
+    AutoMonitor { enabled: bool },
     OutputGain { value: f32 },
     Mute { enabled: bool },
     Monitor { enabled: bool },
@@ -303,6 +344,33 @@ impl Application {
                 loop_id,
                 action: LoopAction::BalanceChanged(value),
             },
+            Action::InputGain { value } => AppIntent::Track {
+                track_id: track.id,
+                action: TrackAction::InputGainChanged(value),
+            },
+            Action::InputBalance { value } => AppIntent::Track {
+                track_id: track.id,
+                action: TrackAction::InputBalanceChanged(value),
+            },
+            Action::OutputBalance { value } => AppIntent::Track {
+                track_id: track.id,
+                action: TrackAction::OutputBalanceChanged(value),
+            },
+            Action::MasterGain { value } => AppIntent::Bus {
+                bus_id: snapshot.buses[0].id,
+                action: BusAction::GainChanged(value),
+            },
+            Action::MasterBalance { value } => AppIntent::Bus {
+                bus_id: snapshot.buses[0].id,
+                action: BusAction::BalanceChanged(value),
+            },
+            Action::MasterMute { enabled } => AppIntent::Bus {
+                bus_id: snapshot.buses[0].id,
+                action: BusAction::MuteChanged(enabled),
+            },
+            Action::AutoMonitor { enabled } => {
+                AppIntent::Global(GlobalControlAction::SetAutoArmTrackInputs(enabled))
+            }
             Action::OutputGain { value } => AppIntent::Track {
                 track_id: track.id,
                 action: TrackAction::OutputGainChanged(value),
@@ -370,4 +438,203 @@ impl Native {
         }
         Ok(states)
     }
+}
+
+/// The same application bootstrap with the hardware queue consumer.
+pub struct Fpga {
+    pub app: Application,
+    pub hardware: crate::app_worker::Handle,
+    pub readiness: Duration,
+    pub trace: Rc<RefCell<Vec<RuntimeCommand>>>,
+    pub messages: Rc<RefCell<Vec<String>>>,
+    pub output: Arc<std::sync::Mutex<Vec<[f32; 2]>>>,
+    pub failure: Arc<std::sync::Mutex<Option<String>>>,
+}
+impl Fpga {
+    pub fn new(artifacts: std::path::PathBuf, mode: crate::app_worker::RunMode) -> SimResult<Self> {
+        Self::with_trace(artifacts, mode, None)
+    }
+    pub fn with_trace(
+        artifacts: std::path::PathBuf,
+        mode: crate::app_worker::RunMode,
+        wave: Option<std::path::PathBuf>,
+    ) -> SimResult<Self> {
+        let ready_started = std::time::Instant::now();
+        let mut prepared = crate::app_worker::Worker::prepare_with_trace(artifacts, mode, wave)?;
+        let enabled = mode == crate::app_worker::RunMode::Stepped;
+        if enabled {
+            prepared.endpoint.capture_runtime_commands();
+        }
+        let outbox = prepared.outbox();
+        let trace = Rc::new(RefCell::new(vec![]));
+        let messages = Rc::new(RefCell::new(vec![]));
+        let output = prepared.execution.output.clone();
+        let failure = prepared.execution.failure.clone();
+        let hardware = prepared.execution.handle();
+        let client = ProtocolClient::new(TraceCarrier {
+            enabled,
+            inner: InProcess::new(prepared.endpoint, outbox),
+            trace: trace.clone(),
+            messages: messages.clone(),
+        });
+        let backend = RtBackend::connect(client, prepared.execution)?;
+        let mut app = Application::new(backend).map_err(|e| {
+            format!(
+                "{e}; simulation failure={:?}; commands={:#?}",
+                failure.lock().unwrap(),
+                messages
+                    .borrow()
+                    .iter()
+                    .filter(|m| m.contains("Result") || m.contains("Fault"))
+                    .collect::<Vec<_>>()
+            )
+        })?;
+        app.ready().map_err(|e| {
+            format!(
+                "{e}; simulation failure={:?}; messages={:#?}",
+                failure.lock().unwrap(),
+                messages
+                    .borrow()
+                    .iter()
+                    .filter(|m| m.contains("Result") || m.contains("Fault"))
+                    .collect::<Vec<_>>()
+            )
+        })?;
+        Ok(Self {
+            app,
+            hardware,
+            readiness: ready_started.elapsed(),
+            trace,
+            messages,
+            output,
+            failure,
+        })
+    }
+}
+
+impl Fpga {
+    pub fn replay(&mut self, trace: &Trace) -> SimResult<Vec<LoopState>> {
+        if trace.format_version != 1 || trace.steps.is_empty() {
+            return Err("invalid app trace".into());
+        }
+        self.hardware.signal(true)?;
+        let mut states = vec![];
+        for (index, step) in trace.steps.iter().enumerate() {
+            self.app
+                .apply(&step.action)
+                .map_err(|e| format!("action {index}: {e}"))?;
+            self.app.pump(step.ticks);
+            if let Some(error) = self.failure.lock().unwrap().as_ref() {
+                return Err(error.clone().into());
+            }
+            states.push(self.app.loop_state());
+        }
+        Ok(states)
+    }
+}
+
+#[derive(Debug)]
+pub struct Comparison {
+    pub actions: usize,
+    pub frames: usize,
+    pub max_error: f32,
+    pub rms_error: f64,
+}
+pub fn compare(fpga: &mut Fpga, trace: &Trace) -> SimResult<Comparison> {
+    if trace.format_version != 1 || trace.steps.is_empty() {
+        return Err("invalid app trace".into());
+    }
+    let mut native = Native::new()?;
+    *native.signal.borrow_mut() = true;
+    fpga.hardware.signal(true)?;
+    let mut report = Comparison {
+        actions: 0,
+        frames: 0,
+        max_error: 0.,
+        rms_error: 0.,
+    };
+    for (index, step) in trace.steps.iter().enumerate() {
+        native.app.apply(&step.action)?;
+        fpga.app.apply(&step.action)?;
+        native.app.pump(step.ticks);
+        fpga.app.pump(step.ticks);
+        let frame = fpga.hardware.frame();
+        if let Some(error) = fpga.failure.lock().unwrap().as_ref() {
+            return Err(format!("action {index}, frame {frame}: {error}").into());
+        }
+        let n = native.app.loop_state();
+        let h = fpga.app.loop_state();
+        let logical = |s: &LoopState| {
+            (
+                s.mode,
+                s.empty,
+                s.length_frames,
+                s.position,
+                s.content_revision,
+                s.repeat_sync,
+                s.next_mode,
+                s.next_transition_delay,
+                s.gain,
+                s.balance,
+                s.capture_incomplete,
+            )
+        };
+        if logical(&h) != logical(&n) {
+            return Err(format!("action {index}, frame {frame}: loop observation mismatch; native={n:?}, hardware={h:?}").into());
+        }
+        let n = native.app.snapshot();
+        let h = fpga.app.snapshot();
+        if let (Some(n), Some(h)) = (&n.details, &h.details) {
+            if !n.loading && !h.loading {
+                if n.channels.len() != h.channels.len() {
+                    return Err(format!("action {index}: waveform channel mismatch").into());
+                }
+                for (n, h) in n.channels.iter().zip(&h.channels) {
+                    if n.samples.len() != h.samples.len()
+                        || n.samples
+                            .iter()
+                            .zip(h.samples.iter())
+                            .any(|(n, h)| (n - h).abs() > FLOAT_MAX_ERROR)
+                    {
+                        return Err(
+                            format!("action {index}, frame {frame}: waveform mismatch").into()
+                        );
+                    }
+                }
+            }
+        }
+        let n = native.output.borrow();
+        let h = fpga.output.lock().unwrap();
+        if n.len() != h.len() {
+            return Err(format!(
+                "action {index}: output frame count mismatch ({} vs {})",
+                n.len(),
+                h.len()
+            )
+            .into());
+        }
+        let mut squared = 0.;
+        let mut max = 0f32;
+        for (frame, (n, h)) in n.iter().zip(h.iter()).enumerate() {
+            for channel in 0..2 {
+                let error = (n[channel] - h[channel]).abs();
+                if error > FLOAT_MAX_ERROR {
+                    return Err(format!("action {index}, output frame {frame}, channel {channel}: native={}, hardware={}, error={error}",n[channel],h[channel]).into());
+                }
+                squared += f64::from(error).powi(2);
+                max = max.max(error);
+            }
+        }
+        let rms = (squared / (2 * n.len()).max(1) as f64).sqrt();
+        if rms > f64::from(FLOAT_RMS_ERROR) {
+            return Err(format!("action {index}: audio RMS error {rms}").into());
+        }
+        report = Comparison {
+            actions: index + 1,
+            frames: n.len(),
+            max_error: max,
+            rms_error: rms,
+        };
+    }
+    Ok(report)
 }

@@ -94,3 +94,41 @@ fn common_app_trace_covers_real_input_controls_waveform_clear_and_scheduled_stop
     )
     .unwrap();
 }
+
+#[shoop_test]
+fn native_long_recording_still_supports_details_selection() {
+    use rt_fpga_sim::app::Action;
+    let mut native = Native::new().unwrap();
+    for action in [
+        Action::ConnectInput,
+        Action::ConnectOutput,
+        Action::GlobalSync { enabled: false },
+    ] {
+        native.app.apply(&action).unwrap();
+        native.app.pump(20);
+    }
+    native.app.apply(&Action::Record).unwrap();
+    native.app.pump(4);
+    let mut remaining = 240_000;
+    while remaining > 0 {
+        let n = remaining.min(512);
+        native.render.borrow_mut().process(n).unwrap();
+        remaining -= n;
+    }
+    native.app.apply(&Action::Stop).unwrap();
+    native.app.pump(8);
+    eprintln!(
+        "before details: {:?}, client={:?}",
+        native.app.loop_state(),
+        native.app.client.state()
+    );
+    native.app.apply(&Action::Details).unwrap();
+    native.app.pump(600);
+    eprintln!(
+        "after details: {:?}, client={:?}, service={:?}",
+        native.app.loop_state(),
+        native.app.client.state(),
+        native.app.service.failure()
+    );
+    assert!(native.app.snapshot().details.is_some());
+}

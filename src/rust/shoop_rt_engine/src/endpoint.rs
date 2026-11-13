@@ -162,6 +162,7 @@ impl Work {
 }
 
 pub struct ControlEndpoint {
+    pub(crate) capability_mask: Capabilities,
     #[cfg(feature = "testing")]
     pub(crate) runtime_trace: Option<Vec<crate::testing::RuntimeCommand>>,
     pub(crate) projected_timing: Box<[Option<(LoopSlotId, shoop_rt_protocol::TimingState)>]>,
@@ -445,7 +446,7 @@ impl ControlEndpoint {
         if !self.processor_catalog.kinds.is_empty() {
             capabilities = capabilities.union(Capabilities::TRACK_PROCESSORS);
         }
-        capabilities
+        Capabilities(capabilities.0 & self.capability_mask.0)
     }
 
     fn free_pending(&self) -> usize {

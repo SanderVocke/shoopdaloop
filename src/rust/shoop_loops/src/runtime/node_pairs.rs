@@ -34,6 +34,20 @@ macro_rules! identity {
 }
 identity!(NodePairStageId);
 identity!(NodePairSourceId);
+/// Scoped staging identities for a backend that retains candidates externally.
+pub struct NodePairScope(u32);
+impl NodePairScope {
+    pub fn new() -> Result<Self, Error> {
+        Ok(Self(
+            NEXT_SCOPE
+                .try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
+                .map_err(|_| Error::Exhausted)?,
+        ))
+    }
+    pub fn stage(&self, slot: u32, generation: u32) -> Result<NodePairStageId, Error> {
+        NodePairStageId::from_parts([self.0, slot, generation])
+    }
+}
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct NodePairSettings {
     pub candidates: usize,
@@ -154,9 +168,7 @@ impl<S: Sample> NodePairs<S> {
         let scope = if settings.candidates == 0 {
             0
         } else {
-            NEXT_SCOPE
-                .try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
-                .map_err(|_| Error::Exhausted)?
+            NodePairScope::new()?.0
         };
         let mut banks = Vec::with_capacity(settings.candidates);
         for _ in 0..settings.candidates {

@@ -11,3 +11,6 @@ pub mod mono_trace;
 
 #[cfg(all(feature = "app", not(target_arch = "wasm32")))]
 pub mod app;
+
+#[cfg(all(feature = "app", not(target_arch = "wasm32")))]
+pub mod app_worker;

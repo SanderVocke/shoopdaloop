@@ -44,7 +44,7 @@ module sp_engine #(
         IDLE, FETCH, DECODE, READ_REQUEST, READ_RESULT, EMIT, NEXT, LOOP_REQUEST, LOOP_RESULT
     } phase_t;
     typedef enum logic [2:0] {
-        ENABLE, POSITION, LENGTH, VIEW, RAMP
+        ENABLE, POSITION, LENGTH, VIEW, RAMP, SMOOTHING
     } operand_t;
 
     reg [5:0] chunk_shift;
@@ -62,6 +62,7 @@ module sp_engine #(
     reg [31:0] run_state_count;
     reg [31:0] run_quantum;
     reg begin_capture;
+    reg [1:0] playback_flags;
     reg [255:0] capture_job;
     reg [7:0] opcode;
     reg [15:0] arg0, arg1, arg2, arg3, arg4;
@@ -168,7 +169,18 @@ module sp_engine #(
                     arg4 <= program_read_data[87:72];
                     writeback <= 0;
                     case (program_read_data[7:0])
-                        `SHOOP_SP_LOGICAL_PLAYBACK, `SHOOP_SP_LOGICAL_CAPTURE: phase <= LOOP_REQUEST;
+                        `SHOOP_SP_LOGICAL_PLAYBACK, `SHOOP_SP_LOGICAL_CAPTURE, `SHOOP_SP_PROCESS_SMOOTHING: phase <= LOOP_REQUEST;
+                        `SHOOP_SP_PROCESS_CONSTANT: begin
+                            job_data <= pack_job(`SHOOP_SP_JOB_CONSTANT,
+                                program_read_data[55:40], 0, {32'b0,program_read_data[39:8]}, 0, 0);
+                            phase <= EMIT;
+                        end
+                        `SHOOP_SP_PROCESS_ARITHMETIC: begin
+                            job_data <= pack_job(`SHOOP_SP_JOB_ARITHMETIC,
+                                program_read_data[23:8], program_read_data[39:24],
+                                {32'b0,program_read_data[71:40]}, 0, 0);
+                            phase <= EMIT;
+                        end
                         `SHOOP_SP_PROCESS_SILENCE: begin
                             job_data <= pack_job(`SHOOP_SP_JOB_SILENCE,
                                 program_read_data[23:8], 0, 0, 0, 0);
@@ -220,6 +232,9 @@ module sp_engine #(
                         error_code <= `SHOOP_SP_INVALID_STATE;
                         done <= 1;
                         phase <= IDLE;
+                    end else if (opcode == `SHOOP_SP_PROCESS_SMOOTHING) begin
+                        playback_flags <= {loop_response_data[99+:64]==0,loop_response_data[33+:2]==1};
+                        operand_address <= arg3; operand <= SMOOTHING; phase <= READ_REQUEST;
                     end else if (opcode == `SHOOP_SP_LOGICAL_PLAYBACK) begin
                         if (loop_response_data[33+:2] == 1) begin
                             position <= loop_response_data[99+:64] >> chunk_shift;
@@ -297,6 +312,11 @@ module sp_engine #(
                                     else job_data <= pack_job(`SHOOP_SP_JOB_CAPTURE,
                                         opcode == `SHOOP_SP_LOGICAL_CAPTURE ? arg4 : arg2, 0, word_value, 0, 0);
                                 end
+                                phase <= EMIT;
+                            end
+                            SMOOTHING: begin
+                                job_data <= pack_job(`SHOOP_SP_JOB_SMOOTHING,arg4,state_read_data[15:0],
+                                    {state_read_data[63:32],16'b0,state_read_data[31:16]}, {62'b0,playback_flags},0);
                                 phase <= EMIT;
                             end
                             RAMP: begin

@@ -691,6 +691,7 @@ fn prepare_complete_using<R>(
         mut control,
         execution,
         latency_frames,
+        capabilities,
     } = factory(external::Preparation {
         config,
         quantum,
@@ -702,6 +703,7 @@ fn prepare_complete_using<R>(
             cells: cells.clone(),
         },
         loop_limits,
+        initial_media: client.media().iter().map(|entry| entry.media).collect(),
         description: description.clone(),
         recorder: profile_recorder,
         midi_output: settings.midi.tick,
@@ -770,6 +772,7 @@ fn prepare_complete_using<R>(
         bulk_credits: description.bulk_credits,
     };
     let endpoint = ControlEndpoint {
+        capability_mask: capabilities,
         #[cfg(feature = "testing")]
         runtime_trace: None,
         projected_bus_processors: vec![None; description.buses as usize].into_boxed_slice(),

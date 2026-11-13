@@ -117,3 +117,83 @@ The new path uses Rust, Marlin/Verilator and C++ only. Existing Python RTL gates
 are independent regressions, not dependencies of this runner. Supported protocol
 and capacity details are in the adapter README; local results and separate model,
 graph/configuration measurements are in [mono validation](MONO_VALIDATION.md).
+
+## Offline application Sync loop
+
+The optional application composition uses the real application service, client,
+engine endpoint and owning runtime queues. Its external consumer compiles the
+submitted production graph and topology for the RTL pipeline. It neither runs a
+CPU graph runtime nor executes the native loop planner. The real prepared node
+objects supply their fixed signal descriptions and control validation.
+
+```sh
+cargo run -p rt_fpga_sim --features app-ui --bin fpga-app-demo
+cargo run -p rt_fpga_sim --features app --bin fpga-app-demo -- \
+  --compare src/rust/rt_fpga_sim/fixtures/app-sync-loop.json
+```
+
+Use `--replay` instead of `--compare` to run hardware alone. Add `--vcd work/app.vcd`
+to either command for a trace on the worker's model thread; comparisons report the
+first differing action/frame/channel. VCD files can be large.
+
+The window uses the ordinary application widgets. It starts with the default
+mono Sync strip and loop. Use the connections dialog to connect logical
+`audio_in_1` to Sync and route Sync to Master; Master connects to the logical
+outputs. The synthetic-input checkbox switches between deterministic in-memory
+samples and silence. There is no host process, JACK/CPAL connection, device
+enumeration or audible output. Additional tracks, MIDI, FX, imported sessions,
+composites, preview and metronome audio are outside this fixed-session profile.
+
+A worker owns the Marlin runtime, model and queue consumer. The normal window
+runs continuously, starting each 32-frame iteration immediately after its
+predecessor. UI polling uses its own elapsed time and imposes no sample-rate
+pacing or quantum deadline on the worker. Deterministic replays use bounded
+batches, also processed as fast as possible. Continuous mode retains no sample
+or command-history log. Dropping the backend stops and joins the worker.
+
+Hardware owns transitions, audio arithmetic and media contents. Host bookkeeping
+retains candidates and media leases, applies monitoring policy to observed TP
+state, publishes observations and streams FPGA samples through the existing
+reader ring. App-facing audio is float; hardware samples and coefficients are
+Q8.24. The reader converts that numeric encoding explicitly. The 240-frame
+control ramps and default 144-frame restart smoothing remain enabled. Route
+activation preserves the TP clock, captured media and smoothing history; mode
+and scalar controls leave the program installed.
+
+The shared model has 256 instructions, 256 state words, 128 scratch buffers,
+32 requests, 64 events, 32 media views and 32768 physical 32-sample slots.
+Ordinary small regressions keep a 128-slot logical arena. The application preset
+uses all 32768 slots (4 MiB of sample words) and reserves chunk-table pages for
+twice that many mappings, including snapshot/primary-view overlap. It includes both prepared channels;
+the second channel is inactive in the mono session. This admits two five-second
+takes at 48 kHz while retaining the previous take. `Handle::store_usage` reports
+issued views, the slot high-water mark, free slots and the logical limit from
+actual device registers. The headless demo prints these alongside compiler and
+activation timings. This is bounded FPGA storage, independently of native
+elastic media storage.
+
+Snapshot, retirement and capture-bank reset currently walk chunk metadata. The
+simulator's cycle watchdog scales with bounded arena size for those operations;
+it is a hang guard, not a real-time deadline. These operations need separate
+worst-case analysis before claiming hard real-time recording transitions on a
+board. No DRAM timing simulation is used by this composition.
+
+Focused application validation:
+
+```sh
+cargo test -p rt_fpga_sim --features app --test app_native --test app_protocol \
+  --test app_arithmetic --test app_media
+cargo test -p rt_fpga_sim --features app --test app_rtl -- \
+  --skip application_store_holds_a_five_second_take_while_recording_another_and_reuses_it
+cargo test -p rt_fpga_sim --features app --test app_rtl \
+  application_store_holds_a_five_second_take_while_recording_another_and_reuses_it
+```
+
+The long test executes ten seconds of recording plus waveform transfers in RTL
+and can take several minutes. The common app replay compares native float audio,
+loop observations, pending transitions and waveform samples. Exact arithmetic
+checks use the production Q8.24 `Gains` and `AudioRenderer`, including extreme
+signed samples, interrupted ramps, short loops and changing smoothing lengths.
+EOF, byte/page alignment, retained takes, stale scopes and generation reuse are
+covered separately. Queue tests use recording/failing devices without a DSP
+implementation, so they cannot supply substitute audio results.
