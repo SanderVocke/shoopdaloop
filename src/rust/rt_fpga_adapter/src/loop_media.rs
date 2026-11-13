@@ -11,9 +11,14 @@ use shoop_loops::{
     runtime::{Cut, Reply, Selection},
     windows::Windows,
 };
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Encoding {
+    Q824,
+    Float32,
+}
 struct Content {
     id: media::MediaId,
-    view: u32,
+    views: Vec<u32>,
     source: media::Source,
     description: media::Description,
     references: usize,
@@ -40,10 +45,26 @@ pub struct Media {
     banks: [u64; 2],
     next_bank: usize,
     capture: Option<Capture>,
+    channels: usize,
+    encoding: Encoding,
+    empty_revisions: Vec<Revision>,
 }
 impl Media {
     pub fn new(exports: usize) -> Result<Self, Error> {
+        Self::with_channels(exports, 1, Encoding::Q824)
+    }
+    pub fn with_channels(
+        exports: usize,
+        channels: usize,
+        encoding: Encoding,
+    ) -> Result<Self, Error> {
+        if channels == 0 || channels > 2 {
+            return Err(Error::InvalidConfig);
+        }
         Ok(Self {
+            channels,
+            encoding,
+            empty_revisions: vec![Revision(0)],
             ids: media::IdentityScope::new()?,
             reads: ExternalReadScope::new()?,
             contents: (0..8)
@@ -64,6 +85,31 @@ impl Media {
             next_bank: 0,
             capture: None,
         })
+    }
+    fn empty_id(&self) -> Result<media::MediaId, Error> {
+        self.ids.media(
+            u32::MAX,
+            u32::try_from(self.empty_revisions.len()).map_err(|_| Error::Exhausted)?,
+        )
+    }
+    fn empty_revision(&self, id: media::MediaId) -> Option<Revision> {
+        let parts = id.parts();
+        if self.ids.media(u32::MAX, parts[2]).ok()? != id {
+            return None;
+        }
+        self.empty_revisions
+            .get(parts[2].checked_sub(1)? as usize)
+            .copied()
+    }
+    pub fn retire_external(
+        &mut self,
+        id: media::MediaId,
+        device: &mut impl LoopDevice,
+    ) -> Result<(), Error> {
+        if self.empty_revision(id).is_some() {
+            return Ok(());
+        }
+        self.retire(id, device)
     }
     fn content(&self, id: media::MediaId) -> Result<&Content, Error> {
         self.contents
@@ -109,11 +155,13 @@ impl Media {
                 resource: ResourceId::from_parts(capture.bank as u32, 1)?,
                 revision: Revision(self.banks[capture.bank]),
                 description: Description {
-                    format: Format::Audio { channels: 1 },
+                    format: Format::Audio {
+                        channels: self.channels as u32,
+                    },
                     frames: capture.frames,
                     bytes: usize::try_from(capture.frames)
                         .ok()
-                        .and_then(|n| n.checked_mul(4))
+                        .and_then(|n| n.checked_mul(4 * self.channels))
                         .ok_or(Error::Capacity)?,
                 },
                 cut_frame: frame,
@@ -124,26 +172,33 @@ impl Media {
                     incomplete: None,
                 }),
             };
-            let result = device.media(MediaCommand {
-                opcode: 1,
-                view: 0,
-                start: 0,
-                length: capture.frames,
-                count: 0,
-            })?;
+            let mut views = vec![];
+            for channel in 0..self.channels {
+                views.push(
+                    device
+                        .media(MediaCommand {
+                            opcode: 1,
+                            view: channel as u32,
+                            start: 0,
+                            length: capture.frames,
+                            count: 0,
+                        })?
+                        .view,
+                );
+            }
             let source = media::Source {
                 snapshot,
                 index: self.reads.index(snapshot.id),
             };
             self.contents[slot].value = Some(Content {
                 id,
-                view: result.view,
+                views,
                 source,
                 description: media::Description {
                     owner: state.id,
                     revision: capture.revision,
                     frames: capture.frames,
-                    channels: 1,
+                    channels: self.channels as u32,
                     auxiliary_channels: 0,
                     midi: false,
                 },
@@ -151,7 +206,14 @@ impl Media {
             });
             self.latest = Some(id);
         }
-        self.playback = if state.content_revision == Revision(0) {
+        if state.content_length == 0
+            && state.mode != Mode::Recording
+            && self.empty_revisions.last() != Some(&state.content_revision)
+        {
+            self.empty_revisions.push(state.content_revision);
+            self.latest = None;
+        }
+        self.playback = if self.empty_revisions.last() == Some(&state.content_revision) {
             None
         } else {
             Some(
@@ -205,13 +267,15 @@ impl Media {
         let content = slot.value.as_ref().ok_or(Error::InvalidId)?;
         if Some(id) != self.latest && Some(id) != self.playback && content.references == 0 {
             let generation = slot.generation.checked_add(1).ok_or(Error::Exhausted)?;
-            device.media(MediaCommand {
-                opcode: 3,
-                view: content.view,
-                start: 0,
-                length: 0,
-                count: 0,
-            })?;
+            for &view in &content.views {
+                device.media(MediaCommand {
+                    opcode: 3,
+                    view,
+                    start: 0,
+                    length: 0,
+                    count: 0,
+                })?;
+            }
             slot.value = None;
             slot.generation = generation;
         }
@@ -237,7 +301,7 @@ impl Media {
             graph_epoch: epoch,
             topology_epoch: rt_runtime::Epoch(0),
             state,
-            playback: Some(self.playback.unwrap_or(self.ids.media(u32::MAX, 1)?)),
+            playback: Some(self.playback.unwrap_or(self.empty_id()?)),
             latest: self.latest,
             gain: Q824(1 << 24),
             balance: Q824(0),
@@ -257,7 +321,7 @@ impl Media {
             return Err(Error::InvalidParameter);
         }
         let media = match selection {
-            Selection::Playback => self.playback.unwrap_or(self.ids.media(u32::MAX, 1)?),
+            Selection::Playback => self.playback.unwrap_or(self.empty_id()?),
             Selection::Latest => self.latest.ok_or(Error::InvalidState)?,
             Selection::Recording => return Err(Error::InvalidParameter),
         };
@@ -270,7 +334,7 @@ impl Media {
             .ids
             .export(slot as u32, self.exports[slot].generation)?;
         let cut = self.cut(state, frame, epoch)?;
-        let view = if media != self.ids.media(u32::MAX, 1)? {
+        let view = if self.empty_revision(media).is_none() {
             let content = self.content(media)?;
             media::View {
                 windows: Some(Windows::default()),
@@ -284,9 +348,9 @@ impl Media {
                 windows: None,
                 description: media::Description {
                     owner: state.id,
-                    revision: Revision(0),
+                    revision: self.empty_revision(media).ok_or(Error::InvalidId)?,
                     frames: 0,
-                    channels: 1,
+                    channels: self.channels as u32,
                     auxiliary_channels: 0,
                     midi: false,
                 },
@@ -296,7 +360,7 @@ impl Media {
             }
         };
         self.exports[slot].value = Some(media);
-        if media != self.ids.media(u32::MAX, 1)? {
+        if self.empty_revision(media).is_none() {
             self.contents
                 .iter_mut()
                 .filter_map(|s| s.value.as_mut())
@@ -327,7 +391,7 @@ impl Media {
     }
     pub fn cursor(&self, id: media::ExportId) -> Result<Cursor, Error> {
         let content = self.exported(id)?;
-        if content == self.ids.media(u32::MAX, 1)? {
+        if self.empty_revision(content).is_some() {
             return Err(Error::InvalidShape);
         }
         Ok(self.reads.cursor(self.content(content)?.source.snapshot.id))
@@ -342,7 +406,7 @@ impl Media {
         let generation = slot.generation.checked_add(1).ok_or(Error::Exhausted)?;
         slot.value = None;
         slot.generation = generation;
-        if content != self.ids.media(u32::MAX, 1)? {
+        if self.empty_revision(content).is_none() {
             self.contents
                 .iter_mut()
                 .filter_map(|s| s.value.as_mut())
@@ -377,23 +441,36 @@ impl Media {
             .min(page_bytes - position % page_bytes)
             .min(total.checked_sub(position).ok_or(Error::InvalidOffset)?);
         if count > 0 {
-            let start = position / 4;
-            let frames = (position % 4 + count).div_ceil(4);
-            let samples = device
-                .media(MediaCommand {
-                    opcode: 6,
-                    view: content.view,
-                    start: start as u64,
-                    length: content.description.frames,
-                    count: frames as u32,
-                })?
-                .samples;
-            if samples.len() != frames {
-                return Err(Error::InvalidState);
+            let stride = 4 * self.channels;
+            let start = position / stride;
+            let frames = (position % stride + count).div_ceil(stride);
+            let mut channels = Vec::with_capacity(self.channels);
+            for &view in &content.views {
+                let samples = device
+                    .media(MediaCommand {
+                        opcode: 6,
+                        view,
+                        start: start as u64,
+                        length: content.description.frames,
+                        count: frames as u32,
+                    })?
+                    .samples;
+                if samples.len() != frames {
+                    return Err(Error::InvalidState);
+                }
+                channels.push(samples);
             }
             for (i, byte) in output[..count].iter_mut().enumerate() {
-                let offset = position % 4 + i;
-                *byte = samples[offset / 4].to_le_bytes()[offset % 4];
+                let offset = position % stride + i;
+                let frame = offset / stride;
+                let channel = offset % stride / 4;
+                let sample = channels[channel][frame];
+                let word = if self.encoding == Encoding::Float32 {
+                    rt_audio_math::Q824(sample).to_f32().to_bits()
+                } else {
+                    sample as u32
+                };
+                *byte = word.to_le_bytes()[offset % 4];
             }
         }
         self.reads.advance(cursor, count, total)?;
@@ -401,3 +478,5 @@ impl Media {
     }
 }
 use rt_runtime::Q824;
+
+use rt_audio_math::Sample;
