@@ -558,7 +558,7 @@ pub fn build_library(
             }
         }
     }
-    println!("{verilator_command:?}");
+    eprintln!("{verilator_command:?}");
     let verilator_output = verilator_command
         .output()
         .whatever_context("Invocation of Verilator failed")?;

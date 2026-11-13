@@ -234,67 +234,91 @@ pub fn run_with_ready(
         "LAN hosts require socket delivery"
     );
     ensure!(options.name.len() <= 128, "invalid host identity or name");
-    let (mut native, mut warnings) = engine::native_config(
-        &config.driver,
-        &config.pools,
-        &engine::inventory(&config.driver),
-    );
-    #[cfg(feature = "testing")]
-    if config.test_signal {
-        match &mut native.driver {
-            DriverConfig::Dummy(dummy) => dummy.input = Some(|_, _| 0.25),
-            #[cfg(feature = "cpal")]
-            DriverConfig::Cpal(_) => {}
-            #[cfg(feature = "jack")]
-            DriverConfig::Jack(_) => {}
-        }
-    }
-    #[cfg(not(feature = "testing"))]
-    let _ = &mut native;
-    native.engine.processors = config.settings.processors;
-    let started = match shoop_rt_host_native::start(&native) {
-        Ok(started) => started,
-        Err(error)
-            if !matches!(native.driver, DriverConfig::Dummy(_))
-                && std::env::var_os("SHOOP_AUDIO_RENDER").is_none()
-                && std::env::var_os("SHOOP_AUDIO_BENCH_OUTPUT").is_none()
-                && !matches!(error, shoop_rt_host_native::StartError::Processors(_)) =>
-        {
-            warnings.push(format!(
-                "Could not start the configured audio driver: {error}; using dummy"
-            ));
-            let dummy = shoop_app_api::DummyAudioDriverConfig::default();
-            let fallback = NativeConfig {
-                driver: DriverConfig::Dummy(engine::dummy_config(&dummy)),
-                engine: shoop_rt_engine::EngineDescription {
-                    processors: config.settings.processors,
-                    ..engine::engine_description(&config.pools, dummy.buffer_size)
-                },
+    #[cfg(feature = "fpga-sim")]
+    let mut fpga_host = None;
+    let (mut host, backend, warnings, settings) =
+        if config.backend == shoop_app_api::AudioBackendKind::FpgaRtlSim {
+            #[cfg(feature = "fpga-sim")]
+            {
+                let (started, profile, effective) = crate::fpga::start(&config.settings)?;
+                fpga_host = Some(started.host);
+                let mut backend = RtBackend::connect(started.client, Sleep::default())?;
+                backend.set_driver_profile(profile);
+                (None, backend, vec![], effective)
+            }
+            #[cfg(not(feature = "fpga-sim"))]
+            {
+                anyhow::bail!("FPGA RTL simulation requires --features fpga-sim");
+            }
+        } else {
+            let (mut native, mut warnings) = engine::native_config(
+                &config.driver,
+                &config.pools,
+                &engine::inventory(&config.driver),
+            );
+            #[cfg(feature = "testing")]
+            if config.test_signal {
+                match &mut native.driver {
+                    DriverConfig::Dummy(dummy) => dummy.input = Some(|_, _| 0.25),
+                    #[cfg(feature = "cpal")]
+                    DriverConfig::Cpal(_) => {}
+                    #[cfg(feature = "jack")]
+                    DriverConfig::Jack(_) => {}
+                }
+            }
+            #[cfg(not(feature = "testing"))]
+            let _ = &mut native;
+            native.engine.processors = config.settings.processors;
+            let started = match shoop_rt_host_native::start(&native) {
+                Ok(started) => started,
+                Err(error)
+                    if !matches!(native.driver, DriverConfig::Dummy(_))
+                        && std::env::var_os("SHOOP_AUDIO_RENDER").is_none()
+                        && std::env::var_os("SHOOP_AUDIO_BENCH_OUTPUT").is_none()
+                        && !matches!(error, shoop_rt_host_native::StartError::Processors(_)) =>
+                {
+                    warnings.push(format!(
+                        "Could not start the configured audio driver: {error}; using dummy"
+                    ));
+                    let dummy = shoop_app_api::DummyAudioDriverConfig::default();
+                    let fallback = NativeConfig {
+                        driver: DriverConfig::Dummy(engine::dummy_config(&dummy)),
+                        engine: shoop_rt_engine::EngineDescription {
+                            processors: config.settings.processors,
+                            ..engine::engine_description(&config.pools, dummy.buffer_size)
+                        },
+                    };
+                    let started = shoop_rt_host_native::start(&fallback)?;
+                    started
+                }
+                Err(error) => return Err(error.into()),
             };
-            let started = shoop_rt_host_native::start(&fallback)?;
-            started
-        }
-        Err(error) => return Err(error.into()),
-    };
-    warnings.extend(started.host.warnings().iter().cloned());
-    for warning in &warnings {
-        tracing::warn!("{warning}");
-    }
-    let status = started.host.status().driver;
-    let profile = shoop_app_api::ResolvedAudioDriverConfig {
-        configured: engine::effective_driver_config(
-            &config.driver,
-            started.host.driver_config(),
-            status.sample_rate,
-            status.buffer_frames,
-        ),
-        sample_rate: status.sample_rate,
-        buffer_size: status.buffer_frames,
-        instance_name: started.host.instance_name().to_owned(),
-    };
-    let mut host = Some(started.host);
-    let mut backend = RtBackend::connect(started.client, Sleep::default())?;
-    backend.set_driver_profile(profile);
+            warnings.extend(started.host.warnings().iter().cloned());
+            for warning in &warnings {
+                tracing::warn!("{warning}");
+            }
+            let status = started.host.status().driver;
+            let profile = shoop_app_api::ResolvedAudioDriverConfig {
+                configured: engine::effective_driver_config(
+                    &config.driver,
+                    started.host.driver_config(),
+                    status.sample_rate,
+                    status.buffer_frames,
+                ),
+                sample_rate: status.sample_rate,
+                buffer_size: status.buffer_frames,
+                instance_name: started.host.instance_name().to_owned(),
+            };
+            let mut backend = RtBackend::connect(started.client, Sleep::default())?;
+            backend.set_driver_profile(profile);
+            (
+                Some(started.host),
+                backend,
+                warnings,
+                config.settings.clone(),
+            )
+        };
+    let config = HostConfig { settings, ..config };
     let mut service = Service::new(
         Box::new(backend),
         ServiceOptions {
@@ -302,17 +326,21 @@ pub fn run_with_ready(
             loop_smoothing_ms: config.loop_smoothing_ms,
         },
     )?;
-    if let Some(controller) = crate::host_graph::controller(host.as_ref().expect("running host")) {
-        service.set_host_graph_controller(controller)?;
+    let mut driver_owner = None;
+    if let Some(native_host) = host.take() {
+        if let Some(controller) = crate::host_graph::controller(&native_host) {
+            service.set_host_graph_controller(controller)?;
+        }
+        let (owner, controller) = crate::audio_driver::controller(
+            native_host,
+            config.settings.clone(),
+            crate::audio_driver::preference_writer(options.driver_preferences.clone()),
+        )?;
+        service.set_audio_driver_controller(controller)?;
+        driver_owner = Some(owner);
     }
-    let (mut driver_owner, controller) = crate::audio_driver::controller(
-        host.take().expect("running host"),
-        config.settings.clone(),
-        crate::audio_driver::preference_writer(options.driver_preferences.clone()),
-    )?;
-    service.set_audio_driver_controller(controller)?;
     service.set_host_settings(config.settings.clone(), warnings.clone())?;
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + crate::fpga::startup_timeout(config.backend);
     while !service.is_ready() {
         service.tick(Duration::from_millis(2));
         ensure!(
@@ -489,7 +517,10 @@ pub fn run_with_ready(
                     .map_err(|reason| anyhow!("host cleanup refused: {reason:?}"))?;
                 cleanup_deadline = Some(Instant::now() + Duration::from_secs(5));
             }
-            let result = driver_owner.poll_stop().or_else(|| {
+            let result = driver_owner.as_mut().and_then(|owner| owner.poll_stop());
+            #[cfg(feature = "fpga-sim")]
+            let result = result.or_else(|| fpga_host.take().map(|host| host.stop()));
+            let result = result.or_else(|| {
                 cleanup_deadline
                     .is_some_and(|deadline| Instant::now() >= deadline)
                     .then(|| Err("audio lifecycle cleanup did not finish".to_owned()))
@@ -520,6 +551,8 @@ pub fn run_with_ready(
     }
     drop(service);
     drop(driver_owner);
+    #[cfg(feature = "fpga-sim")]
+    drop(fpga_host);
     drop(host);
     Ok(())
 }

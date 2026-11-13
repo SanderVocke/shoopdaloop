@@ -176,28 +176,28 @@ renamed "Audio driver", and an "Audio backend" line is added.
 
 ### 3. Settings, protocol and status
 
-- [ ] Add `AudioBackendKind::FpgaRtlSim` (`fpga_rtl_sim`, accepted only when the
+- [x] Add `AudioBackendKind::FpgaRtlSim` (`fpga_rtl_sim`, accepted only when the
       binary has the feature).
-- [ ] Add `HostSettings.backend` with serde default `new_engine`, and
+- [x] Add `HostSettings.backend` with serde default `new_engine`, and
       `--audio-backend` for `shoop_host`.
-- [ ] Give the Simulated driver an input-mode config, and validate
+- [x] Give the Simulated driver an input-mode config, and validate
       backend/driver pairs in one place.
-- [ ] Report the active audio backend through engine/host status.
-- [ ] Update the overlay ("Audio backend", "Audio driver"), and bump the protocol
+- [x] Report the active audio backend through engine/host status.
+- [x] Update the overlay ("Audio backend", "Audio driver"), and bump the protocol
       versions.
 - [ ] Verify: config parse and validation tests (including refused pairs),
       settings, CLI and web-query tests, and overlay text tests.
 
 ### 4. `shoop_host` integration
 
-- [ ] Make `serve.rs` start the selected backend. Construct the native
+- [x] Make `serve.rs` start the selected backend. Construct the native
       driver-switching and host-graph controllers only for the native backend,
       and report switching as unsupported for RTL.
-- [ ] Clamp pools and host ports to the adapter profile, so that out-of-profile
+- [x] Clamp pools and host ports to the adapter profile, so that out-of-profile
       app actions are refused with clear messages.
-- [ ] Make the session and launch deadlines backend-aware, so a cold model build
+- [x] Make the session and launch deadlines backend-aware, so a cold model build
       fits.
-- [ ] Let the Host Manager's start dialog offer the RTL backend when the binary
+- [x] Let the Host Manager's start dialog offer the RTL backend when the binary
       supports it.
 - [ ] Verify: a feature-gated host integration test (Linux with Verilator) starts
       `shoop_host --audio-backend fpga_rtl_sim`, connects a client, and records
@@ -206,10 +206,10 @@ renamed "Audio driver", and an "Audio backend" line is added.
 
 ### 5. Normal app integration
 
-- [ ] Forward `fpga-sim` from `shoopdaloop`. Route `start_engine` and
+- [x] Forward `fpga-sim` from `shoopdaloop`. Route `start_engine` and
       `launch::pair` through the audio-backend setting, for both in-process and
       companion-host use.
-- [ ] Make no RTL-specific UI changes.
+- [x] Make no RTL-specific UI changes.
 - [ ] Verify: a headless app test (existing harness) starts with the RTL backend
       and runs the Sync trace actions; one manual GUI smoke run of the normal app
       in-process and against a separately started `shoop_host`.
@@ -218,9 +218,9 @@ renamed "Audio driver", and an "Audio backend" line is added.
 
 - [x] Remove the `fpga-app-demo` binary, the `app-ui` feature and the demo-only
       window code.
-- [ ] Keep the deterministic replay and comparison as tests, through the new
+- [x] Keep the deterministic replay and comparison as tests, through the new
       composition.
-- [ ] Update `rt_fpga_sim/README.md`, `APP_CONTRACT.md`, `VALIDATION.md`,
+- [x] Update `rt_fpga_sim/README.md`, `APP_CONTRACT.md`, `VALIDATION.md`,
       `docs/runtime_profiling.md` and the adapter README for the regular
       startup.
 - [ ] Verify: the comparison test passes within the documented bounds, and docs
@@ -228,7 +228,7 @@ renamed "Audio driver", and an "Audio backend" line is added.
 
 ### 7. CI coverage
 
-- [ ] Extend `fpga_simulation.yml` to build and test `shoop_host`/`shoopdaloop`
+- [x] Extend `fpga_simulation.yml` to build and test `shoop_host`/`shoopdaloop`
       with `fpga-sim` against the cached Verilator, and add the new crate to its
       path filters.
 - [ ] Confirm that default builds on all platforms are unaffected.
@@ -283,3 +283,38 @@ renamed "Audio driver", and an "Audio backend" line is added.
 - Initial extraction validation: host production boundary audit passes; the
   native app trace (3 tests), protocol refusal/ownership tests (5 tests), and a
   cold RTL application bootstrap pass. The cold model build took 14.5 seconds.
+
+- Backend/settings/status and both regular startup paths are implemented. Engine
+  protocol is now 28, application protocol 37. The overlay has separate generic
+  Audio backend and Audio driver fields. The old local-runtime text override was
+  removed with its only production caller (the demo).
+- The Audio backend setting had been retired after removal of the legacy
+  backend; it is restored as a restart-required generic setting.
+- The feature-enabled host/app and the default workspace compile with
+  `RUSTFLAGS=-D warnings`. Cargo 1.100 separately warns about an existing native
+  manifest dependency on the browser message-port crate; it is not a Rust
+  warning or a build failure.
+- Both socket and shared-memory standalone-host Sync workflows pass, including
+  a refused extra track and a refused CPAL/RTL pair. The normal application's
+  headless saved-setting workflow passes (record/play/stop/clear, audio and MEM).
+- The backend/driver-pair API test and the actual overlay text regression pass.
+  All-feature production dependency boundary audits pass on Linux, Windows,
+  macOS and Wasm for the host, application and new simulation host.
+- An in-process GUI run through the normal binary connected input to Sync and
+  Sync to Master, recorded, played a nonzero waveform with meters, stopped and
+  cleared. Overlay fields identify RTL and Simulated; MEM changes with storage.
+  Screenshots and logs are under `work/gui-inprocess-*`.
+- A separate cold companion protocol regression covers model-build diagnostics
+  on stderr, preserving framed readiness on stdout. Verilator's old stdout
+  diagnostic was moved to stderr for this regular launch path.
+- CI now has a feature-enabled Linux host/app job and unsupported-platform stub
+  compile checks on Windows/macOS. Workflow results and final full gates remain
+  pending; acceptance criteria are unchanged.
+
+- The standalone host test suite now passes all three cases, including a cold
+  companion start through the framed stdin/stdout protocol (48.5 seconds total
+  with other local work running).
+- The normal GUI also connected to a separately started RTL `shoop_host` over
+  the regular profile path. Routing, record, playback meters/waveform, stop,
+  clear and the generic independent-host status overlay were exercised.
+  Evidence is under `work/gui-remote-*`.

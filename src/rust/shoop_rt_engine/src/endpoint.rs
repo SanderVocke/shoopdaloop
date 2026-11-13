@@ -43,6 +43,7 @@ use shoop_rt_transport::carrier::{Endpoint, Outbox};
 pub(crate) const PLANNED: usize = 8;
 
 pub(crate) struct Settings {
+    pub audio_backend: shoop_rt_protocol::AudioBackendKind,
     pub external_dry_wet: bool,
     pub ramp: u32,
     pub lead: u32,
@@ -1445,6 +1446,9 @@ impl ControlEndpoint {
             .is_none_or(|last| frame >= last.saturating_add(interval));
         if periodic {
             self.telemetry_frame = Some(frame);
+            let _ = out.push(EngineMessage::Telemetry(Telemetry::AudioBackend(
+                self.settings.audio_backend,
+            )));
             let _ = out.push(EngineMessage::Telemetry(Telemetry::Preview {
                 request_id: self.cells.preview_playing.load(Ordering::Acquire),
             }));

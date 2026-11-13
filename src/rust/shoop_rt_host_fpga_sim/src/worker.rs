@@ -39,6 +39,7 @@ pub struct SimulationMetrics {
 #[derive(Default)]
 struct Status {
     frame: AtomicU64,
+    max_frames: usize,
     metrics: Mutex<rt_fpga_adapter::engine::Metrics>,
     store: Mutex<rt_fpga_sim::StoreUsage>,
     simulation: Mutex<SimulationMetrics>,
@@ -74,6 +75,7 @@ pub struct Worker {
     send: mpsc::Sender<Request>,
     join: Option<thread::JoinHandle<()>>,
     mode: RunMode,
+    quantum: usize,
     status: Arc<Status>,
     pub output: Arc<Mutex<Vec<[f32; 2]>>>,
     pub failure: Arc<Mutex<Option<String>>>,
@@ -97,29 +99,37 @@ impl Worker {
     }
     pub fn prepare_config(config: Config) -> SimResult<Prepared<Self>> {
         let mode = config.mode;
+        let description = shoop_rt_engine::EngineDescription {
+            audio_backend: shoop_rt_protocol::AudioBackendKind::FpgaRtlSim,
+            ..rt_fpga_adapter::engine::profile_description()
+        };
+        let quantum = description.quantum;
         let wave = config.wave.clone();
         let (send, receive) = mpsc::channel();
         let (ready_send, ready_receive) =
             mpsc::sync_channel::<Result<shoop_rt_engine::EngineControl, PrepareError>>(1);
         let output = Arc::new(Mutex::new(Vec::new()));
         let failure = Arc::new(Mutex::new(None));
-        let status = Arc::new(Status::default());
+        let status = Arc::new(Status {
+            max_frames: description.max_frames,
+            ..Default::default()
+        });
         let worker_status = status.clone();
         let worker_output = output.clone();
         let worker_failure = failure.clone();
         let diagnostic = failure.clone();
         let prepared = prepare_with_consumer(
-            &rt_fpga_adapter::engine::profile_description(),
+            &description,
             // This worker clocks the RTL model unpaced; no device driver exists.
             DriverStatus {
                 kind: shoop_rt_protocol::DriverKind::Simulated,
                 state: shoop_rt_protocol::DriverRunState::Running,
-                sample_rate: 48_000,
-                buffer_frames: 512,
+                sample_rate: description.sample_rate,
+                buffer_frames: description.max_frames as u32,
             },
             move |parts| {
                 let join = thread::Builder::new()
-                    .name("fpga-marlin-app".into())
+                    .name("fpga-rtl-sim".into())
                     .spawn(move || {
                         let result = (|| -> SimResult<()> {
                             let model_started = Instant::now();
@@ -184,7 +194,7 @@ impl Worker {
                                     }
                                     None => run(
                                         &mut execution,
-                                        32,
+                                        quantum,
                                         signal,
                                         &worker_output,
                                         false,
@@ -215,11 +225,12 @@ impl Worker {
                         send,
                         join: Some(join),
                         mode,
+                        quantum,
                         status,
                         output,
                         failure,
                     },
-                    latency_frames: 32,
+                    latency_frames: quantum,
                     capabilities: shoop_rt_protocol::Capabilities(0),
                 })
             },
@@ -231,6 +242,9 @@ impl Worker {
             )
         })?;
         Ok(prepared)
+    }
+    pub fn quantum(&self) -> usize {
+        self.quantum
     }
     pub fn mode(&self) -> RunMode {
         self.mode
@@ -259,7 +273,7 @@ fn run(
     status: &Status,
 ) -> SimResult<()> {
     while frames > 0 {
-        let count = frames.min(512);
+        let count = frames.min(status.max_frames);
         let start = execution.frame().0;
         let inputs: Vec<Vec<f32>> = (0..2)
             .map(|ch| {

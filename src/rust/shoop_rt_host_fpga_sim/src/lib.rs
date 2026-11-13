@@ -103,3 +103,17 @@ pub fn input(port: usize, frame: u64) -> f32 {
     let sample = ((frame.wrapping_mul(17) + port as u64 * 97) % 4096) as i32 - 2048;
     sample as f32 / 16384.
 }
+
+pub fn description() -> Result<shoop_rt_engine::EngineDescription, String> {
+    #[cfg(all(feature = "sim", target_os = "linux"))]
+    {
+        Ok(rt_fpga_adapter::engine::profile_description())
+    }
+    #[cfg(not(all(feature = "sim", target_os = "linux")))]
+    {
+        Err(
+            "FPGA RTL simulation is unsupported on this platform or requires the fpga-sim feature"
+                .into(),
+        )
+    }
+}

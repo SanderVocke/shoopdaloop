@@ -35,7 +35,7 @@ impl<R> Prepared<R> {
         let limits = self.endpoint.limits();
         shoop_rt_transport::carrier::Outbox::new(
             2 * usize::from(limits.reliable_credits) + 8,
-            limits.strips as usize + 2 * limits.loops as usize + limits.buses as usize + 3,
+            limits.strips as usize + 2 * limits.loops as usize + limits.buses as usize + 4,
             usize::from(limits.bulk_credits),
         )
     }

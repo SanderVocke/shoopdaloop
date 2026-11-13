@@ -8,6 +8,7 @@ description = "Native GUI for managing independent ShoopDaLoop hosts"
 workspace = true
 
 [features]
+fpga-sim = ["shoop_host/fpga-sim"]
 builtin-fx = ["shoop_host/builtin-fx", "shoop_rt_host_native/builtin-fx"]
 oxisynth = ["shoop_host/oxisynth", "shoop_rt_host_native/oxisynth"]
 default = ["cpal", "jack", "builtin-fx", "oxisynth"]

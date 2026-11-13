@@ -656,7 +656,7 @@ impl EngineClock for Clock {
     }
     fn wait(&mut self) -> bool {
         if self.worker.mode() == shoop_rt_host_fpga_sim::RunMode::Stepped {
-            self.worker.run(32).is_ok()
+            self.worker.run(self.worker.quantum()).is_ok()
         } else {
             thread::yield_now();
             self.worker.failure.lock().unwrap().is_none()

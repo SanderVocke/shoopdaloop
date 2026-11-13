@@ -13,7 +13,7 @@ fn application_bootstraps_its_real_sync_graph_on_rtl() {
     assert!(!drivers.supported);
     assert_eq!(
         drivers.active.unwrap().configured,
-        shoop_app_api::AudioDriverConfig::Simulated
+        shoop_app_api::AudioDriverConfig::Simulated(Default::default())
     );
     assert_eq!(fpga.hardware.store_usage().slot_limit, 32768);
     assert!(fpga.app.loop_state().empty);

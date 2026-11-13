@@ -91,8 +91,10 @@ mod fifo {
     fn odd_depth_fifo_wrap_wide_words_and_backpressure() {
         let here = Path::new(env!("CARGO_MANIFEST_DIR"));
         let root = here.join("../../..");
+        let config = rt_fpga_sim::RuntimeConfig::development(&root.join("work/marlin-fifo"));
+        rt_fpga_sim::check_verilator(&config.verilator).unwrap();
         let rt = VerilatorRuntime::new2(
-            root.join("work/marlin-fifo"),
+            &config.artifacts,
             &[
                 here.join("rtl/fifo_probe.sv"),
                 root.join("fpga/audio_io/rtl/audio_command_fifo.sv"),
@@ -100,8 +102,11 @@ mod fifo {
             ],
             &[] as &[&Path],
             [],
-            VerilatorRuntimeOptions::default()
-                .verilator_executable(here.join("verilator-wrapper").into()),
+            VerilatorRuntimeOptions {
+                verilator_executable: config.verilator,
+                build_jobs: config.jobs,
+                ..Default::default()
+            },
         )
         .unwrap();
         let mut m = rt

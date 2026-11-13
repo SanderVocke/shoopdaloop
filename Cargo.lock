@@ -5449,6 +5449,7 @@ dependencies = [
  "shoop_port_graph",
  "shoop_rt_backend",
  "shoop_rt_engine",
+ "shoop_rt_host_fpga_sim",
  "shoop_rt_host_native",
  "shoop_transport",
  "shoop_transport_shared_memory",

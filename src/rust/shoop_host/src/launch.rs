@@ -136,7 +136,7 @@ pub fn spawn(
             let _ = sender.send(result);
         });
         let mut target = receiver
-            .recv_timeout(Duration::from_secs(12))
+            .recv_timeout(crate::fpga::startup_timeout(config.backend))
             .context("host readiness timed out")??;
         ensure!(
             target.process == shoop_host_processes::identity(child.id())?

@@ -515,6 +515,12 @@ jobs:
           RUSTFLAGS: -D warnings
         run: cargo build --locked -p shoopdaloop -p shoop_host -p shoop_host_manager ${{ matrix.cargo_args }}
 
+      - name: Check unsupported-platform FPGA stub
+        if: (matrix.target == 'windows' || matrix.target == 'macos') && matrix.profile == 'debug'
+        env:
+          RUSTFLAGS: -D warnings
+        run: cargo check --locked -p shoop_host -p shoopdaloop --features fpga-sim
+
       - name: Build web application
         if: matrix.target == 'web'
         working-directory: src/rust/shoopdaloop
