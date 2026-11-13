@@ -122,6 +122,38 @@ Additional qualification after the lock audit:
   without `--all-features`. Firmware dependency-boundary audits passed on all
   four configured targets. No service or RT source/wire file changed for P16.
 
+## Windows core-workflow fixture qualification
+
+The matrix at `ae2ddfbc` passed the P16 tests. Windows release passed
+2,139/2,140 application tests; its existing core-workflow scenario timed out
+waiting for exactly two recorded MIDI events. Twenty local baseline repetitions passed.
+The previous test sent note-on/note-off with fixed 30 ms sleeps before switching
+to playback, without observing engine consumption of either input.
+
+The failure capture is artifact `14014542815`,
+`perfetto-nextest-windows-x86_64-release-43373017234`, from
+[the qualification run](https://github.com/SanderVocke/shoopdaloop/actions/runs/43373017234).
+Its 23.564-second trace has no reported drop/loss/error statistics. Inventory
+shows client/service ticks and backend request logs, without audio-callback
+execution slices. Using the pinned Perfetto processor, query
+`slice JOIN args ON args.arg_set_id=slice.arg_set_id`, filter
+`args.key='debug.request'` and the 2,400–5,000 ms range relative to
+`trace_bounds.start_ts`, then sort by `slice.ts`:
+
+| Backend request | Relative timestamp |
+| --- | --- |
+| Note-on, strip 2, note 60 | 2,842.056 ms |
+| Note-off, strip 2, note 60 | 2,882.800 ms |
+| Playback, loop 9 | 2,911.669 ms |
+
+These are queue timestamps, not proof of audio-engine ingestion before the
+recording ended. The test now observes the existing
+`latest_input_midi_message` after each input before ending recording. Its exact
+two-event assertion remains unchanged. All twenty corrected repetitions pass,
+as do the warning-denying workspace build, formatting and test-attribute checks.
+No runtime code, wire schema or product deadline changed. Final Windows CI
+qualification remains pending on the follow-up head.
+
 ## Deliberate limits
 
 No VM migration, automatic start, server script catalog, attachment transfer of

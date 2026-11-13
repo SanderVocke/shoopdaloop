@@ -304,3 +304,12 @@ the selected platform plus browser/portable paths affected by P16.
   package/edge. Both locked project test commands and the independent native
   runtime/loop playback checks passed. The pinned Rust 1.99.1 ARM production
   and all-feature firmware release builds also passed after the firmware refresh.
+- The next matrix passed Linux debug/release, Windows debug, coverage, hosted
+  processors, security analysis, firmware and browser release. Windows release
+  passed 2,139/2,140 application tests; its existing core workflow timed out on
+  MIDI detail after two fixed 30 ms sleeps. The failure trace shows note-off
+  queued 28.869 ms before playback. The test now waits for the existing engine
+  MIDI echo after each message before ending recording, retaining its exact
+  two-event assertion. Twenty local baseline and twenty corrected repetitions
+  passed; warning-denying workspace build, formatting and test policy passed.
+  Runtime code and product deadlines are unchanged; final CI rerun is pending.
