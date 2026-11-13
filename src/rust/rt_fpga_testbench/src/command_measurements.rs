@@ -140,7 +140,9 @@ pub fn run(requests: u64, source: Option<&Path>, legacy: bool, output: &Path) ->
     let mut identities = Vec::new();
     let mut dense_installs = Vec::new();
     let mut dense_transfers = Vec::new();
+    let mut dense_elapsed_cycles = Vec::new();
     for sequence in 100..100 + requests {
+        let start = sim.cycles;
         identities.push(accepted(
             &mut driver,
             &mut sim,
@@ -151,6 +153,7 @@ pub fn run(requests: u64, source: Option<&Path>, legacy: bool, output: &Path) ->
         ));
         dense_installs.push(driver.last_cycles);
         dense_transfers.push(driver.last_transfers);
+        dense_elapsed_cycles.push(sim.cycles - start);
     }
     assert_eq!(
         transaction(
@@ -260,7 +263,7 @@ pub fn run(requests: u64, source: Option<&Path>, legacy: bool, output: &Path) ->
         }
         stale = json!({"retained_process":retained,"compacted_process":compacted,"compaction_cycles":compact_cycles,"compaction_transfers":compact_transfers});
     }
-    let result = json!({"depths":depths,"repeated":repeated,"duplicate_cycles":duplicate_cycles,"full_cycles":full_cycles,"retained_full_cycles":retained_full_cycles,"dense_process":dense_process,"dense_installs":dense_installs,"reused_install_cycles":reused_install_cycles,"dense_admission_transfers":dense_transfers,"stale_membership":stale,"host_service_ns":driver.service_timings.take().unwrap_or_default(),"host_metadata_bytes":if legacy {None} else {driver.service.as_ref().map(|owner|owner.metadata_bytes())},"payload_bytes":{"install":80,"cancel":80,"collect_response":104}});
+    let result = json!({"depths":depths,"repeated":repeated,"duplicate_cycles":duplicate_cycles,"full_cycles":full_cycles,"retained_full_cycles":retained_full_cycles,"dense_process":dense_process,"dense_installs":dense_installs,"reused_install_cycles":reused_install_cycles,"dense_admission_transfers":dense_transfers,"dense_elapsed_cycles":dense_elapsed_cycles,"stale_membership":stale,"host_service_ns":driver.service_timings.take().unwrap_or_default(),"host_metadata_bytes":if legacy {None} else {driver.service.as_ref().map(|owner|owner.metadata_bytes())},"payload_bytes":{"install":80,"cancel":80,"collect_response":104}});
     std::fs::write(
         output.join("commands.json"),
         serde_json::to_vec_pretty(&result)?,

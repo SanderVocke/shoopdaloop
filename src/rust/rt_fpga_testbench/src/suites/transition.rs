@@ -325,7 +325,7 @@ pub fn run(name: &str, depths: [u64; 3], random_cases: u64) -> Result<()> {
             std::fs::write(
                 output,
                 serde_json::to_vec_pretty(
-                    &json!({"quantum_frames":32,"clock_hz":150_000_000,"quantum_cycles":cycles}),
+                    &json!({"quantum_frames":32,"clock_hz":100_000_000,"quantum_cycles":cycles}),
                 )?,
             )?;
         }

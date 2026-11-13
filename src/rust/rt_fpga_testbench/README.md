@@ -58,12 +58,19 @@ Old runner-specific flags are not a second supported configuration interface.
 Transition submission, cancellation and collection use the shared
 `rt_fpga_adapter::transition_service::TransitionService` above the raw wire
 transactions. The driver reconstructs that owner only after successful device
-preparation. Prepared ROM streams reserve credits through the same Rust owner.
+preparation. Prepared ROM streams reserve credits and compile membership through the same Rust
+owner. The boot ROM includes that setup; a bench configuring the device directly
+must also send `Prepared.membership` before delivering its prepared action events.
 The indexed-install guard test deliberately uses raw transactions to verify
 malformed/occupied identities without changing public admission semantics.
 
 For matched command costs, `command-costs --requests 272 --output DIR` records
-FPGA cycles, native service samples, source hashes and tool provenance. An
+FPGA cycles, native service samples, source hashes and tool provenance. Admission
+cycles sum every publication/INSTALL transfer; `dense_elapsed_cycles` additionally
+includes handshake/acknowledgement clocks. Transfer counts expose command/reply
+traffic rather than treating the final indexed write as the whole admission.
+The stale self-sync workload measures retained terminal visits and optional
+compaction without predicting outcomes. An
 explicit `--transition-source PATH --legacy-allocation` runs only frozen RTL
 containing the former allocator for baseline measurement. It does not retain a
 legacy implementation in the candidate hardware or software service.

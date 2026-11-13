@@ -242,6 +242,31 @@ pub(super) fn publication(d: &mut Transition, s: &mut Sim<'_>) -> Result<()> {
         .inject("stage_counter", Some(&Bits::from_u64(u64::MAX)));
     raw(d, s, 18, 0, vec![2, 0, 0], 8);
     s.model.inject("stage_counter", None);
+    for collect_before_commit in [false, true] {
+        load(d, s, &image)?;
+        d.ok(
+            s,
+            4,
+            0,
+            &abi::command(&command(0, 1, json!({"kind":"record"}), 1024, None, 0)),
+        );
+        raw(d, s, 18, 0, vec![1, 0, 1], 0);
+        raw(d, s, 19, 0, vec![2, 0, 1, u32::MAX], 0);
+        assert_eq!(raw(d, s, 5, 0, vec![1], 0).get(0, 1), 1);
+        raw(d, s, 20, 0, vec![2, 0, 0, 0, u32::MAX, 0], 0);
+        if collect_before_commit {
+            raw(d, s, 6, 0, vec![1], 0);
+        }
+        raw(d, s, 21, 0, vec![2], 0);
+        let row = raw(d, s, 13, 0, vec![], 0);
+        if collect_before_commit {
+            assert_eq!((row.get(0, 1), row.get(1, 32)), (0, 2));
+        } else {
+            assert_eq!(row.get(37, 3), 3);
+            raw(d, s, 6, 0, vec![1], 0);
+        }
+        raw(d, s, 4, 0, install.to_vec(), 3);
+    }
     for cut in 0..4 {
         load(d, s, &image)?;
         raw(d, s, 18, 0, vec![0, 0, 1], 0);

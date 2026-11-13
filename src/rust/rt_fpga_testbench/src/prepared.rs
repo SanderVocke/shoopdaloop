@@ -14,6 +14,7 @@ pub struct Prepared {
     pub expected: Value,
     pub boot: Vec<Bits>,
     pub events: Vec<Bits>,
+    pub membership: Vec<rt_fpga_adapter::transition_service::Transfer>,
     pub directory: PathBuf,
 }
 pub fn scenario(q: u64, cf: u64, channels: u64, monitoring: bool, routing: &str) -> Value {
@@ -136,7 +137,7 @@ pub fn prepare_with_views(scenario: Value, bc: u64, slots: u64, views: u64) -> R
         .prepare_static_batch(&originals)
         .map_err(|error| format!("prepared actions refused: {error}"))?;
     let activate = boot.pop().unwrap();
-    for transfer in program.setup {
+    for transfer in &program.setup {
         boot.push(control_packet(
             0,
             0,
@@ -209,6 +210,7 @@ pub fn prepare_with_views(scenario: Value, bc: u64, slots: u64, views: u64) -> R
         expected,
         boot,
         events,
+        membership: program.setup,
         directory,
     })
 }
