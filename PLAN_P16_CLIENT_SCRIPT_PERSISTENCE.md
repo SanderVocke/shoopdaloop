@@ -294,3 +294,8 @@ the selected platform plus browser/portable paths affected by P16.
 - GitHub access was refreshed on 2026-11-13. All implementation milestones and
   local acceptance evidence have been pushed to PR #977. Final-head CI and
   automated review are being checked; parity closure remains pending.
+- Restored CI log access confirmed the earlier Linux/Windows/macOS native and
+  coverage failures were the LAN fixture's default-settings assertion, already
+  fixed in `5b4bcfce`. Firmware jobs also exposed a pre-existing nested lock file
+  missing `rt_audio_math` and its two dependency edges; the lock refresh adds only
+  those entries and passes locked Cargo metadata resolution.

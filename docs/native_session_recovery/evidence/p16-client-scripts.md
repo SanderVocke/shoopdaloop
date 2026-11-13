@@ -99,13 +99,14 @@ passes after declaring it. A concurrent normal native build can overwrite the
 test-enabled host companion, so the final full native gate ran without another
 native build modifying its executables.
 
-The last accessible CI statuses for published head `7e16fa40` included native
-test failures and incomplete web/platform jobs. Those failure logs and final
-statuses could not be inspected after access expired. Local corrections are
-validated; no claim is made that all remote failures are resolved. Firmware
-also failed on the documentation-only and implementation heads and still needs
-its final status assessed. Supported-platform CI and automated PR review remain
-unverified until the final commits can be pushed. No PR has been merged.
+After GitHub access was refreshed, earlier Linux/Windows/macOS native and
+coverage logs confirmed the failing LAN fixture assertion already corrected by
+`5b4bcfce`. Firmware logs showed its separate Cargo.lock lacked `rt_audio_math`
+and the two existing dependency edges from `rt_runtime`/`shoop_rt_engine`.
+Refreshing only those entries fixes locked metadata resolution without updating
+any registry package version or adding scripting dependencies to firmware.
+Final supported-platform CI and automated review are in progress. No PR has
+been merged.
 
 ## Deliberate limits
 
