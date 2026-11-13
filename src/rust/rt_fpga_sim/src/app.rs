@@ -459,8 +459,17 @@ impl Fpga {
         mode: crate::app_worker::RunMode,
         wave: Option<std::path::PathBuf>,
     ) -> SimResult<Self> {
+        Self::with_transport(artifacts, mode, wave, crate::app_worker::Transport::Pins)
+    }
+    pub fn with_transport(
+        artifacts: std::path::PathBuf,
+        mode: crate::app_worker::RunMode,
+        wave: Option<std::path::PathBuf>,
+        transport: crate::app_worker::Transport,
+    ) -> SimResult<Self> {
         let ready_started = std::time::Instant::now();
-        let mut prepared = crate::app_worker::Worker::prepare_with_trace(artifacts, mode, wave)?;
+        let mut prepared =
+            crate::app_worker::Worker::prepare_with(artifacts, mode, wave, transport)?;
         let enabled = mode == crate::app_worker::RunMode::Stepped;
         if enabled {
             prepared.endpoint.capture_runtime_commands();

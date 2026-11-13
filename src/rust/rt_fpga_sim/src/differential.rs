@@ -1,8 +1,8 @@
 //! A common producer drives both owning transports; hardware images are never inputs.
-use crate::{SimResult, Simulator};
+use crate::{SimResult, bridge_sim::Probe};
 use rt_audio_math::Q824;
 use rt_backend_testbench::spec::{self, Scenario};
-use rt_fpga_adapter::adapter::{Adapter, Controller, Node, Operation, Processor, Request};
+use rt_fpga_adapter::adapter::{Adapter, Controller, Device, Node, Operation, Processor, Request};
 use rt_runtime::{
     Budgets, Config, Epoch, Frame, NodeId, PreparedConfig, Quantum,
     buffer::{AudioBlock, MidiBlock},
@@ -191,7 +191,7 @@ fn compare_results(a: &mut Controller, b: &mut Controller) -> SimResult<()> {
     }
     Ok(())
 }
-pub fn run(case: &Scenario, sim: Simulator<'_>) -> SimResult<Report> {
+pub fn run<D: Device + Probe>(case: &Scenario, device: D) -> SimResult<Report> {
     case.validate()?;
     if case.quantum != 32
         || case.chunk_frames != 32
@@ -210,7 +210,7 @@ pub fn run(case: &Scenario, sim: Simulator<'_>) -> SimResult<Report> {
             nodes(case)?,
             NoPlanner,
         )?;
-    let (mut hw_control, mut hw) = Adapter::prepare(config(), nodes(case)?, sim)?;
+    let (mut hw_control, mut hw) = Adapter::prepare(config(), nodes(case)?, device)?;
     install(&mut cpu_control, case)?;
     install(&mut hw_control, case)?;
     let mut samples = 0;
@@ -234,13 +234,13 @@ pub fn run(case: &Scenario, sim: Simulator<'_>) -> SimResult<Report> {
         )?;
         let actual = hw
             .process(&step.inputs)
-            .map_err(|e| format!("hardware {e}: {:?}", hw.device().last_error))?;
+            .map_err(|e| format!("hardware {e}: {:?}", hw.device().last_error()))?;
         if actual[0].iter().copied().ne(output.iter().map(|s| s.0)) {
             return Err(format!("audio mismatch at frame {}", hw.frame().0 - 32).into());
         }
         if cpu.next_frame() != hw.frame()
             || cpu.epoch() != hw.epoch()
-            || hw.device().frame() != hw.frame().0
+            || hw.device_mut().frame() != hw.frame().0
         {
             return Err("frame/epoch mismatch".into());
         }
@@ -258,7 +258,7 @@ pub fn run(case: &Scenario, sim: Simulator<'_>) -> SimResult<Report> {
     Ok(Report {
         quanta: case.steps.len(),
         samples,
-        cycles: hw.device().cycles,
+        cycles: hw.device().cycles(),
         compile: m.compile_time,
         configure: m.configuration_time,
         instructions: m.instructions,

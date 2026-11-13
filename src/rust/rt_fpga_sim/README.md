@@ -199,3 +199,29 @@ signed samples, interrupted ramps, short loops and changing smoothing lengths.
 EOF, byte/page alignment, retained takes, stale scopes and generation reuse are
 covered separately. Queue tests use recording/failing devices without a DSP
 implementation, so they cannot supply substitute audio results.
+
+## CPU host bridge
+
+`rtl/marlin_bridge.sv` puts the same capacity profile behind the CPU host bridge
+(`fpga/host_bridge`), with a 64-bit functional DDR model. `marlin_bridge_external`
+uses `EXTERNAL_IO=1`: the core generates its own test input and digests its
+output, as on the ZedBoard. `bridge_sim::MarlinBus` drives the top's AXI-lite pins
+as a `Bus` for the adapter's `Bridge`. The register-level path therefore runs the
+same `PortIo` driver code that the ARM firmware runs over memory-mapped I/O.
+
+`app_worker::Transport` selects pins, the bridge, or the bridge with
+core-generated audio. `app::Fpga::with_transport` drives the real application
+through either bridge variant.
+
+```sh
+cargo test -p rt_fpga_sim --features sim --test bridge_rtl
+cargo test -p rt_fpga_sim --features app --test app_bridge -- --nocapture
+```
+
+`bridge_rtl` compares the bridge against production results and against the
+pin-level simulator. It covers gain fixtures, record/stop/play with TP rows and
+captured media, queue replays, FIFO-spanning appends and a deterministic digest
+with core-generated audio. `app_bridge` replays the app Sync-loop trace next to
+the native application. It compares audio and waveforms through the bridge, and
+compares loop observations with core-generated audio. With `--nocapture` it
+prints register accesses and simulated clock cycles per quantum.

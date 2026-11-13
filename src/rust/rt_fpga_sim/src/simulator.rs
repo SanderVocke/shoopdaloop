@@ -49,10 +49,15 @@ pub fn runtime(artifacts: &Path) -> SimResult<VerilatorRuntime> {
         );
     }
     sources.push(root.join("fpga/axi_memory/tests/axi_direct_memory.sv"));
+    sources.push(root.join("fpga/host_bridge/rtl/host_core.sv"));
+    sources.push(Path::new(env!("CARGO_MANIFEST_DIR")).join("rtl/marlin_bridge.sv"));
     Ok(VerilatorRuntime::new2(
         artifacts,
         &sources,
-        &[root.join("fpga/state_processor/rtl")],
+        &[
+            root.join("fpga/state_processor/rtl"),
+            root.join("fpga/host_bridge/rtl"),
+        ],
         [],
         VerilatorRuntimeOptions::default().verilator_executable(
             PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -73,6 +78,19 @@ impl StoreUsage {
     pub fn live_slots(self) -> u32 {
         self.high_water_slots - self.free_slots
     }
+}
+/// Reads the media store's slot and view counters through any port.
+pub fn store_usage<P: PortIo + ?Sized>(port: &mut P) -> SimResult<StoreUsage> {
+    let mut values = [0; 4];
+    for (address, value) in values.iter_mut().enumerate() {
+        *value = port.store_configure(0, address as u32, None)?[0];
+    }
+    Ok(StoreUsage {
+        issued_views: values[0],
+        high_water_slots: values[1],
+        free_slots: values[2],
+        slot_limit: values[3],
+    })
 }
 pub struct Simulator<'ctx> {
     // Close the trace while its model is still alive (fields drop in order).
@@ -107,16 +125,7 @@ impl<'ctx> Simulator<'ctx> {
         Ok(sim)
     }
     pub fn store_usage(&mut self) -> SimResult<StoreUsage> {
-        let mut values = [0; 4];
-        for (address, value) in values.iter_mut().enumerate() {
-            *value = self.store_config(0, address as u32, None)?[0];
-        }
-        Ok(StoreUsage {
-            issued_views: values[0],
-            high_water_slots: values[1],
-            free_slots: values[2],
-            slot_limit: values[3],
-        })
+        store_usage(self)
     }
     pub fn arena_capacity(&mut self, slots: u32) -> SimResult<()> {
         if slots == 0 || slots > 32768 {

@@ -189,13 +189,44 @@ Each stage ends green on its listed checks and is committed.
 
 ### 3. Marlin bridge top
 
-- [ ] Add a Marlin top containing the bridge, the core with `EXTERNAL_IO=1` and
+- [x] Add a Marlin top containing the bridge, the core with `EXTERNAL_IO=1` and
   the shared configuration profile, the PL source/digest and the memory model.
-- [ ] Add a Marlin `Bus` over its AXI-lite pins.
-- [ ] Run the existing app and mono scenarios through
-  `PortDevice<Bridge<MarlinBus>>`.
-- [ ] Add these tests to CI and fix the workflow path filters.
-- [ ] Measure the adapter's host-side work per quantum to estimate ARM load.
+  `rtl/marlin_bridge.sv` has two variants, both on 64-bit AXI:
+  `EXTERNAL_IO=0` for audio comparisons and `EXTERNAL_IO=1` as on the board.
+- [x] Add a Marlin `Bus` over its AXI-lite pins (`bridge_sim::MarlinBus`).
+- [x] Run the existing app and mono scenarios through
+  `PortDevice<Bridge<MarlinBus>>`. `bridge_rtl` (sim feature) covers:
+  - the gain fixtures;
+  - record/stop/play with TP rows and captured media, matching both production
+    and the pin path;
+  - the queue differential replays;
+  - 150-sample FIFO appends;
+  - a deterministic digest with core-generated audio.
+
+  `app_bridge` (app feature) replays the app Sync-loop trace next to native:
+  - audio, waveforms and observations through the bridge;
+  - loop observations with core-generated audio.
+
+  The mono-trace replays still run on pins only.
+- [x] Add these tests to CI and fix the workflow path filters. `bridge_rtl` runs in
+  CI's `--features sim` step. `app_bridge` is not in CI, like every app-feature
+  test, because that workflow lacks the app's system dependencies.
+- [x] Measure the adapter's host-side work per quantum to estimate ARM load.
+  In the board configuration, the Sync-loop replay averages 7,037 register
+  accesses per quantum:
+  - about 5,200 (74%) are `STATUS` polls while the core works;
+  - about 1,525 are meter scratch reads (8 buffers × 32 words, at 6 accesses
+    per word);
+  - about 200 are TP transactions.
+
+  At roughly 0.1–0.25 µs per uncached GP0 access, the non-polling traffic alone
+  costs about 0.2–0.45 ms of the 667 µs budget for Q=32 at 48 kHz. This milestone
+  is ARM-paced, so real-time rate is not required. A streaming or PL-computed
+  meter readout and interrupt-driven completion are the obvious follow-ups.
+- Evidence: in WSL, both of the following pass:
+  - the full `--features sim` suite (CI's command);
+  - the full `--features app` suite, including all 11 `app_rtl` tests through the
+    refactored worker.
 - Verification:
   - the scenarios pass;
   - loop observations match the pin-level path;
