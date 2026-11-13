@@ -312,16 +312,21 @@ module media_store #(
     wire [7:0] gc_retire_error;
     wire manual_grant = cmd_valid && cmd_ready && hint_base_valid && cmd_start[63:32] == 0
         && cmd_opcode == 9;
-    reg gc_grant_pending;
-    reg [31:0] gc_grant_cycles, gc_grant_blocks;
+    reg gc_grant_pending, gc_grant_manual;
+    reg [31:0] gc_grant_input_cycles, gc_grant_input_blocks;
+    wire [31:0] gc_grant_cycles = gc_grant_manual && gc_grant_input_cycles != 0
+        ? gc_grant_input_cycles : 32'(RECLAIM_CYCLES);
+    wire [31:0] gc_grant_blocks = gc_grant_manual && gc_grant_input_blocks != 0
+        ? gc_grant_input_blocks : 32'(RECLAIM_BLOCKS);
     always @(posedge clk) begin
-        if (reset) begin gc_grant_pending <= 0; gc_grant_cycles <= 0; gc_grant_blocks <= 0; end
+        if (reset) begin
+            gc_grant_pending <= 0; gc_grant_manual <= 0;
+            gc_grant_input_cycles <= 0; gc_grant_input_blocks <= 0;
+        end
         else begin
             gc_grant_pending <= maintenance_tick || manual_grant;
-            if (maintenance_tick || manual_grant) begin
-                gc_grant_cycles <= manual_grant && cmd_start != 0 ? cmd_start[31:0] : 32'(RECLAIM_CYCLES);
-                gc_grant_blocks <= manual_grant && cmd_count != 0 ? cmd_count : 32'(RECLAIM_BLOCKS);
-            end
+            gc_grant_manual <= manual_grant;
+            gc_grant_input_cycles <= cmd_start[31:0]; gc_grant_input_blocks <= cmd_count;
         end
     end
     assign gc_lock_grant = (phase == IDLE || phase == DRAIN_WAIT) && !cmd_valid && !cfg_valid

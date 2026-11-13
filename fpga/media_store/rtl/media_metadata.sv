@@ -32,13 +32,16 @@ module media_metadata #(
     typedef enum logic [5:0] {IDLE, ROOT_CAPTURE, ROOT, WALK, CHILD, ACCESS_DONE, PUBLISH, RESPONSE,
         CACHE_SEND, CACHE_WAIT, ALLOCATE, ALLOCATE_LINK, ALLOCATE_ZERO, ALLOCATE_ATTACH,
         TRIM_NEXT, FREE_PAGE, FREE_LINK, SCAN_START, SCAN_WORD, SCAN_RESULT, FLUSH_NEXT,
-        COUNT_NODES, CAPACITY, CHECK_CAPACITY, DETACH_ROOT, DETACH_COUNT, DETACH_COMMIT,
+        CHECK_TREE, COUNT_NODES, CAPACITY, CHECK_CAPACITY, DETACH_ROOT, DETACH_COUNT, DETACH_COMMIT,
         GC_ROOT, GC_COUNT, GC_WALK, GC_SAVE_ROOT, GC_SAVE_COUNT, GC_COMMIT} phase_t;
     phase_t phase, resume;
     reg [VIEWS-1:0] root_valid, leaf_valid;
     wire [127:0] root_ram_data;
     reg [127:0] root_data;
-    reg [31:0] view, ordinal, payload, root, used, page, level;
+    localparam integer LEVEL_BITS = LEVELS < 2 ? 1 : $clog2(LEVELS);
+    reg [31:0] view, ordinal, payload, root, used, page;
+    reg [LEVEL_BITS-1:0] level;
+    reg invalid_tree_request, invalid_read_extent, invalid_write_extent, cached_leaf_match;
     reg [31:0] high_water, free_head, free_pages;
     reg [31:0] allocated, parent_page, cached_leaf, cached_index;
     reg [31:0] new_count;
@@ -89,7 +92,9 @@ module media_metadata #(
             nodes = total;
         end
     endfunction
-    wire [63:0] entry_address = page_address(page)+(({32'b0,ordinal} >> (level*4)) & 64'd15)*4;
+    wire [63:0] entry_address = page_address(page)+(({32'b0,ordinal} >> (32'(level)*4)) & 64'd15)*4;
+    wire bad_tree_request = (opcode != 11 && view >= 32'(VIEWS)) || ordinal > 32'(SLOTS)
+        || (opcode < 2 && ordinal == 32'(SLOTS));
     media_ram #(.WIDTH(128),.DEPTH(VIEWS),.ADDR_BITS(VIEW_BITS)) roots (
         .clk(clk),.read_enable(request_valid && request_ready && request_view < 32'(VIEWS)),.read_address(VIEW_BITS'(request_view)),.read_data(root_ram_data),
         .write_enable(phase == PUBLISH && opcode != 12),.write_address(VIEW_BITS'(view)),.write_data({cached_leaf,cached_index,used,root})
@@ -126,6 +131,7 @@ module media_metadata #(
         if (reset) begin
             phase <= IDLE; resume <= IDLE; root_valid <= 0; leaf_valid <= 0; root_data <= 0; view <= 0; ordinal <= 0; payload <= 0;
             root <= 0; used <= 0; page <= 0; level <= 0; high_water <= 0; free_head <= 0; free_pages <= 0;
+            invalid_tree_request <= 0; invalid_read_extent <= 0; invalid_write_extent <= 0; cached_leaf_match <= 0;
             allocated <= 0; parent_page <= 0; cached_leaf <= 0; cached_index <= 0; parent_address <= 0; trim_count <= 0; trim_start <= 0;
             new_count <= 0; required_nodes <= 0; existing_nodes <= 0;
             retired_head <= 0; retired_tail <= 0; retired_count <= 0; retired_high_water <= 0;
@@ -188,10 +194,17 @@ module media_metadata #(
                         else access_cache(opcode < 4 ? 2'd1 : 2'd2, {1'b0,opcode[0]},
                             (opcode < 4 ? REF_BASE : STACK_BASE)+64'(ordinal)*4,payload,ACCESS_DONE);
                     end else begin
-                        level <= 32'(LEVELS-1); parent_page <= 0;
+                        level <= LEVEL_BITS'(LEVELS-1); parent_page <= 0;
                         page <= root_exists ? root_data[31:0] : 0;
-                        phase <= opcode == 1 || opcode == 7 ? COUNT_NODES : WALK;
+                        phase <= CHECK_TREE;
                     end
+                end
+                CHECK_TREE, GC_WALK: begin
+                    invalid_tree_request <= bad_tree_request;
+                    invalid_read_extent <= opcode == 0 && ordinal >= used;
+                    invalid_write_extent <= (opcode == 1 || opcode == 6) && ordinal > used;
+                    cached_leaf_match <= cached_leaf != 0 && cached_index == (ordinal >> 4);
+                    phase <= opcode == 1 || opcode == 7 ? COUNT_NODES : WALK;
                 end
                 COUNT_NODES: begin
                     required_nodes <= nodes(new_count);
@@ -211,15 +224,15 @@ module media_metadata #(
                 end
                 WALK: begin
                     checked <= 1;
-                    if ((opcode != 11 && view >= 32'(VIEWS)) || ordinal > 32'(SLOTS) || (opcode < 2 && ordinal == 32'(SLOTS))) begin
+                    if (invalid_tree_request) begin
                         response_error <= 1; phase <= RESPONSE;
                     end else if (!checked && (opcode == 1 || opcode == 7) && capacity_insufficient) begin
                         response_error <= 3; phase <= RESPONSE;
-                    end else if (opcode == 0 && ordinal >= used) begin response_error <= 1; phase <= RESPONSE; end
-                    else if ((opcode == 1 || opcode == 6) && ordinal > used) begin response_error <= 4; phase <= RESPONSE; end
+                    end else if (invalid_read_extent) begin response_error <= 1; phase <= RESPONSE; end
+                    else if (invalid_write_extent) begin response_error <= 4; phase <= RESPONSE; end
                     else if (opcode == 7) phase <= RESPONSE;
                     else if (opcode == 6) begin trim_count <= ordinal; phase <= TRIM_NEXT; end
-                    else if (!checked && cached_leaf != 0 && cached_index == (ordinal >> 4)) begin
+                    else if (!checked && cached_leaf_match) begin
                         page <= cached_leaf; level <= 0;
                     end else if (page == 0) begin
                         if (opcode == 0 || opcode == 11) begin response_error <= 1; phase <= RESPONSE; end
@@ -236,7 +249,7 @@ module media_metadata #(
                 end
                 CHILD: begin
                     parent_page <= page; parent_address <= path_address[level];
-                    level <= level-1; page <= value;
+                    level <= level-1'b1; page <= value;
                     phase <= WALK;
                 end
                 ALLOCATE: begin
@@ -285,10 +298,9 @@ module media_metadata #(
                     if (value == 0 || value > 32'(SLOTS) || gc_root == 0) begin response_error <= 2; phase <= RESPONSE; end
                     else begin
                         gc_loaded <= 1; ordinal <= value-1; cached_leaf <= 0;
-                        level <= 32'(LEVELS-1); page <= gc_root; phase <= GC_WALK;
+                        level <= LEVEL_BITS'(LEVELS-1); page <= gc_root; phase <= GC_WALK;
                     end
                 end
-                GC_WALK: phase <= WALK;
                 GC_SAVE_ROOT: access_cache(0,1,QUEUE_BASE+64'(retired_head)*64,root,GC_SAVE_COUNT);
                 GC_SAVE_COUNT: access_cache(0,1,QUEUE_BASE+64'(retired_head)*64+4,used,GC_COMMIT);
                 GC_COMMIT: begin
@@ -311,7 +323,7 @@ module media_metadata #(
                     if (((used+15) >> 4) <= ((trim_count+15) >> 4)) begin used <= trim_count; phase <= PUBLISH; end
                     else begin
                         ordinal <= ((used-1) >> 4) << 4; trim_start <= ((used-1) >> 4) << 4;
-                        page <= root; level <= 32'(LEVELS-1); parent_page <= 0;
+                        page <= root; level <= LEVEL_BITS'(LEVELS-1); parent_page <= 0;
                         phase <= SCAN_START;
                     end
                 end
@@ -320,15 +332,15 @@ module media_metadata #(
                     if (level == 0) phase <= FREE_PAGE;
                     else access_cache(0,0,entry_address,0,SCAN_WORD);
                 end
-                SCAN_WORD: begin page <= value; level <= level-1; phase <= SCAN_START; end
+                SCAN_WORD: begin page <= value; level <= level-1'b1; phase <= SCAN_START; end
                 FREE_PAGE: access_cache(0,1,page_address(page),free_head,FREE_LINK);
                 FREE_LINK: begin
                     free_head <= page; free_pages <= free_pages+1; pages_freed <= pages_freed+1;
-                    if (level+1 == 32'(LEVELS)) begin root <= 0; used <= trim_start; phase <= TRIM_NEXT; end
+                    if (32'(level)+1 == 32'(LEVELS)) begin root <= 0; used <= trim_start; phase <= TRIM_NEXT; end
                     else begin
-                        page <= path_page[level+1]; level <= level+1;
-                        if (((ordinal >> ((level+1)*4)) & 15) == 0) phase <= FREE_PAGE;
-                        else access_cache(0,1,path_address[level+1],0,SCAN_RESULT);
+                        page <= path_page[32'(level)+1]; level <= level+1'b1;
+                        if (((ordinal >> ((32'(level)+1)*4)) & 15) == 0) phase <= FREE_PAGE;
+                        else access_cache(0,1,path_address[32'(level)+1],0,SCAN_RESULT);
                     end
                 end
                 SCAN_RESULT: begin used <= trim_start; phase <= TRIM_NEXT; end
