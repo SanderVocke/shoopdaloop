@@ -6,6 +6,7 @@ use crate::{
     buffer::MidiBuffer,
     midi_state::{indexed::store, MidiState},
 };
+use core::mem::size_of_val;
 
 #[derive(Clone, Copy, Debug)]
 pub struct PacketLimits {
@@ -346,6 +347,21 @@ impl Config {
     }
 }
 impl Store {
+    pub(super) fn allocated_bytes(&self) -> usize {
+        self.core.allocated_bytes()
+            + size_of_val(&*self.views.entries)
+            + size_of_val(&*self.reserved_views)
+            + size_of_val(&*self.sources.entries)
+            + size_of_val(&*self.writers.entries)
+            + size_of_val(&*self.imports.entries)
+            + self
+                .sources
+                .entries
+                .iter()
+                .filter_map(|entry| entry.value.as_ref())
+                .map(|source| source.staged.allocated_bytes())
+                .sum::<usize>()
+    }
     fn prepare<S: Sample>(resources: &mut ResourceStore<S>, config: Config) -> Result<Self, Error> {
         config.capacity(resources.config, resources.quantum)?;
         let mut views = Arena::prepare(config.views)?;

@@ -90,6 +90,7 @@ enum Link {
 
 #[derive(Clone, Copy, Debug, Default)]
 struct Status {
+    memory: Option<shoop_rt_protocol::MemoryReport>,
     frame: u64,
     callbacks: u64,
     load: f32,
@@ -672,6 +673,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         tracing::error!(reason = %reason, "backend.rt.disconnected");
         self.link = Link::Disconnected(reason.clone());
         self.profiling = Default::default();
+        self.status.memory = None;
         for pending in self
             .requests
             .outgoing

@@ -47,9 +47,9 @@ def directed(depths):
     if depths[0] < 3 or p < 4:
         return
     yield case('record-play-same-boundary-sync-chain', [spec(0, 64), spec(1, 0, 0, True), spec(2, 16, 1)], [step([command(0, 1), command(1, 2, {'kind': 'record'}), command(1, 3, source=0, skip=1), command(2, 4, source=1, skip=1)])] + [step() for _ in range(17)], requests=p)
-    loops = [spec(0, 16, 1, True), spec(1, 32, 0, True), spec(2, 16, 2, True)]
+    loops = [spec(0, 16, 0, True), spec(1, 32, 0, True), spec(2, 16, 2, True)]
     steps = [step([command(0, 1), command(1, 2), command(2, 3)])] + [step() for _ in range(12)]
-    yield case('legal-sync-cycle-self-sync', loops, deepcopy(steps), requests=p)
+    yield case('sync-chain-self-sync', loops, deepcopy(steps), requests=p)
     yield case('reversed-declarations', list(reversed(loops)), steps, requests=p)
     if p >= 7:
         sync = lambda target, sequence, operation, skip: command(target, sequence, operation, source=0, skip=skip)
@@ -59,7 +59,7 @@ def directed(depths):
         yield case('pending-list-head-middle-removal-reuse-and-retry', [spec(0, 16), spec(1, 16, 0), spec(2, 16, 0)], [first, second, third, step(), step(), step()], requests=p)
     if depths[0] >= 130:
         first = step([command(129, 1), command(0, 2, source=129), command(63, 3, source=0), command(64, 4, {'kind': 'record'}, source=129), command(64, 5, at=64)])
-        yield case('ready-priority-sparse-slots-across-word-boundary', [spec(129, 16, 0), spec(64, 16, 129), spec(0, 32, 129), spec(63, 16, 0, True)], [first] + [step() for _ in range(12)], loops_limit=130, requests=8)
+        yield case('ready-priority-sparse-slots-across-word-boundary', [spec(129, 16), spec(64, 16, 129), spec(0, 32, 129), spec(63, 16, 0, True)], [first] + [step() for _ in range(12)], loops_limit=130, requests=8)
     if depths[1] >= 130:
         yield case('absolute-priority-high-request-slot-reuse', [spec(0, 16, 0)], [step([command(0, i + 1, at=(130 - i) * 16) for i in range(130)]), step(), step([command(0, 131, at=32)]), step(), step(), step()], requests=130)
 
@@ -80,7 +80,7 @@ def seeded(depths, count):
         n = 1 + random.below(loop_slots)
         loops = []
         for i in range(n):
-            source = random.below(n) if random.below(4) != 0 else None
+            source = random.below(i + 1) if random.below(4) != 0 else None
             loops.append(spec(i, random.below(5) * q, source, bool(random.below(2))))
         sequence = 0
         steps = []
@@ -111,5 +111,5 @@ def workloads():
     first = [command(i, i + 1, {'kind': 'record'} if i % 8 != 0 and i % 3 == 0 else play()) for i in range(64)]
     next_commands = [command(i, i + 65, play(), at=128 if i % 8 == 0 else 32, source=None if i % 8 == 0 else i // 8 * 8) for i in range(64)]
     yield case('8x8-tracks-record-play-and-repeat-sync', loops, [step(first), step(next_commands)] + [step() for _ in range(14)], q=32, requests=64)
-    loops = [spec(i, 32, (i + 1) % 64) for i in range(64)]
-    yield case('64-member-sync-cycle-all-active', loops, [step([command(i, i + 1) for i in range(64)]), step([command(i, i + 65, seek(0, True), source=(i + 1) % 64) for i in range(64)])] + [step() for _ in range(6)], q=32, requests=64)
+    loops = [spec(i, 32, max(0, i - 1)) for i in range(64)]
+    yield case('64-member-sync-chain-all-active', loops, [step([command(i, i + 1) for i in range(64)]), step([command(i, i + 65, seek(0, True), source=max(0, i - 1)) for i in range(64)])] + [step() for _ in range(6)], q=32, requests=64)

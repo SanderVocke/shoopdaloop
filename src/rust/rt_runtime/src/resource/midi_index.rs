@@ -75,6 +75,12 @@ pub(super) struct MidiPool {
     pub work: MidiIndexWork,
 }
 impl MidiPool {
+    pub(super) fn allocated_bytes(&self) -> usize {
+        super::memory::vec_bytes(&self.versions)
+            + super::memory::vec_bytes(&self.checkpoints)
+            + super::memory::vec_bytes(&self.free)
+    }
+
     pub fn new(config: MidiIndexConfig) -> Result<Self, Error> {
         if config.versions == 0 || config.checkpoints_per_version == 0 || config.replay_events == 0
         {

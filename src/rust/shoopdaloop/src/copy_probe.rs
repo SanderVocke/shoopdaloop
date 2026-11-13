@@ -27,11 +27,26 @@ pub fn verify(bundle: &shoop_session::SessionBundle) -> Result<(), String> {
             return Err("primitive copy lost exact channel media or timing".into());
         }
     }
-    let source = track.loops[3]
+    verify_definition(bundle, 3, 7)
+}
+
+pub fn verify_definition(
+    bundle: &shoop_session::SessionBundle,
+    source_index: usize,
+    target_index: usize,
+) -> Result<(), String> {
+    let track = bundle
+        .document
+        .track_groups
+        .iter()
+        .flat_map(|group| &group.tracks)
+        .nth(1)
+        .ok_or("copy canary track missing")?;
+    let source = track.loops[source_index]
         .composite
         .as_ref()
         .ok_or("composite source missing")?;
-    let mut copied = track.loops[7]
+    let mut copied = track.loops[target_index]
         .composite
         .clone()
         .ok_or("composite copy missing")?;

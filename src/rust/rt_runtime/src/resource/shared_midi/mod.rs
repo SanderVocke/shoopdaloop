@@ -246,6 +246,32 @@ fn jobs(count: usize) -> Vec<Job> {
 }
 
 impl<S: Sample> MidiStore<S> {
+    pub(super) fn allocated_bytes(&self) -> usize {
+        core::mem::size_of_val(&*self.current)
+            + super::memory::vec_bytes(&self.nodes)
+            + super::memory::vec_bytes(&self.free_nodes)
+            + super::memory::vec_bytes(&self.chunks)
+            + core::mem::size_of_val(&*self.chunk_states)
+            + super::memory::vec_bytes(&self.free_chunks)
+            + super::memory::vec_bytes(&self.blocks)
+            + core::mem::size_of_val(&*self.block_map)
+            + super::memory::vec_bytes(&self.free_blocks)
+            + super::memory::vec_bytes(&self.views)
+            + core::mem::size_of_val(&*self.initial)
+            + super::memory::vec_bytes(&self.free_views)
+            + core::mem::size_of_val(&*self.scratch)
+            + super::memory::vec_bytes(&self.retired)
+            + super::memory::vec_bytes(&self.immediate)
+            + core::mem::size_of_val(&*self.pending)
+            + super::memory::vec_bytes(&self.edits)
+            + super::memory::vec_bytes(&self.free_edits)
+            + core::mem::size_of_val(&*self.edit_records)
+            + core::mem::size_of_val(&*self.edit_states)
+            + super::memory::vec_bytes(&self.bases)
+            + super::memory::vec_bytes(&self.free_bases)
+            + self.pages.allocated_bytes()
+    }
+
     pub fn prepare(
         store: &mut ResourceStore<S>,
         config: Config,

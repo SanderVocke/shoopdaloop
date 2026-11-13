@@ -278,16 +278,13 @@ pub fn transition_image(
             events: u32::try_from(limits.journal_events).map_err(|_| Error::Capacity)?,
         },
         components: topology
-            .components()
+            .dependency_order()
             .iter()
-            .map(|component| {
-                component
-                    .iter()
-                    .map(|id| Identity {
-                        slot: id.slot(),
-                        generation: id.generation(),
-                    })
-                    .collect()
+            .map(|id| {
+                vec![Identity {
+                    slot: id.slot(),
+                    generation: id.generation(),
+                }]
             })
             .collect(),
     })

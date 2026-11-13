@@ -2,7 +2,22 @@ use super::*;
 use shoop_app_protocol::composite::{Edit, Versioned};
 
 fn run(f: &mut Fixture, client: &mut Client, command: Command, encoded: bool) -> Outcome {
-    let id = submit(&mut f.service, client, ConnectionId(1), command);
+    let id = if encoded {
+        let message = client.command(command, None).unwrap();
+        let ClientMessage::Submit { operation, .. } = &message else {
+            panic!()
+        };
+        let id = *operation;
+        let mut bytes = [0; shoop_transport::MAX_RECORD_BYTES];
+        let used = codec::encode(&WireMessage::Client(message), &mut bytes).unwrap();
+        let WireMessage::Client(message) = codec::decode(&bytes[..used]).unwrap() else {
+            panic!()
+        };
+        f.service.handle(ConnectionId(1), message).unwrap();
+        id
+    } else {
+        submit(&mut f.service, client, ConnectionId(1), command)
+    };
     complete(&mut f.service, client, ConnectionId(1), id, encoded)
 }
 fn action(track: TrackId, loop_id: LoopId, action: LoopAction) -> Command {
@@ -11,6 +26,32 @@ fn action(track: TrackId, loop_id: LoopId, action: LoopAction) -> Command {
         loop_id,
         action,
     }
+}
+fn clear_then_copy(
+    f: &mut Fixture,
+    client: &mut Client,
+    track: TrackId,
+    source: LoopId,
+    target: LoopId,
+    encoded: bool,
+) -> Outcome {
+    let cleared = run(
+        f,
+        client,
+        Command::Control(ControlOperation::ClearLoops {
+            loops: vec![target],
+        }),
+        encoded,
+    );
+    if matches!(cleared, Outcome::Refused { .. }) {
+        return cleared;
+    }
+    run(
+        f,
+        client,
+        action(track, source, LoopAction::DuplicateTo(target)),
+        encoded,
+    )
 }
 fn setup(encoded: bool) -> (Fixture, Client, TrackId, Vec<LoopId>) {
     let mut f = fixture();
@@ -445,6 +486,389 @@ fn copied_definition(source: &Versioned, target: &Versioned) {
 }
 
 #[shoop_test]
+fn normal_clear_then_copy_supports_both_kind_changes() {
+    for encoded in [false, true] {
+        let (mut f, mut client, track, loops) = setup(encoded);
+        run(
+            &mut f,
+            &mut client,
+            append(loops[2], vec![loops[0]]),
+            encoded,
+        );
+        let source = definition(&f, loops[2]);
+        let outcome = clear_then_copy(&mut f, &mut client, track, loops[2], loops[1], encoded);
+        assert!(matches!(outcome, Outcome::Confirmed { .. }), "{outcome:?}");
+        copied_definition(&source, &definition(&f, loops[1]));
+        let media = audio(&mut f, &client, loops[0]);
+        assert!(matches!(
+            clear_then_copy(&mut f, &mut client, track, loops[0], loops[2], encoded),
+            Outcome::Confirmed { .. }
+        ));
+        assert_eq!(audio(&mut f, &client, loops[2]), media);
+        assert_eq!(
+            (view(&f, loops[2]).mode, view(&f, loops[2]).position),
+            (LoopMode::Stopped, 0.)
+        );
+    }
+}
+
+#[shoop_test]
+fn cross_kind_copy_matches_normal_clear_then_copy() {
+    for encoded in [false, true] {
+        for composite_source in [false, true] {
+            for manual in [false, true] {
+                let (mut f, mut client, track, loops) = setup(encoded);
+                run(
+                    &mut f,
+                    &mut client,
+                    append(loops[2], vec![loops[0]]),
+                    encoded,
+                );
+                let (source, target) = if composite_source {
+                    (loops[2], loops[1])
+                } else {
+                    (loops[0], loops[2])
+                };
+                let before = view(&f, source);
+                let media = (!composite_source).then(|| audio(&mut f, &client, source));
+                let plan = composite_source.then(|| definition(&f, source));
+                let outcome = if manual {
+                    clear_then_copy(&mut f, &mut client, track, source, target, encoded)
+                } else {
+                    run(
+                        &mut f,
+                        &mut client,
+                        action(track, source, LoopAction::DuplicateTo(target)),
+                        encoded,
+                    )
+                };
+                assert!(matches!(outcome, Outcome::Confirmed { .. }), "{outcome:?}");
+                let copied = view(&f, target);
+                assert_eq!(
+                    (copied.id, copied.mode, copied.position),
+                    (target, LoopMode::Stopped, 0.)
+                );
+                assert_eq!(
+                    (
+                        copied.name,
+                        copied.length_frames,
+                        copied.gain,
+                        copied.balance
+                    ),
+                    (
+                        before.name,
+                        before.length_frames,
+                        before.gain,
+                        before.balance
+                    )
+                );
+                if let Some(media) = media {
+                    assert_eq!(audio(&mut f, &client, target), media);
+                }
+                if let Some(plan) = plan {
+                    copied_definition(&plan, &definition(&f, target));
+                }
+                assert_eq!(f.clear_requests.get(), 1);
+                assert!(f.service.snapshot().pending.is_empty());
+            }
+        }
+    }
+}
+
+#[shoop_test]
+fn cross_kind_copy_clear_and_apply_failures_have_distinct_outcomes_without_replay() {
+    for failure in [
+        CopyFailure::Clear,
+        CopyFailure::ClearDisconnect,
+        CopyFailure::Apply,
+        CopyFailure::Gain,
+        CopyFailure::Disconnect,
+    ] {
+        let (mut f, mut client, track, loops) = setup(true);
+        run(&mut f, &mut client, append(loops[2], vec![loops[1]]), true);
+        f.refuse_copy.set(Some(failure));
+        let result = run(
+            &mut f,
+            &mut client,
+            action(track, loops[0], LoopAction::DuplicateTo(loops[2])),
+            true,
+        );
+        let Outcome::Refused { message, .. } = result else {
+            panic!("{result:?}")
+        };
+        assert_eq!(f.clear_requests.get(), 1);
+        match failure {
+            CopyFailure::Clear | CopyFailure::ClearDisconnect => {
+                assert_eq!(f.content_applies.get(), 0);
+                assert!(
+                    message.contains("clear") && message.contains("copy was not started"),
+                    "{message}"
+                );
+            }
+            _ => {
+                assert_eq!(f.content_applies.get(), 1);
+                assert!(message.contains("Destination cleared"), "{message}");
+                if matches!(failure, CopyFailure::Apply) {
+                    assert!(view(&f, loops[2]).empty);
+                }
+                if matches!(failure, CopyFailure::Gain) {
+                    assert!(
+                        !view(&f, loops[2]).empty && message.contains("content copied"),
+                        "{message}"
+                    );
+                }
+            }
+        }
+        for _ in 0..5 {
+            f.service.tick(STEP);
+        }
+        assert_eq!(f.clear_requests.get(), 1);
+        assert!(f.service.snapshot().pending.is_empty());
+    }
+}
+
+#[shoop_test]
+fn cross_kind_copy_waits_for_clear_and_finishes_once_after_ui_loss() {
+    let (mut f, mut client, track, loops) = setup(true);
+    run(&mut f, &mut client, append(loops[2], vec![loops[1]]), true);
+    f.advance.set(false);
+    let id = submit(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        action(track, loops[0], LoopAction::DuplicateTo(loops[2])),
+    );
+    for _ in 0..10 {
+        f.service.tick(STEP);
+    }
+    assert_eq!(f.content_applies.get(), 0);
+    assert!(!f.service.snapshot().pending.is_empty());
+    f.service.detach(ConnectionId(1));
+    f.advance.set(true);
+    for _ in 0..100 {
+        f.service.tick(STEP);
+    }
+    let mut reattached = attach(&mut f.service, 2, ConnectionId(2), true);
+    drain(&mut f.service, &mut reattached, ConnectionId(2), true);
+    let state = f.service.snapshot();
+    assert!(matches!(
+        state.results.iter().find(|r| r.id == id).unwrap().outcome,
+        Outcome::Confirmed { .. }
+    ));
+    assert_eq!(state.results.iter().filter(|r| r.id == id).count(), 1);
+    assert_eq!((f.clear_requests.get(), f.content_applies.get()), (1, 1));
+    assert!(state.pending.is_empty());
+}
+
+#[shoop_test]
+fn cross_kind_copy_awaits_parent_restoration_and_uses_its_terminal_outcome() {
+    for fail_restore in [false, true] {
+        let (mut f, mut client, track, loops) = setup(true);
+        run(&mut f, &mut client, append(loops[2], vec![loops[1]]), true);
+        run(&mut f, &mut client, append(loops[3], vec![loops[2]]), true);
+        let parent = definition(&f, loops[3]);
+        if fail_restore {
+            f.refuse_composite_after.set(Some(0));
+        }
+        let result = run(
+            &mut f,
+            &mut client,
+            action(track, loops[0], LoopAction::DuplicateTo(loops[2])),
+            true,
+        );
+        if fail_restore {
+            assert!(matches!(result, Outcome::Refused { .. }), "{result:?}");
+            assert_eq!(f.content_applies.get(), 0);
+            assert!(view(&f, loops[2]).empty);
+        } else {
+            assert!(
+                matches!(result, Outcome::AncestorsStopped { .. }),
+                "{result:?}"
+            );
+            assert_eq!(f.content_applies.get(), 1);
+            assert_eq!(definition(&f, loops[3]).document, parent.document);
+            assert_eq!(definition(&f, loops[3]).prepared, parent.prepared);
+            assert_eq!(
+                audio(&mut f, &client, loops[2]),
+                audio(&mut f, &client, loops[0])
+            );
+        }
+        assert!(f.service.snapshot().pending.is_empty());
+        assert_eq!(f.clear_requests.get(), 1);
+    }
+}
+
+#[shoop_test]
+fn cross_kind_copy_reattaches_between_clear_and_payload_application() {
+    let (mut f, mut client, track, loops) = setup(false);
+    run(&mut f, &mut client, append(loops[2], vec![loops[1]]), false);
+    let id = submit(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        action(track, loops[0], LoopAction::DuplicateTo(loops[2])),
+    );
+    for _ in 0..100 {
+        f.service.tick(STEP);
+        if f.clear_requests.get() == 1 && view(&f, loops[2]).composite_kind == CompositeKind::None {
+            break;
+        }
+    }
+    assert!(view(&f, loops[2]).empty);
+    assert_eq!((f.clear_requests.get(), f.content_applies.get()), (1, 0));
+    f.service.detach(ConnectionId(1));
+    let mut client = attach(&mut f.service, 2, ConnectionId(2), true);
+    for _ in 0..100 {
+        f.service.tick(STEP);
+        drain(&mut f.service, &mut client, ConnectionId(2), true);
+        if f.service
+            .snapshot()
+            .results
+            .iter()
+            .any(|result| result.id == id)
+        {
+            break;
+        }
+    }
+    assert!(matches!(
+        f.service
+            .snapshot()
+            .results
+            .iter()
+            .find(|result| result.id == id)
+            .unwrap()
+            .outcome,
+        Outcome::Confirmed { .. }
+    ));
+    assert_eq!((f.clear_requests.get(), f.content_applies.get()), (1, 1));
+}
+
+#[shoop_test]
+fn p17_copies_processed_modes_and_nested_definitions_without_cloning_children() {
+    for encoded in [false, true] {
+        for mode in [
+            LoopMode::Replacing,
+            LoopMode::PlayingDryThroughWet,
+            LoopMode::RecordingDryIntoWet,
+        ] {
+            let mut f = fixture_with_dry_wet(2, true);
+            let mut client = attach(&mut f.service, 1, ConnectionId(1), encoded);
+            run(
+                &mut f,
+                &mut client,
+                Command::Global(GlobalControlAction::SetSync(false)),
+                encoded,
+            );
+            let (track, loops) = created(run(
+                &mut f,
+                &mut client,
+                Command::AddTrack(TrackSpec {
+                    name: "P17 copies".into(),
+                    topology: TrackSpecTopology::DryWet {
+                        dry_audio_channels: 1,
+                        wet_audio_channels: 2,
+                        dry_midi: true,
+                        processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::EXTERNAL),
+                        default_playback_mode: DefaultPlaybackMode::DryThroughWet,
+                    },
+                    latency: Default::default(),
+                    initial_output_bus_names: Vec::new(),
+                    creation_request_id: None,
+                }),
+                encoded,
+            ));
+            for action_ in [LoopAction::RecordClicked, LoopAction::StopClicked] {
+                let result = run(
+                    &mut f,
+                    &mut client,
+                    action(track, loops[0], action_),
+                    encoded,
+                );
+                assert!(matches!(result, Outcome::Confirmed { .. }), "{result:?}");
+                f.service.tick(STEP);
+            }
+            run(
+                &mut f,
+                &mut client,
+                append(loops[2], vec![loops[0]]),
+                encoded,
+            );
+            let event = definition(&f, loops[2]).document.instances[0].instance_id;
+            for edit in [
+                Edit::Kind {
+                    target: loops[2],
+                    kind: CompositeKind::Script,
+                },
+                Edit::Mode {
+                    target: loops[2],
+                    event,
+                    mode,
+                },
+                Edit::Duration {
+                    target: loops[2],
+                    event,
+                    n_cycles: Some(10_000),
+                },
+            ] {
+                let result = run(&mut f, &mut client, Command::Composite(edit), encoded);
+                assert!(matches!(result, Outcome::Confirmed { .. }), "{result:?}");
+            }
+            run(
+                &mut f,
+                &mut client,
+                append(loops[3], vec![loops[2]]),
+                encoded,
+            );
+            for (source, target) in [(loops[2], loops[4]), (loops[3], loops[5])] {
+                let pinned = definition(&f, source);
+                let result = run(
+                    &mut f,
+                    &mut client,
+                    action(track, source, LoopAction::DuplicateTo(target)),
+                    encoded,
+                );
+                assert!(matches!(result, Outcome::Confirmed { .. }), "{result:?}");
+                copied_definition(&pinned, &definition(&f, target));
+                assert_eq!(view(&f, target).mode, LoopMode::Stopped);
+            }
+            let image = capture_image(&mut f.service, &mut client, 10, encoded);
+            let epoch = client.snapshot().unwrap().persistence_epoch;
+            release_image(&mut f.service, &mut client, 10, epoch, encoded);
+            let key = stage_image(&mut f.service, &mut client, 11, image, encoded);
+            let result = run(
+                &mut f,
+                &mut client,
+                Command::CommitPersistence(key),
+                encoded,
+            );
+            assert!(matches!(result, Outcome::Confirmed { .. }), "{result:?}");
+            let loaded: Vec<_> = client.snapshot().unwrap().tracks[1]
+                .loops
+                .iter()
+                .map(|state| state.id)
+                .collect();
+            assert_ne!(loaded[0], loops[0]);
+            let loops = loaded;
+            copied_definition(&definition(&f, loops[2]), &definition(&f, loops[4]));
+            copied_definition(&definition(&f, loops[3]), &definition(&f, loops[5]));
+            assert_eq!(f.clear_requests.get(), 0);
+            let copied = definition(&f, loops[4]);
+            let event = definition(&f, loops[2]).document.instances[0].instance_id;
+            run(
+                &mut f,
+                &mut client,
+                Command::Composite(Edit::Delete {
+                    target: loops[2],
+                    events: vec![event],
+                }),
+                encoded,
+            );
+            assert_eq!(definition(&f, loops[4]), copied);
+        }
+    }
+}
+
+#[shoop_test]
 fn p03_copies_empty_regular_script_and_nested_definitions_with_independent_ids() {
     for kind in 0..4 {
         let (mut f, mut client, track, loops) = setup(true);
@@ -602,24 +1026,10 @@ fn p03_replacement_stops_children_preserves_old_definitions_on_failure_and_survi
 }
 
 #[shoop_test]
-fn composite_copy_refuses_cross_kind_cycles_and_shadowed_p17_events_before_mutation() {
+fn composite_copy_refuses_cycles_and_preserves_shadowed_p17_events() {
     let (mut f, mut client, track, loops) = setup(false);
     run(&mut f, &mut client, append(loops[2], vec![loops[0]]), false);
     let old = definition(&f, loops[2]);
-    let media = audio(&mut f, &client, loops[1]);
-    for (source, target) in [(loops[0], loops[2]), (loops[2], loops[1])] {
-        assert!(matches!(
-            run(
-                &mut f,
-                &mut client,
-                action(track, source, LoopAction::DuplicateTo(target)),
-                false
-            ),
-            Outcome::Refused { .. }
-        ));
-    }
-    assert_eq!(definition(&f, loops[2]), old);
-    assert_eq!(audio(&mut f, &client, loops[1]), media);
     f.advance.set(false);
     let edit = submit(
         &mut f.service,
@@ -703,15 +1113,34 @@ fn composite_copy_refuses_cross_kind_cycles_and_shadowed_p17_events_before_mutat
         .spans
         .iter()
         .all(|span| span.mode != LoopMode::Replacing));
-    let Outcome::Refused { message, .. } = run(
+    let pinned = definition(&f, target);
+    let unsupported = run(
         &mut f,
         &mut client,
-        action(track, target, LoopAction::Duplicate),
+        Command::Composite(Edit::Mode {
+            target,
+            event,
+            mode: LoopMode::PlayingDryThroughWet,
+        }),
         false,
-    ) else {
-        panic!()
-    };
-    assert!(message.contains("Play, Stop and Record"), "{message}");
+    );
+    assert!(matches!(
+        unsupported,
+        Outcome::Refused {
+            reason: Refusal::Unsupported,
+            ..
+        }
+    ));
+    assert_eq!(definition(&f, target), pinned);
+    let outcome = run(
+        &mut f,
+        &mut client,
+        action(track, target, LoopAction::DuplicateTo(loops[4])),
+        false,
+    );
+    assert!(matches!(outcome, Outcome::Confirmed { .. }), "{outcome:?}");
+    let copy = definition(&f, loops[4]);
+    copied_definition(&pinned, &copy);
 }
 
 #[shoop_test]

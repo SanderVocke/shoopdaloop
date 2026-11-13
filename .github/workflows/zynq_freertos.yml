@@ -44,6 +44,8 @@ jobs:
             platforms/zynq7000/firmware -> target
       - name: Validate task profiling identities
         run: python3 platforms/zynq7000/tests/profiling.py
+      - name: Validate task diagnostic serialization
+        run: python3 platforms/zynq7000/tests/diagnostics.py
       - name: Build and execute all three firmware gates
         run: python3 platforms/zynq7000/suite.py --fetch
       - name: Save firmware and execution evidence

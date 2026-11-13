@@ -4754,6 +4754,7 @@ name = "rt_audio_math"
 version = "0.3.0"
 dependencies = [
  "shoop_wasm_test_support",
+ "wasm-bindgen-test",
 ]
 
 [[package]]
@@ -5177,6 +5178,7 @@ dependencies = [
  "shoop_latency",
  "shoop_port_graph",
  "shoop_processor_protocol",
+ "shoop_rt_protocol",
  "shoop_script_resources",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",

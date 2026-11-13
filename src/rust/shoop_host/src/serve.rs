@@ -431,6 +431,7 @@ pub fn run_with_ready(
 
     let mut last = Instant::now();
     let mut finished = None;
+    let mut cleanup_deadline = None;
     loop {
         for _ in 0..4 {
             let Ok(mut port) = data.ports.try_recv() else {
@@ -482,14 +483,24 @@ pub fn run_with_ready(
         service.tick(elapsed);
         last = now;
         if service.shutdown_ready() {
-            service
-                .begin_host_cleanup()
-                .map_err(|reason| anyhow!("host cleanup refused: {reason:?}"))?;
-            let result = driver_owner.stop();
-            if result.is_ok() {
-                finished = Some(Instant::now() + Duration::from_secs(2));
+            if cleanup_deadline.is_none() {
+                service
+                    .begin_host_cleanup()
+                    .map_err(|reason| anyhow!("host cleanup refused: {reason:?}"))?;
+                cleanup_deadline = Some(Instant::now() + Duration::from_secs(5));
             }
-            service.complete_shutdown(result);
+            let result = driver_owner.poll_stop().or_else(|| {
+                cleanup_deadline
+                    .is_some_and(|deadline| Instant::now() >= deadline)
+                    .then(|| Err("audio lifecycle cleanup did not finish".to_owned()))
+            });
+            if let Some(result) = result {
+                if result.is_ok() {
+                    finished = Some(Instant::now() + Duration::from_secs(2));
+                }
+                service.complete_shutdown(result);
+                cleanup_deadline = None;
+            }
         }
         managers.retain_mut(|manager| manager.pump(&mut service, elapsed));
         for client in &mut clients {

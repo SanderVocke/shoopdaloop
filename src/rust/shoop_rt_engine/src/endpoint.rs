@@ -235,6 +235,7 @@ pub struct ControlEndpoint {
     pub(crate) input: crate::input::Stage,
     pub(crate) composite: crate::composite::Stage,
     pub(crate) telemetry_frame: Option<u64>,
+    pub(crate) memory_frame: Option<u64>,
     pub(crate) dirty: Box<[bool]>,
     pub(crate) limits_changed: bool,
     pub(crate) protocol_error: bool,
@@ -1421,6 +1422,15 @@ impl ControlEndpoint {
         if !self.connected {
             return;
         }
+        if let Some(report) = self.cells.memory.read() {
+            if self.memory_frame != Some(report.frame)
+                && out
+                    .push(EngineMessage::Telemetry(Telemetry::Memory(report)))
+                    .is_ok()
+            {
+                self.memory_frame = Some(report.frame);
+            }
+        }
         let frame = self.next_frame().0;
         let interval = u64::from(self.settings.telemetry_interval.max(1));
         let periodic = self
@@ -1584,6 +1594,7 @@ impl Endpoint for ControlEndpoint {
                 self.reset_connection();
                 self.connected = true;
                 self.telemetry_frame = None;
+                self.memory_frame = None;
                 self.profile_status = None;
                 self.profile_catalog = false;
                 self.profile_generation = 0;
