@@ -42,7 +42,8 @@ pub fn design(depths: [u64; 10], g: &Geometry, width: u64, mode: Mode) -> Design
     d.probes = [
         format!("{base}phase"),
         format!("{gc}.phase"),
-        format!("{gc}.cycles_left"),
+        format!("{gc}.cycle_budget"),
+        format!("{gc}.maintenance_charge"),
         format!("{gc}.lock_held"),
         format!("{gc}.lock_request"),
         format!("{gc}.lock_grant"),

@@ -39,6 +39,8 @@ Read/write operands satisfy `offset <= CHUNK_FRAMES` and
 `count <= CHUNK_FRAMES-offset`. Empty spans validate their chunk and offset but
 transfer no data. Fence ignores span/chunk operands; prefetch/retire ignore spans.
 Retire retains backing samples, including unpublished tails needed on reuse.
+Full-width operands are validated before execution. Stored tags and accepted
+span/progress counters use widths derived from the physical capacities.
 
 Writes stream through `write_valid/ready/data`. Reads stream through
 `read_valid/ready/data/last`. The accepted count defines the write payload length.
@@ -69,6 +71,9 @@ Replacement is round-robin. Read lines remain pinned while samples are streamed.
 Dirty write lines forward reads directly. Partial write misses fill the old chunk
 before modification; full overwrites need no old-data fetch. Conflicting fills,
 writes, writebacks and retirements are serialized by chunk identity.
+Free, forward and wraparound replacement candidates are selected in parallel
+with balanced priority trees. Free lines retain priority, and pinned or active
+transfer lines remain excluded under the same rules.
 
 Resident reads pipeline RAM requests, returned samples and delivery. A valid bit
 tracks the synchronous RAM output and another tracks the held output register;
@@ -77,6 +82,15 @@ unstalled reader receives one sample per clock. Issued and consumed indices are
 separate, so arbitrary stalls preserve data/last and completion follows the last
 accepted sample. A line stays pinned throughout the stream. Shared write-pool
 port arbitration also protects a pending RAM result while the output is stalled.
+The write-pool port remains reserved throughout a foreground read or write
+stream; unrelated fills resume when that stream releases it. Speculative read
+launches reserve their line before a separate directory-update stage.
+Demand misses also capture their selected line before updating its directory,
+adding one miss-control cycle. Fill selection uses one-hot grants, preserving the existing write-pool and
+last-line priorities. The DMA reserves its selected line before capturing the
+tag, adding one transfer-setup cycle. Demand writers and retirement decisions
+wait while that tag is pending.
+Idle DMA payload registers capture candidates independently of request admission.
 
 The demand and transfer FSMs run concurrently. Demand fills have priority. Dirty
 writeback runs after a quiet interval of `CHUNK_FRAMES+8` periods, or earlier for
@@ -86,6 +100,8 @@ another receives samples. Prefetch uses spare transfer capacity. A transfer owns
 the memory port for a complete chunk, bounding interference to one transfer at
 this arbitration level. Latency also depends on memory and client backpressure;
 these are not hard real-time guarantees.
+Writeback scheduling registers the quiet/pressure decision, adding a control
+cycle before a newly requested flush can start.
 
 With `BURST_MEMORY=1`, the DMA submits one descriptor per whole chunk through
 `memory_valid/ready/write/address/count`; count is in 32-bit samples. Write data

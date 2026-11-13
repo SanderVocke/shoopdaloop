@@ -60,6 +60,16 @@ samples, IDs and reference counts are 32-bit. Samples retain raw Q8.24 bits.
 Commands transfer on `cmd_valid && cmd_ready`; operands and `arena_base` latch at
 admission. `done` pulses once; `error_code` remains latched. One command executes
 at a time. Configuration takes priority, and commands/configuration block while busy.
+Metadata requirements are registered after a phase or configuration-request
+change. The frontend waits for this preparation before advancing or transferring
+samples; successive samples in the same phase retain their original cadence.
+A phase-transition token identifies prepared controls without comparing copies
+of the complete phase register.
+Physical chunk commands pass through a one-entry register before cache admission.
+Fence drains sample buffers before a separate metadata-flush phase.
+Append capacity, slice bounds/offsets and terminal-sample decisions have separate
+register boundaries. Metadata captures root RAM results and tag matches before
+decoding; tree capacity and trim arithmetic are staged before their decisions.
 
 | Opcode | Operation | Operands | Result |
 | --- | --- | --- | --- |
@@ -204,6 +214,8 @@ grants maintenance once per processing iteration, before control settlement and
 audio processing. Explicit host settlement opens that iteration's grant; its
 subsequent audio run does not replenish it. `maintenance_enable` allows new work;
 disabling it preserves progress and lets admitted indivisible work finish.
+Grant inputs are registered and take effect one cycle later. Accounting retains
+the pending work charge in the effective credit and reported cycle count.
 
 The default is 5,000 active cleanup cycles, equivalent to 50 microseconds at
 100 MHz, with a 1,024-cycle transaction guard and no block-count ceiling

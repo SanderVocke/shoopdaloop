@@ -3,9 +3,14 @@ use super::{empty, read_equals};
 use crate::{
     bits::Bits,
     drivers::store::Store,
+    model::Model,
     sim::{Sim, Snapshot},
 };
 use serde_json::{Value, json};
+
+fn remaining_cycles(model: &Model<'_>) -> u64 {
+    super::remaining_cycles(model, "core.reclaimer")
+}
 
 pub fn complete(d: &mut Store, s: &mut Sim<'_>, command: Value) -> Value {
     let r = d.command(s, &command, false, false, true);
@@ -309,12 +314,12 @@ pub fn offline_drain_survives_budget_counter_expiration(d: &mut Store, s: &mut S
     let after = d.admit(s, 10, 0, 0, 0, 0);
     assert_eq!(after.get("done"), 0);
     d.tick(s);
-    for path in ["core.reclaimer.cycles_left", "core.reclaimer.blocks_left"] {
+    for path in ["core.reclaimer.cycle_budget", "core.reclaimer.blocks_left"] {
         s.model.inject(path, Some(&Bits::from_u64(0)));
     }
     let after = d.tick(s).1;
     finish(d, s, after, 0);
-    for path in ["core.reclaimer.cycles_left", "core.reclaimer.blocks_left"] {
+    for path in ["core.reclaimer.cycle_budget", "core.reclaimer.blocks_left"] {
         s.model.inject(path, None);
     }
     assert_eq!(s.model.get("reclaim_pending"), 0);
@@ -339,7 +344,7 @@ pub fn cycle_budget_releases_more_than_twenty_and_yields_safely(d: &mut Store, s
         d.grant(s, 0, Some(budget));
         s.until(100_000, "cycle budget yield", |m| {
             (m.get("reclaim_pending") == 0 && m.get("reclaim_active") == 0)
-                || (m.get("core.reclaimer.cycles_left") <= guard && m.get("reclaim_quiescent") != 0)
+                || (remaining_cycles(m) <= guard && m.get("reclaim_quiescent") != 0)
         });
         assert!(s.model.get("reclaim_cycles") - start <= budget);
         let released = s.model.get("reclaim_blocks");
@@ -369,9 +374,12 @@ pub fn foreground_wait_preserves_the_cleanup_cycle_budget(d: &mut Store, s: &mut
     d.tick(s);
     s.model.set("maintenance_tick", 0);
     d.tick(s);
-    let remaining = s.model.get("core.reclaimer.cycles_left");
+    s.until(20, "cleanup grant activation", |m| {
+        m.get("reclaim_active") != 0
+    });
+    let remaining = remaining_cycles(&s.model);
     s.idle(d.geometry.reclaim_cycles + 100);
-    assert_eq!(s.model.get("core.reclaimer.cycles_left"), remaining);
+    assert_eq!(remaining_cycles(&s.model), remaining);
     assert_eq!(s.model.get("reclaim_blocks"), 0);
     d.set(s, &[("read_ready", 1)]);
     let mut samples = Vec::new();

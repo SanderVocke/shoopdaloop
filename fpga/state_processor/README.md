@@ -73,15 +73,18 @@ size is a positive power of two. Media position/length words are chunk indices
 and counts. Arithmetic ramp counters retain samples. Shared loop records still
 carry frames; logical playback converts them at the input boundary.
 
-`busy` covers execution. Configuration cannot modify state or program while busy.
+`busy` covers admission and execution. Configuration cannot modify state or program while busy.
+Admission takes one validation cycle after run acceptance. A run refused because
+the FIFO is nonempty completes immediately, preserving any stalled output job.
 The engine executes:
 
 ```text
-FETCH -> DECODE -> (READ_REQUEST -> READ_RESULT)* -> EMIT -> NEXT
+ADMIT -> FETCH -> DECODE -> (READ_REQUEST -> READ_CAPTURE -> READ_RESULT)* -> EMIT -> NEXT
 ```
 
-Disabled capture bypasses `EMIT`. Each RAM read takes one request cycle and one
-result cycle. Consecutive instructions observe earlier state writes, including
+Disabled capture bypasses `EMIT`. Each RAM read takes request, capture and operand
+evaluation cycles. Shared-loop responses have a separate capture/validation cycle
+before their decisions are applied. Consecutive instructions observe earlier state writes, including
 aliased state addresses. Gain writes occur on the same edge that queues the job.
 
 `done` is a one-cycle completion pulse, including on error and for empty programs.

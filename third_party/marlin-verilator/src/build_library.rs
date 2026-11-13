@@ -153,6 +153,7 @@ extern "C" {{
 
     void {delete_top}(V{top_module_mangled}* top) {{
         auto* context = top->contextp();
+        Verilated::threadContextp(context);
         delete top;
         Verilated::threadContextp(nullptr);
         delete context;

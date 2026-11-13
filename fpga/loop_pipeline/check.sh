@@ -6,7 +6,7 @@ mkdir -p "$output_dir"
 output_dir=$(cd -- "$output_dir" && pwd)
 cd "$repo_root"
 sources=()
-sources+=(fpga/chunk_memory/rtl/chunk_ram.sv fpga/chunk_memory/rtl/chunk_memory.sv)
+sources+=(fpga/chunk_memory/rtl/chunk_ram.sv fpga/chunk_memory/rtl/chunk_priority.sv fpga/chunk_memory/rtl/chunk_memory.sv)
 for source in sp_ram sp_job_fifo sp_engine state_processor; do sources+=("fpga/state_processor/rtl/$source.sv"); done
 for source in jp_sample_ram jp_divider job_processor audio_pipeline; do sources+=("fpga/job_processor/rtl/$source.sv"); done
 for source in tp_ram tp_priority transition_processor; do sources+=("fpga/transition_processor/rtl/$source.sv"); done

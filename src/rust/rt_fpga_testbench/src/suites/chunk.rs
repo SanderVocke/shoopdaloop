@@ -11,6 +11,7 @@ pub fn design(c: [u64; 4], width: u64, mode: Mode, retire: u64) -> Design {
     let root = crate::root();
     let mut sources = vec![
         root.join("fpga/chunk_memory/rtl/chunk_ram.sv"),
+        root.join("fpga/chunk_memory/rtl/chunk_priority.sv"),
         root.join("fpga/chunk_memory/rtl/chunk_memory.sv"),
     ];
     let mut parameters = vec![

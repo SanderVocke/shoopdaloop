@@ -1,0 +1,52 @@
+Copyright 1986-2021 Xilinx, Inc. All Rights Reserved.
+------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2021.1 (lin64) Build 3247384 Thu Jun 10 19:36:07 MDT 2021
+| Date         : Fri Nov 13 22:12:50 2026
+| Host         : c45b333628bd running 64-bit Ubuntu 20.04.4 LTS
+| Command      : report_utilization -hierarchical -file post_place_hierarchical_utilization.rpt
+| Design       : registered_core_context
+| Device       : 7z020clg484-1
+| Design State : Physopt postPlace
+------------------------------------------------------------------------------------------------
+
+Utilization Design Information
+
+Table of Contents
+-----------------
+1. Utilization by Hierarchy
+
+1. Utilization by Hierarchy
+---------------------------
+
++-----------------------------+--------------------------------+------------+------------+---------+------+------+--------+--------+------------+
+|           Instance          |             Module             | Total LUTs | Logic LUTs | LUTRAMs | SRLs |  FFs | RAMB36 | RAMB18 | DSP Blocks |
++-----------------------------+--------------------------------+------------+------------+---------+------+------+--------+--------+------------+
+| registered_core_context     |                          (top) |      10361 |      10301 |      60 |    0 | 9788 |      5 |      5 |          0 |
+|   (registered_core_context) |                          (top) |         72 |         72 |       0 |    0 | 2434 |      0 |      0 |          0 |
+|   core_under_test           |                media_store_axi |      10289 |      10229 |      60 |    0 | 7354 |      5 |      5 |          0 |
+|     (core_under_test)       |                media_store_axi |         65 |         65 |       0 |    0 |    0 |      0 |      0 |          0 |
+|     core                    |                    media_store |       8938 |       8878 |      60 |    0 | 6525 |      5 |      5 |          0 |
+|       (core)                |                    media_store |       2977 |       2977 |       0 |    0 | 2932 |      0 |      3 |          0 |
+|       descriptors           |                      media_ram |        204 |        204 |       0 |    0 |    0 |      2 |      1 |          0 |
+|       metadata              |                 media_metadata |       3442 |       3382 |      60 |    0 | 2329 |      2 |      0 |          0 |
+|         (metadata)          |                 media_metadata |       2282 |       2222 |      60 |    0 | 1386 |      0 |      0 |          0 |
+|         banks[0].cache      |                 metadata_cache |        462 |        462 |       0 |    0 |  414 |      0 |      0 |          0 |
+|         banks[1].cache      | metadata_cache__parameterized0 |        248 |        248 |       0 |    0 |  266 |      0 |      0 |          0 |
+|         banks[2].cache      | metadata_cache__parameterized1 |        229 |        229 |       0 |    0 |  191 |      0 |      0 |          0 |
+|         roots               |      media_ram__parameterized3 |        222 |        222 |       0 |    0 |   72 |      2 |      0 |          0 |
+|       reclaimer             |                media_reclaimer |        681 |        681 |       0 |    0 |  366 |      0 |      0 |          0 |
+|       resolver              |        media_prefetch_resolver |        618 |        618 |       0 |    0 |  487 |      0 |      0 |          0 |
+|       sample_memory         |                   chunk_memory |       1018 |       1018 |       0 |    0 |  411 |      1 |      1 |          0 |
+|         (sample_memory)     |                   chunk_memory |        929 |        929 |       0 |    0 |  411 |      0 |      0 |          0 |
+|         read_ram            |                      chunk_ram |         19 |         19 |       0 |    0 |    0 |      0 |      1 |          0 |
+|         write_ram           |                    chunk_ram_0 |         70 |         70 |       0 |    0 |    0 |      1 |      0 |          0 |
+|     memory_endpoint         |                     shared_axi |       1287 |       1287 |       0 |    0 |  829 |      0 |      0 |          0 |
+|       scheduler             |                  axi_burst_mux |         89 |         89 |       0 |    0 |   61 |      0 |      0 |          0 |
+|         (scheduler)         |                  axi_burst_mux |          0 |          0 |       0 |    0 |    3 |      0 |      0 |          0 |
+|         endpoint            |                     axi_master |         89 |         89 |       0 |    0 |   58 |      0 |      0 |          0 |
+|       stream_0.transfer     |                      chunk_dma |        614 |        614 |       0 |    0 |  390 |      0 |      0 |          0 |
+|       stream_1.transfer     |      chunk_dma__parameterized0 |        584 |        584 |       0 |    0 |  378 |      0 |      0 |          0 |
++-----------------------------+--------------------------------+------------+------------+---------+------+------+--------+--------+------------+
+* Note: The sum of lower-level cells may be larger than their parent cells total, due to cross-hierarchy LUT combining
+
+

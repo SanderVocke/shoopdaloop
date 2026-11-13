@@ -12,7 +12,7 @@ module media_reclaimer #(
     input wire retire_done, input wire [7:0] retire_error,
     output reg freed, output reg released, output wire active, output reg fault,
     output reg [63:0] released_blocks, output reg [63:0] freed_blocks,
-    output reg [63:0] maintenance_cycles
+    output wire [63:0] maintenance_cycles
 );
     typedef enum logic [4:0] {
         IDLE, LOOKUP, LOOKUP_WAIT, ACQUIRE_REFERENCE, READ_REFERENCE, REFERENCE_WAIT,
@@ -21,9 +21,14 @@ module media_reclaimer #(
         TRIM, TRIM_WAIT, FAULT
     } phase_t;
     phase_t phase;
-    reg [31:0] cycles_left, blocks_left, reference_count, free_index;
-    reg block_limited;
-    wire permitted = enable && (drain || (cycles_left > 32'(GUARD_CYCLES) && (!block_limited || blocks_left != 0)));
+    reg [31:0] cycle_budget, blocks_left, reference_count, free_index;
+    reg maintenance_charge;
+    reg [63:0] maintenance_count;
+    reg budget_above_guard, budget_above_next;
+    wire budget_permitted = maintenance_charge ? budget_above_next : budget_above_guard;
+    assign maintenance_cycles = maintenance_count + 64'(maintenance_charge);
+    reg block_limited, blocks_available;
+    wire permitted = enable && (drain || (budget_permitted && (!block_limited || blocks_available)));
     wire transaction_pending = phase == LOOKUP_WAIT || phase == REFERENCE_WAIT || phase == WRITE_WAIT
         || phase == RETIRE_WAIT || phase == ZERO_WAIT || phase == PUSH_WAIT || phase == TRIM_WAIT;
     wire maintenance_work = !reset && !fault && (lock_held || transaction_pending
@@ -47,17 +52,27 @@ module media_reclaimer #(
     end
     always @(posedge clk) begin
         if (reset) begin
-            phase <= IDLE; cycles_left <= 0; blocks_left <= 0; block_limited <= 0; reference_count <= 0; free_index <= 0;
+            phase <= IDLE; cycle_budget <= 0; blocks_left <= 0; block_limited <= 0; reference_count <= 0; free_index <= 0;
             active_block <= 0; lock_held <= 0; freed <= 0; released <= 0; fault <= 0;
-            released_blocks <= 0; freed_blocks <= 0; maintenance_cycles <= 0;
+            released_blocks <= 0; freed_blocks <= 0; maintenance_count <= 0; maintenance_charge <= 0;
+            budget_above_guard <= 0; budget_above_next <= 0;
+            blocks_available <= 0;
         end else begin
             freed <= 0;
-            if (maintenance_work && cycles_left != 0) cycles_left <= cycles_left-1;
+            maintenance_charge <= maintenance_work;
+            budget_above_guard <= maintenance_charge ? cycle_budget > 32'(GUARD_CYCLES)+1
+                : cycle_budget > 32'(GUARD_CYCLES);
+            budget_above_next <= maintenance_charge ? cycle_budget > 32'(GUARD_CYCLES)+2
+                : cycle_budget > 32'(GUARD_CYCLES)+1;
+            if (maintenance_charge && cycle_budget != 0) cycle_budget <= cycle_budget-1'b1;
             if (grant) begin
-                cycles_left <= grant_cycles == 0 ? 0 : grant_cycles-32'(maintenance_work);
+                cycle_budget <= grant_cycles;
+                budget_above_guard <= grant_cycles > 32'(GUARD_CYCLES);
+                budget_above_next <= grant_cycles > 32'(GUARD_CYCLES)+1;
                 blocks_left <= grant_blocks; block_limited <= grant_blocks != 0;
+                blocks_available <= grant_blocks != 0;
             end
-            if (maintenance_work) maintenance_cycles <= maintenance_cycles+1;
+            if (maintenance_charge) maintenance_count <= maintenance_count+1;
             case (phase)
                 IDLE: if (pending_tables != 0 && permitted) phase <= LOOKUP;
                 LOOKUP: if (request_valid && request_ready) phase <= LOOKUP_WAIT;
@@ -97,6 +112,7 @@ module media_reclaimer #(
                     released_blocks <= released_blocks+1; released <= 0;
                     if (grant) blocks_left <= grant_blocks == 0 ? 0 : grant_blocks-1;
                     else if (blocks_left != 0) blocks_left <= blocks_left-1;
+                    blocks_available <= grant ? grant_blocks > 1 : blocks_left > 1;
                     phase <= IDLE;
                 end
                 FAULT: phase <= FAULT;

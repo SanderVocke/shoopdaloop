@@ -5,7 +5,7 @@ output_dir=${1:-"$repo_root/work/fpga-chunk-synthesis"}
 mkdir -p "$output_dir"
 output_dir=$(cd -- "$output_dir" && pwd)
 cd "$repo_root"
-sources=(fpga/chunk_memory/rtl/chunk_ram.sv fpga/chunk_memory/rtl/chunk_memory.sv)
+sources=(fpga/chunk_memory/rtl/chunk_ram.sv fpga/chunk_memory/rtl/chunk_priority.sv fpga/chunk_memory/rtl/chunk_memory.sv)
 read_command="read_verilog -sv ${sources[*]}"
 yosys -V > "$output_dir/versions.txt"
 verilator --version >> "$output_dir/versions.txt"
