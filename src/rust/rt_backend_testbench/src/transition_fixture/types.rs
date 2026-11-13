@@ -184,5 +184,5 @@ pub struct TransitionPlanImage {
     pub format_version: u32,
     pub description: PlanDescription,
     pub limits: TransitionLimits,
-    pub components: Vec<Vec<LoopId>>,
+    pub dependency_order: Vec<LoopId>,
 }

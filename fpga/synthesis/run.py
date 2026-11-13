@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT/'fpga/axi_memory'))
 from generate_tops import header
 
 
-def context(source):
+def context(source, module_name='loop_pipeline_axi'):
     match, ports = header(source)
     parameters = match[2]
     import re
@@ -41,7 +41,7 @@ def context(source):
             lines += [f'wire {bits} {name};',
                       f'(* DONT_TOUCH = "yes", SHREG_EXTRACT = "no" *) reg {bits} unused_capture_{name};',
                       f'always @(posedge clk) unused_capture_{name} <= {name};']
-    lines += ['(* KEEP_HIERARCHY = "yes" *) loop_pipeline_axi #(',
+    lines += [f'(* KEEP_HIERARCHY = "yes" *) {module_name} #(',
               ',\n'.join(f'.{name}({name})' for name in names), ') core_under_test (',
               ',\n'.join(f'.{name}({name})' for _, name in ports), ');', 'endmodule']
     return '\n'.join(lines)+'\n'

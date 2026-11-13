@@ -51,6 +51,12 @@ def directed(depths):
     steps = [step([command(0, 1), command(1, 2), command(2, 3)])] + [step() for _ in range(12)]
     yield case('sync-chain-self-sync', loops, deepcopy(steps), requests=p)
     yield case('reversed-declarations', list(reversed(loops)), steps, requests=p)
+    yield case('source-order-opposes-slot-order', [spec(0, 16, 2), spec(1, 16, 0), spec(2, 16, 2)],
+               [step([command(2, 1), command(0, 2, source=2), command(1, 3, source=0)])]
+               + [step() for _ in range(5)], requests=p)
+    yield case('stop-masks-inherited-pulse-at-current-boundary', [spec(0, 16), spec(1, 16, 0), spec(2, 16, 1)],
+               [step([command(0, 1), command(1, 2, {'kind': 'stop'}), command(2, 3, source=1)])]
+               + [step() for _ in range(4)], requests=p)
     if p >= 7:
         sync = lambda target, sequence, operation, skip: command(target, sequence, operation, source=0, skip=skip)
         first = step([command(0, 1), sync(1, 2, play(), 3), sync(2, 3, play(), 4), sync(1, 4, {'kind': 'record'}, 1), command(1, 5, {'kind': 'stop'}, at=48), sync(1, 6, seek(0, True), 1)])
@@ -59,7 +65,7 @@ def directed(depths):
         yield case('pending-list-head-middle-removal-reuse-and-retry', [spec(0, 16), spec(1, 16, 0), spec(2, 16, 0)], [first, second, third, step(), step(), step()], requests=p)
     if depths[0] >= 130:
         first = step([command(129, 1), command(0, 2, source=129), command(63, 3, source=0), command(64, 4, {'kind': 'record'}, source=129), command(64, 5, at=64)])
-        yield case('ready-priority-sparse-slots-across-word-boundary', [spec(129, 16), spec(64, 16, 129), spec(0, 32, 129), spec(63, 16, 0, True)], [first] + [step() for _ in range(12)], loops_limit=130, requests=8)
+        yield case('source-order-sparse-slots-across-word-boundary', [spec(129, 16), spec(64, 16, 129), spec(0, 32, 129), spec(63, 16, 0, True)], [first] + [step() for _ in range(12)], loops_limit=130, requests=8)
     if depths[1] >= 130:
         yield case('absolute-priority-high-request-slot-reuse', [spec(0, 16, 0)], [step([command(0, i + 1, at=(130 - i) * 16) for i in range(130)]), step(), step([command(0, 131, at=32)]), step(), step(), step()], requests=130)
 

@@ -98,6 +98,44 @@ async def transport_and_negative_cases(dut):
 
 
 @cocotb.test()
+async def dependency_order_validation(dut):
+    driver = Driver(dut, DEPTHS)
+
+    async def prepare(loops, order, slots=None):
+        slots = slots or len(loops)
+        await driver.reset()
+        specs = {loop['id']['slot']: loop for loop in loops}
+        for i in range(slots):
+            await driver.ok(abi.WRITE_SPEC, i, abi.encode_spec(specs.get(i)))
+        for i, slot in enumerate(order):
+            await driver.ok(abi.WRITE_ORDER, i, slot)
+        data = slots | (1 << 32) | ((2 * slots + 1) << 64) | (len(order) << 96) | (16 << 128)
+        return (await driver.command(abi.PREPARE, data=data))[0]
+
+    assert await prepare([spec(0, 16, 0)], [0]) == 0
+    await driver.reset()
+    assert (await driver.command(abi.WRITE_ORDER, data=DEPTHS[0]))[0] == 3
+    assert (await driver.command(abi.WRITE_ORDER, data=1 << 32))[0] == 1
+    assert (await driver.command(abi.WRITE_ORDER, index=DEPTHS[0]))[0] == 2
+    assert await prepare([spec(0, 16)], []) == 1
+    if DEPTHS[0] < 2:
+        return
+    assert await prepare([spec(0, 16), spec(1, 16, 0)], [0, 1]) == 0
+    assert await prepare([spec(0, 16), spec(1, 16, 0)], [1, 0]) == 1
+    assert await prepare([spec(0, 16), spec(1, 16)], [0, 0]) == 4
+    assert await prepare([spec(0, 16)], [0, 1], slots=2) == 3
+    for order in ([0, 1], [1, 0]):
+        assert await prepare([spec(0, 16, 1), spec(1, 16, 0)], order) == 1
+        assert not (await driver.status())['configured']
+    if DEPTHS[0] >= 3:
+        loops = [spec(0, 16, 2), spec(1, 16, 0), spec(2, 16, 2)]
+        assert await prepare(loops, [2, 0, 1]) == 0
+        assert await prepare(loops, [0, 1, 2]) == 1
+        cyclic = [spec(0, 16, 2), spec(1, 16, 0), spec(2, 16, 1)]
+        assert await prepare(cyclic, [0, 1, 2]) == 1
+
+
+@cocotb.test()
 async def scratch_initialization_and_reset(dut):
     value=make_case('reset-during-processing',[spec(0,32)],[step([command(0,1)])],requests=1)
     image=wire.run(dict(value,format_version=1),kind='transition_case',command='transition-compile',executable=REFERENCE)
@@ -121,7 +159,7 @@ async def sixty_four_loop_workload(dut):
     values = list(workloads())
     if DEPTHS[1] >= 130:
         spare = deepcopy(values[1])
-        spare["name"] = "64-member-cycle-with-130-request-slots"
+        spare["name"] = "64-loop-chain-with-130-request-slots"
         spare["plan"]["limits"]["pending_requests"] = 130
         spare["plan"]["limits"]["events"] = 258
         values.append(spare)

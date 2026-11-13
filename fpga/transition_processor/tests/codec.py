@@ -5,7 +5,7 @@ ERRORS = [None, "invalid_config", "capacity", "invalid_id", "duplicate_id",
 OPS = ["stop", "play", "record", "seek"]
 MODES = ["stopped", "playing", "recording"]
 OUTCOMES = [None, "applied", "superseded", "cancelled", "failed"]
-STATUS, WRITE_SPEC, WRITE_MEMBER, PREPARE, SUBMIT, CANCEL, COLLECT = range(7)
+STATUS, WRITE_SPEC, WRITE_ORDER, PREPARE, SUBMIT, CANCEL, COLLECT = range(7)
 PROCESS, READ_STATE, READ_REQUEST, READ_EVENT = 9, 12, 13, 15
 
 

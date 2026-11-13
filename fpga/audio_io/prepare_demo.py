@@ -88,13 +88,9 @@ def prepare(output, q=32, chunk=None, channels=16, monitoring=False, routing="id
     specs = {s['id']['slot']: s for s in transition['description']['loops']}
     for i in range(limits['loop_slots']):
         boot.append(packet(opcode=tp.WRITE_SPEC, index=i, data=tp.encode_spec(specs.get(i))))
-    offset = 0
-    for component in transition['components']:
-        for i, member in enumerate(component):
-            boot.append(packet(opcode=tp.WRITE_MEMBER, index=offset,
-                               data=member['slot'] | (int(i == len(component)-1) << 32)))
-            offset += 1
-    data = limits['loop_slots'] | limits['pending_requests'] << 32 | limits['events'] << 64 | offset << 96 | q << 128
+    for i, loop in enumerate(transition['dependency_order']):
+        boot.append(packet(opcode=tp.WRITE_ORDER, index=i, data=loop['slot']))
+    data = limits['loop_slots'] | limits['pending_requests'] << 32 | limits['events'] << 64 | len(transition['dependency_order']) << 96 | q << 128
     boot.append(packet(opcode=tp.PREPARE, data=data))
     for i, instruction in enumerate(image['program']['instructions']):
         boot.append(packet(kind=1, index=i, data=sp.encode_instruction(instruction)))

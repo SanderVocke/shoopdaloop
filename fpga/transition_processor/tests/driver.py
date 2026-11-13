@@ -85,13 +85,10 @@ class Driver:
         specs = {s["id"]["slot"]: s for s in image["description"]["loops"]}
         for i in range(limits["loop_slots"]):
             await self.ok(abi.WRITE_SPEC, i, abi.encode_spec(specs.get(i)))
-        offset = 0
-        for component in image["components"]:
-            for i, member in enumerate(component):
-                await self.ok(abi.WRITE_MEMBER, offset, member["slot"] | (int(i == len(component) - 1) << 32))
-                offset += 1
+        for i, loop in enumerate(image["dependency_order"]):
+            await self.ok(abi.WRITE_ORDER, i, loop["slot"])
         data = (limits["loop_slots"] | (limits["pending_requests"] << 32)
-                | (limits["events"] << 64) | (offset << 96)
+                | (limits["events"] << 64) | (len(image["dependency_order"]) << 96)
                 | (image["description"]["quantum"] << 128))
         await self.ok(abi.PREPARE, data=data)
 

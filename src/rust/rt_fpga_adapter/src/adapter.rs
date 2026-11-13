@@ -185,7 +185,7 @@ impl<D: Device> Adapter<D> {
                         pending_requests: 2,
                         events: 4,
                     },
-                    components: vec![],
+                    dependency_order: vec![],
                 },
                 program: Program {
                     instructions: vec![],

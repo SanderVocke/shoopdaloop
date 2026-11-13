@@ -32,7 +32,7 @@ module transition_processor #(
         DUPLICATE_ID=4, INVALID_STATE=5, INVALID_FRAME=6, MISSING_SYNC=7,
         EXHAUSTED=8, EMPTY_CONTENT=9, UNSUPPORTED=10;
     localparam [1:0] IDLE_PHASE=0, EXECUTING=1, SETTLED=2, FAULTED=3;
-    localparam [7:0] STATUS=0, WRITE_SPEC=1, WRITE_MEMBER=2, PREPARE=3,
+    localparam [7:0] STATUS=0, WRITE_SPEC=1, WRITE_ORDER=2, PREPARE=3,
         SUBMIT=4, CANCEL=5, COLLECT=6, PROCESS=9, FINISH=11, READ_STATE=12,
         READ_REQUEST=13, READ_EVENT=15;
     localparam integer VALID=0, GENERATION=1, MODE=33, REPEAT=35, LAST_VALID=36,
@@ -52,21 +52,16 @@ module transition_processor #(
     localparam integer SPEC_SOURCE_VALID=33, SPEC_SOURCE=34, SPEC_REPEAT=98,
         SPEC_KIND=99, SPEC_TIMELINE=101, SPEC_LENGTH=128;
     localparam integer PA=(REQUEST_DEPTH > 1) ? $clog2(REQUEST_DEPTH) : 1;
-    localparam integer H=PA+1, LH=SA+1, RW=640+2*H;
+    localparam integer H=PA+1, RW=640+2*H;
     localparam [H-1:0] NO_REQUEST={H{1'b1}};
-    localparam [LH-1:0] NO_FOLLOWER={LH{1'b1}};
-    localparam integer HEAD_AT=37, HEAD_SYNC=804, R_NEXT=640, R_PREV=640+H,
-        FOLLOW_HEAD=192, FOLLOW_NEXT=192+LH, COMPONENT_ID=192+2*LH;
+    localparam integer HEAD_AT=37, HEAD_SYNC=804, R_NEXT=640, R_PREV=640+H;
 
     typedef enum reg [7:0] {
         S_IDLE, S_DISPATCH,
         S_L_WAIT, S_L_GET, S_R_WAIT, S_R_GET, S_S_WAIT, S_S_GET,
         S_M_WAIT, S_M_GET, S_E_WAIT, S_E_GET,
         S_PREP_LOOP, S_PREP_SPEC, S_PREP_SOURCE, S_PREP_WRITE,
-        S_PREP_MEMBER, S_PREP_MEMBER_CHECK, S_PREP_MEMBER_LOOP,
-        S_PREP_INIT_META_WRITE, S_PREP_COMPONENT_TAG,
-        S_PREP_LINK, S_PREP_LINK_MEMBER, S_PREP_LINK_TARGET, S_PREP_LINK_SOURCE,
-        S_PREP_LINK_WRITE, S_PREP_LINK_WRITE_NEXT, S_PREP_LINK_NEXT,
+        S_PREP_ORDER, S_PREP_ORDER_CHECK, S_PREP_ORDER_SOURCE,
         S_PREP_REQUEST, S_PREP_COMPLETE,
         S_SUBMIT_TARGET, S_SUBMIT_SOURCE, S_SUBMIT_SCAN, S_SUBMIT_CHECK, S_SUBMIT_WRITE,
         S_SUBMIT_ROUND, S_SUBMIT_ALIGN,
@@ -78,11 +73,8 @@ module transition_processor #(
         S_CLEAR,
         S_DIRECT_SCAN, S_DIRECT_CHECK,
         S_OFFER_LOOP, S_OFFER_CHECK, S_OFFER_LOSER,
-        S_COMPONENT, S_COMPONENT_END, S_COMPONENT_END_CHECK,
-        S_FIRST, S_FIRST_MEMBER, S_FIRST_APPLY, S_FIRST_NATURAL, S_FIRST_INHERIT,
-        S_SECOND, S_SECOND_MEMBER, S_SECOND_REACT, S_SECOND_NEXT,
-        S_FIND_PULSE, S_PULSE_EMIT, S_SINGLE_REACT_DONE,
-        S_FOLLOW, S_FOLLOW_REACT, S_FOLLOW_NEXT,
+        S_ORDER, S_ORDER_SLOT, S_ORDER_APPLY, S_ORDER_NATURAL, S_ORDER_INHERIT,
+        S_ORDER_PULSE, S_PULSE_EMIT, S_ORDER_NEXT,
         S_REACT, S_REACT_CHECK, S_REACT_OFFER_DONE, S_REACT_APPLY, S_REACT_NATURAL,
         S_APPLY, S_APPLY_PLAN, S_APPLY_CHECK, S_CANCEL_OLDER, S_CANCEL_OLDER_CHECK, S_CANCEL_OLDER_NEXT,
         S_NATURAL, S_NATURAL_SOURCE, S_NATURAL_WRAP,
@@ -94,38 +86,29 @@ module transition_processor #(
     reg [3:0] fault_error;
     reg [1:0] phase;
     reg [63:0] frame;
-    reg [31:0] loop_slots, request_slots, event_limit, member_count, quantum;
+    reg [31:0] loop_slots, request_slots, event_limit, order_count, quantum;
     reg [31:0] event_count;
-    reg [LOOP_DEPTH-1:0] spec_written, member_written, valid_loops, seen_members;
-    reg [LOOP_DEPTH-1:0] ready_pulses, delivered, masked;
+    reg [LOOP_DEPTH-1:0] spec_written, order_written, valid_loops, seen_order;
+    reg [LOOP_DEPTH-1:0] delivered;
+    reg pulse_ready, pulse_masked;
     reg [REQUEST_DEPTH-1:0] absolute, absolute_to_visit;
-    wire ready_valid, absolute_valid;
-    wire [SA-1:0] ready_index;
+    wire absolute_valid;
     wire [PA-1:0] absolute_index;
-    tp_priority #(.SLOTS(LOOP_DEPTH), .INDEX_BITS(SA)) pulse_priority (
-        ready_pulses, ready_valid, ready_index);
     tp_priority #(.SLOTS(REQUEST_DEPTH), .INDEX_BITS(PA)) request_priority (
         absolute_to_visit, absolute_valid, absolute_index);
     reg [31:0] request_checks, follower_visits, pulse_deliveries;
-    reg [REQUEST_DEPTH-1:0] eligible;
-    reg request_eligible;
     reg [7:0] opcode;
     reg [31:0] index;
     reg [639:0] payload;
     reg [831:0] loop_row;
     reg [RW-1:0] request_row;
-    reg [255:0] spec_row;
-    reg [SA-1:0] prepared_component;
-    reg [LH-1:0] prepared_next;
-    reg [63:0] member_row;
+    reg [191:0] spec_row;
+    reg [SA-1:0] order_slot;
     reg [255:0] event_row;
     reg [1:0] source_mode;
     reg loop_source_read, loop_with_spec;
     reg [31:0] cursor, request_cursor;
-    reg prepare_member_last;
-    reg [31:0] component_start, component_end, member_cursor;
-    reg [SA-1:0] prepare_component;
-    reg [LH-1:0] follow_cursor, follow_next;
+    reg [31:0] order_cursor;
     reg [63:0] submitted_effective;
     reg [6:0] quantum_mask;
     reg [63:0] submit_frame;
@@ -134,7 +117,7 @@ module transition_processor #(
     reg [H-1:0] list_previous, list_next, walk_next;
     reg [31:0] list_slot, list_target;
     reg list_ticks, stopping, cancel_sync;
-    reg [31:0] target_slot, pulse_slot, react_source, apply_slot;
+    reg [31:0] target_slot, react_source, apply_slot;
     reg [31:0] offer_slot, offer_target, loser_slot;
     reg [63:0] offer_sequence, stop_sequence;
     reg [63:0] target_source;
@@ -149,13 +132,13 @@ module transition_processor #(
     reg [EA-1:0] er_address, ew_address;
     reg [831:0] lw_data;
     reg [RW-1:0] rw_data;
-    reg [255:0] sw_data;
-    reg [63:0] mw_data;
+    reg [191:0] sw_data;
+    reg [SA-1:0] mw_data;
     reg [255:0] ew_data;
     wire [831:0] lr_data;
     wire [RW-1:0] rr_data;
-    wire [255:0] sr_data;
-    wire [63:0] mr_data;
+    wire [191:0] sr_data;
+    wire [SA-1:0] mr_data;
     wire [255:0] er_data;
     reg loop_stream_valid;
     reg finish_valid, finish_plays, finish_records;
@@ -174,9 +157,9 @@ module transition_processor #(
         lr_data, lw_en, lw_address, lw_data);
     tp_ram #(.WIDTH(RW), .DEPTH(REQUEST_DEPTH), .ADDR_BITS(RA)) requests (
         clk, rr_en, rr_address, rr_data, rw_en, rw_address, rw_data);
-    tp_ram #(.WIDTH(256), .DEPTH(LOOP_DEPTH), .ADDR_BITS(SA)) specs (
+    tp_ram #(.WIDTH(192), .DEPTH(LOOP_DEPTH), .ADDR_BITS(SA)) specs (
         clk, sr_en, sr_address, sr_data, sw_en, sw_address, sw_data);
-    tp_ram #(.WIDTH(64), .DEPTH(LOOP_DEPTH), .ADDR_BITS(SA)) members (
+    tp_ram #(.WIDTH(SA), .DEPTH(LOOP_DEPTH), .ADDR_BITS(SA)) dependency_order (
         clk, mr_en, mr_address, mr_data, mw_en, mw_address, mw_data);
     tp_ram #(.WIDTH(256), .DEPTH(EVENT_DEPTH), .ADDR_BITS(EA)) events (
         clk, er_en, er_address, er_data, ew_en, ew_address, ew_data);
@@ -351,7 +334,7 @@ module transition_processor #(
     task automatic read_spec(input [31:0] unused_slot, input state_t destination);
         begin sr_en <= 1; sr_address <= SA'(unused_slot); read_return <= destination; state <= S_S_WAIT; end
     endtask
-    task automatic read_member(input [31:0] unused_slot, input state_t destination);
+    task automatic read_order(input [31:0] unused_slot, input state_t destination);
         begin mr_en <= 1; mr_address <= SA'(unused_slot); read_return <= destination; state <= S_M_WAIT; end
     endtask
     task automatic emit_event(input [1:0] kind, input [1:0] op, input retrigger,
@@ -392,7 +375,6 @@ module transition_processor #(
     always @(posedge clk) begin : control
         reg [831:0] temporary_loop;
         reg [RW-1:0] temporary_request;
-        reg [255:0] temporary_spec;
         lr_en <= 0; lw_en <= 0; rr_en <= 0; rw_en <= 0;
         sr_en <= 0; sw_en <= 0; mr_en <= 0; mw_en <= 0;
         er_en <= 0; ew_en <= 0;
@@ -403,18 +385,16 @@ module transition_processor #(
             state <= S_IDLE;
             configured <= 0; fault_error <= 0;
             phase <= IDLE_PHASE; frame <= 0;
-            loop_slots <= 0; request_slots <= 0; event_limit <= 0; member_count <= 0; quantum <= 0;
+            loop_slots <= 0; request_slots <= 0; event_limit <= 0; order_count <= 0; quantum <= 0;
             quantum_mask <= 0; submit_frame <= 0; submit_sum <= 0;
             prepare_events <= 0;
-            prepare_member_last <= 0;
             op_result <= 0;
             planned_event <= 0; planned_stop <= 0; planned_pulse <= 0;
-            request_eligible <= 0;
             finish_plays <= 0; finish_records <= 0; finish_row <= 0;
             finish_position <= 0; finish_capture <= 0; finish_address <= 0;
             event_count <= 0;
-            spec_written <= 0; member_written <= 0; valid_loops <= 0; seen_members <= 0;
-            ready_pulses <= 0; delivered <= 0; masked <= 0; eligible <= 0;
+            spec_written <= 0; order_written <= 0; valid_loops <= 0; seen_order <= 0;
+            pulse_ready <= 0; delivered <= 0; pulse_masked <= 0;
             absolute <= 0; absolute_to_visit <= 0;
             request_checks <= 0; follower_visits <= 0; pulse_deliveries <= 0;
             response_valid <= 0; response_error <= OK; response_data <= 0;
@@ -436,22 +416,24 @@ module transition_processor #(
                         temporary_loop[256+:32] = loop_slots;
                         temporary_loop[288+:32] = request_slots;
                         temporary_loop[320+:32] = event_limit;
-                        temporary_loop[352+:32] = member_count;
+                        temporary_loop[352+:32] = order_count;
                         temporary_loop[384+:32] = quantum;
                         temporary_loop[416+:32] = request_checks;
                         temporary_loop[448+:32] = follower_visits;
                         temporary_loop[480+:32] = pulse_deliveries;
                         reply(OK, temporary_loop);
-                    end else if (opcode == WRITE_SPEC || opcode == WRITE_MEMBER) begin
+                    end else if (opcode == WRITE_SPEC || opcode == WRITE_ORDER) begin
                         if (configured) reply(INVALID_STATE, 0);
                         else if (index >= LOOP_DEPTH) reply(CAPACITY, 0);
                         else if (opcode == WRITE_SPEC) begin
-                            sw_en <= 1; sw_address <= SA'(index); sw_data <= {64'b0,payload[191:0]};
+                            sw_en <= 1; sw_address <= SA'(index); sw_data <= payload[191:0];
                             spec_written[index[SA-1:0]] <= 1;
                             reply(OK, 0);
-                        end else begin
-                            mw_en <= 1; mw_address <= SA'(index); mw_data <= payload[63:0];
-                            member_written[index[SA-1:0]] <= 1;
+                        end else if (payload[31:0] >= LOOP_DEPTH) reply(INVALID_ID, 0);
+                        else if (payload[63:32] != 0) reply(INVALID_CONFIG, 0);
+                        else begin
+                            mw_en <= 1; mw_address <= SA'(index); mw_data <= SA'(payload[31:0]);
+                            order_written[index[SA-1:0]] <= 1;
                             reply(OK, 0);
                         end
                     end else if (opcode == PREPARE) begin
@@ -466,12 +448,12 @@ module transition_processor #(
                             reply(INVALID_CONFIG, 0);
                         else begin
                             loop_slots <= payload[31:0]; request_slots <= payload[63:32];
-                            event_limit <= payload[95:64]; member_count <= payload[127:96]; quantum <= payload[159:128];
+                            event_limit <= payload[95:64]; order_count <= payload[127:96]; quantum <= payload[159:128];
                             quantum_mask <= 7'(payload[159:128]-1'b1);
-                            cursor <= 0; valid_loops <= 0; seen_members <= 0;
+                            cursor <= 0; valid_loops <= 0; seen_order <= 0;
                             frame <= 0; fault_error <= 0;
                             event_count <= 0;
-                            absolute <= 0; prepare_component <= 0;
+                            absolute <= 0;
                             state <= S_PREP_LOOP;
                         end
                     end else if (!configured) reply(INVALID_STATE, 0);
@@ -494,7 +476,7 @@ module transition_processor #(
                                     phase <= FAULTED; fault_error <= EXHAUSTED; reply(EXHAUSTED, 0);
                                 end
                                 else begin
-                                    phase <= EXECUTING; ready_pulses <= 0; delivered <= 0; masked <= 0; eligible <= 0;
+                                    phase <= EXECUTING; pulse_ready <= 0; delivered <= 0; pulse_masked <= 0;
                                     absolute_to_visit <= absolute; event_count <= 0;
                                     request_checks <= 0; follower_visits <= 0; pulse_deliveries <= 0;
                                     cursor <= 0; state <= S_CLEAR;
@@ -530,10 +512,7 @@ module transition_processor #(
                     if (loop_with_spec) spec_row <= sr_data;
                     state <= read_return;
                 end
-                S_R_WAIT: begin
-                    request_eligible <= eligible[request_cursor[PA-1:0]];
-                    state <= S_R_GET;
-                end
+                S_R_WAIT: state <= S_R_GET;
                 S_R_GET: begin
                     request_row <= rr_data;
                     op_result <= operation(loop_row, rr_data[639:0]);
@@ -541,15 +520,12 @@ module transition_processor #(
                 end
                 S_S_WAIT: state <= S_S_GET;
                 S_S_GET: begin spec_row <= sr_data; state <= read_return; end
-                S_M_WAIT: begin
-                    prepare_member_last <= cursor+1'b1 == member_count;
-                    state <= S_M_GET;
-                end
-                S_M_GET: begin member_row <= mr_data; state <= read_return; end
+                S_M_WAIT: state <= S_M_GET;
+                S_M_GET: begin order_slot <= mr_data; state <= read_return; end
                 S_E_WAIT: state <= S_E_GET;
                 S_E_GET: begin event_row <= er_data; state <= read_return; end
                 S_PREP_LOOP: begin
-                    if (cursor == loop_slots) begin cursor <= 0; state <= S_PREP_MEMBER; end
+                    if (cursor == loop_slots) begin cursor <= 0; state <= S_PREP_ORDER; end
                     else if (!spec_written[cursor[SA-1:0]]) reply(INVALID_CONFIG, 0);
                     else read_spec(cursor, S_PREP_SPEC);
                 end
@@ -582,77 +558,28 @@ module transition_processor #(
                     if (!spec_row[VALID] || spec_row[GENERATION+:32] != target_source[63:32]) reply(INVALID_ID, 0);
                     else state <= S_PREP_WRITE;
                 end
-                S_PREP_WRITE: read_spec(cursor, S_PREP_INIT_META_WRITE);
-                S_PREP_INIT_META_WRITE: begin
-                    temporary_spec = spec_row;
-                    temporary_spec[255:192] = 0;
-                    temporary_spec[FOLLOW_HEAD+:LH] = NO_FOLLOWER;
-                    temporary_spec[FOLLOW_NEXT+:LH] = NO_FOLLOWER;
-                    sw_en <= 1; sw_address <= SA'(cursor); sw_data <= temporary_spec;
-                    cursor <= cursor+1'b1; state <= S_PREP_LOOP;
+                S_PREP_WRITE: begin cursor <= cursor+1'b1; state <= S_PREP_LOOP; end
+                S_PREP_ORDER: begin
+                    if (cursor == order_count) begin
+                        if (seen_order != valid_loops) reply(INVALID_CONFIG, 0);
+                        else begin cursor <= 0; state <= S_PREP_REQUEST; end
+                    end else if (!order_written[cursor[SA-1:0]]) reply(INVALID_CONFIG, 0);
+                    else read_order(cursor, S_PREP_ORDER_CHECK);
                 end
-                S_PREP_MEMBER: begin
-                    if (cursor == member_count) begin
-                        if (seen_members != valid_loops) reply(INVALID_CONFIG, 0);
-                        else begin cursor <= member_count; state <= S_PREP_LINK; end
-                    end else if (!member_written[cursor[SA-1:0]]) reply(INVALID_CONFIG, 0);
-                    else read_member(cursor, S_PREP_MEMBER_CHECK);
+                S_PREP_ORDER_CHECK: begin
+                    if (32'(order_slot) >= loop_slots) reply(INVALID_ID, 0);
+                    else if (seen_order[order_slot]) reply(DUPLICATE_ID, 0);
+                    else read_spec(32'(order_slot), S_PREP_ORDER_SOURCE);
                 end
-                S_PREP_MEMBER_CHECK: begin
-                    if (member_row[31:0] >= loop_slots) reply(INVALID_ID, 0);
-                    else if (seen_members[member_row[SA-1:0]]) reply(DUPLICATE_ID, 0);
-                    else if (prepare_member_last && !member_row[32]) reply(INVALID_CONFIG, 0);
-                    else read_loop(member_row[31:0], 0, 0, S_PREP_MEMBER_LOOP);
-                end
-                S_PREP_MEMBER_LOOP: begin
-                    if (!loop_row[VALID]) reply(INVALID_ID, 0);
+                S_PREP_ORDER_SOURCE: begin
+                    if (!spec_row[VALID]) reply(INVALID_ID, 0);
+                    else if (spec_row[SPEC_SOURCE_VALID] && spec_row[SPEC_SOURCE+:SA] != order_slot
+                        && !seen_order[spec_row[SPEC_SOURCE+:SA]]) reply(INVALID_CONFIG, 0);
                     else begin
-                        seen_members[member_row[SA-1:0]] <= 1;
-                        read_spec(member_row[31:0], S_PREP_COMPONENT_TAG);
+                        seen_order[order_slot] <= 1;
+                        cursor <= cursor+1'b1; state <= S_PREP_ORDER;
                     end
                 end
-                S_PREP_COMPONENT_TAG: begin
-                    temporary_spec = spec_row;
-                    temporary_spec[COMPONENT_ID+:SA] = prepare_component;
-                    sw_en <= 1; sw_address <= SA'(member_row[31:0]); sw_data <= temporary_spec;
-                    if (member_row[32]) prepare_component <= prepare_component+1'b1;
-                    cursor <= cursor+1'b1; state <= S_PREP_MEMBER;
-                end
-                S_PREP_LINK: begin
-                    if (cursor == 0) state <= S_PREP_REQUEST;
-                    else read_member(cursor-1'b1, S_PREP_LINK_MEMBER);
-                end
-                S_PREP_LINK_MEMBER: read_spec(member_row[31:0], S_PREP_LINK_TARGET);
-                S_PREP_LINK_TARGET: begin
-                    if (!spec_row[SPEC_SOURCE_VALID]) state <= S_PREP_LINK_NEXT;
-                    else begin
-                        prepared_component <= spec_row[COMPONENT_ID+:SA];
-                        target_source <= spec_row[SPEC_SOURCE+:64];
-                        read_spec(spec_row[SPEC_SOURCE+:32], S_PREP_LINK_SOURCE);
-                    end
-                end
-                S_PREP_LINK_SOURCE: begin
-                    if (prepared_component != spec_row[COMPONENT_ID+:SA]) state <= S_PREP_LINK_NEXT;
-                    else begin
-                        temporary_spec = spec_row;
-                        temporary_spec[FOLLOW_HEAD+:LH] = LH'(member_row[31:0]);
-                        if (target_source[31:0] == member_row[31:0]) begin
-                            temporary_spec[FOLLOW_NEXT+:LH] = spec_row[FOLLOW_HEAD+:LH];
-                            state <= S_PREP_LINK_NEXT;
-                        end else begin
-                            prepared_next <= spec_row[FOLLOW_HEAD+:LH];
-                            state <= S_PREP_LINK_WRITE;
-                        end
-                        sw_en <= 1; sw_address <= SA'(target_source[31:0]); sw_data <= temporary_spec;
-                    end
-                end
-                S_PREP_LINK_WRITE: read_spec(member_row[31:0], S_PREP_LINK_WRITE_NEXT);
-                S_PREP_LINK_WRITE_NEXT: begin
-                    temporary_spec = spec_row; temporary_spec[FOLLOW_NEXT+:LH] = prepared_next;
-                    sw_en <= 1; sw_address <= SA'(member_row[31:0]); sw_data <= temporary_spec;
-                    state <= S_PREP_LINK_NEXT;
-                end
-                S_PREP_LINK_NEXT: begin cursor <= cursor-1'b1; state <= S_PREP_LINK; end
                 S_PREP_REQUEST: begin
                     temporary_request = 0; temporary_request[R_GEN+:32] = 1;
                     temporary_request[R_NEXT+:H] = NO_REQUEST; temporary_request[R_PREV+:H] = NO_REQUEST;
@@ -814,7 +741,7 @@ module transition_processor #(
                     if (!loop_stream_read && !loop_stream_valid) state <= S_DIRECT_SCAN;
                 end
                 S_DIRECT_SCAN: begin
-                    if (!absolute_valid) begin component_start <= 0; state <= S_COMPONENT; end
+                    if (!absolute_valid) begin order_cursor <= 0; state <= S_ORDER; end
                     else begin
                         request_cursor <= 32'(absolute_index); absolute_to_visit[absolute_index] <= 0;
                         read_request(32'(absolute_index), S_DIRECT_CHECK);
@@ -854,104 +781,58 @@ module transition_processor #(
                     write_request(loser_slot, terminal(request_row, SUPERSEDED, OK, frame));
                     unlink(loser_slot, request_row, offer_return);
                 end
-                S_COMPONENT: begin
-                    if (component_start == member_count) begin cursor <= 0; state <= S_FINAL; end
-                    else begin member_cursor <= component_start; state <= S_COMPONENT_END; end
+                S_ORDER: begin
+                    if (order_cursor == order_count) state <= S_FINAL;
+                    else read_order(order_cursor, S_ORDER_SLOT);
                 end
-                S_COMPONENT_END: read_member(member_cursor, S_COMPONENT_END_CHECK);
-                S_COMPONENT_END_CHECK: begin
-                    if (member_row[32]) begin
-                        component_end <= member_cursor+1'b1;
-                        member_cursor <= component_start;
-                        state <= member_cursor == component_start ? S_FIRST_MEMBER : S_FIRST;
-                    end else begin member_cursor <= member_cursor+1'b1; state <= S_COMPONENT_END; end
+                S_ORDER_SLOT: begin
+                    target_slot <= 32'(order_slot);
+                    pulse_ready <= 0; pulse_masked <= 0;
+                    read_loop(32'(order_slot), 0, 1, S_ORDER_APPLY);
                 end
-                S_FIRST: begin
-                    if (member_cursor == component_end) begin member_cursor <= component_start; state <= S_SECOND; end
-                    else read_member(member_cursor, S_FIRST_MEMBER);
+                S_ORDER_APPLY: begin
+                    if (!loop_row[INTENT_VALID]) state <= S_ORDER_NATURAL;
+                    else begin apply_return <= S_ORDER_NATURAL; state <= S_APPLY; end
                 end
-                S_FIRST_MEMBER: begin
-                    target_slot <= member_row[31:0];
-                    read_loop(member_row[31:0], 0, 1, S_FIRST_APPLY);
-                end
-                S_FIRST_APPLY: begin
-                    if (!loop_row[INTENT_VALID]) begin
-                        if (!at_end(loop_row)) state <= S_FIRST_INHERIT;
-                        else begin natural_return <= S_FIRST_INHERIT; state <= S_NATURAL; end
-                    end else begin apply_return <= S_FIRST_NATURAL; state <= S_APPLY; end
-                end
-                S_FIRST_NATURAL: begin
-                    if (!at_end(loop_row)) state <= S_FIRST_INHERIT;
-                    else begin natural_return <= S_FIRST_INHERIT; state <= S_NATURAL; end
-                end
-                S_FIRST_INHERIT: begin
-                    if (spec_row[SPEC_SOURCE_VALID] && delivered[spec_row[SPEC_SOURCE+:SA]]
-                        && !masked[target_slot[SA-1:0]] && !delivered[target_slot[SA-1:0]])
-                        ready_pulses[target_slot[SA-1:0]] <= 1;
-                    if (component_end == component_start+1'b1) begin
-                        if (spec_row[SPEC_SOURCE_VALID] && delivered[spec_row[SPEC_SOURCE+:SA]]
-                            && loop_row[HEAD_SYNC+:H] != NO_REQUEST) begin
-                            react_source <= spec_row[SPEC_SOURCE+:32];
-                            request_cursor <= 32'(loop_row[HEAD_SYNC+:H]);
-                            react_return <= S_SINGLE_REACT_DONE; state <= S_REACT;
-                        end else state <= S_FIND_PULSE;
-                    end else begin member_cursor <= member_cursor+1'b1; state <= S_FIRST; end
-                end
-                S_SINGLE_REACT_DONE: state <= S_FIND_PULSE;
-                S_SECOND: begin
-                    if (member_cursor == component_end) state <= S_FIND_PULSE;
-                    else read_member(member_cursor, S_SECOND_MEMBER);
-                end
-                S_SECOND_MEMBER: begin
-                    target_slot <= member_row[31:0];
-                    read_loop(member_row[31:0], 0, 1, S_SECOND_REACT);
-                end
-                S_SECOND_REACT: begin
-                    if (spec_row[SPEC_SOURCE_VALID] && delivered[spec_row[SPEC_SOURCE+:SA]]) begin
+                S_ORDER_NATURAL: begin natural_return <= S_ORDER_INHERIT; state <= S_NATURAL; end
+                S_ORDER_INHERIT: begin
+                    if (spec_row[SPEC_SOURCE_VALID] && spec_row[SPEC_SOURCE+:32] != target_slot
+                        && delivered[spec_row[SPEC_SOURCE+:SA]]) begin
+                        if (!pulse_masked) pulse_ready <= 1;
+                        follower_visits <= follower_visits+1'b1;
                         react_source <= spec_row[SPEC_SOURCE+:32];
-                        if (loop_row[HEAD_SYNC+:H] == NO_REQUEST) begin natural_return <= S_SECOND_NEXT; state <= S_NATURAL; end
-                        else begin react_return <= S_SECOND_NEXT; request_cursor <= 32'(loop_row[HEAD_SYNC+:H]); state <= S_REACT; end
-                    end else state <= S_SECOND_NEXT;
+                        if (loop_row[HEAD_SYNC+:H] == NO_REQUEST) state <= S_ORDER_PULSE;
+                        else begin
+                            request_cursor <= 32'(loop_row[HEAD_SYNC+:H]);
+                            react_return <= S_ORDER_PULSE; state <= S_REACT;
+                        end
+                    end else state <= S_ORDER_PULSE;
                 end
-                S_SECOND_NEXT: begin member_cursor <= member_cursor+1'b1; state <= S_SECOND; end
-                S_FIND_PULSE: begin
-                    if (!ready_valid) begin component_start <= component_end; state <= S_COMPONENT; end
+                S_ORDER_PULSE: begin
+                    if (!pulse_ready) state <= S_ORDER_NEXT;
+                    else if (event_count == event_limit) reply(CAPACITY, 0);
                     else begin
-                        target_slot <= 32'(ready_index); pulse_slot <= 32'(ready_index);
-                        ready_pulses[ready_index] <= 0; delivered[ready_index] <= 1;
+                        delivered[target_slot[SA-1:0]] <= 1;
                         pulse_deliveries <= pulse_deliveries+1'b1;
-                        read_loop(32'(ready_index), 0, 1, S_PULSE_EMIT);
+                        temporary_loop = loop_row;
+                        temporary_loop[LAST_VALID] = 1; temporary_loop[LAST_PULSE+:64] = frame;
+                        loop_row <= temporary_loop; write_loop(target_slot, temporary_loop);
+                        emit_event(2, OP_STOP, 0, 0);
+                        state <= S_PULSE_EMIT;
                     end
                 end
                 S_PULSE_EMIT: begin
-                    if (event_count == event_limit) reply(CAPACITY, 0);
-                    else begin
-                        temporary_loop = loop_row;
-                        temporary_loop[LAST_VALID] = 1; temporary_loop[LAST_PULSE+:64] = frame;
-                        write_loop(target_slot, temporary_loop);
-                        emit_event(2, OP_STOP, 0, 0);
-                        follow_cursor <= spec_row[FOLLOW_HEAD+:LH]; state <= S_FOLLOW;
-                    end
+                    if (spec_row[SPEC_SOURCE_VALID] && spec_row[SPEC_SOURCE+:32] == target_slot) begin
+                        follower_visits <= follower_visits+1'b1;
+                        react_source <= target_slot;
+                        if (loop_row[HEAD_SYNC+:H] == NO_REQUEST) state <= S_ORDER_NEXT;
+                        else begin
+                            request_cursor <= 32'(loop_row[HEAD_SYNC+:H]);
+                            react_return <= S_ORDER_NEXT; state <= S_REACT;
+                        end
+                    end else state <= S_ORDER_NEXT;
                 end
-                S_FOLLOW: begin
-                    if (follow_cursor == NO_FOLLOWER) state <= S_FIND_PULSE;
-                    else begin
-                        target_slot <= 32'(follow_cursor);
-                        read_loop(32'(follow_cursor), 0, 1, S_FOLLOW_REACT);
-                    end
-                end
-                S_FOLLOW_REACT: begin
-                    follower_visits <= follower_visits+1'b1;
-                    follow_next <= spec_row[FOLLOW_NEXT+:LH];
-                    if (!masked[target_slot[SA-1:0]] && !delivered[target_slot[SA-1:0]])
-                        ready_pulses[target_slot[SA-1:0]] <= 1;
-                    react_source <= pulse_slot;
-                    if (loop_row[HEAD_SYNC+:H] == NO_REQUEST) begin natural_return <= S_FOLLOW_NEXT; state <= S_NATURAL; end
-                    else begin
-                        react_return <= S_FOLLOW_NEXT; request_cursor <= 32'(loop_row[HEAD_SYNC+:H]); state <= S_REACT;
-                    end
-                end
-                S_FOLLOW_NEXT: begin follow_cursor <= follow_next; state <= S_FOLLOW; end
+                S_ORDER_NEXT: begin order_cursor <= order_cursor+1'b1; state <= S_ORDER; end
                 S_REACT: begin
                     if (request_cursor == 32'(NO_REQUEST)) state <= S_REACT_APPLY;
                     else read_request(request_cursor, S_REACT_CHECK);
@@ -962,9 +843,8 @@ module transition_processor #(
                     if (request_row[R_VALID] && request_row[R_OUTCOME+:3] == 0
                         && request_row[R_EFFECTIVE+:64] <= frame
                         && request_row[R_TARGET+:32] == target_slot
-                        && !request_eligible && request_row[R_TICKS]
+                        && request_row[R_TICKS]
                         && request_row[R_SOURCE+:32] == react_source) begin
-                        eligible[request_cursor[PA-1:0]] <= 1;
                         if (request_row[R_REMAINING+:64] != 0) begin
                             temporary_request = request_row;
                             temporary_request[R_REMAINING+:64] = request_row[R_REMAINING+:64]-1'b1;
@@ -996,11 +876,11 @@ module transition_processor #(
                         if (planned_event) emit_event(0, request_row[R_OP+:2], request_row[R_RETRIGGER], request_row[R_POSITION+:64]);
                         stopping <= planned_stop;
                         if (planned_stop) begin
-                            masked[target_slot[SA-1:0]] <= 1; ready_pulses[target_slot[SA-1:0]] <= 0;
+                            pulse_masked <= 1; pulse_ready <= 0;
                             stop_sequence <= request_row[R_SEQUENCE+:64];
                         end else if (planned_pulse) begin
-                            masked[target_slot[SA-1:0]] <= 0;
-                            if (!delivered[target_slot[SA-1:0]]) ready_pulses[target_slot[SA-1:0]] <= 1;
+                            pulse_masked <= 0;
+                            if (!delivered[target_slot[SA-1:0]]) pulse_ready <= 1;
                         end
                         unlink(apply_slot, request_row, S_APPLY_UNLINK_DONE);
                     end
@@ -1043,7 +923,7 @@ module transition_processor #(
                         temporary_loop = loop_row;
                         temporary_loop[POSITION+:64] = 0; temporary_loop[CYCLES+:64] = loop_row[CYCLES+:64]+1'b1;
                         temporary_loop[DISCONT] = 1;
-                        if (!delivered[target_slot[SA-1:0]]) ready_pulses[target_slot[SA-1:0]] <= 1;
+                        if (!delivered[target_slot[SA-1:0]]) pulse_ready <= 1;
                         loop_row <= temporary_loop; write_loop(target_slot, temporary_loop);
                         emit_event(1, OP_STOP, 0, 0); state <= natural_return;
                     end
@@ -1088,5 +968,5 @@ module transition_processor #(
         end
     end
 
-    wire unused_reserved_bits = &{1'b0, payload, member_row, spec_row, loop_row, request_row};
+    wire unused_reserved_bits = &{1'b0, payload, order_slot, spec_row, loop_row, request_row};
 endmodule
