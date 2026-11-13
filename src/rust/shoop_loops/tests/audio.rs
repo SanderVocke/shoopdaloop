@@ -137,7 +137,9 @@ fn oracle(smooth: u32) -> [[f32; 2]; 40] {
             let weight = elapsed as f32 / smooth as f32;
             elapsed += 1;
             for channel in 0..2 {
-                output[channel] = anchor[channel] * (1. - weight) + gained[channel] * weight;
+                output[channel] = (f64::from(anchor[channel])
+                    + (f64::from(gained[channel]) - f64::from(anchor[channel])) * f64::from(weight))
+                    as f32;
             }
         } else {
             *output = gained;

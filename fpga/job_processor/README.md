@@ -66,19 +66,31 @@ preserving the order of each rounding stage. Arithmetic serializes two reads
 on the existing scratch port and reuses the registered multiplier.
 
 Smoothing retains last output, anchor, elapsed count and active ramp duration for
-each history index (bounded by BUFFERS). Restart copies the last output to the
-anchor and latches the next duration. For each ramping sample it computes the
-Q8.24 ratio `elapsed/duration`, then `anchor*(1-weight) + raw*weight`, rounding
-each product before saturating addition. This path reuses the restoring divider
-once per ramping sample and the shared multiplier twice. It favors a direct
-production comparison over throughput. Ended/disabled smoothing skips division;
-stopped playback clears its history. A changed duration applies at the next
-restart. Configuration writes preserve history; reset clears it.
+each history index (bounded by BUFFERS). The four words live in synchronous RAM;
+a validity bit per index makes reset constant-time without resetting the RAM.
+Each job loads one history, processes its samples in local registers and commits
+its final history. Restart latches the previous output as anchor and the next
+duration. A changed duration applies at the next restart; stopped playback clears
+its history. Configuration writes preserve history.
 
-The persistent history arrays add four 32-bit words per prepared history index.
+The shared divider initializes a Q0.24 weight and quotient/remainder step once
+per active smoothing job. Per-sample addition and carry generate exactly
+`floor(2^24 * elapsed / duration)` without division. Durations remain arbitrary,
+including lengths shorter than Q and lengths that cross quantum boundaries.
+Each active sample uses the shared multiplier once to evaluate
+`anchor + trunc0((raw - anchor) * weight / 2^24)`, keeping the signed difference
+wide and clamping only the final result. At the end of the ramp, samples pass
+through exactly. This changes fixed-point rounding from the previous two-product
+crossfade; production Rust uses the same operation.
+
 The application compiler uses a stable index per prepared playback channel.
-Rust/Marlin tests compare this path directly to the production Q8.24 renderer,
-including 3/144-frame ramps, short loops and stop/restart.
+Rust/Marlin tests compare to the production renderer. The independent smoothing
+regression covers signed extremes, 0/1/3/31/32/33/144/UINT32_MAX durations,
+interleaved histories, stop/restart, changed durations, reset and short quanta:
+
+```sh
+python fpga/job_processor/simulate_smoothing.py
+```
 
 ### Streaming gain and mix
 

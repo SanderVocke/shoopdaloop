@@ -25,6 +25,8 @@ pub trait Sample:
     const ONE: Self;
     fn mix(self, other: Self) -> Self;
     fn multiply(self, gain: Self) -> Self;
+    /// Blend using a weight in [ZERO, ONE], without clipping the difference.
+    fn crossfade(self, target: Self, weight: Self) -> Self;
     fn from_f32(value: f32) -> Self;
     fn to_f32(self) -> f32;
     fn from_bits(bits: u32) -> Self;
@@ -74,6 +76,9 @@ impl Sample for f32 {
     #[inline]
     fn multiply(self, gain: Self) -> Self {
         self * gain
+    }
+    fn crossfade(self, target: Self, weight: Self) -> Self {
+        (f64::from(self) + (f64::from(target) - f64::from(self)) * f64::from(weight)) as f32
     }
     fn from_f32(value: f32) -> Self {
         value
@@ -148,6 +153,12 @@ impl Sample for Q824 {
     #[inline]
     fn multiply(self, gain: Self) -> Self {
         Self::from_wide(i64::from(self.0) * i64::from(gain.0) / i64::from(Self::ONE.0))
+    }
+    fn crossfade(self, target: Self, weight: Self) -> Self {
+        let difference = i64::from(target.0) - i64::from(self.0);
+        Self::from_wide(
+            i64::from(self.0) + difference * i64::from(weight.0) / i64::from(Self::ONE.0),
+        )
     }
     fn from_f32(value: f32) -> Self {
         Self((f64::from(value) * f64::from(Self::ONE.0)) as i32)
@@ -301,6 +312,21 @@ pub fn gain_each<S: Sample>(source: &[S], target: &mut [S], gains: &[S]) {
 mod tests {
     use super::*;
     use shoop_wasm_test_support::shoop_test;
+
+    #[shoop_test]
+    fn crossfades_keep_full_scale_differences_and_round_once() {
+        let low = Q824(i32::MIN);
+        let high = Q824(i32::MAX);
+        let half = Q824(Q824::ONE.0 / 2);
+        assert_eq!(low.crossfade(high, Q824::ZERO), low);
+        assert_eq!(low.crossfade(high, Q824::ONE), high);
+        assert_eq!(low.crossfade(high, half), Q824(-1));
+        assert_eq!(high.crossfade(low, half), Q824(0));
+        assert_eq!(Q824(1).crossfade(Q824(-1), half), Q824(0));
+        assert_eq!(Q824(-1).crossfade(Q824(1), half), Q824(0));
+        assert_eq!((-f32::MAX).crossfade(f32::MAX, 0.5), 0.);
+        assert_eq!(1f32.crossfade(-1., 0.5), 0.);
+    }
 
     #[shoop_test]
     fn fixed_arithmetic_keeps_sign_and_each_saturation_point() {
