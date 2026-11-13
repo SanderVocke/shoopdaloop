@@ -619,15 +619,15 @@
     "status": "in_progress",
     "pull_request": "https://github.com/SanderVocke/shoopdaloop/pull/982",
     "branch_pushed": true,
-    "ci": "pending_after_synthesis_stage_split",
+    "ci": "pending_after_demo_stage_split",
     "automated_review": "checked_no_feedback_submitted",
-    "prior_ci_source": "8a2adb2573cbc93ad2e494246565db07fe958100",
+    "prior_ci_source": "98abb0301e12da27d0ffd412788c6be1a45badb9",
     "prior_ci": {
-      "passed": 13,
+      "passed": 14,
       "cancelled": 1,
-      "reason": "q32 inference plus mapping exceeded 45-minute job limit"
+      "reason": "Demo inference plus mapping exceeded 45-minute job limit"
     },
-    "expected_ci_checks": 15
+    "expected_ci_checks": 16
   },
   "toolchain": {
     "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",

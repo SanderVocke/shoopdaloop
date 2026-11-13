@@ -201,11 +201,11 @@ jobs:
   audio-synthesis:
     name: Audio I/O lint and synthesis (${{ matrix.target }})
     runs-on: ubuntu-24.04
-    timeout-minutes: ${{ matrix.target == 'map' && 90 || 45 }}
+    timeout-minutes: ${{ contains(matrix.target, 'map') && 90 || 45 }}
     strategy:
       fail-fast: false
       matrix:
-        target: [q16, q32, q64, map, demo, media]
+        target: [q16, q32, q64, map, demo, demo-map, media]
     steps:
       - uses: actions/checkout@v7
       - name: Install RTL tools
@@ -240,9 +240,12 @@ jobs:
       - name: Map complete audio top
         if: matrix.target == 'map'
         run: python3 fpga/audio_io/check.py --mapping-only
-      - name: Check prepared demo synthesis
+      - name: Check prepared demo inference
         if: matrix.target == 'demo'
-        run: python3 fpga/audio_io/check.py --demo --output work/audio-demo-synthesis
+        run: python3 fpga/audio_io/check.py --demo --generic-only --output work/audio-demo-synthesis
+      - name: Map prepared demo
+        if: matrix.target == 'demo-map'
+        run: python3 fpga/audio_io/check.py --demo --mapping-only --output work/audio-demo-synthesis
       - name: Check media ownership synthesis
         if: matrix.target == 'media'
         run: bash fpga/media_store/check.sh work/media-synthesis
