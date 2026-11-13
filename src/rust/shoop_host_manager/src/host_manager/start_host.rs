@@ -80,6 +80,7 @@ pub(super) struct Dialog {
     pub pending: bool,
     pub error: Option<String>,
     name: String,
+    backend: shoop_app_api::AudioBackendKind,
     driver: AudioDriverKind,
     jack_client_name: String,
     device_defaults: bool,
@@ -114,6 +115,7 @@ impl Default for Dialog {
             pending: false,
             error: None,
             name: "ShoopDaLoop".into(),
+            backend: Default::default(),
             driver: if cfg!(feature = "cpal") {
                 AudioDriverKind::Cpal
             } else if cfg!(feature = "jack") {
@@ -281,12 +283,11 @@ impl Dialog {
                 buffer_size: self.buffer_size,
             }),
             AudioDriverKind::WebAudio => anyhow::bail!("Web Audio is unavailable in native hosts"),
-            AudioDriverKind::Simulated => {
-                anyhow::bail!("a simulated clock is unavailable in native hosts")
-            }
+            AudioDriverKind::Simulated => AudioDriverConfig::Simulated(Default::default()),
         };
         let config = HostConfig {
             settings: HostSettings {
+                backend: self.backend,
                 driver,
                 pools: self.pools.clone(),
                 processors: self.processors,
@@ -313,6 +314,33 @@ impl Dialog {
             .collapsible(false)
             .show(context, |ui| {
                 ui.add_enabled_ui(!self.pending, |ui| {
+                    #[cfg(feature = "fpga-sim")]
+                    {
+                        let old = self.backend;
+                        egui::ComboBox::from_label("Audio backend")
+                            .selected_text(self.backend.label())
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut self.backend,
+                                    shoop_app_api::AudioBackendKind::NewEngine,
+                                    "Native",
+                                );
+                                ui.selectable_value(
+                                    &mut self.backend,
+                                    shoop_app_api::AudioBackendKind::FpgaRtlSim,
+                                    "FPGA RTL simulation",
+                                );
+                            });
+                        if old != self.backend {
+                            self.driver =
+                                if self.backend == shoop_app_api::AudioBackendKind::FpgaRtlSim {
+                                    AudioDriverKind::Simulated
+                                } else {
+                                    AudioDriverKind::Dummy
+                                };
+                        }
+                    }
+
                     egui::ScrollArea::vertical()
                         .id_salt("new_host_form")
                         .max_height((context.viewport_rect().height() - 150.0).max(220.0))
@@ -369,6 +397,7 @@ impl Dialog {
                     .selected_text(match self.driver {
                         AudioDriverKind::Cpal => "System audio (CPAL)",
                         AudioDriverKind::Jack => "JACK",
+                        AudioDriverKind::Simulated => "Simulated clock (unpaced)",
                         _ => "Dummy",
                     })
                     .show_ui(ui, |ui| {
@@ -385,6 +414,12 @@ impl Dialog {
                         .response
                         .on_disabled_hover_text("JACK is unavailable in this build");
                         ui.selectable_value(&mut self.driver, AudioDriverKind::Dummy, "Dummy");
+                        #[cfg(feature = "fpga-sim")]
+                        ui.selectable_value(
+                            &mut self.driver,
+                            AudioDriverKind::Simulated,
+                            "Simulated clock (unpaced)",
+                        );
                     });
                 if previous != self.driver && self.driver == AudioDriverKind::Cpal {
                     self.refresh_devices();

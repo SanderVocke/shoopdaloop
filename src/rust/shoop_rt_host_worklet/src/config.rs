@@ -253,6 +253,7 @@ impl WorkletConfig {
         }
         Ok(Self {
             engine: EngineDescription {
+                audio_backend: shoop_rt_protocol::AudioBackendKind::NewEngine,
                 audio_render_mode: shoop_rt_engine::AudioRenderMode::Current,
                 audio_bench_only: false,
                 history,

@@ -7,6 +7,7 @@ pub mod config;
 pub mod connection;
 pub mod deployment;
 pub mod engine;
+pub mod fpga;
 pub mod host_graph;
 pub mod launch;
 pub mod logging;

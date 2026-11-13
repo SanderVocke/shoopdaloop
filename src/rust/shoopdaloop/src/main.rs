@@ -2433,7 +2433,9 @@ impl Runtime {
             settings,
             args,
             |driver, pools, transport| {
-                engine_backend::start_selected_with_processors(
+                engine_backend::start_backend(
+                    args.selected_audio_backend(settings)
+                        .map_err(anyhow::Error::msg)?,
                     driver,
                     pools,
                     transport,
@@ -2519,6 +2521,9 @@ impl Runtime {
             .unwrap()
             .enable_audio_driver_switching(
                 shoop_app_api::HostSettings {
+                    backend: args
+                        .selected_audio_backend(settings)
+                        .map_err(anyhow::Error::msg)?,
                     driver: configured_driver,
                     pools,
                     processors: args.configured_processors(settings)?,
@@ -2536,7 +2541,7 @@ impl Runtime {
                 startup_warnings,
             },
             graph,
-            Some(driver),
+            driver,
         )?;
         let handle = runtime.handle();
         let preview_player = native_preview::NativePreviewPlayer::new(handle.clone())?;
@@ -3240,6 +3245,8 @@ type BrowserCatalogCompletion = (
 #[cfg(target_arch = "wasm32")]
 impl Runtime {
     fn new(settings: &shoop_settings::SettingsSnapshot, args: &AppArgs) -> anyhow::Result<Self> {
+        args.selected_audio_backend(settings)
+            .map_err(anyhow::Error::msg)?;
         args.selected_engine_transport(settings)?;
         anyhow::ensure!(!args.worker, "Worker mode was retired. The browser session service runs on the main thread and renders in an AudioWorklet.");
         let (midi, midi_service) = browser_midi::BrowserMidiController::new()?;
@@ -3723,6 +3730,9 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
     }
     let config = shoop_host::config::HostConfig {
         settings: shoop_host::config::HostSettings {
+            backend: args
+                .selected_audio_backend(&settings)
+                .map_err(anyhow::Error::msg)?,
             processors: args.configured_processors(&settings)?,
             driver: args
                 .configured_audio_driver(&settings)
@@ -6583,3 +6593,6 @@ mod tests {
         }
     }
 }
+
+#[cfg(all(test, feature = "fpga-sim", target_os = "linux"))]
+mod fpga_tests;

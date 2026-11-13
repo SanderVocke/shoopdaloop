@@ -14,11 +14,29 @@ on:
       - 'src/rust/rt_runtime/**'
       - 'src/rust/shoop_loops/**'
       - 'src/rust/shoop_rt_engine/**'
+      - 'src/rust/rt_fpga_adapter/**'
+      - 'src/rust/rt_fpga_sim/**'
+      - 'src/rust/shoop_rt_host_fpga_sim/**'
+      - 'src/rust/shoop_host/**'
+      - 'src/rust/shoop_host_manager/**'
+      - 'src/rust/shoopdaloop/**'
+      - 'src/rust/shoop_app_api/**'
+      - 'src/rust/shoop_rt_protocol/**'
+      - 'src/rust/shoop_app_protocol/**'
+      - 'src/rust/shoop_egui/**'
+      - 'scripts/build_verilator.sh'
+      - 'scripts/check_dependency_boundaries.py'
+      - 'Cargo.lock'
+      - 'PLAN_FPGA_RTL_BACKEND.md'
       - '.github/workflows/fpga_simulation.yml'
   push:
     branches: [master, proto/fpga-rust-reference]
     paths:
       - 'fpga/**'
+      - 'scripts/build_verilator.sh'
+      - 'src/rust/shoop_rt_host_fpga_sim/**'
+      - 'src/rust/shoop_host/**'
+      - 'src/rust/shoopdaloop/**'
       - '.github/workflows/fpga_simulation.yml'
   workflow_dispatch:
 
@@ -59,13 +77,7 @@ jobs:
           key: verilator-8ff77e9d47351b0a59114929880687839a51840b-ubuntu-24.04
       - name: Build Verilator 5.032
         if: steps.verilator.outputs.cache-hit != 'true'
-        run: |
-          git clone --depth 1 --branch v5.032 https://github.com/verilator/verilator.git work/verilator
-          test "$(git -C work/verilator rev-parse HEAD)" = 8ff77e9d47351b0a59114929880687839a51840b
-          cd work/verilator
-          autoconf
-          ./configure
-          make -C src -j2 opt
+        run: bash scripts/build_verilator.sh
       - name: Select Verilator
         run: |
           echo "$PWD/work/verilator/bin" >> "$GITHUB_PATH"
@@ -152,13 +164,7 @@ jobs:
           key: verilator-8ff77e9d47351b0a59114929880687839a51840b-ubuntu-24.04
       - name: Build Verilator 5.032
         if: steps.verilator.outputs.cache-hit != 'true'
-        run: |
-          git clone --depth 1 --branch v5.032 https://github.com/verilator/verilator.git work/verilator
-          test "$(git -C work/verilator rev-parse HEAD)" = 8ff77e9d47351b0a59114929880687839a51840b
-          cd work/verilator
-          autoconf
-          ./configure
-          make -C src -j2 opt
+        run: bash scripts/build_verilator.sh
       - name: Select Verilator
         run: echo "$PWD/work/verilator/bin" >> "$GITHUB_PATH"
       - name: Build the realistic timing model
@@ -227,13 +233,7 @@ jobs:
           key: verilator-8ff77e9d47351b0a59114929880687839a51840b-ubuntu-24.04
       - name: Build synthesis Verilator 5.032
         if: steps.verilator.outputs.cache-hit != 'true'
-        run: |
-          git clone --depth 1 --branch v5.032 https://github.com/verilator/verilator.git work/verilator
-          test "$(git -C work/verilator rev-parse HEAD)" = 8ff77e9d47351b0a59114929880687839a51840b
-          cd work/verilator
-          autoconf
-          ./configure
-          make -C src -j2 opt
+        run: bash scripts/build_verilator.sh
       - name: Select synthesis Verilator
         run: echo "$PWD/work/verilator/bin" >> "$GITHUB_PATH"
       - name: Check complete audio top variant
@@ -270,3 +270,50 @@ jobs:
             work/media-synthesis/*.log
             work/media-synthesis/*ecp5.json
           if-no-files-found: warn
+
+  rtl-host:
+    name: Regular FPGA RTL host and application
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      RUSTFLAGS: -D warnings
+      CARGO_BUILD_JOBS: "2"
+      RUST_TEST_THREADS: "2"
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: production-fpga-host
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes autoconf flex bison libfl-dev zlib1g-dev g++ pkg-config libasound2-dev libjack-jackd2-dev libudev-dev libclang-dev libgl1-mesa-dev libx11-dev libxkbcommon-dev libwayland-dev
+      - name: Cache Verilator 5.032
+        id: verilator
+        uses: actions/cache@v4
+        with:
+          path: work/verilator
+          key: verilator-8ff77e9d47351b0a59114929880687839a51840b-ubuntu-24.04
+      - name: Build Verilator 5.032
+        if: steps.verilator.outputs.cache-hit != 'true'
+        run: bash scripts/build_verilator.sh
+      - name: Select Verilator
+        run: echo "$PWD/work/verilator/bin" >> "$GITHUB_PATH"
+      - name: Check default dependency isolation
+        run: |
+          cargo tree --locked -p shoop_host -p shoopdaloop -e normal,build > default-tree.txt
+          if grep -i marlin default-tree.txt; then exit 1; fi
+          python3 scripts/check_dependency_boundaries.py --package shoop_rt_host_fpga_sim --package shoop_host --package shoopdaloop
+      - name: Build regular feature-enabled binaries
+        run: cargo build --locked -p shoop_host -p shoopdaloop --features fpga-sim
+      - name: Check RTL adapter, application replay and storage contracts
+        run: cargo test --locked -p shoop_rt_host_fpga_sim --features sim --tests
+      - name: Check standalone host, both carriers and cold readiness
+        run: cargo test --locked -p shoop_host --features fpga-sim --test fpga_rtl
+      - name: Check normal in-process application
+        run: |
+          cargo test --locked -p shoopdaloop --features fpga-sim fpga_tests::

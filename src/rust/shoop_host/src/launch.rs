@@ -6,7 +6,7 @@ use std::{
     io::{Read, Write},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
-    sync::mpsc,
+    sync::{mpsc, Arc, Mutex},
     time::Duration,
 };
 
@@ -112,8 +112,33 @@ pub fn spawn(
     let mut command = Command::new(host_executable);
     command.arg("--launch-stdin");
     independent(&mut command);
-    command.stdin(Stdio::piped()).stdout(Stdio::piped());
+    command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     let mut child = command.spawn().context("start independent session host")?;
+    let mut stderr = child
+        .stderr
+        .take()
+        .context("host diagnostic pipe unavailable")?;
+    let diagnostics = Arc::new(Mutex::new(Vec::new()));
+    let tail = Arc::clone(&diagnostics);
+    let (diagnostics_sent, diagnostics_received) = mpsc::sync_channel(1);
+    std::thread::spawn(move || {
+        let mut buffer = [0; 4096];
+        while let Ok(count) = stderr.read(&mut buffer) {
+            if count == 0 {
+                break;
+            }
+            let mut tail = tail.lock().unwrap();
+            tail.extend_from_slice(&buffer[..count]);
+            if tail.len() > 65536 {
+                let excess = tail.len() - 65536;
+                tail.drain(..excess);
+            }
+        }
+        let _ = diagnostics_sent.send(());
+    });
     let result = (|| -> Result<Target> {
         let stdin = child
             .stdin
@@ -136,7 +161,7 @@ pub fn spawn(
             let _ = sender.send(result);
         });
         let mut target = receiver
-            .recv_timeout(Duration::from_secs(12))
+            .recv_timeout(crate::fpga::startup_timeout(config.backend))
             .context("host readiness timed out")??;
         ensure!(
             target.process == shoop_host_processes::identity(child.id())?
@@ -162,8 +187,15 @@ pub fn spawn(
         Ok(target) => Ok((child, target)),
         Err(error) => {
             let _ = child.kill();
-            let _ = child.wait();
-            Err(error)
+            let status = child.wait();
+            let _ = diagnostics_received.recv_timeout(Duration::from_secs(1));
+            let diagnostics = diagnostics.lock().unwrap();
+            Err(error).with_context(|| {
+                format!(
+                    "host startup failed ({status:?}): {}",
+                    String::from_utf8_lossy(&diagnostics).trim()
+                )
+            })
         }
     }
 }
@@ -187,6 +219,29 @@ pub fn pair(
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    #[shoop_wasm_test_support::shoop_test]
+    fn inherited_stderr_does_not_block_a_failed_launch() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let host = root.path().join("host");
+        std::fs::write(
+            &host,
+            b"#!/bin/sh\nsleep 10 >/dev/null &\nprintf 'host startup diagnostic' >&2\nexit 1\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&host, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let started = std::time::Instant::now();
+        let error = super::spawn(
+            &crate::config::HostConfig::default(),
+            crate::serve::StartOptions::new().unwrap(),
+            &host,
+        )
+        .unwrap_err();
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+        assert!(format!("{error:#}").contains("host startup diagnostic"));
+    }
+
     #[cfg(unix)]
     #[shoop_wasm_test_support::shoop_test]
     fn application_bundle_aliases_find_the_real_companions() {

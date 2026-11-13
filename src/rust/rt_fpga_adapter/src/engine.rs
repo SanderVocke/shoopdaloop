@@ -30,6 +30,33 @@ use shoop_rt_engine::{
 };
 use std::time::{Duration, Instant};
 
+pub const PROFILE_MEDIA_SLOTS: u32 = 32768;
+
+pub fn profile_storage_bytes() -> u64 {
+    u64::from(PROFILE_MEDIA_SLOTS) * profile_description().quantum as u64 * 4
+}
+
+/// The profile admitted by the RTL graph consumer.
+pub fn profile_description() -> shoop_rt_engine::EngineDescription {
+    use shoop_rt_engine::{EngineDescription, HostPorts, Segment};
+    EngineDescription {
+        quantum: 32,
+        host: HostPorts::numbered(2, 2, 0),
+        segments: vec![Segment {
+            strips: 1,
+            loops: 1,
+        }],
+        buses: 1,
+        bus_channels: 2,
+        master_connections: vec![],
+        telemetry_interval_frames: 0,
+        reliable_credits: 32,
+        bulk_credits: 2,
+        pending_transitions: 16,
+        ..EngineDescription::default()
+    }
+}
+
 pub trait EngineDevice: LoopDevice {
     fn program(&mut self, image: &Image) -> Result<(), Error>;
     fn read_state(&mut self, address: u16) -> Result<Value, Error>;
@@ -115,12 +142,13 @@ pub struct Adapter<D: EngineDevice> {
 }
 impl<D: EngineDevice> Adapter<D> {
     pub fn prepare(parts: Preparation, mut device: D) -> Result<Consumer<Self>, Error> {
-        if parts.quantum.frames() != 32
-            || parts.description.host.audio_inputs.len() != 2
-            || parts.description.host.audio_outputs.len() != 2
+        let profile = profile_description();
+        if parts.quantum.frames() != profile.quantum
+            || parts.description.host.audio_inputs.len() != profile.host.audio_inputs.len()
+            || parts.description.host.audio_outputs.len() != profile.host.audio_outputs.len()
             || !parts.description.host.midi_inputs.is_empty()
             || !parts.description.host.midi_outputs.is_empty()
-            || parts.loop_limits.loop_slots != 1
+            || parts.loop_limits.loop_slots != profile.loops()
         {
             return Err(Error::InvalidConfig);
         }

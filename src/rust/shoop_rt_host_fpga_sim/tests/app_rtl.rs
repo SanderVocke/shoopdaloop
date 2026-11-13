@@ -1,6 +1,8 @@
-#![cfg(all(feature = "app", not(target_arch = "wasm32")))]
-use rt_fpga_sim::{app::Fpga, app_worker::RunMode};
+#![cfg(all(feature = "sim", target_os = "linux"))]
+mod support;
+use shoop_rt_host_fpga_sim::RunMode;
 use shoop_wasm_test_support::shoop_test;
+use support::app::Fpga;
 #[shoop_test]
 fn application_bootstraps_its_real_sync_graph_on_rtl() {
     let artifacts =
@@ -11,7 +13,7 @@ fn application_bootstraps_its_real_sync_graph_on_rtl() {
     assert!(!drivers.supported);
     assert_eq!(
         drivers.active.unwrap().configured,
-        shoop_app_api::AudioDriverConfig::Simulated
+        shoop_app_api::AudioDriverConfig::Simulated(Default::default())
     );
     assert_eq!(fpga.hardware.store_usage().slot_limit, 32768);
     assert!(fpga.app.loop_state().empty);
@@ -57,12 +59,10 @@ fn application_records_and_plays_through_rtl() {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../work/marlin-app");
     let mut fpga = Fpga::new(artifacts, RunMode::Stepped).unwrap();
     fpga.hardware.signal(true).unwrap();
-    fpga.app
-        .apply(&rt_fpga_sim::app::Action::ConnectInput)
-        .unwrap();
+    fpga.app.apply(&support::app::Action::ConnectInput).unwrap();
     fpga.app.pump(20);
     fpga.app
-        .apply(&rt_fpga_sim::app::Action::ConnectOutput)
+        .apply(&support::app::Action::ConnectOutput)
         .unwrap();
     fpga.app.pump(20);
     fpga.app.immediate().unwrap();
@@ -91,7 +91,7 @@ fn application_records_and_plays_through_rtl() {
             .flatten()
             .any(|s| s.abs() > 0.0001)
     );
-    fpga.app.apply(&rt_fpga_sim::app::Action::Details).unwrap();
+    fpga.app.apply(&support::app::Action::Details).unwrap();
     fpga.app.pump(20);
     assert!(fpga.failure.lock().unwrap().is_none());
     // Storage reports follow the native cadence of 200 ms of audio.
@@ -120,13 +120,15 @@ fn application_records_and_plays_through_rtl() {
 
 #[shoop_test]
 fn common_app_replay_matches_native_audio_and_loop_observations() {
-    use rt_fpga_sim::app::{FLOAT_MAX_ERROR, FLOAT_RMS_ERROR, Native, Trace};
+    use support::app::{FLOAT_MAX_ERROR, FLOAT_RMS_ERROR, Native, Trace};
     let artifacts =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../work/marlin-app");
     let mut fpga = Fpga::new(artifacts, RunMode::Stepped).unwrap();
     let mut native = Native::new().unwrap();
-    let trace: Trace =
-        serde_json::from_str(include_str!("../fixtures/app-sync-loop.json")).unwrap();
+    let trace: Trace = serde_json::from_str(include_str!(
+        "../../rt_fpga_sim/fixtures/app-sync-loop.json"
+    ))
+    .unwrap();
     fpga.hardware.signal(true).unwrap();
     *native.signal.borrow_mut() = true;
     let mut installed = None;
@@ -212,7 +214,7 @@ fn common_app_replay_matches_native_audio_and_loop_observations() {
 
 #[shoop_test]
 fn unpaced_worker_advances_without_clock_ticks_or_retaining_output() {
-    use rt_fpga_sim::app_worker::Worker;
+    use shoop_rt_host_fpga_sim::Worker;
     let artifacts =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../work/marlin-app");
     let prepared = Worker::prepare(artifacts, RunMode::Continuous).unwrap();
@@ -233,8 +235,8 @@ fn unpaced_worker_advances_without_clock_ticks_or_retaining_output() {
 
 #[shoop_test]
 fn application_store_holds_a_five_second_take_while_recording_another_and_reuses_it() {
-    use rt_fpga_sim::app::Action;
     use shoop_app_api::LoopMode;
+    use support::app::Action;
     let artifacts =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../work/marlin-app");
     let mut fpga = Fpga::new(artifacts, RunMode::Stepped).unwrap();
@@ -330,7 +332,7 @@ fn application_store_holds_a_five_second_take_while_recording_another_and_reuses
 
 #[shoop_test]
 fn medium_take_reports_finalization_diagnostics() {
-    use rt_fpga_sim::app::Action;
+    use support::app::Action;
     let artifacts =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../work/marlin-app");
     let mut fpga = Fpga::new(artifacts, RunMode::Stepped).unwrap();
@@ -357,7 +359,7 @@ fn medium_take_reports_finalization_diagnostics() {
 
 #[shoop_test]
 fn default_sync_settings_support_record_then_play_without_control_shortcuts() {
-    use rt_fpga_sim::app::{Action, Native};
+    use support::app::{Action, Native};
     let artifacts =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../work/marlin-app");
     let mut fpga = Fpga::new(artifacts, RunMode::Stepped).unwrap();
@@ -389,7 +391,7 @@ fn default_sync_settings_support_record_then_play_without_control_shortcuts() {
 
 #[shoop_test]
 fn app_controls_retarget_default_ramps_and_monitoring_without_recompiling() {
-    use rt_fpga_sim::app::{Action, FLOAT_MAX_ERROR, Native};
+    use support::app::{Action, FLOAT_MAX_ERROR, Native};
     let artifacts =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../work/marlin-app");
     let mut fpga = Fpga::new(artifacts, RunMode::Stepped).unwrap();
@@ -473,7 +475,7 @@ fn wait_details(fpga: &mut Fpga) {
 }
 #[shoop_test]
 fn app_client_reconnect_keeps_the_graph_and_worker_drop_closes_the_service() {
-    use rt_fpga_sim::app::Action;
+    use support::app::Action;
     let artifacts =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../work/marlin-app");
     let mut fpga = Fpga::new(artifacts, RunMode::Stepped).unwrap();
@@ -505,7 +507,7 @@ fn app_client_reconnect_keeps_the_graph_and_worker_drop_closes_the_service() {
 
 #[shoop_test]
 fn selected_waveform_refreshes_after_a_second_take() {
-    use rt_fpga_sim::app::Action;
+    use support::app::Action;
     let artifacts =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../work/marlin-app");
     let mut fpga = Fpga::new(artifacts, RunMode::Stepped).unwrap();
@@ -539,8 +541,8 @@ fn selected_waveform_refreshes_after_a_second_take() {
 
 #[shoop_test]
 fn replacing_a_scheduled_stop_cancels_it_before_the_sync_pulse() {
-    use rt_fpga_sim::app::{Action, Native};
     use shoop_app_api::LoopMode;
+    use support::app::{Action, Native};
     let artifacts =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../work/marlin-app");
     let mut fpga = Fpga::new(artifacts, RunMode::Stepped).unwrap();

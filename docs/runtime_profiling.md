@@ -350,3 +350,13 @@ publishes the same report through the engine once after activation and then ever
 200 ms of audio time, so the application's MEM headline and Memory section show
 RTL storage pressure. External engine consumers publish complete reports with
 `Observations::memory`; they replace the native Rust pool counters.
+
+### FPGA RTL simulation backend
+
+With the optional Linux `fpga-sim` feature, select `--audio-backend fpga_rtl_sim`
+in the normal application or independent host. The overlay's Audio backend
+field identifies FPGA RTL simulation; Audio driver identifies its unpaced
+Simulated clock. MEM shows physical RTL allocator pressure. Wall-clock simulation
+throughput is independent of audio time and is not a real-time driver budget.
+Runtime source/cache/tool configuration and startup commands are documented in
+[the simulator README](../src/rust/rt_fpga_sim/README.md#regular-application-backend).
