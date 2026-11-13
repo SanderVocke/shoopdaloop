@@ -278,12 +278,7 @@ impl<D: LoopDevice> LoopAdapter<D> {
                         self.metrics.image_bytes = self.metrics.instructions * 12
                             + self.metrics.state_words * 17
                             + 80 * (image.transition.limits.loop_slots as usize + 1)
-                            + image
-                                .transition
-                                .components
-                                .iter()
-                                .map(|c| c.len() * 80)
-                                .sum::<usize>()
+                            + image.transition.dependency_order.len() * 80
                             + 100;
                         self.image = Some(image);
                         self.active = plan.take();

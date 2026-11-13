@@ -37,7 +37,7 @@ pub struct Image {
 pub struct TransitionImage {
     pub description: Description,
     pub limits: Limits,
-    pub components: Vec<Vec<Identity>>,
+    pub dependency_order: Vec<Identity>,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

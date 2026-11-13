@@ -6,7 +6,7 @@ instantiations of that path. No old FPGA Rust executor is used by this runner.
 
 The version-1 scenario describes logical nodes/connections, loops/sync sources,
 media in raw Q8.24, per-quantum input, and named actions. `compile` lowers the
-production graph's ordered descriptor and production timing components into an
+production graph's ordered descriptor and production timing dependency order into an
 RTL image. Instructions, state addresses and chunk tables are outputs of that
 compilation. The program remains constant when actions or loop modes change.
 Production images describe physical chunks. With `--block-chunks 32`, the runner
@@ -48,7 +48,7 @@ The full pipeline consumes the generated image plus common input/actions. It
 independently settles transitions and executes state/jobs, real media allocation,
 cache and AXI. Compare all raw output and exported media samples, post-advance
 loop state, boundary events, pending requests and collected outcomes. Pending and
-outcome containers use name order; event order remains timing-component order.
+outcome containers use name order; event order follows the timing dependency order.
 Physical addresses/request-slot identities are not common semantic results.
 
 `collect_completed` drains the production transport's FIFO at the beginning of a
@@ -67,7 +67,7 @@ same physical/memory options. `--memory-model fixed|dramsim3`, `--word-transfers
 services. Instant mode preserves the upstream native SystemVerilog memory.
 
 The directed corpus covers ordering, clipping, stereo recording/retakes, retained
-exports, sync chains/self-sync/cycles, repeat waits, scheduling/conflicts,
+exports, sync chains/self-sync, repeat waits, scheduling/conflicts,
 cancellation, stale identities, completion credits, shared ranges and reuse.
 Seeded sessions include capture and playback. Long sessions check 1,024 playback
 quanta, 256 consecutive ramp interruptions, and 128 capture quanta followed by

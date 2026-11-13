@@ -1060,12 +1060,9 @@
       "TransitionImage": {
         "additionalProperties": false,
         "properties": {
-          "components": {
+          "dependency_order": {
             "items": {
-              "items": {
-                "$ref": "#/$defs/Identity"
-              },
-              "type": "array"
+              "$ref": "#/$defs/Identity"
             },
             "type": "array"
           },
@@ -1079,7 +1076,7 @@
         "required": [
           "description",
           "limits",
-          "components"
+          "dependency_order"
         ],
         "type": "object"
       },
@@ -2792,12 +2789,9 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "additionalProperties": false,
     "properties": {
-      "components": {
+      "dependency_order": {
         "items": {
-          "items": {
-            "$ref": "#/$defs/LoopId"
-          },
-          "type": "array"
+          "$ref": "#/$defs/LoopId"
         },
         "type": "array"
       },
@@ -2817,7 +2811,7 @@
       "format_version",
       "description",
       "limits",
-      "components"
+      "dependency_order"
     ],
     "title": "TransitionPlanImage",
     "type": "object"

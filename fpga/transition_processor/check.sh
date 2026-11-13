@@ -9,7 +9,7 @@ sources=(fpga/transition_processor/rtl/tp_ram.sv fpga/transition_processor/rtl/t
 read_command="read_verilog -sv ${sources[*]}"
 yosys -V > "$output_dir/versions.txt"
 verilator --version >> "$output_dir/versions.txt"
-for configuration in default:64:64:192 small:7:11:25 minimum:1:1:3 wide:130:130:390; do
+for configuration in default:64:64:192 small:7:11:25 minimum:1:1:3 wide:130:130:390 deployment:64:272:400; do
     IFS=: read -r name loops requests events <<< "$configuration"
     parameters="chparam -set LOOP_DEPTH $loops -set REQUEST_DEPTH $requests -set EVENT_DEPTH $events transition_processor"
     if ! verilator --lint-only --Wall --top-module transition_processor \

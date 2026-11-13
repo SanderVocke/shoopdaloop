@@ -10,14 +10,17 @@ One `PROCESS` operation resolves commands, synchronization, natural wraps,
 arbitration and ordered events, then advances clocks by one quantum. Supported
 quanta are 1, 16, 32, 64 and 128 frames. IDs carry full 32-bit slots/generations;
 requests retain completion records until collected. Absolute and source-delayed
-timing, self-sync, canonical sync cycles, repeat waiting, stop cancellation,
+timing, self-sync, acyclic sync chains, repeat waiting, stop cancellation,
 record/play/seek and checked counters retain their normal semantics. Composite
 kinds/timelines remain reserved and unsupported.
 
-Loop, request and event tables each have one authoritative bank. Prepared
-follower links, per-loop pending lists and ready masks preserve canonical ordering
+Loop, request and event tables each have one authoritative bank. The
+per-loop pending lists and a flat dependency order preserve canonical ordering
 without whole-table request searches. Each quantum clears only transient fields,
-settles in place and advances clocks. There are no observation memories,
+settles each loop once, sources before dependents, and advances clocks. Each loop
+checks whether its source emitted a pulse. External-source requests react before
+the loop's pulse is emitted; self-sync requests react afterwards. A pulse is
+emitted at most once per loop per quantum. There are no observation memories,
 candidate copies, serial tokens, retry, or atomic bank switch. Ordinary reads
 occur between processing operations. A required processing failure latches the
 first fault; partial tables/events may be read for diagnostics, but execution
@@ -43,8 +46,8 @@ signals, not a finalized ARM register map. Errors return zero payload.
 | --- | --- | --- | --- |
 | 0 | Status | Ignored | Status row |
 | 1 | Write spec | Slot / 192-bit spec | Zero |
-| 2 | Write member | Index / slot at 0, component-end at 32 | Zero |
-| 3 | Prepare | Five u32: loops, requests, events, members, quantum | Zero |
+| 2 | Write order | Index / loop slot in low u32; next u32 must be zero | Zero |
+| 3 | Prepare | Five u32: loops, requests, events, ordered loops, quantum | Zero |
 | 4 | Submit | Request-row command fields | Slot u32 at 0, generation u32 at 32 |
 | 5 | Cancel | Slot / generation low u32 | Cancelled bit at 0 |
 | 6 | Collect | Slot / generation low u32 | Terminal request, or zero |
@@ -55,9 +58,12 @@ signals, not a finalized ARM register map. Errors return zero payload.
 
 Opcodes 7, 8, 10 and 14 are unsupported. Opcode 11 is private to integrated use
 and refused in standalone mode. Configuration loads all spec slots (including
-holes) and canonical membership entries before Prepare. Prepare validates bounds,
-IDs, alignment, sources and membership coverage; it does not reconstruct the SCC
-partition. Submit/cancel/collect require idle phase. A fault prevents control
+holes) and the compiler's flat `dependency_order` before Prepare. Prepare validates
+bounds, IDs, alignment, sources, unique coverage and that each distinct source
+appears before its dependent. This rejects multi-loop cycles and reversed
+dependencies; a loop may still name itself as source. The compiler determines
+the canonical order between independent loops. Submit/cancel/collect require idle
+phase. A fault prevents control
 mutation; status/readback remain available. Reset is required to reconfigure.
 
 Codes: 0 success, 1 invalid_config, 2 capacity, 3 invalid_id, 4 duplicate_id,
@@ -106,12 +112,11 @@ existing 832-bit loop row. Those heads survive per-quantum transient-field clear
 They are private metadata, like the intent/protected fields, and do not appear in
 JSON snapshots.
 
-The uploaded spec remains 192 bits; internal spec RAM is 256 bits. Prepare places
-follower-head/next pointers at offsets `192` and `192 + L`, using
-`L = max(1, ceil(log2(LOOP_DEPTH))) + 1` bits each, with an all-ones sentinel.
-Component ID follows at `192 + 2*L`, using `max(1, ceil(log2(LOOP_DEPTH)))` bits.
-These links are derived at preparation, so the upload protocol and compiled-plan
-JSON image remain unchanged.
+Spec RAM is 192 bits per loop. The dependency-order RAM stores one loop slot per
+entry using `max(1, ceil(log2(LOOP_DEPTH)))` bits. There are no component tags,
+component boundaries or follower links. Settlement retains one delivered-pulse
+bit per loop and two pulse flags for the current loop. A pending sync list is
+visited once per quantum, so requests need no separate eligibility bitmap.
 
 An event row has frame u64 at bit 0, loop ID at bit 64, operation position u64
 at bit 128, operation at bits 192–193, retrigger at bit 194, and kind at bits
@@ -119,9 +124,10 @@ at bit 128, operation at bits 192–193, retrigger at bit 194, and kind at bits
 
 Status has frame u64 at 0, fault code at 64 (4 bits), phase at 128 (2 bits:
 0 idle, 1 executing, 2 settled, 3 faulted), configured at 136, event count u32 at
-192, and loop/request/event/member/quantum counts u32 at 256/288/320/352/384.
+192, and loop/request/event/ordered-loop/quantum counts u32 at 256/288/320/352/384.
 Three u32 diagnostics at 416/448/480 report request checks, follower visits and
-pulse deliveries for the latest process operation. There is no serial or bank
+pulse deliveries for the latest process operation. The follower-visit diagnostic
+now counts source-pulse reactions, including self-sync. There is no serial or bank
 selector. Reserved fields return zero. `tests/codec.py` decodes these rows.
 
 ## Verification
@@ -140,6 +146,22 @@ The subsystem's `check.sh` retains lint and synthesis entry points. Current
 coverage and local evidence are recorded in [the retirement ledger](../verification/MIGRATION.md)
 and [subsystem gates](../verification/subsystem-gates.json). [Historical results](HISTORY.md)
 retain the earlier reference-backed measurements; their commands are retired.
+
+Measure the transition processor alone at the 64-loop deployment capacities:
+
+```sh
+python fpga/transition_processor/measure.py --vivado /path/to/Vivado/bin/vivado \
+  --stage route --output work/vivado-transition
+```
+
+This uses the ZedBoard `xc7z020clg484-1`, 272 request slots, 400 events and a
+registered 100 MHz context. Each run freezes RTL, harness and constraint hashes,
+records capacities and compiler version, and reports core-only LUTs, flip-flops,
+BRAM equivalents and setup/hold slack. Use `--source` with frozen parent RTL to
+compare revisions under the same parameters.
+
+The [acyclic synchronization experiment](measurements/ACYCLIC_SYNC.md) records
+matched resource measurements, processing cycles and verification evidence.
 
 ## Application adapter extensions
 

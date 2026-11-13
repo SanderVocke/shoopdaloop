@@ -432,12 +432,15 @@ pub fn run_transition_oracle(case: TransitionCase) -> Result<TransitionTrace, Tr
         &topology,
     )
     .map_err(error)?;
-    let components: Vec<Vec<_>> = prepared
+    let dependency_order: Vec<_> = prepared
         .dependency_order()
         .iter()
-        .map(|id| vec![loop_id(*id)])
+        .map(|id| loop_id(*id))
         .collect();
-    assert_eq!(components, plan.components, "compiled timing order");
+    assert_eq!(
+        dependency_order, plan.dependency_order,
+        "compiled timing order"
+    );
     let mut resolver = native::Resolver::prepare(
         prepared,
         rt_runtime::Quantum::new(case.plan.description.quantum as usize)
@@ -514,10 +517,10 @@ pub fn compile(input: &TransitionPlanInput) -> Result<TransitionPlanImage, Trans
         format_version: crate::spec::FORMAT_VERSION,
         description,
         limits,
-        components: prepared
+        dependency_order: prepared
             .dependency_order()
             .iter()
-            .map(|id| vec![loop_id(*id)])
+            .map(|id| loop_id(*id))
             .collect(),
     })
 }

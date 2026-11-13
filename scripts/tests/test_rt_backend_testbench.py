@@ -86,7 +86,7 @@ class CommonContract(unittest.TestCase):
             dict(target=dict(slot=0,generation=1),sequence=1,at=0,timing=dict(kind='at'),operation=dict(kind='play',position=0,retrigger=True))])])
         image=wire.run(source,kind='transition_case',command='transition-compile',executable=self.executable)
         trace=wire.run(source,kind='transition_case',command='transition-run',executable=self.executable)
-        self.assertEqual(image['components'],[[dict(slot=0,generation=1)]])
+        self.assertEqual(image['dependency_order'],[dict(slot=0,generation=1)])
         self.assertEqual(trace['results'][0]['states'][0]['position'],32)
         for kind,value in [('transition_case',source),('transition_image',image),('transition_trace',trace)]:
             self.assertEqual(wire.run(value,kind=kind,command='roundtrip',executable=self.executable),value)

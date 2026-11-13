@@ -26,7 +26,7 @@ Production graph compilation determines ordered nodes and incoming connections.
 The RTL compiler exports that order and lowers supported node internals into
 concrete instructions, persistent state bindings and buffers. It may expand nodes
 but cannot regroup additions or combine successive gains. Timing topology uses
-the production timing compiler's canonical component order.
+the production timing compiler's canonical dependency order.
 
 ## Outputs
 
@@ -82,7 +82,7 @@ division; the difference of two i32 endpoints need not fit i32.
 | Playback | Whole-quantum chunks, multi-chunk windows, loop wrap, start/stop/retrigger and aligned seeks |
 | Controls | Unity, zero, negative/extreme gains; zero/one/short/long ramps, both slopes, interruption and target hold |
 | Scheduling | Absolute timestamps, quantum rounding, source skip counts, same-frame conflicts and retained outcomes |
-| Synchronization | Chains, self-sync, legal cycles, repeat waits and canonical pulses/wraps |
+| Synchronization | Acyclic chains, self-sync, rejected multi-loop cycles, repeat waits and canonical pulses/wraps |
 | Request lifecycle | Cancellation before application, supersession, collected/uncollected completion capacity, stale IDs |
 | Media lifetime | Read-only retained ranges, retake preserving retained content, reuse and read/write/read dependencies |
 | Shapes | Mandatory Q=32/chunk=32; valid alternate quantum/chunk ratios and small/odd physical capacities |

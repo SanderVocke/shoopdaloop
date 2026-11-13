@@ -313,21 +313,16 @@ impl<'ctx> Simulator<'ctx> {
             }
             self.command(1, i, words)?;
         }
-        let mut members = 0;
-        for component in &image.transition.components {
-            for (i, member) in component.iter().enumerate() {
-                let mut words = [0; 20];
-                words[0] = member.slot;
-                words[1] = u32::from(i + 1 == component.len());
-                self.command(2, members, words)?;
-                members += 1;
-            }
+        for (i, id) in image.transition.dependency_order.iter().enumerate() {
+            let mut words = [0; 20];
+            words[0] = id.slot;
+            self.command(2, i as u32, words)?;
         }
         let mut prepare = [0; 20];
         prepare[0] = image.transition.limits.loop_slots;
         prepare[1] = image.transition.limits.pending_requests;
         prepare[2] = image.transition.limits.events;
-        prepare[3] = members;
+        prepare[3] = image.transition.dependency_order.len() as u32;
         prepare[4] = image.program.quantum;
         self.command(3, 0, prepare)?;
         self.store_config(0, 3, Some([self.media_slots, 0, 0, 0, 0]))?;
