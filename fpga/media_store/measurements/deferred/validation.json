@@ -616,8 +616,11 @@
   },
   "native_limit": "Host startup/recovery failures occur in unchanged host code. No base-branch native rerun establishes baseline status.",
   "publication": {
-    "status": "blocked",
-    "reason": "Git has no usable GitHub credentials and connected GitHub reads time out; push, PR, remote CI and automated review remain pending."
+    "status": "in_progress",
+    "pull_request": "https://github.com/SanderVocke/shoopdaloop/pull/982",
+    "branch_pushed": true,
+    "ci": "pending",
+    "automated_review": "pending"
   },
   "toolchain": {
     "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",

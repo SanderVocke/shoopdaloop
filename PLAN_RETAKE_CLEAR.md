@@ -11,8 +11,9 @@ This plan was investigated against `proto/fpga-rust-reference` at `bc833fc310817
 ## Execution status
 
 Implementation and local FPGA validation are complete on `proto/deferred-retake-clear`.
-Push, PR creation, remote CI and automated review remain blocked: git has no usable
-GitHub credentials, and connected GitHub reads time out. The full native suite
+The branch is pushed and [PR #982](https://github.com/SanderVocke/shoopdaloop/pull/982)
+is open against `proto/fpga-rust-reference`. Remote CI and automated review
+are in progress; GitHub access is restored. The full native suite
 was run; its 18 host startup/recovery failures in unchanged host code remain
 recorded as failures. No merge has been performed.
 
@@ -235,7 +236,7 @@ Depends on all previous stages.
 - [x] Use focused tests during iteration, then run the applicable broader native regression, formatting, warning-denying builds, RTL lint and synthesis gates before publication. Follow the current repository test instructions.
 - [x] When Rust tests change, run `python3 scripts/check_shoop_test_usage.py` (not applicable: no Rust tests changed).
 - [x] Report resource/timing changes and any unqualified hardware-memory assumptions.
-- [ ] Push the feature branch and create a PR with implementation and validation evidence.
+- [x] Push the feature branch and create a PR with implementation and validation evidence.
 - [ ] Monitor CI and automated review; address failures and review feedback until resolved.
 - [x] Leave merging as a separate user decision.
 
@@ -270,7 +271,7 @@ commands are in [the deferred-reclamation evidence](fpga/media_store/measurement
 - Continuous 16-channel DRAMsim3 audio matches production media/state exactly, with no missed or discarded frames. Demo recovery passes input exhaustion, memory faults, accepted-response draining and four coordinated recoveries. Board control/watchdog/counter checks pass; board output correctness is not claimed by that measurement runner.
 - Formatting, warning-denying workspace build, generated-wrapper checks, media RTL lint and generic/ECP5 synthesis pass. Default store/media-audio mappings add 1,270/2,396 LUT4 and 881 flip-flops each, with unchanged block RAM counts (15/18). No routed Zynq timing or board-fit result is claimed.
 - The complete native suite reports 3,203 passes, 18 host startup/recovery failures and 11 skips. A focused host rerun reports seven passes, 18 failures and two skips. These failures remain unresolved; no base-branch native run establishes baseline status. No Rust tests changed.
-- Dedicated CI gates are added for deferred ownership, retirement, exhausted pools and a short large-arena regression. Remote execution and automated review are pending GitHub access; their checklist items remain open.
+- Dedicated CI gates are added for deferred ownership, retirement, exhausted pools and a short large-arena regression. Remote execution and automated review are in progress on PR #982; their checklist item remains open until checks and feedback are resolved.
 
 Implementation refinements:
 
