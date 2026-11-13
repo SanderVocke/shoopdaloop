@@ -21,8 +21,8 @@ def module(name, path):
     return result
 
 
-tp = module('tp_codec', ROOT/'fpga/transition_processor/tests/codec.py')
-sp = module('sp_codec', ROOT/'fpga/state_processor/tests/codec.py')
+tp = module('tp_codec', ROOT/'fpga/abi/transition.py')
+sp = module('sp_codec', ROOT/'fpga/abi/state.py')
 
 
 def packet(sequence=0, kind=0, opcode=0, index=0, data=0):

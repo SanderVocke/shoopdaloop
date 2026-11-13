@@ -92,7 +92,7 @@
       "result": "passed"
     }
   ],
-  "note": "Each cocotb test function bundles multiple requests or complete Rust cases.",
+  "note": "Each historical RTL test function bundles multiple requests or complete Rust cases.",
   "rust_targeted": "cargo test --locked -p rt_fpga_reference -p rt_fpga_testbench: passed",
   "wire_contract_tests": 19,
   "warning_denied_workspace_build": "passed",

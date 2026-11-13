@@ -8,7 +8,7 @@ their original workload and revision assumptions.
 
 ## Behavioral comparison
 
-The cocotb/Verilator bench uses the versioned JSON interface in
+The Python/Verilator bench uses the versioned JSON interface in
 `scripts/fpga_testbench`. Expected results come from the actual Rust executable's
 `trace` command. Python only creates stimulus, packs/unpacks the RTL ABI, drives
 handshakes, and compares results; it does not implement a second state processor.
@@ -24,7 +24,7 @@ python fpga/state_processor/simulate.py
 ```
 
 The runner builds `rt_fpga_testbench`, compiles three Verilator models, and runs
-four cocotb tests per configuration. It exits nonzero for simulator failures,
+four RTL tests per configuration. It exits nonzero for simulator failures,
 missing or skipped tests, architectural mismatches, and protocol violations.
 Set `SHOOP_FPGA_REFERENCE` to use an explicitly built reference executable instead.
 
@@ -59,7 +59,7 @@ Reset checks include retention of state/program RAM and a subsequent Rust-matche
 run from the retained state. These hardware-specific checks have explicit
 protocol expectations rather than invented Rust enum equivalents.
 
-The initial run used Verilator 5.032, cocotb 1.9.2, and seed `20261110`:
+The initial run used Verilator 5.032, historical Python harness 1.9.2, and seed `20261110`:
 
 | Program/state/job depth | Directed cases | Seeded cases | Compared quanta |
 | --- | --- | --- | --- |

@@ -9,13 +9,17 @@ on:
       - 'PLAN_RETAKE_CLEAR.md'
       - 'AUDIO_IO.md'
       - 'scripts/rt_backend_testbench/**'
+      - 'scripts/*fpga*'
+      - 'Cargo.lock'
       - 'src/rust/rt_audio_math/**'
       - 'src/rust/rt_backend_testbench/**'
+      - 'src/rust/rt_fpga_sim/**'
+      - 'src/rust/rt_fpga_testbench/**'
+      - 'third_party/marlin-verilator/**'
       - 'src/rust/rt_runtime/**'
       - 'src/rust/shoop_loops/**'
       - 'src/rust/shoop_rt_engine/**'
-      - 'src/rust/rt_fpga_adapter/**'
-      - 'src/rust/rt_fpga_sim/**'
+      - '.github/workflows/fpga_simulation.yml'
       - 'src/rust/shoop_rt_host_fpga_sim/**'
       - 'src/rust/shoop_host/**'
       - 'src/rust/shoop_host_manager/**'
@@ -24,20 +28,23 @@ on:
       - 'src/rust/shoop_rt_protocol/**'
       - 'src/rust/shoop_app_protocol/**'
       - 'src/rust/shoop_egui/**'
+      - 'src/rust/rt_fpga_adapter/**'
       - 'scripts/build_verilator.sh'
       - 'scripts/check_dependency_boundaries.py'
-      - 'Cargo.lock'
       - 'PLAN_FPGA_RTL_BACKEND.md'
-      - '.github/workflows/fpga_simulation.yml'
+      - 'PLAN_MARLIN_TESTBENCHES.md'
   push:
     branches: [master, proto/fpga-rust-reference]
     paths:
       - 'fpga/**'
+      - 'src/rust/rt_fpga_sim/**'
+      - 'src/rust/rt_fpga_testbench/**'
+      - 'third_party/marlin-verilator/**'
+      - '.github/workflows/fpga_simulation.yml'
       - 'scripts/build_verilator.sh'
       - 'src/rust/shoop_rt_host_fpga_sim/**'
       - 'src/rust/shoop_host/**'
       - 'src/rust/shoopdaloop/**'
-      - '.github/workflows/fpga_simulation.yml'
   workflow_dispatch:
 
 permissions:
@@ -48,14 +55,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  memory:
-    name: FPGA ${{ matrix.model }} memory
+  marlin:
+    name: Complete native Marlin verification
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix:
-        model: [instant, dramsim3]
+    timeout-minutes: 60
+    env:
+      RUSTFLAGS: -D warnings
+      CARGO_BUILD_JOBS: "2"
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -67,94 +76,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes autoconf flex bison libfl-dev zlib1g-dev g++ cmake patch python3-venv
           python3 -m venv .venv
-          .venv/bin/pip install -r fpga/axi_memory/requirements.txt -r scripts/rt_backend_testbench/requirements.txt
-          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
-      - name: Cache Verilator 5.032
-        id: verilator
-        uses: actions/cache@v4
-        with:
-          path: work/verilator
-          key: verilator-8ff77e9d47351b0a59114929880687839a51840b-ubuntu-24.04
-      - name: Build Verilator 5.032
-        if: steps.verilator.outputs.cache-hit != 'true'
-        run: bash scripts/build_verilator.sh
-      - name: Select Verilator
-        run: |
-          echo "$PWD/work/verilator/bin" >> "$GITHUB_PATH"
-          work/verilator/bin/verilator --version
-      - name: Build the realistic timing model
-        if: matrix.model == 'dramsim3'
-        run: python fpga/axi_memory/build_dramsim3.py
-      - name: Check generated wrappers
-        run: python fpga/axi_memory/generate_tops.py --check
-      - name: Check native memory independently
-        if: matrix.model == 'instant'
-        run: |
-          python fpga/axi_memory/simulate_direct.py --output work/native-ci/model
-          python fpga/chunk_memory/simulate.py --config minimum --random-cases 1 --axi-data-width 64 --dram-library /missing/not-required.so --output work/native-ci/chunks
-      - name: Check metadata caches and shared transport
-        if: matrix.model == 'instant'
-        run: python fpga/media_store/simulate_metadata.py --output work/native-ci/metadata
-      - name: Check endpoints and Rust pipeline comparisons
-        run: |
-          python fpga/axi_memory/simulate.py --memory-model ${{ matrix.model }} --output work/native-ci/endpoints
-          python fpga/media_store/simulate.py --pipeline --config small --random-cases 2 --axi-data-width 64 --memory-model ${{ matrix.model }} --output work/native-ci/audio
-          python fpga/loop_pipeline/simulate.py --config odd --directed --random-cases 2 --axi-data-width 64 --memory-model ${{ matrix.model }} --output work/native-ci/loops
-      - name: Check audio generated tops
-        run: |
-          python fpga/audio_io/generate_top.py --check
-          python fpga/audio_io/generate_demo.py --check
-          python fpga/audio_io/prepare_demo.py --check
-      - name: Check bank ownership and quantum fences
-        if: matrix.model == 'instant'
-        run: |
-          python fpga/audio_io/simulate.py --q 1 --banks 2 --audio-period 10 --audio-phase 3 --output work/native-ci/audio-q1
-          python fpga/audio_io/simulate.py --q 3 --p 1 --output work/native-ci/audio-odd
-          python fpga/audio_io/simulate.py --control --output work/native-ci/audio-control
-      - name: Check autonomous ZedBoard measurement runner
-        run: |
-          python fpga/zedboard/generate.py --check
-          python fpga/zedboard/prepare.py --loops 4 --tracks 2 --record-quanta 2 --output work/native-ci/zedboard-workload
-          controls=()
-          if [ "${{ matrix.model }}" = instant ]; then controls+=(--control-tests); fi
-          python fpga/zedboard/simulate.py --workload work/native-ci/zedboard-workload --memory-model ${{ matrix.model }} "${controls[@]}" --output work/native-ci/zedboard-runner
-      - name: Check continuous 16-channel audio
-        run: |
-          python fpga/audio_io/simulate_pipeline.py --p 16 --frame-cycles 1600 --memory-model ${{ matrix.model }} --axi-data-width 64 --stalls --output work/native-ci/audio-continuous
-      - name: Check shallow latency and underrun recovery
-        if: matrix.model == 'instant'
-        run: |
-          python fpga/audio_io/simulate_pipeline.py --q 16 --chunk 8 --p 8 --banks 2 --monitoring --frame-cycles 1024 --output work/native-ci/audio-shallow
-          python fpga/audio_io/simulate_pipeline.py --overrun --output work/native-ci/audio-overrun
-          python fpga/audio_io/simulate_pipeline.py --demo --output work/native-ci/audio-demo
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: fpga-memory-${{ matrix.model }}
-          path: |
-            work/native-ci/**/*.log
-            work/native-ci/**/results.xml
-            work/native-ci/**/*summary.json
-            work/native-ci/audio-*/*.json
-            work/native-ci/audio-*/*.hex
-          if-no-files-found: warn
-
-  reclamation:
-    name: Deferred reclamation (${{ matrix.model }})
-    runs-on: ubuntu-24.04
-    timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix:
-        model: [instant, dramsim3]
-    steps:
-      - uses: actions/checkout@v7
-      - name: Install simulation tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes autoconf flex bison libfl-dev zlib1g-dev g++ cmake patch python3-venv
-          python3 -m venv .venv
-          .venv/bin/pip install -r fpga/axi_memory/requirements.txt
+          .venv/bin/pip install -r scripts/rt_backend_testbench/requirements.txt
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
       - name: Cache Verilator 5.032
         id: verilator
@@ -167,41 +89,47 @@ jobs:
         run: bash scripts/build_verilator.sh
       - name: Select Verilator
         run: echo "$PWD/work/verilator/bin" >> "$GITHUB_PATH"
-      - name: Build the realistic timing model
-        if: matrix.model == 'dramsim3'
+      - name: Build DRAMsim3
         run: python fpga/axi_memory/build_dramsim3.py
-      - name: Check detachment, maintenance, sharing and faults
+      - name: Check coverage and generated RTL
         run: |
-          python fpga/media_store/simulate.py --config wide --block-chunks 32 --retired-tables 2 --deferred --axi-data-width 64 --metadata-lines 1 --reference-lines 1 --stack-lines 1 --memory-model ${{ matrix.model }} --output work/reclamation/ownership
-          python fpga/chunk_memory/simulate.py --config small --retire-chunks 32 --memory-model ${{ matrix.model }} --output work/reclamation/retirement
-      - name: Check exhausted pools and transfer publication
-        if: matrix.model == 'instant'
+          python scripts/check_fpga_testbench_coverage.py
+          python scripts/check_shoop_test_usage.py
+          python fpga/axi_memory/generate_tops.py --check
+          python fpga/audio_io/generate_top.py --check
+          python fpga/audio_io/generate_demo.py --check
+          python fpga/audio_io/prepare_demo.py --check
+          python fpga/zedboard/generate.py --check
+      - name: Run all component and integration matrices
         run: |
-          python fpga/media_store/simulate.py --config wide --block-chunks 32 --metadata-pages 3 --deferred-capacity --output work/reclamation/capacity
-          python fpga/media_store/simulate.py --config wide --block-chunks 32 --retired-tables 2 --metadata-pages 7 --reuse-views --deferred-reuse --output work/reclamation/reuse
-      - name: Check large arena and continued recording
-        if: matrix.model == 'instant'
-        run: python fpga/media_store/simulate.py --config retirement --block-chunks 32 --deferred-stress --stress-seconds 1 --metadata-lines 128 --axi-data-width 64 --output work/reclamation/stress
-      - uses: dtolnay/rust-toolchain@stable
-        if: matrix.model == 'instant'
-      - uses: Swatinem/rust-cache@v2
-        if: matrix.model == 'instant'
-        with:
-          shared-key: production-fpga
-      - name: Check queue-driven Marlin runtime integration
-        if: matrix.model == 'instant'
-        env:
-          RUSTFLAGS: -D warnings
-        run: cargo test --locked -p rt_fpga_sim --features sim -- --test-threads=1
+          mkdir -p work/marlin-suite
+          set -o pipefail
+          cargo test --locked -p rt_fpga_testbench --features sim -- --nocapture 2>&1 | tee work/marlin-suite/regression.log
+          cargo test --locked -p rt_fpga_sim --features sim -- --test-threads=1
+          cargo check --locked -p rt_fpga_testbench
+      - name: Replay long sessions, alternate geometries and 64-loop workloads
+        run: |
+          python scripts/generate_fpga_scenarios.py --long-sessions --output work/native-ci/long.jsonl
+          python scripts/generate_fpga_scenarios.py --geometry-cases --output work/native-ci/geometry.jsonl
+          cargo run --locked -p rt_fpga_testbench --features sim -- production --case work/native-ci/long.jsonl --output work/native-ci/long
+          cargo run --locked -p rt_fpga_testbench --features sim -- production --config wide --case work/native-ci/geometry.jsonl --axi-data-width 32 --memory-model fixed --output work/native-ci/geometry
+          cargo run --locked -p rt_fpga_testbench --features sim -- production --config 8x8 --benchmark64 --slots 2048 --block-chunks 32 --output work/native-ci/scale-original
+          cargo run --locked -p rt_fpga_testbench --features sim -- production --config 8x8 --benchmark64 --scale-workload streaming --slots 4096 --block-chunks 32 --memory-model dramsim3 --output work/native-ci/scale-streaming
+          cargo run --locked -p rt_fpga_testbench --features sim -- production --config 8x8 --benchmark64 --scale-workload mixed --slots 3072 --block-chunks 32 --memory-model fixed --output work/native-ci/scale-mixed
+      - name: Check continuous 16-channel audio with realistic memory
+        run: cargo run --locked -p rt_fpga_testbench --features sim -- continuous --p 16 --frame-cycles 1600 --stalls --memory-model dramsim3 --output work/native-ci/continuous-16
+      - name: Check independent float accuracy bounds
+        run: python scripts/check_fpga_float_accuracy.py work/marlin-suite work/native-ci
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: deferred-reclamation-${{ matrix.model }}
+          name: marlin-fpga-verification
           path: |
-            work/reclamation/**/*.log
-            work/reclamation/**/results.xml
-            work/reclamation/**/*timing.json
-            work/reclamation/**/stress-*.json
+            work/marlin-suite/**/*.log
+            work/marlin-suite/**/*.json
+            work/marlin-suite/prepared/**/*.hex
+            work/marlin-continuous/*.json
+            work/native-ci/**/*.json
           if-no-files-found: warn
 
   audio-synthesis:

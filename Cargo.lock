@@ -4813,6 +4813,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "rt_fpga_testbench"
+version = "0.3.0"
+dependencies = [
+ "clap",
+ "libloading 0.9.0",
+ "marlin",
+ "quick-xml",
+ "rt_audio_math",
+ "rt_backend_testbench",
+ "rt_fpga_adapter",
+ "rt_fpga_sim",
+ "rt_runtime",
+ "serde",
+ "serde_json",
+ "sha2",
+ "shoop_wasm_test_support",
+]
+
+[[package]]
 name = "rt_profiling"
 version = "0.3.0"
 dependencies = [

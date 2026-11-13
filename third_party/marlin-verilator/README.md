@@ -14,8 +14,8 @@
 Marlin is a really powerful library (and API) that lets you "import" hardware
 modules into Rust (or Rust functions into hardware modules!). 
 
-No precompilation step and manual updates with `verilator` harnesses; no 
-Makefiles and quirky decorators with `cocotb` testbenches. You're writing a regular Rust crate here.
+Hardware modules are built and cached automatically. Testbenches live in an
+ordinary Rust crate.
 
 Add this library to your `Cargo.toml` like any other library. Use hardware
 modules as `struct`s like any other Rust `struct`. Hook them up to `tokio` or
@@ -51,8 +51,6 @@ Verilog:
   tests *in* Verilog is really annoying.
 - **Use Verilator harnesses**: You have to first run Verilator to get the right
   headers, recompile manually every time, deal with raw pointers and C++, etc.
-- **Use cocotb**: You have to use Makefiles or write your own Python runner, 
-  performance isn't the greatest, you get no LSP support for ports, etc.
 
 The problem gets worse with custom HDLs, so they've come up with some creative
 solutions:
@@ -60,10 +58,8 @@ solutions:
 - [Calyx](https://calyxir.org): the canonical way of testing Calyx code is to
   read from JSON files representing byte arrays and write to JSON files
   representing byte arrays (_yes, Calyx is not really a 'custom HDL'_).
-- [Spade](https://spade-lang.org): `verilator` integration involves [absurd
-  macro magic](https://docs.spade-lang.org/simulation.html#verilator) and [using
-  `cocotb`](https://docs.spade-lang.org/simulation.html#cocotb) requires putting
-  the design-under-test in a code comment.
+- [Spade](https://spade-lang.org): `verilator` integration uses
+  [macros](https://docs.spade-lang.org/simulation.html#verilator).
 - [Veryl](https://veryl-lang.org): you literally [write inline Verilog or Python](https://doc.veryl-lang.org/book/05_language_reference/13_integrated_test.html). Yes, inside Veryl code.
 
 Still, a lot of these are less than optimal.

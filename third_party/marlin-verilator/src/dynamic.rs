@@ -6,224 +6,259 @@
 
 //! Support for dynamic models.
 
-use std::{collections::HashMap, ffi, slice};
-
+use crate::WideOut;
 use libloading::Library;
-
 pub use marlin_verilator_stable::dynamic::{
     AsDynamicVerilatedModel, DynamicVerilatedModelError, VerilatorValue,
 };
 use marlin_verilator_stable::{core::PortDirection, types};
-
-use crate::WideOut;
+use std::{collections::HashMap, ffi, slice};
 
 impl<const WORDS: usize> From<WideOut<WORDS>> for VerilatorValue<'_> {
     fn from(value: WideOut<WORDS>) -> Self {
         Self::WDataOutP(value.inner.into())
     }
 }
-
+#[derive(Clone, Copy)]
+enum Read {
+    C(extern "C" fn(*mut ffi::c_void) -> types::CData),
+    S(extern "C" fn(*mut ffi::c_void) -> types::SData),
+    I(extern "C" fn(*mut ffi::c_void) -> types::IData),
+    Q(extern "C" fn(*mut ffi::c_void) -> types::QData),
+    W(extern "C" fn(*mut ffi::c_void) -> types::WDataOutP),
+}
+#[derive(Clone, Copy)]
+enum Pin {
+    C(extern "C" fn(*mut ffi::c_void, types::CData)),
+    S(extern "C" fn(*mut ffi::c_void, types::SData)),
+    I(extern "C" fn(*mut ffi::c_void, types::IData)),
+    Q(extern "C" fn(*mut ffi::c_void, types::QData)),
+    W(extern "C" fn(*mut ffi::c_void, types::WDataInP)),
+}
 #[derive(Clone, Copy)]
 pub(crate) struct DynamicPortInfo {
     pub(crate) width: usize,
     pub(crate) direction: PortDirection,
+    read: Option<Read>,
+    pin: Option<Pin>,
 }
-
-/// A hardware model constructed at runtime. See
-/// [`super::VerilatorRuntime::create_dyn_model`].
+impl DynamicPortInfo {
+    pub(crate) fn bind(
+        library: &Library,
+        top: &str,
+        name: &str,
+        width: usize,
+        direction: PortDirection,
+    ) -> Result<Self, libloading::Error> {
+        let getter = format!("ffi_V{top}_read_{name}");
+        let setter = format!("ffi_V{top}_pin_{name}");
+        // SAFETY: generated FFI signatures are selected by the elaborated port width.
+        let (read, pin) = unsafe {
+            let read = if matches!(direction, PortDirection::Output | PortDirection::Inout) {
+                Some(match width {
+                    0..=8 => Read::C(*library.get(getter.as_bytes())?),
+                    9..=16 => Read::S(*library.get(getter.as_bytes())?),
+                    17..=32 => Read::I(*library.get(getter.as_bytes())?),
+                    33..=64 => Read::Q(*library.get(getter.as_bytes())?),
+                    _ => Read::W(*library.get(getter.as_bytes())?),
+                })
+            } else {
+                None
+            };
+            let pin = if matches!(direction, PortDirection::Input | PortDirection::Inout) {
+                Some(match width {
+                    0..=8 => Pin::C(*library.get(setter.as_bytes())?),
+                    9..=16 => Pin::S(*library.get(setter.as_bytes())?),
+                    17..=32 => Pin::I(*library.get(setter.as_bytes())?),
+                    33..=64 => Pin::Q(*library.get(setter.as_bytes())?),
+                    _ => Pin::W(*library.get(setter.as_bytes())?),
+                })
+            } else {
+                None
+            };
+            (read, pin)
+        };
+        Ok(Self {
+            width,
+            direction,
+            read,
+            pin,
+        })
+    }
+}
+/// A model constructed at runtime, borrowing its compiled library and context.
 pub struct DynamicVerilatedModel<'ctx> {
-    // TODO: add the dlsyms here and remove the library field
     pub(crate) ports: HashMap<String, DynamicPortInfo>,
     pub(crate) name: String,
     pub(crate) main: *mut ffi::c_void,
     pub(crate) eval_main: extern "C" fn(*mut ffi::c_void),
     pub(crate) library: &'ctx Library,
+    pub(crate) opened_trace: bool,
 }
-
 impl<'ctx> AsDynamicVerilatedModel<'ctx> for DynamicVerilatedModel<'ctx> {
     fn eval(&mut self) {
         (self.eval_main)(self.main);
     }
-
     fn read(
         &self,
         port: impl Into<String>,
     ) -> Result<VerilatorValue<'_>, DynamicVerilatedModelError> {
-        let port: String = port.into();
-        let DynamicPortInfo { width, direction } = *self
-            .ports
-            .get(&port)
-            .ok_or(DynamicVerilatedModelError::NoSuchPort {
-                top_module: self.name.clone(),
-                port: port.clone(),
-                source: None,
-            })?;
-
-        if !matches!(direction, PortDirection::Output | PortDirection::Inout) {
-            return Err(DynamicVerilatedModelError::InvalidPortDirection {
-                top_module: self.name.clone(),
-                port,
-                direction,
-                attempted_direction: PortDirection::Output,
-            });
-        }
-
-        macro_rules! read_value {
-            ($self:ident, $port:expr, $value_type:ty) => {{
-                let symbol: libloading::Symbol<
-                    extern "C" fn(*mut ffi::c_void) -> $value_type,
-                > = unsafe {
-                    self.library.get(
-                        format!("ffi_V{}_read_{}", self.name, $port).as_bytes(),
-                    )
-                }
-                .map_err(|source| {
-                    DynamicVerilatedModelError::NoSuchPort {
-                        top_module: $self.name.to_string(),
-                        port: $port.clone(),
-                        source: Some(source),
-                    }
-                })?;
-
-                Ok((*symbol)($self.main).into())
-            }};
-        }
-
-        if width <= 8 {
-            read_value!(self, port, types::CData)
-        } else if width <= 16 {
-            read_value!(self, port, types::SData)
-        } else if width <= 32 {
-            read_value!(self, port, types::IData)
-        } else if width <= 64 {
-            read_value!(self, port, types::QData)
-        } else {
-            let value: types::WDataOutP =
-                read_value!(self, port, types::WDataOutP)?;
-            assert!(
-                !value.is_null() && value.is_aligned(),
-                "The pointer should be a valid reference to an array in the design class"
-            );
-            let length = width.div_ceil(types::EData::BITS as usize);
-            let (total_bytes, did_overflow) =
-                length.overflowing_mul(size_of::<types::EData>());
-            assert!(!did_overflow && total_bytes < isize::MAX as usize);
-            Ok(VerilatorValue::WDataOutP(
-                // SAFETY:
-                // - `value` is non-null and aligned.
-                // - valid for reads for `length * size_of::<types::EData>()`
-                //   many bytes because via the FFI generated by
-                //   `build_library::build_ffi` uses the `data()` method on a
-                //   Verilator `VlWide`. This method returns a reference to the
-                //   array of words in the model [1]; thus, this reference is
-                //   valid as long as the C++ model class is.
-                // - `value` points to `length` consecutive properly
-                //   initialized values of type `types::EData` because `VlWide`
-                //   uses an array of `EData` [2].
-                // - The memory referenced by the returned slice is not mutated
-                //   for the duration its lifetime because it is immediately
-                //   copied onto the heap and the slice is discarded.
-                // - The total size `length * size_of::<types::EData>()` does
-                //   not exceed `isize::MAX`.
-                //
-                // [1]: https://github.com/verilator/verilator/blob/af65a85a1e11fb0e5332bb91024dd020de49dd79/include/verilated_types.h#L413
-                // [2]: https://github.com/verilator/verilator/blob/af65a85a1e11fb0e5332bb91024dd020de49dd79/include/verilated_types.h#L390
-                unsafe { slice::from_raw_parts(value, length) }.into(),
-            ))
-        }
+        self.read_value(&port.into())
     }
-
     fn pin(
         &mut self,
         port: impl Into<String>,
         value: impl Into<VerilatorValue<'ctx>>,
     ) -> Result<(), DynamicVerilatedModelError> {
-        macro_rules! pin_value {
-            ($self:ident, $port:expr, $value:expr, $value_type:ty, $low:literal, $high:expr) => {{
-                let symbol: libloading::Symbol<
-                    extern "C" fn(*mut ffi::c_void, $value_type),
-                > = unsafe {
-                    self.library.get(
-                        format!("ffi_V{}_pin_{}", self.name, $port).as_bytes(),
-                    )
-                }
-                .map_err(|source| {
-                    DynamicVerilatedModelError::NoSuchPort {
-                        top_module: $self.name.to_string(),
-                        port: $port.clone(),
-                        source: Some(source),
-                    }
-                })?;
-
-                let DynamicPortInfo { width, direction } = $self
-                    .ports
-                    .get(&$port)
-                    .ok_or(DynamicVerilatedModelError::NoSuchPort {
-                        top_module: $self.name.clone(),
-                        port: $port.clone(),
-                        source: None,
-                    })?
-                    .clone();
-
-                if width > $high {
-                    return Err(DynamicVerilatedModelError::InvalidPortWidth {
-                        top_module: $self.name.clone(),
-                        port: $port.clone(),
-                        width,
-                        attempted_lower: $low,
-                        attempted_higher: $high,
-                    });
-                }
-
-                if !matches!(
-                    direction,
-                    PortDirection::Input | PortDirection::Inout,
-                ) {
-                    return Err(
-                        DynamicVerilatedModelError::InvalidPortDirection {
-                            top_module: $self.name.clone(),
-                            port: $port,
-                            direction,
-                            attempted_direction: PortDirection::Input,
-                        },
-                    );
-                }
-
-                (*symbol)($self.main, $value);
-                Ok(())
-            }};
+        self.pin_value(&port.into(), value.into())
+    }
+}
+impl<'ctx> DynamicVerilatedModel<'ctx> {
+    fn info(&self, port: &str) -> Result<&DynamicPortInfo, DynamicVerilatedModelError> {
+        self.ports
+            .get(port)
+            .ok_or_else(|| DynamicVerilatedModelError::NoSuchPort {
+                top_module: self.name.clone(),
+                port: port.into(),
+                source: None,
+            })
+    }
+    fn direction_error(
+        &self,
+        port: &str,
+        info: &DynamicPortInfo,
+        attempted_direction: PortDirection,
+    ) -> DynamicVerilatedModelError {
+        DynamicVerilatedModelError::InvalidPortDirection {
+            top_module: self.name.clone(),
+            port: port.into(),
+            direction: info.direction,
+            attempted_direction,
         }
-
-        let port: String = port.into();
-        match value.into() {
-            VerilatorValue::CData(cdata) => {
-                pin_value!(self, port, cdata, types::CData, 0, 8)
+    }
+    fn width_error(
+        &self,
+        port: &str,
+        width: usize,
+        lower: usize,
+        higher: usize,
+    ) -> DynamicVerilatedModelError {
+        DynamicVerilatedModelError::InvalidPortWidth {
+            top_module: self.name.clone(),
+            port: port.into(),
+            width,
+            attempted_lower: lower,
+            attempted_higher: higher,
+        }
+    }
+    /// Reads a scalar without allocating a port name or packed word buffer.
+    pub fn read_scalar(&self, port: &str) -> Result<u64, DynamicVerilatedModelError> {
+        let info = self.info(port)?;
+        match info
+            .read
+            .ok_or_else(|| self.direction_error(port, info, PortDirection::Output))?
+        {
+            Read::C(f) => Ok(u64::from(f(self.main))),
+            Read::S(f) => Ok(u64::from(f(self.main))),
+            Read::I(f) => Ok(u64::from(f(self.main))),
+            Read::Q(f) => Ok(f(self.main)),
+            Read::W(_) => Err(self.width_error(port, info.width, 0, 64)),
+        }
+    }
+    pub fn read_value(&self, port: &str) -> Result<VerilatorValue<'_>, DynamicVerilatedModelError> {
+        let info = self.info(port)?;
+        match info
+            .read
+            .ok_or_else(|| self.direction_error(port, info, PortDirection::Output))?
+        {
+            Read::C(f) => Ok(f(self.main).into()),
+            Read::S(f) => Ok(f(self.main).into()),
+            Read::I(f) => Ok(f(self.main).into()),
+            Read::Q(f) => Ok(f(self.main).into()),
+            Read::W(f) => {
+                let pointer = f(self.main);
+                let length = info.width.div_ceil(32);
+                assert!(!pointer.is_null() && pointer.is_aligned());
+                assert!(length
+                    .checked_mul(size_of::<types::EData>())
+                    .is_some_and(|n| n < isize::MAX as usize));
+                // SAFETY: FFI returns this model's packed array; copy it before any evaluation can mutate it.
+                Ok(VerilatorValue::WDataOutP(
+                    unsafe { slice::from_raw_parts(pointer, length) }.into(),
+                ))
             }
-            VerilatorValue::SData(sdata) => {
-                pin_value!(self, port, sdata, types::SData, 9, 16)
-            }
-            VerilatorValue::IData(idata) => {
-                pin_value!(self, port, idata, types::IData, 17, 32)
-            }
-            VerilatorValue::QData(qdata) => {
-                pin_value!(self, port, qdata, types::QData, 33, 64)
-            }
-            VerilatorValue::WDataInP(values) => {
-                let values_ptr = values.as_ptr();
-                pin_value!(
-                    self,
-                    port,
-                    values_ptr,
-                    types::WDataInP,
-                    65,
-                    usize::MAX
-                )
+        }
+    }
+    /// Copies inputs immediately. Wide slices need not outlive the model.
+    pub fn pin_value(
+        &mut self,
+        port: &str,
+        value: VerilatorValue<'_>,
+    ) -> Result<(), DynamicVerilatedModelError> {
+        let info = self.info(port)?;
+        let pin = info
+            .pin
+            .ok_or_else(|| self.direction_error(port, info, PortDirection::Input))?;
+        let supplied_width = value.width();
+        if supplied_width < info.width {
+            return Err(self.width_error(port, info.width, 0, supplied_width));
+        }
+        let scalar = match &value {
+            VerilatorValue::CData(v) => u64::from(*v),
+            VerilatorValue::SData(v) => u64::from(*v),
+            VerilatorValue::IData(v) => u64::from(*v),
+            VerilatorValue::QData(v) => *v,
+            VerilatorValue::WDataInP(v) => {
+                u64::from(v.first().copied().unwrap_or(0))
+                    | (u64::from(v.get(1).copied().unwrap_or(0)) << 32)
             }
             VerilatorValue::WDataOutP(_) => {
-                panic!(
-                    "Cannot pin with WDataOutP: did you accidently use the From<vec![]> instead of From<&[]>?"
-                )
+                panic!("cannot drive an output word buffer; provide a borrowed input slice")
             }
+        };
+        match pin {
+            Pin::C(f) => f(self.main, scalar as types::CData),
+            Pin::S(f) => f(self.main, scalar as types::SData),
+            Pin::I(f) => f(self.main, scalar as types::IData),
+            Pin::Q(f) => f(self.main, scalar),
+            Pin::W(f) => {
+                let VerilatorValue::WDataInP(words) = value else {
+                    return Err(self.width_error(port, info.width, 65, supplied_width));
+                };
+                if words.len() < info.width.div_ceil(32) {
+                    return Err(self.width_error(port, info.width, 65, words.len() * 32));
+                }
+                f(self.main, words.as_ptr());
+            }
+        }
+        Ok(())
+    }
+    /// Opens the single trace associated with a dynamically bound model.
+    pub fn open_trace(
+        &mut self,
+        path: impl AsRef<std::path::Path>,
+    ) -> Result<crate::tracing::TraceFile<'ctx>, Box<dyn std::error::Error>> {
+        use crate::ffi_names;
+        assert!(!self.opened_trace, "a model supports only one open trace");
+        let path = ffi::CString::new(path.as_ref().as_os_str().as_encoded_bytes())?;
+        // SAFETY: the library is generated with these exact tracing signatures.
+        unsafe {
+            let open: libloading::Symbol<
+                extern "C" fn(*mut ffi::c_void, *const ffi::c_char) -> *mut ffi::c_void,
+            > = self
+                .library
+                .get(ffi_names::open_trace(&self.name).as_bytes())?;
+            let dump = *self.library.get(ffi_names::TRACE_DUMP.as_bytes())?;
+            let open_next = *self.library.get(ffi_names::TRACE_OPEN_NEXT.as_bytes())?;
+            let flush = *self.library.get(ffi_names::TRACE_FLUSH.as_bytes())?;
+            let close = *self
+                .library
+                .get(ffi_names::TRACE_CLOSE_AND_DELETE.as_bytes())?;
+            let handle = open(self.main, path.as_ptr());
+            self.opened_trace = true;
+            Ok(crate::tracing::__private::new_trace(
+                handle, dump, open_next, flush, close,
+            ))
         }
     }
 }

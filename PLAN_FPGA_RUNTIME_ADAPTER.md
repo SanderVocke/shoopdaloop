@@ -12,9 +12,9 @@ and between milestones. Push only the working branch; the final PR targets
 
 Start by embedding the existing RTL in a native Rust program through Marlin,
 then build the queue-driven adapter on that simulation interface. The new
-demonstrator, adapter and end-to-end runner must build/run without Python or
-cocotb. Existing Python/cocotb suites remain available independently; migrating
-or deleting them is outside this milestone.
+demonstrator, adapter and end-to-end runner must build/run without Python. The independent RTL suite was outside this
+original milestone; its complete native migration is now documented in
+[PLAN_MARLIN_TESTBENCHES.md](PLAN_MARLIN_TESTBENCHES.md).
 
 A scratch investigation already drove the existing 746-bit command FIFO with
 Marlin 0.21.1 and Verilator 5.032, checking 20 transfers, odd-depth pointer wrap,
@@ -62,7 +62,7 @@ and descriptor double buffering. Explicitly reject unsupported operations.
    pipeline, executes a loop-free gain workload and checks every output sample
    against production Q8.24. It supports deterministic stalls, bounded waits
    and useful waveform output through Marlin.
-7. The complete new build/run/replay path has no Python/cocotb dependency or
+7. The complete new build/run/replay path has no Python dependency or
    subprocess. Marlin remains an optional native simulation dependency; normal
    CPU and Wasm production builds do not require it or Verilator.
 
@@ -184,8 +184,7 @@ is accepted at frame zero; unsupported later activation is rejected explicitly.
   record/playback case through the direct Marlin driver and functional SV memory,
   comparing audio, state and captured samples with production Q8.24. Port only
   the driver operations needed for that case; this does not add looping support
-  to the adapter. Retain the remaining cocotb suites independently, without making
-  them a prerequisite of the new runner.
+  to the adapter. Keep independent RTL regression coverage separate from the runtime runner.
 - [x] Run formatting, warning-denying workspace build, test-policy and dependency
   isolation checks, including relevant Wasm builds when available. Verify a fresh
   simulation output directory and document prerequisites/failure replay. Reuse
@@ -201,8 +200,8 @@ to settle simulator integration before refactoring the queues/compiler. During
 adapter work use focused native tests and a device double checking traffic, not
 audio. Then add queue-driven RTL comparisons and bounded integration/regression
 gates. Reuse compiled models and earlier passing checks unless edits invalidate
-their evidence. A complete cocotb migration, multi-clock verification framework
-and realistic DDR-service port are separate follow-up work.
+their evidence. The complete suite migration, shared clock scheduling and realistic DDR-service
+port are delivered by the subsequent native testbench work.
 
 Live replacement follows later: coordinate SP program/bindings and TP topology
 activation, retaining/migrating mutable state and pending work. This milestone

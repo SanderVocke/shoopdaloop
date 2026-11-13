@@ -2,7 +2,12 @@
 
 This optional native crate drives the existing TP/SP/JP pipeline and functional
 AXI memory model through Marlin 0.21.1. There is no Python in its build or run
-path. Existing cocotb suites remain independent.
+path. The complete component and integration regression suite lives in
+[`rt_fpga_testbench`](../rt_fpga_testbench/README.md).
+
+The [continuous audio regression](CONTINUOUS_BENCH.md) checks exact frame,
+state, media and counter parity. It uses the shared testbench crate's clock
+scheduler and AXI agents.
 
 From the repository root, with Rust, a C++ compiler and Verilator on PATH:
 

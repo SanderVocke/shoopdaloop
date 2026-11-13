@@ -63,7 +63,9 @@
                 last_error_code<=error_code; last_error_stage<=error_stage;
             end
             DRAINING: if (memory_quiescent) begin phase<=RESETTING; reset_count<=0; end
-            RESETTING: if (reset_count == RESET_CYCLES-1) begin phase<=LOADING; epoch<=epoch+1; end
+            // Count reset cycles only while the quiescent memory boundary accepts reset.
+            RESETTING: if (!session_reset_ready) reset_count<=0;
+                else if (reset_count == RESET_CYCLES-1) begin phase<=LOADING; epoch<=epoch+1; end
                 else reset_count<=reset_count+1;
             default: begin end
         endcase

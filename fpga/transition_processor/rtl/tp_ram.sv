@@ -16,7 +16,7 @@ module tp_ram #(
         if (read_enable) read_data <= memory[read_address];
         if (write_enable) memory[write_address] <= write_data;
     end
-`ifdef COCOTB_SIM
+`ifndef SYNTHESIS
     always @(posedge clk) begin
         if (read_enable && write_enable && read_address == write_address)
             $fatal(1, "transition table read/write collision");

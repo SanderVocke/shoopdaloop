@@ -1,5 +1,15 @@
 # Shared-loop audio pipeline
 
+Simulation now uses the complete [Rust/Marlin testbench suite](../../src/rust/rt_fpga_testbench/README.md):
+
+```sh
+cargo run --locked -p rt_fpga_testbench --features sim -- production
+```
+
+The Python simulator entry names are aliases for this runner and accept its
+current options. The native suite guide describes profiles, replay, VCDs and
+reports. Historical measurements are marked separately.
+
 `loop_pipeline` connects transition settlement, state/job execution and media
 storage under one processing operation. The behavioral comparison uses the production Rust runtime. See [SIMPLIFY.md](../../SIMPLIFY.md) for the design decision.
 
@@ -103,8 +113,9 @@ Standalone tests preserve hardware-specific protocol, configuration, stream,
 cache, capacity, fault and reset checks without a duplicate looping backend.
 
 ```sh
-python fpga/loop_pipeline/simulate.py --directed --random-cases 30 --faults
-python fpga/loop_pipeline/simulate.py --benchmark64 --config 8x8 --read-buffers 128 --metadata-lines 128 --memory-model dramsim3
+cargo run --locked -p rt_fpga_testbench --features sim -- production --directed --random-cases 30
+cargo run --locked -p rt_fpga_testbench --features sim -- production-faults
+cargo run --locked -p rt_fpga_testbench --features sim -- production --benchmark64 --config 8x8 --slots 2048 --block-chunks 32 --memory-model dramsim3
 ```
 
 The subsystem's `check.sh` retains lint and synthesis entry points. Current

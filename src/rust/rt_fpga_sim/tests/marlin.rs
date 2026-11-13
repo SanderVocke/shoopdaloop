@@ -58,7 +58,8 @@ fn integrated_gain_and_silence_with_stalls_and_independent_models() {
     assert_eq!(sim.frame(), 0);
     drop(sim);
     drop(independent);
-    let vcd = std::fs::read_to_string(wave).unwrap();
+    let vcd = std::fs::read_to_string(&wave).unwrap();
+    std::fs::remove_file(wave).unwrap();
     let clock = vcd
         .lines()
         .find(|l| l.contains(" clk "))
@@ -68,6 +69,16 @@ fn integrated_gain_and_silence_with_stalls_and_independent_models() {
         .unwrap();
     assert!(vcd.contains(&format!("0{clock}\n")));
     assert!(vcd.contains(&format!("1{clock}\n")));
+}
+
+#[shoop_test]
+fn repeated_runtime_creation_uses_owned_trace_contexts_without_opening_files() {
+    let cache = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../work/marlin-tests");
+    for _ in 0..3 {
+        let rt = runtime(&cache).unwrap();
+        let sim = Simulator::new(&rt, None, false).unwrap();
+        assert_eq!(sim.frame(), 0);
+    }
 }
 
 mod fifo {

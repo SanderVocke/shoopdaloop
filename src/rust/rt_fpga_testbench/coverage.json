@@ -1,0 +1,607 @@
+{
+  "format_version": 1,
+  "baseline_revision": "7e855f70",
+  "original_definitions": 75,
+  "rows": [
+    {
+      "original_source": "fpga/audio_io/tests/test_audio_control.py",
+      "original_test": "fences_and_failures",
+      "original_definition_sha256": "16de29dc3332f3bda2036f4734b2e8cd4a6d1d0f1821bdc74128ba2d9d6c9fe3",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/control.rs",
+      "rust_function": "fences_and_failures",
+      "cargo_test": "audio_io"
+    },
+    {
+      "original_source": "fpga/audio_io/tests/test_audio_io.py",
+      "original_test": "nominal_and_recoverable_miss",
+      "original_definition_sha256": "d674c85b224c5a01a14d94473710487249dea865be38e68b88a6ddba4b33151d",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/audio_io.rs",
+      "rust_function": "nominal_and_recoverable_miss",
+      "cargo_test": "audio_io"
+    },
+    {
+      "original_source": "fpga/audio_io/tests/test_audio_io.py",
+      "original_test": "input_exhaustion_and_rearm",
+      "original_definition_sha256": "f29aa76528d3c3236c50cb0a6826aadb0dd7a43d8651add14c28411a795a29b1",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/audio_io.rs",
+      "rust_function": "input_exhaustion_and_rearm",
+      "cargo_test": "audio_io"
+    },
+    {
+      "original_source": "fpga/audio_io/tests/test_audio_io.py",
+      "original_test": "reset_in_flight_ownership",
+      "original_definition_sha256": "6c3f3a409fd6a48e4ed72ea48110c7cb1302ebf5498428f806925110cc4f60d9",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/audio_io.rs",
+      "rust_function": "reset_in_flight_ownership",
+      "cargo_test": "audio_io"
+    },
+    {
+      "original_source": "fpga/audio_io/tests/test_audio_io.py",
+      "original_test": "watchdog_and_core_fault",
+      "original_definition_sha256": "0c42aa2f4d85eb9ec9e93bb28289bd3bd0491aba267b4949f04093592e40aa7e",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/audio_io.rs",
+      "rust_function": "watchdog_and_core_fault",
+      "cargo_test": "audio_io"
+    },
+    {
+      "original_source": "fpga/audio_io/tests/test_audio_io.py",
+      "original_test": "publication_cutoff",
+      "original_definition_sha256": "5e8f590d18775b668d3c510f489c9abf8081345e4e0061de4f12f02f4a6d4a17",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/audio_io.rs",
+      "rust_function": "publication_cutoff",
+      "cargo_test": "audio_io"
+    },
+    {
+      "original_source": "fpga/audio_io/tests/test_audio_io.py",
+      "original_test": "consecutive_misses_and_catchup",
+      "original_definition_sha256": "b7dc397343e13c458fe738f5829804d1b1f61d3378bdb2f764954a373948b672",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/audio_io.rs",
+      "rust_function": "consecutive_misses_and_catchup",
+      "cargo_test": "audio_io"
+    },
+    {
+      "original_source": "fpga/audio_io/tests/test_continuous.py",
+      "original_test": "continuous_record_playback",
+      "original_definition_sha256": "7dd3b92cd3145cd6467d4b0841184a397bc9fb09b9d43ad9f863c74adcaf0b68",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/continuous.rs",
+      "rust_function": "run",
+      "cargo_test": "continuous"
+    },
+    {
+      "original_source": "fpga/audio_io/tests/test_demo.py",
+      "original_test": "prepared_demo_and_recovery",
+      "original_definition_sha256": "0d40ba710465696477382f988531878fd06d047c8c9c4c52a7ca9e1a14e16488",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/demo.rs",
+      "rust_function": "prepared_demo_and_recovery",
+      "cargo_test": "demo"
+    },
+    {
+      "original_source": "fpga/axi_memory/tests/test_axi.py",
+      "original_test": "words_and_bursts",
+      "original_definition_sha256": "3ca236f53dbbf2af1f5ea3361424cac2f9e2225192ba8adaa92b87dcd8416e3d",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/axi.rs",
+      "rust_function": "words_and_bursts",
+      "cargo_test": "axi"
+    },
+    {
+      "original_source": "fpga/axi_memory/tests/test_axi.py",
+      "original_test": "independent_channels_and_reset",
+      "original_definition_sha256": "674b6885fcd616db588db659e9ad905a2d720ab5ec152eea6714a577936a153d",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/axi.rs",
+      "rust_function": "independent_channels_and_reset",
+      "cargo_test": "axi"
+    },
+    {
+      "original_source": "fpga/axi_memory/tests/test_chunk_axi.py",
+      "original_test": "packing_splitting_and_backpressure",
+      "original_definition_sha256": "62d71d5d666af4c176124f1e44f74f5b0c1499680d311af105d3293ceb9ed494",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/axi.rs",
+      "rust_function": "packing_splitting_and_backpressure",
+      "cargo_test": "axi"
+    },
+    {
+      "original_source": "fpga/axi_memory/tests/test_chunk_axi.py",
+      "original_test": "bounds_fault_drain_and_reset",
+      "original_definition_sha256": "80e5b455196eb5172ede1ac4693f7f22dcab65f0dc379a0cc6decfdf2beebbb9",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/axi.rs",
+      "rust_function": "bounds_fault_drain_and_reset",
+      "cargo_test": "axi"
+    },
+    {
+      "original_source": "fpga/axi_memory/tests/test_direct_memory.py",
+      "original_test": "functional_memory",
+      "original_definition_sha256": "49f75222ca2cd76dcba799d851b5c512ecd8e44a6c3b3a03dfa01411d8761162",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/direct.rs",
+      "rust_function": "run",
+      "cargo_test": "direct"
+    },
+    {
+      "original_source": "fpga/axi_memory/tests/test_word.py",
+      "original_test": "word_adapter",
+      "original_definition_sha256": "9b17ffb962b5290c718d58b9f0cc1543a88b06cf21091a92d41df8ee90afa5e0",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/axi.rs",
+      "rust_function": "word_adapter",
+      "cargo_test": "axi"
+    },
+    {
+      "original_source": "fpga/chunk_memory/tests/test_block_retire.py",
+      "original_test": "block_retirement",
+      "original_definition_sha256": "2eea5b340eeca57086798c38fd62ccd67bdda28d5e0af49307f66c7e20696cf3",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/chunk.rs",
+      "rust_function": "block_retirement",
+      "cargo_test": "chunk"
+    },
+    {
+      "original_source": "fpga/chunk_memory/tests/test_block_retire.py",
+      "original_test": "background_retirement_preserves_unrelated_commands",
+      "original_definition_sha256": "eda1ce4b103b31307774eed4e5fa15052c3aac2aa53e2957e0a27c7311ac0fb8",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/chunk.rs",
+      "rust_function": "background_retirement_preserves_unrelated_commands",
+      "cargo_test": "chunk"
+    },
+    {
+      "original_source": "fpga/chunk_memory/tests/test_chunk_memory.py",
+      "original_test": "conformance",
+      "original_definition_sha256": "1b6f5cec4dd85b07164c4d8e10c3b3ff3108752118f62a4f7bdd17666d507cb9",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/chunk.rs",
+      "rust_function": "conformance",
+      "cargo_test": "chunk"
+    },
+    {
+      "original_source": "fpga/chunk_memory/tests/test_chunk_memory.py",
+      "original_test": "buffering_protocol",
+      "original_definition_sha256": "ce215fcc338e4561e90fc2ccccfb80ca901f71ff782ad0198e2b1006d90a5588",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/chunk.rs",
+      "rust_function": "buffering_protocol",
+      "cargo_test": "chunk"
+    },
+    {
+      "original_source": "fpga/chunk_memory/tests/test_chunk_memory.py",
+      "original_test": "faults_and_reset",
+      "original_definition_sha256": "f227a9dceb1fda294648a90dcb3eae271c6057cbf389fe668ad8802ac386bc59",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/chunk.rs",
+      "rust_function": "faults_and_reset",
+      "cargo_test": "chunk"
+    },
+    {
+      "original_source": "fpga/chunk_memory/tests/test_chunk_memory.py",
+      "original_test": "read_stream_protocol",
+      "original_definition_sha256": "d9c09eca8c6c9393a7f5fdf9b4c04a9f91847998015db43870ccd5fb6698ddb3",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/chunk.rs",
+      "rust_function": "read_stream_protocol",
+      "cargo_test": "chunk"
+    },
+    {
+      "original_source": "fpga/job_processor/tests/test_audio_pipeline.py",
+      "original_test": "directed_audio",
+      "original_definition_sha256": "32fc18ed8e13212217d54c747e699ebad15ae492feba879350318e3009c19720",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/audio.rs",
+      "rust_function": "directed_audio",
+      "cargo_test": "audio"
+    },
+    {
+      "original_source": "fpga/job_processor/tests/test_audio_pipeline.py",
+      "original_test": "randomized_audio",
+      "original_definition_sha256": "d00b7e96d6a4541a324c79f11367dda15c05f12847afcdb563aa04147158629c",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/audio.rs",
+      "rust_function": "randomized_audio",
+      "cargo_test": "audio"
+    },
+    {
+      "original_source": "fpga/job_processor/tests/test_audio_pipeline.py",
+      "original_test": "sample_protocol",
+      "original_definition_sha256": "b99eecd00df4e39c37e6ad9f1f9e48f8ae66a4a16d6834b643cb366df7c5f884",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/audio.rs",
+      "rust_function": "sample_protocol",
+      "cargo_test": "audio"
+    },
+    {
+      "original_source": "fpga/job_processor/tests/test_audio_pipeline.py",
+      "original_test": "arithmetic_stream_protocol",
+      "original_definition_sha256": "1eae6280b37485c4883d509f10d95604cdc7d1bd8c515373725faac7a8c40911",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/audio.rs",
+      "rust_function": "arithmetic_stream_protocol",
+      "cargo_test": "audio"
+    },
+    {
+      "original_source": "fpga/job_processor/tests/test_numeric_contract.py",
+      "original_test": "production_numeric_vectors",
+      "original_definition_sha256": "701f1b2c3b7e55d2650260026600e775499f559024346af8deb370f8427023ce",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/audio.rs",
+      "rust_function": "production_numeric_vectors",
+      "cargo_test": "audio"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_block_audio.py",
+      "original_test": "blocked_audio",
+      "original_definition_sha256": "27f269ca684becdd2a72d2f5a4e9a887e3967a0b395d3f5927a9806ee0facb72",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/pipeline.rs",
+      "rust_function": "blocked_audio",
+      "cargo_test": "pipeline"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_block_media.py",
+      "original_test": "block_ownership",
+      "original_definition_sha256": "bf3d5305156d36bde4221ba0c16258fae24eeafd10bde19ba18f264bb9c2eaf8",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/media/ownership.rs",
+      "rust_function": "block_ownership",
+      "cargo_test": "ownership"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_deferred_capacity.py",
+      "original_test": "full_pools_and_pause_after_reference_release",
+      "original_definition_sha256": "580e57b3fa3d1c47b49aef0ca809cb9df82245d17ada941f75c170629cac3ffe",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/media/ownership.rs",
+      "rust_function": "full_pools_and_pause_after_reference_release",
+      "cargo_test": "ownership"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_deferred_capacity.py",
+      "original_test": "failed_detachment_preserves_ownership_until_reset",
+      "original_definition_sha256": "96dc6709b0c793c222e14279c7ef96c4af095890d5be350fd4ad345ad3a7d163",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/media/ownership.rs",
+      "rust_function": "failed_detachment_preserves_ownership_until_reset",
+      "cargo_test": "ownership"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_deferred_capacity.py",
+      "original_test": "published_retirement_fault_requires_a_coordinated_reset",
+      "original_definition_sha256": "b2aa6c19af5ec2e811ae6f5c3fd1a2fdd9aca9e7f0db4aa043b2845e82b189fc",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/media/ownership.rs",
+      "rust_function": "published_retirement_fault_requires_a_coordinated_reset",
+      "cargo_test": "ownership"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_deferred_media.py",
+      "original_test": "detachment_and_maintenance_budgets",
+      "original_definition_sha256": "20833286eb6ca27d25a70dd206a7042417899b2d19eb4346cc1b3e94fd7b14e5",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/media/deferred.rs",
+      "rust_function": "detachment_and_maintenance_budgets",
+      "cargo_test": "deferred"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_deferred_media.py",
+      "original_test": "clear_cancels_an_outstanding_metadata_hint",
+      "original_definition_sha256": "25787ebc8fe8f5177cd3e1d40db357a794ff4caef57d6e445643a85079c0399e",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/media/deferred.rs",
+      "rust_function": "clear_cancels_an_outstanding_metadata_hint",
+      "cargo_test": "deferred"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_deferred_media.py",
+      "original_test": "queue_full_preserves_the_live_recording",
+      "original_definition_sha256": "320e5cd78052c792a47969e6176b49a842e5170321cc9820dac218fa4855f5dc",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/media/deferred.rs",
+      "rust_function": "queue_full_preserves_the_live_recording",
+      "cargo_test": "deferred"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_deferred_media.py",
+      "original_test": "retained_ranges_and_repeated_view_reuse",
+      "original_definition_sha256": "64def566b693e7b5fc080bfc6aaf08302e51ac60a3a1bdb2dd23f795eed81e45",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/media/deferred.rs",
+      "rust_function": "retained_ranges_and_repeated_view_reuse",
+      "cargo_test": "deferred"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_deferred_media.py",
+      "original_test": "reset_discards_active_cleanup_and_old_responses",
+      "original_definition_sha256": "ae5a77dc40631da216f1b7056e15a7ab9b295d78c1f2d184c3ea25e9a28ddcea",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/media/deferred.rs",
+      "rust_function": "reset_discards_active_cleanup_and_old_responses",
+      "cargo_test": "deferred"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_deferred_media.py",
+      "original_test": "invalid_retired_block_faults_before_reuse",
+      "original_definition_sha256": "9e7b082a08efb5ec33197aaecba6cf44cfb47ced414c58c4c4930a974e67e18d",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/media/deferred.rs",
+      "rust_function": "invalid_retired_block_faults_before_reuse",
+      "cargo_test": "deferred"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_deferred_media.py",
+      "original_test": "status_reads_do_not_deadlock_atomic_cleanup",
+      "original_definition_sha256": "a15073f89d72a5709612892fa420fbc7d59a6531483d33384c130748d21e4355",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/media/deferred.rs",
+      "rust_function": "status_reads_do_not_deadlock_atomic_cleanup",
+      "cargo_test": "deferred"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_deferred_media.py",
+      "original_test": "pause_at_ownership_and_checkpoint_boundaries",
+      "original_definition_sha256": "bc8ffec824587b1d9559526b66ddd141dbf963c568f0138eccf9c8154e02a18c",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/media/deferred.rs",
+      "rust_function": "pause_at_ownership_and_checkpoint_boundaries",
+      "cargo_test": "deferred"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_deferred_media.py",
+      "original_test": "offline_drain_survives_budget_counter_expiration",
+      "original_definition_sha256": "9f2cd3f76972ce3eadb861fd1f9f138385bd9f1ad020239834d0f2ef8325108c",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/media/deferred.rs",
+      "rust_function": "offline_drain_survives_budget_counter_expiration",
+      "cargo_test": "deferred"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_deferred_media.py",
+      "original_test": "cycle_budget_releases_more_than_twenty_and_yields_safely",
+      "original_definition_sha256": "3f98c3b4e668dc4af0a0037a6724d90108e9cf305085aa6687bee4005fe31d0b",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/media/deferred.rs",
+      "rust_function": "cycle_budget_releases_more_than_twenty_and_yields_safely",
+      "cargo_test": "deferred"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_deferred_media.py",
+      "original_test": "foreground_wait_preserves_the_cleanup_cycle_budget",
+      "original_definition_sha256": "5276e4031ad1c70505e2584c44d6fac638823decf9f36db2c4cf1481ccf0e3f3",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/media/deferred.rs",
+      "rust_function": "foreground_wait_preserves_the_cleanup_cycle_budget",
+      "cargo_test": "deferred"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_deferred_reuse.py",
+      "original_test": "removed_view_reuse_keeps_the_retired_root_independent",
+      "original_definition_sha256": "82c15a4d11a2f739c61c1a459badbe37bde980a302f0772e6a448defd3086f06",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/media/ownership.rs",
+      "rust_function": "removed_view_reuse_keeps_the_retired_root_independent",
+      "cargo_test": "ownership"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_deferred_reuse.py",
+      "original_test": "full_view_space_slice_checks_all_pages_before_copying",
+      "original_definition_sha256": "ca340a98c4ed3f0bc579cc8117da829cb64d29695d7888672642b68545c91166",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/media/ownership.rs",
+      "rust_function": "full_view_space_slice_checks_all_pages_before_copying",
+      "cargo_test": "ownership"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_deferred_stress.py",
+      "original_test": "thirty_second_mono_takes",
+      "original_definition_sha256": "7ed890a3d449a8a07e8bb949acc7d970504dfd382065c8e2fbb638c153471833",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/media/campaign.rs",
+      "rust_function": "stress",
+      "cargo_test": "campaign"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_deferred_stress.py",
+      "original_test": "thirty_second_stereo_takes",
+      "original_definition_sha256": "c281efd406fc31f3a66b42993542ffd28e95657a123d507175b30459c2e87f97",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/media/campaign.rs",
+      "rust_function": "stress",
+      "cargo_test": "campaign"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_media_metadata.py",
+      "original_test": "indexed_metadata_reuse_and_limits",
+      "original_definition_sha256": "54818a73e120b4d11f1b6edf0234301e0323dbfbe7cd14e9984bbea68570ddb6",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/metadata.rs",
+      "rust_function": "indexed_metadata_reuse_and_limits",
+      "cargo_test": "metadata"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_media_metadata.py",
+      "original_test": "detached_tables_survive_reuse_and_recover_pages",
+      "original_definition_sha256": "7fab73567d5222ff37194fde462e11a80992b9cf56e99dbeba780362b74862ac",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/metadata.rs",
+      "rust_function": "detached_tables_survive_reuse_and_recover_pages",
+      "cargo_test": "metadata"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_media_pipeline.py",
+      "original_test": "directed_pipeline",
+      "original_definition_sha256": "6c043fbe6302ad6d6835280c006da945ffcf8dbee3083e7c6a1e457332e2f2b1",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/pipeline.rs",
+      "rust_function": "directed_pipeline",
+      "cargo_test": "pipeline"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_media_pipeline.py",
+      "original_test": "randomized_pipeline",
+      "original_definition_sha256": "0415db6639548e8c11b6c8571b495032864dd80a181eba1a1226542b333a87a9",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/pipeline.rs",
+      "rust_function": "randomized_pipeline",
+      "cargo_test": "pipeline"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_media_pipeline.py",
+      "original_test": "playback_stream_protocol",
+      "original_definition_sha256": "d5e0f554dc3ba981c42fb2a15eab2e9bf3b9720b48276ec1eeb650052fc545b0",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/pipeline.rs",
+      "rust_function": "playback_stream_protocol",
+      "cargo_test": "pipeline"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_media_pipeline.py",
+      "original_test": "pipeline_protocol",
+      "original_definition_sha256": "6972b54ba340cd23d0048a7ed982ab1cfcc16d7efcf493a376e786dd46a48d1c",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/pipeline.rs",
+      "rust_function": "pipeline_protocol",
+      "cargo_test": "pipeline"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_media_statistics.py",
+      "original_test": "storage_statistics",
+      "original_definition_sha256": "fe7768a744873e5c7ccb5883aa0c589bd620942f86ef817aff172c19b4945302",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/media/ownership.rs",
+      "rust_function": "storage_statistics",
+      "cargo_test": "ownership"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_media_statistics.py",
+      "original_test": "statistics_count_retired_storage_without_draining",
+      "original_definition_sha256": "f162e460bfd84655df4c743fa16746add663d879cd5772b96e687e7a961aa7c2",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/media/ownership.rs",
+      "rust_function": "statistics_count_retired_storage_without_draining",
+      "cargo_test": "ownership"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_media_store.py",
+      "original_test": "directed_media",
+      "original_definition_sha256": "f9cf56a05cade8249c161d8686590b553f874b5411d2d5d3f380b372dcb883f5",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/media/basic.rs",
+      "rust_function": "directed_media",
+      "cargo_test": "media"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_media_store.py",
+      "original_test": "randomized_media",
+      "original_definition_sha256": "7d5288117c7fb0ace9670cb18f2e2c3a56527ea1d6c78163ec2b4fcac47b50af",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/media/basic.rs",
+      "rust_function": "randomized_media",
+      "cargo_test": "media"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_media_store.py",
+      "original_test": "media_protocol",
+      "original_definition_sha256": "070a108ef56e78c02825ec1ccce4da40581ad2157f17854dab542ab840263b68",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/media/basic.rs",
+      "rust_function": "media_protocol",
+      "cargo_test": "media"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_metadata_cache.py",
+      "original_test": "coherent_cache_and_transport",
+      "original_definition_sha256": "8de85dbd4b2318fc6a34d241d202deca84f9905e176e16f537d875882cd22328",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/metadata.rs",
+      "rust_function": "coherent_cache_and_transport",
+      "cargo_test": "metadata"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_prefetch_resolver.py",
+      "original_test": "resolver_conformance",
+      "original_definition_sha256": "ce22bf5ed1782829f36178abbec21ffd1f9c94ca0c92a6297956655489d51467",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/resolver.rs",
+      "rust_function": "resolver_conformance",
+      "cargo_test": "metadata"
+    },
+    {
+      "original_source": "fpga/media_store/tests/test_reclaim_timing.py",
+      "original_test": "isolated_twenty_releases",
+      "original_definition_sha256": "a103f27f94aeb656336bf4882a9e3a43417d3dfcf2bf2d9a177f1f1e44a8d29f",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/media/campaign.rs",
+      "rust_function": "isolated_twenty_releases",
+      "cargo_test": "campaign"
+    },
+    {
+      "original_source": "fpga/state_processor/tests/test_state_processor.py",
+      "original_test": "instruction_vectors",
+      "original_definition_sha256": "31f656098de76f181873c9dc97d7797acaab62cca7a3c3346396dab6cda3e04d",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/state.rs",
+      "rust_function": "instruction_vectors",
+      "cargo_test": "state"
+    },
+    {
+      "original_source": "fpga/state_processor/tests/test_state_processor.py",
+      "original_test": "fifo_order_wrap_and_partial_failure",
+      "original_definition_sha256": "ca79ca27ddc3fa886e55b3ede35cd8bae407679dc6304bd2bc7bc69e4240cc2d",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/state.rs",
+      "rust_function": "fifo_order_wrap_and_partial_failure",
+      "cargo_test": "state"
+    },
+    {
+      "original_source": "fpga/state_processor/tests/test_state_processor.py",
+      "original_test": "configuration_and_error_protocol",
+      "original_definition_sha256": "84cc12fc9edeec91110e0c434ecbbdb8c118a95ecbae590fb7de5f496facba2f",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/state.rs",
+      "rust_function": "configuration_and_error_protocol",
+      "cargo_test": "state"
+    },
+    {
+      "original_source": "fpga/state_processor/tests/test_state_processor.py",
+      "original_test": "nonempty_admission_and_reset",
+      "original_definition_sha256": "0b3944a01e2ea7ba228d73a6b06977a9ae68340200ed3b3723e09b8eb2ffd63e",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/state.rs",
+      "rust_function": "nonempty_admission_and_reset",
+      "cargo_test": "state"
+    },
+    {
+      "original_source": "fpga/transition_processor/tests/test_transition_processor.py",
+      "original_test": "directed_against_rust",
+      "original_definition_sha256": "282456fb9f079866d3e7a0d87d7e28a6b4a2918fa201294cbe4f3450f1bde030",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/transition.rs",
+      "rust_function": "directed",
+      "cargo_test": "transition"
+    },
+    {
+      "original_source": "fpga/transition_processor/tests/test_transition_processor.py",
+      "original_test": "seeded_against_rust",
+      "original_definition_sha256": "1ba5fe1b7930351cd66bd899f9acbc5899e014cc6172d9616a74922cf676fabc",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/transition.rs",
+      "rust_function": "seeded",
+      "cargo_test": "transition"
+    },
+    {
+      "original_source": "fpga/transition_processor/tests/test_transition_processor.py",
+      "original_test": "transport_and_negative_cases",
+      "original_definition_sha256": "3af2e3f10f7ffd1bb1d45a30c0226b2700fe996bdb0eee9fbc738b2e7f8d5d21",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/transition.rs",
+      "rust_function": "transport_and_negative_cases",
+      "cargo_test": "transition"
+    },
+    {
+      "original_source": "fpga/transition_processor/tests/test_transition_processor.py",
+      "original_test": "dependency_order_validation",
+      "original_definition_sha256": "09789ddd2afb9645b805acf9857a7ec138e191c3b06f3647ee1f644c26414d48",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/transition.rs",
+      "rust_function": "dependency_order_validation",
+      "cargo_test": "transition"
+    },
+    {
+      "original_source": "fpga/transition_processor/tests/test_transition_processor.py",
+      "original_test": "scratch_initialization_and_reset",
+      "original_definition_sha256": "4151ab24b594ca8be92957408c35750e9b1582b7d6e379cab7830c3a04ff2548",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/transition.rs",
+      "rust_function": "scratch_initialization_and_reset",
+      "cargo_test": "transition"
+    },
+    {
+      "original_source": "fpga/transition_processor/tests/test_transition_processor.py",
+      "original_test": "sixty_four_loop_workload",
+      "original_definition_sha256": "bccdf4893e9cf59e546303665f4356d7c61ac67af4f62bee51d6f37f0cc59073",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/transition.rs",
+      "rust_function": "workloads",
+      "cargo_test": "transition"
+    },
+    {
+      "original_source": "fpga/verification/tests/test_production_pipeline.py",
+      "original_test": "production_scenarios",
+      "original_definition_sha256": "b7a092b9c3d9a64467bcb287779dd60281c1a4938b180e550ad04648ac8e565a",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/production.rs",
+      "rust_function": "production_scenarios",
+      "cargo_test": "production"
+    },
+    {
+      "original_source": "fpga/verification/tests/test_production_pipeline.py",
+      "original_test": "early_iterations_preempt_cleanup_without_waiting_for_its_allowance",
+      "original_definition_sha256": "ed8891b2abf7bcb8f9a2d32d066799523c38f4293af62c5ca31580c61126e707",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/production_faults.rs",
+      "rust_function": "early_iterations_preempt_cleanup_without_waiting_for_its_allowance",
+      "cargo_test": "production"
+    },
+    {
+      "original_source": "fpga/verification/tests/test_production_pipeline.py",
+      "original_test": "fatal_processing_faults_silence_hold_and_reset",
+      "original_definition_sha256": "e2c153b928a441308f7ed24abf932757ce00e5549f478b2001540d2ad03f1522",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/production_faults.rs",
+      "rust_function": "fatal_processing_faults_silence_hold_and_reset",
+      "cargo_test": "production"
+    },
+    {
+      "original_source": "fpga/zedboard/tests/test_timing_bench.py",
+      "original_test": "deployed_runner",
+      "original_definition_sha256": "daaa399f128e647d83ad952f948766b88e30870966fd9eb7b8ac45fd1ca9ad8e",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/zedboard.rs",
+      "rust_function": "deployed_runner",
+      "cargo_test": "zedboard"
+    },
+    {
+      "original_source": "fpga/job_processor/tests/test_smoothing.py",
+      "original_test": "histories_and_extremes",
+      "original_definition_sha256": "28c9253fa69e9fc6c1ee10141a28ff340c1e64ab3133e364408e6db35ead1ef2",
+      "rust_source": "src/rust/rt_fpga_testbench/src/suites/smoothing.rs",
+      "rust_function": "histories_and_extremes",
+      "cargo_test": "smoothing"
+    }
+  ]
+}

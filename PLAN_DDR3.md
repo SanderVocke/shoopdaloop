@@ -1,12 +1,16 @@
 # AXI memory endpoint and DRAMsim3 integration
 
+This is a historical implementation record. Current simulation uses the shared
+Rust/Marlin suite described in [PLAN_MARLIN_TESTBENCHES.md](PLAN_MARLIN_TESTBENCHES.md);
+its native drivers and memory agents supersede the Python harness described below.
+
 Status: completed, committed and delivered through PR #969.
 Branch: `proto/fpga-rust-reference`, baseline `8f64c32d`.
 
 ## Goal and scope
 
 Run the existing RTL loop pipeline against a live DDR3 timing model through
-cocotb and a small ctypes-compatible native wrapper. All external memory traffic
+Python harness and a small ctypes-compatible native wrapper. All external memory traffic
 must pass through one synthesizable AXI master endpoint that can later connect to
 a Zynq PS DDR interface. Keep the Rust reference as the functional oracle.
 
@@ -44,7 +48,7 @@ previously discussed trace-replay/statistical-delay design.
 2. Normal pipeline execution issues only single-beat, 32-bit accesses, with one
    transaction outstanding. Adding AXI must preserve samples, logical media,
    ordering, cache forwarding, cancellation, retirement, and fault reporting.
-3. The AXI endpoint and cocotb/DRAMsim3 slave support single beats and bounded
+3. The AXI endpoint and Python/DRAMsim3 slave support single beats and bounded
    INCR read/write bursts. Burst correctness is tested without introducing a
    burst converter into the existing producer.
 4. The same AXI boundary supports instant functional memory, deterministic fixed
@@ -65,7 +69,7 @@ previously discussed trace-replay/statistical-delay design.
 chunk memory's existing word request/response port
     -> word adapter (one request becomes one AXI beat)
     -> common AXI master endpoint
-    -> cocotb AXI slave -> ctypes C ABI -> DRAMsim3
+    -> Python harness AXI slave -> ctypes C ABI -> DRAMsim3
                        -> functional sample storage
 
 future hardware: the same AXI master -> PS HP compatibility wrapper -> PS DDR
@@ -165,7 +169,7 @@ on it. Keep detailed-model runs small during development.
   strobes, response errors, reset, and independently stalled AXI channels.
 - [x] Check that word-adapter traffic always has LEN=0 and size=4 bytes, and that
   one outstanding request cannot be accidentally duplicated or reordered.
-- [x] Run isolated cocotb protocol tests, lint, and synthesis for the supported
+- [x] Run isolated Python harness protocol tests, lint, and synthesis for the supported
   widths. Record endpoint resource overhead; do not infer achieved clock timing
   from synthesis alone.
 

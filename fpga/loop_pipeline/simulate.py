@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""Run production-backed full-loop verification (same options as verification/simulate.py)."""
+"""Alias for the native Marlin production suite; accepts native runner options."""
 from pathlib import Path
-import runpy
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]/'scripts'))
+from run_fpga_testbench import launch
 
 if __name__ == '__main__':
-    runpy.run_path(str(Path(__file__).resolve().parents[1]/'verification/simulate.py'),run_name='__main__')
+    raise SystemExit(launch('production'))

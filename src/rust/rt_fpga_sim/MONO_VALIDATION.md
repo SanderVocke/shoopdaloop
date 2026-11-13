@@ -56,8 +56,8 @@ cargo test -p rt_fpga_adapter -p rt_backend_testbench -p rt_runtime -p shoop_loo
 
 `result.json` records canonical outcomes and metrics. A fresh output directory
 builds the C++ model; reusing it caches that model independently of graph/control
-data. The mono CLI/build/replay invokes no Python or cocotb. Independent existing
-RTL checks below use their own Python runners.
+data. The mono CLI/build/replay invokes no Python. The complete RTL regression
+suite also runs natively through `rt_fpga_testbench`.
 
 ## Local gates
 

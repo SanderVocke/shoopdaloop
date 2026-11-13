@@ -86,7 +86,7 @@ almost all of the added metadata latency in this case. These are native instant
 memory-model results without random stalls, not a real DDR or app wall-clock
 latency prediction.
 
-All **76 cocotb test cases** in the recorded validation groups pass. They include
+All **76 RTL test cases** in the recorded validation groups pass. They include
 19 common production/RTL scenarios with stalls and processing faults, nine
 standalone media tests across three capacities, all eight metadata cache/transport
 configurations, transition/cache/Gain/Mix/AXI32/64 component tests, the 64-loop

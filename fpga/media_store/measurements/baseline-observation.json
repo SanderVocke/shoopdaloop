@@ -1,7 +1,7 @@
 {
   "configuration": {
     "model": "dramsim3",
-    "backend": "cocotb",
+    "backend": "legacy-python",
     "purpose": "realistic",
     "fabric_hz": 100000000,
     "physical_base": 16777216,
