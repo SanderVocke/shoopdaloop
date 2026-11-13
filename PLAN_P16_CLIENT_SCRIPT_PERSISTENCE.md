@@ -5,7 +5,7 @@ CI/review in progress. PR [#977](https://github.com/SanderVocke/shoopdaloop/pull
 was revised with user approval on 2026-11-12. P16 remains OPEN.
 
 Base: `feat/backend-replacement` at `9aee7496`; production behavior was compared
-with `master` at `9134eb20`. Upstream is now integrated through `563a6b0d`.
+with `master` at `9134eb20`. Upstream is now integrated through `1c7609a8`.
 Follow
 [Write Plan](.agents/prompts/write_plan.md), the
 [P16 contract](docs/native_session_recovery/p16-client-scripts.md), and the
@@ -330,3 +330,16 @@ the selected platform plus browser/portable paths affected by P16.
   web execution while retaining debug builds/audits and release browser tests.
   The next CI run follows that imported policy; no viewport or deadline change
   has been added for P16.
+- Upstream advanced again to `1c7609a8`, adding responsive host-shutdown
+  management, serialized firmware diagnostics and an independent MIDI fixture
+  synchronization fix. The overlapping fixture resolution keeps upstream's
+  version, which checks both MIDI input consumption and active recording. The
+  P16 reconnect changes are retained. Formatting, test policy, parity and the new
+  firmware diagnostic test pass; merged build and test qualification continue.
+- The three timing cases from merge `e638cc27` all passed ten serial repetitions
+  each (**30/30**, 674.047 seconds), without changing their fixtures or deadlines.
+  The latest merged native suite will use two concurrent tests locally; CI keeps
+  its normal settings. This does not relabel the earlier four-test run as green.
+- Latest-upstream warning-denying workspace build passes. Focused combined-branch
+  qualification passes **13/13** tests: both native-owner cleanup cases, the core
+  application workflow and ten P16 persistence/recovery cases (21.999 seconds).

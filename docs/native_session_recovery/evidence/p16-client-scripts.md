@@ -188,6 +188,29 @@ viewport or product-deadline exception. The previously collected Node/Chrome
 results identify their exact pre-merge revision rather than claiming execution
 on the merged head.
 
+Upstream subsequently advanced to `1c7609a8`. Its responsive shutdown management,
+serialized firmware diagnostics and independent MIDI fixture fix are also
+integrated. The overlapping MIDI test retains upstream's implementation, including
+its active-recording assertion; P16's reconnect behavior is preserved. The new
+firmware diagnostic test, formatting and repository policy checks pass. Merged
+native and final-head CI qualification remain in progress.
+
+The three timing cases from `e638cc27` passed **30/30** executions with
+`--test-threads 1 --stress-count 10`, in 674.047 seconds. The unchanged tests are
+`invalid_startup_is_rolled_back_and_a_ready_host_survives_ui_spawn_failure`,
+`embedded_driver_switch_keeps_the_live_lua_vm_and_application_ids` and
+`driver_preference_retry_serializes_all_native_settings_writers`. The raw log is
+`/tmp/p16-upstream-timing-baseline-ready.log`. The latest merged full suite uses
+two concurrent tests on this four-CPU machine, without additional load; the
+normal CI configuration remains unchanged. The earlier four-test run is still
+recorded as a failure, not replaced by the serial results.
+
+The latest-upstream warning-denying workspace build passes. Focused nextest
+qualification passes **13/13** in 21.999 seconds: two native-owner cleanup tests,
+the complete core application workflow and ten P16 persistence/recovery cases.
+Logs: `/tmp/p16-upstream-latest-build.log` and
+`/tmp/p16-upstream-latest-focused.log`.
+
 ## Deliberate limits
 
 No VM migration, automatic start, server script catalog, attachment transfer of
