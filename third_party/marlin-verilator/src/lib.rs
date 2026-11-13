@@ -910,6 +910,8 @@ impl VerilatorRuntime {
         "shoop-owned-context-v1".hash(&mut hasher);
         ports.hash(&mut hasher);
         config.hash(&mut hasher);
+        self.source_files.hash(&mut hasher);
+        self.include_directories.hash(&mut hasher);
         let library_key = LibraryArenaKey {
             name: name.to_owned(),
             source_path: source_path.to_owned(),

@@ -30,6 +30,12 @@ use shoop_rt_engine::{
 };
 use std::time::{Duration, Instant};
 
+pub const PROFILE_MEDIA_SLOTS: u32 = 32768;
+
+pub fn profile_storage_bytes() -> u64 {
+    u64::from(PROFILE_MEDIA_SLOTS) * profile_description().quantum as u64 * 4
+}
+
 /// The profile admitted by the RTL graph consumer.
 pub fn profile_description() -> shoop_rt_engine::EngineDescription {
     use shoop_rt_engine::{EngineDescription, HostPorts, Segment};

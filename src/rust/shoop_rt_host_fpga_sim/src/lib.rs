@@ -117,3 +117,17 @@ pub fn description() -> Result<shoop_rt_engine::EngineDescription, String> {
         )
     }
 }
+
+pub fn storage_bytes() -> Result<u64, String> {
+    #[cfg(all(feature = "sim", target_os = "linux"))]
+    {
+        Ok(rt_fpga_adapter::engine::profile_storage_bytes())
+    }
+    #[cfg(not(all(feature = "sim", target_os = "linux")))]
+    {
+        Err(
+            "FPGA RTL simulation is unsupported on this platform or requires the fpga-sim feature"
+                .into(),
+        )
+    }
+}

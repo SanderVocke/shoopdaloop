@@ -171,7 +171,7 @@ renamed "Audio driver", and an "Audio backend" line is added.
 - [x] Add a non-Linux stub and a boundary-script rule for the new crate.
 - [x] Re-base `rt_fpga_sim`'s app tests on the new crate. The `Fpga` composition
       may remain as a test-only harness.
-- [ ] Verify: crate unit tests; the existing `app_rtl`/`app_*` suites unchanged in
+- [x] Verify: crate unit tests; the existing `app_rtl`/`app_*` suites unchanged in
       outcome; `cargo tree` shows no Marlin without the feature.
 
 ### 3. Settings, protocol and status
@@ -199,7 +199,7 @@ renamed "Audio driver", and an "Audio backend" line is added.
       fits.
 - [x] Let the Host Manager's start dialog offer the RTL backend when the binary
       supports it.
-- [ ] Verify: a feature-gated host integration test (Linux with Verilator) starts
+- [x] Verify: a feature-gated host integration test (Linux with Verilator) starts
       `shoop_host --audio-backend fpga_rtl_sim`, connects a client, and records
       and plays the Sync loop; a refusal test for an extra track and for a CPAL
       driver.
@@ -210,7 +210,7 @@ renamed "Audio driver", and an "Audio backend" line is added.
       `launch::pair` through the audio-backend setting, for both in-process and
       companion-host use.
 - [x] Make no RTL-specific UI changes.
-- [ ] Verify: a headless app test (existing harness) starts with the RTL backend
+- [x] Verify: a headless app test (existing harness) starts with the RTL backend
       and runs the Sync trace actions; one manual GUI smoke run of the normal app
       in-process and against a separately started `shoop_host`.
 
@@ -223,7 +223,7 @@ renamed "Audio driver", and an "Audio backend" line is added.
 - [x] Update `rt_fpga_sim/README.md`, `APP_CONTRACT.md`, `VALIDATION.md`,
       `docs/runtime_profiling.md` and the adapter README for the regular
       startup.
-- [ ] Verify: the comparison test passes within the documented bounds, and docs
+- [x] Verify: the comparison test passes within the documented bounds, and docs
       build.
 
 ### 7. CI coverage
@@ -236,7 +236,7 @@ renamed "Audio driver", and an "Audio backend" line is added.
 
 ### 8. End-to-end validation and delivery
 
-- [ ] Manual: from a clean shell, start `shoop_host --audio-backend fpga_rtl_sim`
+- [x] Manual: from a clean shell, start `shoop_host --audio-backend fpga_rtl_sim`
       and connect the normal app. Separately, run the app in-process with
       `--audio-backend fpga_rtl_sim`. Exercise the default session, check the
       overlay and MEM, and confirm the refusals.
@@ -318,3 +318,21 @@ renamed "Audio driver", and an "Audio backend" line is added.
   the regular profile path. Routing, record, playback meters/waveform, stop,
   clear and the generic independent-host status overlay were exercised.
   Evidence is under `work/gui-remote-*`.
+
+- Short RTL gates pass: 24 host application/adapter tests and all 18 simulator
+  tests. The native comparison stays within the existing numeric contract.
+  The two relocated arithmetic/media fixtures used a removed `components`
+  field; they now use the equivalent current `dependency_order` representation
+  without changing their assertions or expected audio.
+- All 55 selected API/protocol/host library tests pass. Sphinx builds with
+  `-W --keep-going`. Default host/app dependency trees contain no Marlin.
+- A runtime-path regression exposed a timestamp-only Marlin cache weakness:
+  changing the RTL root could reuse a model from the previous root. Source and
+  include paths now participate in the model key; a test switches to invalid
+  older-timestamp sources and verifies compilation fails rather than reusing
+  the previous model.
+- FPGA storage capacity is defined with the adapter profile and used for both
+  worker arena setup and the effective host memory setting (4 MiB).
+- The external GUI refused adding a track with "all 1 prepared track slots of
+  the engine are in use" and kept its connection healthy. "Close UI and stop
+  host" shut down both processes through ordinary management cleanup.

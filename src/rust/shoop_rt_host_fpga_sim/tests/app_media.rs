@@ -64,10 +64,10 @@ fn float_media_reads_preserve_interleaving_partial_pages_leases_and_scopes() {
         repeat_sync: false,
         timeline: None,
     }];
-    image.transition.components = vec![vec![Identity {
+    image.transition.dependency_order = vec![Identity {
         slot: 0,
         generation: 1,
-    }]];
+    }];
     image.program.instructions = vec![
         Instruction::ProcessInput {
             port: 0,

@@ -47,6 +47,9 @@ pub fn start(
     effective.pools.channels = u32::from(profile.strip_channels);
     effective.pools.buses = u32::from(profile.buses);
     effective.pools.bus_channels = u32::from(profile.bus_channels);
+    effective.pools.loop_memory_mb = shoop_rt_host_fpga_sim::storage_bytes()
+        .map_err(anyhow::Error::msg)?
+        .div_ceil(1 << 20) as u32;
     effective.processors = shoop_app_api::ProcessorSettings::disabled();
     let config = shoop_rt_host_fpga_sim::Config {
         synthetic_input: driver.input == SimulatedInputMode::Synthetic,

@@ -23,6 +23,8 @@ Two syntax-only fixes keep this local dependency warning-free on Rust 1.99
 Runtime options additionally expose bounded C++ build parallelism and explicit
 source-path relocation for statically declared models. This lets the host use
 configurable source/cache locations without a shell executable wrapper.
+The model cache key includes runtime source and include paths so switching RTL
+roots cannot reuse a model from an older source location.
 Build diagnostics go to stderr so framed host readiness on stdout stays intact.
 No signal layout changes. Remove this vendor patch when an
 upstream bridge release provides equivalent context ownership; retain the

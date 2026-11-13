@@ -4809,6 +4809,7 @@ dependencies = [
  "shoop_loops",
  "shoop_rt_engine",
  "shoop_wasm_test_support",
+ "tempfile",
 ]
 
 [[package]]

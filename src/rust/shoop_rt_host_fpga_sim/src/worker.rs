@@ -141,7 +141,7 @@ impl Worker {
                                 jobs: config.jobs,
                             })?;
                             let mut sim = Simulator::new(&runtime, wave.as_deref(), false)?;
-                            sim.arena_capacity(32768)?;
+                            sim.arena_capacity(rt_fpga_adapter::engine::PROFILE_MEDIA_SLOTS)?;
                             worker_status.simulation.lock().unwrap().model_build_load =
                                 model_started.elapsed();
                             let prepare_started = Instant::now();

@@ -27,6 +27,7 @@ serde_json = { workspace = true, optional = true }
 marlin = { version = "=0.21.1", features = ["verilog"], optional = true }
 
 [dev-dependencies]
+tempfile = { workspace = true }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 
 [[bin]]
