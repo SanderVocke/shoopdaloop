@@ -7,7 +7,7 @@ use crate::{
     Result,
     drivers::store::{Geometry, Store},
     memory::Mode,
-    model::Design,
+    model::{Design, Model},
     sim::Sim,
 };
 use serde_json::{Value, json};
@@ -19,6 +19,12 @@ pub const CONFIGS: &[(&str, [u64; 3])] = &[
     ("8x8", [64, 1024, 32]),
     ("retirement", [64, 45056, 32]),
 ];
+pub(crate) fn remaining_cycles(model: &Model<'_>, reclaimer: &str) -> u64 {
+    model
+        .get(&format!("{reclaimer}.cycle_budget"))
+        .saturating_sub(model.get(&format!("{reclaimer}.maintenance_charge")))
+}
+
 pub fn design(g: &Geometry, width: u64, mode: Mode) -> Design {
     let root = crate::root();
     let mut sources: Vec<_> = ["chunk_ram", "chunk_memory"]
@@ -60,11 +66,12 @@ pub fn deferred_design(g: &Geometry, width: u64, mode: Mode) -> Design {
             "core.metadata.free_pages",
             "core.gc_lock_held",
             "core.reclaimer.phase",
+            "core.reclaimer.maintenance_charge",
         ]
         .iter()
         .map(|n| Probe::observe(n))
         .chain(
-            ["core.reclaimer.cycles_left", "core.reclaimer.blocks_left"]
+            ["core.reclaimer.cycle_budget", "core.reclaimer.blocks_left"]
                 .iter()
                 .map(|n| Probe::inject(n)),
         )

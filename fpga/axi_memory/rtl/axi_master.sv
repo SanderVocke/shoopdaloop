@@ -25,17 +25,16 @@ module axi_master #(
     input wire m_axi_rvalid, output wire m_axi_rready
 );
     localparam integer BUS_BITS = $clog2(DATA_WIDTH/8);
-    localparam [2:0] IDLE = 0, WRITING = 1, READING = 2, BAD_WRITE = 3, BAD_READ = 4;
+    localparam [2:0] IDLE = 0, WRITING = 1, READING = 2, BAD_WRITE = 3, BAD_READ = 4, CHECK = 5;
     reg [2:0] phase;
     reg [31:0] address;
     reg [7:0] length, index;
     reg [2:0] size;
-    reg address_sent, data_sent;
-    wire [32:0] end_address = {1'b0,command_address} + (({25'b0,command_length}+1) << command_size)-1;
-    wire unused_end = &{1'b0,end_address[11:0]};
-    wire invalid_command = command_length > 15 || command_size > 3'(BUS_BITS)
-        || (command_address & ((32'd1 << command_size)-1)) != 0
-        || end_address[32] || command_address[31:12] != end_address[31:12];
+    reg address_sent, data_sent, writing;
+    wire [12:0] page_end = {1'b0,address[11:0]} + (({5'b0,length}+13'd1) << size)-13'd1;
+    wire unused_end = &{1'b0,page_end[11:0]};
+    wire invalid_command = length > 15 || size > 3'(BUS_BITS)
+        || (8'(address[2:0]) & ((8'd1 << size)-8'd1)) != 8'b0 || page_end[12];
 
     assign command_ready = phase == IDLE && !reset;
     assign m_axi_awid = 0;
@@ -74,13 +73,16 @@ module axi_master #(
     always @(posedge clk) begin
         if (reset) begin
             phase <= IDLE; address <= 0; length <= 0; size <= 0; index <= 0;
-            address_sent <= 0; data_sent <= 0;
+            address_sent <= 0; data_sent <= 0; writing <= 0;
         end else begin
             if (command_valid && command_ready) begin
                 address <= command_address; length <= command_length; size <= command_size;
                 index <= 0; address_sent <= 0; data_sent <= 0;
-                if (invalid_command) phase <= command_write ? BAD_WRITE : BAD_READ;
-                else phase <= command_write ? WRITING : READING;
+                writing <= command_write; phase <= CHECK;
+            end
+            if (phase == CHECK) begin
+                if (invalid_command) phase <= writing ? BAD_WRITE : BAD_READ;
+                else phase <= writing ? WRITING : READING;
             end
             if (m_axi_awvalid && m_axi_awready) address_sent <= 1;
             if (m_axi_arvalid && m_axi_arready) address_sent <= 1;

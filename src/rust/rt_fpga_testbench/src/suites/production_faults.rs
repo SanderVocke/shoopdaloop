@@ -220,7 +220,7 @@ fn admit(d: &mut Loops, s: &mut Sim<'_>, host: bool, gc: &str) -> u64 {
                 );
             }
         }
-        let remaining = get(&s.model, "cycles_left");
+        let remaining = super::media::remaining_cycles(&s.model, gc);
         let before = s.tick(&[ready]).0;
         if before.get(ready) != 0 {
             s.model
@@ -290,9 +290,9 @@ pub fn early_iterations_preempt_cleanup_without_waiting_for_its_allowance(
         if settle {
             s.until(10_000, "host settlement", |m| m.get(core) == 9);
             s.model.set("response_ready", 0);
-            let remaining = s.model.get(&format!("{gc}.cycles_left"));
+            let remaining = super::media::remaining_cycles(&s.model, gc);
             admit(d, s, false, gc);
-            assert!(s.model.get(&format!("{gc}.cycles_left")) <= remaining);
+            assert!(super::media::remaining_cycles(&s.model, gc) <= remaining);
         }
         for run in 0..2 {
             let start = s.cycles;

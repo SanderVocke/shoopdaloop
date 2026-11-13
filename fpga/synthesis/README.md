@@ -55,18 +55,23 @@ source hashes and validation evidence for the integrated DDR-backed design.
 
 ## Pipeline choices
 
-Most added stages are at command or job boundaries. Existing RAM waits are used
-for work that can be prepared early. No additional per-sample cycles are added.
+The current 150 MHz work adds register boundaries to admission, RAM results,
+arithmetic and memory commands. Functional results and ready/valid handshakes
+are preserved; command latency increases. Gain still processes one sample per
+clock once filled, and Mix uses two reads per sample. Arithmetic and active
+smoothing use additional per-sample stages.
 
-| Area | Work moved or simplified | Extra cycles |
+| Area | Work moved or simplified | Latency effect |
 | --- | --- | --- |
-| Transition processor | Stage timestamp rounding, transition decisions and Finish accumulation. Cache quantum masks and checks during existing RAM waits. | Submit +2; evaluated transition intent +1; whole-quantum Finish +1. |
-| Media store | Stage append/slice/reclaim planning and configuration. Prepare sample spans and offsets during table waits. | Nonempty Append +6; Slice +4; Reclaim +3; configuration +2 plus its metadata wait. |
-| Metadata | Separate node counting, capacity arithmetic and comparison; register requests; narrow cache word counters. Use a RAM template with one read port and one write port. | Write/capacity-check +1; request boundary +1 per operation. |
-| AXI | Stage address mapping and validation; bound chunk transfer counters. | +1 per chunk command, independent of beats or later bursts. |
-| Gain | Register multiplier operands and precompute signed ramp steps. | +1 fill/drain cycle per Gain job; sample cadence unchanged. |
-| State processor | Compare captured playback position and length during the existing request phase. | Playing-but-empty/finished silence +1; active playback unchanged. |
-| Prefetch/cache | Convert hints before FIFO storage; prepare spans during table waits; use fixed priority scans and separate demand priority from command validation. | None. |
+| State processor | Capture run checks, state RAM operands, ramp elapsed sums and shared-loop responses before evaluation. | Admission and affected operand/loop operations take additional cycles. |
+| Job processor | Capture buffer/port checks, RAM samples and signed operands; register four 16x16 partial products before assembly and scaling. Prepare fraction thresholds and parallel gain additions. | Additional dispatch, fill/drain and arithmetic stages; Gain/Mix sample cadence is retained. |
+| Media store | Register metadata requirements after phase/configuration changes and buffer physical chunk commands. Separate sample Fence completion from metadata flushing. | One preparation cycle per phase/configuration transition and one per physical chunk command; active sample-stream cadence is retained. |
+| Metadata | Separate node counting, capacity arithmetic and capacity comparison. | Three planning stages before the initial tree walk for writes/capacity checks. |
+| AXI | Capture logical addresses before offset mapping, then validate captured bounds before burst preparation. Validate endpoint commands after admission. | Additional descriptor/command setup cycles, independent of the number of sample beats. |
+| Prefetch/cache | Bound stored tags to physical capacity; register pressured/quiet writeback scheduling and maintenance grant/accounting paths. | Writeback scheduling and grant activation can begin one cycle later. |
+
+The earlier integrated 100 MHz measurements retain their own frozen RTL
+and hashes. Their measured cycle counts predate these 150 MHz pipeline stages.
 
 The hint FIFO stores frame positions/lengths and an overflow-valid bit. Its chunk
 shift is constant within a quantum, and a new run resets the FIFO. Preparing the
