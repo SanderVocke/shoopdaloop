@@ -1,0 +1,34 @@
+Copyright 1986-2021 Xilinx, Inc. All Rights Reserved.
+------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2021.1 (lin64) Build 3247384 Thu Jun 10 19:36:07 MDT 2021
+| Date         : Fri Nov 13 19:29:34 2026
+| Host         : 7a4618343aa8 running 64-bit Ubuntu 20.04.4 LTS
+| Command      : report_utilization -hierarchical -file post_route_hierarchical_utilization.rpt
+| Design       : registered_core_context
+| Device       : 7z020clg484-1
+| Design State : Routed
+------------------------------------------------------------------------------------------------
+
+Utilization Design Information
+
+Table of Contents
+-----------------
+1. Utilization by Hierarchy
+
+1. Utilization by Hierarchy
+---------------------------
+
++-----------------------------+---------------+------------+------------+---------+------+------+--------+--------+------------+
+|           Instance          |     Module    | Total LUTs | Logic LUTs | LUTRAMs | SRLs |  FFs | RAMB36 | RAMB18 | DSP Blocks |
++-----------------------------+---------------+------------+------------+---------+------+------+--------+--------+------------+
+| registered_core_context     |         (top) |       3618 |       3618 |       0 |    0 | 4147 |     10 |      0 |          4 |
+|   (registered_core_context) |         (top) |         43 |         43 |       0 |    0 | 1869 |      0 |      0 |          0 |
+|   core_under_test           | job_processor |       3575 |       3575 |       0 |    0 | 2278 |     10 |      0 |          4 |
+|     (core_under_test)       | job_processor |       2911 |       2911 |       0 |    0 | 2109 |      0 |      0 |          4 |
+|     divide                  |    jp_divider |        322 |        322 |       0 |    0 |  169 |      0 |      0 |          0 |
+|     scratch_memory          | jp_sample_ram |        193 |        193 |       0 |    0 |    0 |      8 |      0 |          0 |
+|     smoothing_memory        |        sp_ram |        152 |        152 |       0 |    0 |    0 |      2 |      0 |          0 |
++-----------------------------+---------------+------------+------------+---------+------+------+--------+--------+------------+
+* Note: The sum of lower-level cells may be larger than their parent cells total, due to cross-hierarchy LUT combining
+
+

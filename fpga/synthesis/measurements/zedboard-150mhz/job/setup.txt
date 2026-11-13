@@ -1,0 +1,7 @@
+Vivado: Vivado v2021.1 (64-bit)
+SW Build 3247384 on Thu Jun 10 19:36:07 MDT 2021
+Copyright 1986-2021 Xilinx, Inc. All Rights Reserved.
+Part: xc7z020clg484-1
+Generics: EXTERNAL_IO=1 ENABLE_MEDIA=1 MAX_FRAMES=32 BUFFERS=256 INPUT_PORTS=8 OUTPUT_PORTS=8 CHUNK_FRAMES=32
+Clock: 150 MHz
+Uncertainty: 0.2 ns
