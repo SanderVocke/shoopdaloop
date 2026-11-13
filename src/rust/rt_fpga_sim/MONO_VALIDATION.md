@@ -1,6 +1,6 @@
 # Queue-driven mono loop validation
 
-2026-11-12, Linux x86_64, Rust 1.99.1, GCC 14.2, Verilator 5.032,
+2026-11-12–13, Linux x86_64, Rust 1.99.1, GCC 14.2, Verilator 5.032,
 Marlin 0.21.1 with the existing owned-context patch, Yosys 0.52.
 Implementation branch: `feat/fpga-mono-looper`; upstream checked through
 `bc833fc3` (`proto/fpga-rust-reference`).
@@ -61,7 +61,50 @@ RTL checks below use their own Python runners.
 
 ## Local gates
 
-Final gate results are recorded here after the running native/RTL checks finish.
+- All 16 Marlin/native-contract/protocol integration tests pass, including the
+  five existing regressions and the new settlement-error/reset check. The final
+  six-fixture/two-seed replay gate also passes after adding recovery ordering.
+- Focused Rust library gates pass: 96 runtime, 24 loop, six gain-adapter and four
+  production-fixture tests, including the existing Q8.24/float accuracy check.
+- Warning-denying workspace and feature-enabled simulator builds pass, as do
+  formatting and the Rust test-attribute policy. Both the native application and
+  Wasm worklet dependency trees exclude Marlin/Verilator. The application and
+  worklet both build for `wasm32-unknown-unknown` with warnings denied.
+- Independent media-store ownership/protocol tests pass with odd capacities,
+  four random cases and fixed memory latency. Nineteen production/RTL scenarios
+  pass with stalls, fixed memory latency and fault injection, with the existing
+  production float/Q8.24 accuracy checks included.
+- Generated AXI tops are current. Media store and media/audio pipeline lint,
+  generic synthesis and ECP5 mapping pass. Full loop pipeline lint/generic checks
+  pass for default, small and minimum configurations, as does default ECP5 mapping.
+  The actual mono profile (`REUSE_VIEWS=1`, eight views, 128 slots, TP 4/8/16)
+  additionally passes warning-denying lint and generic synthesis/invariant checks.
+  These are synthesis checks, not placement/routing or timing closure.
+
+The broad native command was:
+
+```sh
+SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace \
+  --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci
+```
+
+It ran 3,222 tests: 3,214 passed, eight failed and eleven were skipped. The eight
+failures were four LAN profile-publication deadlines, two host recovery/startup
+deadlines and two native UI driver/settings deadlines. All eight passed on one
+isolated retry with the same feature selection, `--test-threads 1` and no
+concurrent builds (93.670 s). The first broad run is not represented as clean.
+Its compilation took 8m53s and execution 890.580s; the isolated retry built the
+same-feature application test binary once before running the selected tests.
 PR CI is deliberately not inspected. The previously waived 64-loop benchmark is
 not repeated. This milestone does not establish an audio deadline or integrate
 the profile into the GUI, a board endpoint or DRAMsim3.
+
+
+## Delivery
+
+Work is committed on `feat/fpga-mono-looper`. The main implementation was pushed
+through `09e717b4`; final regression/fault-diagnostic and validation commits remain
+local because GitHub rejected the environment's supplied credential. Two GitHub
+connector requests also stalled until the environment was restarted. No PR or
+review result is claimed while that access is unavailable. Publication targets
+`proto/fpga-rust-reference`, with no direct upstream push or autonomous merge.

@@ -1,6 +1,7 @@
 # Queue-driven mono looper through Marlin
 
-Status: implementation in progress on `feat/fpga-mono-looper`.
+Status: implementation and local validation complete on `feat/fpga-mono-looper`;
+final publication/review blocked by GitHub authentication.
 
 ## Goal and scope
 
@@ -178,14 +179,14 @@ claim or GUI integration requirement.
 
 ### 6. Final validation and delivery
 
-- [ ] Document the supported protocol subset, startup path, handle correspondence,
+- [x] Document the supported protocol subset, startup path, handle correspondence,
   observation cuts, capacity/fault behavior and one-command run/replay. Record
   graph/image/configuration measurements separately from simulator construction.
-- [ ] Run affected native loop/runtime/transport and media tests, adapter/device
+- [x] Run affected native loop/runtime/transport and media tests, adapter/device
   tests and the Marlin differential/regression suite. Run applicable independent
   RTL checks only if synthesizable RTL changed. Reuse cached models and unchanged
   expensive evidence; do not repeat the waived 64-loop benchmark.
-- [ ] Run formatting, warning-denying builds, the Rust test-attribute policy and
+- [x] Run formatting, warning-denying builds, the Rust test-attribute policy and
   relevant CPU/Wasm dependency/build checks. Broaden native testing once at the
   final milestone; keep host test binaries stable during execution and isolate
   failed cases before diagnosing regressions. Do not overlap feature-changing
@@ -229,3 +230,12 @@ preserving bounded view capacity as recordings/exports are reclaimed; raw-ID
 clients retain append-only view identities by default. Directed and seeded
 queue replays compare playback/latest ownership separately, partial byte reads,
 EOF, stale handles, retained exports and many recordings in an eight-chunk arena.
+
+
+Final local gates and replay measurements are recorded in
+`src/rust/rt_fpga_sim/MONO_VALIDATION.md`. All eight deadline failures from the
+3,222-test native run passed in one isolated retry. Main implementation commits
+are on the working branch remotely through `09e717b4`; final commits are retained
+locally. GitHub rejected the supplied credential and its connector stalled twice,
+so opening the PR and checking review remain the sole incomplete delivery step.
+No PR CI was inspected and no merge was attempted.
