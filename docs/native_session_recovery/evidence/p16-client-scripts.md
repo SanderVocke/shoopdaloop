@@ -108,6 +108,20 @@ any registry package version or adding scripting dependencies to firmware.
 Final supported-platform CI and automated review are in progress. No PR has
 been merged.
 
+Additional qualification after the lock audit:
+
+- Both `cargo test --locked --manifest-path tests/loops_host/Cargo.toml` and
+  `cargo test --locked --manifest-path tests/rt_runtime_host/Cargo.toml` passed
+  after adding only their existing `rt_audio_math` dependency entries.
+- `python3 scripts/run_rt_runtime_hosts.py --native-only --profile debug` and
+  `python3 scripts/run_loops_hosts.py --native-only --profile debug` passed,
+  producing the independent native replay evidence used by CI.
+- With Rust 1.99.1 and the existing Cortex-A9/NEON compiler flags,
+  `cargo +1.99.1 build --locked --release --target armv7a-none-eabihf
+  --manifest-path platforms/zynq7000/firmware/Cargo.toml` passed both with and
+  without `--all-features`. Firmware dependency-boundary audits passed on all
+  four configured targets. No service or RT source/wire file changed for P16.
+
 ## Deliberate limits
 
 No VM migration, automatic start, server script catalog, attachment transfer of

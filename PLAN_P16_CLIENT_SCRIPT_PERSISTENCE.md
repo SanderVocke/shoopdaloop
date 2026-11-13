@@ -299,3 +299,8 @@ the selected platform plus browser/portable paths affected by P16.
   fixed in `5b4bcfce`. Firmware jobs also exposed a pre-existing nested lock file
   missing `rt_audio_math` and its two dependency edges; the lock refresh adds only
   those entries and passes locked Cargo metadata resolution.
+- The same audit found the missing math dependency in the two standalone native
+  test projects. Their lock refreshes also change only the existing local math
+  package/edge. Both locked project test commands and the independent native
+  runtime/loop playback checks passed. The pinned Rust 1.99.1 ARM production
+  and all-feature firmware release builds also passed after the firmware refresh.
