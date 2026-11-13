@@ -274,7 +274,7 @@ commands are in [the deferred-reclamation evidence](fpga/media_store/measurement
 - Continuous 16-channel DRAMsim3 audio matches production media/state exactly, with no missed or discarded frames. Demo recovery passes input exhaustion, memory faults, accepted-response draining and four coordinated recoveries. Board control/watchdog/counter checks pass; board output correctness is not claimed by that measurement runner.
 - Formatting, warning-denying workspace build, generated-wrapper checks, media RTL lint and generic/ECP5 synthesis pass. Default store/media-audio mappings add 1,270/2,396 LUT4 and 881 flip-flops each, with unchanged block RAM counts (15/18). No routed Zynq timing or board-fit result is claimed.
 - The complete native suite reports 3,203 passes, 18 host startup/recovery failures and 11 skips. A focused host rerun reports seven passes, 18 failures and two skips. These failures remain unresolved; no base-branch native run establishes baseline status. No Rust tests changed.
-- Dedicated CI gates are added for deferred ownership, retirement, exhausted pools and a short large-arena regression. Remote execution and automated review are in progress on PR #982; their checklist item remains open until checks and feedback are resolved.
+- Dedicated CI gates cover deferred ownership, retirement, exhausted pools and a short large-arena regression. Final remote validation and review-monitoring results are recorded below.
 
 Implementation refinements:
 
