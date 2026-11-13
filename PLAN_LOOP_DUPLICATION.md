@@ -2,9 +2,10 @@
 
 Status: implementation and duplication-specific acceptance are complete on
 `feat/p17-clear-then-copy`. Delivery: [PR #980](https://github.com/SanderVocke/shoopdaloop/pull/980).
-The final browser-harness correction and this acceptance update still need to be
-pushed; GitHub authorization expired before publication completed. Broad validation
-has the limits recorded below. This is not a claim that all CI is green.
+The final browser-harness correction and acceptance checkpoint are published.
+Release Chromium CI acceptance passed. Required CI remains blocked by reproduced
+upstream failures, and no automated review approval is available. Broad validation
+has the limits recorded below; this is not a claim that all CI is green.
 
 Written using [.agents/prompts/write_plan.md](.agents/prompts/write_plan.md).
 Basis: the [P11 investigation](docs/investigations/p11-backend-parity.md) and the
@@ -237,7 +238,7 @@ documentation as a meaningful milestone.
   acceptance harnesses. Cover a P17 definition copy, both cross-kind directions,
   a copy failure after clear, service reattachment and a saved/reloaded result.
   Compare with normal Clear followed by Copy; record exact commands and outcomes.
-- [ ] Record the tested source SHA and material validation limits in the PR and
+- [x] Record the tested source SHA and material validation limits in the PR and
   parity evidence. Run relevant retained reference duplication fixtures as well
   as production acceptance; do not treat reference-only coverage as completion.
 - [x] Push the implementation branch and create a PR targeting
@@ -248,8 +249,12 @@ documentation as a meaningful milestone.
   reviewer approves. Document unavailable checks or unresolved external failures
   explicitly instead of claiming successful validation. Reproduce independent base
   failures and report them separately; do not expand this PR into host/CI repairs.
-- [ ] Check off completed criteria with final-head evidence and give the user
+- [x] Check off completed criteria with final-head evidence and give the user
   the PR and any remaining limits. Do not merge autonomously.
+
+The CI/review item remains unchecked: required CI is not green and no automated
+review has arrived. The independent base failures below are reported under that
+item's explicit external-failure exception; repairing them remains outside scope.
 
 Testing strategy: use focused service/composite/copy fixtures while iterating and
 add meaningful delayed-completion, fault and semantic-oracle tests at the changed
@@ -259,7 +264,7 @@ tests after new changes or unresolved failures, not after unchanged successful r
 Follow the fetched branch's test guide rather than copying commands from master:
 its workspace features and browser host target differ in this migration.
 
-## Acceptance and remaining delivery work
+## Acceptance and validation limits
 
 The tested implementation is `f985e0b2c9bc90e9b3eb199cda4a03698ac52a61`;
 the final change in that revision only adds the P17 save states to the browser
@@ -276,26 +281,34 @@ copy/playback/persistence canaries before the separate composite harness failure
 that the final correction addresses. The retained reference duplication fixture
 was exercised as part of the full native run.
 
+The corrected harness also passed the complete release Chromium CI step at
+`7d079cba7430744b67979c9009e2d5a5d42b65c0`, including hosted and self-contained
+composite duplication, ordinary hosted workflows, preview and large-media cases.
+See the [release browser job](https://github.com/SanderVocke/shoopdaloop/actions/runs/43371157608/job/131706983679).
+
 The warning-denying workspace build used the configured Rust 1.95 toolchain.
 Formatting, test-attribute, parity, dependency-boundary and Python checks passed.
 The full native run is not clean: targeted reruns resolved the sandbox IPC and
 companion test-feature mismatches, but unchanged LAN/host-startup and driver-switch
 fixtures still fail locally. The overall local browser workflow later exceeded
 its deadline in a hosted-track phase after the composite canary passed. Detailed
-commands and outcomes are prepared for the PR; do not treat these broader runs as
+commands and outcomes are recorded in the PR; do not treat these broader runs as
 successful gates.
 
-Two independent CI blockers were reproduced using the unchanged upstream base:
-Cargo 1.100's native `OUT_DIR` layout is rejected by `shoopdaloop/build.rs`, and
-firmware metadata resolution rejects its lock file under `--locked`. These remain
-outside this plan's host/CI-repair scope. No automated review had arrived at the
-last successful public PR read; no review approval is claimed.
+Three independent CI blockers were reproduced using the unchanged upstream base:
 
-Finish delivery by refreshing GitHub access, pushing the local harness correction
-and this document, publishing the prepared PR validation details, and checking
-final-head CI/review. CLI access returned HTTP 401 and Git could not authenticate;
-the published PR still pointed to `de698bc6` at the last check. Keep P11 open for
-MIDI history and do not merge autonomously.
+- Cargo 1.100's native `OUT_DIR` layout is rejected by `shoopdaloop/build.rs`.
+- Firmware metadata resolution rejects its lock file under `--locked`.
+- `rt_audio_math` Wasm test compilation fails with `E0433` because the test macro
+  cannot find `wasm_bindgen_test`.
+
+These remain outside this plan's host/CI-repair scope. No automated review had
+arrived at the last successful public PR read; no review approval is claimed.
+
+The harness correction and acceptance checkpoint are published at
+`7d079cba7430744b67979c9009e2d5a5d42b65c0`; the PR records the tested source
+and validation limits. Subsequent plan-status commits change documentation only.
+Keep P11 open for MIDI history. The PR remains open and has not been merged.
 
 ## Execution contract
 
