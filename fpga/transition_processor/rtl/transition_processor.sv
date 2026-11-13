@@ -122,7 +122,6 @@ module transition_processor #(
     reg [63:0] offer_sequence, stop_sequence;
     reg [63:0] target_source;
     reg target_source_valid;
-    reg [31:0] install_slot, install_generation;
 
     reg lr_en, lw_en, rr_en, rw_en, sr_en, sw_en, mr_en, mw_en, er_en, ew_en;
     reg [LA-1:0] lr_address, lw_address;
@@ -625,7 +624,6 @@ module transition_processor #(
                     if (payload[R_GEN+:32] == 0 || request_row[R_GEN+:32] != payload[R_GEN+:32]) reply(INVALID_ID, 0);
                     else if (request_row[R_VALID]) reply(INVALID_STATE, 0);
                     else begin
-                        install_slot <= index; install_generation <= payload[R_GEN+:32];
                         submit_frame <= payload[R_AT+:64] > frame ? payload[R_AT+:64] : frame;
                         state <= S_INSTALL_ROUND;
                     end
@@ -638,7 +636,7 @@ module transition_processor #(
                     if (submit_sum[64]) reply(INVALID_FRAME, 0);
                     else begin
                         submitted_effective <= submit_sum[63:0] & ~{57'b0,quantum_mask};
-                        list_slot <= install_slot;
+                        list_slot <= index;
                         list_target <= payload[R_TARGET+:32]; list_ticks <= payload[R_TICKS];
                         read_loop(payload[R_TARGET+:32], 0, 0, S_INSERT_HEAD);
                     end
@@ -676,7 +674,7 @@ module transition_processor #(
                         temporary_request = {{(RW-640){1'b0}},payload};
                         temporary_request[63:0] = 0;
                         temporary_request[R_VALID] = 1;
-                        temporary_request[R_GEN+:32] = install_generation;
+                        temporary_request[R_GEN+:32] = payload[R_GEN+:32];
                         temporary_request[R_TICKS] = payload[R_TICKS];
                         temporary_request[R_OP+:2] = payload[R_OP+:2];
                         temporary_request[R_RETRIGGER] = payload[R_RETRIGGER];
@@ -711,7 +709,7 @@ module transition_processor #(
                     if (!list_ticks) begin
                         absolute[PA'(list_slot)] <= 1;
                     end
-                    reply(OK, {768'b0, install_generation, install_slot});
+                    reply(OK, {768'b0, payload[R_GEN+:32], index});
                 end
                 S_UNLINK_BEGIN: begin
                     if (list_previous == NO_REQUEST) read_loop(list_target, 0, 0, S_UNLINK_HEAD);
