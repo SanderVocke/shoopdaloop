@@ -6,9 +6,13 @@ module media_audio_pipeline #(
     parameter integer JOB_DEPTH = 32, parameter integer MAX_FRAMES = 32,
     parameter integer BUFFERS = 16, parameter integer INPUT_PORTS = 2, parameter integer OUTPUT_PORTS = 2,
     parameter integer REUSE_VIEWS = 0,
+    parameter integer MAINTENANCE_AT_RUN = 1,
     parameter integer VIEWS = 32, parameter integer SLOTS = 1024, parameter integer CHUNK_FRAMES = 32,
     parameter integer MEMORY_RESPONSE_CYCLES = 1,
     parameter integer BLOCK_CHUNKS = 32,
+    parameter integer RETIRED_TABLES = 256,
+    parameter integer RECLAIM_BLOCKS = 0, parameter integer RECLAIM_CYCLES = 5000,
+    parameter integer RECLAIM_GUARD = 1024,
     parameter integer TABLE_PAGES = (SLOTS/BLOCK_CHUNKS+14)/15 + 8*VIEWS + 16,
     parameter integer TABLE_LINES = 8, parameter integer REF_LINES = 4, parameter integer STACK_LINES = 2,
     parameter integer READ_BUFFERS = 4, parameter integer WRITE_BUFFERS = 4, parameter integer BURST_MEMORY = 0
@@ -20,6 +24,15 @@ module media_audio_pipeline #(
     output wire [31:0] sample_output_address,
     output wire [31:0] sample_output_data,
     input wire clk, input wire reset,
+    input wire maintenance_enable, input wire maintenance_tick,
+    output wire [31:0] reclaim_pending, output wire [31:0] reclaim_high_water,
+    output wire [63:0] reclaim_references, output wire reclaim_active, output wire reclaim_released,
+    output wire [31:0] reclaim_block, output wire [63:0] reclaim_blocks,
+    output wire [63:0] reclaim_freed, output wire [63:0] reclaim_cycles,
+    output wire reclaim_quiescent,
+    output wire [31:0] reclaim_pages_used, output wire [31:0] reclaim_pages_available,
+    output wire [63:0] reclaim_pages_freed, output wire [63:0] reclaim_capacity_failures,
+
     input wire run_valid, output wire run_ready,
     input wire [31:0] run_instruction_count, input wire [31:0] run_state_count,
     input wire [31:0] run_quantum,
@@ -138,8 +151,14 @@ module media_audio_pipeline #(
         .media_hint_position(hint_position), .media_hint_length(hint_length), .media_hint_count(hint_count)
     );
 
-    media_store #(.REUSE_VIEWS(REUSE_VIEWS), .VIEWS(VIEWS), .SLOTS(SLOTS), .CHUNK_FRAMES(CHUNK_FRAMES), .READ_BUFFERS(READ_BUFFERS), .WRITE_BUFFERS(WRITE_BUFFERS), .BURST_MEMORY(BURST_MEMORY), .BLOCK_CHUNKS(BLOCK_CHUNKS),.TABLE_PAGES(TABLE_PAGES), .TABLE_LINES(TABLE_LINES), .REF_LINES(REF_LINES), .STACK_LINES(STACK_LINES)) media (
+    media_store #(.REUSE_VIEWS(REUSE_VIEWS), .VIEWS(VIEWS), .SLOTS(SLOTS), .CHUNK_FRAMES(CHUNK_FRAMES), .READ_BUFFERS(READ_BUFFERS), .WRITE_BUFFERS(WRITE_BUFFERS), .BURST_MEMORY(BURST_MEMORY), .BLOCK_CHUNKS(BLOCK_CHUNKS),.RETIRED_TABLES(RETIRED_TABLES),.RECLAIM_BLOCKS(RECLAIM_BLOCKS),.RECLAIM_CYCLES(RECLAIM_CYCLES),.RECLAIM_GUARD(RECLAIM_GUARD),.TABLE_PAGES(TABLE_PAGES), .TABLE_LINES(TABLE_LINES), .REF_LINES(REF_LINES), .STACK_LINES(STACK_LINES)) media (
         .clk(clk), .reset(reset), .arena_base(arena_base),
+        .maintenance_tick(maintenance_tick || (MAINTENANCE_AT_RUN != 0 && run_valid && run_ready)),.reclaim_pages_used(reclaim_pages_used),.reclaim_pages_available(reclaim_pages_available),
+        .reclaim_pages_freed(reclaim_pages_freed),.reclaim_capacity_failures(reclaim_capacity_failures),
+        .maintenance_enable(maintenance_enable && !(run_valid && pipeline_ready)),.reclaim_pending(reclaim_pending),.reclaim_high_water(reclaim_high_water),
+        .reclaim_references(reclaim_references),.reclaim_active(reclaim_active),.reclaim_released(reclaim_released),
+        .reclaim_block(reclaim_block),.reclaim_blocks(reclaim_blocks),.reclaim_freed(reclaim_freed),
+        .reclaim_cycles(reclaim_cycles),.reclaim_quiescent(reclaim_quiescent),
         .hint_valid(hint_valid), .hint_ready(hint_ready), .hint_view(hint_view), .hint_position(hint_position), .hint_length(hint_length), .hint_count(hint_count),
         .cmd_valid(pipeline_busy ? job_cmd_valid : store_cmd_valid), .cmd_ready(internal_ready),
         .cmd_opcode(pipeline_busy ? job_opcode : store_cmd_opcode), .cmd_view(pipeline_busy ? job_view : store_cmd_view),

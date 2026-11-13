@@ -1,0 +1,76 @@
+{
+  "baseline": "bc833fc310817648c9e9c1d4c7ae3d6d21ac24c6",
+  "configuration": "Default media tops: SLOTS=32, BLOCK_CHUNKS=1, TABLE_LINES=8, REF_LINES=4, STACK_LINES=2; retired capacity=256",
+  "versions": [
+    "Yosys 0.52 (git sha1 fee39a3284c90249e1d9684cf6944ffbbcbb8f90)",
+    "Verilator 5.032 2025-01-01 rev (Debian 5.032-1+b2)"
+  ],
+  "routed_timing": false,
+  "media_store": {
+    "baseline": {
+      "$scopeinfo": 13,
+      "CCU2C": 2406,
+      "DP16KD": 15,
+      "L6MUX21": 685,
+      "LUT4": 12818,
+      "PFUMX": 2284,
+      "TRELLIS_DPR16X4": 8,
+      "TRELLIS_FF": 6779
+    },
+    "deferred": {
+      "$scopeinfo": 14,
+      "CCU2C": 2979,
+      "DP16KD": 15,
+      "L6MUX21": 378,
+      "LUT4": 14088,
+      "PFUMX": 1872,
+      "TRELLIS_DPR16X4": 8,
+      "TRELLIS_FF": 7660
+    },
+    "delta": {
+      "$scopeinfo": 1,
+      "CCU2C": 573,
+      "DP16KD": 0,
+      "L6MUX21": -307,
+      "LUT4": 1270,
+      "PFUMX": -412,
+      "TRELLIS_DPR16X4": 0,
+      "TRELLIS_FF": 881
+    }
+  },
+  "media_audio_pipeline": {
+    "baseline": {
+      "$scopeinfo": 29,
+      "CCU2C": 3348,
+      "DP16KD": 18,
+      "L6MUX21": 325,
+      "LUT4": 17303,
+      "MULT18X18D": 4,
+      "PFUMX": 2445,
+      "TRELLIS_DPR16X4": 315,
+      "TRELLIS_FF": 9892
+    },
+    "deferred": {
+      "$scopeinfo": 30,
+      "CCU2C": 3950,
+      "DP16KD": 18,
+      "L6MUX21": 513,
+      "LUT4": 19699,
+      "MULT18X18D": 4,
+      "PFUMX": 2626,
+      "TRELLIS_DPR16X4": 315,
+      "TRELLIS_FF": 10773
+    },
+    "delta": {
+      "$scopeinfo": 1,
+      "CCU2C": 602,
+      "DP16KD": 0,
+      "L6MUX21": 188,
+      "LUT4": 2396,
+      "MULT18X18D": 0,
+      "PFUMX": 181,
+      "TRELLIS_DPR16X4": 0,
+      "TRELLIS_FF": 881
+    }
+  }
+}

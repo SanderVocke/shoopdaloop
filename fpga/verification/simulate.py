@@ -72,7 +72,7 @@ def main():
         ('job_processor',['jp_sample_ram.sv','jp_divider.sv','job_processor.sv','audio_pipeline.sv']),
         ('transition_processor',['tp_ram.sv','tp_priority.sv','transition_processor.sv']),
         ('chunk_memory',['chunk_ram.sv','chunk_memory.sv']),
-        ('media_store',['media_ram.sv','metadata_cache.sv','media_metadata.sv','media_prefetch_resolver.sv','media_store.sv','memory_delay.sv','media_audio_pipeline.sv']),
+        ('media_store',['media_ram.sv','metadata_cache.sv','media_metadata.sv','media_reclaimer.sv','media_prefetch_resolver.sv','media_store.sv','memory_delay.sv','media_audio_pipeline.sv']),
         ('loop_pipeline',['loop_pipeline.sv']),
         ('axi_memory',['axi_master.sv','axi_burst_mux.sv','shared_axi.sv','chunk_dma.sv','word_dma.sv','word_axi.sv','chunk_axi.sv','loop_pipeline_axi.sv'])] for module in names]
     top='loop_pipeline_axi_tb';sources.append(ROOT/'fpga/axi_memory/tests/loop_pipeline_axi_tb.sv')
@@ -81,10 +81,10 @@ def main():
     if args.benchmark64 and args.scale_workload=='mixed':depths[11]=2048
     if args.block_chunks>1:
         if args.benchmark64 and args.config=='8x8' and args.block_chunks==32:
-            depths[11]={'original':2048,'streaming':4096,'mixed':2304}[args.scale_workload]
+            depths[11]={'original':2048,'streaming':4096,'mixed':3072}[args.scale_workload]
         else:depths[11]*=args.block_chunks
     depths[12]=scenarios[0]['chunk_frames']
-    parameters=dict(zip(PARAMS,depths));parameters.update(BLOCK_CHUNKS=args.block_chunks,READ_BUFFERS=args.read_buffers,WRITE_BUFFERS=args.write_buffers,
+    parameters=dict(zip(PARAMS,depths));parameters.update(RETIRED_TABLES=args.retired_tables,RECLAIM_BLOCKS=args.reclaim_blocks,RECLAIM_CYCLES=args.reclaim_cycles,RECLAIM_GUARD=args.reclaim_guard,BLOCK_CHUNKS=args.block_chunks,READ_BUFFERS=args.read_buffers,WRITE_BUFFERS=args.write_buffers,
         AXI_DATA_WIDTH=args.axi_data_width,PHYSICAL_BASE=args.physical_base,BURST_MEMORY=int(not args.word_transfers))
     parameters.update(TABLE_LINES=args.metadata_lines,REF_LINES=args.reference_lines,STACK_LINES=args.stack_lines)
     if args.metadata_pages is not None:parameters['TABLE_PAGES']=args.metadata_pages
@@ -110,7 +110,7 @@ def main():
             'LP_MEDIA_CAPACITIES':','.join(map(str,depths[10:])),'UNIFY_STALLS':str(int(args.stalls)),
             'LP_OUTPUT':str(output)})
     report=ET.parse(result).getroot()
-    if any(list(report.iter(key)) for key in ('failure','error','skipped')) or len(list(report.iter('testcase')))!=(2 if args.faults else 1):
+    if any(list(report.iter(key)) for key in ('failure','error','skipped')) or len(list(report.iter('testcase')))!=(3 if args.faults else 2):
         raise SystemExit(f'production/RTL comparison failed: {output}')
     print(f'{len(scenarios)} common production/RTL scenarios passed: {output}')
 

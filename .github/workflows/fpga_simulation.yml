@@ -6,6 +6,7 @@ on:
       - 'fpga/**'
       - 'PLAN_SIM_MEM.md'
       - 'PLAN_METADATA_CACHE.md'
+      - 'PLAN_RETAKE_CLEAR.md'
       - 'AUDIO_IO.md'
       - 'scripts/rt_backend_testbench/**'
       - 'src/rust/rt_audio_math/**'
@@ -126,16 +127,98 @@ jobs:
             work/native-ci/audio-*/*.hex
           if-no-files-found: warn
 
-  audio-synthesis:
-    name: Audio I/O lint and synthesis
+  reclamation:
+    name: Deferred reclamation (${{ matrix.model }})
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        model: [instant, dramsim3]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install simulation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes autoconf flex bison libfl-dev zlib1g-dev g++ cmake patch python3-venv
+          python3 -m venv .venv
+          .venv/bin/pip install -r fpga/axi_memory/requirements.txt
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+      - name: Cache Verilator 5.032
+        id: verilator
+        uses: actions/cache@v4
+        with:
+          path: work/verilator
+          key: verilator-8ff77e9d47351b0a59114929880687839a51840b-ubuntu-24.04
+      - name: Build Verilator 5.032
+        if: steps.verilator.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch v5.032 https://github.com/verilator/verilator.git work/verilator
+          test "$(git -C work/verilator rev-parse HEAD)" = 8ff77e9d47351b0a59114929880687839a51840b
+          cd work/verilator
+          autoconf
+          ./configure
+          make -C src -j2 opt
+      - name: Select Verilator
+        run: echo "$PWD/work/verilator/bin" >> "$GITHUB_PATH"
+      - name: Build the realistic timing model
+        if: matrix.model == 'dramsim3'
+        run: python fpga/axi_memory/build_dramsim3.py
+      - name: Check detachment, maintenance, sharing and faults
+        run: |
+          python fpga/media_store/simulate.py --config wide --block-chunks 32 --retired-tables 2 --deferred --axi-data-width 64 --metadata-lines 1 --reference-lines 1 --stack-lines 1 --memory-model ${{ matrix.model }} --output work/reclamation/ownership
+          python fpga/chunk_memory/simulate.py --config small --retire-chunks 32 --memory-model ${{ matrix.model }} --output work/reclamation/retirement
+      - name: Check exhausted pools and transfer publication
+        if: matrix.model == 'instant'
+        run: |
+          python fpga/media_store/simulate.py --config wide --block-chunks 32 --metadata-pages 3 --deferred-capacity --output work/reclamation/capacity
+          python fpga/media_store/simulate.py --config wide --block-chunks 32 --retired-tables 2 --metadata-pages 7 --reuse-views --deferred-reuse --output work/reclamation/reuse
+      - name: Check large arena and continued recording
+        if: matrix.model == 'instant'
+        run: python fpga/media_store/simulate.py --config retirement --block-chunks 32 --deferred-stress --stress-seconds 1 --metadata-lines 128 --axi-data-width 64 --output work/reclamation/stress
+      - uses: dtolnay/rust-toolchain@stable
+        if: matrix.model == 'instant'
+      - uses: Swatinem/rust-cache@v2
+        if: matrix.model == 'instant'
+        with:
+          shared-key: production-fpga
+      - name: Check queue-driven Marlin runtime integration
+        if: matrix.model == 'instant'
+        env:
+          RUSTFLAGS: -D warnings
+        run: cargo test --locked -p rt_fpga_sim --features sim -- --test-threads=1
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: deferred-reclamation-${{ matrix.model }}
+          path: |
+            work/reclamation/**/*.log
+            work/reclamation/**/results.xml
+            work/reclamation/**/*timing.json
+            work/reclamation/**/stress-*.json
+          if-no-files-found: warn
+
+  audio-synthesis:
+    name: Audio I/O lint and synthesis (${{ matrix.target }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ contains(matrix.target, 'map') && 90 || 45 }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [q16, q32, q64, map, demo, demo-map, media]
     steps:
       - uses: actions/checkout@v7
       - name: Install RTL tools
         run: |
           sudo apt-get update
-          sudo apt-get install --yes yosys autoconf flex bison libfl-dev zlib1g-dev g++
+          sudo apt-get install --yes autoconf flex bison libfl-dev zlib1g-dev g++
+      - name: Install pinned synthesis tools
+        uses: YosysHQ/setup-oss-cad-suite@853bb54f52246aa8fb4fab963f104cfb6676197a # v4
+        with:
+          version: '2025-04-15'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Report synthesis tool version
+        run: yosys -V
       - name: Cache synthesis Verilator 5.032
         id: verilator
         uses: actions/cache@v4
@@ -153,14 +236,30 @@ jobs:
           make -C src -j2 opt
       - name: Select synthesis Verilator
         run: echo "$PWD/work/verilator/bin" >> "$GITHUB_PATH"
-      - name: Check complete audio top variants
-        run: python3 fpga/audio_io/check.py
-      - name: Check prepared demo synthesis
-        run: python3 fpga/audio_io/check.py --demo --output work/audio-demo-synthesis
+      - name: Check complete audio top variant
+        if: startsWith(matrix.target, 'q')
+        run: |
+          case '${{ matrix.target }}' in
+            q16) python3 fpga/audio_io/check.py --quantum 16 --generic-only ;;
+            q32) python3 fpga/audio_io/check.py --quantum 32 --generic-only ;;
+            q64) python3 fpga/audio_io/check.py --quantum 64 --generic-only ;;
+          esac
+      - name: Map complete audio top
+        if: matrix.target == 'map'
+        run: python3 fpga/audio_io/check.py --mapping-only
+      - name: Check prepared demo inference
+        if: matrix.target == 'demo'
+        run: python3 fpga/audio_io/check.py --demo --generic-only --output work/audio-demo-synthesis
+      - name: Map prepared demo
+        if: matrix.target == 'demo-map'
+        run: python3 fpga/audio_io/check.py --demo --mapping-only --output work/audio-demo-synthesis
+      - name: Check media ownership synthesis
+        if: matrix.target == 'media'
+        run: bash fpga/media_store/check.sh work/media-synthesis
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: audio-synthesis
+          name: audio-synthesis-${{ matrix.target }}
           path: |
             work/audio-synthesis/*.log
             work/audio-synthesis/*generic.json
@@ -168,4 +267,6 @@ jobs:
             work/audio-demo-synthesis/*.log
             work/audio-demo-synthesis/*generic.json
             work/audio-demo-synthesis/resources.json
+            work/media-synthesis/*.log
+            work/media-synthesis/*ecp5.json
           if-no-files-found: warn

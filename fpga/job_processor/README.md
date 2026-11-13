@@ -1,6 +1,6 @@
 # BRAM audio job processor
 
-This milestone executes Input, Silence, Gain, Mix, and Output jobs using reusable
+This processor executes Input, Silence, Constant, Gain, Arithmetic, Smoothing, Mix, and Output jobs using reusable
 BRAM quantum buffers. `audio_pipeline` connects the job processor to the existing
 state processor's FIFO. The comparison bench runs the same program and samples
 through production numeric primitives and independent arithmetic specifications.
@@ -54,8 +54,31 @@ subtract the magnitude, preserving Rust's truncation. At duration the gain is
 the exact target. Constant, zero-duration, and ended ramps skip the divisions.
 The job snapshot is immutable; the state processor advances ramps between quanta.
 
-There is no combinational divider or division per sample. Generic checks forbid
+Gain uses no combinational divider or division per sample. Generic checks forbid
 `$div`, `$mod`, and latches. ECP5 maps the shared multiplier to four 18x18 DSPs.
+
+### Application coefficients and restart smoothing
+
+Constant fills a scratch buffer with one raw word. Arithmetic combines scratch
+buffers using the same signed multiply/truncate/saturate rules as gain. Its
+balance and one-minus modes build the production backend's coefficients while
+preserving the order of each rounding stage. Arithmetic serializes two reads
+on the existing scratch port and reuses the registered multiplier.
+
+Smoothing retains last output, anchor, elapsed count and active ramp duration for
+each history index (bounded by BUFFERS). Restart copies the last output to the
+anchor and latches the next duration. For each ramping sample it computes the
+Q8.24 ratio `elapsed/duration`, then `anchor*(1-weight) + raw*weight`, rounding
+each product before saturating addition. This path reuses the restoring divider
+once per ramping sample and the shared multiplier twice. It favors a direct
+production comparison over throughput. Ended/disabled smoothing skips division;
+stopped playback clears its history. A changed duration applies at the next
+restart. Configuration writes preserve history; reset clears it.
+
+The persistent history arrays add four 32-bit words per prepared history index.
+The application compiler uses a stable index per prepared playback channel.
+Rust/Marlin tests compare this path directly to the production Q8.24 renderer,
+including 3/144-frame ramps, short loops and stop/restart.
 
 ### Streaming gain and mix
 

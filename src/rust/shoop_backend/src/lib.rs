@@ -600,6 +600,7 @@ pub enum BackendDriverState {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct BackendStatus {
+    pub memory: Option<shoop_app_api::MemoryReport>,
     pub dsp_load_percent: f32,
     pub xruns: u32,
     pub buffer_size: u32,

@@ -162,3 +162,18 @@ compare revisions under the same parameters.
 
 The [acyclic synchronization experiment](measurements/ACYCLIC_SYNC.md) records
 matched resource measurements, processing cycles and verification evidence.
+
+## Application adapter extensions
+
+Command 17 updates repeat-sync policy between iterations. Index selects the loop;
+payload bits 31:0 contain its generation and bit 32 the new value. A stale identity
+or non-idle phase is refused; the loop state row is authoritative.
+
+The submitted-request encoding reserves bit 44 for the application's empty-content
+replacement. It uses operation 3 and carries the new revision in the position
+field. Submission bypasses position alignment for this tag. Settlement refuses a
+recording target; otherwise it selects zero length, resets position, stops the
+loop and advances the revision watermark. Existing request ordering, supersession
+and terminal receipts apply. The emitted transition event marks bit 195 and uses
+its position field for the revision, distinguishing this operation from seek.
+Samples/reference retirement stays with the media subsystem and owning leases.

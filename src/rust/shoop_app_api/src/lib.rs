@@ -1038,6 +1038,7 @@ impl ConversionTarget {
 #[derive(Clone, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct StatusState {
+    pub memory: Option<MemoryReport>,
     pub version: String,
     pub dsp_load_percent: f32,
     pub xruns: u32,
@@ -2234,6 +2235,7 @@ pub struct AppNotification {
 
 pub use rt_profiling as profiling_data;
 pub use rt_profiling::View as ProfilingView;
+pub use shoop_rt_protocol::{MemoryReport, MemoryResource, MemoryUnit};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ProfilingSource {

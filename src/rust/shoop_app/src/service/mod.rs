@@ -1194,6 +1194,7 @@ impl Service {
             }
             Err(error) => {
                 self.init_error = Some(error.to_string());
+                self.observed.status.memory = None;
                 self.observed.status.driver_state = BackendDriverState::Failed;
                 self.observed.profiling = Default::default();
                 let ids: Vec<_> = self.pending.keys().copied().collect();

@@ -125,10 +125,12 @@ async def media_protocol(dut):
     assert result["status"]["kind"] == "completed", "ignored hint bound the old arena"
     await driver.load(case("empty", CAPACITIES[2], CAPACITIES[1], [])["media"])
     for space, size in ((0, 4), (1, CAPACITIES[0]), (2, driver.table_address(CAPACITIES[0],0)),
-                        (3, CAPACITIES[1]), (4, CAPACITIES[1]), (7, 0)):
+                        (3, CAPACITIES[1]), (4, CAPACITIES[1]), (6, 15), (7, driver.retired_tables*16)):
         await driver.configure(space, size, 123, expect_error=True)
         await driver.configure(space, size, expect_error=True)
         await driver.configure(space, (1 << 32)-1, expect_error=True)
+    await driver.configure(6,0,0,expect_error=True)
+    await driver.configure(7,0,0,expect_error=True)
     if CAPACITIES[1] & (CAPACITIES[1]-1):
         await driver.configure(2,driver.table_address(0,CAPACITIES[1]),expect_error=True)
     await driver.configure(0, 0, CAPACITIES[0]+1, expect_error=True)

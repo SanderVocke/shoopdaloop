@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import cocotb
+from cocotb.triggers import FallingEdge, Timer
 import rt_backend_testbench as wire
 from pipeline_driver import PipelineDriver
 from loop_memory import LoopMemory
@@ -94,7 +95,7 @@ async def production_scenarios(dut):
                         for view in binding['views']:
                             descriptor=await memory.configure(1,view)
                             frames=(descriptor>>64)&((1<<64)-1)
-                            response=await memory.command(dict(kind='slice',source=view,start=0,frames=frames),stalls=driver.stalls)
+                            response=await memory.command(dict(kind='slice',source=view,start=0,frames=frames),stalls=driver.stalls,drain=False)
                             assert response['status']['kind']=='completed',response['status']
                             retained.append(response['value']['value'])
                         snapshots.append(dict(name=action['name'],views=retained))
@@ -135,7 +136,7 @@ async def production_scenarios(dut):
                 channels=[]
                 for view in retained['views']:
                     frames=(await memory.configure(1,view)>>64)&((1<<64)-1)
-                    response=await memory.command(dict(kind='read',view=view,position=0,length=frames,frames=frames),stalls=driver.stalls)
+                    response=await memory.command(dict(kind='read',view=view,position=0,length=frames,frames=frames),stalls=driver.stalls,drain=False)
                     assert response['status']['kind']=='completed',response['status']
                     channels.append(response['value']['value'])
                 actual['media'].append(dict(name=retained['name'],frames=len(channels[0]),samples=dict(encoding='q824',channels=channels)))
@@ -149,6 +150,74 @@ async def production_scenarios(dut):
             raise
         finally:memory.close()
     (OUTPUT/'timing.json').write_text(json.dumps(dict(memory=metadata(),scenarios=timings),indent=2)+'\n')
+
+@cocotb.test()
+async def early_iterations_preempt_cleanup_without_waiting_for_its_allowance(dut):
+    image=wire.load(OUTPUT/'0.image.json','image')
+    program=dict(image['program'],instructions=[],jobs_per_quantum=0)
+    case=dict(name='cleanup-handoff',plan=dict(description=image['transition']['description'],limits=image['transition']['limits']),
+        program=program,initial_state=dict(memory=[]),buffers=0,output_ports=0,queue_capacity=DEPTHS[5],
+        media=dict(chunk_frames=MEDIA[2],block_chunks=BLOCK_CHUNKS,chunk_limit=MEDIA[1],samples=[],free_chunks=[],views=[]))
+    results=[]
+    for settle in (False,True):
+        driver=PipelineDriver(dut,DEPTHS,20261113);memory=LoopMemory(dut,MEDIA,20261113);driver.media=memory
+        core=dut.core.core;gc=core.audio.media.reclaimer
+        async def admission(host=False):
+            await FallingEdge(dut.clk)
+            if host:driver.set(command_valid=1,command_opcode=16,command_index=0,command_data=0,response_ready=1)
+            else:driver.set(run_valid=1,run_instruction_count=0,run_state_count=0,run_quantum=program['quantum'],
+                run_chunk_frames=program['chunk_frames'],run_job_budget=0,run_buffers=0,run_inputs=0,run_outputs=0)
+            for wait in range(10000):
+                await Timer(1,units='ns')
+                if not int(gc.lock_held.value):
+                    assert not (int(gc.lock_request.value) and int(gc.lock_grant.value)),'cleanup reacquired a lock ahead of a waiting iteration'
+                    assert not (int(gc.request_valid.value) and int(gc.request_ready.value)),'cleanup admitted metadata ahead of a waiting iteration'
+                    assert not (int(gc.retire_valid.value) and int(gc.retire_ready.value)),'cleanup admitted retirement ahead of a waiting iteration'
+                ready=int((dut.command_ready if host else dut.run_ready).value)
+                remaining=int(gc.cycles_left.value)
+                await driver.edge()
+                if ready:break
+                await FallingEdge(dut.clk)
+            else:raise AssertionError('cleanup starved iteration admission')
+            driver.set(**({'command_valid':0} if host else {'run_valid':0}))
+            assert remaining>int(os.environ['AXI_RECLAIM_GUARD']),'iteration waited for the cleanup allowance to expire'
+            return wait+1
+        try:
+            await driver.initialize(case,image['transition'])
+            memory.set(maintenance_enable=0);blocks=min(25,memory.blocks);bf=memory.chunk_frames*memory.block_chunks
+            for block in range(blocks):
+                await memory.configure(2,memory.table_address(0,block),block)
+                await memory.configure(3,block,1)
+            await memory.configure(1,0,1|((blocks*bf)<<64)|(blocks<<128))
+            await memory.configure(0,0,1);await memory.configure(0,1,blocks)
+            result=await memory.command(dict(kind='clear',view=0),stalls=False,drain=False,observe=False)
+            assert result['status']['kind']=='completed'
+            await memory.grant_maintenance(cycles=100000)
+            memory.set(maintenance_enable=1)
+            for _ in range(10000):
+                await memory.tick()
+                if int(gc.phase.value)==(4 if settle else 1):break
+            else:raise AssertionError('cleanup did not reach the handoff boundary')
+            waits=[await admission(settle)]
+            if settle:
+                for _ in range(10000):
+                    await driver.edge()
+                    if int(core.phase.value)==9:break
+                else:raise AssertionError('host settlement did not complete')
+                driver.set(response_ready=0)
+                remaining=int(gc.cycles_left.value)
+                waits.append(await admission())
+                assert int(gc.cycles_left.value)<=remaining,'audio admission replenished an already settled iteration'
+            for run in range(2):
+                elapsed=0
+                while not int(dut.done.value) and elapsed<10000:
+                    await driver.edge();elapsed+=1
+                assert int(dut.done.value) and not int(dut.error_code.value)
+                assert elapsed<int(os.environ['AXI_RECLAIM_CYCLES']),'empty processing unexpectedly waited for the cleanup budget'
+                if run==0:waits.append(await admission())
+            results.append(dict(host_settlement=settle,admission_cycles=waits,final_processing_cycles=elapsed))
+        finally:memory.close()
+    (OUTPUT/'cleanup-handoff.json').write_text(json.dumps(results,indent=2)+'\n')
 
 if os.environ.get('UNIFY_FAULTS')=='1':
     @cocotb.test()

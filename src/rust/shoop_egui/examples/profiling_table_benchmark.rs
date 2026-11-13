@@ -1,5 +1,6 @@
 pub use shoop_egui::{
-    colors, diagnostics_protocol, task_profiling, DiagnosticsView, ProfilingView, StatusState,
+    colors, diagnostics_protocol, show_memory_usage, task_profiling, DiagnosticsView,
+    ProfilingView, StatusState,
 };
 use std::time::Instant;
 #[path = "../src/profiling.rs"]

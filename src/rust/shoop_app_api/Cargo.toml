@@ -13,6 +13,7 @@ serde = ["dep:serde", "shoop_port_graph/serde", "shoop_processor_protocol/serde"
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
+shoop_rt_protocol = { path = "../shoop_rt_protocol" }
 freertos_profiling = { path = "../freertos_profiling" }
 profiling_protocol = { path = "../profiling_protocol" }
 

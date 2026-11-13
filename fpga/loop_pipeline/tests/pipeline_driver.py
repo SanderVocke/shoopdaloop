@@ -98,12 +98,18 @@ class PipelineDriver(Driver):
         if not int(self.raw.faulted.value):
             if self.media is not None:self.set(arena_base=self.media.base)
             await FallingEdge(self.raw.clk)
-            assert int(self.raw.run_ready.value)
             self.set(run_valid=1,run_instruction_count=len(self.case['program']['instructions']),
                 run_state_count=len(self.case['initial_state']['memory']),run_quantum=q,
                 run_chunk_frames=self.case['program']['chunk_frames'],run_job_budget=self.case['program']['jobs_per_quantum'],
                 run_buffers=self.case['buffers'],run_inputs=len(inputs),run_outputs=self.case['output_ports'])
-            await self.edge();self.set(run_valid=0)
+            for _ in range(1000000):
+                await Timer(1,units='ns')
+                ready=int(self.raw.run_ready.value)
+                await self.edge()
+                if ready:break
+                await FallingEdge(self.raw.clk)
+            else:raise AssertionError('coordinator admission timed out')
+            self.set(run_valid=0)
             finished=bool(int(self.raw.done.value))
             for _ in range(1000000):
                 if finished:break

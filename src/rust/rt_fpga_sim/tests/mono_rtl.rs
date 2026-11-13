@@ -128,6 +128,17 @@ fn queued_mono_loop_matches_native_at_settled_queries_and_after_each_quantum() {
             .process(&[input])
             .unwrap_or_else(|e| panic!("q{q} {e}: {:?}", hardware.device().last_error));
         assert_eq!(actual[0], expected, "audio q{q}");
+        let report = hardware.memory_report().unwrap();
+        assert_eq!(report.frame, (q + 1) * 32);
+        assert!(report.valid());
+        assert_eq!(report.accounted_bytes, None);
+        let sample = report.resources[0].unwrap();
+        assert_eq!(sample.capacity, Some(128 * 32 * 4));
+        if q <= 2 {
+            assert_eq!(sample.used, (q.min(1) + 1) * 32 * 4);
+        }
+        assert_eq!(hardware.memory_report().unwrap(), report);
+        assert_eq!(hardware.device().frame(), report.frame);
         assert_eq!(
             hardware.state(),
             native
@@ -284,6 +295,7 @@ fn actual_rtl_fault_and_arena_exhaustion_surface_without_losing_future_receipts(
         };
         assert_eq!(a.process(&[vec![12345; 32]]), Err(error));
         assert_eq!(a.fault(), Some(error));
+        assert_eq!(a.memory_report(), Err(error));
         assert!(
             matches!(c.try_execution().unwrap().operation_result,Some(Reply::Failed(failure)) if failure==shoop_loops::runtime::Failure::Runtime(error))
         );

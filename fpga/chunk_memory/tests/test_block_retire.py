@@ -75,3 +75,48 @@ async def block_retirement(dut):
         await driver.reset(source)
         assert await driver.command(dict(kind='read',chunk=0,frames=cf),stalls=False)==(0,source[:cf])
     finally:driver.close()
+
+
+@cocotb.test()
+async def background_retirement_preserves_unrelated_commands(dut):
+    capacities=tuple(map(int,os.environ['CHUNK_CAPACITIES'].split(',')))
+    bc=int(os.environ['CHUNK_RETIRE_CHUNKS']);slots,cf,_,_=capacities
+    driver=Driver(dut,capacities,20261112);driver.stalls=False
+    source=[i*7-1000 for i in range(slots*cf)]
+    async def retire(chunk):
+        driver.set(retire_valid=1,retire_chunk=chunk)
+        for _ in range(10000):
+            ready=int(dut.retire_ready.value);await driver.tick()
+            if ready:break
+        else:raise AssertionError('background retirement admission timeout')
+        driver.set(retire_valid=0)
+    async def completed():
+        for _ in range(100000):
+            if int(dut.retire_done.value):return int(dut.retire_error.value)
+            await driver.tick()
+        raise AssertionError('background retirement completion timeout')
+    try:
+        await driver.reset(source)
+        for chunk,value in ((0,101),(bc,202)):
+            assert await driver.command(dict(kind='write',chunk=chunk,samples=[value]*cf),stalls=False)==(0,[])
+        driver.pause=True
+        await retire(0)
+        for _ in range(20):await driver.tick()
+        assert int(dut.retire_busy.value) and not int(dut.retire_done.value)
+        assert await driver.command(dict(kind='read',chunk=bc,frames=cf),stalls=False)==(0,[202]*cf)
+        assert int(dut.retire_busy.value),'unrelated command waited for retirement'
+        driver.pause=False
+        assert await completed()==0
+        assert await driver.command(dict(kind='fence'),stalls=False)==(0,[])
+        image=await driver.read_memory();image[:cf]=[7777]*cf
+        driver.memory[:]=image;await driver.load_memory()
+        assert await driver.command(dict(kind='read',chunk=0,frames=cf),stalls=False)==(0,[7777]*cf)
+        await driver.reset(source)
+        assert await driver.command(dict(kind='write',chunk=0,samples=[42]*cf),stalls=False)==(0,[])
+        driver.fail_next=True
+        await retire(0)
+        assert await completed()==5
+        assert int(dut.fault.value)
+        await driver.reset(source)
+        assert await driver.command(dict(kind='read',chunk=0,frames=cf),stalls=False)==(0,source[:cf])
+    finally:driver.close()

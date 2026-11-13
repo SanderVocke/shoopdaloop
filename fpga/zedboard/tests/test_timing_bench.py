@@ -13,7 +13,7 @@ async def deployed_runner(d):
     p = config['parameters']
     blocks = p['SLOTS']//p['BLOCK_CHUNKS']
     pages = (blocks+14)//15+8*p['VIEWS']+16
-    words = ((p['SLOTS']*p['CHUNK_FRAMES']+15)//16)*16+2*((blocks+15)//16)*16+pages*16
+    words = ((p['SLOTS']*p['CHUNK_FRAMES']+15)//16)*16+2*((blocks+15)//16)*16+pages*16+int(p.get("RETIRED_TABLES",256))*16
     initial = [0xa5a5a5a5]*words
     memory = create_memory(d, initial, seed=20261112, output=os.environ['BENCH_OUTPUT'])
     cycle = 0

@@ -10,6 +10,8 @@ workspace = true
 
 [features]
 default = []
+app-ui = ["app", "dep:eframe", "dep:shoop_egui", "dep:shoop_settings"]
+app = ["sim", "shoop_rt_engine/testing", "dep:shoop_app", "dep:shoop_app_api", "dep:shoop_backend", "dep:shoop_app_client", "dep:shoop_app_protocol", "dep:shoop_rt_backend", "dep:shoop_rt_protocol", "dep:shoop_rt_transport", "dep:shoop_scripting"]
 sim = ["dep:serde", "dep:marlin", "dep:rt_backend_testbench", "dep:serde_json"]
 
 [dependencies]
@@ -22,7 +24,20 @@ rt_audio_math = { path = "../rt_audio_math" }
 rt_backend_testbench = { path = "../rt_backend_testbench", optional = true }
 serde_json = { workspace = true, optional = true }
 
+shoop_backend = { path = "../shoop_backend", default-features = false, optional = true }
+shoop_app = { path = "../shoop_app", optional = true }
+shoop_app_api = { path = "../shoop_app_api", optional = true }
+shoop_app_client = { path = "../shoop_app_client", features = ["runtime"], optional = true }
+shoop_app_protocol = { path = "../shoop_app_protocol", optional = true }
+shoop_rt_backend = { path = "../shoop_rt_backend", default-features = false, optional = true }
+shoop_rt_protocol = { path = "../shoop_rt_protocol", optional = true }
+shoop_rt_transport = { path = "../shoop_rt_transport", optional = true }
+shoop_scripting = { path = "../shoop_scripting", optional = true }
+
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+eframe = { workspace = true, optional = true }
+shoop_egui = { path = "../shoop_egui", optional = true }
+shoop_settings = { path = "../shoop_settings", optional = true }
 marlin = { version = "=0.21.1", features = ["verilog"], optional = true }
 
 [dev-dependencies]
@@ -42,3 +57,8 @@ required-features = ["sim"]
 name = "fpga-mono-demo"
 path = "src/mono_main.rs"
 required-features = ["sim"]
+
+[[bin]]
+name = "fpga-app-demo"
+path = "src/app_main.rs"
+required-features = ["app"]

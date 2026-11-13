@@ -18,6 +18,9 @@ module loop_pipeline #(
     parameter integer CHUNK_FRAMES = 32,
     parameter integer MEMORY_RESPONSE_CYCLES = 1,
     parameter integer BLOCK_CHUNKS = 32,
+    parameter integer RETIRED_TABLES = 256,
+    parameter integer RECLAIM_BLOCKS = 0, parameter integer RECLAIM_CYCLES = 5000,
+    parameter integer RECLAIM_GUARD = 1024,
     parameter integer TABLE_PAGES = (SLOTS/BLOCK_CHUNKS+14)/15 + 8*VIEWS + 16,
     parameter integer TABLE_LINES = 8, parameter integer REF_LINES = 4, parameter integer STACK_LINES = 2,
     parameter integer READ_BUFFERS = 4, parameter integer WRITE_BUFFERS = 4, parameter integer BURST_MEMORY = 0
@@ -30,6 +33,14 @@ module loop_pipeline #(
     output wire [31:0] sample_output_data,
     input wire clk,
     input wire reset,
+    input wire maintenance_enable,
+    output wire [31:0] reclaim_pending, output wire [31:0] reclaim_high_water,
+    output wire [63:0] reclaim_references, output wire reclaim_active, output wire reclaim_released,
+    output wire [31:0] reclaim_block, output wire [63:0] reclaim_blocks,
+    output wire [63:0] reclaim_freed, output wire [63:0] reclaim_cycles,
+    output wire reclaim_quiescent,
+    output wire [31:0] reclaim_pages_used, output wire [31:0] reclaim_pages_available,
+    output wire [63:0] reclaim_pages_freed, output wire [63:0] reclaim_capacity_failures,
     input wire run_valid,
     output wire run_ready,
     input wire [31:0] run_instruction_count,
@@ -170,10 +181,20 @@ module loop_pipeline #(
         .loop_response_valid(loop_response_valid), .loop_response_error(loop_response_error), .loop_response_data(loop_response_data),
         .configured_quantum(configured_quantum)
     );
-    media_audio_pipeline #(.REUSE_VIEWS(REUSE_VIEWS), .EXTERNAL_IO(EXTERNAL_IO), .PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH),
+    wire maintenance_start = (run_valid && run_ready && phase != BOUNDARY)
+        || (command_valid && command_ready && command_opcode == 16);
+    wire iteration_waiting = ((phase == IDLE || phase == BOUNDARY) && run_valid)
+        || (phase == IDLE && command_valid && command_opcode == 16);
+    media_audio_pipeline #(.MAINTENANCE_AT_RUN(0), .REUSE_VIEWS(REUSE_VIEWS), .EXTERNAL_IO(EXTERNAL_IO), .PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH),
         .MAX_FRAMES(MAX_FRAMES), .BUFFERS(BUFFERS), .INPUT_PORTS(INPUT_PORTS), .OUTPUT_PORTS(OUTPUT_PORTS),
         .VIEWS(VIEWS), .SLOTS(SLOTS), .CHUNK_FRAMES(CHUNK_FRAMES),
-        .MEMORY_RESPONSE_CYCLES(MEMORY_RESPONSE_CYCLES), .READ_BUFFERS(READ_BUFFERS), .WRITE_BUFFERS(WRITE_BUFFERS), .BURST_MEMORY(BURST_MEMORY), .BLOCK_CHUNKS(BLOCK_CHUNKS), .TABLE_PAGES(TABLE_PAGES), .TABLE_LINES(TABLE_LINES), .REF_LINES(REF_LINES), .STACK_LINES(STACK_LINES)) audio (
+        .MEMORY_RESPONSE_CYCLES(MEMORY_RESPONSE_CYCLES), .READ_BUFFERS(READ_BUFFERS), .WRITE_BUFFERS(WRITE_BUFFERS), .BURST_MEMORY(BURST_MEMORY), .BLOCK_CHUNKS(BLOCK_CHUNKS),.RETIRED_TABLES(RETIRED_TABLES),.RECLAIM_BLOCKS(RECLAIM_BLOCKS),.RECLAIM_CYCLES(RECLAIM_CYCLES),.RECLAIM_GUARD(RECLAIM_GUARD), .TABLE_PAGES(TABLE_PAGES), .TABLE_LINES(TABLE_LINES), .REF_LINES(REF_LINES), .STACK_LINES(STACK_LINES)) audio (
+        .reclaim_pages_used(reclaim_pages_used),.reclaim_pages_available(reclaim_pages_available),
+        .reclaim_pages_freed(reclaim_pages_freed),.reclaim_capacity_failures(reclaim_capacity_failures),
+        .maintenance_tick(maintenance_start),.maintenance_enable(maintenance_enable && !iteration_waiting),.reclaim_pending(reclaim_pending),.reclaim_high_water(reclaim_high_water),
+        .reclaim_references(reclaim_references),.reclaim_active(reclaim_active),.reclaim_released(reclaim_released),
+        .reclaim_block(reclaim_block),.reclaim_blocks(reclaim_blocks),.reclaim_freed(reclaim_freed),
+        .reclaim_cycles(reclaim_cycles),.reclaim_quiescent(reclaim_quiescent),
         .sample_input_read(sample_input_read), .sample_input_address(sample_input_address), .sample_input_data(sample_input_data),
         .sample_output_write(sample_output_write), .sample_output_address(sample_output_address), .sample_output_data(sample_output_data),
         .clk(clk), .reset(reset), .run_valid(phase == AUDIO_START), .run_ready(audio_run_ready),

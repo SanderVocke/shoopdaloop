@@ -9,24 +9,24 @@ pub struct NodeDescriptor {
     pub channels: u16,
     pub operation: NodeKind,
 }
-struct Builder {
-    instructions: Vec<Instruction>,
-    memory: Vec<Value>,
-    buffers: u32,
-    zero: Option<u16>,
+pub(crate) struct Builder {
+    pub(crate) instructions: Vec<Instruction>,
+    pub(crate) memory: Vec<Value>,
+    pub(crate) buffers: u32,
+    pub(crate) zero: Option<u16>,
 }
 impl Builder {
-    fn buffer(&mut self) -> Checked<u16> {
+    pub(crate) fn buffer(&mut self) -> Checked<u16> {
         let b = u16::try_from(self.buffers).map_err(|_| "too many hardware buffers")?;
         self.buffers += 1;
         Ok(b)
     }
-    fn state(&mut self, v: Value) -> Checked<u16> {
+    pub(crate) fn state(&mut self, v: Value) -> Checked<u16> {
         let a = u16::try_from(self.memory.len()).map_err(|_| "too many hardware state words")?;
         self.memory.push(v);
         Ok(a)
     }
-    fn silence(&mut self) -> Checked<u16> {
+    pub(crate) fn silence(&mut self) -> Checked<u16> {
         if let Some(b) = self.zero {
             return Ok(b);
         }
@@ -36,7 +36,7 @@ impl Builder {
         self.zero = Some(b);
         Ok(b)
     }
-    fn add(&mut self, sum: Option<u16>, source: u16) -> Checked<u16> {
+    pub(crate) fn add(&mut self, sum: Option<u16>, source: u16) -> Checked<u16> {
         match sum {
             None => Ok(source),
             Some(left) => {

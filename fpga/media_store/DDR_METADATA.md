@@ -36,20 +36,21 @@ use arena-relative offsets. Logical arena bases retain four-byte alignment;
 the integrated physical placement requires eight-byte alignment. The DMA adds
 the physical base after validating the complete request against the arena.
 
-With `S = round_up(SLOTS,16)` and
-`A = round_up(SLOTS * CHUNK_FRAMES,16)`, word offsets are:
+With `S = round_up(BLOCKS,16)` and
+`A = round_up(physical SLOTS * CHUNK_FRAMES,16)`, word offsets are:
 
 | Region | Start | Size |
 | --- | ---: | ---: |
 | Sample arena | 0 | A words |
-| Per-sample-chunk reference counts | A | S words |
-| Reusable sample chunk-ID stack | A + S | S words |
+| Per-allocation-block reference counts | A | S words |
+| Reusable allocation-block ID stack | A + S | S words |
 | Allocated table/directory pages | A + 2S | TABLE_PAGES * 16 words |
+| Retired-table FIFO records | A + 2S + TABLE_PAGES * 16 | RETIRED_TABLES * 16 words |
 
 There is no `VIEWS * SLOTS` reservation. A view's chunk IDs form a dense prefix
 in a radix-16 tree. Directory words contain page IDs; leaf words contain sample
 chunk IDs. Page ID zero means absent. Depth is
-`max(1,ceil(clog2(SLOTS)/4))`; indexed seeks have bounded tree depth. Each view
+`max(1,ceil(clog2(BLOCKS)/4))`; indexed seeks have bounded tree depth. Each view
 has an on-chip root, used count and one cached leaf translation (128 bits total),
 plus valid bits. Persistent table caching is shared by foreground work and hints.
 
@@ -63,6 +64,14 @@ the next one; sparse writes are refused. Restore writes tables in ordinal order.
 Sample allocation keeps its high-water mark and stack count on chip. The stack
 contains sample IDs, independently of the page allocator. Reference counts are
 indexed by physical sample chunk ID, rather than repeated in every view table.
+A detached root retains its existing pages and block references. Queue records
+store a root page at byte offset 0 and remaining entry count at offset 4; bytes
+8..63 are reserved. Only on-chip FIFO indices publish records. The active block,
+phase and bounded traversal context survive iteration boundaries in registers.
+Completed tail entries checkpoint the root/count and recycle empty pages.
+Root transfer and record publication are serialized with live descriptor updates.
+There is no persistent journal or reset-time collector recovery.
+
 Playback only needs table IDs; reference/stack traffic comes from ownership
 changes. Only the last reference retires sample transfers before publishing reuse.
 
@@ -71,27 +80,31 @@ changes. Only the last reference retires sample transfers before publishing reus
 | TABLE_LINES | 8 | Fully associative table/directory cache |
 | REF_LINES | 4 | Fully associative reference-count cache |
 | STACK_LINES | 2 | Persistent blocks around the free-stack top |
-| TABLE_PAGES | ceil(SLOTS/15) + 8*VIEWS + 16 | DDR page-pool capacity |
+| TABLE_PAGES | ceil(BLOCKS/15) + 8*VIEWS + 16 | Shared live/retired DDR page-pool capacity |
+| RETIRED_TABLES | 256 | Fixed-size retired-table records in DDR |
 
 Caches use round-robin replacement and writeback. Defaults contain 896 bytes of
 cache data, independent of recording duration. The 64-loop benchmark explicitly
 uses 128 table lines (8 KiB), four reference lines and two stack lines. Normal
 quantum boundaries neither flush nor invalidate these caches. Capacity checks
 count additional radix nodes before mutating a view and refuse insufficient page
-space with MemoryFull. Sample slots, issued view IDs and page capacity remain
-separate limits. Deleted view IDs remain holes until reset.
+space with MemoryFull. Sample slots, issued view IDs, retired-record capacity and shared page capacity
+remain separate limits. Append counts only actually reusable IDs and available
+pages; pending releases cannot satisfy its capacity check. Deleted view IDs remain holes until reset.
 
-For the measured 64-loop mixed workload, 32 reference lines (2 KiB) retain the
+In the historical one-chunk ownership measurement, 32 reference lines (2 KiB) retain the
 strided ownership working set and reduce the simultaneous-retake cost from
 738.05 to 430.68 us at an assumed 100 MHz. Four lines remain the small default;
 size this cache for active recording/release traffic. Playback does not need it.
 See the measurement report for both results and deadline limitations.
 
-The 64-stereo-loop, 30-second, 48 kHz example needs 5,760,000 sample chunk IDs
-at 32 frames/chunk: 703.125 MiB of samples, approximately 22 MiB each for
-chunk-ID words, reference counts and reusable IDs, plus directory/page slack.
-It exceeds the supplied 512 MiB DDR profile. Synthesis/address-capacity checks
-cover this scale without allocating or simulating thirty seconds of audio.
+The 64-stereo-loop, 30-second, 48 kHz example contains 5,760,000 physical chunks
+at 32 frames/chunk, or 703.125 MiB of logical samples. With 32-chunk allocation
+blocks, its 128 channel recordings need 180,096 block references (including
+rounded final blocks), approximately 0.687 MiB each for table words, reference
+counts and reusable IDs, plus directory/page slack. The payload still exceeds
+the supplied 512 MiB DDR profile. The deferred ownership stress instead uses
+32 mono or 16 stereo loops, totaling 45,024 references and about 176 MiB.
 
 ## Ownership, transport and visibility
 
@@ -134,7 +147,8 @@ unchanged. Space 5, address 0, write performs a fenced metadata flush/invalidate
 for cold-cache diagnostics. Ordinary execution does not use it.
 
 CLI options propagate through standalone media, audio and connected loop runners:
-`--metadata-lines`, `--metadata-pages`, `--reference-lines`, `--stack-lines`.
+`--metadata-lines`, `--metadata-pages`, `--reference-lines`, `--stack-lines`,
+`--retired-tables`, `--reclaim-blocks`, `--reclaim-cycles`, `--reclaim-guard`.
 Backing images include the full arena; restore/snapshot go through hardware
 config and actual DDR/SV bytes. Python does not allocate pages, resolve tables or
 maintain a substitute metadata model.

@@ -1,0 +1,8 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="20261110" />
+    <testcase name="full_pools_and_pause_after_reference_release" classname="test_deferred_capacity" file="/workspace/shoopdaloop/fpga/media_store/tests/test_deferred_capacity.py" lineno="11" time="14.869043350219727" sim_time_ns="331760.001" ratio_time="22312.128170310123" />
+    <testcase name="failed_detachment_preserves_ownership_until_reset" classname="test_deferred_capacity" file="/workspace/shoopdaloop/fpga/media_store/tests/test_deferred_capacity.py" lineno="46" time="1.4812078475952148" sim_time_ns="30230.00099999999" ratio_time="20409.02027968546" />
+    <testcase name="published_retirement_fault_requires_a_coordinated_reset" classname="test_deferred_capacity" file="/workspace/shoopdaloop/fpga/media_store/tests/test_deferred_capacity.py" lineno="72" time="1.1308038234710693" sim_time_ns="27480.001000000047" ratio_time="24301.298270860596" />
+  </testsuite>
+</testsuites>

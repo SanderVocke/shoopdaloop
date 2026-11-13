@@ -4646,3 +4646,29 @@ fn dsp_load_keeps_the_peak_while_snapshot_publication_is_paced() {
     };
     assert_eq!(state.status.dsp_load_percent, 12.5);
 }
+
+#[shoop_test]
+fn memory_statistics_reach_typed_and_encoded_application_snapshots() {
+    for encoded in [false, true] {
+        let mut f = fixture();
+        let connection = ConnectionId(1);
+        let mut client = attach(&mut f.service, 1, connection, encoded);
+        for _ in 0..20 {
+            f.service.tick(STEP);
+            drain(&mut f.service, &mut client, connection, encoded);
+        }
+        let snapshot = client.snapshot().unwrap();
+        let memory = snapshot
+            .status
+            .memory
+            .expect("backend memory in application status");
+        assert!(memory.valid());
+        assert!(memory.frame > 0);
+        assert!(memory.accounted_bytes.unwrap() > 0);
+        assert!(memory
+            .resources
+            .iter()
+            .flatten()
+            .any(|pool| pool.name.as_str() == "Media payload"));
+    }
+}

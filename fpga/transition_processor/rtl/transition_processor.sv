@@ -34,7 +34,7 @@ module transition_processor #(
     localparam [1:0] IDLE_PHASE=0, EXECUTING=1, SETTLED=2, FAULTED=3;
     localparam [7:0] STATUS=0, WRITE_SPEC=1, WRITE_ORDER=2, PREPARE=3,
         SUBMIT=4, CANCEL=5, COLLECT=6, PROCESS=9, FINISH=11, READ_STATE=12,
-        READ_REQUEST=13, READ_EVENT=15;
+        READ_REQUEST=13, READ_EVENT=15, SET_REPEAT=17;
     localparam integer VALID=0, GENERATION=1, MODE=33, REPEAT=35, LAST_VALID=36,
         LENGTH=64, POSITION=128, CAPTURE=192, CYCLES=256,
         CONTENT_REV=320, CAPTURE_REV=384, WATERMARK=448, LAST_PULSE=512,
@@ -42,7 +42,7 @@ module transition_processor #(
         PROTECTED_VALID=673, PROTECTED_SEQ=674, ORIGIN_VALID=738,
         ORIGIN_SLOT=739, ORIGIN_GEN=771, DISCONT=803;
     localparam integer R_VALID=0, R_GEN=1, R_TICKS=33, R_OP=34,
-        R_RETRIGGER=36, R_OUTCOME=37, R_REASON=40,
+        R_RETRIGGER=36, R_OUTCOME=37, R_REASON=40, R_CLEAR=44,
         R_TARGET=64, R_SEQUENCE=128, R_AT=192, R_SOURCE=256,
         R_SKIP=320, R_POSITION=384, R_EFFECTIVE=448, R_REMAINING=512,
         R_FRAME=576;
@@ -79,7 +79,7 @@ module transition_processor #(
         S_APPLY, S_APPLY_PLAN, S_APPLY_CHECK, S_CANCEL_OLDER, S_CANCEL_OLDER_CHECK, S_CANCEL_OLDER_NEXT,
         S_NATURAL, S_NATURAL_SOURCE, S_NATURAL_WRAP,
         S_FINAL, S_FINISH_LOOP,
-        S_READ_LOOP_REPLY, S_READ_REQUEST_REPLY, S_READ_EVENT_REPLY
+        S_READ_LOOP_REPLY, S_READ_REQUEST_REPLY, S_READ_EVENT_REPLY, S_SET_REPEAT
     } state_t;
     state_t state, read_return, offer_return, apply_return, natural_return, react_return, list_return;
     reg configured;
@@ -218,7 +218,14 @@ module transition_processor #(
             error = OK;
             pulse = 0;
             preserve = before_row[MODE+:2] == PLAYING && !req[R_RETRIGGER];
-            case (req[R_OP+:2])
+            if (req[R_CLEAR]) begin
+                if (before_row[MODE+:2] == RECORDING) error = INVALID_STATE;
+                else begin
+                    value[MODE+:2] = STOPPED; value[LENGTH+:64] = 0; value[POSITION+:64] = 0;
+                    value[CONTENT_REV+:64] = req[R_POSITION+:64];
+                    if (req[R_POSITION+:64]>before_row[WATERMARK+:64]) value[WATERMARK+:64] = req[R_POSITION+:64];
+                end
+            end else case (req[R_OP+:2])
                 OP_STOP: begin
                     if (before_row[MODE+:2] == RECORDING) begin
                         value[LENGTH+:64] = before_row[CAPTURE+:64];
@@ -345,6 +352,7 @@ module transition_processor #(
             ew_data <= {61'b0, retrigger, op, position_value,
                         loop_row[GENERATION+:32], target_slot, frame};
             ew_data[255:254] <= kind;
+            ew_data[195] <= kind==0 && request_row[R_CLEAR];
             event_count <= event_count + 1'b1;
         end
     endtask
@@ -487,6 +495,11 @@ module transition_processor #(
                             if (INTEGRATED == 0 || phase != SETTLED) reply(INVALID_STATE, 0);
                             else begin cursor <= 0; state <= S_FINISH_LOOP; end
                         end
+                        SET_REPEAT: begin
+                            if (phase != IDLE_PHASE) reply(INVALID_STATE,0);
+                            else if (index>=loop_slots) reply(INVALID_ID,0);
+                            else read_loop(index,0,0,S_SET_REPEAT);
+                        end
                         READ_STATE: begin
                             if (index >= loop_slots) reply(INVALID_ID, 0);
                             else read_loop(index, 0, 0, S_READ_LOOP_REPLY);
@@ -588,9 +601,13 @@ module transition_processor #(
                     else cursor <= cursor+1'b1;
                 end
                 S_PREP_COMPLETE: begin configured <= 1; phase <= IDLE_PHASE; reply(OK, 0); end
+                S_SET_REPEAT: begin
+                    if (!loop_row[VALID] || loop_row[GENERATION+:32]!=payload[31:0]) reply(INVALID_ID,0);
+                    else begin temporary_loop=loop_row;temporary_loop[REPEAT]=payload[32];write_loop(index,temporary_loop);reply(OK,0);end
+                end
                 S_SUBMIT_TARGET: begin
                     if (!spec_row[VALID] || spec_row[GENERATION+:32] != payload[R_TARGET+32+:32]) reply(INVALID_ID, 0);
-                    else if ((payload[R_OP+:2] == OP_PLAY || payload[R_OP+:2] == OP_SEEK)
+                    else if (!payload[R_CLEAR] && (payload[R_OP+:2] == OP_PLAY || payload[R_OP+:2] == OP_SEEK)
                         && (payload[R_POSITION+:64] & {57'b0,quantum_mask}) != 0) reply(INVALID_FRAME, 0);
                     else begin
                         target_source <= spec_row[SPEC_SOURCE+:64]; target_source_valid <= spec_row[SPEC_SOURCE_VALID];
@@ -675,6 +692,7 @@ module transition_processor #(
                         temporary_request[R_TICKS] = payload[R_TICKS];
                         temporary_request[R_OP+:2] = payload[R_OP+:2];
                         temporary_request[R_RETRIGGER] = payload[R_RETRIGGER];
+                        temporary_request[R_CLEAR] = payload[R_CLEAR];
                         temporary_request[R_EFFECTIVE+:64] = submitted_effective;
                         temporary_request[R_REMAINING+:64] = payload[R_TICKS] ? payload[R_SKIP+:64] : 0;
                         temporary_request[R_FRAME+:64] = 0;

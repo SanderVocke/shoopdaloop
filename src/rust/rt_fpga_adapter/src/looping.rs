@@ -41,6 +41,9 @@ pub struct TpReply {
     pub words: [u32; 26],
 }
 pub trait LoopDevice: crate::adapter::Device {
+    fn memory_report(&mut self) -> Result<crate::memory::MemoryReport, rt_runtime::Error> {
+        Err(rt_runtime::Error::InvalidParameter)
+    }
     fn tp(
         &mut self,
         opcode: u8,
@@ -168,6 +171,20 @@ impl<D: LoopDevice> LoopAdapter<D> {
                 metrics: Metrics::default(),
             },
         ))
+    }
+    /// Query between quanta, without changing media, audio frames or program state.
+    pub fn memory_report(&mut self) -> Result<crate::memory::MemoryReport, Error> {
+        if let Some(error) = self.fault {
+            return Err(error);
+        }
+        if self.active.is_none() {
+            return Err(Error::InvalidState);
+        }
+        let report = self.device.memory_report()?;
+        if !report.valid() || report.frame != self.frame.0 {
+            return Err(Error::InvalidState);
+        }
+        Ok(report)
     }
     pub fn frame(&self) -> Frame {
         self.frame

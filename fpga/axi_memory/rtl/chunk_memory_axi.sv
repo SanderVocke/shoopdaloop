@@ -13,6 +13,12 @@ module chunk_memory_axi #(
 ) (
     input wire clk,
     input wire reset,
+    input wire retire_valid,
+    output wire retire_ready,
+    input wire [31:0] retire_chunk,
+    output wire retire_done,
+    output wire [7:0] retire_error,
+    output wire retire_busy,
     input wire [63:0] arena_base,
     input wire cmd_valid,
     output wire cmd_ready,

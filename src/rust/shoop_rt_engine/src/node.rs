@@ -1487,7 +1487,7 @@ impl BusMixer {
 }
 
 impl EngineNode {
-    pub(crate) fn apply_signal(
+    pub fn apply_signal(
         &mut self,
         operation: EngineOp,
         graph_epoch: rt_runtime::Epoch,
@@ -1551,7 +1551,7 @@ impl EngineNode {
             Self::Reader(node) => node.apply(operation),
         }
     }
-    fn apply_configuration(&mut self, graph_epoch: rt_runtime::Epoch) {
+    pub fn apply_configuration(&mut self, graph_epoch: rt_runtime::Epoch) {
         if let Some(configuration) = self
             .configuration()
             .and_then(|pending| pending.take_if(|configuration| configuration.epoch == graph_epoch))
@@ -1849,5 +1849,70 @@ mod tests {
         request(&mut host, Request::RemoveLoop { loop_id });
         tick(&mut host);
         assert_eq!(host.output(0)[..16], [0.5; 16]);
+    }
+}
+
+impl EngineNode {
+    /// Immutable signal description; execution and mutable DSP stay with the backend.
+    pub fn signal_kind(&self) -> Result<crate::external::SignalKind, Error> {
+        use crate::external::SignalKind;
+        Ok(match self {
+            Self::Loop(node) => {
+                let binding = node.binding();
+                if matches!(node, LoopNode::Playback(_)) {
+                    SignalKind::Playback {
+                        slot: binding.target.slot(),
+                        channels: binding.channels,
+                        auxiliary: binding.auxiliary_channels,
+                    }
+                } else {
+                    SignalKind::Capture {
+                        slot: binding.target.slot(),
+                        channels: binding.channels,
+                        auxiliary: binding.auxiliary_channels,
+                    }
+                }
+            }
+            Self::StripInput(node) => SignalKind::StripInput {
+                slot: node.slot,
+                channels: node.channels,
+                ramp: node.ramp,
+            },
+            Self::StripOutput(node) => SignalKind::StripOutput {
+                slot: node.slot,
+                channels: node.channels,
+                ramp: node.ramp,
+            },
+            Self::Fader(node) => SignalKind::Fader {
+                slot: node.slot,
+                channels: node.channels,
+                ramp: node.ramp,
+            },
+            Self::BusInput(node) => SignalKind::BusInput {
+                slot: node.slot,
+                channels: node.channels,
+            },
+            Self::Bus(node) => SignalKind::Bus {
+                slot: node.slot,
+                channels: node.channels,
+                ramp: node.ramp,
+            },
+            Self::Reader(_) => SignalKind::Reader,
+            Self::Processor(_) => return Err(Error::InvalidParameter),
+        })
+    }
+}
+
+impl EngineNode {
+    pub fn read_external(
+        &mut self,
+        callback: rt_runtime::Frame,
+        budget: usize,
+        read: impl FnMut(&mut Cursor, &mut [u8]) -> Result<usize, Error>,
+    ) -> Result<(), Error> {
+        let Self::Reader(reader) = self else {
+            return Err(Error::InvalidParameter);
+        };
+        reader.render_external(callback, budget, read)
     }
 }

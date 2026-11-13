@@ -66,6 +66,10 @@ def main():
                           P=p, INPUT_PORTS=args.channels, OUTPUT_PORTS=args.channels,
                           RX_BANKS=args.banks, TX_BANKS=args.banks, REQUEST_DEPTH=128, EVENT_DEPTH=256,
                           BLOCK_CHUNKS=args.block_chunks, SLOTS=config['slots'], AXI_DATA_WIDTH=args.axi_data_width, PHYSICAL_BASE=args.physical_base)
+    parameters.update(RETIRED_TABLES=args.retired_tables,RECLAIM_BLOCKS=args.reclaim_blocks,
+        RECLAIM_CYCLES=args.reclaim_cycles,RECLAIM_GUARD=args.reclaim_guard,
+        TABLE_LINES=args.metadata_lines,REF_LINES=args.reference_lines,STACK_LINES=args.stack_lines)
+    if args.metadata_pages is not None:parameters['TABLE_PAGES']=args.metadata_pages
     manifest = sources(args.demo)
     if args.memory_model == 'instant':
         path = output/f'{top}.sv'
