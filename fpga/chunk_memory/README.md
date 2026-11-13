@@ -86,8 +86,10 @@ The write-pool port remains reserved throughout a foreground read or write
 stream; unrelated fills resume when that stream releases it. Speculative read
 launches reserve their line before a separate directory-update stage.
 Demand misses also capture their selected line before updating its directory,
-adding one miss-control cycle. Fill selection uses one-hot grants to select the
-tag directly, preserving the existing write-pool and last-line priorities.
+adding one miss-control cycle. Fill selection uses one-hot grants, preserving the existing write-pool and
+last-line priorities. The DMA reserves its selected line before capturing the
+tag, adding one transfer-setup cycle. Demand writers and retirement decisions
+wait while that tag is pending.
 Idle DMA payload registers capture candidates independently of request admission.
 
 The demand and transfer FSMs run concurrently. Demand fills have priority. Dirty
