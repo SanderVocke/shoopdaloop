@@ -94,7 +94,7 @@ async def production_scenarios(dut):
                         for view in binding['views']:
                             descriptor=await memory.configure(1,view)
                             frames=(descriptor>>64)&((1<<64)-1)
-                            response=await memory.command(dict(kind='slice',source=view,start=0,frames=frames),stalls=driver.stalls)
+                            response=await memory.command(dict(kind='slice',source=view,start=0,frames=frames),stalls=driver.stalls,drain=False)
                             assert response['status']['kind']=='completed',response['status']
                             retained.append(response['value']['value'])
                         snapshots.append(dict(name=action['name'],views=retained))
@@ -135,7 +135,7 @@ async def production_scenarios(dut):
                 channels=[]
                 for view in retained['views']:
                     frames=(await memory.configure(1,view)>>64)&((1<<64)-1)
-                    response=await memory.command(dict(kind='read',view=view,position=0,length=frames,frames=frames),stalls=driver.stalls)
+                    response=await memory.command(dict(kind='read',view=view,position=0,length=frames,frames=frames),stalls=driver.stalls,drain=False)
                     assert response['status']['kind']=='completed',response['status']
                     channels.append(response['value']['value'])
                 actual['media'].append(dict(name=retained['name'],frames=len(channels[0]),samples=dict(encoding='q824',channels=channels)))

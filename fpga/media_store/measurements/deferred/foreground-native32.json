@@ -1,0 +1,12 @@
+[
+  {
+    "blocks": 1,
+    "frames": 128,
+    "clear_cycles": 62
+  },
+  {
+    "blocks": 17,
+    "frames": 2176,
+    "clear_cycles": 62
+  }
+]

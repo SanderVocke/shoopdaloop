@@ -222,6 +222,8 @@ class Driver(MemoryHost):
         views,blocks,free = [await self.configure(0,index) for index in range(3)]
         assert views<=self.views and free<=blocks<=self.blocks
         free_blocks=[await self.configure(4,index) for index in range(free)]
+        assert len(set(free_blocks))==free,'reusable block stack contains duplicate IDs'
+        assert all(0<=block<blocks for block in free_blocks),'reusable block outside allocated arena'
         result={"chunk_frames":self.chunk_frames,
                 "samples":[signed(x) for x in self.memory[:blocks*self.block_chunks*self.chunk_frames]],
                 "free_chunks":[block*self.block_chunks+i for block in free_blocks for i in range(self.block_chunks)],"views":[]}
@@ -266,6 +268,7 @@ class Driver(MemoryHost):
         if await self.configure(6,7)&2:refs[await self.configure(6,6)]-=1
         for block in range(blocks):
             assert await self.configure(3,block)==refs[block], 'block reference count differs from view ownership'
+        assert set(free_blocks)=={block for block in range(blocks) if refs[block]==0},'unowned blocks differ from reusable IDs'
         if self.block_chunks!=1:
             from block_images import canonicalize
             canonicalize(result)

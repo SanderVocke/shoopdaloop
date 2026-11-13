@@ -258,3 +258,37 @@ async def pause_at_ownership_and_checkpoint_boundaries(dut):
                 await d.drain_reclamation()
             assert await d.configure(0,2)==1 and await d.configure(6,11)==0
     finally:d.close()
+
+
+@cocotb.test()
+async def offline_drain_survives_budget_counter_expiration(dut):
+    d=driver(dut);bf=d.chunk_frames*d.block_chunks
+    try:
+        await empty(d)
+        await complete(d,'append',view=0,samples=[1901]*(3*bf))
+        await complete(d,'clear',view=0)
+        d.set(maintenance_enable=0,cmd_valid=1,cmd_opcode=10,cmd_view=0,
+            cmd_start=0,cmd_length=0,cmd_count=0)
+        for _ in range(10000):
+            before,after=await d.tick()
+            if before['cmd_ready']:break
+        else:raise AssertionError('offline drain admission timeout')
+        d.set(cmd_valid=0)
+        await d.tick()
+        dut.core.reclaimer.cycles_left.value=0
+        dut.core.reclaimer.blocks_left.value=0
+        for _ in range(100000):
+            _,after=await d.tick()
+            if after['done']:break
+        else:raise AssertionError('offline drain stopped when its counter expired')
+        assert after['error_code']==0
+        await d.tick()
+        assert int(dut.reclaim_pending.value)==0
+        assert await d.configure(0,2)==3 and await d.configure(6,11)==0
+        d.set(maintenance_enable=1)
+        await complete(d,'append',view=0,samples=[7777]*bf)
+        await complete(d,'clear',view=0)
+        for _ in range(1000):await d.tick()
+        assert int(dut.reclaim_pending.value)==1,'offline drain left an unlimited automatic grant'
+        await d.drain_reclamation()
+    finally:d.close()

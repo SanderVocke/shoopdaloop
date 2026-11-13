@@ -143,7 +143,7 @@ def main():
         if not result.is_file():
             raise SystemExit(f"No results; see {output / 'simulation.log'}")
         report = ET.parse(result).getroot()
-        if (len(list(report.iter("testcase"))) != (2 if args.deferred_stress else 3 if args.deferred_capacity else 8 if args.deferred else 1 if block_test else 4 if args.pipeline else 3)
+        if (len(list(report.iter("testcase"))) != (2 if args.deferred_stress else 3 if args.deferred_capacity else 9 if args.deferred else 1 if block_test else 4 if args.pipeline else 3)
                 or any(list(report.iter(tag)) for tag in ("failure", "error", "skipped"))):
             raise SystemExit(f"Media simulation failed; see {output / 'simulation.log'}")
         print(f"{name}: media store passed; results in {output}", flush=True)

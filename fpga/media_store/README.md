@@ -169,7 +169,9 @@ or audio payload is copied. An empty view needs no record. Queue-full refusal
 occurs before the live view is changed. New takes still need free sample blocks
 and metadata pages; detached storage is not immediately reusable.
 
-A FIFO collector has one resumable context. Reference updates/free-stack changes
+The 256-record default costs 16 KiB and provides slots for eight retired
+32-channel batches when the other pools have enough headroom. Exhaustion tests
+use a two-record queue. A FIFO collector has one resumable context. Reference updates/free-stack changes
 are serialized against foreground ownership work. On the final reference, a
 separate grouped-retirement path waits for dirty writes and accepted sample
 transfers while unrelated sample commands can continue. Only then is the block
@@ -198,7 +200,7 @@ recovery instead drains accepted AXI transactions and resets the entire arena
 state, abandoning partial internal work under the existing reset contract.
 
 Space 6 addresses are: 0 pending tables; 1 remaining table references (64 bits);
-2 queue high-water mark; 3 completed releases; 4 blocks returned; 5 maintenance
+2 queue high-water mark; 3 completed releases; 4 blocks returned; 5 active collector
 cycles; 6 active block ID; 7 active/released flags in bits 0/1; 8 record capacity;
 9/10 FIFO head/tail; 11 pages in use; 12 pages available; 13 command capacity
 failures; 14 metadata pages recycled. Counter values may span 64 bits.
@@ -206,8 +208,9 @@ failures; 14 metadata pages recycled. Counter values may span 64 bits.
 Pause maintenance before a consistent physical ownership audit. Its accounting
 includes live tables, retired tables and a reference already released by an
 in-flight cleanup step. Ordinary Fence drains writes without reclaiming old
-tables. Drain cleanup explicitly before exporting a complete restorable physical
-snapshot. The test adapter marks undrained logical snapshots with
+tables. The explicit offline drain ignores automatic grant limits until the queue is
+empty, without installing an unlimited automatic grant. Drain cleanup and Fence
+before exporting a complete restorable physical snapshot. The test adapter marks undrained logical snapshots with
 `pending_reclamation` and rejects restoring them. Its functional command helper
 can explicitly settle cleanup after measuring the foreground done pulse; timing
 and deferred tests use `drain=False`.

@@ -268,15 +268,15 @@ module media_store #(
     wire gc_retire_valid, gc_retire_ready, gc_retire_done, gc_retire_busy;
     wire [7:0] gc_retire_error;
     wire manual_grant = cmd_valid && cmd_ready && hint_base_valid && cmd_start[63:32] == 0
-        && (cmd_opcode == 9 || cmd_opcode == 10);
+        && cmd_opcode == 9;
     assign gc_lock_grant = (phase == IDLE || phase == DRAIN_WAIT) && !cmd_valid && !cfg_valid
         && !cfg_request_valid && !cfg_pending && !cfg_result_valid && !metadata_pending && !metadata_request_valid;
     assign reclaim_quiescent = !gc_lock_held && !metadata_pending && !metadata_request_valid && !gc_retire_busy;
     media_reclaimer #(.GUARD_CYCLES(RECLAIM_GUARD)) reclaimer (
         .clk(clk),.reset(reset),.enable((maintenance_enable || phase == DRAIN_WAIT) && !faulted),
-        .grant(maintenance_tick || manual_grant),
-        .grant_cycles(manual_grant && cmd_opcode == 10 ? 32'hffffffff : manual_grant && cmd_start != 0 ? cmd_start[31:0] : 32'(RECLAIM_CYCLES)),
-        .grant_blocks(manual_grant && cmd_opcode == 10 ? 32'hffffffff : manual_grant && cmd_count != 0 ? cmd_count : 32'(RECLAIM_BLOCKS)),
+        .drain(phase == DRAIN_WAIT),.grant(maintenance_tick || manual_grant),
+        .grant_cycles(manual_grant && cmd_start != 0 ? cmd_start[31:0] : 32'(RECLAIM_CYCLES)),
+        .grant_blocks(manual_grant && cmd_count != 0 ? cmd_count : 32'(RECLAIM_BLOCKS)),
         .pending_tables(retired_count),.free_count(free_count),.allocated_count(slot_count),
         .lock_request(gc_lock_request),.lock_grant(gc_lock_grant),.lock_held(gc_lock_held),
         .request_valid(gc_request_valid),.request_ready(gc_request_ready),.request_opcode(gc_request_opcode),

@@ -8,6 +8,14 @@ Keep the current allocation blocks, per-block reference counts, independent slic
 
 This plan was investigated against `proto/fpga-rust-reference` at `bc833fc310817648c9e9c1d4c7ae3d6d21ac24c6`. The relevant media RTL was unchanged from the saved block-allocation benchmark checkpoint. Verify the branch again before implementation.
 
+## Execution status
+
+Implementation and local FPGA validation are complete on `proto/deferred-retake-clear`.
+Push, PR creation, remote CI and automated review remain blocked: git has no usable
+GitHub credentials, and connected GitHub reads time out. The full native suite
+was run; its 18 host startup/recovery failures in unchanged host code remain
+recorded as failures. No merge has been performed.
+
 ## Immutable acceptance criteria
 
 1. For admitted operations and a fixed hardware configuration, foreground CLEAR, REMOVE and BeginCapture perform a bounded number of metadata operations independent of recording length and cleanup backlog. They never walk the old block-ID table.
@@ -32,7 +40,7 @@ This plan was investigated against `proto/fpga-rust-reference` at `bc833fc310817
 - Cleanup must be able to make progress when the metadata-page pool is exhausted; it must not require allocating new table pages to release old ones.
 - Distinguish logical command completion, pending cleanup and full memory quiescence.
 
-## Proposed data and command model
+## Implemented data and command model
 
 ### Retired-table record
 
@@ -44,12 +52,9 @@ A record contains:
 | --- | --- |
 | `root_page` | Root of the existing DDR block-ID tree |
 | `remaining_entries` | Length of its remaining dense prefix |
-| `active_block` | Block being processed, when applicable |
-| `progress_state` | Distinguish lookup, release, retirement and table/page cleanup |
-| `session_epoch` | Reject state from a previous coordinated session |
-| Reserved fields | Alignment and future diagnostics |
+| Reserved bytes 8..63 | Alignment and future diagnostics; contents unspecified |
 
-Keep queue indices and one active collector context on chip. Any traversal stack is bounded by configured radix depth, rather than recording duration. Count the active record against queue capacity until its table is fully reclaimed.
+Keep queue indices and one active collector context, including active block and release/progress state, on chip. Any traversal stack is bounded by configured radix depth, rather than recording duration. Count the active record against queue capacity until its table is fully reclaimed.
 
 A FIFO with one resumable active record is sufficient for the initial implementation. Record queue occupancy and completion latency so a later scheduling-policy change can be evidence driven.
 
@@ -72,7 +77,7 @@ For a nonempty table:
 2. Capture the old root/count and stage an unpublished queue record.
 3. Cancel or drain affected outstanding view lookups and invalidate its cached leaf translation.
 4. Exchange the live root for an empty root and publish the new live descriptor.
-5. Publish the cleanup record and acknowledge the command.
+5. Make the queued record eligible for cleanup after the serialized foreground commit, and acknowledge the command.
 
 Serialize this sequence so other commands cannot observe a partial transfer. Before mutation, a capacity refusal leaves the original view unchanged. A memory error after mutation follows the existing sticky-fault/reset policy; do not retry an irreversible partial transfer as a fresh command.
 
@@ -188,10 +193,10 @@ Depends on Stages 3 and 4.
 
 Verification:
 
-- [ ] Measure foreground latency with an empty and a large pending queue.
+- [x] Measure foreground latency with an empty and a large pending queue.
 - [x] Check budget accounting and yield latency under fixed, stalled and realistic memory service.
-- [ ] Run sustained recording with simultaneous deletion and measure releases, genuinely freed blocks and net free-space change.
-- [ ] Verify audio completion while cleanup remains pending.
+- [x] Run sustained recording with simultaneous deletion and measure releases, genuinely freed blocks and net free-space change.
+- [x] Verify audio completion while cleanup remains pending.
 - [x] State the memory-latency assumptions required for any deadline claim.
 
 ### Stage 6: Integrate capacity, diagnostics, snapshots and configuration
@@ -223,16 +228,16 @@ Depends on all previous stages.
 - [x] Extend focused media, metadata, block-retirement and production-pipeline tests with deferred reclamation cases.
 - [x] Run exact production/RTL comparisons for retakes, retained exports and uninterrupted unrelated playback.
 - [x] Exercise repeated record/clear/remove cycles with bounded capacity and prove eventual recovery.
-- [ ] Run long mono/stereo scenarios with many simultaneous retakes/deletions and report the exact take lengths, channels, allocation geometry and pending ownership counts.
+- [x] Run long mono/stereo scenarios with many simultaneous retakes/deletions and report the exact take lengths, channels, allocation geometry and pending ownership counts.
 - [x] Test cases whose old tables exceed metadata-cache capacity and cross multiple directory levels.
-- [ ] Record foreground command latency, whole-quantum latency, maintenance cycles, reclamation throughput, DDR traffic and resource high-water marks.
+- [x] Record foreground command latency, whole-quantum latency, maintenance cycles, reclamation throughput, DDR traffic and resource high-water marks.
 - [x] Run fault/reset recovery with queued and active cleanup, including late responses.
-- [ ] Use focused tests during iteration, then run the applicable broader native regression, formatting, warning-denying builds, RTL lint and synthesis gates before publication. Follow the current repository test instructions.
+- [x] Use focused tests during iteration, then run the applicable broader native regression, formatting, warning-denying builds, RTL lint and synthesis gates before publication. Follow the current repository test instructions.
 - [x] When Rust tests change, run `python3 scripts/check_shoop_test_usage.py` (not applicable: no Rust tests changed).
-- [ ] Report resource/timing changes and any unqualified hardware-memory assumptions.
+- [x] Report resource/timing changes and any unqualified hardware-memory assumptions.
 - [ ] Push the feature branch and create a PR with implementation and validation evidence.
 - [ ] Monitor CI and automated review; address failures and review feedback until resolved.
-- [ ] Leave merging as a separate user decision.
+- [x] Leave merging as a separate user decision.
 
 ## Execution contract
 
@@ -250,23 +255,25 @@ The final evidence must distinguish bounded foreground work, budgeted maintenanc
 
 ## Implementation evidence
 
-- Base branch: `bc833fc3`; implementation branch: `proto/deferred-retake-clear`.
-- Initial metadata milestone: coherent fixed-size DDR retired-root records, independent detached access, incremental tail trimming and queue-capacity refusal. No live media command uses deferred cleanup yet.
-- `python fpga/media_store/simulate_metadata.py`: eight AXI32/64 cache/table configurations passed, including small and three-level metadata tables, queue wraparound/full refusal, view reuse, unchanged reference counts and complete metadata-page recovery. The additional no-table-walk assertion is checked in the focused rerun before committing.
-- Warning-denying `cargo build --locked -p rt_backend_testbench` passed.
+Detailed reports, exact workload geometry, source/model hashes and reproduction
+commands are in [the deferred-reclamation evidence](fpga/media_store/measurements/deferred/README.md).
 
-- Integrated milestone: deferred CLEAR/REMOVE/BeginCapture, resumable tail release, serialized ownership updates, asynchronous grouped sample retirement, maintenance grants, explicit offline drain and pending-owner audits.
-- `python fpga/media_store/simulate.py --config small --block-chunks 32 --output work/reclaim-smoke`: existing block-ownership, snapshot restore, nested ranges and reuse passed.
-- `python fpga/media_store/simulate.py --config wide --block-chunks 32 --retired-tables 2 --deferred --output work/deferred-tests`: three directed gates passed. One-block and 17-block clears both took 62 accepted-to-done cycles and performed zero block-table lookups; a three-block grant released exactly three entries.
-- `python fpga/chunk_memory/simulate.py --config small --retire-chunks 32 --output work/background-retirement`: legacy and asynchronous retirement gates passed, including stalled dirty transfers, unrelated cached reads, safe reuse, writeback failure and reset recovery.
-- `python fpga/verification/simulate.py --directed --random-cases 2 --block-chunks 32 --output work/reclaim-production`: 18 production/RTL scenarios passed exactly.
-- Implementation detail: root/count checkpoints live in each 64-byte DDR queue record; active block/progress and bounded traversal state stay on chip across iteration boundaries. Extra record words remain reserved. A separate stored epoch is unnecessary for the existing destructive coordinated arena-reset contract; queue indices and collector state reset together with metadata and endpoints. This does not provide reset-time collector recovery.
+- Base: `bc833fc3`; feature branch: `proto/deferred-retake-clear`. Milestones commit the detached metadata interface, integrated collector, Cargo output-layout compatibility and capacity/recovery hardening separately.
+- Final-controller gates: nine ownership/maintenance tests on native AXI32 and nine on DRAMsim3 AXI64 with single-line caches; three pool/publication-fault tests; two 30-second ownership campaigns; one integrated stereo retake/retained-export comparison. All 24 tests pass.
+- Broader FPGA gates: 45 test cases pass, including AXI32/64 metadata caches and six-level tables, block retirement under native/DRAMsim3 memory, minimum/odd capacities, production sessions, continuous audio, demo recovery and board controls. The production run covers 21 sessions; four retained-export sessions also pass with intermediate offline drain disabled.
+- One-block and 17-block clears take the same 62 native AXI32 cycles (57 in the selected DRAMsim3 AXI64 configuration), with zero old-table lookups. In the larger four-level geometry, all 32 clears take 95 cycles each, including the last with 31 tables pending.
+- Long campaigns: 32 mono loops or 16 stereo loops; 30 seconds per channel at 48 kHz; 32 frames/chunk and 32 chunks/block; 1,407 blocks/take and 45,024 old references. They transfer existing ID tables totaling 180,096 bytes using 2,048 bytes of queue records, without copying those IDs. Forty recording iterations free 351 blocks while 1,280 replacement frames/channel remain exact. Final drain recovers all 45,052 issued block IDs exactly once and all metadata pages.
+- The mixed 64-mono-loop production benchmark passes all 24 quanta. Its simultaneous retake replaces 384 frames/channel (8 ms) on 32 loops. Peak whole-quantum cost is 27,453 cycles (274.53 microseconds at assumed 100 MHz); audio completes with 21 cleanup records pending. It transfers 12,288 sample bytes and 4,160 metadata bytes in that quantum. The updated 96-block arena provides pending-ownership headroom; the former 72-block fixture reports MemoryFull. The saved 234.33-microsecond synchronous result used the smaller arena. This is not a short-take speedup claim or a physical DDR deadline qualification.
+- Native fixed/stalled and DRAMsim3 gates cover dirty transfers, unrelated cached playback, stale hints, queue wrap/full refusal, duplicate entries, every ownership/checkpoint phase, full pools, post-publication errors and coordinated reset. Intermediate audits include the active released reference and verify unique reusable IDs.
+- Review found and fixed a configuration/collector atomic-lock deadlock. The bridge completes a held atomic transaction while configuration waits for admission. A directed test protects it.
+- Review also found that a finite maximum budget could strand an offline drain or leave automatic cleanup effectively unbounded afterward. Explicit drain now has a separate mode. Its expiration regression fails against the previous controller and passes on the final native/DRAMsim3 models; automatic grants retain their block/cycle ceilings afterward.
+- Continuous 16-channel DRAMsim3 audio matches production media/state exactly, with no missed or discarded frames. Demo recovery passes input exhaustion, memory faults, accepted-response draining and four coordinated recoveries. Board control/watchdog/counter checks pass; board output correctness is not claimed by that measurement runner.
+- Formatting, warning-denying workspace build, generated-wrapper checks, media RTL lint and generic/ECP5 synthesis pass. Default store/media-audio mappings add 1,270/2,396 LUT4 and 881 flip-flops each, with unchanged block RAM counts (15/18). No routed Zynq timing or board-fit result is claimed.
+- The complete native suite reports 3,203 passes, 18 host startup/recovery failures and 11 skips. A focused host rerun reports seven passes, 18 failures and two skips. These failures remain unresolved; no base-branch native run establishes baseline status. No Rust tests changed.
+- Dedicated CI gates are added for deferred ownership, retirement, exhausted pools and a short large-arena regression. Remote execution and automated review are pending GitHub access; their checklist items remain open.
 
-- Capacity/recovery milestone: read-only queue/page/free-space telemetry, allocated-ID validation, coordinated fatal quiescence, all generated audio/board parameters, full-pool cleanup and failed-publication tests.
-- The native deferred suite now covers eight gates, including all ownership/checkpoint phases, duplicate entries, a stalled old hint, queue-full refusal and reset with active traffic. The phase-pause audit allows accepted indivisible work to finish, checks the resulting ownership and resumes without repeating a release.
-- A large-table test exposed a config/collector lock deadlock. The bridge now completes an already-held atomic transaction even when configuration is waiting for admission; a focused regression prevents recurrence.
-- Implementation refinement: the prefetch resolver already has reset cancellation. Root exchange reuses it, while metadata bridge generation tags reject late results. Duplicating cancellation state inside the resolver was unnecessary. Detached trim checkpoints after one tail entry, including its bounded-depth ancestor unlink/free tail; it never sweeps the rest of a recording in one grant.
-- Extended metadata gates cover AXI32/64 and a 5,760,000-entry, six-level configured tree. All pages recover after detached cleanup. Legacy media tests pass at default, small and odd capacities; the standalone production audio comparison and board control/restart tests pass.
-- `cargo fmt --all` and warning-denying workspace build passed. No Rust tests changed; the Cargo output-layout compatibility fix is committed separately.
+Implementation refinements:
 
-- Final focused gates: eight deferred tests passed on native AXI32 and DRAMsim3 AXI64 with one-line caches; three full-pool/publication-fault tests passed. Media lint and generic/ECP5 synthesis passed for both store and audio pipeline. Generated AXI, continuous audio, demo and board tops match their generators.
+- DDR records checkpoint root/count; the active block, release state and bounded context stay on chip. A stored epoch is redundant under the existing destructive coordinated arena reset: roots, queue indices, collector and endpoints reset together. This does not add reset-time collector recovery.
+- Root exchange reuses the resolver's existing reset/cancellation path. Metadata bridge generation tags reject late results; a second cancellation mechanism inside the resolver was unnecessary.
+- Tail trim checkpoints after one entry, including bounded-depth ancestor unlink/free work. It never sweeps the rest of a recording in one admitted operation. Automatic windows count all elapsed clocks and allow accepted indivisible tails to finish; the guard still needs qualification against the actual memory service.

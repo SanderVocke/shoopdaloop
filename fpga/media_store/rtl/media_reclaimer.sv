@@ -1,7 +1,7 @@
 module media_reclaimer #(
     parameter integer GUARD_CYCLES = 1024
 ) (
-    input wire clk, input wire reset, input wire enable,
+    input wire clk, input wire reset, input wire enable, input wire drain,
     input wire grant, input wire [31:0] grant_cycles, input wire [31:0] grant_blocks,
     input wire [31:0] pending_tables, input wire [31:0] free_count, input wire [31:0] allocated_count,
     output wire lock_request, input wire lock_grant, output reg lock_held,
@@ -22,7 +22,7 @@ module media_reclaimer #(
     } phase_t;
     phase_t phase;
     reg [31:0] cycles_left, blocks_left, reference_count, free_index;
-    wire permitted = enable && cycles_left > 32'(GUARD_CYCLES) && blocks_left != 0;
+    wire permitted = enable && (drain || (cycles_left > 32'(GUARD_CYCLES) && blocks_left != 0));
     wire transaction_pending = phase == LOOKUP_WAIT || phase == REFERENCE_WAIT || phase == WRITE_WAIT
         || phase == RETIRE_WAIT || phase == ZERO_WAIT || phase == PUSH_WAIT || phase == TRIM_WAIT;
     assign lock_request = (phase == ACQUIRE_REFERENCE || phase == ACQUIRE_FREE) && permitted;
@@ -50,7 +50,7 @@ module media_reclaimer #(
             freed <= 0;
             if (cycles_left != 0) cycles_left <= cycles_left-1;
             if (grant) begin cycles_left <= grant_cycles; blocks_left <= grant_blocks; end
-            if (active && (cycles_left != 0 || lock_held || transaction_pending)) maintenance_cycles <= maintenance_cycles+1;
+            if (active && (drain || cycles_left != 0 || lock_held || transaction_pending)) maintenance_cycles <= maintenance_cycles+1;
             case (phase)
                 IDLE: if (pending_tables != 0 && permitted) phase <= LOOKUP;
                 LOOKUP: if (request_valid && request_ready) phase <= LOOKUP_WAIT;

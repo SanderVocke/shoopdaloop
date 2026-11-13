@@ -81,7 +81,7 @@ def main():
     if args.benchmark64 and args.scale_workload=='mixed':depths[11]=2048
     if args.block_chunks>1:
         if args.benchmark64 and args.config=='8x8' and args.block_chunks==32:
-            depths[11]={'original':2048,'streaming':4096,'mixed':2304}[args.scale_workload]
+            depths[11]={'original':2048,'streaming':4096,'mixed':3072}[args.scale_workload]
         else:depths[11]*=args.block_chunks
     depths[12]=scenarios[0]['chunk_frames']
     parameters=dict(zip(PARAMS,depths));parameters.update(RETIRED_TABLES=args.retired_tables,RECLAIM_BLOCKS=args.reclaim_blocks,RECLAIM_CYCLES=args.reclaim_cycles,RECLAIM_GUARD=args.reclaim_guard,BLOCK_CHUNKS=args.block_chunks,READ_BUFFERS=args.read_buffers,WRITE_BUFFERS=args.write_buffers,

@@ -78,6 +78,8 @@ async def campaign(dut,loops,channels):
     report=dict(loops=loops,channels_per_loop=channels,recording_frames=frames,
         sample_rate=48000,recording_seconds=seconds,chunk_frames=d.chunk_frames,
         block_chunks=d.block_chunks,blocks_per_take=blocks,released_references=total,
+        view_capacity=d.views,physical_chunk_capacity=d.slots,allocation_block_capacity=d.blocks,
+        metadata_page_capacity=d.table_pages,
         scope='media-store ownership stress; old payloads unobserved; new captures/readback checked')
     output=Path(os.environ['MEDIA_OUTPUT'])
     report['configuration']=metadata()
@@ -147,7 +149,11 @@ async def campaign(dut,loops,channels):
             await d.command(dict(kind='clear',view=view),stalls=False,drain=False,observe=False)
         await d.drain_reclamation()
         assert await d.configure(6,11)==0
-        assert await d.configure(0,2)==await d.configure(0,1)
+        allocated=await d.configure(0,1)
+        assert await d.configure(0,2)==allocated
+        recovered={await d.configure(4,index) for index in range(allocated)}
+        assert recovered==set(range(allocated)),'free stack has duplicate or missing block IDs'
+        report['recovered_unique_blocks']=len(recovered)
         report['result']='passed'
         Path(os.environ['MEDIA_OUTPUT'],f'stress-{loops}x{channels}.json').write_text(json.dumps(report,indent=2)+'\n')
     finally:d.close()
