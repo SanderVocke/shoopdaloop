@@ -18,9 +18,9 @@ mono Sync strip and loop, stereo Master, Q=32, and audio only (no MIDI, FX or
 extra tracks). The default fresh session fits within it. Widening the profile is
 separate work.
 
-Depends on #987 (Simulated driver kind, FPGA memory reporting, the overlay's
-local-runtime description, the regenerated audio demo ROM). Rebase onto
-`proto/fpga-rust-reference` once #987 has merged, before stage 2.
+Builds on #987, merged as `5b7dd0a5`. It added the Simulated driver kind, FPGA
+memory reporting, the overlay's local-runtime description and the regenerated
+audio demo ROM.
 
 Out of scope:
 - Connecting the RTL backend to a real-time audio driver (CPAL/JACK). The
@@ -143,9 +143,8 @@ renamed "Audio driver", and an "Audio backend" line is added.
 
 ### 1. Branch, CI trigger and toolchain
 
-- [x] Branch `feat/fpga-rtl-backend` from `proto/fpga-rust-reference` and open a
-      draft PR with this plan.
-- [ ] After #987 merges, rebase onto `proto/fpga-rust-reference`.
+- [x] Branch `feat/fpga-rtl-backend` from `proto/fpga-rust-reference` (`5b7dd0a5`,
+      which includes #987) and open a draft PR with this plan.
 - [ ] Add `proto/fpga-rust-reference` to `build_and_test.yml`'s `pull_request`
       branches.
 - [ ] Move the Verilator 5.032 source build into `scripts/build_verilator.sh`,
