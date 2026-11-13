@@ -111,6 +111,7 @@ fn run() -> anyhow::Result<()> {
                     .unwrap_or_else(|_| "info".into()),
             )
             .with_writer(std::io::stderr)
+            .log_internal_errors(false)
             .with_ansi(false)
             .init();
     }
