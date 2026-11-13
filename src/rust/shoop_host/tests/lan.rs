@@ -696,10 +696,10 @@ fn saved_endpoint_profile_and_client_accept_a_restarted_host_without_old_state()
         ManagementReply::Refused(Refusal::StaleAuthority)
     ));
     let report = connection::host_report(&profile, Duration::from_secs(5)).unwrap();
-    assert_eq!(
-        report.requested.unwrap(),
-        shoop_host::config::HostSettings::default()
-    );
+    let configured: shoop_host::config::HostConfig =
+        serde_json::from_slice(&std::fs::read(host._root.path().join("config.json")).unwrap())
+            .unwrap();
+    assert_eq!(report.requested.unwrap(), configured.settings);
     assert_eq!(report.effective.sample_rate, 48000);
     assert!(report
         .restart_required_fields

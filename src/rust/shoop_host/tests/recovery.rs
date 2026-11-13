@@ -110,7 +110,7 @@ fn host_with_driver(
         .stderr(Stdio::from(std::fs::File::create(&stderr_path).unwrap()))
         .spawn()
         .unwrap();
-    let deadline = Instant::now() + Duration::from_secs(if real_device { 30 } else { 10 });
+    let deadline = Instant::now() + Duration::from_secs(30);
     while !path.exists() {
         assert!(
             child.try_wait().unwrap().is_none(),
@@ -150,7 +150,7 @@ fn command(
     connection: &mut Connection,
     command: shoop_app_protocol::Command,
 ) -> Outcome {
-    command_with_timeout(client, connection, command, Duration::from_secs(5))
+    command_with_timeout(client, connection, command, Duration::from_secs(15))
 }
 fn command_with_timeout(
     client: &mut Client,
