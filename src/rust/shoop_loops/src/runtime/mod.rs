@@ -41,8 +41,8 @@ mod topology;
 mod transitions;
 use crate::topology::staging::{Progress, StageId, Status};
 pub use node_pairs::{
-    NodePairInitial, NodePairSettings, NodePairSourceId, NodePairSourceStatus, NodePairStageId,
-    NodePairStatus,
+    NodePairInitial, NodePairScope, NodePairSettings, NodePairSourceId, NodePairSourceStatus,
+    NodePairStageId, NodePairStatus,
 };
 pub use processor::{CaptureNode, LoopNode, LoopNodes, PlaybackNode};
 pub use rt_runtime::graph::activation::{StageId as GraphStageId, StageStatus as GraphStageStatus};

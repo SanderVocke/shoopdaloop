@@ -147,6 +147,17 @@ impl BulkReader {
         callback_start: rt_runtime::Frame,
         resources: &mut rt_runtime::resource::ResourceIo<'_>,
     ) -> Result<(), Error> {
+        let budget = resources.copy_remaining();
+        self.render_external(callback_start, budget, |cursor, bytes| {
+            resources.read(cursor, bytes)
+        })
+    }
+    pub(crate) fn render_external(
+        &mut self,
+        callback_start: rt_runtime::Frame,
+        budget: usize,
+        mut read: impl FnMut(&mut Cursor, &mut [u8]) -> Result<usize, Error>,
+    ) -> Result<(), Error> {
         #[cfg(test)]
         if self.cells.fail_reader_tick.swap(false, Ordering::Relaxed) {
             return Err(Error::InvalidState);
@@ -159,7 +170,7 @@ impl BulkReader {
             self.callback = Some(callback_start);
             self.available = self.per_callback;
         }
-        let mut budget = self.available.min(resources.copy_remaining());
+        let mut budget = self.available.min(budget);
         if let Some(mut cursors) = self.role_cursors {
             let frame_bytes = self.role_frame_bytes * 2;
             while self.remaining > 0 {
@@ -178,7 +189,7 @@ impl BulkReader {
                 let role = self.role_filled / self.role_frame_bytes;
                 let count =
                     (self.role_frame_bytes - self.role_filled % self.role_frame_bytes).min(budget);
-                match resources.read(
+                match read(
                     &mut cursors[role],
                     &mut self.scratch[self.role_filled..self.role_filled + count],
                 ) {
@@ -207,7 +218,7 @@ impl BulkReader {
             if count == 0 {
                 break;
             }
-            match resources.read(&mut cursor, &mut self.scratch[..count]) {
+            match read(&mut cursor, &mut self.scratch[..count]) {
                 Ok(read) if read > 0 => {
                     ring.push(&self.scratch[..read]);
                     budget -= read;

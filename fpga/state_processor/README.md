@@ -124,6 +124,10 @@ The state processor passes view IDs through without consulting storage.
 | `0x03` | Mix | Left | Right | Destination | — | — |
 | `0x04` | Capture | View address | Enabled address | Source | — | — |
 | `0x05` | Output | Source | Port | — | — | — |
+| `0x08` | Silence | Destination | — | — | — | — |
+| `0x09` | Constant | Raw value low 16 | Raw value high 16 | Destination | — | — |
+| `0x0a` | Arithmetic | Left | Right | Destination | Mode | — |
+| `0x0b` | Smoothing | Loop slot | Generation low 16 | Generation high 16 | Control word address | Source |
 
 Reserved and unused instruction fields are ignored; encoders should set them to
 zero. Unknown opcodes cause `INVALID_PROGRAM`.
@@ -200,6 +204,23 @@ must supply responses; backpressure pauses the engine.
 | `0x05` | Capture | Source | 0 | View | 0 | 0 |
 | `0x06` | Output | Source | Port | 0 | 0 | 0 |
 | `0x07` | BeginCapture | 0 | 0 | View | 0 | 0 |
+| `0x08` | Constant | Destination | 0 | Raw Q8.24 value | 0 | 0 |
+| `0x09` | Arithmetic | Left | Right | Destination + mode | 0 | 0 |
+| `0x0a` | Smoothing | Source | Destination | History index + frames | Playing/restart flags | 0 |
+
+Arithmetic payload 0 has destination in bits 15:0 and mode in bits 31:16.
+Modes are multiply (0), left balance (1), right balance (2), and one-minus (3).
+Balance multiplies the left operand by `1-max(right,0)` or `1+min(right,0)`.
+One-minus is for control coefficients in [0,1]; it ignores the right value but
+still requires a valid ready source ID. Materializing a bank's coefficient before
+subtracting avoids changing interpolation rounding by complementing ramp endpoints.
+
+Smoothing's control `Word` packs destination u16, history index u16 and restart
+length u32. It reads the settled loop identity without mutating it. In the current
+chunk-aligned application profile, starts/wraps occur at position zero; this is
+how that instruction derives restart. The emitted job has history index u32 and
+frames u32 in payload 0, playing in payload 1 bit 0 and restart in bit 1. General
+nonzero-position seeks require exposing the TP discontinuity bit to this producer.
 
 Gain's payload 0 is `{target[31:0], start[31:0]}` and payload 1 is
 `{elapsed[31:0], duration[31:0]}`. Every unused job field is zero.

@@ -91,6 +91,7 @@ pub enum Action {
 }
 #[derive(Debug, Serialize)]
 pub struct FrameOutput {
+    pub memory: Value,
     pub frame: u64,
     pub samples: Vec<i32>,
     pub state: String,
@@ -564,7 +565,16 @@ pub fn run(trace: &Trace, sim: Simulator<'_>) -> SimResult<Report> {
                     .map_err(|e| format!("quantum {index}: {e}"))?,
             )
         };
+        let memory = hardware.memory_report()?;
         frames.push(FrameOutput {
+            memory: json!({
+                "frame": memory.frame,
+                "pressure_percent": memory.limiting_resource().and_then(|resource| resource.pressure()).map(|ratio| ratio*100.),
+                "resources": memory.resources.iter().flatten().map(|resource| json!({
+                    "name": resource.name.as_str(), "unit": format!("{:?}", resource.unit),
+                    "used": resource.used, "reserved": resource.reserved, "capacity": resource.capacity,
+                })).collect::<Vec<_>>(),
+            }),
             frame,
             samples: expected,
             state: format!("{:?}", hardware.state()),

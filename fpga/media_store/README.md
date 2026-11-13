@@ -326,3 +326,34 @@ The subsystem's `check.sh` retains lint and synthesis entry points. Current
 coverage and local evidence are recorded in [the retirement ledger](../verification/MIGRATION.md)
 and [subsystem gates](../verification/subsystem-gates.json). [Historical results](HISTORY.md)
 retain the earlier reference-backed measurements; their commands are retired.
+
+## Storage statistics
+
+Configuration space **6** is read-only and available between commands/quanta.
+Address 16 returns five 32-bit words, least significant first: occupied allocation
+blocks, configured block limit, occupied metadata pages, metadata-page capacity,
+and consumed view slots. This is one coherent counter sample; it does not read
+sample DDR, flush caches, allocate, or change media. Address 17 returns arena bytes
+(low/high words), chunk frames, chunks per allocation block, and view capacity.
+Addresses 0–14 retain the reclamation diagnostics described above. Writes and
+addresses 15 and 18 upwards are refused.
+
+Occupied blocks are the allocation high-water mark minus the reusable free stack.
+Shared slices retain blocks once physically, and partial blocks remain occupied
+until their last reference retires. Metadata pages are independently counted
+from their allocator. Retired tables and their blocks remain occupied until
+background reclamation releases them; querying counters does not drain cleanup.
+With `REUSE_VIEWS=0`, issued IDs include deleted holes that
+cannot be reissued. With `REUSE_VIEWS=1`, the view count follows valid descriptors,
+including configuration restores; deleting a descriptor recovers that capacity.
+Reset clears all occupancy and restores the physical block limit.
+
+Focused counter checks cover metadata exhaustion with spare sample capacity,
+retained slices, reset, read-only access, and both view policies:
+
+```sh
+python fpga/media_store/simulate.py --config small --statistics --metadata-pages 2
+python fpga/media_store/simulate.py --config small --statistics --metadata-pages 2 --reuse-views
+python fpga/media_store/simulate.py --config small --statistics --metadata-pages 2 --block-chunks 32
+python fpga/media_store/simulate.py --config small --statistics --metadata-pages 2 --block-chunks 32 --reuse-views
+```

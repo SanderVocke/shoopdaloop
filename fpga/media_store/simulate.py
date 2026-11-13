@@ -26,11 +26,12 @@ def main():
     parser.add_argument("--deferred",action="store_true",help="exercise deferred ownership and maintenance budgets")
     parser.add_argument("--deferred-capacity",action="store_true",help="exercise exhausted metadata/sample pools and transfer faults")
     parser.add_argument("--deferred-reuse",action="store_true",help="exercise reused view IDs while old roots remain retired")
-    parser.add_argument("--reuse-views",action="store_true")
+    parser.add_argument("--reuse-views",action="store_true",help="reuse invalid physical view descriptors")
     parser.add_argument("--reclaim-timing",action="store_true",help="measure isolated warm/cold batches of 20 reference releases")
     parser.add_argument("--deferred-stress",action="store_true",help="30-second ownership tables, mass clear and continued recording")
     parser.add_argument("--stress-seconds",type=int,default=30)
     parser.add_argument("--pipeline", action="store_true")
+    parser.add_argument("--statistics", action="store_true", help="run focused storage-counter checks")
     parser.add_argument("--read-buffers", type=int, default=4)
     parser.add_argument("--write-buffers", type=int, default=4)
     parser.add_argument("--response-cycles", type=int, default=1,
@@ -46,6 +47,8 @@ def main():
         memory_env = environment(args)
     except ValueError as error:
         parser.error(str(error))
+    if args.statistics and (args.pipeline or args.timing or args.config != "small" or args.metadata_pages != 2):
+        parser.error("statistics checks require --config small --metadata-pages 2 and no pipeline/timing")
     axi = args.memory_model != "legacy"
     if axi and args.response_cycles != 1:
         parser.error("--response-cycles is for --memory-model legacy; AXI fixed mode uses --memory-cycles")
@@ -55,8 +58,8 @@ def main():
         parser.error("buffer capacities must be positive")
     if args.response_cycles < 1 or ((args.response_cycles != 1 or args.timing) and not args.pipeline):
         parser.error("use positive --response-cycles; delay/timing options require --pipeline")
-    if sum((args.deferred,args.deferred_capacity,args.deferred_stress,args.deferred_reuse,args.reclaim_timing))>1:
-        parser.error('select one deferred test suite')
+    if sum((args.deferred,args.deferred_capacity,args.deferred_stress,args.deferred_reuse,args.reclaim_timing,args.statistics))>1:
+        parser.error('select one focused test suite')
     if args.pipeline and any((args.deferred,args.deferred_capacity,args.deferred_stress,args.deferred_reuse,args.reclaim_timing)):
         parser.error('deferred test suites use the standalone store')
     if args.deferred_reuse and (not args.reuse_views or args.metadata_pages!=7 or args.retired_tables!=2):
@@ -139,11 +142,13 @@ def main():
             module='test_reclaim_timing';testcase=None
         if args.deferred_stress:
             module='test_deferred_stress';testcase=None
+        if args.statistics:
+            module='test_media_statistics';testcase=None
         result = runner.test(hdl_toplevel=top, test_module=module,
                              testcase=testcase, seed=args.seed,
                              test_dir=output, waves=args.waves, log_file=output / "simulation.log",
                              extra_env={"MEDIA_CAPACITIES": ",".join(map(str, capacities)),
-                                        "MEDIA_CONFIG": name,
+                                        "MEDIA_CONFIG": name, "MEDIA_REUSE_VIEWS": str(int(args.reuse_views)),
                                         "MEDIA_READ_BUFFERS": str(args.read_buffers), "MEDIA_WRITE_BUFFERS": str(args.write_buffers),
                                         "AUDIO_CAPACITIES": ",".join(map(str, audio)),
                                         "MEDIA_SEED": str(args.seed), "MEDIA_RANDOM_CASES": str(args.random_cases),
@@ -153,7 +158,7 @@ def main():
         if not result.is_file():
             raise SystemExit(f"No results; see {output / 'simulation.log'}")
         report = ET.parse(result).getroot()
-        if (len(list(report.iter("testcase"))) != (1 if args.reclaim_timing else 2 if args.deferred_stress or args.deferred_reuse else 3 if args.deferred_capacity else 11 if args.deferred else 1 if block_test else 4 if args.pipeline else 3)
+        if (len(list(report.iter("testcase"))) != (1 if args.reclaim_timing else 2 if args.statistics or args.deferred_stress or args.deferred_reuse else 3 if args.deferred_capacity else 11 if args.deferred else 1 if block_test else 4 if args.pipeline else 3)
                 or any(list(report.iter(tag)) for tag in ("failure", "error", "skipped"))):
             raise SystemExit(f"Media simulation failed; see {output / 'simulation.log'}")
         print(f"{name}: media store passed; results in {output}", flush=True)

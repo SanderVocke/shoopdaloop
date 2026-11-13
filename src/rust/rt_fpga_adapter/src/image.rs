@@ -95,8 +95,32 @@ pub struct Ramp {
     pub elapsed: u32,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+#[repr(u16)]
+pub enum ArithmeticMode {
+    Multiply = 0,
+    LeftBalance = 1,
+    RightBalance = 2,
+    OneMinus = 3,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Instruction {
+    ProcessSmoothing {
+        loop_id: Identity,
+        control: u16,
+        source: u16,
+    },
+    ProcessConstant {
+        value: i32,
+        destination: u16,
+    },
+    ProcessArithmetic {
+        left: u16,
+        right: u16,
+        destination: u16,
+        mode: ArithmeticMode,
+    },
     ProcessInput {
         port: u16,
         destination: u16,

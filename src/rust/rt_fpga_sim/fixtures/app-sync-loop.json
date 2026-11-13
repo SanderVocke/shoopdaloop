@@ -1,0 +1,22 @@
+{
+  "format_version": 1,
+  "name": "default-sync-loop-offline",
+  "steps": [
+    {"ticks": 20, "action": {"kind": "connect_input"}},
+    {"ticks": 20, "action": {"kind": "connect_output"}},
+    {"ticks": 4, "action": {"kind": "global_sync", "enabled": false}},
+    {"ticks": 24, "action": {"kind": "record"}},
+    {"ticks": 40, "action": {"kind": "play"}},
+    {"ticks": 12, "action": {"kind": "loop_gain", "value": 0.75}},
+    {"ticks": 12, "action": {"kind": "output_gain", "value": 0.5}},
+    {"ticks": 12, "action": {"kind": "mute", "enabled": true}},
+    {"ticks": 12, "action": {"kind": "mute", "enabled": false}},
+    {"ticks": 10, "action": {"kind": "stop"}},
+    {"ticks": 20, "action": {"kind": "details"}},
+    {"ticks": 16, "action": {"kind": "clear"}},
+    {"ticks": 16, "action": {"kind": "record"}},
+    {"ticks": 32, "action": {"kind": "play"}},
+    {"ticks": 4, "action": {"kind": "global_sync", "enabled": true}},
+    {"ticks": 24, "action": {"kind": "stop"}}
+  ]
+}

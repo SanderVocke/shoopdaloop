@@ -94,6 +94,8 @@ module media_store #(
     reg [31:0] table_data, reference_data, free_data;
     reg [31:0] allocation_view;
     reg [31:0] view_count, slot_count, free_count, slot_limit;
+    reg [VIEWS-1:0] valid_views;
+    wire [31:0] views_used = REUSE_VIEWS != 0 ? 32'($countones(valid_views)) : view_count;
     reg cfg_pending, cfg_result_valid, faulted, cfg_was_write;
     reg cfg_request_valid, cfg_request_write, cfg_request_in_range, cfg_request_value_valid;
     reg [2:0] cfg_request_space;
@@ -130,7 +132,7 @@ module media_store #(
         : (cfg_space == 1) ? cfg_address < 32'(VIEWS)
         : (cfg_space == 2) ? ((cfg_address >> SLOT_BITS) < 32'(VIEWS) && (cfg_address & ((32'd1 << SLOT_BITS)-1)) < 32'(BLOCKS))
         : (cfg_space == 5) ? cfg_address == 0 && cfg_write
-        : (cfg_space == 6) ? cfg_address < 15 && !cfg_write
+        : (cfg_space == 6) ? (cfg_address < 15 || cfg_address == 16 || cfg_address == 17) && !cfg_write
         : (cfg_space == 7) ? cfg_address < 32'(RETIRED_TABLES)*16 && !cfg_write
         : ((cfg_space == 3) || (cfg_space == 4)) && (cfg_address < 32'(BLOCKS));
     wire cfg_value_valid = !cfg_write || (cfg_space == 1)
@@ -475,7 +477,7 @@ module media_store #(
             error_code <= OK;
             result_view <= 0;
             result_empty <= 0;
-            view_count <= 0; allocation_view <= 0;
+            view_count <= 0; allocation_view <= 0; valid_views <= 0;
             slot_count <= 0;
             free_count <= 0;
             slot_limit <= 32'(BLOCKS);
@@ -519,6 +521,7 @@ module media_store #(
             arena_bound <= 0;
         end else begin
             done <= 0; cfg_pending <= 0;
+            if (descriptor_write && advance) valid_views[descriptor_write_address] <= descriptor_write_data[0];
             if (advance && metadata_error == 0) begin
             if (cm_command && cm_cmd_ready) arena_bound <= 1;
             if (hint_valid && hint_ready && hint_base_valid) begin
@@ -565,6 +568,8 @@ module media_store #(
                         12: cfg_globals_data <= {128'b0,reclaim_pages_available};
                         13: cfg_globals_data <= {96'b0,reclaim_capacity_failures};
                         14: cfg_globals_data <= {96'b0,reclaim_pages_freed};
+                        16: cfg_globals_data <= {views_used,32'(TABLE_PAGES),reclaim_pages_used,slot_limit,slot_count-free_count};
+                        17: cfg_globals_data <= {32'(VIEWS),32'(BLOCK_CHUNKS),32'(CHUNK_FRAMES),ARENA_BYTES};
                         default: begin end
                     endcase
                 end
