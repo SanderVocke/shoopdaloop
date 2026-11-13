@@ -371,7 +371,17 @@ renamed "Audio driver", and an "Audio backend" line is added.
   memory types now live in the shared diagnostics protocol and remain
   re-exported by the engine protocol. All 152 dependency audits pass without
   weakening the boundary rules.
-- Windows debug packaging reported an early companion EOF while Windows
-  release passed packaging. Companion startup now preserves the bounded host
-  stderr tail and process status in startup errors; a failing-host regression
-  passes. CI will retry this path with actionable failure diagnostics.
+- Companion startup now preserves a bounded stderr tail and process status.
+  Collection remains bounded if a subprocess inherits stderr; failure and
+  inherited-pipe regressions pass.
+- The diagnostics identified the Windows debug packaging failure as a main
+  stack overflow during native engine preparation. Backend connection and
+  construction are separated from session serving, with the service backend
+  boxed before it enters the server loop. Native start/shutdown on a one MiB
+  stack passes with and without `fpga-sim`; the standalone CLI also survives the
+  one MiB stack reproducer. All three RTL host regressions pass after this
+  change, including cold companion startup and both regular carriers.
+- An overlapping ordinary build replaced the test-enabled companion during the
+  final local workspace run, causing 14 host recovery tests to reject the
+  test-only `test_signal` field. The other 3,238 tests passed. A final isolated
+  run will rebuild the matching test companion before executing the suite.

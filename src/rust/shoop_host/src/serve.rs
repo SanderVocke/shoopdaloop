@@ -217,33 +217,34 @@ impl Drop for Acceptor {
     }
 }
 
-pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
-    run_with_ready(config, options, |_| Ok(()))
+struct StartedBackend {
+    host: Option<shoop_rt_host_native::NativeHost>,
+    #[cfg(feature = "fpga-sim")]
+    fpga_host: Option<shoop_rt_host_fpga_sim::Host>,
+    backend: Box<dyn shoop_backend::Backend>,
+    warnings: Vec<String>,
+    settings: crate::config::HostSettings,
 }
 
-pub fn run_with_ready(
-    config: HostConfig,
-    options: StartOptions,
-    ready: impl FnOnce(Target) -> Result<()>,
-) -> Result<()> {
-    let _span = tracing::info_span!("host.session").entered();
-    config.validate()?;
-    options.network.validate()?;
-    ensure!(
-        !options.lan || config.transport == AppTransport::Socket,
-        "LAN hosts require socket delivery"
-    );
-    ensure!(options.name.len() <= 128, "invalid host identity or name");
+fn connect_backend(
+    client: shoop_rt_host_native::NativeClient,
+    profile: shoop_app_api::ResolvedAudioDriverConfig,
+) -> Result<Box<dyn shoop_backend::Backend>> {
+    let mut backend = RtBackend::connect(client, Sleep::default())?;
+    backend.set_driver_profile(profile);
+    Ok(Box::new(backend))
+}
+
+fn start_backend(config: &HostConfig) -> Result<StartedBackend> {
     #[cfg(feature = "fpga-sim")]
     let mut fpga_host = None;
-    let (mut host, backend, warnings, settings) =
+    let (host, backend, warnings, settings) =
         if config.backend == shoop_app_api::AudioBackendKind::FpgaRtlSim {
             #[cfg(feature = "fpga-sim")]
             {
                 let (started, profile, effective) = crate::fpga::start(&config.settings)?;
                 fpga_host = Some(started.host);
-                let mut backend = RtBackend::connect(started.client, Sleep::default())?;
-                backend.set_driver_profile(profile);
+                let backend = connect_backend(started.client, profile)?;
                 (None, backend, vec![], effective)
             }
             #[cfg(not(feature = "fpga-sim"))]
@@ -309,8 +310,7 @@ pub fn run_with_ready(
                 buffer_size: status.buffer_frames,
                 instance_name: started.host.instance_name().to_owned(),
             };
-            let mut backend = RtBackend::connect(started.client, Sleep::default())?;
-            backend.set_driver_profile(profile);
+            let backend = connect_backend(started.client, profile)?;
             (
                 Some(started.host),
                 backend,
@@ -318,9 +318,44 @@ pub fn run_with_ready(
                 config.settings.clone(),
             )
         };
+    Ok(StartedBackend {
+        host,
+        #[cfg(feature = "fpga-sim")]
+        fpga_host,
+        backend,
+        warnings,
+        settings,
+    })
+}
+
+pub fn run(config: HostConfig, options: StartOptions) -> Result<()> {
+    run_with_ready(config, options, |_| Ok(()))
+}
+
+pub fn run_with_ready(
+    config: HostConfig,
+    options: StartOptions,
+    ready: impl FnOnce(Target) -> Result<()>,
+) -> Result<()> {
+    let _span = tracing::info_span!("host.session").entered();
+    config.validate()?;
+    options.network.validate()?;
+    ensure!(
+        !options.lan || config.transport == AppTransport::Socket,
+        "LAN hosts require socket delivery"
+    );
+    ensure!(options.name.len() <= 128, "invalid host identity or name");
+    let StartedBackend {
+        mut host,
+        #[cfg(feature = "fpga-sim")]
+        mut fpga_host,
+        backend,
+        warnings,
+        settings,
+    } = start_backend(&config)?;
     let config = HostConfig { settings, ..config };
     let mut service = Service::new(
-        Box::new(backend),
+        backend,
         ServiceOptions {
             master_auto_connect: config.master_auto_connect,
             loop_smoothing_ms: config.loop_smoothing_ms,
@@ -611,5 +646,39 @@ impl Data {
             self.core.port = Port::Shared(self.shared.take().unwrap());
         }
         self.core.receive(service);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn native_session_starts_and_stops_with_a_one_megabyte_stack() {
+        let config = HostConfig {
+            settings: crate::config::HostSettings {
+                pools: shoop_app_api::NewEnginePools {
+                    tracks: 2,
+                    loops: 8,
+                    loop_memory_mb: 8,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let host = thread::Builder::new()
+            .stack_size(1024 * 1024)
+            .spawn(move || {
+                run_with_ready(config, StartOptions::new()?, |target| {
+                    sender.send(target)?;
+                    Ok(())
+                })
+            })
+            .unwrap();
+        let target = receiver.recv_timeout(Duration::from_secs(15)).unwrap();
+        crate::connection::shutdown_ownerless(&target, Duration::from_secs(10)).unwrap();
+        host.join().unwrap().unwrap();
     }
 }
