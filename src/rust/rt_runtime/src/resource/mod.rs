@@ -3,7 +3,9 @@
 //! additionally check instance and lease generation; copying either acquires no lease.
 
 use crate::Sample;
+mod external;
 mod reservation;
+pub use external::ExternalReadScope;
 pub use reservation::ReservedSnapshotId;
 mod boundary;
 pub use boundary::{CaptureBoundaryIo, PlannerResourceIo};

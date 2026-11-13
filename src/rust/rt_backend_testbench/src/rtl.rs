@@ -12,48 +12,14 @@ pub fn compile(scenario: &Scenario) -> Checked<Image> {
         .unwrap_or(1);
     let requests = u32::from(scenario.request_capacity);
     let topology = production::topology(scenario, slots as usize, requests as usize)?;
-    let components = topology
-        .components()
-        .iter()
-        .map(|c| {
-            c.iter()
-                .map(|id| Identity {
-                    slot: id.slot(),
-                    generation: id.generation(),
-                })
-                .collect()
-        })
-        .collect();
-    let transition = TransitionImage {
-        description: Description {
-            quantum: scenario.quantum,
-            loops: topology
-                .nodes()
+    let transition =
+        rt_fpga_adapter::compiler::transition_image(&topology, scenario.quantum, |id| {
+            scenario
+                .loops
                 .iter()
-                .map(|n| {
-                    let source = scenario
-                        .loops
-                        .iter()
-                        .find(|l| production::loop_id(l.id).ok() == Some(n.id))
-                        .unwrap();
-                    LoopSpec {
-                        id: source.id,
-                        kind: "primitive".into(),
-                        length: n.length,
-                        sync_source: source.sync_source,
-                        repeat_sync: source.repeat_sync,
-                        timeline: None,
-                    }
-                })
-                .collect(),
-        },
-        limits: Limits {
-            loop_slots: slots,
-            pending_requests: requests,
-            events: slots * 2 + requests,
-        },
-        components,
-    };
+                .any(|l| production::loop_id(l.id).ok() == Some(id) && l.repeat_sync)
+        })
+        .map_err(|e| e.to_string())?;
     let mut media = MediaImage {
         chunk_frames: scenario.chunk_frames,
         samples: Vec::new(),

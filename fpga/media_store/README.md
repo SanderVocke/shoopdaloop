@@ -74,6 +74,18 @@ media. New slots are zeroed, including unpublished tails, matching Rust snapshot
 Reused slots retain old unpublished samples. Descriptors/lengths publish at completion.
 Zero-word reads still validate the view, position and loop length.
 
+### Physical view reuse
+
+`REUSE_VIEWS=0` (default) preserves append-only physical descriptor IDs: deleting
+a view does not make that raw ID available for a new view during the same reset
+epoch. `REUSE_VIEWS=1` lets Create/Slice scan for an invalid descriptor before
+growing the high-water mark. Chunk reference counting and allocation are unchanged.
+Enable this only behind a host registry that checks logical handle generations
+and media/export/cursor ownership before accessing raw views. The Marlin mono
+runtime adapter supplies that registry and opts in, keeping writable view zero
+stable while reclaiming immutable take descriptors. Raw IDs have no hardware
+generation field and cannot by themselves detect stale use in reuse mode.
+
 ### Streams and memory
 
 Append consumes `cmd_count` words on `write_valid && write_ready`. Read emits
@@ -180,7 +192,8 @@ reclamation work before making deadline claims.
 The standalone media tests use per-node playback/capture state.
 `fpga/loop_pipeline` owns fatal processing policy: any required media error latches
 a fault, suppresses output and requires reset/reload. Clock advancement follows
-successful jobs. There is no host preparation pause or external executor.
+successful jobs. The integrated coordinator also permits host media operations at its explicit
+pre-audio settlement pause; there is no external executor.
 
 ## Verification
 

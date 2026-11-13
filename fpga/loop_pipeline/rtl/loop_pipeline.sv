@@ -12,6 +12,7 @@ module loop_pipeline #(
     parameter integer BUFFERS = 16,
     parameter integer INPUT_PORTS = 2,
     parameter integer OUTPUT_PORTS = 2,
+    parameter integer REUSE_VIEWS = 0,
     parameter integer VIEWS = 32,
     parameter integer SLOTS = 1024,
     parameter integer CHUNK_FRAMES = 32,
@@ -113,10 +114,10 @@ module loop_pipeline #(
     input wire memory_meta_response_error, input wire [31:0] memory_meta_read_data,
     output wire memory_fault
 );
-    typedef enum logic [2:0] { IDLE, SETTLE_SEND, SETTLE_WAIT, AUDIO_START,
-        AUDIO_WAIT, FINISH_SEND, FINISH_WAIT, FAULT } phase_t;
+    typedef enum logic [3:0] { IDLE, SETTLE_SEND, SETTLE_WAIT, AUDIO_START,
+        AUDIO_WAIT, FINISH_SEND, FINISH_WAIT, FAULT, HOST_SETTLE_WAIT, BOUNDARY } phase_t;
     phase_t phase;
-    wire host_access = phase == IDLE || phase == FAULT;
+    wire host_access = phase == IDLE || phase == FAULT || phase == HOST_SETTLE_WAIT || phase == BOUNDARY;
     wire coordinator_send = (phase == SETTLE_SEND || phase == FINISH_SEND) && !memory_fault;
     wire coordinator_wait = phase == SETTLE_WAIT || phase == FINISH_WAIT;
     wire reserved_command = command_opcode == 9 || command_opcode == 11;
@@ -136,7 +137,7 @@ module loop_pipeline #(
     reg [63:0] quantum_arena;
     reg [31:0] instructions, states, quantum, chunk_frames, budget, buffers, inputs, outputs;
     reg fault_report_pending;
-    wire configure = phase == IDLE || phase == FAULT;
+    wire configure = phase == IDLE || phase == FAULT || phase == BOUNDARY;
     reg output_valid, response_is_output;
     wire [31:0] sample_read_data;
     assign faulted = phase == FAULT;
@@ -144,8 +145,8 @@ module loop_pipeline #(
     assign transition_busy = tp_busy;
 
     assign busy = (phase != IDLE && phase != FAULT) || audio_busy;
-    assign run_ready = phase == IDLE && audio_run_ready && tp_command_ready && !command_valid && !reset;
-    assign command_ready = host_access && !reserved_command && tp_command_ready && !reset;
+    assign run_ready = (phase == IDLE || phase == BOUNDARY) && audio_run_ready && tp_command_ready && !command_valid && !reset;
+    assign command_ready = host_access && !reserved_command && !(command_opcode == 16 && phase != IDLE) && tp_command_ready && !reset;
     assign response_valid = host_access && tp_response_valid && !reset;
     assign response_error = tp_response_error;
     assign response_data = tp_response_data;
@@ -158,9 +159,9 @@ module loop_pipeline #(
 
     transition_processor #(.LOOP_DEPTH(LOOP_DEPTH), .REQUEST_DEPTH(REQUEST_DEPTH), .EVENT_DEPTH(EVENT_DEPTH), .INTEGRATED(1)) timing (
         .clk(clk), .reset(reset),
-        .command_valid(coordinator_send || (host_access && command_valid && !reserved_command)),
+        .command_valid(coordinator_send || (host_access && command_valid && !reserved_command && !(command_opcode == 16 && phase != IDLE))),
         .command_ready(tp_command_ready),
-        .command_opcode(coordinator_send ? (phase == SETTLE_SEND ? 8'd9 : 8'd11) : command_opcode),
+        .command_opcode(coordinator_send ? (phase == SETTLE_SEND ? 8'd9 : 8'd11) : (command_opcode == 16 ? 8'd9 : command_opcode)),
         .command_index(coordinator_send ? 32'b0 : command_index),
         .command_data(coordinator_send ? 640'b0 : command_data),
         .response_valid(tp_response_valid), .response_ready(coordinator_wait || (host_access && response_ready)),
@@ -169,7 +170,7 @@ module loop_pipeline #(
         .loop_response_valid(loop_response_valid), .loop_response_error(loop_response_error), .loop_response_data(loop_response_data),
         .configured_quantum(configured_quantum)
     );
-    media_audio_pipeline #(.EXTERNAL_IO(EXTERNAL_IO), .PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH),
+    media_audio_pipeline #(.REUSE_VIEWS(REUSE_VIEWS), .EXTERNAL_IO(EXTERNAL_IO), .PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH),
         .MAX_FRAMES(MAX_FRAMES), .BUFFERS(BUFFERS), .INPUT_PORTS(INPUT_PORTS), .OUTPUT_PORTS(OUTPUT_PORTS),
         .VIEWS(VIEWS), .SLOTS(SLOTS), .CHUNK_FRAMES(CHUNK_FRAMES),
         .MEMORY_RESPONSE_CYCLES(MEMORY_RESPONSE_CYCLES), .READ_BUFFERS(READ_BUFFERS), .WRITE_BUFFERS(WRITE_BUFFERS), .BURST_MEMORY(BURST_MEMORY), .BLOCK_CHUNKS(BLOCK_CHUNKS), .TABLE_PAGES(TABLE_PAGES), .TABLE_LINES(TABLE_LINES), .REF_LINES(REF_LINES), .STACK_LINES(STACK_LINES)) audio (
@@ -190,7 +191,7 @@ module loop_pipeline #(
         .drain_valid(drain_valid), .drain_ready(drain_ready),
         .loop_read_valid(loop_read_valid), .loop_read_ready(loop_read_ready), .loop_read_slot(loop_read_slot),
         .loop_response_valid(loop_response_valid), .loop_response_error(loop_response_error), .loop_response_data(loop_response_data),
-        .arena_base((phase == IDLE || phase == FAULT) ? arena_base : quantum_arena),
+        .arena_base((phase == IDLE || phase == FAULT || phase == BOUNDARY) ? arena_base : quantum_arena),
         .store_cmd_valid(store_cmd_valid && configure), .store_cmd_ready(host_store_cmd_ready),
         .store_cmd_opcode(store_cmd_opcode), .store_cmd_view(store_cmd_view),
         .store_cmd_start(store_cmd_start), .store_cmd_length(store_cmd_length), .store_cmd_count(store_cmd_count),
@@ -225,7 +226,13 @@ module loop_pipeline #(
             if (memory_fault && phase != FAULT) begin
                 error_code <= 8; error_stage <= 3; fault_report_pending <= 1; output_valid <= 0; phase <= FAULT;
             end else case (phase)
-                IDLE: if (run_valid && run_ready) begin
+                HOST_SETTLE_WAIT: if (tp_response_valid && response_ready) begin
+                    if (tp_response_error != 0) begin
+                        error_stage <= 1; error_code <= {4'b0,tp_response_error};
+                        output_valid <= 0; done <= 1; phase <= FAULT;
+                    end else phase <= BOUNDARY;
+                end
+                IDLE, BOUNDARY: if (run_valid && run_ready) begin
                     error_code <= 0; error_stage <= 0; output_valid <= 0;
                     if (configured_quantum == 0 || run_quantum != configured_quantum) begin
                         error_code <= 1; error_stage <= 1; done <= 1;
@@ -236,9 +243,10 @@ module loop_pipeline #(
                     end else begin
                         instructions <= run_instruction_count; states <= run_state_count; quantum <= run_quantum; chunk_frames <= run_chunk_frames;
                         budget <= run_job_budget; buffers <= run_buffers; inputs <= run_inputs; outputs <= run_outputs;
-                        quantum_arena <= arena_base; phase <= SETTLE_SEND;
+                        quantum_arena <= arena_base; phase <= phase == BOUNDARY ? AUDIO_START : SETTLE_SEND;
                     end
                 end
+                else if (phase == IDLE && command_valid && command_ready && command_opcode == 16) phase <= HOST_SETTLE_WAIT;
                 SETTLE_SEND: if (tp_command_ready) phase <= SETTLE_WAIT;
                 SETTLE_WAIT: if (tp_response_valid) begin
                     if (tp_response_error != 0) begin

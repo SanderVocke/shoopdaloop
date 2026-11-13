@@ -3,8 +3,7 @@ use crate::{spec as wire, validation::Checked};
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock},
     executor::{Control, GraphRuntime, PreparedNode},
-    graph::{self, GraphDescription, PortCounts, PortType},
-    processor::{OperationContext, ProcessBlock, Processor},
+    graph::{self, GraphDescription, PortType},
     resource::{self, ResourceStore},
     transport::Lane,
     Config, Frame, NodeId, PlannerId, Quantum, Sample, Q824,
@@ -12,7 +11,7 @@ use rt_runtime::{
 use shoop_loops::{
     self as loops,
     audio::Smoothing,
-    runtime::{self as domain, LoopNode, LoopPlanner},
+    runtime::{self as domain, LoopPlanner},
 };
 pub use shoop_rt_engine::dsp::GainOperation;
 use shoop_rt_engine::dsp::GainProcessor;
@@ -62,54 +61,7 @@ impl OracleSample for f32 {
     }
 }
 
-pub enum Node<S: Sample> {
-    Loop(LoopNode<S>),
-    Gain(GainProcessor<S>),
-}
-impl<S: Sample> Processor<LoopPlanner<S>, GainOperation<S>, S> for Node<S> {
-    fn ports(&self) -> PortCounts {
-        match self {
-            Self::Loop(node) => node.ports(),
-            Self::Gain(node) => PortCounts {
-                audio_inputs: node.channels(),
-                audio_outputs: node.channels(),
-                ..Default::default()
-            },
-        }
-    }
-    fn admit(
-        &self,
-        id: NodeId,
-        planner: &LoopPlanner<S>,
-    ) -> std::result::Result<(), rt_runtime::Error> {
-        match self {
-            Self::Loop(node) => node.admit(id, planner),
-            _ => Ok(()),
-        }
-    }
-    fn process(
-        &mut self,
-        block: &mut ProcessBlock<'_, LoopPlanner<S>, S>,
-    ) -> std::result::Result<(), rt_runtime::Error> {
-        match self {
-            Self::Loop(node) => node.process(block),
-            Self::Gain(node) => node.process(block),
-        }
-    }
-    fn operation(
-        &mut self,
-        operation: GainOperation<S>,
-        _: OperationContext<'_, S>,
-    ) -> std::result::Result<(), rt_runtime::Error> {
-        match self {
-            Self::Gain(node) => {
-                node.apply(operation);
-                Ok(())
-            }
-            _ => Err(rt_runtime::Error::InvalidEvent),
-        }
-    }
-}
+pub use shoop_rt_engine::primitive::Node;
 pub type Runtime<S> = GraphRuntime<Node<S>, LoopPlanner<S>, GainOperation<S>, S>;
 pub type Controller<S> = Control<Node<S>, LoopPlanner<S>, GainOperation<S>, S>;
 pub struct Prepared<S: OracleSample> {

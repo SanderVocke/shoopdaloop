@@ -10,6 +10,14 @@ pub enum LoopNode<S: Sample = f32> {
 /// Every prepared loop node with its runtime identity, including unassigned
 /// node-pair templates that stay outside the initial graph.
 pub struct LoopNodes<S: Sample = f32>(pub(super) Vec<(NodeId, LoopNode<S>)>);
+impl<S: Sample> LoopNode<S> {
+    pub fn binding(&self) -> Binding<S> {
+        match self {
+            Self::Playback(node) => node.binding,
+            Self::Capture(node) => node.binding,
+        }
+    }
+}
 impl<S: Sample> LoopNodes<S> {
     pub fn iter(&self) -> impl Iterator<Item = (NodeId, &LoopNode<S>)> {
         self.0.iter().map(|(id, node)| (*id, node))

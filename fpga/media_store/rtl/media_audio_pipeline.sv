@@ -5,6 +5,7 @@ module media_audio_pipeline #(
     parameter integer PROGRAM_DEPTH = 32, parameter integer STATE_DEPTH = 16,
     parameter integer JOB_DEPTH = 32, parameter integer MAX_FRAMES = 32,
     parameter integer BUFFERS = 16, parameter integer INPUT_PORTS = 2, parameter integer OUTPUT_PORTS = 2,
+    parameter integer REUSE_VIEWS = 0,
     parameter integer VIEWS = 32, parameter integer SLOTS = 1024, parameter integer CHUNK_FRAMES = 32,
     parameter integer MEMORY_RESPONSE_CYCLES = 1,
     parameter integer BLOCK_CHUNKS = 32,
@@ -137,7 +138,7 @@ module media_audio_pipeline #(
         .media_hint_position(hint_position), .media_hint_length(hint_length), .media_hint_count(hint_count)
     );
 
-    media_store #(.VIEWS(VIEWS), .SLOTS(SLOTS), .CHUNK_FRAMES(CHUNK_FRAMES), .READ_BUFFERS(READ_BUFFERS), .WRITE_BUFFERS(WRITE_BUFFERS), .BURST_MEMORY(BURST_MEMORY), .BLOCK_CHUNKS(BLOCK_CHUNKS),.TABLE_PAGES(TABLE_PAGES), .TABLE_LINES(TABLE_LINES), .REF_LINES(REF_LINES), .STACK_LINES(STACK_LINES)) media (
+    media_store #(.REUSE_VIEWS(REUSE_VIEWS), .VIEWS(VIEWS), .SLOTS(SLOTS), .CHUNK_FRAMES(CHUNK_FRAMES), .READ_BUFFERS(READ_BUFFERS), .WRITE_BUFFERS(WRITE_BUFFERS), .BURST_MEMORY(BURST_MEMORY), .BLOCK_CHUNKS(BLOCK_CHUNKS),.TABLE_PAGES(TABLE_PAGES), .TABLE_LINES(TABLE_LINES), .REF_LINES(REF_LINES), .STACK_LINES(STACK_LINES)) media (
         .clk(clk), .reset(reset), .arena_base(arena_base),
         .hint_valid(hint_valid), .hint_ready(hint_ready), .hint_view(hint_view), .hint_position(hint_position), .hint_length(hint_length), .hint_count(hint_count),
         .cmd_valid(pipeline_busy ? job_cmd_valid : store_cmd_valid), .cmd_ready(internal_ready),
