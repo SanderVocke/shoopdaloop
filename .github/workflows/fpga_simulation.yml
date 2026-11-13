@@ -151,7 +151,7 @@ jobs:
       - name: Install simulation tools
         run: |
           sudo apt-get update
-          sudo apt-get install --yes autoconf flex bison libfl-dev zlib1g-dev g++ cmake patch python3-venv
+          sudo apt-get install --yes autoconf flex bison libfl-dev zlib1g-dev g++ cmake patch python3-venv pkg-config libasound2-dev
           python3 -m venv .venv
           .venv/bin/pip install -r fpga/axi_memory/requirements.txt
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"

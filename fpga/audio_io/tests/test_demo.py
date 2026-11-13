@@ -101,6 +101,8 @@ async def prepared_demo_and_recovery(d):
         d.restart.value = 1
         await edge(d)
         d.restart.value = 0
+        await recover(d, 3)
+        assert int(d.recoveries.value) == 2
         memory.fail_next = True
         for _ in range(10*q):
             await pulse(d)

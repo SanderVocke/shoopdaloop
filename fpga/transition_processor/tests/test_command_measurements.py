@@ -27,6 +27,12 @@ async def command_costs(dut):
         await driver.ok(abi.STATUS);row['status']=driver.last_cycles
         collected = await driver.collect(identity);row['collect']=driver.last_cycles
         assert collected['result']['value']['outcome']['kind']=='applied'
+        error,value = await driver.command(abi.SUBMIT,data=abi.encode_command(command(0,sequence+10,at=2**32)))
+        assert error == 0
+        identity = abi.decode_identity(value)
+        await driver.ok(abi.CANCEL,identity['slot'],identity['generation']);row['cancel']=driver.last_cycles
+        collected = await driver.collect(identity);row['cancelled_collect']=driver.last_cycles
+        assert collected['result']['value']['outcome']['kind']=='cancelled'
         rows.append(row)
     identities = []
     dense_installs = []
