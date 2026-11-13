@@ -153,6 +153,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
 
     fn telemetry(&mut self, record: Telemetry) {
         match record {
+            Telemetry::Memory(report) => self.status.memory = Some(report),
             Telemetry::Composite { .. } => self.composite_telemetry(record),
             Telemetry::Preview { request_id } => self.preview_playing = request_id,
             Telemetry::Engine {

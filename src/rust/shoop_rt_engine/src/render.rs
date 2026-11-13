@@ -39,6 +39,8 @@ pub struct Render {
     max_frames: usize,
     phase: Phase,
     reclaim_bound: usize,
+    memory_interval: u64,
+    memory_frame: u64,
 }
 
 impl Render {
@@ -48,8 +50,10 @@ impl Render {
         shape: [usize; 4],
         max_frames: usize,
         reclaim_bound: usize,
+        sample_rate: u32,
     ) -> Result<Self, Error> {
         let outputs = shape[3];
+        cells.memory.publish(0, runtime.memory_usage());
         Ok(Self {
             runtime: Box::new(runtime),
             cells,
@@ -61,6 +65,8 @@ impl Render {
             max_frames,
             phase: Phase::Running,
             reclaim_bound,
+            memory_interval: u64::from((sample_rate / 5).max(1)),
+            memory_frame: 0,
         })
     }
     pub fn set_profiling_clock(&mut self, clock: rt_runtime::profiling::Clock) {
@@ -174,6 +180,18 @@ impl Render {
                 outputs: &mut *midi.outputs,
             },
         );
+        if self
+            .runtime
+            .next_frame()
+            .0
+            .saturating_sub(self.memory_frame)
+            >= self.memory_interval
+        {
+            self.memory_frame = self.runtime.next_frame().0;
+            self.cells
+                .memory
+                .publish(self.memory_frame, self.runtime.memory_usage());
+        }
         let recovery = (0..self.recovery.len()).try_for_each(|port| {
             self.runtime
                 .drain_midi_recovery(port, &mut self.recovery[port], frames)

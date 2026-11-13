@@ -6628,6 +6628,7 @@ impl Backend for EngineBackend {
             composite_receipts: Vec::new(),
             profiling: Default::default(),
             status: BackendStatus {
+                memory: None,
                 dsp_load_percent: 0.0,
                 xruns: self.xruns,
                 buffer_size: if self.port_model == EnginePortModel::Physical {

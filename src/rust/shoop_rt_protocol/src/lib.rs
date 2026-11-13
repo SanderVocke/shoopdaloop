@@ -13,7 +13,9 @@ pub mod host;
 pub mod ids;
 pub mod input;
 pub use input::{InputCapacity, InputEdit, InputIntent, InputPhase, InputProgress};
+pub mod memory;
 pub mod message;
+pub use memory::{MemoryReport, MemoryResource, MemoryUnit, MAX_MEMORY_RESOURCES};
 pub mod replacement;
 pub mod schema;
 pub mod timing;
@@ -27,7 +29,7 @@ pub use schema::*;
 pub use timing::*;
 
 /// Version spoken by this crate; both sides must agree exactly.
-pub const PROTOCOL_VERSION: u16 = 25;
+pub const PROTOCOL_VERSION: u16 = 26;
 /// Reserved names for prepared I/O slots that are addressable by the host only.
 pub const HOST_IO_PREFIX: &str = "@host-io/";
 /// Longest host port or device name, in UTF-8 bytes.

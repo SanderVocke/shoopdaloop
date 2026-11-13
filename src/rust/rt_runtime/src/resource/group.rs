@@ -73,6 +73,13 @@ pub(super) struct CapturePool {
     staging: Vec<u8>,
 }
 impl CapturePool {
+    pub(super) fn allocated_bytes(&self) -> usize {
+        super::memory::vec_bytes(&self.groups)
+            + super::memory::vec_bytes(&self.free)
+            + super::memory::vec_bytes(&self.members)
+            + super::memory::vec_bytes(&self.staging)
+    }
+
     fn new(config: CaptureGroupConfig, prepared: PreparedConfig) -> Result<Self, Error> {
         if config.groups == 0 || config.members_per_group == 0 {
             return Err(Error::InvalidConfig);

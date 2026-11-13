@@ -1389,6 +1389,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         let driver = self.driver;
         self.status.peaks_fresh = false;
         let status = BackendStatus {
+            memory: self.status.memory,
             dsp_load_percent: self.status.load * 100.0,
             xruns: self.status.take_xruns(),
             buffer_size: driver.map_or(0, |driver| driver.buffer_frames),

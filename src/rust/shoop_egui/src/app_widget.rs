@@ -3177,6 +3177,8 @@ impl AppWidget {
         );
         ui.label("DSP");
         ui.separator();
+        crate::memory::summary(ui, state.status.memory.as_ref());
+        ui.separator();
         let milliseconds = state
             .status
             .latency_ms()

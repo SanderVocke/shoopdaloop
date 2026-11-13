@@ -39,6 +39,10 @@ pub(super) struct Staging {
     frame: Frame,
 }
 impl Staging {
+    pub(crate) fn allocated_bytes(&self) -> usize {
+        core::mem::size_of_val(&*self.records) + core::mem::size_of_val(&*self.values)
+    }
+
     pub fn prepared_bytes(events: usize) -> Result<usize, Error> {
         if events == 0 {
             return Err(Error::InvalidConfig);
@@ -137,6 +141,18 @@ pub(super) struct Core {
     records: Box<[Option<RecordId>]>,
 }
 impl Core {
+    pub(crate) fn allocated_bytes(&self) -> usize {
+        super::memory::vec_bytes(&self.removals)
+            + core::mem::size_of_val(&*self.insertions)
+            + core::mem::size_of_val(&*self.records)
+            + self.indexes.allocated_bytes()
+            + self.packets.allocated_bytes()
+            + self
+                .credits
+                .as_ref()
+                .map_or(0, |credits| core::mem::size_of_val(&*credits.owners))
+    }
+
     pub fn prepared_bytes(config: Config) -> Result<usize, Error> {
         let scratch = config
             .events_per_tick
