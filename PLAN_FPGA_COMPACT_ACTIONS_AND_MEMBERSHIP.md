@@ -1,6 +1,6 @@
 # FPGA boundary milestones 2–3: compact actions and ARM-managed membership
 
-Status: implementation in progress on the existing branch and PR #993.
+Status: fully implemented and locally validated in the existing branch and PR #993.
 Execution base: `32d835faadcbb74eeec8d02fb5212a37939e1321`; parent #990 remains
 `45d535166d931f798fd4cb61e7433c89842fc1ed`.
 Parent roadmap: [PLAN_LONGTERM_FPGA_BOUNDARY.md](PLAN_LONGTERM_FPGA_BOUNDARY.md).
@@ -237,7 +237,7 @@ unverified full-baseline or final-CI pass claim.
   snapshot/release timing and public response reconstruction.
 - [x] Specify host reply versus fabric execution interfaces, queue depths,
   arbitration, fault routing and behavior of held/full replies at every phase.
-- [ ] Specify the publication/reuse state machine sufficiently to avoid designing
+- [x] Specify the publication/reuse state machine sufficiently to avoid designing
   M2 storage that cannot support M3. Leave the final membership representation to
   stage 5. Document acceptance/rounding cuts for staging that spans quanta.
 - [x] Add the ABI/version/capability and prepared-input invalidation strategy to
@@ -299,14 +299,14 @@ proceeding; do not hide the cost inside the M3 comparison.
 
 ### 5. Select bounded ARM-prepared membership
 
-- [ ] Prototype the two stage-1-compatible membership representations on the real
+- [x] Prototype the two stage-1-compatible membership representations on the real
   resolver path using small directed workloads. Compare host preparation cost,
   publication bytes/cycles, stale-entry visits, total storage and mapped logic.
   Neither prototype may implement another musical resolver.
-- [ ] Evaluate empty/dense membership, all actions on one loop, 64-loop chains,
+- [x] Evaluate empty/dense membership, all actions on one loop, 64-loop chains,
   mixed timing classes, maximum uncollected terminals and reuse before compaction.
   Derive visit bounds and state the no-ARM-compaction worst case.
-- [ ] Choose and document one representation, publication protocol and numeric
+- [x] Choose and document one representation, publication protocol and numeric
   capacity/visit limits. Show how it preserves the full shared pool and fits the
   processing budget under the unchanged target clock. Retain only that candidate.
 
@@ -316,13 +316,13 @@ require timely ARM cleanup, reduce public capacity or change musical semantics.
 
 ### 6. Implement atomic publication and safe reuse
 
-- [ ] Add ARM membership preparation/compaction to the shared owner, with bounded
+- [x] Add ARM membership preparation/compaction to the shared owner, with bounded
   staging storage and explicit version/bank ownership. Preserve one outstanding
   wire transfer and reserve public acceptance until the whole operation commits.
-- [ ] Implement device staging/commit/retirement guards at legal boundaries.
+- [x] Implement device staging/commit/retirement guards at legal boundaries.
   Incomplete or refused publication keeps the old committed view executable.
   Perform authoritative rounding at the defined admission cut.
-- [ ] Verify partial writes, delayed/held acknowledgements, publication versus
+- [x] Verify partial writes, delayed/held acknowledgements, publication versus
   terminal/cancel/collect races, bank exhaustion, reused generations, stale
   versions and reset after every transfer phase. Check old replies cannot be
   interpreted as acknowledgements of a new owner or publication.
@@ -332,17 +332,17 @@ pause halfway through an update while existing admitted work continues.
 
 ### 7. Replace hardware list maintenance and complete M3 cutover
 
-- [ ] Traverse committed membership using authoritative active/terminal state;
+- [x] Traverse committed membership using authoritative active/terminal state;
   preserve slot/sequence arbitration, source-first settlement, self-sync,
   once-per-pulse countdown, repeat waits, pulse masking and stop cancellation.
-- [ ] Make terminal resolution and cancellation mark state without repairing
+- [x] Make terminal resolution and cancellation mark state without repairing
   membership. Remove `S_INSERT_*`, `S_UNLINK_*`, request next/previous writeback
   and obsolete head/update logic. Remove or repurpose metadata only after all
   readers are accounted for. Keep real-time cancellation traversal in hardware.
-- [ ] Migrate adapters, raw guards, prepared streams and all observations to the
+- [x] Migrate adapters, raw guards, prepared streams and all observations to the
   final publication contract. Static streams reserve actual credits and compile
   membership from inputs without predicting when actions finish.
-- [ ] Re-run directed TP and pipeline comparisons, then all five TP capacities
+- [x] Re-run directed TP and pipeline comparisons, then all five TP capacities
   with 20 seeds each, delayed admission/cancel cuts and bounded application replay.
 
 Gate: one final implementation contains no hardware insertion/unlink machinery,
@@ -350,19 +350,19 @@ all public behavior remains equivalent, and every producer uses the shared owner
 
 ### 8. Prove service independence and measure combined gains
 
-- [ ] Extend the 1,024-quantum comparison to cover no membership compaction, all
+- [x] Extend the 1,024-quantum comparison to cover no membership compaction, all
   terminal credits retained, stale entries across reuse, partially staged updates,
   held replies and a stalled collector. Keep the audio/fence driver independent
   of request management; log any intentionally supplied fabric prerequisites.
-- [ ] Cover multiple eligible actions, out-of-order sequences and u64 edges,
+- [x] Cover multiple eligible actions, out-of-order sequences and u64 edges,
   failing high-priority operations, stop cancelling older future actions, self-sync,
   source chains, repeat waits and exactly one countdown decrement per delivered
   source tick. Compare resumed results and media with production Rust.
-- [ ] Record M1/M2/M2–3 deltas for empty/dense install, cancel, collect, publication,
+- [x] Record M1/M2/M2–3 deltas for empty/dense install, cancel, collect, publication,
   compaction, PROCESS and observation. Include growing stale membership and the
   8x8/64-loop-chain workloads. Account for all host preparation and transfer work;
   a fast INSTALL alone is not the admission cost if publication sends a roster.
-- [ ] Repeat matched deployment-size routing and supported-capacity lint/mapping.
+- [x] Repeat matched deployment-size routing and supported-capacity lint/mapping.
   Record total action/result/membership/reply storage, LUT/FF/BRAM, setup/hold,
   source/tool/harness hashes and full-core timing impact. Preserve the same part,
   100 MHz constraints, capacities and Vivado version as the M1 comparison.
@@ -372,22 +372,22 @@ unsupported callback, full-core timing or board-deadline claims.
 
 ### 9. Final end-to-end validation, documentation and handoff
 
-- [ ] Once implementation is authorized and stable, run the full native suite
+- [x] Once implementation is authorized and stable, run the full native suite
   once, the complete relevant native Marlin matrix, simulator suite and regular
   FPGA-host/application suites. Include production faults, stalls, instant/fixed/
   DRAMsim3 memory, long sessions, 64-loop workloads and independent float bounds.
-- [ ] Check generated wrappers, prepared ROM parity, continuous fabric audio,
+- [x] Check generated wrappers, prepared ROM parity, continuous fabric audio,
   demo recovery and deployed ZedBoard controls. Keep the remaining fence-driven
   flow working. Investigate failures against the frozen checkpoint; never relax
   comparisons or silently promote an interrupted run to a pass.
-- [ ] Update INSTALL/TP/adapter/testbench documentation, publish compact/public
+- [x] Update INSTALL/TP/adapter/testbench documentation, publish compact/public
   reconstruction and membership contracts, and link measurements from the parent
   roadmap. Check every acceptance criterion against specific evidence.
-- [ ] Commit coherent milestones and push only this stack's work. Keep the PR
+- [x] Commit coherent milestones and push only this stack's work. Keep the PR
   based on #990's branch while it is open; after #990 lands, rebase/retarget onto
   its integration result without duplicating parent changes. Do not merge #990
   or this PR autonomously. Rewrite the PR description if it later gains code.
-- [ ] Let configured CI run normally. The user's instruction overrides the
+- [x] Let configured CI run normally. The user's instruction overrides the
   planning template's default CI-to-green inspection loop: do not inspect, poll
   or rerun CI after pushing unless the user later changes that instruction.
   State unreviewed CI honestly. Inspect available automated review feedback and
@@ -488,3 +488,67 @@ application callback integration and physical deadline qualification.
 - The instant-memory prepared-demo loader/recovery suite passes at the M2
   checkpoint. Full M2 RTL and tooling snapshots are retained under
   `work/fpga-compact/checkpoints/m2` for independent later comparisons.
+
+- M3 implementation checkpoint: `708d34a6`. The linked and flat prototypes both
+  pass the small RTL corpus and publication guards. Linked synthesis uses
+  12,792 LUTs / 8,556 FF / 28.5 BRAM equivalents; flat uses 12,430 / 8,683 / 29.5.
+  Linked is selected for one fewer BRAM and faster resolver visits: dense R=272
+  PROCESS 4,380 versus 5,196 cycles; retained self-sync terminal traversal 1,114
+  versus 1,927. Both use bounded O(R+L) ARM preparation and publication.
+  Only linked membership remains in production; the final routed result below
+  accounts for removal of the prototype parameter/states.
+- ABI 3 adds BEGIN/NODE/ROOT/COMMIT publication, a checked u64 nonce, two immutable
+  membership banks and generation-qualified reuse. Final INSTALL is admission
+  and rounds against the current FPGA frame. Publication never copies mutable
+  action state. The final five-test integrated boundary suite passes, including
+  held INSTALL and halfway-staged updates over 1,024 exact-audio quanta.
+- The final broad gate combines the full native workspace and simulator/application
+  matrices in one nextest invocation (the documented native features plus
+  `rt_fpga_testbench/sim,shoop_rt_host_fpga_sim/sim`, two test workers). This avoids
+  replacing feature-dependent host executable aliases between concurrent builds.
+  It does not omit the normal tests or relax comparisons. Its completed results
+  and corrected targeted reruns are recorded below and in the measurement report.
+
+## Acceptance evidence map
+
+The final results and source/tool/report hashes are in the
+[combined report](fpga/transition_processor/measurements/COMPACT_ACTIONS_AND_MEMBERSHIP.md)
+and its JSON evidence. The full sweep, targeted corrected reruns and matched
+complete-core measurements are complete; this map identifies the concrete checks.
+
+| Criterion | Evidence |
+| --- | --- |
+| 1. Exact semantics and samples | Independent production/RTL corpus; application and mono replay; 55 extended float-reference gates; long/alternate geometry and three 64-loop memory workloads |
+| 2. Ownership and error policy | Shared-owner unit tests; lowest-slot/duplicate/generation/retirement guards; malformed/uncertain multitransfer ACK tests; pending collection and retained terminal credits |
+| 3. Compact fields and numeric ranges | COMPACT field audit and ABI; reconstruction tests; full-width sequence/countdown/frame cases; authoritative late INSTALL at device frame 96 |
+| 4. Reply/control independence | Held INSTALL/CANCEL/COLLECT/READ/BEGIN; independent execution with command intrusion; held settlement; per-clock response stability and fault propagation |
+| 5. Atomic publication and reuse | Paused partial update over 1,024 quanta; nonce exhaustion/stale tokens; CANCEL/COLLECT before and after COMMIT; stale-generation INSTALL refusal and held collection across self-sync |
+| 6. No FPGA maintenance / bounded work | Single final linked compiler; no insertion/unlink/repair states; strict monotonic links and disjoint trusted forests; stale self-sync costs before/after optional compaction; all-capacity lint/mapping |
+| 7. Service pause | Three 1,024-quantum runs with all credits retained, ordinary/held/partial-update variants; exact audio, resumed outcomes, final state/journal and captured media; existing fabric prerequisites supplied explicitly |
+| 8. One owner and contract | ABI 3 across Marlin/simulator/managed adapters/JSONL bridge/Python; Rust/Python ROM parity; manual continuous setup uses shared prepared membership; reset invalidates both owner and device |
+| 9. Matched measurements | Shared harness hashes for M1/M2/M3 TP; separate matched complete-core geometry; every admission subtransfer and elapsed handshake clocks; archived prototype replay patches; standalone 100 MHz preserved |
+
+- Final TP routing: 13,312 LUTs / 8,813 FF / 28.5 BRAM equivalents,
+  +0.105/+0.007 ns setup/hold. Dense PROCESS is 19.9% faster; TP LUTs increase
+  17.6% and stale entries can increase later quanta (64-loop steady chain:
+  1,033 → 1,609 cycles). Complete admission is 276 transfers / 1,654 elapsed
+  clocks in the dense one-loop workload. All costs and prototype replay patches
+  are published; no uniform latency or area reduction is claimed.
+- Matched complete-core routing at 64/128/256 saves 592 LUTs (2.0%) but setup
+  regresses from -1.353 to -1.845 ns. Both miss 100 MHz; this is reported, not
+  counted as passing timing. Standalone TP meets its immutable target. Full-core
+  closure remains milestone 6 under the original scope.
+- The full combined sweep completes 3,342 tests: 3,340 pass, two fail, 11 skip.
+  Both failures pass targeted corrected reruns: the interrupted chunk-model cache
+  is rebuilt; direct continuous configuration now loads shared prepared membership.
+  Historical comparisons are unchanged. All five TP capacities pass 100 seeds;
+  final extra publication/collection races pass directed groups at every capacity.
+- Extended stalled production, long/alternate geometry, all three 64-loop scale
+  memory workloads, 16-channel continuous DRAMsim3, 78 float-reference gates,
+  generated artifacts, boundaries, lint/mapping, formatting, warning-denying
+  workspace build and test policy pass. The two-take application test passes
+  480,000 recorded frames near store capacity. No broad baseline or CI success
+  is inferred from this current implementation's local results.
+- Parent #990 remains open at the recorded base. This branch/PR stays stacked on
+  it and is not merged. CI remains uninspected by the user's instruction; no
+  review approval has been submitted at the last feedback inspection.

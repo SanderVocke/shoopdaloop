@@ -1,9 +1,9 @@
 # Long-term ARM–FPGA boundary plan
 
-Status: milestone 1 implemented in [PR #990](https://github.com/SanderVocke/shoopdaloop/pull/990);
-the final expanded local regression was stopped at the user's request, and CI
-is unreviewed by instruction. Milestone 2 is the recommended next implementation;
-milestones 2–6 have not started.
+Status: milestone 1 is implemented in [PR #990](https://github.com/SanderVocke/shoopdaloop/pull/990).
+Milestones 2–3 are implemented in the stacked [PR #993](https://github.com/SanderVocke/shoopdaloop/pull/993),
+with broad local verification and targeted corrected reruns complete. CI is unreviewed by instruction.
+Milestone 4 is next; milestones 4–6 have not started.
 Target integration branch: `proto/fpga-rust-reference`.
 Investigated baseline: `5b7dd0a5b242884f86862991dc7b456a5b091df7`.
 
@@ -52,70 +52,54 @@ audio autonomy or a target percentage of area reduction.
 
 ### 2. Compact actions and results
 
-Combined implementation plan for milestones 2–3:
-[PLAN_FPGA_COMPACT_ACTIONS_AND_MEMBERSHIP.md](PLAN_FPGA_COMPACT_ACTIONS_AND_MEMBERSHIP.md).
-It preserves a measured milestone 2 checkpoint before the membership cutover.
+- [x] Audit execution fields and move original command echoes/public reconstruction
+  to the shared Rust owner. Preserve full u64 ordering and authoritative hardware
+  frame rounding, countdowns and terminal decisions.
+- [x] Store bounded compact action/results in the same reserved cell: 397 bits
+  plus temporary pointers at this checkpoint (417 bits at R=272), versus 660.
+- [x] Separate the held host reply from fabric PROCESS/FINISH start/done/error.
+  Already-runnable execution and loop reads continue with unread replies.
 
-Recommended next step: use the existing Rust owner to stop carrying the full
-public request/result representation through the FPGA execution machinery.
-Deliver this in two reviewable parts, without changing pending-list ownership
-or musical resolution.
-
-- [ ] Audit each request/result field against its RTL readers. Specify a compact
-  execution record and bounded terminal record, and identify which fields Rust
-  can reconstruct from its retained original command. Start with the request
-  path; shrinking loop/event records is not a prerequisite. Preserve all fields
-  needed for frame rounding, source waits, operation validation and arbitration.
-- [ ] Implement compact action storage and terminal readback. Rust reconstructs
-  public completions using the retained request plus authoritative FPGA outcome,
-  reason and effective/terminal frames. Keep slot/generation guards and terminal
-  retention until successful collection. Keep an ordering key in hardware
-  wherever supersession or stop cancellation depends on command order; moving
-  public sequence bookkeeping to ARM does not remove that requirement.
-- [ ] Separate command acknowledgements and terminal readback from the execution
-  FSM using bounded storage and explicit admission/publication boundaries.
-  Held replies must not stall already-admitted real-time work. Full terminal
-  storage may exhaust admission credits; it must retain results without stopping
-  audio. Keep the synchronous ARM exchange and coordinated-reset contract.
-- [ ] Compare the new path end to end with production Rust through both Marlin
-  transports and prepared streams. Cover exact audio/state/events/completions,
-  retained results, stale identities, reset, full credits and extended service
-  pauses. Exercise held replies while the fabric has executable work under its
-  existing fence protocol. Keep expected musical decisions in the Rust oracle.
-- [ ] Measure each part against milestone 1 at the same capacities, tools and
-  constraints. Report routed LUT/FF/BRAM and setup/hold, command/PROCESS cycles,
-  transfer sizes and native service cost separately. Publish the resulting wire
-  contract and measurements before proceeding to pending-membership changes.
-
-Expected gain: fewer request RAM bits and narrower read/modify/write paths should
-reduce mux, register and control logic. This is a more direct opportunity for
-LUT savings than the allocation-scan removal. BRAM savings depend on physical
-width/depth mapping and the cost of separate terminal storage; they are not
-guaranteed. No percentage or final record width is promised before the field
-audit and matched implementation measurements.
-
-Separating replies should also remove a command-service backpressure dependency
-from execution. PROCESS may still take the same number of cycles: the resolver
-and pending-list traversal remain. Dense-list admission is a milestone 3 target;
-per-quantum fences and application settlement pauses remain for milestones 4
-and 5. This step alone does not qualify ARM audio-callback performance or board
-deadlines.
+The independently measured M2 checkpoint is `47f1fbcb`: routed 11,356 LUTs,
+7,898 FF and 25.5 BRAM equivalents at 64/272/400, meeting standalone 100 MHz.
+Against the fresh common-harness M1 baseline it saves 3.5 BRAM and 250 FF, with
+36 more LUTs. PROCESS cycles remain unchanged at this checkpoint.
 
 ### 3. ARM-managed pending membership
 
-Execution is covered by the same
-[combined plan](PLAN_FPGA_COMPACT_ACTIONS_AND_MEMBERSHIP.md), including atomic
-publication, stale membership, slot reuse and service-pause verification.
+- [x] Compare linked membership and flat rosters on the actual resolver. Select
+  generation-qualified linked nodes for faster dense/stale traversal and one
+  fewer BRAM; retain only that representation in production.
+- [x] Publish complete immutable banks with BEGIN/NODE/ROOT/COMMIT at legal
+  execution boundaries. Final INSTALL admits and rounds against the current
+  FPGA frame. Partial publication leaves the old view executable.
+- [x] Remove FPGA insertion, unlinking and neighbour repair. Hardware retains
+  eligibility, source ticks, arbitration, supersession and stop cancellation.
+  Stale nodes have capacity-derived visit bounds and require no ARM cleanup.
+- [x] Preserve shared capacity, terminal credits, duplicate retention, checked
+  generation retirement and coordinated reset. Static streams reserve real
+  credits and compile one boot membership without predicting outcomes.
 
-- [ ] Move list insertion, unlinking and later compaction to ARM-prepared
-  membership published at defined boundaries. Compare bounded slot rosters with
-  the current traversal before selecting the representation.
-- [ ] Keep eligibility, source-tick consumption, same-boundary arbitration,
-  supersession and stop cancellation in hardware. Inactive roster entries must
-  have a bounded cost even while ARM is absent.
-- [ ] Preserve the shared request pool unless a documented capacity-policy change
-  is approved. Recheck dense pending sets, sync chains and cancellation, and
-  measure worst observed work with inactive entries left uncollected.
+The combined implementation is `708d34a6` plus producer/regression fixes.
+Dense R=272 PROCESS falls from 5,465 to 4,380 cycles (19.9%). Complete dense
+admission grows to 276 wire exchanges / 1,654 elapsed fabric clocks in the
+one-loop workload. These are command-service costs; milestone 5 still owns the
+application service/callback separation, and no ARM deadline is qualified here.
+The integrated 1,024-quantum comparisons include held replies and partially
+staged membership while exact audio and resumed results/media match production.
+
+Matched final routing meets standalone 100 MHz (+0.105/+0.007 ns setup/hold),
+but costs 13,312 LUTs / 8,813 FF / 28.5 BRAM equivalents. Relative to the common
+M1 baseline this is **17.6% more LUTs**, 8.2% more FF and only 0.5 fewer BRAM.
+Publication banks and guards offset much of the TP storage saving. The matched
+complete-core geometry separately saves 592 LUTs (2.0%), but setup worsens from
+-1.353 to -1.845 ns; both miss 100 MHz. Milestone 6 owns that timing closure.
+Neither the TP result nor the next roadmap step promises an area reduction.
+
+Detailed [execution plan](PLAN_FPGA_COMPACT_ACTIONS_AND_MEMBERSHIP.md),
+[wire/ownership contract](fpga/transition_processor/COMPACT.md) and
+[measurements](fpga/transition_processor/measurements/COMPACT_ACTIONS_AND_MEMBERSHIP.md)
+record the checkpoint separation, tradeoffs and remaining qualification.
 
 ### 4. Autonomous audio progression
 

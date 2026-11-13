@@ -1,0 +1,5 @@
+Vivado: Vivado v2021.1 (64-bit)
+SW Build 3247384 on Thu Jun 10 19:36:07 MDT 2021
+Copyright 1986-2021 Xilinx, Inc. All Rights Reserved.
+Part: xc7z020clg484-1
+Generics: LOOP_DEPTH=64 REQUEST_DEPTH=272 EVENT_DEPTH=400 INTEGRATED=1 HAS_EXEC_INTERFACE=1

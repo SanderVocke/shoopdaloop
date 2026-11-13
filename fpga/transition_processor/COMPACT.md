@@ -151,7 +151,9 @@ forest using those known terminals, without releasing credits or sequences. It i
 not an RTL opcode. Omitting cleanup leaves finite stale entries and preserves
 all admitted behavior. Static preparation reserves all actual credits once,
 publishes a single boot forest (fresh-reset nonce 1), and emits INSTALL at each
-original delivery boundary. It does not predict completion or recycle credits.
+original delivery boundary. It does not predict completion or recycle credits. The offline compiler owner is
+discarded after producing the program; mixing live exchanges with its not-yet-
+delivered static actions is outside that API contract.
 
 ## Storage and traversal bounds
 

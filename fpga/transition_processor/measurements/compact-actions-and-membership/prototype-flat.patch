@@ -1,0 +1,5 @@
+--- a/fpga/transition_processor/rtl/transition_processor.sv
++++ b/fpga/transition_processor/rtl/transition_processor.sv
+@@ -6 +6 @@
+-    parameter integer FLAT_MEMBERSHIP = 0,
++    parameter integer FLAT_MEMBERSHIP = 1,

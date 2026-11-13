@@ -1,0 +1,884 @@
+Copyright 1986-2021 Xilinx, Inc. All Rights Reserved.
+--------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2021.1 (lin64) Build 3247384 Thu Jun 10 19:36:07 MDT 2021
+| Date         : Fri Nov 13 20:22:03 2026
+| Host         : dbcf02a3a21b running 64-bit Ubuntu 20.04.4 LTS
+| Command      : report_timing -delay_type max -max_paths 10 -path_type full_clock_expanded -file post_route_critical_paths.rpt
+| Design       : registered_core_context
+| Device       : 7z020-clg400
+| Speed File   : -1  PRODUCTION 1.12 2019-11-22
+--------------------------------------------------------------------------------------------------------------------------------
+
+Timing Report
+
+Slack (VIOLATED) :        -1.353ns  (required time - arrival time)
+  Source:                 core_under_test/core/audio/media/sample_memory/background_chunk_reg[8]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            core_under_test/core/audio/media/sample_memory/dma_chunk_reg[13]/D
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core_clk rise@10.000ns - core_clk rise@0.000ns)
+  Data Path Delay:        11.200ns  (logic 4.566ns (40.766%)  route 6.634ns (59.234%))
+  Logic Levels:           17  (CARRY4=6 LUT2=1 LUT5=2 LUT6=7 MUXF7=1)
+  Clock Path Skew:        0.006ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.608ns = ( 11.608 - 10.000 )
+    Source Clock Delay      (SCD):    1.717ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=25051, unset)        1.717     1.717    core_under_test/core/audio/media/sample_memory/clk
+    SLICE_X88Y86         FDRE                                         r  core_under_test/core/audio/media/sample_memory/background_chunk_reg[8]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X88Y86         FDRE (Prop_fdre_C_Q)         0.419     2.136 r  core_under_test/core/audio/media/sample_memory/background_chunk_reg[8]/Q
+                         net (fo=12, routed)          1.117     3.253    core_under_test/core/audio/media/sample_memory/background_chunk_reg[31]_0[3]
+    SLICE_X86Y84         LUT6 (Prop_lut6_I4_O)        0.297     3.550 r  core_under_test/core/audio/media/sample_memory/write_present[3]_i_23/O
+                         net (fo=1, routed)           0.000     3.550    core_under_test/core/audio/media/sample_memory/write_present[3]_i_23_n_0
+    SLICE_X86Y84         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     4.083 r  core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_11/CO[3]
+                         net (fo=1, routed)           0.000     4.083    core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_11_n_0
+    SLICE_X86Y85         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     4.200 r  core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_7/CO[3]
+                         net (fo=1, routed)           0.000     4.200    core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_7_n_0
+    SLICE_X86Y86         CARRY4 (Prop_carry4_CI_CO[0])
+                                                      0.254     4.454 f  core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_4/CO[0]
+                         net (fo=5, routed)           0.683     5.137    core_under_test/core/audio/media/sample_memory/background_dirty219_out
+    SLICE_X90Y86         LUT6 (Prop_lut6_I2_O)        0.367     5.504 r  core_under_test/core/audio/media/sample_memory/dma_write_i_13/O
+                         net (fo=4, routed)           0.603     6.108    core_under_test/core/audio/media/sample_memory/dma_write_i_13_n_0
+    SLICE_X90Y89         LUT6 (Prop_lut6_I5_O)        0.124     6.232 f  core_under_test/core/audio/media/sample_memory/dma_write_pool_i_2/O
+                         net (fo=34, routed)          0.371     6.603    core_under_test/core/audio/media/sample_memory/dma_write_pool_i_2_n_0
+    SLICE_X90Y89         LUT5 (Prop_lut5_I3_O)        0.124     6.727 r  core_under_test/core/audio/media/sample_memory/dma_line[0]_i_2/O
+                         net (fo=65, routed)          0.976     7.703    core_under_test/core/audio/media/sample_memory/dma_line[0]_i_2_n_0
+    SLICE_X92Y93         LUT6 (Prop_lut6_I3_O)        0.124     7.827 r  core_under_test/core/audio/media/sample_memory/dma_chunk[7]_i_6/O
+                         net (fo=1, routed)           0.000     7.827    core_under_test/core/audio/media/sample_memory/dma_chunk[7]_i_6_n_0
+    SLICE_X92Y93         MUXF7 (Prop_muxf7_I1_O)      0.247     8.074 r  core_under_test/core/audio/media/sample_memory/dma_chunk_reg[7]_i_3/O
+                         net (fo=2, routed)           0.425     8.498    core_under_test/core/audio/media/sample_memory/dma_chunk_reg[7]_i_3_n_0
+    SLICE_X93Y91         LUT6 (Prop_lut6_I0_O)        0.298     8.796 r  core_under_test/core/audio/media/sample_memory/dma_write_i_30/O
+                         net (fo=1, routed)           0.000     8.796    core_under_test/core/audio/media/sample_memory/dma_write_i_30_n_0
+    SLICE_X93Y91         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.532     9.328 r  core_under_test/core/audio/media/sample_memory/dma_write_reg_i_22/CO[3]
+                         net (fo=1, routed)           0.000     9.328    core_under_test/core/audio/media/sample_memory/dma_write_reg_i_22_n_0
+    SLICE_X93Y92         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     9.442 r  core_under_test/core/audio/media/sample_memory/dma_write_reg_i_16/CO[3]
+                         net (fo=1, routed)           0.000     9.442    core_under_test/core/audio/media/sample_memory/dma_write_reg_i_16_n_0
+    SLICE_X93Y93         CARRY4 (Prop_carry4_CI_CO[0])
+                                                      0.271     9.713 r  core_under_test/core/audio/media/sample_memory/dma_write_reg_i_9/CO[0]
+                         net (fo=2, routed)           0.485    10.199    core_under_test/core/audio/media/sample_memory/dma_phase430_out
+    SLICE_X94Y94         LUT6 (Prop_lut6_I1_O)        0.373    10.572 f  core_under_test/core/audio/media/sample_memory/dma_write_i_4/O
+                         net (fo=36, routed)          0.632    11.204    core_under_test/core/audio/media/sample_memory/dma_write_i_4_n_0
+    SLICE_X97Y95         LUT2 (Prop_lut2_I1_O)        0.124    11.328 r  core_under_test/core/audio/media/sample_memory/dma_write_i_2/O
+                         net (fo=34, routed)          0.887    12.215    core_under_test/core/audio/media/sample_memory/dma_write27_out
+    SLICE_X96Y101        LUT6 (Prop_lut6_I0_O)        0.124    12.339 r  core_under_test/core/audio/media/sample_memory/dma_chunk[13]_i_2/O
+                         net (fo=1, routed)           0.455    12.793    core_under_test/core/audio/media/sample_memory/dma_chunk[13]_i_2_n_0
+    SLICE_X96Y97         LUT5 (Prop_lut5_I0_O)        0.124    12.917 r  core_under_test/core/audio/media/sample_memory/dma_chunk[13]_i_1/O
+                         net (fo=1, routed)           0.000    12.917    core_under_test/core/audio/media/sample_memory/dma_chunk[13]_i_1_n_0
+    SLICE_X96Y97         FDRE                                         r  core_under_test/core/audio/media/sample_memory/dma_chunk_reg[13]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                     10.000    10.000 r
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=25051, unset)        1.608    11.608    core_under_test/core/audio/media/sample_memory/clk
+    SLICE_X96Y97         FDRE                                         r  core_under_test/core/audio/media/sample_memory/dma_chunk_reg[13]/C
+                         clock pessimism              0.115    11.723
+                         clock uncertainty           -0.235    11.488
+    SLICE_X96Y97         FDRE (Setup_fdre_C_D)        0.077    11.565    core_under_test/core/audio/media/sample_memory/dma_chunk_reg[13]
+  -------------------------------------------------------------------
+                         required time                         11.565
+                         arrival time                         -12.917
+  -------------------------------------------------------------------
+                         slack                                 -1.353
+
+Slack (VIOLATED) :        -1.327ns  (required time - arrival time)
+  Source:                 core_under_test/core/audio/media/sample_memory/background_chunk_reg[8]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            core_under_test/core/audio/media/sample_memory/dma_chunk_reg[11]/D
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core_clk rise@10.000ns - core_clk rise@0.000ns)
+  Data Path Delay:        11.174ns  (logic 4.566ns (40.864%)  route 6.608ns (59.136%))
+  Logic Levels:           17  (CARRY4=6 LUT2=1 LUT5=2 LUT6=7 MUXF7=1)
+  Clock Path Skew:        0.005ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.607ns = ( 11.607 - 10.000 )
+    Source Clock Delay      (SCD):    1.717ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=25051, unset)        1.717     1.717    core_under_test/core/audio/media/sample_memory/clk
+    SLICE_X88Y86         FDRE                                         r  core_under_test/core/audio/media/sample_memory/background_chunk_reg[8]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X88Y86         FDRE (Prop_fdre_C_Q)         0.419     2.136 r  core_under_test/core/audio/media/sample_memory/background_chunk_reg[8]/Q
+                         net (fo=12, routed)          1.117     3.253    core_under_test/core/audio/media/sample_memory/background_chunk_reg[31]_0[3]
+    SLICE_X86Y84         LUT6 (Prop_lut6_I4_O)        0.297     3.550 r  core_under_test/core/audio/media/sample_memory/write_present[3]_i_23/O
+                         net (fo=1, routed)           0.000     3.550    core_under_test/core/audio/media/sample_memory/write_present[3]_i_23_n_0
+    SLICE_X86Y84         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     4.083 r  core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_11/CO[3]
+                         net (fo=1, routed)           0.000     4.083    core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_11_n_0
+    SLICE_X86Y85         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     4.200 r  core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_7/CO[3]
+                         net (fo=1, routed)           0.000     4.200    core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_7_n_0
+    SLICE_X86Y86         CARRY4 (Prop_carry4_CI_CO[0])
+                                                      0.254     4.454 f  core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_4/CO[0]
+                         net (fo=5, routed)           0.683     5.137    core_under_test/core/audio/media/sample_memory/background_dirty219_out
+    SLICE_X90Y86         LUT6 (Prop_lut6_I2_O)        0.367     5.504 r  core_under_test/core/audio/media/sample_memory/dma_write_i_13/O
+                         net (fo=4, routed)           0.603     6.108    core_under_test/core/audio/media/sample_memory/dma_write_i_13_n_0
+    SLICE_X90Y89         LUT6 (Prop_lut6_I5_O)        0.124     6.232 f  core_under_test/core/audio/media/sample_memory/dma_write_pool_i_2/O
+                         net (fo=34, routed)          0.371     6.603    core_under_test/core/audio/media/sample_memory/dma_write_pool_i_2_n_0
+    SLICE_X90Y89         LUT5 (Prop_lut5_I3_O)        0.124     6.727 r  core_under_test/core/audio/media/sample_memory/dma_line[0]_i_2/O
+                         net (fo=65, routed)          0.976     7.703    core_under_test/core/audio/media/sample_memory/dma_line[0]_i_2_n_0
+    SLICE_X92Y93         LUT6 (Prop_lut6_I3_O)        0.124     7.827 r  core_under_test/core/audio/media/sample_memory/dma_chunk[7]_i_6/O
+                         net (fo=1, routed)           0.000     7.827    core_under_test/core/audio/media/sample_memory/dma_chunk[7]_i_6_n_0
+    SLICE_X92Y93         MUXF7 (Prop_muxf7_I1_O)      0.247     8.074 r  core_under_test/core/audio/media/sample_memory/dma_chunk_reg[7]_i_3/O
+                         net (fo=2, routed)           0.425     8.498    core_under_test/core/audio/media/sample_memory/dma_chunk_reg[7]_i_3_n_0
+    SLICE_X93Y91         LUT6 (Prop_lut6_I0_O)        0.298     8.796 r  core_under_test/core/audio/media/sample_memory/dma_write_i_30/O
+                         net (fo=1, routed)           0.000     8.796    core_under_test/core/audio/media/sample_memory/dma_write_i_30_n_0
+    SLICE_X93Y91         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.532     9.328 r  core_under_test/core/audio/media/sample_memory/dma_write_reg_i_22/CO[3]
+                         net (fo=1, routed)           0.000     9.328    core_under_test/core/audio/media/sample_memory/dma_write_reg_i_22_n_0
+    SLICE_X93Y92         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     9.442 r  core_under_test/core/audio/media/sample_memory/dma_write_reg_i_16/CO[3]
+                         net (fo=1, routed)           0.000     9.442    core_under_test/core/audio/media/sample_memory/dma_write_reg_i_16_n_0
+    SLICE_X93Y93         CARRY4 (Prop_carry4_CI_CO[0])
+                                                      0.271     9.713 r  core_under_test/core/audio/media/sample_memory/dma_write_reg_i_9/CO[0]
+                         net (fo=2, routed)           0.485    10.199    core_under_test/core/audio/media/sample_memory/dma_phase430_out
+    SLICE_X94Y94         LUT6 (Prop_lut6_I1_O)        0.373    10.572 f  core_under_test/core/audio/media/sample_memory/dma_write_i_4/O
+                         net (fo=36, routed)          0.632    11.204    core_under_test/core/audio/media/sample_memory/dma_write_i_4_n_0
+    SLICE_X97Y95         LUT2 (Prop_lut2_I1_O)        0.124    11.328 r  core_under_test/core/audio/media/sample_memory/dma_write_i_2/O
+                         net (fo=34, routed)          0.905    12.233    core_under_test/core/audio/media/sample_memory/dma_write27_out
+    SLICE_X100Y95        LUT6 (Prop_lut6_I0_O)        0.124    12.357 r  core_under_test/core/audio/media/sample_memory/dma_chunk[11]_i_2/O
+                         net (fo=1, routed)           0.409    12.767    core_under_test/core/audio/media/sample_memory/dma_chunk[11]_i_2_n_0
+    SLICE_X98Y95         LUT5 (Prop_lut5_I0_O)        0.124    12.891 r  core_under_test/core/audio/media/sample_memory/dma_chunk[11]_i_1/O
+                         net (fo=1, routed)           0.000    12.891    core_under_test/core/audio/media/sample_memory/dma_chunk[11]_i_1_n_0
+    SLICE_X98Y95         FDRE                                         r  core_under_test/core/audio/media/sample_memory/dma_chunk_reg[11]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                     10.000    10.000 r
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=25051, unset)        1.607    11.607    core_under_test/core/audio/media/sample_memory/clk
+    SLICE_X98Y95         FDRE                                         r  core_under_test/core/audio/media/sample_memory/dma_chunk_reg[11]/C
+                         clock pessimism              0.115    11.722
+                         clock uncertainty           -0.235    11.487
+    SLICE_X98Y95         FDRE (Setup_fdre_C_D)        0.077    11.564    core_under_test/core/audio/media/sample_memory/dma_chunk_reg[11]
+  -------------------------------------------------------------------
+                         required time                         11.564
+                         arrival time                         -12.891
+  -------------------------------------------------------------------
+                         slack                                 -1.327
+
+Slack (VIOLATED) :        -1.318ns  (required time - arrival time)
+  Source:                 core_under_test/core/audio/media/sample_memory/background_chunk_reg[8]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            core_under_test/core/audio/media/sample_memory/dma_chunk_reg[27]/D
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core_clk rise@10.000ns - core_clk rise@0.000ns)
+  Data Path Delay:        11.118ns  (logic 4.566ns (41.069%)  route 6.552ns (58.931%))
+  Logic Levels:           17  (CARRY4=6 LUT2=1 LUT5=2 LUT6=7 MUXF7=1)
+  Clock Path Skew:        0.006ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.608ns = ( 11.608 - 10.000 )
+    Source Clock Delay      (SCD):    1.717ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=25051, unset)        1.717     1.717    core_under_test/core/audio/media/sample_memory/clk
+    SLICE_X88Y86         FDRE                                         r  core_under_test/core/audio/media/sample_memory/background_chunk_reg[8]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X88Y86         FDRE (Prop_fdre_C_Q)         0.419     2.136 r  core_under_test/core/audio/media/sample_memory/background_chunk_reg[8]/Q
+                         net (fo=12, routed)          1.117     3.253    core_under_test/core/audio/media/sample_memory/background_chunk_reg[31]_0[3]
+    SLICE_X86Y84         LUT6 (Prop_lut6_I4_O)        0.297     3.550 r  core_under_test/core/audio/media/sample_memory/write_present[3]_i_23/O
+                         net (fo=1, routed)           0.000     3.550    core_under_test/core/audio/media/sample_memory/write_present[3]_i_23_n_0
+    SLICE_X86Y84         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     4.083 r  core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_11/CO[3]
+                         net (fo=1, routed)           0.000     4.083    core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_11_n_0
+    SLICE_X86Y85         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     4.200 r  core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_7/CO[3]
+                         net (fo=1, routed)           0.000     4.200    core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_7_n_0
+    SLICE_X86Y86         CARRY4 (Prop_carry4_CI_CO[0])
+                                                      0.254     4.454 f  core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_4/CO[0]
+                         net (fo=5, routed)           0.683     5.137    core_under_test/core/audio/media/sample_memory/background_dirty219_out
+    SLICE_X90Y86         LUT6 (Prop_lut6_I2_O)        0.367     5.504 r  core_under_test/core/audio/media/sample_memory/dma_write_i_13/O
+                         net (fo=4, routed)           0.603     6.108    core_under_test/core/audio/media/sample_memory/dma_write_i_13_n_0
+    SLICE_X90Y89         LUT6 (Prop_lut6_I5_O)        0.124     6.232 f  core_under_test/core/audio/media/sample_memory/dma_write_pool_i_2/O
+                         net (fo=34, routed)          0.371     6.603    core_under_test/core/audio/media/sample_memory/dma_write_pool_i_2_n_0
+    SLICE_X90Y89         LUT5 (Prop_lut5_I3_O)        0.124     6.727 r  core_under_test/core/audio/media/sample_memory/dma_line[0]_i_2/O
+                         net (fo=65, routed)          0.976     7.703    core_under_test/core/audio/media/sample_memory/dma_line[0]_i_2_n_0
+    SLICE_X92Y93         LUT6 (Prop_lut6_I3_O)        0.124     7.827 r  core_under_test/core/audio/media/sample_memory/dma_chunk[7]_i_6/O
+                         net (fo=1, routed)           0.000     7.827    core_under_test/core/audio/media/sample_memory/dma_chunk[7]_i_6_n_0
+    SLICE_X92Y93         MUXF7 (Prop_muxf7_I1_O)      0.247     8.074 r  core_under_test/core/audio/media/sample_memory/dma_chunk_reg[7]_i_3/O
+                         net (fo=2, routed)           0.425     8.498    core_under_test/core/audio/media/sample_memory/dma_chunk_reg[7]_i_3_n_0
+    SLICE_X93Y91         LUT6 (Prop_lut6_I0_O)        0.298     8.796 r  core_under_test/core/audio/media/sample_memory/dma_write_i_30/O
+                         net (fo=1, routed)           0.000     8.796    core_under_test/core/audio/media/sample_memory/dma_write_i_30_n_0
+    SLICE_X93Y91         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.532     9.328 r  core_under_test/core/audio/media/sample_memory/dma_write_reg_i_22/CO[3]
+                         net (fo=1, routed)           0.000     9.328    core_under_test/core/audio/media/sample_memory/dma_write_reg_i_22_n_0
+    SLICE_X93Y92         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     9.442 r  core_under_test/core/audio/media/sample_memory/dma_write_reg_i_16/CO[3]
+                         net (fo=1, routed)           0.000     9.442    core_under_test/core/audio/media/sample_memory/dma_write_reg_i_16_n_0
+    SLICE_X93Y93         CARRY4 (Prop_carry4_CI_CO[0])
+                                                      0.271     9.713 r  core_under_test/core/audio/media/sample_memory/dma_write_reg_i_9/CO[0]
+                         net (fo=2, routed)           0.485    10.199    core_under_test/core/audio/media/sample_memory/dma_phase430_out
+    SLICE_X94Y94         LUT6 (Prop_lut6_I1_O)        0.373    10.572 f  core_under_test/core/audio/media/sample_memory/dma_write_i_4/O
+                         net (fo=36, routed)          0.632    11.204    core_under_test/core/audio/media/sample_memory/dma_write_i_4_n_0
+    SLICE_X97Y95         LUT2 (Prop_lut2_I1_O)        0.124    11.328 r  core_under_test/core/audio/media/sample_memory/dma_write_i_2/O
+                         net (fo=34, routed)          0.821    12.149    core_under_test/core/audio/media/sample_memory/dma_write27_out
+    SLICE_X97Y101        LUT6 (Prop_lut6_I0_O)        0.124    12.273 r  core_under_test/core/audio/media/sample_memory/dma_chunk[27]_i_2/O
+                         net (fo=1, routed)           0.438    12.711    core_under_test/core/audio/media/sample_memory/dma_chunk[27]_i_2_n_0
+    SLICE_X97Y98         LUT5 (Prop_lut5_I0_O)        0.124    12.835 r  core_under_test/core/audio/media/sample_memory/dma_chunk[27]_i_1/O
+                         net (fo=1, routed)           0.000    12.835    core_under_test/core/audio/media/sample_memory/dma_chunk[27]_i_1_n_0
+    SLICE_X97Y98         FDRE                                         r  core_under_test/core/audio/media/sample_memory/dma_chunk_reg[27]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                     10.000    10.000 r
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=25051, unset)        1.608    11.608    core_under_test/core/audio/media/sample_memory/clk
+    SLICE_X97Y98         FDRE                                         r  core_under_test/core/audio/media/sample_memory/dma_chunk_reg[27]/C
+                         clock pessimism              0.115    11.723
+                         clock uncertainty           -0.235    11.488
+    SLICE_X97Y98         FDRE (Setup_fdre_C_D)        0.029    11.517    core_under_test/core/audio/media/sample_memory/dma_chunk_reg[27]
+  -------------------------------------------------------------------
+                         required time                         11.517
+                         arrival time                         -12.835
+  -------------------------------------------------------------------
+                         slack                                 -1.318
+
+Slack (VIOLATED) :        -1.268ns  (required time - arrival time)
+  Source:                 core_under_test/core/audio/media/sample_memory/background_chunk_reg[8]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            core_under_test/core/audio/media/sample_memory/dma_chunk_reg[28]/D
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core_clk rise@10.000ns - core_clk rise@0.000ns)
+  Data Path Delay:        11.119ns  (logic 4.566ns (41.066%)  route 6.553ns (58.934%))
+  Logic Levels:           17  (CARRY4=6 LUT2=1 LUT5=2 LUT6=7 MUXF7=1)
+  Clock Path Skew:        0.005ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.607ns = ( 11.607 - 10.000 )
+    Source Clock Delay      (SCD):    1.717ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=25051, unset)        1.717     1.717    core_under_test/core/audio/media/sample_memory/clk
+    SLICE_X88Y86         FDRE                                         r  core_under_test/core/audio/media/sample_memory/background_chunk_reg[8]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X88Y86         FDRE (Prop_fdre_C_Q)         0.419     2.136 r  core_under_test/core/audio/media/sample_memory/background_chunk_reg[8]/Q
+                         net (fo=12, routed)          1.117     3.253    core_under_test/core/audio/media/sample_memory/background_chunk_reg[31]_0[3]
+    SLICE_X86Y84         LUT6 (Prop_lut6_I4_O)        0.297     3.550 r  core_under_test/core/audio/media/sample_memory/write_present[3]_i_23/O
+                         net (fo=1, routed)           0.000     3.550    core_under_test/core/audio/media/sample_memory/write_present[3]_i_23_n_0
+    SLICE_X86Y84         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     4.083 r  core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_11/CO[3]
+                         net (fo=1, routed)           0.000     4.083    core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_11_n_0
+    SLICE_X86Y85         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     4.200 r  core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_7/CO[3]
+                         net (fo=1, routed)           0.000     4.200    core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_7_n_0
+    SLICE_X86Y86         CARRY4 (Prop_carry4_CI_CO[0])
+                                                      0.254     4.454 f  core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_4/CO[0]
+                         net (fo=5, routed)           0.683     5.137    core_under_test/core/audio/media/sample_memory/background_dirty219_out
+    SLICE_X90Y86         LUT6 (Prop_lut6_I2_O)        0.367     5.504 r  core_under_test/core/audio/media/sample_memory/dma_write_i_13/O
+                         net (fo=4, routed)           0.603     6.108    core_under_test/core/audio/media/sample_memory/dma_write_i_13_n_0
+    SLICE_X90Y89         LUT6 (Prop_lut6_I5_O)        0.124     6.232 f  core_under_test/core/audio/media/sample_memory/dma_write_pool_i_2/O
+                         net (fo=34, routed)          0.371     6.603    core_under_test/core/audio/media/sample_memory/dma_write_pool_i_2_n_0
+    SLICE_X90Y89         LUT5 (Prop_lut5_I3_O)        0.124     6.727 r  core_under_test/core/audio/media/sample_memory/dma_line[0]_i_2/O
+                         net (fo=65, routed)          0.976     7.703    core_under_test/core/audio/media/sample_memory/dma_line[0]_i_2_n_0
+    SLICE_X92Y93         LUT6 (Prop_lut6_I3_O)        0.124     7.827 r  core_under_test/core/audio/media/sample_memory/dma_chunk[7]_i_6/O
+                         net (fo=1, routed)           0.000     7.827    core_under_test/core/audio/media/sample_memory/dma_chunk[7]_i_6_n_0
+    SLICE_X92Y93         MUXF7 (Prop_muxf7_I1_O)      0.247     8.074 r  core_under_test/core/audio/media/sample_memory/dma_chunk_reg[7]_i_3/O
+                         net (fo=2, routed)           0.425     8.498    core_under_test/core/audio/media/sample_memory/dma_chunk_reg[7]_i_3_n_0
+    SLICE_X93Y91         LUT6 (Prop_lut6_I0_O)        0.298     8.796 r  core_under_test/core/audio/media/sample_memory/dma_write_i_30/O
+                         net (fo=1, routed)           0.000     8.796    core_under_test/core/audio/media/sample_memory/dma_write_i_30_n_0
+    SLICE_X93Y91         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.532     9.328 r  core_under_test/core/audio/media/sample_memory/dma_write_reg_i_22/CO[3]
+                         net (fo=1, routed)           0.000     9.328    core_under_test/core/audio/media/sample_memory/dma_write_reg_i_22_n_0
+    SLICE_X93Y92         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     9.442 r  core_under_test/core/audio/media/sample_memory/dma_write_reg_i_16/CO[3]
+                         net (fo=1, routed)           0.000     9.442    core_under_test/core/audio/media/sample_memory/dma_write_reg_i_16_n_0
+    SLICE_X93Y93         CARRY4 (Prop_carry4_CI_CO[0])
+                                                      0.271     9.713 r  core_under_test/core/audio/media/sample_memory/dma_write_reg_i_9/CO[0]
+                         net (fo=2, routed)           0.485    10.199    core_under_test/core/audio/media/sample_memory/dma_phase430_out
+    SLICE_X94Y94         LUT6 (Prop_lut6_I1_O)        0.373    10.572 f  core_under_test/core/audio/media/sample_memory/dma_write_i_4/O
+                         net (fo=36, routed)          0.632    11.204    core_under_test/core/audio/media/sample_memory/dma_write_i_4_n_0
+    SLICE_X97Y95         LUT2 (Prop_lut2_I1_O)        0.124    11.328 r  core_under_test/core/audio/media/sample_memory/dma_write_i_2/O
+                         net (fo=34, routed)          0.806    12.134    core_under_test/core/audio/media/sample_memory/dma_write27_out
+    SLICE_X93Y95         LUT6 (Prop_lut6_I0_O)        0.124    12.258 r  core_under_test/core/audio/media/sample_memory/dma_chunk[28]_i_2/O
+                         net (fo=1, routed)           0.454    12.712    core_under_test/core/audio/media/sample_memory/dma_chunk[28]_i_2_n_0
+    SLICE_X96Y95         LUT5 (Prop_lut5_I0_O)        0.124    12.836 r  core_under_test/core/audio/media/sample_memory/dma_chunk[28]_i_1/O
+                         net (fo=1, routed)           0.000    12.836    core_under_test/core/audio/media/sample_memory/dma_chunk[28]_i_1_n_0
+    SLICE_X96Y95         FDRE                                         r  core_under_test/core/audio/media/sample_memory/dma_chunk_reg[28]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                     10.000    10.000 r
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=25051, unset)        1.607    11.607    core_under_test/core/audio/media/sample_memory/clk
+    SLICE_X96Y95         FDRE                                         r  core_under_test/core/audio/media/sample_memory/dma_chunk_reg[28]/C
+                         clock pessimism              0.115    11.722
+                         clock uncertainty           -0.235    11.487
+    SLICE_X96Y95         FDRE (Setup_fdre_C_D)        0.081    11.568    core_under_test/core/audio/media/sample_memory/dma_chunk_reg[28]
+  -------------------------------------------------------------------
+                         required time                         11.568
+                         arrival time                         -12.836
+  -------------------------------------------------------------------
+                         slack                                 -1.268
+
+Slack (VIOLATED) :        -1.259ns  (required time - arrival time)
+  Source:                 core_under_test/core/audio/media/sample_memory/background_chunk_reg[8]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            core_under_test/core/audio/media/sample_memory/dma_chunk_reg[17]/D
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core_clk rise@10.000ns - core_clk rise@0.000ns)
+  Data Path Delay:        11.057ns  (logic 4.566ns (41.294%)  route 6.491ns (58.706%))
+  Logic Levels:           17  (CARRY4=6 LUT2=1 LUT5=2 LUT6=7 MUXF7=1)
+  Clock Path Skew:        0.005ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.607ns = ( 11.607 - 10.000 )
+    Source Clock Delay      (SCD):    1.717ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=25051, unset)        1.717     1.717    core_under_test/core/audio/media/sample_memory/clk
+    SLICE_X88Y86         FDRE                                         r  core_under_test/core/audio/media/sample_memory/background_chunk_reg[8]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X88Y86         FDRE (Prop_fdre_C_Q)         0.419     2.136 r  core_under_test/core/audio/media/sample_memory/background_chunk_reg[8]/Q
+                         net (fo=12, routed)          1.117     3.253    core_under_test/core/audio/media/sample_memory/background_chunk_reg[31]_0[3]
+    SLICE_X86Y84         LUT6 (Prop_lut6_I4_O)        0.297     3.550 r  core_under_test/core/audio/media/sample_memory/write_present[3]_i_23/O
+                         net (fo=1, routed)           0.000     3.550    core_under_test/core/audio/media/sample_memory/write_present[3]_i_23_n_0
+    SLICE_X86Y84         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     4.083 r  core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_11/CO[3]
+                         net (fo=1, routed)           0.000     4.083    core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_11_n_0
+    SLICE_X86Y85         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     4.200 r  core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_7/CO[3]
+                         net (fo=1, routed)           0.000     4.200    core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_7_n_0
+    SLICE_X86Y86         CARRY4 (Prop_carry4_CI_CO[0])
+                                                      0.254     4.454 f  core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_4/CO[0]
+                         net (fo=5, routed)           0.683     5.137    core_under_test/core/audio/media/sample_memory/background_dirty219_out
+    SLICE_X90Y86         LUT6 (Prop_lut6_I2_O)        0.367     5.504 r  core_under_test/core/audio/media/sample_memory/dma_write_i_13/O
+                         net (fo=4, routed)           0.603     6.108    core_under_test/core/audio/media/sample_memory/dma_write_i_13_n_0
+    SLICE_X90Y89         LUT6 (Prop_lut6_I5_O)        0.124     6.232 f  core_under_test/core/audio/media/sample_memory/dma_write_pool_i_2/O
+                         net (fo=34, routed)          0.371     6.603    core_under_test/core/audio/media/sample_memory/dma_write_pool_i_2_n_0
+    SLICE_X90Y89         LUT5 (Prop_lut5_I3_O)        0.124     6.727 r  core_under_test/core/audio/media/sample_memory/dma_line[0]_i_2/O
+                         net (fo=65, routed)          0.976     7.703    core_under_test/core/audio/media/sample_memory/dma_line[0]_i_2_n_0
+    SLICE_X92Y93         LUT6 (Prop_lut6_I3_O)        0.124     7.827 r  core_under_test/core/audio/media/sample_memory/dma_chunk[7]_i_6/O
+                         net (fo=1, routed)           0.000     7.827    core_under_test/core/audio/media/sample_memory/dma_chunk[7]_i_6_n_0
+    SLICE_X92Y93         MUXF7 (Prop_muxf7_I1_O)      0.247     8.074 r  core_under_test/core/audio/media/sample_memory/dma_chunk_reg[7]_i_3/O
+                         net (fo=2, routed)           0.425     8.498    core_under_test/core/audio/media/sample_memory/dma_chunk_reg[7]_i_3_n_0
+    SLICE_X93Y91         LUT6 (Prop_lut6_I0_O)        0.298     8.796 r  core_under_test/core/audio/media/sample_memory/dma_write_i_30/O
+                         net (fo=1, routed)           0.000     8.796    core_under_test/core/audio/media/sample_memory/dma_write_i_30_n_0
+    SLICE_X93Y91         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.532     9.328 r  core_under_test/core/audio/media/sample_memory/dma_write_reg_i_22/CO[3]
+                         net (fo=1, routed)           0.000     9.328    core_under_test/core/audio/media/sample_memory/dma_write_reg_i_22_n_0
+    SLICE_X93Y92         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     9.442 r  core_under_test/core/audio/media/sample_memory/dma_write_reg_i_16/CO[3]
+                         net (fo=1, routed)           0.000     9.442    core_under_test/core/audio/media/sample_memory/dma_write_reg_i_16_n_0
+    SLICE_X93Y93         CARRY4 (Prop_carry4_CI_CO[0])
+                                                      0.271     9.713 r  core_under_test/core/audio/media/sample_memory/dma_write_reg_i_9/CO[0]
+                         net (fo=2, routed)           0.485    10.199    core_under_test/core/audio/media/sample_memory/dma_phase430_out
+    SLICE_X94Y94         LUT6 (Prop_lut6_I1_O)        0.373    10.572 f  core_under_test/core/audio/media/sample_memory/dma_write_i_4/O
+                         net (fo=36, routed)          0.632    11.204    core_under_test/core/audio/media/sample_memory/dma_write_i_4_n_0
+    SLICE_X97Y95         LUT2 (Prop_lut2_I1_O)        0.124    11.328 r  core_under_test/core/audio/media/sample_memory/dma_write_i_2/O
+                         net (fo=34, routed)          0.736    12.064    core_under_test/core/audio/media/sample_memory/dma_write27_out
+    SLICE_X92Y95         LUT6 (Prop_lut6_I0_O)        0.124    12.188 r  core_under_test/core/audio/media/sample_memory/dma_chunk[17]_i_2/O
+                         net (fo=1, routed)           0.462    12.650    core_under_test/core/audio/media/sample_memory/dma_chunk[17]_i_2_n_0
+    SLICE_X97Y94         LUT5 (Prop_lut5_I0_O)        0.124    12.774 r  core_under_test/core/audio/media/sample_memory/dma_chunk[17]_i_1/O
+                         net (fo=1, routed)           0.000    12.774    core_under_test/core/audio/media/sample_memory/dma_chunk[17]_i_1_n_0
+    SLICE_X97Y94         FDRE                                         r  core_under_test/core/audio/media/sample_memory/dma_chunk_reg[17]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                     10.000    10.000 r
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=25051, unset)        1.607    11.607    core_under_test/core/audio/media/sample_memory/clk
+    SLICE_X97Y94         FDRE                                         r  core_under_test/core/audio/media/sample_memory/dma_chunk_reg[17]/C
+                         clock pessimism              0.115    11.722
+                         clock uncertainty           -0.235    11.487
+    SLICE_X97Y94         FDRE (Setup_fdre_C_D)        0.029    11.516    core_under_test/core/audio/media/sample_memory/dma_chunk_reg[17]
+  -------------------------------------------------------------------
+                         required time                         11.516
+                         arrival time                         -12.774
+  -------------------------------------------------------------------
+                         slack                                 -1.259
+
+Slack (VIOLATED) :        -1.225ns  (required time - arrival time)
+  Source:                 core_under_test/core/audio/media/sample_memory/background_chunk_reg[8]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            core_under_test/core/audio/media/sample_memory/read_tag_reg[1][21]/CE
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core_clk rise@10.000ns - core_clk rise@0.000ns)
+  Data Path Delay:        10.726ns  (logic 4.442ns (41.413%)  route 6.284ns (58.587%))
+  Logic Levels:           16  (CARRY4=6 LUT2=1 LUT5=1 LUT6=7 MUXF7=1)
+  Clock Path Skew:        -0.058ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.544ns = ( 11.544 - 10.000 )
+    Source Clock Delay      (SCD):    1.717ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=25051, unset)        1.717     1.717    core_under_test/core/audio/media/sample_memory/clk
+    SLICE_X88Y86         FDRE                                         r  core_under_test/core/audio/media/sample_memory/background_chunk_reg[8]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X88Y86         FDRE (Prop_fdre_C_Q)         0.419     2.136 r  core_under_test/core/audio/media/sample_memory/background_chunk_reg[8]/Q
+                         net (fo=12, routed)          1.117     3.253    core_under_test/core/audio/media/sample_memory/background_chunk_reg[31]_0[3]
+    SLICE_X86Y84         LUT6 (Prop_lut6_I4_O)        0.297     3.550 r  core_under_test/core/audio/media/sample_memory/write_present[3]_i_23/O
+                         net (fo=1, routed)           0.000     3.550    core_under_test/core/audio/media/sample_memory/write_present[3]_i_23_n_0
+    SLICE_X86Y84         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     4.083 r  core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_11/CO[3]
+                         net (fo=1, routed)           0.000     4.083    core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_11_n_0
+    SLICE_X86Y85         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     4.200 r  core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_7/CO[3]
+                         net (fo=1, routed)           0.000     4.200    core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_7_n_0
+    SLICE_X86Y86         CARRY4 (Prop_carry4_CI_CO[0])
+                                                      0.254     4.454 f  core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_4/CO[0]
+                         net (fo=5, routed)           0.683     5.137    core_under_test/core/audio/media/sample_memory/background_dirty219_out
+    SLICE_X90Y86         LUT6 (Prop_lut6_I2_O)        0.367     5.504 r  core_under_test/core/audio/media/sample_memory/dma_write_i_13/O
+                         net (fo=4, routed)           0.603     6.108    core_under_test/core/audio/media/sample_memory/dma_write_i_13_n_0
+    SLICE_X90Y89         LUT6 (Prop_lut6_I5_O)        0.124     6.232 f  core_under_test/core/audio/media/sample_memory/dma_write_pool_i_2/O
+                         net (fo=34, routed)          0.371     6.603    core_under_test/core/audio/media/sample_memory/dma_write_pool_i_2_n_0
+    SLICE_X90Y89         LUT5 (Prop_lut5_I3_O)        0.124     6.727 r  core_under_test/core/audio/media/sample_memory/dma_line[0]_i_2/O
+                         net (fo=65, routed)          0.976     7.703    core_under_test/core/audio/media/sample_memory/dma_line[0]_i_2_n_0
+    SLICE_X92Y93         LUT6 (Prop_lut6_I3_O)        0.124     7.827 r  core_under_test/core/audio/media/sample_memory/dma_chunk[7]_i_6/O
+                         net (fo=1, routed)           0.000     7.827    core_under_test/core/audio/media/sample_memory/dma_chunk[7]_i_6_n_0
+    SLICE_X92Y93         MUXF7 (Prop_muxf7_I1_O)      0.247     8.074 r  core_under_test/core/audio/media/sample_memory/dma_chunk_reg[7]_i_3/O
+                         net (fo=2, routed)           0.425     8.498    core_under_test/core/audio/media/sample_memory/dma_chunk_reg[7]_i_3_n_0
+    SLICE_X93Y91         LUT6 (Prop_lut6_I0_O)        0.298     8.796 r  core_under_test/core/audio/media/sample_memory/dma_write_i_30/O
+                         net (fo=1, routed)           0.000     8.796    core_under_test/core/audio/media/sample_memory/dma_write_i_30_n_0
+    SLICE_X93Y91         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.532     9.328 r  core_under_test/core/audio/media/sample_memory/dma_write_reg_i_22/CO[3]
+                         net (fo=1, routed)           0.000     9.328    core_under_test/core/audio/media/sample_memory/dma_write_reg_i_22_n_0
+    SLICE_X93Y92         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     9.442 r  core_under_test/core/audio/media/sample_memory/dma_write_reg_i_16/CO[3]
+                         net (fo=1, routed)           0.000     9.442    core_under_test/core/audio/media/sample_memory/dma_write_reg_i_16_n_0
+    SLICE_X93Y93         CARRY4 (Prop_carry4_CI_CO[0])
+                                                      0.271     9.713 r  core_under_test/core/audio/media/sample_memory/dma_write_reg_i_9/CO[0]
+                         net (fo=2, routed)           0.485    10.199    core_under_test/core/audio/media/sample_memory/dma_phase430_out
+    SLICE_X94Y94         LUT6 (Prop_lut6_I3_O)        0.373    10.572 r  core_under_test/core/audio/media/sample_memory/dma_chunk[31]_i_4_comp/O
+                         net (fo=49, routed)          0.456    11.028    core_under_test/core/audio/media/sample_memory/dma_speculative32_out
+    SLICE_X94Y93         LUT6 (Prop_lut6_I0_O)        0.124    11.152 r  core_under_test/core/audio/media/sample_memory/read_tag[0][31]_i_3/O
+                         net (fo=4, routed)           0.619    11.770    core_under_test/core/audio/media/sample_memory/read_tag[0][31]_i_3_n_0
+    SLICE_X87Y93         LUT2 (Prop_lut2_I0_O)        0.124    11.894 r  core_under_test/core/audio/media/sample_memory/read_tag[1][31]_i_1/O
+                         net (fo=32, routed)          0.549    12.443    core_under_test/core/audio/media/sample_memory/read_tag[1][31]_i_1_n_0
+    SLICE_X85Y92         FDRE                                         r  core_under_test/core/audio/media/sample_memory/read_tag_reg[1][21]/CE
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                     10.000    10.000 r
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=25051, unset)        1.544    11.544    core_under_test/core/audio/media/sample_memory/clk
+    SLICE_X85Y92         FDRE                                         r  core_under_test/core/audio/media/sample_memory/read_tag_reg[1][21]/C
+                         clock pessimism              0.115    11.659
+                         clock uncertainty           -0.235    11.424
+    SLICE_X85Y92         FDRE (Setup_fdre_C_CE)      -0.205    11.219    core_under_test/core/audio/media/sample_memory/read_tag_reg[1][21]
+  -------------------------------------------------------------------
+                         required time                         11.219
+                         arrival time                         -12.443
+  -------------------------------------------------------------------
+                         slack                                 -1.225
+
+Slack (VIOLATED) :        -1.225ns  (required time - arrival time)
+  Source:                 core_under_test/core/audio/media/sample_memory/background_chunk_reg[8]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            core_under_test/core/audio/media/sample_memory/read_tag_reg[1][26]/CE
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core_clk rise@10.000ns - core_clk rise@0.000ns)
+  Data Path Delay:        10.726ns  (logic 4.442ns (41.413%)  route 6.284ns (58.587%))
+  Logic Levels:           16  (CARRY4=6 LUT2=1 LUT5=1 LUT6=7 MUXF7=1)
+  Clock Path Skew:        -0.058ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.544ns = ( 11.544 - 10.000 )
+    Source Clock Delay      (SCD):    1.717ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=25051, unset)        1.717     1.717    core_under_test/core/audio/media/sample_memory/clk
+    SLICE_X88Y86         FDRE                                         r  core_under_test/core/audio/media/sample_memory/background_chunk_reg[8]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X88Y86         FDRE (Prop_fdre_C_Q)         0.419     2.136 r  core_under_test/core/audio/media/sample_memory/background_chunk_reg[8]/Q
+                         net (fo=12, routed)          1.117     3.253    core_under_test/core/audio/media/sample_memory/background_chunk_reg[31]_0[3]
+    SLICE_X86Y84         LUT6 (Prop_lut6_I4_O)        0.297     3.550 r  core_under_test/core/audio/media/sample_memory/write_present[3]_i_23/O
+                         net (fo=1, routed)           0.000     3.550    core_under_test/core/audio/media/sample_memory/write_present[3]_i_23_n_0
+    SLICE_X86Y84         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     4.083 r  core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_11/CO[3]
+                         net (fo=1, routed)           0.000     4.083    core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_11_n_0
+    SLICE_X86Y85         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     4.200 r  core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_7/CO[3]
+                         net (fo=1, routed)           0.000     4.200    core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_7_n_0
+    SLICE_X86Y86         CARRY4 (Prop_carry4_CI_CO[0])
+                                                      0.254     4.454 f  core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_4/CO[0]
+                         net (fo=5, routed)           0.683     5.137    core_under_test/core/audio/media/sample_memory/background_dirty219_out
+    SLICE_X90Y86         LUT6 (Prop_lut6_I2_O)        0.367     5.504 r  core_under_test/core/audio/media/sample_memory/dma_write_i_13/O
+                         net (fo=4, routed)           0.603     6.108    core_under_test/core/audio/media/sample_memory/dma_write_i_13_n_0
+    SLICE_X90Y89         LUT6 (Prop_lut6_I5_O)        0.124     6.232 f  core_under_test/core/audio/media/sample_memory/dma_write_pool_i_2/O
+                         net (fo=34, routed)          0.371     6.603    core_under_test/core/audio/media/sample_memory/dma_write_pool_i_2_n_0
+    SLICE_X90Y89         LUT5 (Prop_lut5_I3_O)        0.124     6.727 r  core_under_test/core/audio/media/sample_memory/dma_line[0]_i_2/O
+                         net (fo=65, routed)          0.976     7.703    core_under_test/core/audio/media/sample_memory/dma_line[0]_i_2_n_0
+    SLICE_X92Y93         LUT6 (Prop_lut6_I3_O)        0.124     7.827 r  core_under_test/core/audio/media/sample_memory/dma_chunk[7]_i_6/O
+                         net (fo=1, routed)           0.000     7.827    core_under_test/core/audio/media/sample_memory/dma_chunk[7]_i_6_n_0
+    SLICE_X92Y93         MUXF7 (Prop_muxf7_I1_O)      0.247     8.074 r  core_under_test/core/audio/media/sample_memory/dma_chunk_reg[7]_i_3/O
+                         net (fo=2, routed)           0.425     8.498    core_under_test/core/audio/media/sample_memory/dma_chunk_reg[7]_i_3_n_0
+    SLICE_X93Y91         LUT6 (Prop_lut6_I0_O)        0.298     8.796 r  core_under_test/core/audio/media/sample_memory/dma_write_i_30/O
+                         net (fo=1, routed)           0.000     8.796    core_under_test/core/audio/media/sample_memory/dma_write_i_30_n_0
+    SLICE_X93Y91         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.532     9.328 r  core_under_test/core/audio/media/sample_memory/dma_write_reg_i_22/CO[3]
+                         net (fo=1, routed)           0.000     9.328    core_under_test/core/audio/media/sample_memory/dma_write_reg_i_22_n_0
+    SLICE_X93Y92         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     9.442 r  core_under_test/core/audio/media/sample_memory/dma_write_reg_i_16/CO[3]
+                         net (fo=1, routed)           0.000     9.442    core_under_test/core/audio/media/sample_memory/dma_write_reg_i_16_n_0
+    SLICE_X93Y93         CARRY4 (Prop_carry4_CI_CO[0])
+                                                      0.271     9.713 r  core_under_test/core/audio/media/sample_memory/dma_write_reg_i_9/CO[0]
+                         net (fo=2, routed)           0.485    10.199    core_under_test/core/audio/media/sample_memory/dma_phase430_out
+    SLICE_X94Y94         LUT6 (Prop_lut6_I3_O)        0.373    10.572 r  core_under_test/core/audio/media/sample_memory/dma_chunk[31]_i_4_comp/O
+                         net (fo=49, routed)          0.456    11.028    core_under_test/core/audio/media/sample_memory/dma_speculative32_out
+    SLICE_X94Y93         LUT6 (Prop_lut6_I0_O)        0.124    11.152 r  core_under_test/core/audio/media/sample_memory/read_tag[0][31]_i_3/O
+                         net (fo=4, routed)           0.619    11.770    core_under_test/core/audio/media/sample_memory/read_tag[0][31]_i_3_n_0
+    SLICE_X87Y93         LUT2 (Prop_lut2_I0_O)        0.124    11.894 r  core_under_test/core/audio/media/sample_memory/read_tag[1][31]_i_1/O
+                         net (fo=32, routed)          0.549    12.443    core_under_test/core/audio/media/sample_memory/read_tag[1][31]_i_1_n_0
+    SLICE_X84Y92         FDRE                                         r  core_under_test/core/audio/media/sample_memory/read_tag_reg[1][26]/CE
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                     10.000    10.000 r
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=25051, unset)        1.544    11.544    core_under_test/core/audio/media/sample_memory/clk
+    SLICE_X84Y92         FDRE                                         r  core_under_test/core/audio/media/sample_memory/read_tag_reg[1][26]/C
+                         clock pessimism              0.115    11.659
+                         clock uncertainty           -0.235    11.424
+    SLICE_X84Y92         FDRE (Setup_fdre_C_CE)      -0.205    11.219    core_under_test/core/audio/media/sample_memory/read_tag_reg[1][26]
+  -------------------------------------------------------------------
+                         required time                         11.219
+                         arrival time                         -12.443
+  -------------------------------------------------------------------
+                         slack                                 -1.225
+
+Slack (VIOLATED) :        -1.225ns  (required time - arrival time)
+  Source:                 core_under_test/core/audio/media/sample_memory/background_chunk_reg[8]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            core_under_test/core/audio/media/sample_memory/read_tag_reg[1][4]/CE
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core_clk rise@10.000ns - core_clk rise@0.000ns)
+  Data Path Delay:        10.726ns  (logic 4.442ns (41.413%)  route 6.284ns (58.587%))
+  Logic Levels:           16  (CARRY4=6 LUT2=1 LUT5=1 LUT6=7 MUXF7=1)
+  Clock Path Skew:        -0.058ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.544ns = ( 11.544 - 10.000 )
+    Source Clock Delay      (SCD):    1.717ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=25051, unset)        1.717     1.717    core_under_test/core/audio/media/sample_memory/clk
+    SLICE_X88Y86         FDRE                                         r  core_under_test/core/audio/media/sample_memory/background_chunk_reg[8]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X88Y86         FDRE (Prop_fdre_C_Q)         0.419     2.136 r  core_under_test/core/audio/media/sample_memory/background_chunk_reg[8]/Q
+                         net (fo=12, routed)          1.117     3.253    core_under_test/core/audio/media/sample_memory/background_chunk_reg[31]_0[3]
+    SLICE_X86Y84         LUT6 (Prop_lut6_I4_O)        0.297     3.550 r  core_under_test/core/audio/media/sample_memory/write_present[3]_i_23/O
+                         net (fo=1, routed)           0.000     3.550    core_under_test/core/audio/media/sample_memory/write_present[3]_i_23_n_0
+    SLICE_X86Y84         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     4.083 r  core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_11/CO[3]
+                         net (fo=1, routed)           0.000     4.083    core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_11_n_0
+    SLICE_X86Y85         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     4.200 r  core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_7/CO[3]
+                         net (fo=1, routed)           0.000     4.200    core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_7_n_0
+    SLICE_X86Y86         CARRY4 (Prop_carry4_CI_CO[0])
+                                                      0.254     4.454 f  core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_4/CO[0]
+                         net (fo=5, routed)           0.683     5.137    core_under_test/core/audio/media/sample_memory/background_dirty219_out
+    SLICE_X90Y86         LUT6 (Prop_lut6_I2_O)        0.367     5.504 r  core_under_test/core/audio/media/sample_memory/dma_write_i_13/O
+                         net (fo=4, routed)           0.603     6.108    core_under_test/core/audio/media/sample_memory/dma_write_i_13_n_0
+    SLICE_X90Y89         LUT6 (Prop_lut6_I5_O)        0.124     6.232 f  core_under_test/core/audio/media/sample_memory/dma_write_pool_i_2/O
+                         net (fo=34, routed)          0.371     6.603    core_under_test/core/audio/media/sample_memory/dma_write_pool_i_2_n_0
+    SLICE_X90Y89         LUT5 (Prop_lut5_I3_O)        0.124     6.727 r  core_under_test/core/audio/media/sample_memory/dma_line[0]_i_2/O
+                         net (fo=65, routed)          0.976     7.703    core_under_test/core/audio/media/sample_memory/dma_line[0]_i_2_n_0
+    SLICE_X92Y93         LUT6 (Prop_lut6_I3_O)        0.124     7.827 r  core_under_test/core/audio/media/sample_memory/dma_chunk[7]_i_6/O
+                         net (fo=1, routed)           0.000     7.827    core_under_test/core/audio/media/sample_memory/dma_chunk[7]_i_6_n_0
+    SLICE_X92Y93         MUXF7 (Prop_muxf7_I1_O)      0.247     8.074 r  core_under_test/core/audio/media/sample_memory/dma_chunk_reg[7]_i_3/O
+                         net (fo=2, routed)           0.425     8.498    core_under_test/core/audio/media/sample_memory/dma_chunk_reg[7]_i_3_n_0
+    SLICE_X93Y91         LUT6 (Prop_lut6_I0_O)        0.298     8.796 r  core_under_test/core/audio/media/sample_memory/dma_write_i_30/O
+                         net (fo=1, routed)           0.000     8.796    core_under_test/core/audio/media/sample_memory/dma_write_i_30_n_0
+    SLICE_X93Y91         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.532     9.328 r  core_under_test/core/audio/media/sample_memory/dma_write_reg_i_22/CO[3]
+                         net (fo=1, routed)           0.000     9.328    core_under_test/core/audio/media/sample_memory/dma_write_reg_i_22_n_0
+    SLICE_X93Y92         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     9.442 r  core_under_test/core/audio/media/sample_memory/dma_write_reg_i_16/CO[3]
+                         net (fo=1, routed)           0.000     9.442    core_under_test/core/audio/media/sample_memory/dma_write_reg_i_16_n_0
+    SLICE_X93Y93         CARRY4 (Prop_carry4_CI_CO[0])
+                                                      0.271     9.713 r  core_under_test/core/audio/media/sample_memory/dma_write_reg_i_9/CO[0]
+                         net (fo=2, routed)           0.485    10.199    core_under_test/core/audio/media/sample_memory/dma_phase430_out
+    SLICE_X94Y94         LUT6 (Prop_lut6_I3_O)        0.373    10.572 r  core_under_test/core/audio/media/sample_memory/dma_chunk[31]_i_4_comp/O
+                         net (fo=49, routed)          0.456    11.028    core_under_test/core/audio/media/sample_memory/dma_speculative32_out
+    SLICE_X94Y93         LUT6 (Prop_lut6_I0_O)        0.124    11.152 r  core_under_test/core/audio/media/sample_memory/read_tag[0][31]_i_3/O
+                         net (fo=4, routed)           0.619    11.770    core_under_test/core/audio/media/sample_memory/read_tag[0][31]_i_3_n_0
+    SLICE_X87Y93         LUT2 (Prop_lut2_I0_O)        0.124    11.894 r  core_under_test/core/audio/media/sample_memory/read_tag[1][31]_i_1/O
+                         net (fo=32, routed)          0.549    12.443    core_under_test/core/audio/media/sample_memory/read_tag[1][31]_i_1_n_0
+    SLICE_X85Y92         FDRE                                         r  core_under_test/core/audio/media/sample_memory/read_tag_reg[1][4]/CE
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                     10.000    10.000 r
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=25051, unset)        1.544    11.544    core_under_test/core/audio/media/sample_memory/clk
+    SLICE_X85Y92         FDRE                                         r  core_under_test/core/audio/media/sample_memory/read_tag_reg[1][4]/C
+                         clock pessimism              0.115    11.659
+                         clock uncertainty           -0.235    11.424
+    SLICE_X85Y92         FDRE (Setup_fdre_C_CE)      -0.205    11.219    core_under_test/core/audio/media/sample_memory/read_tag_reg[1][4]
+  -------------------------------------------------------------------
+                         required time                         11.219
+                         arrival time                         -12.443
+  -------------------------------------------------------------------
+                         slack                                 -1.225
+
+Slack (VIOLATED) :        -1.225ns  (required time - arrival time)
+  Source:                 core_under_test/core/audio/media/sample_memory/background_chunk_reg[8]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            core_under_test/core/audio/media/sample_memory/read_tag_reg[1][9]/CE
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core_clk rise@10.000ns - core_clk rise@0.000ns)
+  Data Path Delay:        10.726ns  (logic 4.442ns (41.413%)  route 6.284ns (58.587%))
+  Logic Levels:           16  (CARRY4=6 LUT2=1 LUT5=1 LUT6=7 MUXF7=1)
+  Clock Path Skew:        -0.058ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.544ns = ( 11.544 - 10.000 )
+    Source Clock Delay      (SCD):    1.717ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=25051, unset)        1.717     1.717    core_under_test/core/audio/media/sample_memory/clk
+    SLICE_X88Y86         FDRE                                         r  core_under_test/core/audio/media/sample_memory/background_chunk_reg[8]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X88Y86         FDRE (Prop_fdre_C_Q)         0.419     2.136 r  core_under_test/core/audio/media/sample_memory/background_chunk_reg[8]/Q
+                         net (fo=12, routed)          1.117     3.253    core_under_test/core/audio/media/sample_memory/background_chunk_reg[31]_0[3]
+    SLICE_X86Y84         LUT6 (Prop_lut6_I4_O)        0.297     3.550 r  core_under_test/core/audio/media/sample_memory/write_present[3]_i_23/O
+                         net (fo=1, routed)           0.000     3.550    core_under_test/core/audio/media/sample_memory/write_present[3]_i_23_n_0
+    SLICE_X86Y84         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     4.083 r  core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_11/CO[3]
+                         net (fo=1, routed)           0.000     4.083    core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_11_n_0
+    SLICE_X86Y85         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     4.200 r  core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_7/CO[3]
+                         net (fo=1, routed)           0.000     4.200    core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_7_n_0
+    SLICE_X86Y86         CARRY4 (Prop_carry4_CI_CO[0])
+                                                      0.254     4.454 f  core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_4/CO[0]
+                         net (fo=5, routed)           0.683     5.137    core_under_test/core/audio/media/sample_memory/background_dirty219_out
+    SLICE_X90Y86         LUT6 (Prop_lut6_I2_O)        0.367     5.504 r  core_under_test/core/audio/media/sample_memory/dma_write_i_13/O
+                         net (fo=4, routed)           0.603     6.108    core_under_test/core/audio/media/sample_memory/dma_write_i_13_n_0
+    SLICE_X90Y89         LUT6 (Prop_lut6_I5_O)        0.124     6.232 f  core_under_test/core/audio/media/sample_memory/dma_write_pool_i_2/O
+                         net (fo=34, routed)          0.371     6.603    core_under_test/core/audio/media/sample_memory/dma_write_pool_i_2_n_0
+    SLICE_X90Y89         LUT5 (Prop_lut5_I3_O)        0.124     6.727 r  core_under_test/core/audio/media/sample_memory/dma_line[0]_i_2/O
+                         net (fo=65, routed)          0.976     7.703    core_under_test/core/audio/media/sample_memory/dma_line[0]_i_2_n_0
+    SLICE_X92Y93         LUT6 (Prop_lut6_I3_O)        0.124     7.827 r  core_under_test/core/audio/media/sample_memory/dma_chunk[7]_i_6/O
+                         net (fo=1, routed)           0.000     7.827    core_under_test/core/audio/media/sample_memory/dma_chunk[7]_i_6_n_0
+    SLICE_X92Y93         MUXF7 (Prop_muxf7_I1_O)      0.247     8.074 r  core_under_test/core/audio/media/sample_memory/dma_chunk_reg[7]_i_3/O
+                         net (fo=2, routed)           0.425     8.498    core_under_test/core/audio/media/sample_memory/dma_chunk_reg[7]_i_3_n_0
+    SLICE_X93Y91         LUT6 (Prop_lut6_I0_O)        0.298     8.796 r  core_under_test/core/audio/media/sample_memory/dma_write_i_30/O
+                         net (fo=1, routed)           0.000     8.796    core_under_test/core/audio/media/sample_memory/dma_write_i_30_n_0
+    SLICE_X93Y91         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.532     9.328 r  core_under_test/core/audio/media/sample_memory/dma_write_reg_i_22/CO[3]
+                         net (fo=1, routed)           0.000     9.328    core_under_test/core/audio/media/sample_memory/dma_write_reg_i_22_n_0
+    SLICE_X93Y92         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     9.442 r  core_under_test/core/audio/media/sample_memory/dma_write_reg_i_16/CO[3]
+                         net (fo=1, routed)           0.000     9.442    core_under_test/core/audio/media/sample_memory/dma_write_reg_i_16_n_0
+    SLICE_X93Y93         CARRY4 (Prop_carry4_CI_CO[0])
+                                                      0.271     9.713 r  core_under_test/core/audio/media/sample_memory/dma_write_reg_i_9/CO[0]
+                         net (fo=2, routed)           0.485    10.199    core_under_test/core/audio/media/sample_memory/dma_phase430_out
+    SLICE_X94Y94         LUT6 (Prop_lut6_I3_O)        0.373    10.572 r  core_under_test/core/audio/media/sample_memory/dma_chunk[31]_i_4_comp/O
+                         net (fo=49, routed)          0.456    11.028    core_under_test/core/audio/media/sample_memory/dma_speculative32_out
+    SLICE_X94Y93         LUT6 (Prop_lut6_I0_O)        0.124    11.152 r  core_under_test/core/audio/media/sample_memory/read_tag[0][31]_i_3/O
+                         net (fo=4, routed)           0.619    11.770    core_under_test/core/audio/media/sample_memory/read_tag[0][31]_i_3_n_0
+    SLICE_X87Y93         LUT2 (Prop_lut2_I0_O)        0.124    11.894 r  core_under_test/core/audio/media/sample_memory/read_tag[1][31]_i_1/O
+                         net (fo=32, routed)          0.549    12.443    core_under_test/core/audio/media/sample_memory/read_tag[1][31]_i_1_n_0
+    SLICE_X85Y92         FDRE                                         r  core_under_test/core/audio/media/sample_memory/read_tag_reg[1][9]/CE
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                     10.000    10.000 r
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=25051, unset)        1.544    11.544    core_under_test/core/audio/media/sample_memory/clk
+    SLICE_X85Y92         FDRE                                         r  core_under_test/core/audio/media/sample_memory/read_tag_reg[1][9]/C
+                         clock pessimism              0.115    11.659
+                         clock uncertainty           -0.235    11.424
+    SLICE_X85Y92         FDRE (Setup_fdre_C_CE)      -0.205    11.219    core_under_test/core/audio/media/sample_memory/read_tag_reg[1][9]
+  -------------------------------------------------------------------
+                         required time                         11.219
+                         arrival time                         -12.443
+  -------------------------------------------------------------------
+                         slack                                 -1.225
+
+Slack (VIOLATED) :        -1.218ns  (required time - arrival time)
+  Source:                 core_under_test/core/audio/media/sample_memory/background_chunk_reg[8]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            core_under_test/core/audio/media/sample_memory/read_present_reg[3]/D
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            10.000ns  (core_clk rise@10.000ns - core_clk rise@0.000ns)
+  Data Path Delay:        11.062ns  (logic 4.566ns (41.277%)  route 6.496ns (58.723%))
+  Logic Levels:           17  (CARRY4=6 LUT3=1 LUT5=1 LUT6=8 MUXF7=1)
+  Clock Path Skew:        0.000ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.602ns = ( 11.602 - 10.000 )
+    Source Clock Delay      (SCD):    1.717ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=25051, unset)        1.717     1.717    core_under_test/core/audio/media/sample_memory/clk
+    SLICE_X88Y86         FDRE                                         r  core_under_test/core/audio/media/sample_memory/background_chunk_reg[8]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X88Y86         FDRE (Prop_fdre_C_Q)         0.419     2.136 r  core_under_test/core/audio/media/sample_memory/background_chunk_reg[8]/Q
+                         net (fo=12, routed)          1.117     3.253    core_under_test/core/audio/media/sample_memory/background_chunk_reg[31]_0[3]
+    SLICE_X86Y84         LUT6 (Prop_lut6_I4_O)        0.297     3.550 r  core_under_test/core/audio/media/sample_memory/write_present[3]_i_23/O
+                         net (fo=1, routed)           0.000     3.550    core_under_test/core/audio/media/sample_memory/write_present[3]_i_23_n_0
+    SLICE_X86Y84         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     4.083 r  core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_11/CO[3]
+                         net (fo=1, routed)           0.000     4.083    core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_11_n_0
+    SLICE_X86Y85         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     4.200 r  core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_7/CO[3]
+                         net (fo=1, routed)           0.000     4.200    core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_7_n_0
+    SLICE_X86Y86         CARRY4 (Prop_carry4_CI_CO[0])
+                                                      0.254     4.454 f  core_under_test/core/audio/media/sample_memory/write_present_reg[3]_i_4/CO[0]
+                         net (fo=5, routed)           0.683     5.137    core_under_test/core/audio/media/sample_memory/background_dirty219_out
+    SLICE_X90Y86         LUT6 (Prop_lut6_I2_O)        0.367     5.504 r  core_under_test/core/audio/media/sample_memory/dma_write_i_13/O
+                         net (fo=4, routed)           0.603     6.108    core_under_test/core/audio/media/sample_memory/dma_write_i_13_n_0
+    SLICE_X90Y89         LUT6 (Prop_lut6_I5_O)        0.124     6.232 f  core_under_test/core/audio/media/sample_memory/dma_write_pool_i_2/O
+                         net (fo=34, routed)          0.371     6.603    core_under_test/core/audio/media/sample_memory/dma_write_pool_i_2_n_0
+    SLICE_X90Y89         LUT5 (Prop_lut5_I3_O)        0.124     6.727 r  core_under_test/core/audio/media/sample_memory/dma_line[0]_i_2/O
+                         net (fo=65, routed)          0.976     7.703    core_under_test/core/audio/media/sample_memory/dma_line[0]_i_2_n_0
+    SLICE_X92Y93         LUT6 (Prop_lut6_I3_O)        0.124     7.827 r  core_under_test/core/audio/media/sample_memory/dma_chunk[7]_i_6/O
+                         net (fo=1, routed)           0.000     7.827    core_under_test/core/audio/media/sample_memory/dma_chunk[7]_i_6_n_0
+    SLICE_X92Y93         MUXF7 (Prop_muxf7_I1_O)      0.247     8.074 r  core_under_test/core/audio/media/sample_memory/dma_chunk_reg[7]_i_3/O
+                         net (fo=2, routed)           0.425     8.498    core_under_test/core/audio/media/sample_memory/dma_chunk_reg[7]_i_3_n_0
+    SLICE_X93Y91         LUT6 (Prop_lut6_I0_O)        0.298     8.796 r  core_under_test/core/audio/media/sample_memory/dma_write_i_30/O
+                         net (fo=1, routed)           0.000     8.796    core_under_test/core/audio/media/sample_memory/dma_write_i_30_n_0
+    SLICE_X93Y91         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.532     9.328 r  core_under_test/core/audio/media/sample_memory/dma_write_reg_i_22/CO[3]
+                         net (fo=1, routed)           0.000     9.328    core_under_test/core/audio/media/sample_memory/dma_write_reg_i_22_n_0
+    SLICE_X93Y92         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     9.442 r  core_under_test/core/audio/media/sample_memory/dma_write_reg_i_16/CO[3]
+                         net (fo=1, routed)           0.000     9.442    core_under_test/core/audio/media/sample_memory/dma_write_reg_i_16_n_0
+    SLICE_X93Y93         CARRY4 (Prop_carry4_CI_CO[0])
+                                                      0.271     9.713 r  core_under_test/core/audio/media/sample_memory/dma_write_reg_i_9/CO[0]
+                         net (fo=2, routed)           0.485    10.199    core_under_test/core/audio/media/sample_memory/dma_phase430_out
+    SLICE_X94Y94         LUT6 (Prop_lut6_I3_O)        0.373    10.572 r  core_under_test/core/audio/media/sample_memory/dma_chunk[31]_i_4_comp/O
+                         net (fo=49, routed)          0.586    11.158    core_under_test/core/audio/media/sample_memory/dma_speculative32_out
+    SLICE_X97Y92         LUT3 (Prop_lut3_I2_O)        0.124    11.282 f  core_under_test/core/audio/media/sample_memory/read_tag[3][31]_i_4/O
+                         net (fo=34, routed)          0.827    12.109    core_under_test/core/audio/media/sample_memory/read_tag[3][31]_i_4_n_0
+    SLICE_X101Y86        LUT6 (Prop_lut6_I5_O)        0.124    12.233 r  core_under_test/core/audio/media/sample_memory/read_present[3]_i_2/O
+                         net (fo=1, routed)           0.422    12.655    core_under_test/core/audio/media/sample_memory/read_present[3]_i_2_n_0
+    SLICE_X100Y86        LUT6 (Prop_lut6_I0_O)        0.124    12.779 r  core_under_test/core/audio/media/sample_memory/read_present[3]_i_1/O
+                         net (fo=1, routed)           0.000    12.779    core_under_test/core/audio/media/sample_memory/read_present[3]_i_1_n_0
+    SLICE_X100Y86        FDRE                                         r  core_under_test/core/audio/media/sample_memory/read_present_reg[3]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                     10.000    10.000 r
+                                                      0.000    10.000 r  clk (IN)
+                         net (fo=25051, unset)        1.602    11.602    core_under_test/core/audio/media/sample_memory/clk
+    SLICE_X100Y86        FDRE                                         r  core_under_test/core/audio/media/sample_memory/read_present_reg[3]/C
+                         clock pessimism              0.115    11.717
+                         clock uncertainty           -0.235    11.482
+    SLICE_X100Y86        FDRE (Setup_fdre_C_D)        0.079    11.561    core_under_test/core/audio/media/sample_memory/read_present_reg[3]
+  -------------------------------------------------------------------
+                         required time                         11.561
+                         arrival time                         -12.779
+  -------------------------------------------------------------------
+                         slack                                 -1.218
