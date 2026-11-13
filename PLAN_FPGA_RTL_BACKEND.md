@@ -185,7 +185,7 @@ renamed "Audio driver", and an "Audio backend" line is added.
 - [x] Report the active audio backend through engine/host status.
 - [x] Update the overlay ("Audio backend", "Audio driver"), and bump the protocol
       versions.
-- [ ] Verify: config parse and validation tests (including refused pairs),
+- [x] Verify: config parse and validation tests (including refused pairs),
       settings, CLI and web-query tests, and overlay text tests.
 
 ### 4. `shoop_host` integration
@@ -352,7 +352,7 @@ renamed "Audio driver", and an "Audio backend" line is added.
 - Workspace test compilation exhausted the container's disk through debug and
   incremental artifacts. Incremental caches were removed and local final gates
   now set `CARGO_INCREMENTAL=0`; the new FPGA CI job also disables incremental
-  output and large debug data. The runtime suite itself has not yet completed.
+  output and large debug data.
 
 - Merged the updated prototype base `0f9a31b1` (#989). The sole content conflict
   was in the RTL application contract; both the new crossfade contract and the
@@ -361,3 +361,17 @@ renamed "Audio driver", and an "Audio backend" line is added.
   comparison validation passes against the merged tree: four arithmetic tests,
   eight loop-audio tests, three RTL arithmetic tests and the common native/RTL
   replay. The feature-enabled host crate also builds with warnings denied.
+
+- The complete workspace run finished: 3,249 passed, two stale app-protocol
+  golden fixtures failed, and 11 hardware-dependent tests were skipped. The
+  fixtures now require app protocol 37; all nine codec tests and both memory
+  report tests pass. The separate RTL suites and long-take regression passed.
+- The full four-target dependency audit exposed the inherited application API
+  import of the engine protocol for memory accounting. The unchanged bounded
+  memory types now live in the shared diagnostics protocol and remain
+  re-exported by the engine protocol. All 152 dependency audits pass without
+  weakening the boundary rules.
+- Windows debug packaging reported an early companion EOF while Windows
+  release passed packaging. Companion startup now preserves the bounded host
+  stderr tail and process status in startup errors; a failing-host regression
+  passes. CI will retry this path with actionable failure diagnostics.

@@ -1126,6 +1126,22 @@ fn management_monitoring_preserves_controller_and_logs_startup_failures() {
 }
 
 #[shoop_test]
+fn failed_companion_startup_preserves_the_host_diagnostic() {
+    let root = tempfile::tempdir().unwrap();
+    let mut options = shoop_host::serve::StartOptions::new().unwrap();
+    options.log_file = Some(root.path().to_owned());
+    let error = shoop_host::launch::spawn(
+        &HostConfig::default(),
+        options,
+        Path::new(env!("CARGO_BIN_EXE_shoop_host")),
+    )
+    .unwrap_err();
+    let diagnostic = format!("{error:#}");
+    assert!(diagnostic.contains("host startup failed"), "{diagnostic}");
+    assert!(diagnostic.contains("session host:"), "{diagnostic}");
+}
+
+#[shoop_test]
 fn a_host_without_requested_outputs_writes_no_host_records_or_logs() {
     let root = tempfile::tempdir().unwrap();
 

@@ -112,8 +112,29 @@ pub fn spawn(
     let mut command = Command::new(host_executable);
     command.arg("--launch-stdin");
     independent(&mut command);
-    command.stdin(Stdio::piped()).stdout(Stdio::piped());
+    command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     let mut child = command.spawn().context("start independent session host")?;
+    let mut stderr = child
+        .stderr
+        .take()
+        .context("host diagnostic pipe unavailable")?;
+    let diagnostics = std::thread::spawn(move || {
+        let mut tail = Vec::new();
+        let mut buffer = [0; 4096];
+        while let Ok(count) = stderr.read(&mut buffer) {
+            if count == 0 {
+                break;
+            }
+            tail.extend_from_slice(&buffer[..count]);
+            if tail.len() > 65536 {
+                tail.drain(..tail.len() - 65536);
+            }
+        }
+        tail
+    });
     let result = (|| -> Result<Target> {
         let stdin = child
             .stdin
@@ -162,8 +183,14 @@ pub fn spawn(
         Ok(target) => Ok((child, target)),
         Err(error) => {
             let _ = child.kill();
-            let _ = child.wait();
-            Err(error)
+            let status = child.wait();
+            let diagnostics = diagnostics.join().unwrap_or_default();
+            Err(error).with_context(|| {
+                format!(
+                    "host startup failed ({status:?}): {}",
+                    String::from_utf8_lossy(&diagnostics).trim()
+                )
+            })
         }
     }
 }

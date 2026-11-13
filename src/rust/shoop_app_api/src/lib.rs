@@ -2290,9 +2290,9 @@ pub struct AppNotification {
     pub message: String,
 }
 
+pub use profiling_protocol::memory::{MemoryReport, MemoryResource, MemoryUnit};
 pub use rt_profiling as profiling_data;
 pub use rt_profiling::View as ProfilingView;
-pub use shoop_rt_protocol::{MemoryReport, MemoryResource, MemoryUnit};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ProfilingSource {
