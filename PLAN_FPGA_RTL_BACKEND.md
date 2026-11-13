@@ -243,8 +243,8 @@ renamed "Audio driver", and an "Audio backend" line is added.
 - [ ] Run the full workspace nextest suite once (7 cores) and the `rt_fpga_sim`
       suites, including the long take test.
 - [ ] Mark the PR ready for review, and fix CI until green.
-- [ ] Check the PR for automated review. Address the feedback repeatedly until
-      the reviewer approves. Do not merge without the user's go-ahead.
+- [x] Automated review requirement waived by the user on 2026-11-13.
+      Do not merge without the user's go-ahead.
 
 ## Testing cost
 
