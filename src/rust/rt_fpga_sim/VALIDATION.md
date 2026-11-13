@@ -180,6 +180,13 @@ policy pass. The final merged-state CLI replay reproduces the same 13776 output
 frames, 4412127 clocks and numeric errors above. A separate one-action VCD smoke
 passed, producing a 17 MiB trace through normal model destruction.
 
+The `app-ui` window was exercised on an X11 virtual display: connect logical input
+to Sync and Sync to Master, toggle synthetic input, record, play, select the loop
+and view its nonzero waveform/meters, clear recordings and record/play again.
+The new take's waveform also appears. A normal window-close event exits with
+status zero and joins the worker. Screenshots are retained under
+`work/app-final-ui-*.png`; no audio host process is involved.
+
 The broad native workspace run reported 3219 passes, four failures and 11 skips.
 The first isolated retry, concurrent with the long RTL simulation, still failed
 all four. With no concurrent simulation/build, the final targeted native retry
@@ -190,3 +197,18 @@ a clean broad native gate, and the different failure cuts do not establish a
 single root cause. The baseline reproduction and unchanged native construction
 semantics support leaving that driver investigation outside this offline feature.
 No test deadlines or expectations were relaxed. Local logs are under `work/app-*`.
+
+All relevant RTL check scripts pass: SP default/small/minimum lint, generic and
+ECP5; JP and audio-pipeline lint/generic/ECP5; TP default/small/minimum/wide
+lint/generic plus default ECP5; connected loop-pipeline default/small/minimum
+lint/generic plus default ECP5. The connected default maps to 35574 LUT4s,
+21502 flip-flops, 95 DP16KD blocks and four MULT18X18D blocks. That configuration
+has eight loop slots and a 32-slot sample arena; it is not the application preset.
+These are ECP5 synthesis counts, not Zynq utilization or placement/timing results.
+Logs/netlists are in `work/app-{sp,tp,loop}-synthesis` and
+`work/fpga-job-synthesis`.
+
+Upstream through `e8c43c6d` is merged into `feat/fpga-app-sync-loop`. PR #983 targets
+`proto/fpga-rust-reference`; only the working branch is pushed. No actionable
+review findings were present at delivery. PR CI was not inspected, and the
+previously waived 64-loop benchmark was not repeated.

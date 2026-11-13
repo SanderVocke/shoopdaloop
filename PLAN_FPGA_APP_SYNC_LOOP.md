@@ -1,6 +1,7 @@
 # Default application Sync loop through the FPGA simulator
 
-Status: implementation complete; final static checks and PR delivery in progress.
+Status: completed on `feat/fpga-app-sync-loop`; PR #983 targets
+`proto/fpga-rust-reference`.
 Working branch: `feat/fpga-app-sync-loop`, based on `proto/fpga-rust-reference`
 through `e8c43c6d`, merged during implementation (initial base: `821ba859`).
 PR base: `proto/fpga-rust-reference`. Push only the working branch.
@@ -270,7 +271,7 @@ adding UI streaming. Use focused tests until the final integration gates.
   one-command headless comparison and offline GUI launch, prerequisites, controls,
   limits and unsupported features. Measure model build/load, graph compilation,
   configuration, execution cycles and app readiness separately; no live audio claim.
-- [ ] Run affected runtime/engine/backend/app, adapter and Marlin tests; preserve
+- [x] Run affected runtime/engine/backend/app, adapter and Marlin tests; preserve
   existing gain/mono/direct-loop regressions. If RTL changed, run relevant subsystem
   and integrated lint/synthesis/protocol gates. Run formatting, warning-denying
   builds, the Rust test-attribute policy and CPU/Wasm isolation/build checks.
@@ -278,7 +279,7 @@ adding UI streaming. Use focused tests until the final integration gates.
   during execution, isolate failures before diagnosing regressions and reuse valid
   expensive evidence. Do not repeat the previously waived 64-loop benchmark or
   add JACK/CPAL/physical-device tests for this offline feature.
-- [ ] Commit/push milestones and open/update the PR onto
+- [x] Commit/push milestones and open/update the PR onto
   `proto/fpga-rust-reference`. Check incoming automated review and address
   applicable findings until approval or no actionable findings remain. Under the
   standing user instruction, do not inspect PR CI; rely on recorded local gates.
@@ -322,11 +323,12 @@ five-second takes, waveform retrieval, clear/re-record and reuse, with a peak
 of 30032 physical slots out of 32768. An isolated metadata-capacity fixture also
 holds both stereo-prepared takes and their snapshots concurrently.
 
-Final delivery validation is in progress. The broad native suite reported 3219
+Delivery validation is complete, with the native-suite exception below.
+The broad native suite reported 3219
 passes and four failures; the first isolated retry still failed. On the untouched
 `821ba859` baseline, three of those tests pass and driver-switch recovery also
-fails, at a later deadline. The final quiet targeted run after the upstream merge passes the other three
-tests; driver recovery still times out at startup. No test deadlines or assertions
+fails, at a later deadline. The final quiet targeted run after the upstream merge
+passes the other three tests; driver recovery still times out at startup. No test deadlines or assertions
 were relaxed. Detailed results and limitations are recorded in the simulator
 validation document.
 
@@ -334,3 +336,17 @@ Upstream's acyclic topology format and memory-reporting changes are integrated.
 The native consumer retains the new memory publisher and sample-rate argument;
 the shared endpoint and external outbox reserve the additional telemetry slot.
 The FPGA composition does not publish a fictitious native media-memory report.
+
+All 38 short simulator tests and 192 affected library tests pass after the merge.
+Warning-denying workspace/demo and normal Wasm app/worklet builds pass, with no
+simulator dependency in ordinary CPU/Wasm trees. All relevant SP/JP/TP/connected
+pipeline lint, generic synthesis and ECP5 mapping gates pass. The CLI comparison
+and worker-owned VCD smoke pass; the actual window covers logical routing,
+record/play, nonzero waveform/meters, clear/re-record and normal close. The long
+capacity evidence remains valid because its storage RTL/preset did not change.
+
+The implementation and validation are committed and pushed only to the working
+branch. PR #983 contains the concrete change and recorded native-suite exception.
+No actionable review findings were present at delivery. PR CI was not inspected;
+the waived 64-loop benchmark was not repeated. Board timing/fit and metadata-walk
+worst-case latency remain outside this offline milestone.
