@@ -63,7 +63,7 @@ module job_processor #(
         INITIAL_DIVIDE, INITIAL_WAIT, STEP_DIVIDE, STEP_WAIT,
         STORE, GAIN_STREAM, MIX_STREAM,
         ARITH_B_REQUEST, ARITH_B_RESULT, ARITH_MULTIPLY, ARITH_RESULT,
-        SMOOTH_RATIO, SMOOTH_WAIT, SMOOTH_ANCHOR_MULTIPLY, SMOOTH_ANCHOR_RESULT, SMOOTH_RAW_MULTIPLY, SMOOTH_RAW_RESULT,
+        SMOOTH_LOAD, SMOOTH_PREPARE, SMOOTH_MULTIPLY, SMOOTH_RESULT,
         MEDIA_COMMAND, MEDIA_READ, MEDIA_SOURCE_REQUEST, MEDIA_SOURCE_RESULT, MEDIA_WRITE, MEDIA_DONE
     } phase_t;
     reg [5:0] chunk_shift;
@@ -99,7 +99,8 @@ module job_processor #(
     reg product_negative;
     reg hint_pending, hinted_head;
     assign media_hint_valid = (ENABLE_MEDIA != 0) && hint_pending && !media_fault && !reset;
-    reg [31:0] smooth_last[0:BUFFERS-1], smooth_anchor[0:BUFFERS-1], smooth_elapsed[0:BUFFERS-1], smooth_duration[0:BUFFERS-1];
+    reg [BUFFERS-1:0] smooth_valid;
+    wire [127:0] smooth_history;
     reg [BUFFER_BITS-1:0] smooth_index;
     reg [31:0] anchor_value;
     reg [31:0] multiply_a, multiply_b;
@@ -200,8 +201,8 @@ module job_processor #(
     assign media_read_ready = (ENABLE_MEDIA != 0) && (phase == MEDIA_READ) && !reset;
 
     jp_divider divide (
-        .clk(clk), .reset(reset), .start((phase == INITIAL_DIVIDE) || (phase == STEP_DIVIDE) || phase == SMOOTH_RATIO),
-        .numerator(phase == SMOOTH_RATIO ? {8'b0,elapsed,24'b0} : (phase == STEP_DIVIDE) ? {32'b0, delta_magnitude} : product),
+        .clk(clk), .reset(reset), .start((phase == INITIAL_DIVIDE) || (phase == STEP_DIVIDE)),
+        .numerator((phase == STEP_DIVIDE) ? {32'b0, delta_magnitude} : product),
         .denominator(duration), .done(divide_done), .quotient(divide_quotient), .remainder(divide_remainder)
     );
     generate if (EXTERNAL_IO == 0) begin : local_io
@@ -232,6 +233,16 @@ module job_processor #(
         .write_enable(!reset && (scratch_write || (scratch_access && cfg_write))),
         .write_address(scratch_ram_write_address),
         .write_data(busy ? (playback_write ? media_read_data : result_sample) : cfg_write_data)
+    );
+
+    wire smooth_commit = phase == STORE && opcode == `SHOOP_SP_JOB_SMOOTHING
+        && frame + 1 == quantum && !reset && !(ENABLE_MEDIA != 0 && media_fault);
+    wire [31:0] smooth_next_elapsed = elapsed < duration ? elapsed + 1 : elapsed;
+    sp_ram #(.WIDTH(128), .DEPTH(BUFFERS), .ADDR_BITS(BUFFER_BITS)) smoothing_memory (
+        .clk(clk), .read_enable(phase == DECODE && opcode == `SHOOP_SP_JOB_SMOOTHING),
+        .read_address(BUFFER_BITS'(packet[95:64])), .read_data(smooth_history),
+        .write_enable(smooth_commit), .write_address(smooth_index),
+        .write_data({result_sample, anchor_value, packet[128] ? smooth_next_elapsed : elapsed, duration})
     );
 
     always @(posedge clk) begin
@@ -269,7 +280,7 @@ module job_processor #(
     always @(posedge clk) begin
         if (reset) begin
             phase <= IDLE;
-            for (integer h=0;h<BUFFERS;h=h+1) begin smooth_last[h]<=0;smooth_anchor[h]<=0;smooth_elapsed[h]<=0;smooth_duration[h]<=0;end
+            smooth_valid <= 0;
             smooth_index<=0;anchor_value<=0;
             done <= 0;
             error_code <= OK;
@@ -394,24 +405,7 @@ module job_processor #(
                                 error_code<=INVALID_BUFFER;done<=1;phase<=IDLE;
                             end else begin
                                 source_a<=id0;destination<=id1;smooth_index<=BUFFER_BITS'(packet[95:64]);
-                                if (!packet[128]) begin
-                                    smooth_last[BUFFER_BITS'(packet[95:64])]<=0;
-                                    smooth_anchor[BUFFER_BITS'(packet[95:64])]<=0;
-                                    smooth_elapsed[BUFFER_BITS'(packet[95:64])]<=packet[127:96];
-                                    smooth_duration[BUFFER_BITS'(packet[95:64])]<=packet[127:96];
-                                    result_sample<=0;phase<=STORE;
-                                end else begin
-                                    if (packet[129]) begin
-                                        anchor_value<=smooth_last[BUFFER_BITS'(packet[95:64])];
-                                        smooth_anchor[BUFFER_BITS'(packet[95:64])]<=smooth_last[BUFFER_BITS'(packet[95:64])];
-                                        elapsed<=0;duration<=packet[127:96];
-                                        smooth_duration[BUFFER_BITS'(packet[95:64])]<=packet[127:96];
-                                    end else begin
-                                        anchor_value<=smooth_anchor[BUFFER_BITS'(packet[95:64])];
-                                        elapsed<=smooth_elapsed[BUFFER_BITS'(packet[95:64])];duration<=smooth_duration[BUFFER_BITS'(packet[95:64])];
-                                    end
-                                    phase<=READ_REQUEST;
-                                end
+                                phase <= SMOOTH_LOAD;
                             end
                         end
                         `SHOOP_SP_JOB_GAIN: begin
@@ -487,11 +481,39 @@ module job_processor #(
                         end
                     endcase
                 end
+                SMOOTH_LOAD: begin
+                    if (!packet[128]) begin
+                        anchor_value <= 0; elapsed <= packet[127:96]; duration <= packet[127:96];
+                        result_sample <= 0; phase <= STORE;
+                    end else begin
+                        anchor_value <= !smooth_valid[smooth_index] ? 0
+                            : packet[129] ? smooth_history[127:96] : smooth_history[95:64];
+                        elapsed <= packet[129] || !smooth_valid[smooth_index] ? 0 : smooth_history[63:32];
+                        duration <= packet[129] ? packet[127:96]
+                            : smooth_valid[smooth_index] ? smooth_history[31:0] : 0;
+                        phase <= SMOOTH_PREPARE;
+                    end
+                end
+                SMOOTH_PREPARE: begin
+                    if (duration == 0 || elapsed >= duration) phase <= READ_REQUEST;
+                    else begin
+                        ramp_start <= 0; ramp_negative <= 0; delta_magnitude <= 32'h01000000;
+                        multiply_a <= 32'h01000000; multiply_b <= elapsed;
+                        phase <= RAMP_MULTIPLY;
+                    end
+                end
                 READ_REQUEST: phase <= READ_RESULT;
                 READ_RESULT: begin
                     if (opcode == `SHOOP_SP_JOB_SMOOTHING) begin
                         if (duration==0 || elapsed>=duration) begin result_sample<=scratch_data;phase<=STORE;end
-                        else begin sample_a<=scratch_data;phase<=SMOOTH_RATIO;end
+                        else begin : smoothing_operand
+                            reg signed [32:0] difference;
+                            difference = $signed({scratch_data[31], scratch_data})
+                                - $signed({anchor_value[31], anchor_value});
+                            multiply_a <= difference[32] ? 32'(-difference) : difference[31:0];
+                            multiply_b <= current_gain; multiply_negative <= difference[32];
+                            phase <= SMOOTH_MULTIPLY;
+                        end
                     end else if (opcode == `SHOOP_SP_JOB_ARITHMETIC && packet[95:80]!=3) begin
                         sample_a <= scratch_data; phase <= ARITH_B_REQUEST;
                     end else begin
@@ -500,21 +522,18 @@ module job_processor #(
                         phase <= STORE;
                     end
                 end
-                SMOOTH_RATIO: phase<=SMOOTH_WAIT;
-                SMOOTH_WAIT: if (divide_done) begin
-                    current_gain<=divide_quotient[31:0];
-                    multiply_a<=anchor_value[31] ? -anchor_value : anchor_value;
-                    multiply_b<=32'h01000000-divide_quotient[31:0];multiply_negative<=anchor_value[31];
-                    phase<=SMOOTH_ANCHOR_MULTIPLY;
+                SMOOTH_MULTIPLY: begin
+                    product <= multiplied; product_negative <= multiply_negative; phase <= SMOOTH_RESULT;
                 end
-                SMOOTH_ANCHOR_MULTIPLY: begin product<=multiplied;product_negative<=multiply_negative;phase<=SMOOTH_ANCHOR_RESULT;end
-                SMOOTH_ANCHOR_RESULT: begin
-                    result_sample<=scaled_product(product[63:24],product_negative);
-                    multiply_a<=sample_a[31] ? -sample_a : sample_a;multiply_b<=current_gain;multiply_negative<=sample_a[31];
-                    phase<=SMOOTH_RAW_MULTIPLY;
+                SMOOTH_RESULT: begin : smoothing_result
+                    reg signed [41:0] value;
+                    value = $signed({{10{anchor_value[31]}}, anchor_value});
+                    value = product_negative ? value - $signed({2'b0, product[63:24]})
+                        : value + $signed({2'b0, product[63:24]});
+                    result_sample <= value > 42'sh007fffffff ? 32'h7fffffff
+                        : value < -42'sh0080000000 ? 32'h80000000 : value[31:0];
+                    phase <= STORE;
                 end
-                SMOOTH_RAW_MULTIPLY: begin product<=multiplied;product_negative<=multiply_negative;phase<=SMOOTH_RAW_RESULT;end
-                SMOOTH_RAW_RESULT: begin result_sample<=saturating_mix(result_sample,scaled_product(product[63:24],product_negative));phase<=STORE;end
                 ARITH_B_REQUEST: phase <= ARITH_B_RESULT;
                 ARITH_B_RESULT: begin : arithmetic_operand
                     reg [31:0] factor;
@@ -562,7 +581,7 @@ module job_processor #(
                     step_gain_extra <= ramp_value(ramp_negative ? 32'hffffffff : 32'd1,
                         ramp_negative, divide_quotient[31:0]);
                     step_remainder <= divide_remainder;
-                    phase <= GAIN_STREAM;
+                    phase <= opcode == `SHOOP_SP_JOB_SMOOTHING ? READ_REQUEST : GAIN_STREAM;
                 end
                 GAIN_STREAM, MIX_STREAM: begin
                     if (phase == GAIN_STREAM) begin
@@ -615,10 +634,13 @@ module job_processor #(
                     end
                 end
                 STORE: begin
-                    if (opcode==`SHOOP_SP_JOB_SMOOTHING && packet[128]) begin
-                        smooth_last[smooth_index]<=result_sample;
-                        if (elapsed<duration) begin elapsed<=elapsed+1;smooth_elapsed[smooth_index]<=elapsed+1;end
-                        else smooth_elapsed[smooth_index]<=elapsed;
+                    if (opcode == `SHOOP_SP_JOB_SMOOTHING) begin
+                        if (smooth_commit) smooth_valid[smooth_index] <= 1;
+                        if (packet[128] && elapsed < duration) begin
+                            elapsed <= smooth_next_elapsed;
+                            fraction <= carry_fraction ? 32'(fraction_sum - {1'b0, duration}) : fraction_sum[31:0];
+                            current_gain <= carry_fraction ? current_gain + step_gain_extra : current_gain + step_gain;
+                        end
                     end
                     if (frame + 1 == quantum) begin
                         if (opcode != `SHOOP_SP_JOB_OUTPUT)

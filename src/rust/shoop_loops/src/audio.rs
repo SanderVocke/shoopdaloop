@@ -467,7 +467,7 @@ impl<S: Sample> AudioRenderer<S> {
                         * playback.gain
                         * factor;
                 let weight = self.ramp_weights[frame];
-                *sample = self.anchor[channel] * (S::ONE - weight) + raw * weight;
+                *sample = self.anchor[channel].crossfade(raw, weight);
             }
             for (offset, sample) in output[ramping_frames..].iter_mut().enumerate() {
                 let frame = ramping_frames + offset;

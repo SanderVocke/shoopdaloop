@@ -52,6 +52,13 @@ production-vs-RTL operations retain bitwise comparisons. Saturation, boundary
 frames and lifecycle results are checked separately and cannot be hidden by the
 float tolerance.
 
+Restart smoothing retains the requested sample duration. Its Q8.24 crossfade
+rounds once after multiplying a wide sample difference by the Q0.24 weight;
+it no longer rounds and saturates two weighted samples separately. The FPGA
+steps weights by quotient/remainder addition and stores histories in synchronous
+RAM. Native Q8.24 rendering uses the same crossfade; float rendering evaluates
+the difference in f64 before returning f32.
+
 ## Regular composition
 
 `shoop_rt_host_fpga_sim` owns the thread-affine runtime, model and adapter.
