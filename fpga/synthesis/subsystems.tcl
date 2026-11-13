@@ -33,7 +33,7 @@ proc reports {stage} {
 synth_design -top registered_core_context -part $part -mode out_of_context -flatten_hierarchy rebuilt -generic $generics
 write_checkpoint -force post_synth.dcp
 reports post_synth
-if {$stage eq {route}} {
+if {$stage in {place route}} {
     if {$strategy eq {timing}} {
         set_clock_uncertainty -setup 0.900 [get_clocks core_clk]
         opt_design -directive Explore
@@ -47,6 +47,7 @@ if {$stage eq {route}} {
     }
     write_checkpoint -force post_place.dcp
     reports post_place
+    if {$stage eq {place}} {exit}
     if {$strategy eq {timing}} {
         set_clock_uncertainty -setup 0.900 [get_clocks core_clk]
         route_design -directive AggressiveExplore

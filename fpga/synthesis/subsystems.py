@@ -33,7 +33,7 @@ def main():
     parser.add_argument('subsystem', choices=PROFILES)
     parser.add_argument('--vivado', default='vivado')
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--stage', choices=('synth', 'route'), default='route')
+    parser.add_argument('--stage', choices=('synth', 'place', 'route'), default='route')
     parser.add_argument('--threads', type=int, default=4)
     parser.add_argument('--strategy', choices=('default', 'timing'), default='default')
     args = parser.parse_args()

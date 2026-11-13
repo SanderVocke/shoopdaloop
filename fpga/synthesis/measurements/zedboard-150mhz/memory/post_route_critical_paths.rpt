@@ -1,0 +1,1944 @@
+Copyright 1986-2021 Xilinx, Inc. All Rights Reserved.
+--------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2021.1 (lin64) Build 3247384 Thu Jun 10 19:36:07 MDT 2021
+| Date         : Fri Nov 13 22:29:54 2026
+| Host         : 43e3b3e3cb4c running 64-bit Ubuntu 20.04.4 LTS
+| Command      : report_timing -delay_type max -max_paths 30 -path_type full_clock_expanded -file post_route_critical_paths.rpt
+| Design       : registered_core_context
+| Device       : 7z020-clg484
+| Speed File   : -1  PRODUCTION 1.12 2019-11-22
+--------------------------------------------------------------------------------------------------------------------------------
+
+Timing Report
+
+Slack (MET) :             0.043ns  (required time - arrival time)
+  Source:                 core_under_test/core/sample_memory/dma_chunk_reg[3]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Destination:            core_under_test/core/sample_memory/write_ram/block_memory.samples_reg/ADDRARDADDR[6]
+                            (rising edge-triggered cell RAMB36E1 clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.666ns  (core_clk rise@6.666ns - core_clk rise@0.000ns)
+  Data Path Delay:        5.738ns  (logic 1.485ns (25.881%)  route 4.253ns (74.119%))
+  Logic Levels:           5  (CARRY4=1 LUT4=1 LUT5=2 LUT6=1)
+  Clock Path Skew:        -0.084ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.585ns = ( 8.251 - 6.666 ) 
+    Source Clock Delay      (SCD):    1.784ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=9925, unset)         1.784     1.784    core_under_test/core/sample_memory/clk
+    SLICE_X95Y23         FDRE                                         r  core_under_test/core/sample_memory/dma_chunk_reg[3]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X95Y23         FDRE (Prop_fdre_C_Q)         0.456     2.240 r  core_under_test/core/sample_memory/dma_chunk_reg[3]/Q
+                         net (fo=6, routed)           0.966     3.206    core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_116_0[3]
+    SLICE_X94Y22         LUT6 (Prop_lut6_I0_O)        0.124     3.330 r  core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_121/O
+                         net (fo=1, routed)           0.000     3.330    core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_121_n_0
+    SLICE_X94Y22         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     3.863 f  core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_116/CO[3]
+                         net (fo=4, routed)           0.785     4.648    core_under_test/core/sample_memory/read_ram/CO[0]
+    SLICE_X94Y19         LUT5 (Prop_lut5_I1_O)        0.124     4.772 r  core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_107/O
+                         net (fo=9, routed)           1.143     5.914    core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_1
+    SLICE_X71Y19         LUT4 (Prop_lut4_I3_O)        0.124     6.038 r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_i_45__0/O
+                         net (fo=40, routed)          0.722     6.761    core_under_test/core/sample_memory/write_ram/dma_write_pool_reg
+    SLICE_X63Y17         LUT5 (Prop_lut5_I1_O)        0.124     6.885 r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_i_9/O
+                         net (fo=1, routed)           0.637     7.522    core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_i_9_n_0
+    RAMB36_X3Y3          RAMB36E1                                     r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg/ADDRARDADDR[6]
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      6.666     6.666 r  
+                                                      0.000     6.666 r  clk (IN)
+                         net (fo=9925, unset)         1.585     8.251    core_under_test/core/sample_memory/write_ram/clk
+    RAMB36_X3Y3          RAMB36E1                                     r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg/CLKARDCLK
+                         clock pessimism              0.115     8.366    
+                         clock uncertainty           -0.235     8.131    
+    RAMB36_X3Y3          RAMB36E1 (Setup_ramb36e1_CLKARDCLK_ADDRARDADDR[6])
+                                                     -0.566     7.565    core_under_test/core/sample_memory/write_ram/block_memory.samples_reg
+  -------------------------------------------------------------------
+                         required time                          7.565    
+                         arrival time                          -7.522    
+  -------------------------------------------------------------------
+                         slack                                  0.043    
+
+Slack (MET) :             0.053ns  (required time - arrival time)
+  Source:                 core_under_test/core/sample_memory/dma_chunk_reg[3]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Destination:            core_under_test/core/sample_memory/write_ram/block_memory.samples_reg/ADDRARDADDR[8]
+                            (rising edge-triggered cell RAMB36E1 clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.666ns  (core_clk rise@6.666ns - core_clk rise@0.000ns)
+  Data Path Delay:        5.728ns  (logic 1.485ns (25.924%)  route 4.243ns (74.076%))
+  Logic Levels:           5  (CARRY4=1 LUT4=1 LUT5=2 LUT6=1)
+  Clock Path Skew:        -0.084ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.585ns = ( 8.251 - 6.666 ) 
+    Source Clock Delay      (SCD):    1.784ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=9925, unset)         1.784     1.784    core_under_test/core/sample_memory/clk
+    SLICE_X95Y23         FDRE                                         r  core_under_test/core/sample_memory/dma_chunk_reg[3]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X95Y23         FDRE (Prop_fdre_C_Q)         0.456     2.240 r  core_under_test/core/sample_memory/dma_chunk_reg[3]/Q
+                         net (fo=6, routed)           0.966     3.206    core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_116_0[3]
+    SLICE_X94Y22         LUT6 (Prop_lut6_I0_O)        0.124     3.330 r  core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_121/O
+                         net (fo=1, routed)           0.000     3.330    core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_121_n_0
+    SLICE_X94Y22         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     3.863 f  core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_116/CO[3]
+                         net (fo=4, routed)           0.785     4.648    core_under_test/core/sample_memory/read_ram/CO[0]
+    SLICE_X94Y19         LUT5 (Prop_lut5_I1_O)        0.124     4.772 r  core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_107/O
+                         net (fo=9, routed)           1.143     5.914    core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_1
+    SLICE_X71Y19         LUT4 (Prop_lut4_I3_O)        0.124     6.038 r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_i_45__0/O
+                         net (fo=40, routed)          0.714     6.752    core_under_test/core/sample_memory/write_ram/dma_write_pool_reg
+    SLICE_X61Y18         LUT5 (Prop_lut5_I1_O)        0.124     6.876 r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_i_7/O
+                         net (fo=1, routed)           0.636     7.512    core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_i_7_n_0
+    RAMB36_X3Y3          RAMB36E1                                     r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg/ADDRARDADDR[8]
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      6.666     6.666 r  
+                                                      0.000     6.666 r  clk (IN)
+                         net (fo=9925, unset)         1.585     8.251    core_under_test/core/sample_memory/write_ram/clk
+    RAMB36_X3Y3          RAMB36E1                                     r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg/CLKARDCLK
+                         clock pessimism              0.115     8.366    
+                         clock uncertainty           -0.235     8.131    
+    RAMB36_X3Y3          RAMB36E1 (Setup_ramb36e1_CLKARDCLK_ADDRARDADDR[8])
+                                                     -0.566     7.565    core_under_test/core/sample_memory/write_ram/block_memory.samples_reg
+  -------------------------------------------------------------------
+                         required time                          7.565    
+                         arrival time                          -7.512    
+  -------------------------------------------------------------------
+                         slack                                  0.053    
+
+Slack (MET) :             0.053ns  (required time - arrival time)
+  Source:                 core_under_test/core/sample_memory/dma_chunk_reg[3]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Destination:            core_under_test/core/sample_memory/write_ram/block_memory.samples_reg/ADDRARDADDR[10]
+                            (rising edge-triggered cell RAMB36E1 clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.666ns  (core_clk rise@6.666ns - core_clk rise@0.000ns)
+  Data Path Delay:        5.728ns  (logic 1.485ns (25.925%)  route 4.243ns (74.075%))
+  Logic Levels:           5  (CARRY4=1 LUT4=1 LUT5=1 LUT6=2)
+  Clock Path Skew:        -0.084ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.585ns = ( 8.251 - 6.666 ) 
+    Source Clock Delay      (SCD):    1.784ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=9925, unset)         1.784     1.784    core_under_test/core/sample_memory/clk
+    SLICE_X95Y23         FDRE                                         r  core_under_test/core/sample_memory/dma_chunk_reg[3]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X95Y23         FDRE (Prop_fdre_C_Q)         0.456     2.240 r  core_under_test/core/sample_memory/dma_chunk_reg[3]/Q
+                         net (fo=6, routed)           0.966     3.206    core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_116_0[3]
+    SLICE_X94Y22         LUT6 (Prop_lut6_I0_O)        0.124     3.330 r  core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_121/O
+                         net (fo=1, routed)           0.000     3.330    core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_121_n_0
+    SLICE_X94Y22         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     3.863 f  core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_116/CO[3]
+                         net (fo=4, routed)           0.785     4.648    core_under_test/core/sample_memory/read_ram/CO[0]
+    SLICE_X94Y19         LUT5 (Prop_lut5_I1_O)        0.124     4.772 r  core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_107/O
+                         net (fo=9, routed)           1.143     5.914    core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_1
+    SLICE_X71Y19         LUT4 (Prop_lut4_I3_O)        0.124     6.038 r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_i_45__0/O
+                         net (fo=40, routed)          0.726     6.765    core_under_test/core/sample_memory/write_ram/dma_write_pool_reg
+    SLICE_X63Y17         LUT6 (Prop_lut6_I2_O)        0.124     6.889 r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_i_5/O
+                         net (fo=1, routed)           0.624     7.512    core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_i_5_n_0
+    RAMB36_X3Y3          RAMB36E1                                     r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg/ADDRARDADDR[10]
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      6.666     6.666 r  
+                                                      0.000     6.666 r  clk (IN)
+                         net (fo=9925, unset)         1.585     8.251    core_under_test/core/sample_memory/write_ram/clk
+    RAMB36_X3Y3          RAMB36E1                                     r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg/CLKARDCLK
+                         clock pessimism              0.115     8.366    
+                         clock uncertainty           -0.235     8.131    
+    RAMB36_X3Y3          RAMB36E1 (Setup_ramb36e1_CLKARDCLK_ADDRARDADDR[10])
+                                                     -0.566     7.565    core_under_test/core/sample_memory/write_ram/block_memory.samples_reg
+  -------------------------------------------------------------------
+                         required time                          7.565    
+                         arrival time                          -7.512    
+  -------------------------------------------------------------------
+                         slack                                  0.053    
+
+Slack (MET) :             0.055ns  (required time - arrival time)
+  Source:                 core_under_test/core/sample_memory/dma_chunk_reg[3]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Destination:            core_under_test/core/sample_memory/write_ram/block_memory.samples_reg/ADDRARDADDR[9]
+                            (rising edge-triggered cell RAMB36E1 clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.666ns  (core_clk rise@6.666ns - core_clk rise@0.000ns)
+  Data Path Delay:        5.726ns  (logic 1.485ns (25.933%)  route 4.241ns (74.067%))
+  Logic Levels:           5  (CARRY4=1 LUT4=1 LUT5=2 LUT6=1)
+  Clock Path Skew:        -0.084ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.585ns = ( 8.251 - 6.666 ) 
+    Source Clock Delay      (SCD):    1.784ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=9925, unset)         1.784     1.784    core_under_test/core/sample_memory/clk
+    SLICE_X95Y23         FDRE                                         r  core_under_test/core/sample_memory/dma_chunk_reg[3]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X95Y23         FDRE (Prop_fdre_C_Q)         0.456     2.240 r  core_under_test/core/sample_memory/dma_chunk_reg[3]/Q
+                         net (fo=6, routed)           0.966     3.206    core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_116_0[3]
+    SLICE_X94Y22         LUT6 (Prop_lut6_I0_O)        0.124     3.330 r  core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_121/O
+                         net (fo=1, routed)           0.000     3.330    core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_121_n_0
+    SLICE_X94Y22         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     3.863 f  core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_116/CO[3]
+                         net (fo=4, routed)           0.785     4.648    core_under_test/core/sample_memory/read_ram/CO[0]
+    SLICE_X94Y19         LUT5 (Prop_lut5_I1_O)        0.124     4.772 r  core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_107/O
+                         net (fo=9, routed)           1.143     5.914    core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_1
+    SLICE_X71Y19         LUT4 (Prop_lut4_I3_O)        0.124     6.038 r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_i_45__0/O
+                         net (fo=40, routed)          0.729     6.768    core_under_test/core/sample_memory/write_ram/dma_write_pool_reg
+    SLICE_X61Y18         LUT5 (Prop_lut5_I1_O)        0.124     6.892 r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_i_6/O
+                         net (fo=1, routed)           0.619     7.510    core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_i_6_n_0
+    RAMB36_X3Y3          RAMB36E1                                     r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg/ADDRARDADDR[9]
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      6.666     6.666 r  
+                                                      0.000     6.666 r  clk (IN)
+                         net (fo=9925, unset)         1.585     8.251    core_under_test/core/sample_memory/write_ram/clk
+    RAMB36_X3Y3          RAMB36E1                                     r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg/CLKARDCLK
+                         clock pessimism              0.115     8.366    
+                         clock uncertainty           -0.235     8.131    
+    RAMB36_X3Y3          RAMB36E1 (Setup_ramb36e1_CLKARDCLK_ADDRARDADDR[9])
+                                                     -0.566     7.565    core_under_test/core/sample_memory/write_ram/block_memory.samples_reg
+  -------------------------------------------------------------------
+                         required time                          7.565    
+                         arrival time                          -7.510    
+  -------------------------------------------------------------------
+                         slack                                  0.055    
+
+Slack (MET) :             0.059ns  (required time - arrival time)
+  Source:                 core_under_test/core/sample_memory/dma_chunk_reg[3]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Destination:            core_under_test/core/sample_memory/write_ram/block_memory.samples_reg/ADDRARDADDR[11]
+                            (rising edge-triggered cell RAMB36E1 clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.666ns  (core_clk rise@6.666ns - core_clk rise@0.000ns)
+  Data Path Delay:        5.722ns  (logic 1.485ns (25.952%)  route 4.237ns (74.048%))
+  Logic Levels:           5  (CARRY4=1 LUT4=1 LUT5=2 LUT6=1)
+  Clock Path Skew:        -0.084ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.585ns = ( 8.251 - 6.666 ) 
+    Source Clock Delay      (SCD):    1.784ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=9925, unset)         1.784     1.784    core_under_test/core/sample_memory/clk
+    SLICE_X95Y23         FDRE                                         r  core_under_test/core/sample_memory/dma_chunk_reg[3]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X95Y23         FDRE (Prop_fdre_C_Q)         0.456     2.240 r  core_under_test/core/sample_memory/dma_chunk_reg[3]/Q
+                         net (fo=6, routed)           0.966     3.206    core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_116_0[3]
+    SLICE_X94Y22         LUT6 (Prop_lut6_I0_O)        0.124     3.330 r  core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_121/O
+                         net (fo=1, routed)           0.000     3.330    core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_121_n_0
+    SLICE_X94Y22         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     3.863 f  core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_116/CO[3]
+                         net (fo=4, routed)           0.785     4.648    core_under_test/core/sample_memory/read_ram/CO[0]
+    SLICE_X94Y19         LUT5 (Prop_lut5_I1_O)        0.124     4.772 r  core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_107/O
+                         net (fo=9, routed)           1.143     5.914    core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_1
+    SLICE_X71Y19         LUT4 (Prop_lut4_I3_O)        0.124     6.038 r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_i_45__0/O
+                         net (fo=40, routed)          0.713     6.751    core_under_test/core/sample_memory/write_ram/dma_write_pool_reg
+    SLICE_X61Y18         LUT5 (Prop_lut5_I1_O)        0.124     6.875 r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_i_4/O
+                         net (fo=1, routed)           0.631     7.506    core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_i_4_n_0
+    RAMB36_X3Y3          RAMB36E1                                     r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg/ADDRARDADDR[11]
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      6.666     6.666 r  
+                                                      0.000     6.666 r  clk (IN)
+                         net (fo=9925, unset)         1.585     8.251    core_under_test/core/sample_memory/write_ram/clk
+    RAMB36_X3Y3          RAMB36E1                                     r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg/CLKARDCLK
+                         clock pessimism              0.115     8.366    
+                         clock uncertainty           -0.235     8.131    
+    RAMB36_X3Y3          RAMB36E1 (Setup_ramb36e1_CLKARDCLK_ADDRARDADDR[11])
+                                                     -0.566     7.565    core_under_test/core/sample_memory/write_ram/block_memory.samples_reg
+  -------------------------------------------------------------------
+                         required time                          7.565    
+                         arrival time                          -7.506    
+  -------------------------------------------------------------------
+                         slack                                  0.059    
+
+Slack (MET) :             0.059ns  (required time - arrival time)
+  Source:                 core_under_test/core/sample_memory/dma_chunk_reg[3]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Destination:            core_under_test/core/sample_memory/write_ram/block_memory.samples_reg/ADDRARDADDR[7]
+                            (rising edge-triggered cell RAMB36E1 clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.666ns  (core_clk rise@6.666ns - core_clk rise@0.000ns)
+  Data Path Delay:        5.722ns  (logic 1.485ns (25.954%)  route 4.237ns (74.046%))
+  Logic Levels:           5  (CARRY4=1 LUT4=1 LUT5=2 LUT6=1)
+  Clock Path Skew:        -0.084ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.585ns = ( 8.251 - 6.666 ) 
+    Source Clock Delay      (SCD):    1.784ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=9925, unset)         1.784     1.784    core_under_test/core/sample_memory/clk
+    SLICE_X95Y23         FDRE                                         r  core_under_test/core/sample_memory/dma_chunk_reg[3]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X95Y23         FDRE (Prop_fdre_C_Q)         0.456     2.240 r  core_under_test/core/sample_memory/dma_chunk_reg[3]/Q
+                         net (fo=6, routed)           0.966     3.206    core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_116_0[3]
+    SLICE_X94Y22         LUT6 (Prop_lut6_I0_O)        0.124     3.330 r  core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_121/O
+                         net (fo=1, routed)           0.000     3.330    core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_121_n_0
+    SLICE_X94Y22         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     3.863 f  core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_116/CO[3]
+                         net (fo=4, routed)           0.785     4.648    core_under_test/core/sample_memory/read_ram/CO[0]
+    SLICE_X94Y19         LUT5 (Prop_lut5_I1_O)        0.124     4.772 r  core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_107/O
+                         net (fo=9, routed)           1.143     5.914    core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_1
+    SLICE_X71Y19         LUT4 (Prop_lut4_I3_O)        0.124     6.038 r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_i_45__0/O
+                         net (fo=40, routed)          0.725     6.764    core_under_test/core/sample_memory/write_ram/dma_write_pool_reg
+    SLICE_X61Y18         LUT5 (Prop_lut5_I1_O)        0.124     6.888 r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_i_8/O
+                         net (fo=1, routed)           0.618     7.506    core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_i_8_n_0
+    RAMB36_X3Y3          RAMB36E1                                     r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg/ADDRARDADDR[7]
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      6.666     6.666 r  
+                                                      0.000     6.666 r  clk (IN)
+                         net (fo=9925, unset)         1.585     8.251    core_under_test/core/sample_memory/write_ram/clk
+    RAMB36_X3Y3          RAMB36E1                                     r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg/CLKARDCLK
+                         clock pessimism              0.115     8.366    
+                         clock uncertainty           -0.235     8.131    
+    RAMB36_X3Y3          RAMB36E1 (Setup_ramb36e1_CLKARDCLK_ADDRARDADDR[7])
+                                                     -0.566     7.565    core_under_test/core/sample_memory/write_ram/block_memory.samples_reg
+  -------------------------------------------------------------------
+                         required time                          7.565    
+                         arrival time                          -7.506    
+  -------------------------------------------------------------------
+                         slack                                  0.059    
+
+Slack (MET) :             0.069ns  (required time - arrival time)
+  Source:                 core_under_test/core/sample_memory/dma_chunk_reg[3]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Destination:            core_under_test/core/sample_memory/write_ram/block_memory.samples_reg/DIADI[15]
+                            (rising edge-triggered cell RAMB36E1 clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.666ns  (core_clk rise@6.666ns - core_clk rise@0.000ns)
+  Data Path Delay:        6.037ns  (logic 1.485ns (24.600%)  route 4.552ns (75.400%))
+  Logic Levels:           5  (CARRY4=1 LUT4=2 LUT5=1 LUT6=1)
+  Clock Path Skew:        -0.084ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.585ns = ( 8.251 - 6.666 ) 
+    Source Clock Delay      (SCD):    1.784ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=9925, unset)         1.784     1.784    core_under_test/core/sample_memory/clk
+    SLICE_X95Y23         FDRE                                         r  core_under_test/core/sample_memory/dma_chunk_reg[3]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X95Y23         FDRE (Prop_fdre_C_Q)         0.456     2.240 r  core_under_test/core/sample_memory/dma_chunk_reg[3]/Q
+                         net (fo=6, routed)           0.966     3.206    core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_116_0[3]
+    SLICE_X94Y22         LUT6 (Prop_lut6_I0_O)        0.124     3.330 r  core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_121/O
+                         net (fo=1, routed)           0.000     3.330    core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_121_n_0
+    SLICE_X94Y22         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     3.863 f  core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_116/CO[3]
+                         net (fo=4, routed)           0.785     4.648    core_under_test/core/sample_memory/read_ram/CO[0]
+    SLICE_X94Y19         LUT5 (Prop_lut5_I1_O)        0.124     4.772 r  core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_107/O
+                         net (fo=9, routed)           1.143     5.914    core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_1
+    SLICE_X71Y19         LUT4 (Prop_lut4_I3_O)        0.124     6.038 r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_i_45__0/O
+                         net (fo=40, routed)          0.874     6.913    core_under_test/core/sample_memory/write_ram/dma_write_pool_reg
+    SLICE_X62Y15         LUT4 (Prop_lut4_I1_O)        0.124     7.037 r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_i_27/O
+                         net (fo=1, routed)           0.784     7.821    core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_i_27_n_0
+    RAMB36_X3Y3          RAMB36E1                                     r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg/DIADI[15]
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      6.666     6.666 r  
+                                                      0.000     6.666 r  clk (IN)
+                         net (fo=9925, unset)         1.585     8.251    core_under_test/core/sample_memory/write_ram/clk
+    RAMB36_X3Y3          RAMB36E1                                     r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg/CLKARDCLK
+                         clock pessimism              0.115     8.366    
+                         clock uncertainty           -0.235     8.131    
+    RAMB36_X3Y3          RAMB36E1 (Setup_ramb36e1_CLKARDCLK_DIADI[15])
+                                                     -0.241     7.890    core_under_test/core/sample_memory/write_ram/block_memory.samples_reg
+  -------------------------------------------------------------------
+                         required time                          7.890    
+                         arrival time                          -7.821    
+  -------------------------------------------------------------------
+                         slack                                  0.069    
+
+Slack (MET) :             0.089ns  (required time - arrival time)
+  Source:                 core_under_test/core/sample_memory/chunk_reg[9]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Destination:            core_under_test/core/sample_memory/phase_reg[2]/D
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.666ns  (core_clk rise@6.666ns - core_clk rise@0.000ns)
+  Data Path Delay:        6.253ns  (logic 1.601ns (25.603%)  route 4.652ns (74.397%))
+  Logic Levels:           7  (CARRY4=1 LUT3=1 LUT4=2 LUT5=1 LUT6=2)
+  Clock Path Skew:        -0.120ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.548ns = ( 8.214 - 6.666 ) 
+    Source Clock Delay      (SCD):    1.783ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=9925, unset)         1.783     1.783    core_under_test/core/sample_memory/clk
+    SLICE_X93Y22         FDRE                                         r  core_under_test/core/sample_memory/chunk_reg[9]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X93Y22         FDRE (Prop_fdre_C_Q)         0.456     2.239 r  core_under_test/core/sample_memory/chunk_reg[9]/Q
+                         net (fo=31, routed)          1.320     3.559    core_under_test/core/sample_memory/chunk_reg[10]_0[4]
+    SLICE_X99Y27         LUT4 (Prop_lut4_I0_O)        0.124     3.683 r  core_under_test/core/sample_memory/line[1]_i_12/O
+                         net (fo=1, routed)           0.000     3.683    core_under_test/core/sample_memory/line[1]_i_12_n_0
+    SLICE_X99Y27         CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.401     4.084 f  core_under_test/core/sample_memory/line_reg[1]_i_10/CO[3]
+                         net (fo=3, routed)           1.004     5.088    core_under_test/core/sample_memory/write_hit216_out
+    SLICE_X98Y26         LUT4 (Prop_lut4_I0_O)        0.124     5.212 r  core_under_test/core/sample_memory/line[1]_i_4/O
+                         net (fo=3, routed)           0.527     5.739    core_under_test/core/sample_memory/write_present_reg[2]_0
+    SLICE_X96Y25         LUT5 (Prop_lut5_I0_O)        0.124     5.863 r  core_under_test/core/sample_memory/flush_requested_i_3/O
+                         net (fo=12, routed)          0.668     6.531    core_under_test/core/sample_memory/write_present_reg[0]_0
+    SLICE_X93Y25         LUT3 (Prop_lut3_I1_O)        0.124     6.655 r  core_under_test/core/sample_memory/phase[2]_i_8__2/O
+                         net (fo=1, routed)           0.476     7.130    core_under_test/core/sample_memory/phase[2]_i_8__2_n_0
+    SLICE_X92Y25         LUT6 (Prop_lut6_I5_O)        0.124     7.254 r  core_under_test/core/sample_memory/phase[2]_i_3__4/O
+                         net (fo=2, routed)           0.658     7.912    core_under_test/core/sample_memory/phase[2]_i_3__4_n_0
+    SLICE_X89Y26         LUT6 (Prop_lut6_I1_O)        0.124     8.036 r  core_under_test/core/sample_memory/phase[2]_i_1__1/O
+                         net (fo=1, routed)           0.000     8.036    core_under_test/core/sample_memory/phase[2]_i_1__1_n_0
+    SLICE_X89Y26         FDRE                                         r  core_under_test/core/sample_memory/phase_reg[2]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      6.666     6.666 r  
+                                                      0.000     6.666 r  clk (IN)
+                         net (fo=9925, unset)         1.548     8.214    core_under_test/core/sample_memory/clk
+    SLICE_X89Y26         FDRE                                         r  core_under_test/core/sample_memory/phase_reg[2]/C
+                         clock pessimism              0.115     8.329    
+                         clock uncertainty           -0.235     8.094    
+    SLICE_X89Y26         FDRE (Setup_fdre_C_D)        0.031     8.125    core_under_test/core/sample_memory/phase_reg[2]
+  -------------------------------------------------------------------
+                         required time                          8.125    
+                         arrival time                          -8.036    
+  -------------------------------------------------------------------
+                         slack                                  0.089    
+
+Slack (MET) :             0.100ns  (required time - arrival time)
+  Source:                 core_under_test/core/sample_memory/phase_reg[0]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Destination:            core_under_test/core/cursor_reg[10]/CE
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.666ns  (core_clk rise@6.666ns - core_clk rise@0.000ns)
+  Data Path Delay:        5.844ns  (logic 1.138ns (19.472%)  route 4.706ns (80.528%))
+  Logic Levels:           5  (LUT4=1 LUT6=4)
+  Clock Path Skew:        -0.281ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.489ns = ( 8.155 - 6.666 ) 
+    Source Clock Delay      (SCD):    1.783ns
+    Clock Pessimism Removal (CPR):    0.013ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=9925, unset)         1.783     1.783    core_under_test/core/sample_memory/clk
+    SLICE_X90Y27         FDRE                                         r  core_under_test/core/sample_memory/phase_reg[0]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X90Y27         FDRE (Prop_fdre_C_Q)         0.518     2.301 r  core_under_test/core/sample_memory/phase_reg[0]/Q
+                         net (fo=117, routed)         1.492     3.793    core_under_test/core/sample_memory/phase_reg_n_0_[0]
+    SLICE_X68Y30         LUT6 (Prop_lut6_I4_O)        0.124     3.917 r  core_under_test/core/sample_memory/write_ready_INST_0_i_3_replica/O
+                         net (fo=3, routed)           0.885     4.803    core_under_test/core/sample_memory/cm_write_ready_repN
+    SLICE_X61Y39         LUT6 (Prop_lut6_I5_O)        0.124     4.927 f  core_under_test/core/sample_memory/write_ready_INST_0_i_1_replica/O
+                         net (fo=1, routed)           0.416     5.343    core_under_test/core/sample_memory/write_ready_INST_0_i_1_n_0_repN
+    SLICE_X60Y40         LUT4 (Prop_lut4_I1_O)        0.124     5.467 f  core_under_test/core/sample_memory/sample_index[31]_i_3_replica/O
+                         net (fo=1, routed)           0.428     5.895    core_under_test/core/sample_memory/sample_index[31]_i_3_n_0_repN
+    SLICE_X59Y41         LUT6 (Prop_lut6_I0_O)        0.124     6.019 r  core_under_test/core/sample_memory/cursor[63]_i_3/O
+                         net (fo=1, routed)           0.414     6.432    core_under_test/core/sample_memory/cursor[63]_i_3_n_0
+    SLICE_X56Y42         LUT6 (Prop_lut6_I1_O)        0.124     6.556 r  core_under_test/core/sample_memory/cursor[63]_i_1__0/O
+                         net (fo=64, routed)          1.071     7.627    core_under_test/core/sample_memory_n_168
+    SLICE_X44Y35         FDRE                                         r  core_under_test/core/cursor_reg[10]/CE
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      6.666     6.666 r  
+                                                      0.000     6.666 r  clk (IN)
+                         net (fo=9925, unset)         1.489     8.155    core_under_test/core/clk
+    SLICE_X44Y35         FDRE                                         r  core_under_test/core/cursor_reg[10]/C
+                         clock pessimism              0.013     8.168    
+                         clock uncertainty           -0.235     7.933    
+    SLICE_X44Y35         FDRE (Setup_fdre_C_CE)      -0.205     7.728    core_under_test/core/cursor_reg[10]
+  -------------------------------------------------------------------
+                         required time                          7.728    
+                         arrival time                          -7.627    
+  -------------------------------------------------------------------
+                         slack                                  0.100    
+
+Slack (MET) :             0.121ns  (required time - arrival time)
+  Source:                 core_under_test/core/reclaimer/budget_above_guard_reg/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Destination:            core_under_test/core/metadata_request_index_reg[15]/R
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.666ns  (core_clk rise@6.666ns - core_clk rise@0.000ns)
+  Data Path Delay:        5.837ns  (logic 1.262ns (21.621%)  route 4.575ns (78.379%))
+  Logic Levels:           6  (LUT3=1 LUT5=2 LUT6=3)
+  Clock Path Skew:        -0.044ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.557ns = ( 8.223 - 6.666 ) 
+    Source Clock Delay      (SCD):    1.716ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=9925, unset)         1.716     1.716    core_under_test/core/reclaimer/clk
+    SLICE_X58Y29         FDRE                                         r  core_under_test/core/reclaimer/budget_above_guard_reg/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X58Y29         FDRE (Prop_fdre_C_Q)         0.518     2.234 r  core_under_test/core/reclaimer/budget_above_guard_reg/Q
+                         net (fo=1, routed)           0.984     3.218    core_under_test/core/reclaimer/budget_above_guard
+    SLICE_X67Y28         LUT5 (Prop_lut5_I2_O)        0.124     3.342 f  core_under_test/core/reclaimer/background_chunk[10]_i_12/O
+                         net (fo=2, routed)           0.606     3.949    core_under_test/core/reclaimer/background_chunk[10]_i_12_n_0
+    SLICE_X66Y30         LUT6 (Prop_lut6_I5_O)        0.124     4.073 r  core_under_test/core/reclaimer/maintenance_charge_i_10/O
+                         net (fo=5, routed)           0.482     4.555    core_under_test/core/reclaimer/faulted_reg
+    SLICE_X68Y30         LUT3 (Prop_lut3_I0_O)        0.124     4.679 f  core_under_test/core/reclaimer/maintenance_charge_i_3/O
+                         net (fo=4, routed)           0.334     5.013    core_under_test/core/reclaimer/maintenance_charge_i_3_n_0
+    SLICE_X73Y30         LUT5 (Prop_lut5_I3_O)        0.124     5.137 f  core_under_test/core/reclaimer/metadata_prefetch_i_2/O
+                         net (fo=9, routed)           0.578     5.715    core_under_test/core/reclaimer/p_112_in
+    SLICE_X79Y30         LUT6 (Prop_lut6_I2_O)        0.124     5.839 r  core_under_test/core/reclaimer/maintenance_charge_i_4/O
+                         net (fo=144, routed)         0.904     6.743    core_under_test/core/reclaimer/metadata_pending0
+    SLICE_X73Y41         LUT6 (Prop_lut6_I5_O)        0.124     6.867 r  core_under_test/core/reclaimer/metadata_request_index[31]_i_1/O
+                         net (fo=25, routed)          0.686     7.553    core_under_test/core/reclaimer_n_135
+    SLICE_X73Y39         FDRE                                         r  core_under_test/core/metadata_request_index_reg[15]/R
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      6.666     6.666 r  
+                                                      0.000     6.666 r  clk (IN)
+                         net (fo=9925, unset)         1.557     8.223    core_under_test/core/clk
+    SLICE_X73Y39         FDRE                                         r  core_under_test/core/metadata_request_index_reg[15]/C
+                         clock pessimism              0.115     8.338    
+                         clock uncertainty           -0.235     8.103    
+    SLICE_X73Y39         FDRE (Setup_fdre_C_R)       -0.429     7.674    core_under_test/core/metadata_request_index_reg[15]
+  -------------------------------------------------------------------
+                         required time                          7.674    
+                         arrival time                          -7.553    
+  -------------------------------------------------------------------
+                         slack                                  0.121    
+
+Slack (MET) :             0.121ns  (required time - arrival time)
+  Source:                 core_under_test/core/reclaimer/budget_above_guard_reg/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Destination:            core_under_test/core/metadata_request_index_reg[26]/R
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.666ns  (core_clk rise@6.666ns - core_clk rise@0.000ns)
+  Data Path Delay:        5.837ns  (logic 1.262ns (21.621%)  route 4.575ns (78.379%))
+  Logic Levels:           6  (LUT3=1 LUT5=2 LUT6=3)
+  Clock Path Skew:        -0.044ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.557ns = ( 8.223 - 6.666 ) 
+    Source Clock Delay      (SCD):    1.716ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=9925, unset)         1.716     1.716    core_under_test/core/reclaimer/clk
+    SLICE_X58Y29         FDRE                                         r  core_under_test/core/reclaimer/budget_above_guard_reg/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X58Y29         FDRE (Prop_fdre_C_Q)         0.518     2.234 r  core_under_test/core/reclaimer/budget_above_guard_reg/Q
+                         net (fo=1, routed)           0.984     3.218    core_under_test/core/reclaimer/budget_above_guard
+    SLICE_X67Y28         LUT5 (Prop_lut5_I2_O)        0.124     3.342 f  core_under_test/core/reclaimer/background_chunk[10]_i_12/O
+                         net (fo=2, routed)           0.606     3.949    core_under_test/core/reclaimer/background_chunk[10]_i_12_n_0
+    SLICE_X66Y30         LUT6 (Prop_lut6_I5_O)        0.124     4.073 r  core_under_test/core/reclaimer/maintenance_charge_i_10/O
+                         net (fo=5, routed)           0.482     4.555    core_under_test/core/reclaimer/faulted_reg
+    SLICE_X68Y30         LUT3 (Prop_lut3_I0_O)        0.124     4.679 f  core_under_test/core/reclaimer/maintenance_charge_i_3/O
+                         net (fo=4, routed)           0.334     5.013    core_under_test/core/reclaimer/maintenance_charge_i_3_n_0
+    SLICE_X73Y30         LUT5 (Prop_lut5_I3_O)        0.124     5.137 f  core_under_test/core/reclaimer/metadata_prefetch_i_2/O
+                         net (fo=9, routed)           0.578     5.715    core_under_test/core/reclaimer/p_112_in
+    SLICE_X79Y30         LUT6 (Prop_lut6_I2_O)        0.124     5.839 r  core_under_test/core/reclaimer/maintenance_charge_i_4/O
+                         net (fo=144, routed)         0.904     6.743    core_under_test/core/reclaimer/metadata_pending0
+    SLICE_X73Y41         LUT6 (Prop_lut6_I5_O)        0.124     6.867 r  core_under_test/core/reclaimer/metadata_request_index[31]_i_1/O
+                         net (fo=25, routed)          0.686     7.553    core_under_test/core/reclaimer_n_135
+    SLICE_X73Y39         FDRE                                         r  core_under_test/core/metadata_request_index_reg[26]/R
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      6.666     6.666 r  
+                                                      0.000     6.666 r  clk (IN)
+                         net (fo=9925, unset)         1.557     8.223    core_under_test/core/clk
+    SLICE_X73Y39         FDRE                                         r  core_under_test/core/metadata_request_index_reg[26]/C
+                         clock pessimism              0.115     8.338    
+                         clock uncertainty           -0.235     8.103    
+    SLICE_X73Y39         FDRE (Setup_fdre_C_R)       -0.429     7.674    core_under_test/core/metadata_request_index_reg[26]
+  -------------------------------------------------------------------
+                         required time                          7.674    
+                         arrival time                          -7.553    
+  -------------------------------------------------------------------
+                         slack                                  0.121    
+
+Slack (MET) :             0.121ns  (required time - arrival time)
+  Source:                 core_under_test/core/reclaimer/budget_above_guard_reg/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Destination:            core_under_test/core/metadata_request_index_reg[8]/R
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.666ns  (core_clk rise@6.666ns - core_clk rise@0.000ns)
+  Data Path Delay:        5.837ns  (logic 1.262ns (21.621%)  route 4.575ns (78.379%))
+  Logic Levels:           6  (LUT3=1 LUT5=2 LUT6=3)
+  Clock Path Skew:        -0.044ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.557ns = ( 8.223 - 6.666 ) 
+    Source Clock Delay      (SCD):    1.716ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=9925, unset)         1.716     1.716    core_under_test/core/reclaimer/clk
+    SLICE_X58Y29         FDRE                                         r  core_under_test/core/reclaimer/budget_above_guard_reg/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X58Y29         FDRE (Prop_fdre_C_Q)         0.518     2.234 r  core_under_test/core/reclaimer/budget_above_guard_reg/Q
+                         net (fo=1, routed)           0.984     3.218    core_under_test/core/reclaimer/budget_above_guard
+    SLICE_X67Y28         LUT5 (Prop_lut5_I2_O)        0.124     3.342 f  core_under_test/core/reclaimer/background_chunk[10]_i_12/O
+                         net (fo=2, routed)           0.606     3.949    core_under_test/core/reclaimer/background_chunk[10]_i_12_n_0
+    SLICE_X66Y30         LUT6 (Prop_lut6_I5_O)        0.124     4.073 r  core_under_test/core/reclaimer/maintenance_charge_i_10/O
+                         net (fo=5, routed)           0.482     4.555    core_under_test/core/reclaimer/faulted_reg
+    SLICE_X68Y30         LUT3 (Prop_lut3_I0_O)        0.124     4.679 f  core_under_test/core/reclaimer/maintenance_charge_i_3/O
+                         net (fo=4, routed)           0.334     5.013    core_under_test/core/reclaimer/maintenance_charge_i_3_n_0
+    SLICE_X73Y30         LUT5 (Prop_lut5_I3_O)        0.124     5.137 f  core_under_test/core/reclaimer/metadata_prefetch_i_2/O
+                         net (fo=9, routed)           0.578     5.715    core_under_test/core/reclaimer/p_112_in
+    SLICE_X79Y30         LUT6 (Prop_lut6_I2_O)        0.124     5.839 r  core_under_test/core/reclaimer/maintenance_charge_i_4/O
+                         net (fo=144, routed)         0.904     6.743    core_under_test/core/reclaimer/metadata_pending0
+    SLICE_X73Y41         LUT6 (Prop_lut6_I5_O)        0.124     6.867 r  core_under_test/core/reclaimer/metadata_request_index[31]_i_1/O
+                         net (fo=25, routed)          0.686     7.553    core_under_test/core/reclaimer_n_135
+    SLICE_X73Y39         FDRE                                         r  core_under_test/core/metadata_request_index_reg[8]/R
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      6.666     6.666 r  
+                                                      0.000     6.666 r  clk (IN)
+                         net (fo=9925, unset)         1.557     8.223    core_under_test/core/clk
+    SLICE_X73Y39         FDRE                                         r  core_under_test/core/metadata_request_index_reg[8]/C
+                         clock pessimism              0.115     8.338    
+                         clock uncertainty           -0.235     8.103    
+    SLICE_X73Y39         FDRE (Setup_fdre_C_R)       -0.429     7.674    core_under_test/core/metadata_request_index_reg[8]
+  -------------------------------------------------------------------
+                         required time                          7.674    
+                         arrival time                          -7.553    
+  -------------------------------------------------------------------
+                         slack                                  0.121    
+
+Slack (MET) :             0.121ns  (required time - arrival time)
+  Source:                 core_under_test/core/reclaimer/budget_above_guard_reg/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Destination:            core_under_test/core/metadata_request_index_reg[9]/R
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.666ns  (core_clk rise@6.666ns - core_clk rise@0.000ns)
+  Data Path Delay:        5.837ns  (logic 1.262ns (21.621%)  route 4.575ns (78.379%))
+  Logic Levels:           6  (LUT3=1 LUT5=2 LUT6=3)
+  Clock Path Skew:        -0.044ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.557ns = ( 8.223 - 6.666 ) 
+    Source Clock Delay      (SCD):    1.716ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=9925, unset)         1.716     1.716    core_under_test/core/reclaimer/clk
+    SLICE_X58Y29         FDRE                                         r  core_under_test/core/reclaimer/budget_above_guard_reg/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X58Y29         FDRE (Prop_fdre_C_Q)         0.518     2.234 r  core_under_test/core/reclaimer/budget_above_guard_reg/Q
+                         net (fo=1, routed)           0.984     3.218    core_under_test/core/reclaimer/budget_above_guard
+    SLICE_X67Y28         LUT5 (Prop_lut5_I2_O)        0.124     3.342 f  core_under_test/core/reclaimer/background_chunk[10]_i_12/O
+                         net (fo=2, routed)           0.606     3.949    core_under_test/core/reclaimer/background_chunk[10]_i_12_n_0
+    SLICE_X66Y30         LUT6 (Prop_lut6_I5_O)        0.124     4.073 r  core_under_test/core/reclaimer/maintenance_charge_i_10/O
+                         net (fo=5, routed)           0.482     4.555    core_under_test/core/reclaimer/faulted_reg
+    SLICE_X68Y30         LUT3 (Prop_lut3_I0_O)        0.124     4.679 f  core_under_test/core/reclaimer/maintenance_charge_i_3/O
+                         net (fo=4, routed)           0.334     5.013    core_under_test/core/reclaimer/maintenance_charge_i_3_n_0
+    SLICE_X73Y30         LUT5 (Prop_lut5_I3_O)        0.124     5.137 f  core_under_test/core/reclaimer/metadata_prefetch_i_2/O
+                         net (fo=9, routed)           0.578     5.715    core_under_test/core/reclaimer/p_112_in
+    SLICE_X79Y30         LUT6 (Prop_lut6_I2_O)        0.124     5.839 r  core_under_test/core/reclaimer/maintenance_charge_i_4/O
+                         net (fo=144, routed)         0.904     6.743    core_under_test/core/reclaimer/metadata_pending0
+    SLICE_X73Y41         LUT6 (Prop_lut6_I5_O)        0.124     6.867 r  core_under_test/core/reclaimer/metadata_request_index[31]_i_1/O
+                         net (fo=25, routed)          0.686     7.553    core_under_test/core/reclaimer_n_135
+    SLICE_X73Y39         FDRE                                         r  core_under_test/core/metadata_request_index_reg[9]/R
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      6.666     6.666 r  
+                                                      0.000     6.666 r  clk (IN)
+                         net (fo=9925, unset)         1.557     8.223    core_under_test/core/clk
+    SLICE_X73Y39         FDRE                                         r  core_under_test/core/metadata_request_index_reg[9]/C
+                         clock pessimism              0.115     8.338    
+                         clock uncertainty           -0.235     8.103    
+    SLICE_X73Y39         FDRE (Setup_fdre_C_R)       -0.429     7.674    core_under_test/core/metadata_request_index_reg[9]
+  -------------------------------------------------------------------
+                         required time                          7.674    
+                         arrival time                          -7.553    
+  -------------------------------------------------------------------
+                         slack                                  0.121    
+
+Slack (MET) :             0.133ns  (required time - arrival time)
+  Source:                 core_under_test/core/view_count_reg[2]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Destination:            core_under_test/core/descriptors/memory_reg_0/ADDRARDADDR[8]
+                            (rising edge-triggered cell RAMB36E1 clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.666ns  (core_clk rise@6.666ns - core_clk rise@0.000ns)
+  Data Path Delay:        5.551ns  (logic 1.850ns (33.325%)  route 3.701ns (66.675%))
+  Logic Levels:           7  (CARRY4=4 LUT4=1 LUT5=1 LUT6=1)
+  Clock Path Skew:        -0.181ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.534ns = ( 8.200 - 6.666 ) 
+    Source Clock Delay      (SCD):    1.728ns
+    Clock Pessimism Removal (CPR):    0.013ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=9925, unset)         1.728     1.728    core_under_test/core/clk
+    SLICE_X65Y37         FDRE                                         r  core_under_test/core/view_count_reg[2]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X65Y37         FDRE (Prop_fdre_C_Q)         0.419     2.147 r  core_under_test/core/view_count_reg[2]/Q
+                         net (fo=16, routed)          0.866     3.013    core_under_test/core/descriptors/memory_reg_0_i_105_0[2]
+    SLICE_X62Y38         LUT4 (Prop_lut4_I1_O)        0.299     3.312 r  core_under_test/core/descriptors/memory_reg_0_i_141/O
+                         net (fo=1, routed)           0.000     3.312    core_under_test/core/descriptors/memory_reg_0_i_141_n_0
+    SLICE_X62Y38         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     3.845 r  core_under_test/core/descriptors/memory_reg_0_i_126/CO[3]
+                         net (fo=1, routed)           0.000     3.845    core_under_test/core/descriptors/memory_reg_0_i_126_n_0
+    SLICE_X62Y39         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.962 r  core_under_test/core/descriptors/memory_reg_0_i_117/CO[3]
+                         net (fo=1, routed)           0.000     3.962    core_under_test/core/descriptors/memory_reg_0_i_117_n_0
+    SLICE_X62Y40         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     4.079 r  core_under_test/core/descriptors/memory_reg_0_i_108/CO[3]
+                         net (fo=1, routed)           0.000     4.079    core_under_test/core/descriptors/memory_reg_0_i_108_n_0
+    SLICE_X62Y41         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     4.196 r  core_under_test/core/descriptors/memory_reg_0_i_105/CO[3]
+                         net (fo=1, routed)           0.749     4.945    core_under_test/core/descriptors/memory_reg_0_i_105_n_0
+    SLICE_X60Y38         LUT6 (Prop_lut6_I4_O)        0.124     5.069 r  core_under_test/core/descriptors/memory_reg_0_i_87/O
+                         net (fo=9, routed)           0.667     5.736    core_under_test/core/resolver/memory_reg_2
+    SLICE_X58Y39         LUT5 (Prop_lut5_I3_O)        0.124     5.860 r  core_under_test/core/resolver/memory_reg_0_i_5__0/O
+                         net (fo=3, routed)           1.420     7.279    core_under_test/core/descriptors/read_address[2]
+    RAMB36_X2Y7          RAMB36E1                                     r  core_under_test/core/descriptors/memory_reg_0/ADDRARDADDR[8]
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      6.666     6.666 r  
+                                                      0.000     6.666 r  clk (IN)
+                         net (fo=9925, unset)         1.534     8.200    core_under_test/core/descriptors/clk
+    RAMB36_X2Y7          RAMB36E1                                     r  core_under_test/core/descriptors/memory_reg_0/CLKARDCLK
+                         clock pessimism              0.013     8.213    
+                         clock uncertainty           -0.235     7.978    
+    RAMB36_X2Y7          RAMB36E1 (Setup_ramb36e1_CLKARDCLK_ADDRARDADDR[8])
+                                                     -0.566     7.412    core_under_test/core/descriptors/memory_reg_0
+  -------------------------------------------------------------------
+                         required time                          7.412    
+                         arrival time                          -7.279    
+  -------------------------------------------------------------------
+                         slack                                  0.133    
+
+Slack (MET) :             0.135ns  (required time - arrival time)
+  Source:                 core_under_test/core/view_count_reg[2]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Destination:            core_under_test/core/descriptors/memory_reg_2/REGCEAREGCE
+                            (rising edge-triggered cell RAMB18E1 clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.666ns  (core_clk rise@6.666ns - core_clk rise@0.000ns)
+  Data Path Delay:        5.751ns  (logic 1.974ns (34.323%)  route 3.777ns (65.677%))
+  Logic Levels:           8  (CARRY4=4 LUT2=1 LUT4=1 LUT5=1 LUT6=1)
+  Clock Path Skew:        -0.185ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.530ns = ( 8.196 - 6.666 ) 
+    Source Clock Delay      (SCD):    1.728ns
+    Clock Pessimism Removal (CPR):    0.013ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=9925, unset)         1.728     1.728    core_under_test/core/clk
+    SLICE_X65Y37         FDRE                                         r  core_under_test/core/view_count_reg[2]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X65Y37         FDRE (Prop_fdre_C_Q)         0.419     2.147 r  core_under_test/core/view_count_reg[2]/Q
+                         net (fo=16, routed)          0.866     3.013    core_under_test/core/descriptors/memory_reg_0_i_105_0[2]
+    SLICE_X62Y38         LUT4 (Prop_lut4_I1_O)        0.299     3.312 r  core_under_test/core/descriptors/memory_reg_0_i_141/O
+                         net (fo=1, routed)           0.000     3.312    core_under_test/core/descriptors/memory_reg_0_i_141_n_0
+    SLICE_X62Y38         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     3.845 r  core_under_test/core/descriptors/memory_reg_0_i_126/CO[3]
+                         net (fo=1, routed)           0.000     3.845    core_under_test/core/descriptors/memory_reg_0_i_126_n_0
+    SLICE_X62Y39         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     3.962 r  core_under_test/core/descriptors/memory_reg_0_i_117/CO[3]
+                         net (fo=1, routed)           0.000     3.962    core_under_test/core/descriptors/memory_reg_0_i_117_n_0
+    SLICE_X62Y40         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     4.079 r  core_under_test/core/descriptors/memory_reg_0_i_108/CO[3]
+                         net (fo=1, routed)           0.000     4.079    core_under_test/core/descriptors/memory_reg_0_i_108_n_0
+    SLICE_X62Y41         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     4.196 r  core_under_test/core/descriptors/memory_reg_0_i_105/CO[3]
+                         net (fo=1, routed)           0.749     4.945    core_under_test/core/descriptors/memory_reg_0_i_105_n_0
+    SLICE_X60Y38         LUT6 (Prop_lut6_I4_O)        0.124     5.069 r  core_under_test/core/descriptors/memory_reg_0_i_87/O
+                         net (fo=9, routed)           0.825     5.894    core_under_test/core/descriptors/cfg_request_write_reg
+    SLICE_X46Y38         LUT2 (Prop_lut2_I0_O)        0.124     6.018 r  core_under_test/core/descriptors/memory_reg_2_i_1/O
+                         net (fo=145, routed)         0.985     7.003    core_under_test/core/descriptors/E[0]
+    SLICE_X35Y32         LUT5 (Prop_lut5_I4_O)        0.124     7.127 r  core_under_test/core/descriptors/memory_reg_2_REGCEAREGCE_cooolgate_en_gate_4/O
+                         net (fo=1, routed)           0.352     7.479    core_under_test/core/descriptors/memory_reg_2_REGCEAREGCE_cooolgate_en_sig_4
+    RAMB18_X2Y12         RAMB18E1                                     r  core_under_test/core/descriptors/memory_reg_2/REGCEAREGCE
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      6.666     6.666 r  
+                                                      0.000     6.666 r  clk (IN)
+                         net (fo=9925, unset)         1.530     8.196    core_under_test/core/descriptors/clk
+    RAMB18_X2Y12         RAMB18E1                                     r  core_under_test/core/descriptors/memory_reg_2/CLKARDCLK
+                         clock pessimism              0.013     8.209    
+                         clock uncertainty           -0.235     7.974    
+    RAMB18_X2Y12         RAMB18E1 (Setup_ramb18e1_CLKARDCLK_REGCEAREGCE)
+                                                     -0.360     7.614    core_under_test/core/descriptors/memory_reg_2
+  -------------------------------------------------------------------
+                         required time                          7.614    
+                         arrival time                          -7.479    
+  -------------------------------------------------------------------
+                         slack                                  0.135    
+
+Slack (MET) :             0.138ns  (required time - arrival time)
+  Source:                 core_under_test/core/sample_memory/phase_reg[0]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Destination:            core_under_test/core/cursor_reg[37]/CE
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.666ns  (core_clk rise@6.666ns - core_clk rise@0.000ns)
+  Data Path Delay:        5.812ns  (logic 1.138ns (19.581%)  route 4.674ns (80.419%))
+  Logic Levels:           5  (LUT4=1 LUT6=4)
+  Clock Path Skew:        -0.276ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.494ns = ( 8.160 - 6.666 ) 
+    Source Clock Delay      (SCD):    1.783ns
+    Clock Pessimism Removal (CPR):    0.013ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=9925, unset)         1.783     1.783    core_under_test/core/sample_memory/clk
+    SLICE_X90Y27         FDRE                                         r  core_under_test/core/sample_memory/phase_reg[0]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X90Y27         FDRE (Prop_fdre_C_Q)         0.518     2.301 r  core_under_test/core/sample_memory/phase_reg[0]/Q
+                         net (fo=117, routed)         1.492     3.793    core_under_test/core/sample_memory/phase_reg_n_0_[0]
+    SLICE_X68Y30         LUT6 (Prop_lut6_I4_O)        0.124     3.917 r  core_under_test/core/sample_memory/write_ready_INST_0_i_3_replica/O
+                         net (fo=3, routed)           0.885     4.803    core_under_test/core/sample_memory/cm_write_ready_repN
+    SLICE_X61Y39         LUT6 (Prop_lut6_I5_O)        0.124     4.927 f  core_under_test/core/sample_memory/write_ready_INST_0_i_1_replica/O
+                         net (fo=1, routed)           0.416     5.343    core_under_test/core/sample_memory/write_ready_INST_0_i_1_n_0_repN
+    SLICE_X60Y40         LUT4 (Prop_lut4_I1_O)        0.124     5.467 f  core_under_test/core/sample_memory/sample_index[31]_i_3_replica/O
+                         net (fo=1, routed)           0.428     5.895    core_under_test/core/sample_memory/sample_index[31]_i_3_n_0_repN
+    SLICE_X59Y41         LUT6 (Prop_lut6_I0_O)        0.124     6.019 r  core_under_test/core/sample_memory/cursor[63]_i_3/O
+                         net (fo=1, routed)           0.414     6.432    core_under_test/core/sample_memory/cursor[63]_i_3_n_0
+    SLICE_X56Y42         LUT6 (Prop_lut6_I1_O)        0.124     6.556 r  core_under_test/core/sample_memory/cursor[63]_i_1__0/O
+                         net (fo=64, routed)          1.038     7.595    core_under_test/core/sample_memory_n_168
+    SLICE_X41Y42         FDRE                                         r  core_under_test/core/cursor_reg[37]/CE
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      6.666     6.666 r  
+                                                      0.000     6.666 r  clk (IN)
+                         net (fo=9925, unset)         1.494     8.160    core_under_test/core/clk
+    SLICE_X41Y42         FDRE                                         r  core_under_test/core/cursor_reg[37]/C
+                         clock pessimism              0.013     8.173    
+                         clock uncertainty           -0.235     7.938    
+    SLICE_X41Y42         FDRE (Setup_fdre_C_CE)      -0.205     7.733    core_under_test/core/cursor_reg[37]
+  -------------------------------------------------------------------
+                         required time                          7.733    
+                         arrival time                          -7.595    
+  -------------------------------------------------------------------
+                         slack                                  0.138    
+
+Slack (MET) :             0.138ns  (required time - arrival time)
+  Source:                 core_under_test/core/sample_memory/phase_reg[0]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Destination:            core_under_test/core/cursor_reg[39]/CE
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.666ns  (core_clk rise@6.666ns - core_clk rise@0.000ns)
+  Data Path Delay:        5.812ns  (logic 1.138ns (19.581%)  route 4.674ns (80.419%))
+  Logic Levels:           5  (LUT4=1 LUT6=4)
+  Clock Path Skew:        -0.276ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.494ns = ( 8.160 - 6.666 ) 
+    Source Clock Delay      (SCD):    1.783ns
+    Clock Pessimism Removal (CPR):    0.013ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=9925, unset)         1.783     1.783    core_under_test/core/sample_memory/clk
+    SLICE_X90Y27         FDRE                                         r  core_under_test/core/sample_memory/phase_reg[0]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X90Y27         FDRE (Prop_fdre_C_Q)         0.518     2.301 r  core_under_test/core/sample_memory/phase_reg[0]/Q
+                         net (fo=117, routed)         1.492     3.793    core_under_test/core/sample_memory/phase_reg_n_0_[0]
+    SLICE_X68Y30         LUT6 (Prop_lut6_I4_O)        0.124     3.917 r  core_under_test/core/sample_memory/write_ready_INST_0_i_3_replica/O
+                         net (fo=3, routed)           0.885     4.803    core_under_test/core/sample_memory/cm_write_ready_repN
+    SLICE_X61Y39         LUT6 (Prop_lut6_I5_O)        0.124     4.927 f  core_under_test/core/sample_memory/write_ready_INST_0_i_1_replica/O
+                         net (fo=1, routed)           0.416     5.343    core_under_test/core/sample_memory/write_ready_INST_0_i_1_n_0_repN
+    SLICE_X60Y40         LUT4 (Prop_lut4_I1_O)        0.124     5.467 f  core_under_test/core/sample_memory/sample_index[31]_i_3_replica/O
+                         net (fo=1, routed)           0.428     5.895    core_under_test/core/sample_memory/sample_index[31]_i_3_n_0_repN
+    SLICE_X59Y41         LUT6 (Prop_lut6_I0_O)        0.124     6.019 r  core_under_test/core/sample_memory/cursor[63]_i_3/O
+                         net (fo=1, routed)           0.414     6.432    core_under_test/core/sample_memory/cursor[63]_i_3_n_0
+    SLICE_X56Y42         LUT6 (Prop_lut6_I1_O)        0.124     6.556 r  core_under_test/core/sample_memory/cursor[63]_i_1__0/O
+                         net (fo=64, routed)          1.038     7.595    core_under_test/core/sample_memory_n_168
+    SLICE_X41Y42         FDRE                                         r  core_under_test/core/cursor_reg[39]/CE
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      6.666     6.666 r  
+                                                      0.000     6.666 r  clk (IN)
+                         net (fo=9925, unset)         1.494     8.160    core_under_test/core/clk
+    SLICE_X41Y42         FDRE                                         r  core_under_test/core/cursor_reg[39]/C
+                         clock pessimism              0.013     8.173    
+                         clock uncertainty           -0.235     7.938    
+    SLICE_X41Y42         FDRE (Setup_fdre_C_CE)      -0.205     7.733    core_under_test/core/cursor_reg[39]
+  -------------------------------------------------------------------
+                         required time                          7.733    
+                         arrival time                          -7.595    
+  -------------------------------------------------------------------
+                         slack                                  0.138    
+
+Slack (MET) :             0.138ns  (required time - arrival time)
+  Source:                 core_under_test/core/slot_count_reg[16]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Destination:            core_under_test/core/phase_reg[3]_rep__0_replica_1/CE
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.666ns  (core_clk rise@6.666ns - core_clk rise@0.000ns)
+  Data Path Delay:        6.056ns  (logic 1.720ns (28.399%)  route 4.336ns (71.601%))
+  Logic Levels:           6  (CARRY4=2 LUT4=2 LUT6=2)
+  Clock Path Skew:        -0.067ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.552ns = ( 8.218 - 6.666 ) 
+    Source Clock Delay      (SCD):    1.734ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=9925, unset)         1.734     1.734    core_under_test/core/clk
+    SLICE_X83Y36         FDRE                                         r  core_under_test/core/slot_count_reg[16]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X83Y36         FDRE (Prop_fdre_C_Q)         0.419     2.153 r  core_under_test/core/slot_count_reg[16]/Q
+                         net (fo=20, routed)          1.173     3.326    core_under_test/core/slot_count_reg_n_0_[16]
+    SLICE_X86Y37         LUT4 (Prop_lut4_I0_O)        0.299     3.625 r  core_under_test/core/phase[3]_i_60/O
+                         net (fo=1, routed)           0.000     3.625    core_under_test/core/phase[3]_i_60_n_0
+    SLICE_X86Y37         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.513     4.138 r  core_under_test/core/phase_reg[3]_i_41/CO[3]
+                         net (fo=1, routed)           0.000     4.138    core_under_test/core/phase_reg[3]_i_41_n_0
+    SLICE_X86Y38         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     4.255 r  core_under_test/core/phase_reg[3]_i_32/CO[3]
+                         net (fo=5, routed)           1.143     5.398    core_under_test/core/sample_memory/phase[4]_i_3__1_0[0]
+    SLICE_X81Y31         LUT6 (Prop_lut6_I4_O)        0.124     5.522 f  core_under_test/core/sample_memory/phase[3]_i_15__2/O
+                         net (fo=1, routed)           0.472     5.994    core_under_test/core/sample_memory/phase[3]_i_15__2_n_0
+    SLICE_X73Y30         LUT4 (Prop_lut4_I1_O)        0.124     6.118 f  core_under_test/core/sample_memory/phase[3]_i_5__3/O
+                         net (fo=1, routed)           0.610     6.728    core_under_test/core/sample_memory/phase[3]_i_5__3_n_0
+    SLICE_X63Y29         LUT6 (Prop_lut6_I0_O)        0.124     6.852 r  core_under_test/core/sample_memory/phase[3]_i_2__4/O
+                         net (fo=18, routed)          0.939     7.790    core_under_test/core/sample_memory_n_45
+    SLICE_X66Y36         FDRE                                         r  core_under_test/core/phase_reg[3]_rep__0_replica_1/CE
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      6.666     6.666 r  
+                                                      0.000     6.666 r  clk (IN)
+                         net (fo=9925, unset)         1.552     8.218    core_under_test/core/clk
+    SLICE_X66Y36         FDRE                                         r  core_under_test/core/phase_reg[3]_rep__0_replica_1/C
+                         clock pessimism              0.115     8.333    
+                         clock uncertainty           -0.235     8.098    
+    SLICE_X66Y36         FDRE (Setup_fdre_C_CE)      -0.169     7.929    core_under_test/core/phase_reg[3]_rep__0_replica_1
+  -------------------------------------------------------------------
+                         required time                          7.929    
+                         arrival time                          -7.790    
+  -------------------------------------------------------------------
+                         slack                                  0.138    
+
+Slack (MET) :             0.140ns  (required time - arrival time)
+  Source:                 core_under_test/core/sample_memory/dma_chunk_reg[3]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Destination:            core_under_test/core/sample_memory/write_ram/block_memory.samples_reg/DIADI[2]
+                            (rising edge-triggered cell RAMB36E1 clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.666ns  (core_clk rise@6.666ns - core_clk rise@0.000ns)
+  Data Path Delay:        5.967ns  (logic 1.485ns (24.889%)  route 4.482ns (75.111%))
+  Logic Levels:           5  (CARRY4=1 LUT4=2 LUT5=1 LUT6=1)
+  Clock Path Skew:        -0.084ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.585ns = ( 8.251 - 6.666 ) 
+    Source Clock Delay      (SCD):    1.784ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=9925, unset)         1.784     1.784    core_under_test/core/sample_memory/clk
+    SLICE_X95Y23         FDRE                                         r  core_under_test/core/sample_memory/dma_chunk_reg[3]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X95Y23         FDRE (Prop_fdre_C_Q)         0.456     2.240 r  core_under_test/core/sample_memory/dma_chunk_reg[3]/Q
+                         net (fo=6, routed)           0.966     3.206    core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_116_0[3]
+    SLICE_X94Y22         LUT6 (Prop_lut6_I0_O)        0.124     3.330 r  core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_121/O
+                         net (fo=1, routed)           0.000     3.330    core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_121_n_0
+    SLICE_X94Y22         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     3.863 f  core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_116/CO[3]
+                         net (fo=4, routed)           0.785     4.648    core_under_test/core/sample_memory/read_ram/CO[0]
+    SLICE_X94Y19         LUT5 (Prop_lut5_I1_O)        0.124     4.772 r  core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_107/O
+                         net (fo=9, routed)           1.143     5.914    core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_1
+    SLICE_X71Y19         LUT4 (Prop_lut4_I3_O)        0.124     6.038 r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_i_45__0/O
+                         net (fo=40, routed)          1.000     7.038    core_under_test/core/sample_memory/write_ram/dma_write_pool_reg
+    SLICE_X56Y13         LUT4 (Prop_lut4_I1_O)        0.124     7.162 r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_i_40__0/O
+                         net (fo=1, routed)           0.589     7.751    core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_i_40__0_n_0
+    RAMB36_X3Y3          RAMB36E1                                     r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg/DIADI[2]
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      6.666     6.666 r  
+                                                      0.000     6.666 r  clk (IN)
+                         net (fo=9925, unset)         1.585     8.251    core_under_test/core/sample_memory/write_ram/clk
+    RAMB36_X3Y3          RAMB36E1                                     r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg/CLKARDCLK
+                         clock pessimism              0.115     8.366    
+                         clock uncertainty           -0.235     8.131    
+    RAMB36_X3Y3          RAMB36E1 (Setup_ramb36e1_CLKARDCLK_DIADI[2])
+                                                     -0.241     7.890    core_under_test/core/sample_memory/write_ram/block_memory.samples_reg
+  -------------------------------------------------------------------
+                         required time                          7.890    
+                         arrival time                          -7.751    
+  -------------------------------------------------------------------
+                         slack                                  0.140    
+
+Slack (MET) :             0.145ns  (required time - arrival time)
+  Source:                 core_under_test/core/sample_memory/dma_chunk_reg[3]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Destination:            core_under_test/core/sample_memory/write_ram/block_memory.samples_reg/DIADI[27]
+                            (rising edge-triggered cell RAMB36E1 clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.666ns  (core_clk rise@6.666ns - core_clk rise@0.000ns)
+  Data Path Delay:        5.961ns  (logic 1.485ns (24.910%)  route 4.476ns (75.090%))
+  Logic Levels:           5  (CARRY4=1 LUT4=2 LUT5=1 LUT6=1)
+  Clock Path Skew:        -0.084ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.585ns = ( 8.251 - 6.666 ) 
+    Source Clock Delay      (SCD):    1.784ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=9925, unset)         1.784     1.784    core_under_test/core/sample_memory/clk
+    SLICE_X95Y23         FDRE                                         r  core_under_test/core/sample_memory/dma_chunk_reg[3]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X95Y23         FDRE (Prop_fdre_C_Q)         0.456     2.240 r  core_under_test/core/sample_memory/dma_chunk_reg[3]/Q
+                         net (fo=6, routed)           0.966     3.206    core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_116_0[3]
+    SLICE_X94Y22         LUT6 (Prop_lut6_I0_O)        0.124     3.330 r  core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_121/O
+                         net (fo=1, routed)           0.000     3.330    core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_121_n_0
+    SLICE_X94Y22         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     3.863 f  core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_116/CO[3]
+                         net (fo=4, routed)           0.785     4.648    core_under_test/core/sample_memory/read_ram/CO[0]
+    SLICE_X94Y19         LUT5 (Prop_lut5_I1_O)        0.124     4.772 r  core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_107/O
+                         net (fo=9, routed)           1.143     5.914    core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_1
+    SLICE_X71Y19         LUT4 (Prop_lut4_I3_O)        0.124     6.038 r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_i_45__0/O
+                         net (fo=40, routed)          1.092     7.130    core_under_test/core/sample_memory/write_ram/dma_write_pool_reg
+    SLICE_X55Y13         LUT4 (Prop_lut4_I1_O)        0.124     7.254 r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_i_15/O
+                         net (fo=1, routed)           0.491     7.745    core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_i_15_n_0
+    RAMB36_X3Y3          RAMB36E1                                     r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg/DIADI[27]
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      6.666     6.666 r  
+                                                      0.000     6.666 r  clk (IN)
+                         net (fo=9925, unset)         1.585     8.251    core_under_test/core/sample_memory/write_ram/clk
+    RAMB36_X3Y3          RAMB36E1                                     r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg/CLKARDCLK
+                         clock pessimism              0.115     8.366    
+                         clock uncertainty           -0.235     8.131    
+    RAMB36_X3Y3          RAMB36E1 (Setup_ramb36e1_CLKARDCLK_DIADI[27])
+                                                     -0.241     7.890    core_under_test/core/sample_memory/write_ram/block_memory.samples_reg
+  -------------------------------------------------------------------
+                         required time                          7.890    
+                         arrival time                          -7.745    
+  -------------------------------------------------------------------
+                         slack                                  0.145    
+
+Slack (MET) :             0.145ns  (required time - arrival time)
+  Source:                 core_under_test/core/sample_memory/phase_reg[0]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Destination:            core_under_test/core/cursor_reg[55]/CE
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.666ns  (core_clk rise@6.666ns - core_clk rise@0.000ns)
+  Data Path Delay:        5.804ns  (logic 1.138ns (19.606%)  route 4.666ns (80.394%))
+  Logic Levels:           5  (LUT4=1 LUT6=4)
+  Clock Path Skew:        -0.276ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.494ns = ( 8.160 - 6.666 ) 
+    Source Clock Delay      (SCD):    1.783ns
+    Clock Pessimism Removal (CPR):    0.013ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=9925, unset)         1.783     1.783    core_under_test/core/sample_memory/clk
+    SLICE_X90Y27         FDRE                                         r  core_under_test/core/sample_memory/phase_reg[0]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X90Y27         FDRE (Prop_fdre_C_Q)         0.518     2.301 r  core_under_test/core/sample_memory/phase_reg[0]/Q
+                         net (fo=117, routed)         1.492     3.793    core_under_test/core/sample_memory/phase_reg_n_0_[0]
+    SLICE_X68Y30         LUT6 (Prop_lut6_I4_O)        0.124     3.917 r  core_under_test/core/sample_memory/write_ready_INST_0_i_3_replica/O
+                         net (fo=3, routed)           0.885     4.803    core_under_test/core/sample_memory/cm_write_ready_repN
+    SLICE_X61Y39         LUT6 (Prop_lut6_I5_O)        0.124     4.927 f  core_under_test/core/sample_memory/write_ready_INST_0_i_1_replica/O
+                         net (fo=1, routed)           0.416     5.343    core_under_test/core/sample_memory/write_ready_INST_0_i_1_n_0_repN
+    SLICE_X60Y40         LUT4 (Prop_lut4_I1_O)        0.124     5.467 f  core_under_test/core/sample_memory/sample_index[31]_i_3_replica/O
+                         net (fo=1, routed)           0.428     5.895    core_under_test/core/sample_memory/sample_index[31]_i_3_n_0_repN
+    SLICE_X59Y41         LUT6 (Prop_lut6_I0_O)        0.124     6.019 r  core_under_test/core/sample_memory/cursor[63]_i_3/O
+                         net (fo=1, routed)           0.414     6.432    core_under_test/core/sample_memory/cursor[63]_i_3_n_0
+    SLICE_X56Y42         LUT6 (Prop_lut6_I1_O)        0.124     6.556 r  core_under_test/core/sample_memory/cursor[63]_i_1__0/O
+                         net (fo=64, routed)          1.031     7.587    core_under_test/core/sample_memory_n_168
+    SLICE_X47Y45         FDRE                                         r  core_under_test/core/cursor_reg[55]/CE
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      6.666     6.666 r  
+                                                      0.000     6.666 r  clk (IN)
+                         net (fo=9925, unset)         1.494     8.160    core_under_test/core/clk
+    SLICE_X47Y45         FDRE                                         r  core_under_test/core/cursor_reg[55]/C
+                         clock pessimism              0.013     8.173    
+                         clock uncertainty           -0.235     7.938    
+    SLICE_X47Y45         FDRE (Setup_fdre_C_CE)      -0.205     7.733    core_under_test/core/cursor_reg[55]
+  -------------------------------------------------------------------
+                         required time                          7.733    
+                         arrival time                          -7.587    
+  -------------------------------------------------------------------
+                         slack                                  0.145    
+
+Slack (MET) :             0.146ns  (required time - arrival time)
+  Source:                 core_under_test/core/sample_memory/chunk_reg[9]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Destination:            core_under_test/core/sample_memory/phase_reg[0]/D
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.666ns  (core_clk rise@6.666ns - core_clk rise@0.000ns)
+  Data Path Delay:        6.302ns  (logic 1.601ns (25.405%)  route 4.701ns (74.595%))
+  Logic Levels:           7  (CARRY4=1 LUT4=2 LUT5=1 LUT6=3)
+  Clock Path Skew:        -0.060ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.608ns = ( 8.274 - 6.666 ) 
+    Source Clock Delay      (SCD):    1.783ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=9925, unset)         1.783     1.783    core_under_test/core/sample_memory/clk
+    SLICE_X93Y22         FDRE                                         r  core_under_test/core/sample_memory/chunk_reg[9]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X93Y22         FDRE (Prop_fdre_C_Q)         0.456     2.239 r  core_under_test/core/sample_memory/chunk_reg[9]/Q
+                         net (fo=31, routed)          1.320     3.559    core_under_test/core/sample_memory/chunk_reg[10]_0[4]
+    SLICE_X99Y27         LUT4 (Prop_lut4_I0_O)        0.124     3.683 r  core_under_test/core/sample_memory/line[1]_i_12/O
+                         net (fo=1, routed)           0.000     3.683    core_under_test/core/sample_memory/line[1]_i_12_n_0
+    SLICE_X99Y27         CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.401     4.084 r  core_under_test/core/sample_memory/line_reg[1]_i_10/CO[3]
+                         net (fo=3, routed)           1.004     5.088    core_under_test/core/sample_memory/write_hit216_out
+    SLICE_X98Y26         LUT4 (Prop_lut4_I0_O)        0.124     5.212 f  core_under_test/core/sample_memory/line[1]_i_4/O
+                         net (fo=3, routed)           0.527     5.739    core_under_test/core/sample_memory/write_present_reg[2]_0
+    SLICE_X96Y25         LUT5 (Prop_lut5_I0_O)        0.124     5.863 f  core_under_test/core/sample_memory/flush_requested_i_3/O
+                         net (fo=12, routed)          0.520     6.383    core_under_test/core/sample_memory/write_present_reg[0]_0
+    SLICE_X95Y25         LUT6 (Prop_lut6_I0_O)        0.124     6.507 r  core_under_test/core/sample_memory/phase[0]_i_9__1/O
+                         net (fo=2, routed)           0.773     7.280    core_under_test/core/sample_memory/phase[0]_i_9__1_n_0
+    SLICE_X91Y25         LUT6 (Prop_lut6_I3_O)        0.124     7.404 r  core_under_test/core/sample_memory/phase[0]_i_3__3/O
+                         net (fo=1, routed)           0.557     7.961    core_under_test/core/sample_memory/phase[0]_i_3__3_n_0
+    SLICE_X90Y27         LUT6 (Prop_lut6_I1_O)        0.124     8.085 r  core_under_test/core/sample_memory/phase[0]_i_1__1/O
+                         net (fo=1, routed)           0.000     8.085    core_under_test/core/sample_memory/phase[0]_i_1__1_n_0
+    SLICE_X90Y27         FDRE                                         r  core_under_test/core/sample_memory/phase_reg[0]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      6.666     6.666 r  
+                                                      0.000     6.666 r  clk (IN)
+                         net (fo=9925, unset)         1.608     8.274    core_under_test/core/sample_memory/clk
+    SLICE_X90Y27         FDRE                                         r  core_under_test/core/sample_memory/phase_reg[0]/C
+                         clock pessimism              0.115     8.389    
+                         clock uncertainty           -0.235     8.154    
+    SLICE_X90Y27         FDRE (Setup_fdre_C_D)        0.077     8.231    core_under_test/core/sample_memory/phase_reg[0]
+  -------------------------------------------------------------------
+                         required time                          8.231    
+                         arrival time                          -8.085    
+  -------------------------------------------------------------------
+                         slack                                  0.146    
+
+Slack (MET) :             0.148ns  (required time - arrival time)
+  Source:                 core_under_test/core/sample_memory/phase_reg[0]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Destination:            core_under_test/core/cursor_reg[52]/CE
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.666ns  (core_clk rise@6.666ns - core_clk rise@0.000ns)
+  Data Path Delay:        5.802ns  (logic 1.138ns (19.615%)  route 4.664ns (80.385%))
+  Logic Levels:           5  (LUT4=1 LUT6=4)
+  Clock Path Skew:        -0.276ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.494ns = ( 8.160 - 6.666 ) 
+    Source Clock Delay      (SCD):    1.783ns
+    Clock Pessimism Removal (CPR):    0.013ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=9925, unset)         1.783     1.783    core_under_test/core/sample_memory/clk
+    SLICE_X90Y27         FDRE                                         r  core_under_test/core/sample_memory/phase_reg[0]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X90Y27         FDRE (Prop_fdre_C_Q)         0.518     2.301 r  core_under_test/core/sample_memory/phase_reg[0]/Q
+                         net (fo=117, routed)         1.492     3.793    core_under_test/core/sample_memory/phase_reg_n_0_[0]
+    SLICE_X68Y30         LUT6 (Prop_lut6_I4_O)        0.124     3.917 r  core_under_test/core/sample_memory/write_ready_INST_0_i_3_replica/O
+                         net (fo=3, routed)           0.885     4.803    core_under_test/core/sample_memory/cm_write_ready_repN
+    SLICE_X61Y39         LUT6 (Prop_lut6_I5_O)        0.124     4.927 f  core_under_test/core/sample_memory/write_ready_INST_0_i_1_replica/O
+                         net (fo=1, routed)           0.416     5.343    core_under_test/core/sample_memory/write_ready_INST_0_i_1_n_0_repN
+    SLICE_X60Y40         LUT4 (Prop_lut4_I1_O)        0.124     5.467 f  core_under_test/core/sample_memory/sample_index[31]_i_3_replica/O
+                         net (fo=1, routed)           0.428     5.895    core_under_test/core/sample_memory/sample_index[31]_i_3_n_0_repN
+    SLICE_X59Y41         LUT6 (Prop_lut6_I0_O)        0.124     6.019 r  core_under_test/core/sample_memory/cursor[63]_i_3/O
+                         net (fo=1, routed)           0.414     6.432    core_under_test/core/sample_memory/cursor[63]_i_3_n_0
+    SLICE_X56Y42         LUT6 (Prop_lut6_I1_O)        0.124     6.556 r  core_under_test/core/sample_memory/cursor[63]_i_1__0/O
+                         net (fo=64, routed)          1.028     7.585    core_under_test/core/sample_memory_n_168
+    SLICE_X44Y44         FDRE                                         r  core_under_test/core/cursor_reg[52]/CE
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      6.666     6.666 r  
+                                                      0.000     6.666 r  clk (IN)
+                         net (fo=9925, unset)         1.494     8.160    core_under_test/core/clk
+    SLICE_X44Y44         FDRE                                         r  core_under_test/core/cursor_reg[52]/C
+                         clock pessimism              0.013     8.173    
+                         clock uncertainty           -0.235     7.938    
+    SLICE_X44Y44         FDRE (Setup_fdre_C_CE)      -0.205     7.733    core_under_test/core/cursor_reg[52]
+  -------------------------------------------------------------------
+                         required time                          7.733    
+                         arrival time                          -7.585    
+  -------------------------------------------------------------------
+                         slack                                  0.148    
+
+Slack (MET) :             0.149ns  (required time - arrival time)
+  Source:                 core_under_test/core/metadata/retired_count_reg[1]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Destination:            core_under_test/core/metadata/retired_high_water_reg[1]/CE
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.666ns  (core_clk rise@6.666ns - core_clk rise@0.000ns)
+  Data Path Delay:        6.019ns  (logic 2.879ns (47.830%)  route 3.140ns (52.170%))
+  Logic Levels:           11  (CARRY4=9 LUT2=1 LUT4=1)
+  Clock Path Skew:        -0.057ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.488ns = ( 8.154 - 6.666 ) 
+    Source Clock Delay      (SCD):    1.660ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=9925, unset)         1.660     1.660    core_under_test/core/metadata/clk
+    SLICE_X44Y16         FDRE                                         r  core_under_test/core/metadata/retired_count_reg[1]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X44Y16         FDRE (Prop_fdre_C_Q)         0.456     2.116 r  core_under_test/core/metadata/retired_count_reg[1]/Q
+                         net (fo=8, routed)           0.637     2.753    core_under_test/core/metadata/retired_count_reg[31]_0[1]
+    SLICE_X43Y16         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.656     3.409 r  core_under_test/core/metadata/retired_high_water_reg[4]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.409    core_under_test/core/metadata/retired_high_water_reg[4]_i_1_n_0
+    SLICE_X43Y17         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.523 r  core_under_test/core/metadata/retired_high_water_reg[8]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.523    core_under_test/core/metadata/retired_high_water_reg[8]_i_1_n_0
+    SLICE_X43Y18         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.637 r  core_under_test/core/metadata/retired_high_water_reg[12]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.637    core_under_test/core/metadata/retired_high_water_reg[12]_i_1_n_0
+    SLICE_X43Y19         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.751 r  core_under_test/core/metadata/retired_high_water_reg[16]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.751    core_under_test/core/metadata/retired_high_water_reg[16]_i_1_n_0
+    SLICE_X43Y20         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.865 r  core_under_test/core/metadata/retired_high_water_reg[20]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.865    core_under_test/core/metadata/retired_high_water_reg[20]_i_1_n_0
+    SLICE_X43Y21         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.979 r  core_under_test/core/metadata/retired_high_water_reg[24]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.979    core_under_test/core/metadata/retired_high_water_reg[24]_i_1_n_0
+    SLICE_X43Y22         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     4.093 r  core_under_test/core/metadata/retired_high_water_reg[28]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     4.093    core_under_test/core/metadata/retired_high_water_reg[28]_i_1_n_0
+    SLICE_X43Y23         CARRY4 (Prop_carry4_CI_O[2])
+                                                      0.256     4.349 r  core_under_test/core/metadata/retired_high_water_reg[31]_i_2/O[2]
+                         net (fo=4, routed)           0.800     5.149    core_under_test/core/metadata/retired_high_water_reg[31]_i_2_n_5
+    SLICE_X44Y21         LUT4 (Prop_lut4_I1_O)        0.302     5.451 r  core_under_test/core/metadata/retired_high_water[31]_i_9/O
+                         net (fo=1, routed)           0.000     5.451    core_under_test/core/metadata/retired_high_water[31]_i_9_n_0
+    SLICE_X44Y21         CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.401     5.852 r  core_under_test/core/metadata/retired_high_water_reg[31]_i_3/CO[3]
+                         net (fo=1, routed)           0.890     6.742    core_under_test/core/metadata/retired_high_water0
+    SLICE_X45Y21         LUT2 (Prop_lut2_I0_O)        0.124     6.866 r  core_under_test/core/metadata/retired_high_water[31]_i_1/O
+                         net (fo=32, routed)          0.813     7.679    core_under_test/core/metadata/retired_high_water[31]_i_1_n_0
+    SLICE_X43Y16         FDRE                                         r  core_under_test/core/metadata/retired_high_water_reg[1]/CE
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      6.666     6.666 r  
+                                                      0.000     6.666 r  clk (IN)
+                         net (fo=9925, unset)         1.488     8.154    core_under_test/core/metadata/clk
+    SLICE_X43Y16         FDRE                                         r  core_under_test/core/metadata/retired_high_water_reg[1]/C
+                         clock pessimism              0.115     8.269    
+                         clock uncertainty           -0.235     8.034    
+    SLICE_X43Y16         FDRE (Setup_fdre_C_CE)      -0.205     7.829    core_under_test/core/metadata/retired_high_water_reg[1]
+  -------------------------------------------------------------------
+                         required time                          7.829    
+                         arrival time                          -7.679    
+  -------------------------------------------------------------------
+                         slack                                  0.149    
+
+Slack (MET) :             0.149ns  (required time - arrival time)
+  Source:                 core_under_test/core/metadata/retired_count_reg[1]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Destination:            core_under_test/core/metadata/retired_high_water_reg[2]/CE
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.666ns  (core_clk rise@6.666ns - core_clk rise@0.000ns)
+  Data Path Delay:        6.019ns  (logic 2.879ns (47.830%)  route 3.140ns (52.170%))
+  Logic Levels:           11  (CARRY4=9 LUT2=1 LUT4=1)
+  Clock Path Skew:        -0.057ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.488ns = ( 8.154 - 6.666 ) 
+    Source Clock Delay      (SCD):    1.660ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=9925, unset)         1.660     1.660    core_under_test/core/metadata/clk
+    SLICE_X44Y16         FDRE                                         r  core_under_test/core/metadata/retired_count_reg[1]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X44Y16         FDRE (Prop_fdre_C_Q)         0.456     2.116 r  core_under_test/core/metadata/retired_count_reg[1]/Q
+                         net (fo=8, routed)           0.637     2.753    core_under_test/core/metadata/retired_count_reg[31]_0[1]
+    SLICE_X43Y16         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.656     3.409 r  core_under_test/core/metadata/retired_high_water_reg[4]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.409    core_under_test/core/metadata/retired_high_water_reg[4]_i_1_n_0
+    SLICE_X43Y17         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.523 r  core_under_test/core/metadata/retired_high_water_reg[8]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.523    core_under_test/core/metadata/retired_high_water_reg[8]_i_1_n_0
+    SLICE_X43Y18         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.637 r  core_under_test/core/metadata/retired_high_water_reg[12]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.637    core_under_test/core/metadata/retired_high_water_reg[12]_i_1_n_0
+    SLICE_X43Y19         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.751 r  core_under_test/core/metadata/retired_high_water_reg[16]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.751    core_under_test/core/metadata/retired_high_water_reg[16]_i_1_n_0
+    SLICE_X43Y20         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.865 r  core_under_test/core/metadata/retired_high_water_reg[20]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.865    core_under_test/core/metadata/retired_high_water_reg[20]_i_1_n_0
+    SLICE_X43Y21         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.979 r  core_under_test/core/metadata/retired_high_water_reg[24]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.979    core_under_test/core/metadata/retired_high_water_reg[24]_i_1_n_0
+    SLICE_X43Y22         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     4.093 r  core_under_test/core/metadata/retired_high_water_reg[28]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     4.093    core_under_test/core/metadata/retired_high_water_reg[28]_i_1_n_0
+    SLICE_X43Y23         CARRY4 (Prop_carry4_CI_O[2])
+                                                      0.256     4.349 r  core_under_test/core/metadata/retired_high_water_reg[31]_i_2/O[2]
+                         net (fo=4, routed)           0.800     5.149    core_under_test/core/metadata/retired_high_water_reg[31]_i_2_n_5
+    SLICE_X44Y21         LUT4 (Prop_lut4_I1_O)        0.302     5.451 r  core_under_test/core/metadata/retired_high_water[31]_i_9/O
+                         net (fo=1, routed)           0.000     5.451    core_under_test/core/metadata/retired_high_water[31]_i_9_n_0
+    SLICE_X44Y21         CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.401     5.852 r  core_under_test/core/metadata/retired_high_water_reg[31]_i_3/CO[3]
+                         net (fo=1, routed)           0.890     6.742    core_under_test/core/metadata/retired_high_water0
+    SLICE_X45Y21         LUT2 (Prop_lut2_I0_O)        0.124     6.866 r  core_under_test/core/metadata/retired_high_water[31]_i_1/O
+                         net (fo=32, routed)          0.813     7.679    core_under_test/core/metadata/retired_high_water[31]_i_1_n_0
+    SLICE_X43Y16         FDRE                                         r  core_under_test/core/metadata/retired_high_water_reg[2]/CE
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      6.666     6.666 r  
+                                                      0.000     6.666 r  clk (IN)
+                         net (fo=9925, unset)         1.488     8.154    core_under_test/core/metadata/clk
+    SLICE_X43Y16         FDRE                                         r  core_under_test/core/metadata/retired_high_water_reg[2]/C
+                         clock pessimism              0.115     8.269    
+                         clock uncertainty           -0.235     8.034    
+    SLICE_X43Y16         FDRE (Setup_fdre_C_CE)      -0.205     7.829    core_under_test/core/metadata/retired_high_water_reg[2]
+  -------------------------------------------------------------------
+                         required time                          7.829    
+                         arrival time                          -7.679    
+  -------------------------------------------------------------------
+                         slack                                  0.149    
+
+Slack (MET) :             0.149ns  (required time - arrival time)
+  Source:                 core_under_test/core/metadata/retired_count_reg[1]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Destination:            core_under_test/core/metadata/retired_high_water_reg[3]/CE
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.666ns  (core_clk rise@6.666ns - core_clk rise@0.000ns)
+  Data Path Delay:        6.019ns  (logic 2.879ns (47.830%)  route 3.140ns (52.170%))
+  Logic Levels:           11  (CARRY4=9 LUT2=1 LUT4=1)
+  Clock Path Skew:        -0.057ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.488ns = ( 8.154 - 6.666 ) 
+    Source Clock Delay      (SCD):    1.660ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=9925, unset)         1.660     1.660    core_under_test/core/metadata/clk
+    SLICE_X44Y16         FDRE                                         r  core_under_test/core/metadata/retired_count_reg[1]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X44Y16         FDRE (Prop_fdre_C_Q)         0.456     2.116 r  core_under_test/core/metadata/retired_count_reg[1]/Q
+                         net (fo=8, routed)           0.637     2.753    core_under_test/core/metadata/retired_count_reg[31]_0[1]
+    SLICE_X43Y16         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.656     3.409 r  core_under_test/core/metadata/retired_high_water_reg[4]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.409    core_under_test/core/metadata/retired_high_water_reg[4]_i_1_n_0
+    SLICE_X43Y17         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.523 r  core_under_test/core/metadata/retired_high_water_reg[8]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.523    core_under_test/core/metadata/retired_high_water_reg[8]_i_1_n_0
+    SLICE_X43Y18         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.637 r  core_under_test/core/metadata/retired_high_water_reg[12]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.637    core_under_test/core/metadata/retired_high_water_reg[12]_i_1_n_0
+    SLICE_X43Y19         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.751 r  core_under_test/core/metadata/retired_high_water_reg[16]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.751    core_under_test/core/metadata/retired_high_water_reg[16]_i_1_n_0
+    SLICE_X43Y20         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.865 r  core_under_test/core/metadata/retired_high_water_reg[20]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.865    core_under_test/core/metadata/retired_high_water_reg[20]_i_1_n_0
+    SLICE_X43Y21         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.979 r  core_under_test/core/metadata/retired_high_water_reg[24]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.979    core_under_test/core/metadata/retired_high_water_reg[24]_i_1_n_0
+    SLICE_X43Y22         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     4.093 r  core_under_test/core/metadata/retired_high_water_reg[28]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     4.093    core_under_test/core/metadata/retired_high_water_reg[28]_i_1_n_0
+    SLICE_X43Y23         CARRY4 (Prop_carry4_CI_O[2])
+                                                      0.256     4.349 r  core_under_test/core/metadata/retired_high_water_reg[31]_i_2/O[2]
+                         net (fo=4, routed)           0.800     5.149    core_under_test/core/metadata/retired_high_water_reg[31]_i_2_n_5
+    SLICE_X44Y21         LUT4 (Prop_lut4_I1_O)        0.302     5.451 r  core_under_test/core/metadata/retired_high_water[31]_i_9/O
+                         net (fo=1, routed)           0.000     5.451    core_under_test/core/metadata/retired_high_water[31]_i_9_n_0
+    SLICE_X44Y21         CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.401     5.852 r  core_under_test/core/metadata/retired_high_water_reg[31]_i_3/CO[3]
+                         net (fo=1, routed)           0.890     6.742    core_under_test/core/metadata/retired_high_water0
+    SLICE_X45Y21         LUT2 (Prop_lut2_I0_O)        0.124     6.866 r  core_under_test/core/metadata/retired_high_water[31]_i_1/O
+                         net (fo=32, routed)          0.813     7.679    core_under_test/core/metadata/retired_high_water[31]_i_1_n_0
+    SLICE_X43Y16         FDRE                                         r  core_under_test/core/metadata/retired_high_water_reg[3]/CE
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      6.666     6.666 r  
+                                                      0.000     6.666 r  clk (IN)
+                         net (fo=9925, unset)         1.488     8.154    core_under_test/core/metadata/clk
+    SLICE_X43Y16         FDRE                                         r  core_under_test/core/metadata/retired_high_water_reg[3]/C
+                         clock pessimism              0.115     8.269    
+                         clock uncertainty           -0.235     8.034    
+    SLICE_X43Y16         FDRE (Setup_fdre_C_CE)      -0.205     7.829    core_under_test/core/metadata/retired_high_water_reg[3]
+  -------------------------------------------------------------------
+                         required time                          7.829    
+                         arrival time                          -7.679    
+  -------------------------------------------------------------------
+                         slack                                  0.149    
+
+Slack (MET) :             0.149ns  (required time - arrival time)
+  Source:                 core_under_test/core/metadata/retired_count_reg[1]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Destination:            core_under_test/core/metadata/retired_high_water_reg[4]/CE
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.666ns  (core_clk rise@6.666ns - core_clk rise@0.000ns)
+  Data Path Delay:        6.019ns  (logic 2.879ns (47.830%)  route 3.140ns (52.170%))
+  Logic Levels:           11  (CARRY4=9 LUT2=1 LUT4=1)
+  Clock Path Skew:        -0.057ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.488ns = ( 8.154 - 6.666 ) 
+    Source Clock Delay      (SCD):    1.660ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=9925, unset)         1.660     1.660    core_under_test/core/metadata/clk
+    SLICE_X44Y16         FDRE                                         r  core_under_test/core/metadata/retired_count_reg[1]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X44Y16         FDRE (Prop_fdre_C_Q)         0.456     2.116 r  core_under_test/core/metadata/retired_count_reg[1]/Q
+                         net (fo=8, routed)           0.637     2.753    core_under_test/core/metadata/retired_count_reg[31]_0[1]
+    SLICE_X43Y16         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.656     3.409 r  core_under_test/core/metadata/retired_high_water_reg[4]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.409    core_under_test/core/metadata/retired_high_water_reg[4]_i_1_n_0
+    SLICE_X43Y17         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.523 r  core_under_test/core/metadata/retired_high_water_reg[8]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.523    core_under_test/core/metadata/retired_high_water_reg[8]_i_1_n_0
+    SLICE_X43Y18         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.637 r  core_under_test/core/metadata/retired_high_water_reg[12]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.637    core_under_test/core/metadata/retired_high_water_reg[12]_i_1_n_0
+    SLICE_X43Y19         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.751 r  core_under_test/core/metadata/retired_high_water_reg[16]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.751    core_under_test/core/metadata/retired_high_water_reg[16]_i_1_n_0
+    SLICE_X43Y20         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.865 r  core_under_test/core/metadata/retired_high_water_reg[20]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.865    core_under_test/core/metadata/retired_high_water_reg[20]_i_1_n_0
+    SLICE_X43Y21         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.979 r  core_under_test/core/metadata/retired_high_water_reg[24]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.979    core_under_test/core/metadata/retired_high_water_reg[24]_i_1_n_0
+    SLICE_X43Y22         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     4.093 r  core_under_test/core/metadata/retired_high_water_reg[28]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     4.093    core_under_test/core/metadata/retired_high_water_reg[28]_i_1_n_0
+    SLICE_X43Y23         CARRY4 (Prop_carry4_CI_O[2])
+                                                      0.256     4.349 r  core_under_test/core/metadata/retired_high_water_reg[31]_i_2/O[2]
+                         net (fo=4, routed)           0.800     5.149    core_under_test/core/metadata/retired_high_water_reg[31]_i_2_n_5
+    SLICE_X44Y21         LUT4 (Prop_lut4_I1_O)        0.302     5.451 r  core_under_test/core/metadata/retired_high_water[31]_i_9/O
+                         net (fo=1, routed)           0.000     5.451    core_under_test/core/metadata/retired_high_water[31]_i_9_n_0
+    SLICE_X44Y21         CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.401     5.852 r  core_under_test/core/metadata/retired_high_water_reg[31]_i_3/CO[3]
+                         net (fo=1, routed)           0.890     6.742    core_under_test/core/metadata/retired_high_water0
+    SLICE_X45Y21         LUT2 (Prop_lut2_I0_O)        0.124     6.866 r  core_under_test/core/metadata/retired_high_water[31]_i_1/O
+                         net (fo=32, routed)          0.813     7.679    core_under_test/core/metadata/retired_high_water[31]_i_1_n_0
+    SLICE_X43Y16         FDRE                                         r  core_under_test/core/metadata/retired_high_water_reg[4]/CE
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      6.666     6.666 r  
+                                                      0.000     6.666 r  clk (IN)
+                         net (fo=9925, unset)         1.488     8.154    core_under_test/core/metadata/clk
+    SLICE_X43Y16         FDRE                                         r  core_under_test/core/metadata/retired_high_water_reg[4]/C
+                         clock pessimism              0.115     8.269    
+                         clock uncertainty           -0.235     8.034    
+    SLICE_X43Y16         FDRE (Setup_fdre_C_CE)      -0.205     7.829    core_under_test/core/metadata/retired_high_water_reg[4]
+  -------------------------------------------------------------------
+                         required time                          7.829    
+                         arrival time                          -7.679    
+  -------------------------------------------------------------------
+                         slack                                  0.149    
+
+Slack (MET) :             0.151ns  (required time - arrival time)
+  Source:                 core_under_test/core/sample_memory/dma_chunk_reg[3]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Destination:            core_under_test/core/sample_memory/write_ram/block_memory.samples_reg/ENARDEN
+                            (rising edge-triggered cell RAMB36E1 clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.666ns  (core_clk rise@6.666ns - core_clk rise@0.000ns)
+  Data Path Delay:        5.753ns  (logic 1.485ns (25.813%)  route 4.268ns (74.187%))
+  Logic Levels:           5  (CARRY4=1 LUT4=2 LUT5=1 LUT6=1)
+  Clock Path Skew:        -0.084ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.585ns = ( 8.251 - 6.666 ) 
+    Source Clock Delay      (SCD):    1.784ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=9925, unset)         1.784     1.784    core_under_test/core/sample_memory/clk
+    SLICE_X95Y23         FDRE                                         r  core_under_test/core/sample_memory/dma_chunk_reg[3]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X95Y23         FDRE (Prop_fdre_C_Q)         0.456     2.240 r  core_under_test/core/sample_memory/dma_chunk_reg[3]/Q
+                         net (fo=6, routed)           0.966     3.206    core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_116_0[3]
+    SLICE_X94Y22         LUT6 (Prop_lut6_I0_O)        0.124     3.330 r  core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_121/O
+                         net (fo=1, routed)           0.000     3.330    core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_121_n_0
+    SLICE_X94Y22         CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     3.863 f  core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_116/CO[3]
+                         net (fo=4, routed)           0.785     4.648    core_under_test/core/sample_memory/read_ram/CO[0]
+    SLICE_X94Y19         LUT5 (Prop_lut5_I1_O)        0.124     4.772 r  core_under_test/core/sample_memory/read_ram/block_memory.samples_reg_i_107/O
+                         net (fo=9, routed)           1.143     5.914    core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_1
+    SLICE_X71Y19         LUT4 (Prop_lut4_I3_O)        0.124     6.038 r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_i_45__0/O
+                         net (fo=40, routed)          1.033     7.072    core_under_test/core/sample_memory/write_ram/dma_write_pool_reg
+    SLICE_X55Y17         LUT4 (Prop_lut4_I1_O)        0.124     7.196 r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg_i_1__0/O
+                         net (fo=1, routed)           0.341     7.537    core_under_test/core/sample_memory/write_ram/a_enable0113_out
+    RAMB36_X3Y3          RAMB36E1                                     r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg/ENARDEN
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      6.666     6.666 r  
+                                                      0.000     6.666 r  clk (IN)
+                         net (fo=9925, unset)         1.585     8.251    core_under_test/core/sample_memory/write_ram/clk
+    RAMB36_X3Y3          RAMB36E1                                     r  core_under_test/core/sample_memory/write_ram/block_memory.samples_reg/CLKARDCLK
+                         clock pessimism              0.115     8.366    
+                         clock uncertainty           -0.235     8.131    
+    RAMB36_X3Y3          RAMB36E1 (Setup_ramb36e1_CLKARDCLK_ENARDEN)
+                                                     -0.443     7.688    core_under_test/core/sample_memory/write_ram/block_memory.samples_reg
+  -------------------------------------------------------------------
+                         required time                          7.688    
+                         arrival time                          -7.537    
+  -------------------------------------------------------------------
+                         slack                                  0.151    
+
+Slack (MET) :             0.152ns  (required time - arrival time)
+  Source:                 core_under_test/core/metadata/retired_count_reg[1]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Destination:            core_under_test/core/metadata/retired_high_water_reg[5]/CE
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.666ns  (core_clk rise@6.666ns - core_clk rise@0.000ns)
+  Data Path Delay:        6.016ns  (logic 2.879ns (47.857%)  route 3.137ns (52.143%))
+  Logic Levels:           11  (CARRY4=9 LUT2=1 LUT4=1)
+  Clock Path Skew:        -0.058ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.487ns = ( 8.153 - 6.666 ) 
+    Source Clock Delay      (SCD):    1.660ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=9925, unset)         1.660     1.660    core_under_test/core/metadata/clk
+    SLICE_X44Y16         FDRE                                         r  core_under_test/core/metadata/retired_count_reg[1]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X44Y16         FDRE (Prop_fdre_C_Q)         0.456     2.116 r  core_under_test/core/metadata/retired_count_reg[1]/Q
+                         net (fo=8, routed)           0.637     2.753    core_under_test/core/metadata/retired_count_reg[31]_0[1]
+    SLICE_X43Y16         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.656     3.409 r  core_under_test/core/metadata/retired_high_water_reg[4]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.409    core_under_test/core/metadata/retired_high_water_reg[4]_i_1_n_0
+    SLICE_X43Y17         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.523 r  core_under_test/core/metadata/retired_high_water_reg[8]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.523    core_under_test/core/metadata/retired_high_water_reg[8]_i_1_n_0
+    SLICE_X43Y18         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.637 r  core_under_test/core/metadata/retired_high_water_reg[12]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.637    core_under_test/core/metadata/retired_high_water_reg[12]_i_1_n_0
+    SLICE_X43Y19         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.751 r  core_under_test/core/metadata/retired_high_water_reg[16]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.751    core_under_test/core/metadata/retired_high_water_reg[16]_i_1_n_0
+    SLICE_X43Y20         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.865 r  core_under_test/core/metadata/retired_high_water_reg[20]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.865    core_under_test/core/metadata/retired_high_water_reg[20]_i_1_n_0
+    SLICE_X43Y21         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.979 r  core_under_test/core/metadata/retired_high_water_reg[24]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.979    core_under_test/core/metadata/retired_high_water_reg[24]_i_1_n_0
+    SLICE_X43Y22         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     4.093 r  core_under_test/core/metadata/retired_high_water_reg[28]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     4.093    core_under_test/core/metadata/retired_high_water_reg[28]_i_1_n_0
+    SLICE_X43Y23         CARRY4 (Prop_carry4_CI_O[2])
+                                                      0.256     4.349 r  core_under_test/core/metadata/retired_high_water_reg[31]_i_2/O[2]
+                         net (fo=4, routed)           0.800     5.149    core_under_test/core/metadata/retired_high_water_reg[31]_i_2_n_5
+    SLICE_X44Y21         LUT4 (Prop_lut4_I1_O)        0.302     5.451 r  core_under_test/core/metadata/retired_high_water[31]_i_9/O
+                         net (fo=1, routed)           0.000     5.451    core_under_test/core/metadata/retired_high_water[31]_i_9_n_0
+    SLICE_X44Y21         CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.401     5.852 r  core_under_test/core/metadata/retired_high_water_reg[31]_i_3/CO[3]
+                         net (fo=1, routed)           0.890     6.742    core_under_test/core/metadata/retired_high_water0
+    SLICE_X45Y21         LUT2 (Prop_lut2_I0_O)        0.124     6.866 r  core_under_test/core/metadata/retired_high_water[31]_i_1/O
+                         net (fo=32, routed)          0.810     7.676    core_under_test/core/metadata/retired_high_water[31]_i_1_n_0
+    SLICE_X43Y17         FDRE                                         r  core_under_test/core/metadata/retired_high_water_reg[5]/CE
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      6.666     6.666 r  
+                                                      0.000     6.666 r  clk (IN)
+                         net (fo=9925, unset)         1.487     8.153    core_under_test/core/metadata/clk
+    SLICE_X43Y17         FDRE                                         r  core_under_test/core/metadata/retired_high_water_reg[5]/C
+                         clock pessimism              0.115     8.268    
+                         clock uncertainty           -0.235     8.033    
+    SLICE_X43Y17         FDRE (Setup_fdre_C_CE)      -0.205     7.828    core_under_test/core/metadata/retired_high_water_reg[5]
+  -------------------------------------------------------------------
+                         required time                          7.828    
+                         arrival time                          -7.676    
+  -------------------------------------------------------------------
+                         slack                                  0.152    
+
+Slack (MET) :             0.152ns  (required time - arrival time)
+  Source:                 core_under_test/core/metadata/retired_count_reg[1]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Destination:            core_under_test/core/metadata/retired_high_water_reg[6]/CE
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@3.333ns period=6.666ns})
+  Path Group:             core_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.666ns  (core_clk rise@6.666ns - core_clk rise@0.000ns)
+  Data Path Delay:        6.016ns  (logic 2.879ns (47.857%)  route 3.137ns (52.143%))
+  Logic Levels:           11  (CARRY4=9 LUT2=1 LUT4=1)
+  Clock Path Skew:        -0.058ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.487ns = ( 8.153 - 6.666 ) 
+    Source Clock Delay      (SCD):    1.660ns
+    Clock Pessimism Removal (CPR):    0.115ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=9925, unset)         1.660     1.660    core_under_test/core/metadata/clk
+    SLICE_X44Y16         FDRE                                         r  core_under_test/core/metadata/retired_count_reg[1]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X44Y16         FDRE (Prop_fdre_C_Q)         0.456     2.116 r  core_under_test/core/metadata/retired_count_reg[1]/Q
+                         net (fo=8, routed)           0.637     2.753    core_under_test/core/metadata/retired_count_reg[31]_0[1]
+    SLICE_X43Y16         CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.656     3.409 r  core_under_test/core/metadata/retired_high_water_reg[4]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.409    core_under_test/core/metadata/retired_high_water_reg[4]_i_1_n_0
+    SLICE_X43Y17         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.523 r  core_under_test/core/metadata/retired_high_water_reg[8]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.523    core_under_test/core/metadata/retired_high_water_reg[8]_i_1_n_0
+    SLICE_X43Y18         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.637 r  core_under_test/core/metadata/retired_high_water_reg[12]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.637    core_under_test/core/metadata/retired_high_water_reg[12]_i_1_n_0
+    SLICE_X43Y19         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.751 r  core_under_test/core/metadata/retired_high_water_reg[16]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.751    core_under_test/core/metadata/retired_high_water_reg[16]_i_1_n_0
+    SLICE_X43Y20         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.865 r  core_under_test/core/metadata/retired_high_water_reg[20]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.865    core_under_test/core/metadata/retired_high_water_reg[20]_i_1_n_0
+    SLICE_X43Y21         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.979 r  core_under_test/core/metadata/retired_high_water_reg[24]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     3.979    core_under_test/core/metadata/retired_high_water_reg[24]_i_1_n_0
+    SLICE_X43Y22         CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     4.093 r  core_under_test/core/metadata/retired_high_water_reg[28]_i_1/CO[3]
+                         net (fo=1, routed)           0.000     4.093    core_under_test/core/metadata/retired_high_water_reg[28]_i_1_n_0
+    SLICE_X43Y23         CARRY4 (Prop_carry4_CI_O[2])
+                                                      0.256     4.349 r  core_under_test/core/metadata/retired_high_water_reg[31]_i_2/O[2]
+                         net (fo=4, routed)           0.800     5.149    core_under_test/core/metadata/retired_high_water_reg[31]_i_2_n_5
+    SLICE_X44Y21         LUT4 (Prop_lut4_I1_O)        0.302     5.451 r  core_under_test/core/metadata/retired_high_water[31]_i_9/O
+                         net (fo=1, routed)           0.000     5.451    core_under_test/core/metadata/retired_high_water[31]_i_9_n_0
+    SLICE_X44Y21         CARRY4 (Prop_carry4_S[3]_CO[3])
+                                                      0.401     5.852 r  core_under_test/core/metadata/retired_high_water_reg[31]_i_3/CO[3]
+                         net (fo=1, routed)           0.890     6.742    core_under_test/core/metadata/retired_high_water0
+    SLICE_X45Y21         LUT2 (Prop_lut2_I0_O)        0.124     6.866 r  core_under_test/core/metadata/retired_high_water[31]_i_1/O
+                         net (fo=32, routed)          0.810     7.676    core_under_test/core/metadata/retired_high_water[31]_i_1_n_0
+    SLICE_X43Y17         FDRE                                         r  core_under_test/core/metadata/retired_high_water_reg[6]/CE
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      6.666     6.666 r  
+                                                      0.000     6.666 r  clk (IN)
+                         net (fo=9925, unset)         1.487     8.153    core_under_test/core/metadata/clk
+    SLICE_X43Y17         FDRE                                         r  core_under_test/core/metadata/retired_high_water_reg[6]/C
+                         clock pessimism              0.115     8.268    
+                         clock uncertainty           -0.235     8.033    
+    SLICE_X43Y17         FDRE (Setup_fdre_C_CE)      -0.205     7.828    core_under_test/core/metadata/retired_high_water_reg[6]
+  -------------------------------------------------------------------
+                         required time                          7.828    
+                         arrival time                          -7.676    
+  -------------------------------------------------------------------
+                         slack                                  0.152    
+
+
+
+

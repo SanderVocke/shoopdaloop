@@ -12,8 +12,8 @@ python3 fpga/synthesis/subsystems.py memory --threads 2 --vivado /path/to/vivado
 Each run freezes its sources and timing context in an empty output directory,
 records hashes and parameters, and runs synthesis, placement, routing and
 post-route physical optimization. Setup and hold must both pass the 150 MHz
-constraint with 0.2 ns uncertainty. `--stage synth` stops after synthesis for
-diagnosis; it does not establish timing closure. Interfaces use retained fabric
+constraint with 0.2 ns uncertainty. `--stage synth` and `--stage place` stop at diagnostic checkpoints; neither
+establishes timing closure. Interfaces use retained fabric
 launch/capture registers, with no false paths or multicycle exceptions.
 The period is conservatively rounded down to 6.666 ns (150.015 MHz), avoiding
 Vivado's rounding of 6.666667 ns to a period slightly slower than 150 MHz.
@@ -29,6 +29,11 @@ metadata caches/storage, reclamation and the shared AXI64 master, with 64 views,
 2,048 chunks, 32-chunk allocation blocks, four read/write buffers and 8/4/2
 table/reference/stack cache lines. These are independent subsystem measurements;
 the complete integrated board design requires its own timing closure.
+
+The [selected 150 MHz measurements](measurements/zedboard-150mhz/README.md)
+include routed state/job/memory results, exact reproduction commands and native
+validation provenance. Memory uses tighter placement followed by routing at the
+original uncertainty.
 
 Run the complete 64-loop core through Vivado synthesis, placement and routing:
 
