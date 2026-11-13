@@ -76,14 +76,28 @@ async def transport_and_negative_cases(dut):
     driver=Driver(dut,DEPTHS)
     await driver.load(value,image)
     before=await driver.states()
+    installed = abi.encode_command(command(0,1)) | (1 << 1)
+    for index,data in ((1,installed),(0,installed & ~((2**32-1)<<1)),(0,installed ^ (3<<1))):
+        assert (await driver.raw_command(abi.INSTALL,index,data))[0]==3
+        assert await driver.states()==before
+    await FallingEdge(dut.clk)
+    dut.core.phase.value = 2
+    assert (await driver.raw_command(abi.INSTALL,0,installed))[0]==5
+    assert await driver.states()==before
+    await FallingEdge(dut.clk)
+    dut.core.phase.value = 0
     for opcode in (7,8,10,14,255):
         assert (await driver.command(opcode,stall=4,intrude=True))[0]==10
         assert await driver.states()==before
     assert (await driver.command(abi.SUBMIT,data=abi.encode_command(dict(command(0,1),target=lid(0,0)))))[0]==3
     await driver.ok(abi.SUBMIT,data=abi.encode_command(command(0,1)))
+    assert (await driver.raw_command(abi.INSTALL,0,installed))[0]==5
     await driver.command(abi.PROCESS,stall=5,intrude=True)
     assert (await driver.status())['frame']==16
     assert (await driver.states())[0]['position']==16
+    assert (await driver.raw_command(abi.INSTALL,0,installed))[0]==5
+    await driver.collect(dict(slot=0,generation=1))
+    assert (await driver.raw_command(abi.INSTALL,0,installed))[0]==3
     await FallingEdge(dut.clk)
     dut.core.frame.value = 2**64-16
     assert (await driver.command(abi.PROCESS))[0]==8

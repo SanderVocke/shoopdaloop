@@ -1,4 +1,5 @@
 //! The application's real owning queues, backed by TP/SP/JP execution.
+use crate::adapter::Device;
 mod compile;
 use crate::{
     image::{Image, Ramp, Value},
@@ -73,7 +74,7 @@ impl PairStage {
     }
 }
 struct Core<D: EngineDevice> {
-    device: D,
+    device: crate::transition_service::ManagedDevice<D>,
     nodes: Vec<Node>,
     graphs: PreparedGraphs,
     catalog: Catalog,
@@ -114,7 +115,8 @@ pub struct Adapter<D: EngineDevice> {
     memory_frame: Option<Frame>,
 }
 impl<D: EngineDevice> Adapter<D> {
-    pub fn prepare(parts: Preparation, mut device: D) -> Result<Consumer<Self>, Error> {
+    pub fn prepare(parts: Preparation, device: D) -> Result<Consumer<Self>, Error> {
+        let mut device = crate::transition_service::ManagedDevice::new(device);
         if parts.quantum.frames() != 32
             || parts.description.host.audio_inputs.len() != 2
             || parts.description.host.audio_outputs.len() != 2
@@ -222,7 +224,7 @@ impl<D: EngineDevice> Adapter<D> {
         self.fault
     }
     pub fn device_mut(&mut self) -> &mut D {
-        &mut self.core.device
+        self.core.device.inner_mut()
     }
     /// Query between quanta, without changing media, audio frames or program state.
     /// The report carries this adapter's frame; it is refused before activation.

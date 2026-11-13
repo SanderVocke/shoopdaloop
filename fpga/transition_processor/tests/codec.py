@@ -6,6 +6,7 @@ OPS = ["stop", "play", "record", "seek"]
 MODES = ["stopped", "playing", "recording"]
 OUTCOMES = [None, "applied", "superseded", "cancelled", "failed"]
 STATUS, WRITE_SPEC, WRITE_ORDER, PREPARE, SUBMIT, CANCEL, COLLECT = range(7)
+INSTALL = 4
 PROCESS, READ_STATE, READ_REQUEST, READ_EVENT = 9, 12, 13, 15
 
 

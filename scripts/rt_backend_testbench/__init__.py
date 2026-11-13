@@ -91,6 +91,47 @@ def run_batch(scenarios, *, executable, command='run', numeric='q824', kind='sce
 def run(scenario, **options):
     return run_batch([scenario], **options)[0]
 
+class TransitionService:
+    """Transport the shared Rust request owner without implementing its policy."""
+    def __init__(self, image, executable=None):
+        executable = executable or Path(__file__).resolve().parents[2] / 'target/debug/rt-backend-testbench'
+        self.process = subprocess.Popen([str(executable), 'transition-service'],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, bufsize=1)
+        self.timings = []
+        self.metadata_bytes = self.request(kind='configure', image={key:image[key] for key in ('description','limits','dependency_order')})['metadata_bytes']
+
+    def request(self, **message):
+        self.process.stdin.write(json.dumps(message, allow_nan=False)+'\n')
+        self.process.stdin.flush()
+        line = self.process.stdout.readline()
+        if not line:
+            raise RuntimeError('transition service exited: '+self.process.stderr.read())
+        result = json.loads(line)
+        if 'service_ns' in result: self.timings.append(dict(kind=message['kind'],ns=result['service_ns']))
+        if 'fault' in result:
+            raise RuntimeError('transition service fault: '+result['fault'])
+        return result
+
+    def close(self):
+        process = getattr(self, 'process', None)
+        if process is not None:
+            if process.stdin and not process.stdin.closed: process.stdin.close()
+            try: process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill();process.wait()
+            process.stdout.close();process.stderr.close()
+            self.process = None
+
+    def __del__(self):
+        self.close()
+
+def port_words(value, count):
+    return [(value >> (32*i)) & 0xffffffff for i in range(count)]
+
+def port_value(words):
+    return sum(word << (32*i) for i,word in enumerate(words))
+
 def first_difference(actual, expected, path='$'):
     if type(actual) is not type(expected):
         return f'{path}: type {type(actual).__name__} != {type(expected).__name__}'

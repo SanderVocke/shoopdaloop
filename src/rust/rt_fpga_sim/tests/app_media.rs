@@ -1,6 +1,9 @@
 #![cfg(all(feature = "app", not(target_arch = "wasm32")))]
 use rt_audio_math::{Q824, Sample};
-use rt_fpga_adapter::{image::*, loop_media::Media, protocol};
+use rt_fpga_adapter::{
+    image::*, loop_media::Media, looping::LoopDevice, protocol,
+    transition_service::TransitionService,
+};
 use rt_fpga_sim::{Simulator, runtime};
 use rt_runtime::{Epoch, Error, Frame, Sequence};
 use shoop_loops::{
@@ -15,20 +18,31 @@ fn settle(sim: &mut Simulator<'_>, media: &mut Media, frame: u64) {
         .observe(protocol::state(&state, 0).unwrap(), Frame(frame), sim)
         .unwrap();
 }
-fn command(sim: &mut Simulator<'_>, transition: Transition, frame: u64) {
-    sim.command(
-        4,
-        0,
-        protocol::transition(Request {
-            target: LoopId::from_parts(0, 1).unwrap(),
-            sequence: Sequence(frame + 1),
-            at: Frame(frame),
-            timing: Timing::At,
-            transition,
-        })
-        .unwrap(),
-    )
+fn command(
+    sim: &mut Simulator<'_>,
+    owner: &mut TransitionService,
+    transition: Transition,
+    frame: u64,
+) {
+    let words = protocol::transition(Request {
+        target: LoopId::from_parts(0, 1).unwrap(),
+        sequence: Sequence(frame + 1),
+        at: Frame(frame),
+        timing: Timing::At,
+        transition,
+    })
     .unwrap();
+    assert_eq!(
+        owner
+            .exchange(4, 0, words, |transfer| sim.tp(
+                transfer.opcode,
+                transfer.index,
+                transfer.words
+            ))
+            .unwrap()
+            .error,
+        0
+    );
 }
 #[shoop_test]
 fn float_media_reads_preserve_interleaving_partial_pages_leases_and_scopes() {
@@ -61,10 +75,10 @@ fn float_media_reads_preserve_interleaving_partial_pages_leases_and_scopes() {
         repeat_sync: false,
         timeline: None,
     }];
-    image.transition.components = vec![vec![Identity {
+    image.transition.dependency_order = vec![Identity {
         slot: 0,
         generation: 1,
-    }]];
+    }];
     image.program.instructions = vec![
         Instruction::ProcessInput {
             port: 0,
@@ -93,6 +107,7 @@ fn float_media_reads_preserve_interleaving_partial_pages_leases_and_scopes() {
     ];
     image.program.jobs_per_quantum = 6;
     sim.load(&image).unwrap();
+    let mut owner = TransitionService::new(&image.transition).unwrap();
     let mut media =
         Media::with_channels(4, 2, rt_fpga_adapter::loop_media::Encoding::Float32).unwrap();
     let input = vec![
@@ -105,6 +120,7 @@ fn float_media_reads_preserve_interleaving_partial_pages_leases_and_scopes() {
     ];
     command(
         &mut sim,
+        &mut owner,
         Transition::Record {
             monitor_previous: false,
         },
@@ -112,7 +128,7 @@ fn float_media_reads_preserve_interleaving_partial_pages_leases_and_scopes() {
     );
     settle(&mut sim, &mut media, 0);
     sim.run(&image, &input).unwrap();
-    command(&mut sim, Transition::Stop, 32);
+    command(&mut sim, &mut owner, Transition::Stop, 32);
     settle(&mut sim, &mut media, 32);
     let state = protocol::state(&sim.command(12, 0, [0; 20]).unwrap(), 0).unwrap();
     let Reply::Export { id, .. } = media
@@ -150,6 +166,7 @@ fn float_media_reads_preserve_interleaving_partial_pages_leases_and_scopes() {
     sim.run(&image, &vec![vec![0; 32]; 2]).unwrap();
     command(
         &mut sim,
+        &mut owner,
         Transition::Record {
             monitor_previous: false,
         },
@@ -172,7 +189,7 @@ fn float_media_reads_preserve_interleaving_partial_pages_leases_and_scopes() {
     );
     media.release(id, &mut sim).unwrap();
     assert_eq!(media.cursor(id), Err(Error::InvalidId));
-    command(&mut sim, Transition::Stop, 96);
+    command(&mut sim, &mut owner, Transition::Stop, 96);
     settle(&mut sim, &mut media, 96);
     assert_eq!(
         media.read(&mut stale.clone(), &mut [0; 8], 13, &mut sim),

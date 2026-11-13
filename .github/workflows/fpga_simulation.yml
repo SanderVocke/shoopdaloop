@@ -7,10 +7,14 @@ on:
       - 'PLAN_SIM_MEM.md'
       - 'PLAN_METADATA_CACHE.md'
       - 'PLAN_RETAKE_CLEAR.md'
+      - 'PLAN_FPGA_ARM_REQUEST_SLOTS.md'
+      - 'PLAN_LONGTERM_FPGA_BOUNDARY.md'
       - 'AUDIO_IO.md'
       - 'scripts/rt_backend_testbench/**'
       - 'src/rust/rt_audio_math/**'
       - 'src/rust/rt_backend_testbench/**'
+      - 'src/rust/rt_fpga_adapter/**'
+      - 'src/rust/rt_fpga_sim/**'
       - 'src/rust/rt_runtime/**'
       - 'src/rust/shoop_loops/**'
       - 'src/rust/shoop_rt_engine/**'
@@ -80,6 +84,9 @@ jobs:
         run: |
           python fpga/axi_memory/simulate_direct.py --output work/native-ci/model
           python fpga/chunk_memory/simulate.py --config minimum --random-cases 1 --axi-data-width 64 --dram-library /missing/not-required.so --output work/native-ci/chunks
+      - name: Check indexed installation and ARM admission
+        if: matrix.model == 'instant'
+        run: python fpga/transition_processor/simulate.py --config small --random-cases 2 --output work/native-ci/transition
       - name: Check metadata caches and shared transport
         if: matrix.model == 'instant'
         run: python fpga/media_store/simulate_metadata.py --output work/native-ci/metadata
@@ -131,6 +138,10 @@ jobs:
     name: Deferred reclamation (${{ matrix.model }})
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    env:
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
+      CARGO_INCREMENTAL: 0
     strategy:
       fail-fast: false
       matrix:
@@ -187,6 +198,13 @@ jobs:
         env:
           RUSTFLAGS: -D warnings
         run: cargo test --locked -p rt_fpga_sim --features sim -- --test-threads=1
+      - name: Check shared ARM request service and application replay
+        if: matrix.model == 'instant'
+        env:
+          RUSTFLAGS: -D warnings
+        run: |
+          cargo test --locked -p rt_fpga_adapter -p rt_backend_testbench
+          cargo test --locked -p rt_fpga_sim --features app --test app_rtl common_app_replay_matches_native_audio_and_loop_observations -- --test-threads=1
       - uses: actions/upload-artifact@v7
         if: always()
         with:

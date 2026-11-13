@@ -57,12 +57,27 @@ pub fn state(words: &[u32; 26], slot: u32) -> Result<State, Error> {
     Ok(s)
 }
 pub fn transition(command: loops::Request) -> Result<[u32; 20], Error> {
-    let code = match command.transition {
-        Transition::Stop => 0,
-        Transition::Play {
+    match command.transition {
+        Transition::Stop
+        | Transition::Play {
             position: 0,
             retrigger: false,
-        } => 1,
+        }
+        | Transition::Record {
+            monitor_previous: false,
+        }
+        | Transition::Replace {
+            length: 0,
+            preserve_position: false,
+            ..
+        } => kernel_transition(command),
+        _ => Err(Error::InvalidParameter),
+    }
+}
+pub fn kernel_transition(command: loops::Request) -> Result<[u32; 20], Error> {
+    let code = match command.transition {
+        Transition::Stop => 0,
+        Transition::Play { .. } => 1,
         Transition::Record {
             monitor_previous: false,
         } => 2,
@@ -71,9 +86,22 @@ pub fn transition(command: loops::Request) -> Result<[u32; 20], Error> {
             preserve_position: false,
             ..
         } => 3,
+        Transition::Seek { .. } => 3,
         _ => return Err(Error::InvalidParameter),
     };
     let mut w = [0; 20];
+    if let Transition::Play {
+        position,
+        retrigger,
+    }
+    | Transition::Seek {
+        position,
+        retrigger,
+    } = command.transition
+    {
+        put(&mut w, 384, 64, position);
+        put(&mut w, 36, 1, u64::from(retrigger));
+    }
     if let loops::Timing::AfterTicks { source, skip } = command.timing {
         put(&mut w, 33, 1, 1);
         put(
@@ -138,6 +166,10 @@ pub fn event(words: &[u32; 26]) -> Result<Event, Error> {
                 length: 0,
                 revision: Revision(get(words, 128, 64)),
                 preserve_position: false,
+            },
+            3 => Transition::Seek {
+                position: get(words, 128, 64),
+                retrigger: get(words, 194, 1) != 0,
             },
             _ => return Err(Error::InvalidState),
         }),

@@ -1,5 +1,27 @@
 # Queue consumers for FPGA demonstrators
 
+## ARM transition request ownership
+
+`transition_service::TransitionService` selects request slots, checks duplicate
+sequences and retains original commands until terminal collection. Its indexed
+INSTALL traffic names a slot and nonzero reuse token. FPGA retains frame rounding,
+dynamic operation validation, lists, synchronization and transition resolution.
+`ManagedDevice<D>` attaches this owner to the mono/application adapters without
+changing their public queues or supported operation profiles. Signal-program-only
+updates retain the owner; successful device reload constructs a new one after
+coordinated reset. An uncertain exchange faults the owner instead of reusing a
+possibly installed slot.
+
+Marlin drives the same owner over raw device transfers. Cocotb uses its separate
+JSONL service bridge; production expected results still come from the independent
+Rust resolver/runtime. Static demo preparation reserves credits through the same
+owner without predicting execution outcomes. See the
+[installation contract](../../../fpga/transition_processor/INSTALL.md).
+
+This first boundary change retains full hardware records and terminal storage.
+Held responses, fabric fences and application settlement pauses keep their
+existing behavior; full continuous-audio autonomy is a later milestone.
+
 `Adapter<D>` consumes the same `rt_runtime::executor::Control` requests as the
 native `GraphRuntime`. It is an ARM/service-thread bridge: it may allocate during
 validation and lowering, and it makes no service-time guarantee. Only `D: Device`

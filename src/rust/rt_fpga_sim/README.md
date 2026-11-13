@@ -1,5 +1,19 @@
 # Rust / Verilator integration
 
+The ARM request owner lives in `rt_fpga_adapter::transition_service` above the
+raw simulator transport. `transition_boundary` preinstalls actions, consumes all
+acknowledgements, then runs 1,024 audio quanta without invoking the owner. It
+checks samples against production Q8.24 and collects retained results afterwards.
+The fixture creates its content through real RTL capture rather than assuming
+that the direct loader imports nonempty views. Run it with:
+
+```sh
+cargo test --locked -p rt_fpga_sim --features sim --test transition_boundary
+```
+
+This test separates command service from audio progression; it does not establish
+the later fence-free fabric interface or an ARM/board deadline guarantee.
+
 This optional native crate drives the existing TP/SP/JP pipeline and functional
 AXI memory model through Marlin 0.21.1. There is no Python in its build or run
 path. Existing cocotb suites remain independent.

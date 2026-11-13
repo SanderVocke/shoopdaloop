@@ -3,6 +3,8 @@ import random
 from cocotb.triggers import FallingEdge, RisingEdge, Timer, with_timeout
 from cocotb.utils import get_sim_time
 import codec as abi
+import rt_backend_testbench as wire
+import os
 
 
 class Driver:
@@ -11,6 +13,8 @@ class Driver:
         self.random = random.Random(seed)
         self.last_cycles = 0
         self.phase_cycles = []
+        self.service = None
+        self.command_cycles = []
 
     def set(self, **signals):
         for name, value in signals.items():
@@ -21,6 +25,9 @@ class Driver:
         await Timer(1, units="ns")
 
     async def reset(self):
+        if self.service is not None:
+            self.service.close()
+            self.service = None
         await FallingEdge(self.dut.clk)
         self.set(reset=1, command_valid=0, command_opcode=0, command_index=0,
                  command_data=0, response_ready=0)
@@ -33,6 +40,26 @@ class Driver:
         await Timer(1, units="ns")
 
     async def command(self, opcode, index=0, data=0, *, stall=None, intrude=False):
+        if self.service is not None and opcode in (abi.SUBMIT, abi.CANCEL, abi.COLLECT):
+            prepared = self.service.request(kind='begin', opcode=opcode, index=index, words=wire.port_words(data,20))
+            if 'error' in prepared:
+                self.last_cycles = 0
+                self.command_cycles.append(dict(opcode=opcode,cycles=0,error=prepared['error'],host_refusal=True))
+                return prepared['error'], 0
+            transfer = prepared['transfer']
+            try:
+                error,value = await self.raw_command(transfer['opcode'],transfer['index'],wire.port_value(transfer['words']),stall=stall,intrude=intrude)
+            except BaseException:
+                self.service.request(kind='disconnect')
+                raise
+            result = self.service.request(kind='finish',reply=dict(error=error,words=wire.port_words(value,26)))['reply']
+            return result['error'],wire.port_value(result['words'])
+        result = await self.raw_command(opcode,index,data,stall=stall,intrude=intrude)
+        if self.service is not None and opcode in (abi.STATUS,abi.PROCESS,11,16):
+            self.service.request(kind='observe',opcode=opcode,reply=dict(error=result[0],words=wire.port_words(result[1],26)))
+        return result
+
+    async def raw_command(self, opcode, index=0, data=0, *, stall=None, intrude=False):
         await FallingEdge(self.dut.clk)
         assert int(self.dut.command_ready.value), "command interface failed to become ready"
         self.set(command_valid=1, command_opcode=opcode, command_index=index, command_data=data, response_ready=0)
@@ -67,6 +94,7 @@ class Driver:
         assert int(self.dut.command_ready.value)
         if status:
             assert value == 0, "error response leaked stale data"
+        self.command_cycles.append(dict(opcode=opcode,cycles=self.last_cycles,error=status))
         return status, value
 
     async def ok(self, opcode, index=0, data=0):
@@ -91,6 +119,7 @@ class Driver:
                 | (limits["events"] << 64) | (len(image["dependency_order"]) << 96)
                 | (image["description"]["quantum"] << 128))
         await self.ok(abi.PREPARE, data=data)
+        self.service = wire.TransitionService(image, os.environ.get('TP_REFERENCE') or os.environ.get('SHOOP_PRODUCTION_ORACLE'))
 
     async def status(self):
         raw = await self.ok(abi.STATUS)

@@ -8,5 +8,6 @@ pub mod memory;
 pub mod protocol;
 #[cfg(test)]
 mod tests;
+pub mod transition_service;
 
 pub mod engine;

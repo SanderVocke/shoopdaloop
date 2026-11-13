@@ -1,4 +1,5 @@
 //! A primitive loop profile over the production owning transport.
+use crate::adapter::Device;
 use rt_runtime::{
     PlannerId, Q824,
     executor::{Command, Control, PreparedNode},
@@ -35,7 +36,7 @@ pub struct MediaResult {
     pub empty: bool,
     pub samples: Vec<i32>,
 }
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TpReply {
     pub error: u8,
     pub words: [u32; 26],
@@ -83,7 +84,7 @@ enum PendingKind {
     Query(LoopOperation<Q824>),
 }
 pub struct LoopAdapter<D: LoopDevice> {
-    device: D,
+    device: crate::transition_service::ManagedDevice<D>,
     config: PreparedConfig,
     startup: Startup,
     nodes: Vec<Prepared>,
@@ -153,7 +154,7 @@ impl<D: LoopDevice> LoopAdapter<D> {
         Ok((
             control,
             Self {
-                device,
+                device: crate::transition_service::ManagedDevice::new(device),
                 config,
                 state: State::from_observation(binding.target, rt_runtime::Revision(0)),
                 startup,
@@ -202,10 +203,10 @@ impl<D: LoopDevice> LoopAdapter<D> {
         self.fault
     }
     pub fn device(&self) -> &D {
-        &self.device
+        self.device.inner()
     }
     pub fn device_mut(&mut self) -> &mut D {
-        &mut self.device
+        self.device.inner_mut()
     }
     pub fn image(&self) -> Option<&Image> {
         self.image.as_ref()
