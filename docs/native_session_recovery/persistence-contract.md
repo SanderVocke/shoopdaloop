@@ -185,24 +185,37 @@ media and recorded processor state, then copies name, gain/balance, sync and rep
 settings. No file provider or codec round trip is required. The result keeps its
 slot identity, selection and targeting, and starts stopped at position zero.
 
-P03 Direct-track regular and scripted Play/Stop/Record definitions, including
-nesting, use the existing prepared-composite editor. Copies have fresh event and
-prepared-version ownership and preserve timing basis, frozen geometry and child
-references. Editing either definition is independent; changing a shared child
-affects both. A composite can replace another P03 composite or an empty primitive.
-Occupied cross-kind conversion and P17 definition duplication refuse before mutation.
-Affected recording, future composite writes, unsettled edits, cycles and conflicting
-active parent/child ownership also refuse without stopping that recording.
+Regular and scripted definitions, including nested P17 Replacing and dry/wet
+modes on eligible tracks, use the existing prepared-composite editor. Copies have
+fresh event and prepared-version ownership and preserve timing basis, frozen
+geometry and child references. Editing either definition is independent; changing
+a shared child affects both. Authored events are validated even when shadowed out
+of the compiled program. Affected recording, future composite writes, unsettled
+edits, cycles and conflicting active parent/child ownership retain their normal
+refusals.
 
-Copying is a host-owned sequence: capture/validate, add slots, Stop, apply content
-or activate the definition, then apply controls and metadata. Existing content is
-never cleared first. Failure before content/definition commit preserves it, although
-the destination may remain stopped and confirmed empty row additions may remain.
-After commit, a later failure reports that content was copied and identifies the
-remaining step; acknowledged media is not rolled back. Unknown engine outcomes
-are reported as unknown. UI reconnect reconciles the same accepted operation
-without replaying capture, row creation or application. Host/engine crash recovery
-and expanded MIDI state/preroll/seek/history support remain outside this contract.
+Same-kind copying is a host-owned sequence: capture/validate, add slots, Stop,
+apply content or activate the definition, then apply controls and metadata. It does
+not clear existing content first. Failure before content/definition commit
+preserves that content, although the destination may remain stopped and confirmed
+empty row additions may remain.
+
+Occupied cross-kind copying has the effects of normal Clear followed by normal
+Copy. The service waits for the entire clear lifecycle, including dependent
+arrangement restoration, before copying using the confirmed mappings. Existing
+clear/copy restrictions still apply. A failed or unknown clear outcome does not
+start the copy. A confirmed clear is not rolled back if subsequent copying fails;
+the result reports that the target was cleared. Failure before copied-content
+commit leaves it cleared; a later control/metadata failure can leave copied
+content with incomplete settings. Normal composite-to-empty-slot conversion does
+not add a destructive clear.
+
+After copied-content commit, later failures identify the remaining step;
+acknowledged media is not rolled back. Unknown engine outcomes remain unknown.
+UI reconnect reconciles one accepted operation without replaying clear, capture,
+row creation or application. Copying does not require a file provider. Host/engine
+crash recovery and expanded MIDI state/preroll/seek/history support remain outside
+this contract. See [the duplication plan](../../PLAN_LOOP_DUPLICATION.md).
 
 ## Engine integration boundary
 
