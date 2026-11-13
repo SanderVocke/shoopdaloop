@@ -41,6 +41,8 @@ create_bd_cell -type ip -vlnv xilinx.com:ip:processing_system7:5.5 ps
 apply_bd_automation -rule xilinx.com:bd_rule:processing_system7 -config {
     make_external "FIXED_IO, DDR" apply_board_preset "1" Master "Disable" Slave "Disable"
 } [get_bd_cells ps]
+# AMD's ZedBoard PS preset; the board-file DDR settings do not initialize DDR on every board.
+set_property CONFIG.preset {ZedBoard} [get_bd_cells ps]
 set_property -dict [list CONFIG.PCW_USE_S_AXI_HP0 {1} CONFIG.PCW_S_AXI_HP0_DATA_WIDTH {64} \
     CONFIG.PCW_USE_M_AXI_GP0 {0} CONFIG.PCW_EN_CLK0_PORT {1} CONFIG.PCW_EN_RST0_PORT {1} \
     CONFIG.PCW_FPGA0_PERIPHERAL_FREQMHZ $bench_fabric_mhz] [get_bd_cells ps]
@@ -53,9 +55,10 @@ create_bd_cell -type ip -vlnv xilinx.com:ip:xlconstant:1.1 one
 set_property CONFIG.CONST_VAL {1} [get_bd_cells one]
 connect_bd_net [get_bd_pins ps/FCLK_CLK0] [get_bd_pins ps/S_AXI_HP0_ACLK] [get_bd_pins bench/clk] [get_bd_pins reset/slowest_sync_clk]
 connect_bd_net [get_bd_pins ps/FCLK_RESET0_N] [get_bd_pins reset/ext_reset_in]
-connect_bd_net [get_bd_pins zero/dout] [get_bd_pins reset/aux_reset_in] [get_bd_pins reset/mb_debug_sys_rst] \
+connect_bd_net [get_bd_pins zero/dout] [get_bd_pins reset/mb_debug_sys_rst] \
     [get_bd_pins ps/S_AXI_HP0_RDISSUECAP1_EN] [get_bd_pins ps/S_AXI_HP0_WRISSUECAP1_EN]
-connect_bd_net [get_bd_pins one/dout] [get_bd_pins reset/dcm_locked]
+# aux_reset_in is active-low (C_AUX_RESET_HIGH=0): tie it inactive.
+connect_bd_net [get_bd_pins one/dout] [get_bd_pins reset/dcm_locked] [get_bd_pins reset/aux_reset_in]
 connect_bd_net [get_bd_pins reset/peripheral_aresetn] [get_bd_pins bench/aresetn]
 connect_bd_intf_net [get_bd_intf_pins bench/m_axi] [get_bd_intf_pins ps/S_AXI_HP0]
 assign_bd_address

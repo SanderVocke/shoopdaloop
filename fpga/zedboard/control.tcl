@@ -21,7 +21,8 @@ proc probe {direction index} {
 proc output {index value} {
     set p [probe out $index]
     set_property OUTPUT_VALUE_RADIX HEX $p
-    set_property OUTPUT_VALUE [format %x $value] $p
+    set digits [expr {([get_property WIDTH $p]+3)/4}]
+    set_property OUTPUT_VALUE [format "%0${digits}x" $value] $p
     commit_hw_vio $p
 }
 proc pulse {index} {output $index 0; output $index 1; output $index 0}
@@ -47,7 +48,7 @@ if {$action in {run measure}} {
     for {set i 0} {$i < 4} {incr i} {
         if {$argc > $i+2} {lset values $i [lindex $argv [expr {$i+2}]]}
         set value [lindex $values $i]
-        if {![string is entier -strict $value] || $value < 0 || $value > 0xffffffff} {error "Controls require unsigned 32-bit integers"}
+        if {![string is wideinteger -strict $value] || $value < 0 || $value > 0xffffffff} {error "Controls require unsigned 32-bit integers"}
         output [expr {$i+3}] $value
     }
     if {$action eq "measure" && [lindex $values 0] == 0} {error "Use run for an unlimited measurement"}
@@ -57,6 +58,7 @@ if {$action in {run measure}} {
     pulse 0
     if {$action eq "run"} {puts "Benchmark started"; close_hw_manager; return}
     wait_stopped
+    if {([input 0] & 7) != 5} {error "Start was not accepted; the runner is still idle"}
 } elseif {$action eq "stop"} {
     pulse 1
     wait_stopped

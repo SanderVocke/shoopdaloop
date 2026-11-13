@@ -17,9 +17,9 @@ of the fully routed 64-loop deployment, including debug instrumentation.
 The [prebuilt deployment ZIP](zedboard-benchmark-vivado-2021.1.zip) (2.47 MB) and
 its [SHA256 checksum](zedboard-benchmark-vivado-2021.1.zip.sha256) are included
 here. The bundle contains the hardware outputs, load/control scripts, a portable
-manifest and build provenance. This experimental build has not been tested on
-hardware and its requested 100 MHz clock remains unqualified; see
-[validation](VALIDATION.md).
+manifest and build provenance. Its bitstream holds the benchmark in reset, and
+its PS initialization did not bring up DDR on the tested board. Rebuild from RTL
+to measure; see [hardware results](HARDWARE.md) and [validation](VALIDATION.md).
 
 To verify and extract the bundle, run from the repository root:
 
@@ -28,10 +28,9 @@ To verify and extract the bundle, run from the repository root:
 unzip fpga/zedboard/zedboard-benchmark-vivado-2021.1.zip -d work/zedboard/prebuilt
 ```
 
-Follow `README.txt` in the extracted `zedboard-benchmark-vivado-2021.1` directory
-to load and measure using the portable manifest. To rebuild from RTL, follow
-the instructions below. The ZIP preserves the previously validated hardware
-outputs; its embedded provenance identifies the original build revision.
+The ZIP preserves the container-validated build outputs; its embedded provenance
+identifies the original build revision. To rebuild from RTL, follow the
+instructions below.
 
 ## AXI connection
 
@@ -44,8 +43,9 @@ between the master and HP0, so measurements do not include converter latency.
 
 Sample data and metadata share this same port. The default arena begins at
 0x01000000. CPUs are halted and no other software owns this arena. The generated
-PS initialization must match the block design, board preset and silicon revision;
-the software-only PS initialization file does not configure this deployment.
+PS initialization must match the block design and silicon revision; the
+software-only PS initialization file does not configure this deployment. The
+build applies AMD's ZedBoard PS7 preset rather than the board files' DDR settings.
 
 ## Prepare and build
 
@@ -53,7 +53,8 @@ Run from the repository root. Python requires the existing
 `fpga/axi_memory/requirements.txt` and `scripts/rt_backend_testbench/requirements.txt`.
 Rust builds only the workload compiler. Vivado needs the Digilent ZedBoard board
 files and support for the actual XC7Z020 silicon. RTL validation uses Vivado
-2021.1, SW Build 3247384; hardware qualification is pending.
+2021.1, SW Build 3247384. A Vivado 2023.2 build ran on hardware; see
+[hardware results](HARDWARE.md).
 The validated compiler came from the public Docker Hub image
 [`siliconbootcamp/xilinx-vivado:stable`](https://hub.docker.com/r/siliconbootcamp/xilinx-vivado).
 Its original vendor layer was extracted unmodified, excluding later image
@@ -117,9 +118,11 @@ hw_server -s TCP:127.0.0.1:3121
 xsdb fpga/zedboard/load.tcl work/zedboard/build
 ```
 
-Run `hw_server` in its own terminal. `load.tcl` performs a system reset, halts both
-CPUs, programs the PL and applies the generated PS initialization. The harness
-stays idle until a VIO start command; it never accesses uninitialized DDR.
+Run `hw_server` in its own terminal; an open Vivado hardware manager already
+serves one on this port. `load.tcl` performs a system reset, halts both CPUs,
+programs the PL, applies the generated PS initialization and checks a DDR scratch
+word. The harness stays idle until a VIO start command; it never accesses
+uninitialized DDR.
 
 ```sh
 vivado -mode batch -source fpga/zedboard/control.tcl \
@@ -129,7 +132,8 @@ vivado -mode batch -source fpga/zedboard/control.tcl \
 The four numbers are total quanta, warmup quanta, gap clocks and per-quantum
 watchdog clocks. Total quanta includes warmup; 0 means unlimited. Watchdog 0
 disables the watchdog. `measure` waits up to 60 host seconds for STOPPED and saves
-`results.json`. For an unlimited run use `run`, followed by `snapshot` or `stop`:
+`results.json`; it fails if the runner ignored the start command. For an
+unlimited run use `run`, followed by `snapshot` or `stop`:
 
 ```sh
 vivado -mode batch -source fpga/zedboard/control.tcl \
@@ -225,5 +229,6 @@ drain, release it, restart, snapshot and stop. All results are written as JSON.
 Native AXI3 endpoint protocol tests and generated-wrapper checks also remain
 applicable. See [public-container validation](VALIDATION.md) for the tool version,
 board preset and build results. Real PS/HP initialization and ILA/VIO operation
-still require an attached ZedBoard. Record board/silicon revision and the
-generated `deployment.json` alongside hardware measurements.
+require an attached ZedBoard; see [hardware results](HARDWARE.md). Record
+board/silicon revision and the generated `deployment.json` alongside hardware
+measurements.

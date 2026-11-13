@@ -16,4 +16,9 @@ targets -set -nocase -filter {name =~ "APU*"}
 source [file join $deployment ps7_init.tcl]
 ps7_init
 ps7_post_config
+targets -set -nocase -filter {name =~ "*Cortex-A9 MPCore #0*"}
+mwr 0x00100000 0x12345678
+set scratch [mrd -value 0x00100000]
+mwr 0x00100000 0
+if {$scratch != 0x12345678} {error [format "DDR scratch readback failed: 0x%08x" $scratch]}
 puts "DDR and HP0 initialized; CPUs remain halted. Start the benchmark through VIO."

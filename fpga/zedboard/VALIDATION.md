@@ -4,6 +4,9 @@ Validation date: 2026-11-12. Workload: the default 64-loop deployment, Q=32,
 64-bit AXI3, four read buffers, four write buffers, eight metadata cache lines,
 four reference cache lines, 100 MHz requested fabric clock.
 
+These records predate hardware testing. See [hardware results](HARDWARE.md) for
+the first board run and the defects it found in this deployment.
+
 ## Matching catalog and full board retry
 
 Found the complete 2021.1 catalog in the public image

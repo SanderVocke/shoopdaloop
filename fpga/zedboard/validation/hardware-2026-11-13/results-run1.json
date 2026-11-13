@@ -1,0 +1,19 @@
+{
+  "fabric_hz": 100000000,
+  "status": 45,
+  "completed_quanta": 1000,
+  "measured_quanta": 928,
+  "total_cycles": 24162653,
+  "last_cycles": 25730,
+  "min_cycles": 25585,
+  "max_cycles": 26873,
+  "wall_cycles": 24164509,
+  "read_bursts": 357475,
+  "write_bursts": 4430,
+  "read_bytes": 34005952,
+  "write_bytes": 549760,
+  "address_stall_cycles": 0,
+  "response_stall_cycles": 7784414,
+  "output_words": 512000,
+  "output_digest": 0
+}
