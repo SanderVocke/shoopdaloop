@@ -2,6 +2,7 @@ if {[version -short] ne {2021.1}} {error "This experiment requires Vivado 2021.1
 set stage [lindex $argv 0]
 set_param general.maxThreads [lindex $argv 1]
 set generics [lindex $argv 2]
+set strategy [lindex $argv 3]
 set part xc7z020clg484-1
 create_project -in_memory -part $part
 set_property include_dirs [list [file normalize source/fpga/state_processor/rtl]] [current_fileset]
@@ -13,7 +14,7 @@ lappend sources context.sv
 read_verilog -sv $sources
 read_xdc context.xdc
 set f [open setup.txt w]
-puts $f "Vivado: [version]\nPart: $part\nGenerics: $generics\nClock: 150 MHz\nUncertainty: 0.2 ns"
+puts $f "Vivado: [version]\nPart: $part\nGenerics: $generics\nClock: 150 MHz\nUncertainty: 0.2 ns\nStrategy: $strategy"
 close $f
 proc reports {stage} {
     report_utilization -file ${stage}_utilization.rpt
@@ -33,14 +34,30 @@ synth_design -top registered_core_context -part $part -mode out_of_context -flat
 write_checkpoint -force post_synth.dcp
 reports post_synth
 if {$stage eq {route}} {
-    opt_design
-    place_design
-    phys_opt_design
+    if {$strategy eq {timing}} {
+        set_clock_uncertainty -setup 0.900 [get_clocks core_clk]
+        opt_design -directive Explore
+        place_design -directive ExtraNetDelay_high
+        phys_opt_design -directive AggressiveExplore
+        set_clock_uncertainty -setup 0.200 [get_clocks core_clk]
+    } else {
+        opt_design
+        place_design
+        phys_opt_design
+    }
     write_checkpoint -force post_place.dcp
     reports post_place
-    route_design
-    phys_opt_design -directive AggressiveExplore
-    route_design
+    if {$strategy eq {timing}} {
+        set_clock_uncertainty -setup 0.900 [get_clocks core_clk]
+        route_design -directive AggressiveExplore
+        phys_opt_design -directive AggressiveExplore
+        route_design -directive AggressiveExplore
+        set_clock_uncertainty -setup 0.200 [get_clocks core_clk]
+    } else {
+        route_design
+        phys_opt_design -directive AggressiveExplore
+        route_design
+    }
     write_checkpoint -force post_route.dcp
     reports post_route
     report_route_status -file post_route_route_status.rpt

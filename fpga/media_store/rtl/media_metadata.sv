@@ -34,7 +34,8 @@ module media_metadata #(
         TRIM_COUNT, TRIM_CHECK, TRIM_NEXT, FREE_PAGE, FREE_LINK, SCAN_START, SCAN_WORD, SCAN_RESULT, FLUSH_NEXT,
         CHECK_TREE, COUNT_NODES, CAPACITY, CHECK_CAPACITY, DETACH_ROOT, DETACH_COUNT, DETACH_COMMIT,
         GC_ROOT, GC_COUNT, GC_WALK, GC_SAVE_ROOT, GC_SAVE_COUNT, GC_COMMIT} phase_t;
-    phase_t phase, resume;
+    (* fsm_encoding = "one_hot" *) phase_t phase;
+    phase_t resume;
     reg [VIEWS-1:0] root_valid, leaf_valid;
     wire [127:0] root_ram_data;
     reg [127:0] root_data;
@@ -84,7 +85,7 @@ module media_metadata #(
     assign memory_read_ready = bank < 3 && bus_read_ready[bank];
     assign memory_response_ready = bank < 3 && bus_response_ready[bank];
     function automatic [63:0] page_address(input [31:0] id);
-        page_address = PAGE_BASE+(64'(id)-1)*64;
+        page_address = (PAGE_BASE-64)+64'(id)*64;
     endfunction
     function automatic [63:0] nodes(input [31:0] count);
         reg [63:0] n, total;

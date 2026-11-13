@@ -17,6 +17,10 @@ diagnosis; it does not establish timing closure. Interfaces use retained fabric
 launch/capture registers, with no false paths or multicycle exceptions.
 The period is conservatively rounded down to 6.666 ns (150.015 MHz), avoiding
 Vivado's rounding of 6.666667 ns to a period slightly slower than 150 MHz.
+`--strategy timing` uses Explore optimization, ExtraNetDelay_high placement and
+AggressiveExplore routing with 0.9 ns setup uncertainty during implementation.
+Every reported checkpoint restores the same 0.2 ns measurement uncertainty;
+hold uncertainty and the 6.666 ns clock remain unchanged.
 
 The state profile has 512 program/state/job entries. The job profile has 256
 32-frame buffers, eight external input/output ports, media enabled and 32-frame

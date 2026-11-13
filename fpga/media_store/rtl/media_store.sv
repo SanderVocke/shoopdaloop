@@ -83,7 +83,7 @@ module media_store #(
         RETIRE_REQUEST, RETIRE_WAIT, FENCE_REQUEST, FENCE_WAIT, FENCE_METADATA,
         FINISH
     } phase_t;
-    phase_t phase;
+    (* fsm_encoding = "one_hot" *) phase_t phase;
     reg descriptor_read, descriptor_write, table_read, table_write, ref_read, ref_write, free_read, free_write;
     reg [VIEW_BITS-1:0] descriptor_read_address, descriptor_write_address;
     reg [TABLE_BITS-1:0] table_read_address, table_write_address;
@@ -365,17 +365,17 @@ module media_store #(
     wire [3:0] metadata_required = {checking || trimming || detaching || draining || debug_drain,
         free_read || free_write, ref_read || ref_write, table_read || table_write};
     reg [3:0] prepared_metadata;
-    phase_t prepared_phase;
+    reg phase_epoch, prepared_epoch;
     reg prepared_config, prepared_valid;
-    wire controls_ready = prepared_valid && prepared_phase == phase && prepared_config == cfg_request_valid;
+    wire controls_ready = prepared_valid && prepared_epoch == phase_epoch && prepared_config == cfg_request_valid;
     wire advance = controls_ready && (prepared_metadata & ~metadata_done) == 0;
     wire foreground_metadata = controls_ready && (prepared_metadata & ~metadata_done) != 0;
     always @(posedge clk) begin
         if (reset) begin
-            prepared_metadata <= 0; prepared_phase <= IDLE;
+            prepared_metadata <= 0; prepared_epoch <= 0;
             prepared_config <= 0; prepared_valid <= 0;
         end else begin
-            prepared_metadata <= metadata_required; prepared_phase <= phase;
+            prepared_metadata <= metadata_required; prepared_epoch <= phase_epoch;
             prepared_config <= cfg_request_valid; prepared_valid <= 1;
         end
     end
@@ -540,9 +540,13 @@ module media_store #(
         end
     end
 
+    task automatic enter_phase(input phase_t next);
+        begin phase <= next; phase_epoch <= ~phase_epoch; end
+    endtask
+
     always @(posedge clk) begin
         if (reset) begin
-            phase <= IDLE;
+            phase <= IDLE; phase_epoch <= 0;
             done <= 0; reclaim_capacity_failures <= 0;
             error_code <= OK;
             result_view <= 0;
@@ -670,53 +674,53 @@ module media_store #(
                     index <= 0;
                     sample_index <= 0;
                     sample_last <= cmd_count-1'b1; samples_finished <= 0;
-                    if (manual_grant) begin done <= 1; phase <= IDLE; end
-                    else phase <= ADMIT;
+                    if (manual_grant) done <= 1;
+                    else enter_phase(ADMIT);
                 end
                 ADMIT: begin
                     if (!admission_base_valid) begin
                         error_code <= INVALID_SHAPE;
-                        phase <= FINISH;
-                    end else if ((opcode == 9 || opcode == 10) && !admission_start_valid) begin error_code <= INVALID_SHAPE; phase <= FINISH; end
-                    else if (opcode == 9) begin done <= 1; phase <= IDLE; end
-                    else if (opcode == 10) phase <= DRAIN_WAIT;
+                        enter_phase(FINISH);
+                    end else if ((opcode == 9 || opcode == 10) && !admission_start_valid) begin error_code <= INVALID_SHAPE; enter_phase(FINISH); end
+                    else if (opcode == 9) begin done <= 1; enter_phase(IDLE); end
+                    else if (opcode == 10) enter_phase(DRAIN_WAIT);
                     else if (opcode == 8) begin
                         opcode <= CLEAR;
-                        if (admission_view_greater) begin error_code <= INVALID_VIEW; phase <= FINISH; end
-                        else if (admission_view_full) begin error_code <= MEMORY_FULL; phase <= FINISH; end
+                        if (admission_view_greater) begin error_code <= INVALID_VIEW; enter_phase(FINISH); end
+                        else if (admission_view_full) begin error_code <= MEMORY_FULL; enter_phase(FINISH); end
                         else if (admission_view_at_end) begin
                             new_valid <= 1; new_range <= 0; new_offset <= 0; new_frames <= 0; new_chunks <= 0;
-                            phase <= BEGIN_CREATE;
-                        end else phase <= DESCRIPTOR_READ;
+                            enter_phase(BEGIN_CREATE);
+                        end else enter_phase(DESCRIPTOR_READ);
                     end else if (opcode == CREATE) begin
                         new_valid <= 1; new_range <= 0; new_offset <= 0; new_frames <= 0; new_chunks <= 0;
-                        allocation_view <= REUSE_VIEWS != 0 ? 32'b0 : view_count; phase <= FREE_VIEW_READ;
+                        allocation_view <= REUSE_VIEWS != 0 ? 32'b0 : view_count; enter_phase(FREE_VIEW_READ);
                     end else if (opcode == FENCE) begin
-                            phase <= FENCE_REQUEST;
+                            enter_phase(FENCE_REQUEST);
                     end else if (admission_view_outside) begin
                         error_code <= INVALID_VIEW;
-                        phase <= FINISH;
-                    end else phase <= DESCRIPTOR_READ;
+                        enter_phase(FINISH);
+                    end else enter_phase(DESCRIPTOR_READ);
                 end
                 FREE_VIEW_READ: begin
                     if (allocation_view == view_count) begin
-                        if (view_count == 32'(VIEWS)) begin error_code <= MEMORY_FULL; phase <= FINISH; end
-                        else phase <= opcode == CREATE ? PUBLISH : SLICE_CAPACITY;
-                    end else phase <= FREE_VIEW_RESULT;
+                        if (view_count == 32'(VIEWS)) begin error_code <= MEMORY_FULL; enter_phase(FINISH); end
+                        else enter_phase(opcode == CREATE ? PUBLISH : SLICE_CAPACITY);
+                    end else enter_phase(FREE_VIEW_RESULT);
                 end
                 FREE_VIEW_RESULT: begin
-                    if (!foreground_descriptor[0]) phase <= opcode == CREATE ? PUBLISH : SLICE_CAPACITY;
-                    else begin allocation_view <= allocation_view+1; phase <= FREE_VIEW_READ; end
+                    if (!foreground_descriptor[0]) enter_phase(opcode == CREATE ? PUBLISH : SLICE_CAPACITY);
+                    else begin allocation_view <= allocation_view+1; enter_phase(FREE_VIEW_READ); end
                 end
                 DESCRIPTOR_READ: begin
                     length_last <= length-1'b1;
-                    phase <= DESCRIPTOR_RESULT;
+                    enter_phase(DESCRIPTOR_RESULT);
                 end
                 DESCRIPTOR_RESULT: begin
                     descriptor <= foreground_descriptor;
                     if (!foreground_descriptor[0]) begin
-                        error_code <= INVALID_VIEW; phase <= FINISH;
-                    end else phase <= CHECK;
+                        error_code <= INVALID_VIEW; enter_phase(FINISH);
+                    end else enter_phase(CHECK);
                 end
                 CHECK: begin
                     new_valid <= opcode != REMOVE;
@@ -725,77 +729,77 @@ module media_store #(
                     new_frames <= 0;
                     new_chunks <= 0;
                     case (opcode)
-                        SLICE: phase <= SLICE_START;
+                        SLICE: enter_phase(SLICE_START);
                         CLEAR, REMOVE: begin
                             remaining <= chunks;
-                            phase <= (chunks == 0) ? PUBLISH : DETACH_ROOT;
+                            enter_phase((chunks == 0) ? PUBLISH : DETACH_ROOT);
                         end
-                        RECLAIM: phase <= RECLAIM_END;
+                        RECLAIM: enter_phase(RECLAIM_END);
                         APPEND: if (descriptor[1]) begin
                             error_code <= INVALID_STATE;
-                            phase <= FINISH;
-                        end else phase <= APPEND_END;
+                            enter_phase(FINISH);
+                        end else enter_phase(APPEND_END);
                         READ: if ((length == 0) || (length > frames) || (start >= length)) begin
                             error_code <= INVALID_VIEW;
-                            phase <= FINISH;
+                            enter_phase(FINISH);
                         end else begin
                             cursor <= start;
-                            phase <= (count == 0) ? FINISH : SAMPLE_TABLE_READ;
+                            enter_phase((count == 0) ? FINISH : SAMPLE_TABLE_READ);
                         end
-                        default: begin error_code <= INVALID_SHAPE; phase <= FINISH; end
+                        default: begin error_code <= INVALID_SHAPE; enter_phase(FINISH); end
                     endcase
                 end
-                APPEND_END: begin append_end <= frames+{32'b0,count}; phase <= APPEND_CHUNKS; end
-                APPEND_CHUNKS: begin append_chunks <= (append_end+BLOCK_FRAMES-1) >> UNIT_SHIFT; phase <= APPEND_REQUIRED; end
-                APPEND_REQUIRED: begin required_chunks <= append_chunks-{32'b0,chunks}; phase <= APPEND_GROWTH; end
+                APPEND_END: begin append_end <= frames+{32'b0,count}; enter_phase(APPEND_CHUNKS); end
+                APPEND_CHUNKS: begin append_chunks <= (append_end+BLOCK_FRAMES-1) >> UNIT_SHIFT; enter_phase(APPEND_REQUIRED); end
+                APPEND_REQUIRED: begin required_chunks <= append_chunks-{32'b0,chunks}; enter_phase(APPEND_GROWTH); end
                 APPEND_GROWTH: begin
                     growth <= required_chunks > {32'b0,free_count} ? required_chunks-{32'b0,free_count} : 64'b0;
-                    phase <= APPEND_EXTENT;
+                    enter_phase(APPEND_EXTENT);
                 end
-                APPEND_EXTENT: begin append_extent <= {32'b0,slot_count}+growth; phase <= APPEND_VALIDATE; end
+                APPEND_EXTENT: begin append_extent <= {32'b0,slot_count}+growth; enter_phase(APPEND_VALIDATE); end
                 APPEND_VALIDATE: begin
                     append_capacity_ok <= append_chunks <= {32'b0,slot_limit} && append_extent <= {32'b0,slot_limit};
-                    phase <= APPEND_CHECK;
+                    enter_phase(APPEND_CHECK);
                 end
                 APPEND_CHECK: begin
                     if (!append_capacity_ok) begin
-                        error_code <= MEMORY_FULL; phase <= FINISH;
-                    end else if (count == 0) phase <= FINISH;
+                        error_code <= MEMORY_FULL; enter_phase(FINISH);
+                    end else if (count == 0) enter_phase(FINISH);
                     else begin
                         new_frames <= append_end; new_chunks <= append_chunks[31:0];
                         append_index <= chunks; remaining <= required_chunks[31:0]; cursor <= frames;
-                        phase <= ALLOCATE;
+                        enter_phase(ALLOCATE);
                     end
                 end
                 SLICE_START: begin
                     slice_out_of_bounds <= start > frames;
                     slice_available <= frames-start;
                     absolute_start <= {32'b0,offset}+start;
-                    phase <= SLICE_OFFSET;
+                    enter_phase(SLICE_OFFSET);
                 end
                 SLICE_OFFSET: begin
                     range_offset <= length == 0 ? 32'b0 : (absolute_start[31:0] & 32'(BLOCK_FRAMES-1));
-                    phase <= SLICE_END;
+                    enter_phase(SLICE_END);
                 end
-                SLICE_END: begin slice_end <= {32'b0,range_offset}+length; phase <= SLICE_CHUNKS; end
-                SLICE_CHUNKS: begin range_chunks <= (slice_end+BLOCK_FRAMES-1) >> UNIT_SHIFT; phase <= SLICE_CHECK; end
+                SLICE_END: begin slice_end <= {32'b0,range_offset}+length; enter_phase(SLICE_CHUNKS); end
+                SLICE_CHUNKS: begin range_chunks <= (slice_end+BLOCK_FRAMES-1) >> UNIT_SHIFT; enter_phase(SLICE_CHECK); end
                 SLICE_CHECK: begin
                     if (slice_out_of_bounds || length > slice_available || range_chunks > 64'(BLOCKS)) begin
-                        error_code <= INVALID_VIEW; phase <= FINISH;
+                        error_code <= INVALID_VIEW; enter_phase(FINISH);
                     end else begin
                         new_range <= 1; new_offset <= range_offset; new_frames <= length;
                         new_chunks <= range_chunks[31:0]; first_chunk <= 32'(absolute_start >> UNIT_SHIFT);
-                        remaining <= range_chunks[31:0]; allocation_view <= REUSE_VIEWS != 0 ? 32'b0 : view_count; phase <= FREE_VIEW_READ;
+                        remaining <= range_chunks[31:0]; allocation_view <= REUSE_VIEWS != 0 ? 32'b0 : view_count; enter_phase(FREE_VIEW_READ);
                     end
                 end
-                SLICE_CAPACITY: phase <= length == 0 ? PUBLISH : TABLE_READ;
+                SLICE_CAPACITY: enter_phase(length == 0 ? PUBLISH : TABLE_READ);
                 RECLAIM_END: begin
                     retained_end <= chunks == 0 ? 64'b0 : (64'(chunks-1) << UNIT_SHIFT);
-                    phase <= RECLAIM_FRAMES;
+                    enter_phase(RECLAIM_FRAMES);
                 end
                 RECLAIM_FRAMES: begin
                     retained_frames <= retained_end > {32'b0,offset} ? retained_end-{32'b0,offset} : 64'b0;
-                    phase <= RECLAIM_CHECK;
+                    enter_phase(RECLAIM_CHECK);
                 end
                 RECLAIM_CHECK: begin
                     new_chunks <= chunks == 0 ? 0 : chunks-1;
@@ -803,123 +807,123 @@ module media_store #(
                     new_frames <= frames < retained_frames ? frames : retained_frames;
                     result_empty <= chunks <= 1; index <= chunks == 0 ? 0 : chunks-1;
                     remaining <= chunks == 0 ? 0 : 1;
-                    phase <= chunks == 0 ? PUBLISH : TABLE_READ;
+                    enter_phase(chunks == 0 ? PUBLISH : TABLE_READ);
                 end
-                DETACH_ROOT: phase <= PUBLISH;
-                DRAIN_WAIT: if (retired_count == 0 && !reclaim_active && !metadata_pending && !gc_retire_busy) phase <= FINISH;
-                TABLE_READ: phase <= TABLE_RESULT;
+                DETACH_ROOT: enter_phase(PUBLISH);
+                DRAIN_WAIT: if (retired_count == 0 && !reclaim_active && !metadata_pending && !gc_retire_busy) enter_phase(FINISH);
+                TABLE_READ: enter_phase(TABLE_RESULT);
                 TABLE_RESULT: begin
                     chunk <= table_data;
-                    phase <= REF_READ;
+                    enter_phase(REF_READ);
                 end
                 REF_READ: begin
-                    if (chunk >= slot_count) begin error_code <= INVALID_VIEW; phase <= FINISH; end
-                    else phase <= REF_RESULT;
+                    if (chunk >= slot_count) begin error_code <= INVALID_VIEW; enter_phase(FINISH); end
+                    else enter_phase(REF_RESULT);
                 end
                 REF_RESULT: begin
                     if ((reference_data == 0) || ((opcode == SLICE) && (reference_data == 32'hffffffff))) begin
                         error_code <= INVALID_STATE;
                         faulted <= 1;
-                        phase <= FINISH;
-                    end else phase <= opcode != SLICE && reference_data == 1 ? RETIRE_REQUEST : UPDATE_REFERENCE;
+                        enter_phase(FINISH);
+                    end else enter_phase(opcode != SLICE && reference_data == 1 ? RETIRE_REQUEST : UPDATE_REFERENCE);
                 end
                 UPDATE_REFERENCE: begin
                     if ((opcode != SLICE) && (reference_data == 1)) free_count <= free_count + 1;
                     remaining <= remaining - 1;
                     index <= index + 1;
-                    phase <= (remaining == 1) ? PUBLISH : TABLE_READ;
+                    enter_phase((remaining == 1) ? PUBLISH : TABLE_READ);
                 end
                 BEGIN_CREATE: begin
                     view_count <= view_count+1'b1;
-                    phase <= FINISH;
+                    enter_phase(FINISH);
                 end
                 PUBLISH: begin
                     if ((opcode == CREATE) || (opcode == SLICE)) begin
                         result_view <= allocation_view;
                         if (allocation_view == view_count) view_count <= view_count + 1;
                     end
-                    phase <= FINISH;
+                    enter_phase(FINISH);
                 end
-                ALLOCATE: if (remaining == 0) phase <= SAMPLE_TABLE_READ;
+                ALLOCATE: if (remaining == 0) enter_phase(SAMPLE_TABLE_READ);
                     else if (free_count != 0) begin
-                        phase <= FREE_RESULT;
+                        enter_phase(FREE_RESULT);
                     end else begin
                         chunk <= slot_count;
                         slot_count <= slot_count + 1;
                         fresh <= 1;
-                        phase <= ALLOCATE_WRITE;
+                        enter_phase(ALLOCATE_WRITE);
                     end
                 FREE_RESULT: begin
                     chunk <= free_data;
                     free_count <= free_count - 1;
                     fresh <= 0;
-                    phase <= ALLOCATE_WRITE;
+                    enter_phase(ALLOCATE_WRITE);
                 end
                 ALLOCATE_WRITE: begin
                     append_index <= append_index + 1;
                     remaining <= remaining - 1;
                     zero_index <= 0;
-                    phase <= fresh && BLOCK_CHUNKS == 1 ? ZERO_REQUEST : ALLOCATE;
+                    enter_phase(fresh && BLOCK_CHUNKS == 1 ? ZERO_REQUEST : ALLOCATE);
                 end
-                ZERO_REQUEST: if (cm_cmd_ready) phase <= ZERO_DATA;
+                ZERO_REQUEST: if (cm_cmd_ready) enter_phase(ZERO_DATA);
                 ZERO_DATA: if (cm_write_ready) begin
                     zero_index <= zero_index+1'b1;
-                    if (zero_index == SPAN_BITS'(CHUNK_FRAMES-1)) phase <= ZERO_WAIT;
+                    if (zero_index == SPAN_BITS'(CHUNK_FRAMES-1)) enter_phase(ZERO_WAIT);
                 end
                 ZERO_WAIT: if (cm_response_valid) begin
                     if (cm_response_error != 0) begin
-                        error_code <= cm_response_error; phase <= FINISH;
+                        error_code <= cm_response_error; enter_phase(FINISH);
                         faulted <= 1;
                     end
-                    else phase <= ALLOCATE;
+                    else enter_phase(ALLOCATE);
                 end
                 SAMPLE_TABLE_READ: begin
                     sample_offset <= OFFSET_BITS'(absolute_sample & 64'(CHUNK_FRAMES-1));
                     span_until_wrap <= length-cursor;
                     span_contiguous <= contiguous;
-                    phase <= SAMPLE_TABLE_RESULT;
+                    enter_phase(SAMPLE_TABLE_RESULT);
                 end
                 SAMPLE_TABLE_RESULT: begin
                     chunk <= (table_data << BLOCK_SHIFT) | (32'(absolute_sample >> SHIFT) & 32'(BLOCK_CHUNKS-1));
                     sample_block <= table_data;
                     span_count <= SPAN_BITS'(next_span); span_index <= 0;
-                    phase <= SAMPLE_REQUEST;
+                    enter_phase(SAMPLE_REQUEST);
                 end
                 SAMPLE_REQUEST: begin
-                    if (sample_block >= slot_count) begin error_code <= INVALID_VIEW; phase <= FINISH; end
-                    else if (cm_cmd_ready) phase <= SAMPLE_DATA;
+                    if (sample_block >= slot_count) begin error_code <= INVALID_VIEW; enter_phase(FINISH); end
+                    else if (cm_cmd_ready) enter_phase(SAMPLE_DATA);
                 end
                 SAMPLE_DATA: if ((cm_data_read && cm_read_valid && read_ready) || (cm_data_write && write_valid && cm_write_ready)) begin
                     sample_index <= sample_index + 1;
                     samples_finished <= sample_index == sample_last;
                     span_index <= span_index+1'b1;
                     cursor <= opcode == READ && cursor == length_last ? 64'b0 : cursor+1;
-                    if (span_index+1'b1 == span_count) phase <= SAMPLE_WAIT;
+                    if (span_index+1'b1 == span_count) enter_phase(SAMPLE_WAIT);
                 end
                 SAMPLE_WAIT: if (cm_response_valid) begin
                     if (cm_response_error != 0) begin
-                        error_code <= cm_response_error; phase <= FINISH;
+                        error_code <= cm_response_error; enter_phase(FINISH);
                         faulted <= 1;
                     end
-                    else phase <= samples_finished ? (opcode == READ ? FINISH : PUBLISH) : SAMPLE_TABLE_READ;
+                    else enter_phase(samples_finished ? (opcode == READ ? FINISH : PUBLISH) : SAMPLE_TABLE_READ);
                 end
-                RETIRE_REQUEST: if (cm_cmd_ready) phase <= RETIRE_WAIT;
+                RETIRE_REQUEST: if (cm_cmd_ready) enter_phase(RETIRE_WAIT);
                 RETIRE_WAIT: if (cm_response_valid) begin
                     if (cm_response_error != 0) begin
-                        error_code <= cm_response_error; phase <= FINISH;
+                        error_code <= cm_response_error; enter_phase(FINISH);
                         faulted <= 1;
                     end
-                    else phase <= UPDATE_REFERENCE;
+                    else enter_phase(UPDATE_REFERENCE);
                 end
-                FENCE_REQUEST: if (cm_cmd_ready) phase <= FENCE_WAIT;
+                FENCE_REQUEST: if (cm_cmd_ready) enter_phase(FENCE_WAIT);
                 FENCE_WAIT: if (cm_response_valid) begin
                     error_code <= cm_response_error;
                     if (cm_response_error != 0) faulted <= 1;
-                    phase <= cm_response_error == 0 ? FENCE_METADATA : FINISH;
+                    enter_phase(cm_response_error == 0 ? FENCE_METADATA : FINISH);
                 end
-                FENCE_METADATA: phase <= FINISH;
-                FINISH: begin done <= 1; phase <= IDLE; end
-                default: begin error_code <= INVALID_STATE; faulted <= 1; phase <= FINISH; end
+                FENCE_METADATA: enter_phase(FINISH);
+                FINISH: begin done <= 1; enter_phase(IDLE); end
+                default: begin error_code <= INVALID_STATE; faulted <= 1; enter_phase(FINISH); end
             endcase
             end else if (advance && metadata_error != 0) begin
                 error_code <= metadata_error;
@@ -927,7 +931,7 @@ module media_store #(
                     cfg_request_valid <= 0; cfg_pending <= 1; cfg_result_valid <= 0;
                     cfg_response_error <= 1; cfg_was_write <= cfg_request_write;
                     cfg_response_space <= cfg_request_space;
-                end else phase <= FINISH;
+                end else enter_phase(FINISH);
             end
             if (memory_meta_valid && memory_meta_ready && !arena_bound) begin
                 base <= arena_base; arena_bound <= 1;
@@ -936,7 +940,7 @@ module media_store #(
             if (gc_freed) free_count <= free_count+1;
             if (memory_fault) begin
                 faulted <= 1; error_code <= MEMORY_FAULT;
-                if (phase != IDLE && phase != FINISH) phase <= FINISH;
+                if (phase != IDLE && phase != FINISH) enter_phase(FINISH);
             end
         end
     end

@@ -85,6 +85,10 @@ port arbitration also protects a pending RAM result while the output is stalled.
 The write-pool port remains reserved throughout a foreground read or write
 stream; unrelated fills resume when that stream releases it. Speculative read
 launches reserve their line before a separate directory-update stage.
+Demand misses also capture their selected line before updating its directory,
+adding one miss-control cycle. Fill selection uses one-hot grants to select the
+tag directly, preserving the existing write-pool and last-line priorities.
+Idle DMA payload registers capture candidates independently of request admission.
 
 The demand and transfer FSMs run concurrently. Demand fills have priority. Dirty
 writeback runs after a quiet interval of `CHUNK_FRAMES+8` periods, or earlier for

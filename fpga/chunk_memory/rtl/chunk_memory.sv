@@ -41,12 +41,12 @@ module chunk_memory #(
     localparam integer QUIET_BITS = $clog2(CHUNK_FRAMES+9);
     localparam [63:0] ARENA_BYTES = 64'(SLOTS)*64'(CHUNK_FRAMES)*4;
     typedef enum logic [3:0] { IDLE, CHECK, LOOKUP, WAIT_LINE, READ_STREAM,
-        WRITE_DATA, COMMIT, FLUSH, RETIRING, RESPONSE } phase_t;
+        WRITE_DATA, COMMIT, FLUSH, RETIRING, RESPONSE, ALLOCATE_LINE } phase_t;
     typedef enum logic [3:0] { D_IDLE, D_READ_REQUEST, D_READ_WAIT,
         D_RAM_REQUEST, D_RAM_RESULT, D_WRITE_REQUEST, D_WRITE_WAIT,
         D_TRANSFER, D_STREAM_READ, D_STREAM_WRITE, D_STREAM_WAIT, D_HINT } dma_phase_t;
-    phase_t phase;
-    dma_phase_t dma_phase;
+    (* fsm_encoding = "one_hot" *) phase_t phase;
+    (* fsm_encoding = "one_hot" *) dma_phase_t dma_phase;
     reg [2:0] opcode;
     (* DONT_TOUCH = "yes" *) reg writing;
     reg [31:0] request_id, line;
@@ -71,11 +71,12 @@ module chunk_memory #(
     reg [31:0] dma_line, dma_data;
     reg [TAG_BITS-1:0] dma_chunk;
     reg [SPAN_BITS-1:0] dma_index;
-    reg read_hit, write_hit, fill_found;
-    wire read_victim, demand_victim, write_victim, flush_found;
+    reg read_hit, write_hit;
+    wire read_victim, demand_victim, write_victim, flush_found, fill_found, fill_write_pool;
     reg [31:0] read_hit_line, write_hit_line, fill_line;
+    reg [TAG_BITS-1:0] fill_chunk;
     wire [31:0] read_victim_line, demand_victim_line, write_victim_line, flush_line;
-    reg fill_write_pool, hint_hit, incoming_write_space;
+    reg hint_hit, incoming_write_space;
     reg [31:0] dirty_count;
     reg retiring_dirty;
     reg background_dirty;
@@ -88,7 +89,7 @@ module chunk_memory #(
         && !((phase != IDLE && phase != RESPONSE) && (32'(chunk) >> RETIRE_SHIFT) == (retire_chunk >> RETIRE_SHIFT));
     integer i;
     wire dma_active = dma_phase != D_IDLE;
-    wire read_pinned = !use_write_pool && (phase == WAIT_LINE || phase == READ_STREAM);
+    wire read_pinned = !use_write_pool && (phase == WAIT_LINE || phase == READ_STREAM || phase == ALLOCATE_LINE);
     wire write_claimed = writing && phase != IDLE && phase != RESPONSE;
     wire [SPAN_BITS:0] incoming_end = {1'b0,cmd_offset[SPAN_BITS-1:0]} + {1'b0,cmd_count[SPAN_BITS-1:0]};
     wire incoming_write = cmd_valid && cmd_opcode == WRITE && cmd_count != 0 && cmd_chunk < 32'(SLOTS)
@@ -152,12 +153,22 @@ module chunk_memory #(
 
     wire [READ_BUFFERS-1:0] read_free_mask, read_forward_mask, read_any_mask;
     wire [READ_BUFFERS-1:0] demand_forward_mask, demand_any_mask;
+    wire [READ_BUFFERS-1:0] read_fill_mask, read_fill_grant;
     wire [WRITE_BUFFERS-1:0] write_free_mask, write_forward_mask, write_any_mask, flush_forward_mask, flush_any_mask;
+    wire [WRITE_BUFFERS-1:0] write_fill_mask, write_fill_grant;
     generate for (genvar r=0; r<READ_BUFFERS; r=r+1) begin : read_candidates
         wire reserved = dma_active && !dma_write_pool && dma_line == 32'(r);
         assign read_free_mask[r] = !read_present[r] && !reserved;
         assign read_any_mask[r] = !(read_pinned && line == 32'(r)) && !reserved;
         assign demand_any_mask[r] = !reserved;
+        assign read_fill_mask[r] = read_present[r] && !read_loaded[r]
+            && !(retire_busy && (read_tag[r] >> RETIRE_SHIFT) == (background_chunk >> RETIRE_SHIFT))
+            && !(phase == RETIRING && (read_tag[r] >> RETIRE_SHIFT) == (chunk >> RETIRE_SHIFT));
+        if (r == READ_BUFFERS-1) begin : last_fill
+            assign read_fill_grant[r] = read_fill_mask[r] && !fill_write_pool;
+        end else begin : earlier_fill
+            assign read_fill_grant[r] = read_fill_mask[r] && !(|read_fill_mask[READ_BUFFERS-1:r+1]) && !fill_write_pool;
+        end
         if (r == 2**READ_LINE_BITS-1) begin : last_index
             assign read_forward_mask[r] = read_any_mask[r];
             assign demand_forward_mask[r] = demand_any_mask[r];
@@ -167,6 +178,14 @@ module chunk_memory #(
         end
     end
     for (genvar w=0; w<WRITE_BUFFERS; w=w+1) begin : write_candidates
+        assign write_fill_mask[w] = write_present[w] && !write_loaded[w]
+            && !(retire_busy && (write_tag[w] >> RETIRE_SHIFT) == (background_chunk >> RETIRE_SHIFT))
+            && !(phase == RETIRING && (write_tag[w] >> RETIRE_SHIFT) == (chunk >> RETIRE_SHIFT));
+        if (w == WRITE_BUFFERS-1) begin : last_fill
+            assign write_fill_grant[w] = write_fill_mask[w];
+        end else begin : earlier_fill
+            assign write_fill_grant[w] = write_fill_mask[w] && !(|write_fill_mask[WRITE_BUFFERS-1:w+1]);
+        end
         assign write_free_mask[w] = !write_present[w];
         assign write_any_mask[w] = write_loaded[w] && !dirty[w]
             && !(dma_active && dma_write_pool && dma_line == 32'(w));
@@ -205,17 +224,18 @@ module chunk_memory #(
     assign write_victim_line = write_free_found ? 32'(write_free_line) : write_forward_found ? 32'(write_forward_line) : 32'(write_any_line);
     assign flush_found = flush_forward_found || flush_any_found;
     assign flush_line = flush_forward_found ? 32'(flush_forward_line) : 32'(flush_any_line);
+    assign fill_write_pool = |write_fill_mask;
+    assign fill_found = fill_write_pool || (|read_fill_mask);
 
     always @* begin
         read_hit = 0; write_hit = 0; read_hit_line = 0; write_hit_line = 0;
-        fill_found = 0; fill_line = 0; fill_write_pool = 0;
+        fill_line = 0; fill_chunk = 0;
         hint_hit = 0; dirty_count = 0; retiring_dirty = 0; background_dirty = 0; incoming_write_space = 0;
         for (i = 0; i < READ_BUFFERS; i = i+1) begin
             if (read_present[i] && read_tag[i] == chunk) begin read_hit = 1; read_hit_line = 32'(i); end
             if (read_present[i] && read_tag[i] == hint_chunk) hint_hit = 1;
-            if (read_present[i] && !read_loaded[i]
-                && !(retire_busy && (read_tag[i] >> RETIRE_SHIFT) == (background_chunk >> RETIRE_SHIFT))
-                && !(phase == RETIRING && (read_tag[i] >> RETIRE_SHIFT) == (chunk >> RETIRE_SHIFT))) begin fill_found = 1; fill_line = 32'(i); end
+            fill_line = fill_line | ({32{read_fill_grant[i]}} & 32'(i));
+            fill_chunk = fill_chunk | ({TAG_BITS{read_fill_grant[i]}} & read_tag[i]);
         end
         for (i = 0; i < WRITE_BUFFERS; i = i+1) begin
             if ((write_present[i] && 32'(write_tag[i]) == cmd_chunk) || !write_present[i]
@@ -226,9 +246,8 @@ module chunk_memory #(
             if (dirty[i]) dirty_count = dirty_count + 1;
             if (write_present[i] && dirty[i] && (write_tag[i] >> RETIRE_SHIFT) == (chunk >> RETIRE_SHIFT)) retiring_dirty = 1;
             if (write_present[i] && dirty[i] && (write_tag[i] >> RETIRE_SHIFT) == (background_chunk >> RETIRE_SHIFT)) background_dirty = 1;
-            if (write_present[i] && !write_loaded[i]
-                && !(retire_busy && (write_tag[i] >> RETIRE_SHIFT) == (background_chunk >> RETIRE_SHIFT))
-                && !(phase == RETIRING && (write_tag[i] >> RETIRE_SHIFT) == (chunk >> RETIRE_SHIFT))) begin fill_found = 1; fill_line = 32'(i); fill_write_pool = 1; end
+            fill_line = fill_line | ({32{write_fill_grant[i]}} & 32'(i));
+            fill_chunk = fill_chunk | ({TAG_BITS{write_fill_grant[i]}} & write_tag[i]);
         end
     end
 
@@ -341,19 +360,25 @@ module chunk_memory #(
                         phase <= read_loaded[read_hit_line] ? READ_STREAM : WAIT_LINE;
                     end else if (opcode == READ && demand_victim) begin
                         line <= demand_victim_line; use_write_pool <= 0;
-                        read_present[demand_victim_line] <= 1; read_loaded[demand_victim_line] <= 0;
-                        read_tag[demand_victim_line] <= TAG_BITS'(chunk);
-                        next_read <= READ_LINE_BITS'(demand_victim_line + 1 == 32'(READ_BUFFERS) ? 0 : demand_victim_line+1);
-                        phase <= WAIT_LINE;
+                        phase <= ALLOCATE_LINE;
                     end else if (writing && write_victim) begin
                         line <= write_victim_line; use_write_pool <= 1;
-                        write_present[write_victim_line] <= 1; write_tag[write_victim_line] <= TAG_BITS'(chunk);
-                        dirty[write_victim_line] <= 0;
-                        write_loaded[write_victim_line] <= count == SPAN_BITS'(CHUNK_FRAMES);
-                        next_write <= WRITE_LINE_BITS'(write_victim_line + 1 == 32'(WRITE_BUFFERS) ? 0 : write_victim_line+1);
+                        phase <= ALLOCATE_LINE;
+                    end
+                end
+                ALLOCATE_LINE: begin
+                    if (use_write_pool) begin
+                        write_present[line] <= 1; write_tag[line] <= TAG_BITS'(chunk);
+                        dirty[line] <= 0;
+                        write_loaded[line] <= count == SPAN_BITS'(CHUNK_FRAMES);
+                        next_write <= WRITE_LINE_BITS'(line + 1 == 32'(WRITE_BUFFERS) ? 0 : line+1);
                         for (integer r = 0; r < READ_BUFFERS; r = r+1)
                             if (read_present[r] && read_tag[r] == chunk) begin read_present[r] <= 0; read_loaded[r] <= 0; end
                         phase <= count == SPAN_BITS'(CHUNK_FRAMES) ? WRITE_DATA : WAIT_LINE;
+                    end else begin
+                        read_present[line] <= 1; read_loaded[line] <= 0; read_tag[line] <= TAG_BITS'(chunk);
+                        next_read <= READ_LINE_BITS'(line + 1 == 32'(READ_BUFFERS) ? 0 : line+1);
+                        phase <= WAIT_LINE;
                     end
                 end
                 WAIT_LINE: if (use_write_pool ? write_loaded[line] : read_loaded[line])
@@ -394,24 +419,21 @@ module chunk_memory #(
             if (!fault) case (dma_phase)
                 D_IDLE: begin
                     dma_index <= 0;
+                    dma_line <= fill_found ? fill_line : flush_found && flush_requested ? flush_line : read_victim_line;
+                    dma_chunk <= fill_found ? fill_chunk : flush_found && flush_requested ? write_tag[flush_line] : hint_chunk;
+                    dma_write_pool <= fill_found ? fill_write_pool : flush_found && flush_requested;
+                    dma_write <= !fill_found && flush_found && flush_requested;
+                    dma_speculative <= !fill_found && !(flush_found && flush_requested);
+                    dma_obsolete <= 0;
                     if (fill_found) begin
-                        dma_line <= fill_line; dma_write_pool <= fill_write_pool; dma_write <= 0;
-                        dma_speculative <= 0; dma_obsolete <= 0;
-                        dma_chunk <= fill_write_pool ? write_tag[fill_line] : read_tag[fill_line];
                         dma_phase <= BURST_MEMORY != 0 ? D_TRANSFER : D_READ_REQUEST;
                     end else if (flush_found && flush_requested) begin
-                        dma_line <= flush_line; dma_chunk <= write_tag[flush_line];
-                        dma_speculative <= 0; dma_obsolete <= 0;
-                        dma_write_pool <= 1; dma_write <= 1;
                         dma_phase <= BURST_MEMORY != 0 ? D_TRANSFER : D_RAM_REQUEST;
-                    end else if (hint_pending && phase != CHECK && phase != LOOKUP && phase != WAIT_LINE
+                    end else if (hint_pending && phase != CHECK && phase != LOOKUP && phase != WAIT_LINE && phase != ALLOCATE_LINE
                         && phase != FLUSH && phase != RETIRING && !(phase == IDLE && cmd_valid)) begin
                         if (hint_hit || (retire_busy && (hint_chunk >> RETIRE_SHIFT) == (background_chunk >> RETIRE_SHIFT))) hint_pending <= 0;
                         else if (read_victim) begin
-                            dma_line <= read_victim_line; dma_chunk <= hint_chunk;
-                            dma_write_pool <= 0; dma_write <= 0;
                             dma_phase <= D_HINT;
-                            dma_speculative <= 1; dma_obsolete <= 0;
                             hint_pending <= 0;
                         end
                     end

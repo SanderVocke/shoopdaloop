@@ -35,6 +35,7 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--stage', choices=('synth', 'route'), default='route')
     parser.add_argument('--threads', type=int, default=4)
+    parser.add_argument('--strategy', choices=('default', 'timing'), default='default')
     args = parser.parse_args()
     if args.threads < 1:
         parser.error('threads must be positive')
@@ -73,10 +74,13 @@ def main():
         command=sys.argv, subsystem=args.subsystem, top=top, parameters=parameters,
         part='xc7z020clg484-1', clock_mhz=150, uncertainty_ns=0.2,
         stage=args.stage, threads=args.threads,
+        strategy=args.strategy,
+        implementation_setup_uncertainty_ns=0.9 if args.strategy == 'timing' else 0.2,
     ), indent=2) + '\n')
     command = [args.vivado, '-mode', 'batch', '-nojournal', '-log', 'vivado.log',
                '-source', 'run.tcl', '-tclargs', args.stage, str(args.threads),
-               ' '.join(f'{key}={value}' for key, value in parameters.items())]
+               ' '.join(f'{key}={value}' for key, value in parameters.items()),
+               args.strategy]
     if sys.platform == 'linux':
         import ctypes
         if ctypes.CDLL(None).prctl(36, 1, 0, 0, 0) != 0:
