@@ -211,7 +211,14 @@ jobs:
       - name: Install RTL tools
         run: |
           sudo apt-get update
-          sudo apt-get install --yes yosys autoconf flex bison libfl-dev zlib1g-dev g++
+          sudo apt-get install --yes autoconf flex bison libfl-dev zlib1g-dev g++
+      - name: Install pinned synthesis tools
+        uses: YosysHQ/setup-oss-cad-suite@853bb54f52246aa8fb4fab963f104cfb6676197a # v4
+        with:
+          version: '2025-04-15'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Report synthesis tool version
+        run: yosys -V
       - name: Cache synthesis Verilator 5.032
         id: verilator
         uses: actions/cache@v4

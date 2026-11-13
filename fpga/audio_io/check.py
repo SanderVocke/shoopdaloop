@@ -30,6 +30,7 @@ def main():
     if args.quantum is not None:variants=[variant for variant in variants if variant[0]==args.quantum]
     for q, banks in ([] if args.mapping_only else [(32, 3)] if args.demo else variants):
         name = f'{top}-q{q}-b{banks}'
+        print(f'{name}: strict lint and generic synthesis', flush=True)
         quantum = 'Q' if args.demo else 'MAX_FRAMES'
         params = dict(**{quantum: q}, CHUNK_FRAMES=q//2, RX_BANKS=banks, TX_BANKS=banks, P=q//2)
         if args.demo:
@@ -47,6 +48,7 @@ def main():
         path.write_text(script)
         subprocess.run(['yosys', '-Q', '-T', '-q', '-l', str(output/f'{name}-generic.log'), '-s', str(path)], cwd=ROOT, check=True)
     if not args.generic_only:
+        print(f'{top}: ECP5 mapping', flush=True)
         path = output/'map.ys'
         netlist = output/'mapped.json'
         path.write_text('read_verilog -sv -I'+str(include)+' '+' '.join(str(p) for p in manifest)+'\n'
