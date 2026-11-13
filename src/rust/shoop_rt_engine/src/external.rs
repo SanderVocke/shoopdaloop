@@ -94,6 +94,11 @@ impl Observations {
     pub fn fault(&self) {
         self.cells.faulted.store(true, Ordering::Relaxed);
     }
+    /// Publishes the consumer's storage accounting in place of native runtime
+    /// counters. The endpoint sends each new report frame once.
+    pub fn memory(&self, report: &shoop_rt_protocol::MemoryReport) {
+        self.cells.memory.publish_report(report);
+    }
     pub fn connected(&self) -> bool {
         self.cells.endpoint_alive.load(Ordering::Relaxed)
     }

@@ -21,6 +21,16 @@ fn application_bootstraps_its_real_sync_graph_on_rtl() {
         "{:?}",
         fpga.failure.lock().unwrap()
     );
+    let memory = fpga
+        .app
+        .snapshot()
+        .status
+        .memory
+        .expect("FPGA storage report after activation");
+    assert_eq!(memory.accounted_bytes, None);
+    let samples = memory.resources[0].unwrap();
+    assert_eq!(samples.name.as_str(), "Sample storage");
+    assert_eq!(samples.capacity, Some(4 << 20));
     let commands = fpga
         .trace
         .borrow()
@@ -84,6 +94,24 @@ fn application_records_and_plays_through_rtl() {
     fpga.app.apply(&rt_fpga_sim::app::Action::Details).unwrap();
     fpga.app.pump(20);
     assert!(fpga.failure.lock().unwrap().is_none());
+    // Storage reports follow the native cadence of 200 ms of audio.
+    let recorded = fpga.hardware.frame();
+    let mut memory = None;
+    for _ in 0..30 {
+        fpga.app.pump(20);
+        memory = fpga
+            .app
+            .snapshot()
+            .status
+            .memory
+            .filter(|report| report.frame > recorded);
+        if memory.is_some() {
+            break;
+        }
+    }
+    let samples = memory.expect("storage report after recording").resources[0].unwrap();
+    assert_eq!(samples.name.as_str(), "Sample storage");
+    assert!(samples.used > 0);
     let messages = fpga.messages.borrow().join("\n");
     let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../../work/fpga-app-contract/rtl-recording.txt");

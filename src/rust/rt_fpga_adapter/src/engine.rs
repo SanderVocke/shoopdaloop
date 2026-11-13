@@ -108,6 +108,10 @@ pub struct Adapter<D: EngineDevice> {
     buffer: Option<HostBuffer>,
     frame: Frame,
     fault: Option<Error>,
+    /// Frames between storage reports, matching the native runtime's cadence.
+    memory_interval: u64,
+    /// Frame of the latest report attempt since activation.
+    memory_frame: Option<Frame>,
 }
 impl<D: EngineDevice> Adapter<D> {
     pub fn prepare(parts: Preparation, mut device: D) -> Result<Consumer<Self>, Error> {
@@ -120,6 +124,7 @@ impl<D: EngineDevice> Adapter<D> {
         {
             return Err(Error::InvalidConfig);
         }
+        let memory_interval = u64::from((parts.description.sample_rate / 5).max(1));
         let catalog = Catalog::new(
             parts.config,
             &parts
@@ -200,6 +205,8 @@ impl<D: EngineDevice> Adapter<D> {
                 buffer: Some(HostBuffer::prepare(parts.config, parts.quantum)?),
                 frame: Frame(0),
                 fault: None,
+                memory_interval,
+                memory_frame: None,
             },
             latency_frames: 32,
             capabilities: shoop_rt_protocol::Capabilities(0),
@@ -216,6 +223,28 @@ impl<D: EngineDevice> Adapter<D> {
     }
     pub fn device_mut(&mut self) -> &mut D {
         &mut self.core.device
+    }
+    /// Query between quanta, without changing media, audio frames or program state.
+    /// The report carries this adapter's frame; it is refused before activation.
+    pub fn memory_report(&mut self) -> Result<crate::memory::MemoryReport, Error> {
+        if let Some(error) = self.fault {
+            return Err(error);
+        }
+        self.core.memory_report(self.frame)
+    }
+    /// Publishes storage pressure once after activation, then at the native interval.
+    fn publish_memory(&mut self) {
+        if !self.core.loaded
+            || self
+                .memory_frame
+                .is_some_and(|last| self.frame.0.saturating_sub(last.0) < self.memory_interval)
+        {
+            return;
+        }
+        self.memory_frame = Some(self.frame);
+        if let Ok(report) = self.memory_report() {
+            self.core.observations.memory(&report);
+        }
     }
     fn service(&mut self) -> Result<(), Error> {
         self.scheduler.begin_callback();
@@ -458,10 +487,23 @@ impl<D: EngineDevice> Adapter<D> {
                 ..Default::default()
             })
             .ok();
+        self.publish_memory();
         Ok(())
     }
 }
 impl<D: EngineDevice> Core<D> {
+    fn memory_report(&mut self, frame: Frame) -> Result<crate::memory::MemoryReport, Error> {
+        if !self.loaded {
+            return Err(Error::InvalidState);
+        }
+        let mut report = self.device.memory_report()?;
+        if !report.valid() {
+            return Err(Error::InvalidState);
+        }
+        // The device counts frames from the latest program load.
+        report.frame = frame.0;
+        Ok(report)
+    }
     fn processor(&mut self, id: NodeId, operation: EngineOp) -> Result<(), Error> {
         let node = self
             .nodes

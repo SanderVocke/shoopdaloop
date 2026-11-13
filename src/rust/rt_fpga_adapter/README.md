@@ -132,6 +132,13 @@ that diagnostic work. A host can poll at a lower rate such as 5 Hz. The existing
 mono adapter remains independently available alongside the application profile
 below. Memory readback does not introduce a physical board transport.
 
+The application adapter offers the same `memory_report()` query and publishes it
+itself between quanta: once after configuration activation, then every
+`sample_rate / 5` frames, matching the native runtime. Reports carry the
+adapter's frame because the device counts from the latest program load. A
+refused or invalid readback is skipped rather than faulting audio; the next
+interval retries it.
+
 ## Default application Sync-loop profile
 
 `engine::Adapter<D: EngineDevice>` consumes the production engine's actual
