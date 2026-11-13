@@ -1,5 +1,15 @@
 # FPGA state processor
 
+Simulation now uses the complete [Rust/Marlin testbench suite](../../src/rust/rt_fpga_testbench/README.md):
+
+```sh
+cargo run --locked -p rt_fpga_testbench --features sim -- state
+```
+
+The Python simulator entry names are aliases for this runner and accept its
+current options. The native suite guide describes profiles, replay, VCDs and
+reports. Historical measurements are marked separately.
+
 A synthesizable SystemVerilog state processor, loaded from production-plan lowering.
 It supports raw-state node instructions, explicit silence, and shared-loop playback/capture,
 a multicycle single-issue engine,
@@ -280,7 +290,7 @@ Standalone tests preserve hardware-specific protocol, configuration, stream,
 cache, capacity, fault and reset checks without a duplicate looping backend.
 
 ```sh
-python fpga/state_processor/simulate.py --config all
+cargo run --locked -p rt_fpga_testbench --features sim -- state
 ```
 
 The subsystem's `check.sh` retains lint and synthesis entry points. Current

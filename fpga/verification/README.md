@@ -1,5 +1,15 @@
 # Production / RTL verification
 
+Simulation now uses the complete [Rust/Marlin testbench suite](../../src/rust/rt_fpga_testbench/README.md):
+
+```sh
+cargo run --locked -p rt_fpga_testbench --features sim -- production
+```
+
+The Python simulator entry names are aliases for this runner and accept its
+current options. The native suite guide describes profiles, replay, VCDs and
+reports. Historical measurements are marked separately.
+
 `rt_backend_testbench` runs the production Current `GraphRuntime`, loop planner,
 playback/capture nodes and shared engine gain DSP. Float and Q8.24 are static
 instantiations of that path. No old FPGA Rust executor is used by this runner.
@@ -15,10 +25,10 @@ scenario and production Rust results stay unchanged. The adapter preserves share
 initial ranges, and runtime allocation and reclamation execute entirely in RTL.
 Each run saves the actual configured media image beside the production image.
 
-For setup, use Rust, Verilator 5.032, a C++ compiler and Make, then install
-`fpga/axi_memory/requirements.txt` and
+For setup, use Rust, Verilator 5.032, a C++ compiler and Make. Optional generated
+workloads and the independent float checker use
 `scripts/rt_backend_testbench/requirements.txt` in a Python virtual environment.
-The commands below build the production helper themselves; no retired executable
+The native runner calls the production Rust libraries directly; no retired executable
 or prior generated simulation directory is needed. See [RESULTS.md](RESULTS.md)
 for the completed migration's evidence and remaining environment limitations.
 
@@ -27,7 +37,7 @@ cargo build -p rt_backend_testbench
 target/debug/rt-backend-testbench run < fpga/verification/scenarios/mono-record.json
 target/debug/rt-backend-testbench run --numeric float < fpga/verification/scenarios/mono-record.json
 target/debug/rt-backend-testbench compile < fpga/verification/scenarios/mono-record.json
-python fpga/verification/simulate.py \
+cargo run --locked -p rt_fpga_testbench --features sim -- production \
   --case fpga/verification/scenarios/mono-record.json \
   --case fpga/verification/scenarios/silence.json \
   --case fpga/verification/scenarios/gain-ramps.json
@@ -76,18 +86,18 @@ that channels share ramp time. Alternate Q/chunk geometries and
 host-buffer partitions have separate gates. Run the common corpus with:
 
 ```sh
-python fpga/verification/simulate.py --directed --random-cases 30 --faults
-python fpga/verification/simulate.py --directed --random-cases 2 --block-chunks 32 --faults
-python fpga/verification/simulate.py --long-sessions
-python fpga/verification/simulate.py --benchmark64 --config 8x8 \
-  --read-buffers 128 --memory-model dramsim3
+cargo run --locked -p rt_fpga_testbench --features sim -- production --directed --random-cases 30
+cargo run --locked -p rt_fpga_testbench --features sim -- production-faults --block-chunks 32
+cargo run --locked -p rt_fpga_testbench --features sim -- production --long-sessions
+cargo run --locked -p rt_fpga_testbench --features sim -- production --benchmark64 --config 8x8 \
+  --block-chunks 32 --slots 2048 --memory-model dramsim3
 ```
 
 The separate continuous fabric-I/O gate uses the same production oracle, with
 the explicitly configured Q+P startup latency:
 
 ```sh
-python fpga/audio_io/simulate_pipeline.py --q 32 --p 17 --channels 16 \
+cargo run --locked -p rt_fpga_testbench --features sim -- continuous --q 32 --p 17 --channels 16 \
   --routing fanout --monitoring --memory-model fixed --axi-data-width 64 --stalls
 ```
 

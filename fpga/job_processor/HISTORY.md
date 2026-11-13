@@ -27,7 +27,7 @@ BRAM-only tests retain a separate profile.
 ## Run and reproduce
 
 Use the repository's development environment for Cargo. Put Verilator, Make, and
-a C++ compiler on PATH, then use the existing cocotb dependencies:
+a C++ compiler on PATH, then use the historical Python test environment:
 
 ```sh
 python3 -m venv work/fpga-sim-venv
@@ -75,7 +75,7 @@ is no placement/routing or timing-closure check.
 The following initial cycle/mapping results describe the scalar sample engine.
 Current measurements are in the pipelining checkpoint below.
 
-Verilator 5.032 / cocotb 1.9.2, seed 20261110:
+Verilator 5.032 / historical Python harness 1.9.2, seed 20261110:
 
 | Configuration | Directed cases/quanta | Seeded cases/quanta |
 | --- | --- | --- |

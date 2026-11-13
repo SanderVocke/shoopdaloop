@@ -63,7 +63,7 @@ The measurements below precede chunk-memory integration. Current buffering,
 sample comparisons, synthesis estimates and moving-playback timing are recorded
 in the [chunk-memory checkpoint](../chunk_memory/README.md#verification-checkpoint).
 
-Before streaming the TP passes, Verilator 5.032 and cocotb 1.9.2 passed these
+Before streaming the TP passes, Verilator 5.032 and historical Python harness 1.9.2 passed these
 comparisons against Rust across
 default, small and odd configurations:
 

@@ -1,5 +1,9 @@
 # Queue-driven mono looper through Marlin
 
+This is a historical implementation record. Current simulation uses the shared
+Rust/Marlin suite described in [PLAN_MARLIN_TESTBENCHES.md](PLAN_MARLIN_TESTBENCHES.md);
+its native drivers and memory agents supersede the Python harness described below.
+
 Status: complete. [PR #981](https://github.com/SanderVocke/shoopdaloop/pull/981)
 targets `proto/fpga-rust-reference` from `feat/fpga-mono-looper`.
 
@@ -73,7 +77,7 @@ claim or GUI integration requirement.
    completion being fabricated. Compare native/RTL behavior within common admitted
    limits; document bounded-device exhaustion separately from elastic CPU storage.
 6. The complete new build/run/replay path remains Rust + Marlin/Verilator without
-   Python/cocotb. Existing gain and direct-loop regressions remain passing; normal
+   Python. Existing gain and direct-loop regressions remain passing; normal
    CPU/Wasm application paths remain independent of simulation dependencies.
 
 ## Design rules

@@ -58,7 +58,7 @@ cargo test -p rt_fpga_adapter -p rt_backend_testbench --lib
 ```
 
 The new run/build path invokes Rust, Verilator, Perl and C++/make; it invokes no
-Python or cocotb. The existing cocotb suites remain independent. A fresh artifact
+Python. Component and integration benches use the shared native suite. A fresh artifact
 directory rebuilds the model; reusing it caches C++ independently of graph data.
 
 ## Workspace gates

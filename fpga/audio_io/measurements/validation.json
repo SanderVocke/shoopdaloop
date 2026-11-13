@@ -4,7 +4,7 @@
     "rust": "1.99.1",
     "verilator": "5.032",
     "yosys": "0.52",
-    "cocotb": "1.9.2"
+    "legacy_python_harness": "1.9.2"
   },
   "routed_timing": false,
   "synthesis": {

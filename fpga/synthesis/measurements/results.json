@@ -114,7 +114,7 @@
       "result": "passed"
     }
   ],
-  "passing_cocotb_tests": 76,
+  "passing_rtl_tests": 76,
   "previous_merged_runs": [
     {
       "run": "merged-r1",

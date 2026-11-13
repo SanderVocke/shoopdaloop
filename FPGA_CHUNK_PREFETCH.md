@@ -94,7 +94,7 @@ now supplies logical playback/capture and arithmetic expectations; RTL lowering
 emits the persistent state program. The production CPU path does not model
 physical prefetch or BRAM caches.
 
-Standalone cocotb tests cover queued, completed and in-flight
+Standalone Python harness tests cover queued, completed and in-flight
 prefetch/write conflicts, including delayed stale responses, repeated writes and
 retirement/reuse. An isolated resolver checks table indexing under stalled metadata
 and prefetch interfaces. Production Rust/RTL comparisons and local protocol fixtures cover ordered read/write/read

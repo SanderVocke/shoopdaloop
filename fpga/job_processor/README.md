@@ -1,5 +1,15 @@
 # BRAM audio job processor
 
+Simulation now uses the complete [Rust/Marlin testbench suite](../../src/rust/rt_fpga_testbench/README.md):
+
+```sh
+cargo run --locked -p rt_fpga_testbench --features sim -- audio
+```
+
+The Python simulator entry names are aliases for this runner and accept its
+current options. The native suite guide describes profiles, replay, VCDs and
+reports. Historical measurements are marked separately.
+
 This processor executes Input, Silence, Constant, Gain, Arithmetic, Smoothing, Mix, and Output jobs using reusable
 BRAM quantum buffers. `audio_pipeline` connects the job processor to the existing
 state processor's FIFO. The comparison bench runs the same program and samples
@@ -24,7 +34,8 @@ mode. Debug monitoring and failed-queue draining remain available.
 - `rtl/jp_sample_ram.sv`: synchronous 32-bit RAM requested as block RAM.
 - `rtl/jp_divider.sv`: shared unsigned 64/32 restoring divider, 64 iterations.
 - `rtl/audio_pipeline.sv`: state execution followed by job execution.
-- `simulate.py`, `tests/`: cocotb/Verilator transport, stimulus, arithmetic and protocol checks.
+- `simulate.py`: alias for the Rust/Marlin `audio` regression suite. Shared drivers
+  and arithmetic/protocol checks live in `src/rust/rt_fpga_testbench`.
 - `check.sh`: lint and generic/ECP5 synthesis for standalone and combined tops.
 
 Defaults: 32 instructions, 16 state entries, 32 FIFO jobs, at most 32 frames,
@@ -89,7 +100,7 @@ regression covers signed extremes, 0/1/3/31/32/33/144/UINT32_MAX durations,
 interleaved histories, stop/restart, changed durations, reset and short quanta:
 
 ```sh
-python fpga/job_processor/simulate_smoothing.py
+cargo run --locked -p rt_fpga_testbench --features sim -- smoothing
 ```
 
 ### Streaming gain and mix
@@ -188,8 +199,7 @@ Standalone tests preserve hardware-specific protocol, configuration, stream,
 cache, capacity, fault and reset checks without a duplicate looping backend.
 
 ```sh
-python fpga/job_processor/numeric_simulate.py
-python fpga/job_processor/simulate.py --config all --random-cases 50
+cargo run --locked -p rt_fpga_testbench --features sim -- audio --random-cases 150
 ```
 
 The subsystem's `check.sh` retains lint and synthesis entry points. Current

@@ -57,6 +57,32 @@ pub fn runtime_with_config(config: &RuntimeConfig) -> SimResult<VerilatorRuntime
         std::fs::write(&top, source)?;
     }
     let mut sources = vec![top.clone()];
+    sources.extend(pipeline_sources_at(&root));
+    sources.push(root.join("axi_memory/tests/axi_direct_memory.sv"));
+    let options = VerilatorRuntimeOptions {
+        verilator_executable: config.verilator.clone(),
+        build_jobs: config.jobs,
+        source_path_overrides: vec![(
+            Pipeline::source_path().into(),
+            top.to_str().ok_or("RTL path is not UTF-8")?.into(),
+        )],
+        ..Default::default()
+    };
+    Ok(VerilatorRuntime::new2(
+        artifacts,
+        &sources,
+        &[root.join("state_processor/rtl")],
+        [],
+        options,
+    )?)
+}
+
+/// Processing and AXI modules shared by native simulation tops.
+pub fn pipeline_sources() -> Vec<PathBuf> {
+    pipeline_sources_at(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../fpga"))
+}
+fn pipeline_sources_at(root: &Path) -> Vec<PathBuf> {
+    let mut sources = Vec::new();
     for (directory, names) in [
         (
             "state_processor",
@@ -87,23 +113,7 @@ pub fn runtime_with_config(config: &RuntimeConfig) -> SimResult<VerilatorRuntime
                 .map(|name| root.join(format!("{directory}/rtl/{name}.sv"))),
         );
     }
-    sources.push(root.join("axi_memory/tests/axi_direct_memory.sv"));
-    let options = VerilatorRuntimeOptions {
-        verilator_executable: config.verilator.clone(),
-        build_jobs: config.jobs,
-        source_path_overrides: vec![(
-            Pipeline::source_path().into(),
-            top.to_str().ok_or("RTL path is not UTF-8")?.into(),
-        )],
-        ..Default::default()
-    };
-    Ok(VerilatorRuntime::new2(
-        artifacts,
-        &sources,
-        &[root.join("state_processor/rtl")],
-        [],
-        options,
-    )?)
+    sources
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

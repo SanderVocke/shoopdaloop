@@ -1,5 +1,15 @@
 # Bounded RTL media store
 
+Simulation now uses the complete [Rust/Marlin testbench suite](../../src/rust/rt_fpga_testbench/README.md):
+
+```sh
+cargo run --locked -p rt_fpga_testbench --features sim -- media
+```
+
+The Python simulator entry names are aliases for this runner and accept its
+current options. The native suite guide describes profiles, replay, VCDs and
+reports. Historical measurements are marked separately.
+
 The current allocator owns groups of 32 chunks; see
 [block allocation, sharing and interfaces](BLOCK_ALLOCATION.md). Sample transfers
 remain chunk-sized. Legacy one-chunk regression runs and blocked runs are both
@@ -31,7 +41,7 @@ timing, bus-width options, and the retained legacy word-port mode.
 - `rtl/metadata_cache.sv`: persistent writeback cache used by tables, counts and free IDs.
 - `rtl/media_audio_pipeline.sv`: exclusive store ownership between jobs and host commands.
 - `rtl/memory_delay.sv`: optional minimum completion delay for a memory transfer.
-- `simulate.py`, `tests/`: standalone ownership/protocol checks and complete sample quanta.
+- `rt_fpga_testbench`: standalone ownership/protocol checks and complete sample quanta.
 - `check.sh`: warning-clean lint and generic/ECP5 synthesis for both tops.
 
 Defaults: 32 issued view IDs, 1,024 physical chunks, 32 samples per chunk,
@@ -260,17 +270,16 @@ with endpoint state. It does not resume a collector from old DDR records.
 Focused regression commands:
 
 ```sh
-python fpga/media_store/simulate.py --config wide --block-chunks 32 --retired-tables 2 --deferred
-python fpga/media_store/simulate.py --config wide --block-chunks 32 --metadata-pages 3 --deferred-capacity
-python fpga/media_store/simulate.py --config retirement --block-chunks 32 --metadata-lines 128 --axi-data-width 64 --deferred-stress
+cargo run --locked -p rt_fpga_testbench --features sim -- deferred
+cargo run --locked -p rt_fpga_testbench --features sim -- capacity
+cargo run --locked -p rt_fpga_testbench --features sim -- stress --stress-seconds 30
 ```
 
 The ownership suite also runs with AXI64, single-line metadata caches and
 `--memory-model dramsim3`. The long stress preloads actual hardware ownership
 tables for 32 mono or 16 stereo loops, each recorded for 30 seconds at 48 kHz.
 It checks mass clear, continued recording and complete recovery; old payloads
-are deliberately unobserved. CI uses `--stress-seconds 1` as a shorter large-arena
-regression. [Saved evidence](measurements/deferred/README.md) distinguishes these
+are deliberately unobserved. CI runs the full 30-second ownership campaigns. [Saved evidence](measurements/deferred/README.md) distinguishes these
 ownership campaigns from full production audio comparisons and timing tests.
 
 ## State/job integration
@@ -316,10 +325,10 @@ Standalone tests preserve hardware-specific protocol, configuration, stream,
 cache, capacity, fault and reset checks without a duplicate looping backend.
 
 ```sh
-python fpga/media_store/simulate.py --config all --random-cases 12
-python fpga/media_store/simulate.py --pipeline --config all --random-cases 5 --memory-model fixed
-python fpga/media_store/resolver_simulate.py
-python fpga/media_store/simulate_metadata.py
+cargo run --locked -p rt_fpga_testbench --features sim -- media --random-cases 12
+cargo run --locked -p rt_fpga_testbench --features sim -- pipeline --random-cases 5 --memory-model fixed
+cargo run --locked -p rt_fpga_testbench --features sim -- resolver
+cargo run --locked -p rt_fpga_testbench --features sim -- metadata
 ```
 
 The subsystem's `check.sh` retains lint and synthesis entry points. Current
@@ -352,8 +361,7 @@ Focused counter checks cover metadata exhaustion with spare sample capacity,
 retained slices, reset, read-only access, and both view policies:
 
 ```sh
-python fpga/media_store/simulate.py --config small --statistics --metadata-pages 2
-python fpga/media_store/simulate.py --config small --statistics --metadata-pages 2 --reuse-views
-python fpga/media_store/simulate.py --config small --statistics --metadata-pages 2 --block-chunks 32
-python fpga/media_store/simulate.py --config small --statistics --metadata-pages 2 --block-chunks 32 --reuse-views
+cargo run --locked -p rt_fpga_testbench --features sim -- statistics
+cargo run --locked -p rt_fpga_testbench --features sim -- statistics --memory-model dramsim3
+cargo run --locked -p rt_fpga_testbench --features sim -- reuse
 ```

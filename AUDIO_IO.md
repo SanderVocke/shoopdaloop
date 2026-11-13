@@ -1,5 +1,10 @@
 # FPGA audio I/O implementation plan
 
+All simulation benches now use the shared [Rust/Marlin suite](src/rust/rt_fpga_testbench/README.md).
+Run `cargo test --locked -p rt_fpga_testbench --features sim` for the complete
+regression matrix; `fpga-testbench continuous` and `demo` exercise the full audio
+paths. Historical command/measurement examples below retain their original tools.
+
 Status: implementation in progress on `feat/fpga-audio-io`. Stages 1–6 complete; revalidating final delivery after allocator integration.
 
 Base: `proto/fpga-rust-reference`, inspected at `012ed6bd`. The current local
@@ -342,7 +347,7 @@ affect their conclusions. Every stage records its commands, seeds and outcomes.
 ### Stage 1
 
 - Branch: `feat/fpga-audio-io`, base `012ed6bd`. Rust 1.99.1, Verilator
-  5.032, Yosys 0.52, cocotb 1.9.2, Python 3.12. Tools are workspace-local.
+  5.032, Yosys 0.52, historical Python harness 1.9.2, Python 3.12. Tools are workspace-local.
 - Frozen ports/timeline/reset/ownership contract: `fpga/audio_io/README.md`.
 - Baseline Rust suites for `rt_fpga_reference`, `rt_fpga_testbench` and
   `rt_backend_testbench` pass. Standalone default/small audio cases pass with

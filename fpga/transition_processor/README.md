@@ -1,5 +1,15 @@
 # Logical transition processor RTL
 
+Simulation now uses the complete [Rust/Marlin testbench suite](../../src/rust/rt_fpga_testbench/README.md):
+
+```sh
+cargo run --locked -p rt_fpga_testbench --features sim -- transition
+```
+
+The Python simulator entry names are aliases for this runner and accept its
+current options. The native suite guide describes profiles, replay, VCDs and
+reports. Historical measurements are marked separately.
+
 This synthesizable primitive-loop controller is compared directly with the
 production Rust loop resolver. The connected
 [loop pipeline](../loop_pipeline/README.md) adds state, jobs and media execution.
@@ -137,7 +147,7 @@ Status has frame u64 at 0, fault code at 64 (4 bits), phase at 128 (2 bits:
 Three u32 diagnostics at 416/448/480 report request checks, follower visits and
 pulse deliveries for the latest process operation. The follower-visit diagnostic
 now counts source-pulse reactions, including self-sync. There is no serial or bank
-selector. Reserved fields return zero. `tests/codec.py` decodes these rows.
+selector. Reserved fields return zero. `../abi/transition.py` decodes these rows.
 
 ## Verification
 
@@ -148,7 +158,7 @@ Standalone tests preserve hardware-specific protocol, configuration, stream,
 cache, capacity, fault and reset checks without a duplicate looping backend.
 
 ```sh
-python fpga/transition_processor/simulate.py --config all --random-cases 20
+cargo run --locked -p rt_fpga_testbench --features sim -- transition --random-cases 20
 ```
 
 The subsystem's `check.sh` retains lint and synthesis entry points. Current

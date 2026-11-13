@@ -1,5 +1,9 @@
 # Native SystemVerilog memory for direct simulation
 
+This is a historical implementation record. Current simulation uses the shared
+Rust/Marlin suite described in [PLAN_MARLIN_TESTBENCHES.md](PLAN_MARLIN_TESTBENCHES.md);
+its native drivers and memory agents supersede the Python harness described below.
+
 Status: complete on `proto/fpga-native-sim-memory`; stages 1–5 verified.
 Delivered in [PR #970](https://github.com/SanderVocke/shoopdaloop/pull/970), open for review.
 Investigated at `54c616cf` on `proto/fpga-rust-reference`.
@@ -7,8 +11,8 @@ Investigated at `54c616cf` on `proto/fpga-rust-reference`.
 ## Goal and scope
 
 Make direct functional simulation use a simple, non-synthesizable SV AXI memory
-instead of a Python AXI responder. Keep Cocotb for fixtures, DUT control and Rust
-comparisons. DRAMsim3 through the existing Cocotb/ctypes path is the realistic
+instead of a Python AXI responder. Keep the original Python harness for fixtures, DUT control and Rust
+comparisons. DRAMsim3 through the existing Python/ctypes path is the realistic
 memory simulation. Direct mode only needs to execute correctly.
 
 Use the existing CLI names to limit churn:
@@ -19,7 +23,7 @@ Use the existing CLI names to limit churn:
 | `dramsim3` | Existing Python AXI slave + native DRAMsim3 | Realistic memory timing |
 | `fixed`, `legacy` | Existing implementations | Artificial-delay/protocol diagnostics |
 
-This work does not port DRAMsim3, add DPI-C, replace Cocotb, change synthesizable
+This work does not port DRAMsim3, add DPI-C, replace the original Python harness, change synthesizable
 RTL or Rust semantics, or attempt to reproduce DDR behavior in SV. It does not
 require matching the old Python responder's cycles, random sequences, latency
 statistics or report internals. No minimum simulation speedup is required.
@@ -31,7 +35,7 @@ statistics or report internals. No minimum simulation speedup is required.
    direct runs require neither DRAMsim3 nor its native library.
 2. Direct memory services transactions from the simulation clock without a
    Python memory-service coroutine or per-cycle `drive/sample/step` calls.
-   Cocotb may still drive clocks, stimulate the DUT and observe execution.
+   The original Python harness may still drive clocks, stimulate the DUT and observe execution.
 3. Supported direct functional cases match Rust for statuses, samples, state,
    media contents and ordering. Both AXI widths, chunk bursts and word transfers
    work. Setup images and snapshots reflect the actual SV backing store.

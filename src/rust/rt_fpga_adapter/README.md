@@ -12,10 +12,11 @@ updates retain the owner; successful device reload constructs a new one after
 coordinated reset. An uncertain exchange faults the owner instead of reusing a
 possibly installed slot.
 
-Marlin drives the same owner over raw device transfers. Cocotb uses its separate
-JSONL service bridge; production expected results still come from the independent
-Rust resolver/runtime. Static demo preparation reserves credits through the same
-owner without predicting execution outcomes. See the
+Both Marlin transports drive the same owner over raw device transfers.
+Production expected results come from the independent Rust resolver/runtime.
+Static demo preparation reserves credits through the same owner, directly in
+Rust or through its JSONL service bridge for Python input generators, without
+predicting execution outcomes. See the
 [installation contract](../../../fpga/transition_processor/INSTALL.md).
 Matched FPGA costs, native service characterization and verification evidence are
 in the [request-slot report](../../../fpga/transition_processor/measurements/ARM_REQUEST_SLOTS.md).

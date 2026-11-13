@@ -110,7 +110,7 @@ Recording capacity grows external tables/counts/stack, not on-chip arrays. The g
 
 ## Reproduction
 
-Activate Cargo, the cocotb environment and Verilator; build the pinned timing library. From the repository root:
+Activate Cargo, the Python harness environment and Verilator; build the pinned timing library. From the repository root:
 
 ```sh
 python fpga/axi_memory/build_dramsim3.py

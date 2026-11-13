@@ -1,1 +1,2 @@
-cocotb==1.9.2
+# Native simulation uses Cargo/Marlin; Python is retained for preparation tools.
+-r ../../scripts/rt_backend_testbench/requirements.txt

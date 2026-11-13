@@ -1,5 +1,15 @@
 # Chunk memory
 
+Simulation now uses the complete [Rust/Marlin testbench suite](../../src/rust/rt_fpga_testbench/README.md):
+
+```sh
+cargo run --locked -p rt_fpga_testbench --features sim -- chunk
+```
+
+The Python simulator entry names are aliases for this runner and accept its
+current options. The native suite guide describes profiles, replay, VCDs and
+reports. Historical measurements are marked separately.
+
 This implements the [chunk-memory design](../../FPGA_CHUNK_MEMORY.md). The production Rust backend supplies logical audio/media behavior; cache and DMA
 behavior is verified with independent hardware properties.
 Media metadata owns allocation, views and references; chunk memory owns raw
@@ -147,7 +157,7 @@ Standalone tests preserve hardware-specific protocol, configuration, stream,
 cache, capacity, fault and reset checks without a duplicate looping backend.
 
 ```sh
-python fpga/chunk_memory/simulate.py --config all --memory-model fixed --axi-data-width 64
+cargo run --locked -p rt_fpga_testbench --features sim -- chunk --memory-model fixed --axi-data-width 64
 ```
 
 The subsystem's `check.sh` retains lint and synthesis entry points. Current

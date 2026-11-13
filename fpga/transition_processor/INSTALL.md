@@ -53,9 +53,11 @@ supersession, stop cancellation and synchronization.
 
 The mono and application adapters use the managed device wrapper. Marlin's direct
 transition scenarios use the same service over the raw simulator transport.
-Cocotb high-level submission/cancellation/collection uses the stateful
-`rt-backend-testbench transition-service` JSONL bridge; Python supplies packed
-traffic and drives handshakes. The production oracle remains a separate path.
+The native component and production testbench uses the same owner above its
+wire driver, including cancellation and collection. Raw guard tests bypass the
+owner deliberately. The production oracle remains a separate path. Python input
+generators access the owner through the stateful
+`rt-backend-testbench transition-service` JSONL bridge.
 
 Prepared audio and ZedBoard ROM generation reserves distinct slots through that
 same Rust owner. Streams that never Collect cannot assume credit reuse; they

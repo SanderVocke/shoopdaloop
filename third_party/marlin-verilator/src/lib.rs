@@ -800,22 +800,17 @@ impl VerilatorRuntime {
                     "Failed to load evalulator for module {name}"
                 ))?;
 
-        let main = new_main();
-
         let ports = ports
             .iter()
-            .copied()
-            .map(|(port, high, low, direction)| {
-                (
-                    port.to_string(),
-                    DynamicPortInfo {
-                        width: high + 1 - low,
-                        direction,
-                    },
-                )
+            .map(|&(port, high, low, direction)| {
+                DynamicPortInfo::bind(
+                    library, name, port, high + 1 - low, direction,
+                ).map(|info| (port.to_string(), info))
             })
-            .collect();
+            .collect::<Result<_, _>>()
+            .whatever_context("Failed to bind dynamic model ports")?;
 
+        let main = new_main();
         self.model_deallocators.borrow_mut().push(ModelDeallocator {
             model: main,
             deallocator: delete_main,
@@ -827,6 +822,7 @@ impl VerilatorRuntime {
             main,
             eval_main,
             library,
+            opened_trace: false,
         })
     }
 
@@ -1027,7 +1023,10 @@ impl VerilatorRuntime {
                         "Failed to load verilator dynamic library",
                     )?;
 
-                one_time_library_setup(&library, &self.dpi_functions)?;
+                one_time_library_setup(
+                    &library,
+                    &self.dpi_functions,
+                )?;
 
                 let library_idx = self.library_arena.push(library);
                 entry.insert(library_idx);

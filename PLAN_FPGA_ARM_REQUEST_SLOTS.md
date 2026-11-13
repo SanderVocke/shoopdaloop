@@ -43,10 +43,11 @@ The service-pause tests here finish outstanding transfers before pausing ARM.
    scan. It accepts a caller-selected slot/token, guards that address and identity,
    and initializes execution state itself. Its real-time resolver and lists stay
    in hardware, and storage capacities/layouts remain unchanged.
-4. One reusable Rust service runs above Marlin and is reused by cocotb's host
-   bridge. Python drives transport and fixtures; it does not implement another
-   allocator, duplicate registry or response owner. The new Marlin execution path
-   needs no Python subprocess. Production Rust remains an independent oracle.
+4. One reusable Rust service runs above the simulation transports. The original
+   cocotb host bridge and its upstream Marlin replacement use that same owner.
+   Python preparation does not implement another allocator, duplicate registry
+   or response owner. Marlin execution needs no Python subprocess. Production
+   Rust remains an independent oracle.
 5. After installation acknowledgements are consumed, ARM service can stop for
    many quanta while the harness advances audio without invoking that service.
    Resident absolute and source-timed actions, wraps, repeat waits, sync chains,
@@ -117,9 +118,9 @@ The service-pause tests here finish outstanding transfers before pausing ARM.
   `src/rust/shoop_rt_host_fpga_sim/tests/app_rtl.rs`: native RTL transport and comparisons.
   The default Marlin top has four loop slots; application adapters admit one.
   Exercise a short sync chain directly without expanding the application profile.
-- `fpga/transition_processor/tests/{driver,cases,test_transition_processor}.py`
-  and `fpga/verification/tests/test_production_pipeline.py`: parameterized
-  transition and full-pipeline comparisons.
+- `src/rust/rt_fpga_testbench/src/{drivers/transition,suites/transition,
+  suites/production}.rs`: parameterized transition and full-pipeline comparisons.
+  Upstream `2bdd10c9` replaced the original cocotb implementation during this work.
 - `src/rust/rt_backend_testbench/src/{main,transition_fixture/mod}.rs`: production
   oracle entry points and the location for a separate service transport bridge.
 - `fpga/audio_io/prepare_demo.py`, `fpga/zedboard/prepare.py` and their consumers:
@@ -271,7 +272,9 @@ cargo test --locked -p rt_backend_testbench
 cargo test --locked -p rt_fpga_sim --features sim -- --test-threads=1
 cargo test --locked -p shoop_rt_host_fpga_sim --features sim --tests -- --test-threads=1
 python fpga/transition_processor/simulate.py --config all --random-cases 20
-python fpga/verification/simulate.py --directed --random-cases 30 --faults
+cargo test --locked -p rt_fpga_testbench --features sim
+cargo run --locked -p rt_fpga_testbench --features sim -- production --directed --random-cases 30 --stalls
+cargo run --locked -p rt_fpga_testbench --features sim -- production-faults
 python fpga/axi_memory/generate_tops.py --check
 python fpga/audio_io/generate_top.py --check
 python fpga/audio_io/generate_demo.py --check
@@ -302,7 +305,8 @@ seeds, tool versions and outcomes with the evidence.
   [RTL](fpga/transition_processor/rtl/transition_processor.sv).
 - One Rust owner above both transports: [service](src/rust/rt_fpga_adapter/src/transition_service.rs),
   [JSONL bridge](src/rust/rt_backend_testbench/src/transition_service.rs) and
-  [cocotb transport](scripts/rt_backend_testbench/__init__.py).
+  [native wire driver](src/rust/rt_fpga_testbench/src/drivers/transition.rs).
+  Python prepared-input tools use the [bridge client](scripts/rt_backend_testbench/__init__.py).
 - Independent service/audio scheduling, retained results, captured media and
   authoritative late admission: [Marlin boundary tests](src/rust/rt_fpga_sim/tests/transition_boundary.rs).
 - Public application/mono ownership and behavior: existing queue-driven Marlin
@@ -340,4 +344,18 @@ already enables tracing on its owned context. Removing the global initialization
 makes both mono RTL tests pass in 0.73 seconds; the complete kernel suite and
 relocated bounded replay also pass. The warning-denying workspace build, regular
 host/carrier tests, normal application workflow and 45 pipeline cases pass after
-integration. A fresh full native sweep and final CI remain in progress.
+integration. A subsequent serialized full native sweep passes all 3,261 tests
+(11 skipped). A detached-host stderr failure was fixed by disabling internal
+logger diagnostics on a closed diagnostic pipe; the original shutdown regression
+also passes ten consecutive stress repetitions.
+
+
+Upstream `2bdd10c9` then moved the complete FPGA suite to Rust/Marlin. The merge
+preserves that migration: the new transition wire driver and native prepared-ROM
+producer now use the shared request owner, and raw INSTALL guard coverage moved
+to the new suite. The command measurement frontend also uses Marlin, with an
+explicit frozen-legacy measurement option. All five transition capacities pass
+20 seeded cases after this integration; R=11 command measurements reproduce
+every historical cycle count. Fresh routed candidate measurements reproduce
+11,310 LUTs, 8,299 flip-flops, 29 BRAM and +0.103/+0.006 ns setup/hold slack.
+The complete new component matrix and final CI are running.

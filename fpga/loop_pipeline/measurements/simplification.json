@@ -4,7 +4,7 @@
   "tools": {
     "yosys": "0.52",
     "verilator": "5.032",
-    "cocotb": "1.9.2"
+    "legacy_python_harness": "1.9.2"
   },
   "parameters": {
     "loops": 8,
@@ -186,7 +186,7 @@
     "native_runtime_engine_host_tests_passed": 491,
     "native_tests_skipped": 1,
     "python_contract_tests": 19,
-    "cocotb_groups": 84,
+    "rtl_groups": 84,
     "combined_pipeline_cases": 117,
     "combined_pipeline_steps": 1735,
     "dedicated_fault_reset_tests": true,
@@ -235,7 +235,7 @@
     "validation": {
       "rust_reference_and_testbench_tests": 64,
       "python_contract_tests": 19,
-      "cocotb_groups": 45,
+      "rtl_groups": 45,
       "combined_pipeline_cases": 42,
       "combined_pipeline_steps": 385,
       "dedicated_fault_reset_tests": true,

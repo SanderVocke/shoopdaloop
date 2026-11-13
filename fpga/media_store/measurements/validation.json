@@ -1,5 +1,5 @@
 {
-  "note": "Counts are cocotb test functions; each bundles directed/random/protocol requests or multiple Rust cases. Targeted runs at successive verified milestones are retained.",
+  "note": "Counts are historical RTL test functions; each bundles directed/random/protocol requests or multiple Rust cases. Targeted runs at successive verified milestones are retained.",
   "suites": [
     {
       "scope": "cache/page/shared transport AXI32/64",
