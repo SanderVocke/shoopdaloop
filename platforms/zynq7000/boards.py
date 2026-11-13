@@ -19,7 +19,7 @@ def argument(parser):
 
 
 class Board:
-    def __init__(self, data):
+    def __init__(self, data, fpga=False):
         self.data = data
         self.name = data["name"]
         self.profile = data["profile"]
@@ -27,6 +27,9 @@ class Board:
         self.bsp = data["bsp"]
         self.boot = data["boot"]
         self.firmware = data["firmware"]
+        if fpga and "fpga" not in data:
+            raise ValueError("Board has no FPGA arena profile")
+        self.fpga = data["fpga"] if fpga else None
         self.validate()
 
     @property
@@ -40,6 +43,19 @@ class Board:
     @property
     def rust_end(self):
         return self.platform_end + self.memory["rust_mib"] * MIB
+
+    @property
+    def arena_bytes(self):
+        """PL-owned DDR at the top of the Rust region, outside the firmware heap."""
+        return self.fpga["arena_mib"] * MIB if self.fpga else 0
+
+    @property
+    def heap_end(self):
+        return self.rust_end - self.arena_bytes
+
+    @property
+    def recording_mib(self):
+        return self.fpga["recording_mib"] if self.fpga else self.firmware["recording_mib"]
 
     @property
     def stage(self):
@@ -67,8 +83,13 @@ class Board:
             raise ValueError("Firmware budgets must be positive integer MiB values")
         if fw["runtime_reserve_mib"] < 240 or self.memory["loader_mib"] < 64:
             raise ValueError("Runtime and loader reserves are below the supported minimum")
+        if self.fpga is not None and (
+                any(type(self.fpga.get(k)) is not int or self.fpga[k] <= 0 for k in ("arena_mib", "recording_mib"))
+                or self.rust_end > 512 * MIB):
+            raise ValueError("FPGA arena budgets must be positive MiB values within HP0-reachable DDR")
         # Reserve covers engine state, transport, metadata and allocator headroom.
-        if fw["recording_mib"] + 3 * fw["media_mib"] + fw["runtime_reserve_mib"] > self.memory["rust_mib"]:
+        if (self.recording_mib + 3 * fw["media_mib"] + fw["runtime_reserve_mib"]
+                > (self.heap_end - self.platform_end) // MIB):
             raise ValueError("Recording, media replacement overlap and runtime reserve exceed Rust arena")
         if fw["audio"] != "dummy" or fw["midi"] not in ("dummy", "usb-optional"):
             raise ValueError("Unsupported audio/MIDI implementation")
@@ -97,7 +118,8 @@ class Board:
                 raise ValueError("USB MIDI requires an implemented board reset hook")
 
     def build_dir(self, root):
-        return root / "work/zynq" / ("build" if self.name == DEFAULT else f"boards/{self.name}/build")
+        suffix = "-fpga" if self.fpga else ""
+        return root / "work/zynq" / ("build" + suffix if self.name == DEFAULT else f"boards/{self.name}/build{suffix}")
 
     def boot_dir(self, root):
         return root / "work/zynq" / ("u-boot-build" if self.name == DEFAULT else f"boards/{self.name}/u-boot-build")
@@ -106,7 +128,7 @@ class Board:
         b = self.bsp
         values = {
             "RAM_BYTES": self.ram, "PLATFORM_START": MIB, "PLATFORM_END": self.platform_end,
-            "RUST_END": self.rust_end, "STAGE_ADDRESS": self.stage, "LOADER_MIN": self.loader_min,
+            "RUST_END": self.heap_end, "STAGE_ADDRESS": self.stage, "LOADER_MIN": self.loader_min,
             "CPU_HZ": b["cpu_hz"], "WATCHDOG_HZ": b["watchdog_hz"],
             "GEM_BASE": b["gem_base"], "GEM_IRQ": b["gem_irq"],
             "UART_BASE": b["uart_base"], "SD_BASE": b["sd_base"], "SD_HZ": b["sd_hz"],
@@ -117,6 +139,9 @@ class Board:
             for i, value in enumerate(divs):
                 values[f"GEM_{speed}_DIV{i}"] = value
         lines = ["/* Generated board contract. */", "#ifndef SHOOP_BOARD_H", "#define SHOOP_BOARD_H"]
+        if self.fpga:
+            values["FPGA_ARENA_BASE"] = self.heap_end
+            values["FPGA_ARENA_BYTES"] = self.arena_bytes
         lines += [f"#define SHOOP_{key} {value:#x}u" for key, value in values.items()]
         lines += [f"#define SHOOP_BOARD_PROFILE {json.dumps(self.profile)}", "#endif", ""]
         return "\n".join(lines)
@@ -125,8 +150,8 @@ class Board:
         template = (PLATFORM / "link.ld").read_text()
         return (template.replace("@PLATFORM_LENGTH@", hex(self.platform_end - MIB))
                 .replace("@RUST_START@", hex(self.platform_end))
-                .replace("@RUST_LENGTH@", hex(self.rust_end - self.platform_end))
-                .replace("@RUST_END@", hex(self.rust_end)))
+                .replace("@RUST_LENGTH@", hex(self.heap_end - self.platform_end))
+                .replace("@RUST_END@", hex(self.heap_end)))
 
     def generate(self, directory):
         directory.mkdir(parents=True, exist_ok=True)
@@ -135,17 +160,20 @@ class Board:
         (directory / "board.json").write_text(json.dumps(self.data, indent=2) + "\n")
 
     def manifest(self):
-        return {"board": self.name, "profile": self.profile,
-                "board_sha256": hashlib.sha256(json.dumps(self.data, sort_keys=True).encode()).hexdigest()}
+        manifest = {"board": self.name, "profile": self.profile,
+                    "board_sha256": hashlib.sha256(json.dumps(self.data, sort_keys=True).encode()).hexdigest()}
+        if self.fpga:
+            manifest["fpga_arena"] = {"base": self.heap_end, "bytes": self.arena_bytes}
+        return manifest
 
 
-def load(name=DEFAULT):
+def load(name=DEFAULT, fpga=False):
     if name not in names():
         raise ValueError(f"Unknown board: {name}")
     data = json.loads((PLATFORM / "boards" / (name + ".json")).read_text())
     if data["name"] != name:
         raise ValueError("Board filename and name differ")
-    return Board(data)
+    return Board(data, fpga)
 
 
 if __name__ == "__main__":

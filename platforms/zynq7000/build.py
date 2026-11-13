@@ -36,13 +36,19 @@ def build():
     parser.add_argument("--credential-file", type=Path)
     parser.add_argument("--fixture", action="store_true")
     parser.add_argument("--usb", action="store_true", help="Use the TinyUSB USB0 MIDI host")
+    parser.add_argument("--fpga", action="store_true", help="Execute on the PL core through its host bridge")
     parser.add_argument("--deployment", action="store_true")
     parser.add_argument("--build-id", default="direct-dev")
     parser.add_argument("--engine-config", type=Path, help="JSON engine pool and input-history policy")
     parser.add_argument("--deployment-test-fault", choices=["before-ready", "render", "control", "broker", "handoff-version", "cleanup"])
     boards.argument(parser)
     args = parser.parse_args()
-    board = boards.load(args.board)
+    if args.fpga and (args.app != "host" or args.fixture or args.usb or args.deployment):
+        parser.error("--fpga builds the host app without fixture, USB MIDI or deployment")
+    try:
+        board = boards.load(args.board, fpga=args.fpga)
+    except ValueError as error:
+        parser.error(str(error))
     policy = engine_policy.load(args.engine_config)
     global BUILD
     BUILD = board.build_dir(ROOT)
@@ -159,14 +165,16 @@ def build():
         manifest = PLATFORM / "firmware/Cargo.toml"
         rust_flags = "-D warnings -C target-cpu=cortex-a9 -C target-feature=+neon"
         cargo = ["cargo", "+" + PINS["rust"], "build", "--locked", "--release", "--target", "armv7a-none-eabihf", "--manifest-path", manifest]
-        features = (["fixture"] if args.fixture else []) + (["usb-midi"] if args.usb else [])
+        features = (["fixture"] if args.fixture else []) + (["usb-midi"] if args.usb else []) + (["fpga"] if args.fpga else [])
         if features:
             cargo += ["--features", ",".join(features)]
         rust_target = (PLATFORM / "firmware/target" if board.name == boards.DEFAULT else BUILD.parent / "firmware-target")
         run(cargo, env={**os.environ, "RUSTFLAGS": rust_flags, "CARGO_TARGET_DIR": str(rust_target),
             **engine_policy.environment(policy),
-            "SHOOP_RECORDING_BYTES": str(board.firmware["recording_mib"] * boards.MIB),
-            "SHOOP_MEDIA_BYTES": str(board.firmware["media_mib"] * boards.MIB)})
+            "SHOOP_RECORDING_BYTES": str(board.recording_mib * boards.MIB),
+            "SHOOP_MEDIA_BYTES": str(board.firmware["media_mib"] * boards.MIB),
+            "SHOOP_FPGA_ARENA_BASE": str(board.heap_end if args.fpga else 0),
+            "SHOOP_FPGA_ARENA_BYTES": str(board.arena_bytes)})
         rust_library = rust_target / "armv7a-none-eabihf/release/libshoop_zynq_firmware.a"
     cc = os.environ.get("ARM_CC", "arm-none-eabi-gcc")
     version = subprocess.check_output([cc, "-dumpfullversion"], text=True).strip()
@@ -200,7 +208,7 @@ def build():
     if errors:
         raise SystemExit("\n".join(errors))
     objects = [obj for obj, _ in results]
-    elf = BUILD / (args.app + ("-usb" if args.usb else "") + ("-fixture" if args.fixture else "") + ("-deployment" if args.deployment else "") +
+    elf = BUILD / (args.app + ("-fpga" if args.fpga else "") + ("-usb" if args.usb else "") + ("-fixture" if args.fixture else "") + ("-deployment" if args.deployment else "") +
                    ("-test" if args.deployment_test_fault else "") + ".elf")
     # Rust's compiler_builtins defines weak, generic memory routines. Pull newlib's optimized
     # strong ones from libc before the Rust library so they win for both C and Rust callers.
@@ -232,7 +240,7 @@ def build():
             continue
         if address != physical or stored > size or not (
             boards.MIB <= address < address + size <= board.platform_end or
-            board.platform_end <= address < address + size <= board.rust_end
+            board.platform_end <= address < address + size <= board.heap_end
         ):
             raise SystemExit(f"Invalid load region {address:#x}+{size:#x}")
         regions.append([address, address + size])

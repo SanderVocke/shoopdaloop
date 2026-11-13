@@ -2,6 +2,7 @@
 mod profiling;
 use alloc::{boxed::Box, string::String, vec, vec::Vec};
 use core::{ffi::c_void, time::Duration};
+#[cfg(not(feature = "fpga"))]
 use rt_runtime::buffer::{AudioBlock, MidiBlock, MidiBuffer};
 use shoop_app::{ConnectionId, Service, ServiceOptions};
 use shoop_app_api::{
@@ -10,7 +11,9 @@ use shoop_app_api::{
 use shoop_app_connection::{HeartbeatConfig, Management, Session};
 use shoop_app_protocol::{codec, WireMessage};
 use shoop_rt_backend::{EngineClock, RtBackend};
-use shoop_rt_engine::{prepare, HostStatus, Phase, Render};
+use shoop_rt_engine::HostStatus;
+#[cfg(not(feature = "fpga"))]
+use shoop_rt_engine::{prepare, Phase, Render};
 use shoop_rt_protocol::{DriverKind, DriverRunState, DriverStatus};
 use shoop_rt_transport::{carrier::InProcess, client::ProtocolClient};
 use shoop_transport::{
@@ -27,6 +30,7 @@ extern "C" {
     fn shoop_close(fd: i32);
     fn shoop_millis() -> u64;
     fn shoop_timer_ticks() -> u64;
+    #[cfg(not(feature = "fpga"))]
     fn shoop_timer_hz() -> u64;
     fn shoop_delay(ms: u32);
     fn shoop_start_render(owner: *mut c_void);
@@ -42,6 +46,64 @@ extern "C" {
     fn shoop_deployment_request(client: *const u8, sequence: u64) -> i32;
     fn shoop_deployment_reset();
     fn shoop_memory_report();
+}
+
+#[cfg(feature = "fpga")]
+mod fpga {
+    use alloc::{format, string::String};
+    use rt_fpga_adapter::bridge::{Bridge, Bus};
+
+    const BRIDGE: usize = 0x4000_0000;
+    const DEVCFG_INT_STS: usize = 0xF800_700C;
+    const PCFG_DONE: u32 = 1 << 2;
+    const LVL_SHFTR_EN: usize = 0xF800_0900;
+    const NORM_NONCACHE: u32 = 0x11DE2;
+    extern "C" {
+        fn Xil_SetTlbAttributes(address: usize, attributes: u32);
+    }
+
+    /// The bridge's registers in the strongly ordered GP0 window.
+    pub struct Mmio;
+    impl Bus for Mmio {
+        fn read(&mut self, offset: u32) -> u32 {
+            unsafe { core::ptr::read_volatile((BRIDGE + offset as usize) as *const u32) }
+        }
+        fn write(&mut self, offset: u32, value: u32) {
+            unsafe { core::ptr::write_volatile((BRIDGE + offset as usize) as *mut u32, value) }
+        }
+    }
+    pub type Device = Bridge<Mmio>;
+
+    fn read(address: usize) -> u32 {
+        unsafe { core::ptr::read_volatile(address as *const u32) }
+    }
+
+    /// Identifies the bridge once the PL is configured and reachable, after keeping
+    /// the CPU caches out of the core's DDR arena.
+    pub fn open() -> Result<Device, String> {
+        if read(DEVCFG_INT_STS) & PCFG_DONE == 0 {
+            return Err("the PL is not configured".into());
+        }
+        if read(LVL_SHFTR_EN) & 0xF != 0xF {
+            return Err("the PS-PL level shifters are disabled".into());
+        }
+        let end = crate::FPGA_ARENA_BASE + crate::FPGA_ARENA_BYTES;
+        for section in (crate::FPGA_ARENA_BASE..end).step_by(1 << 20) {
+            unsafe { Xil_SetTlbAttributes(section as usize, NORM_NONCACHE) };
+        }
+        let bridge = Bridge::new(Mmio)?;
+        if bridge.physical_base() != crate::FPGA_ARENA_BASE {
+            return Err(format!(
+                "bitstream arena {:#x} differs from the reserved {:#x}",
+                bridge.physical_base(),
+                crate::FPGA_ARENA_BASE
+            ));
+        }
+        if !rt_fpga_adapter::port::PortIo::capacities(&bridge).external_audio {
+            return Err("the bitstream exchanges audio with the host".into());
+        }
+        Ok(bridge)
+    }
 }
 
 #[cfg(feature = "usb-midi")]
@@ -303,6 +365,7 @@ fn profiling_now() -> u64 {
     let scale = NANOS_PER_TICK_Q32.load(core::sync::atomic::Ordering::Relaxed);
     ((u128::from(ticks) * u128::from(scale)) >> 32) as u64
 }
+#[cfg(not(feature = "fpga"))]
 fn profiling_clock() -> rt_runtime::profiling::Clock {
     let hz = u128::from(unsafe { shoop_timer_hz() });
     NANOS_PER_TICK_Q32.store(
@@ -316,11 +379,16 @@ fn profiling_clock() -> rt_runtime::profiling::Clock {
 }
 
 struct Dummy {
+    #[cfg(not(feature = "fpga"))]
     render: Render,
+    #[cfg(feature = "fpga")]
+    fpga: rt_fpga_adapter::engine::Adapter<fpga::Device>,
     status: HostStatus,
     input: [[f32; crate::QUANTUM]; 2],
     output: [[f32; crate::QUANTUM]; 2],
+    #[cfg(not(feature = "fpga"))]
     midi_in: Vec<MidiBuffer>,
+    #[cfg(not(feature = "fpga"))]
     midi_out: Vec<MidiBuffer>,
     reset: bool,
     #[cfg(feature = "usb-midi")]
@@ -404,6 +472,36 @@ pub fn fixture_stats() -> [u32; 6] {
     ]
 }
 
+#[cfg(feature = "fpga")]
+pub unsafe fn render_step(owner: *mut c_void, frames: usize) -> i32 {
+    let started = profiling_now();
+    let dummy = &mut *owner.cast::<Dummy>();
+    if !dummy.fpga.connected() {
+        dummy.reset = true;
+        return 1;
+    }
+    let (left, right) = dummy.output.split_at_mut(1);
+    let result = dummy.fpga.process(
+        &[&dummy.input[0][..frames], &dummy.input[1][..frames]],
+        &mut [&mut left[0][..frames], &mut right[0][..frames]],
+    );
+    if let Err(error) = result {
+        use core::fmt::Write;
+        let _ = writeln!(
+            TerminalLog,
+            "SHOOP_FPGA_ERROR {error:?} {:?}",
+            dummy.fpga.device_mut().last_error
+        );
+        return -1;
+    }
+    let period_ns = (frames as u64 * 1_000_000_000 / u64::from(crate::SAMPLE_RATE)).max(1);
+    dummy
+        .status
+        .set_load(profiling_now().saturating_sub(started) as f32 / period_ns as f32);
+    0
+}
+
+#[cfg(not(feature = "fpga"))]
 pub unsafe fn render_step(owner: *mut c_void, frames: usize) -> i32 {
     let started = profiling_now();
     let dummy = &mut *owner.cast::<Dummy>();
@@ -525,16 +623,28 @@ pub unsafe fn render_xruns(owner: *mut c_void, count: u32) {
 }
 
 struct StoppedDummy {
+    #[cfg(not(feature = "fpga"))]
     render: shoop_rt_engine::Stopped,
+    #[cfg(feature = "fpga")]
+    fpga: rt_fpga_adapter::engine::Adapter<fpga::Device>,
     reset: bool,
 }
 impl StoppedDummy {
+    #[cfg(not(feature = "fpga"))]
     fn cleanup(&mut self) -> bool {
         self.reset && self.render.cleanup().is_ok()
+    }
+    /// Resetting the core drains its DDR traffic before the host stops.
+    #[cfg(feature = "fpga")]
+    fn cleanup(&mut self) -> bool {
+        self.reset && rt_fpga_adapter::port::PortIo::reset_core(self.fpga.device_mut()).is_ok()
     }
 }
 unsafe fn retire_render(owner: *mut c_void) -> StoppedDummy {
     let dummy = Box::from_raw(owner.cast::<Dummy>());
+    #[cfg(feature = "fpga")]
+    log("SHOOP_FPGA_RENDER_STOPPED\n");
+    #[cfg(not(feature = "fpga"))]
     if dummy.reset {
         #[cfg(not(feature = "usb-midi"))]
         log("SHOOP_DUMMY_MIDI_RESET packets=32\n");
@@ -543,7 +653,10 @@ unsafe fn retire_render(owner: *mut c_void) -> StoppedDummy {
     }
     dummy.status.set_driver(driver(DriverRunState::Stopped));
     StoppedDummy {
+        #[cfg(not(feature = "fpga"))]
         render: dummy.render.into_stopped(),
+        #[cfg(feature = "fpga")]
+        fpga: dummy.fpga,
         reset: dummy.reset,
     }
 }
@@ -606,18 +719,47 @@ fn authenticate(
 
 pub fn run() {
     let description = crate::engine_description();
+    #[cfg(not(feature = "fpga"))]
     let mut engine =
         prepare(&description, driver(DriverRunState::Running)).expect("engine preparation");
+    #[cfg(not(feature = "fpga"))]
     engine.render.set_profiling_clock(profiling_clock());
+    #[cfg(feature = "fpga")]
+    let engine = {
+        let bridge = match fpga::open() {
+            Ok(bridge) => bridge,
+            Err(reason) => {
+                log(&alloc::format!("SHOOP_FPGA_UNAVAILABLE {reason}\n"));
+                loop {
+                    unsafe { shoop_delay(1000) };
+                }
+            }
+        };
+        log("SHOOP_FPGA_BRIDGE_READY\n");
+        shoop_rt_engine::prepare_with_consumer(
+            &description,
+            driver(DriverRunState::Running),
+            |parts| {
+                rt_fpga_adapter::engine::Adapter::prepare(parts, bridge)
+                    .map_err(shoop_rt_engine::PrepareError::Runtime)
+            },
+        )
+        .expect("engine preparation")
+    };
     let outbox = engine.outbox();
     let dummy = Box::new(Dummy {
+        #[cfg(not(feature = "fpga"))]
         render: engine.render,
+        #[cfg(feature = "fpga")]
+        fpga: engine.execution,
         status: engine.host,
         input: [[0.; crate::QUANTUM]; 2],
         output: [[0.; crate::QUANTUM]; 2],
+        #[cfg(not(feature = "fpga"))]
         midi_in: (0..crate::MIDI_PORTS)
             .map(|_| MidiBuffer::new(256, crate::MIDI_BLOCK_BYTES).expect("MIDI input"))
             .collect(),
+        #[cfg(not(feature = "fpga"))]
         midi_out: (0..crate::MIDI_PORTS)
             .map(|_| MidiBuffer::new(256, crate::MIDI_BLOCK_BYTES).expect("MIDI output"))
             .collect(),
@@ -676,7 +818,11 @@ pub fn run() {
                 loop_smoothing_ms: 3,
             },
             vec![
-                String::from("FreeRTOS / AMD lwIP; dummy audio"),
+                String::from(if cfg!(feature = "fpga") {
+                    "FreeRTOS / AMD lwIP; PL core with generated audio"
+                } else {
+                    "FreeRTOS / AMD lwIP; dummy audio"
+                }),
                 alloc::format!(
                     "Direct audio/MIDI loops; up to {} MiB session media and 65,536 MIDI events.",
                     crate::MEDIA_BYTES / (1024 * 1024),
