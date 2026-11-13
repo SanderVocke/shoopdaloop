@@ -336,36 +336,57 @@ fn load(d: &mut Transition, s: &mut Sim<'_>, value: &Value) -> Result<()> {
     d.load(s, &serde_json::to_value(image)?);
     Ok(())
 }
+fn raw_requests(d: &mut Transition, s: &mut Sim<'_>) -> Vec<Bits> {
+    (0..d.requests)
+        .map(|slot| d.raw_command(s, 13, slot, &Bits::default(), None, false).1)
+        .collect()
+}
 fn indexed_install_guards(d: &mut Transition, s: &mut Sim<'_>) -> Result<()> {
     let value = transport_case();
+    d.reset(s);
+    d.ok(s, 1, 0, &abi::spec(&spec(0, 64, None, false)));
+    d.ok(s, 2, 0, &Bits::default());
+    let mut prepare = Bits(vec![1, 1, 3, 1, 16, 0]);
+    assert_eq!(d.raw_command(s, 3, 0, &prepare, None, false).0, 1);
+    assert_eq!(d.status(s)["configured"], false);
+    prepare.set(
+        160,
+        32,
+        u64::from(rt_fpga_adapter::transition_service::wire::ABI),
+    );
+    assert_eq!(d.raw_command(s, 3, 0, &prepare, None, false).0, 0);
     load(d, s, &value)?;
-    let empty = d.requests(s);
-    let mut packet = abi::command(&value["steps"][0]["commands"][0]);
+    let empty = raw_requests(d, s);
+    let original = abi::command(&value["steps"][0]["commands"][0]);
+    let mut packet = Bits(
+        rt_fpga_adapter::transition_service::wire::install(&original.0.try_into().unwrap(), 1)
+            .to_vec(),
+    );
     for (slot, generation) in [(1, 1), (0, 0), (0, 2)] {
         packet.set(1, 32, generation);
         assert_eq!(d.raw_command(s, 4, slot, &packet, None, false).0, 3);
-        assert_eq!(d.requests(s), empty);
+        assert_eq!(raw_requests(d, s), empty);
     }
     packet.set(1, 32, 1);
     assert_eq!(d.raw_command(s, 4, 0, &packet, None, false).0, 0);
-    let pending = d.requests(s);
+    let pending = raw_requests(d, s);
     assert_eq!(d.raw_command(s, 4, 0, &packet, None, false).0, 5);
-    assert_eq!(d.requests(s), pending);
+    assert_eq!(raw_requests(d, s), pending);
     assert_eq!(d.raw_command(s, 9, 0, &Bits::default(), None, false).0, 0);
-    let terminal = d.requests(s);
+    let terminal = raw_requests(d, s);
     assert_eq!(d.raw_command(s, 4, 0, &packet, None, false).0, 5);
-    assert_eq!(d.requests(s), terminal);
+    assert_eq!(raw_requests(d, s), terminal);
     assert_eq!(d.raw_command(s, 6, 0, &Bits::from_u64(1), None, false).0, 0);
     assert_eq!(d.raw_command(s, 4, 0, &packet, None, false).0, 3);
     packet.set(1, 32, 2);
     assert_eq!(d.raw_command(s, 4, 0, &packet, None, false).0, 0);
     assert_eq!(d.raw_command(s, 5, 0, &Bits::from_u64(2), None, false).0, 0);
     assert_eq!(d.raw_command(s, 6, 0, &Bits::from_u64(2), None, false).0, 0);
-    let before = d.requests(s);
+    let before = raw_requests(d, s);
     packet.set(1, 32, 3);
     s.model.inject("phase", Some(&Bits::from_u64(2)));
     assert_eq!(d.raw_command(s, 4, 0, &packet, None, false).0, 5);
-    assert_eq!(d.requests(s), before);
+    assert_eq!(raw_requests(d, s), before);
     s.model.inject("phase", None);
     Ok(())
 }
@@ -448,6 +469,7 @@ fn prepare(
             (2 * slots + 1) as u32,
             order.len() as u32,
             16,
+            rt_fpga_adapter::transition_service::wire::ABI,
         ]),
         None,
         false,

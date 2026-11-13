@@ -1,5 +1,6 @@
 use super::*;
 use crate::image::{Description, Identity, Limits, LoopSpec};
+use crate::protocol::put;
 use shoop_wasm_test_support::shoop_test;
 
 fn image(requests: u32) -> TransitionImage {
@@ -49,10 +50,19 @@ fn collect(service: &mut TransitionService, transfer: Transfer) {
     data[0] = get(&transfer.words, 1, 32) as u32;
     service.begin(6, transfer.index, data).unwrap();
     let mut words = [0; 26];
-    words[..20].copy_from_slice(&transfer.words);
+    let original = service.slots[transfer.index as usize].request.unwrap();
+    put(&mut words, 0, 45, get(&original, 0, 45));
     put(&mut words, 0, 1, 1);
+    put(&mut words, 1, 32, get(&transfer.words, 1, 32));
     put(&mut words, 37, 3, 1);
-    put(&mut words, 576, 64, 192);
+    for (source, target, width) in [
+        (64, wire::RESULT_TARGET, 32),
+        (128, wire::RESULT_SEQUENCE, 64),
+        (384, wire::RESULT_POSITION, 64),
+    ] {
+        put(&mut words, target, width, get(&original, source, width));
+    }
+    put(&mut words, wire::FRAME, 64, 192);
     service.finish(TpReply { error: 0, words }).unwrap();
 }
 
@@ -160,10 +170,10 @@ fn malformed_collection_cannot_release_or_reuse_a_slot() {
     data[0] = 1;
     service.begin(6, 0, data).unwrap();
     let mut reply = [0; 26];
-    reply[..20].copy_from_slice(&transfer.words);
+    put(&mut reply, 1, 32, get(&transfer.words, 1, 32));
     put(&mut reply, 0, 1, 1);
     put(&mut reply, 37, 3, 1);
-    put(&mut reply, 128, 64, 99);
+    put(&mut reply, wire::RESULT_SEQUENCE, 64, 99);
     assert_eq!(
         service.finish(TpReply {
             error: 0,
@@ -204,4 +214,56 @@ fn kernel_codec_supports_positioned_seek_without_expanding_application_whitelist
         (get(&words, 34, 2), get(&words, 384, 64), get(&words, 36, 1)),
         (3, 32, 1)
     );
+}
+
+#[shoop_test]
+fn compact_results_reconstruct_originals_and_authoritative_progress() {
+    let mut service = TransitionService::new(&image(1)).unwrap();
+    let mut original = request(u64::MAX);
+    put(&mut original, 33, 1, 1);
+    put(&mut original, 256, 64, 17u64 << 32);
+    put(&mut original, 192, 64, 65);
+    put(&mut original, 320, 64, u64::MAX);
+    let transfer = service.begin(4, 0, original).unwrap();
+    assert_eq!(get(&transfer.words, wire::AT, 64), 65);
+    assert_eq!(get(&transfer.words, wire::SKIP, 64), u64::MAX);
+    assert_eq!(get(&transfer.words, wire::SEQUENCE, 64), u64::MAX);
+    service.finish(ack(transfer)).unwrap();
+    service.begin(13, 0, [0; 20]).unwrap();
+    let mut row = [0; 26];
+    put(&mut row, 0, 1, 1);
+    put(&mut row, 1, 32, 1);
+    put(&mut row, 33, 1, 1);
+    put(&mut row, wire::RESULT_SEQUENCE, 64, u64::MAX);
+    put(&mut row, wire::EFFECTIVE, 64, 96);
+    put(&mut row, wire::REMAINING, 64, u64::MAX - 3);
+    let observed = service
+        .finish(TpReply {
+            error: 0,
+            words: row,
+        })
+        .unwrap();
+    for (bit, expected) in [
+        (128, u64::MAX),
+        (192, 65),
+        (256, 17u64 << 32),
+        (320, u64::MAX),
+        (448, 96),
+        (512, u64::MAX - 3),
+    ] {
+        assert_eq!(get(&observed.words, bit, 64), expected);
+    }
+    let mut identity = [0; 20];
+    identity[0] = 1;
+    service.begin(6, 0, identity).unwrap();
+    put(&mut row, 37, 3, 3);
+    put(&mut row, wire::FRAME, 64, 160);
+    let collected = service
+        .finish(TpReply {
+            error: 0,
+            words: row,
+        })
+        .unwrap();
+    assert_eq!(get(&collected.words, 576, 64), 160);
+    assert_eq!(service.begin(4, 0, request(1)).unwrap().index, 0);
 }

@@ -86,6 +86,7 @@ pub fn prepare_with_views(scenario: Value, bc: u64, slots: u64, views: u64) -> R
         limits["events"].as_u64().unwrap(),
         order.len() as u64,
         q,
+        u64::from(rt_fpga_adapter::transition_service::wire::ABI),
     ]
     .into_iter()
     .enumerate()

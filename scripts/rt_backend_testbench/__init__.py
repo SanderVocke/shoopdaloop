@@ -99,7 +99,9 @@ class TransitionService:
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, bufsize=1)
         self.timings = []
-        self.metadata_bytes = self.request(kind='configure', image={key:image[key] for key in ('description','limits','dependency_order')})['metadata_bytes']
+        configured = self.request(kind='configure', image={key:image[key] for key in ('description','limits','dependency_order')})
+        self.metadata_bytes = configured['metadata_bytes']
+        self.abi = configured['abi']
 
     def request(self, **message):
         self.process.stdin.write(json.dumps(message, allow_nan=False)+'\n')

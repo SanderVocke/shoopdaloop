@@ -201,7 +201,7 @@ impl Transition {
         stall: Option<u64>,
         intrude: bool,
     ) -> (u64, Bits) {
-        if matches!(opcode, 4..=6) && self.service.is_some() {
+        if matches!(opcode, 4..=6 | 13) && self.service.is_some() {
             let mut service = self.service.take().unwrap();
             let mut words = [0; 20];
             let count = data.0.len().min(words.len());
@@ -381,6 +381,7 @@ impl Transition {
             image["limits"]["events"].as_u64().unwrap() as u32,
             order.len() as u32,
             image["description"]["quantum"].as_u64().unwrap() as u32,
+            rt_fpga_adapter::transition_service::wire::ABI,
         ]);
         self.ok(s, 3, 0, &data);
         self.service = Some(request_service(image).expect("prepared request service"));

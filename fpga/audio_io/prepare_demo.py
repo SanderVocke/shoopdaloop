@@ -84,13 +84,14 @@ def prepare(output, q=32, chunk=None, channels=16, monitoring=False, routing="id
         (output/f'{name}.json').write_text(json.dumps(value, indent=2)+'\n')
     transition = image['transition']
     limits = transition['limits']
+    service = wire.TransitionService(transition)
     boot = []
     specs = {s['id']['slot']: s for s in transition['description']['loops']}
     for i in range(limits['loop_slots']):
         boot.append(packet(opcode=tp.WRITE_SPEC, index=i, data=tp.encode_spec(specs.get(i))))
     for i, loop in enumerate(transition['dependency_order']):
         boot.append(packet(opcode=tp.WRITE_ORDER, index=i, data=loop['slot']))
-    data = limits['loop_slots'] | limits['pending_requests'] << 32 | limits['events'] << 64 | len(transition['dependency_order']) << 96 | q << 128
+    data = limits['loop_slots'] | limits['pending_requests'] << 32 | limits['events'] << 64 | len(transition['dependency_order']) << 96 | q << 128 | service.abi << 160
     boot.append(packet(opcode=tp.PREPARE, data=data))
     for i, instruction in enumerate(image['program']['instructions']):
         boot.append(packet(kind=1, index=i, data=sp.encode_instruction(instruction)))
@@ -101,7 +102,6 @@ def prepare(output, q=32, chunk=None, channels=16, monitoring=False, routing="id
     for i, value in enumerate([0, 0, 0, slots//block_chunks]):
         boot.append(packet(kind=2, opcode=0, index=i, data=value))
     boot.append(packet(kind=3))
-    service = wire.TransitionService(transition)
     events, sequence = [], 0
     for n, step in enumerate(scenario['steps']):
         for action in step['actions']:

@@ -58,6 +58,7 @@ def prepare(output, loops=64, tracks=8, q=32, record_quanta=64, mixed=True, buil
     image = wire.run_batch([value], executable=ROOT/'target/debug/rt-backend-testbench', command='compile')[0]
     transition = image['transition']
     limits = transition['limits']
+    service = wire.TransitionService(transition)
     block_chunks = 32
     slots = loops*((record_quanta+block_chunks-1)//block_chunks+2)*block_chunks
     views = max(32, loops*4)
@@ -67,7 +68,7 @@ def prepare(output, loops=64, tracks=8, q=32, record_quanta=64, mixed=True, buil
         boot.append(packet(opcode=tp.WRITE_SPEC, index=i, data=tp.encode_spec(specs.get(i))))
     for i, loop in enumerate(transition['dependency_order']):
         boot.append(packet(opcode=tp.WRITE_ORDER, index=i, data=loop['slot']))
-    data = limits['loop_slots'] | limits['pending_requests'] << 32 | limits['events'] << 64 | len(transition['dependency_order']) << 96 | q << 128
+    data = limits['loop_slots'] | limits['pending_requests'] << 32 | limits['events'] << 64 | len(transition['dependency_order']) << 96 | q << 128 | service.abi << 160
     boot.append(packet(opcode=tp.PREPARE, data=data))
     for i, instruction in enumerate(image['program']['instructions']):
         boot.append(packet(kind=1, index=i, data=sp.encode_instruction(instruction)))
@@ -78,7 +79,6 @@ def prepare(output, loops=64, tracks=8, q=32, record_quanta=64, mixed=True, buil
     for i, count in enumerate([0, 0, 0, slots//block_chunks]):
         boot.append(packet(kind=2, opcode=0, index=i, data=count))
     boot.append(packet(kind=3))
-    service = wire.TransitionService(transition)
     events, serial = [], 0
     for n, item in enumerate(value['steps']):
         for control in item['actions']:

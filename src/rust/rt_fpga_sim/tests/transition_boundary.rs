@@ -396,7 +396,12 @@ fn prepared_install_uses_the_actual_device_frame_after_service_delay() {
         .unwrap();
     assert_eq!(owner.finish(reply).unwrap().error, 0);
     sim.run(&image, &case.steps[3].inputs).unwrap();
-    let observed = sim.command(13, 0, [0; 20]).unwrap();
+    let observed = owner
+        .exchange(13, 0, [0; 20], |transfer| {
+            sim.tp(transfer.opcode, transfer.index, transfer.words)
+        })
+        .unwrap()
+        .words;
     let mut steps = vec![
         serde_json::json!({"collect_completed":false,"collect":[],"cancel":[],"commands":[]});
         4

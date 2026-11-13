@@ -43,18 +43,19 @@ module transition_processor #(
         ORIGIN_SLOT=739, ORIGIN_GEN=771, DISCONT=803;
     localparam integer R_VALID=0, R_GEN=1, R_TICKS=33, R_OP=34,
         R_RETRIGGER=36, R_OUTCOME=37, R_REASON=40, R_CLEAR=44,
-        R_TARGET=64, R_SEQUENCE=128, R_AT=192, R_SOURCE=256,
-        R_SKIP=320, R_POSITION=384, R_EFFECTIVE=448, R_REMAINING=512,
-        R_FRAME=576;
+        R_TARGET=45, R_SEQUENCE=77, R_POSITION=141, R_EFFECTIVE=205,
+        R_REMAINING=269, R_FRAME=333;
+    localparam integer W_TARGET=45, W_SEQUENCE=109, W_AT=173, W_SOURCE=237,
+        W_SKIP=301, W_POSITION=365;
     localparam [1:0] STOPPED=0, PLAYING=1, RECORDING=2;
     localparam [1:0] OP_STOP=0, OP_PLAY=1, OP_RECORD=2, OP_SEEK=3;
     localparam [2:0] APPLIED=1, SUPERSEDED=2, CANCELLED=3, FAILED=4;
     localparam integer SPEC_SOURCE_VALID=33, SPEC_SOURCE=34, SPEC_REPEAT=98,
         SPEC_KIND=99, SPEC_TIMELINE=101, SPEC_LENGTH=128;
     localparam integer PA=(REQUEST_DEPTH > 1) ? $clog2(REQUEST_DEPTH) : 1;
-    localparam integer H=PA+1, RW=640+2*H;
+    localparam integer H=PA+1, RW=397+2*H;
     localparam [H-1:0] NO_REQUEST={H{1'b1}};
-    localparam integer HEAD_AT=37, HEAD_SYNC=804, R_NEXT=640, R_PREV=640+H;
+    localparam integer HEAD_AT=37, HEAD_SYNC=804, R_NEXT=397, R_PREV=397+H;
 
     typedef enum reg [7:0] {
         S_IDLE, S_DISPATCH,
@@ -207,7 +208,7 @@ module transition_processor #(
             terminal = value;
         end
     endfunction
-    function automatic [836:0] operation(input [831:0] before_row, input [639:0] req);
+    function automatic [836:0] operation(input [831:0] before_row, input [396:0] req);
         reg [831:0] value;
         reg [3:0] error;
         reg pulse, preserve;
@@ -418,6 +419,7 @@ module transition_processor #(
                         temporary_loop[64+:4] = fault_error;
                         temporary_loop[128+:2] = phase;
                         temporary_loop[136] = configured;
+                        temporary_loop[144+:16] = 16'd2;
                         temporary_loop[192+:32] = event_count;
                         temporary_loop[256+:32] = loop_slots;
                         temporary_loop[288+:32] = request_slots;
@@ -444,7 +446,8 @@ module transition_processor #(
                         end
                     end else if (opcode == PREPARE) begin
                         if (configured) reply(INVALID_STATE, 0);
-                        else if (payload[31:0] == 0 || payload[31:0] > LOOP_DEPTH
+                        else if (payload[160+:32] != 2
+                            || payload[31:0] == 0 || payload[31:0] > LOOP_DEPTH
                             || payload[63:32] == 0 || payload[63:32] > REQUEST_DEPTH
                             || payload[95:64] > EVENT_DEPTH
                             || {1'b0,payload[95:64]} < prepare_events
@@ -466,8 +469,8 @@ module transition_processor #(
                     else case (opcode)
                         INSTALL: begin
                             if (phase != IDLE_PHASE) reply(INVALID_STATE, 0);
-                            else if (index >= request_slots || payload[R_TARGET+:32] >= loop_slots) reply(INVALID_ID, 0);
-                            else read_spec(payload[R_TARGET+:32], S_INSTALL_TARGET);
+                            else if (index >= request_slots || payload[W_TARGET+:32] >= loop_slots) reply(INVALID_ID, 0);
+                            else read_spec(payload[W_TARGET+:32], S_INSTALL_TARGET);
                         end
                         CANCEL, COLLECT: begin
                             if (phase != IDLE_PHASE) reply(INVALID_STATE, 0);
@@ -526,7 +529,7 @@ module transition_processor #(
                 S_R_WAIT: state <= S_R_GET;
                 S_R_GET: begin
                     request_row <= rr_data;
-                    op_result <= operation(loop_row, rr_data[639:0]);
+                    op_result <= operation(loop_row, rr_data[396:0]);
                     state <= read_return;
                 end
                 S_S_WAIT: state <= S_S_GET;
@@ -604,27 +607,27 @@ module transition_processor #(
                     else begin temporary_loop=loop_row;temporary_loop[REPEAT]=payload[32];write_loop(index,temporary_loop);reply(OK,0);end
                 end
                 S_INSTALL_TARGET: begin
-                    if (!spec_row[VALID] || spec_row[GENERATION+:32] != payload[R_TARGET+32+:32]) reply(INVALID_ID, 0);
+                    if (!spec_row[VALID] || spec_row[GENERATION+:32] != payload[W_TARGET+32+:32]) reply(INVALID_ID, 0);
                     else if (!payload[R_CLEAR] && (payload[R_OP+:2] == OP_PLAY || payload[R_OP+:2] == OP_SEEK)
-                        && (payload[R_POSITION+:64] & {57'b0,quantum_mask}) != 0) reply(INVALID_FRAME, 0);
+                        && (payload[W_POSITION+:64] & {57'b0,quantum_mask}) != 0) reply(INVALID_FRAME, 0);
                     else begin
                         target_source <= spec_row[SPEC_SOURCE+:64]; target_source_valid <= spec_row[SPEC_SOURCE_VALID];
                         if (payload[R_TICKS]) begin
-                            if (payload[R_SOURCE+:32] >= loop_slots) reply(INVALID_ID, 0);
-                            else read_spec(payload[R_SOURCE+:32], S_INSTALL_SOURCE);
+                            if (payload[W_SOURCE+:32] >= loop_slots) reply(INVALID_ID, 0);
+                            else read_spec(payload[W_SOURCE+:32], S_INSTALL_SOURCE);
                         end else read_request(index, S_INSTALL_CHECK);
                     end
                 end
                 S_INSTALL_SOURCE: begin
-                    if (!spec_row[VALID] || spec_row[GENERATION+:32] != payload[R_SOURCE+32+:32]) reply(INVALID_ID, 0);
-                    else if (!target_source_valid || target_source != payload[R_SOURCE+:64]) reply(MISSING_SYNC, 0);
+                    if (!spec_row[VALID] || spec_row[GENERATION+:32] != payload[W_SOURCE+32+:32]) reply(INVALID_ID, 0);
+                    else if (!target_source_valid || target_source != payload[W_SOURCE+:64]) reply(MISSING_SYNC, 0);
                     else read_request(index, S_INSTALL_CHECK);
                 end
                 S_INSTALL_CHECK: begin
                     if (payload[R_GEN+:32] == 0 || request_row[R_GEN+:32] != payload[R_GEN+:32]) reply(INVALID_ID, 0);
                     else if (request_row[R_VALID]) reply(INVALID_STATE, 0);
                     else begin
-                        submit_frame <= payload[R_AT+:64] > frame ? payload[R_AT+:64] : frame;
+                        submit_frame <= payload[W_AT+:64] > frame ? payload[W_AT+:64] : frame;
                         state <= S_INSTALL_ROUND;
                     end
                 end
@@ -637,8 +640,8 @@ module transition_processor #(
                     else begin
                         submitted_effective <= submit_sum[63:0] & ~{57'b0,quantum_mask};
                         list_slot <= index;
-                        list_target <= payload[R_TARGET+:32]; list_ticks <= payload[R_TICKS];
-                        read_loop(payload[R_TARGET+:32], 0, 0, S_INSERT_HEAD);
+                        list_target <= payload[W_TARGET+:32]; list_ticks <= payload[R_TICKS];
+                        read_loop(payload[W_TARGET+:32], 0, 0, S_INSERT_HEAD);
                     end
                 end
                 S_CANCEL_COLLECT: begin
@@ -654,7 +657,7 @@ module transition_processor #(
                         temporary_request = 0;
                         temporary_request[R_GEN+:32] = request_row[R_GEN+:32]+1'b1;
                         write_request(index, temporary_request);
-                        reply(OK, {192'b0,request_row[639:0]});
+                        reply(OK, 832'(request_row[396:0]));
                     end
                 end
                 S_CANCEL_REPLY: reply(OK, 832'd1);
@@ -671,8 +674,10 @@ module transition_processor #(
                     list_previous <= list_next; list_next <= request_row[R_NEXT+:H]; state <= S_INSERT_FIND;
                 end
                 S_INSERT_PLACE: begin
-                        temporary_request = {{(RW-640){1'b0}},payload};
-                        temporary_request[63:0] = 0;
+                        temporary_request = 0;
+                        temporary_request[R_TARGET+:32] = payload[W_TARGET+:32];
+                        temporary_request[R_SEQUENCE+:64] = payload[W_SEQUENCE+:64];
+                        temporary_request[R_POSITION+:64] = payload[W_POSITION+:64];
                         temporary_request[R_VALID] = 1;
                         temporary_request[R_GEN+:32] = payload[R_GEN+:32];
                         temporary_request[R_TICKS] = payload[R_TICKS];
@@ -680,7 +685,7 @@ module transition_processor #(
                         temporary_request[R_RETRIGGER] = payload[R_RETRIGGER];
                         temporary_request[R_CLEAR] = payload[R_CLEAR];
                         temporary_request[R_EFFECTIVE+:64] = submitted_effective;
-                        temporary_request[R_REMAINING+:64] = payload[R_TICKS] ? payload[R_SKIP+:64] : 0;
+                        temporary_request[R_REMAINING+:64] = payload[R_TICKS] ? payload[W_SKIP+:64] : 0;
                         temporary_request[R_FRAME+:64] = 0;
                         temporary_request[R_NEXT+:H] = NO_REQUEST; temporary_request[R_PREV+:H] = NO_REQUEST;
                     temporary_request[R_PREV+:H] = list_previous; temporary_request[R_NEXT+:H] = list_next;
@@ -848,7 +853,7 @@ module transition_processor #(
                         && request_row[R_EFFECTIVE+:64] <= frame
                         && request_row[R_TARGET+:32] == target_slot
                         && request_row[R_TICKS]
-                        && request_row[R_SOURCE+:32] == react_source) begin
+                        && spec_row[SPEC_SOURCE+:32] == react_source) begin
                         if (request_row[R_REMAINING+:64] != 0) begin
                             temporary_request = request_row;
                             temporary_request[R_REMAINING+:64] = request_row[R_REMAINING+:64]-1'b1;
@@ -965,7 +970,7 @@ module transition_processor #(
                     end
                 end
                 S_READ_LOOP_REPLY: reply(OK, loop_row);
-                S_READ_REQUEST_REPLY: reply(OK, {192'b0,request_row[639:0]});
+                S_READ_REQUEST_REPLY: reply(OK, 832'(request_row[396:0]));
                 S_READ_EVENT_REPLY: reply(OK, {576'b0,event_row});
                 default: reply(INVALID_STATE, 0);
             endcase

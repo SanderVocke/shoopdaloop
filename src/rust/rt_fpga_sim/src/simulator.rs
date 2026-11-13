@@ -382,6 +382,7 @@ impl<'ctx> Simulator<'ctx> {
         prepare[2] = image.transition.limits.events;
         prepare[3] = image.transition.dependency_order.len() as u32;
         prepare[4] = image.program.quantum;
+        prepare[5] = rt_fpga_adapter::transition_service::wire::ABI;
         self.command(3, 0, prepare)?;
         self.store_config(0, 3, Some([self.media_slots, 0, 0, 0, 0]))?;
         for i in 0..image.media.views.len() {

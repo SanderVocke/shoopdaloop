@@ -1,6 +1,8 @@
 # FPGA boundary milestones 2–3: compact actions and ARM-managed membership
 
-Status: planned; implementation has not started.
+Status: implementation in progress on the existing branch and PR #993.
+Execution base: `32d835faadcbb74eeec8d02fb5212a37939e1321`; parent #990 remains
+`45d535166d931f798fd4cb61e7433c89842fc1ed`.
 Parent roadmap: [PLAN_LONGTERM_FPGA_BOUNDARY.md](PLAN_LONGTERM_FPGA_BOUNDARY.md).
 Prerequisite: [request-slot milestone](PLAN_FPGA_ARM_REQUEST_SLOTS.md),
 [PR #990](https://github.com/SanderVocke/shoopdaloop/pull/990).
@@ -9,10 +11,9 @@ Stack base: `feat/fpga-arm-request-slots` at
 `45d535166d931f798fd4cb61e7433c89842fc1ed`.
 Eventual integration target: `proto/fpga-rust-reference`.
 
-This PR contains the plan and roadmap links only. Implementation and the
-verification commands below are future work. The user's instructions to stop
-testing and not inspect CI after pushing remain in force for this planning task.
-No CI success or review approval is inferred from publishing the plan.
+The user has now authorized full implementation, including the local verification
+in this plan. The instruction not to inspect CI after pushing remains in force.
+No CI success or review approval is inferred from publishing changes.
 
 ## Goal and scope
 
@@ -215,14 +216,14 @@ cutover coherent across consumers and commit each working milestone.
 ### 0. Establish the stack and execution baseline
 
 - [x] Create the planning branch from the fetched #990 head recorded above.
-- [ ] When implementation is requested, refresh #990 and preserve the stacked
+- [x] When implementation is requested, refresh #990 and preserve the stacked
   relationship; record the exact execution base and any upstream changes. Reuse
   this branch/PR or create an explicit implementation child without modifying #990.
   Do not include unrelated upstream history merely to obtain a newer tool setup.
-- [ ] Freeze M1 RTL/service/driver sources and configuration manifests under
+- [x] Freeze M1 RTL/service/driver sources and configuration manifests under
   `work/`. Verify which existing M1 reports match those hashes; rerun only missing
   or invalidated baseline cases, including relevant interrupted-regression coverage.
-- [ ] Save focused baseline observations for dense lists, retained terminals,
+- [x] Save focused baseline observations for dense lists, retained terminals,
   arbitrary sequence order, held host responses and fabric-run prerequisites.
   Separate known coupling that this plan changes from musical semantics it preserves.
 
@@ -231,15 +232,15 @@ unverified full-baseline or final-CI pass claim.
 
 ### 1. Specify records, ownership and boundary contracts
 
-- [ ] Complete the field-use/storage audit and exact compact wire/RAM layouts.
+- [x] Complete the field-use/storage audit and exact compact wire/RAM layouts.
   Specify pending/terminal/empty/retired states, inspection data, collection
   snapshot/release timing and public response reconstruction.
-- [ ] Specify host reply versus fabric execution interfaces, queue depths,
+- [x] Specify host reply versus fabric execution interfaces, queue depths,
   arbitration, fault routing and behavior of held/full replies at every phase.
 - [ ] Specify the publication/reuse state machine sufficiently to avoid designing
   M2 storage that cannot support M3. Leave the final membership representation to
   stage 5. Document acceptance/rounding cuts for staging that spans quanta.
-- [ ] Add the ABI/version/capability and prepared-input invalidation strategy to
+- [x] Add the ABI/version/capability and prepared-input invalidation strategy to
   the installation contract; enumerate every codec, adapter and generated input.
 
 Gate: each omitted field has a justified reconstruction source or is obsolete;
@@ -248,12 +249,12 @@ truncation is accepted on intuition alone.
 
 ### 2. Extend the shared Rust owner and codecs
 
-- [ ] Add compact action/result codecs, public completion/readback reconstruction
+- [x] Add compact action/result codecs, public completion/readback reconstruction
   and bounded multitransfer lifecycle support where needed. Keep queue interfaces
   and public supported profiles intact; avoid new simulator/oracle dependencies.
-- [ ] Extend owner metadata for staged/published/terminal/reusable identities.
+- [x] Extend owner metadata for staged/published/terminal/reusable identities.
   Keep duplicate retention and lowest-slot/generation policies unchanged.
-- [ ] Use small transport doubles for error precedence, pending/terminal reads,
+- [x] Use small transport doubles for error precedence, pending/terminal reads,
   generation retirement, refusal rollback, malformed replies, uncertain commits,
   reset and collection snapshots held while execution proceeds. Doubles do not
   perform musical resolution.
@@ -263,13 +264,13 @@ the hardware wire cutover. Production Rust remains an independent resolver.
 
 ### 3. Compact FPGA actions/results and migrate producers
 
-- [ ] Introduce compact action/execution/terminal storage and eliminate obsolete
+- [x] Introduce compact action/execution/terminal storage and eliminate obsolete
   wide copies and writeback mux paths. Retain existing pending lists for this
   checkpoint so storage gains are measured independently of membership changes.
-- [ ] Integrate codecs/readback with both Marlin paths, mono/engine adapters,
+- [x] Integrate codecs/readback with both Marlin paths, mono/engine adapters,
   regular host, bridge and Rust/Python preparation. Regenerate demo/board assets
   and update manifest/version guards in the same coherent cutover.
-- [ ] Pass raw identity/bounds/phase/reset guards, transport stability, service
+- [x] Pass raw identity/bounds/phase/reset guards, transport stability, service
   lifecycle tests and a small production/RTL record-play-stop/capture comparison.
   Then run all five TP capacities with the existing directed cases and 20 seeds
   each, including requested/effective/terminal frame comparisons.
@@ -399,8 +400,7 @@ remain governed by the user's instructions, not inferred approval.
 
 ## Verification cost and principal commands
 
-No commands in this section are to be run for the documentation-only PR. During
-authorized implementation, begin with owner/codec tests and one small TP or
+For this authorized implementation, begin with owner/codec tests and one small TP or
 pipeline case. Broaden at each wire or ownership cutover; use all capacities
 after stabilization, then expensive full regressions/routing at the M2 and final
 checkpoints as specified above. Reuse valid frozen M1 evidence rather than
@@ -433,8 +433,7 @@ Extend command measurements to retain complete multitransfer publication costs;
 do not compare an old full exchange with only the new indexed-write substep.
 Before committing Rust changes run `cargo fmt --all` and
 `RUSTFLAGS="-D warnings" cargo build --workspace`; changed Rust tests also require
-`python3 scripts/check_shoop_test_usage.py`. These are future implementation
-gates, not additional work authorized by writing this plan.
+`python3 scripts/check_shoop_test_usage.py`. These are implementation gates.
 
 ## Expected gains and limits
 
@@ -458,3 +457,21 @@ application callback integration and physical deadline qualification.
 - Implementation steps may be revised when new evidence warrants it.
 - Design rules may be revised for a documented, well-supported reason.
 - Goals and acceptance criteria must not be changed without explicit user approval.
+
+
+## Execution evidence
+
+- M1 sources are frozen under `work/fpga-compact/baseline` with a SHA-256 manifest.
+  The parent remains `45d53516`; both open PR heads match the recorded stack.
+- Focused M1 replay passes all five capacities, seven groups and two seeds per
+  capacity. The fresh R=272 command workload reproduces the published 16-cycle
+  empty install, 1,103-cycle last dense install and 5,465-cycle dense PROCESS.
+- The field-use/ABI audit is in [COMPACT.md](fpga/transition_processor/COMPACT.md).
+  M2 uses 429 significant INSTALL bits and 397-bit compact cells plus temporary
+  list pointers (417 bits at R=272). Public wire bus widths stay 640/832 bits.
+- The compact owner/codec unit suite passes, including exact original/requested
+  reconstruction, authoritative effective/terminal frames and large countdowns.
+  A small RTL replay passes all seven groups and two seeds; the broader
+  five-capacity/20-seed compact-record gate passes before reply isolation.
+  ABI refusal/non-mutation and Rust/Python prepared-ROM parity also pass.
+  The warning-denying workspace build and Rust test-attribute policy pass.

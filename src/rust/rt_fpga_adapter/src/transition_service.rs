@@ -4,12 +4,13 @@ use crate::{
     engine::EngineDevice,
     image::{Image, TransitionImage, Value},
     looping::{LoopDevice, MediaCommand, MediaResult, TpReply},
-    protocol::{get, put},
+    protocol::get,
 };
 use rt_runtime::Error;
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
 mod tests;
+pub mod wire;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Transfer {
@@ -121,19 +122,13 @@ impl TransitionService {
     }
 
     pub fn begin(&mut self, opcode: u8, index: u32, words: [u32; 20]) -> Result<Transfer, u8> {
-        if self.faulted || self.settled || self.outstanding.is_some() {
+        if ((self.faulted || self.settled) && opcode != 13) || self.outstanding.is_some() {
             return Err(5);
         }
         let transfer = match opcode {
             4 => {
                 let slot = self.select(&words)?;
-                let mut installed = words;
-                put(
-                    &mut installed,
-                    1,
-                    32,
-                    u64::from(self.slots[slot].generation),
-                );
+                let installed = wire::install(&words, self.slots[slot].generation);
                 Transfer {
                     opcode,
                     index: slot as u32,
@@ -151,13 +146,21 @@ impl TransitionService {
                     words,
                 }
             }
+            13 => {
+                self.slots.get(index as usize).ok_or(3u8)?;
+                Transfer {
+                    opcode,
+                    index,
+                    words,
+                }
+            }
             _ => return Err(10),
         };
         self.outstanding = Some((transfer, words));
         Ok(transfer)
     }
 
-    pub fn finish(&mut self, reply: TpReply) -> Result<TpReply, Error> {
+    pub fn finish(&mut self, mut reply: TpReply) -> Result<TpReply, Error> {
         let Some((transfer, original)) = self.outstanding.take() else {
             return self.disconnected();
         };
@@ -166,6 +169,17 @@ impl TransitionService {
         }
         if reply.error != 0 {
             return Ok(reply);
+        }
+        if matches!(transfer.opcode, 6 | 13) && !(transfer.opcode == 6 && reply.words == [0; 26]) {
+            let slot = &self.slots[transfer.index as usize];
+            let decoded = wire::result(&reply.words, slot.request.as_ref(), slot.generation);
+            let Ok(words) = decoded else {
+                return self.disconnected();
+            };
+            if transfer.opcode == 6 && get(&words, 37, 3) == 0 {
+                return self.disconnected();
+            }
+            reply.words = words;
         }
         let slot = &mut self.slots[transfer.index as usize];
         match transfer.opcode {
@@ -244,13 +258,7 @@ impl TransitionService {
         }
         let slot = self.select(&words)?;
         self.slots[slot].request = Some(words);
-        let mut installed = words;
-        put(
-            &mut installed,
-            1,
-            32,
-            u64::from(self.slots[slot].generation),
-        );
+        let installed = wire::install(&words, self.slots[slot].generation);
         Ok(Transfer {
             opcode: 4,
             index: slot as u32,
@@ -306,7 +314,7 @@ impl<D: Device> Device for ManagedDevice<D> {
 
 impl<D: LoopDevice> LoopDevice for ManagedDevice<D> {
     fn tp(&mut self, opcode: u8, index: u32, words: [u32; 20]) -> Result<TpReply, Error> {
-        if matches!(opcode, 4..=6) {
+        if matches!(opcode, 4..=6 | 13) {
             let Some(service) = &mut self.service else {
                 return Ok(TpReply {
                     error: 5,
