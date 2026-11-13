@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 pub mod adapter;
+pub mod audio_control;
 pub mod compiler;
 pub mod image;
 pub mod loop_media;

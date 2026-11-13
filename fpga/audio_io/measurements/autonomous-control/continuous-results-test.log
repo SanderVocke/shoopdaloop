@@ -1,0 +1,12 @@
+   Compiling rt_fpga_testbench v0.3.0 (/workspace/shoopdaloop/src/rust/rt_fpga_testbench)
+    Finished `test` profile [unoptimized] target(s) in 1.06s
+     Running tests/continuous.rs (target/debug/build/rt_fpga_testbench/63ee237265fd7a9a/out/continuous-63ee237265fd7a9a)
+
+running 3 tests
+test shared_preparation_preserves_the_pilot_scenario ... ok
+test rust_loader_records_match_the_prepared_hardware_roms ... ok
+test continuous_record_playback_matches_production_through_clocks_stalls_and_overrun has been running for over 60 seconds
+test continuous_record_playback_matches_production_through_clocks_stalls_and_overrun ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 712.04s
+

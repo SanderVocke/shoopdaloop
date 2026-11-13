@@ -83,13 +83,15 @@ claiming that a profile fits. Keep internal Q8.24 exactness separate from physic
 codec word length, conversion and analog tolerance. Simulated tick spacing is a
 test parameter, not a physical sample-rate measurement.
 
-As of execution start no board/serial endpoint or audio fixture is configured in
-the managed workspace, and no hardware-server process or serial device is
-present. The user has been asked for an existing board/fixture endpoint. Old
+The user confirmed that no ZedBoard is available here and instructed execution
+to defer actual hardware tests as long as possible, then stop at that dependency.
+No board/serial endpoint or audio fixture is configured in the managed workspace,
+and no hardware-server process or serial device is present. Old
 Windows-local JTAG instructions and the halted-CPU benchmark do not establish
 current access. Exact board/silicon/codec/pins/physical channel count, firmware
 memory map, service CPU budget and contention bounds remain open until that
-fixture is identified. Physical qualification and overall completion stay open.
+fixture is identified. Complete independent work first; physical qualification
+and overall roadmap completion stay open. No further access request is pending.
 
 ## Focused resource review
 
@@ -130,3 +132,65 @@ removed. All protocol, construction, transfer, traversal and storage costs stay
 as reported at #993; its functional and routed evidence remains applicable.
 Stage 2's conditional protocol cutover, candidate campaigns and route are not
 applicable. The focused review is complete and does not block M4.
+
+## Prepared-profile autonomous control checkpoint
+
+[Control ABI 1](../audio_io/CONTROL.md) replaces the prepared live fence stream.
+A nonempty batch contains a versioned header and all of its operations before
+execution begins. Empty/future/unfinished ingress leaves audio runnable. One
+complete due batch may execute between quanta, with a device watchdog bounding
+the window. Late admission uses the actual device frame; the TP still owns
+rounding, dynamic validation and transition outcomes.
+
+The device reserves every transport reply before starting a batch. Full retained
+replies defer new control work without backpressuring audio; held results remain
+stable until acknowledgement. Ordinary command refusals are retained replies,
+while malformed transport/timeout/processing faults retain fault-to-silence.
+A direct host reply pending at arm is preserved and blocks new control admission,
+not PROCESS/FINISH. Direct configuration/sample/media handshakes are setup and
+diagnostic interfaces with audio disabled; live traffic uses bounded batches.
+
+Rust and Python prepared producers load frame-zero admissions in boot, emit only
+nonempty future batches and stop at the end of the ROM. The continuous wrapper,
+demo and unpaced board runner use the same batch protocol. The normal application
+and mono adapters still require the later migration; this checkpoint does not
+claim callback separation or autonomous application media ownership.
+
+The [raw checkpoint directory](../audio_io/measurements/autonomous-control/)
+contains compressed complete sample/state/outcome/media/publication reports,
+source hashes, generic statistics and test logs. Each pause case runs 1,040
+quanta and compares all 16,648 stereo sample frames against independent production
+Rust. Future absolute actions, self/source sync, repeat waits, a retake and stop
+cancellation execute from resident requests; all 11 terminal results are retained.
+The host status reply stays unchanged. Runtime assertions reject ingress,
+collection or accepted direct service traffic while audio runs; hostile held
+legacy requests are presented throughout the pause.
+
+| Memory | Audio clocks/frame | Processed | Control transfers | Missed/discarded |
+| --- | ---: | ---: | ---: | ---: |
+| Instant | 256 | 1,040 | 0 | 0/0 |
+| Stalled fixed latency | 256 | 1,040 | 0 | 0/0 |
+| DRAMsim3 with stalls | 512 | 1,040 | 0 | 0/0 |
+
+These are Q16/CF8/P8 simulations with a 10 ns core clock and 13 ns audio clock,
+not physical 48 kHz measurements. The reports retain every publication edge;
+derive simulation margins from the recorded last-input/prefetch edges. Existing
+continuous historical comparisons pass for coincident clocks, stalls and output
+overrun. Demo input-loss/memory-fault/reset recovery passes in all three memory
+models. Board-runner simulation, odd-depth credit/backpressure/refusal/timeout
+tests, ROM parity, Q16 strict lint/generic synthesis, warning-denying workspace
+build and the Rust test-attribute policy pass.
+
+Default ingress remains 128×746 bits (11,936 bytes). The new result array is
+128×1,088 bits (17,408 bytes), plus its synchronous head register and control
+state. Each padded ingress transfer is 24 u32 words; each result is 34. The
+watchdog/quota are containment and arbitration bounds, not physical deadline
+qualification. TP RTL, resident storage and the #993 TP resource checkpoint are
+unchanged. Native mapped/routed wrapper accounting and full-core timing closure
+remain open; generic cell counts are not FPGA LUT counts.
+
+M4 is not complete. Larger live graph updates still need inactive image
+publication and activation-time ramp continuity. Required media pinning,
+historical queries and monitoring must move into device cuts before removing
+normal SETTLE or migrating application service. The final native/application
+matrix is intentionally reserved for the final behavioral milestone.

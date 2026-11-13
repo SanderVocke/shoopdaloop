@@ -12,7 +12,10 @@
     reg [31:0] last_cycles, min_cycles, max_cycles;
     reg [63:0] read_bursts, write_bursts, read_bytes, write_bytes;
     reg [63:0] address_stalls, response_stalls, output_words, output_digest;
-    wire boot_done, boot_fault, control_fault, fenced;
+    wire boot_done, boot_fault, control_fault, run_permitted;
+    wire control_result_valid;
+    wire [1087:0] control_result_data;
+    wire unused_control_results = &{1'b0,control_result_valid,control_result_data};
     wire memory_quiescent;
     reg read_outstanding, write_outstanding, ar_exposed, aw_exposed;
     reg [2:0] read_size, write_size;
@@ -22,7 +25,7 @@
     wire failure = boot_fault || control_fault || memory_fault || faulted || timed_out;
     wire [31:0] completed_cycles = run_cycles+1;
     assign core_reset = reset || phase == RESETTING;
-    assign run_valid = running && fenced && !inflight && !stop_pending && !stop_edge
+    assign run_valid = running && run_permitted && !inflight && !stop_pending && !stop_edge
         && !failure && gap_remaining == 0;
     assign run_pulse = run_valid && run_ready;
     assign done_pulse = done;
@@ -104,13 +107,15 @@
     audio_events #(.WORDS(EVENT_WORDS),.FILE_NAME(EVENT_FILE)) events (
         .clk(clk),.reset(core_reset),.enable(running),.valid(control_valid),.ready(control_ready),.data(control_data)
     );
-    audio_control #(.DEPTH(16)) controls (
-        .clk(clk),.reset(core_reset),.enable(running),.sequence_number(quantum),
-        .busy(busy || inflight),.run_start(run_pulse),.fenced(fenced),.fault(control_fault),
+    audio_control #(.DEPTH(128)) controls (
+        .clk(clk),.reset(core_reset),.enable(running),.sequence_number(quantum),.epoch(32'd1),
+        .busy(busy || inflight),.run_start(run_pulse),.run_permitted(run_permitted),.fault(control_fault),
+        .admission_blocked(1'b0),
         .control_valid(control_valid),.control_ready(control_ready),.control_data(control_data),
         .command_valid(live_command_valid),.command_ready(command_ready),.command_opcode(live_command_opcode),
         .command_index(live_command_index),.command_data(live_command_data),.response_valid(response_valid),
         .response_ready(live_response_ready),.response_error(response_error),
+        .response_data(response_data),.result_valid(control_result_valid),.result_ready(1'b1),.result_data(control_result_data),
         .cfg_valid(live_cfg_valid),.cfg_ready(cfg_ready),.cfg_state(live_cfg_state),.cfg_write(live_cfg_write),
         .cfg_address(live_cfg_address),.cfg_write_data(live_cfg_write_data),
         .cfg_response_valid(cfg_response_valid),.cfg_response_error(cfg_response_error)

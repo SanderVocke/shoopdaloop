@@ -165,6 +165,7 @@ module audio_loop_pipeline #(
     output wire [OUTPUT_PORTS*32-1:0] tx_samples, output wire tx_valid,
     output wire [63:0] audio_frame, output wire [63:0] session_frame,
     input wire control_valid, output wire control_ready, input wire [745:0] control_data,
+    output wire control_result_valid, input wire control_result_ready, output wire [1087:0] control_result_data,
     output wire recovery_requested, output wire [3:0] recovery_reason,
     output wire [63:0] failure_sequence, output wire [63:0] process_sequence,
     output wire [31:0] processed_quanta, output wire [31:0] played_quanta,
@@ -189,6 +190,15 @@ module audio_loop_pipeline #(
     wire core_cfg_response_valid;
     wire core_cfg_response_error;
     wire [`SHOOP_SP_STATE_BITS-1:0] core_cfg_read_data;
+    wire core_audio_cfg_valid;
+    wire core_audio_cfg_ready;
+    wire [1:0] core_audio_cfg_space;
+    wire core_audio_cfg_write;
+    wire [31:0] core_audio_cfg_address;
+    wire [31:0] core_audio_cfg_write_data;
+    wire core_audio_cfg_response_valid;
+    wire core_audio_cfg_response_error;
+    wire [31:0] core_audio_cfg_read_data;
     wire core_command_valid;
     wire core_command_ready;
     wire [7:0] core_command_opcode;
@@ -198,6 +208,28 @@ module audio_loop_pipeline #(
     wire core_response_ready;
     wire [3:0] core_response_error;
     wire [831:0] core_response_data;
+    wire core_store_cmd_valid;
+    wire core_store_cmd_ready;
+    wire [3:0] core_store_cmd_opcode;
+    wire [63:0] core_store_cmd_view;
+    wire [63:0] core_store_cmd_start;
+    wire [63:0] core_store_cmd_length;
+    wire [31:0] core_store_cmd_count;
+    wire core_store_write_valid;
+    wire core_store_write_ready;
+    wire [31:0] core_store_write_data;
+    wire core_store_read_valid;
+    wire core_store_read_ready;
+    wire [31:0] core_store_read_data;
+    wire core_store_cfg_valid;
+    wire core_store_cfg_ready;
+    wire core_store_cfg_write;
+    wire [2:0] core_store_cfg_space;
+    wire [31:0] core_store_cfg_address;
+    wire [159:0] core_store_cfg_write_data;
+    wire core_store_cfg_response_valid;
+    wire core_store_cfg_response_error;
+    wire [159:0] core_store_cfg_read_data;
     wire core_m_axi_awid;
     wire [31:0] core_m_axi_awaddr;
     wire [3:0] core_m_axi_awlen;
@@ -312,15 +344,15 @@ module audio_loop_pipeline #(
         .cfg_response_valid(core_cfg_response_valid),
         .cfg_response_error(core_cfg_response_error),
         .cfg_read_data(core_cfg_read_data),
-        .audio_cfg_valid(audio_cfg_valid),
-        .audio_cfg_ready(audio_cfg_ready),
-        .audio_cfg_space(audio_cfg_space),
-        .audio_cfg_write(audio_cfg_write),
-        .audio_cfg_address(audio_cfg_address),
-        .audio_cfg_write_data(audio_cfg_write_data),
-        .audio_cfg_response_valid(audio_cfg_response_valid),
-        .audio_cfg_response_error(audio_cfg_response_error),
-        .audio_cfg_read_data(audio_cfg_read_data),
+        .audio_cfg_valid(core_audio_cfg_valid),
+        .audio_cfg_ready(core_audio_cfg_ready),
+        .audio_cfg_space(core_audio_cfg_space),
+        .audio_cfg_write(core_audio_cfg_write),
+        .audio_cfg_address(core_audio_cfg_address),
+        .audio_cfg_write_data(core_audio_cfg_write_data),
+        .audio_cfg_response_valid(core_audio_cfg_response_valid),
+        .audio_cfg_response_error(core_audio_cfg_response_error),
+        .audio_cfg_read_data(core_audio_cfg_read_data),
         .monitor_valid(monitor_valid),
         .monitor_ready(monitor_ready),
         .monitor_data(monitor_data),
@@ -338,33 +370,33 @@ module audio_loop_pipeline #(
         .response_data(core_response_data),
         .transition_busy(transition_busy),
         .arena_base(arena_base),
-        .store_cmd_valid(store_cmd_valid),
-        .store_cmd_ready(store_cmd_ready),
-        .store_cmd_opcode(store_cmd_opcode),
-        .store_cmd_view(store_cmd_view),
-        .store_cmd_start(store_cmd_start),
-        .store_cmd_length(store_cmd_length),
-        .store_cmd_count(store_cmd_count),
+        .store_cmd_valid(core_store_cmd_valid),
+        .store_cmd_ready(core_store_cmd_ready),
+        .store_cmd_opcode(core_store_cmd_opcode),
+        .store_cmd_view(core_store_cmd_view),
+        .store_cmd_start(core_store_cmd_start),
+        .store_cmd_length(core_store_cmd_length),
+        .store_cmd_count(core_store_cmd_count),
         .store_busy(store_busy),
         .store_done(store_done),
         .store_error_code(store_error_code),
         .store_result_view(store_result_view),
         .store_result_empty(store_result_empty),
-        .store_write_valid(store_write_valid),
-        .store_write_ready(store_write_ready),
-        .store_write_data(store_write_data),
-        .store_read_valid(store_read_valid),
-        .store_read_ready(store_read_ready),
-        .store_read_data(store_read_data),
-        .store_cfg_valid(store_cfg_valid),
-        .store_cfg_ready(store_cfg_ready),
-        .store_cfg_write(store_cfg_write),
-        .store_cfg_space(store_cfg_space),
-        .store_cfg_address(store_cfg_address),
-        .store_cfg_write_data(store_cfg_write_data),
-        .store_cfg_response_valid(store_cfg_response_valid),
-        .store_cfg_response_error(store_cfg_response_error),
-        .store_cfg_read_data(store_cfg_read_data),
+        .store_write_valid(core_store_write_valid),
+        .store_write_ready(core_store_write_ready),
+        .store_write_data(core_store_write_data),
+        .store_read_valid(core_store_read_valid),
+        .store_read_ready(core_store_read_ready),
+        .store_read_data(core_store_read_data),
+        .store_cfg_valid(core_store_cfg_valid),
+        .store_cfg_ready(core_store_cfg_ready),
+        .store_cfg_write(core_store_cfg_write),
+        .store_cfg_space(core_store_cfg_space),
+        .store_cfg_address(core_store_cfg_address),
+        .store_cfg_write_data(core_store_cfg_write_data),
+        .store_cfg_response_valid(core_store_cfg_response_valid),
+        .store_cfg_response_error(core_store_cfg_response_error),
+        .store_cfg_read_data(core_store_cfg_read_data),
         .memory_fault(memory_fault),
         .m_axi_awid(core_m_axi_awid),
         .m_axi_awaddr(core_m_axi_awaddr),
@@ -397,8 +429,9 @@ module audio_loop_pipeline #(
         .m_axi_rvalid(core_m_axi_rvalid),
         .m_axi_rready(core_m_axi_rready)
     );
-    wire io_process_valid, io_process_ready, io_busy, fenced, control_fault;
+    wire io_process_valid, io_process_ready, io_busy, run_permitted, control_fault;
     wire queued_command_valid, queued_command_ready, queued_response_ready;
+    reg external_command_pending;
     wire [7:0] queued_command_opcode;
     wire [31:0] queued_command_index;
     wire [639:0] queued_command_data;
@@ -411,18 +444,25 @@ module audio_loop_pipeline #(
     wire accepted_reset = session_reset && session_reset_ready;
     assign core_reset = reset || accepted_reset;
     assign core_maintenance_enable = enable && !quiesce && !recovery_requested;
-    assign core_run_valid = io_process_valid && fenced && enable && !quiesce;
-    assign io_process_ready = run_ready && fenced && enable && !quiesce;
+    assign core_run_valid = io_process_valid && run_permitted && enable && !quiesce;
+    assign io_process_ready = run_ready && run_permitted && enable && !quiesce;
     assign core_command_valid = enable ? queued_command_valid : command_valid;
     assign core_command_opcode = enable ? queued_command_opcode : command_opcode;
     assign core_command_index = enable ? queued_command_index : command_index;
     assign core_command_data = enable ? queued_command_data : command_data;
     assign command_ready = core_command_ready && !enable;
     assign queued_command_ready = core_command_ready && enable;
-    assign response_valid = core_response_valid && !enable;
+    assign response_valid = core_response_valid && external_command_pending;
     assign response_error = core_response_error;
     assign response_data = core_response_data;
-    assign core_response_ready = enable ? queued_response_ready : response_ready;
+    assign core_response_ready = external_command_pending ? response_ready : queued_response_ready;
+    always @(posedge clk) begin
+        if (core_reset) external_command_pending<=0;
+        else begin
+            if (response_valid && response_ready) external_command_pending<=0;
+            if (command_valid && command_ready) external_command_pending<=1;
+        end
+    end
     assign core_cfg_valid = enable ? queued_cfg_valid : cfg_valid;
     assign core_cfg_state = enable ? queued_cfg_state : cfg_state;
     assign core_cfg_write = enable ? queued_cfg_write : cfg_write;
@@ -434,13 +474,47 @@ module audio_loop_pipeline #(
     assign cfg_response_error = core_cfg_response_error;
     assign cfg_read_data = core_cfg_read_data;
 
+    assign core_audio_cfg_valid = audio_cfg_valid && !enable;
+    assign audio_cfg_ready = core_audio_cfg_ready && !enable;
+    assign core_audio_cfg_space = audio_cfg_space;
+    assign core_audio_cfg_write = audio_cfg_write;
+    assign core_audio_cfg_address = audio_cfg_address;
+    assign core_audio_cfg_write_data = audio_cfg_write_data;
+    assign audio_cfg_response_valid = core_audio_cfg_response_valid && !enable;
+    assign audio_cfg_response_error = core_audio_cfg_response_error;
+    assign audio_cfg_read_data = core_audio_cfg_read_data;
+    assign core_store_cmd_valid = store_cmd_valid && !enable;
+    assign store_cmd_ready = core_store_cmd_ready && !enable;
+    assign core_store_cmd_opcode = store_cmd_opcode;
+    assign core_store_cmd_view = store_cmd_view;
+    assign core_store_cmd_start = store_cmd_start;
+    assign core_store_cmd_length = store_cmd_length;
+    assign core_store_cmd_count = store_cmd_count;
+    assign core_store_write_valid = store_write_valid && !enable;
+    assign store_write_ready = core_store_write_ready && !enable;
+    assign core_store_write_data = store_write_data;
+    assign store_read_valid = core_store_read_valid && !enable;
+    assign core_store_read_ready = store_read_ready && !enable;
+    assign store_read_data = core_store_read_data;
+    assign core_store_cfg_valid = store_cfg_valid && !enable;
+    assign store_cfg_ready = core_store_cfg_ready && !enable;
+    assign core_store_cfg_write = store_cfg_write;
+    assign core_store_cfg_space = store_cfg_space;
+    assign core_store_cfg_address = store_cfg_address;
+    assign core_store_cfg_write_data = store_cfg_write_data;
+    assign store_cfg_response_valid = core_store_cfg_response_valid && !enable;
+    assign store_cfg_response_error = core_store_cfg_response_error;
+    assign store_cfg_read_data = core_store_cfg_read_data;
+
     audio_control #(.DEPTH(CONTROL_DEPTH)) controls (
         .clk(clk),.reset(core_reset),.enable(enable && !recovery_requested && !quiesce),
-        .sequence_number(process_sequence),.busy(io_busy),.run_start(core_run_valid && run_ready),
-        .fenced(fenced),.fault(control_fault),.control_valid(control_valid),.control_ready(control_ready),.control_data(control_data),
+        .sequence_number(process_sequence),.epoch(epoch),.busy(io_busy),.run_start(core_run_valid && run_ready),
+        .admission_blocked(external_command_pending),
+        .run_permitted(run_permitted),.fault(control_fault),.control_valid(control_valid),.control_ready(control_ready),.control_data(control_data),
         .command_valid(queued_command_valid),.command_ready(queued_command_ready),
         .command_opcode(queued_command_opcode),.command_index(queued_command_index),.command_data(queued_command_data),
         .response_valid(core_response_valid),.response_ready(queued_response_ready),.response_error(core_response_error),
+        .response_data(core_response_data),.result_valid(control_result_valid),.result_ready(control_result_ready),.result_data(control_result_data),
         .cfg_valid(queued_cfg_valid),.cfg_ready(queued_cfg_ready),.cfg_state(queued_cfg_state),.cfg_write(queued_cfg_write),
         .cfg_address(queued_cfg_address),.cfg_write_data(queued_cfg_write_data),
         .cfg_response_valid(core_cfg_response_valid),.cfg_response_error(core_cfg_response_error)

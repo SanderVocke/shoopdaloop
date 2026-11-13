@@ -7,6 +7,6 @@ fn asynchronous_audio_bank_ownership_deadlines_reset_and_publication_cutoff() {
     }
 }
 #[shoop_test]
-fn control_fences_backpressure_and_failures() {
-    rt_fpga_testbench::suites::control::fences_and_failures().unwrap();
+fn control_batches_backpressure_and_failures() {
+    rt_fpga_testbench::suites::control::batches_and_failures().unwrap();
 }

@@ -405,7 +405,7 @@ fn run(a: &Args, suite: Suite) -> Result<()> {
                 })?;
             }
         }
-        Suite::Control => suites::control::fences_and_failures()?,
+        Suite::Control => suites::control::batches_and_failures()?,
         Suite::Continuous => {
             suites::continuous::run("continuous", &continuous(a)?, mode, &a.output)?;
         }

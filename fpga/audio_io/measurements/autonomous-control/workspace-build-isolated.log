@@ -1,0 +1,95 @@
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+   Compiling shoopdaloop v0.3.0 (/workspace/shoopdaloop/src/rust/shoopdaloop)
+   Compiling rt_fpga_testbench v0.3.0 (/workspace/shoopdaloop/src/rust/rt_fpga_testbench)
+warning: unused dependency `shoop_rt_host_fpga_sim`
+  --> src/rust/shoop_host/Cargo.toml:21:1
+   |
+21 | shoop_rt_host_fpga_sim = { path = "../shoop_rt_host_fpga_sim", optional = true, default-features = false }
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `cargo::unused_dependencies` is set to `warn` by default
+help: consider removing the dependency on `shoop_rt_host_fpga_sim`
+warning: `shoop_host` (manifest) generated 1 warning
+warning: unused dependency `shoop_app_connection`
+  --> src/rust/shoop_host_freertos/Cargo.toml:21:1
+   |
+21 | shoop_app_connection = { path = "../shoop_app_connection" }
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `cargo::unused_dependencies` is set to `warn` by default
+help: consider removing the dependency on `shoop_app_connection`
+warning: unused dependency `shoop_rt_backend`
+  --> src/rust/shoop_host_freertos/Cargo.toml:22:1
+   |
+22 | shoop_rt_backend = { path = "../shoop_rt_backend", default-features = false }
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: consider removing the dependency on `shoop_rt_backend`
+warning: `shoop_host_freertos` (manifest) generated 2 warnings
+warning: unused dependency `rt_profiling`
+  --> src/rust/shoop_rt_transport_message_port/Cargo.toml:20:1
+   |
+20 | rt_profiling = { path = "../rt_profiling" }
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `cargo::unused_dependencies` is set to `warn` by default
+help: consider removing the dependency on `rt_profiling`
+warning: `shoop_rt_transport_message_port` (manifest) generated 1 warning
+warning: unused dependency `base64`
+  --> src/rust/shoop_tracing/Cargo.toml:14:1
+   |
+14 | base64 = { workspace = true }
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `cargo::unused_dependencies` is set to `warn` by default
+help: consider removing the dependency on `base64`
+warning: unused dependency `ctor`
+  --> src/rust/shoop_tracing/Cargo.toml:15:1
+   |
+15 | ctor = { workspace = true }
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: consider removing the dependency on `ctor`
+warning: unused dependency `perfetto-everywhere-raw`
+  --> src/rust/shoop_tracing/Cargo.toml:24:1
+   |
+24 | perfetto-everywhere-raw = { git = "https://github.com/SanderVocke/perfetto-everywhere", rev = "caaa26c067cc91a2b3f6dc9ca2a87da22071e5a4" }
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: consider removing the dependency on `perfetto-everywhere-raw`
+warning: `shoop_tracing` (manifest) generated 3 warnings
+warning: unused dependency `shoop_app_reference`
+  --> src/rust/shoop_wasm_runtime_tests/Cargo.toml:17:1
+   |
+17 | shoop_app_reference = { path = "../shoop_app_reference" }
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `cargo::unused_dependencies` is set to `warn` by default
+help: consider removing the dependency on `shoop_app_reference`
+warning: unused dependency `shoop_wasm_test_support`
+  --> src/rust/shoop_wasm_runtime_tests/Cargo.toml:21:1
+   |
+21 | shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: consider removing the dependency on `shoop_wasm_test_support`
+warning: unused dependency `shoop_worklet_client`
+  --> src/rust/shoop_wasm_runtime_tests/Cargo.toml:22:1
+   |
+22 | shoop_worklet_client = { path = "../shoop_worklet_client" }
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: consider removing the dependency on `shoop_worklet_client`
+warning: `shoop_wasm_runtime_tests` (manifest) generated 3 warnings
+warning: unused dependency `shoop_rt_transport_message_port`
+  --> src/rust/shoopdaloop/Cargo.toml:22:1
+   |
+22 | shoop_rt_transport_message_port = { path = "../shoop_rt_transport_message_port", features = ["browser"] }
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `cargo::unused_dependencies` is set to `warn` by default
+help: consider removing the dependency on `shoop_rt_transport_message_port`
+warning: `shoopdaloop` (manifest) generated 1 warning
+    Finished `dev` profile [unoptimized] target(s) in 7.77s

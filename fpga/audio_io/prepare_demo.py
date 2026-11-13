@@ -116,10 +116,17 @@ def prepare(output, q=32, chunk=None, channels=16, monitoring=False, routing="id
     actions = iter(program['actions'])
     events = []
     for n, step in enumerate(scenario['steps']):
+        if not step['actions']:
+            continue
+        if n != 0:
+            events.append(packet(sequence=n, kind=2, opcode=0xa1, index=len(step['actions']), data=n+1))
         for _ in step['actions']:
             transfer = next(actions)
-            events.append(packet(sequence=n, opcode=transfer['opcode'], index=transfer['index'], data=wire.port_value(transfer['words'])))
-        events.append(packet(sequence=n, kind=2))
+            word = packet(sequence=n, opcode=transfer['opcode'], index=transfer['index'], data=wire.port_value(transfer['words']))
+            if n == 0:
+                boot.insert(len(boot)-1, word)
+            else:
+                events.append(word)
     service.close()
     for name, records in [('boot', boot), ('events', events)]:
         (output/f'{name}.hex').write_text(''.join(f'{r:0187x}\n' for r in records))

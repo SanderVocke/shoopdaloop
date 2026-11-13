@@ -32,10 +32,14 @@ The core has dedicated synchronous input reads and output writes indexed by
 Core completion releases RX and publishes TX only on whole-pipeline success.
 The engine remains the sole authority for logical state and clock advancement.
 
-Commands are admitted in a bounded sequence-tagged fabric queue. A command's
-quantum is its logical execution boundary, independent of an output underrun or
-backlog. Prepared setup is loaded before arm. The demo's finite loader/command
-ROM comes from graph compilation; it does not compute sample results.
+Commands use [versioned complete batches](CONTROL.md) in a bounded fabric queue.
+The header names the earliest quantum and the number of following commands.
+The whole batch must be resident before it can execute. Empty, future and
+unfinished ingress leaves audio runnable. One complete batch may execute between
+quanta; the device computes each action's actual effective frame. Prepared setup,
+including frame-zero admissions, is loaded before arm. The demo's finite
+loader/command ROM comes from graph compilation; it does not compute samples
+or generate empty per-quantum traffic after the ROM ends.
 
 ## Failure and reset contract
 
@@ -134,7 +138,7 @@ independent mono loops, 64 instructions, 32 state entries/buffers and a worst-ca
 80 emitted jobs including all BeginCapture jobs. The prepared controller records
 all lanes for two quanta, plays them, stops/re-records even-numbered loops while
 odd-numbered loops continue, and plays the retakes. Later quanta continue playback
-with dynamically numbered empty command fences. The demo never feeds TX back to RX.
+after the finite command ROM stops producing traffic. The demo never feeds TX back to RX.
 
 The checked-in `examples/default/{boot,events}.hex` and `config.json` are generated
 from the ordinary production graph by `prepare_demo.py` with default arguments.
@@ -144,12 +148,12 @@ sample output. The sink is the full TX frame port plus `tx_valid`.
 
 Control queue words are 746 bits: logical sequence [745:682], kind [681:680],
 opcode [679:672], index [671:640], payload [639:0]. Runtime kinds are transition
-command (0), state/program write (1), and quantum fence (2). Kind 1 uses index bit
+command (0), state/program write (1), and batch header (2). Kind 1 uses index bit
 31 for state/program selection, index bits 15:0 as address and payload bits 128:0
-as the existing state/config word. A fence is required for every quantum, even
-when it has no controls. Producers obey valid/ready backpressure and preserve
-order; an unexpected sequence or kind is fatal. Later controls cannot cross an
-unfinished run or a fence. Boot kind 2 instead writes media configuration; boot
+as the existing state/config word. A batch header declares a nonempty group;
+ordinary progression needs no control traffic. Producers obey valid/ready
+backpressure and preserve order; future and late admission follow [CONTROL.md](CONTROL.md).
+The control queue never interleaves a batch with a run. Boot kind 2 instead writes media configuration; boot
 kind 3 ends loading. Boot and runtime streams are distinct.
 
 ## Recovery ownership and diagnostics

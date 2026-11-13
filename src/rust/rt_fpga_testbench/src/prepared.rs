@@ -14,7 +14,8 @@ pub struct Prepared {
     pub expected: Value,
     pub boot: Vec<Bits>,
     pub events: Vec<Bits>,
-    pub membership: Vec<rt_fpga_adapter::transition_service::Transfer>,
+    pub transition_setup: Vec<rt_fpga_adapter::transition_service::Transfer>,
+    pub request_commands: Vec<[u32; 20]>,
     pub directory: PathBuf,
 }
 pub fn scenario(q: u64, cf: u64, channels: u64, monitoring: bool, routing: &str) -> Value {
@@ -133,7 +134,7 @@ pub fn prepare_with_views(scenario: Value, bc: u64, slots: u64, views: u64) -> R
             originals.push(transition::command(&c).0.try_into().unwrap());
         }
     }
-    let program = owner
+    let mut program = owner
         .prepare_static_batch(&originals)
         .map_err(|error| format!("prepared actions refused: {error}"))?;
     let activate = boot.pop().unwrap();
@@ -146,26 +147,47 @@ pub fn prepare_with_views(scenario: Value, bc: u64, slots: u64, views: u64) -> R
             u64::from(transfer.index),
         ));
     }
-    boot.push(activate);
     let mut actions = program.actions.into_iter();
     let mut events = Vec::new();
     for (n, step) in scenario["steps"].as_array().unwrap().iter().enumerate() {
-        for _ in step["actions"].as_array().unwrap() {
+        let actions_at_cut = step["actions"].as_array().unwrap();
+        if actions_at_cut.is_empty() {
+            continue;
+        }
+        if n != 0 {
+            events.push(Bits(
+                rt_fpga_adapter::audio_control::header(
+                    n as u64,
+                    n as u64 + 1,
+                    actions_at_cut.len() as u32,
+                    128,
+                )?
+                .to_vec(),
+            ));
+        }
+        for _ in actions_at_cut {
             let transfer = actions.next().unwrap();
-            events.push(control_packet(
+            let packet = control_packet(
                 n as u64,
                 0,
                 &Bits(transfer.words.to_vec()),
                 u64::from(transfer.opcode),
                 u64::from(transfer.index),
-            ));
+            );
+            if n == 0 {
+                boot.push(packet);
+                program.setup.push(transfer);
+            } else {
+                events.push(packet);
+            }
         }
-        events.push(control_packet(n as u64, 2, &Bits::default(), 0, 0));
     }
+    boot.push(activate);
     use std::hash::{Hash, Hasher};
     let mut hash = std::hash::DefaultHasher::new();
     scenario.to_string().hash(&mut hash);
     rt_fpga_adapter::transition_service::wire::ABI.hash(&mut hash);
+    rt_fpga_adapter::audio_control::ABI.hash(&mut hash);
     bc.hash(&mut hash);
     slots.hash(&mut hash);
     views.hash(&mut hash);
@@ -210,7 +232,8 @@ pub fn prepare_with_views(scenario: Value, bc: u64, slots: u64, views: u64) -> R
         expected,
         boot,
         events,
-        membership: program.setup,
+        transition_setup: program.setup,
+        request_commands: originals,
         directory,
     })
 }

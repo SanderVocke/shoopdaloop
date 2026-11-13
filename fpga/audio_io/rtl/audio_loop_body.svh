@@ -1,5 +1,6 @@
-    wire io_process_valid, io_process_ready, io_busy, fenced, control_fault;
+    wire io_process_valid, io_process_ready, io_busy, run_permitted, control_fault;
     wire queued_command_valid, queued_command_ready, queued_response_ready;
+    reg external_command_pending;
     wire [7:0] queued_command_opcode;
     wire [31:0] queued_command_index;
     wire [639:0] queued_command_data;
@@ -12,18 +13,25 @@
     wire accepted_reset = session_reset && session_reset_ready;
     assign core_reset = reset || accepted_reset;
     assign core_maintenance_enable = enable && !quiesce && !recovery_requested;
-    assign core_run_valid = io_process_valid && fenced && enable && !quiesce;
-    assign io_process_ready = run_ready && fenced && enable && !quiesce;
+    assign core_run_valid = io_process_valid && run_permitted && enable && !quiesce;
+    assign io_process_ready = run_ready && run_permitted && enable && !quiesce;
     assign core_command_valid = enable ? queued_command_valid : command_valid;
     assign core_command_opcode = enable ? queued_command_opcode : command_opcode;
     assign core_command_index = enable ? queued_command_index : command_index;
     assign core_command_data = enable ? queued_command_data : command_data;
     assign command_ready = core_command_ready && !enable;
     assign queued_command_ready = core_command_ready && enable;
-    assign response_valid = core_response_valid && !enable;
+    assign response_valid = core_response_valid && external_command_pending;
     assign response_error = core_response_error;
     assign response_data = core_response_data;
-    assign core_response_ready = enable ? queued_response_ready : response_ready;
+    assign core_response_ready = external_command_pending ? response_ready : queued_response_ready;
+    always @(posedge clk) begin
+        if (core_reset) external_command_pending<=0;
+        else begin
+            if (response_valid && response_ready) external_command_pending<=0;
+            if (command_valid && command_ready) external_command_pending<=1;
+        end
+    end
     assign core_cfg_valid = enable ? queued_cfg_valid : cfg_valid;
     assign core_cfg_state = enable ? queued_cfg_state : cfg_state;
     assign core_cfg_write = enable ? queued_cfg_write : cfg_write;
@@ -35,13 +43,47 @@
     assign cfg_response_error = core_cfg_response_error;
     assign cfg_read_data = core_cfg_read_data;
 
+    assign core_audio_cfg_valid = audio_cfg_valid && !enable;
+    assign audio_cfg_ready = core_audio_cfg_ready && !enable;
+    assign core_audio_cfg_space = audio_cfg_space;
+    assign core_audio_cfg_write = audio_cfg_write;
+    assign core_audio_cfg_address = audio_cfg_address;
+    assign core_audio_cfg_write_data = audio_cfg_write_data;
+    assign audio_cfg_response_valid = core_audio_cfg_response_valid && !enable;
+    assign audio_cfg_response_error = core_audio_cfg_response_error;
+    assign audio_cfg_read_data = core_audio_cfg_read_data;
+    assign core_store_cmd_valid = store_cmd_valid && !enable;
+    assign store_cmd_ready = core_store_cmd_ready && !enable;
+    assign core_store_cmd_opcode = store_cmd_opcode;
+    assign core_store_cmd_view = store_cmd_view;
+    assign core_store_cmd_start = store_cmd_start;
+    assign core_store_cmd_length = store_cmd_length;
+    assign core_store_cmd_count = store_cmd_count;
+    assign core_store_write_valid = store_write_valid && !enable;
+    assign store_write_ready = core_store_write_ready && !enable;
+    assign core_store_write_data = store_write_data;
+    assign store_read_valid = core_store_read_valid && !enable;
+    assign core_store_read_ready = store_read_ready && !enable;
+    assign store_read_data = core_store_read_data;
+    assign core_store_cfg_valid = store_cfg_valid && !enable;
+    assign store_cfg_ready = core_store_cfg_ready && !enable;
+    assign core_store_cfg_write = store_cfg_write;
+    assign core_store_cfg_space = store_cfg_space;
+    assign core_store_cfg_address = store_cfg_address;
+    assign core_store_cfg_write_data = store_cfg_write_data;
+    assign store_cfg_response_valid = core_store_cfg_response_valid && !enable;
+    assign store_cfg_response_error = core_store_cfg_response_error;
+    assign store_cfg_read_data = core_store_cfg_read_data;
+
     audio_control #(.DEPTH(CONTROL_DEPTH)) controls (
         .clk(clk),.reset(core_reset),.enable(enable && !recovery_requested && !quiesce),
-        .sequence_number(process_sequence),.busy(io_busy),.run_start(core_run_valid && run_ready),
-        .fenced(fenced),.fault(control_fault),.control_valid(control_valid),.control_ready(control_ready),.control_data(control_data),
+        .sequence_number(process_sequence),.epoch(epoch),.busy(io_busy),.run_start(core_run_valid && run_ready),
+        .admission_blocked(external_command_pending),
+        .run_permitted(run_permitted),.fault(control_fault),.control_valid(control_valid),.control_ready(control_ready),.control_data(control_data),
         .command_valid(queued_command_valid),.command_ready(queued_command_ready),
         .command_opcode(queued_command_opcode),.command_index(queued_command_index),.command_data(queued_command_data),
         .response_valid(core_response_valid),.response_ready(queued_response_ready),.response_error(core_response_error),
+        .response_data(core_response_data),.result_valid(control_result_valid),.result_ready(control_result_ready),.result_data(control_result_data),
         .cfg_valid(queued_cfg_valid),.cfg_ready(queued_cfg_ready),.cfg_state(queued_cfg_state),.cfg_write(queued_cfg_write),
         .cfg_address(queued_cfg_address),.cfg_write_data(queued_cfg_write_data),
         .cfg_response_valid(core_cfg_response_valid),.cfg_response_error(core_cfg_response_error)

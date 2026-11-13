@@ -18,6 +18,10 @@ control and audio driver work needed for qualification. Writing this plan does
 not execute those stages.
 The user's instruction not to inspect CI after pushing overrides the planning
 template's default CI-to-green loop. No autonomous merging is authorized.
+Execution steering: no ZedBoard is available here. Defer actual hardware tests
+until independent software/RTL/firmware/build/timing work is done, then stop at
+that dependency. Do not request board access again in this execution or mark
+physical qualification complete without its evidence.
 
 ## Goals and scope
 
@@ -287,6 +291,16 @@ a claimed marginal saving needs a variation check. Record the changed or retaine
 design before changing cadence or observation machinery; LUT reduction is not a gate.
 
 ### 3. Make fabric progression independent of per-quantum fences (M4)
+
+Prepared-profile checkpoint implemented: complete bounded batches, retained
+transport replies/credits, fence-free empty ingress, finite ROM producers and
+legacy live-port isolation. Continuous tests run 1,040 quanta with resident
+future AT/self/source-sync actions, repeat waits, stop cancellation, held host
+reply and hostile unfinished legacy traffic. Samples/state/results/media match
+production Rust in instant/fixed/DRAMsim3 memory. See the execution report and
+[raw checkpoint evidence](fpga/audio_io/measurements/autonomous-control/).
+This is not the complete M4 gate: live large graph publication/ramp continuity,
+the complete profile/flood/resource campaign and the M5 transport remain open.
 
 - [ ] Specify and implement bounded control access around autonomous PROCESS/
   state/job/audio/FINISH progression. Input availability and device resources
