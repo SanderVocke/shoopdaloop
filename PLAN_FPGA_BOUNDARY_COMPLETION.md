@@ -9,10 +9,11 @@ Stack base: `plan/fpga-compact-actions-membership` at
 `60beabb53e1f4a5051db9baa2e3f69815f61ad18`.
 Eventual integration target: `proto/fpga-rust-reference`.
 
-This plan completes the remaining roadmap: an explicit TP area-reduction pass,
-autonomous progression (M4), application integration (M5), and system/physical
-qualification (M6). It includes the missing physical ARM control and audio driver
-work needed for qualification. Writing this plan does not execute those stages.
+This plan completes the remaining roadmap: a focused TP resource review and
+opportunistic optimization, autonomous progression (M4), application integration
+(M5), and system/physical qualification (M6). It includes the missing physical ARM
+control and audio driver work needed for qualification. Writing this plan does
+not execute those stages.
 The user's instruction not to inspect CI after pushing overrides the planning
 template's default CI-to-green loop. No autonomous merging is authorized.
 
@@ -30,12 +31,14 @@ Control traffic has bounded access to device resources and cannot determine when
 audio runs. Application service consumes authoritative frame-stamped results
 later, without a per-quantum settlement rendezvous.
 
-Make TP LUT reduction a measured deliverable. Attribute the M3 increase before
-choosing another protocol; preserve a measured area checkpoint before adding
-autonomy/integration. The final system must retain that improvement and close
-timing. Existing musical behavior, supported operation profiles and shared
-capacities remain. Composites/new modes, unrelated application rewrites, other
-board ports and production boot/security redesign are outside this scope.
+Pursue clear-cut opportunities to reduce TP LUT usage where the measured benefit
+justifies complexity, risk and verification cost. Investigate the M3 increase
+before choosing another protocol and record the resource tradeoffs. LUT reduction
+is welcome but is not required for roadmap completion or progression to M4.
+An open-ended area search must not hold up autonomy/integration. The final system
+must close timing. Existing musical behavior, supported operation profiles and
+shared capacities remain. Composites/new modes, unrelated application rewrites,
+other board ports and production boot/security redesign are outside this scope.
 
 ## Starting evidence and implementation
 
@@ -120,13 +123,14 @@ work in this plan, not existing capabilities to assume.
    waits, settlement rendezvous or media housekeeping. It uses bounded prepared
    transport where required. Required capture allocation/pinning/reference work
    remains device-side. Slow ARM observation delivery changes delivery time only.
-7. **Area and timing:** final routed TP LUT usage must be lower than #993's
-   13,312 at unchanged L64/R272/E400 and the same 100 MHz experiment, by an amount
-   distinguishable from observed run variation. Recovery toward the 11,320 M1
-   baseline is the optimization target; no saving percentage is assumed. Publish
-   LUT/FF/BRAM/storage/cycle/transfer costs throughout. Preserve standalone TP
-   timing and achieve nonnegative setup/hold for the complete core and selected
-   board deployment. Do not lower clocks/capacities or hide paths to pass.
+7. **Resource accounting and timing:** publish matched LUT/FF/BRAM/storage/cycle/
+   transfer costs throughout, including final integration and timing work. Seek
+   clear-cut LUT savings; #993's 13,312 and M1's 11,320 are comparison references,
+   not acceptance thresholds. No decrease or saving percentage is required.
+   Any claimed saving must be distinguishable from observed run variation.
+   The design must fit the selected device, preserve standalone TP timing and
+   achieve nonnegative setup/hold for the complete core and selected board
+   deployment. Do not lower clocks/capacities or hide paths to pass.
 8. **Physical qualification:** a real ARM runs the shared service against the
    final FPGA and physical audio path on the selected board. Verify output,
    timing, reset, cache/DMA coherence and service/memory interference under the
@@ -138,8 +142,9 @@ work in this plan, not existing capabilities to assume.
    Diagnostic stepping and archived evidence must not become hidden prerequisites
    or a second resolver. Public functionality is not reduced to achieve area.
 
-These criteria are completion gates. Inability to meet area, deadline or hardware
-requirements requires a recorded blocker/redesign, not a checked completion box.
+These criteria are completion gates. Inability to meet correctness, safety,
+device capacity, deadline or hardware requirements requires a recorded blocker/redesign,
+not a checked completion box. Absence of LUT savings alone is not a blocker.
 
 ## Design rules and boundary decisions
 
@@ -187,9 +192,12 @@ requirements requires a recorded blocker/redesign, not a checked completion box.
 
 ## Ordered implementation stages
 
-Stages 1–2 precede new functionality. M4 gates M5; coherent device observations
-and media cuts gate application migration. Timing/resource checks recur at each
-checkpoint; final hardware qualification follows functional and timing closure.
+Begin with a focused stage-1 review. Stage-2 implementation is conditional on
+finding worthwhile changes; retaining the current design with recorded evidence
+is an acceptable outcome. LUT savings are not a prerequisite for M4. M4 gates M5;
+coherent device observations and media cuts gate application migration.
+Timing/resource checks recur at each architectural checkpoint; final hardware
+qualification follows functional and timing closure.
 
 ### 0. Establish the stack, baselines and qualification contract
 
@@ -215,7 +223,10 @@ results; each eventual acceptance claim has a test or physical measurement.
 Hardware access is not established by this planning session. Identify the board,
 debug access and audio fixture early; keep independent work moving if absent.
 
-### 1. Attribute the TP LUT increase and choose a lean publication design
+### 1. Investigate TP LUT costs and assess clear-cut optimizations
+
+Start with existing reports and a small set of attribution experiments. Expand
+the investigation only when the evidence exposes a promising opportunity.
 
 - [ ] Reproduce #993's mapped result with frozen inputs. Build a field/check/
   state ownership and resource ledger, including both banks, masks, read muxes,
@@ -227,16 +238,23 @@ debug access and audio fixture early; keep independent work moving if absent.
   Compare ARM construction, full transfer/ack cost, stale visits, storage,
   LUT/FF/BRAM and timing. Include dense/shared-pool, empty, one-loop, mixed-class,
   full terminal, reused-slot, 8×8 and 64-chain cases.
-- [ ] Choose the smallest sufficient protocol and publish the check/lifetime
-  proof, atomic visibility/admission cuts and area evidence. Account for later
-  autonomy/observation needs so an apparent saving is not just deferred hardware.
+- [ ] Decide which changes, if any, justify their complexity and risk. Retain the
+  current protocol if no worthwhile candidate emerges. Publish the evidence and,
+  for proposed changes, the check/lifetime proof and visibility/admission cuts.
+  Account for later autonomy/observation needs and their resource costs.
 
-Verification/gate: owner tests and small independent RTL comparisons for each
-candidate; same-geometry synthesis, then route viable candidates. Require an
-evidence-backed path to a real TP LUT reduction before M4. If the candidate fails,
-redesign or narrow unsupported causal claims; do not carry an unsafe shortcut.
+Verification/gate: owner tests and small independent RTL comparisons for candidates
+actually pursued; same-geometry synthesis, then route promising candidates.
+Record the decision and its evidence, including an unchanged-design outcome.
+Keep the investigation focused; lack of savings does not delay M4. Do not carry
+an unsafe shortcut or make an unsupported causal claim.
 
-### 2. Implement and measure the area-reduction checkpoint
+### 2. Apply worthwhile simplifications and record the resource checkpoint
+
+Implement the following changes only if stage 1 identifies a worthwhile candidate.
+Otherwise record the decision to retain the current design and reuse its valid
+baseline evidence; no protocol rewrite or ABI cutover is required for this stage.
+Mark conditional implementation/verification items not applicable with that decision.
 
 - [ ] Implement the chosen owner/publication contract, with bounded staging,
   generation-safe reuse, checked versions and definite/uncertain failure handling.
@@ -251,11 +269,12 @@ redesign or narrow unsupported causal claims; do not carry an unsafe shortcut.
   clocks/bytes/ARM preparation, PROCESS/FINISH, stale traversal, total storage,
   routed TP resources and complete-core timing impact.
 
-Verification/gate: focused owner/ABI tests; all five TP capacities with at least
-20 seeds; exact production/app replay and 1,024-quanta service-pause variants;
-lint/generic mapping and matched TP route. Require area reduction with TP timing
-intact. Repeat paired physical runs only when a marginal result needs a variation
-check. Record this checkpoint before changing cadence or observation machinery.
+Verification/gate for implemented changes: focused owner/ABI tests; all five TP
+capacities with at least 20 seeds; exact production/app replay and 1,024-quanta
+service-pause variants; lint/generic mapping and matched TP route. Preserve TP
+timing and report all resource tradeoffs. Repeat paired physical runs only when
+a claimed marginal saving needs a variation check. Record the changed or retained
+design before changing cadence or observation machinery; LUT reduction is not a gate.
 
 ### 3. Make fabric progression independent of per-quantum fences (M4)
 
@@ -342,9 +361,10 @@ wall time is diagnostic; ARM scheduling bounds require stage 7 measurements.
 
 Verification/gate: targeted protocol/cache/DMA/CDC tests and equivalent simulation
 of the actual transport/I/O wrapper; full-core and board routes have nonnegative
-setup/hold and no unexplained paths or critical DRC defects. Preserve final TP
-area reduction after timing work. Do not use false/multicycle paths, lower fabric
-clocks, smaller pools or a reduced workload to conceal a miss.
+setup/hold and no unexplained paths or critical DRC defects. Report the resource
+effect of timing work, including changes to any earlier savings. Do not use
+false/multicycle paths, lower fabric clocks, smaller pools or a reduced workload
+to conceal a timing miss.
 
 ### 7. Qualify ARM independence, interference and physical audio (M6)
 
@@ -382,11 +402,12 @@ qualification and the overall roadmap incomplete until evidence exists.
   formatting, warning-denying builds and test-attribute policy. Investigate each
   failure; rerun affected cases after repair and broaden only when justified.
   Preserve initial failures, interrupted runs and skips in the evidence.
-- [ ] Publish matched M1/M2/#993/area-checkpoint/final measurements with identical
+- [ ] Publish matched M1/M2/#993/resource-checkpoint/final measurements with identical
   capacities, parts and constraints within each comparison. Include whole public
   command/observation traffic, host preparation, stale work, all storage/banks,
   routed area/timing and physical deadline evidence. Recheck final area after
-  timing replication and board integration; a checkpoint-only saving is insufficient.
+  timing replication and board integration, stating which savings persist and
+  which costs increase. Final LUT reduction is not required for completion.
 - [ ] Update contracts, adapter/testbench/board docs, this plan and the long-term
   roadmap against an explicit acceptance-evidence map. Mark M4/M5/M6 complete
   only when their gates pass, with scope and physical limitations stated.
