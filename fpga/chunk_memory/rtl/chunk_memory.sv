@@ -65,7 +65,9 @@ module chunk_memory #(
     reg [31:0] dma_line, dma_chunk, dma_index, dma_data;
     reg read_hit, write_hit, read_victim, write_victim, flush_found, fill_found;
     reg [31:0] read_hit_line, write_hit_line, read_victim_line, write_victim_line, flush_line, fill_line;
-    reg fill_write_pool, hint_hit, incoming_write_space;
+    // fill_retiring travels with fill_line so the retirement compare runs per line in
+    // parallel instead of after the fill-line selection.
+    reg fill_write_pool, fill_retiring, hint_hit, incoming_write_space;
     reg [31:0] dirty_count;
     reg retiring_dirty;
     reg background_dirty;
@@ -134,7 +136,7 @@ module chunk_memory #(
     always @* begin
         read_hit = 0; write_hit = 0; read_hit_line = 0; write_hit_line = 0;
         read_victim = 0; write_victim = 0; read_victim_line = 0; write_victim_line = 0;
-        flush_found = 0; flush_line = 0; fill_found = 0; fill_line = 0; fill_write_pool = 0;
+        flush_found = 0; flush_line = 0; fill_found = 0; fill_line = 0; fill_write_pool = 0; fill_retiring = 0;
         hint_hit = 0; dirty_count = 0; retiring_dirty = 0; background_dirty = 0; incoming_write_space = 0;
         for (i = 0; i < READ_BUFFERS; i = i+1) begin
             if (read_present[i] && read_tag[i] == chunk) begin read_hit = 1; read_hit_line = 32'(i); end
@@ -142,7 +144,10 @@ module chunk_memory #(
             if (!read_present[i] && !read_victim
                 && !(dma_active && !dma_write_pool && dma_line == 32'(i))) begin read_victim = 1; read_victim_line = 32'(i); end
             if (read_present[i] && !read_loaded[i]
-                && !(retire_busy && (read_tag[i] >> RETIRE_SHIFT) == (background_chunk >> RETIRE_SHIFT))) begin fill_found = 1; fill_line = 32'(i); end
+                && !(retire_busy && (read_tag[i] >> RETIRE_SHIFT) == (background_chunk >> RETIRE_SHIFT))) begin
+                fill_found = 1; fill_line = 32'(i);
+                fill_retiring = phase == RETIRING && (read_tag[i] >> RETIRE_SHIFT) == (chunk >> RETIRE_SHIFT);
+            end
         end
         for (i = 0; i < READ_BUFFERS; i = i+1) begin
             if (READ_LINE_BITS'(i) >= next_read && !read_victim && !(read_pinned && line == 32'(i))
@@ -167,7 +172,10 @@ module chunk_memory #(
             if (write_present[i] && dirty[i] && (write_tag[i] >> RETIRE_SHIFT) == (chunk >> RETIRE_SHIFT)) retiring_dirty = 1;
             if (write_present[i] && dirty[i] && (write_tag[i] >> RETIRE_SHIFT) == (background_chunk >> RETIRE_SHIFT)) background_dirty = 1;
             if (write_present[i] && !write_loaded[i]
-                && !(retire_busy && (write_tag[i] >> RETIRE_SHIFT) == (background_chunk >> RETIRE_SHIFT))) begin fill_found = 1; fill_line = 32'(i); fill_write_pool = 1; end
+                && !(retire_busy && (write_tag[i] >> RETIRE_SHIFT) == (background_chunk >> RETIRE_SHIFT))) begin
+                fill_found = 1; fill_line = 32'(i); fill_write_pool = 1;
+                fill_retiring = phase == RETIRING && (write_tag[i] >> RETIRE_SHIFT) == (chunk >> RETIRE_SHIFT);
+            end
         end
         for (i = 0; i < WRITE_BUFFERS; i = i+1) begin
             if (WRITE_LINE_BITS'(i) >= next_write) begin
@@ -346,8 +354,7 @@ module chunk_memory #(
             if (!fault) case (dma_phase)
                 D_IDLE: begin
                     dma_index <= 0;
-                    if (fill_found && !(phase == RETIRING &&
-                        ((fill_write_pool ? write_tag[fill_line] : read_tag[fill_line]) >> RETIRE_SHIFT) == (chunk >> RETIRE_SHIFT))) begin
+                    if (fill_found && !fill_retiring) begin
                         dma_line <= fill_line; dma_write_pool <= fill_write_pool; dma_write <= 0;
                         dma_speculative <= 0; dma_obsolete <= 0;
                         dma_chunk <= fill_write_pool ? write_tag[fill_line] : read_tag[fill_line];

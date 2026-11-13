@@ -192,8 +192,15 @@ module job_processor #(
     assign media_cmd_valid = (ENABLE_MEDIA != 0) && (phase == MEDIA_COMMAND) && !reset;
     assign media_cmd_opcode = (ENABLE_MEDIA == 0) ? 4'b0 : (opcode == `SHOOP_SP_JOB_BEGIN_CAPTURE) ? 4'd8 : (opcode == `SHOOP_SP_JOB_READ) ? 4'd6 : 4'd5;
     assign media_cmd_view = (ENABLE_MEDIA == 0) ? 64'b0 : packet[127:64];
-    assign media_cmd_start = (ENABLE_MEDIA == 0) ? 64'b0 : packet[191:128] << chunk_shift;
-    assign media_cmd_length = (ENABLE_MEDIA == 0) ? 64'b0 : packet[255:192] << chunk_shift;
+    // The packet is fixed from DECODE onwards and chunk_shift for the whole run, so the
+    // scaled range is registered: MEDIA_COMMAND is only ever entered from DECODE.
+    reg [63:0] media_start_scaled, media_length_scaled;
+    always @(posedge clk) begin
+        media_start_scaled <= packet[191:128] << chunk_shift;
+        media_length_scaled <= packet[255:192] << chunk_shift;
+    end
+    assign media_cmd_start = (ENABLE_MEDIA == 0) ? 64'b0 : media_start_scaled;
+    assign media_cmd_length = (ENABLE_MEDIA == 0) ? 64'b0 : media_length_scaled;
     assign media_cmd_count = (ENABLE_MEDIA == 0) ? 32'b0 : quantum;
     assign media_write_valid = (ENABLE_MEDIA != 0) && (phase == MEDIA_WRITE) && !reset;
     assign media_write_data = (ENABLE_MEDIA == 0) ? 32'b0 : sample_a;

@@ -25,6 +25,7 @@ pub struct Counters {
 pub struct Bridge<B> {
     bus: B,
     capacities: Capacities,
+    physical_base: u32,
     slot_limit: u32,
     media_slots: u32,
     /// Status polls before a port transaction is reported as timed out.
@@ -55,6 +56,7 @@ impl<B: Bus> Bridge<B> {
             bus.read(map::CAPACITY + 4 * index)
         };
         let slots = capacity("SLOTS");
+        let physical_base = capacity("PHYSICAL_BASE");
         let capacities = Capacities {
             instructions: capacity("PROGRAM_DEPTH") as usize,
             states: capacity("STATE_DEPTH") as usize,
@@ -72,11 +74,16 @@ impl<B: Bus> Bridge<B> {
         Ok(Self {
             bus,
             capacities,
+            physical_base,
             slot_limit: slots,
             media_slots: slots.min(128),
             poll_limit: 1_000_000,
             last_error: None,
         })
+    }
+    /// The DDR address of the core's arena, fixed when the bitstream was built.
+    pub fn physical_base(&self) -> u32 {
+        self.physical_base
     }
     pub fn bus(&self) -> &B {
         &self.bus

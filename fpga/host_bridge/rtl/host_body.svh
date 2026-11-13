@@ -14,17 +14,18 @@
         word_index = (address - base) >> 2;
     endfunction
 
-    reg bvalid, rvalid;
-    reg [31:0] rdata;
-    wire write_fire = s_axi_awvalid && s_axi_wvalid && !bvalid;
-    wire read_fire = s_axi_arvalid && !rvalid;
-    wire [11:0] write_address = {s_axi_awaddr[11:2], 2'b00};
-    wire [11:0] read_address = {s_axi_araddr[11:2], 2'b00};
-    assign s_axi_awready = write_fire;
-    assign s_axi_wready = write_fire;
+    // Requests are captured first and take effect a cycle later, so the CPU-side
+    // AXI wires only reach capture registers.
+    reg bvalid, rvalid, write_fire, read_fire;
+    reg [31:0] rdata, write_data;
+    reg [11:0] write_address, read_address;
+    wire write_accept = s_axi_awvalid && s_axi_wvalid && !write_fire && !bvalid;
+    wire read_accept = s_axi_arvalid && !read_fire && !rvalid;
+    assign s_axi_awready = write_accept;
+    assign s_axi_wready = write_accept;
     assign s_axi_bvalid = bvalid;
     assign s_axi_bresp = 2'b00;
-    assign s_axi_arready = read_fire;
+    assign s_axi_arready = read_accept;
     assign s_axi_rvalid = rvalid;
     assign s_axi_rresp = 2'b00;
     assign s_axi_rdata = rdata;
@@ -130,7 +131,10 @@
         end
     endgenerate
 
-    assign core_reset = reset || reset_phase == RESET_HOLD;
+    // One flop drives the core's reset so the tools can replicate it across the die.
+    (* max_fanout = 128 *) reg core_reset_hold;
+    always @(posedge clk) core_reset_hold <= reset || reset_phase == RESET_HOLD;
+    assign core_reset = core_reset_hold;
     assign maintenance_enable = 1'b1;
     assign job_enable = 1'b1;
     assign drain_ready = 1'b0;
@@ -172,9 +176,12 @@
     assign store_cmd_length = store_length;
     assign store_cmd_count = store_count;
     wire appending = store_opcode == 4'd5;
-    assign store_write_valid = store_phase == RESPONSE && appending && tx_count != 0;
+    // The streaming direction is latched when the command is accepted and the FIFO
+    // levels are registered, so the store handshakes leave the bridge from flops.
+    reg store_reading, store_appending, tx_ready, rx_space;
+    assign store_write_valid = store_appending && tx_ready;
     assign store_write_data = tx_fifo[tx_head];
-    assign store_read_ready = store_phase == RESPONSE && !appending && rx_count != 7'(FIFO_DEPTH);
+    assign store_read_ready = store_reading && rx_space;
 
     reg [31:0] generated_sample;
     assign sample_input_data = generated_sample;
@@ -256,10 +263,13 @@
     wire tx_pop = store_write_valid && store_write_ready;
     wire rx_push = store_read_valid && store_read_ready;
     wire rx_pop = read_fire && read_address == HOST_STORE_RX && rx_count != 0;
+    wire [6:0] tx_count_next = tx_push == tx_pop ? tx_count : tx_push ? tx_count + 7'd1 : tx_count - 7'd1;
+    wire [6:0] rx_count_next = rx_push == rx_pop ? rx_count : rx_push ? rx_count + 7'd1 : rx_count - 7'd1;
     integer i;
     always @(posedge clk) begin
         if (reset) begin
-            bvalid <= 0; rvalid <= 0; rdata <= 0;
+            bvalid <= 0; rvalid <= 0; rdata <= 0; write_fire <= 0; read_fire <= 0;
+            write_data <= 0; write_address <= 0; read_address <= 0;
             reset_phase <= RESET_IDLE; reset_count <= 0;
             cfg_control <= 0; cfg_address_word <= 0; audio_control <= 0; audio_address <= 0;
             audio_write <= 0; store_cfg_control <= 0; store_cfg_address_word <= 0;
@@ -272,37 +282,44 @@
         end else begin
             if (bvalid && s_axi_bready) bvalid <= 0;
             if (rvalid && s_axi_rready) rvalid <= 0;
+            write_fire <= write_accept;
+            read_fire <= read_accept;
+            if (write_accept) begin
+                write_address <= {s_axi_awaddr[11:2], 2'b00};
+                write_data <= s_axi_wdata;
+            end
+            if (read_accept) read_address <= {s_axi_araddr[11:2], 2'b00};
             if (read_fire) begin
                 rvalid <= 1;
                 rdata <= read_value;
             end
             if (write_fire) begin
                 bvalid <= 1;
-                if (write_address == HOST_CONTROL && s_axi_wdata[0]) reset_phase <= RESET_DRAIN;
+                if (write_address == HOST_CONTROL && write_data[0]) reset_phase <= RESET_DRAIN;
                 else if (in_window(write_address, HOST_RUN, HOST_RUN_WORDS))
-                    run_words[RUN_BITS'(run_write_word)] <= s_axi_wdata;
-                else if (write_address == HOST_TP_OPCODE) tp_opcode <= s_axi_wdata[7:0];
-                else if (write_address == HOST_TP_INDEX) tp_index <= s_axi_wdata;
+                    run_words[RUN_BITS'(run_write_word)] <= write_data;
+                else if (write_address == HOST_TP_OPCODE) tp_opcode <= write_data[7:0];
+                else if (write_address == HOST_TP_INDEX) tp_index <= write_data;
                 else if (in_window(write_address, HOST_TP_DATA, HOST_TP_DATA_WORDS))
-                    tp_data[TP_DATA_BITS'(tp_write_word)] <= s_axi_wdata;
-                else if (write_address == HOST_CFG_CONTROL) cfg_control <= s_axi_wdata[1:0];
-                else if (write_address == HOST_CFG_ADDRESS) cfg_address_word <= s_axi_wdata[15:0];
+                    tp_data[TP_DATA_BITS'(tp_write_word)] <= write_data;
+                else if (write_address == HOST_CFG_CONTROL) cfg_control <= write_data[1:0];
+                else if (write_address == HOST_CFG_ADDRESS) cfg_address_word <= write_data[15:0];
                 else if (in_window(write_address, HOST_CFG_WRITE, HOST_CFG_WRITE_WORDS))
-                    cfg_write_words[CFG_BITS'(cfg_write_word)] <= s_axi_wdata;
-                else if (write_address == HOST_AUDIO_CONTROL) audio_control <= s_axi_wdata[2:0];
-                else if (write_address == HOST_AUDIO_ADDRESS) audio_address <= s_axi_wdata;
-                else if (write_address == HOST_AUDIO_WRITE) audio_write <= s_axi_wdata;
-                else if (write_address == HOST_STORE_CFG_CONTROL) store_cfg_control <= s_axi_wdata[3:0];
-                else if (write_address == HOST_STORE_CFG_ADDRESS) store_cfg_address_word <= s_axi_wdata;
+                    cfg_write_words[CFG_BITS'(cfg_write_word)] <= write_data;
+                else if (write_address == HOST_AUDIO_CONTROL) audio_control <= write_data[2:0];
+                else if (write_address == HOST_AUDIO_ADDRESS) audio_address <= write_data;
+                else if (write_address == HOST_AUDIO_WRITE) audio_write <= write_data;
+                else if (write_address == HOST_STORE_CFG_CONTROL) store_cfg_control <= write_data[3:0];
+                else if (write_address == HOST_STORE_CFG_ADDRESS) store_cfg_address_word <= write_data;
                 else if (in_window(write_address, HOST_STORE_CFG_WRITE, HOST_STORE_CFG_WRITE_WORDS))
-                    store_cfg_write_words[STORE_CFG_BITS'(store_cfg_write_word)] <= s_axi_wdata;
-                else if (write_address == HOST_STORE_OPCODE) store_opcode <= s_axi_wdata[3:0];
-                else if (write_address == HOST_STORE_VIEW) store_view <= s_axi_wdata;
-                else if (write_address == HOST_STORE_START) store_start[31:0] <= s_axi_wdata;
-                else if (write_address == HOST_STORE_START + 12'd4) store_start[63:32] <= s_axi_wdata;
-                else if (write_address == HOST_STORE_LENGTH) store_length[31:0] <= s_axi_wdata;
-                else if (write_address == HOST_STORE_LENGTH + 12'd4) store_length[63:32] <= s_axi_wdata;
-                else if (write_address == HOST_STORE_COUNT) store_count <= s_axi_wdata;
+                    store_cfg_write_words[STORE_CFG_BITS'(store_cfg_write_word)] <= write_data;
+                else if (write_address == HOST_STORE_OPCODE) store_opcode <= write_data[3:0];
+                else if (write_address == HOST_STORE_VIEW) store_view <= write_data;
+                else if (write_address == HOST_STORE_START) store_start[31:0] <= write_data;
+                else if (write_address == HOST_STORE_START + 12'd4) store_start[63:32] <= write_data;
+                else if (write_address == HOST_STORE_LENGTH) store_length[31:0] <= write_data;
+                else if (write_address == HOST_STORE_LENGTH + 12'd4) store_length[63:32] <= write_data;
+                else if (write_address == HOST_STORE_COUNT) store_count <= write_data;
             end
             case (reset_phase)
                 RESET_DRAIN: if (memory_quiescent) begin reset_phase <= RESET_HOLD; reset_count <= 0; end
@@ -319,6 +336,7 @@
         if (core_reset) begin
             run_phase <= IDLE; tp_phase <= IDLE; cfg_phase <= IDLE; audio_phase <= IDLE;
             store_cfg_phase <= IDLE; store_phase <= IDLE;
+            store_reading <= 0; store_appending <= 0; tx_ready <= 0; rx_space <= 1;
             done_flag <= 0; quanta <= 0; run_cycles <= 0; last_cycles <= 0;
             output_words <= 0; digest <= 0; generated_sample <= 0;
             tp_error <= 0; cfg_error <= 0; audio_error <= 0; store_cfg_error <= 0;
@@ -330,13 +348,14 @@
         end else if (!host_idle) begin
             run_phase <= IDLE; tp_phase <= IDLE; cfg_phase <= IDLE; audio_phase <= IDLE;
             store_cfg_phase <= IDLE; store_phase <= IDLE;
+            store_reading <= 0; store_appending <= 0;
         end else begin
             if (sample_input_read) generated_sample <= (sample_input_address + 32'd1)*32'd37 ^ quanta[31:0];
             if (sample_output_write) begin
                 output_words <= output_words + 32'd1;
                 digest <= {digest[62:0], digest[63]} ^ {sample_output_address, sample_output_data};
             end
-            if (write_fire && write_address == HOST_CONTROL && s_axi_wdata[1]) done_flag <= 0;
+            if (write_fire && write_address == HOST_CONTROL && write_data[1]) done_flag <= 0;
             case (run_phase)
                 IDLE: if (write_fire && write_address == HOST_RUN_GO) begin run_phase <= REQUEST; done_flag <= 0; end
                 REQUEST: if (run_ready) begin run_phase <= RESPONSE; run_cycles <= 0; end
@@ -382,23 +401,26 @@
             endcase
             case (store_phase)
                 IDLE: if (write_fire && write_address == HOST_STORE_GO) begin store_phase <= REQUEST; store_written <= 0; end
-                REQUEST: if (store_cmd_ready) store_phase <= RESPONSE;
+                REQUEST: if (store_cmd_ready) begin
+                    store_phase <= RESPONSE; store_reading <= !appending; store_appending <= appending;
+                end
                 default: if (store_done) begin
                     store_phase <= IDLE; store_code <= store_error_code;
+                    store_reading <= 0; store_appending <= 0;
                     store_result_view_word <= store_result_view; store_empty <= store_result_empty;
                 end
             endcase
             if (tx_pop) store_written <= store_written + 32'd1;
-            if (tx_push) tx_fifo[tx_tail] <= s_axi_wdata;
+            if (tx_push) tx_fifo[tx_tail] <= write_data;
             if (store_phase == RESPONSE && store_done) begin
-                tx_head <= 0; tx_tail <= 0; tx_count <= 0;
+                tx_head <= 0; tx_tail <= 0; tx_count <= 0; tx_ready <= 0;
             end else begin
                 if (tx_push) tx_tail <= tx_tail + 6'd1;
                 if (tx_pop) tx_head <= tx_head + 6'd1;
-                if (tx_push != tx_pop) tx_count <= tx_push ? tx_count + 7'd1 : tx_count - 7'd1;
+                tx_count <= tx_count_next; tx_ready <= tx_count_next != 0;
             end
             if (rx_push) begin rx_fifo[rx_tail] <= store_read_data; rx_tail <= rx_tail + 6'd1; end
             if (rx_pop) rx_head <= rx_head + 6'd1;
-            if (rx_push != rx_pop) rx_count <= rx_push ? rx_count + 7'd1 : rx_count - 7'd1;
+            rx_count <= rx_count_next; rx_space <= rx_count_next != 7'(FIFO_DEPTH);
         end
     end

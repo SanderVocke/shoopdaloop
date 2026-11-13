@@ -21,6 +21,151 @@ CAPACITIES = ['PROGRAM_DEPTH', 'STATE_DEPTH', 'BUFFERS', 'MAX_FRAMES', 'INPUT_PO
               'LOOP_DEPTH', 'REQUEST_DEPTH', 'EVENT_DEPTH', 'VIEWS', 'SLOTS', 'BLOCK_CHUNKS',
               'CHUNK_FRAMES', 'EXTERNAL_IO', 'AXI_DATA_WIDTH', 'PHYSICAL_BASE']
 
+# Core configuration shared by the Marlin bridge top and the ZedBoard host bitstream.
+PROFILE = dict(REUSE_VIEWS=1, LOOP_DEPTH=4, REQUEST_DEPTH=32, EVENT_DEPTH=64, PROGRAM_DEPTH=256,
+               STATE_DEPTH=256, JOB_DEPTH=512, MAX_FRAMES=32, BUFFERS=128, INPUT_PORTS=2,
+               OUTPUT_PORTS=2, VIEWS=32, SLOTS=32768, CHUNK_FRAMES=32, BLOCK_CHUNKS=1,
+               RETIRED_TABLES=256, AXI_DATA_WIDTH=64)
+PROFILE['TABLE_PAGES'] = (2*PROFILE['SLOTS']//PROFILE['BLOCK_CHUNKS']+14)//15 + 8*PROFILE['VIEWS'] + 16
+SIMULATION_BASE = 0x01000000
+
+
+def arena_bytes():
+    p = PROFILE
+    words = (((p['SLOTS']*p['CHUNK_FRAMES']+15)//16)*16 + 2*((p['SLOTS']//p['BLOCK_CHUNKS']+15)//16)*16
+             + p['TABLE_PAGES']*16 + p['RETIRED_TABLES']*16)
+    return 4*words
+
+
+def profile_parameters(external_io, physical_base):
+    values = dict(PROFILE, EXTERNAL_IO=external_io)
+    text = ', '.join(f'.{name}({value})' for name, value in values.items())
+    return text + f", .PHYSICAL_BASE(32'h{physical_base:08x})"
+
+
+AXI_LITE_PORTS = '''input wire [11:0] s_axi_awaddr, input wire s_axi_awvalid, output wire s_axi_awready,
+    input wire [31:0] s_axi_wdata, input wire s_axi_wvalid, output wire s_axi_wready,
+    output wire s_axi_bvalid, input wire s_axi_bready,
+    input wire [11:0] s_axi_araddr, input wire s_axi_arvalid, output wire s_axi_arready,
+    output wire [31:0] s_axi_rdata, output wire s_axi_rvalid, input wire s_axi_rready'''
+
+
+def marlin_top():
+    words = arena_bytes()//4
+    return f'''// Generated Marlin top for the CPU host bridge; do not edit by hand.
+// The shared core profile behind the AXI-lite register map, with a functional DDR model.
+module marlin_bridge #(parameter integer EXTERNAL_IO = 0) (
+    input wire clk, input wire reset, output wire irq,
+    {AXI_LITE_PORTS}
+);
+    wire [1:0] s_axi_bresp, s_axi_rresp;
+    wire m_axi_awid, m_axi_wid, m_axi_bid, m_axi_arid, m_axi_rid;
+    wire [31:0] m_axi_awaddr, m_axi_araddr;
+    wire [3:0] m_axi_awlen, m_axi_arlen;
+    wire [2:0] m_axi_awsize, m_axi_arsize;
+    wire [1:0] m_axi_awburst, m_axi_arburst, m_axi_bresp, m_axi_rresp;
+    wire m_axi_awvalid, m_axi_awready, m_axi_wlast, m_axi_wvalid, m_axi_wready, m_axi_bvalid, m_axi_bready;
+    wire m_axi_arvalid, m_axi_arready, m_axi_rlast, m_axi_rvalid, m_axi_rready;
+    wire [{PROFILE['AXI_DATA_WIDTH']-1}:0] m_axi_wdata, m_axi_rdata;
+    wire [{PROFILE['AXI_DATA_WIDTH']//8-1}:0] m_axi_wstrb;
+    host_core #({profile_parameters(0, SIMULATION_BASE).replace('.EXTERNAL_IO(0)', '.EXTERNAL_IO(EXTERNAL_IO)')}) bridge (
+        .clk, .reset, .irq, .s_axi_awaddr, .s_axi_awvalid, .s_axi_awready, .s_axi_wdata,
+        .s_axi_wstrb(4'hf), .s_axi_wvalid, .s_axi_wready, .s_axi_bresp, .s_axi_bvalid, .s_axi_bready,
+        .s_axi_araddr, .s_axi_arvalid, .s_axi_arready, .s_axi_rdata, .s_axi_rresp, .s_axi_rvalid,
+        .s_axi_rready, .m_axi_awid, .m_axi_awaddr, .m_axi_awlen, .m_axi_awsize, .m_axi_awburst,
+        .m_axi_awvalid, .m_axi_awready, .m_axi_wdata, .m_axi_wstrb, .m_axi_wid, .m_axi_wlast,
+        .m_axi_wvalid, .m_axi_wready, .m_axi_bid, .m_axi_bresp, .m_axi_bvalid, .m_axi_bready,
+        .m_axi_arid, .m_axi_araddr, .m_axi_arlen, .m_axi_arsize, .m_axi_arburst, .m_axi_arvalid,
+        .m_axi_arready, .m_axi_rid, .m_axi_rdata, .m_axi_rresp, .m_axi_rlast, .m_axi_rvalid,
+        .m_axi_rready);
+    axi_direct_memory #(.DATA_WIDTH({PROFILE['AXI_DATA_WIDTH']}), .WORDS({words}), .BASE(32'h{SIMULATION_BASE:08x})) memory (
+        .clk, .reset, .sim_image_request(2'b0), .sim_image_done(), .sim_control(5'b0),
+        .sim_fail_token(32'b0), .sim_fail_seen(), .sim_busy(), .sim_active(), .sim_error(), .sim_write(),
+        .sim_index(), .sim_reads(), .sim_writes(), .sim_capacity(), .m_axi_awid, .m_axi_awaddr,
+        .m_axi_awlen, .m_axi_awsize, .m_axi_awburst, .m_axi_awvalid, .m_axi_awready, .m_axi_wdata,
+        .m_axi_wstrb, .m_axi_wid, .m_axi_wlast, .m_axi_wvalid, .m_axi_wready, .m_axi_bid, .m_axi_bresp,
+        .m_axi_bvalid, .m_axi_bready, .m_axi_arid, .m_axi_araddr, .m_axi_arlen, .m_axi_arsize,
+        .m_axi_arburst, .m_axi_arvalid, .m_axi_arready, .m_axi_rid, .m_axi_rdata, .m_axi_rresp,
+        .m_axi_rlast, .m_axi_rvalid, .m_axi_rready);
+endmodule
+
+module marlin_bridge_external (
+    input wire clk, input wire reset, output wire irq,
+    {AXI_LITE_PORTS}
+);
+    marlin_bridge #(.EXTERNAL_IO(1)) top (.*);
+endmodule
+'''
+
+
+def board_top(physical_base):
+    """The ZedBoard host top: the shared profile with core-generated audio, its register map on
+    GP0 and its DDR master adapted to S_AXI_HP0."""
+    width = PROFILE['AXI_DATA_WIDTH']
+    return f'''// Generated ZedBoard host top; do not edit by hand.
+module zedboard_host (
+    (* X_INTERFACE_INFO = "xilinx.com:signal:clock:1.0 clk CLK" *)
+    (* X_INTERFACE_PARAMETER = "ASSOCIATED_BUSIF s_axi:m_axi, ASSOCIATED_RESET aresetn" *)
+    input wire clk,
+    (* X_INTERFACE_INFO = "xilinx.com:signal:reset:1.0 aresetn RST" *)
+    (* X_INTERFACE_PARAMETER = "POLARITY ACTIVE_LOW" *)
+    input wire aresetn,
+    output wire irq,
+    input wire [11:0] s_axi_awaddr, input wire [2:0] s_axi_awprot, input wire s_axi_awvalid,
+    output wire s_axi_awready, input wire [31:0] s_axi_wdata, input wire [3:0] s_axi_wstrb,
+    input wire s_axi_wvalid, output wire s_axi_wready, output wire [1:0] s_axi_bresp,
+    output wire s_axi_bvalid, input wire s_axi_bready, input wire [11:0] s_axi_araddr,
+    input wire [2:0] s_axi_arprot, input wire s_axi_arvalid, output wire s_axi_arready,
+    output wire [31:0] s_axi_rdata, output wire [1:0] s_axi_rresp, output wire s_axi_rvalid,
+    input wire s_axi_rready,
+    output wire [5:0] m_axi_awid, output wire [31:0] m_axi_awaddr, output wire [3:0] m_axi_awlen,
+    output wire [2:0] m_axi_awsize, output wire [1:0] m_axi_awburst, output wire [1:0] m_axi_awlock,
+    output wire [3:0] m_axi_awcache, output wire [2:0] m_axi_awprot, output wire [3:0] m_axi_awqos,
+    output wire m_axi_awvalid, input wire m_axi_awready,
+    output wire [5:0] m_axi_wid, output wire [{width-1}:0] m_axi_wdata, output wire [{width//8-1}:0] m_axi_wstrb,
+    output wire m_axi_wlast, output wire m_axi_wvalid, input wire m_axi_wready,
+    input wire [5:0] m_axi_bid, input wire [1:0] m_axi_bresp, input wire m_axi_bvalid, output wire m_axi_bready,
+    output wire [5:0] m_axi_arid, output wire [31:0] m_axi_araddr, output wire [3:0] m_axi_arlen,
+    output wire [2:0] m_axi_arsize, output wire [1:0] m_axi_arburst, output wire [1:0] m_axi_arlock,
+    output wire [3:0] m_axi_arcache, output wire [2:0] m_axi_arprot, output wire [3:0] m_axi_arqos,
+    output wire m_axi_arvalid, input wire m_axi_arready,
+    input wire [5:0] m_axi_rid, input wire [{width-1}:0] m_axi_rdata, input wire [1:0] m_axi_rresp,
+    input wire m_axi_rlast, input wire m_axi_rvalid, output wire m_axi_rready
+);
+    wire inner_awid, inner_wid, inner_arid;
+    assign m_axi_awid = {{5'b0, inner_awid}};
+    assign m_axi_wid = {{5'b0, inner_wid}};
+    assign m_axi_arid = {{5'b0, inner_arid}};
+    assign m_axi_awlock = 0;
+    assign m_axi_arlock = 0;
+    assign m_axi_awcache = 3;
+    assign m_axi_arcache = 3;
+    assign m_axi_awprot = 0;
+    assign m_axi_arprot = 0;
+    assign m_axi_awqos = 0;
+    assign m_axi_arqos = 0;
+    host_core #({profile_parameters(1, physical_base)}) core (
+        .clk(clk), .reset(!aresetn), .irq(irq),
+        .s_axi_awaddr(s_axi_awaddr), .s_axi_awvalid(s_axi_awvalid), .s_axi_awready(s_axi_awready),
+        .s_axi_wdata(s_axi_wdata), .s_axi_wstrb(s_axi_wstrb), .s_axi_wvalid(s_axi_wvalid),
+        .s_axi_wready(s_axi_wready), .s_axi_bresp(s_axi_bresp), .s_axi_bvalid(s_axi_bvalid),
+        .s_axi_bready(s_axi_bready), .s_axi_araddr(s_axi_araddr), .s_axi_arvalid(s_axi_arvalid),
+        .s_axi_arready(s_axi_arready), .s_axi_rdata(s_axi_rdata), .s_axi_rresp(s_axi_rresp),
+        .s_axi_rvalid(s_axi_rvalid), .s_axi_rready(s_axi_rready),
+        .m_axi_awid(inner_awid), .m_axi_awaddr(m_axi_awaddr), .m_axi_awlen(m_axi_awlen),
+        .m_axi_awsize(m_axi_awsize), .m_axi_awburst(m_axi_awburst), .m_axi_awvalid(m_axi_awvalid),
+        .m_axi_awready(m_axi_awready), .m_axi_wdata(m_axi_wdata), .m_axi_wstrb(m_axi_wstrb),
+        .m_axi_wid(inner_wid), .m_axi_wlast(m_axi_wlast), .m_axi_wvalid(m_axi_wvalid),
+        .m_axi_wready(m_axi_wready), .m_axi_bid(|m_axi_bid), .m_axi_bresp(m_axi_bresp),
+        .m_axi_bvalid(m_axi_bvalid), .m_axi_bready(m_axi_bready), .m_axi_arid(inner_arid),
+        .m_axi_araddr(m_axi_araddr), .m_axi_arlen(m_axi_arlen), .m_axi_arsize(m_axi_arsize),
+        .m_axi_arburst(m_axi_arburst), .m_axi_arvalid(m_axi_arvalid), .m_axi_arready(m_axi_arready),
+        .m_axi_rid(|m_axi_rid), .m_axi_rdata(m_axi_rdata), .m_axi_rresp(m_axi_rresp),
+        .m_axi_rlast(m_axi_rlast), .m_axi_rvalid(m_axi_rvalid), .m_axi_rready(m_axi_rready));
+endmodule
+'''
+
+
 STATUS = [('FAULTED', 0, 1), ('ERROR_STAGE', 1, 2), ('ERROR_CODE', 8, 8), ('RUN_BUSY', 16, 1),
           ('TP_BUSY', 17, 1), ('CFG_BUSY', 18, 1), ('AUDIO_BUSY', 19, 1), ('STORE_CFG_BUSY', 20, 1),
           ('STORE_BUSY', 21, 1), ('RESET_BUSY', 22, 1), ('QUIESCENT', 23, 1), ('DONE', 24, 1),
@@ -122,7 +267,8 @@ module host_core #(
     return {HERE/'rtl/host_core.sv': text,
             HERE/'rtl/host_map.svh': sv,
             HERE/'rtl/host_capacity.svh': capacity,
-            ROOT/'src/rust/rt_fpga_adapter/src/bridge/map.rs': rust}
+            ROOT/'src/rust/rt_fpga_adapter/src/bridge/map.rs': rust,
+            ROOT/'src/rust/rt_fpga_sim/rtl/marlin_bridge.sv': marlin_top()}
 
 
 def main():

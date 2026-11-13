@@ -28,9 +28,29 @@ use shoop_loops::{
     topology::staging::{RECORD_BYTES, StageId, Stager, Status},
 };
 use shoop_rt_engine::{
-    EngineCommand, EngineNode, EngineOp,
+    EngineCommand, EngineDescription, EngineNode, EngineOp, HostPorts, Segment,
     external::{Consumer, Observations, Preparation, SignalKind},
 };
+
+/// The engine shape this adapter executes: one strip, one loop and one bus over
+/// stereo host ports, without MIDI. Hosts add their own block and history sizes.
+pub fn description() -> EngineDescription {
+    EngineDescription {
+        host: HostPorts::numbered(2, 2, 0),
+        segments: vec![Segment {
+            strips: 1,
+            loops: 1,
+        }],
+        buses: 1,
+        bus_channels: 2,
+        master_connections: vec![],
+        telemetry_interval_frames: 0,
+        reliable_credits: 32,
+        bulk_credits: 2,
+        pending_transitions: 16,
+        ..EngineDescription::default()
+    }
+}
 
 pub trait EngineDevice: LoopDevice {
     fn program(&mut self, image: &Image) -> Result<(), Error>;
@@ -212,6 +232,10 @@ impl<D: EngineDevice> Adapter<D> {
     }
     pub fn frame(&self) -> Frame {
         self.frame
+    }
+    /// Whether the control endpoint still exists; a host stops executing once it is gone.
+    pub fn connected(&self) -> bool {
+        self.core.observations.connected()
     }
     pub fn fault(&self) -> Option<Error> {
         self.fault

@@ -235,12 +235,30 @@ Each stage ends green on its listed checks and is committed.
 
 ### 4. ZedBoard host bitstream
 
-- [ ] Add a host flavor to `fpga/zedboard`:
+- [x] Add a host flavor to `fpga/zedboard`:
   - M_AXI_GP0 into the bridge;
   - the shared profile;
   - the arena base from the board profile;
-  - an optional ILA.
-- [ ] Keep the benchmark flavor working.
+  - an optional ILA (not added; the benchmark flavor keeps its VIO/ILA).
+- [ ] Keep the benchmark flavor working (not rebuilt since the flavor split).
+- [ ] Close timing at 100 MHz. Status:
+  - First routed host build: WNS -3.221 ns, 18,825 failing endpoints
+    (34,835 LUT, 38,241 FF, 51 BRAM, 4 DSP).
+  - The smoothing ramp/divider paths in the sample engine (12,586 endpoints,
+    -2.368 ns) are being fixed upstream and are left alone here.
+  - Fixed in RTL, simulated, not yet re-implemented: registered bridge AXI
+    front end, registered core reset and store handshakes; parallel node count
+    in `media_metadata`; per-line retirement compare in `chunk_memory`;
+    registered media range in `job_processor`; `S_REPLY` and a third finish
+    stage in `transition_processor`.
+  - Remaining known families: cross-module valid/ready chains (bridge audio
+    request to the state engine, reset into the sample engine, reclaimer and
+    resolver, media phase into `chunk_memory` command admission, the metadata
+    cache fault into the reclaimer, metadata level into cache requests).
+- On the board, before the timing fixes: xsdb reads the ID, version and
+  capacities and resets the core; a TP STATUS round trip works. The check
+  stopped at PREPARE because the script asked for too few events (fixed in
+  `host_check.tcl`, not rerun).
 - Verification:
   - routed timing and utilization recorded;
   - on the board, xsdb register access reads the ID register and runs one
@@ -248,11 +266,12 @@ Each stage ends green on its listed checks and is committed.
 
 ### 5. Firmware FPGA variant
 
-- [ ] Add a generic execution task with CPU and FPGA implementations.
-- [ ] Add an MMIO `Bus` and a startup bridge probe that refuses cleanly without
+- [x] Add a generic execution task with CPU and FPGA implementations
+  (`fpga` feature of `shoop_host_freertos`, `build.py --fpga`).
+- [x] Add an MMIO `Bus` and a startup bridge probe that refuses cleanly without
   a bitstream.
-- [ ] Reserve the arena region in the ZedBoard profile, without cached ARM
-  access.
+- [x] Reserve the arena region in the ZedBoard profile, without cached ARM
+  access (heap ends at 0x17800000; 8 MiB arena mapped non-cacheable).
 - [ ] Add bus transaction logging behind a diagnostic switch.
 - [ ] Add `proto/fpga-rust-reference` to the Zynq workflow triggers.
 - Verification:
