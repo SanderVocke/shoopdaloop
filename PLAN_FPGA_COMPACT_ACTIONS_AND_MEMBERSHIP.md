@@ -280,16 +280,16 @@ no synthesized full-record compatibility path or second software owner.
 
 ### 4. Isolate replies and publish the M2 checkpoint
 
-- [ ] Route PROCESS/FINISH and host replies independently through TP, coordinator,
+- [x] Route PROCESS/FINISH and host replies independently through TP, coordinator,
   Marlin and fabric wrappers. Holding a host reply must not consume an internal
   completion, gate an already-runnable quantum or defer required fault handling.
-- [ ] Exercise held install/cancel/collect/readback replies, full credits, delayed
+- [x] Exercise held install/cancel/collect/readback replies, full credits, delayed
   collection, reset in flight and continuous command attempts. Test TP and
   integrated audio separately. Identify exactly which fence/run inputs are still
   supplied; do not use hidden ARM service to sustain the tests.
-- [ ] Repeat the independent 1,024-quantum service pause and bounded application
+- [x] Repeat the independent 1,024-quantum service pause and bounded application
   replay. Compare exact audio, ordered events, state, results and captured media.
-- [ ] Run matched M1/M2 command/processing measurements, lint/generic synthesis
+- [x] Run matched M1/M2 command/processing measurements, lint/generic synthesis
   across capacities and deployment-size Vivado synthesis/route. Publish widths,
   resource/timing deltas, response storage cost and remaining dependencies.
 
@@ -475,3 +475,16 @@ application callback integration and physical deadline qualification.
   five-capacity/20-seed compact-record gate passes before reply isolation.
   ABI refusal/non-mutation and Rust/Python prepared-ROM parity also pass.
   The warning-denying workspace build and Rust test-attribute policy pass.
+- The isolated-execution checkpoint is `47f1fbcb`. Eight TP groups and 20 seeds
+  pass at all five capacities. A held INSTALL reply survives all 1,024 exact-audio
+  quanta; held settlement, cancel, collect and inspection cases also pass.
+  The 45-case stalled production corpus, production faults and bounded app replay
+  pass. [Matched M1/M2 measurements](fpga/transition_processor/measurements/COMPACT_ACTIONS_AND_MEMBERSHIP.md)
+  show 3.5 fewer BRAM equivalents, 250 fewer routed flip-flops, 36 more LUTs and
+  positive setup/hold at the unchanged 100 MHz target. All five capacity
+  lint/generic checks and default ECP5 mapping pass,
+  resuming the interrupted check against a frozen M2 source snapshot.
+
+- The instant-memory prepared-demo loader/recovery suite passes at the M2
+  checkpoint. Full M2 RTL and tooling snapshots are retained under
+  `work/fpga-compact/checkpoints/m2` for independent later comparisons.

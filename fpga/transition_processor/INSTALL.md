@@ -2,8 +2,10 @@
 
 Opcode 4 is `INSTALL`. Its index is the caller-selected request slot. Payload
 bits 1–32 carry the nonzero generation token expected in that empty slot. The
-remaining command fields, 640-bit payload, 832-bit response and packed RAM layouts
-retain their existing encodings. A successful response returns slot/generation
+compact command/result fields and versioned PREPARE guard are specified in
+[COMPACT.md](COMPACT.md). Port widths remain 640/832 bits; the internal record
+layout and significant wire fields differ from the request-slot milestone.
+A successful response returns slot/generation
 in the low two u32 words. This remains a fabric interface, not an ARM register map.
 
 `rt_fpga_adapter::transition_service::TransitionService` is the owning admission
@@ -64,7 +66,7 @@ same Rust owner. Streams that never Collect cannot assume credit reuse; they
 check the total reserved count before emitting indexed INSTALL packets. Prepared
 streams from the previous submission contract must be regenerated.
 
-Pending lists, full records, result retention and held-response semantics remain
-unchanged in this milestone. Service-pause tests consume acknowledgements before
-pausing the owner. Removing per-quantum fences and host settlement pauses, and
-isolating held acknowledgements from audio, are later milestones.
+Pending lists and result retention remain. Records are compact, and fabric
+execution uses an independent start/done path so held host replies cannot gate
+already-runnable work. Service-pause tests consume acknowledgements before
+pausing the owner. Removing per-quantum fences and host settlement pauses remains later work.
