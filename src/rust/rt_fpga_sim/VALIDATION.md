@@ -88,3 +88,105 @@ the original failure rather than presenting the first broad run as clean.
 No PR CI was inspected, and the previously waived 64-loop benchmark was not
 repeated. PR #979 targets `proto/fpga-rust-reference`; only the implementation
 branch was pushed. No automated review findings were present at delivery.
+
+## Offline application Sync loop — 2026-11-13
+
+The application milestone uses the actual fresh `Service`, ordinary application
+client, `RtBackend`, production engine endpoint and owning runtime queues.
+`engine::Adapter` consumes the real engine command types and compiles the submitted
+ordered graph/topology. TP owns transitions; SP/JP and FPGA media own audio and
+recordings. Native planner/DSP execution is absent from the hardware composition.
+The optional window uses the ordinary application widgets and an unpaced worker:
+finish an iteration, immediately start the next. UI polling is independent.
+There is no host process or physical audio/MIDI I/O.
+
+The common version-1 app trace covers startup, routes, record/play/wrap, loop and
+strip gain, mute, waveform selection/read, stop, clear/re-record and scheduled
+stop. Additional cases cover default global sync, repeat/self-pulses, gain/balance
+retargeting during ramps, monitoring, Master controls, supersession/cancellation,
+reconnect and worker shutdown. State-only controls preserve the installed program.
+Protocol doubles stall/fail device configuration without executing audio, and
+exercise candidate ownership, stale generations, incomplete payloads, normal-queue
+pressure, recovery and terminal receipts after partial activation failure.
+
+Exact arithmetic checks use production Q8.24 `Gains` and `AudioRenderer` against
+RTL, including extreme signed words, 97/55-frame ramps, 144-frame smoothing,
+short loops and restart/stop. The common actual-app replay compares float audio,
+loop/revision/pending observations and waveform samples. Its bounds were declared
+before RTL acceptance: maximum absolute error 2e-5, RMS error 5e-6. A measured
+16-action, 13776-frame run had maximum error 1.6018748e-7 and RMS 1.7223865e-8.
+The CLI reports the first differing action/frame/channel and rejects nonfinite
+samples. `--vcd` owns tracing on the model worker thread.
+
+The full app capacity case passed in 1000.08 seconds. It records five seconds at
+48 kHz, loads/retains that waveform, records a second five-second silent take,
+checks both contents, clears and records/plays again. The allocator high-water
+mark was 30032 of 32768 physical 32-sample slots; clear/re-record reuses storage.
+Both prepared channels consume slots even though the session is mono. A separate
+host-port metadata fixture retains both stereo-prepared takes and their snapshots.
+This exposed a chunk-table capacity shortage before sample slots were exhausted;
+the preset now reserves mappings for twice the physical slot count plus view
+overhead. Odd-byte/page reads, EOF, retained snapshots, release and stale cursor
+identities have independent coverage.
+
+One warm-cache headless run measured:
+
+| Measurement | Value |
+| --- | ---: |
+| Model load | 150.98 ms |
+| Device/adapter preparation | 19.61 ms |
+| App readiness | 2.569 s |
+| Graph compilation, four structural activations | 330.76 µs total |
+| Device configuration for those activations | 4.305 ms total |
+| Installed instructions / state words / scratch buffers | 65 / 23 / 61 |
+| Accumulated callback execution wall time | 20.666 s |
+| Total simulated clocks | 4412127 |
+
+A fresh model compilation took 20.18 s in the long-test run. These are individual
+host observations, not timing distributions or board estimates. Clocks include
+configuration, TP commands, sample transfers, reads and processing, rather than
+isolated JP execution. Stepped replay admits explicit logical frames; every batch
+runs at maximum speed. Continuous execution retains no output/command history.
+
+Snapshot/retirement/capture-bank reset still walk bounded chunk metadata. The
+watchdog scales with the arena for those operations; it is a hang guard, not a
+deadline. Board worst-case transition time and DRAM timing remain unvalidated in
+this offline composition. General graph/session replacement, other tracks/loops,
+MIDI, FX, imported media, file persistence and live audio adapters remain outside
+the fixed-session profile. The FPGA endpoint does not invent the native backend's
+new resource-memory report; simulator allocator counters are reported separately.
+
+Reproduce from the repository root:
+
+```sh
+cargo run -p rt_fpga_sim --features app --bin fpga-app-demo -- \
+  --compare src/rust/rt_fpga_sim/fixtures/app-sync-loop.json
+cargo run -p rt_fpga_sim --features app-ui --bin fpga-app-demo
+cargo test -p rt_fpga_sim --features app -- --skip application_store_holds_a_five_second_take_while_recording_another_and_reuses_it
+cargo test -p rt_fpga_sim --features app --test app_rtl \
+  application_store_holds_a_five_second_take_while_recording_another_and_reuses_it
+```
+
+Add `--vcd work/app.vcd` to replay/comparison for a diagnostic trace. VCD can be
+large. The long app case and isolated metadata capacity test need not be repeated
+for documentation-only changes; their storage RTL/preset remains unchanged.
+
+After merging upstream through `e8c43c6d`, all 38 short simulator tests pass.
+The affected adapter/testbench/runtime/loop/engine library gate passes 192 tests
+(one pre-existing ignored engine test). Warning-denying workspace and optional
+demo builds pass. The normal Wasm app and worklet build successfully, and their
+dependency trees remain free of Marlin/Verilator. Formatting and the test-attribute
+policy pass. The final merged-state CLI replay reproduces the same 13776 output
+frames, 4412127 clocks and numeric errors above. A separate one-action VCD smoke
+passed, producing a 17 MiB trace through normal model destruction.
+
+The broad native workspace run reported 3219 passes, four failures and 11 skips.
+The first isolated retry, concurrent with the long RTL simulation, still failed
+all four. With no concurrent simulation/build, the final targeted native retry
+passes the legacy graph test and both app driver/settings tests. One host driver
+recovery test still times out at startup. That same test also fails on untouched
+`821ba859`, at a later recovery deadline; the other three pass there. This is not
+a clean broad native gate, and the different failure cuts do not establish a
+single root cause. The baseline reproduction and unchanged native construction
+semantics support leaving that driver investigation outside this offline feature.
+No test deadlines or expectations were relaxed. Local logs are under `work/app-*`.

@@ -591,10 +591,9 @@ pub fn compare(fpga: &mut Fpga, trace: &Trace) -> SimResult<Comparison> {
                 }
                 for (n, h) in n.channels.iter().zip(&h.channels) {
                     if n.samples.len() != h.samples.len()
-                        || n.samples
-                            .iter()
-                            .zip(h.samples.iter())
-                            .any(|(n, h)| (n - h).abs() > FLOAT_MAX_ERROR)
+                        || n.samples.iter().zip(h.samples.iter()).any(|(n, h)| {
+                            !n.is_finite() || !h.is_finite() || (n - h).abs() > FLOAT_MAX_ERROR
+                        })
                     {
                         return Err(
                             format!("action {index}, frame {frame}: waveform mismatch").into()
@@ -618,7 +617,7 @@ pub fn compare(fpga: &mut Fpga, trace: &Trace) -> SimResult<Comparison> {
         for (frame, (n, h)) in n.iter().zip(h.iter()).enumerate() {
             for channel in 0..2 {
                 let error = (n[channel] - h[channel]).abs();
-                if error > FLOAT_MAX_ERROR {
+                if !error.is_finite() || error > FLOAT_MAX_ERROR {
                     return Err(format!("action {index}, output frame {frame}, channel {channel}: native={}, hardware={}, error={error}",n[channel],h[channel]).into());
                 }
                 squared += f64::from(error).powi(2);
@@ -626,7 +625,7 @@ pub fn compare(fpga: &mut Fpga, trace: &Trace) -> SimResult<Comparison> {
             }
         }
         let rms = (squared / (2 * n.len()).max(1) as f64).sqrt();
-        if rms > f64::from(FLOAT_RMS_ERROR) {
+        if !rms.is_finite() || rms > f64::from(FLOAT_RMS_ERROR) {
             return Err(format!("action {index}: audio RMS error {rms}").into());
         }
         report = Comparison {

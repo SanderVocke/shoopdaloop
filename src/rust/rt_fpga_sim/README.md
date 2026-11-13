@@ -164,8 +164,8 @@ The shared model has 256 instructions, 256 state words, 128 scratch buffers,
 32 requests, 64 events, 32 media views and 32768 physical 32-sample slots.
 Ordinary small regressions keep a 128-slot logical arena. The application preset
 uses all 32768 slots (4 MiB of sample words) and reserves chunk-table pages for
-twice that many mappings, including snapshot/primary-view overlap. It includes both prepared channels;
-the second channel is inactive in the mono session. This admits two five-second
+twice that many mappings, including snapshot/primary-view overlap. It includes
+both prepared channels; the second channel is inactive in the mono session. This admits two five-second
 takes at 48 kHz while retaining the previous take. `Handle::store_usage` reports
 issued views, the slot high-water mark, free slots and the logical limit from
 actual device registers. The headless demo prints these alongside compiler and
