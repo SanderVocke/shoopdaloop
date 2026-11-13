@@ -130,7 +130,7 @@ module media_store #(
     reg append_capacity_ok;
     wire [63:0] absolute_sample = {32'b0, offset} + cursor;
     reg [31:0] range_offset;
-    reg [63:0] range_chunks;
+    reg [31:0] range_chunks;
     reg [63:0] retained_end;
     reg [63:0] retained_frames;
     reg [63:0] length_last, span_until_wrap;
@@ -785,7 +785,7 @@ module media_store #(
                 end
                 SLICE_END: begin slice_end <= {32'b0,range_offset}+length; enter_phase(SLICE_CHUNKS); end
                 SLICE_CHUNKS: begin
-                    range_chunks <= slice_chunk_result; slice_capacity_valid <= slice_chunk_result <= 64'(BLOCKS);
+                    range_chunks <= slice_chunk_result[31:0]; slice_capacity_valid <= slice_chunk_result <= 64'(BLOCKS);
                     enter_phase(SLICE_CHECK);
                 end
                 SLICE_CHECK: begin
