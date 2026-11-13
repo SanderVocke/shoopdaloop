@@ -92,6 +92,15 @@ impl Sample for Audited {
         );
         Self(self.0.multiply(other.0))
     }
+    fn crossfade(self, target: Self, weight: Self) -> Self {
+        let difference = i64::from(target.0 .0) - i64::from(self.0 .0);
+        let value =
+            i64::from(self.0 .0) + difference * i64::from(weight.0 .0) / i64::from(Q824::ONE.0);
+        record(2, false);
+        record(0, false);
+        record(1, outside(value));
+        Self(self.0.crossfade(target.0, weight.0))
+    }
     fn from_f32(v: f32) -> Self {
         Self(Q824::from_f32(v))
     }

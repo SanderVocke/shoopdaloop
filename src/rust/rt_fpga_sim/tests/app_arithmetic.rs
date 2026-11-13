@@ -181,10 +181,10 @@ fn smoothing_jobs_are_bit_exact_with_production_renderer_on_short_loops_and_rest
             repeat_sync: false,
             timeline: None,
         }];
-        image.transition.components = vec![vec![Identity {
+        image.transition.dependency_order = vec![Identity {
             slot: 0,
             generation: 1,
-        }]];
+        }];
         image.program.instructions = vec![
             Instruction::ProcessInput {
                 port: 0,
