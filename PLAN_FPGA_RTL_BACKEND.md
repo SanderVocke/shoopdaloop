@@ -151,7 +151,7 @@ renamed "Audio driver", and an "Audio backend" line is added.
       used by `fpga_simulation.yml` and documented for local use (including
       NixOS).
 - [x] Add the runtime version check.
-- [ ] Verify: the workflow runs on this PR; the script builds 5.032 locally; the
+- [x] Verify: the workflow runs on this PR; the script builds 5.032 locally; the
       check rejects another version with a clear message.
 
 ### 2. Host-usable RTL backend crate
@@ -336,3 +336,22 @@ renamed "Audio driver", and an "Audio backend" line is added.
 - The external GUI refused adding a track with "all 1 prepared track slots of
   the engine are in use" and kept its connection healthy. "Close UI and stop
   host" shut down both processes through ordinary management cleanup.
+
+- The PR is updated and the implementation is pushed. Full build-and-test CI
+  now runs on PRs targeting the prototype branch. Its first pass found explicit
+  backend defaults missing in native/worklet test fixtures and the no-std
+  FreeRTOS composition; those constructors are updated, and the Cortex-A
+  no-std host build passes locally.
+- The FPGA workflow is registered but absent from the default branch. GitHub
+  produced no PR run and rejected dispatch with "Workflow does not have
+  workflow_dispatch trigger" despite the prototype branch's trigger. Push
+  coverage now includes `feat/fpga-*`, allowing its branch-local workflow to run
+  while it remains off the default branch.
+
+- The long retained-take RTL regression passes (752.95 seconds with concurrent
+  compilation on the two-core cap). It records two five-second takes, checks
+  retained media and exercises storage reuse.
+- Workspace test compilation exhausted the container's disk through debug and
+  incremental artifacts. Incremental caches were removed and local final gates
+  now set `CARGO_INCREMENTAL=0`; the new FPGA CI job also disables incremental
+  output and large debug data. The runtime suite itself has not yet completed.
