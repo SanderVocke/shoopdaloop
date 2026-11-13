@@ -27,7 +27,7 @@ pub(crate) fn remaining_cycles(model: &Model<'_>, reclaimer: &str) -> u64 {
 
 pub fn design(g: &Geometry, width: u64, mode: Mode) -> Design {
     let root = crate::root();
-    let mut sources: Vec<_> = ["chunk_ram", "chunk_memory"]
+    let mut sources: Vec<_> = ["chunk_ram", "chunk_priority", "chunk_memory"]
         .iter()
         .map(|n| root.join(format!("fpga/chunk_memory/rtl/{n}.sv")))
         .collect();

@@ -96,7 +96,7 @@ fn pipeline_sources_at(root: &Path) -> Vec<PathBuf> {
             "transition_processor",
             "tp_ram tp_priority transition_processor",
         ),
-        ("chunk_memory", "chunk_ram chunk_memory"),
+        ("chunk_memory", "chunk_ram chunk_priority chunk_memory"),
         (
             "media_store",
             "media_ram metadata_cache media_metadata media_reclaimer media_prefetch_resolver media_store memory_delay media_audio_pipeline",
