@@ -9,7 +9,7 @@ use shoop_app_client::{
 use shoop_app_protocol::local;
 use shoop_rt_backend::{EngineClock, RtBackend};
 use shoop_rt_engine::{
-    ControlEndpoint, EngineDescription, HostPorts, Segment,
+    ControlEndpoint, EngineDescription,
     testing::{OfflineRender, RuntimeCommand},
 };
 use shoop_rt_protocol::{ClientMessage, EngineMessage};
@@ -21,21 +21,7 @@ use std::{cell::RefCell, rc::Rc, sync::Arc, time::Duration};
 
 pub const STEP: Duration = Duration::from_millis(1);
 pub fn description() -> EngineDescription {
-    EngineDescription {
-        host: HostPorts::numbered(2, 2, 0),
-        segments: vec![Segment {
-            strips: 1,
-            loops: 1,
-        }],
-        buses: 1,
-        bus_channels: 2,
-        master_connections: vec![],
-        telemetry_interval_frames: 0,
-        reliable_credits: 32,
-        bulk_credits: 2,
-        pending_transitions: 16,
-        ..EngineDescription::default()
-    }
+    rt_fpga_adapter::engine::description()
 }
 
 pub struct TraceCarrier {
@@ -459,8 +445,17 @@ impl Fpga {
         mode: crate::app_worker::RunMode,
         wave: Option<std::path::PathBuf>,
     ) -> SimResult<Self> {
+        Self::with_transport(artifacts, mode, wave, crate::app_worker::Transport::Pins)
+    }
+    pub fn with_transport(
+        artifacts: std::path::PathBuf,
+        mode: crate::app_worker::RunMode,
+        wave: Option<std::path::PathBuf>,
+        transport: crate::app_worker::Transport,
+    ) -> SimResult<Self> {
         let ready_started = std::time::Instant::now();
-        let mut prepared = crate::app_worker::Worker::prepare_with_trace(artifacts, mode, wave)?;
+        let mut prepared =
+            crate::app_worker::Worker::prepare_with(artifacts, mode, wave, transport)?;
         let enabled = mode == crate::app_worker::RunMode::Stepped;
         if enabled {
             prepared.endpoint.capture_runtime_commands();

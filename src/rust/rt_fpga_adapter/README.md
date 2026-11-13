@@ -4,7 +4,14 @@
 native `GraphRuntime`. It is an ARM/service-thread bridge: it may allocate during
 validation and lowering, and it makes no service-time guarantee. Only `D: Device`
 executes samples. The included recording double checks traffic and performs no
-DSP. The optional `rt_fpga_sim` crate implements `Device` using Marlin.
+DSP.
+
+`port::PortIo` is one transaction per core port. Every implementation gets
+`Device`, `LoopDevice` and `EngineDevice` from the shared driver in `port`, which
+loads images, packs instructions and state values and sequences quanta. The
+optional `rt_fpga_sim` crate implements `PortIo` on Marlin pins. Without its
+default `std` feature the crate builds as `no_std` with `alloc`; `std` adds JSON
+schema derivation and wall-clock metrics.
 
 The profile is Q=32, mono input/output, up to two `GainProcessor<Q824>` instances,
 one initial commit at frame zero, and duration-zero typed gains at multiples of
@@ -110,9 +117,9 @@ simulator README for replayable queue-driven comparisons with production Q8.24.
 ## Memory reporting
 
 After activation, `LoopAdapter::memory_report()` queries the device between
-quanta and returns the shared backend `MemoryReport`. The simulator reads actual
+quanta and returns the shared backend `MemoryReport`. The driver reads actual
 RTL allocation counters through read-only configuration space 6, addresses 16
-(usage) and 17 (geometry); Rust does not
+(usage) and 17 (geometry), and the frame from the TP status row; Rust does not
 infer occupancy from recording lengths or host leases. Sample storage is measured
 in bytes using the configured block geometry and logical limit. Metadata pages
 and view slots have independent capacities. Queries preserve the audio frame,

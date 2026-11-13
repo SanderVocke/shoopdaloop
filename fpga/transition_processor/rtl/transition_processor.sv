@@ -79,7 +79,8 @@ module transition_processor #(
         S_APPLY, S_APPLY_PLAN, S_APPLY_CHECK, S_CANCEL_OLDER, S_CANCEL_OLDER_CHECK, S_CANCEL_OLDER_NEXT,
         S_NATURAL, S_NATURAL_SOURCE, S_NATURAL_WRAP,
         S_FINAL, S_FINISH_LOOP,
-        S_READ_LOOP_REPLY, S_READ_REQUEST_REPLY, S_READ_EVENT_REPLY, S_SET_REPEAT
+        S_READ_LOOP_REPLY, S_READ_REQUEST_REPLY, S_READ_EVENT_REPLY, S_SET_REPEAT,
+        S_REPLY
     } state_t;
     state_t state, read_return, offer_return, apply_return, natural_return, react_return, list_return;
     reg configured;
@@ -143,6 +144,16 @@ module transition_processor #(
     reg loop_stream_valid;
     reg finish_valid, finish_plays, finish_records;
     reg [831:0] finish_row;
+    // The finish stream checks each row a stage before writing it back, so the
+    // position and capture compares only reach the write enable through flops.
+    reg finish_check_valid, finish_overrun, finish_exhausted;
+    wire finish_write = state == S_FINISH_LOOP && finish_check_valid && !finish_overrun && !finish_exhausted;
+    // Replies settle in S_REPLY: the conditions choosing one only reach these few flops,
+    // and the wide response loads from a registered source select.
+    localparam [2:0] DATA_ZERO=0, DATA_STATUS=1, DATA_LOOP=2, DATA_REQUEST=3, DATA_EVENT=4,
+        DATA_ONE=5, DATA_FREE=6;
+    reg [3:0] reply_error;
+    reg [2:0] reply_source;
     reg [64:0] finish_position, finish_capture;
     reg [LA-1:0] finish_address;
     wire loop_stream = state == S_CLEAR || state == S_FINISH_LOOP;
@@ -154,7 +165,7 @@ module transition_processor #(
     tp_ram #(.WIDTH(832), .DEPTH(LOOP_DEPTH), .ADDR_BITS(LA)) loops (
         clk, loop_stream ? loop_stream_read : lr_en || (loop_accept && loop_in_range),
         loop_stream ? stream_loop_address : loop_accept ? shared_address : lr_address,
-        lr_data, lw_en, lw_address, lw_data);
+        lr_data, lw_en || finish_write, lw_address, lw_data);
     tp_ram #(.WIDTH(RW), .DEPTH(REQUEST_DEPTH), .ADDR_BITS(RA)) requests (
         clk, rr_en, rr_address, rr_data, rw_en, rw_address, rw_data);
     tp_ram #(.WIDTH(192), .DEPTH(LOOP_DEPTH), .ADDR_BITS(SA)) specs (
@@ -303,12 +314,11 @@ module transition_processor #(
         end
     end
 
-    task automatic reply(input [3:0] error, input [831:0] data);
+    task automatic reply(input [3:0] error, input [2:0] source);
         begin
-            response_valid <= 1;
-            response_error <= error;
-            response_data <= data;
-            state <= S_IDLE;
+            reply_error <= error;
+            reply_source <= source;
+            state <= S_REPLY;
             if (error != OK && (phase == EXECUTING || (phase == SETTLED && opcode == FINISH))) begin
                 phase <= FAULTED; fault_error <= error;
             end
@@ -388,6 +398,7 @@ module transition_processor #(
         er_en <= 0; ew_en <= 0;
         loop_stream_valid <= 0;
         finish_valid <= 0;
+        finish_check_valid <= 0;
         if (response_valid && response_ready) response_valid <= 0;
         if (reset) begin
             state <= S_IDLE;
@@ -400,6 +411,8 @@ module transition_processor #(
             planned_event <= 0; planned_stop <= 0; planned_pulse <= 0;
             finish_plays <= 0; finish_records <= 0; finish_row <= 0;
             finish_position <= 0; finish_capture <= 0; finish_address <= 0;
+            finish_overrun <= 0; finish_exhausted <= 0;
+            reply_error <= OK; reply_source <= DATA_ZERO;
             event_count <= 0;
             spec_written <= 0; order_written <= 0; valid_loops <= 0; seen_order <= 0;
             pulse_ready <= 0; delivered <= 0; pulse_masked <= 0;
@@ -414,23 +427,8 @@ module transition_processor #(
                     state <= S_DISPATCH;
                 end
                 S_DISPATCH: begin
-                    if (opcode == STATUS) begin
-                        temporary_loop = 0;
-                        temporary_loop[0+:64] = frame;
-                        temporary_loop[64+:4] = fault_error;
-                        temporary_loop[128+:2] = phase;
-                        temporary_loop[136] = configured;
-                        temporary_loop[192+:32] = event_count;
-                        temporary_loop[256+:32] = loop_slots;
-                        temporary_loop[288+:32] = request_slots;
-                        temporary_loop[320+:32] = event_limit;
-                        temporary_loop[352+:32] = order_count;
-                        temporary_loop[384+:32] = quantum;
-                        temporary_loop[416+:32] = request_checks;
-                        temporary_loop[448+:32] = follower_visits;
-                        temporary_loop[480+:32] = pulse_deliveries;
-                        reply(OK, temporary_loop);
-                    end else if (opcode == WRITE_SPEC || opcode == WRITE_ORDER) begin
+                    if (opcode == STATUS) reply(OK, DATA_STATUS);
+                    else if (opcode == WRITE_SPEC || opcode == WRITE_ORDER) begin
                         if (configured) reply(INVALID_STATE, 0);
                         else if (index >= LOOP_DEPTH) reply(CAPACITY, 0);
                         else if (opcode == WRITE_SPEC) begin
@@ -668,10 +666,10 @@ module transition_processor #(
                         temporary_request = 0;
                         temporary_request[R_GEN+:32] = request_row[R_GEN+:32]+1'b1;
                         write_request(index, temporary_request);
-                        reply(OK, {192'b0,request_row[639:0]});
+                        reply(OK, DATA_REQUEST);
                     end
                 end
-                S_CANCEL_REPLY: reply(OK, 832'd1);
+                S_CANCEL_REPLY: reply(OK, DATA_ONE);
                 S_INSERT_HEAD: begin
                     list_previous <= NO_REQUEST;
                     list_next <= list_ticks ? loop_row[HEAD_SYNC+:H] : loop_row[HEAD_AT+:H];
@@ -723,7 +721,7 @@ module transition_processor #(
                     if (!list_ticks) begin
                         absolute[PA'(list_slot)] <= 1;
                     end
-                    reply(OK, {768'b0, free_generation, free_slot});
+                    reply(OK, DATA_FREE);
                 end
                 S_UNLINK_BEGIN: begin
                     if (list_previous == NO_REQUEST) read_loop(list_target, 0, 0, S_UNLINK_HEAD);
@@ -953,6 +951,7 @@ module transition_processor #(
                 S_FINISH_LOOP: begin
                     loop_stream_valid <= loop_stream_read;
                     finish_valid <= loop_stream_valid;
+                    finish_check_valid <= finish_valid;
                     if (loop_stream_read) cursor <= cursor+1'b1;
                     if (loop_stream_valid) begin
                         finish_row <= lr_data;
@@ -964,23 +963,50 @@ module transition_processor #(
                     end
                     if (finish_valid) begin
                         temporary_loop = finish_row;
-                        if (finish_plays && (finish_position[64] || finish_position[63:0] > finish_row[LENGTH+:64]))
-                            reply(INVALID_FRAME, 0);
-                        else begin
-                            if (finish_plays) temporary_loop[POSITION+:64] = finish_position[63:0];
-                            if (finish_records && finish_capture[64]) reply(EXHAUSTED, 0);
-                            else begin
-                                if (finish_records) temporary_loop[CAPTURE+:64] = finish_capture[63:0];
-                                write_loop(32'(finish_address), temporary_loop);
-                            end
-                        end
-                    end else if (!loop_stream_valid && !loop_stream_read) begin
+                        if (finish_plays) temporary_loop[POSITION+:64] = finish_position[63:0];
+                        if (finish_records) temporary_loop[CAPTURE+:64] = finish_capture[63:0];
+                        lw_address <= loop_address(32'(finish_address)); lw_data <= temporary_loop;
+                        finish_overrun <= finish_plays
+                            && (finish_position[64] || finish_position[63:0] > finish_row[LENGTH+:64]);
+                        finish_exhausted <= finish_records && finish_capture[64];
+                    end
+                    if (finish_check_valid && finish_overrun) reply(INVALID_FRAME, 0);
+                    else if (finish_check_valid && finish_exhausted) reply(EXHAUSTED, 0);
+                    else if (!finish_check_valid && !finish_valid && !loop_stream_valid && !loop_stream_read) begin
                         frame <= frame+64'(quantum); phase <= IDLE_PHASE; reply(OK, 0);
                     end
                 end
-                S_READ_LOOP_REPLY: reply(OK, loop_row);
-                S_READ_REQUEST_REPLY: reply(OK, {192'b0,request_row[639:0]});
-                S_READ_EVENT_REPLY: reply(OK, {576'b0,event_row});
+                S_READ_LOOP_REPLY: reply(OK, DATA_LOOP);
+                S_READ_REQUEST_REPLY: reply(OK, DATA_REQUEST);
+                S_READ_EVENT_REPLY: reply(OK, DATA_EVENT);
+                S_REPLY: begin
+                    temporary_loop = 0;
+                    case (reply_source)
+                        DATA_STATUS: begin
+                            temporary_loop[0+:64] = frame;
+                            temporary_loop[64+:4] = fault_error;
+                            temporary_loop[128+:2] = phase;
+                            temporary_loop[136] = configured;
+                            temporary_loop[192+:32] = event_count;
+                            temporary_loop[256+:32] = loop_slots;
+                            temporary_loop[288+:32] = request_slots;
+                            temporary_loop[320+:32] = event_limit;
+                            temporary_loop[352+:32] = order_count;
+                            temporary_loop[384+:32] = quantum;
+                            temporary_loop[416+:32] = request_checks;
+                            temporary_loop[448+:32] = follower_visits;
+                            temporary_loop[480+:32] = pulse_deliveries;
+                        end
+                        DATA_LOOP: temporary_loop = loop_row;
+                        DATA_REQUEST: temporary_loop = {192'b0, request_row[639:0]};
+                        DATA_EVENT: temporary_loop = {576'b0, event_row};
+                        DATA_ONE: temporary_loop = 832'd1;
+                        DATA_FREE: temporary_loop = {768'b0, free_generation, free_slot};
+                        default: begin end
+                    endcase
+                    response_valid <= 1; response_error <= reply_error; response_data <= temporary_loop;
+                    state <= S_IDLE;
+                end
                 default: reply(INVALID_STATE, 0);
             endcase
         end

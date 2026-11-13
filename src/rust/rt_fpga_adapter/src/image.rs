@@ -1,22 +1,25 @@
 //! Architectural image shared by runtime lowering and behavioral fixtures.
+use alloc::{string::String, vec::Vec};
+#[cfg(feature = "std")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-#[derive(
-    Clone, Copy, Debug, PartialEq, Eq, Ord, PartialOrd, Serialize, Deserialize, JsonSchema,
-)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Ord, PartialOrd, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Identity {
     pub slot: u32,
     pub generation: u32,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum NodeKind {
     Playback { target: Identity },
     Capture { target: Identity },
     Gain { channels: u16, initial: i32 },
 }
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Image {
     pub format_version: u32,
@@ -32,20 +35,23 @@ pub struct Image {
     pub gains: Vec<GainBinding>,
     pub node_order: Vec<Identity>,
 }
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct TransitionImage {
     pub description: Description,
     pub limits: Limits,
     pub dependency_order: Vec<Identity>,
 }
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Description {
     pub quantum: u32,
     pub loops: Vec<LoopSpec>,
 }
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct LoopSpec {
     pub id: Identity,
@@ -55,14 +61,16 @@ pub struct LoopSpec {
     pub repeat_sync: bool,
     pub timeline: Option<u32>,
 }
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Limits {
     pub loop_slots: u32,
     pub pending_requests: u32,
     pub events: u32,
 }
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Program {
     pub instructions: Vec<Instruction>,
@@ -70,12 +78,14 @@ pub struct Program {
     pub chunk_frames: u32,
     pub jobs_per_quantum: u32,
 }
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Memory {
     pub memory: Vec<Value>,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 #[serde(
     tag = "kind",
     content = "value",
@@ -86,7 +96,8 @@ pub enum Value {
     Word(u64),
     Ramp(Ramp),
 }
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Ramp {
     pub start: i32,
@@ -94,7 +105,8 @@ pub struct Ramp {
     pub duration: u32,
     pub elapsed: u32,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 #[serde(rename_all = "snake_case")]
 #[repr(u16)]
 pub enum ArithmeticMode {
@@ -103,7 +115,8 @@ pub enum ArithmeticMode {
     RightBalance = 2,
     OneMinus = 3,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Instruction {
     ProcessSmoothing {
@@ -153,7 +166,8 @@ pub enum Instruction {
         destination: u16,
     },
 }
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct MediaImage {
     pub chunk_frames: u32,
@@ -161,19 +175,22 @@ pub struct MediaImage {
     pub free_chunks: Vec<u32>,
     pub views: Vec<View>,
 }
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct View {
     pub chunks: Vec<u32>,
     pub frames: u64,
 }
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct LoopViews {
     pub id: Identity,
     pub views: Vec<u32>,
 }
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct GainBinding {
     pub id: Identity,

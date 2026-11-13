@@ -1,5 +1,6 @@
 //! Host media identities and leases. Samples and reference counts stay in the device.
 use crate::looping::{LoopDevice, MediaCommand};
+use alloc::{vec, vec::Vec};
 use rt_runtime::{
     Error, Frame, ResourceId, Revision,
     resource::{CaptureInfo, Cursor, Description, ExternalReadScope, Format, Snapshot, SnapshotId},

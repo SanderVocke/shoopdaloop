@@ -80,12 +80,15 @@ module media_metadata #(
     function automatic [63:0] page_address(input [31:0] id);
         page_address = PAGE_BASE+(64'(id)-1)*64;
     endfunction
+    // Table nodes above `count` entries: the sum over levels of ceil(count/16^level).
+    // The terms are independent, so the adders do not chain through every level.
     function automatic [63:0] nodes(input [31:0] count);
-        reg [63:0] n, total;
+        reg [32:0] total;
         begin
-            n = {32'b0,count}; total = 0;
-            for (integer i=0; i<LEVELS; i=i+1) begin n = (n+15) >> 4; total = total+n; end
-            nodes = total;
+            total = 0;
+            for (integer i=1; i<=LEVELS; i=i+1)
+                total = total + (({1'b0,count} + ((33'd1 << (4*i)) - 33'd1)) >> (4*i));
+            nodes = {31'b0,total};
         end
     endfunction
     wire [63:0] entry_address = page_address(page)+(({32'b0,ordinal} >> (level*4)) & 64'd15)*4;

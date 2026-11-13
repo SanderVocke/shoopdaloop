@@ -5477,6 +5477,7 @@ version = "0.3.0"
 dependencies = [
  "freertos_profiling",
  "profiling_protocol",
+ "rt_fpga_adapter",
  "rt_runtime",
  "shoop_app",
  "shoop_app_api",

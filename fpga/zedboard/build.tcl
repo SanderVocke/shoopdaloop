@@ -2,6 +2,8 @@ if {$argc < 1 || $argc > 2} {
     error "usage: vivado -mode batch -source fpga/zedboard/build.tcl -tclargs BUILD_DIRECTORY ?BOARD_PART?"
 }
 source [file join [file normalize [lindex $argv 0]] manifest.tcl]
+if {![info exists bench_flavor]} {set bench_flavor benchmark}
+if {$bench_flavor ni {benchmark host}} {error "Unknown build flavor $bench_flavor"}
 set bench_stage bitstream
 if {[info exists ::env(SHOOP_BUILD_STAGE)]} {set bench_stage $::env(SHOOP_BUILD_STAGE)}
 if {$bench_stage ni {generate synth bitstream}} {error "SHOOP_BUILD_STAGE must be generate, synth or bitstream"}
@@ -19,8 +21,10 @@ if {[info exists ::env(SHOOP_IP_REPO)]} {
     }
 }
 set missing_ips {}
-foreach ip {processing_system7:5.5 proc_sys_reset:5.0 xlconstant:1.1 vio:3.0 ila:6.2} {
-    if {[llength [get_ipdefs -quiet xilinx.com:ip:$ip]] == 0} {lappend missing_ips $ip}
+set required_ips {processing_system7:5.5 proc_sys_reset:5.0 xlconstant:1.1}
+lappend required_ips {*}[expr {$bench_flavor eq "host" ? {axi_interconnect:2.1} : {vio:3.0 ila:6.2}}]
+foreach ip $required_ips {
+    if {[llength [get_ipdefs -all -quiet xilinx.com:ip:$ip]] == 0} {lappend missing_ips $ip}
 }
 if {[llength $missing_ips]} {
     error "Vivado [version -short] lacks required catalog IPs: [join $missing_ips {, }]. Install the matching IP catalog or set SHOOP_IP_REPO to its directory."
@@ -33,9 +37,16 @@ if {$argc == 2} {
 if {$board eq ""} {error "Install the Digilent ZedBoard board files, or specify its BOARD_PART"}
 set_property board_part $board [current_project]
 add_files $bench_sources
-add_files [list [file join $bench_root fpga state_processor rtl state_processor_defs.svh] \
-    [file join $bench_root fpga zedboard rtl timing_body.svh]]
-set_property include_dirs [list [file join $bench_root fpga state_processor rtl] [file join $bench_root fpga zedboard rtl]] [current_fileset]
+if {$bench_flavor eq "host"} {
+    set include_dir [file join $bench_root fpga host_bridge rtl]
+    set includes {}
+    foreach name {host_body.svh host_map.svh host_capacity.svh} {lappend includes [file join $include_dir $name]}
+} else {
+    set include_dir [file join $bench_root fpga zedboard rtl]
+    set includes [list [file join $include_dir timing_body.svh]]
+}
+add_files [list [file join $bench_root fpga state_processor rtl state_processor_defs.svh] {*}$includes]
+set_property include_dirs [list [file join $bench_root fpga state_processor rtl] $include_dir] [current_fileset]
 create_bd_design system
 create_bd_cell -type ip -vlnv xilinx.com:ip:processing_system7:5.5 ps
 apply_bd_automation -rule xilinx.com:bd_rule:processing_system7 -config {
@@ -44,9 +55,9 @@ apply_bd_automation -rule xilinx.com:bd_rule:processing_system7 -config {
 # AMD's ZedBoard PS preset; the board-file DDR settings do not initialize DDR on every board.
 set_property CONFIG.preset {ZedBoard} [get_bd_cells ps]
 set_property -dict [list CONFIG.PCW_USE_S_AXI_HP0 {1} CONFIG.PCW_S_AXI_HP0_DATA_WIDTH {64} \
-    CONFIG.PCW_USE_M_AXI_GP0 {0} CONFIG.PCW_EN_CLK0_PORT {1} CONFIG.PCW_EN_RST0_PORT {1} \
+    CONFIG.PCW_USE_M_AXI_GP0 [expr {$bench_flavor eq "host"}] CONFIG.PCW_EN_CLK0_PORT {1} CONFIG.PCW_EN_RST0_PORT {1} \
     CONFIG.PCW_FPGA0_PERIPHERAL_FREQMHZ $bench_fabric_mhz] [get_bd_cells ps]
-create_bd_cell -type module -reference zedboard_bench bench
+create_bd_cell -type module -reference [expr {$bench_flavor eq "host" ? "zedboard_host" : "zedboard_bench"}] bench
 create_bd_cell -type ip -vlnv xilinx.com:ip:proc_sys_reset:5.0 reset
 set_property CONFIG.C_EXT_RESET_HIGH {0} [get_bd_cells reset]
 create_bd_cell -type ip -vlnv xilinx.com:ip:xlconstant:1.1 zero
@@ -61,7 +72,21 @@ connect_bd_net [get_bd_pins zero/dout] [get_bd_pins reset/mb_debug_sys_rst] \
 connect_bd_net [get_bd_pins one/dout] [get_bd_pins reset/dcm_locked] [get_bd_pins reset/aux_reset_in]
 connect_bd_net [get_bd_pins reset/peripheral_aresetn] [get_bd_pins bench/aresetn]
 connect_bd_intf_net [get_bd_intf_pins bench/m_axi] [get_bd_intf_pins ps/S_AXI_HP0]
+if {$bench_flavor eq "host"} {
+    # The ARM reaches the bridge's AXI-lite registers through GP0 at a fixed address.
+    create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect:2.1 gp0
+    set_property CONFIG.NUM_MI {1} [get_bd_cells gp0]
+    connect_bd_intf_net [get_bd_intf_pins ps/M_AXI_GP0] [get_bd_intf_pins gp0/S00_AXI]
+    connect_bd_intf_net [get_bd_intf_pins gp0/M00_AXI] [get_bd_intf_pins bench/s_axi]
+    connect_bd_net [get_bd_pins ps/FCLK_CLK0] [get_bd_pins ps/M_AXI_GP0_ACLK] [get_bd_pins gp0/ACLK] \
+        [get_bd_pins gp0/S00_ACLK] [get_bd_pins gp0/M00_ACLK]
+    connect_bd_net [get_bd_pins reset/interconnect_aresetn] [get_bd_pins gp0/ARESETN]
+    connect_bd_net [get_bd_pins reset/peripheral_aresetn] [get_bd_pins gp0/S00_ARESETN] [get_bd_pins gp0/M00_ARESETN]
+    assign_bd_address -offset 0x40000000 -range 4K -target_address_space [get_bd_addr_spaces ps/Data] \
+        [get_bd_addr_segs bench/s_axi/reg0]
+}
 assign_bd_address
+if {$bench_flavor eq "benchmark"} {
 create_bd_cell -type ip -vlnv xilinx.com:ip:vio:3.0 vio
 set settings [list CONFIG.C_NUM_PROBE_IN {17} CONFIG.C_NUM_PROBE_OUT {7} CONFIG.C_PROBE_IN0_WIDTH {32}]
 for {set i 1} {$i <= 16} {incr i} {lappend settings CONFIG.C_PROBE_IN${i}_WIDTH 64}
@@ -86,6 +111,7 @@ set_property -dict [list CONFIG.C_MONITOR_TYPE {Native} CONFIG.C_NUM_OF_PROBES {
 connect_bd_net [get_bd_pins ps/FCLK_CLK0] [get_bd_pins ila/clk]
 connect_bd_net [get_bd_pins bench/debug_state] [get_bd_pins ila/probe0]
 connect_bd_net [get_bd_pins bench/debug_axi] [get_bd_pins ila/probe1]
+}
 validate_bd_design
 save_bd_design
 set bd [get_files */system.bd]
@@ -112,7 +138,7 @@ if {[get_property PROGRESS [get_runs impl_1]] ne "100%"} {error "Bitstream gener
 open_run impl_1
 report_utilization -file [file join $bench_output utilization.rpt]
 report_utilization -hierarchical -hierarchical_depth 12 -file [file join $bench_output utilization_hierarchical.rpt]
-write_debug_probes -force [file join $bench_output bench.ltx]
+if {$bench_flavor eq "benchmark"} {write_debug_probes -force [file join $bench_output bench.ltx]}
 file copy -force [file join $bench_output project zedboard_timing.runs impl_1 system_wrapper.bit] [file join $bench_output bench.bit]
 write_hw_platform -fixed -include_bit -force -file [file join $bench_output bench.xsa]
 puts "Benchmark deployment artifacts: $bench_output"

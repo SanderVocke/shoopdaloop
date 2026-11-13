@@ -11,6 +11,8 @@ on:
       - 'scripts/rt_backend_testbench/**'
       - 'src/rust/rt_audio_math/**'
       - 'src/rust/rt_backend_testbench/**'
+      - 'src/rust/rt_fpga_adapter/**'
+      - 'src/rust/rt_fpga_sim/**'
       - 'src/rust/rt_runtime/**'
       - 'src/rust/shoop_loops/**'
       - 'src/rust/shoop_rt_engine/**'
@@ -99,6 +101,8 @@ jobs:
           python fpga/audio_io/simulate.py --q 1 --banks 2 --audio-period 10 --audio-phase 3 --output work/native-ci/audio-q1
           python fpga/audio_io/simulate.py --q 3 --p 1 --output work/native-ci/audio-odd
           python fpga/audio_io/simulate.py --control --output work/native-ci/audio-control
+      - name: Check CPU host bridge generation
+        run: python fpga/host_bridge/generate.py --check
       - name: Check autonomous ZedBoard measurement runner
         run: |
           python fpga/zedboard/generate.py --check

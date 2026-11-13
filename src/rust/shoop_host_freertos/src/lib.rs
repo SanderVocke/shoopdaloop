@@ -11,7 +11,16 @@ pub use embedded::{render_step, render_xruns, run};
 pub const SAMPLE_RATE: u32 = 48_000;
 pub const PROCESSING_QUANTUM: usize = 32;
 pub const QUANTUM: usize = 256;
-pub const MIDI_PORTS: usize = if cfg!(feature = "usb-midi") { 16 } else { 1 };
+#[cfg(all(feature = "fpga", any(feature = "fixture", feature = "usb-midi")))]
+compile_error!("the FPGA host executes on the PL core and has no fixture or MIDI path");
+
+pub const MIDI_PORTS: usize = if cfg!(feature = "usb-midi") {
+    16
+} else if cfg!(feature = "fpga") {
+    0
+} else {
+    1
+};
 pub const MIDI_BLOCK_BYTES: usize = if cfg!(feature = "usb-midi") {
     4096
 } else {
@@ -19,6 +28,20 @@ pub const MIDI_BLOCK_BYTES: usize = if cfg!(feature = "usb-midi") {
 };
 include!(concat!(env!("OUT_DIR"), "/memory.rs"));
 
+#[cfg(feature = "fpga")]
+pub fn engine_description() -> shoop_rt_engine::EngineDescription {
+    shoop_rt_engine::EngineDescription {
+        history: INPUT_HISTORY,
+        quantum: PROCESSING_QUANTUM,
+        max_frames: QUANTUM,
+        resource_pages: RECORDING_BYTES / 4096,
+        control_lead_frames: QUANTUM as u32,
+        smoothing_limit_frames: 4800,
+        ..rt_fpga_adapter::engine::description()
+    }
+}
+
+#[cfg(not(feature = "fpga"))]
 pub fn engine_description() -> shoop_rt_engine::EngineDescription {
     shoop_rt_engine::EngineDescription {
         history: INPUT_HISTORY,

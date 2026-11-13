@@ -10,6 +10,7 @@ workspace = true
 [features]
 fixture = []
 usb-midi = []
+fpga = ["dep:rt_fpga_adapter"]
 
 [dependencies]
 profiling_protocol = { path = "../profiling_protocol" }
@@ -25,3 +26,4 @@ shoop_rt_protocol = { path = "../shoop_rt_protocol" }
 shoop_rt_transport = { path = "../shoop_rt_transport" }
 shoop_transport = { path = "../shoop_transport" }
 rt_runtime = { path = "../rt_runtime" }
+rt_fpga_adapter = { path = "../rt_fpga_adapter", default-features = false, optional = true }

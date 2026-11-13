@@ -1,8 +1,11 @@
 //! ARM-side owning queue consumer. Only the device processes audio samples.
+use crate::stopwatch::Stopwatch;
 use crate::{
     compiler::{self, NodeDescriptor},
     image::*,
 };
+use alloc::{vec, vec::Vec};
+use core::time::Duration;
 use rt_runtime::{
     Epoch, Error, Frame, PreparedConfig, Q824, Quantum,
     executor::{Command, Control, Diagnostics, Ingress, PreparedNode, Retired},
@@ -12,7 +15,6 @@ use rt_runtime::{
     transport::{Lane, Outcome},
 };
 use shoop_rt_engine::dsp::{GainOperation, GainProcessor};
-use std::time::{Duration, Instant};
 
 pub type Processor = GainProcessor<Q824>;
 pub type Operation = GainOperation<Q824>;
@@ -288,7 +290,7 @@ impl<D: Device> Adapter<D> {
                             return Err(Error::Busy);
                         }
                         let next = self.epoch.checked_next()?;
-                        let start = Instant::now();
+                        let start = Stopwatch::start();
                         let image = Self::compile(
                             self.config,
                             &self.slots,
@@ -296,7 +298,7 @@ impl<D: Device> Adapter<D> {
                         )?;
                         self.metrics.compile_time += start.elapsed();
                         self.metrics.compilations += 1;
-                        let start = Instant::now();
+                        let start = Stopwatch::start();
                         if let Err(e) = self.device.load(&image) {
                             self.fault = Some(e);
                             return Err(e);

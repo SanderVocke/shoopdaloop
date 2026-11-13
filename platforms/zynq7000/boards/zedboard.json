@@ -49,5 +49,9 @@
     "midi": "dummy",
     "usb_reset": null
   },
+  "fpga": {
+    "arena_mib": 8,
+    "recording_mib": 8
+  },
   "qualification": "Build and emulated PS testing only; physical ZedBoard qualification pending"
 }
