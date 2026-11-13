@@ -67,7 +67,7 @@ A phase-transition token identifies prepared controls without comparing copies
 of the complete phase register.
 Physical chunk commands pass through a one-entry register before cache admission.
 Fence drains sample buffers before a separate metadata-flush phase.
-Append capacity, slice offsets and terminal-sample decisions have separate
+Append capacity, slice bounds/offsets and terminal-sample decisions have separate
 register boundaries. Metadata captures root RAM results and tag matches before
 decoding; tree capacity and trim arithmetic are staged before their decisions.
 

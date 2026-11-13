@@ -44,7 +44,8 @@ module media_metadata #(
     reg [LEVEL_BITS-1:0] level;
     reg invalid_tree_request, invalid_read_extent, invalid_write_extent, cached_leaf_match;
     reg [31:0] high_water, free_head, free_pages;
-    reg [31:0] allocated, parent_page, cached_leaf, cached_index;
+    reg [31:0] allocated, cached_leaf, cached_index;
+    reg parent_is_root;
     reg [31:0] new_count;
     reg [31:0] gc_root, gc_used;
     reg gc_loaded;
@@ -135,7 +136,7 @@ module media_metadata #(
             phase <= IDLE; resume <= IDLE; root_valid <= 0; leaf_valid <= 0; root_data <= 0; view <= 0; ordinal <= 0; payload <= 0;
             root <= 0; used <= 0; page <= 0; level <= 0; high_water <= 0; free_head <= 0; free_pages <= 0;
             invalid_tree_request <= 0; invalid_read_extent <= 0; invalid_write_extent <= 0; cached_leaf_match <= 0;
-            allocated <= 0; parent_page <= 0; cached_leaf <= 0; cached_index <= 0; parent_address <= 0; trim_count <= 0; trim_start <= 0;
+            allocated <= 0; parent_is_root <= 1; cached_leaf <= 0; cached_index <= 0; parent_address <= 0; trim_count <= 0; trim_start <= 0;
             trim_used_pages <= 0; trim_requested_pages <= 0; trim_finished <= 0;
             new_count <= 0; required_nodes <= 0; existing_nodes <= 0;
             retired_head <= 0; retired_tail <= 0; retired_count <= 0; retired_high_water <= 0;
@@ -198,7 +199,7 @@ module media_metadata #(
                         else access_cache(opcode < 4 ? 2'd1 : 2'd2, {1'b0,opcode[0]},
                             (opcode < 4 ? REF_BASE : STACK_BASE)+64'(ordinal)*4,payload,ACCESS_DONE);
                     end else begin
-                        level <= LEVEL_BITS'(LEVELS-1); parent_page <= 0;
+                        level <= LEVEL_BITS'(LEVELS-1); parent_is_root <= 1;
                         page <= root_exists ? root_data[31:0] : 0;
                         phase <= CHECK_TREE;
                     end
@@ -252,7 +253,7 @@ module media_metadata #(
                     end
                 end
                 CHILD: begin
-                    parent_page <= page; parent_address <= path_address[level];
+                    parent_is_root <= page == 0; parent_address <= path_address[level];
                     level <= level-1'b1; page <= value;
                     phase <= WALK;
                 end
@@ -268,7 +269,7 @@ module media_metadata #(
                 ALLOCATE_ZERO: access_cache(0,2,page_address(allocated),0,ALLOCATE_ATTACH);
                 ALLOCATE_ATTACH: begin
                     page <= allocated;
-                    if (parent_page == 0) begin root <= allocated; phase <= WALK; end
+                    if (parent_is_root) begin root <= allocated; phase <= WALK; end
                     else access_cache(0,1,parent_address,allocated,WALK);
                 end
                 ACCESS_DONE: begin
@@ -332,7 +333,7 @@ module media_metadata #(
                     if (trim_finished) begin used <= trim_count; phase <= PUBLISH; end
                     else begin
                         ordinal <= ((used-1) >> 4) << 4; trim_start <= ((used-1) >> 4) << 4;
-                        page <= root; level <= LEVEL_BITS'(LEVELS-1); parent_page <= 0;
+                        page <= root; level <= LEVEL_BITS'(LEVELS-1); parent_is_root <= 1;
                         phase <= SCAN_START;
                     end
                 end

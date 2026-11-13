@@ -124,7 +124,8 @@ module media_store #(
     reg [63:0] new_frames;
     reg fresh, arena_bound;
     reg [63:0] absolute_start, slice_available, slice_end;
-    reg slice_out_of_bounds;
+    reg slice_out_of_bounds, slice_length_valid, slice_capacity_valid;
+    wire [63:0] slice_chunk_result = (slice_end+BLOCK_FRAMES-1) >> UNIT_SHIFT;
     reg [63:0] append_end, append_chunks, required_chunks, growth, append_extent;
     reg append_capacity_ok;
     wire [63:0] absolute_sample = {32'b0, offset} + cursor;
@@ -591,7 +592,7 @@ module media_store #(
             new_offset <= 0;
             new_chunks <= 0;
             new_frames <= 0;
-            absolute_start <= 0; slice_available <= 0; slice_end <= 0; slice_out_of_bounds <= 0;
+            absolute_start <= 0; slice_available <= 0; slice_end <= 0; slice_out_of_bounds <= 0; slice_length_valid <= 0; slice_capacity_valid <= 0;
             append_end <= 0; append_chunks <= 0; required_chunks <= 0; growth <= 0; append_extent <= 0;
             append_capacity_ok <= 0;
             range_chunks <= 0; retained_end <= 0; retained_frames <= 0;
@@ -778,13 +779,17 @@ module media_store #(
                     enter_phase(SLICE_OFFSET);
                 end
                 SLICE_OFFSET: begin
+                    slice_length_valid <= length <= slice_available;
                     range_offset <= length == 0 ? 32'b0 : (absolute_start[31:0] & 32'(BLOCK_FRAMES-1));
                     enter_phase(SLICE_END);
                 end
                 SLICE_END: begin slice_end <= {32'b0,range_offset}+length; enter_phase(SLICE_CHUNKS); end
-                SLICE_CHUNKS: begin range_chunks <= (slice_end+BLOCK_FRAMES-1) >> UNIT_SHIFT; enter_phase(SLICE_CHECK); end
+                SLICE_CHUNKS: begin
+                    range_chunks <= slice_chunk_result; slice_capacity_valid <= slice_chunk_result <= 64'(BLOCKS);
+                    enter_phase(SLICE_CHECK);
+                end
                 SLICE_CHECK: begin
-                    if (slice_out_of_bounds || length > slice_available || range_chunks > 64'(BLOCKS)) begin
+                    if (slice_out_of_bounds || !slice_length_valid || !slice_capacity_valid) begin
                         error_code <= INVALID_VIEW; enter_phase(FINISH);
                     end else begin
                         new_range <= 1; new_offset <= range_offset; new_frames <= length;
