@@ -1,6 +1,8 @@
 # Finish the ARM–FPGA boundary roadmap
 
-Status: planning complete; implementation has not started.
+Status: execution in progress; baseline frozen, focused resource review complete,
+current TP retained. M4–M6 and physical qualification remain open.
+Execution evidence: [boundary completion](fpga/verification/BOUNDARY_COMPLETION.md).
 Parent roadmap: [PLAN_LONGTERM_FPGA_BOUNDARY.md](PLAN_LONGTERM_FPGA_BOUNDARY.md).
 Prerequisite: [milestones 2–3](PLAN_FPGA_COMPACT_ACTIONS_AND_MEMBERSHIP.md),
 [PR #993](https://github.com/SanderVocke/shoopdaloop/pull/993).
@@ -202,10 +204,10 @@ qualification follows functional and timing closure.
 ### 0. Establish the stack, baselines and qualification contract
 
 - [x] Fetch #993 and create this planning branch at the recorded head.
-- [ ] At execution, refresh the parent and preserve the stack; freeze current
+- [x] At execution, refresh the parent and preserve the stack; freeze current
   RTL/service/driver sources, profiles and evidence. Reuse valid M1/M2/#993
   measurements, and rerun only invalidated/missing comparisons.
-- [ ] Inventory control, observation and media service calls in every production,
+- [x] Inventory control, observation and media service calls in every production,
   mono, application, prepared and board path; classify their actual deadline role.
 - [ ] Freeze a profile matrix: supported kernel quanta; TP 64/272/400; existing
   complete-core 64/128/256; 8×8/64-loop workloads; continuous 16-channel tests;
@@ -228,17 +230,18 @@ debug access and audio fixture early; keep independent work moving if absent.
 Start with existing reports and a small set of attribution experiments. Expand
 the investigation only when the evidence exposes a promising opportunity.
 
-- [ ] Reproduce #993's mapped result with frozen inputs. Build a field/check/
+- [x] Reuse #993's mapped result after verifying frozen RTL and harness hashes
+  (no invalidated input required a new baseline run). Build a field/check/
   state ownership and resource ledger, including both banks, masks, read muxes,
   version/generation comparisons, writeback and resolver datapaths.
-- [ ] Use controlled variants to distinguish actual logic cost from encoding,
+- [x] Use controlled variants to distinguish actual logic cost from encoding,
   fanout and synthesis mapping. Do not infer the cause solely from source size
   or the 13,312 versus 11,320 difference. Disabled guards are diagnostic only.
-- [ ] Prototype only alternatives supported by attribution on the real resolver.
+- [x] Prototype only alternatives supported by attribution on the real resolver.
   Compare ARM construction, full transfer/ack cost, stale visits, storage,
   LUT/FF/BRAM and timing. Include dense/shared-pool, empty, one-loop, mixed-class,
   full terminal, reused-slot, 8×8 and 64-chain cases.
-- [ ] Decide which changes, if any, justify their complexity and risk. Retain the
+- [x] Decide which changes, if any, justify their complexity and risk. Retain the
   current protocol if no worthwhile candidate emerges. Publish the evidence and,
   for proposed changes, the check/lifetime proof and visibility/admission cuts.
   Account for later autonomy/observation needs and their resource costs.
@@ -256,16 +259,23 @@ Otherwise record the decision to retain the current design and reuse its valid
 baseline evidence; no protocol rewrite or ABI cutover is required for this stage.
 Mark conditional implementation/verification items not applicable with that decision.
 
-- [ ] Implement the chosen owner/publication contract, with bounded staging,
+Execution decision: retain #993. The encoding-only candidate increased synthesized
+LUTs by 121; no production protocol or RTL changes are selected. Frozen baseline
+and candidate evidence are linked in the execution report. The first three
+conditional implementation items below and candidate-only verification are
+**not applicable**. Existing #993 costs and correctness/timing evidence remain the
+resource checkpoint. No M4–M6 acceptance claim follows from this decision.
+
+- [x] (N/A: retain #993) Implement the chosen owner/publication contract, with bounded staging,
   generation-safe reuse, checked versions and definite/uncertain failure handling.
   Remove redundant masks/checks/state only where stage 1 supplies the proof.
-- [ ] Migrate every transport, guard, prepared stream and generated artifact in
+- [x] (N/A: retain #993) Migrate every transport, guard, prepared stream and generated artifact in
   one ABI cutover. Preserve full numeric ranges, acceptance/error precedence,
   original-command reconstruction and independently runnable execution.
-- [ ] Remove the discarded prototypes and obsolete production paths. Test partial
+- [x] (N/A: retain #993) Remove the discarded prototypes and obsolete production paths. Test partial
   writes, stale tokens, cancellation/terminal/collection races, held replies,
   counter exhaustion and coordinated reset at each transfer phase.
-- [ ] Publish a working checkpoint against M1/M2/#993: whole admission elapsed
+- [x] (retained #993 checkpoint) Publish a working checkpoint against M1/M2/#993: whole admission elapsed
   clocks/bytes/ARM preparation, PROCESS/FINISH, stale traversal, total storage,
   routed TP resources and complete-core timing impact.
 
