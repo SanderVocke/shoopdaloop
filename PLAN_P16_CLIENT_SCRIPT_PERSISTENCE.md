@@ -1,6 +1,7 @@
 # P16: client-owned script persistence
 
-Status: implementation in progress; draft PR [#977](https://github.com/SanderVocke/shoopdaloop/pull/977). The ownership contract
+Status: implementation and local validation complete; final push, CI and review
+blocked by expired GitHub access. Draft PR [#977](https://github.com/SanderVocke/shoopdaloop/pull/977). The ownership contract
 was revised with user approval on 2026-11-12. P16 remains OPEN.
 
 Base: `feat/backend-replacement` at `9aee7496`; production behavior was compared
@@ -204,15 +205,15 @@ Assert exact file contents, no script execution, no replay and no wrong-session 
 
 Depends on Stage 4.
 
-- [ ] Exercise include script + help/image, delete originals, save/store, load,
+- [x] Exercise include script + help/image, delete originals, save/store, load,
   inspect stopped state, export exact source, explicitly start, resolve resources,
   convert to run once and back, and save again. Include musical media and preserve
   unrelated User/Bundled/Ephemeral scripts throughout.
-- [ ] Run actual native embedded and split host/UI paths over socket/shared memory,
+- [x] Run actual native embedded and split host/UI paths over socket/shared memory,
   alongside typed tests. Kill the UI around an admitted musical load; attach a
   replacement client and verify music survives but scripts do not transfer. Save
   from that client and inspect that only its own additions are included.
-- [ ] Exercise the surviving-client pending-candidate/unknown-result paths and driver
+- [x] Exercise the surviving-client pending-candidate/unknown-result paths and driver
   switching with local script data. Run browser worker/AudioWorklet acceptance for
   archive/resource round trips, explicit starts/dialog images, permission-gated MIDI
   behavior and download completion. Record software/device limitations honestly.
@@ -226,20 +227,21 @@ full platform matrix for each small fix.
 
 Depends on Stage 5.
 
-- [ ] Follow `.agents/info/{build,test}.md` and mandatory per-commit/push checks.
+- [x] Follow `.agents/info/{build,test}.md` and mandatory per-commit/push checks.
   Run `cargo fmt --all`, warning-denying builds and the Rust test-usage checker
   for changed Rust tests. Complete the native suite with nextest 0.9.116:
   `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features shoop_engine/app_backend,shoop_backend/native-fx --profile ci`.
   Run backend-dependent qualification without the missing-backend override.
-- [ ] Run affected portable/Node tests, required Wasm builds and browser smoke tests;
+- [x] Run affected portable/Node tests, required Wasm builds and browser smoke tests;
   check that production dependency boundaries and musical service/RT wire schemas
   still exclude script data. Validate the feature-parity ledger.
 - [ ] Push the implementation and obtain green required CI on the final head,
   including supported platform builds. Inspect automated PR review after pushes;
   address actionable feedback and repeat until approval, or report an unavailable
   reviewer/remaining blocker explicitly. Rerun checks affected by material fixes.
-- [ ] Record commands, final SHA and limitations; update user/developer/persistence
-  docs and P16 completion evidence. Close the parity row only after A1–A8 pass.
+- [x] Record commands, final implementation SHA and limitations; update
+  user/developer/persistence docs and P16 acceptance evidence.
+- [ ] Close the parity row after A1–A8 and final delivery gates pass.
   Keep the PR ready for user review; do not merge autonomously.
 
 Testing cadence: run focused changed-package and failure-path tests during each
@@ -258,37 +260,39 @@ the selected platform plus browser/portable paths affected by P16.
 
 ## Execution notes
 
-- 2026-11-12: committed the agreed contract as `6ed9ee10`, created the implementation
-  branch and opened draft PR #977 against `feat/backend-replacement`.
-- The existing Rust 1.100.0 / nextest 0.9.116 toolchain and native libraries are
-  activated with `/workspace/.setup/activate.sh` in this environment. Cargo 1.100
-  uses an extra crate directory in OUT_DIR; profile-directory discovery needed a
-  compatibility fix before the application could build.
-- Initial resource/codec tests: 15 resource tests and 24 codec tests passed,
-  including complete archive extraction, compile-only Lua preflight and separate
-  client-worker resource streaming. Full application acceptance is still pending.
-
-- Production persistence suite: 28 tests passed, including same-client accepted-load
-  reconciliation and a replacement client saving only its own additions. Additional
-  lost-delivery, evicted-result, incompatible-source and project-mismatch cases
-  were added for the final full-suite run.
-- Native packaged socket persistence probe passed with >32 MiB audio, exact MIDI,
-  source-directory deletion, archived script/Markdown/PNG bytes, stopped load,
-  explicit start/provider reads, exact resave and host-owned completion after UI
-  loss. The first runs exceeded readiness under compiler contention; the idle
-  retry passed without changing product startup deadlines.
-- Source preparation copies at most 256 KiB per client pump before backend staging.
-  Reconnect retains the existing client runtime and pending additions only against
-  the same verified host instance. Retained scripts cannot be silently paired with
-  a different musical project loaded by another client.
-- Rust 1.100 compilation passes for native and Wasm; the resource crate also passed
-  its five alloc-only tests. Full native, real-browser and CI validation remain
-  pending; P16 is not closed.
-
-- Implementation milestone `d6bd336e` is pushed. Documentation and a defensive
-  direct-codec owner/entrypoint check follow during final qualification.
-- A 10-trial baseline of the existing LAN startup test failed six times and passed
-  four times. Transport/recovery fixtures now reserve three tracks and twenty
-  loops; LAN fixtures disable unused DSP. Product defaults and deadlines remain
-  unchanged. This qualification adjustment avoids allocating a default-sized host
-  for transport scenarios that create at most one extra track.
+- 2026-11-12: agreed contract committed as `6ed9ee10`; implementation branch
+  created and draft PR #977 opened against `feat/backend-replacement`.
+- Implementation milestones `d6bd336e` and `7e16fa40` are published. Subsequent
+  local commits preserve converted records on catalog refresh (`0c7a0b4b`), repair
+  the arithmetic Wasm harness (`f8925062`), confirm legacy native loop creation
+  before routing reads (`8039b33f`), and align host fixtures with their configured
+  settings and measured construction time (`5b4bcfce`, final implementation SHA).
+- Qualification exposed Cargo 1.100's changed OUT_DIR nesting and a missing Wasm
+  test dependency; both are corrected. The legacy loop race now waits for its
+  exact creation command. Host transport fixtures reserve three tracks/twenty
+  loops, disable unused DSP where appropriate, assert their configured settings,
+  and allow driver construction in test helpers. Product deadlines/defaults,
+  arithmetic behavior and service/RT wire schemas are unchanged.
+- 2026-11-13: complete native nextest gate passed: **3,223 passed, 11 skipped**
+  in 672.437 seconds. Real native backend qualification also passed without
+  `SHOOP_ALLOW_MISSING_BACKENDS`. The four legacy timing cases passed 40 repeated
+  executions; the LAN startup case passed ten repetitions.
+- All **120** affected pinned Node tests pass (arithmetic 3, codec 29, resources 6,
+  scripting 36, session 46). Native scripting has 43 passing tests and production
+  persistence has 32. Warning-denying builds, native/Wasm compilation, five
+  alloc-only resource tests, dependency audits, formatting and test policy pass.
+- Both packaged persistence carriers pass with >32 MiB audio, exact MIDI and
+  source/Markdown/PNG persistence after deleting originals. The unmodified release
+  browser smoke passes at 640×480 with fake microphone, and again with Web MIDI
+  permission denial/retry. Both exercise stopped loads, exact resource round trips,
+  explicit starts and repeated conversion, reporting zero xruns. Larger software
+  rendering runs reached startup/hosted-restore deadlines; physical devices and
+  all viewport combinations are not qualified here.
+- See [acceptance evidence](docs/native_session_recovery/evidence/p16-client-scripts.md)
+  for commands, recovery scenarios and limits. The implementation remains client
+  owned: no backend script catalog, transfer or automatic execution was added.
+- Final delivery is blocked: GitHub API returns HTTP 401 “Bad credentials”, Git
+  push cannot obtain a username, and the GitHub connector times out. Workspace
+  access refresh has been requested. Last published head is `7e16fa40`; final
+  implementation head `5b4bcfce` and evidence updates remain local. Final-head CI,
+  automated review and parity closure remain unchecked. P16 stays OPEN.

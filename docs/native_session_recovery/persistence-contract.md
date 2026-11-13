@@ -85,7 +85,7 @@ for archive, worker and client workflow changes.
 | Transfer objects | 4096; object zero is the sole metadata object, followed by ordered audio/MIDI objects |
 | Client script records/resources | 256 scripts, 65,536 resources total, 4096-byte names/paths and 8 MiB script descriptor/path accounting. These resources do not consume musical transfer objects |
 | Script bytes | 16 MiB/file, 64 MiB/script, 256 MiB aggregate; 10,000 files/script and 100,000 filesystem scan entries |
-| Local script preparation | Copy at most 256 KiB of UTF-8 source per client poll. Reserve record identities before musical staging; install prepared records stopped after exact confirmation |
+| Local script preparation | Copy UTF-8 source incrementally with a 256 KiB target per client poll (at most three additional bytes to finish a code point). Reserve record identities before musical staging; install prepared records stopped after exact confirmation |
 | Script conversion workers | Two process-wide native workers and eight queued jobs; at most eight pending conversions/client. Cancellation and source generation/project fences discard stale results |
 | Native wire preparation | Validate/index ≤256 KiB per client connection poll before streaming; cancellation and detach discard pending validation and upload |
 | Native wire turns | At most 64 persistence records per connection turn (≤64 KiB of media), with at most 64 upload records awaiting replies; ordinary commands retain their 16-record limit. Outbound accounting counts emitted records and bounds encoder cleanup separately. This batches file work across platform timer wakeups without increasing RT buffer ownership |
