@@ -228,9 +228,9 @@ module media_store #(
             $fatal(1, "Invalid media store capacities");
     end
     assign busy = phase != IDLE;
-    assign cmd_ready = !busy && !gc_lock_held && !(gc_lock_request && gc_lock_grant) && !cfg_request_valid && !cfg_pending && !cfg_result_valid && !cfg_valid && !faulted && !reset && advance;
+    assign cmd_ready = !busy && !gc_lock_held && !cfg_request_valid && !cfg_pending && !cfg_result_valid && !cfg_valid && !faulted && !reset && advance;
     assign hint_ready = resolver_ready && hint_admission;
-    assign cfg_ready = !busy && !gc_lock_held && !(gc_lock_request && gc_lock_grant) && !cfg_request_valid && !cfg_pending && !cfg_result_valid && !reset && advance;
+    assign cfg_ready = !busy && !gc_lock_held && !cfg_request_valid && !cfg_pending && !cfg_result_valid && !reset && advance;
     assign cfg_response_valid = cfg_result_valid && !reset;
     wire [159:0] cfg_result = (cfg_response_error || cfg_was_write) ? 160'b0
         : (cfg_response_space == 0 || cfg_response_space == 6) ? cfg_globals_data
@@ -307,7 +307,7 @@ module media_store #(
     assign reclaim_pending = retired_count;
     assign reclaim_high_water = retired_high_water;
     assign reclaim_references = retired_references;
-    wire gc_fault, gc_lock_request, gc_lock_grant, gc_lock_held, gc_freed;
+    wire gc_fault, unused_gc_lock_request, gc_lock_grant, gc_lock_held, gc_freed;
     wire gc_request_valid, gc_request_ready;
     wire [3:0] gc_request_opcode;
     wire [31:0] gc_request_index, gc_request_data;
@@ -340,7 +340,7 @@ module media_store #(
         .drain(phase == DRAIN_WAIT),.grant(gc_grant_pending),
         .grant_cycles(gc_grant_cycles),.grant_blocks(gc_grant_blocks),
         .pending_tables(retired_count),.free_count(free_count),.allocated_count(slot_count),
-        .lock_request(gc_lock_request),.lock_grant(gc_lock_grant),.lock_held(gc_lock_held),
+        .lock_request(unused_gc_lock_request),.lock_grant(gc_lock_grant),.lock_held(gc_lock_held),
         .request_valid(gc_request_valid),.request_ready(gc_request_ready),.request_opcode(gc_request_opcode),
         .request_index(gc_request_index),.request_data(gc_request_data),
         .response_valid(metadata_valid && metadata_pending && metadata_gc),.response_data(metadata_result),.response_error(metadata_result_error),
