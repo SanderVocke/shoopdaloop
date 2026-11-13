@@ -7,7 +7,7 @@ use crate::{
     memory::{self, MemoryReport},
     protocol::{get, put},
 };
-use alloc::{format, string::String, vec::Vec};
+use alloc::{format, string::String, vec, vec::Vec};
 use rt_runtime::Error;
 
 /// Compiled capacities of one core configuration.
@@ -24,6 +24,8 @@ pub struct Capacities {
     pub events: u32,
     pub views: usize,
     pub chunk_limit: u32,
+    /// The core generates its own input and consumes its own output.
+    pub external_audio: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -206,7 +208,9 @@ pub fn program<P: PortIo + ?Sized>(port: &mut P, image: &Image) -> Result<(), St
     Ok(())
 }
 
-/// Runs one quantum, exchanging its audio through the sample ports.
+/// Runs one quantum, exchanging its audio through the sample ports. With external
+/// audio the core sources and sinks its own samples, so the inputs are unused and
+/// the returned outputs are silent.
 pub fn process<P: PortIo + ?Sized>(
     port: &mut P,
     image: &Image,
@@ -218,9 +222,12 @@ pub fn process<P: PortIo + ?Sized>(
     {
         return Err("input shape".into());
     }
-    for (p, samples) in inputs.iter().enumerate() {
-        for (f, &value) in samples.iter().enumerate() {
-            port.audio_word(0, (p * 32 + f) as u32, Some(value))?;
+    let external = port.capacities().external_audio;
+    if !external {
+        for (p, samples) in inputs.iter().enumerate() {
+            for (f, &value) in samples.iter().enumerate() {
+                port.audio_word(0, (p * 32 + f) as u32, Some(value))?;
+            }
         }
     }
     if port.core_status()?.faulted {
@@ -241,6 +248,9 @@ pub fn process<P: PortIo + ?Sized>(
             "pipeline fault stage {} code {}",
             status.error_stage, status.error_code
         ));
+    }
+    if external {
+        return Ok(vec![vec![0; q as usize]; usize::from(image.output_ports)]);
     }
     let mut outputs = Vec::new();
     for output in 0..image.output_ports {

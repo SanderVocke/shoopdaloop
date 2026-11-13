@@ -165,17 +165,27 @@ Each stage ends green on its listed checks and is committed.
 
 ### 2. Host bridge RTL and register map
 
-- [ ] Write a generator from `loop_pipeline_axi`'s port list that emits the
+- [x] Write a generator from `loop_pipeline_axi`'s port list that emits the
   AXI-lite bridge and the Rust register constants. The bridge includes:
   - an ID/version register;
   - reset/quiesce control;
   - sticky done/fault status;
   - quantum and cycle counters;
   - the output digest.
-- [ ] Implement `Bridge<B: Bus>` against the generated constants.
-- Verification: Verilator/cocotb bridge tests (handshakes, back-to-back
-  transactions, reset during idle, register readback) and Rust unit tests of
-  `Bridge` with a mock `Bus`.
+
+  The generator writes `fpga/host_bridge` and `rt_fpga_adapter/src/bridge/map.rs`.
+  The bridge also reads back the core's compiled capacities and the `EXTERNAL_IO`
+  test signal.
+- [x] Implement `Bridge<B: Bus>` against the generated constants.
+- Verification:
+  - Rust unit tests of `Bridge` with a mock `Bus` (`tests/bridge.rs`);
+  - Verilator 5.032 lint of `host_core` with the core, for both audio modes;
+  - CI's `generate.py --check`.
+
+  Revision: behavioral RTL tests of the bridge (handshakes, back-to-back
+  transactions, reset, readback) move to stage 3. There, the Marlin bridge top
+  drives them through the same driver, which avoids a second AXI-lite test driver
+  in cocotb.
 
 ### 3. Marlin bridge top
 

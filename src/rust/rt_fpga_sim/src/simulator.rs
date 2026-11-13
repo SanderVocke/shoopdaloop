@@ -458,6 +458,7 @@ impl PortIo for Simulator<'_> {
             events: 64,
             views: 32,
             chunk_limit: 128,
+            external_audio: false,
         }
     }
     fn media_slots(&self) -> u32 {

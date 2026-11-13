@@ -3,6 +3,7 @@
 extern crate alloc;
 
 pub mod adapter;
+pub mod bridge;
 pub mod compiler;
 pub mod image;
 pub mod loop_media;
