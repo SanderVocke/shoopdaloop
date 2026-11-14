@@ -22,6 +22,16 @@ fn additional_bus_uses_the_snapshot_generation_for_immediate_controls() {
         })
         .unwrap();
     b.wait_idle();
+    b.input_edits(
+        &[BackendInputEdit::Mode {
+            loop_id: track.loops[0],
+            mode: BackendLoopMode::Stopped,
+            position: None,
+        }],
+        None,
+    )
+    .unwrap();
+    b.wait_idle();
     let bus = b
         .create_bus(BackendBusRequest {
             name: "Additional".into(),
