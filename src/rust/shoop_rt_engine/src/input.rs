@@ -60,12 +60,6 @@ pub(crate) struct Stage {
     capacity: InputCapacity,
 }
 impl Stage {
-    pub(crate) fn idle(&self) -> bool {
-        (self.id.is_none() || self.phase.terminal())
-            && !self.cleanup
-            && !self.outstanding
-            && !self.abort_pending
-    }
     pub fn capacity(settings: &SharedSettings) -> InputCapacity {
         let Some(midi) = settings.midi_pool else {
             return InputCapacity::default();

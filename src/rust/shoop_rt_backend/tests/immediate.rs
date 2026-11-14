@@ -11,6 +11,84 @@ use support::*;
 static ALLOCATOR: TrackingAllocator = TrackingAllocator;
 
 #[shoop_test]
+fn immediate_controls_and_graph_edits_share_the_application_session() {
+    let mut b = stack(&description());
+    let track = b
+        .create_direct_track(DirectTrackRequest {
+            port_name_base: "mixed-commands".into(),
+            audio_channels: 2,
+            midi: false,
+            initial_loops: 1,
+        })
+        .unwrap();
+    b.wait_idle();
+    b.immediate_group(&[
+        Command::LoopGain(track.loops[0], 0.25),
+        Command::OutputBalance(track.track_id, -0.5),
+    ])
+    .unwrap();
+    let bus = b
+        .create_bus(BackendBusRequest {
+            name: "live edit".into(),
+            channel_count: 2,
+            fx: None,
+        })
+        .unwrap();
+    b.immediate_group(&[Command::LoopGain(track.loops[0], 0.9)])
+        .unwrap();
+    b.wait_idle();
+    for _ in 0..16 {
+        b.clock_mut().render(16);
+        b.pump();
+    }
+    let state = b.poll().unwrap();
+    assert!(state.mixer.buses.contains_key(&bus.bus_id));
+    assert_eq!(state.loops[&track.loops[0]].gain, 0.25);
+    assert_eq!(state.tracks[&track.track_id].output_balance, -0.5);
+    assert_eq!(
+        b.immediate_diagnostics().control_refused,
+        1,
+        "the queued old configuration is refused"
+    );
+    b.immediate_group(&[
+        Command::LoopGain(track.loops[0], 0.5),
+        Command::BusMute(bus.bus_id, true),
+    ])
+    .unwrap();
+    b.set_loop_gain(track.loops[0], 0.75).unwrap();
+    b.wait_idle();
+    b.remove_bus(bus.bus_id).unwrap();
+    b.wait_idle();
+    for _ in 0..16 {
+        b.clock_mut().render(16);
+        b.pump();
+    }
+    let state = b.poll().unwrap();
+    assert_eq!(state.loops[&track.loops[0]].gain, 0.75);
+    assert!(!state.mixer.buses.contains_key(&bus.bus_id));
+    b.immediate_group(&[Command::LoopGain(track.loops[0], 0.6)])
+        .unwrap();
+    b.clock_mut().render(16);
+    b.pump();
+    assert_eq!(b.poll().unwrap().loops[&track.loops[0]].gain, 0.6);
+    for index in 0..40 {
+        b.set_loop_gain(track.loops[0], index as f32 / 50.).unwrap();
+    }
+    let cursor = b.mutation_cursor();
+    assert!(b
+        .immediate_group(&[Command::LoopGain(track.loops[0], 0.95)])
+        .is_err());
+    assert_eq!(b.mutation_cursor(), cursor);
+    b.wait_idle();
+    assert_eq!(b.poll().unwrap().loops[&track.loops[0]].gain, 0.78);
+    b.immediate_group(&[Command::LoopGain(track.loops[0], 0.65)])
+        .unwrap();
+    b.clock_mut().render(16);
+    b.pump();
+    assert_eq!(b.poll().unwrap().loops[&track.loops[0]].gain, 0.65);
+}
+
+#[shoop_test]
 fn additional_bus_uses_the_snapshot_generation_for_immediate_controls() {
     let mut b = stack(&description());
     let track = b

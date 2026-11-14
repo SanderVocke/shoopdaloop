@@ -114,12 +114,16 @@ fn send(h: &mut Harness, config: (u64, u64), commands: &[Command]) {
 }
 
 #[shoop_test]
-fn invalid_target_rejects_whole_batch_and_exclusive_mode_blocks_legacy_edits() {
+fn invalid_target_rejects_whole_batch_and_both_paths_keep_arrival_order() {
     let (mut h, c) = fixture();
     h.done(Request::ReplacementBegin { id: 123 });
     send(&mut h, c, &[Command::LoopGain(loop_id(0, 1), 0.2)]);
     h.run(16, 16);
-    assert_eq!(gain(&mut h), 1., "a staged replacement prevents opt-in");
+    assert_eq!(
+        gain(&mut h),
+        0.2,
+        "staging a replacement does not lock live controls"
+    );
     h.done(Request::ReplacementCancel { id: 123 });
     send(
         &mut h,
@@ -130,34 +134,31 @@ fn invalid_target_rejects_whole_batch_and_exclusive_mode_blocks_legacy_edits() {
         ],
     );
     h.run(16, 16);
-    assert_eq!(gain(&mut h), 1.);
+    assert_eq!(gain(&mut h), 0.2);
     assert!(h
         .telemetry
         .iter()
         .any(|(_, t)| matches!(t,Telemetry::Immediate(d) if d.rt_refused == 1 && d.last_rt == 3)));
     send(&mut h, c, &[Command::LoopGain(loop_id(0, 1), 0.25)]);
+    let legacy = h.send(Request::LoopGain {
+        loop_id: loop_id(0, 1),
+        gain: 0.75,
+    });
+    send(&mut h, c, &[Command::LoopGain(loop_id(0, 1), 0.5)]);
     h.run(16, 16);
     assert_eq!(gain(&mut h), 0.25);
-    assert_eq!(
-        h.apply(Request::LoopGain {
-            loop_id: loop_id(0, 1),
-            gain: 0.75
-        }),
-        Outcome::Refused(Refusal::Busy)
-    );
-    assert_eq!(
-        h.apply(Request::RemoveLoop {
-            loop_id: loop_id(0, 1)
-        }),
-        Outcome::Refused(Refusal::Busy)
-    );
+    h.run(16, 16);
+    assert_eq!(gain(&mut h), 0.75);
+    assert_eq!(h.results.get(&legacy), Some(&Outcome::Done));
+    h.run(16, 16);
+    assert_eq!(gain(&mut h), 0.5);
     send(
         &mut h,
         (c.0 + 1, c.1),
         &[Command::LoopGain(loop_id(0, 1), 0.75)],
     );
     h.run(16, 16);
-    assert_eq!(gain(&mut h), 0.25);
+    assert_eq!(gain(&mut h), 0.5);
     use shoop_rt_transport::carrier::{Endpoint, Outbox};
     let mut out = Outbox::new(1, 1, 1);
     out.push(EngineMessage::SnapshotReady { sequence: 0 })
@@ -179,13 +180,224 @@ fn invalid_target_rejects_whole_batch_and_exclusive_mode_blocks_legacy_edits() {
         Some(EngineMessage::SnapshotReady { sequence: 0 })
     );
     assert_no_heap(|| h.host.endpoint().poll(&mut out));
+    assert_no_heap(|| h.host.process(16)).unwrap();
+    assert_no_heap(|| h.host.endpoint().poll(&mut out));
     assert_eq!(
         out.pop(),
         Some(EngineMessage::Result {
             correlation: u64::MAX,
-            outcome: Outcome::Refused(Refusal::Busy)
+            outcome: Outcome::Done
         })
     );
+}
+
+#[shoop_test]
+fn graph_edits_wait_for_groups_preserve_scalars_and_reject_old_configuration() {
+    let (mut h, c) = fixture();
+    let commands = [
+        Command::LoopGain(loop_id(0, 1), 0.25),
+        Command::LoopBalance(loop_id(0, 1), -0.5),
+        Command::OutputGain(strip(0, 1), 0.5),
+        Command::OutputMute(strip(0, 1), true),
+        Command::BusGain(BusId::MASTER, 0.75),
+        Command::BusMute(BusId::MASTER, true),
+    ];
+    send(&mut h, c, &commands);
+    let edit = h.send(Request::CreateLoop {
+        loop_id: loop_id(1, 1),
+        strip: strip(0, 1),
+    });
+    send(&mut h, c, &[Command::LoopGain(loop_id(0, 1), 0.9)]);
+    h.run(1024, 16);
+    assert_eq!(h.results.get(&edit), Some(&Outcome::Done));
+    assert_eq!(gain(&mut h), 0.25);
+    assert!(h.telemetry.iter().any(|(_, t)| matches!(t,
+        Telemetry::Immediate(d) if d.control_refused == 1 && d.last_control == 2)));
+    let mut bytes = vec![0; h.host.endpoint().snapshot_capacity()];
+    let (_, len) = h.host.endpoint().read_snapshot(&mut bytes).unwrap();
+    let header = Header::read(&bytes[..len]).unwrap();
+    assert_ne!((header.graph, header.topology), c);
+    let records: Vec<_> = Records(&bytes[HEADER..len]).map(Result::unwrap).collect();
+    for record in [
+        Record::LoopLevels {
+            id: loop_id(0, 1),
+            gain: 0.25,
+            balance: -0.5,
+            repeat_sync: false,
+        },
+        Record::State(StateRecord::StripControl {
+            strip: strip(0, 1),
+            control: StripControl::OutputGain(0.5),
+        }),
+        Record::State(StateRecord::StripControl {
+            strip: strip(0, 1),
+            control: StripControl::OutputMute(true),
+        }),
+        Record::State(StateRecord::Bus {
+            bus: BusId::MASTER,
+            control: BusControl::Gain(0.75),
+        }),
+        Record::State(StateRecord::Bus {
+            bus: BusId::MASTER,
+            control: BusControl::Mute(true),
+        }),
+    ] {
+        assert!(records.contains(&record), "{record:?}");
+    }
+    send(
+        &mut h,
+        (header.graph, header.topology),
+        &[Command::LoopGain(loop_id(0, 1), 0.5)],
+    );
+    h.run(16, 16);
+    assert_eq!(gain(&mut h), 0.5);
+    h.done(Request::RemoveLoop {
+        loop_id: loop_id(1, 1),
+    });
+}
+
+#[shoop_test]
+fn recording_and_media_edits_resume_between_immediate_groups() {
+    let (mut h, _) = fixture();
+    let l = loop_id(0, 1);
+    h.done(Request::Connect {
+        port: port(strip(0, 1), PortKind::AudioIn, 0),
+        host: audio_in(0),
+        connected: true,
+    });
+    h.input = Box::new(|_, _| 1.);
+    h.run(16, 16);
+    let mut bytes = vec![0; h.host.endpoint().snapshot_capacity()];
+    let (_, len) = h.host.endpoint().read_snapshot(&mut bytes).unwrap();
+    let header = Header::read(&bytes[..len]).unwrap();
+    let c = (header.graph, header.topology);
+    send(&mut h, c, &[Command::LoopGain(l, 0.25)]);
+    h.done(Request::LoopTransition {
+        loop_id: l,
+        mode: LoopMode::Recording,
+        delay: None,
+    });
+    h.run(8, 1);
+    send(&mut h, c, &[Command::Start(l), Command::LoopGain(l, 0.9)]);
+    h.run(16, 16);
+    assert_eq!(
+        gain(&mut h),
+        0.25,
+        "starting a recording loop rejects the whole group"
+    );
+    send(&mut h, c, &[Command::LoopGain(l, 0.5)]);
+    let stop = h.send(Request::LoopTransition {
+        loop_id: l,
+        mode: LoopMode::Stopped,
+        delay: None,
+    });
+    send(&mut h, c, &[Command::Start(l)]);
+    h.run(128, 16);
+    assert_eq!(h.results.get(&stop), Some(&Outcome::Done));
+    assert_eq!(gain(&mut h), 0.5);
+    let (_, len) = h.host.endpoint().read_snapshot(&mut bytes).unwrap();
+    assert!(Records(&bytes[HEADER..len]).any(|r| matches!(r,
+        Ok(Record::Telemetry(Telemetry::Loop { loop_id, mode: LoopMode::Playing, .. })) if loop_id == l)),
+        "{:?}", Records(&bytes[HEADER..len]).collect::<Vec<_>>());
+    let (frames, audio, _) = h.read(l, BulkSelector::AudioFrames);
+    assert!(frames >= 8);
+    assert!(audio.chunks_exact(2).all(|frame| frame == [1., 0.]));
+    h.done(Request::LoopTransition {
+        loop_id: l,
+        mode: LoopMode::Stopped,
+        delay: None,
+    });
+    h.done(Request::LoopClear { loop_id: l });
+    send(&mut h, c, &[Command::LoopGain(l, 0.75)]);
+    h.run(16, 16);
+    assert_eq!(gain(&mut h), 0.75);
+}
+
+#[shoop_test]
+fn prepared_replacement_can_commit_after_live_groups_without_retargeting_them() {
+    let (mut h, c) = fixture();
+    h.done(Request::ReplacementBegin { id: 7 });
+    h.done(Request::ReplacementEdit {
+        id: 7,
+        edit: ReplacementEdit::Strip {
+            strip: strip(0, 2),
+            shape: shape(2, 2, false),
+            controls: StripPreset {
+                input_gain: 1.,
+                input_balance: 0.,
+                monitoring: false,
+                automatic_monitoring: false,
+                output_gain: 0.75,
+                output_balance: 0.,
+                output_mute: false,
+            },
+        },
+    });
+    h.done(Request::ReplacementEdit {
+        id: 7,
+        edit: ReplacementEdit::Loop {
+            loop_id: loop_id(0, 2),
+            strip: strip(0, 2),
+            sync: None,
+            frames: 0,
+            dry_audio: None,
+            recorded_state: None,
+            audio: None,
+            midi: None,
+            gain: 0.6,
+            balance: 0.,
+        },
+    });
+    h.done(Request::ReplacementPrepare { id: 7 });
+    send(
+        &mut h,
+        c,
+        &[
+            Command::LoopGain(loop_id(0, 1), 0.25),
+            Command::OutputGain(strip(0, 1), 0.5),
+        ],
+    );
+    let commit = h.send(Request::ReplacementCommit { id: 7 });
+    send(&mut h, c, &[Command::LoopGain(loop_id(0, 1), 0.9)]);
+    h.run(1024, 16);
+    assert_eq!(h.results.get(&commit), Some(&Outcome::Done));
+    assert_eq!(
+        gain(&mut h),
+        0.6,
+        "replacement's explicit settings become authoritative"
+    );
+    let mut bytes = vec![0; h.host.endpoint().snapshot_capacity()];
+    let (_, len) = h.host.endpoint().read_snapshot(&mut bytes).unwrap();
+    let header = Header::read(&bytes[..len]).unwrap();
+    let next = (header.graph, header.topology);
+    assert_ne!(c, next);
+    assert!(Records(&bytes[HEADER..len]).any(|r| r
+        == Ok(Record::State(StateRecord::StripControl {
+            strip: strip(0, 2),
+            control: StripControl::OutputGain(0.75)
+        }))));
+    send(
+        &mut h,
+        next,
+        &[
+            Command::LoopGain(loop_id(0, 1), 0.8),
+            Command::OutputMute(strip(0, 2), true),
+        ],
+    );
+    h.run(16, 16);
+    assert_eq!(gain(&mut h), 0.6);
+    let (_, len) = h.host.endpoint().read_snapshot(&mut bytes).unwrap();
+    assert!(Records(&bytes[HEADER..len]).any(|r| r
+        == Ok(Record::State(StateRecord::StripControl {
+            strip: strip(0, 2),
+            control: StripControl::OutputMute(false)
+        }))));
+    send(&mut h, next, &[Command::LoopGain(loop_id(0, 2), 0.8)]);
+    h.run(16, 16);
+    assert_eq!(gain(&mut h), 0.8);
+    h.done(Request::RemoveLoop {
+        loop_id: loop_id(0, 2),
+    });
 }
 
 #[shoop_test]
@@ -277,8 +489,14 @@ fn bounded_staging_preserves_order_and_disconnect_does_not_replay_unsent_work() 
         .client
         .configure_snapshots(snapshot::SnapshotDelivery::Pull)
         .unwrap();
+    let edit = h.send(Request::CreateLoop {
+        loop_id: loop_id(1, 1),
+        strip: strip(0, 1),
+    });
+    assert!(!h.results.contains_key(&edit));
     h.run(16, 16);
-    h.run(16, 16);
+    h.settle();
+    assert_eq!(h.results.get(&edit), Some(&Outcome::Done));
     assert_eq!(
         gain(&mut h),
         0.3,
@@ -288,7 +506,7 @@ fn bounded_staging_preserves_order_and_disconnect_does_not_replay_unsent_work() 
         h.apply(Request::RemoveLoop {
             loop_id: loop_id(0, 1)
         }),
-        Outcome::Refused(Refusal::Busy)
+        Outcome::Done
     );
 }
 

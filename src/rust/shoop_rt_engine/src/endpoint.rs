@@ -389,7 +389,9 @@ impl ControlEndpoint {
     /// No request, transaction or bulk read is in progress and every ramp of
     /// the last structural change has finished.
     pub fn is_idle(&self) -> bool {
-        self.queue.len() == 0
+        self.immediate.incoming.len() == 0
+            && !self.immediate.busy()
+            && self.queue.len() == 0
             && self.job.as_ref().is_none_or(Job::idle)
             && self.pending.iter().all(Option::is_none)
             && self.bulk.idle()
@@ -1657,20 +1659,8 @@ impl Endpoint for ControlEndpoint {
                     });
                     return;
                 }
-                if self.immediate.active
-                    && !matches!(request, Request::Diagnostic(_) | Request::CancelBulk)
-                {
-                    if self
-                        .results
-                        .push((correlation, Outcome::Refused(Refusal::Busy)))
-                        .is_err()
-                    {
-                        self.protocol_error = true;
-                    }
-                    self.flush(out);
-                    return;
-                }
-                if self.unanswered >= self.limits.reliable_credits as usize || self.queue.is_full()
+                if self.unanswered >= self.limits.reliable_credits as usize
+                    || self.immediate.incoming.is_full()
                 {
                     if self
                         .results
@@ -1681,8 +1671,11 @@ impl Endpoint for ControlEndpoint {
                     }
                 } else {
                     self.unanswered += 1;
-                    let _ = self.queue.push((correlation, request));
-                    self.process_queue(false);
+                    let _ = self
+                        .immediate
+                        .incoming
+                        .push(crate::immediate::Incoming::Request(correlation, request));
+                    self.advance_incoming(false);
                 }
             }
             ClientMessage::Resync => {
@@ -1718,15 +1711,18 @@ impl Endpoint for ControlEndpoint {
             return;
         }
         self.drain_runtime();
-        self.immediate.advance();
-        self.forced_monitoring(None);
-        self.advance_job();
         self.refresh_snapshot_timing();
-        self.process_queue(true);
-        self.advance_bulk();
-        self.advance_preview();
-        self.advance_content();
-        self.advance_input();
+        self.reconcile_immediate();
+        if !self.immediate.busy() {
+            self.forced_monitoring(None);
+            self.advance_job();
+            self.process_queue(true);
+            self.advance_bulk();
+            self.advance_preview();
+            self.advance_content();
+            self.advance_input();
+        }
+        self.advance_incoming(true);
         self.flush(out);
         if self.connected {
             self.forced_monitoring(Some(out));
@@ -1760,9 +1756,48 @@ impl ControlEndpoint {
             self.immediate.refuse(5);
             return;
         }
+        self.immediate.stage(batch);
+        self.advance_incoming(false);
+    }
+
+    fn advance_incoming(&mut self, stage: bool) {
+        use crate::immediate::Incoming;
+        while let Some(incoming) = self.immediate.incoming.front() {
+            match incoming {
+                Incoming::Request(correlation, request) => {
+                    if self.immediate.busy() || self.queue.is_full() {
+                        break;
+                    }
+                    self.immediate.pop();
+                    let _ = self.queue.push((correlation, request));
+                }
+                Incoming::Batch(batch) => {
+                    self.process_queue(stage);
+                    let settled = self.queue.len() == 0
+                        && self.job.as_ref().is_none_or(Job::idle)
+                        && self.pending.iter().flatten().all(|p| {
+                            p.completed
+                                && matches!(p.purpose, Purpose::Transition { delayed: true, .. })
+                        })
+                        && self.next_frame().0 >= self.quiet_until
+                        && self.snapshot_configuration_settled();
+                    if !settled {
+                        break;
+                    }
+                    if self.immediate_supported(&batch) && !self.immediate.publish(batch) {
+                        break;
+                    }
+                    self.immediate.pop();
+                }
+            }
+        }
+        self.process_queue(stage);
+    }
+
+    fn immediate_supported(&mut self, batch: &shoop_rt_protocol::immediate::Batch) -> bool {
         if (batch.graph, batch.topology) != (self.graph_epoch.0, self.topology_epoch.0) {
             self.immediate.refuse(2);
-            return;
+            return false;
         }
         for command in batch.commands() {
             if let Some(id) = command.playback() {
@@ -1782,31 +1817,10 @@ impl ControlEndpoint {
                     });
                 if !supported {
                     self.immediate.refuse(4);
-                    return;
+                    return false;
                 }
             }
         }
-        if !self.immediate.active {
-            let stable = self.is_idle()
-                && self.job.is_none()
-                && self.replacement.id.is_none()
-                && self.snapshot_configuration_settled()
-                && self.planned.iter().flatten().all(Option::is_none)
-                && self.input.idle()
-                && self.family.id.is_none()
-                && self.composite.description.is_none()
-                && self.cells.loops.iter().all(|cell| {
-                    matches!(
-                        mode_from_code(cell.mode.load(Ordering::Relaxed)),
-                        Mode::Stopped | Mode::Playing
-                    )
-                });
-            if !stable {
-                self.immediate.refuse(1);
-                return;
-            }
-            self.immediate.active = true;
-        }
-        self.immediate.submit(batch);
+        true
     }
 }

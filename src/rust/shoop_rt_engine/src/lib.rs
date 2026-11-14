@@ -660,7 +660,7 @@ fn prepare_complete(
     let (snapshot_capture, snapshot_state) =
         snapshots::prepare(cells.clone(), strips, loops, buses, description.sample_rate)?;
     runtime.set_snapshot_observer(Box::new(snapshot_capture));
-    let (immediate_control, immediate_render) = immediate::prepare(pool.clone());
+    let (immediate_control, immediate_render) = immediate::prepare(pool.clone(), credits);
     runtime.set_immediate_handler(Box::new(immediate_render));
     runtime.prepare_graph_staging(1)?;
     control.prepare_submissions()?;

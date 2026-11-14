@@ -16,8 +16,8 @@ state returns through snapshots; bounded diagnostic counters report refusals.
 Command admission and snapshot observation are separate. Transport-level delivery
 mechanisms do not become application request IDs or execution acknowledgements.
 
-This document specifies a first experiment. It does not implement it or replace
-the remaining command protocol. Rust is the implementation target; the logical
+This document records the first experiment and its coexistence extension. The
+remaining command protocol stays available. Rust is the implementation target; the logical
 FIFO and publication rules should later map readily to hardware. ARM/FPGA code,
 register interfaces, and drivers are outside this work.
 
@@ -223,11 +223,11 @@ programs, MIDI delivery/restoration, processor/plugin lifecycle, graph changes,
 media transfer, and ownership reclamation. Those paths retain their current
 protocols until separately designed and migrated.
 
-Use a stable graph and prepared media for the first experiment. Reject structural
-or media-lifetime changes while the experiment is active. Define exclusive routing
-for the migrated controls/targets so legacy scheduled commands cannot overtake or
-override the immediate path accidentally. Other command categories remain clearly
-separate. Supporting unrestricted concurrent graph edits is a later milestone.
+Keep prepared media as a requirement for immediate playback. Graph edits, media
+operations, recording and other legacy commands remain available in the same
+session. Control serializes the handoff between the two command paths so neither
+can overtake earlier work on the other path. The coexistence milestone below
+replaces the first implementation's permanent stable-session lock.
 
 ### Acceptance criteria
 
@@ -247,8 +247,8 @@ separate. Supporting unrestricted concurrent graph edits is a later milestone.
 5. Capacity and callback work are explicitly bounded; RT remains heap-free and
    nonblocking. Snapshots describe applied state after boundary settlement.
 6. Existing push/pull snapshot delivery and unmigrated command/media workflows
-   continue operating. Restrictions on graph/media edits and conflicting legacy
-   commands are enforced rather than assumed.
+   continue operating. Ordering across graph/media edits and immediate groups is
+   enforced rather than assumed.
 7. Application dependencies on execution confirmation are met through simple,
    sound snapshot observations or documented exclusion of the affected command.
    No confirmation requirement reintroduces request correlation or acknowledgements
@@ -283,7 +283,7 @@ the synchronized playback case was delivered or tested.
   that neither bridge allocates application request/cancellation records.
 - [x] **3. Connect scalar and playback execution.** Add complete-batch preflight,
   immediate application and settlement, diagnostics, and application submission.
-  Enforce the experiment's graph/media and legacy-routing restrictions. Smoke-test
+  Enforce graph/media lifetime safety and ordering between command paths. Smoke-test
   scalar changes, stale configuration and generation rejection, invalid-batch
   rejection, snapshot feedback, and heap-free RT use.
 - [x] **4. Validate and publish the milestone.** Exercise thirty-loop synchronized
@@ -328,12 +328,12 @@ Execution is authorized. The implementation uses these concrete bounds:
   quantum consumes exactly that many entries, before planner settlement and
   snapshot capture. No tick means no dequeue. Preflight examines at most 32
   targets plus a bounded pairwise check for duplicate playback transitions.
-- The experimental session latches on the first group accepted while legacy
-  work is idle. Thereafter legacy mutation requests are refused (diagnostics and bulk-read cancellation remain allowed); snapshot,
-  resynchronization, diagnostics and bulk-read traffic remain available. The
-  latch survives disconnect, preventing previously RT-admitted work from racing
-  graph/media changes after reconnect. Reprepare the engine to leave this first
-  experimental mode. This deliberately excludes live structural/media editing.
+- Control's ordered inbox holds up to four waiting immediate groups plus the
+  prepared reliable-request credit allowance. A legacy prefix uses its existing
+  queue and execution machinery. An immediate prefix waits for that work to
+  settle, then publishes to its dedicated FIFO. Later legacy work waits for FIFO
+  retirement and snapshot reconciliation. There is no permanent session latch
+  and no engine re-preparation requirement.
 - Playback uses direct boundary state changes in the loop resolver, with no
   pending request records. Restart's DSP discontinuity is processor state, not
   a retained command. Only stopped/playing primitive audio loops with prepared
@@ -374,13 +374,62 @@ storage, failures, or repeat-sync behavior. MIDI-capable, processed/dry-wet,
 composite, recording and repeat-sync playback remain outside this first set.
 There is no legacy fallback inside a group.
 
-The first accepted group requires both idle legacy work and a validated RT
-snapshot for the current configuration, proving deferred processor configuration
-has settled before new controls can change its values. It latches the stable-session restriction. Reprepare the
-engine to resume legacy mutations. The latch persists across reconnects; control
-staging and a record server's blocked message do not. Previously RT-admitted work
-may still execute. This deliberately narrow entry point does not switch every
-ordinary application control to the experiment automatically.
+Each immediate prefix waits for preceding legacy work and a validated RT snapshot
+of the current configuration, proving deferred processor configuration has settled.
+Later legacy messages wait in bounded control storage until the immediate FIFO
+has finished applying its published groups and a snapshot covers their processing
+frame. Control refreshes loop, strip and bus scalar settings from that snapshot
+before allowing graph/media jobs to resume. This prevents a later graph edit from
+restoring stale controls. Graph replacement retains its explicitly prepared new
+settings, which become authoritative on activation.
+
+The handoff uses a transport retirement cursor and the existing snapshot audio
+frame. Only RT writes the shared retirement cursor and frame; control keeps its
+own publication cursor. These are bounded FIFO progress, not command IDs, receipts
+or a pending-command table. RT still validates and applies each dequeued group
+immediately without retaining it. The cursors survive reconnect; unsent inbox and
+record staging do not. Previously RT-admitted work may still execute, and later
+legacy edits wait for its snapshot before proceeding.
+
+The application adapter first sends any earlier locally queued legacy messages.
+If credits or transport capacity prevent that, immediate submission returns a
+local refusal without sending the group, rather than overtaking those messages.
+Groups waiting behind a configuration change are refused as stale when their
+header no longer matches; they are never silently retargeted or replayed. Snapshot
+observation and bounded diagnostics remain the only remote feedback.
+
+Already admitted delayed musical transitions keep their existing scheduling;
+control does not wait indefinitely for them before publishing scalar groups.
+Immediate playback continues to refuse pending musical/program conflicts during
+RT preflight. No future scheduling is introduced into the immediate path.
+
+This narrow entry point does not switch ordinary application controls over
+automatically. No controls need to be disabled merely because immediate groups
+have been used. Unsupported immediate playback states still refuse the complete
+group; their existing legacy operations remain available.
+
+## Coexistence milestone
+
+The follow-up scope is to remove the global stable-session restriction before
+wiring ordinary UI controls to immediate groups.
+
+- [x] Preserve arrival order across legacy requests and immediate groups in
+  bounded control storage, including the adapter's not-yet-sent legacy messages.
+- [x] Hold later legacy execution until queued immediate work is retired and
+  its scalar state is reconciled from a complete configuration-matched snapshot.
+- [x] Keep graph edits, recording, media operations and prepared graph replacement
+  available without re-preparing the engine or introducing command correlations.
+- [x] Preserve stale-configuration and reused-slot rejection across activation,
+  and retain safe handoff after disconnect without replaying unsent commands.
+- [x] Smoke-test the connected paths, update the draft PR, and leave broad CI in
+  the background.
+
+The focused checks cover graph edits preserving immediate gains/mutes, mixed
+legacy/immediate ordering, recording and subsequent immediate playback, media
+clearing, prepared graph replacement, stale epochs and generations, application
+adapter integration, encoded delivery and reconnect. Empty recorded MIDI streams
+are judged by data size, not duration, so ordinary recorded audio qualifies for
+immediate playback. The original command subset and callback bounds remain intact.
 
 Snapshots remain the only execution observation. `immediate_diagnostics()` exposes
 cumulative control and RT refusal counts plus compact classifications (unavailable,
@@ -440,3 +489,11 @@ This adds no request tracking to immediate groups. The existing hosted composite
 file-roundtrip test reproduces the push-ordering issue on native when the fixture
 uses push, and passes with the observation barrier. Focused refusal/disconnect
 regressions and a one-Hz push smoke also pass.
+
+The coexistence extension was validated with twelve focused immediate-command
+tests across engine and application adapter, including the original thirty-loop
+alignment/race smoke. Eleven snapshot smoke tests cover the surrounding delivery
+and cache behavior. Formatting, test policy and a warning-denying build of the
+engine, backend and native process wrapper (without native audio-provider
+features) pass. No full integration matrix or CI completion wait is part of this
+follow-up.

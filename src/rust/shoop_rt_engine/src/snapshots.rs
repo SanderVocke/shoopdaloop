@@ -24,6 +24,7 @@ pub(crate) struct State {
     cache_scratch: Box<[u8]>,
     cache_sequence: u32,
     cache_epochs: Option<(u64, u64)>,
+    cache_frame: Option<u64>,
     cache_frames: Box<[Option<(LoopSlotId, u64)>]>,
     scratch: Box<[u8]>,
     accepted: Box<[u8]>,
@@ -62,6 +63,7 @@ pub(crate) fn prepare(
             cache_scratch: vec![0; capacity].into_boxed_slice(),
             cache_sequence: 0,
             cache_epochs: None,
+            cache_frame: None,
             cache_frames: vec![None; loops].into_boxed_slice(),
             scratch: vec![0; capacity].into_boxed_slice(),
             accepted: vec![0; capacity].into_boxed_slice(),
@@ -283,10 +285,11 @@ impl State {
 impl ControlEndpoint {
     pub(crate) fn refresh_snapshot_timing(&mut self) {
         let state = &mut self.snapshots;
+        state.cache_frame = None;
         let Some((sequence, len)) = state.reader.read(&mut state.cache_scratch) else {
             return;
         };
-        if sequence <= state.cache_sequence {
+        if sequence < state.cache_sequence {
             return;
         }
         let Some(header) = Header::read(&state.cache_scratch[..len]) else {
@@ -301,6 +304,10 @@ impl ControlEndpoint {
             .ok()
             != Some(header.records)
         {
+            return;
+        }
+        state.cache_frame = Some(header.frame);
+        if sequence == state.cache_sequence {
             return;
         }
         if state.cache_epochs != Some(state.confirmed) {
@@ -334,6 +341,57 @@ impl ControlEndpoint {
         }
         state.cache_sequence = sequence;
         state.cache_epochs = Some(state.confirmed);
+        state.cache_frame = Some(header.frame);
+    }
+    pub(crate) fn reconcile_immediate(&mut self) {
+        if !self.immediate.reconcile {
+            return;
+        }
+        let Some(frame) = self.immediate.settled_frame() else {
+            return;
+        };
+        if !self.snapshot_configuration_settled()
+            || !self
+                .snapshots
+                .cache_frame
+                .is_some_and(|captured| captured >= frame)
+        {
+            return;
+        }
+        let header = Header::read(&self.snapshots.cache_scratch).expect("validated snapshot");
+        for record in Records(&self.snapshots.cache_scratch[HEADER..])
+            .take(header.records as usize)
+            .flatten()
+        {
+            match record {
+                Record::LoopLevels {
+                    id, gain, balance, ..
+                } => {
+                    if let Some(entry) = self
+                        .model
+                        .loops
+                        .get_mut(id.0.index as usize)
+                        .and_then(Option::as_mut)
+                        .filter(|entry| entry.id == id)
+                    {
+                        entry.gain = gain;
+                        entry.balance = balance;
+                    }
+                }
+                Record::State(StateRecord::StripControl { strip, control }) => {
+                    if let Some(entry) = self.model.strip_mut(strip) {
+                        entry.controls.apply(control);
+                    }
+                }
+                Record::State(StateRecord::Bus { bus, control }) => {
+                    if let Some(entry) = self.model.bus_mut(bus) {
+                        entry.apply(control);
+                    }
+                }
+                _ => {}
+            }
+        }
+        self.immediate.reconcile = false;
     }
     pub(crate) fn snapshot_configuration_settled(&self) -> bool {
         self.snapshots.cache_epochs == Some((self.graph_epoch.0, self.topology_epoch.0))

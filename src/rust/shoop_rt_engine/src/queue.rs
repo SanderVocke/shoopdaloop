@@ -57,6 +57,9 @@ impl ControlEndpoint {
     /// Handle queued requests in order. With `stage`, and no transaction in
     /// progress, the structural requests that can go together start one.
     pub(crate) fn process_queue(&mut self, stage: bool) {
+        if self.immediate.busy() {
+            return;
+        }
         // Copying the model is costly; an empty queue has nothing to stage.
         let mut staging = stage && self.job.is_none() && self.queue.len() > 0;
         if staging {

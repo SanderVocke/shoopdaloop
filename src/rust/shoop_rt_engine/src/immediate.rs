@@ -5,7 +5,7 @@ use crate::{
     ring::Ring,
 };
 use alloc::sync::Arc;
-use core::sync::atomic::{AtomicU32, Ordering};
+use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use rt_runtime::immediate::{self, Boundary, Handler};
 use shoop_loops::{
     runtime::{Immediate, LoopPlanner},
@@ -21,10 +21,26 @@ struct Failures {
     count: AtomicU32,
     last: AtomicU32,
 }
+#[derive(Default)]
+struct Progress {
+    // The read cursor advances after application. Control also waits for a
+    // snapshot covering that frame before releasing later legacy work.
+    retired: AtomicU32,
+    frame: AtomicU64,
+}
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Incoming {
+    Request(u64, shoop_rt_protocol::Request),
+    Batch(Batch),
+}
 pub(crate) struct Control {
     tx: immediate::Producer<Batch>,
-    staged: Ring<Batch>,
-    pub active: bool,
+    pub incoming: Ring<Incoming>,
+    waiting: usize,
+    published: u32,
+    progress: Arc<Progress>,
+    pub reconcile: bool,
+    observed: bool,
     failures: Arc<Failures>,
     diagnostics: Diagnostics,
     sent: Option<(Diagnostics, u64)>,
@@ -33,48 +49,80 @@ struct Render {
     rx: immediate::Consumer<Batch>,
     pool: Pool,
     failures: Arc<Failures>,
+    progress: Arc<Progress>,
 }
-pub(crate) fn prepare(pool: Pool) -> (Control, impl Handler<EngineNode, LoopPlanner>) {
+pub(crate) fn prepare(
+    pool: Pool,
+    credits: usize,
+) -> (Control, impl Handler<EngineNode, LoopPlanner>) {
     let (tx, rx) = immediate::channel(FIFO_BATCHES);
     let failures = Arc::new(Failures::default());
+    let progress = Arc::new(Progress::default());
     (
         Control {
             tx,
-            staged: Ring::new(STAGED_BATCHES),
-            active: false,
+            incoming: Ring::new(credits + STAGED_BATCHES),
+            waiting: 0,
+            published: 0,
+            progress: progress.clone(),
+            reconcile: false,
+            observed: false,
             failures: failures.clone(),
             diagnostics: Diagnostics::default(),
             sent: None,
         },
-        Render { rx, pool, failures },
+        Render {
+            rx,
+            pool,
+            failures,
+            progress,
+        },
     )
 }
 impl Control {
     pub fn full(&self) -> bool {
-        self.staged.is_full()
+        self.waiting == STAGED_BATCHES
     }
-    pub fn submit(&mut self, batch: Batch) {
-        self.staged.push(batch).expect("checked staging capacity");
-        self.advance();
+    pub fn stage(&mut self, batch: Batch) {
+        self.incoming
+            .push(Incoming::Batch(batch))
+            .expect("bounded inbox");
+        self.waiting += 1;
     }
-    pub fn advance(&mut self) {
-        while let Some(batch) = self.staged.front() {
-            if self.tx.push(batch).is_err() {
-                break;
-            }
-            self.staged.pop();
+    pub fn pop(&mut self) -> Option<Incoming> {
+        let incoming = self.incoming.pop()?;
+        if matches!(incoming, Incoming::Batch(_)) {
+            self.waiting -= 1;
         }
+        Some(incoming)
+    }
+    pub fn publish(&mut self, batch: Batch) -> bool {
+        if self.tx.push(batch).is_err() {
+            return false;
+        }
+        self.published = self.published.wrapping_add(1);
+        self.reconcile = true;
+        self.observed = true;
+        true
+    }
+    pub fn settled_frame(&self) -> Option<u64> {
+        (self.progress.retired.load(Ordering::Acquire) == self.published)
+            .then(|| self.progress.frame.load(Ordering::Relaxed))
+    }
+    pub fn busy(&self) -> bool {
+        self.reconcile
     }
     pub fn refuse(&mut self, code: u8) {
         self.diagnostics.control_refused = self.diagnostics.control_refused.saturating_add(1);
         self.diagnostics.last_control = code;
     }
     pub fn disconnect(&mut self) {
-        self.staged.clear();
+        self.incoming.clear();
+        self.waiting = 0;
         self.sent = None;
     }
     pub fn project(&mut self, out: &mut shoop_rt_transport::carrier::Outbox, frame: u64) {
-        if !self.active && self.diagnostics.control_refused == 0 {
+        if !self.observed && self.diagnostics.control_refused == 0 {
             return;
         }
         let mut d = self.diagnostics;
@@ -203,24 +251,33 @@ impl Handler<EngineNode, LoopPlanner> for Render {
                 self.failures
                     .count
                     .store(count.saturating_add(1), Ordering::Relaxed);
-                continue;
-            }
-            for &command in batch.commands() {
-                if let Some((id, op)) = loop_command(command) {
-                    boundary
-                        .planner
-                        .apply_immediate(loop_id(id).expect("validated target"), op)
-                        .expect("preflighted command");
-                } else {
-                    let (node, _, op) = self.node(command).expect("validated target");
-                    boundary
-                        .processors
-                        .get_mut(node)
-                        .expect("validated processor")
-                        .apply_signal(op, boundary.graph)
-                        .expect("preflighted command");
+            } else {
+                for &command in batch.commands() {
+                    if let Some((id, op)) = loop_command(command) {
+                        boundary
+                            .planner
+                            .apply_immediate(loop_id(id).expect("validated target"), op)
+                            .expect("preflighted command");
+                    } else {
+                        let (node, _, op) = self.node(command).expect("validated target");
+                        boundary
+                            .processors
+                            .get_mut(node)
+                            .expect("validated processor")
+                            .apply_signal(op, boundary.graph)
+                            .expect("preflighted command");
+                    }
                 }
             }
+            self.progress
+                .frame
+                .store(boundary.frame.0, Ordering::Relaxed);
+            let retired = self
+                .progress
+                .retired
+                .load(Ordering::Relaxed)
+                .wrapping_add(1);
+            self.progress.retired.store(retired, Ordering::Release);
         }
     }
 }

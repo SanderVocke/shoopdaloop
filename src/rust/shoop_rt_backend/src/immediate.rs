@@ -21,17 +21,12 @@ pub enum ImmediateCommand {
     BusMute(BackendBusId, bool),
 }
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
-    /// Nonblocking, without request tracking. The first admitted group freezes
-    /// legacy mutations until the engine is reprepared. Acceptance is local;
+    /// Nonblocking, without request tracking. Control orders groups with legacy
+    /// mutations at settled boundaries. Acceptance is local;
     /// observe conditions in snapshots, never infer an individual execution receipt.
     pub fn immediate_group(&mut self, commands: &[ImmediateCommand]) -> Result<()> {
-        if self.link != Link::Ready
-            || self.requests.outstanding() != 0
-            || self.replacement.is_some()
-        {
-            return Err(anyhow!(
-                "immediate groups require a connected, settled session"
-            ));
+        if self.link != Link::Ready {
+            return Err(anyhow!("immediate groups require a connected session"));
         }
         let (graph, topology) = self
             .snapshots
@@ -81,6 +76,12 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
         let batch = Batch::new(graph, topology, &values[..commands.len()])
             .ok_or_else(|| anyhow!("invalid immediate group"))?;
+        self.send();
+        if !self.requests.outgoing.is_empty() {
+            return Err(anyhow!(
+                "earlier commands are waiting for transport capacity"
+            ));
+        }
         self.client
             .immediate(batch)
             .map_err(|e| anyhow!("immediate group locally refused: {e:?}"))

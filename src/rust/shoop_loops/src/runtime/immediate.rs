@@ -20,7 +20,7 @@ impl<S: Sample> LoopPlanner<S> {
                 let view = self.ledger.view(media)?;
                 if view
                     .midi
-                    .is_some_and(|source| source.snapshot.description.frames != 0)
+                    .is_some_and(|source| source.snapshot.description.bytes != 0)
                     || view.audio.is_none()
                     || row.dry_wet
                     || row.active.is_some()
