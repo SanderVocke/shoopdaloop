@@ -295,9 +295,10 @@ the synchronized playback case was delivered or tested.
   test-policy checks, and a warning-denying build of affected crates. Record focused
   timing observations without claiming a hard deadline guarantee from a smoke run.
   Commit and push on the agreed work branch, update the existing draft PR (or
-  establish a new branch/PR if the agreed destination changes), and inspect CI and
-  automated review. Address relevant failures/feedback until checks are green and
-  review concerns are resolved. Do not merge autonomously.
+  establish a new branch/PR if the agreed destination changes). Focused smoke
+  checks are the completion gate. Leave broader CI running in the background;
+  do not wait for the full matrix or expand testing to finish this experiment.
+  Do not merge autonomously.
 
 Stage 1 precedes transport work; stage 2 precedes execution integration; stage 4
 validates the connected result. Keep local testing focused rather than launching
@@ -412,9 +413,9 @@ Implementation and focused native smoke validation completed on 2026-11-14.
 
 The staged commits are published on `feat/rt-state-snapshots` in draft PR
 [#997](https://github.com/SanderVocke/shoopdaloop/pull/997), targeting
-`feat/backend-replacement`. CI and review status are tracked on that PR; external
-checks are a final publication gate, separate from the local smoke evidence above.
-No automatic merge is authorized.
+`feat/backend-replacement`. Per the user's scope clarification, broader CI is
+informational and is not a completion gate for this experiment. The focused smoke
+evidence above is the validation scope. No automatic merge is authorized.
 
 
 CI comparison exposed a bus-identity defect already present in the snapshot branch:
