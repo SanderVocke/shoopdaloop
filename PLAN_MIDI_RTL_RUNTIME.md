@@ -44,7 +44,7 @@ logical decisions for typed and encoded carriers.
 
 ## Stages
 
-- [ ] **1. Establish delivery and contract.** Create implementation branch, retain
+- [x] **1. Establish delivery and contract.** Create implementation branch, retain
   the design/investigation and this plan, and open a draft PR targeting the
   replacement branch. The PR checkbox is completed when its URL is recorded below.
 - [ ] **2. Short-message policy and state.** Introduce the fixed record and common
@@ -87,4 +87,22 @@ review until approved. No autonomous merge.
 - Investigation baseline: twelve focused existing MIDI tests passed; these confirm
   prior behavior, not this implementation. The source working tree initially
   contained only the two investigation/design Markdown files.
-- PR: pending creation.
+- PR: [#996](https://github.com/SanderVocke/shoopdaloop/pull/996), draft, targeting
+  `feat/backend-replacement`.
+- Added canonical 128-bit event records and exhaustive short-message/policy tests.
+  Production integration is pending; this is not yet a change in live policy.
+- Initial full native run: 3,241 passed, 11 skipped. New policy/block-store
+  foundation: seven focused tests passed, including independent edit oracles,
+  retained versions, dense pages, refusal, generation/scope checks and no-heap
+  guards. The warning-denying workspace build passed; full runtime suite now
+  passes 302 tests, including stepped state updates and prepared-position jobs.
+- The first block store uses a fixed sixteen-level radix directory over 64-bit
+  tile coordinates, pooled 32-record pages and incremental reference retirement.
+  Clipped versions are read-only until explicit normalization, preventing hidden
+  old records from reappearing when an edited view is extended.
+- Added a fixed-cell basic-state update FSM, canonical managed-state copying and
+  explicit position preparation/cancellation. Preparation pins an independent
+  version lease, excludes target-frame originals and preserves them for playback.
+- Foundation milestone is intentionally not wired into production yet. Next:
+  normalize clipped views before editing, adapt the production writer/resource
+  APIs to the new block store and integrate ready positions at loop activation.

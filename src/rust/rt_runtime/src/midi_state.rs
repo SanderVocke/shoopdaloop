@@ -5,6 +5,9 @@ use crate::{
     Error,
 };
 
+mod step;
+pub use step::{BasicUpdate, BASIC_STATE_CELLS};
+
 #[allow(dead_code)] // Ordered semantic store integration is staged separately.
 pub(crate) mod indexed;
 #[allow(dead_code)] // Interval-index writer integration is staged separately.

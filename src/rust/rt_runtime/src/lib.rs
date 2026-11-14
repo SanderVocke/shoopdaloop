@@ -54,6 +54,7 @@ pub mod graph;
 mod host_buffer;
 pub mod ids;
 pub mod midi;
+pub mod midi_runtime;
 pub mod midi_state;
 pub mod planner;
 pub mod processor;
