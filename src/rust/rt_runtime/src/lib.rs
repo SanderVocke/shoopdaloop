@@ -61,6 +61,7 @@ mod quantum;
 pub mod render;
 pub mod resource;
 pub mod schedule;
+pub mod snapshot;
 pub mod transport;
 
 pub use config::{Budgets, Config, PreparedConfig};
@@ -68,3 +69,5 @@ pub use error::Error;
 pub use ids::{Epoch, Frame, NodeId, PlannerId, ResourceId, Revision, Sequence};
 pub use quantum::Quantum;
 pub use render::RenderRuntime;
+
+pub mod immediate;

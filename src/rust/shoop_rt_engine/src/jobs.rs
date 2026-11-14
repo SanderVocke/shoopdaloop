@@ -383,6 +383,7 @@ impl ControlEndpoint {
                 job,
                 self.pool.bus(slot),
                 crate::NodeConfiguration {
+                    generation: bus.id.0.generation,
                     outputs: bus.channels,
                     bank: bus.outputs.active as u8,
                     gain: bus.gain,
@@ -1591,7 +1592,7 @@ impl ControlEndpoint {
                     EngineOp::Reset {
                         inputs: 0,
                         outputs: bus.channels,
-                        generation: 0,
+                        generation: bus.id.0.generation,
                     },
                 );
                 self.submit_job_op(
@@ -1601,7 +1602,7 @@ impl ControlEndpoint {
                     EngineOp::Reset {
                         inputs: 0,
                         outputs: bus.channels,
-                        generation: 0,
+                        generation: bus.id.0.generation,
                     },
                 );
             }
@@ -1694,6 +1695,7 @@ impl ControlEndpoint {
             core::mem::swap(&mut self.model, &mut self.next);
             return false;
         }
+        self.snapshots.confirmed = (self.graph_epoch.0, self.topology_epoch.0);
         for slot in 0..self.model.loops.len() {
             if self.model.loops[slot].map(|l| l.id) != self.next.loops[slot].map(|l| l.id) {
                 self.planned[slot] = [None; PLANNED];

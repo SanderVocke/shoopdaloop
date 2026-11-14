@@ -108,10 +108,29 @@ impl Outbox {
     pub fn dropped_telemetry(&self) -> u64 {
         self.dropped_telemetry
     }
+
+    /// Supersede only undelivered push snapshots, preserving other traffic.
+    pub fn discard_push_snapshots(&mut self) {
+        let before = self.telemetry.len();
+        self.telemetry
+            .retain(|message| !matches!(message, EngineMessage::Snapshot(_)));
+        self.dropped_telemetry = self
+            .dropped_telemetry
+            .saturating_add((before - self.telemetry.len()) as u64);
+    }
 }
 
 /// The engine side of a connection.
 pub trait Endpoint {
+    /// Refuse locally without consuming a complete message when staging is full.
+    fn try_deliver(
+        &mut self,
+        message: ClientMessage,
+        out: &mut Outbox,
+    ) -> Result<(), CarrierError> {
+        self.deliver(message, out);
+        Ok(())
+    }
     /// Handle one client message, queueing any answers.
     fn deliver(&mut self, message: ClientMessage, out: &mut Outbox);
     /// Queue messages the engine produced on its own: results that completed,
@@ -123,6 +142,10 @@ pub trait Endpoint {
 pub trait Carrier {
     fn send(&mut self, message: ClientMessage) -> Result<(), CarrierError>;
     fn receive(&mut self) -> Option<EngineMessage>;
+    /// Asynchronous carriers default to a bounded push stream.
+    fn default_snapshot_delivery(&self) -> shoop_rt_protocol::snapshot::SnapshotDelivery {
+        Default::default()
+    }
 }
 
 /// Direct calls into an endpoint owned by the carrier, without serialization.
@@ -147,9 +170,15 @@ impl<E: Endpoint> InProcess<E> {
 }
 
 impl<E: Endpoint> Carrier for InProcess<E> {
+    fn default_snapshot_delivery(&self) -> shoop_rt_protocol::snapshot::SnapshotDelivery {
+        if cfg!(target_arch = "wasm32") {
+            Default::default()
+        } else {
+            shoop_rt_protocol::snapshot::SnapshotDelivery::Pull
+        }
+    }
     fn send(&mut self, message: ClientMessage) -> Result<(), CarrierError> {
-        self.endpoint.deliver(message, &mut self.outbox);
-        Ok(())
+        self.endpoint.try_deliver(message, &mut self.outbox)
     }
     fn receive(&mut self) -> Option<EngineMessage> {
         if self.outbox.is_empty() {
@@ -216,6 +245,7 @@ impl<P: RecordPort> Carrier for RecordClient<P> {
 /// The engine side of a record carrier: decodes client records into an endpoint and
 /// encodes its output. Pumping does no allocation.
 pub struct RecordServer<E, P> {
+    pending: Option<ClientMessage>,
     endpoint: E,
     failure: Option<CarrierError>,
     port: P,
@@ -226,6 +256,7 @@ pub struct RecordServer<E, P> {
 impl<E: Endpoint, P: RecordPort> RecordServer<E, P> {
     pub fn new(endpoint: E, port: P, outbox: Outbox) -> Self {
         Self {
+            pending: None,
             endpoint,
             failure: None,
             port,
@@ -246,25 +277,67 @@ impl<E: Endpoint, P: RecordPort> RecordServer<E, P> {
         &mut self.endpoint
     }
 
+    fn fail(&mut self, error: CarrierError) {
+        self.pending = None;
+        self.failure = Some(error);
+        self.endpoint
+            .deliver(ClientMessage::Goodbye, &mut self.outbox);
+    }
+
     /// Deliver up to `max_records` received records, poll the endpoint and post its
     /// output until the port is full.
     pub fn pump(&mut self, max_records: usize) {
+        if self.failure.is_some() {
+            return;
+        }
+        if let Some(error) = self.port.failure() {
+            self.fail(error);
+            return;
+        }
         for _ in 0..max_records {
+            if let Some(message) = self.pending.take() {
+                match self.endpoint.try_deliver(message, &mut self.outbox) {
+                    Ok(()) => continue,
+                    Err(CarrierError::Full) => {
+                        self.pending = Some(message);
+                        break;
+                    }
+                    Err(error) => {
+                        self.fail(error);
+                        break;
+                    }
+                }
+            }
             let Some(len) = self.port.take(&mut self.buf) else {
-                self.failure = self.failure.or_else(|| self.port.failure());
+                if let Some(error) = self.port.failure() {
+                    self.fail(error);
+                }
                 break;
             };
             match codec::decode_client(&self.buf[..len]) {
-                Ok(message) => self.endpoint.deliver(message, &mut self.outbox),
+                Ok(message) => match self.endpoint.try_deliver(message, &mut self.outbox) {
+                    Ok(()) => {}
+                    Err(CarrierError::Full) => {
+                        self.pending = Some(message);
+                        break;
+                    }
+                    Err(error) => {
+                        self.fail(error);
+                        break;
+                    }
+                },
                 Err(error) => {
-                    self.failure = Some(CarrierError::Codec(error));
+                    self.fail(CarrierError::Codec(error));
                     let _ = self
                         .outbox
                         .push(EngineMessage::Disconnected(DisconnectReason::ProtocolError));
+                    break;
                 }
             }
         }
-        self.endpoint.poll(&mut self.outbox);
+        if self.failure.is_none() {
+            self.endpoint.poll(&mut self.outbox);
+        }
         while let Some(message) = self.outbox.pop() {
             let len = match codec::encode_engine(&message, &mut self.buf) {
                 Ok(len) => len,
@@ -272,7 +345,8 @@ impl<E: Endpoint, P: RecordPort> RecordServer<E, P> {
             };
             if let Err(error) = self.port.post_on_lane(&self.buf[..len], message.lane()) {
                 if error != CarrierError::Full {
-                    self.failure = Some(error);
+                    self.fail(error);
+                    break;
                 }
                 self.outbox.unpop(message);
                 break;

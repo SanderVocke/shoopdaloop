@@ -33,8 +33,10 @@ pub use shared::{
     CandidateId, CandidateStatus, HistoryId, HistorySettings, HistoryStatus, LiveWriterId,
     SharedCapacity, SharedSettings, SharedTake, SharedWork,
 };
+mod immediate;
 mod node_pairs;
 mod planner;
+pub use immediate::Immediate;
 mod processor;
 mod topology;
 use crate::topology::staging::{Progress, StageId, Status};
@@ -1159,6 +1161,23 @@ impl<S: Sample> LoopPlanner<S> {
             return Err(Error::InvalidShape);
         }
         Ok(())
+    }
+    /// Borrow the settled resolver from the render owner; this is not a shared control view.
+    pub fn display_channels(&self, id: LoopId) -> usize {
+        self.row(id).map_or(0, |row| {
+            if self
+                .resolver
+                .state(id)
+                .is_ok_and(|state| state.mode.dry_playback())
+            {
+                row.binding.auxiliary_channels
+            } else {
+                row.binding.channels
+            }
+        })
+    }
+    pub fn resolver(&self) -> &Resolver {
+        &self.resolver
     }
     pub fn observer(&self) -> &dyn BoundaryObserver {
         &*self.observer

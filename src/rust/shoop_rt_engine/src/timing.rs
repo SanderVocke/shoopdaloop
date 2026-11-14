@@ -35,12 +35,10 @@ pub(crate) fn state(cut: Cut) -> TimingState {
 }
 impl ControlEndpoint {
     pub(crate) fn timing_pending(&self) -> bool {
-        self.pending.iter().flatten().any(|pending| {
-            matches!(
-                pending.purpose,
-                Purpose::Timing { .. } | Purpose::TimingSnapshot(_)
-            )
-        })
+        self.pending
+            .iter()
+            .flatten()
+            .any(|pending| matches!(pending.purpose, Purpose::Timing { .. }))
     }
     pub(crate) fn current_timing(&self, entry: crate::model::Loop) -> Option<TimingState> {
         if entry.program.is_some() {
@@ -48,71 +46,15 @@ impl ControlEndpoint {
         }
         let cells = &self.cells.loops[entry.id.0.index as usize];
         if cells.generation.load(Ordering::Acquire) == entry.id.0.generation
-            && cells.content_revision.load(Ordering::Acquire) != entry.timing.content_revision
+            && (cells.content_revision.load(Ordering::Acquire) != entry.timing.content_revision
+                || cells.timing_revision.load(Ordering::Acquire) != entry.timing.revision)
         {
             return None;
         }
         Some(entry.timing)
     }
-    pub(crate) fn advance_timing(&mut self) {
-        if !self.connected || !self.room(1) {
-            return;
-        }
-        for entry in self.model.loops.iter().flatten().copied() {
-            if entry.program.is_some()
-                || self.current_timing(entry).is_some()
-                || self
-                    .pending
-                    .iter()
-                    .flatten()
-                    .any(|pending| pending.purpose == Purpose::TimingSnapshot(entry.id))
-            {
-                continue;
-            }
-            let _ = self.submit_loop(
-                self.at(),
-                Operation::State {
-                    target: loop_id(entry.id),
-                },
-                Purpose::TimingSnapshot(entry.id),
-            );
-            return;
-        }
-    }
-    pub(crate) fn timing_snapshot_result(&mut self, target: LoopSlotId, result: RuntimeResult) {
-        match result {
-            RuntimeResult::Completion(_, command, retired) => {
-                self.reclaim(command);
-                self.retire(retired);
-            }
-            RuntimeResult::Execution(execution) => {
-                let Some(Reply::State(cut)) = execution.operation_result else {
-                    return;
-                };
-                if cut.state.id != loop_id(target) {
-                    return;
-                }
-                let timing = state(cut);
-                for model in [&mut self.model, &mut self.next] {
-                    if let Some(entry) = model
-                        .loops
-                        .get_mut(target.0.index as usize)
-                        .and_then(Option::as_mut)
-                        .filter(|entry| {
-                            entry.id == target
-                                && entry.timing.revision <= timing.revision
-                                && entry.timing.content_revision <= timing.content_revision
-                        })
-                    {
-                        entry.timing = timing;
-                    }
-                }
-                self.dirty[target.0.index as usize] = true;
-            }
-        }
-    }
     pub(crate) fn project_timing(&mut self, out: &mut shoop_rt_transport::carrier::Outbox) {
-        if !self.connected || self.resync.is_some() {
+        if !self.connected || self.resync.is_some() || self.snapshots.enabled {
             return;
         }
         for slot in 0..self.model.loops.len() {

@@ -117,6 +117,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         {
             return Ok(self.capture_pending(0, self.mirror.loops.len()));
         }
+        // Reliable results may arrive before their corresponding state publication.
+        if !self.telemetry_fresh {
+            return Ok(self.capture_pending(0, self.mirror.loops.len()));
+        }
         if self.mirror.loops.iter().any(|(id, entry)| {
             only.is_none_or(|target| target == *id)
                 && (entry.view.recording_armed

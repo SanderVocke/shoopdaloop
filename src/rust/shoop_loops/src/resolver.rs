@@ -120,6 +120,7 @@ pub struct Resolver {
     states: Vec<Option<State>>,
     retimed: Vec<Option<Transition>>,
     retimed_pending: bool,
+    immediate_discontinuities: Vec<bool>,
     records: Vec<Option<Record>>,
     loop_generations: Vec<u32>,
     request_generations: Vec<u32>,
@@ -146,7 +147,7 @@ pub(crate) fn validate_storage(limits: Limits) -> Result<(), Error> {
                 + size_of::<u32>()
                 + size_of::<ProgramAction>()
                 + size_of::<Option<Transition>>()
-                + 4,
+                + 5,
         ),
         (
             limits.pending_requests,
@@ -223,6 +224,7 @@ impl Resolver {
             states,
             retimed: prepared(limits.loop_slots, None),
             retimed_pending: false,
+            immediate_discontinuities: prepared(limits.loop_slots, false),
             records: prepared(limits.pending_requests, None),
             loop_generations,
             request_generations: prepared(limits.pending_requests, 1),
@@ -293,6 +295,42 @@ impl Resolver {
         let program = self.topology.program(id).ok_or(Error::InvalidId)?;
         Ok(program_needs_entry_at(program, self.state(id)?, frame))
     }
+    /// Check a direct, unscheduled transition before a whole group mutates state.
+    pub fn validate_immediate_playback(&self, id: LoopId) -> Result<(), Error> {
+        let state = self.state(id)?;
+        if self.quiescent
+            || self.committed
+            || self.preview.is_some()
+            || self.pending_transitions().next().is_some()
+            || self.program_change.is_some()
+            || self.topology.node(id)?.kind != LoopKind::Primitive
+            || !matches!(state.mode, Mode::Stopped | Mode::Playing)
+            || state.content_length == 0
+            || state.repeat_sync
+        {
+            return Err(Error::InvalidState);
+        }
+        Ok(())
+    }
+    /// Apply only after all members of an immediate group have passed preflight.
+    pub fn immediate_playback(&mut self, id: LoopId, start: bool) -> Result<(), Error> {
+        self.validate_immediate_playback(id)?;
+        let operation = if start {
+            Transition::Play {
+                position: 0,
+                retrigger: true,
+            }
+        } else {
+            Transition::Stop
+        };
+        let state = self.states[id.slot() as usize]
+            .as_mut()
+            .expect("validated state");
+        let discontinuity = transition(state, operation)?;
+        self.immediate_discontinuities[id.slot() as usize] |= discontinuity;
+        Ok(())
+    }
+
     pub fn set_repeat_sync(&mut self, id: LoopId, enabled: bool) -> Result<(), Error> {
         if self.quiescent || self.committed {
             return Err(Error::InvalidState);
@@ -707,7 +745,9 @@ impl Resolver {
         scratch.program_actions.fill(ProgramAction::None);
         scratch.protected.fill(None);
         scratch.origins.fill(None);
-        scratch.playback_discontinuities.fill(false);
+        scratch
+            .playback_discontinuities
+            .copy_from_slice(&self.immediate_discontinuities);
         scratch.pulses.fill(false);
         scratch.delivered.fill(false);
         scratch.masked.fill(false);
@@ -924,6 +964,7 @@ impl Resolver {
         core::mem::swap(&mut self.records, &mut self.scratch.records);
         core::mem::swap(&mut self.events, &mut self.scratch.events);
         self.dropped_events = self.dropped_events.saturating_add(self.scratch.dropped);
+        self.immediate_discontinuities.fill(false);
         self.committed = true;
         if self.retimed_pending {
             self.retimed.fill(None);

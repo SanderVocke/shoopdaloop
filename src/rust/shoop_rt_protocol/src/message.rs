@@ -9,6 +9,7 @@ pub use shoop_transport::Lane;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ClientMessage {
+    Immediate(crate::immediate::Batch),
     Hello {
         version: u16,
     },
@@ -18,6 +19,11 @@ pub enum ClientMessage {
     },
     /// Ask for a full-state record stream.
     Resync,
+    ObserveSnapshots(bool),
+    ConfigureSnapshots(crate::snapshot::SnapshotDelivery),
+    RequestSnapshot {
+        after: u32,
+    },
     Bulk(BulkRead),
     Goodbye,
 }
@@ -31,6 +37,16 @@ pub enum DisconnectReason {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum EngineMessage {
+    Snapshot(crate::snapshot::Chunk),
+    SnapshotReply(crate::snapshot::Chunk),
+    /// Ends a pull response, including when no new snapshot is available.
+    SnapshotReady {
+        sequence: u32,
+    },
+    SnapshotConfiguration {
+        graph: u64,
+        topology: u64,
+    },
     Profiling(profiling_protocol::Record),
     Welcome {
         version: u16,
@@ -66,7 +82,7 @@ impl EngineMessage {
     pub fn lane(&self) -> Lane {
         match self {
             Self::Profiling(_) => Lane::Profiling,
-            Self::Telemetry(_) => Lane::Telemetry,
+            Self::Telemetry(_) | Self::Snapshot(_) => Lane::Telemetry,
             Self::Bulk(_) => Lane::Bulk,
             _ => Lane::Reliable,
         }

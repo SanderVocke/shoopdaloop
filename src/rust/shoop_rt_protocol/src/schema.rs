@@ -489,6 +489,7 @@ pub struct Limits {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Telemetry {
+    Immediate(crate::immediate::Diagnostics),
     Memory(crate::MemoryReport),
     Composite {
         loop_id: LoopSlotId,
