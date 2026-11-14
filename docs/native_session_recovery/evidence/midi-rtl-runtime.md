@@ -3,9 +3,9 @@
 Implementation branch: `feat/midi-rtl-runtime`.
 Base: `feat/backend-replacement` at `bfe73c9a`.
 Delivery: [PR #996](https://github.com/SanderVocke/shoopdaloop/pull/996).
+Verified implementation: [`24319e72`](https://github.com/SanderVocke/shoopdaloop/commit/24319e7273bce270fd302c1d6057d3aafe9d9c0c).
 
-Status: integrated implementation; browser/application and final CI acceptance
-are still being completed. This record does not yet close P11.
+Status: accepted; P11 complete within the user-approved basic-MIDI scope.
 
 ## Scope and intentional differences
 
@@ -22,21 +22,23 @@ and defined reset behavior. Initial state excludes the target frame; its origina
 play once after restoration. Synthesizer voices and device-specific state are not
 reconstructed.
 
-Public editable MIDI uses immutable 32-record pages and a sixteen-level radix
+Production editable MIDI uses immutable 32-record pages, a sixteen-level radix
 directory, advancing writer frontiers and explicitly granted position jobs. The
-removed packet-slab/semantic-tree private implementations are superseded by the
-new kernels and independent oracles. Existing file/upload byte encodings remain
-adapter formats. The standalone legacy shared-MIDI utility remains tested; normal
-application histories and continuous writers select the new block store.
+packet-slab/semantic-tree private implementations have been removed. All normal
+application histories and continuous writers use the new store. Existing
+file/upload byte encodings and the independently tested standalone shared-MIDI
+utility retain their separate adapter/utility roles.
 
-New imports refuse unsupported documents before activation. Only prefix-version-0
-null-selector artifacts may normalize, with a version/count report. Timeline
-packets are never silently removed. This narrows compatibility deliberately;
-SMF's separate representation/timing loss report is retained.
+Imports refuse unsupported documents before activation. Only prefix-version-0
+null-selector artifacts may normalize, with a version/count report surfaced in
+the completed native/browser import result. Timeline packets are never silently
+removed, including unsupported packets followed by a reset. Exact files preserve
+supported bytes/order and canonical state; SMF's separate timing/representation
+loss report remains applicable.
 
 ## Native and portable validation
 
-On the provisioned Linux environment, Rust/Cargo 1.100 and nextest 0.9.116:
+The provisioned Linux environment uses Rust/Cargo 1.100 and nextest 0.9.116:
 
 ```sh
 SHOOP_ALLOW_MISSING_BACKENDS=1 CARGO_INCREMENTAL=0 cargo nextest run --workspace \
@@ -47,70 +49,47 @@ python3 scripts/check_shoop_test_usage.py
 python3 scripts/check_dependency_boundaries.py
 ```
 
-The integrated full native run passed **3,242 tests, 11 skipped**, in 495 seconds.
-The pre-implementation baseline passed 3,241 tests, 11 skipped. Earlier policy
-fixture failures were changed to supported ordinary MIDI where packet size or
-queue pressure was the subject; explicit unsupported-message tests retain the
-new refusal expectations. Earlier process/UI timeouts overlapped Wasm compilation;
-all fifteen isolated reruns and the isolated complete suite passed.
+The baseline passed **3,241 tests, 11 skipped**. The isolated refreshed complete
+native suite passed **3,244 tests, 11 skipped**, in 344 seconds. Final native
+scripting/adapter follow-up passed **91 tests**. Existing policy fixtures use
+ordinary MIDI when their subject is queue density or packet size; dedicated tests
+assert the intentional unsupported-message refusals. Obsolete private semantic
+index tests were replaced with independent event-list/frontier oracles.
 
-The warning-denying workspace build, test-attribute policy and dependency-boundary
-audit passed. The audit covers Linux, Windows, macOS and Wasm dependency graphs;
-it is not a cross-platform execution claim. The subsequent focused runtime,
-loop/engine, codec, native and worklet run passed **757 tests, one skipped**,
-including final state-work accounting and the worker-envelope migration regression.
-The final ARM USB-enabled check and both `zynq_probe` example tests passed.
+The warning-denying workspace build, formatting, test-attribute policy and
+dependency audit passed. The latter covers Linux, Windows, macOS and Wasm graphs;
+it is distinct from executing on those platforms. The exact native feature matrix
+passes: JACK, CPAL, both, neither and system-preview builds, plus the corresponding
+native-host/host library tests. The direct adapter's recovery storage shares its
+feature gate.
 
-Acceptance follow-up fixed four issues exposed by platform jobs: prepared state
-cache metadata no longer copies four large state banks through the call stack;
-JACK waits for acknowledged reset delivery and completed feedback cycles before
-deactivation; standalone manifests include the common MIDI protocol dependency;
-and the measurement harness accounts for fixed record pages and actual render
-work. A one-MiB-stack socket workflow and all eleven strict real-JACK tests passed.
-The release shared-media measurement passed all twenty quantum/partition cases.
-Both socket/shared-memory input, persistence and composite canaries passed,
-including exact save/reload, client absence and resumed editing. The standalone
-loop fixture now checks mixed two-/three-byte basic messages; all sixty tests and
-both independent native replay harnesses passed. Its fixed transport buffer uses
-the declared upload prefix and returns the complete prepared buffer.
+Additional local acceptance passed:
 
-The next acceptance pass also moved each media owner's initial/frontier values
-into prepared banks. Descriptors now have a compile-time 128-byte ceiling; nested
-Grab/writer ownership no longer copies full states. All 708 focused tests passed,
-the previously crashing real-JACK application input/persistence workflow passed,
-and the socket application workflow passed with a one-MiB process stack. Firmware
-diagnosis identified its 256-KiB task-stack overflow as RTOS bookkeeping damage;
-the explicit control/render budget is now 512 KiB inside the existing RTOS heap.
-Zeroed media arenas touch backing pages instead of redundantly writing every
-byte again during preparation. The warning-denying workspace build passed.
+- All eleven strict real-JACK tests, fifty repeated shutdown cases and twenty
+  routing/retirement/shutdown repetitions. Reset delivery is retried in a silent
+  callback after cleanup and after shutdown xruns, with completed graph cycles
+  required before deactivation. Ordinary xruns do not starve live MIDI.
+- Both socket/shared-memory input, persistence and composite application canaries,
+  exact save/reload, resumed editing and client absence. The socket workflow also
+  passes with a one-MiB process stack.
+- All twenty release shared-media quantum/partition measurement cases, including
+  fixed-record memory accounting and finite render work.
+- Sixty standalone loop-host tests and both independent native replay harnesses.
+- All seventeen runtime examples, the buffered MIDI example and the draft MIDI
+  loop example, with documentation links and source excerpts checked.
+- ARM USB-enabled build, both firmware probe example tests and the portable USB
+  bridge under address/undefined-behavior sanitizers.
 
-Repeated strict shutdown runs exposed loss of the reset buffer when the callback
-performing engine cleanup missed JACK's graph deadline. JACK now requests recovery
-again in the next silent callback and on shutdown xruns; shutdown waits for completed graph
-cycles after the most recent reset. Fifty repeated real-JACK shutdown runs passed,
-and a guarded unit regression verifies retry after an earlier acknowledged reset.
-The subsequent native-adapter suite passed all 48 tests.
-
-The refreshed complete native suite passed **3,244 tests, 11 skipped**, in 344
-seconds. The ARM USB-enabled check, sixty standalone loop-host tests, both native
-replay harnesses and four-target dependency audits passed again. The rebuilt
-worklet/codec contracts and complete hosted Chromium/Web MIDI workflow passed
-with zero xruns. All seventeen runtime examples, the buffered MIDI example and
-the draft MIDI loop example execute successfully. The latter now uses the current
-planner API and reserves enough pages for a complete worst-case incoming tick
-beside retained content. Its documented four-frame duration includes silence.
-Native Lua device ports now apply the common policy; the script-command envelope
-remains separate from supported device-message length. The final 91-test native
-scripting/adapter follow-up and twenty strict JACK routing/retirement/shutdown
-repetitions passed. Shutdown xrun recovery preserves ordinary live MIDI progress.
-The exact native driver feature matrix also passes: JACK, CPAL, both, neither,
-and system-preview-only builds, with their library tests. JACK-only recovery
-fields and allocations are excluded when the direct adapter is absent.
+Platform acceptance moved initial/frontier/cache values into prepared state banks.
+Media descriptors have a compile-time 128-byte ceiling; nested writer/Grab
+ownership no longer copies full state banks through the stack. Firmware control
+and render tasks each reserve 512 KiB inside the existing RTOS heap. Prepared
+zeroed media arenas touch backing pages without a second full byte-by-byte fill.
 
 Key executable evidence:
 
 - `rt_runtime/tests/midi_short.rs`: exhaustive status/length/controller policy,
-  canonical sixteen-byte records, legacy-prefix normalization and no-heap guards.
+  canonical sixteen-byte records, legacy-prefix migration and no-heap guards.
 - `midi_state_steps.rs`, `midi_state.rs`, `midi_restore_state.rs` and loop
   restoration tests: stepped versus sequential state, notes/pedals/banks/modes,
   known values, cleanup/restoration and output refusal.
@@ -120,56 +99,83 @@ Key executable evidence:
 - Resource `indexed_midi` tests: pinned Grab across eviction/cancellation, private
   wrapped patches, old exports, shifted raw windows, density/byte/owner pressure,
   long suffixes, advancing frontiers and silent-history copy avoidance.
-- Loop/engine input, timing and workflow tests: public scheduled/immediate flows,
-  nonquantized raw windows, preplay, simultaneous writers, mixed complete cuts,
-  lost-input fencing and continued unrelated audio. Typed and encoded production
-  routes retain their existing application oracles.
+- Loop/engine workflows: scheduled/immediate actions, raw windows, preplay,
+  simultaneous writers, complete paired cuts, input-loss fencing and unrelated
+  audio progress. Typed/encoded routes retain their application oracles.
 - Native bridge/direct-host tests: whole-batch refusal, reset-head retries, stale
-  producer epochs, accepted input loss and output density beyond 1,024 messages.
-- Codec tests: atomic unsupported-content refusal, exact basic-MIDI state/order,
-  reported null-selector migration and bounded worker envelope transfer.
+  producer epochs, input loss, recovery after acknowledged reset, and output
+  density beyond 1,024 messages.
+- Codec tests: atomic unsupported-content refusal, exact state/order, reported
+  prefix migration and bounded worker-envelope transfer.
 
-## Browser and firmware boundaries
+## Actual browser and firmware boundaries
 
-The frontend, worklet and codec worker build for Wasm. The actual module/processor
-artifact contract passed, including split framing, timestamped MIDI, bounded
-JavaScript ingress, explicit transport loss, profiling, shutdown and no module
-memory growth after preparation.
+The rebuilt worklet/codec artifact contract and hosted Chromium/Web MIDI workflow
+pass with zero xruns. Checks include actual device ingress, exact note
+recording/playback, output-send failure/reset acknowledgement, unsupported-message
+refusal, bounded JavaScript ingress loss, endpoint reconnect, files, input edits
+and all three hosted processor families. The active browser CI workflow enables
+these MIDI checks. Worklet framing, profiling, shutdown and no module-memory
+growth after preparation are covered by its separate artifact contract.
 
-The default unoptimized browser workflow reached its five-minute overall limit
-while loading the last of three hosted processor families. It continued advancing;
-no per-step failure, render-memory growth, command overflow or discontinuity was
-reported. A local `WORKFLOW_TIMEOUT_MS` override leaves the core CI deadline and per-step checks unchanged. The combined
-composite workflow has a separate seven-minute overall allowance: earlier release
-CI exhausted five minutes during the final resave after the composite checks had
-passed. The complete hosted Chromium workflow subsequently passed with zero
-xruns, including all three hosted processor families and actual device MIDI
-ingress, exact note recording/playback, output-send failure/reset acknowledgement,
-unsupported-message refusal, bounded ingress loss and endpoint recovery. The
-active workflow now exercises these checks in browser CI. The final state-bank
-change still requires refreshed browser and platform acceptance.
+The initial unoptimized local browser attempt exhausted its overall five-minute
+deadline while loading the last processor; the completed local run used the
+existing `WORKFLOW_TIMEOUT_MS` override. Per-step checks and the core CI deadline
+were unchanged. The combined composite workflow has a seven-minute overall
+allowance. The previously agreed web-debug workflow qualification remains in
+place; release CI runs the actual browser workflows.
 
-The firmware USB adapter distinguishes recovery epochs from recorded messages,
-establishes a new baseline on device-generation changes and preflights its fixed
-256-message transport queue. Capacity refusal and device backpressure invoke its
-existing acknowledged reset FSM. Generic C USB decoder/packetizer vectors retain
-their independent transport scope; engine policy rejects unsupported messages.
-The portable bridge passed address/undefined-behavior sanitizers, and the ARM
-USB-enabled check passed. Actual guest/board CI and physical qualification remain
-distinct evidence.
+Firmware USB distinguishes loss epochs from recorded messages, establishes a new
+baseline on device-generation changes and preflights its fixed 256-message output
+queue. Backpressure uses an acknowledged reset FSM. The generic C USB
+decoder/packetizer keeps its independent transport vectors; engine ingress applies
+the common basic-message classifier. Firmware CI exercises the actual FreeRTOS
+guest, including USB, network deployment and signed SD/A-B recovery under the
+QEMU and Zedboard memory profiles. This is emulation evidence, not new physical
+board qualification.
+
+## Platform CI and review
+
+All implementation-commit workflows passed:
+
+- [Build and Test ShoopDaLoop](https://github.com/SanderVocke/shoopdaloop/actions/runs/43561242658):
+  Linux debug/release, Windows debug/release, macOS ARM debug/release, WebAssembly
+  debug/release, native JACK acceptance and feature matrix, full native coverage,
+  fixed shared media, bare-metal runtime and all desktop process checks.
+- [Firmware](https://github.com/SanderVocke/shoopdaloop/actions/runs/43561242640):
+  firmware, TinyUSB MIDI, QEMU/Zedboard profiles, network deployment and SD recovery.
+- [CodeQL](https://github.com/SanderVocke/shoopdaloop/actions/runs/43561242627):
+  Rust, C/C++, JavaScript/TypeScript and Python.
+- [Hosted processors](https://github.com/SanderVocke/shoopdaloop/actions/runs/43561242676):
+  all four feature combinations, actual worklet DSP and Miri ownership checks.
+- [Documentation](https://github.com/SanderVocke/shoopdaloop/actions/runs/43561242680).
+
+The implementation-commit Linux debug job passed the complete native workspace:
+3,244 tests passed, 11 skipped, in 317 seconds.
+
+The scheduled/manual nightly-only matrix is skipped for pull requests by its
+existing condition. The automated coverage report records 91.58% patch coverage,
+above the configured 80% floor, and 89.40% project coverage within the existing
+one-percentage-point tolerance. There are no unresolved review requests. The
+configured coverage gates remain unchanged.
+
+These runs test the verified implementation above. The subsequent P11 closure
+commit changes only Markdown records. No merge is authorized.
 
 ## Resource and hardware limits
 
-Event density is retained; memory profiles now name record pages, directories,
-leases, state banks and event ownership separately. Desktop sizing conservatively
-reserves a page per event credit for sparse layouts. Dense pages use fewer pages.
-Preparation, retained exports and pending retirement all count against finite
-pools. Cold replay is linear in the prefix; immediate software operations obtain
-the complete checked grant before musical mutation. This is not a constant-time
-seek or a physical-device deadline certification.
+Event density is retained; profiles name record pages, directories, leases, state
+banks and event ownership separately. Desktop sizing conservatively reserves a
+page per event credit for sparse layouts; dense pages use fewer pages. Retained
+exports, edit preparation and pending retirement all count against finite pools.
 
-Work counters include directory/record operations, state-cell updates/copies and
-retirement, with explicit saturation reporting. The logical FSMs and record
-encoding are the future RTL reference. No RTL implementation, RAM-port timing
-model, FPGA clock/sample-rate guarantee or new physical-board qualification is
-claimed by this Rust implementation.
+Cold replay is linear in prefix events. Immediate operations obtain a complete
+checked finite grant before musical mutation; background preparation advances by
+explicit grants. This is not a constant-time seek or a physical-device deadline
+certification. Work counters expose directory/record operations, state-cell
+updates/copies and retirement, with explicit saturation reporting.
+
+The logical FSMs and fixed-record encoding form the future RTL reference. The
+native typed state bank is not the proposed packed hardware layout. No RTL, RAM
+port arbiter, FPGA clock/sample-rate guarantee or physical-board qualification is
+delivered here; the design's timing/port feasibility gate precedes those claims.

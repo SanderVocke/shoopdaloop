@@ -5,8 +5,9 @@ The core slice is implemented and validated;
 [acceptance evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/session-persistence.md) records its scope.
 The [feature backlog](feature-parity.md#missing-features) assigns remaining
 save/load/store/export requirements to Carla (P07), latency compensation (P09),
-take alignment (P10), duplication/MIDI state (P11) and session scripts/resources
-(P16). Historical P01/P02 are no longer standalone backlog items.
+and take alignment (P10). Basic MIDI/duplication (P11) and client-owned session
+scripts/resources (P16) are complete within their recorded scopes. Historical
+P01/P02 are no longer standalone backlog items.
 
 ## Shared audio reconciliation
 

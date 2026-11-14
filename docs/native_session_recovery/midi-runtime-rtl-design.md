@@ -1,12 +1,13 @@
 # A MIDI runtime for Rust and RTL
 
-Status: Rust implementation integrated; final acceptance in progress.
+Status: Rust implementation accepted; P11 complete within the basic-MIDI scope.
 
 Written 2026-11-13 against `feat/backend-replacement` at `bfe73c9a`.
 The design was written against the revision above; section 18 records its Rust
 implementation. This document supersedes the broad MIDI-history proposal in the
-[P11 investigation](../investigations/p11-midi-state.md). It does not change the
-feature ledger until the implementation's acceptance evidence is complete.
+[P11 investigation](../investigations/p11-midi-state.md). The
+[acceptance evidence](evidence/midi-rtl-runtime.md) records the verified
+implementation, platform CI, intentional exclusions and hardware limits.
 
 ## 1. Objective and decisions
 

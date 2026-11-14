@@ -63,7 +63,7 @@ logical decisions for typed and encoded carriers.
   adapters, host ingress/egress and codec/file paths. Retire superseded production
   machinery. Verify UI/Lua, duplication, save/load/store/export, accepted-operation
   recovery and both typed/encoded paths, preserving unrelated audio behavior.
-- [ ] **6. End-to-end acceptance and delivery.** Run full required native gates,
+- [x] **6. End-to-end acceptance and delivery.** Run full required native gates,
   actual AudioWorklet workflows, trace/resource/work checks and platform CI.
   Resolve automated review; update contracts, P11 evidence and the final PR
   description; mark ready only when the full goal is satisfied.
@@ -82,132 +82,43 @@ criteria without explicit user approval. Push the implementation branch, maintai
 the PR against `feat/backend-replacement`, work CI to green and address automated
 review until approved. No autonomous merge.
 
-## Evidence and progress
+## Delivery and acceptance
 
-- Investigation baseline: twelve focused existing MIDI tests passed; these confirm
-  prior behavior, not this implementation. The source working tree initially
-  contained only the two investigation/design Markdown files.
-- PR: [#996](https://github.com/SanderVocke/shoopdaloop/pull/996), draft, targeting
-  `feat/backend-replacement`.
-- Added canonical 128-bit event records and exhaustive short-message/policy tests.
-  Production ingress, resources, host bridges and codec paths now share this policy.
-- Initial full native run: 3,241 passed, 11 skipped. New policy/block-store
-  foundation: seven focused tests passed, including independent edit oracles,
-  retained versions, dense pages, refusal, generation/scope checks and no-heap
-  guards. The warning-denying workspace build passed; full runtime suite now
-  passes 302 tests, including stepped state updates and prepared-position jobs.
-- The first block store uses a fixed sixteen-level radix directory over 64-bit
-  tile coordinates, pooled 32-record pages and incremental reference retirement.
-  Clipped versions are read-only until explicit normalization, preventing hidden
-  old records from reappearing when an edited view is extended.
-- Added a fixed-cell basic-state update FSM, canonical managed-state copying and
-  explicit position preparation/cancellation. Preparation pins an independent
-  version lease, excludes target-frame originals and preserves them for playback.
-- Production now uses normalized immutable block roots, explicit replay jobs and advancing writer frontiers. All live-source configurations select the block store, including automatically sized compatibility settings.
-- Added append-only insertion and explicit clipped-view normalization. Normalization
-  prunes complete radix branches and rebuilds at most two boundary tiles, using a
-  fixed-depth iterative walker. Its tests prove later extension cannot resurrect
-  hidden input events. Targeted block/position tests pass.
-- Added a fixed-pool writer FSM with separate current/pending state banks and roots.
-  Intervals publish only after every declared span is staged; abort preserves the
-  last complete cut and freezes continuation. Tests cover an early replacement
-  with a retained long suffix, held-pedal state, old snapshots and a refused
-  second wrap span. Sparse append skips empty tile coordinates. The full runtime
-  suite passes 305 tests and the warning-denying workspace build passes.
+Completed 2026-11-14. [PR #996](https://github.com/SanderVocke/shoopdaloop/pull/996)
+targets `feat/backend-replacement`; no merge is authorized. P11 is complete under
+the user-approved basic-MIDI scope. The implementation, deliberate exclusions,
+resource limits, commands and platform results are recorded in the
+[acceptance evidence](docs/native_session_recovery/evidence/midi-rtl-runtime.md).
 
-### Integrated implementation and outstanding acceptance
+The verified implementation is `24319e7273bce270fd302c1d6057d3aafe9d9c0c`.
+The closure commit changes only Markdown records. Delivery includes:
 
-- Replaced the production resource Core and history with fixed inline records,
-  sixteen-level directories and normalized immutable views. Removed the superseded
-  packet-slab/semantic-index implementations. Imported files retain their existing
-  streaming wire format and become fixed records before live editing.
-- Added pinned, asynchronous Grab preparation plus an explicit complete replay
-  grant before immediate input transactions enter the resolver. Playback entries,
-  window/preplay changes and writer jumps use prepared state. Entry banks survive
-  prefix-preserving edits; arbitrary readers never drive replay implicitly.
-- Added bounded private block patches with sparse traversal, wrap handling,
-  cancellation and atomic candidate publication. No suffix-state index is rebuilt.
-- New `BlockLimits` names record pages, directories, versions, media banks, import
-  bases and owner credits. State banks are sized by actual writer/job capacity;
-  resource memory accounting includes the fixed pages and excludes the removed
-  MIDI payload reservation from the common audio arena.
-- Native output queues refuse complete batches and fence/recover affected ports;
-  reset heads advance only on device acceptance. Generation fences discard an
-  interrupted producer's old batch after recovery. Native/worklet ingress loss
-  invalidates state until a fresh host baseline; reserved cleanup is announced once.
-- Legacy null-selector-only initial prefixes normalize with explicit conversion
-  metadata carried through codec workers and surfaced in completed import results.
-  Unsupported timeline messages and meaningful parameter prefixes refuse atomically.
-- Validation baseline: 3,241 native tests passed before implementation. The five
-  low-level crates passed 581 tests during integration. Runtime/loop/engine checks
-  subsequently reached 657/659; the remaining memory assertion and synchronized
-  Grab credit-retirement issue were corrected. Final integrated/native/browser
-  gates are still in progress, and P11 is not yet marked complete.
+- Production fixed events/pages, sixteen-level immutable directories, finite
+  retirement and explicit resource credits; the old packet slab/semantic tree is
+  removed from the runtime.
+- Stepped state interpretation, pinned position jobs, prepared entry banks,
+  advancing writer frontiers and atomic complete spans/cuts, integrated through
+  histories, Grab, recording, Replace, playback, edits and files.
+- Consistent native/browser/firmware/control-port classification, whole-batch
+  egress admission, acknowledged reset recovery, explicit input loss, and reported
+  legacy-prefix migration. Unsupported documents refuse before activation.
+- Bank indices and small descriptors rather than nested full-state stack copies;
+  firmware stack budgets and native small-stack/JACK acceptance are verified.
+- Baseline 3,241 native tests; refreshed full suite **3,244 passed, 11 skipped**;
+  final **91** native scripting/adapter tests; standalone loop host **60** passed;
+  both replay harnesses; all **17** runtime examples and both MIDI examples.
+- All **11** strict real-JACK tests, **50** shutdown repetitions and **20** mixed
+  routing/retirement/shutdown repetitions; both application transports and a
+  one-MiB-stack socket workflow; **20** release media measurement cases.
+- Actual rebuilt Chromium/Web MIDI and worklet/codec contracts passed with zero
+  xruns, including exact input/output, files, loss, recovery and hosted processors.
+- Warning-denying workspace build, formatting/test/doc audits, native feature
+  matrix, four-target dependency audit, ARM USB build and portable USB sanitizers.
+- All implementation-commit desktop/browser, coverage, JACK, bare-metal,
+  firmware/USB/network/board-profile, hosted processor/Miri, CodeQL and docs CI
+  passed. Automated review has no unresolved requests. Existing nightly and
+  web-debug execution conditions remain documented rather than broadened here.
 
-Remaining work: finish integrated failure checks and the full warning-denying
-workspace build; verify native application canaries and actual browser workflows;
-complete work/capacity/recovery audits and update design, persistence, capabilities
-and parity evidence; push the implementation milestone and resolve CI/review.
-
-- Platform acceptance follow-up: moved the four position-cache state banks out of
-  stack-copied metadata, verified a one-MiB-stack application socket workflow, and
-  fixed JACK shutdown to wait for acknowledged resets and completed graph cycles.
-  All eleven strict real-JACK tests and the twenty-case shared-media measurement
-  pass. Both application transports pass input, persistence and composite canaries.
-  Standalone lockfiles/fixtures now use the shared policy; sixty loop-host tests
-  and both native replay harnesses pass. Final browser and refreshed CI remain open.
-
-### Acceptance progress
-
-- Integrated runtime/loop/engine/native checks: 724/725 passed; the remaining
-  fixed-depth lookup assertion identified a redundant record read, which was
-  removed. The focused rerun passed.
-- All fifteen isolated reruns of earlier full-suite failures passed, including
-  both process transports, native UI recovery and driver preference/switch tests.
-  The first broad run had overlapped Wasm compilation; the final run is isolated.
-- The warning-denying workspace build, test-attribute policy and four-target
-  dependency-boundary audit passed. Final work-accounting and worker-envelope
-  regression changes will receive focused checks after the broad suite.
-- The actual worklet/codec artifact contract passed, including bounded JavaScript
-  ingress and explicit loss reporting. The unoptimized browser workflow progressed
-  through all three hosted processor families but reached its five-minute total
-  limit during the last load. Per-step checks did not fail; render memory growth,
-  discontinuities and command overflows were zero. A local timeout override is
-  available without changing the core CI deadline or per-step checks. The combined composite workflow has a separate seven-minute overall allowance; its earlier release CI run exhausted five minutes during the final resave after all composite checks passed.
-- Firmware USB now reports loss epochs separately from cleanup, rejects excluded
-  messages at the engine boundary and preflights complete output batches. The
-  portable bridge passed address/undefined-behavior sanitizers; the ARM USB build
-  check passed. The actual guest canary now expects exact basic MIDI and explicit
-  exclusion of unsupported messages. The generic C transport codec remains an
-  adapter with its own legacy transport vectors.
-- Final isolated complete native suite: **3,242 passed, 11 skipped** (495 seconds).
-  Subsequent accounting/worker-envelope changes: **757 focused tests passed,
-  one skipped**. Final ARM USB check and both firmware probe example tests passed.
-  The final warning-denying workspace build passed.
-- Hosted Chromium/Web MIDI completed with zero xruns, including real device
-  ingress, exact recording/playback, output-send/reset recovery, unsupported
-  refusal, bounded ingress loss and reconnect. These active-engine checks now run
-  in browser CI. Further platform acceptance moved initial/frontier states out of
-  descriptors into prepared banks (128-byte descriptor ceiling), and budgets
-  512-KiB firmware control/render stacks inside the existing RTOS heap. All 708
-  focused tests, real-JACK input/persistence, a one-MiB-stack socket workflow and
-  the warning-denying workspace build passed. Refreshed final gates remain open.
-- Strict repeated shutdown testing found that a reset written in the cleanup
-  callback could be lost to a JACK xrun. The bridge now repeats recovery in the
-  next silent callback, retries on shutdown xruns and waits after the latest reset. Fifty
-  strict repetitions and all 48 native-adapter tests passed; a no-heap regression
-  covers retry after a previously acknowledged reset.
-- Refreshed complete native run: **3,244 passed, 11 skipped** (344 seconds).
-  ARM USB-enabled check, sixty standalone loop-host tests, both native replay
-  harnesses and four-target dependency audits pass. Rebuilt worklet/codec artifact
-  contracts and the full hosted Chromium/Web MIDI workflow pass with zero xruns.
-  Final follow-up: all seventeen runtime examples, buffered MIDI example, draft
-  MIDI-loop example, 91 native scripting/adapter tests and twenty strict JACK
-  routing/retirement/shutdown repetitions pass. Native Lua device controls now use
-  the same classifier as browser controls; ordinary JACK xruns do not starve live
-  MIDI. Remaining work is final platform CI/review and closure documentation.
-- Final CI reached and passed all real-JACK and application workflows, then found
-  JACK-only recovery fields in CPAL/no-driver builds. The fields now share the
-  direct adapter's feature gate. The exact CI matrix (JACK, CPAL, both, neither,
-  plus system preview), its library tests and the warning-denying workspace build
-  pass locally. This changes preparation only when the direct adapter is absent.
+There is no remaining basic-MIDI parity implementation work. P07, P09 and P10
+retain their separate scopes. Future RTL, a concrete RAM-port arbiter and FPGA
+timing qualification are not part of this Rust delivery.
