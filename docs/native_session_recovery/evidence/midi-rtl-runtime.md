@@ -61,6 +61,19 @@ loop/engine, codec, native and worklet run passed **757 tests, one skipped**,
 including final state-work accounting and the worker-envelope migration regression.
 The final ARM USB-enabled check and both `zynq_probe` example tests passed.
 
+Acceptance follow-up fixed four issues exposed by platform jobs: prepared state
+cache metadata no longer copies four large state banks through the call stack;
+JACK waits for acknowledged reset delivery and completed feedback cycles before
+deactivation; standalone manifests include the common MIDI protocol dependency;
+and the measurement harness accounts for fixed record pages and actual render
+work. A one-MiB-stack socket workflow and all eleven strict real-JACK tests passed.
+The release shared-media measurement passed all twenty quantum/partition cases.
+Both socket/shared-memory input, persistence and composite canaries passed,
+including exact save/reload, client absence and resumed editing. The standalone
+loop fixture now checks mixed two-/three-byte basic messages; all sixty tests and
+both independent native replay harnesses passed. Its fixed transport buffer uses
+the declared upload prefix and returns the complete prepared buffer.
+
 Key executable evidence:
 
 - `rt_runtime/tests/midi_short.rs`: exhaustive status/length/controller policy,

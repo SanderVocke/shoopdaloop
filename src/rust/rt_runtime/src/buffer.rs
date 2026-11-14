@@ -268,8 +268,10 @@ impl MidiBuffer {
         MidiCapacity { events, bytes }.prepared_bytes()?;
         let mut rows =
             vec![MidiRow::default(); events + crate::midi::ResetState::EVENTS].into_boxed_slice();
-        for row in &mut rows {
-            *core::hint::black_box(row) = MidiRow::default();
+        let page_rows = (4096 / size_of::<MidiRow>()).max(1);
+        for page in rows.chunks_mut(page_rows) {
+            *core::hint::black_box(&mut page[0]) = MidiRow::default();
+            *core::hint::black_box(page.last_mut().expect("nonempty page")) = MidiRow::default();
         }
         Ok(Self {
             events: rows,

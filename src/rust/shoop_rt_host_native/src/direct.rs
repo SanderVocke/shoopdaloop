@@ -102,6 +102,9 @@ impl Cycle {
         self.shared.set_load(
             started.elapsed().as_secs_f32() * self.shared.sample_rate() as f32 / frames as f32,
         );
+        self.shared
+            .callback_finished
+            .fetch_add(1, std::sync::atomic::Ordering::Release);
         if self.phase == shoop_rt_engine::Phase::Disconnected {
             self.shared.reset_flushed.store(
                 self.output_reset.iter().all(|reset| !reset.pending()),

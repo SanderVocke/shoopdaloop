@@ -149,6 +149,14 @@ workspace build; verify native application canaries and actual browser workflows
 complete work/capacity/recovery audits and update design, persistence, capabilities
 and parity evidence; push the implementation milestone and resolve CI/review.
 
+- Platform acceptance follow-up: moved the four position-cache state banks out of
+  stack-copied metadata, verified a one-MiB-stack application socket workflow, and
+  fixed JACK shutdown to wait for acknowledged resets and completed graph cycles.
+  All eleven strict real-JACK tests and the twenty-case shared-media measurement
+  pass. Both application transports pass input, persistence and composite canaries.
+  Standalone lockfiles/fixtures now use the shared policy; sixty loop-host tests
+  and both native replay harnesses pass. Final browser and refreshed CI remain open.
+
 ### Acceptance progress
 
 - Integrated runtime/loop/engine/native checks: 724/725 passed; the remaining

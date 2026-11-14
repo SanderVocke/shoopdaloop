@@ -405,17 +405,26 @@ pub(crate) fn start(
                 thread::sleep(Duration::from_millis(1));
             }
             if observed.phase() == RenderPhase::Disconnected && observed.failure().is_none() {
-                // Let the reset block cross the graph, including feedback edges, before removing ports.
-                let through = observed.stats().callbacks.saturating_add(2);
                 let deadline = Instant::now() + grace;
-                while observed.stats().callbacks < through
+                while !observed.reset_flushed.load(Ordering::Acquire)
+                    && !shutdown.load(Ordering::Acquire)
+                    && Instant::now() < deadline
+                {
+                    thread::sleep(Duration::from_millis(1));
+                }
+                // Completed graph cycles carry acknowledged resets across feedback edges.
+                let through = observed
+                    .callback_finished
+                    .load(Ordering::Acquire)
+                    .saturating_add(3);
+                while observed.callback_finished.load(Ordering::Acquire) < through
                     && !shutdown.load(Ordering::Acquire)
                     && Instant::now() < deadline
                 {
                     thread::sleep(Duration::from_millis(1));
                 }
                 observed.reset_flushed.store(
-                    observed.stats().callbacks >= through
+                    observed.callback_finished.load(Ordering::Acquire) >= through
                         && observed.reset_flushed.load(Ordering::Acquire),
                     Ordering::Release,
                 );

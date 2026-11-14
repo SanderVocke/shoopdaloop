@@ -125,12 +125,10 @@ struct Cache {
     identity: Version,
     target: u64,
     prefix: u64,
-    state: MidiState,
     warm_prefix: Option<u64>,
-    warm: MidiState,
     job: Option<PositionId>,
     ready: bool,
-    entries: [Option<(u64, u64, MidiState)>; 2],
+    entries: [Option<(u64, u64)>; 2],
     entry_turn: usize,
 }
 #[derive(Clone, Copy, Default)]
@@ -143,6 +141,7 @@ pub(super) struct Core {
     writers: WriterSet,
     positions: PositionJobs,
     caches: Box<[Option<Cache>]>,
+    cache_states: Box<[MidiState]>,
     bases: Box<[Base]>,
     credits: Box<[Credit]>,
     edit_busy: Box<[bool]>,
@@ -197,9 +196,9 @@ impl Core {
             )?)
             .and_then(|n| n.checked_add(PositionJobs::prepared_bytes(capacity).ok()?))
             .and_then(|n| {
-                n.checked_add(
-                    capacity.checked_mul(size_of::<Option<Cache>>() + size_of::<Credit>())?,
-                )
+                n.checked_add(capacity.checked_mul(
+                    size_of::<Option<Cache>>() + size_of::<Credit>() + 4 * size_of::<MidiState>(),
+                )?)
             })
             .and_then(|n| n.checked_add(config.blocks.import_bases.checked_mul(size_of::<Base>())?))
             .and_then(|n| n.checked_add(config.writers.max(1).checked_mul(size_of::<bool>())?))
@@ -231,6 +230,7 @@ impl Core {
             writers: WriterSet::prepare(config.writers.max(1), q.frames(), config.events_per_tick)?,
             positions: PositionJobs::prepare(capacity)?,
             caches: (0..capacity).map(|_| None).collect(),
+            cache_states: vec![MidiState::default(); capacity * 4].into_boxed_slice(),
             bases: (0..config.blocks.import_bases)
                 .map(|_| Base {
                     generation: 1,
@@ -253,6 +253,7 @@ impl Core {
             + self.writers.allocated_bytes()
             + self.positions.allocated_bytes()
             + size_of_val(&*self.caches)
+            + size_of_val(&*self.cache_states)
             + size_of_val(&*self.bases)
             + size_of_val(&*self.credits)
             + size_of_val(&*self.edit_busy)
@@ -400,14 +401,14 @@ impl Core {
             identity: image.version,
             target: 0,
             prefix: 0,
-            state: image.initial,
             warm_prefix: None,
-            warm: image.initial,
             job: None,
             ready: true,
             entries: [None; 2],
             entry_turn: 0,
         });
+        self.cache_states[cache * 4] = image.initial;
+        self.cache_states[cache * 4 + 1] = image.initial;
         Ok(Media {
             identity: image.version,
             image,
@@ -472,6 +473,8 @@ impl Core {
         cache.identity = media.identity;
         cache.job = None;
         self.caches[retained.cache] = Some(cache);
+        self.cache_states
+            .copy_within(media.cache * 4..media.cache * 4 + 4, retained.cache * 4);
         Ok(retained)
     }
     pub fn retarget_empty(&mut self, target: &mut Media, source: &Media) -> Result<(), Error> {
@@ -498,6 +501,8 @@ impl Core {
         target.identity = source.identity;
         target.credit = source.credit;
         self.caches[target.cache] = Some(cache);
+        self.cache_states
+            .copy_within(source.cache * 4..source.cache * 4 + 4, target.cache * 4);
         Ok(())
     }
     pub fn release(&mut self, media: Media) -> Result<(), Error> {
@@ -725,9 +730,15 @@ impl Core {
                 cache.identity = media.identity;
                 cache.target = frame;
                 cache.prefix = prefix;
-                cache.state = state;
+                self.cache_states[media.cache * 4] = state;
                 cache.ready = true;
-                Self::cache_entry(cache, frame, prefix, state);
+                Self::cache_entry(
+                    cache,
+                    &mut self.cache_states[media.cache * 4..][..4],
+                    frame,
+                    prefix,
+                    state,
+                );
                 self.account(io)?;
                 return Ok(true);
             }
@@ -773,22 +784,35 @@ impl Core {
             let position = self.positions.finish(job)?;
             self.blocks.release(position.version)?;
             let cache = self.caches[media.cache].as_mut().unwrap();
-            cache.state = position.state;
+            self.cache_states[media.cache * 4] = position.state;
             cache.prefix = self.blocks.byte_before(media.version, target)?;
             cache.job = None;
             cache.ready = true;
-            Self::cache_entry(cache, frame, cache.prefix, position.state);
+            Self::cache_entry(
+                cache,
+                &mut self.cache_states[media.cache * 4..][..4],
+                frame,
+                cache.prefix,
+                position.state,
+            );
         }
         self.account(io)?;
         Ok(ready)
     }
-    fn cache_entry(cache: &mut Cache, frame: u64, prefix: u64, state: MidiState) {
+    fn cache_entry(
+        cache: &mut Cache,
+        states: &mut [MidiState],
+        frame: u64,
+        prefix: u64,
+        state: MidiState,
+    ) {
         let slot = cache
             .entries
             .iter()
             .position(|entry| entry.is_some_and(|e| e.0 == frame))
             .unwrap_or(cache.entry_turn);
-        cache.entries[slot] = Some((frame, prefix, state));
+        cache.entries[slot] = Some((frame, prefix));
+        states[slot + 2] = state;
         cache.entry_turn = (slot + 1) % cache.entries.len();
     }
     pub fn replay_bound(&mut self, media: &Media) -> Result<usize, Error> {
@@ -832,22 +856,22 @@ impl Core {
             } else {
                 self.caches
                     .iter()
-                    .flatten()
-                    .find_map(|cache| {
+                    .enumerate()
+                    .find_map(|(index, cache)| {
+                        let cache = cache.as_ref()?;
                         if cache.identity != media.identity {
                             return None;
                         }
                         if cache.ready && cache.prefix == offset {
-                            Some(cache.state)
+                            Some(self.cache_states[index * 4])
                         } else if cache.warm_prefix == Some(offset) {
-                            Some(cache.warm)
+                            Some(self.cache_states[index * 4 + 1])
                         } else {
                             cache
                                 .entries
                                 .iter()
-                                .flatten()
-                                .find(|entry| entry.1 == offset)
-                                .map(|entry| entry.2)
+                                .position(|entry| entry.is_some_and(|entry| entry.1 == offset))
+                                .map(|entry| self.cache_states[index * 4 + 2 + entry])
                         }
                     })
                     .ok_or(Error::Busy)?
@@ -881,7 +905,7 @@ impl Core {
             .ok_or(Error::InvalidState)?;
         cache.identity = media.identity;
         cache.warm_prefix = Some(prefix);
-        cache.warm = *state;
+        self.cache_states[media.cache * 4 + 1] = *state;
         Ok(())
     }
     pub fn flush_work<S: Sample>(&mut self, io: &mut RenderIo<'_, S>) -> Result<(), Error> {
@@ -967,7 +991,7 @@ impl Core {
             if !cache.ready || cache.target != position {
                 return Err((Error::Busy, admission));
             }
-            admission.media.image.frontier = cache.state;
+            admission.media.image.frontier = self.cache_states[admission.media.cache * 4];
             admission.media.image.frontier_position = position;
         }
         let id = match self.writers.begin(
@@ -1175,20 +1199,14 @@ impl Core {
             .ok_or(Error::InvalidState)?
             .entries;
         self.refresh_writer(writer)?;
-        for (frame, _, state) in entries
-            .into_iter()
-            .flatten()
-            .filter(|entry| entry.0 <= span.position)
-        {
+        for (slot, entry) in entries.into_iter().enumerate() {
+            let Some((frame, _)) = entry.filter(|entry| entry.0 <= span.position) else {
+                continue;
+            };
             let prefix = self
                 .blocks
                 .byte_before(writer.media.version, Frame(writer.media.origin.0 + frame))?;
-            Self::cache_entry(
-                self.caches[writer.media.cache].as_mut().unwrap(),
-                frame,
-                prefix,
-                state,
-            );
+            self.caches[writer.media.cache].as_mut().unwrap().entries[slot] = Some((frame, prefix));
         }
         let next = span
             .position
