@@ -122,6 +122,15 @@ impl Outbox {
 
 /// The engine side of a connection.
 pub trait Endpoint {
+    /// Refuse locally without consuming a complete message when staging is full.
+    fn try_deliver(
+        &mut self,
+        message: ClientMessage,
+        out: &mut Outbox,
+    ) -> Result<(), CarrierError> {
+        self.deliver(message, out);
+        Ok(())
+    }
     /// Handle one client message, queueing any answers.
     fn deliver(&mut self, message: ClientMessage, out: &mut Outbox);
     /// Queue messages the engine produced on its own: results that completed,
@@ -169,8 +178,7 @@ impl<E: Endpoint> Carrier for InProcess<E> {
         }
     }
     fn send(&mut self, message: ClientMessage) -> Result<(), CarrierError> {
-        self.endpoint.deliver(message, &mut self.outbox);
-        Ok(())
+        self.endpoint.try_deliver(message, &mut self.outbox)
     }
     fn receive(&mut self) -> Option<EngineMessage> {
         if self.outbox.is_empty() {
@@ -237,6 +245,7 @@ impl<P: RecordPort> Carrier for RecordClient<P> {
 /// The engine side of a record carrier: decodes client records into an endpoint and
 /// encodes its output. Pumping does no allocation.
 pub struct RecordServer<E, P> {
+    pending: Option<ClientMessage>,
     endpoint: E,
     failure: Option<CarrierError>,
     port: P,
@@ -247,6 +256,7 @@ pub struct RecordServer<E, P> {
 impl<E: Endpoint, P: RecordPort> RecordServer<E, P> {
     pub fn new(endpoint: E, port: P, outbox: Outbox) -> Self {
         Self {
+            pending: None,
             endpoint,
             failure: None,
             port,
@@ -270,13 +280,41 @@ impl<E: Endpoint, P: RecordPort> RecordServer<E, P> {
     /// Deliver up to `max_records` received records, poll the endpoint and post its
     /// output until the port is full.
     pub fn pump(&mut self, max_records: usize) {
+        if let Some(error) = self.port.failure() {
+            self.pending = None;
+            self.failure = Some(error);
+            return;
+        }
         for _ in 0..max_records {
+            if let Some(message) = self.pending.take() {
+                match self.endpoint.try_deliver(message, &mut self.outbox) {
+                    Ok(()) => {}
+                    Err(CarrierError::Full) => {
+                        self.pending = Some(message);
+                        break;
+                    }
+                    Err(error) => {
+                        self.failure = Some(error);
+                        break;
+                    }
+                }
+            }
             let Some(len) = self.port.take(&mut self.buf) else {
                 self.failure = self.failure.or_else(|| self.port.failure());
                 break;
             };
             match codec::decode_client(&self.buf[..len]) {
-                Ok(message) => self.endpoint.deliver(message, &mut self.outbox),
+                Ok(message) => match self.endpoint.try_deliver(message, &mut self.outbox) {
+                    Ok(()) => {}
+                    Err(CarrierError::Full) => {
+                        self.pending = Some(message);
+                        break;
+                    }
+                    Err(error) => {
+                        self.failure = Some(error);
+                        break;
+                    }
+                },
                 Err(error) => {
                     self.failure = Some(CarrierError::Codec(error));
                     let _ = self

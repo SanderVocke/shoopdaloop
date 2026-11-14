@@ -69,3 +69,5 @@ pub use error::Error;
 pub use ids::{Epoch, Frame, NodeId, PlannerId, ResourceId, Revision, Sequence};
 pub use quantum::Quantum;
 pub use render::RenderRuntime;
+
+pub mod immediate;

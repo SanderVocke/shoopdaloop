@@ -2427,9 +2427,122 @@ impl Wire for BulkChunk {
     }
 }
 
+impl Wire for crate::immediate::Command {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        use crate::immediate::Command::*;
+        match *self {
+            LoopGain(id, v) => {
+                w.u8(0)?;
+                id.put(w)?;
+                w.f32(v)
+            }
+            LoopBalance(id, v) => {
+                w.u8(1)?;
+                id.put(w)?;
+                w.f32(v)
+            }
+            Start(id) => {
+                w.u8(2)?;
+                id.put(w)
+            }
+            Stop(id) => {
+                w.u8(3)?;
+                id.put(w)
+            }
+            InputGain(id, v) => {
+                w.u8(4)?;
+                id.put(w)?;
+                w.f32(v)
+            }
+            InputBalance(id, v) => {
+                w.u8(5)?;
+                id.put(w)?;
+                w.f32(v)
+            }
+            OutputGain(id, v) => {
+                w.u8(6)?;
+                id.put(w)?;
+                w.f32(v)
+            }
+            OutputBalance(id, v) => {
+                w.u8(7)?;
+                id.put(w)?;
+                w.f32(v)
+            }
+            OutputMute(id, v) => {
+                w.u8(8)?;
+                id.put(w)?;
+                w.bool(v)
+            }
+            BusGain(id, v) => {
+                w.u8(9)?;
+                id.put(w)?;
+                w.f32(v)
+            }
+            BusBalance(id, v) => {
+                w.u8(10)?;
+                id.put(w)?;
+                w.f32(v)
+            }
+            BusMute(id, v) => {
+                w.u8(11)?;
+                id.put(w)?;
+                w.bool(v)
+            }
+        }
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        use crate::immediate::Command::*;
+        Ok(match r.u8()? {
+            0 => LoopGain(LoopSlotId::get(r)?, r.f32()?),
+            1 => LoopBalance(LoopSlotId::get(r)?, r.f32()?),
+            2 => Start(LoopSlotId::get(r)?),
+            3 => Stop(LoopSlotId::get(r)?),
+            4 => InputGain(StripId::get(r)?, r.f32()?),
+            5 => InputBalance(StripId::get(r)?, r.f32()?),
+            6 => OutputGain(StripId::get(r)?, r.f32()?),
+            7 => OutputBalance(StripId::get(r)?, r.f32()?),
+            8 => OutputMute(StripId::get(r)?, r.bool()?),
+            9 => BusGain(BusId::get(r)?, r.f32()?),
+            10 => BusBalance(BusId::get(r)?, r.f32()?),
+            11 => BusMute(BusId::get(r)?, r.bool()?),
+            _ => return Err(CodecError::Invalid),
+        })
+    }
+}
+impl Wire for crate::immediate::Batch {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.u64(self.graph)?;
+        w.u64(self.topology)?;
+        w.u8(self.commands().len() as u8)?;
+        for command in self.commands() {
+            command.put(w)?;
+        }
+        Ok(())
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        use crate::immediate::{Batch, Command, COMMANDS};
+        let graph = r.u64()?;
+        let topology = r.u64()?;
+        let len = usize::from(r.u8()?);
+        if len == 0 || len > COMMANDS {
+            return Err(CodecError::Invalid);
+        }
+        let mut commands = [Command::Start(LoopSlotId(SlotId::new(0, 0))); COMMANDS];
+        for command in &mut commands[..len] {
+            *command = Command::get(r)?;
+        }
+        Batch::new(graph, topology, &commands[..len]).ok_or(CodecError::Invalid)
+    }
+}
+
 impl Wire for ClientMessage {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
+            Self::Immediate(batch) => {
+                w.u8(8)?;
+                batch.put(w)
+            }
             Self::ConfigureSnapshots(mode) => {
                 w.u8(6)?;
                 match mode {
@@ -2467,6 +2580,7 @@ impl Wire for ClientMessage {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            8 => Self::Immediate(crate::immediate::Batch::get(r)?),
             6 => {
                 let hz = r.u16()?;
                 Self::ConfigureSnapshots(

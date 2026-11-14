@@ -320,7 +320,7 @@ Execution is authorized. The implementation uses these concrete bounds:
 - One FIFO entry owns one inline `Copy` batch of at most 32 commands. Four entries
   bound each callback to 128 commands. Control stages at most four additional
   batches; the record carrier retains at most one complete blocked message.
-- The largest batch record is at most 435 bytes (length prefix, message tag,
+- The largest batch record is at most 436 bytes (length prefix, message tag,
   graph/topology epochs, count, and 32 commands of at most 13 bytes), within the
   1,280-byte carrier limit. No command owns an allocation.
 - The callback freezes the FIFO count before legacy ingress. The first unrendered

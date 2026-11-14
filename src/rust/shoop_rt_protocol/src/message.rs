@@ -9,6 +9,7 @@ pub use shoop_transport::Lane;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ClientMessage {
+    Immediate(crate::immediate::Batch),
     Hello {
         version: u16,
     },

@@ -81,6 +81,14 @@ impl<C: Carrier> ProtocolClient<C> {
     }
 
     /// Send a request and return its correlation.
+    /// Send a whole experimental group without allocating a correlation or credit.
+    pub fn immediate(
+        &mut self,
+        batch: shoop_rt_protocol::immediate::Batch,
+    ) -> Result<(), ClientError> {
+        self.connected()?;
+        self.send(ClientMessage::Immediate(batch))
+    }
     pub fn request(&mut self, request: Request) -> Result<u64, ClientError> {
         let limits = self.connected()?;
         if self.reliable_in_flight >= u32::from(limits.reliable_credits) {

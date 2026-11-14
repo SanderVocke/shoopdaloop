@@ -313,9 +313,40 @@ fn activation_compatible<P, S: Sample>(
     Ok(())
 }
 
+struct ImmediateProcessors<'a, P, S: Sample> {
+    slots: &'a mut [Option<Slot<P, S>>],
+    active: &'a Option<PreparedPlan>,
+}
+impl<P, S: Sample> crate::immediate::Processors<P> for ImmediateProcessors<'_, P, S> {
+    fn get(&self, id: NodeId) -> Option<&P> {
+        if !self.active.as_ref()?.contains(id) {
+            return None;
+        }
+        self.slots
+            .get(id.slot() as usize)?
+            .as_ref()
+            .filter(|s| s.id == id)?
+            .processor
+            .as_ref()
+    }
+    fn get_mut(&mut self, id: NodeId) -> Option<&mut P> {
+        if !self.active.as_ref()?.contains(id) {
+            return None;
+        }
+        self.slots
+            .get_mut(id.slot() as usize)?
+            .as_mut()
+            .filter(|s| s.id == id)?
+            .processor
+            .as_mut()
+    }
+}
+
 pub struct GraphRuntime<P, L: Planner<S> = NoPlanner, Q: ProcessorOperation = (), S: Sample = f32> {
     snapshot_observer: Option<Box<dyn crate::snapshot::Observer<P, L>>>,
     snapshot_callback: Option<Frame>,
+    immediate: Option<Box<dyn crate::immediate::Handler<P, L>>>,
+    immediate_callback: Option<Frame>,
     profiling: rt_profiling::Recorder,
     quantum: crate::Quantum,
     tick_frame: Frame,
@@ -506,6 +537,8 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
             Self {
                 snapshot_observer: None,
                 snapshot_callback: None,
+                immediate: None,
+                immediate_callback: None,
                 profiling: rt_profiling::Recorder::default(),
                 quantum,
                 tick_frame: Frame(0),
@@ -644,6 +677,10 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
         self.resources.render_work()
     }
 
+    pub fn set_immediate_handler(&mut self, handler: Box<dyn crate::immediate::Handler<P, L>>) {
+        self.immediate = Some(handler);
+    }
+
     pub fn set_snapshot_observer(&mut self, observer: Box<dyn crate::snapshot::Observer<P, L>>) {
         self.snapshot_observer = Some(observer);
     }
@@ -691,6 +728,9 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
                     return Err(Error::InvalidEvent);
                 }
             }
+        }
+        if let Some(handler) = &mut self.immediate {
+            handler.begin_callback();
         }
         let frame = audio.frame;
         let frames = audio.frames;
@@ -1285,6 +1325,20 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
         let end = frame.checked_add(quantum.frames())?;
         self.profiling.begin_tick(frame.0, quantum.frames() as u32);
         self.deliver_actions(frame, callback_start, remaining)?;
+        if self.immediate_callback != Some(callback_start) {
+            self.immediate_callback = Some(callback_start);
+            if let Some(handler) = &mut self.immediate {
+                handler.apply(crate::immediate::Boundary {
+                    frame,
+                    graph: self.epoch,
+                    planner: &mut self.planner,
+                    processors: &mut ImmediateProcessors {
+                        slots: &mut self.slots,
+                        active: &self.active,
+                    },
+                });
+            }
+        }
         self.planner.begin_tick(PlanContext {
             graph_epoch: self.epoch,
             graphs: GraphAccess::new(
