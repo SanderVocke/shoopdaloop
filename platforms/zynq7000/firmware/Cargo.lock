@@ -163,6 +163,7 @@ dependencies = [
  "rt_audio_math",
  "rt_profiling",
  "rtrb",
+ "shoop_midi_protocol",
 ]
 
 [[package]]
@@ -259,6 +260,7 @@ dependencies = [
  "profiling_protocol",
  "serde",
  "shoop_app_api",
+ "shoop_midi_protocol",
  "shoop_transport",
 ]
 
@@ -319,6 +321,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_midi_protocol"
+version = "0.3.0"
+
+[[package]]
 name = "shoop_port_graph"
 version = "0.3.0"
 dependencies = [
@@ -330,6 +336,7 @@ name = "shoop_processor_protocol"
 version = "0.3.0"
 dependencies = [
  "serde",
+ "shoop_midi_protocol",
 ]
 
 [[package]]

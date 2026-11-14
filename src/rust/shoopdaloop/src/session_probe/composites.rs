@@ -531,7 +531,10 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
     let state = file_wait(&handle, |s| {
         s.tracks.len() == 2
             && s.tracks[1].loops[4].mode == LoopMode::Stopped
+            && s.tracks[1].loops[5].mode == LoopMode::Stopped
             && s.tracks[1].loops[5].length_frames == 4096
+            // Loop and track telemetry can arrive in separate publications.
+            && !s.tracks[1].controls.input_monitoring
     })?;
     ensure!(
         state.status.processed_frames > before_frame

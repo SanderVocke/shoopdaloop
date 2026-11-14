@@ -18,7 +18,7 @@ cpal = [ "shoop_rt_host_native/cpal", "shoop_host/cpal", "shoop_host_manager/cpa
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
-shoop_rt_transport_message_port = { path = "../shoop_rt_transport_message_port", features = ["browser"] }
+shoop_midi_protocol = { path = "../shoop_midi_protocol" }
 shoop_rt_transport = { path = "../shoop_rt_transport" }
 anyhow = { workspace = true, features = ["std"] }
 clap = { workspace = true }
@@ -51,6 +51,7 @@ rfd = { workspace = true, default-features = false, features = ["xdg-portal", "a
 rodio = { workspace = true, optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+shoop_rt_transport_message_port = { path = "../shoop_rt_transport_message_port", features = ["browser"] }
 shoop_settings = { path = "../shoop_settings" }
 rfd = { workspace = true, features = ["xdg-portal", "async-std", "file-handle-inner"] }
 futures-util = "0.3"

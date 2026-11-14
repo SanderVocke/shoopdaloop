@@ -5,10 +5,8 @@ use crate::{
     Error,
 };
 
-#[allow(dead_code)] // Ordered semantic store integration is staged separately.
-pub(crate) mod indexed;
-#[allow(dead_code)] // Interval-index writer integration is staged separately.
-pub(crate) mod interval;
+mod step;
+pub use step::{BasicUpdate, BASIC_STATE_CELLS};
 
 fn reset_preserves(cc: u8) -> bool {
     matches!(cc, 0|32|7|39|10|42|70..=79|91..=95|122|124..=127)
@@ -84,6 +82,13 @@ pub struct ChannelState {
     parameter_history_untracked: bool,
 }
 impl ChannelState {
+    pub fn is_basic(&self) -> bool {
+        !self.parameter_history_untracked
+            && self.parameter_family.is_none()
+            && [6, 38, 96, 97, 98, 99, 100, 101]
+                .iter()
+                .all(|&cc| self.controller(cc).is_none())
+    }
     const INITIAL: Self = {
         Self {
             notes: [NoteState {
@@ -297,6 +302,9 @@ impl MidiState {
     }
     pub fn channel(&self, channel: u8) -> Option<&ChannelState> {
         self.channels.get(channel as usize)
+    }
+    pub fn is_basic(&self) -> bool {
+        self.channels.iter().all(ChannelState::is_basic)
     }
     pub fn apply_packet(&mut self, data: &[u8], max_bytes: usize) -> Result<(), Error> {
         let message = Message::parse(data, max_bytes)?;

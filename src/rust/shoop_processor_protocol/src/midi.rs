@@ -90,6 +90,7 @@ impl PendingControls {
     }
 }
 fn key(data: &[u8]) -> Option<(usize, u16)> {
+    shoop_midi_protocol::classify(data, false).ok()?;
     let &status = data.first()?;
     let channel = usize::from(status & 15) * 122;
     match status & 0xf0 {
@@ -116,14 +117,21 @@ mod tests {
             assert_eq!(pending.store(&[0xe0 | channel, 1, 2]), Some(false));
             assert_eq!(pending.store(&[0xd0 | channel, 3]), Some(false));
             for controller in (0..120).rev() {
+                if shoop_midi_protocol::parameter_controller(controller) {
+                    assert_eq!(pending.store(&[0xb0 | channel, controller, 4]), None);
+                    continue;
+                }
                 assert_eq!(pending.store(&[0xb0 | channel, controller, 4]), Some(false));
                 assert_eq!(pending.store(&[0xb0 | channel, controller, 5]), Some(true));
             }
         }
-        assert_eq!(pending.len(), CONTROL_KEYS);
+        assert_eq!(pending.len(), CONTROL_KEYS - 16 * 8);
         let mut cursor = 0;
         for channel in 0..16 {
             for controller in 0..120 {
+                if shoop_midi_protocol::parameter_controller(controller) {
+                    continue;
+                }
                 let packet = pending.next(&mut cursor).unwrap();
                 assert_eq!(packet.data(), &[0xb0 | channel, controller, 5]);
                 assert!(pending.clear(packet.data()));

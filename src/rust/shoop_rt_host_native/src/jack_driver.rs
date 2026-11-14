@@ -60,6 +60,7 @@ impl jack::NotificationHandler for Notifications {
         self.1.fetch_add(1, Ordering::Release);
     }
     fn xrun(&mut self, _: &jack::Client) -> jack::Control {
+        self.0.reset_flushed.store(false, Ordering::Release);
         self.0.xrun(&self.0.counters.stream_underruns);
         jack::Control::Continue
     }
@@ -80,6 +81,8 @@ struct Process {
     cycle: Cycle,
     ports: jack_ports::Callback,
     shared: Arc<Shared>,
+    xruns: u64,
+    terminal_reset: bool,
 }
 struct Io<'a, 's> {
     scope: &'s jack::ProcessScope,
@@ -127,6 +130,26 @@ impl DirectIo for Io<'_, '_> {
 impl jack::ProcessHandler for Process {
     fn process(&mut self, _: &jack::Client, scope: &jack::ProcessScope) -> jack::Control {
         self.ports.begin(scope);
+        let xruns = self
+            .shared
+            .counters
+            .stream_underruns
+            .load(Ordering::Acquire);
+        if xruns != self.xruns {
+            self.xruns = xruns;
+            if self.shared.stopping.load(Ordering::Acquire)
+                || self.shared.phase() == RenderPhase::Disconnected
+            {
+                self.cycle.retry_output_recovery();
+            }
+        }
+        // The first disconnected callback performs cleanup and can itself miss
+        // JACK's graph deadline. Repeat recovery in the following silent cycle.
+        if !self.terminal_reset && self.shared.phase() == RenderPhase::Disconnected {
+            self.terminal_reset = true;
+            self.shared.reset_flushed.store(false, Ordering::Release);
+            self.cycle.retry_output_recovery();
+        }
         let failed = self.shared.failure().is_some();
         {
             // One writer per prepared MIDI output; the capacity stays uninitialized.
@@ -141,27 +164,6 @@ impl jack::ProcessHandler for Process {
                     port.as_mut_slice(scope).fill(0.);
                 }
             } else {
-                if self.shared.phase() == RenderPhase::Disconnected
-                    && self.shared.stopping.load(Ordering::Acquire)
-                {
-                    for writer in writers.iter_mut().flatten() {
-                        let mut reset = rt_runtime::midi::ResetState::default();
-                        reset.request();
-                        while let Some(bytes) = reset.peek() {
-                            if writer
-                                .write(&jack::RawMidi {
-                                    time: 0,
-                                    bytes: &bytes,
-                                })
-                                .is_err()
-                            {
-                                Shared::count(&self.shared.counters.midi_out_failed, 1);
-                                break;
-                            }
-                            reset.acknowledge().expect("pending reset packet");
-                        }
-                    }
-                }
                 let mut io = Io {
                     scope,
                     inputs: &self.ports.inputs,
@@ -292,6 +294,8 @@ pub(crate) fn start(
                 cycle,
                 ports: callback_ports,
                 shared: shared.clone(),
+                xruns: 0,
+                terminal_reset: false,
             },
         )
         .map_err(error)?;
@@ -426,18 +430,27 @@ pub(crate) fn start(
                 thread::sleep(Duration::from_millis(1));
             }
             if observed.phase() == RenderPhase::Disconnected && observed.failure().is_none() {
-                // Let the reset block cross the graph, including feedback edges, before removing ports.
-                let through = observed.stats().callbacks.saturating_add(2);
                 let deadline = Instant::now() + grace;
-                while observed.stats().callbacks < through
+                while !observed.reset_flushed.load(Ordering::Acquire)
                     && !shutdown.load(Ordering::Acquire)
                     && Instant::now() < deadline
                 {
                     thread::sleep(Duration::from_millis(1));
                 }
-                observed
-                    .reset_flushed
-                    .store(observed.stats().callbacks >= through, Ordering::Release);
+                // Completed graph cycles carry acknowledged resets across feedback edges.
+                let first = observed.callback_finished.load(Ordering::Acquire);
+                let delivered = || {
+                    let through = first
+                        .max(observed.reset_callback.load(Ordering::Acquire))
+                        .saturating_add(3);
+                    observed.callback_finished.load(Ordering::Acquire) >= through
+                        && observed.reset_flushed.load(Ordering::Acquire)
+                };
+                while !delivered() && !shutdown.load(Ordering::Acquire) && Instant::now() < deadline
+                {
+                    thread::sleep(Duration::from_millis(1));
+                }
+                observed.reset_flushed.store(delivered(), Ordering::Release);
             }
             if shutdown.load(Ordering::Acquire) {
                 observed.fail(StreamFailure::DeviceNotAvailable);

@@ -14,7 +14,7 @@ use shoop_rt_engine::{EngineDescription, HostPorts, MAX_HOST_PORTS};
 use shoop_rt_protocol::{DriverKind, DriverRunState};
 
 use crate::cycle::Cycle;
-use crate::midi::{input_bridge, output_bridge, MidiDevices, Pump};
+use crate::midi::{input_bridge, output_bridge_sized, MidiDevices, Pump};
 use crate::status::{Shared, StreamFailure};
 use crate::{assemble, port_name, reset_wait, Driver, Prepared, Running, StartError, Started};
 
@@ -666,8 +666,17 @@ where
     }
     let mut senders = Vec::new();
     let mut sinks = Vec::new();
+    let output_events = description
+        .midi_output_capacity()
+        .map_err(|error| StartError::Prepare(shoop_rt_engine::PrepareError::Runtime(error)))?
+        .events
+        .checked_add(rt_runtime::midi::ResetState::EVENTS)
+        .ok_or(StartError::Prepare(shoop_rt_engine::PrepareError::Runtime(
+            rt_runtime::Error::Capacity,
+        )))?;
     for port in midi.outputs {
-        let (sender, receiver) = output_bridge();
+        let (sender, receiver) = output_bridge_sized(output_events)
+            .map_err(|error| StartError::Prepare(shoop_rt_engine::PrepareError::Runtime(error)))?;
         senders.push(Some(sender));
         sinks.push((receiver, port.sink));
     }

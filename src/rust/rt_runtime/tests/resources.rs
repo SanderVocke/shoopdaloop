@@ -195,10 +195,7 @@ fn streamed_midi_records_round_trip_across_header_payload_and_page_boundaries() 
     let mut store = store();
     let resource = store.create().unwrap();
     let mut data = vec![];
-    for (frame, packet) in [
-        (2, &[0x90, 60, 100][..]),
-        (9, &[0xf0, 0x7d, 1, 2, 0xf7][..]),
-    ] {
+    for (frame, packet) in [(2, &[0x90, 60, 100][..]), (9, &[0xb0, 1, 42][..])] {
         let mut buffer = [0; 64];
         let count = assert_no_heap(|| encode_midi_record(frame, packet, &mut buffer)).unwrap();
         data.extend_from_slice(&buffer[..count]);
@@ -288,8 +285,8 @@ fn incomplete_and_out_of_order_midi_cannot_become_active() {
     });
     reclaim_all(&mut store);
     let mut packet = [0; 26];
-    encode_midi_record(2, &[0xf8], &mut packet[..13]).unwrap();
-    encode_midi_record(1, &[0xf8], &mut packet[13..]).unwrap();
+    encode_midi_record(2, &[0xff], &mut packet[..13]).unwrap();
+    encode_midi_record(1, &[0xff], &mut packet[13..]).unwrap();
     let transfer = store
         .begin_upload(
             resource,
@@ -461,7 +458,7 @@ fn streaming_short_message_parser_matches_complete_packet_validation() {
             let mut record = [0; 16];
             record[8..12].copy_from_slice(&(len as u32).to_le_bytes());
             record[12..].copy_from_slice(&[status, 1, 2, 3]);
-            let expected = rt_runtime::midi::Message::parse(&record[12..12 + len], 64).is_ok();
+            let expected = rt_runtime::midi::ShortMessage::managed(&record[12..12 + len]).is_ok();
             let transfer = store
                 .begin_upload(
                     resource,

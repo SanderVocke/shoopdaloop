@@ -17,6 +17,10 @@ pub(crate) struct Cycle {
     outputs: Box<[Box<[f32]>]>,
     midi_inputs: Box<[MidiBuffer]>,
     midi_outputs: Box<[MidiBuffer]>,
+    #[cfg(any(feature = "jack", test))]
+    input_lost: Box<[bool]>,
+    #[cfg(any(feature = "jack", test))]
+    output_reset: Box<[rt_runtime::midi::ResetState]>,
     receivers: Box<[Option<MidiInputReceiver>]>,
     senders: Box<[Option<MidiOutputSender>]>,
     max_frames: usize,
@@ -24,6 +28,13 @@ pub(crate) struct Cycle {
 }
 
 impl Cycle {
+    #[cfg(feature = "jack")]
+    pub(crate) fn retry_output_recovery(&mut self) {
+        for reset in &mut self.output_reset {
+            reset.request();
+        }
+    }
+
     /// `receivers` and `senders` follow the description's MIDI ports; ports without
     /// one are silent or discarded.
     pub fn new(
@@ -70,6 +81,10 @@ impl Cycle {
             outputs: audio(host.audio_outputs.len()),
             midi_inputs: midi(host.midi_inputs.len(), false)?,
             midi_outputs: midi(host.midi_outputs.len(), true)?,
+            #[cfg(any(feature = "jack", test))]
+            input_lost: vec![false; host.midi_inputs.len()].into_boxed_slice(),
+            #[cfg(any(feature = "jack", test))]
+            output_reset: vec![Default::default(); host.midi_outputs.len()].into_boxed_slice(),
             receivers: receivers.into_boxed_slice(),
             senders: senders.into_boxed_slice(),
             max_frames: frames,
@@ -148,9 +163,14 @@ impl Cycle {
         };
         for (port, sender) in self.senders.iter_mut().enumerate() {
             if let Some(sender) = sender {
-                sender.send(&self.midi_outputs[port], &self.shared);
-                if let Some(recovery) = self.render.midi_recovery(port) {
-                    sender.send(recovery, &self.shared);
+                if self
+                    .render
+                    .midi_recovery(port)
+                    .is_some_and(|buffer| !buffer.is_empty())
+                {
+                    sender.request_recovery();
+                } else {
+                    sender.send(&self.midi_outputs[port], &self.shared);
                 }
             }
         }

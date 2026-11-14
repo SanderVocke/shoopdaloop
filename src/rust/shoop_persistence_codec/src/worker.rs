@@ -90,6 +90,10 @@ pub enum Response {
     },
     Done,
     Failed(String),
+    NormalizedImage {
+        description: Description,
+        metadata: crate::codec::MidiNormalization,
+    },
 }
 struct Writer(Vec<u8>);
 impl bincode::enc::write::Writer for Writer {
@@ -456,6 +460,7 @@ impl Worker {
             } => {
                 ensure!(mapping.len() <= 16, "too many destination channels");
                 let decoded = self.take_decoded(handle)?;
+                let mut normalization = None;
                 let image = match (Work::Prepare {
                     decoded,
                     mapping,
@@ -464,6 +469,20 @@ impl Worker {
                 .run()?
                 {
                     Value::Image(image) => image,
+                    Value::NormalizedImage {
+                        image,
+                        scripts,
+                        metadata,
+                    } => {
+                        normalization = Some(metadata);
+                        if let Some(scripts) = scripts {
+                            self.script_output = Some(
+                                shoop_script_resources::transfer::Source::new(scripts)
+                                    .map_err(|error| anyhow!(error))?,
+                            );
+                        }
+                        image
+                    }
                     Value::PreparedSession { image, scripts } => {
                         self.script_output = Some(
                             shoop_script_resources::transfer::Source::new(scripts)
@@ -483,7 +502,13 @@ impl Worker {
                 .map_err(|r| anyhow!("invalid codec image: {r:?}"))?;
                 let description = stream.description();
                 self.image = Some(stream);
-                Ok(Response::Image(description))
+                Ok(match normalization {
+                    Some(metadata) => Response::NormalizedImage {
+                        description,
+                        metadata,
+                    },
+                    None => Response::Image(description),
+                })
             }
             Command::BeginImage {
                 description,
@@ -552,13 +577,17 @@ impl Worker {
                 .map_err(|r| anyhow!("invalid image: {r:?}"))?;
                 if let Some(handle) = family {
                     let decoded = self.take_decoded(handle)?;
-                    let Value::Image(image) = (Work::ConvertFamily {
+                    let (image, normalization) = match (Work::ConvertFamily {
                         decoded,
                         base: image,
                     })
                     .run()?
-                    else {
-                        bail!("codec returned an unexpected family result");
+                    {
+                        Value::Image(image) => (image, None),
+                        Value::NormalizedImage {
+                            image, metadata, ..
+                        } => (image, Some(metadata)),
+                        _ => bail!("codec returned an unexpected family result"),
                     };
                     let stream = UploadStream::new(
                         image,
@@ -570,7 +599,13 @@ impl Worker {
                     .map_err(|reason| anyhow!("invalid converted family: {reason:?}"))?;
                     let description = stream.description();
                     self.image = Some(stream);
-                    return Ok(Response::Image(description));
+                    return Ok(match normalization {
+                        Some(metadata) => Response::NormalizedImage {
+                            description,
+                            metadata,
+                        },
+                        None => Response::Image(description),
+                    });
                 }
                 let Value::File {
                     name,
@@ -692,6 +727,106 @@ mod exports {
 mod tests {
     use super::*;
     use shoop_wasm_test_support::shoop_test;
+    #[shoop_test]
+    fn legacy_midi_normalization_crosses_worker_envelopes_without_filtering_timeline_events() {
+        let mut worker = Worker::default();
+        let original = vec![0x90, 60, 100];
+        let decoded = |initial, packet| {
+            Decoded::Midi(shoop_session::ExactMidi {
+                sample_rate: 1000,
+                length_frames: 4,
+                start_state: initial,
+                events: vec![shoop_session::ExactMidiEvent {
+                    frame: 0,
+                    order: 0,
+                    data: packet,
+                }],
+            })
+        };
+        let Response::Decoded(summary) = worker
+            .decoded(Value::Decoded(decoded(
+                vec![
+                    vec![0xb0, 101, 127],
+                    vec![0xb0, 100, 127],
+                    vec![0xb0, 7, 91],
+                ],
+                original.clone(),
+            )))
+            .unwrap()
+        else {
+            panic!("decoded MIDI")
+        };
+        let response = worker.receive(Command::Prepare {
+            handle: summary.handle,
+            mapping: Vec::new(),
+            update_length: true,
+        });
+        let Response::NormalizedImage {
+            description,
+            metadata,
+        } = decode(&encode(&response).unwrap()).unwrap()
+        else {
+            panic!("normalization envelope")
+        };
+        assert_eq!(
+            (
+                metadata.from_prefix_version,
+                metadata.to_prefix_version,
+                metadata.removed_null_selectors
+            ),
+            (0, 1, 2)
+        );
+        let mut receiver = Receiver::new(authority(), description).unwrap();
+        loop {
+            let response = worker.receive(Command::NextImageBatch);
+            match decode::<Response>(&encode(&response).unwrap()).unwrap() {
+                Response::ImageBatch { parts, done } => {
+                    for part in parts {
+                        if let Request::Begin(other) = part {
+                            assert_eq!(other, description);
+                        } else {
+                            receiver.apply(authority(), part).unwrap();
+                        }
+                    }
+                    if done {
+                        break;
+                    }
+                }
+                response => panic!("image transfer: {response:?}"),
+            }
+        }
+        let image = persistence_transfer::assemble(receiver.into_objects().unwrap()).unwrap();
+        let persistence_image::Manifest::Update { midi, .. } = &image.manifest else {
+            panic!("MIDI update")
+        };
+        assert_eq!(midi[0].content.initial, [vec![0xb0, 7, 91]]);
+        let persistence_image::Payload::Midi(events) = &image.payloads[0] else {
+            panic!("MIDI payload")
+        };
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].data.to_vec(), original);
+        for (initial, packet) in [
+            (vec![vec![0xb0, 100, 1]], original),
+            (Vec::new(), vec![0xb0, 101, 127]),
+        ] {
+            let Response::Decoded(summary) = worker
+                .decoded(Value::Decoded(decoded(initial, packet)))
+                .unwrap()
+            else {
+                panic!("decoded MIDI")
+            };
+            assert!(matches!(
+                worker.receive(Command::Prepare {
+                    handle: summary.handle,
+                    mapping: Vec::new(),
+                    update_length: true
+                }),
+                Response::Failed(_)
+            ));
+            assert!(worker.image.is_none());
+            assert!(worker.decoded.is_none());
+        }
+    }
     #[shoop_test]
     fn generated_clicks_cross_the_worker_protocol_and_reject_invalid_timing() {
         for kind in [

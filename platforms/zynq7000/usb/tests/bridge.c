@@ -13,6 +13,8 @@ static void input_recovery(void) {
 
 int main(void) {
     assert(shoop_usb_mount(0, 1, 1, 1, 1, 0xcafe, 0x4010, 2, "usb0/1:fixture", "Synth"));
+    assert(shoop_usb_input_epoch(0) == 0 && shoop_usb_begin_input(0) == 0);
+    assert(shoop_usb_output_capacity(0) == SHOOP_MIDI_QUEUE);
     struct shoop_usb_port_info info;
     assert(shoop_usb_port_snapshot(0, 0, &info));
     assert(info.connected && info.generation == 1 && !strcmp(info.name, "Synth in 1"));
@@ -23,6 +25,7 @@ int main(void) {
     assert(arrival == 1234 && !memcmp(bytes, (uint8_t[]){0x90,60,100}, 3));
     struct shoop_usb_packet_owner owner, old;
     assert(shoop_usb_write(0, (uint8_t[]){0x80,60,0}, 3, 2000));
+    assert(shoop_usb_output_capacity(0) == SHOOP_MIDI_QUEUE - 1);
     assert(!shoop_usb_prepare_packet(0, 1999, packet, &owner));
     assert(shoop_usb_prepare_packet(0, 2000, packet, &owner));
     assert(!memcmp(packet, (uint8_t[]){8,0x80,60,0}, 4));
@@ -30,6 +33,7 @@ int main(void) {
     shoop_usb_accept_packet(owner);
     shoop_usb_complete_packet(owner);
     assert(shoop_usb_drained());
+    assert(shoop_usb_output_capacity(0) == SHOOP_MIDI_QUEUE);
 
     shoop_usb_receive_packet(0, (uint8_t[]){9,0x90,61,100}, 1235);
     assert(shoop_usb_write(0, (uint8_t[]){0x90,61,100}, 3, 2000));
@@ -63,6 +67,7 @@ int main(void) {
         assert(shoop_usb_write(0, (uint8_t[]){0x90,63,100}, 3, 0));
     }
     assert(!shoop_usb_write(0, (uint8_t[]){0x90,64,100}, 3, 0));
+    assert(shoop_usb_output_capacity(0) == 0);
     struct shoop_usb_packet_owner resets[32];
     for (unsigned i = 0; i < 32; ++i) {
         assert(!shoop_usb_drained());
@@ -88,6 +93,19 @@ int main(void) {
     assert(shoop_usb_mount(1, 3, 1, 15, 15, 0xcafe, 0x4010, 0, "usb0/2:fixture", "Interface"));
     assert(!shoop_usb_mount(2, 4, 1, 1, 1, 0xcafe, 0x4010, 0, "usb0/3:excess", "Excess"));
     assert(!shoop_usb_mount(2, 4, 1, 17, 1, 0xcafe, 0x4010, 0, "usb0/3:excess", "Excess"));
+    assert(shoop_usb_mount(0, 5, 1, 1, 1, 0xcafe, 0x4010, 2, "usb0/1:fixture", "Synth"));
+    uint32_t baseline = shoop_usb_begin_input(0);
+    assert(baseline == shoop_usb_input_epoch(0));
+    assert(!shoop_usb_read(0, bytes, sizeof(bytes), &arrival));
+    shoop_usb_receive_packet(0, (uint8_t[]){9,0x90,64,100}, 4000);
+    assert(shoop_usb_read(0, bytes, sizeof(bytes), &arrival) == 3 && bytes[1] == 64);
+    for (unsigned i = 0; i < SHOOP_MIDI_QUEUE + 1; ++i)
+        shoop_usb_receive_packet(0, (uint8_t[]){9,0x90,64,100}, 4000);
+    assert(shoop_usb_input_epoch(0) != baseline);
+    assert(shoop_usb_counters(0, 0, &counters));
+    uint32_t refused = counters.refused;
+    shoop_usb_refuse_input(0);
+    assert(shoop_usb_counters(0, 0, &counters) && counters.refused == refused + 1);
     puts("USB MIDI admission, queue bounds, generations, scheduling, counted loss and completed recovery passed");
     return 0;
 }

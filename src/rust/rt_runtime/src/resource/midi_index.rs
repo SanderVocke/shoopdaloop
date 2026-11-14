@@ -198,7 +198,9 @@ impl MidiPool {
             return Err(Error::InvalidState);
         }
         let mut state = row.state;
-        state.apply_packet(packet, 3)?;
+        crate::midi::ShortMessage::managed(packet)
+            .map_err(Error::from)?
+            .apply(&mut state)?;
         self.versions[owner.0].state = state;
         let base = owner.0
             * self
@@ -323,8 +325,9 @@ pub(super) fn apply_short(state: &mut MidiState, short: [u8; 3]) {
         0xff => 1,
         _ => return,
     };
-    state
-        .apply_packet(&short[..count], 3)
+    crate::midi::ShortMessage::managed(&short[..count])
+        .expect("validated complete MIDI record")
+        .apply(state)
         .expect("validated complete MIDI record");
 }
 
@@ -403,6 +406,9 @@ impl<S: Sample> ResourceStore<S> {
         description: Description,
         initial: &MidiState,
     ) -> Result<UploadId, Error> {
+        if !initial.is_basic() {
+            return Err(Error::InvalidParameter);
+        }
         if description.format != Format::Midi {
             return Err(Error::InvalidShape);
         }

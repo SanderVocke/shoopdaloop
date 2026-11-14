@@ -38,8 +38,7 @@ impl Description {
     }
 }
 
-/// Incremental parser for u64-frame/u32-length MIDI records. No message-sized
-/// scratch or final whole-message rescan is required, including for SysEx.
+/// Incremental parser for legacy u64-frame/u32-length short MIDI records.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct RecordSummary {
     pub frame: u64,
@@ -93,7 +92,7 @@ impl Parser {
                     if frame < self.last_frame || frame >= frames {
                         return Err(Error::InvalidFrame);
                     }
-                    if len == 0 || len > max_packet {
+                    if len == 0 || len > max_packet.min(crate::midi::MAX_MESSAGE_BYTES) {
                         return Err(Error::Capacity);
                     }
                     self.last_frame = frame;
@@ -105,17 +104,12 @@ impl Parser {
                 if self.received == 0 {
                     self.status = byte;
                     let expected = match byte {
-                        0x80..=0xbf | 0xe0..=0xef | 0xf2 => 3,
-                        0xc0..=0xdf | 0xf1 | 0xf3 => 2,
-                        0xf6 | 0xf8 | 0xfa..=0xfc | 0xfe | 0xff => 1,
-                        0xf0 if self.message_len >= 2 => self.message_len,
+                        0x80..=0xbf | 0xe0..=0xef => 3,
+                        0xc0..=0xdf => 2,
+                        0xff => 1,
                         _ => return Err(Error::InvalidEvent),
                     };
                     if self.message_len != expected {
-                        return Err(Error::InvalidEvent);
-                    }
-                } else if self.status == 0xf0 && self.received + 1 == self.message_len {
-                    if byte != 0xf7 {
                         return Err(Error::InvalidEvent);
                     }
                 } else if byte >= 0x80 {
@@ -126,6 +120,8 @@ impl Parser {
                 }
                 self.received += 1;
                 if self.received == self.message_len {
+                    crate::midi::ShortMessage::managed(&self.short[..self.received])
+                        .map_err(Error::from)?;
                     self.message_len = 0;
                     self.events = self.events.checked_add(1).ok_or(Error::Exhausted)?;
                     emit(RecordSummary {

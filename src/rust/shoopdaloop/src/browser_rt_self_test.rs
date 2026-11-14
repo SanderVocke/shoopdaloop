@@ -126,6 +126,7 @@ pub struct NewEngineSelfTest {
     preview_denied: bool,
     stress: bool,
     large: bool,
+    web_midi: bool,
     step: Step,
     since: Instant,
     ids: Ids,
@@ -161,6 +162,7 @@ impl NewEngineSelfTest {
             preview_denied: query.contains("preview-denied=1"),
             stress,
             large,
+            web_midi: query.contains("web-midi-basic=1"),
             step,
             since: Instant::now(),
             ids: Ids::default(),
@@ -423,6 +425,15 @@ impl NewEngineSelfTest {
                             .into_iter()
                             .zip(midi_sources),
                     )
+                    .chain(
+                        ports(snapshot, keys.id, PortRole::MidiOutput)
+                            .into_iter()
+                            .zip(
+                                host_ports(snapshot, PortDataType::Midi, "webmidi:")
+                                    .into_iter()
+                                    .filter(|port| port.as_str().ends_with(" out")),
+                            ),
+                    )
                     .collect();
                 self.routes = audio_outputs
                     .iter()
@@ -573,18 +584,22 @@ impl NewEngineSelfTest {
                 if !(keys.loops[0].mode == LoopMode::Recording && keys.controls.input_monitoring) {
                     return Ok(None);
                 }
-                send(AppIntent::Piano(PianoAction::Press(note())))?;
+                if !self.web_midi {
+                    send(AppIntent::Piano(PianoAction::Press(note())))?;
+                }
                 Step::NotePressed
             }
             Step::NotePressed => {
-                if waiting < NOTE_HOLD {
+                if waiting < NOTE_HOLD || self.web_midi && !midi_ack("note-on") {
                     return Ok(None);
                 }
-                send(AppIntent::Piano(PianoAction::Release(note())))?;
+                if !self.web_midi {
+                    send(AppIntent::Piano(PianoAction::Release(note())))?;
+                }
                 Step::NoteReleased
             }
             Step::NoteReleased => {
-                if waiting < NOTE_HOLD {
+                if waiting < NOTE_HOLD || self.web_midi && !midi_ack("note-off") {
                     return Ok(None);
                 }
                 send(loop_intent(ids.keys, LoopAction::PlayClicked)?)?;
@@ -593,6 +608,9 @@ impl NewEngineSelfTest {
             Step::ImmediateMidiPlayback => {
                 let keys = first_loop(snapshot, ids.keys)?;
                 if !(keys.mode == LoopMode::Playing && keys.length_frames > 0) {
+                    return Ok(None);
+                }
+                if self.web_midi && !midi_ack("playback") {
                     return Ok(None);
                 }
                 for action in [
@@ -721,6 +739,12 @@ impl NewEngineSelfTest {
                 };
                 if events[0].frame >= events[1].frame {
                     return Err("the recorded note ends before it starts".to_owned());
+                }
+                if self.web_midi
+                    && (events[0].data.as_ref() != [0x90, 60, 99]
+                        || events[1].data.as_ref() != [0x80, 60, 64])
+                {
+                    return Err("Web MIDI recording changed the device note bytes".to_owned());
                 }
                 send(loop_intent(ids.audio, LoopAction::StopClicked)?)?;
                 Step::ImmediateStop
@@ -1823,6 +1847,14 @@ fn report(status: &str) {
     {
         let _ = element.set_attribute("data-new-engine-self-test", status);
     }
+}
+
+fn midi_ack(phase: &str) -> bool {
+    web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.get_element_by_id("runtime_status"))
+        .and_then(|e| e.get_attribute("data-basic-midi-ack"))
+        .is_some_and(|ack| ack == phase)
 }
 
 fn note() -> MidiNote {

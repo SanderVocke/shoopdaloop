@@ -61,9 +61,10 @@ labels and selected routes. Disable input monitoring when the DIN loopback would
 otherwise create a feedback route.
 
 - [ ] Record and replay notes, velocity, control/program changes, pressure,
-      pitch bend, system-common and realtime messages in both directions.
-- [ ] Compare exact 2-, 3-, 4-, 5- and 2048-byte SysEx messages, including endpoint
-      and FIFO boundaries; realtime interleaved with SysEx remains independent.
+      pitch bend, pedals and System Reset in both directions.
+- [ ] Confirm refusal of parameter CC6/38/96–101, other system messages and
+      2-, 3-, 4-, 5- and 2048-byte SysEx, including endpoint/FIFO boundaries and
+      interleaved realtime. None appears in engine recording or playback.
 - [ ] Oversized/incomplete SysEx and malformed packets produce bounded recovery,
       correct counters and no traffic on another cable/device.
 - [ ] Save/reload and round-trip recorded MIDI/session media through the native

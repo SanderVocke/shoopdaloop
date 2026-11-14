@@ -116,8 +116,8 @@ fn buffered_midi_offsets_boundaries_equal_time_order_and_slack() {
         (15, &[0x90, 61, 100], &[0x91, 61, 100]),
         (15, &[0x90, 62, 0], &[0x91, 62, 0]),
         (16, &[0x80, 61, 0], &[0x81, 61, 0]),
-        (47, &[0xf8], &[0xf8]),
-        (48, &[0xf0, 1, 2, 3, 0xf7], &[0xf0, 1, 2, 3, 0xf7]),
+        (47, &[0xff], &[0xff]),
+        (48, &[0xb0, 7, 3], &[0xb1, 7, 3]),
     ];
     let mut received = Vec::new();
     for frame in (0..256).step_by(16) {
@@ -158,10 +158,23 @@ fn buffered_capacity_preflight_is_atomic_at_exact_event_and_byte_limits() {
     assert_eq!(h.output, vec![99.; 32]);
     assert_eq!(h.node.next_frame(), Frame(0));
     h.midi_input.clear();
-    h.midi_input
-        .push(0, 16, &[0xf0, 1, 2, 3, 4, 5, 0xf7])
-        .unwrap();
-    assert_eq!(h.render(0), Err(Error::Capacity));
+    let mut byte_limited = Harness::new(
+        16,
+        1,
+        0,
+        MidiLimits {
+            events_per_quantum: 2,
+            bytes_per_quantum: 5,
+        },
+    );
+    for key in [60, 61] {
+        byte_limited
+            .midi_input
+            .push(0, 16, &[0x90, key, 100])
+            .unwrap();
+    }
+    assert_eq!(byte_limited.render(0), Err(Error::Capacity));
+    assert_eq!(byte_limited.node.next_frame(), Frame(0));
     h.midi_input.clear();
     for key in [60, 61] {
         h.midi_input.push(15, 16, &[0x90, key, 100]).unwrap();

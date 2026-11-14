@@ -4,14 +4,24 @@
 //! output.
 //!
 //! An event is a little-endian `u64` frame on the AudioWorklet's `currentFrame`
-//! timeline, a `u8` host MIDI port index, a `u8` message length from 1 to 255 and
+//! timeline, a `u8` host MIDI port index, a `u8` message length from 1 to 4 and
 //! the message bytes. A batch is events back to back.
 
 use crate::framing::FramingError;
 
 pub const EVENT_HEADER_BYTES: usize = 10;
-pub const MAX_EVENT_MIDI_BYTES: usize = u8::MAX as usize;
+pub const MAX_EVENT_MIDI_BYTES: usize = rt_runtime::midi::MAX_MESSAGE_BYTES;
 pub const MAX_EVENT_BYTES: usize = EVENT_HEADER_BYTES + MAX_EVENT_MIDI_BYTES;
+pub use rt_runtime::midi::ResetState;
+
+/// A zero-length transport descriptor invalidates the input port's baseline.
+pub fn encode_loss(frame: u64, port: u8, out: &mut [u8]) -> Option<usize> {
+    let header = out.get_mut(..EVENT_HEADER_BYTES)?;
+    header[..8].copy_from_slice(&frame.to_le_bytes());
+    header[8] = port;
+    header[9] = 0;
+    Some(EVENT_HEADER_BYTES)
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct MidiEvent<'a> {
@@ -25,7 +35,7 @@ impl MidiEvent<'_> {
     /// does not fit or its message length is out of range.
     pub fn encode(&self, out: &mut [u8]) -> Option<usize> {
         let len = EVENT_HEADER_BYTES + self.bytes.len();
-        if self.bytes.is_empty() || self.bytes.len() > MAX_EVENT_MIDI_BYTES || out.len() < len {
+        if rt_runtime::midi::ShortMessage::managed(self.bytes).is_err() || out.len() < len {
             return None;
         }
         out[..8].copy_from_slice(&self.frame.to_le_bytes());
@@ -43,13 +53,16 @@ pub fn decode(bytes: &[u8]) -> Result<Option<(MidiEvent<'_>, usize)>, FramingErr
         return Ok(None);
     };
     let midi = usize::from(header[9]);
-    if midi == 0 {
+    if midi > MAX_EVENT_MIDI_BYTES {
         return Err(FramingError);
     }
     let len = EVENT_HEADER_BYTES + midi;
     let Some(message) = bytes.get(EVENT_HEADER_BYTES..len) else {
         return Ok(None);
     };
+    if midi != 0 && rt_runtime::midi::ShortMessage::managed(message).is_err() {
+        return Err(FramingError);
+    }
     let frame = u64::from_le_bytes(header[..8].try_into().expect("eight bytes"));
     Ok(Some((
         MidiEvent {
@@ -96,7 +109,7 @@ mod tests {
         let second = MidiEvent {
             frame: 8,
             port: 0,
-            bytes: &[0xf8],
+            bytes: &[0xff],
         };
         let mut batch = [0; 32];
         let a = first.encode(&mut batch).unwrap();
@@ -121,10 +134,19 @@ mod tests {
         assert_eq!(event(&[]).encode(&mut out), None);
         assert_eq!(event(&[0; MAX_EVENT_MIDI_BYTES + 1]).encode(&mut out), None);
         assert_eq!(
-            event(&[0; MAX_EVENT_MIDI_BYTES]).encode(&mut out),
-            Some(MAX_EVENT_BYTES)
+            event(&[0x90, 1, 2]).encode(&mut out),
+            Some(EVENT_HEADER_BYTES + 3)
         );
         assert_eq!(event(&[0x90, 1, 2]).encode(&mut out[..12]), None);
-        assert_eq!(decode(&[0; EVENT_HEADER_BYTES]), Err(FramingError));
+        let mut loss = [0; EVENT_HEADER_BYTES];
+        assert_eq!(encode_loss(42, 2, &mut loss), Some(EVENT_HEADER_BYTES));
+        assert_eq!(
+            decode(&loss).unwrap().unwrap().0,
+            MidiEvent {
+                frame: 42,
+                port: 2,
+                bytes: &[]
+            }
+        );
     }
 }

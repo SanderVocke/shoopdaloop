@@ -72,7 +72,7 @@ impl Stage {
             bytes_per_source: midi.history_bytes as u64,
             events_per_tick: midi.events_per_tick as u32,
             bytes_per_tick: midi.bytes_per_tick as u32,
-            maximum_packet: midi.packets.max_packet as u32,
+            maximum_packet: rt_runtime::midi::MAX_MESSAGE_BYTES as u32,
         }
     }
     pub(crate) fn supported(&self) -> bool {

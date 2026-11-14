@@ -3,7 +3,10 @@ use core::sync::atomic::{AtomicU32, Ordering};
 use rt_runtime::buffer::{AudioPorts, MidiBuffer};
 use rt_runtime::Sample;
 
+mod grab;
 mod writer;
+use grab::GrabSlot;
+pub(super) use grab::GrabWorkId;
 use writer::LiveSlot;
 pub use writer::LiveWriterId;
 
@@ -77,8 +80,9 @@ pub struct SharedWork {
     pub background_bytes_remaining: usize,
     pub background_steps_remaining: usize,
 }
-/// Prepared storage without allocator overhead. Reserved payload is a subset of
-/// the ordinary arena; MIDI state is a subset of store metadata.
+/// Prepared storage without allocator overhead. Reserved payload includes the
+/// audio arena reservation and independent fixed MIDI pages. MIDI state is a
+/// subset of store metadata.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct SharedCapacity {
     pub coordinator_bytes: usize,
@@ -123,6 +127,16 @@ pub(super) struct Fence {
     pub topology: Epoch,
 }
 #[derive(Clone, Copy)]
+pub(super) enum EditJob {
+    Legacy(MidiEditId),
+    Blocks(indexed_midi::PatchId),
+}
+#[derive(Clone, Copy)]
+pub(super) enum ImportJob {
+    Legacy(MidiImportId),
+    Blocks(indexed_midi::ImportId),
+}
+#[derive(Clone, Copy)]
 pub(super) struct Candidate {
     pub steps: usize,
     pub dirty: bool,
@@ -131,8 +145,8 @@ pub(super) struct Candidate {
     pub original_audio: Option<Revision>,
     pub original_midi: Option<Revision>,
     pub take: SharedTake,
-    pub midi_edit: Option<MidiEditId>,
-    pub midi_import: Option<MidiImportId>,
+    pub midi_edit: Option<EditJob>,
+    pub midi_import: Option<ImportJob>,
     pub failure: Option<Error>,
     pub packet_bytes: usize,
 }
@@ -148,6 +162,9 @@ pub(super) struct Shared<S: Sample = f32> {
     lookup: Box<[Option<usize>]>,
     max_frames: usize,
     jobs: Box<[Job]>,
+    grabs: Box<[GrabSlot]>,
+    grab_turn: usize,
+    grab_building: usize,
     live: Box<[LiveSlot]>,
     live_turn: usize,
     live_building: usize,
@@ -168,9 +185,86 @@ pub(super) struct Shared<S: Sample = f32> {
 impl<S: Sample> Shared<S> {
     pub fn prepare(
         resources: &mut ResourceStore<S>,
-        settings: SharedSettings,
+        mut settings: SharedSettings,
     ) -> Result<Self, Error> {
         let c = resources.config().limits();
+        if settings.midi_pool.is_none() {
+            let sources = settings
+                .histories
+                .iter()
+                .filter(|h| h.midi.is_some())
+                .count();
+            if sources != 0 {
+                let mut history_frames = 0;
+                let mut history_events = 0;
+                let mut history_bytes = 0;
+                let mut events = 0;
+                let mut bytes = 0;
+                for shape in settings.histories.iter().filter_map(|h| h.midi) {
+                    history_frames = history_frames.max(shape.history_frames);
+                    history_events = history_events.max(
+                        shape
+                            .chunks
+                            .checked_mul(shape.max_events)
+                            .ok_or(Error::Capacity)?,
+                    );
+                    history_bytes = history_bytes.max(
+                        shape
+                            .max_events
+                            .checked_mul(12)
+                            .and_then(|n| n.checked_add(shape.max_bytes))
+                            .and_then(|n| n.checked_mul(shape.chunks))
+                            .ok_or(Error::Capacity)?,
+                    );
+                    events = events.max(shape.max_events);
+                    bytes = bytes.max(shape.max_bytes);
+                }
+                let views = c
+                    .resource_slots
+                    .checked_mul(4)
+                    .and_then(|n| n.checked_add(settings.candidates.checked_mul(4)?))
+                    .and_then(|n| n.checked_add(sources.checked_mul(2)?))
+                    .ok_or(Error::Capacity)?;
+                let media = views
+                    .checked_mul(2)
+                    .and_then(|n| n.checked_add(settings.candidates.checked_mul(4)?))
+                    .and_then(|n| n.checked_add(sources + 8))
+                    .ok_or(Error::Capacity)?;
+                let records = history_events
+                    .checked_mul(sources)
+                    .and_then(|n| n.checked_mul(4))
+                    .and_then(|n| {
+                        n.checked_add(
+                            events
+                                .checked_mul(settings.candidates.checked_mul(2)?.checked_add(8)?)?,
+                        )
+                    })
+                    .ok_or(Error::Capacity)?;
+                settings.midi_pool = Some(indexed_midi::Config {
+                    blocks: indexed_midi::BlockLimits {
+                        event_credits: records,
+                        record_pages: records,
+                        directories: records
+                            .checked_mul(4)
+                            .and_then(|n| n.checked_add(media.checked_mul(16)?))
+                            .ok_or(Error::Capacity)?,
+                        versions: media.checked_mul(8).ok_or(Error::Capacity)?,
+                        media,
+                        import_bases: c.resource_slots.max(1),
+                    },
+                    sources,
+                    history_frames,
+                    history_events,
+                    history_bytes,
+                    views,
+                    writers: settings.candidates,
+                    imports: settings.candidates.max(1),
+                    events_per_tick: events,
+                    bytes_per_tick: bytes,
+                    maintenance_steps_per_tick: 32,
+                });
+            }
+        }
         if settings.histories.len() > c.max_nodes
             || settings.candidates > c.resource_slots
             || settings.edit_steps_per_callback > i32::MAX as usize
@@ -217,10 +311,10 @@ impl<S: Sample> Shared<S> {
                     .filter(|h| h.midi.is_some())
                     .count()
                 || settings.histories.iter().filter_map(|h| h.midi).any(|m| {
-                    m.history_frames != config.history_frames
+                    m.history_frames > config.history_frames
                         || m.max_events > config.events_per_tick
                         || m.max_bytes > config.bytes_per_tick
-                        || m.max_packet > config.packets.max_packet
+                        || m.max_packet < 3
                 })
             {
                 return Err(Error::InvalidConfig);
@@ -290,13 +384,14 @@ impl<S: Sample> Shared<S> {
             let (midi, indexed_midi) = match (setting.midi, midi_pool) {
                 (Some(_), Some((pool, _))) => {
                     let source = resources.indexed_midi_source(pool, midi_slot)?;
+                    resources.configure_indexed_midi_source(
+                        source,
+                        setting.midi.unwrap().history_frames,
+                    )?;
                     midi_slot += 1;
                     (None, Some(source))
                 }
-                (Some(config), None) => (
-                    Some(resources.prepare_midi_store(config, Frame(0), &MidiState::default())?),
-                    None,
-                ),
+                (Some(_), None) => return Err(Error::InvalidConfig),
                 (None, _) => (None, None),
             };
             let tracker = setting
@@ -358,6 +453,9 @@ impl<S: Sample> Shared<S> {
                     value: None,
                 })
                 .collect(),
+            grabs: (0..c.resource_slots).map(|_| GrabSlot::default()).collect(),
+            grab_turn: 0,
+            grab_building: 0,
             live_turn: 0,
             live_building: 0,
             live: (0..settings.candidates)
@@ -401,6 +499,7 @@ impl<S: Sample> Shared<S> {
             (result.histories.capacity(), size_of::<History<S>>()),
             (result.lookup.len(), size_of::<Option<usize>>()),
             (result.jobs.len(), size_of::<Job>()),
+            (result.grabs.len(), size_of::<GrabSlot>()),
             (result.live.len(), size_of::<LiveSlot>()),
             (
                 result.owned.len(),
@@ -611,6 +710,28 @@ impl<S: Sample> Shared<S> {
             if let Some(tracker) = &mut h.tracker {
                 tracker.reset();
             }
+        }
+        if h.tracker
+            .as_ref()
+            .is_some_and(|tracker| !tracker.valid() || midi.is_some_and(MidiBuffer::input_lost))
+        {
+            let tracker = h.tracker.as_mut().expect("MIDI source");
+            let first_loss = tracker.valid();
+            let _ = tracker.process(&mut io.render(), midi.ok_or(Error::InvalidShape)?, q, None);
+            if first_loss {
+                h.generation = h.generation.checked_add(1).ok_or(Error::Exhausted)?;
+            }
+            h.token = Some(token);
+            h.midi_token = Some(midi_token);
+            h.observed = end;
+            h.staged = None;
+            h.restart = true;
+            h.startup_origin = None;
+            h.failure = Some(Error::InvalidState);
+            self.work.history_ticks = self.work.history_ticks.saturating_add(1);
+            self.work.history_failures = self.work.history_failures.saturating_add(1);
+            self.write_live(source, frame, q, io)?;
+            return Ok(());
         }
         if let (Some(source), Some(tracker)) = (h.indexed_midi, &h.tracker) {
             if changed || midi_changed || h.restart || h.observed != frame {
@@ -887,13 +1008,16 @@ impl<S: Sample> Shared<S> {
     pub fn begin(
         &mut self,
         fence: Fence,
-        source: SharedTake,
+        mut source: SharedTake,
         packet_bytes: usize,
         io: &mut ResourceIo<'_, S>,
         frame: Frame,
     ) -> Result<CandidateId, Error> {
-        if source.indexed_midi_store.is_some() {
-            return Err(Error::InvalidState);
+        if source.midi.is_some()
+            && source.midi_store.is_none()
+            && source.indexed_midi_store.is_none()
+        {
+            source.indexed_midi_store = self.midi_pool.map(|(id, _)| id);
         }
         if self.closed || source.frames != fence.length || source.frames == 0 {
             return Err(Error::InvalidFrame);
@@ -936,22 +1060,45 @@ impl<S: Sample> Shared<S> {
             };
         let audio = fork_audio(io)?;
         let mut midi_import = None;
-        let midi = match (source.midi_store, source.midi) {
-            (Some(store), Some(resource)) => (|| {
+        let midi = if let (Some(store), Some(resource)) = (source.indexed_midi_store, source.midi) {
+            (|| {
                 let snap = io.snapshot(resource, frame)?;
-                let result = match io.fork_midi(store, snap.id) {
+                let result = match io.fork_indexed_midi(store, snap.id) {
                     Ok(resource) => Ok(Some(resource)),
-                    Err(Error::InvalidShape) => io.prepare_midi_import(store, snap.id).map(|id| {
-                        midi_import = Some(id);
-                        None
-                    }),
+                    Err(Error::InvalidShape) => {
+                        let index = io.read_index(snap.id)?;
+                        let initial = io.render().midi_seek(index, 0)?.state;
+                        io.prepare_indexed_midi_import(store, snap.id, &initial)
+                            .map(|id| {
+                                midi_import = Some(ImportJob::Blocks(id));
+                                None
+                            })
+                    }
                     Err(error) => Err(error),
                 };
                 io.release_snapshot(snap.id)?;
                 result
-            })(),
-            (None, None) => Ok(None),
-            _ => Err(Error::InvalidShape),
+            })()
+        } else {
+            match (source.midi_store, source.midi) {
+                (Some(store), Some(resource)) => (|| {
+                    let snap = io.snapshot(resource, frame)?;
+                    let result = match io.fork_midi(store, snap.id) {
+                        Ok(resource) => Ok(Some(resource)),
+                        Err(Error::InvalidShape) => {
+                            io.prepare_midi_import(store, snap.id).map(|id| {
+                                midi_import = Some(ImportJob::Legacy(id));
+                                None
+                            })
+                        }
+                        Err(error) => Err(error),
+                    };
+                    io.release_snapshot(snap.id)?;
+                    result
+                })(),
+                (None, None) => Ok(None),
+                _ => Err(Error::InvalidShape),
+            }
         };
         let midi = match midi {
             Ok(midi) => midi,
@@ -1104,14 +1251,26 @@ impl<S: Sample> Shared<S> {
             )?;
         }
         let revision = io.info(resource)?.revision;
-        job.midi_edit = Some(io.render().prepare_midi_replace(
-            resource,
-            revision,
-            position,
-            usize::try_from(snap.description.frames).map_err(|_| Error::Capacity)?,
-            &self.midi_patch,
-            &initial.state,
-        )?);
+        let frames = usize::try_from(snap.description.frames).map_err(|_| Error::Capacity)?;
+        job.midi_edit = Some(if job.take.indexed_midi_store.is_some() {
+            EditJob::Blocks(io.prepare_indexed_midi_patch(
+                resource,
+                revision,
+                position,
+                frames,
+                &self.midi_patch,
+                &initial.state,
+            )?)
+        } else {
+            EditJob::Legacy(io.render().prepare_midi_replace(
+                resource,
+                revision,
+                position,
+                frames,
+                &self.midi_patch,
+                &initial.state,
+            )?)
+        });
         job.dirty = true;
         self.building += 1;
         self.jobs[id.slot as usize].value = Some(job);
@@ -1126,6 +1285,7 @@ impl<S: Sample> Shared<S> {
                 io.maintain_indexed_midi_required(pool)?;
             }
             self.progress_live(callback, io);
+            self.progress_grabs(io);
         }
         while self.remaining > 0 && self.building > 0 {
             let mut selected = None;
@@ -1147,31 +1307,55 @@ impl<S: Sample> Shared<S> {
             self.work.edit_steps += 1;
             let mut job = self.jobs[slot].value.expect("selected job");
             job.steps = job.steps.saturating_add(1);
-            if let Some(import) = job.midi_import {
-                match io.render().progress_midi_import(import, 1) {
-                    Ok(shared_midi::EditStatus::Building) => {}
-                    Ok(shared_midi::EditStatus::Ready) => match io.finish_midi_import(import) {
-                        Ok(resource) => {
-                            job.take.midi = Some(resource);
-                            job.midi_import = None;
-                            self.track(job.take);
+            let result = match (job.midi_import, job.midi_edit) {
+                (Some(ImportJob::Blocks(import)), _) => {
+                    match io.progress_indexed_midi_import(import, 1) {
+                        Ok(indexed_midi::Status::Ready) => {
+                            io.finish_indexed_midi_import(import).map(|resource| {
+                                job.take.midi = Some(resource);
+                                job.midi_import = None;
+                                self.track(job.take);
+                            })
                         }
-                        Err(error) => job.failure = Some(error),
-                    },
-                    Err(error) => job.failure = Some(error),
-                }
-            } else {
-                let edit = job.midi_edit.expect("building edit");
-                match io.render().progress_midi_edit(edit, 1) {
-                    Ok(shared_midi::EditStatus::Building) => {}
-                    Ok(shared_midi::EditStatus::Ready) => {
-                        match io.render().commit_midi_edit(edit) {
-                            Ok(_) => job.midi_edit = None,
-                            Err(error) => job.failure = Some(error),
-                        }
+                        Ok(indexed_midi::Status::Building) => Ok(()),
+                        Err(error) => Err(error),
                     }
-                    Err(error) => job.failure = Some(error),
                 }
+                (Some(ImportJob::Legacy(import)), _) => {
+                    match io.render().progress_midi_import(import, 1) {
+                        Ok(shared_midi::EditStatus::Ready) => {
+                            io.finish_midi_import(import).map(|resource| {
+                                job.take.midi = Some(resource);
+                                job.midi_import = None;
+                                self.track(job.take);
+                            })
+                        }
+                        Ok(shared_midi::EditStatus::Building) => Ok(()),
+                        Err(error) => Err(error),
+                    }
+                }
+                (_, Some(EditJob::Blocks(edit))) => match io.progress_indexed_midi_patch(edit, 1) {
+                    Ok(indexed_midi::Status::Ready) => {
+                        io.commit_indexed_midi_patch(edit).map(|_| {
+                            job.midi_edit = None;
+                        })
+                    }
+                    Ok(indexed_midi::Status::Building) => Ok(()),
+                    Err(error) => Err(error),
+                },
+                (_, Some(EditJob::Legacy(edit))) => match io.render().progress_midi_edit(edit, 1) {
+                    Ok(shared_midi::EditStatus::Ready) => {
+                        io.render().commit_midi_edit(edit).map(|_| {
+                            job.midi_edit = None;
+                        })
+                    }
+                    Ok(shared_midi::EditStatus::Building) => Ok(()),
+                    Err(error) => Err(error),
+                },
+                _ => Err(Error::InvalidState),
+            };
+            if let Err(error) = result {
+                job.failure = Some(error);
             }
             self.jobs[slot].value = Some(job);
             if (job.midi_edit.is_none() && job.midi_import.is_none()) || job.failure.is_some() {
@@ -1220,10 +1404,16 @@ impl<S: Sample> Shared<S> {
     pub fn cancel(&mut self, id: CandidateId, io: &mut ResourceIo<'_, S>) -> Result<(), Error> {
         let job = self.candidate(id)?;
         if let Some(edit) = job.midi_edit {
-            io.cancel_midi_edit(edit)?;
+            match edit {
+                EditJob::Legacy(edit) => io.cancel_midi_edit(edit)?,
+                EditJob::Blocks(edit) => io.cancel_indexed_midi_patch(edit)?,
+            }
         }
         if let Some(import) = job.midi_import {
-            io.cancel_midi_import(import)?;
+            match import {
+                ImportJob::Legacy(import) => io.cancel_midi_import(import)?,
+                ImportJob::Blocks(import) => io.cancel_indexed_midi_import(import)?,
+            }
         }
         for resource in [job.take.audio, job.take.midi].into_iter().flatten() {
             io.remove(resource)?;
@@ -1239,6 +1429,7 @@ impl<S: Sample> Shared<S> {
     }
     pub fn cleanup(&mut self, resources: &mut ResourceStore<S>) -> Result<(), Error> {
         self.cancel_all_live(&mut resources.io())?;
+        self.cancel_all_grabs(&mut resources.io())?;
         for slot in 0..self.jobs.len() {
             if self.jobs[slot].value.is_some() {
                 self.cancel(

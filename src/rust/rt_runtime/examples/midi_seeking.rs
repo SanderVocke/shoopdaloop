@@ -70,14 +70,11 @@ fn remove_all(
 }
 
 fn event_copies() -> Result<(), Error> {
-    let config = config(16)?;
+    let config = config(4)?;
     let mut store = ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap())?;
     let mut foreign = ResourceStore::new(config, rt_runtime::Quantum::new(1).unwrap())?;
-    let mut sysex = [0; 37];
-    sysex[0] = 0xf0;
-    sysex[1] = 0x7d;
-    sysex[36] = 0xf7;
-    let records: [(u64, &[u8]); 3] = [(0, &[0x90, 60, 100]), (2, &sysex), (2, &[0x80, 60, 0])];
+    let program = [0xc0, 42];
+    let records: [(u64, &[u8]); 3] = [(0, &[0x90, 60, 100]), (2, &program), (2, &[0x80, 60, 0])];
     let bytes = encode(&records)?;
     let resource = store.create()?;
     let upload = store.begin_upload(
@@ -101,13 +98,13 @@ fn event_copies() -> Result<(), Error> {
             let event = store.render_io().midi_next(&mut cursor)?.unwrap();
             assert_eq!(event.frame(), frame);
             assert_eq!(event.byte_len(), packet.len());
-            if packet.len() == 37 {
-                let mut too_small = [0xa5; 8];
+            if packet.len() == 2 {
+                let mut too_small = [0xa5; 1];
                 assert_eq!(
                     store.render_io().midi_read(event, &mut too_small),
                     Err(Error::Capacity)
                 );
-                assert_eq!(too_small, [0xa5; 8]);
+                assert_eq!(too_small, [0xa5; 1]);
                 retained = Some(event);
             }
             let count = store.render_io().midi_read(event, &mut scratch)?;
@@ -141,8 +138,8 @@ fn event_copies() -> Result<(), Error> {
     )?;
     store.finish_upload(upload)?;
     store.commit(upload)?;
-    assert_eq!(store.render_io().midi_read(event, &mut scratch)?, 37);
-    assert_eq!(scratch[..37], sysex);
+    assert_eq!(store.render_io().midi_read(event, &mut scratch)?, 2);
+    assert_eq!(scratch[..2], program);
     store.release_snapshot(old.id)?;
     assert_eq!(
         store.render_io().midi_read(event, &mut scratch),
@@ -271,7 +268,7 @@ fn checkpoint_states() -> Result<(), Error> {
 
     let overflow = store.create()?;
     let mut six = records.to_vec();
-    six.push((5, &[0xf8]));
+    six.push((5, &[0xff]));
     let six_bytes = encode(&six)?;
     let upload = store.begin_indexed_midi_upload(
         overflow,

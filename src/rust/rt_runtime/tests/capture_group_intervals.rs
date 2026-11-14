@@ -435,10 +435,10 @@ fn producer_bound_violations_leave_staged_transaction_cancellable() {
     let (mut store, group, take, resources) = prepared();
     let mut oversized = MidiBuffer::new(9, 128).unwrap();
     for _ in 0..9 {
-        oversized.push(0, 1, &[0xf8]).unwrap();
+        oversized.push(0, 1, &[0xff]).unwrap();
     }
     let mut late = MidiBuffer::new(8, 128).unwrap();
-    late.push(1, 2, &[0xf8]).unwrap();
+    late.push(1, 2, &[0xff]).unwrap();
     assert_no_heap(|| {
         store.activate_capture_take(take, Frame(0)).unwrap();
         let interval = store.reserve_capture_tick(take, Frame(0)).unwrap();

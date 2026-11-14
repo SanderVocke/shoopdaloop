@@ -74,10 +74,7 @@ fn packets(frame: u64, q: usize) -> Vec<Vec<u8>> {
         ]);
     }
     if frame % (8 * q) == 1.min(q - 1) {
-        let mut sysex = vec![1; 600];
-        sysex[0] = 0xf0;
-        sysex[599] = 0xf7;
-        result.push(sysex);
+        result.push(vec![0xb3, 7, (tick % 128) as u8]);
     }
     result
 }
@@ -190,21 +187,13 @@ impl Fixture {
                     })
                     .collect(),
                 midi_pool: indexed.then_some(resource::indexed_midi::Config {
-                    packets: resource::indexed_midi::PacketLimits {
-                        pages: 1024,
-                        bodies: 2048,
-                        records: 4096,
-                        max_packet: 1024,
-                        bases: 4,
-                    },
-                    indexes: resource::indexed_midi::IndexLimits {
-                        leases: 96,
-                        versions: 64,
-                        category_pages: 512,
-                        packet_nodes: 32768,
-                        scalar_nodes: 32768,
-                        hold_nodes: 8192,
-                        sostenuto_nodes: 8192,
+                    blocks: resource::indexed_midi::BlockLimits {
+                        event_credits: 4096,
+                        record_pages: 4096,
+                        import_bases: 4,
+                        media: 96,
+                        versions: (96) * 8,
+                        directories: 32768,
                     },
                     sources: 2,
                     history_frames: history_frames as u64,
@@ -2291,7 +2280,7 @@ fn pooled_indexed_midi_histories_drive_mixed_grabs_ordinary_playback_and_reclaim
     let Reply::SharedCapacity(capacity) = h.op(Operation::SharedCapacity) else {
         panic!("capacity")
     };
-    assert_eq!(capacity.reserved_payload_bytes, (2048 + 1024) * 256);
+    assert_eq!(capacity.reserved_payload_bytes, 2048 * 256 + 4096 * 32 * 16);
     assert!(capacity.midi_state_bytes > 0);
     assert!(capacity.store_metadata_bytes < 32 * 1024 * 1024);
     for snapshot in [snapshot, old, empty] {

@@ -558,6 +558,9 @@ impl<B: Backend> BufferedProcessor<B> {
             if self.state == Lifecycle::Running {
                 for (port, (ordinary, dest)) in inputs.iter().zip(slot.input.iter()).enumerate() {
                     let input = crate::MidiInput::new(ordinary, controls.filter(|_| port == 0));
+                    if ordinary.input_lost() {
+                        continue;
+                    }
                     if input.len() > self.limits.midi_input.events_per_quantum
                         || input.byte_len() > self.limits.midi_input.bytes_per_quantum
                         || (self.filled > 0
@@ -654,6 +657,17 @@ impl<B: Backend> BufferedProcessor<B> {
             }
             if self.state == Lifecycle::Running && b != q {
                 for (input, dest) in inputs.iter().zip(slot.input.iter_mut()) {
+                    if input.input_lost() {
+                        if input.is_recovery() || dest.is_recovery() {
+                            dest.mark_input_loss();
+                        } else {
+                            dest.mark_input_loss_silent();
+                        }
+                        continue;
+                    }
+                    if dest.input_lost() {
+                        continue;
+                    }
                     for i in 0..input.len() {
                         let (at, packet) = input.get(i).ok_or(Error::InvalidState)?;
                         dest.push(at + self.filled as u32, b, packet)

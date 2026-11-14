@@ -21,6 +21,8 @@ pub struct MidiInBatch {
     bytes: Vec<u8>,
     capacity: usize,
     dropped: u64,
+    lost: [Option<u64>; MAX_HOST_PORTS],
+    announced: [bool; MAX_HOST_PORTS],
 }
 
 impl MidiInBatch {
@@ -29,15 +31,29 @@ impl MidiInBatch {
             bytes: Vec::new(),
             capacity,
             dropped: 0,
+            lost: [None; MAX_HOST_PORTS],
+            announced: [false; MAX_HOST_PORTS],
         }
     }
 
     /// Append an event; false if it does not fit or is invalid, which is counted.
     pub fn push(&mut self, event: MidiEvent<'_>) -> bool {
+        if rt_runtime::midi::ShortMessage::managed(event.bytes).is_err()
+            || event.port as usize >= MAX_HOST_PORTS
+        {
+            self.dropped = self.dropped.saturating_add(1);
+            return false;
+        }
+        let port = event.port as usize;
+        if self.lost[port].is_some() {
+            self.dropped = self.dropped.saturating_add(1);
+            return false;
+        }
         let start = self.bytes.len();
         let len = crate::lane::EVENT_HEADER_BYTES + event.bytes.len();
         if start + len > self.capacity {
-            self.dropped += 1;
+            self.dropped = self.dropped.saturating_add(1);
+            self.lost[port] = Some(event.frame);
             return false;
         }
         self.bytes.resize(start + len, 0);
@@ -50,6 +66,16 @@ impl MidiInBatch {
     }
 
     pub fn take(&mut self) -> Option<Vec<u8>> {
+        for (port, frame) in self.lost.iter().enumerate() {
+            if let Some(frame) = frame.filter(|_| !self.announced[port]) {
+                let start = self.bytes.len();
+                self.bytes
+                    .resize(start + crate::lane::EVENT_HEADER_BYTES, 0);
+                crate::lane::encode_loss(frame, port as u8, &mut self.bytes[start..])
+                    .expect("reserved descriptor");
+                self.announced[port] = true;
+            }
+        }
         (!self.bytes.is_empty()).then(|| std::mem::take(&mut self.bytes))
     }
 
@@ -182,9 +208,25 @@ mod tests {
         let events = crate::lane::events(&bytes)
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
-        assert_eq!(events, [note, MidiEvent { frame: 301, ..note }]);
+        assert_eq!(
+            events,
+            [
+                note,
+                MidiEvent { frame: 301, ..note },
+                MidiEvent {
+                    frame: 302,
+                    bytes: &[],
+                    ..note
+                }
+            ]
+        );
         assert_eq!(batch.take(), None);
-        assert!(batch.push(MidiEvent { frame: 302, ..note }));
+        assert!(!batch.push(MidiEvent { frame: 303, ..note }));
+        assert!(batch.push(MidiEvent {
+            frame: 303,
+            port: 0,
+            ..note
+        }));
     }
 
     fn clock() -> MidiClock {

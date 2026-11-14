@@ -5,8 +5,9 @@ The core slice is implemented and validated;
 [acceptance evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/session-persistence.md) records its scope.
 The [feature backlog](feature-parity.md#missing-features) assigns remaining
 save/load/store/export requirements to Carla (P07), latency compensation (P09),
-take alignment (P10), duplication/MIDI state (P11) and session scripts/resources
-(P16). Historical P01/P02 are no longer standalone backlog items.
+and take alignment (P10). Basic MIDI/duplication (P11) and client-owned session
+scripts/resources (P16) are complete within their recorded scopes. Historical
+P01/P02 are no longer standalone backlog items.
 
 ## Shared audio reconciliation
 
@@ -90,12 +91,12 @@ for archive, worker and client workflow changes.
 | Native wire preparation | Validate/index ≤256 KiB per client connection poll before streaming; cancellation and detach discard pending validation and upload |
 | Native wire turns | At most 64 persistence records per connection turn (≤64 KiB of media), with at most 64 upload records awaiting replies; ordinary commands retain their 16-record limit. Outbound accounting counts emitted records and bounds encoder cleanup separately. This batches file work across platform timer wakeups without increasing RT buffer ownership |
 | Wire chunk | 1024 bytes; fits the existing 1280-byte carriers with identities/envelope |
-| MIDI | At most 1,000,000 events per job, additionally bounded by decoded bytes and runtime packet/index capacities |
-| MIDI initial/preroll state | At most 16,384 short channel or System Reset packets per loop; parameter history that remains untracked after the complete prefix and vendor/system initial state refuse before activation (P11) |
+| MIDI | At most 1,000,000 events per job, additionally bounded by decoded bytes and prepared fixed-record pages, directories and owner credits. Payload cap: four bytes; exact-length channel messages and System Reset only |
+| MIDI initial/preroll state | At most 16,384 supported packets per loop. SysEx, other system messages and parameter CC6/38/96–101 refuse before activation. Legacy prefix-only selector-null artifacts may normalize with a conversion report; timeline packets are never filtered |
 | Wire MIDI read index | At most 8 MiB plus one offset per object; built only for byte delivery, alongside retained immutable media |
-| Adapter read assembly | ≤16 outstanding bulk records per read. Audio fills final channels on arrival; MIDI has one ≤256 MiB byte builder and decodes ≤256 KiB per pump, with one complete ≤1 MiB packet atomic. Event/packet allocation remains bounded by one million events and the media budget |
+| Adapter read assembly | ≤16 outstanding bulk records per read. Audio fills final channels on arrival; MIDI has one ≤256 MiB byte builder and decodes ≤256 KiB per pump. Supported MIDI packets occupy at most four bytes. Event allocation remains bounded by one million events and the media budget |
 | Engine upload window | At most 64 queued writes when WIDE_CONTENT_UPLOAD is advertised, otherwise eight; cap the window by reliable credits. Both use a fixed pool of 32 prepared runtime buffers. Chunks divide a resource page and are at most 1024 bytes. Preparation adds at most 32 KiB of upload copy allowance per callback, separately from existing render/read reservations, and reserves validation for one MIDI chunk. Queue depth alone does not change these finite budgets |
-| Adapter preparation | Validate ≤256 KiB per pump before issuing engine preparation; one ≤1 MiB MIDI packet is atomic. Cache byte counts only with a proof retaining the immutable content. Capture checks remaining aggregate capacity before allocating each medium |
+| Adapter preparation | Validate ≤256 KiB per pump before issuing engine preparation; supported MIDI packets occupy at most four bytes. Cache byte counts only with a proof retaining the immutable content. Capture checks remaining aggregate capacity before allocating each medium |
 | Browser progression | Main-thread service/client pump on engine replies, every 4 ms and on UI turns, sharing one elapsed-time clock. Each turn retains the existing record/media work bounds; dropping the runtime clears the interval |
 | Browser codec transport | Sixteen in-flight worker envelopes, each ≤64 KiB. Image envelopes contain at most sixteen bounded persistence parts; client-only resource chunks are at most 16 KiB. Send/receive media totals at most 256 KiB per poll. Cooperative image validation and assembly each step at most 256 KiB; codecs remain in the dedicated worker |
 | Concurrent host persistence work | One staging or capture job; normal controls/snapshots continue with bounded pump work |
@@ -108,12 +109,13 @@ for archive, worker and client workflow changes.
 | Codec scratch | Per codec job: Retain at most one 512 MiB input/output, 256 MiB decoded image, 256 MiB conversion image and the expanded-byte ceiling of encoded payload scratch. Exact MIDI JSON streams from ZIP into charged packet/event builders; JSON strings are capped at 8 MiB. PCM extraction uses at most one additional 256 MiB entry; WAV deinterleaves directly into its final channels |
 | Client script memory at replacement | Old records and prepared candidate each retain at most 256 MiB immutable resources, 256 MiB source strings and 256 MiB derived header help, separately from codec/media scratch and running VMs. Arc sharing avoids copying retained bundles on save. Browser worker handoff may temporarily retain another bounded resource copy in each realm; these are explicit finite per-owner allowances, not a single 256 MiB process-wide limit |
 | Source audio shape | At most 256 channels before mapping to the current core; empty and wider sources refuse explicitly. Source labels/roles share the metadata budget |
-| MIDI file decoding | Packet ≤1 MiB, event ≤1 million, initial packets ≤16,384 per channel, all charged before vector growth. Lazy SMF parsing also bounds source tracks and meta events; tempo lookups use a sorted cumulative map |
+| MIDI file decoding | Packet ≤4 bytes, event ≤1 million, initial packets ≤16,384 per channel, all charged before vector growth. Unsupported SysEx and parameter messages refuse the complete import. Lazy SMF parsing also bounds source tracks and meta events; tempo lookups use a sorted cumulative map |
 | RT content and activation | Preflight currently free pages/leases/indexes, logical/physical slots, graph/topology candidates and reliable receipts; count retained old content and capture pins |
 
 These are ceilings, not guaranteed engine capacity. A candidate that cannot coexist
-with current content is refused before changing current state. Existing prepared
-recording-pool capacity is unchanged. Account separately for client encoded bytes,
+with current content is refused before changing current state. MIDI pools use
+fixed record pages and state banks; existing event-density limits are retained,
+while their memory cost differs from packet-slab storage. Account separately for client encoded bytes,
 decoded staging, codec/resampling scratch and host ingress copies; no stage may
 infer an unbounded budget from the archive codec's default 16 GiB limit. Admission
 and cleanup must account for this peak, not just final PCM size.
@@ -214,8 +216,9 @@ After copied-content commit, later failures identify the remaining step;
 acknowledged media is not rolled back. Unknown engine outcomes remain unknown.
 UI reconnect reconciles one accepted operation without replaying clear, capture,
 row creation or application. Copying does not require a file provider. Host/engine
-crash recovery and expanded MIDI state/preroll/seek/history support remain outside
-this contract. See [the duplication plan](../../PLAN_LOOP_DUPLICATION.md).
+crash recovery remains outside this contract. Supported basic-MIDI state, preroll,
+seek and history use the [fixed-record runtime](midi-runtime-rtl-design.md).
+See [the duplication plan](../../PLAN_LOOP_DUPLICATION.md).
 
 ## Engine integration boundary
 

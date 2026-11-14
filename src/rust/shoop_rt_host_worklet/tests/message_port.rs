@@ -512,7 +512,7 @@ fn reports_driver_state_load_and_xruns_in_telemetry() {
 }
 
 #[shoop_test]
-fn delivers_timestamped_midi_and_returns_monitored_output() {
+fn delivers_timestamped_midi_and_fences_late_or_lost_source_state() {
     let mut browser = Browser::connected(&WorkletConfig::new(description()));
     track(&mut browser, true);
     let next = browser.processor.frame;
@@ -520,38 +520,39 @@ fn delivers_timestamped_midi_and_returns_monitored_output() {
     browser.post_midi(&[
         (ahead, 0, &[0x90, 60, 100]),
         (next + 1, 1, &[0x90, 61, 100]),
-        (next - 7, 0, &[0x90, 62, 100]),
-        (next + 2, 0, &[0x90]),
     ]);
     browser.run(4 * QUANTUM);
-    assert_eq!(
-        browser.midi_out,
-        [
-            (next, 0, vec![0x90, 62, 100]),
-            (ahead, 0, vec![0x90, 60, 100])
-        ]
-    );
-    let counters = browser.counters();
-    assert_eq!((counters.midi_in_late, counters.midi_in_dropped), (1, 2));
-
-    let mut lane = Vec::new();
-    lane.extend_from_slice(&[0; lane::EVENT_HEADER_BYTES]);
+    assert_eq!(browser.midi_out, [(ahead, 0, vec![0x90, 60, 100])]);
+    assert_eq!(browser.counters().midi_in_dropped, 1);
+    let next = browser.processor.frame;
+    browser.post_midi(&[(next - 7, 0, &[0xb0, 7, 10])]);
+    browser.run(QUANTUM);
+    assert_eq!(browser.counters().midi_in_late, 1);
+    assert_eq!(browser.midi_out.len(), 33);
+    for (index, (_, port, bytes)) in browser.midi_out[1..].iter().enumerate() {
+        assert_eq!(*port, 0);
+        assert_eq!(
+            *bytes,
+            [
+                0xb0 | (index / 2) as u8,
+                if index % 2 == 0 { 120 } else { 123 },
+                0
+            ]
+        );
+    }
+    let next = browser.processor.frame;
+    browser.post_midi(&[(next, 0, &[0x90, 65, 100])]);
+    browser.run(QUANTUM);
+    assert_eq!(browser.midi_out.len(), 33);
+    assert_eq!(browser.counters().midi_in_dropped, 3);
+    let mut malformed = vec![0; lane::EVENT_HEADER_BYTES];
+    malformed[9] = 5;
     browser.to_worklet.push_back(Message {
         kind: Kind::Midi,
-        bytes: lane,
+        bytes: malformed,
     });
-    let next = browser.processor.frame;
-    browser.post_midi(&[(next, 0, &[0x80, 60, 0])]);
     browser.run(QUANTUM);
     assert_eq!(browser.counters().framing_errors, 1);
-    browser.post_midi(&[(next + QUANTUM as u64, 0, &[0x80, 60, 0])]);
-    browser.run(QUANTUM);
-    // The event behind the malformed one in the same stream was discarded.
-    assert_eq!(browser.midi_out.len(), 3);
-    assert_eq!(
-        browser.midi_out.last(),
-        Some(&(next + QUANTUM as u64, 0, vec![0x80, 60, 0]))
-    );
 }
 
 #[shoop_test]
@@ -569,7 +570,19 @@ fn bounds_midi_output_per_quantum() {
     browser.run(QUANTUM);
     let fitting = MAX_EVENT_BYTES / (lane::EVENT_HEADER_BYTES + 3);
     assert_eq!(browser.midi_out.len(), fitting);
-    assert_eq!(browser.counters().midi_out_dropped as usize, 30 - fitting);
+    assert_eq!(browser.counters().midi_out_dropped, 30);
+    browser.run(32 * QUANTUM);
+    assert_eq!(browser.midi_out.len(), 32);
+    for (index, (_, _, bytes)) in browser.midi_out.iter().enumerate() {
+        assert_eq!(
+            *bytes,
+            [
+                0xb0 | (index / 2) as u8,
+                if index % 2 == 0 { 120 } else { 123 },
+                0
+            ]
+        );
+    }
 }
 
 #[shoop_test]

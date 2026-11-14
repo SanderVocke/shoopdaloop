@@ -5,6 +5,14 @@
 
 use crate::Error;
 
+mod initial;
+mod short;
+pub use initial::{InitialDecoder, InitialFormat};
+pub use short::{
+    EventRecord, MessageDisposition, MessagePolicy, PolicyRejection, ShortMessage,
+    MAX_MESSAGE_BYTES,
+};
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MessageKind {
     NoteOn {

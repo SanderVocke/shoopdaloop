@@ -286,11 +286,19 @@ fn main() -> Result<(), Error> {
         packets.push(0, 4, &[0x90, 60, 100])?;
         assert_eq!(packets.push(1, 4, &[0x80, 60]), Err(Error::InvalidEvent));
         assert_eq!(packets.len(), 1);
-        packets.push(2, 4, &[0xf0, 0x7d, 1, 0xf7])?;
-        assert_eq!(packets.byte_len(), 7);
-        assert_eq!(packets.push(3, 4, &[0xf8]), Err(Error::Full));
+        assert_eq!(
+            packets.push(2, 4, &[0xf0, 0x7d, 1, 0xf7]),
+            Err(Error::InvalidEvent)
+        );
+        assert_eq!(
+            packets.push(2, 4, &[0xb0, 6, 1]),
+            Err(Error::InvalidParameter)
+        );
+        packets.push(2, 4, &[0xc0, 42])?;
+        assert_eq!(packets.byte_len(), 5);
+        assert_eq!(packets.push(3, 4, &[0xff]), Err(Error::Full));
         Ok::<_, Error>(())
     })?;
-    println!("MIDI packets: exact frames/ties, complete SysEx, continuing audio and all 32 recovery packets verified");
+    println!("MIDI packets: exact frames/ties, basic-message policy/refusal, continuing audio and all 32 recovery packets verified");
     Ok(())
 }

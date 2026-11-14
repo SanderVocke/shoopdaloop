@@ -93,6 +93,9 @@ pub struct WorkletHost {
     output: Box<[f32]>,
     midi_inputs: Box<[MidiBuffer]>,
     midi_outputs: Box<[MidiBuffer]>,
+    input_lost: Box<[bool]>,
+    loss_announced: Box<[bool]>,
+    output_reset: Box<[lane::ResetState]>,
     midi_in: Stream,
     midi_out: Batch,
     records_per_quantum: usize,
@@ -160,6 +163,9 @@ impl WorkletHost {
             output: vec![0.; audio_outputs * frames].into_boxed_slice(),
             midi_inputs: midi(host.midi_inputs.len(), false)?,
             midi_outputs: midi(host.midi_outputs.len(), true)?,
+            input_lost: vec![false; host.midi_inputs.len()].into_boxed_slice(),
+            loss_announced: vec![false; host.midi_inputs.len()].into_boxed_slice(),
+            output_reset: vec![Default::default(); host.midi_outputs.len()].into_boxed_slice(),
             midi_in: Stream::new(config.midi_in_bytes),
             midi_out: Batch::new(config.midi_out_bytes),
             records_per_quantum: config.records_per_quantum,
@@ -217,13 +223,23 @@ impl WorkletHost {
 
     /// Append posted bytes to an inbound lane and return how many fit.
     pub fn write(&mut self, lane: Inbound, bytes: &[u8]) -> usize {
-        self.with_inbound(lane, |stream| {
+        let count = self.with_inbound(lane, |stream| {
             let free = stream.free_mut();
             let count = free.len().min(bytes.len());
             free[..count].copy_from_slice(&bytes[..count]);
             stream.commit(count);
             count
-        })
+        });
+        if lane == Inbound::Midi && count != bytes.len() {
+            self.midi_input_loss();
+        }
+        count
+    }
+    /// Discard an interrupted transport stream and fence all input baselines.
+    pub fn midi_input_loss(&mut self) {
+        self.midi_in.clear();
+        self.input_lost.fill(true);
+        bump(&mut self.counters.midi_in_dropped);
     }
     /// Read what an outbound lane collected during the last quantum.
     pub fn read<R>(&self, lane: Outbound, read: impl FnOnce(&[u8]) -> R) -> R {
@@ -313,6 +329,7 @@ impl WorkletHost {
     fn deliver_midi(&mut self, frame: u64, frames: usize) {
         let end = frame.saturating_add(frames as u64);
         let inputs = &mut self.midi_inputs;
+        let lost = &mut self.input_lost;
         let counters = &mut self.counters;
         let delivered = self.midi_in.retain(|bytes| {
             let Some((event, len)) = lane::decode(bytes)? else {
@@ -325,9 +342,20 @@ impl WorkletHost {
                 bump(&mut counters.midi_in_late);
             }
             let offset = event.frame.saturating_sub(frame) as u32;
-            let accepted = inputs
-                .get_mut(usize::from(event.port))
-                .is_some_and(|input| input.insert(offset, frames, event.bytes).is_ok());
+            let accepted = if let Some(input) = inputs.get_mut(event.port as usize) {
+                let lost = &mut lost[event.port as usize];
+                if event.bytes.is_empty() || event.frame < frame {
+                    *lost = true;
+                }
+                if *lost || input.insert(offset, frames, event.bytes).is_err() {
+                    *lost = true;
+                    false
+                } else {
+                    true
+                }
+            } else {
+                false
+            };
             if !accepted {
                 bump(&mut counters.midi_in_dropped);
             }
@@ -335,6 +363,22 @@ impl WorkletHost {
         });
         if delivered.is_err() {
             bump(&mut self.counters.framing_errors);
+            self.input_lost.fill(true);
+        }
+        for ((input, lost), announced) in self
+            .midi_inputs
+            .iter_mut()
+            .zip(&self.input_lost)
+            .zip(self.loss_announced.iter_mut())
+        {
+            if *lost {
+                if *announced {
+                    input.mark_input_loss_silent();
+                } else {
+                    input.mark_input_loss();
+                    *announced = true;
+                }
+            }
         }
     }
 
@@ -375,20 +419,49 @@ impl WorkletHost {
 
     fn collect_midi(&mut self, frame: u64) {
         for (port, output) in self.midi_outputs.iter().enumerate() {
-            let recovery = self.render.midi_recovery(port);
-            for buffer in std::iter::once(output).chain(recovery) {
-                for index in 0..buffer.len() {
-                    let Some((offset, bytes)) = buffer.get(index) else {
-                        continue;
+            let reset = &mut self.output_reset[port];
+            if output.is_recovery()
+                || self
+                    .render
+                    .midi_recovery(port)
+                    .is_some_and(|b| !b.is_empty())
+            {
+                reset.request();
+            }
+            let required = output.byte_len() + output.len() * lane::EVENT_HEADER_BYTES;
+            if !reset.pending()
+                && required > self.midi_out.capacity() - self.midi_out.as_slice().len()
+            {
+                self.counters.midi_out_dropped = self
+                    .counters
+                    .midi_out_dropped
+                    .saturating_add(output.len() as u32);
+                reset.request();
+            }
+            if reset.pending() {
+                while let Some(bytes) = reset.peek() {
+                    let event = MidiEvent {
+                        frame,
+                        port: port as u8,
+                        bytes: &bytes,
                     };
+                    if !self.midi_out.write(|free| event.encode(free)) {
+                        break;
+                    }
+                    reset.acknowledge().expect("retained reset head");
+                }
+            } else {
+                for index in 0..output.len() {
+                    let (offset, bytes) = output.get(index).expect("bounded output");
                     let event = MidiEvent {
                         frame: frame.saturating_add(u64::from(offset)),
                         port: port as u8,
                         bytes,
                     };
-                    if !self.midi_out.write(|free| event.encode(free)) {
-                        bump(&mut self.counters.midi_out_dropped);
-                    }
+                    assert!(
+                        self.midi_out.write(|free| event.encode(free)),
+                        "preflighted complete batch"
+                    );
                 }
             }
         }

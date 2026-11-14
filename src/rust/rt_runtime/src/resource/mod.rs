@@ -30,9 +30,7 @@ mod audio_backing;
 pub mod indexed_midi;
 mod midi_backing;
 pub use midi_backing::{MidiEditId, MidiImportId, MidiStoreId};
-#[allow(dead_code)] // Continuous shared MIDI storage is integrated in stages.
-mod midi_packets;
-#[allow(dead_code)] // Continuous writer integration is staged separately.
+#[path = "midi_blocks.rs"]
 mod midi_writer;
 mod render;
 mod request;
@@ -264,8 +262,12 @@ impl<S: Sample> ResourceStore<S> {
         }
         let scope = index::new_scope()?;
         let mut data = vec![0u8; config.resource_bytes()].into_boxed_slice();
-        for byte in &mut data {
-            *core::hint::black_box(byte) = 0;
+        // The allocation is already zeroed. Write both ends of each page-sized
+        // chunk to make every backing page private before rendering, including
+        // an unaligned allocation's first and last pages.
+        for page in data.chunks_mut(4096) {
+            *core::hint::black_box(&mut page[0]) = 0;
+            *core::hint::black_box(page.last_mut().expect("nonempty page")) = 0;
         }
         let mut pages = vec![Page::default(); limits.resource_pages];
         for page in &mut pages {
