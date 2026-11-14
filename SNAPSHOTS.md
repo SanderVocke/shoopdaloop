@@ -17,12 +17,22 @@ Changing command semantics is a separate phase, not a prerequisite for snapshots
 
 ## Implemented scope and review map
 
-Both snapshot milestones below are implemented. Publication runs alongside the
-legacy machinery, and `shoop_rt_backend::Observation` selects the UI's observation
-source. `Snapshots` is the application adapter default; `Legacy` remains selectable
-with `RtBackend::set_observation`. Existing raw protocol clients default to legacy
-observation until they opt in. Commands, reliable results, exact queries, media,
-and ownership reclamation retain their existing protocols.
+Both snapshot milestones below are implemented. The UI adapter uses snapshots as
+its only observation source for ordinary loops and mixers; the legacy display
+selector has been removed. `SnapshotDelivery` still selects push or pull delivery.
+Existing raw protocol clients may use the compatibility telemetry path until they
+opt into snapshots. Commands, reliable results, exact queries, media, composite
+and plugin observation, and ownership reclamation retain their existing protocols.
+
+Control refreshes its timing cache directly from validated, epoch-matched ring
+copies on every control poll, independently of connection state, UI requests,
+delivery mode, and push rate. It updates matching active and staged loop entries
+without regressing timing/content revisions. Input completion waits for cached
+state captured after the operation's effective frame instead of sending a timing
+query. Reconnection uses that cache. The background `TimingSnapshot` request and
+input timing-query steps are removed. The graph-setup query that obtains a media
+identity for retirement remains, because scalar snapshots do not transfer media
+lifetimes. Bootstrap configuration resynchronization also remains.
 
 The implementation is separated into these modules:
 
@@ -88,7 +98,8 @@ success replies cannot overwrite the migrated display fields in snapshot mode.
 Focused checks cover ring wrap with concurrent readers, stalled consumption,
 sequence exhaustion, capacity refusal, graph activation and slot reuse, continued
 publication during pending graph changes, malformed and incomplete UI assembly,
-protocol round trips, and UI selection/rollback. Existing engine control and
+protocol round trips, push/pull delivery selection, and control-cache/reconnect
+progress without UI snapshot requests. Existing engine control and
 adapter checks exercise legacy operation and command/media handling alongside the
 new path. No hardware implementation or broad performance campaign is included.
 
@@ -260,8 +271,7 @@ rate control: worst-case capture work remains part of every processing callback.
 Callbacks that only stage buffered input retain the last publication.
 
 Snapshot observation supports both control-to-UI delivery policies on every
-carrier. `SnapshotDelivery` is independent of `Observation::Snapshots` versus
-`Observation::Legacy`:
+carrier, selected through `SnapshotDelivery`:
 
 - Native `InProcess` defaults to `Pull`.
 - Browser targets, including browser `InProcess`, default to `Push` at 60 Hz.
@@ -333,12 +343,11 @@ observations rather than claiming measured performance from estimates.
 ### Completion of the snapshot migration
 
 After the publication milestone, integrate delivery to the UI and switch ordinary
-scalar display state to accepted snapshots, with an explicit legacy selection for
-comparison and rollback. Completion means the selected UI path consistently uses
-snapshots for the inventoried state, resolves configuration versions correctly,
-and skips obsolete publications without accumulating a backlog. The entire old
-communication layer remains operational, including completion draining and
-ownership reclamation.
+scalar display state to accepted snapshots, with a single observation source for
+migrated fields. Completion means the UI consistently uses snapshots for the inventoried state, resolves configuration versions correctly,
+and skips obsolete publications without accumulating a backlog. Command/results,
+media and ownership communication remain operational. Redundant timing queries
+and the temporary legacy display selector have been removed.
 
 Removing legacy communication, converting commands to fire-and-forget, replacing
 media/ownership protocols, live ring resizing, and any ARM/FPGA implementation are
@@ -356,11 +365,11 @@ outside these milestones. They require subsequent designs and work.
    and graph/slot-generation changes. Compare against legacy observations at
    matching frames and epochs where possible.
 3. **Move UI observation.** Add an explicit selection between legacy observation
-   and snapshots. Switch the ordinary display state as a coherent group. For any
-   selected field, only the chosen path updates the UI; legacy replies must not
-   overwrite newer snapshot state. Continue draining legacy completions to release
+   and snapshots during development, then remove the temporary selector after
+   migrating control timing dependencies. Switch ordinary display state as a
+   coherent group; legacy replies must not overwrite newer snapshot state. Continue draining legacy completions to release
    credits and reclaim owners. A slow UI receives the latest complete snapshot,
-   not a backlog. Retain the legacy selection for comparison and rollback.
+   not a backlog.
 4. **Revisit commands separately.** Migrate appropriate commands to fire-and-forget
    only after snapshot observation works. Preserve ordered dependencies, musical
    scheduling, failure reporting, and reliable ownership/media workflows until
@@ -372,6 +381,5 @@ identifies the replacement as active and its context is available. If activation
 fails, continue displaying the actual active configuration. An optimistic pending
 UI view must remain distinct from the confirmed audio state.
 
-This document establishes the design direction. The next implementation step is
-the field inventory and publication path; it does not authorize removing the old
-communication layer or simultaneously redesigning commands.
+The publication, UI delivery, and control timing-cache migrations are implemented.
+Command semantics and media lifetime protocols remain separate future work.

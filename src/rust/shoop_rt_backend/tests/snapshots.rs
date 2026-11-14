@@ -1,13 +1,12 @@
 mod support;
 use shoop_backend::{Backend, BackendTrackControl, DirectTrackRequest};
-use shoop_rt_backend::{Observation, SnapshotDelivery};
+use shoop_rt_backend::SnapshotDelivery;
 use shoop_wasm_test_support::shoop_test;
 use support::*;
 
 #[shoop_test]
-fn snapshots_drive_display_controls_and_legacy_remains_selectable() {
+fn snapshots_drive_display_controls_in_both_delivery_modes() {
     let mut backend = stack(&description());
-    assert_eq!(backend.observation(), Observation::Snapshots);
     assert_eq!(
         backend.snapshot_delivery(),
         if cfg!(target_arch = "wasm32") {
@@ -47,7 +46,6 @@ fn snapshots_drive_display_controls_and_legacy_remains_selectable() {
     backend
         .set_snapshot_delivery(SnapshotDelivery::Pull)
         .unwrap();
-    backend.set_observation(Observation::Legacy).unwrap();
     backend
         .set_track_control(track.track_id, BackendTrackControl::OutputBalance(-0.5))
         .unwrap();
@@ -56,7 +54,6 @@ fn snapshots_drive_display_controls_and_legacy_remains_selectable() {
         backend.poll().unwrap().tracks[&track.track_id].output_balance,
         -0.5
     );
-    backend.set_observation(Observation::Snapshots).unwrap();
     backend.clock_mut().render(16);
     backend.pump();
     assert_eq!(

@@ -26,7 +26,6 @@ pub(crate) enum Step {
     Cancel(usize),
     Commit,
     Abort,
-    Timing(usize),
 }
 #[derive(Clone, Copy)]
 struct Entry {
@@ -551,13 +550,12 @@ impl ControlEndpoint {
                 if self.input.terminal == Some(InputPhase::Applied) {
                     let entry = self.input.entries[index].expect("received entry");
                     if self.model.find_loop(entry.edit.loop_id).is_some() {
-                        self.input_submit(
-                            Operation::State {
-                                target: loop_id(entry.edit.loop_id),
-                            },
-                            Step::Timing(index),
-                        );
-                        return;
+                        if !self.timing_cached_after(
+                            entry.edit.loop_id,
+                            self.input.effective.unwrap_or(0),
+                        ) {
+                            return;
+                        }
                     }
                 }
                 self.input.index += 1;
@@ -719,18 +717,6 @@ impl ControlEndpoint {
             ) => {
                 self.input.entries[index].as_mut().unwrap().writer = None;
             }
-            (Step::Timing(index), Some(Reply::State(cut))) => {
-                let target = self.input.entries[index].unwrap().edit.loop_id;
-                self.publish_content_timing(target, crate::timing::state(cut));
-                self.input.index += 1;
-            }
-            (
-                Step::Timing(_),
-                Some(Reply::Failed(shoop_loops::runtime::Failure::Runtime(
-                    rt_runtime::Error::InvalidId,
-                ))),
-            ) => self.input.index += 1,
-            (Step::Timing(_), Some(Reply::Failed(_))) => {}
             (Step::Commit, Some(Reply::Cancelled { .. })) => {
                 self.input.finish(InputPhase::Cancelled)
             }

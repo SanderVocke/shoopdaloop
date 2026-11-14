@@ -331,3 +331,57 @@ fn an_in_progress_pull_finishes_reliably_after_switching_to_push() {
     assert!(chunks > 1);
     assert_eq!(h.frame(), frame);
 }
+
+#[shoop_test]
+fn timing_cache_and_resync_follow_snapshots_without_ui_snapshot_requests() {
+    use shoop_rt_protocol::snapshot::SnapshotDelivery;
+    let mut h = Harness::new(&description());
+    let track = strip(0, 1);
+    let id = loop_id(0, 1);
+    h.done(Request::CreateStrip {
+        strip: track,
+        shape: shape(2, 2, false),
+    });
+    h.done(Request::CreateLoop {
+        loop_id: id,
+        strip: track,
+    });
+    h.host.client.observe_snapshots(true).unwrap();
+    h.host
+        .client
+        .configure_snapshots(SnapshotDelivery::Pull)
+        .unwrap();
+    h.lifecycle.clear();
+    h.done(Request::LoopTransition {
+        loop_id: id,
+        mode: LoopMode::Recording,
+        delay: None,
+    });
+    h.run(32, 8);
+    h.done(Request::LoopTransition {
+        loop_id: id,
+        mode: LoopMode::Stopped,
+        delay: None,
+    });
+    h.run(16, 16);
+    let timing = h.host.endpoint().cached_loop_timing(id).unwrap();
+    assert!(timing.length > 0);
+    assert!(timing.raw_audio_frames > 0);
+    let (_, _, records) = read(&mut h);
+    assert!(records.iter().any(|record| matches!(record, Record::State(StateRecord::LoopTiming { loop_id, timing: state }) if *loop_id == id && *state == timing)));
+    assert!(!h.lifecycle.iter().any(|message| matches!(
+        message,
+        EngineMessage::Snapshot(_) | EngineMessage::SnapshotReply(_)
+    )));
+    h.states.clear();
+    let frame = h.frame();
+    h.host.client.resync().unwrap();
+    h.pump();
+    assert_eq!(h.frame(), frame);
+    assert!(h.states.iter().any(|record| matches!(record, StateRecord::LoopTiming { loop_id, timing: state } if *loop_id == id && *state == timing)));
+    assert!(h
+        .states
+        .iter()
+        .any(|record| matches!(record, StateRecord::End { .. })));
+    assert!(h.host.endpoint().is_idle());
+}

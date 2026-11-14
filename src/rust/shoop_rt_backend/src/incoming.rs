@@ -107,7 +107,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 self.snapshots.reset();
                 if let Err(error) = self
                     .client
-                    .observe_snapshots(self.snapshots.mode == crate::Observation::Snapshots)
+                    .observe_snapshots(true)
                     .and_then(|()| self.client.configure_snapshots(self.snapshots.delivery))
                 {
                     self.lose(format!("could not select state observation: {error:?}"));
@@ -138,7 +138,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 }
             }
             EngineMessage::Telemetry(record) => {
-                let legacy = match record {
+                let unmigrated = match record {
                     Telemetry::Loop { loop_id, .. } => self
                         .mirror
                         .slot_loops
@@ -148,7 +148,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     Telemetry::Strip { .. } | Telemetry::Bus { .. } => false,
                     _ => true,
                 };
-                if self.snapshots.mode == crate::Observation::Legacy || legacy {
+                if unmigrated {
                     self.telemetry(record);
                 }
             }
@@ -212,9 +212,6 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 status.input_peak = status.input_peak.max(input_peak.abs());
                 status.output_peak = status.output_peak.max(output_peak.abs());
                 self.driver = Some(driver);
-                if self.snapshots.mode == crate::Observation::Legacy {
-                    self.telemetry_fresh = true;
-                }
             }
             Telemetry::Strip {
                 strip,
@@ -380,7 +377,6 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     }
     pub(crate) fn state_record(&mut self, record: StateRecord) {
         if self.link == Link::Ready
-            && self.snapshots.mode == crate::Observation::Snapshots
             && matches!(
                 record,
                 StateRecord::LoopTiming { .. } | StateRecord::StripControl { .. }
@@ -914,12 +910,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         };
         match (purpose, refusal) {
             (Purpose::RepeatSync(id, enabled), None) => {
-                if self.snapshots.mode == crate::Observation::Snapshots
-                    && self
-                        .mirror
-                        .loops
-                        .get(&id)
-                        .is_some_and(|entry| entry.program.is_none())
+                if self
+                    .mirror
+                    .loops
+                    .get(&id)
+                    .is_some_and(|entry| entry.program.is_none())
                 {
                     return;
                 }
@@ -1106,14 +1101,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     );
                 }
             }
-            (Purpose::AutomaticMonitoring(id, enabled), None) => {
-                if self.snapshots.mode == crate::Observation::Snapshots {
-                    return;
-                }
-                if let Some(track) = self.mirror.tracks.get_mut(&id) {
-                    track.automatic_enabled = enabled;
-                }
-            }
+            (Purpose::AutomaticMonitoring(..), None) => {}
             (Purpose::AutomaticMonitoring(id, _), Some(refusal)) => self.failure(
                 BackendMutationKind::TrackControl,
                 Some(id.raw()),
@@ -1123,14 +1111,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     refusal_text(refusal)
                 ),
             ),
-            (Purpose::StripControl(id, control), None) => {
-                if self.snapshots.mode == crate::Observation::Snapshots {
-                    return;
-                }
-                if let Some(track) = self.mirror.tracks.get_mut(&id) {
-                    track.controls.apply(control);
-                }
-            }
+            (Purpose::StripControl(..), None) => {}
             (Purpose::StripControl(id, control), Some(refusal)) => {
                 if self.mirror.tracks.contains_key(&id) {
                     self.failure(
@@ -1152,12 +1133,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 }
             }
             (Purpose::LoopGain(id, gain), None) => {
-                if self.snapshots.mode == crate::Observation::Snapshots
-                    && self
-                        .mirror
-                        .loops
-                        .get(&id)
-                        .is_some_and(|entry| entry.program.is_none())
+                if self
+                    .mirror
+                    .loops
+                    .get(&id)
+                    .is_some_and(|entry| entry.program.is_none())
                 {
                     return;
                 }
@@ -1166,12 +1146,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 }
             }
             (Purpose::LoopBalance(id, balance), None) => {
-                if self.snapshots.mode == crate::Observation::Snapshots
-                    && self
-                        .mirror
-                        .loops
-                        .get(&id)
-                        .is_some_and(|entry| entry.program.is_none())
+                if self
+                    .mirror
+                    .loops
+                    .get(&id)
+                    .is_some_and(|entry| entry.program.is_none())
                 {
                     return;
                 }
@@ -1185,13 +1164,6 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 self.canonical_imports.remove(&id);
                 if let Some(entry) = self.mirror.loops.get_mut(&id) {
                     entry.content += 1;
-                    if self.snapshots.mode == crate::Observation::Snapshots {
-                        return;
-                    }
-                    entry.timing.windows = Default::default();
-                    entry.timing.length = 0;
-                    entry.timing.raw_audio_frames = 0;
-                    entry.timing.raw_midi_frames = 0;
                 }
             }
             (
@@ -1301,15 +1273,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 format!("bus FX control refused: {}", refusal_text(refusal)),
             ),
             (Purpose::BusFxControl(_, _), None) => {}
-            (Purpose::BusControl(id, control), None) => {
-                if self.snapshots.mode == crate::Observation::Snapshots {
-                    return;
-                }
-                if let Some(bus) = self.mirror.buses.get_mut(&id) {
-                    bus.apply(control);
-                }
-                self.mirror.mixer_revision += 1;
-            }
+            (Purpose::BusControl(..), None) => {}
             (Purpose::BusControl(id, control), Some(refusal)) => self.failure(
                 BackendMutationKind::BusControl,
                 Some(id.raw()),

@@ -10,8 +10,7 @@
 //! `advance`, `wait_idle`), so the engine can apply the structural ones of one application
 //! tick as one transaction. The outcome confirms the change in the snapshot or reports a
 //! mutation failure. `poll` never waits. Ordinary loop and mixer display state comes
-//! from coherent RT publications by default; [`Observation::Legacy`] selects the
-//! existing feedback path. Media, structural outcomes, and diagnostics retain their
+//! from coherent RT publications. Media, structural outcomes, and diagnostics retain their
 //! own protocols. `wait_idle` waits for outcomes and fresh observation.
 //!
 //! Loop modes, positions, lengths and planned transitions in the snapshot describe the state
@@ -56,7 +55,7 @@ mod requests;
 mod session;
 mod snapshots;
 mod timing;
-pub use snapshots::{Observation, SnapshotDelivery};
+pub use snapshots::SnapshotDelivery;
 
 #[cfg(all(feature = "std", not(target_arch = "wasm32")))]
 pub use clock::Sleep;

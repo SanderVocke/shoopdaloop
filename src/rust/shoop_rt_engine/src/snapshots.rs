@@ -9,7 +9,7 @@ use rt_runtime::{snapshot, Error};
 use shoop_loops::{runtime::LoopPlanner, Mode};
 use shoop_rt_protocol::{
     codec,
-    snapshot::{Chunk, Header, Record, SnapshotDelivery, CHUNK_BYTES, HEADER},
+    snapshot::{Chunk, Header, Record, Records, SnapshotDelivery, CHUNK_BYTES, HEADER},
     EngineMessage, LoopSlotId, SlotId, StateRecord, Telemetry,
 };
 
@@ -21,6 +21,10 @@ pub(crate) struct Capture {
 }
 pub(crate) struct State {
     reader: snapshot::Reader,
+    cache_scratch: Box<[u8]>,
+    cache_sequence: u32,
+    cache_epochs: Option<(u64, u64)>,
+    cache_frames: Box<[Option<(LoopSlotId, u64)>]>,
     scratch: Box<[u8]>,
     accepted: Box<[u8]>,
     len: usize,
@@ -55,6 +59,10 @@ pub(crate) fn prepare(
         },
         State {
             reader,
+            cache_scratch: vec![0; capacity].into_boxed_slice(),
+            cache_sequence: 0,
+            cache_epochs: None,
+            cache_frames: vec![None; loops].into_boxed_slice(),
             scratch: vec![0; capacity].into_boxed_slice(),
             accepted: vec![0; capacity].into_boxed_slice(),
             len: 0,
@@ -273,6 +281,74 @@ impl State {
 }
 
 impl ControlEndpoint {
+    pub(crate) fn refresh_snapshot_timing(&mut self) {
+        let state = &mut self.snapshots;
+        let Some((sequence, len)) = state.reader.read(&mut state.cache_scratch) else {
+            return;
+        };
+        if sequence <= state.cache_sequence {
+            return;
+        }
+        let Some(header) = Header::read(&state.cache_scratch[..len]) else {
+            return;
+        };
+        if (header.graph, header.topology) != state.confirmed {
+            return;
+        }
+        let records = &state.cache_scratch[HEADER..len];
+        if Records(records)
+            .try_fold(0u32, |count, record| record.map(|_| count + 1))
+            .ok()
+            != Some(header.records)
+        {
+            return;
+        }
+        if state.cache_epochs != Some(state.confirmed) {
+            state.cache_frames.fill(None);
+        }
+        for record in Records(records).flatten() {
+            if let Record::State(StateRecord::LoopTiming { loop_id, timing }) = record {
+                for model in [&mut self.model, &mut self.next] {
+                    if let Some(entry) = model
+                        .loops
+                        .get_mut(loop_id.0.index as usize)
+                        .and_then(Option::as_mut)
+                        .filter(|entry| {
+                            entry.id == loop_id
+                                && entry.program.is_none()
+                                && entry.timing.revision <= timing.revision
+                                && entry.timing.content_revision <= timing.content_revision
+                        })
+                    {
+                        entry.timing = timing;
+                    }
+                }
+                if self
+                    .model
+                    .find_loop(loop_id)
+                    .is_some_and(|entry| entry.program.is_none() && entry.timing == timing)
+                {
+                    state.cache_frames[loop_id.0.index as usize] = Some((loop_id, header.frame));
+                }
+            }
+        }
+        state.cache_sequence = sequence;
+        state.cache_epochs = Some(state.confirmed);
+    }
+    pub(crate) fn timing_cached_after(&self, id: LoopSlotId, frame: u64) -> bool {
+        self.snapshots.cache_epochs == Some(self.snapshots.confirmed)
+            && self
+                .snapshots
+                .cache_frames
+                .get(id.0.index as usize)
+                .copied()
+                .flatten()
+                .is_some_and(|(owner, captured)| owner == id && captured > frame)
+    }
+    /// Confirmed timing refreshed independently of UI snapshot delivery.
+    pub fn cached_loop_timing(&self, id: LoopSlotId) -> Option<shoop_rt_protocol::TimingState> {
+        self.current_timing(*self.model.find_loop(id)?)
+    }
     pub(crate) fn project_snapshots(&mut self, out: &mut shoop_rt_transport::carrier::Outbox) {
         if !self.connected {
             return;

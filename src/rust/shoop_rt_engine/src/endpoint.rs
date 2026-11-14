@@ -74,7 +74,6 @@ pub(crate) enum Purpose {
         id: u64,
         step: crate::input::Step,
     },
-    TimingSnapshot(LoopSlotId),
     Timing {
         slot: usize,
         correlation: Option<u64>,
@@ -657,7 +656,6 @@ impl ControlEndpoint {
         self.pending[index] = if finished { None } else { Some(pending) };
         match pending.purpose {
             Purpose::Input { id, step } => self.input_result(id, step, result),
-            Purpose::TimingSnapshot(target) => self.timing_snapshot_result(target, result),
             Purpose::Timing { slot, correlation } => self.timing_result(slot, correlation, result),
             Purpose::Reply(correlation) => self.reply_result(correlation, result),
             Purpose::StripControl {
@@ -1684,12 +1682,12 @@ impl Endpoint for ControlEndpoint {
         self.drain_runtime();
         self.forced_monitoring(None);
         self.advance_job();
+        self.refresh_snapshot_timing();
         self.process_queue(true);
         self.advance_bulk();
         self.advance_preview();
         self.advance_content();
         self.advance_input();
-        self.advance_timing();
         self.flush(out);
         if self.connected {
             self.forced_monitoring(Some(out));

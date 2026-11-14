@@ -8,15 +8,7 @@ use shoop_rt_protocol::{
 };
 use shoop_rt_transport::carrier::Carrier;
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum Observation {
-    Legacy,
-    #[default]
-    Snapshots,
-}
-
 pub(crate) struct Snapshots {
-    pub mode: Observation,
     pub delivery: SnapshotDelivery,
     bytes: Vec<u8>,
     sequence: u32,
@@ -30,7 +22,6 @@ pub(crate) struct Snapshots {
 impl Default for Snapshots {
     fn default() -> Self {
         Self {
-            mode: Observation::Snapshots,
             delivery: Default::default(),
             bytes: Vec::new(),
             sequence: 0,
@@ -45,10 +36,8 @@ impl Default for Snapshots {
 }
 impl Snapshots {
     pub fn reset(&mut self) {
-        let mode = self.mode;
         let delivery = self.delivery;
         *self = Self::default();
-        self.mode = mode;
         self.delivery = delivery;
     }
     pub fn capacity(&mut self, limits: shoop_rt_protocol::Limits) {
@@ -123,14 +112,6 @@ impl Snapshots {
 }
 
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
-    /// Select one authoritative observation source; legacy results still drain.
-    pub fn set_observation(&mut self, mode: Observation) -> anyhow::Result<()> {
-        self.client
-            .observe_snapshots(mode == Observation::Snapshots)
-            .map_err(|error| anyhow::anyhow!("could not select observation: {error:?}"))?;
-        self.snapshots.mode = mode;
-        Ok(())
-    }
     /// Push is rate-limited; pull serves explicit requests without waiting for RT.
     pub fn set_snapshot_delivery(&mut self, delivery: SnapshotDelivery) -> anyhow::Result<()> {
         self.client
@@ -144,7 +125,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     }
     /// Queue at most one request. Drawing can continue with the last accepted state.
     pub fn request_latest_snapshot(&mut self) -> anyhow::Result<bool> {
-        if !self.is_ready() || self.snapshots.mode != Observation::Snapshots {
+        if !self.is_ready() {
             return Ok(false);
         }
         match self.client.request_snapshot(self.snapshots.accepted) {
@@ -156,15 +137,12 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             Err(error) => Err(anyhow::anyhow!("could not request snapshot: {error:?}")),
         }
     }
-    pub fn observation(&self) -> Observation {
-        self.snapshots.mode
-    }
     pub fn snapshot_frame(&self) -> Option<u64> {
         self.snapshots.frame
     }
 
     pub(crate) fn snapshot_chunk(&mut self, chunk: Chunk) {
-        if self.snapshots.mode != Observation::Snapshots || self.link != Link::Ready {
+        if self.link != Link::Ready {
             return;
         }
         let Some((header, records)) = self.snapshots.receive(chunk) else {
