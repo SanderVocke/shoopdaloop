@@ -286,7 +286,7 @@ the synchronized playback case was delivered or tested.
   Enforce the experiment's graph/media and legacy-routing restrictions. Smoke-test
   scalar changes, stale configuration and generation rejection, invalid-batch
   rejection, snapshot feedback, and heap-free RT use.
-- [ ] **4. Validate and publish the milestone.** Exercise thirty-loop synchronized
+- [x] **4. Validate and publish the milestone.** Exercise thirty-loop synchronized
   playback through the application entry point and actual callback processing;
   compare recorded output/start frames, including a callback-cutoff race. Exercise
   push and pull feedback, encoded asynchronous command delivery, a paused consumer,
@@ -384,3 +384,32 @@ cumulative control and RT refusal counts plus compact classifications (unavailab
 configuration, target, unsupported state, invalid value). Diagnostics are resent
 on new callback frames so lossy telemetry cannot permanently hide a changed count.
 They carry no command identity and do not establish individual command history.
+
+
+## Validation record
+
+Implementation and focused native smoke validation completed on 2026-11-14.
+
+- Eighteen command/carrier smoke tests pass. They cover cutoff ordering and a
+  concurrent producer; a 436-byte maximum record and malformed/truncated records;
+  scalar snapshots and all-or-nothing target rejection; partial host callbacks;
+  bounded staging/backpressure; encoded fragmentation and a paused receiver;
+  disconnect without replay; thirty preloaded loops starting/restarting together,
+  including a race against an actual callback; and preserved legacy bulk reads.
+  The connected RT and encoded control paths are heap-guarded.
+- Twelve existing snapshot and timing-edit smoke tests pass, preserving push/pull
+  delivery, cache behavior, configuration transitions and unmigrated workflows.
+- Formatting, test-attribute policy, diff checks and the warning-denying build of
+  affected crates pass. The native process wrapper was built without native audio
+  provider features. No full local integration matrix or live browser run was used.
+- A release timing smoke measured a 16-frame callback with 128 loop-gain commands
+  and snapshot publication in a small prepared session: 10,246 ns median and
+  36,525 ns maximum across 128 callbacks on this workspace. It excludes UI/control
+  time and is not a worst-case execution-time proof or a guarantee at larger
+  session capacities.
+
+The staged commits are published on `feat/rt-state-snapshots` in draft PR
+[#997](https://github.com/SanderVocke/shoopdaloop/pull/997), targeting
+`feat/backend-replacement`. CI and review status are tracked on that PR; external
+checks are a final publication gate, separate from the local smoke evidence above.
+No automatic merge is authorized.

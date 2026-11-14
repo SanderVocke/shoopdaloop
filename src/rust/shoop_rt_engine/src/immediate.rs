@@ -74,6 +74,9 @@ impl Control {
         self.sent = None;
     }
     pub fn project(&mut self, out: &mut shoop_rt_transport::carrier::Outbox, frame: u64) {
+        if !self.active && self.diagnostics.control_refused == 0 {
+            return;
+        }
         let mut d = self.diagnostics;
         d.rt_refused = self.failures.count.load(Ordering::Relaxed);
         d.last_rt = self.failures.last.load(Ordering::Relaxed) as u8;
