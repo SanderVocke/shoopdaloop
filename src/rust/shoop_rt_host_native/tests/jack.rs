@@ -233,7 +233,16 @@ fn native_jack_production_callback_routes_audio_and_timestamped_midi_and_recover
     );
     assert!(report.midi_reset);
     assert!(report.stopped.is_ok());
-    wait(|| resets.load(Ordering::Relaxed) >= resets_before + 32);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while resets.load(Ordering::Relaxed) < resets_before + 32 {
+        assert!(
+            Instant::now() < deadline,
+            "shutdown reset delivery: before={resets_before}, received={}, host={:?}",
+            resets.load(Ordering::Relaxed),
+            report.stats,
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    }
     drop(peer);
 }
 

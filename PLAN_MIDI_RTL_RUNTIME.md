@@ -192,3 +192,8 @@ and parity evidence; push the implementation milestone and resolve CI/review.
   512-KiB firmware control/render stacks inside the existing RTOS heap. All 708
   focused tests, real-JACK input/persistence, a one-MiB-stack socket workflow and
   the warning-denying workspace build passed. Refreshed final gates remain open.
+- Strict repeated shutdown testing found that a reset written in the cleanup
+  callback could be lost to a JACK xrun. The bridge now repeats recovery in the
+  next silent callback, retries on xruns and waits after the latest reset. Fifty
+  strict repetitions and all 48 native-adapter tests passed; a no-heap regression
+  covers retry after a previously acknowledged reset.

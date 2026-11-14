@@ -87,6 +87,8 @@ pub(crate) struct Shared {
     pub reset_flushed: AtomicBool,
     #[cfg(any(feature = "jack", test))]
     pub callback_finished: AtomicU64,
+    #[cfg(any(feature = "jack", test))]
+    pub reset_callback: AtomicU64,
 }
 
 fn state_code(state: DriverRunState) -> u8 {
@@ -116,6 +118,8 @@ impl Shared {
             reset_flushed: AtomicBool::new(false),
             #[cfg(any(feature = "jack", test))]
             callback_finished: AtomicU64::new(0),
+            #[cfg(any(feature = "jack", test))]
+            reset_callback: AtomicU64::new(0),
         }
     }
 

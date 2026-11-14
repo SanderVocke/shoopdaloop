@@ -26,6 +26,13 @@ pub(crate) struct Cycle {
 }
 
 impl Cycle {
+    #[cfg(feature = "jack")]
+    pub(crate) fn retry_output_recovery(&mut self) {
+        for reset in &mut self.output_reset {
+            reset.request();
+        }
+    }
+
     /// `receivers` and `senders` follow the description's MIDI ports; ports without
     /// one are silent or discarded.
     pub fn new(

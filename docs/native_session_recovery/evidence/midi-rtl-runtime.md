@@ -84,6 +84,13 @@ the explicit control/render budget is now 512 KiB inside the existing RTOS heap.
 Zeroed media arenas touch backing pages instead of redundantly writing every
 byte again during preparation. The warning-denying workspace build passed.
 
+Repeated strict shutdown runs exposed loss of the reset buffer when the callback
+performing engine cleanup missed JACK's graph deadline. JACK now requests recovery
+again in the next silent callback and on xruns; shutdown waits for completed graph
+cycles after the most recent reset. Fifty repeated real-JACK shutdown runs passed,
+and a guarded unit regression verifies retry after an earlier acknowledged reset.
+The subsequent native-adapter suite passed all 48 tests.
+
 Key executable evidence:
 
 - `rt_runtime/tests/midi_short.rs`: exhaustive status/length/controller policy,

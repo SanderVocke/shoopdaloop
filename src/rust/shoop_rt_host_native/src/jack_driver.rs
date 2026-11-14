@@ -60,6 +60,7 @@ impl jack::NotificationHandler for Notifications {
         self.1.fetch_add(1, Ordering::Release);
     }
     fn xrun(&mut self, _: &jack::Client) -> jack::Control {
+        self.0.reset_flushed.store(false, Ordering::Release);
         self.0.xrun(&self.0.counters.stream_underruns);
         jack::Control::Continue
     }
@@ -80,6 +81,8 @@ struct Process {
     cycle: Cycle,
     ports: jack_ports::Callback,
     shared: Arc<Shared>,
+    xruns: u64,
+    terminal_reset: bool,
 }
 struct Io<'a, 's> {
     scope: &'s jack::ProcessScope,
@@ -127,6 +130,22 @@ impl DirectIo for Io<'_, '_> {
 impl jack::ProcessHandler for Process {
     fn process(&mut self, _: &jack::Client, scope: &jack::ProcessScope) -> jack::Control {
         self.ports.begin(scope);
+        let xruns = self
+            .shared
+            .counters
+            .stream_underruns
+            .load(Ordering::Acquire);
+        if xruns != self.xruns {
+            self.xruns = xruns;
+            self.cycle.retry_output_recovery();
+        }
+        // The first disconnected callback performs cleanup and can itself miss
+        // JACK's graph deadline. Repeat recovery in the following silent cycle.
+        if !self.terminal_reset && self.shared.phase() == RenderPhase::Disconnected {
+            self.terminal_reset = true;
+            self.shared.reset_flushed.store(false, Ordering::Release);
+            self.cycle.retry_output_recovery();
+        }
         let failed = self.shared.failure().is_some();
         {
             // One writer per prepared MIDI output; the capacity stays uninitialized.
@@ -271,6 +290,8 @@ pub(crate) fn start(
                 cycle,
                 ports: callback_ports,
                 shared: shared.clone(),
+                xruns: 0,
+                terminal_reset: false,
             },
         )
         .map_err(error)?;
@@ -413,21 +434,19 @@ pub(crate) fn start(
                     thread::sleep(Duration::from_millis(1));
                 }
                 // Completed graph cycles carry acknowledged resets across feedback edges.
-                let through = observed
-                    .callback_finished
-                    .load(Ordering::Acquire)
-                    .saturating_add(3);
-                while observed.callback_finished.load(Ordering::Acquire) < through
-                    && !shutdown.load(Ordering::Acquire)
-                    && Instant::now() < deadline
+                let first = observed.callback_finished.load(Ordering::Acquire);
+                let delivered = || {
+                    let through = first
+                        .max(observed.reset_callback.load(Ordering::Acquire))
+                        .saturating_add(3);
+                    observed.callback_finished.load(Ordering::Acquire) >= through
+                        && observed.reset_flushed.load(Ordering::Acquire)
+                };
+                while !delivered() && !shutdown.load(Ordering::Acquire) && Instant::now() < deadline
                 {
                     thread::sleep(Duration::from_millis(1));
                 }
-                observed.reset_flushed.store(
-                    observed.callback_finished.load(Ordering::Acquire) >= through
-                        && observed.reset_flushed.load(Ordering::Acquire),
-                    Ordering::Release,
-                );
+                observed.reset_flushed.store(delivered(), Ordering::Release);
             }
             if shutdown.load(Ordering::Acquire) {
                 observed.fail(StreamFailure::DeviceNotAvailable);

@@ -18,6 +18,7 @@ impl Cycle {
             return;
         }
         let started = Instant::now();
+        let mut sent_reset = false;
         self.shared.begin_profiling(self.next_frame(), frames);
         Shared::count(&self.shared.counters.callbacks, 1);
         self.shared.set_buffer_frames(frames as u32);
@@ -96,15 +97,23 @@ impl Cycle {
                         break;
                     }
                     reset.acknowledge().expect("accepted reset");
+                    sent_reset = true;
                 }
             }
         }
         self.shared.set_load(
             started.elapsed().as_secs_f32() * self.shared.sample_rate() as f32 / frames as f32,
         );
-        self.shared
+        let callback = self
+            .shared
             .callback_finished
-            .fetch_add(1, std::sync::atomic::Ordering::Release);
+            .fetch_add(1, std::sync::atomic::Ordering::Release)
+            + 1;
+        if sent_reset {
+            self.shared
+                .reset_callback
+                .store(callback, std::sync::atomic::Ordering::Release);
+        }
         if self.phase == shoop_rt_engine::Phase::Disconnected {
             self.shared.reset_flushed.store(
                 self.output_reset.iter().all(|reset| !reset.pending()),
@@ -324,6 +333,28 @@ mod tests {
         assert!(!cycle.output_reset[0].pending());
         assert_eq!(io.messages().len(), 32);
         assert_eq!(io.messages()[0].1, [0xb0, 120, 0]);
+    }
+    #[cfg(feature = "jack")]
+    #[shoop_test(no_wasm = "native graph-cycle recovery")]
+    fn a_completed_shutdown_reset_can_be_retried_after_graph_loss() {
+        use std::sync::atomic::Ordering;
+        let (mut cycle, client, mut io) = setup(64);
+        drop(client);
+        assert_no_heap(|| cycle.process_direct(8, &mut io));
+        assert_eq!(io.messages().len(), 32);
+        let first = cycle.shared.reset_callback.load(Ordering::Acquire);
+        assert_no_heap(|| cycle.process_direct(8, &mut io));
+        assert!(io.messages().is_empty());
+        assert_no_heap(|| {
+            cycle.retry_output_recovery();
+            cycle.process_direct(8, &mut io);
+        });
+        assert_eq!(io.messages().len(), 32);
+        assert_eq!(io.messages()[0].1, [0xb0, 120, 0]);
+        assert_eq!(io.messages()[31].1, [0xbf, 123, 0]);
+        assert!(cycle.shared.reset_callback.load(Ordering::Acquire) > first);
+        assert_no_heap(|| cycle.process_direct(8, &mut io));
+        assert!(io.messages().is_empty());
     }
     #[shoop_test(no_wasm = "native allocator guard")]
     fn direct_callback_heap_guard_detects_allocations_and_destruction() {
