@@ -20,6 +20,7 @@ shoop_script_resources = { path = "../shoop_script_resources" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 midir = { workspace = true }
+shoop_midi_protocol = { path = "../shoop_midi_protocol" }
 
 [dev-dependencies]
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }

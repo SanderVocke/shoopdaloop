@@ -5516,6 +5516,7 @@ dependencies = [
  "omnilua",
  "regex",
  "shoop_app_api",
+ "shoop_midi_protocol",
  "shoop_script_resources",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",

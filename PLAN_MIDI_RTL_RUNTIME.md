@@ -59,7 +59,7 @@ logical decisions for typed and encoded carriers.
   dependencies with bounded replay jobs, cached entries and advancing writer
   state; integrate history, Grab, recording, Replace and coherent cuts. Verify
   early edits with long suffixes, all boundaries/mode exits and pressure.
-- [ ] **5. Production integration and master parity.** Integrate loop/engine,
+- [x] **5. Production integration and master parity.** Integrate loop/engine,
   adapters, host ingress/egress and codec/file paths. Retire superseded production
   machinery. Verify UI/Lua, duplication, save/load/store/export, accepted-operation
   recovery and both typed/encoded paths, preserving unrelated audio behavior.
@@ -194,6 +194,15 @@ and parity evidence; push the implementation milestone and resolve CI/review.
   the warning-denying workspace build passed. Refreshed final gates remain open.
 - Strict repeated shutdown testing found that a reset written in the cleanup
   callback could be lost to a JACK xrun. The bridge now repeats recovery in the
-  next silent callback, retries on xruns and waits after the latest reset. Fifty
+  next silent callback, retries on shutdown xruns and waits after the latest reset. Fifty
   strict repetitions and all 48 native-adapter tests passed; a no-heap regression
   covers retry after a previously acknowledged reset.
+- Refreshed complete native run: **3,244 passed, 11 skipped** (344 seconds).
+  ARM USB-enabled check, sixty standalone loop-host tests, both native replay
+  harnesses and four-target dependency audits pass. Rebuilt worklet/codec artifact
+  contracts and the full hosted Chromium/Web MIDI workflow pass with zero xruns.
+  Final follow-up: all seventeen runtime examples, buffered MIDI example, draft
+  MIDI-loop example, 91 native scripting/adapter tests and twenty strict JACK
+  routing/retirement/shutdown repetitions pass. Native Lua device controls now use
+  the same classifier as browser controls; ordinary JACK xruns do not starve live
+  MIDI. Remaining work is final platform CI/review and closure documentation.

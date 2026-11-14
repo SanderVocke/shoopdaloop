@@ -474,7 +474,7 @@ switching. It may continue reading its old immutable version meanwhile. The
 implementation must not silently reuse a frontier belonging to another position.
 
 This deliberately limits the fast path to sequential writers. It is the reason
-that eliminating the current semantic index need not make continuous Replace
+that eliminating the prior semantic index need not make continuous Replace
 rebuild the unchanged suffix. A compatibility test must exercise each actual
 Record/Replace/monitoring transition; an unsupported transition is a migration
 blocker, not permission to delay a required completed cut.
@@ -781,12 +781,12 @@ exports are not a new capability exclusive to the replacement.
 
 The replacement provides the useful model of one timing authority, explicit
 prepared ownership, immutable cuts, paired publication, finite admission and
-failure recovery. Its current continuous semantic index solves a real problem:
+failure recovery. Its prior continuous semantic index solved a real problem:
 early edits invalidate later absolute checkpoints. See
 [the existing writer-index rationale](midi-writer-index.md) and
 [the shared-history contract](../../src/rust/shoop_loops/docs/shared-history.md).
 
-This proposal replaces that index with fixed-depth block addressing, sequential
+This design replaces that index with fixed-depth block addressing, sequential
 writer frontiers and explicitly prepared arbitrary-position replay. It does not
 claim the same random-seek throughput. That tradeoff is intentional: the software
 and future RTL should perform the same finite, understandable work, with their
@@ -892,6 +892,11 @@ The firmware USB adapter preflights its fixed transport queue, observes input
 recovery epochs and establishes a new baseline only on device-generation change.
 Frontend Web MIDI also retries device-send failures rather than consuming the
 failed reset head. Shutdown confirmation requires the host's actual completion.
+JACK repeats the shutdown reset in a silent callback after cleanup and retries
+shutdown xruns before waiting for completed graph cycles. Global xruns during
+ordinary playback do not suppress each following MIDI batch. Native Lua device
+control ports use the same short-message classifier as browser controls; their
+larger script-command envelope does not advertise longer device messages.
 
 The worklet MIDI lane has a separate zero-length transport-loss descriptor; it is
 never a zero-length MIDI event. JavaScript ingress retains at most twice the

@@ -1,5 +1,11 @@
 # Shared MIDI history and independently editable takes
 
+This retained standalone utility is separate from the production
+[fixed-record runtime](../../../../../docs/native_session_recovery/midi-runtime-rtl-design.md).
+Current application histories and continuous writers use fixed pages and prepared
+state banks; historical application evidence below describes the earlier store.
+
+
 `resource::shared_midi::MidiStore` prepares immutable packet storage and a
 persistent chunk index in a `ResourceStore`. It can also be registered with
 `ResourceStore::prepare_midi_store`, behind ordinary resource IDs and snapshots.
@@ -8,7 +14,7 @@ All capacities and storage are allocated and touched during preparation.
 ## History and ownership
 
 `append` accepts an explicit contiguous frame interval and complete MIDI packets.
-Packets may cross physical pages, including SysEx. Equal-frame arrival order is
+Supported short packets may cross physical pages. SysEx and parameter messages are refused. Equal-frame arrival order is
 stable. Positive empty intervals advance time; zero-frame empty intervals do not.
 Admission validates the whole input before publishing history. Frame positions
 and chunk identities are monotonic `u64` values.
@@ -65,9 +71,8 @@ a source pin and a private revision; their charges return after retirement.
 Each checkpoint chunk contains at most eight descriptors and a full `MidiState`
 projection before its first event. A seek uses binary chunk positioning and replays
 at most eight packets, excluding originals at the target. EOF includes all earlier
-events. State stores the existing channel/key protocol projection, including its
-untracked-parameter diagnostic; it cannot reconstruct arbitrary vendor/device
-effects from packets preceding the cut.
+events. State stores the basic channel/key protocol projection. Unsupported parameter
+messages refuse before storage; device-specific effects are not reconstructed.
 
 Configure history duration, chunk ceiling, owner slots, physical pages, incoming
 events/bytes, packet size, transaction slots and progress quantum separately.
@@ -154,8 +159,9 @@ rate/Q conversion keep separate contracts. See the
 source generations, watermark faults, callback budgets, cleanup and measurement
 scope. The application delivery adds negotiated Grab/Replacing and normal service/UI/Lua
 routes; see [application evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/grab-replace.md).
-The production semantic index protects live source, staged tick and edit workspace
-credits before retained-owner admission. Hidden clipped roots and retirement debt
+The historical production semantic index described by that evidence protected
+live source, staged tick and edit workspace credits before retained-owner admission.
+Current production uses the fixed-record design linked above. Hidden clipped roots and retirement debt
 remain charged until actual reclamation. Required maintenance does not consume
 optional transfer budgets. Finished writers release their future input allowance
 while their immutable versions keep actual packet/page charges.

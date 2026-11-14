@@ -28,7 +28,7 @@ Only loop-owned channels are touched; unrelated voices are not reset. The next b
 
 ## 2. State and seeking
 
-While a MIDI loop plays, the planner's playback node keeps a `MidiState`: which notes are held, controller values, and the program/bank selectors. A `Seek` (chapter 4) does not just jump the event offset; the restore path first re-establishes the projected state at the seek point — pedals, controllers, RPN/NRPN selectors — then delivers the recorded events from there. Cleanup always precedes restoration, so a seek cannot stack a second copy of a pedal.
+While a MIDI loop plays, the planner's playback node keeps a `MidiState`: which notes are held, controller values, and the program/bank selectors. A `Seek` (chapter 4) does not just jump the event offset; the restore path first re-establishes the projected state at the seek point — pedals, ordinary controllers, banks/program, bend and pressure — then delivers the recorded events from there. Cleanup always precedes restoration, so a seek cannot stack a second copy of a pedal.
 
 The state is also queryable from the control side: `Operation::State` returns a `Cut` whose MIDI fields reflect the loop at that frame, and `Operation::MidiInitial { export, channel }` reads the initial state of an exported take.
 
@@ -48,13 +48,12 @@ covered in [chapter 12](../part-6-content-and-graph/11-exporting-and-importing-m
 
 ## 3. What restoration does not do
 
-Restoration replays the fixed protocol (notes, pedals, controllers, selectors) from recorded state. It does not reconstruct synthesizer voices or parameters that were never sent as MIDI, and relative parameter commands (data-entry increments) are not replayed as state. If a device needs more than that, send your own reset from the application after Stop.
+Restoration replays the supported protocol (notes, pedals, ordinary controllers, bank/program, bend and pressure) from recorded state. It does not reconstruct synthesizer voices or parameters that were never sent as MIDI, and relative parameter commands (data-entry increments) are not replayed as state. If a device needs more than that, send your own reset from the application after Stop.
 
-Inspect `Emission::first_error` and `parameter_history_untracked` rather than
-treating an emitted prefix as complete restoration. Parameter data-entry/history
-and vendor/system setup can require state this projection cannot reproduce. A
-subsequent System Reset clears earlier projected history, but does not make
-arbitrary device state serializable. An application loading such media must
-either support its full requirements or refuse before changing playback.
+Inspect `Emission::first_error` and recover from sink refusal before resuming
+ordinary output. SysEx, parameter CC6/38/96–101 and other unsupported system
+messages refuse before storage; their device state is not reconstructed. The
+legacy `parameter_history_untracked` diagnostic remains available to helper
+callers, but accepted production basic-MIDI media does not carry that history.
 
 [Previous: A MIDI loop](07-a-midi-loop.md) · [Next: Composite loops](../part-5-composites-and-programs/09-composite-loops.md)

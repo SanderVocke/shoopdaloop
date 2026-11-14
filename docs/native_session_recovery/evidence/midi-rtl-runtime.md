@@ -86,10 +86,23 @@ byte again during preparation. The warning-denying workspace build passed.
 
 Repeated strict shutdown runs exposed loss of the reset buffer when the callback
 performing engine cleanup missed JACK's graph deadline. JACK now requests recovery
-again in the next silent callback and on xruns; shutdown waits for completed graph
+again in the next silent callback and on shutdown xruns; shutdown waits for completed graph
 cycles after the most recent reset. Fifty repeated real-JACK shutdown runs passed,
 and a guarded unit regression verifies retry after an earlier acknowledged reset.
 The subsequent native-adapter suite passed all 48 tests.
+
+The refreshed complete native suite passed **3,244 tests, 11 skipped**, in 344
+seconds. The ARM USB-enabled check, sixty standalone loop-host tests, both native
+replay harnesses and four-target dependency audits passed again. The rebuilt
+worklet/codec contracts and complete hosted Chromium/Web MIDI workflow passed
+with zero xruns. All seventeen runtime examples, the buffered MIDI example and
+the draft MIDI loop example execute successfully. The latter now uses the current
+planner API and reserves enough pages for a complete worst-case incoming tick
+beside retained content. Its documented four-frame duration includes silence.
+Native Lua device ports now apply the common policy; the script-command envelope
+remains separate from supported device-message length. The final 91-test native
+scripting/adapter follow-up and twenty strict JACK routing/retirement/shutdown
+repetitions passed. Shutdown xrun recovery preserves ordinary live MIDI progress.
 
 Key executable evidence:
 

@@ -137,7 +137,11 @@ impl jack::ProcessHandler for Process {
             .load(Ordering::Acquire);
         if xruns != self.xruns {
             self.xruns = xruns;
-            self.cycle.retry_output_recovery();
+            if self.shared.stopping.load(Ordering::Acquire)
+                || self.shared.phase() == RenderPhase::Disconnected
+            {
+                self.cycle.retry_output_recovery();
+            }
         }
         // The first disconnected callback performs cleanup and can itself miss
         // JACK's graph deadline. Repeat recovery in the following silent cycle.

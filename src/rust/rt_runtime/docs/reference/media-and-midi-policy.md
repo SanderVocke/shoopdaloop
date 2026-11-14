@@ -2,15 +2,17 @@
 
 [Book](../README.md) · [Reference](README.md)
 
+Production live MIDI uses the [fixed-record runtime](../../../../../docs/native_session_recovery/midi-runtime-rtl-design.md). The byte-upload and checkpoint interfaces described here remain adapters/utilities.
+
 Generic resources provide immutable/prefix storage and checked access. They do not choose loop node pairs, musical take identity, playback restoration or device state.
 
 ## Formats and publication
 
 Audio is interleaved little-endian `f32`: `bytes = frames × channels × 4`, with positive channels and checked arithmetic. Byte access is not a resampler or channel converter.
 
-Stored MIDI consists of consecutive records: little-endian `u64 frame`, little-endian `u32 payload length`, then one complete MIDI 1 packet. Frames are nondecreasing and strictly below the declared duration; equal-frame records retain input order. A packet may cross page/chunk boundaries. Length is positive and bounded; channel/system message lengths and data bytes are validated. SysEx is a complete F0…F7 packet, not a stream fragment; running-status fragments are not records.
+Stored MIDI consists of consecutive records: little-endian `u64 frame`, little-endian `u32 payload length`, then one complete MIDI 1 packet. Frames are nondecreasing and strictly below the declared duration; equal-frame records retain input order. A packet may cross page/chunk boundaries. Payloads are capped at four bytes and must have exact basic channel-message lengths/data bytes, or be System Reset. SysEx, parameter CC6/38/96–101, other system messages and running-status fragments are refused.
 
-Declared duration is independent of last event time. Positive empty MIDI extends silence; zero-frame media cannot contain records. Opaque/realtime records still occupy packet/index capacity even when they do not alter projected state.
+Declared duration is independent of last event time. Positive empty MIDI extends silence; zero-frame media cannot contain records. Every accepted record occupies event/index capacity.
 
 Upload chunks are contiguous and at most one page; each Write is owning and returns its buffer. Finish validates completeness; Commit separately publishes the new revision. Old pinned versions remain old. A rejected malformed indexed chunk publishes no partial parser/state/index update. Physical data revisions are not musical take revisions or graph epochs.
 
@@ -38,7 +40,7 @@ Acquiring a capturing prefix can copy its partial mutable tail into a private pa
 
 Byte positions include EOF. A read copies at most the current page remainder, so a short positive read is not necessarily EOF. Required `RenderIo` access bypasses optional copy/step quotas, not index/lease/shape/offset checks.
 
-`midi_next` advances its cursor and returns an event token. `midi_read` copies that complete packet; a too-small destination returns Capacity without modifying output. Retry **the same event token**, not another next call. Event metadata/body can cross pages, including long SysEx. Legacy media supports event enumeration; it does not silently acquire checkpointed whole-history state seeking.
+`midi_next` advances its cursor and returns an event token. `midi_read` copies that complete packet; a too-small destination returns Capacity without modifying output. Retry **the same event token**, not another next call. Event metadata/body can cross pages, including supported short payloads. Legacy media supports event enumeration; it does not silently acquire checkpointed whole-history state seeking.
 
 ## Strict-pre-target state
 
