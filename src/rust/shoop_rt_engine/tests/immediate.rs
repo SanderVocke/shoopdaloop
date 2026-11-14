@@ -116,6 +116,11 @@ fn send(h: &mut Harness, config: (u64, u64), commands: &[Command]) {
 #[shoop_test]
 fn invalid_target_rejects_whole_batch_and_exclusive_mode_blocks_legacy_edits() {
     let (mut h, c) = fixture();
+    h.done(Request::ReplacementBegin { id: 123 });
+    send(&mut h, c, &[Command::LoopGain(loop_id(0, 1), 0.2)]);
+    h.run(16, 16);
+    assert_eq!(gain(&mut h), 1., "a staged replacement prevents opt-in");
+    h.done(Request::ReplacementCancel { id: 123 });
     send(
         &mut h,
         c,
