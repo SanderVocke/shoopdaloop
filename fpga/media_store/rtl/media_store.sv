@@ -81,7 +81,7 @@ module media_store #(
         ZERO_REQUEST, ZERO_DATA, ZERO_WAIT, SAMPLE_TABLE_READ,
         SAMPLE_TABLE_RESULT, SAMPLE_REQUEST, SAMPLE_DATA, SAMPLE_WAIT,
         RETIRE_REQUEST, RETIRE_WAIT, FENCE_REQUEST, FENCE_WAIT,
-        FINISH
+        FINISH, MANUAL_GRANT
     } phase_t;
     phase_t phase;
     reg descriptor_read, descriptor_write, table_read, table_write, ref_read, ref_write, free_read, free_write;
@@ -271,16 +271,15 @@ module media_store #(
     wire [31:0] gc_request_index, gc_request_data;
     wire gc_retire_valid, gc_retire_ready, gc_retire_done, gc_retire_busy;
     wire [7:0] gc_retire_error;
-    wire manual_grant = cmd_valid && cmd_ready && hint_base_valid && cmd_start[63:32] == 0
-        && cmd_opcode == 9;
+    wire manual_grant = phase == MANUAL_GRANT && advance && metadata_error == 0 && !reset;
     assign gc_lock_grant = (phase == IDLE || phase == DRAIN_WAIT) && !cmd_valid && !cfg_valid
         && !cfg_request_valid && !cfg_pending && !cfg_result_valid && !metadata_pending && !metadata_request_valid;
     assign reclaim_quiescent = !gc_lock_held && !metadata_pending && !metadata_request_valid && !gc_retire_busy;
     media_reclaimer #(.GUARD_CYCLES(RECLAIM_GUARD)) reclaimer (
         .clk(clk),.reset(reset),.enable((maintenance_enable || phase == DRAIN_WAIT) && !faulted),
-        .drain(phase == DRAIN_WAIT),.grant(maintenance_tick || manual_grant),
-        .grant_cycles(manual_grant && cmd_start != 0 ? cmd_start[31:0] : 32'(RECLAIM_CYCLES)),
-        .grant_blocks(manual_grant && cmd_count != 0 ? cmd_count : 32'(RECLAIM_BLOCKS)),
+        .drain(phase == DRAIN_WAIT),.grant(maintenance_tick),
+        .grant_cycles(32'(RECLAIM_CYCLES)),.grant_blocks(32'(RECLAIM_BLOCKS)),
+        .manual_grant(manual_grant),.manual_cycles(start[31:0]),.manual_blocks(count),
         .pending_tables(retired_count),.free_count(free_count),.allocated_count(slot_count),
         .lock_request(gc_lock_request),.lock_grant(gc_lock_grant),.lock_held(gc_lock_held),
         .request_valid(gc_request_valid),.request_ready(gc_request_ready),.request_opcode(gc_request_opcode),
@@ -592,7 +591,7 @@ module media_store #(
                         error_code <= INVALID_SHAPE;
                         phase <= FINISH;
                     end else if ((cmd_opcode == 9 || cmd_opcode == 10) && cmd_start[63:32] != 0) begin error_code <= INVALID_SHAPE; phase <= FINISH; end
-                    else if (cmd_opcode == 9) begin done <= 1; phase <= IDLE; end
+                    else if (cmd_opcode == 9) phase <= MANUAL_GRANT;
                     else if (cmd_opcode == 10) phase <= DRAIN_WAIT;
                     else if (cmd_opcode == 8) begin
                         opcode <= CLEAR;
@@ -612,6 +611,7 @@ module media_store #(
                         phase <= FINISH;
                     end else phase <= DESCRIPTOR_READ;
                 end
+                MANUAL_GRANT: begin done <= 1; phase <= IDLE; end
                 FREE_VIEW_READ: begin
                     if (allocation_view == view_count) begin
                         if (view_count == 32'(VIEWS)) begin error_code <= MEMORY_FULL; phase <= FINISH; end

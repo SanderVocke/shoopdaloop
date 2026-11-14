@@ -3,6 +3,7 @@ module media_reclaimer #(
 ) (
     input wire clk, input wire reset, input wire enable, input wire drain,
     input wire grant, input wire [31:0] grant_cycles, input wire [31:0] grant_blocks,
+    input wire manual_grant, input wire [31:0] manual_cycles, input wire [31:0] manual_blocks,
     input wire [31:0] pending_tables, input wire [31:0] free_count, input wire [31:0] allocated_count,
     output wire lock_request, input wire lock_grant, output reg lock_held,
     output reg request_valid, input wire request_ready, output reg [3:0] request_opcode,
@@ -23,6 +24,13 @@ module media_reclaimer #(
     phase_t phase;
     reg [31:0] cycles_left, blocks_left, reference_count, free_index;
     reg block_limited;
+    wire grant_now = grant || manual_grant;
+    wire use_manual_cycles = manual_grant && manual_cycles != 0;
+    wire use_manual_blocks = manual_grant && manual_blocks != 0;
+    (* keep = "true" *) wire [31:0] manual_cycles_decremented = manual_cycles-1'b1;
+    (* keep = "true" *) wire [31:0] manual_blocks_decremented = manual_blocks-1'b1;
+    (* keep = "true" *) wire [31:0] grant_cycles_decremented = grant_cycles-1'b1;
+    (* keep = "true" *) wire [31:0] grant_blocks_decremented = grant_blocks-1'b1;
     wire permitted = enable && (drain || (cycles_left > 32'(GUARD_CYCLES) && (!block_limited || blocks_left != 0)));
     wire transaction_pending = phase == LOOKUP_WAIT || phase == REFERENCE_WAIT || phase == WRITE_WAIT
         || phase == RETIRE_WAIT || phase == ZERO_WAIT || phase == PUSH_WAIT || phase == TRIM_WAIT;
@@ -53,9 +61,11 @@ module media_reclaimer #(
         end else begin
             freed <= 0;
             if (maintenance_work && cycles_left != 0) cycles_left <= cycles_left-1;
-            if (grant) begin
-                cycles_left <= grant_cycles == 0 ? 0 : grant_cycles-32'(maintenance_work);
-                blocks_left <= grant_blocks; block_limited <= grant_blocks != 0;
+            if (grant_now) begin
+                cycles_left <= use_manual_cycles ? (maintenance_work ? manual_cycles_decremented : manual_cycles)
+                    : grant_cycles == 0 ? 0 : maintenance_work ? grant_cycles_decremented : grant_cycles;
+                blocks_left <= use_manual_blocks ? manual_blocks : grant_blocks;
+                block_limited <= use_manual_blocks || grant_blocks != 0;
             end
             if (maintenance_work) maintenance_cycles <= maintenance_cycles+1;
             case (phase)
@@ -95,7 +105,8 @@ module media_reclaimer #(
                 TRIM: if (request_valid && request_ready) phase <= TRIM_WAIT;
                 TRIM_WAIT: if (response_valid) begin
                     released_blocks <= released_blocks+1; released <= 0;
-                    if (grant) blocks_left <= grant_blocks == 0 ? 0 : grant_blocks-1;
+                    if (grant_now) blocks_left <= use_manual_blocks ? manual_blocks_decremented
+                        : grant_blocks == 0 ? 0 : grant_blocks_decremented;
                     else if (blocks_left != 0) blocks_left <= blocks_left-1;
                     phase <= IDLE;
                 end

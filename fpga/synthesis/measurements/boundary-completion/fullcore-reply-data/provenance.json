@@ -1,0 +1,13 @@
+{
+  "revision": "a134d1bb92704e1c9fd066ca9e5df48818bc3336",
+  "working_tree_dirty": true,
+  "command": [
+    "fpga/synthesis/run.py",
+    "--vivado",
+    "/workspace/shoopdaloop/work/fpga-boundary/tools/vivado/vivado-container",
+    "--output",
+    "work/fpga-completion/fullcore-reply-data"
+  ],
+  "part": "xc7z020clg400-1",
+  "clock_mhz": 100
+}

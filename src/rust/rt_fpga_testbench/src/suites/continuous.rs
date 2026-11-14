@@ -63,7 +63,7 @@ pub fn sources(demo: bool) -> Vec<std::path::PathBuf> {
     let root = crate::root();
     let mut sources = rt_fpga_sim::pipeline_sources();
     sources.extend(
-        "audio_lane_ram audio_io audio_command_fifo audio_control audio_loop_pipeline"
+        "audio_lane_ram audio_io audio_command_fifo audio_image audio_actions audio_control audio_loop_pipeline"
             .split_whitespace()
             .map(|n| root.join(format!("fpga/audio_io/rtl/{n}.sv"))),
     );
@@ -285,9 +285,9 @@ pub fn frames(
 }
 pub fn run(name: &str, c: &Config, mode: Mode, output: &Path) -> Result<Value> {
     let prepared = prepare(c)?;
-    run_prepared(name, c, mode, output, prepared, 13, false)
+    run_prepared(name, c, mode, output, prepared, 13, false, true)
 }
-pub fn service_pause(name: &str, c: &Config, mode: Mode, output: &Path) -> Result<Value> {
+fn resident_prepared(c: &Config, quanta: u64) -> Result<Prepared> {
     let mut scenario = prepared::scenario(c.q, c.cf, c.channels, c.monitoring, &c.routing);
     let id = |slot| json!({"slot":slot,"generation":1});
     scenario["loops"][0]["sync_source"] = id(0);
@@ -314,7 +314,7 @@ pub fn service_pause(name: &str, c: &Config, mode: Mode, output: &Path) -> Resul
         "timing":{"kind":"at"},"operation":{"kind":"stop"}}),
     );
     steps[0]["actions"] = json!(actions);
-    for n in steps.len() as u64..1043 {
+    for n in steps.len() as u64..quanta + 3 {
         let inputs: Vec<Vec<i32>> = (0..c.channels)
             .map(|ch| {
                 (0..c.q)
@@ -329,10 +329,54 @@ pub fn service_pause(name: &str, c: &Config, mode: Mode, output: &Path) -> Resul
         prepared.events.is_empty(),
         "service-pause actions must be resident at arm"
     );
-    let report = run_prepared(name, c, mode, output, prepared, 1040, true)?;
+    Ok(prepared)
+}
+pub fn service_pause(name: &str, c: &Config, mode: Mode, output: &Path) -> Result<Value> {
+    let prepared = resident_prepared(c, 1040)?;
+    let report = run_prepared(name, c, mode, output, prepared, 1040, true, true)?;
     assert_eq!(report["control_transfers"], 0);
     assert!(report["processed"].as_u64().unwrap() >= 1024);
     Ok(report)
+}
+pub fn command_flood() -> Result<()> {
+    let c = Config {
+        control_depth: 128,
+        ticks: 256,
+        ..Config::default()
+    };
+    let mut prepared = resident_prepared(&c, 160)?;
+    for batch in 1..=16 {
+        prepared.events.push(Bits(
+            rt_fpga_adapter::audio_control::header(0, batch, 64, 128)?.to_vec(),
+        ));
+        for _ in 0..64 {
+            prepared.events.push(crate::drivers::stream::control_packet(
+                0,
+                0,
+                &Bits::default(),
+                0,
+                0,
+            ));
+        }
+    }
+    let output = crate::root().join("work/fpga-completion/control-flood");
+    let report = run_prepared(
+        "flood",
+        &c,
+        Mode::Fixed,
+        &output,
+        prepared,
+        160,
+        false,
+        false,
+    )?;
+    assert!(report["control_stalls"].as_u64().unwrap() > 0);
+    assert_eq!(report["control_result_held"], true);
+    assert!(
+        report["control_transfers"].as_u64().unwrap() <= 2 * 65 + 128,
+        "full result credits were overrun"
+    );
+    Ok(())
 }
 fn run_prepared(
     name: &str,
@@ -342,6 +386,7 @@ fn run_prepared(
     prepared: Prepared,
     quanta: u64,
     hold_reply: bool,
+    drain_results: bool,
 ) -> Result<Value> {
     let compiled = design(c, mode, false, &prepared)
         .build(&crate::root().join("work/marlin-suite/continuous"))?;
@@ -355,8 +400,18 @@ fn run_prepared(
     store.memory.borrow_mut().control.stalls = c.stalls;
     let mut transition = Transition::new([16, 128, 256]);
     transition.busy_signal = "transition_busy";
-    s.model
-        .set_all(&[("epoch", 1), ("job_enable", 1), ("control_result_ready", 1)]);
+    s.model.set_all(&[
+        ("epoch", 1),
+        ("job_enable", 1),
+        ("control_result_ready", u64::from(drain_results)),
+    ]);
+    if !drain_results {
+        s.agent(crate::protocol::ReadyValid::new(
+            "control_result_valid",
+            "control_result_ready",
+            &["control_result_data"],
+        ));
+    }
     transition.load(&mut s, &prepared.image["transition"]);
     for transfer in &prepared.transition_setup {
         let (error, _) = transition.raw_command(
@@ -547,7 +602,7 @@ fn run_prepared(
     );
     assert_eq!(s.model.get("missed_deadlines"), u64::from(c.overrun));
     assert_eq!(s.model.get("discarded_quanta"), u64::from(c.overrun));
-    let report = json!({"case":{"name":name,"audio_period_ps":c.period_ps,"phase_ps":c.phase_ps,"frame_cycles":c.ticks,"stalls":c.stalls,"overrun":c.overrun},"configuration":c,"wall_seconds":begin.elapsed().as_secs_f64(),"frames":actual,"states":states,"media":media,"outcomes":outcomes,"processed":processed,"missed":s.model.get("missed_deadlines"),"discarded":s.model.get("discarded_quanta"),"rx_high_water":s.model.get("rx_high_water"),"tx_high_water":s.model.get("tx_high_water"),"publication":measure.borrow().rows,"axi":store.memory.borrow_mut().report(true),"control_stalls":source.borrow().stalls,"control_transfers":source.borrow().sent,"simulated_ps":s.ps()});
+    let report = json!({"case":{"name":name,"audio_period_ps":c.period_ps,"phase_ps":c.phase_ps,"frame_cycles":c.ticks,"stalls":c.stalls,"overrun":c.overrun},"configuration":c,"wall_seconds":begin.elapsed().as_secs_f64(),"frames":actual,"states":states,"media":media,"outcomes":outcomes,"processed":processed,"missed":s.model.get("missed_deadlines"),"discarded":s.model.get("discarded_quanta"),"rx_high_water":s.model.get("rx_high_water"),"tx_high_water":s.model.get("tx_high_water"),"publication":measure.borrow().rows,"axi":store.memory.borrow_mut().report(true),"control_stalls":source.borrow().stalls,"control_transfers":source.borrow().sent,"control_result_held":!drain_results&&s.model.get("control_result_valid")!=0,"simulated_ps":s.ps()});
     std::fs::create_dir_all(output)?;
     std::fs::write(
         output.join(format!("{name}.json")),

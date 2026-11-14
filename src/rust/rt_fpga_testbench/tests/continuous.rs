@@ -1,6 +1,10 @@
 #![cfg(all(feature = "sim", not(target_arch = "wasm32")))]
 use shoop_wasm_test_support::shoop_test;
 #[shoop_test]
+fn full_transport_results_and_a_continuous_command_flood_preserve_resident_audio_and_transitions() {
+    rt_fpga_testbench::suites::continuous::command_flood().unwrap();
+}
+#[shoop_test]
 fn resident_transitions_and_media_progress_for_1024_quanta_without_control_service() {
     use rt_fpga_testbench::{
         memory::Mode,

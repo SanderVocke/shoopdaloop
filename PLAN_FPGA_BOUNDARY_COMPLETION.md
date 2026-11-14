@@ -1,7 +1,7 @@
 # Finish the ARM–FPGA boundary roadmap
 
-Status: execution in progress; baseline frozen, focused resource review complete,
-current TP retained. M4–M6 and physical qualification remain open.
+Status: execution in progress; focused resource review and M4 functional gate
+complete. M5, full-system timing and M6 physical qualification remain open.
 Execution evidence: [boundary completion](fpga/verification/BOUNDARY_COMPLETION.md).
 Parent roadmap: [PLAN_LONGTERM_FPGA_BOUNDARY.md](PLAN_LONGTERM_FPGA_BOUNDARY.md).
 Prerequisite: [milestones 2–3](PLAN_FPGA_COMPACT_ACTIONS_AND_MEMBERSHIP.md),
@@ -292,27 +292,29 @@ design before changing cadence or observation machinery; LUT reduction is not a 
 
 ### 3. Make fabric progression independent of per-quantum fences (M4)
 
-Prepared-profile checkpoint implemented: complete bounded batches, retained
-transport replies/credits, fence-free empty ingress, finite ROM producers and
-legacy live-port isolation. Continuous tests run 1,040 quanta with resident
-future AT/self/source-sync actions, repeat waits, stop cancellation, held host
-reply and hostile unfinished legacy traffic. Samples/state/results/media match
-production Rust in instant/fixed/DRAMsim3 memory. See the execution report and
-[raw checkpoint evidence](fpga/audio_io/measurements/autonomous-control/).
-This is not the complete M4 gate: live large graph publication/ramp continuity,
-the complete profile/flood/resource campaign and the M5 transport remain open.
+M4 functional gate passed: bounded complete batches, retained replies/credits,
+fence-free ingress, finite ROMs, legacy isolation and resident signal-image
+actions. A full 512-word image is staged while audio runs; activation copies
+actual live ramp values at its cut. Independent future ramp changes also execute
+without ARM service. Combined continuous/demo/image/board tests pass (12 tests),
+including 1,040 unserviced quanta in three memory models, full results, partial
+ingress, command floods, faults and recovery. See the execution report and
+[live-image evidence](fpga/audio_io/measurements/resident-images/combined/).
+Application media/observation migration remains M5. Routed wrapper/core timing
+is measured but does not yet close 100 MHz; final resource/timing gates remain
+open, and this functional checkpoint makes no physical qualification claim.
 
-- [ ] Specify and implement bounded control access around autonomous PROCESS/
+- [x] Specify and implement bounded control access around autonomous PROCESS/
   state/job/audio/FINISH progression. Input availability and device resources
   drive execution. An empty, stalled or unfinished control stream cannot stop it.
-- [ ] Publish complete batches at explicit cuts, preserving within-batch ordering
+- [x] Publish complete batches at explicit cuts, preserving within-batch ordering
   and authoritative effective-frame reporting. Bound the largest non-preemptible
   command and total control work per quantum, including configuration/media traffic.
   Include supported processor/parameter updates in this audit, not just TP actions.
-- [ ] Remove normal fence production/consumption and stale-sequence assumptions
+- [x] Remove normal fence production/consumption and stale-sequence assumptions
   from audio control, coordinator, drivers, prepared ROMs, demo and board runner.
   Version incompatible inputs; keep diagnostic stepping explicitly separate.
-- [ ] Preserve input/output bank ownership, fixed latency, prefill, overrun,
+- [x] Preserve input/output bank ownership, fixed latency, prefill, overrun,
   watchdog, sticky fault/silence and quiescent reset/drain behavior.
 
 Verification/gate: continuous I/O with no control producer for 1,024+ quanta,

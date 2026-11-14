@@ -15,7 +15,7 @@ def sources(demo=False):
         ('loop_pipeline', ['loop_pipeline']),
         ('axi_memory', ['axi_master', 'axi_burst_mux', 'shared_axi', 'chunk_dma', 'word_dma',
                         'word_axi', 'chunk_axi', 'loop_pipeline_axi']),
-        ('audio_io', ['audio_lane_ram', 'audio_io', 'audio_command_fifo', 'audio_control', 'audio_loop_pipeline'])]
+        ('audio_io', ['audio_lane_ram', 'audio_io', 'audio_command_fifo', 'audio_image', 'audio_actions', 'audio_control', 'audio_loop_pipeline'])]
     if demo:
         groups.append(('audio_io', ['audio_boot', 'audio_events', 'audio_demo']))
     return [ROOT/'fpga'/directory/'rtl'/f'{name}.sv' for directory, names in groups for name in names]

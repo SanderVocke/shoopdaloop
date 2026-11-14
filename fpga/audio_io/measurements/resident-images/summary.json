@@ -1,0 +1,50 @@
+{
+  "activation_frame": 2048,
+  "configuration": {
+    "banks": 3,
+    "bc": 32,
+    "cf": 32,
+    "channels": 2,
+    "control_depth": 128,
+    "monitoring": false,
+    "overrun": false,
+    "p": 32,
+    "period_ps": 13000,
+    "phase_ps": 3000,
+    "q": 32,
+    "routing": "identity",
+    "slots": 256,
+    "stalls": true,
+    "ticks": 512,
+    "width": 64
+  },
+  "discarded": 0,
+  "max_float_absolute_error": 5.9582816902548075e-08,
+  "missed": 0,
+  "parameter_frames": [
+    2560,
+    2560
+  ],
+  "partial_ingress_operations": 1,
+  "paused_at_quantum": 30,
+  "processed": 1073,
+  "retained_transport_results": 128,
+  "unserviced_quanta": 1040,
+  "sample_frames": 34340,
+  "lowest_margin": {
+    "cutoff_ps": 14080459000,
+    "eligible_ps": 13961704000,
+    "last_input_ps": 13860837000,
+    "margin_ps": 118755000,
+    "quantum": 64
+  },
+  "minimum_margin_fraction": 0.540724517580206,
+  "source_revision": "a134d1bb92704e1c9fd066ca9e5df48818bc3336",
+  "model": "audio_loop_pipeline-e54f6283c75fca12",
+  "tools": {
+    "vivado": "2021.1 build 3247384",
+    "verilator": "5.032",
+    "rust": "1.100.0"
+  },
+  "scope": "M4 live image checkpoint, before registered admission and metadata miss timing changes; M5 and physical qualification remain open"
+}

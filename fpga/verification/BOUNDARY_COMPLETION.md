@@ -194,3 +194,52 @@ publication and activation-time ramp continuity. Required media pinning,
 historical queries and monitoring must move into device cuts before removing
 normal SETTLE or migrating application service. The final native/application
 matrix is intentionally reserved for the final behavioral milestone.
+
+## M4 live-image and combined functional gate
+
+The prepared ABI-1 checkpoint above is historical. The current contract is
+[control ABI 2](../audio_io/CONTROL.md), including inactive signal images and
+resident actions managed by the shared Rust owner. Complete-body preflight
+rejects invalid/overbudget batches before mutation. A registered admission
+decision is valid only for the current device sequence. Result capacity is
+reserved before dispatch; no held reply or incomplete producer blocks audio.
+
+A staged image contains the whole program, initial state and live-copy map.
+Ordered uploads leave the active image untouched. At the admitted activation
+cut, all old mutable values are copied before any active rewrite, supporting
+permutations without publishing a stale ARM snapshot. Ramp changes read the
+actual device value at their cut and retain their result. Private action rows
+are admitted only by complete ordered-bank publication; moving-cut refusal is
+retried by the shared owner, with uncertain outcomes quarantined.
+
+The [combined evidence](../audio_io/measurements/resident-images/combined/)
+freezes 173 sources and all 12 passing continuous/demo/image/board tests. It
+includes the three-memory 1,040-quantum pause, exact resident transition/media
+comparisons, held legacy results, full transport credits, unfinished ingress,
+command flood, fault recovery and prepared-ROM parity. The live 512-program /
+512-state / 512-copy case matches all 34,340 stereo frames, including activation
+at frame 2,048 and channel ramp changes at 2,560. The independent floating bound
+is 5.9582816902548075e-8; the smallest simulated publication margin is 118.742 us.
+This uses accelerated clocks, not a physical 48 kHz measurement. The flood runs
+160 quanta with all 128 results held and a backpressured source. No quantum is
+missed or discarded. Strict lint/generic mapping passes Q16/Q32/Q64; ECP5 mapping,
+warning-denying workspace build and test-attribute policy pass. M4's functional
+gate is complete, while M5 application and final timing/physical gates remain.
+
+[Timing experiments](../synthesis/measurements/boundary-completion/) retain exact
+sources, matched harnesses and raw reports. The TP reply change routes at 13,078
+LUTs / 8,773 FF / 28.5 BRAM36, setup/hold +0.236/+0.008 ns against #993's
+13,312 / 8,813 / 28.5 and +0.105/+0.007 ns. These are single matched runs, without
+a variation study or a claim about final system savings. Full-core runs improve
+the original -1.845 ns miss but do not close timing; the latest archived run is
+-0.351/+0.005 ns. The first autonomous-wrapper route is -2.105/+0.005 ns; later
+registered admission/action timing work is measured separately. No clock,
+capacity or constraint exception hides these misses. An unbounded Yosys proof
+covers the reclaimer budget mux; DMA/metadata tests cover all original memory
+models, alternate widths/geometries, odd cache depths and retirement races.
+
+Required capture pinning, historical queries, monitoring and application service
+separation still belong to M5. The final broad native/application gate remains
+reserved for that behavioral milestone. There is no ZedBoard here: complete
+independent software, RTL, firmware, build and timing work, then stop before
+physical tests. The overall roadmap remains incomplete without physical evidence.

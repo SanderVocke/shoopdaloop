@@ -2,7 +2,7 @@
 use crate::protocol::{get, put};
 use rt_runtime::Error;
 
-pub const ABI: u8 = 1;
+pub const ABI: u8 = 2;
 pub const HEADER_OPCODE: u8 = 0xa0 | ABI;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -21,11 +21,21 @@ impl Completion {
         let kind = get(words, 836, 2);
         let error = get(words, 832, 4);
         let batch = get(words, 878, 64);
+        let opcode = get(words, 838, 8) as u8;
+        let cfg_bits = match opcode {
+            0..=8 | 16..=18 => 129,
+            19 | 20 | 22 | 23 | 128 | 133 | 134 | 136 => 480,
+            21 => 257,
+            _ => 0,
+        };
+        let invalid_cfg =
+            kind == 1 && (cfg_bits == 0 || (cfg_bits..832).any(|bit| get(words, bit, 1) != 0));
         if kind > 1
             || batch == 0
             || get(words, 1038, 50) != 0
-            || error > if kind == 1 { 1 } else { 10 }
-            || ((kind == 1 || error != 0) && words[..26].iter().any(|&word| word != 0))
+            || error > 10
+            || (error != 0 && words[..26].iter().any(|&word| word != 0))
+            || invalid_cfg
         {
             return Err(Error::Disconnected);
         }

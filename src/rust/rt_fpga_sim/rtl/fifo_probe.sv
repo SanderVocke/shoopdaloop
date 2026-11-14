@@ -9,5 +9,9 @@ module probe_top (
     output wire [745:0] pop_data,
     output wire [1:0] count
 );
-    audio_command_fifo #(.DEPTH(3)) fifo (.*);
+    wire peek_ready, peek_response_valid;
+    wire [745:0] peek_data;
+    wire unused = &{1'b0,peek_ready,peek_response_valid,peek_data};
+    audio_command_fifo #(.DEPTH(3)) fifo (.*, .peek_valid(1'b0),.peek_offset(32'b0),
+        .peek_ready(peek_ready),.peek_response_valid(peek_response_valid),.peek_data(peek_data));
 endmodule

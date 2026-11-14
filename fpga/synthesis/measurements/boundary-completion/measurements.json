@@ -1,0 +1,110 @@
+[
+  {
+    "name": "tp-reply-data",
+    "cells": {
+      "LUT1": 74,
+      "LUT2": 1501,
+      "LUT3": 930,
+      "LUT4": 3269,
+      "LUT5": 2193,
+      "LUT6": 7028,
+      "LUT6_2": 0,
+      "FDRE": 8753,
+      "FDSE": 20,
+      "FDCE": 0,
+      "FDPE": 0,
+      "RAMB36E1": 27,
+      "RAMB18E1": 3,
+      "CARRY4": 574,
+      "MUXF7": 249,
+      "MUXF8": 102
+    },
+    "wns_ns": 0.236,
+    "whs_ns": 0.008,
+    "utilization": {
+      "luts": 13078,
+      "flip_flops": 8773,
+      "bram36_equivalent": 28.5,
+      "dsps": 0
+    }
+  },
+  {
+    "name": "fullcore-narrow-tags",
+    "part": "xc7z020clg400-1",
+    "clock_mhz": 100,
+    "wns_ns": -0.752,
+    "whs_ns": 0.013,
+    "met_100mhz": false,
+    "luts": 29038.0,
+    "flip_flops": 19291.0,
+    "bram36_equivalent": 57.5
+  },
+  {
+    "name": "fullcore-budget-mux",
+    "part": "xc7z020clg400-1",
+    "clock_mhz": 100,
+    "wns_ns": -0.717,
+    "whs_ns": 0.006,
+    "met_100mhz": false,
+    "luts": 29331.0,
+    "flip_flops": 19294.0,
+    "bram36_equivalent": 57.5
+  },
+  {
+    "name": "fullcore-reserve-run",
+    "part": "xc7z020clg400-1",
+    "clock_mhz": 100,
+    "wns_ns": -0.704,
+    "whs_ns": 0.009,
+    "met_100mhz": false,
+    "luts": 29056.0,
+    "flip_flops": 19212.0,
+    "bram36_equivalent": 57.5
+  },
+  {
+    "name": "fullcore-reply-data",
+    "part": "xc7z020clg400-1",
+    "clock_mhz": 100,
+    "wns_ns": -0.317,
+    "whs_ns": 0.002,
+    "met_100mhz": false,
+    "luts": 28607.0,
+    "flip_flops": 19215.0,
+    "bram36_equivalent": 57.5
+  },
+  {
+    "name": "fullcore-hint-stage",
+    "part": "xc7z020clg400-1",
+    "clock_mhz": 100,
+    "wns_ns": -0.194,
+    "whs_ns": 0.016,
+    "met_100mhz": false,
+    "luts": 28508.0,
+    "flip_flops": 19288.0,
+    "bram36_equivalent": 57.5
+  },
+  {
+    "name": "fullcore-manual-grant",
+    "part": "xc7z020clg400-1",
+    "clock_mhz": 100,
+    "wns_ns": -0.29,
+    "whs_ns": 0.009,
+    "met_100mhz": false
+  },
+  {
+    "name": "fullcore-dma-select",
+    "part": "xc7z020clg400-1",
+    "clock_mhz": 100,
+    "wns_ns": -0.351,
+    "whs_ns": 0.005,
+    "met_100mhz": false
+  },
+  {
+    "name": "autonomous-wrapper-m4",
+    "part": "xc7z020clg400-1",
+    "clock_mhz": 100,
+    "wns_ns": -2.105,
+    "whs_ns": 0.005,
+    "met_100mhz": false
+  }
+]

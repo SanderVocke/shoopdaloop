@@ -6,6 +6,8 @@ pub mod continuous;
 pub mod control;
 pub mod demo;
 pub mod direct;
+pub mod image_control;
+pub mod live_image;
 pub mod media;
 pub mod metadata;
 pub mod pipeline;

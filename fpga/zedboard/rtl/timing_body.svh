@@ -12,7 +12,29 @@
     reg [31:0] last_cycles, min_cycles, max_cycles;
     reg [63:0] read_bursts, write_bursts, read_bytes, write_bytes;
     reg [63:0] address_stalls, response_stalls, output_words, output_digest;
-    wire boot_done, boot_fault, control_fault, run_permitted;
+    wire boot_done, boot_fault, control_fault, run_permitted, batch_fault, image_fault;
+    wire image_busy, image_override, image_response_valid;
+    wire [3:0] image_response_error;
+    wire [128:0] image_response_data;
+    wire [31:0] image_instructions, image_states, image_jobs, image_buffers;
+    wire action_busy, action_fault, action_done, action_cfg_valid, action_cfg_ready, action_cfg_state, action_response_valid;
+    wire [7:0] action_cfg_opcode;
+    wire [15:0] action_cfg_address;
+    wire [639:0] action_cfg_data;
+    wire [3:0] action_response_error;
+    wire [831:0] action_response_data;
+    reg cut_reserved, cut_ready;
+    wire action_start = running && run_permitted && !inflight && !action_busy && !cut_reserved
+        && !stop_pending && !stop_edge && !failure && gap_remaining == 0;
+    always @(posedge clk) begin
+        if (core_reset) begin cut_reserved<=0; cut_ready<=0; end
+        else begin
+            if (action_start) cut_reserved<=1;
+            if (action_done) cut_ready<=1;
+            if (run_pulse) begin cut_reserved<=0; cut_ready<=0; end
+        end
+    end
+    assign control_fault = batch_fault || image_fault || action_fault;
     wire control_result_valid;
     wire [1087:0] control_result_data;
     wire unused_control_results = &{1'b0,control_result_valid,control_result_data};
@@ -25,7 +47,7 @@
     wire failure = boot_fault || control_fault || memory_fault || faulted || timed_out;
     wire [31:0] completed_cycles = run_cycles+1;
     assign core_reset = reset || phase == RESETTING;
-    assign run_valid = running && run_permitted && !inflight && !stop_pending && !stop_edge
+    assign run_valid = running && run_permitted && cut_ready && !inflight && !stop_pending && !stop_edge
         && !failure && gap_remaining == 0;
     assign run_pulse = run_valid && run_ready;
     assign done_pulse = done;
@@ -33,12 +55,12 @@
     assign debug_cycles = run_cycles;
     assign status = {11'b0,memory_fault,control_fault,boot_fault,failure_stage,failure_code,
                      busy,inflight,boot_done,failed,memory_quiescent,phase};
-    assign run_instruction_count = INSTRUCTION_COUNT;
-    assign run_state_count = STATE_COUNT;
+    assign run_instruction_count = image_override ? image_instructions : INSTRUCTION_COUNT;
+    assign run_state_count = image_override ? image_states : STATE_COUNT;
     assign run_quantum = MAX_FRAMES;
     assign run_chunk_frames = CHUNK_FRAMES;
-    assign run_job_budget = JOB_BUDGET;
-    assign run_buffers = BUFFER_COUNT;
+    assign run_job_budget = image_override ? image_jobs : JOB_BUDGET;
+    assign run_buffers = image_override ? image_buffers : BUFFER_COUNT;
     assign run_inputs = INPUT_PORTS;
     assign run_outputs = OUTPUT_PORTS;
     assign job_enable = 1;
@@ -79,6 +101,11 @@
     wire [639:0] live_command_data;
     wire [15:0] live_cfg_address;
     wire [128:0] live_cfg_write_data;
+    wire queued_cfg_valid, queued_cfg_ready, queued_cfg_state, queued_cfg_write;
+    wire [7:0] queued_cfg_opcode;
+    wire [15:0] queued_cfg_address;
+    wire [639:0] queued_cfg_data;
+    wire unused_image_control = &{1'b0,image_busy,queued_cfg_write};
     wire control_valid, control_ready;
     wire [745:0] control_data;
     wire loading = phase == LOADING;
@@ -107,18 +134,38 @@
     audio_events #(.WORDS(EVENT_WORDS),.FILE_NAME(EVENT_FILE)) events (
         .clk(clk),.reset(core_reset),.enable(running),.valid(control_valid),.ready(control_ready),.data(control_data)
     );
-    audio_control #(.DEPTH(128)) controls (
+    audio_actions #(.SLOTS(128),.QUANTUM(MAX_FRAMES),.ACTIVATION_WORK(10*STATE_DEPTH+4*PROGRAM_DEPTH+32)) actions (
+        .clk(clk),.reset(core_reset),.current_frame(quantum*64'(MAX_FRAMES)),
+        .cut_start(action_start),.cut_done(action_done),.busy(action_busy),.fault(action_fault),
+        .request_valid(queued_cfg_valid),.request_ready(queued_cfg_ready),.request_opcode(queued_cfg_opcode),
+        .request_state(queued_cfg_state),.request_address(queued_cfg_address),.request_data(queued_cfg_data),
+        .response_valid(action_response_valid),.response_error(action_response_error),.response_data(action_response_data),
+        .cfg_valid(action_cfg_valid),.cfg_ready(action_cfg_ready),.cfg_opcode(action_cfg_opcode),
+        .cfg_state(action_cfg_state),.cfg_address(action_cfg_address),.cfg_data(action_cfg_data),
+        .cfg_response_valid(image_response_valid),.cfg_response_error(image_response_error),.cfg_response_data(image_response_data)
+    );
+    audio_image #(.PROGRAM_DEPTH(PROGRAM_DEPTH),.STATE_DEPTH(STATE_DEPTH),.JOB_DEPTH(JOB_DEPTH),.BUFFERS(BUFFERS)) images (
+        .clk(clk),.reset(core_reset),.execution_idle(!busy && !inflight),.current_state_count(32'(STATE_COUNT)),
+        .request_valid(action_cfg_valid),.request_ready(action_cfg_ready),.request_opcode(action_cfg_opcode),
+        .request_state(action_cfg_state),.request_address(action_cfg_address),.request_data(action_cfg_data),
+        .busy(image_busy),.response_valid(image_response_valid),.response_error(image_response_error),.response_data(image_response_data),.fault(image_fault),
+        .active_override(image_override),.active_instructions(image_instructions),.active_states(image_states),.active_jobs(image_jobs),.active_buffers(image_buffers),
+        .cfg_valid(live_cfg_valid),.cfg_ready(cfg_ready),.cfg_state(live_cfg_state),.cfg_write(live_cfg_write),
+        .cfg_address(live_cfg_address),.cfg_write_data(live_cfg_write_data),.cfg_response_valid(cfg_response_valid),
+        .cfg_response_error(cfg_response_error),.cfg_read_data(cfg_read_data)
+    );
+    audio_control #(.DEPTH(128),.ACTIVATION_WORK(10*STATE_DEPTH+4*PROGRAM_DEPTH+32)) controls (
         .clk(clk),.reset(core_reset),.enable(running),.sequence_number(quantum),.epoch(32'd1),
-        .busy(busy || inflight),.run_start(run_pulse),.run_permitted(run_permitted),.fault(control_fault),
+        .busy(busy || inflight || action_busy || cut_reserved),.run_start(run_pulse),.run_permitted(run_permitted),.fault(batch_fault),
         .admission_blocked(1'b0),
         .control_valid(control_valid),.control_ready(control_ready),.control_data(control_data),
         .command_valid(live_command_valid),.command_ready(command_ready),.command_opcode(live_command_opcode),
         .command_index(live_command_index),.command_data(live_command_data),.response_valid(response_valid),
         .response_ready(live_response_ready),.response_error(response_error),
         .response_data(response_data),.result_valid(control_result_valid),.result_ready(1'b1),.result_data(control_result_data),
-        .cfg_valid(live_cfg_valid),.cfg_ready(cfg_ready),.cfg_state(live_cfg_state),.cfg_write(live_cfg_write),
-        .cfg_address(live_cfg_address),.cfg_write_data(live_cfg_write_data),
-        .cfg_response_valid(cfg_response_valid),.cfg_response_error(cfg_response_error)
+        .cfg_valid(queued_cfg_valid),.cfg_ready(queued_cfg_ready),.cfg_state(queued_cfg_state),.cfg_write(queued_cfg_write),
+        .cfg_opcode(queued_cfg_opcode),.cfg_address(queued_cfg_address),.cfg_write_data(queued_cfg_data),
+        .cfg_response_valid(action_response_valid),.cfg_response_error(action_response_error),.cfg_read_data(action_response_data)
     );
 
     assign m_axi_arvalid = core_m_axi_arvalid && (!isolate || ar_exposed);

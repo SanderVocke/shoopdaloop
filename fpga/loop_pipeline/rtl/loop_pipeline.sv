@@ -157,7 +157,9 @@ module loop_pipeline #(
     assign transition_busy = tp_busy;
 
     assign busy = (phase != IDLE && phase != FAULT) || audio_busy;
-    assign run_ready = (phase == IDLE || phase == BOUNDARY) && audio_run_ready && tp_execute_ready && !reset;
+    assign run_ready = (phase == IDLE || phase == BOUNDARY) && tp_execute_ready
+        && !cfg_valid && !audio_cfg_valid && !store_cmd_valid && !store_cfg_valid
+        && !cfg_response_valid && !audio_cfg_response_valid && !store_cfg_response_valid && !reset;
     assign command_ready = host_access && !reserved_command && !(command_opcode == 16 && phase != IDLE) && tp_command_ready && !(run_valid && run_ready) && !reset;
     assign response_valid = tp_response_valid && !reset;
     assign response_error = tp_response_error;

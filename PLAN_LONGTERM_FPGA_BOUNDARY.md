@@ -3,10 +3,13 @@
 Status: milestone 1 is implemented in [PR #990](https://github.com/SanderVocke/shoopdaloop/pull/990).
 Milestones 2–3 are implemented in the stacked [PR #993](https://github.com/SanderVocke/shoopdaloop/pull/993),
 with broad local verification and targeted corrected reruns complete. CI is unreviewed by instruction.
-The [completion plan](PLAN_FPGA_BOUNDARY_COMPLETION.md) begins with a focused TP
-resource review and clear-cut optimization opportunities, then covers autonomy,
-application integration and physical qualification. Those implementation stages
-have not started.
+The [completion plan](PLAN_FPGA_BOUNDARY_COMPLETION.md) is executing in stacked
+[PR #994](https://github.com/SanderVocke/shoopdaloop/pull/994). Its focused resource
+review is complete. Prepared audio progresses without ARM fences; live staged
+images and resident parameter updates now have continuous service-pause evidence.
+Application observation/media migration and final timing/physical qualification
+remain open. No ZedBoard is available: finish independent software, firmware and
+build/timing work, then stop before actual hardware tests.
 Target integration branch: `proto/fpga-rust-reference`.
 Investigated baseline: `5b7dd0a5b242884f86862991dc7b456a5b091df7`.
 
@@ -108,9 +111,9 @@ record the checkpoint separation, tradeoffs and remaining qualification.
 
 ### 3a. Review TP resource costs and pursue clear-cut savings
 
-- [ ] Attribute the M3 LUT increase with controlled, matched experiments; separate
+- [x] Attribute the M3 LUT increase with controlled, matched experiments; separate
   publication/mask/mux costs from resolver datapaths and synthesis mapping.
-- [ ] Apply worthwhile publication simplifications for one trusted ARM producer,
+- [x] Apply worthwhile publication simplifications for one trusted ARM producer,
   preserving device safety, atomicity, generation lifetimes and service
   independence. Retain the current design if no clear-cut opportunity emerges;
   lack of LUT savings does not block M4.
@@ -126,13 +129,21 @@ Detailed stages, acceptance gates and resource comparisons are in the
 
 Execution is covered by the [completion plan](PLAN_FPGA_BOUNDARY_COMPLETION.md).
 
-- [ ] Remove the need for ARM-produced per-quantum fences. With no published
+The prepared and live-image checkpoints run 1,040 unserviced quanta, including
+full transport replies and unfinished ingress. A separate command flood preserves
+exact audio and resident transition outcomes. Large graph activation copies live
+ramp state at its actual cut. The final combined functional campaign passes
+(12 continuous/demo/image/board tests). M4 functionality is complete; final
+wrapper/core timing remains open under M6 and is not a physical qualification.
+See [execution evidence](fpga/verification/BOUNDARY_COMPLETION.md).
+
+- [x] Remove the need for ARM-produced per-quantum fences. With no published
   update, process normally using installed state and actions. Publish complete
   control batches atomically at defined boundaries within a bounded budget.
-- [ ] Define admission deadlines and late-update behavior. An incomplete update,
+- [x] Define admission deadlines and late-update behavior. An incomplete update,
   command flood, held acknowledgement or full result storage must not become an
   audio scheduling dependency.
-- [ ] Use continuous fabric I/O to verify extended ARM pauses, automatic wraps,
+- [x] Use continuous fabric I/O to verify extended ARM pauses, automatic wraps,
   repeat waits, sync propagation and resident future actions. Preserve existing
   audio publication, memory-fault and coordinated-reset contracts.
 

@@ -1,0 +1,17 @@
+{
+  "revision": "a134d1bb92704e1c9fd066ca9e5df48818bc3336",
+  "working_tree_dirty": true,
+  "command": [
+    "fpga/synthesis/run.py",
+    "--threads",
+    "2",
+    "--vivado",
+    "/workspace/shoopdaloop/work/fpga-boundary/tools/vivado/vivado-container",
+    "--output",
+    "work/fpga-completion/fullcore-dma-select"
+  ],
+  "part": "xc7z020clg400-1",
+  "clock_mhz": 100,
+  "top": "loop_pipeline_axi",
+  "audio_clock_mhz": null
+}

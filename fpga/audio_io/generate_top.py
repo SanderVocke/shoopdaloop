@@ -46,6 +46,7 @@ def generate():
                 'command_data', 'response_valid', 'response_ready', 'response_error', 'response_data',
                 'cfg_valid', 'cfg_ready', 'cfg_state', 'cfg_write', 'cfg_address', 'cfg_write_data',
                 'cfg_response_valid', 'cfg_response_error', 'cfg_read_data',
+                'run_instruction_count', 'run_state_count', 'run_job_budget', 'run_buffers',
                 'audio_cfg_valid', 'audio_cfg_ready', 'audio_cfg_space', 'audio_cfg_write', 'audio_cfg_address', 'audio_cfg_write_data', 'audio_cfg_response_valid', 'audio_cfg_response_error', 'audio_cfg_read_data', 'store_cmd_valid', 'store_cmd_ready', 'store_cmd_opcode', 'store_cmd_view', 'store_cmd_start', 'store_cmd_length', 'store_cmd_count', 'store_write_valid', 'store_write_ready', 'store_write_data', 'store_read_valid', 'store_read_ready', 'store_read_data', 'store_cfg_valid', 'store_cfg_ready', 'store_cfg_write', 'store_cfg_space', 'store_cfg_address', 'store_cfg_write_data', 'store_cfg_response_valid', 'store_cfg_response_error', 'store_cfg_read_data'}
     for p, n in ports:
         if n in internal or n in removed or n.startswith('m_axi_'):

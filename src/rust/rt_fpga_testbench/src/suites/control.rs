@@ -23,7 +23,11 @@ pub fn batches_and_failures() -> Result<()> {
             root.join("fpga/audio_io/rtl/audio_control.sv"),
         ],
     )
-    .parameters(&[("DEPTH", 5), ("MAX_BATCH_CYCLES", 64)])
+    .parameters(&[
+        ("DEPTH", 5),
+        ("MAX_BATCH_CYCLES", 512),
+        ("MAX_BATCH_WORK", 256),
+    ])
     .build(&root.join("work/marlin-suite/control"))?;
     let mut s = Sim::new(compiled.session(None)?, &[("clk", 10_000, 0)]);
     let reset = |s: &mut Sim<'_>| {
@@ -53,6 +57,7 @@ pub fn batches_and_failures() -> Result<()> {
         &["cfg_state", "cfg_address", "cfg_write_data"],
     ));
     let advance = |s: &mut Sim<'_>, sequence: u64| {
+        s.idle(1);
         assert_eq!(s.model.get("run_permitted"), 1);
         s.model.set("run_start", 1);
         s.idle(1);
@@ -224,6 +229,33 @@ pub fn batches_and_failures() -> Result<()> {
     assert_eq!(s.model.bits("result_data").get(832, 4), 3);
 
     reset(&mut s);
+    s.model
+        .set_all(&[("sequence_number", 0), ("result_ready", 0)]);
+    source.borrow_mut().queue.push_back(header(0, 4));
+    for _ in 0..4 {
+        source
+            .borrow_mut()
+            .queue
+            .push_back(control_packet(0, 0, &Bits::default(), 4, 0));
+    }
+    for ordinal in 0..4 {
+        s.until(1000, "over-budget batch refusal", |m| {
+            m.get("result_valid") != 0
+        });
+        let record = s.model.bits("result_data");
+        assert_eq!(record.get(832, 4), 2);
+        assert_eq!(record.get(846, 32), ordinal);
+        assert_eq!(
+            s.model.get("command_valid") | s.model.get("cfg_valid") | s.model.get("fault"),
+            0
+        );
+        s.model.set("result_ready", 1);
+        s.idle(1);
+        s.model.set("result_ready", 0);
+    }
+    s.idle(5);
+    assert_eq!(s.model.get("run_permitted"), 1);
+    reset(&mut s);
     s.model.set("sequence_number", 0);
     source
         .borrow_mut()
@@ -240,8 +272,8 @@ pub fn batches_and_failures() -> Result<()> {
 
     for malformed in [
         control_packet(0, 2, &Bits::default(), 0, 0),
-        control_packet(0, 2, &Bits::default(), 0xa1, 5),
-        control_packet(0, 2, &Bits::default(), 0xa1, 0),
+        control_packet(0, 2, &Bits::default(), 0xa2, 5),
+        control_packet(0, 2, &Bits::default(), 0xa2, 0),
     ] {
         reset(&mut s);
         source.borrow_mut().queue.push_back(malformed);
@@ -255,5 +287,18 @@ pub fn batches_and_failures() -> Result<()> {
         .extend([header(0, 1), control_packet(0, 0, &Bits::default(), 16, 0)]);
     s.until(1000, "forbidden settlement", |m| m.get("fault") != 0);
     assert_eq!(s.model.get("command_valid"), 0);
+    reset(&mut s);
+    source.borrow_mut().queue.extend([
+        header(0, 1),
+        control_packet(0, 1, &Bits::default(), 7, 1 << 16),
+    ]);
+    s.until(1000, "configuration address reserved bits", |m| {
+        m.get("fault") != 0
+    });
+    assert_eq!(
+        s.model.get("cfg_valid"),
+        0,
+        "invalid wide address aliased a configuration slot"
+    );
     Ok(())
 }

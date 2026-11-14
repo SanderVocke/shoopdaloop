@@ -96,7 +96,7 @@ def prepare(output, loops=64, tracks=8, q=32, record_quanta=64, mixed=True, buil
         if not step['actions']:
             continue
         if n != 0:
-            events.append(packet(sequence=n, kind=2, opcode=0xa1, index=len(step['actions']), data=n+1))
+            events.append(packet(sequence=n, kind=2, opcode=0xa2, index=len(step['actions']), data=n+1))
         for _ in step['actions']:
             transfer = next(actions)
             word = packet(sequence=n, opcode=transfer['opcode'], index=transfer['index'], data=wire.port_value(transfer['words']))
