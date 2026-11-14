@@ -383,6 +383,7 @@ impl ControlEndpoint {
                 job,
                 self.pool.bus(slot),
                 crate::NodeConfiguration {
+                    generation: bus.id.0.generation,
                     outputs: bus.channels,
                     bank: bus.outputs.active as u8,
                     gain: bus.gain,
@@ -1591,7 +1592,7 @@ impl ControlEndpoint {
                     EngineOp::Reset {
                         inputs: 0,
                         outputs: bus.channels,
-                        generation: 0,
+                        generation: bus.id.0.generation,
                     },
                 );
                 self.submit_job_op(
@@ -1601,7 +1602,7 @@ impl ControlEndpoint {
                     EngineOp::Reset {
                         inputs: 0,
                         outputs: bus.channels,
-                        generation: 0,
+                        generation: bus.id.0.generation,
                     },
                 );
             }

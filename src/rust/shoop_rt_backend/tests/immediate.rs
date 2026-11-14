@@ -11,6 +11,52 @@ use support::*;
 static ALLOCATOR: TrackingAllocator = TrackingAllocator;
 
 #[shoop_test]
+fn additional_bus_uses_the_snapshot_generation_for_immediate_controls() {
+    let mut b = stack(&description());
+    let track = b
+        .create_direct_track(DirectTrackRequest {
+            port_name_base: "bus-generation".into(),
+            audio_channels: 2,
+            midi: false,
+            initial_loops: 1,
+        })
+        .unwrap();
+    b.wait_idle();
+    let bus = b
+        .create_bus(BackendBusRequest {
+            name: "Additional".into(),
+            channel_count: 2,
+            fx: None,
+        })
+        .unwrap();
+    for _ in 0..32 {
+        b.clock_mut().render(16);
+        b.pump();
+    }
+    assert!(!b.mutations_pending_through(b.mutation_cursor()));
+    assert!(
+        b.snapshot_frame().unwrap() >= b.clock().frame() - 16,
+        "an active additional bus must not invalidate whole snapshots"
+    );
+    b.immediate_group(&[
+        Command::BusGain(bus.bus_id, 0.25),
+        Command::BusBalance(bus.bus_id, -0.5),
+        Command::BusMute(bus.bus_id, true),
+        Command::LoopGain(track.loops[0], 0.5),
+    ])
+    .unwrap();
+    b.clock_mut().render(16);
+    b.pump();
+    let state = b.poll().unwrap();
+    assert_eq!(b.immediate_diagnostics().rt_refused, 0);
+    assert_eq!(state.loops[&track.loops[0]].gain, 0.5);
+    let bus = &state.mixer.buses[&bus.bus_id];
+    assert!((bus.gain_db + 12.0412).abs() < 0.0001);
+    assert_eq!(bus.balance, -0.5);
+    assert!(bus.muted);
+}
+
+#[shoop_test]
 fn thirty_loaded_loops_start_together_and_snapshots_observe_without_receipts() {
     let mut d = description();
     d.master_connections = vec![(0, 0), (1, 1)];

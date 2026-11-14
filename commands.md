@@ -392,7 +392,7 @@ They carry no command identity and do not establish individual command history.
 
 Implementation and focused native smoke validation completed on 2026-11-14.
 
-- Eighteen command/carrier smoke tests pass. They cover cutoff ordering and a
+- Nineteen command/carrier smoke tests pass. They cover cutoff ordering and a
   concurrent producer; a 436-byte maximum record and malformed/truncated records;
   scalar snapshots and all-or-nothing target rejection; partial host callbacks;
   bounded staging/backpressure; encoded fragmentation and a paused receiver;
@@ -415,3 +415,11 @@ The staged commits are published on `feat/rt-state-snapshots` in draft PR
 `feat/backend-replacement`. CI and review status are tracked on that PR; external
 checks are a final publication gate, separate from the local smoke evidence above.
 No automatic merge is authorized.
+
+
+CI comparison exposed a bus-identity defect already present in the snapshot branch:
+new bus resets did not preserve their generation, and replacement configuration
+used zero. This invalidated complete UI snapshots and would also refuse immediate
+commands to additional buses. Resets and replacement configuration now retain the
+existing bus generation. A focused adapter smoke reproduces the failure before the
+fix and verifies continued snapshots plus immediate controls on an additional bus.

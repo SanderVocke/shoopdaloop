@@ -1345,7 +1345,12 @@ impl BusMixer {
                     .preview_playing
                     .store(0, core::sync::atomic::Ordering::Release);
             }
-            EngineOp::Reset { outputs, .. } => {
+            EngineOp::Reset {
+                outputs,
+                generation,
+                ..
+            } => {
+                self.generation = generation;
                 self.preview = None;
                 self.active_channels = outputs;
                 self.bank = Ramp::at(0.);
