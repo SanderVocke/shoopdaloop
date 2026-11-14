@@ -8,6 +8,34 @@ use shoop_wasm_test_support::shoop_test;
 use support::*;
 
 #[shoop_test]
+fn legacy_success_waits_for_the_state_publication_in_push_mode() {
+    let mut backend = stack(&description());
+    let track = backend
+        .create_direct_track(DirectTrackRequest {
+            port_name_base: "fresh-completion".into(),
+            audio_channels: 2,
+            midi: false,
+            initial_loops: 1,
+        })
+        .unwrap();
+    backend.wait_idle();
+    backend.poll().unwrap();
+    backend
+        .set_snapshot_delivery(SnapshotDelivery::push(1).unwrap())
+        .unwrap();
+    backend.set_loop_gain(track.loops[0], 0.25).unwrap();
+    backend.pump();
+    backend.clock_mut().render(16);
+    backend.pump();
+    assert!(backend.poll().unwrap().mutation_completions.is_empty());
+    backend.clock_mut().render(1000);
+    backend.pump();
+    let observed = backend.poll().unwrap();
+    assert_eq!(observed.loops[&track.loops[0]].gain, 0.25);
+    assert!(!observed.mutation_completions.is_empty());
+}
+
+#[shoop_test]
 fn snapshots_drive_display_controls_in_both_delivery_modes() {
     let mut backend = stack(&description());
     assert_eq!(

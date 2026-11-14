@@ -1476,7 +1476,13 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             connections,
             mixer,
             mutation_failures: core::mem::take(&mut self.mutation_failures),
-            mutation_completions: core::mem::take(&mut self.mutation_completions),
+            mutation_completions: if self.telemetry_fresh || self.link != Link::Ready {
+                core::mem::take(&mut self.mutation_completions)
+            } else {
+                self.mutation_completions
+                    .extract_if(.., |completion| completion.result.is_err())
+                    .collect()
+            },
         })
     }
 

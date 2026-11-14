@@ -399,7 +399,7 @@ Implementation and focused native smoke validation completed on 2026-11-14.
   disconnect without replay; thirty preloaded loops starting/restarting together,
   including a race against an actual callback; and preserved legacy bulk reads.
   The connected RT and encoded control paths are heap-guarded.
-- Twelve existing snapshot and timing-edit smoke tests pass, preserving push/pull
+- Thirteen snapshot and timing-edit smoke tests pass, preserving push/pull
   delivery, cache behavior, configuration transitions and unmigrated workflows.
 - Formatting, test-attribute policy, diff checks and the warning-denying build of
   affected crates pass. The native process wrapper was built without native audio
@@ -428,3 +428,14 @@ The worklet artifact contract now reads the engine wire version from the Rust
 protocol source. Its stale hand-written version 26 handshake would otherwise
 reject version 29 before exercising the artifact. This changes the test fixture,
 not the production bridge or the independent audio protocol.
+
+
+Legacy adapter successes now remain in their existing completion queue until a
+fresh validated snapshot is applied. Failures and disconnect outcomes remain
+available immediately. A reliable legacy result can precede rate-limited push
+observation; treating it as current display state made composite capture report
+Busy after a confirmed stop. Capture preparation also waits for fresh observation.
+This adds no request tracking to immediate groups. The existing hosted composite
+file-roundtrip test reproduces the push-ordering issue on native when the fixture
+uses push, and passes with the observation barrier. Focused refusal/disconnect
+regressions and a one-Hz push smoke also pass.

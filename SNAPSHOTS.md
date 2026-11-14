@@ -322,6 +322,19 @@ The UI applies complete accepted snapshots to existing objects and skips obsolet
 ones. Cursor interpolation may use the audio frame and playback information, but
 must respect stops, seeks, mode changes, and configuration changes.
 
+### Legacy mutation observation
+
+The adapter retains successful legacy mutation completions until a fresh,
+validated state publication has been applied. Reliable results can precede
+rate-limited push snapshots, so a success result alone must not expose an older
+recording/display state as the result of a stop. Failures and disconnect outcomes
+are released without waiting for another publication. Capture preparation also
+waits for fresh observation before evaluating recording state.
+
+This uses the existing legacy completion storage and snapshot freshness boundary.
+Immediate command groups bypass this completion mechanism entirely; callers
+observe their intended conditions through snapshots.
+
 ## Migration
 
 ### First milestone: publication available to control
