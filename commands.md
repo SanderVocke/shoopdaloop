@@ -423,3 +423,8 @@ used zero. This invalidated complete UI snapshots and would also refuse immediat
 commands to additional buses. Resets and replacement configuration now retain the
 existing bus generation. A focused adapter smoke reproduces the failure before the
 fix and verifies continued snapshots plus immediate controls on an additional bus.
+
+The worklet artifact contract now reads the engine wire version from the Rust
+protocol source. Its stale hand-written version 26 handshake would otherwise
+reject version 29 before exercising the artifact. This changes the test fixture,
+not the production bridge or the independent audio protocol.

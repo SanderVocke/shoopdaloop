@@ -223,7 +223,7 @@ unavailable rather than failing audio preparation.
 
 The endpoint forwards at most 128 chunks per poll, with at most 24 samples per
 chunk and independent profiling admission. Reliable messages have priority;
-bulk, metering and profiling rotate fairly. Engine protocol version 26, application
+bulk, metering and profiling rotate fairly. Engine protocol version 29, application
 protocol version 35, and SDM2 shared-memory descriptors reject incompatible peers.
 The browser MessagePort additionally allows at most 256 unconsumed profiling
 records. The main thread returns credits after decoding consumption, coalesced
