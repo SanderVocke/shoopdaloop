@@ -1784,6 +1784,7 @@ impl ControlEndpoint {
         }
         if !self.immediate.active {
             let stable = self.is_idle()
+                && self.snapshot_configuration_settled()
                 && self.planned.iter().flatten().all(Option::is_none)
                 && self.input.idle()
                 && self.family.id.is_none()

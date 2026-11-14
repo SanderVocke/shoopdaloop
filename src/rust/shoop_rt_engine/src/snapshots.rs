@@ -335,6 +335,9 @@ impl ControlEndpoint {
         state.cache_sequence = sequence;
         state.cache_epochs = Some(state.confirmed);
     }
+    pub(crate) fn snapshot_configuration_settled(&self) -> bool {
+        self.snapshots.cache_epochs == Some((self.graph_epoch.0, self.topology_epoch.0))
+    }
     pub(crate) fn timing_cached_after(&self, id: LoopSlotId, frame: u64) -> bool {
         self.snapshots.cache_epochs == Some(self.snapshots.confirmed)
             && self

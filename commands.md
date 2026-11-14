@@ -373,7 +373,9 @@ storage, failures, or repeat-sync behavior. MIDI-capable, processed/dry-wet,
 composite, recording and repeat-sync playback remain outside this first set.
 There is no legacy fallback inside a group.
 
-The first accepted group latches the stable-session restriction. Reprepare the
+The first accepted group requires both idle legacy work and a validated RT
+snapshot for the current configuration, proving deferred processor configuration
+has settled before new controls can change its values. It latches the stable-session restriction. Reprepare the
 engine to resume legacy mutations. The latch persists across reconnects; control
 staging and a record server's blocked message do not. Previously RT-admitted work
 may still execute. This deliberately narrow entry point does not switch every
