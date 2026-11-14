@@ -1,4 +1,4 @@
-//! Quantum fences, bounded ingress, command/configuration responses, and malformed sequences.
+//! Complete batches, autonomous empty/partial ingress, bounded arbitration and failures.
 use crate::{
     Result,
     bits::Bits,
@@ -6,7 +6,14 @@ use crate::{
     model::Design,
     sim::Sim,
 };
-pub fn fences_and_failures() -> Result<()> {
+fn header(sequence: u64, commands: u32) -> Bits {
+    Bits(
+        rt_fpga_adapter::audio_control::header(sequence, sequence + 1, commands, 5)
+            .unwrap()
+            .to_vec(),
+    )
+}
+pub fn batches_and_failures() -> Result<()> {
     let root = crate::root();
     let compiled = Design::new(
         "audio_control",
@@ -16,28 +23,28 @@ pub fn fences_and_failures() -> Result<()> {
             root.join("fpga/audio_io/rtl/audio_control.sv"),
         ],
     )
-    .parameters(&[("DEPTH", 3)])
+    .parameters(&[
+        ("DEPTH", 5),
+        ("MAX_BATCH_CYCLES", 512),
+        ("MAX_BATCH_WORK", 256),
+    ])
     .build(&root.join("work/marlin-suite/control"))?;
     let mut s = Sim::new(compiled.session(None)?, &[("clk", 10_000, 0)]);
-    s.model.set("reset", 1);
-    s.idle(1);
-    s.model.set("reset", 0);
-    let packets = [
-        (0, 0, 123, 4, 0),
-        (0, 2, 0, 0, 0),
-        (1, 1, 456, 0, (1 << 31) | 7),
-        (1, 2, 0, 0, 0),
-        (3, 0, 789, 0, 0),
-    ]
-    .into_iter()
-    .map(|(seq, kind, data, op, index)| control_packet(seq, kind, &Bits::from_u64(data), op, index))
-    .collect();
+    let reset = |s: &mut Sim<'_>| {
+        s.model.set("reset", 1);
+        s.idle(1);
+        s.model
+            .set_all(&[("reset", 0), ("enable", 1), ("result_ready", 1)]);
+        s.idle(1);
+    };
+    reset(&mut s);
+    s.model.set_all(&[("result_ready", 0), ("epoch", 7)]);
     let source = Source::attach(
         &mut s,
         "control_valid",
         "control_ready",
         "control_data",
-        packets,
+        vec![],
     );
     s.agent(crate::protocol::ReadyValid::new(
         "command_valid",
@@ -49,13 +56,49 @@ pub fn fences_and_failures() -> Result<()> {
         "cfg_ready",
         &["cfg_state", "cfg_address", "cfg_write_data"],
     ));
-    s.idle(15);
+    let advance = |s: &mut Sim<'_>, sequence: u64| {
+        s.idle(1);
+        assert_eq!(s.model.get("run_permitted"), 1);
+        s.model.set("run_start", 1);
+        s.idle(1);
+        s.model
+            .set_all(&[("run_start", 0), ("sequence_number", sequence)]);
+    };
+    for sequence in 1..=1024 {
+        advance(&mut s, sequence);
+        assert_eq!(s.model.get("command_valid") | s.model.get("fault"), 0);
+    }
+    source.borrow_mut().queue.extend([
+        header(1024, 2),
+        control_packet(1024, 0, &Bits::from_u64(123), 4, 0),
+    ]);
+    s.idle(20);
     assert_eq!(
-        s.model.get("control_ready") | s.model.get("command_valid"),
-        0
+        s.model.get("command_valid"),
+        0,
+        "partial batch became visible"
     );
-    s.model.set("enable", 1);
-    s.until(1000, "command dispatch", |m| m.get("command_valid") != 0);
+    for sequence in 1025..=2048 {
+        advance(&mut s, sequence);
+    }
+    source.borrow_mut().queue.extend([
+        control_packet(1024, 1, &Bits::from_u64(456), 0, (1 << 31) | 7),
+        header(2048, 1),
+        control_packet(2048, 0, &Bits::from_u64(789), 5, 1),
+    ]);
+    s.model.set("admission_blocked", 1);
+    s.idle(20);
+    assert_eq!(s.model.get("command_valid"), 0);
+    assert_eq!(
+        s.model.get("run_permitted"),
+        1,
+        "held host reply gated audio"
+    );
+    s.model.set("admission_blocked", 0);
+    s.until(1000, "late complete batch dispatch", |m| {
+        m.get("command_valid") != 0
+    });
+    assert_eq!(s.model.get("run_permitted"), 0);
     for _ in 0..3 {
         assert_eq!(s.model.bits("command_data").get(0, 64), 123);
         assert_eq!(s.model.get("command_opcode"), 4);
@@ -64,42 +107,316 @@ pub fn fences_and_failures() -> Result<()> {
     s.model.set("command_ready", 1);
     s.idle(1);
     s.model.set("command_ready", 0);
-    assert_eq!(s.model.get("fenced"), 0);
+    assert_eq!(s.model.get("response_ready"), 1);
     s.model.set("response_valid", 1);
+    s.model.set_bits("response_data", &Bits::from_u64(0xfeed));
     s.idle(1);
     s.model.set("response_valid", 0);
-    s.until(1000, "first fence", |m| m.get("fenced") != 0);
-    for _ in 0..5 {
-        s.idle(1);
-        assert_eq!(s.model.get("cfg_valid"), 0);
-    }
-    s.model.set_all(&[("run_start", 1), ("busy", 1)]);
-    s.idle(1);
-    s.model.set_all(&[("run_start", 0), ("sequence_number", 1)]);
-    for _ in 0..5 {
-        s.idle(1);
-        assert_eq!(s.model.get("cfg_valid"), 0);
-    }
-    s.model.set("busy", 0);
     s.until(1000, "configuration dispatch", |m| m.get("cfg_valid") != 0);
     assert_eq!(s.model.get("cfg_state"), 1);
     assert_eq!(s.model.get("cfg_address"), 7);
     assert_eq!(s.model.bits("cfg_write_data").get(0, 64), 456);
+    assert_eq!(s.model.get("run_permitted"), 0, "batch was interrupted");
     s.model.set("cfg_ready", 1);
     s.idle(1);
     s.model
         .set_all(&[("cfg_ready", 0), ("cfg_response_valid", 1)]);
     s.idle(1);
     s.model.set("cfg_response_valid", 0);
-    s.until(1000, "second fence", |m| m.get("fenced") != 0);
-    s.model.set("run_start", 1);
+    s.idle(10);
+    assert_eq!(
+        s.model.get("command_valid"),
+        0,
+        "flood exceeded one batch per quantum"
+    );
+    advance(&mut s, 2049);
+    s.until(1000, "next batch", |m| m.get("command_valid") != 0);
+    assert_eq!(s.model.bits("command_data").get(0, 64), 789);
+    s.model.set("command_ready", 1);
     s.idle(1);
-    s.model.set_all(&[("run_start", 0), ("sequence_number", 2)]);
-    for _ in 0..10 {
-        s.idle(1);
-        assert_eq!(s.model.get("command_valid"), 0);
-    }
-    assert_ne!(s.model.get("fault"), 0);
+    s.model
+        .set_all(&[("command_ready", 0), ("response_valid", 1)]);
+    s.idle(1);
+    s.model.set("response_valid", 0);
+    s.idle(5);
+    assert_eq!(s.model.get("fault"), 0);
     assert!(source.borrow().queue.is_empty());
+    let first = s.model.bits("result_data");
+    assert_eq!(s.model.get("result_valid"), 1);
+    assert_eq!(first.get(878, 64), 1025);
+    assert_eq!(first.get(942, 64), 2048);
+    assert_eq!(first.get(1006, 32), 7);
+    assert_eq!(first.get(846, 32), 0);
+    assert_eq!(first.get(838, 8), 4);
+    let decoded =
+        rt_fpga_adapter::audio_control::Completion::decode(&first.0.clone().try_into().unwrap())?;
+    assert_eq!(decoded.batch, 1025);
+    assert_eq!(decoded.quantum, 2048);
+    assert_eq!(decoded.epoch, 7);
+    assert_eq!(decoded.payload[0], 0xfeed);
+    source.borrow_mut().queue.extend([
+        header(2049, 3),
+        control_packet(2049, 0, &Bits::default(), 0, 0),
+        control_packet(2049, 0, &Bits::default(), 0, 0),
+        control_packet(2049, 0, &Bits::default(), 0, 0),
+    ]);
+    advance(&mut s, 2050);
+    s.idle(20);
+    assert_eq!(
+        s.model.get("command_valid"),
+        0,
+        "batch started without all reply credits"
+    );
+    assert_eq!(s.model.get("run_permitted"), 1);
+    assert_eq!(s.model.bits("result_data"), first);
+    s.model.set("result_ready", 1);
+    s.idle(1);
+    s.model.set("result_ready", 0);
+    for _ in 0..3 {
+        s.until(1000, "reserved reply batch", |m| {
+            m.get("command_valid") != 0
+        });
+        s.model.set("command_ready", 1);
+        s.idle(1);
+        s.model
+            .set_all(&[("command_ready", 0), ("response_valid", 1)]);
+        s.idle(1);
+        s.model.set("response_valid", 0);
+    }
+    s.idle(10);
+    source.borrow_mut().queue.extend([
+        header(2050, 1),
+        control_packet(2050, 0, &Bits::default(), 4, 0),
+    ]);
+    advance(&mut s, 2051);
+    s.idle(15);
+    let held = s.model.bits("result_data");
+    for sequence in 2052..3076 {
+        advance(&mut s, sequence);
+        assert_eq!(s.model.get("command_valid"), 0, "full replies gated audio");
+        assert_eq!(s.model.bits("result_data"), held);
+    }
+    s.model.set("result_ready", 1);
+    s.until(1000, "admission after reply release", |m| {
+        m.get("command_valid") != 0
+    });
+    s.model.set("command_ready", 1);
+    s.idle(1);
+    s.model.set_all(&[
+        ("command_ready", 0),
+        ("response_valid", 1),
+        ("response_error", 3),
+    ]);
+    s.model.set_bits("response_data", &Bits::default());
+    s.idle(1);
+    s.model.set_all(&[
+        ("response_valid", 0),
+        ("response_error", 0),
+        ("result_ready", 0),
+    ]);
+    s.idle(10);
+    assert_eq!(
+        s.model.get("fault"),
+        0,
+        "ordinary command refusal faulted audio"
+    );
+    assert_eq!(s.model.get("run_permitted"), 1);
+    s.model.set("result_ready", 1);
+    s.until(1000, "retained refusal", |m| {
+        m.get("result_valid") != 0 && m.bits("result_data").get(878, 64) == 2051
+    });
+    s.model.set("result_ready", 0);
+    assert_eq!(s.model.bits("result_data").get(832, 4), 3);
+
+    reset(&mut s);
+    s.model
+        .set_all(&[("sequence_number", 0), ("result_ready", 0)]);
+    source.borrow_mut().queue.push_back(header(0, 4));
+    for _ in 0..4 {
+        source
+            .borrow_mut()
+            .queue
+            .push_back(control_packet(0, 0, &Bits::default(), 4, 0));
+    }
+    for ordinal in 0..4 {
+        s.until(1000, "over-budget batch refusal", |m| {
+            m.get("result_valid") != 0
+        });
+        let record = s.model.bits("result_data");
+        assert_eq!(record.get(832, 4), 2);
+        assert_eq!(record.get(846, 32), ordinal);
+        assert_eq!(
+            s.model.get("command_valid") | s.model.get("cfg_valid") | s.model.get("fault"),
+            0
+        );
+        s.model.set("result_ready", 1);
+        s.idle(1);
+        s.model.set("result_ready", 0);
+    }
+    s.idle(5);
+    assert_eq!(s.model.get("run_permitted"), 1);
+    reset(&mut s);
+    s.model.set("sequence_number", 0);
+    source
+        .borrow_mut()
+        .queue
+        .extend([header(10, 1), control_packet(10, 0, &Bits::default(), 4, 0)]);
+    s.idle(15);
+    for sequence in 1..=10 {
+        assert_eq!(s.model.get("command_valid"), 0, "future batch ran early");
+        advance(&mut s, sequence);
+    }
+    s.until(1000, "future batch", |m| m.get("command_valid") != 0);
+    s.until(1000, "bounded device timeout", |m| m.get("fault") != 0);
+    assert_eq!(s.model.get("run_permitted"), 0);
+
+    for malformed in [
+        control_packet(0, 2, &Bits::default(), 0, 0),
+        control_packet(0, 2, &Bits::default(), 0xa3, 5),
+        control_packet(0, 2, &Bits::default(), 0xa3, 0),
+    ] {
+        reset(&mut s);
+        source.borrow_mut().queue.push_back(malformed);
+        s.until(1000, "malformed batch rejection", |m| m.get("fault") != 0);
+        assert_eq!(s.model.get("command_valid") | s.model.get("cfg_valid"), 0);
+    }
+    reset(&mut s);
+    source
+        .borrow_mut()
+        .queue
+        .extend([header(0, 1), control_packet(0, 0, &Bits::default(), 16, 0)]);
+    s.until(1000, "forbidden settlement", |m| m.get("fault") != 0);
+    assert_eq!(s.model.get("command_valid"), 0);
+    reset(&mut s);
+    source.borrow_mut().queue.extend([
+        header(0, 1),
+        control_packet(0, 1, &Bits::default(), 7, 1 << 16),
+    ]);
+    s.until(1000, "configuration address reserved bits", |m| {
+        m.get("fault") != 0
+    });
+    assert_eq!(
+        s.model.get("cfg_valid"),
+        0,
+        "invalid wide address aliased a configuration slot"
+    );
+    Ok(())
+}
+
+pub fn managed_owner_isolation() -> Result<()> {
+    let root = crate::root();
+    let compiled = Design::new(
+        "audio_control",
+        vec![
+            root.join("fpga/state_processor/rtl/sp_ram.sv"),
+            root.join("fpga/audio_io/rtl/audio_command_fifo.sv"),
+            root.join("fpga/audio_io/rtl/audio_control.sv"),
+        ],
+    )
+    .parameters(&[("DEPTH", 8), ("RESIDENT_ACTIONS", 1)])
+    .build(&root.join("work/marlin-suite/managed-control"))?;
+    let mut s = Sim::new(compiled.session(None)?, &[("clk", 10000, 0)]);
+    s.model.set("reset", 1);
+    s.idle(2);
+    s.model.set_all(&[
+        ("reset", 0),
+        ("enable", 1),
+        ("command_ready", 1),
+        ("cfg_ready", 1),
+    ]);
+    s.idle(2);
+    let source = Source::attach(
+        &mut s,
+        "control_valid",
+        "control_ready",
+        "control_data",
+        vec![],
+    );
+    let operations: Vec<_> = [4, 5, 6, 17, 18, 19, 20, 21]
+        .into_iter()
+        .map(|op| (0, op))
+        .chain([0, 5, 6, 128, 133, 134, 136].into_iter().map(|op| (1, op)))
+        .collect();
+    let mut sequence = 0;
+    for (kind, opcode) in operations {
+        source.borrow_mut().queue.extend([
+            Bits(rt_fpga_adapter::audio_control::header(sequence, sequence + 1, 1, 8)?.to_vec()),
+            control_packet(sequence, kind, &Bits::default(), opcode, 0),
+        ]);
+        s.until(1000, "managed raw mutation refusal", |m| {
+            m.get("result_valid") != 0
+        });
+        let row = s.model.bits("result_data");
+        assert_eq!(row.get(832, 4), 10, "kind {kind}, opcode {opcode}");
+        assert_eq!(row.get(838, 8), opcode);
+        assert_eq!(
+            s.model.get("command_valid") | s.model.get("cfg_valid") | s.model.get("fault"),
+            0
+        );
+        s.idle(12);
+        assert_eq!(s.model.bits("result_data"), row);
+        s.model.set("result_ready", 1);
+        s.idle(1);
+        s.model.set("result_ready", 0);
+        s.idle(2);
+        assert_eq!(s.model.get("run_permitted"), 1);
+        s.model.set("run_start", 1);
+        s.idle(1);
+        sequence += 1;
+        s.model
+            .set_all(&[("run_start", 0), ("sequence_number", sequence)]);
+    }
+    for (kind, opcode) in [(0, 0), (1, 1), (1, 137), (1, 24)] {
+        source.borrow_mut().queue.extend([
+            Bits(rt_fpga_adapter::audio_control::header(sequence, sequence + 1, 1, 8)?.to_vec()),
+            control_packet(sequence, kind, &Bits::default(), opcode, 0),
+        ]);
+        s.until(1000, "managed service routing", |m| {
+            m.get(if kind == 0 {
+                "command_valid"
+            } else {
+                "cfg_valid"
+            }) != 0
+        });
+        assert_eq!(
+            s.model.get(if kind == 0 {
+                "command_opcode"
+            } else {
+                "cfg_opcode"
+            }),
+            opcode
+        );
+        s.idle(1);
+        s.model.set(
+            if kind == 0 {
+                "response_valid"
+            } else {
+                "cfg_response_valid"
+            },
+            1,
+        );
+        s.idle(1);
+        s.model.set(
+            if kind == 0 {
+                "response_valid"
+            } else {
+                "cfg_response_valid"
+            },
+            0,
+        );
+        s.until(1000, "managed service reply", |m| {
+            m.get("result_valid") != 0
+        });
+        assert_eq!(s.model.bits("result_data").get(832, 4), 0);
+        s.model.set("result_ready", 1);
+        s.idle(1);
+        s.model.set("result_ready", 0);
+        s.model.set("run_start", 1);
+        s.idle(1);
+        sequence += 1;
+        s.model
+            .set_all(&[("run_start", 0), ("sequence_number", sequence)]);
+    }
+    assert_eq!(s.model.get("fault"), 0);
     Ok(())
 }

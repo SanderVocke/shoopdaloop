@@ -1,0 +1,46 @@
++--------------------------+--------------------------+----------------------------------------------------------------------------------------------------------+
+|       Launch Clock       |      Capture Clock       |                                                 Pin                                                      |
++--------------------------+--------------------------+----------------------------------------------------------------------------------------------------------+
+|                 core_clk |                 core_clk |                              core_under_test/independent_execution.processor/absolute_to_visit_reg[239]/D|
+|                 core_clk |                 core_clk |                                      core_under_test/independent_execution.processor/response_valid_reg/D|
+|                 core_clk |                 core_clk |                                       core_under_test/independent_execution.processor/absolute_reg[250]/D|
+|                 core_clk |                 core_clk |                              core_under_test/independent_execution.processor/absolute_to_visit_reg[209]/D|
+|                 core_clk |                 core_clk |                               core_under_test/independent_execution.processor/absolute_to_visit_reg[20]/D|
+|                 core_clk |                 core_clk |                               core_under_test/independent_execution.processor/absolute_to_visit_reg[96]/D|
+|                 core_clk |                 core_clk |                              core_under_test/independent_execution.processor/absolute_to_visit_reg[248]/D|
+|                 core_clk |                 core_clk |                               core_under_test/independent_execution.processor/absolute_to_visit_reg[63]/D|
+|                 core_clk |                 core_clk |                                    core_under_test/independent_execution.processor/staging_seen_reg[97]/D|
+|                 core_clk |                 core_clk |                              core_under_test/independent_execution.processor/absolute_to_visit_reg[193]/D|
+|                 core_clk |                 core_clk |                              core_under_test/independent_execution.processor/absolute_to_visit_reg[205]/D|
+|                 core_clk |                 core_clk |                                    core_under_test/independent_execution.processor/staging_seen_reg[85]/D|
+|                 core_clk |                 core_clk |                                    core_under_test/independent_execution.processor/staging_seen_reg[71]/D|
+|                 core_clk |                 core_clk |                                        core_under_test/independent_execution.processor/absolute_reg[31]/D|
+|                 core_clk |                 core_clk |                                    core_under_test/independent_execution.processor/staging_seen_reg[86]/D|
+|                 core_clk |                 core_clk |                                    core_under_test/independent_execution.processor/staging_seen_reg[87]/D|
+|                 core_clk |                 core_clk |                                    core_under_test/independent_execution.processor/staging_seen_reg[80]/D|
+|                 core_clk |                 core_clk |                               core_under_test/independent_execution.processor/absolute_to_visit_reg[79]/D|
+|                 core_clk |                 core_clk |                                    core_under_test/independent_execution.processor/staging_seen_reg[81]/D|
+|                 core_clk |                 core_clk |                               core_under_test/independent_execution.processor/absolute_to_visit_reg[14]/D|
+|                 core_clk |                 core_clk |                                   core_under_test/independent_execution.processor/staging_seen_reg[121]/D|
+|                 core_clk |                 core_clk |                                   core_under_test/independent_execution.processor/staging_seen_reg[117]/D|
+|                 core_clk |                 core_clk |                                    core_under_test/independent_execution.processor/staging_seen_reg[92]/D|
+|                 core_clk |                 core_clk |                                    core_under_test/independent_execution.processor/staging_seen_reg[64]/D|
+|                 core_clk |                 core_clk |                                        core_under_test/independent_execution.processor/absolute_reg[60]/D|
+|                 core_clk |                 core_clk |                               core_under_test/independent_execution.processor/absolute_to_visit_reg[43]/D|
+|                 core_clk |                 core_clk |                                    core_under_test/independent_execution.processor/staging_seen_reg[96]/D|
+|                 core_clk |                 core_clk |                                    core_under_test/independent_execution.processor/staging_seen_reg[88]/D|
+|                 core_clk |                 core_clk |                                   core_under_test/independent_execution.processor/staging_seen_reg[127]/D|
+|                 core_clk |                 core_clk |                                   core_under_test/independent_execution.processor/staging_seen_reg[126]/D|
+|                 core_clk |                 core_clk |                               core_under_test/independent_execution.processor/absolute_to_visit_reg[24]/D|
+|                 core_clk |                 core_clk |                                    core_under_test/independent_execution.processor/staging_seen_reg[68]/D|
+|                 core_clk |                 core_clk |                                    core_under_test/independent_execution.processor/staging_seen_reg[70]/D|
+|                 core_clk |                 core_clk |                                    core_under_test/independent_execution.processor/staging_seen_reg[75]/D|
+|                 core_clk |                 core_clk |                              core_under_test/independent_execution.processor/absolute_to_visit_reg[149]/D|
+|                 core_clk |                 core_clk |                               core_under_test/independent_execution.processor/absolute_to_visit_reg[29]/D|
+|                 core_clk |                 core_clk |                                        core_under_test/independent_execution.processor/absolute_reg[91]/D|
+|                 core_clk |                 core_clk |                                    core_under_test/independent_execution.processor/staging_seen_reg[95]/D|
+|                 core_clk |                 core_clk |                                       core_under_test/independent_execution.processor/absolute_reg[212]/D|
+|                 core_clk |                 core_clk |                                   core_under_test/independent_execution.processor/staging_seen_reg[100]/D|
+|                 core_clk |                 core_clk |                               core_under_test/independent_execution.processor/absolute_to_visit_reg[26]/D|
+|                 core_clk |                 core_clk |                                    core_under_test/independent_execution.processor/staging_seen_reg[77]/D|
++--------------------------+--------------------------+----------------------------------------------------------------------------------------------------------+

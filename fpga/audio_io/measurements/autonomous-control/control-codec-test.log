@@ -1,0 +1,12 @@
+   Compiling rt_fpga_adapter v0.3.0 (/workspace/shoopdaloop/src/rust/rt_fpga_adapter)
+   Compiling rt_backend_testbench v0.3.0 (/workspace/shoopdaloop/src/rust/rt_backend_testbench)
+   Compiling rt_fpga_sim v0.3.0 (/workspace/shoopdaloop/src/rust/rt_fpga_sim)
+   Compiling rt_fpga_testbench v0.3.0 (/workspace/shoopdaloop/src/rust/rt_fpga_testbench)
+    Finished `test` profile [unoptimized] target(s) in 9.36s
+     Running tests/audio_io.rs (target/debug/build/rt_fpga_testbench/73e6b3a38faea57f/out/audio_io-73e6b3a38faea57f)
+
+running 1 test
+test control_batches_backpressure_and_failures ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.16s
+

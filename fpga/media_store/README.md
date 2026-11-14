@@ -73,6 +73,15 @@ at a time. Configuration takes priority, and commands/configuration block while 
 | 7 | Fence | None | Earlier writes acknowledged by backing memory; does not drain cleanup |
 | 9 | Maintenance grant | `cmd_count`: optional block ceiling, `cmd_start`: cycle budget; zero selects defaults | Grant bounded cleanup work and acknowledge immediately |
 | 10 | Drain cleanup | None | Wait for all retired tables; offline operation |
+| 11 | Seal | `cmd_view`: writable source, `cmd_length`: retained frames | Same ID becomes read-only in place |
+
+Seal validates a materialized writable view and a retained length no greater than
+its published frames. It sets the descriptor read-only in constant work, retaining
+the existing table and every block reference, including any truncated tail. It
+allocates no view, copies no reference vector and performs no sample-memory I/O.
+Removal/clear later retires the whole original table through bounded cleanup. An
+empty view can be sealed; a repeated seal returns InvalidState. Capture management
+uses a fresh mutable root for the next take.
 
 Slices copy IDs and retain references, with no sample-memory transactions. Nested
 ranges retain their own references. Partial boundary chunks stay allocated while

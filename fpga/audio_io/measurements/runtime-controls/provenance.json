@@ -1,0 +1,17 @@
+{
+  "base_commit": "7e2323d07f4f2c690451b3168cbf2186375f8636",
+  "source_files": 237,
+  "scope": "Device resident runtime/monitoring and conditional graph templates; ARM application/compiler/firmware not migrated",
+  "stereo_frames_runtime_case": 8449,
+  "image_runtime_cases": 12,
+  "native_control_query_component_cases": 5,
+  "view_usage_capacities": [
+    1,
+    3,
+    5,
+    32
+  ],
+  "physical_hardware": false,
+  "resource_run": "Separate frozen managed-profile route pending; no current routed usage or timing claim",
+  "initial_failure": "Vivado 2021.1 does not synthesize dynamic $countones; balanced generate-level tree replaces it. Initial usage test read allocation high-water register instead of usage report; retained first log and corrected register-specific test."
+}

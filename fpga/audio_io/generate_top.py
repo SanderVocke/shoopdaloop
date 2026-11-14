@@ -25,6 +25,7 @@ def generate():
     params += ',\n    parameter integer P = MAX_FRAMES, RX_BANKS = 3, TX_BANKS = 3,\n    parameter integer WATCHDOG_CYCLES = 1000000, CONTROL_DEPTH = 128'
     removed = {'maintenance_enable', 'run_valid', 'sample_input_read', 'sample_input_address', 'sample_input_data',
                'sample_output_write', 'sample_output_address', 'sample_output_data'}
+    removed.update(n for _, n in ports if n.startswith('resident_'))
     public = [(p, n) for p, n in ports if n not in removed]
     extra = '''input wire audio_clk, input wire session_reset, input wire enable,
     input wire quiesce, output wire memory_quiescent, output wire session_reset_ready,
@@ -33,6 +34,7 @@ def generate():
     output wire [OUTPUT_PORTS*32-1:0] tx_samples, output wire tx_valid,
     output wire [63:0] audio_frame, output wire [63:0] session_frame,
     input wire control_valid, output wire control_ready, input wire [745:0] control_data,
+    output wire control_result_valid, input wire control_result_ready, output wire [1087:0] control_result_data,
     output wire recovery_requested, output wire [3:0] recovery_reason,
     output wire [63:0] failure_sequence, output wire [63:0] process_sequence,
     output wire [31:0] processed_quanta, output wire [31:0] played_quanta,
@@ -44,7 +46,10 @@ def generate():
     internal = {'maintenance_enable', 'reset', 'run_valid', 'command_valid', 'command_ready', 'command_opcode', 'command_index',
                 'command_data', 'response_valid', 'response_ready', 'response_error', 'response_data',
                 'cfg_valid', 'cfg_ready', 'cfg_state', 'cfg_write', 'cfg_address', 'cfg_write_data',
-                'cfg_response_valid', 'cfg_response_error', 'cfg_read_data'}
+                'cfg_response_valid', 'cfg_response_error', 'cfg_read_data',
+                'run_instruction_count', 'run_state_count', 'run_job_budget', 'run_buffers',
+                'audio_cfg_valid', 'audio_cfg_ready', 'audio_cfg_space', 'audio_cfg_write', 'audio_cfg_address', 'audio_cfg_write_data', 'audio_cfg_response_valid', 'audio_cfg_response_error', 'audio_cfg_read_data', 'store_cmd_valid', 'store_cmd_ready', 'store_cmd_opcode', 'store_cmd_view', 'store_cmd_start', 'store_cmd_length', 'store_cmd_count', 'store_write_valid', 'store_write_ready', 'store_write_data', 'store_read_valid', 'store_read_ready', 'store_read_data', 'store_cfg_valid', 'store_cfg_ready', 'store_cfg_write', 'store_cfg_space', 'store_cfg_address', 'store_cfg_write_data', 'store_cfg_response_valid', 'store_cfg_response_error', 'store_cfg_read_data'}
+    internal.update(n for _, n in ports if n.startswith('resident_'))
     for p, n in ports:
         if n in internal or n in removed or n.startswith('m_axi_'):
             prefix = re.sub(r'(?:input|output)\s+(?:wire|reg)', 'wire', p)

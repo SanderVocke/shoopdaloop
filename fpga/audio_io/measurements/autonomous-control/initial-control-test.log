@@ -1,0 +1,27 @@
+   Compiling rt_fpga_adapter v0.3.0 (/workspace/shoopdaloop/src/rust/rt_fpga_adapter)
+   Compiling rt_backend_testbench v0.3.0 (/workspace/shoopdaloop/src/rust/rt_backend_testbench)
+   Compiling rt_fpga_sim v0.3.0 (/workspace/shoopdaloop/src/rust/rt_fpga_sim)
+   Compiling rt_fpga_testbench v0.3.0 (/workspace/shoopdaloop/src/rust/rt_fpga_testbench)
+    Finished `test` profile [unoptimized] target(s) in 9.23s
+     Running tests/audio_io.rs (target/debug/build/rt_fpga_testbench/73e6b3a38faea57f/out/audio_io-73e6b3a38faea57f)
+
+running 1 test
+[32m[1m   Compiling[0m[39m bench_top#8743193124359382654 (/workspace/shoopdaloop/work/marlin-suite/control/audio_control-dac93c4de190426f/bench_top.sv)
+"verilator" "--cc" "-sv" "--build" "-j" "2" "-CFLAGS" "-shared -fpic -std=c++14 -DVL_TIME_CONTEXT" "-MAKEFLAGS" "CXX=c++" "--Mdir" "/workspace/shoopdaloop/work/marlin-suite/control/audio_control-dac93c4de190426f/model/bench_top__workspace_shoopdaloop_work_marlin-suite_control_audio__control-dac93c4de190426f_bench__top.sv_8743193124359382654/obj_dir" "--top-module" "bench_top" "/workspace/shoopdaloop/fpga/state_processor/rtl/sp_ram.sv" "/workspace/shoopdaloop/fpga/audio_io/rtl/audio_command_fifo.sv" "/workspace/shoopdaloop/fpga/audio_io/rtl/audio_control.sv" "/workspace/shoopdaloop/work/marlin-suite/control/audio_control-dac93c4de190426f/bench_top.sv" "../ffi/ffi.cpp" "-I/workspace/shoopdaloop/fpga/state_processor/rtl" "--trace"
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 3.93s
+
+thread 'control_batches_backpressure_and_failures' (226750) panicked at src/rust/rt_fpga_testbench/src/suites/control.rs:39:9:
+assertion `left == right` failed
+  left: 0
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test control_batches_backpressure_and_failures ... FAILED
+
+failures:
+
+failures:
+    control_batches_backpressure_and_failures
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1 filtered out; finished in 4.23s
+
+error: test failed, to rerun pass `-p rt_fpga_testbench --test audio_io`

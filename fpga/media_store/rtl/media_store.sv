@@ -61,7 +61,7 @@ module media_store #(
     output reg [159:0] cfg_read_data
 );
     localparam [3:0] CREATE = 0, SLICE = 1, CLEAR = 2, REMOVE = 3,
-        RECLAIM = 4, APPEND = 5, READ = 6, FENCE = 7;
+        RECLAIM = 4, APPEND = 5, READ = 6, FENCE = 7, SEAL = 11;
     localparam [7:0] OK = 0, INVALID_VIEW = 1, INVALID_STATE = 2,
         MEMORY_FULL = 3, INVALID_SHAPE = 4, MEMORY_FAULT = 5;
     localparam integer SHIFT = $clog2(CHUNK_FRAMES);
@@ -81,7 +81,7 @@ module media_store #(
         ZERO_REQUEST, ZERO_DATA, ZERO_WAIT, SAMPLE_TABLE_READ,
         SAMPLE_TABLE_RESULT, SAMPLE_REQUEST, SAMPLE_DATA, SAMPLE_WAIT,
         RETIRE_REQUEST, RETIRE_WAIT, FENCE_REQUEST, FENCE_WAIT,
-        FINISH
+        FINISH, MANUAL_GRANT
     } phase_t;
     phase_t phase;
     reg descriptor_read, descriptor_write, table_read, table_write, ref_read, ref_write, free_read, free_write;
@@ -95,7 +95,27 @@ module media_store #(
     reg [31:0] allocation_view;
     reg [31:0] view_count, slot_count, free_count, slot_limit;
     reg [VIEWS-1:0] valid_views;
-    wire [31:0] views_used = REUSE_VIEWS != 0 ? 32'($countones(valid_views)) : view_count;
+    wire [31:0] views_used;
+    generate if (REUSE_VIEWS != 0) begin : reused_view_count
+        localparam integer LEVELS=$clog2(VIEWS),PAD=2**LEVELS,COUNT_BITS=$clog2(VIEWS+1);
+        for (genvar level=0;level<=LEVELS;level=level+1) begin : levels
+            wire [COUNT_BITS-1:0] counts [0:(PAD >> level)-1];
+            for (genvar i=0;i<(PAD >> level);i=i+1) begin : entries
+                if (level == 0) begin : leaf
+                    if (i < VIEWS) begin : valid_leaf
+                        assign counts[i]=COUNT_BITS'(valid_views[i]);
+                    end else begin : padding
+                        assign counts[i]=0;
+                    end
+                end else begin : branch
+                    assign counts[i]=levels[level-1].counts[2*i]+levels[level-1].counts[2*i+1];
+                end
+            end
+        end
+        assign views_used=32'(levels[LEVELS].counts[0]);
+    end else begin : monotonic_view_count
+        assign views_used=view_count;
+    end endgenerate
     reg cfg_pending, cfg_result_valid, faulted, cfg_was_write;
     reg cfg_request_valid, cfg_request_write, cfg_request_in_range, cfg_request_value_valid;
     reg [2:0] cfg_request_space;
@@ -271,16 +291,15 @@ module media_store #(
     wire [31:0] gc_request_index, gc_request_data;
     wire gc_retire_valid, gc_retire_ready, gc_retire_done, gc_retire_busy;
     wire [7:0] gc_retire_error;
-    wire manual_grant = cmd_valid && cmd_ready && hint_base_valid && cmd_start[63:32] == 0
-        && cmd_opcode == 9;
+    wire manual_grant = phase == MANUAL_GRANT && advance && metadata_error == 0 && !reset;
     assign gc_lock_grant = (phase == IDLE || phase == DRAIN_WAIT) && !cmd_valid && !cfg_valid
         && !cfg_request_valid && !cfg_pending && !cfg_result_valid && !metadata_pending && !metadata_request_valid;
     assign reclaim_quiescent = !gc_lock_held && !metadata_pending && !metadata_request_valid && !gc_retire_busy;
     media_reclaimer #(.GUARD_CYCLES(RECLAIM_GUARD)) reclaimer (
         .clk(clk),.reset(reset),.enable((maintenance_enable || phase == DRAIN_WAIT) && !faulted),
-        .drain(phase == DRAIN_WAIT),.grant(maintenance_tick || manual_grant),
-        .grant_cycles(manual_grant && cmd_start != 0 ? cmd_start[31:0] : 32'(RECLAIM_CYCLES)),
-        .grant_blocks(manual_grant && cmd_count != 0 ? cmd_count : 32'(RECLAIM_BLOCKS)),
+        .drain(phase == DRAIN_WAIT),.grant(maintenance_tick),
+        .grant_cycles(32'(RECLAIM_CYCLES)),.grant_blocks(32'(RECLAIM_BLOCKS)),
+        .manual_grant(manual_grant),.manual_cycles(start[31:0]),.manual_blocks(count),
         .pending_tables(retired_count),.free_count(free_count),.allocated_count(slot_count),
         .lock_request(gc_lock_request),.lock_grant(gc_lock_grant),.lock_held(gc_lock_held),
         .request_valid(gc_request_valid),.request_ready(gc_request_ready),.request_opcode(gc_request_opcode),
@@ -592,7 +611,7 @@ module media_store #(
                         error_code <= INVALID_SHAPE;
                         phase <= FINISH;
                     end else if ((cmd_opcode == 9 || cmd_opcode == 10) && cmd_start[63:32] != 0) begin error_code <= INVALID_SHAPE; phase <= FINISH; end
-                    else if (cmd_opcode == 9) begin done <= 1; phase <= IDLE; end
+                    else if (cmd_opcode == 9) phase <= MANUAL_GRANT;
                     else if (cmd_opcode == 10) phase <= DRAIN_WAIT;
                     else if (cmd_opcode == 8) begin
                         opcode <= CLEAR;
@@ -612,6 +631,7 @@ module media_store #(
                         phase <= FINISH;
                     end else phase <= DESCRIPTOR_READ;
                 end
+                MANUAL_GRANT: begin done <= 1; phase <= IDLE; end
                 FREE_VIEW_READ: begin
                     if (allocation_view == view_count) begin
                         if (view_count == 32'(VIEWS)) begin error_code <= MEMORY_FULL; phase <= FINISH; end
@@ -640,6 +660,13 @@ module media_store #(
                     new_chunks <= 0;
                     case (opcode)
                         SLICE: phase <= SLICE_START;
+                        SEAL: begin
+                            if (descriptor[1]) begin error_code<=INVALID_STATE; phase<=FINISH; end
+                            else if (length > frames || offset != 0) begin error_code<=INVALID_VIEW; phase<=FINISH; end
+                            else begin
+                                new_range<=1; new_offset<=0; new_frames<=length; new_chunks<=chunks; phase<=PUBLISH;
+                            end
+                        end
                         CLEAR, REMOVE: begin
                             remaining <= chunks;
                             phase <= (chunks == 0) ? PUBLISH : DETACH_ROOT;

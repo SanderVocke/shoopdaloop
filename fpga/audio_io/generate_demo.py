@@ -23,7 +23,7 @@ def generate():
 module audio_demo #(
     parameter integer Q = 32, P = Q, CHANNELS = 16, RX_BANKS = 3, TX_BANKS = 3,
     parameter integer AXI_DATA_WIDTH = 32, CHUNK_FRAMES = Q,
-    parameter integer BOOT_WORDS = 166, EVENT_WORDS = 74,
+    parameter integer BOOT_WORDS = 256, EVENT_WORDS = 44,
     parameter integer INSTRUCTIONS = 64, STATES = 32, BUFFERS = 32, JOB_BUDGET = 80,
     parameter integer RESET_CYCLES = 64, WATCHDOG_CYCLES = 1000000,
     parameter integer VIEWS = 32, SLOTS = 1024, BLOCK_CHUNKS = 32,

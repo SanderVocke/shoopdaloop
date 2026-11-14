@@ -1,0 +1,17 @@
+{
+  "base_commit": "fad92284100588c42027f8033ee835101deaf2ba",
+  "source_files": 229,
+  "scope": "Connected canonical parameter/image owner and resident initial/graph/repeat actions; application/firmware not migrated",
+  "models": "Marlin 0.21.1 / Verilator 5.032",
+  "rustc": "1.100.0",
+  "stereo_frames": 5217,
+  "initial_device_frame": 2048,
+  "graph_device_frame": 4096,
+  "actual_final_graph_epoch": 2,
+  "actual_topology_epoch": 1,
+  "physical_hardware": false,
+  "new_image_tests": 9,
+  "native_regressions": 6,
+  "regression_pause_quanta": 1040,
+  "notes": "Native regression includes 1312-q exact stereo/capture/query Instant case; prior Fixed/DRAM checkpoint unchanged and not rerun. Full M4 large-image continuous test unchanged/not rerun. No final timing/area claim."
+}

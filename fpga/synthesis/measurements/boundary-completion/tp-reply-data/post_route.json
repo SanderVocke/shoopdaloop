@@ -1,0 +1,28 @@
+{
+  "cells": {
+    "LUT1": 74,
+    "LUT2": 1501,
+    "LUT3": 930,
+    "LUT4": 3269,
+    "LUT5": 2193,
+    "LUT6": 7028,
+    "LUT6_2": 0,
+    "FDRE": 8753,
+    "FDSE": 20,
+    "FDCE": 0,
+    "FDPE": 0,
+    "RAMB36E1": 27,
+    "RAMB18E1": 3,
+    "CARRY4": 574,
+    "MUXF7": 249,
+    "MUXF8": 102
+  },
+  "wns_ns": 0.236,
+  "whs_ns": 0.008,
+  "utilization": {
+    "luts": 13078,
+    "flip_flops": 8773,
+    "bram36_equivalent": 28.5,
+    "dsps": 0
+  }
+}

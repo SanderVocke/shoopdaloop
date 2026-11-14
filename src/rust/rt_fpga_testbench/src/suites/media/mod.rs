@@ -213,3 +213,52 @@ pub fn read_equals(
         json!({"kind":"samples","value":(0..count).map(|i| values[((position+i)%values.len() as u64) as usize]).collect::<Vec<_>>()})
     );
 }
+
+pub fn run_seal(mode: Mode) -> Result<()> {
+    let g = Geometry::new([8, 16, 4], 1);
+    let compiled =
+        design(&g, 64, mode).build(&crate::root().join("work/marlin-suite/media-seal"))?;
+    let mut s = Sim::new(compiled.session(None)?, &[("clk", 10_000, 0)]);
+    let mut d = Store::new(&mut s, g, mode, 20261114, "")?;
+    basic::seal(&mut d, &mut s);
+    Ok(())
+}
+
+pub fn reusable_view_usage() -> Result<()> {
+    for views in [1, 3, 5, 32] {
+        let mut g = Geometry::new([views, 16, 4], 1);
+        g.reuse_views = true;
+        let compiled = design(&g, 64, Mode::Instant)
+            .build(&crate::root().join("work/marlin-suite/view-usage"))?;
+        let mut s = Sim::new(compiled.session(None)?, &[("clk", 10000, 0)]);
+        let mut d = Store::new(&mut s, g, Mode::Instant, 20261114, "")?;
+        let used = |d: &mut Store, s: &mut Sim<'_>| d.configure(s, 6, 16, None, false).get(128, 32);
+        d.write_config(&mut s, 0, 0, views);
+        assert_eq!(used(&mut d, &mut s), 0);
+        for slot in 0..views {
+            d.configure(
+                &mut s,
+                1,
+                slot,
+                Some(&crate::bits::Bits::from_u64(1)),
+                false,
+            );
+            assert_eq!(used(&mut d, &mut s), slot + 1);
+        }
+        let mut expected = views;
+        for slot in (0..views).step_by(2) {
+            d.configure(
+                &mut s,
+                1,
+                slot,
+                Some(&crate::bits::Bits::from_u64(0)),
+                false,
+            );
+            expected -= 1;
+            assert_eq!(used(&mut d, &mut s), expected);
+        }
+        d.reset(&mut s);
+        assert_eq!(used(&mut d, &mut s), 0);
+    }
+    Ok(())
+}

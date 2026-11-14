@@ -1,5 +1,5 @@
 module audio_boot #(
-    parameter integer WORDS = 166,
+    parameter integer WORDS = 256,
     parameter FILE_NAME = "fpga/audio_io/examples/default/boot.hex",
     parameter integer ADDRESS_BITS = (WORDS > 1) ? $clog2(WORDS) : 1
 ) (

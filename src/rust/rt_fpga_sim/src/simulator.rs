@@ -4,7 +4,7 @@ use marlin::verilator::{
     tracing::{TraceFile, Waveform},
 };
 use marlin::verilog::prelude::*;
-use rt_fpga_adapter::image::{Image, Instruction, Value};
+use rt_fpga_adapter::image::{Image, Value};
 use std::path::{Path, PathBuf};
 
 pub type SimResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -101,7 +101,10 @@ fn pipeline_sources_at(root: &Path) -> Vec<PathBuf> {
             "media_store",
             "media_ram metadata_cache media_metadata media_reclaimer media_prefetch_resolver media_store memory_delay media_audio_pipeline",
         ),
-        ("loop_pipeline", "loop_pipeline"),
+        (
+            "loop_pipeline",
+            "media_cuts cut_records native_requests loop_pipeline",
+        ),
         (
             "axi_memory",
             "axi_master axi_burst_mux shared_axi chunk_dma word_dma word_axi chunk_axi loop_pipeline_axi",
@@ -642,94 +645,7 @@ impl<'ctx> Simulator<'ctx> {
         Ok(outputs)
     }
 }
-pub fn value_words(value: Value) -> [u32; 5] {
-    match value {
-        Value::Word(v) => [v as u32, (v >> 32) as u32, 0, 0, 0],
-        Value::Ramp(r) => [r.start as u32, r.target as u32, r.duration, r.elapsed, 1],
-    }
-}
-pub fn instruction_words(value: Instruction) -> SimResult<[u32; 5]> {
-    let (opcode, args) = match value {
-        Instruction::ProcessInput { port, destination } => (0, vec![port, destination]),
-        Instruction::ProcessGain {
-            ramp,
-            source,
-            destination,
-        } => (2, vec![ramp, source, destination]),
-        Instruction::ProcessSmoothing {
-            loop_id,
-            control,
-            source,
-        } => (
-            11,
-            vec![
-                u16::try_from(loop_id.slot)?,
-                loop_id.generation as u16,
-                (loop_id.generation >> 16) as u16,
-                control,
-                source,
-            ],
-        ),
-        Instruction::ProcessConstant { value, destination } => (
-            9,
-            vec![value as u16, (value as u32 >> 16) as u16, destination],
-        ),
-        Instruction::ProcessArithmetic {
-            left,
-            right,
-            destination,
-            mode,
-        } => (10, vec![left, right, destination, mode as u16]),
-        Instruction::ProcessMix {
-            left,
-            right,
-            destination,
-        } => (3, vec![left, right, destination]),
-        Instruction::ProcessOutput { source, port } => (5, vec![source, port]),
-        Instruction::ProcessSilence { destination } => (8, vec![destination]),
-        Instruction::ProcessLogicalPlayback {
-            loop_id,
-            view,
-            destination,
-        } => (
-            6,
-            vec![
-                u16::try_from(loop_id.slot)?,
-                loop_id.generation as u16,
-                (loop_id.generation >> 16) as u16,
-                view,
-                destination,
-            ],
-        ),
-        Instruction::ProcessLogicalCapture {
-            loop_id,
-            view,
-            source,
-        } => (
-            7,
-            vec![
-                u16::try_from(loop_id.slot)?,
-                loop_id.generation as u16,
-                (loop_id.generation >> 16) as u16,
-                view,
-                source,
-            ],
-        ),
-    };
-    let packed = args
-        .iter()
-        .enumerate()
-        .fold(opcode as u128, |word, (i, &arg)| {
-            word | (u128::from(arg) << (8 + 16 * i))
-        });
-    Ok([
-        packed as u32,
-        (packed >> 32) as u32,
-        (packed >> 64) as u32,
-        0,
-        0,
-    ])
-}
+pub use rt_fpga_adapter::image_wire::{instruction_words, value_words};
 
 impl rt_fpga_adapter::adapter::Device for Simulator<'_> {
     fn load(&mut self, image: &Image) -> std::result::Result<(), rt_runtime::Error> {

@@ -1,6 +1,29 @@
 #![cfg(all(feature = "sim", not(target_arch = "wasm32")))]
 use shoop_wasm_test_support::shoop_test;
 #[shoop_test]
+fn full_transport_results_and_a_continuous_command_flood_preserve_resident_audio_and_transitions() {
+    rt_fpga_testbench::suites::continuous::command_flood().unwrap();
+}
+#[shoop_test]
+fn resident_transitions_and_media_progress_for_1024_quanta_without_control_service() {
+    use rt_fpga_testbench::{
+        memory::Mode,
+        suites::continuous::{self, Config},
+    };
+    let output = rt_fpga_testbench::root().join("work/fpga-completion/service-pause");
+    for (name, mode) in [
+        ("instant", Mode::Instant),
+        ("fixed-stalls", Mode::Fixed),
+        ("dramsim3", Mode::Dramsim3),
+    ] {
+        let config = Config {
+            ticks: if mode == Mode::Dramsim3 { 512 } else { 256 },
+            ..Config::default()
+        };
+        continuous::service_pause(name, &config, mode, &output).unwrap();
+    }
+}
+#[shoop_test]
 fn shared_preparation_preserves_the_pilot_scenario() {
     let actual = rt_fpga_testbench::prepared::scenario(16, 8, 2, true, "reverse");
     let expected: serde_json::Value =

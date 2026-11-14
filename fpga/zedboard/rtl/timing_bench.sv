@@ -13,6 +13,8 @@ module timing_bench #(
     parameter integer INPUT_PORTS = 16,
     parameter integer OUTPUT_PORTS = 16,
     parameter integer REUSE_VIEWS = 0,
+    parameter integer CAPTURE_CHANNELS = 0,
+    parameter integer RESIDENT_ACTIONS = 0,
     parameter integer VIEWS = 32,
     parameter integer SLOTS = 1024,
     parameter integer CHUNK_FRAMES = 32,
@@ -76,6 +78,30 @@ module timing_bench #(
     wire [31:0] sample_output_data;
     wire core_reset;
     wire maintenance_enable;
+    wire resident_command_valid;
+    wire resident_command_ready;
+    wire [7:0] resident_command_opcode;
+    wire [31:0] resident_command_index;
+    wire [639:0] resident_command_data;
+    wire resident_command_done;
+    wire [3:0] resident_command_error;
+    wire [831:0] resident_command_result;
+    wire resident_cut_valid;
+    wire resident_cut_ready;
+    wire [1:0] resident_cut_mode;
+    wire resident_cut_done;
+    wire [63:0] resident_epoch;
+    wire resident_media_valid;
+    wire resident_media_ready;
+    wire [2:0] resident_media_opcode;
+    wire resident_media_latest;
+    wire [31:0] resident_media_slot;
+    wire [31:0] resident_media_generation;
+    wire resident_media_done;
+    wire [3:0] resident_media_error;
+    wire [1727:0] resident_media_data;
+    wire cut_snapshot_valid;
+    wire [1727:0] cut_snapshot_data;
     wire [31:0] reclaim_pending;
     wire [31:0] reclaim_high_water;
     wire [63:0] reclaim_references;
@@ -217,6 +243,8 @@ module timing_bench #(
         .INPUT_PORTS(INPUT_PORTS),
         .OUTPUT_PORTS(OUTPUT_PORTS),
         .REUSE_VIEWS(REUSE_VIEWS),
+        .CAPTURE_CHANNELS(CAPTURE_CHANNELS),
+        .RESIDENT_ACTIONS(RESIDENT_ACTIONS),
         .VIEWS(VIEWS),
         .SLOTS(SLOTS),
         .CHUNK_FRAMES(CHUNK_FRAMES),
@@ -244,6 +272,30 @@ module timing_bench #(
         .clk(clk),
         .reset(core_reset),
         .maintenance_enable(maintenance_enable),
+        .resident_command_valid(resident_command_valid),
+        .resident_command_ready(resident_command_ready),
+        .resident_command_opcode(resident_command_opcode),
+        .resident_command_index(resident_command_index),
+        .resident_command_data(resident_command_data),
+        .resident_command_done(resident_command_done),
+        .resident_command_error(resident_command_error),
+        .resident_command_result(resident_command_result),
+        .resident_cut_valid(resident_cut_valid),
+        .resident_cut_ready(resident_cut_ready),
+        .resident_cut_mode(resident_cut_mode),
+        .resident_cut_done(resident_cut_done),
+        .resident_epoch(resident_epoch),
+        .resident_media_valid(resident_media_valid),
+        .resident_media_ready(resident_media_ready),
+        .resident_media_opcode(resident_media_opcode),
+        .resident_media_latest(resident_media_latest),
+        .resident_media_slot(resident_media_slot),
+        .resident_media_generation(resident_media_generation),
+        .resident_media_done(resident_media_done),
+        .resident_media_error(resident_media_error),
+        .resident_media_data(resident_media_data),
+        .cut_snapshot_valid(cut_snapshot_valid),
+        .cut_snapshot_data(cut_snapshot_data),
         .reclaim_pending(reclaim_pending),
         .reclaim_high_water(reclaim_high_water),
         .reclaim_references(reclaim_references),

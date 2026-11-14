@@ -1,3 +1,4 @@
+    assign control_result_ready = 1;
     localparam [2:0] LOADING=0, RUNNING=1, DRAINING=2, RESETTING=3, FAILED=4;
     reg [2:0] phase;
     reg [31:0] reset_count;

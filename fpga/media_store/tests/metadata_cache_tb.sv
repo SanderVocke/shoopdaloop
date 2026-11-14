@@ -1,4 +1,5 @@
-module metadata_cache_tb #(parameter integer DATA_WIDTH = 64, parameter integer LINE_WORDS = 16) (
+module metadata_cache_tb #(parameter integer DATA_WIDTH = 64, parameter integer LINE_WORDS = 16,
+    parameter integer LINES0=2, LINES1=3) (
     input wire clk, input wire reset,
     input wire c0_request_valid, output wire c0_request_ready,
     input wire [1:0] c0_request_opcode, input wire c0_request_invalidate,
@@ -46,7 +47,7 @@ module metadata_cache_tb #(parameter integer DATA_WIDTH = 64, parameter integer 
     wire memory_response_ready;
     wire memory_response_error;
     wire [31:0] memory_read_data;
-    metadata_cache #(.LINES(2),.LINE_WORDS(LINE_WORDS)) cache_0 (
+    metadata_cache #(.LINES(LINES0),.LINE_WORDS(LINE_WORDS)) cache_0 (
         .clk(clk),
         .reset(reset),
         .request_valid(c0_request_valid),
@@ -92,7 +93,7 @@ module metadata_cache_tb #(parameter integer DATA_WIDTH = 64, parameter integer 
     wire memory_meta_response_ready;
     wire memory_meta_response_error;
     wire [31:0] memory_meta_read_data;
-    metadata_cache #(.LINES(2),.LINE_WORDS(LINE_WORDS)) cache_1 (
+    metadata_cache #(.LINES(LINES1),.LINE_WORDS(LINE_WORDS)) cache_1 (
         .clk(clk),
         .reset(reset),
         .request_valid(c1_request_valid),

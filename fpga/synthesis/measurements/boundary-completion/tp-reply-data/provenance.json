@@ -1,0 +1,28 @@
+{
+  "revision": "a134d1bb92704e1c9fd066ca9e5df48818bc3336",
+  "working_tree_dirty": true,
+  "command": [
+    "fpga/transition_processor/measure.py",
+    "--output",
+    "work/fpga-completion/tp-reply-data",
+    "--vivado",
+    "/workspace/shoopdaloop/work/fpga-boundary/tools/vivado/vivado-container",
+    "--context",
+    "shared",
+    "--stage",
+    "route",
+    "--threads",
+    "2"
+  ],
+  "part": "xc7z020clg484-1",
+  "loops": 64,
+  "requests": 272,
+  "events": 400,
+  "integrated": 1,
+  "clock_ns": 10,
+  "uncertainty_ns": 0.2,
+  "threads": 2,
+  "stage": "route",
+  "context": "shared",
+  "independent_execution": true
+}

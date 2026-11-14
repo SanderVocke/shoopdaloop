@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 pub fn instruction(value: &Value) -> Result<Bits> {
     if let Ok(value) = serde_json::from_value::<rt_fpga_adapter::image::Instruction>(value.clone())
     {
-        return rt_fpga_sim::instruction_words(value).map(Bits::from);
+        return Ok(rt_fpga_adapter::image_wire::instruction_words(value).map(Bits::from)?);
     }
     let (opcode, fields): (u64, &[&str]) = match value["kind"].as_str() {
         Some("process_loop_playback") => {

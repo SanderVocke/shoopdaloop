@@ -1,0 +1,9 @@
+read_verilog -sv work/fpga-completion/reclaimer-equivalence/reference.sv fpga/media_store/rtl/media_reclaimer.sv work/fpga-completion/reclaimer-equivalence/wrappers.sv
+proc
+flatten old_boundary new_boundary
+opt_clean
+equiv_make -blacklist work/fpga-completion/reclaimer-equivalence/blacklist.txt old_boundary new_boundary equivalence
+hierarchy -top equivalence
+equiv_simple
+equiv_induct -seq 2
+equiv_status -assert

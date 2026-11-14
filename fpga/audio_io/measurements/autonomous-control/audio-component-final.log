@@ -1,0 +1,34 @@
+   Compiling rt_fpga_testbench v0.3.0 (/workspace/shoopdaloop/src/rust/rt_fpga_testbench)
+    Finished `release` profile [optimized] target(s) in 0.68s
+     Running tests/audio_io.rs (target/release/build/rt_fpga_testbench/c7d1daaca382cbad/out/audio_io-c7d1daaca382cbad)
+
+running 2 tests
+audio-io/Config { q: 1, p: 1, banks: 2, channels: 2, period_ps: 10000, phase_ps: 3000 }/nominal_and_recoverable_miss
+audio-io/Config { q: 1, p: 1, banks: 2, channels: 2, period_ps: 10000, phase_ps: 3000 }/input_exhaustion_and_rearm
+audio-io/Config { q: 1, p: 1, banks: 2, channels: 2, period_ps: 10000, phase_ps: 3000 }/reset_in_flight_ownership
+audio-io/Config { q: 1, p: 1, banks: 2, channels: 2, period_ps: 10000, phase_ps: 3000 }/watchdog_and_core_fault
+test control_batches_backpressure_and_failures ... ok
+audio-io/Config { q: 1, p: 1, banks: 2, channels: 2, period_ps: 10000, phase_ps: 3000 }/publication_cutoff
+audio-io/Config { q: 1, p: 1, banks: 2, channels: 2, period_ps: 10000, phase_ps: 3000 }/consecutive_misses_and_catchup
+audio-io/Config { q: 3, p: 1, banks: 3, channels: 2, period_ps: 13000, phase_ps: 0 }/nominal_and_recoverable_miss
+audio-io/Config { q: 3, p: 1, banks: 3, channels: 2, period_ps: 13000, phase_ps: 0 }/input_exhaustion_and_rearm
+audio-io/Config { q: 3, p: 1, banks: 3, channels: 2, period_ps: 13000, phase_ps: 0 }/reset_in_flight_ownership
+audio-io/Config { q: 3, p: 1, banks: 3, channels: 2, period_ps: 13000, phase_ps: 0 }/watchdog_and_core_fault
+audio-io/Config { q: 3, p: 1, banks: 3, channels: 2, period_ps: 13000, phase_ps: 0 }/publication_cutoff
+audio-io/Config { q: 3, p: 1, banks: 3, channels: 2, period_ps: 13000, phase_ps: 0 }/consecutive_misses_and_catchup
+audio-io/Config { q: 3, p: 3, banks: 4, channels: 2, period_ps: 13000, phase_ps: 3000 }/nominal_and_recoverable_miss
+audio-io/Config { q: 3, p: 3, banks: 4, channels: 2, period_ps: 13000, phase_ps: 3000 }/input_exhaustion_and_rearm
+audio-io/Config { q: 3, p: 3, banks: 4, channels: 2, period_ps: 13000, phase_ps: 3000 }/reset_in_flight_ownership
+audio-io/Config { q: 3, p: 3, banks: 4, channels: 2, period_ps: 13000, phase_ps: 3000 }/watchdog_and_core_fault
+audio-io/Config { q: 3, p: 3, banks: 4, channels: 2, period_ps: 13000, phase_ps: 3000 }/publication_cutoff
+audio-io/Config { q: 3, p: 3, banks: 4, channels: 2, period_ps: 13000, phase_ps: 3000 }/consecutive_misses_and_catchup
+audio-io/Config { q: 16, p: 16, banks: 3, channels: 8, period_ps: 13000, phase_ps: 0 }/nominal_and_recoverable_miss
+audio-io/Config { q: 16, p: 16, banks: 3, channels: 8, period_ps: 13000, phase_ps: 0 }/input_exhaustion_and_rearm
+audio-io/Config { q: 16, p: 16, banks: 3, channels: 8, period_ps: 13000, phase_ps: 0 }/reset_in_flight_ownership
+audio-io/Config { q: 16, p: 16, banks: 3, channels: 8, period_ps: 13000, phase_ps: 0 }/watchdog_and_core_fault
+audio-io/Config { q: 16, p: 16, banks: 3, channels: 8, period_ps: 13000, phase_ps: 0 }/publication_cutoff
+audio-io/Config { q: 16, p: 16, banks: 3, channels: 8, period_ps: 13000, phase_ps: 0 }/consecutive_misses_and_catchup
+test asynchronous_audio_bank_ownership_deadlines_reset_and_publication_cutoff ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.64s
+

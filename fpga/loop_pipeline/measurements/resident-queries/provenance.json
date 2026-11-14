@@ -1,0 +1,19 @@
+{
+  "base_commit": "3ffb9ee880ca089dc8f810dda8636bd5cc62ad33",
+  "source_files": 220,
+  "scope": "Connected resident delivery/query profile; actual application and firmware not migrated",
+  "models": "Marlin 0.21.1 / Verilator 5.032",
+  "rustc": "1.100.0",
+  "public_rows": 64,
+  "native_cells": 4,
+  "unserviced_quanta": 1040,
+  "quanta_per_memory": 1312,
+  "stereo_frames_per_memory": 41984,
+  "coherent_cuts_per_memory": 2624,
+  "transition_results": 9,
+  "historical_snapshots": 5,
+  "snapshot_words": 30,
+  "read_only_test_instrumentation": true,
+  "physical_hardware": false,
+  "initial_failure": "Initial query delegation/read dispatch branches were missing; component checks caught them. The earlier audio fixture compared an extra TP-only watermark field; corrected comparisons validate it separately."
+}

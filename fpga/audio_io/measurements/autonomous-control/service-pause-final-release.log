@@ -1,0 +1,166 @@
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.24
+   Compiling memchr v2.8.3
+   Compiling serde_core v1.0.229
+   Compiling libc v0.2.191
+   Compiling syn v1.0.109
+   Compiling syn v3.0.9
+   Compiling syn v2.0.119
+   Compiling serde v1.0.229
+   Compiling cfg-if v1.0.4
+   Compiling serde_derive v1.0.229
+   Compiling minimal-lexical v0.2.1
+   Compiling heck v0.5.0
+   Compiling nom v7.1.3
+   Compiling aho-corasick v1.1.5
+   Compiling regex-syntax v0.8.11
+   Compiling crossbeam-utils v0.8.22
+   Compiling bytecount v0.6.9
+   Compiling parking_lot_core v0.9.12
+   Compiling nom_locate v4.2.0
+   Compiling thiserror-impl v2.0.21
+   Compiling same-file v1.0.6
+   Compiling unty v0.0.4
+   Compiling once_cell v1.21.4
+   Compiling bincode v2.0.1
+   Compiling regex-automata v0.4.18
+   Compiling walkdir v2.5.0
+   Compiling snafu-derive v0.8.9
+   Compiling camino v1.2.6
+   Compiling profiling_protocol v0.3.0 (/workspace/shoopdaloop/src/rust/profiling_protocol)
+   Compiling thiserror v2.0.21
+   Compiling smallvec v1.16.4
+   Compiling regex v1.13.1
+   Compiling libm v0.2.16
+   Compiling nom-recursive-macros v0.5.1
+   Compiling sv-parser-syntaxtree v0.13.5
+   Compiling nom-tracable-macros v0.9.1
+   Compiling nom-packrat-macros v0.7.0
+   Compiling sv-parser-macros v0.13.5
+   Compiling nom-packrat v0.7.0
+   Compiling nom-tracable v0.9.1
+   Compiling nom-recursive v0.5.1
+   Compiling nom-greedyerror v0.5.0
+   Compiling str-concat v0.2.0
+   Compiling rtrb v0.4.0
+   Compiling scopeguard v1.2.0
+   Compiling lock_api v0.4.14
+   Compiling rt_profiling v0.3.0 (/workspace/shoopdaloop/src/rust/rt_profiling)
+   Compiling sv-parser-error v0.13.5
+   Compiling libloading v0.8.9
+   Compiling snafu v0.8.9
+   Compiling rt_audio_math v0.3.0 (/workspace/shoopdaloop/src/rust/rt_audio_math)
+   Compiling typenum v1.20.1
+   Compiling hashbrown v0.14.5
+   Compiling zmij v1.0.23
+   Compiling dashmap v6.2.1
+   Compiling hybrid-array v0.4.14
+   Compiling rt_runtime v0.3.0 (/workspace/shoopdaloop/src/rust/rt_runtime)
+   Compiling marlin-verilator-stable v4.0.0
+   Compiling file-guard v0.2.0
+   Compiling serde_json v1.0.151
+   Compiling shoop_transport v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_transport)
+   Compiling boxcar v0.2.14
+   Compiling pin-project-lite v0.2.17
+   Compiling find-msvc-tools v0.1.11
+   Compiling shoop_processor_protocol v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_processor_protocol)
+   Compiling owo-colors v4.4.0
+   Compiling shlex v2.0.1
+   Compiling ref-cast v1.0.27
+   Compiling cc v1.4.3
+   Compiling marlin-verilator v0.21.1 (/workspace/shoopdaloop/third_party/marlin-verilator)
+   Compiling shoop_rt_protocol v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_rt_protocol)
+   Compiling ref-cast-impl v1.0.27
+   Compiling serde_derive_internals v0.30.0
+   Compiling shoop_loop_plan v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_loop_plan)
+   Compiling itoa v1.0.18
+   Compiling schemars_derive v1.2.3
+   Compiling sv-parser-parser v0.13.5
+   Compiling shoop_loops v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_loops)
+   Compiling shoop_rt_transport v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_rt_transport)
+   Compiling perfetto-sdk-sys v1.3.0
+   Compiling rt_buffered v0.3.0 (/workspace/shoopdaloop/src/rust/rt_buffered)
+   Compiling crypto-common v0.2.2
+   Compiling block-buffer v0.12.1
+   Compiling tracing-core v0.1.36
+   Compiling paste v1.0.15
+   Compiling const-oid v0.10.2
+   Compiling thiserror v1.0.69
+   Compiling utf8parse v0.2.2
+   Compiling dyn-clone v1.0.20
+   Compiling schemars v1.2.3
+   Compiling anstyle-parse v1.0.0
+   Compiling digest v0.11.3
+   Compiling shoop_rt_engine v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_rt_engine)
+   Compiling sv-parser-pp v0.13.5
+   Compiling sv-parser v0.13.5
+   Compiling marlin-verilog-macro-builder v0.21.1
+   Compiling marlin-verilog-macro v0.21.1
+   Compiling tracing-attributes v0.1.31
+   Compiling thiserror-impl v1.0.69
+   Compiling anstyle-query v1.1.5
+   Compiling lazy_static v1.5.1
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling log v0.4.35
+   Compiling futures-sink v0.3.34
+   Compiling perfetto-everywhere-core v0.1.0 (https://github.com/SanderVocke/perfetto-everywhere?rev=caaa26c067cc91a2b3f6dc9ca2a87da22071e5a4#caaa26c0)
+   Compiling cpufeatures v0.3.0
+   Compiling colorchoice v1.0.5
+   Compiling anstyle v1.0.14
+   Compiling futures-core v0.3.34
+   Compiling futures-channel v0.3.34
+   Compiling anstream v1.0.0
+   Compiling sha2 v0.11.0
+   Compiling tracing-log v0.2.0
+   Compiling sharded-slab v0.1.7
+   Compiling tracing v0.1.44
+   Compiling marlin-verilog v0.21.1
+   Compiling rt_fpga_adapter v0.3.0 (/workspace/shoopdaloop/src/rust/rt_fpga_adapter)
+   Compiling matchers v0.2.0
+   Compiling futures-macro v0.3.34
+   Compiling thread_local v1.1.10
+   Compiling futures-task v0.3.34
+   Compiling bitflags v2.13.1
+   Compiling futures-io v0.3.34
+   Compiling slab v0.4.12
+   Compiling clap_lex v1.1.0
+   Compiling strsim v0.11.1
+   Compiling nu-ansi-term v0.50.3
+   Compiling tracing-subscriber v0.3.23
+   Compiling clap_builder v4.6.7
+   Compiling futures-util v0.3.34
+   Compiling rt_backend_testbench v0.3.0 (/workspace/shoopdaloop/src/rust/rt_backend_testbench)
+   Compiling marlin v0.21.1
+   Compiling clap_derive v4.6.7
+   Compiling link-section v0.19.3
+   Compiling linktime-proc-macro v0.2.3
+   Compiling ctor v1.0.13
+   Compiling clap v4.6.7
+   Compiling rt_fpga_sim v0.3.0 (/workspace/shoopdaloop/src/rust/rt_fpga_sim)
+   Compiling futures-executor v0.3.34
+   Compiling perfetto-everywhere-tracing v0.1.0 (https://github.com/SanderVocke/perfetto-everywhere?rev=caaa26c067cc91a2b3f6dc9ca2a87da22071e5a4#caaa26c0)
+   Compiling perfetto-everywhere-raw v0.1.0 (https://github.com/SanderVocke/perfetto-everywhere?rev=caaa26c067cc91a2b3f6dc9ca2a87da22071e5a4#caaa26c0)
+   Compiling quick-xml v0.41.0
+   Compiling libloading v0.9.0
+   Compiling assert_no_alloc v1.1.2
+   Compiling base64 v0.23.1
+   Compiling rt_fpga_testbench v0.3.0 (/workspace/shoopdaloop/src/rust/rt_fpga_testbench)
+   Compiling futures v0.3.34
+   Compiling shoop_test_macros v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_test_macros)
+   Compiling perfetto-sdk v1.1.1
+   Compiling perfetto-everywhere-native v0.1.0 (https://github.com/SanderVocke/perfetto-everywhere?rev=caaa26c067cc91a2b3f6dc9ca2a87da22071e5a4#caaa26c0)
+   Compiling shoop_tracing v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_tracing)
+   Compiling shoop_wasm_test_support v0.3.0 (/workspace/shoopdaloop/src/rust/shoop_wasm_test_support)
+    Finished `release` profile [optimized] target(s) in 2m 01s
+     Running tests/continuous.rs (target/release/build/rt_fpga_testbench/9d4810638c43bd2d/out/continuous-9d4810638c43bd2d)
+
+running 1 test
+[32m[1m   Compiling[0m[39m bench_top#17750757149922394254 (/workspace/shoopdaloop/work/marlin-suite/continuous/audio_loop_pipeline-b2fc24150dbe90d7/bench_top.sv)
+"verilator" "--cc" "-sv" "--build" "-j" "2" "-CFLAGS" "-shared -fpic -std=c++14 -DVL_TIME_CONTEXT" "-MAKEFLAGS" "CXX=c++" "--Mdir" "/workspace/shoopdaloop/work/marlin-suite/continuous/audio_loop_pipeline-b2fc24150dbe90d7/model/bench_top__workspace_shoopdaloop_work_marlin-suite_continuous_audio__loop__pipeline-b2fc24150dbe90d7_bench__top.sv_17750757149922394254/obj_dir" "--top-module" "bench_top" "/workspace/shoopdaloop/src/rust/rt_fpga_sim/../../../fpga/state_processor/rtl/sp_ram.sv" "/workspace/shoopdaloop/src/rust/rt_fpga_sim/../../../fpga/state_processor/rtl/sp_job_fifo.sv" "/workspace/shoopdaloop/src/rust/rt_fpga_sim/../../../fpga/state_processor/rtl/sp_engine.sv" "/workspace/shoopdaloop/src/rust/rt_fpga_sim/../../../fpga/state_processor/rtl/state_processor.sv" "/workspace/shoopdaloop/src/rust/rt_fpga_sim/../../../fpga/job_processor/rtl/jp_sample_ram.sv" "/workspace/shoopdaloop/src/rust/rt_fpga_sim/../../../fpga/job_processor/rtl/jp_divider.sv" "/workspace/shoopdaloop/src/rust/rt_fpga_sim/../../../fpga/job_processor/rtl/job_processor.sv" "/workspace/shoopdaloop/src/rust/rt_fpga_sim/../../../fpga/job_processor/rtl/audio_pipeline.sv" "/workspace/shoopdaloop/src/rust/rt_fpga_sim/../../../fpga/transition_processor/rtl/tp_ram.sv" "/workspace/shoopdaloop/src/rust/rt_fpga_sim/../../../fpga/transition_processor/rtl/tp_priority.sv" "/workspace/shoopdaloop/src/rust/rt_fpga_sim/../../../fpga/transition_processor/rtl/transition_processor.sv" "/workspace/shoopdaloop/src/rust/rt_fpga_sim/../../../fpga/chunk_memory/rtl/chunk_ram.sv" "/workspace/shoopdaloop/src/rust/rt_fpga_sim/../../../fpga/chunk_memory/rtl/chunk_memory.sv" "/workspace/shoopdaloop/src/rust/rt_fpga_sim/../../../fpga/media_store/rtl/media_ram.sv" "/workspace/shoopdaloop/src/rust/rt_fpga_sim/../../../fpga/media_store/rtl/metadata_cache.sv" "/workspace/shoopdaloop/src/rust/rt_fpga_sim/../../../fpga/media_store/rtl/media_metadata.sv" "/workspace/shoopdaloop/src/rust/rt_fpga_sim/../../../fpga/media_store/rtl/media_reclaimer.sv" "/workspace/shoopdaloop/src/rust/rt_fpga_sim/../../../fpga/media_store/rtl/media_prefetch_resolver.sv" "/workspace/shoopdaloop/src/rust/rt_fpga_sim/../../../fpga/media_store/rtl/media_store.sv" "/workspace/shoopdaloop/src/rust/rt_fpga_sim/../../../fpga/media_store/rtl/memory_delay.sv" "/workspace/shoopdaloop/src/rust/rt_fpga_sim/../../../fpga/media_store/rtl/media_audio_pipeline.sv" "/workspace/shoopdaloop/src/rust/rt_fpga_sim/../../../fpga/loop_pipeline/rtl/loop_pipeline.sv" "/workspace/shoopdaloop/src/rust/rt_fpga_sim/../../../fpga/axi_memory/rtl/axi_master.sv" "/workspace/shoopdaloop/src/rust/rt_fpga_sim/../../../fpga/axi_memory/rtl/axi_burst_mux.sv" "/workspace/shoopdaloop/src/rust/rt_fpga_sim/../../../fpga/axi_memory/rtl/shared_axi.sv" "/workspace/shoopdaloop/src/rust/rt_fpga_sim/../../../fpga/axi_memory/rtl/chunk_dma.sv" "/workspace/shoopdaloop/src/rust/rt_fpga_sim/../../../fpga/axi_memory/rtl/word_dma.sv" "/workspace/shoopdaloop/src/rust/rt_fpga_sim/../../../fpga/axi_memory/rtl/word_axi.sv" "/workspace/shoopdaloop/src/rust/rt_fpga_sim/../../../fpga/axi_memory/rtl/chunk_axi.sv" "/workspace/shoopdaloop/src/rust/rt_fpga_sim/../../../fpga/axi_memory/rtl/loop_pipeline_axi.sv" "/workspace/shoopdaloop/fpga/audio_io/rtl/audio_lane_ram.sv" "/workspace/shoopdaloop/fpga/audio_io/rtl/audio_io.sv" "/workspace/shoopdaloop/fpga/audio_io/rtl/audio_command_fifo.sv" "/workspace/shoopdaloop/fpga/audio_io/rtl/audio_control.sv" "/workspace/shoopdaloop/fpga/audio_io/rtl/audio_loop_pipeline.sv" "/workspace/shoopdaloop/fpga/axi_memory/tests/axi_direct_memory.sv" "/workspace/shoopdaloop/work/marlin-suite/continuous/audio_loop_pipeline-b2fc24150dbe90d7/bench_top.sv" "../ffi/ffi.cpp" "-I/workspace/shoopdaloop/fpga/state_processor/rtl" "--trace"
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 17.68s
+test resident_transitions_and_media_progress_for_1024_quanta_without_control_service has been running for over 60 seconds
+test resident_transitions_and_media_progress_for_1024_quanta_without_control_service ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 207.32s
+

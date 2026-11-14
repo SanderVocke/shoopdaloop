@@ -198,7 +198,10 @@ response backpressure, not time spent waiting for the DDR controller to respond.
 Write byte counts use AWSIZE, rather than counting asserted WSTRB bits.
 Individual quantum times exclude the command-ROM work before run acceptance;
 word 7 retains that scheduling overhead. A gap of zero schedules quanta as soon
-as the core and per-quantum command fence are ready. All clocks keep running.
+as the core is ready and any admitted complete control batch has finished.
+Empty or unfinished command ingress does not gate progression. Frame-zero actions
+are resident from boot setup; the finite event ROM stops after its last batch.
+The benchmark explicitly consumes its transport replies. All clocks keep running.
 
 ILA probe 0 is `{quantum[63:0], run_cycles[31:0], status[31:0]}`. Probe 1 is
 `{AWADDR, ARADDR, AWLEN, ARLEN, AWSIZE, ARSIZE, BRESP, RRESP, AWVALID, AWREADY,

@@ -1,0 +1,12 @@
+{
+  "base_commit": "a5036927641f52b47bfadaa3e02cb58dd721e38d",
+  "source_files": 197,
+  "scope": "M5 prerequisite; application queues and retained queries not migrated",
+  "models": "Marlin 0.21.1 / Verilator 5.032",
+  "rustc": "1.100.0",
+  "memory": "instant / fixed stalls / DRAMsim3",
+  "quanta_per_mode": 1050,
+  "stereo_frames_per_mode": 33600,
+  "coherent_cuts_per_mode": 2100,
+  "physical_hardware": false
+}

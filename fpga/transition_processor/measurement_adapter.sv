@@ -30,6 +30,13 @@ module transition_measure_adapter #(
     output wire execute_done,
     output wire [3:0] execute_error
 );
+    wire unused_observe_ready,unused_observe_valid,unused_observe_error,unused_resident_ready,unused_resident_done;
+    wire [63:0] unused_observe_frame;
+    wire [1:0] unused_observe_phase;
+    wire [831:0] unused_observe_data,unused_resident_result;
+    wire [3:0] unused_resident_error;
+    wire unused_private=&{1'b0,unused_observe_ready,unused_observe_valid,unused_observe_error,unused_observe_frame,
+        unused_observe_phase,unused_observe_data,unused_resident_ready,unused_resident_done,unused_resident_error,unused_resident_result};
     if (HAS_EXEC_INTERFACE != 0) begin : independent_execution
     (* KEEP_HIERARCHY = "yes" *) transition_processor #(
         .LOOP_DEPTH(LOOP_DEPTH), .REQUEST_DEPTH(REQUEST_DEPTH),
@@ -53,6 +60,10 @@ module transition_measure_adapter #(
         .loop_response_valid(loop_response_valid),
         .loop_response_error(loop_response_error),
         .loop_response_data(loop_response_data),
+        .observe_valid(1'b0),.observe_ready(unused_observe_ready),.observe_kind(2'b0),.observe_index(32'b0),
+        .observe_response_valid(unused_observe_valid),.observe_response_error(unused_observe_error),.observe_frame(unused_observe_frame),.observe_phase(unused_observe_phase),.observe_data(unused_observe_data),
+        .resident_valid(1'b0),.resident_ready(unused_resident_ready),.resident_opcode(8'b0),.resident_index(32'b0),.resident_data(640'b0),
+        .resident_done(unused_resident_done),.resident_error(unused_resident_error),.resident_result(unused_resident_result),
         .configured_quantum(configured_quantum),
         .execute_valid(execute_valid),
         .execute_ready(execute_ready),
@@ -84,6 +95,10 @@ module transition_measure_adapter #(
         .loop_response_valid(loop_response_valid),
         .loop_response_error(loop_response_error),
         .loop_response_data(loop_response_data),
+        .observe_valid(1'b0),.observe_ready(unused_observe_ready),.observe_kind(2'b0),.observe_index(32'b0),
+        .observe_response_valid(unused_observe_valid),.observe_response_error(unused_observe_error),.observe_frame(unused_observe_frame),.observe_phase(unused_observe_phase),.observe_data(unused_observe_data),
+        .resident_valid(1'b0),.resident_ready(unused_resident_ready),.resident_opcode(8'b0),.resident_index(32'b0),.resident_data(640'b0),
+        .resident_done(unused_resident_done),.resident_error(unused_resident_error),.resident_result(unused_resident_result),
         .configured_quantum(configured_quantum)
     );
     assign execute_ready = 0;
