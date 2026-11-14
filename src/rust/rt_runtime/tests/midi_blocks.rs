@@ -168,3 +168,39 @@ fn directory_depth_and_work_do_not_grow_with_recording_duration() {
     assert_eq!(store.work().record_reads, 1);
     read(&mut store, version, &records);
 }
+
+#[shoop_test]
+fn normalized_grabs_extend_without_revealing_hidden_originals() {
+    let mut store = Store::prepare(profile()).unwrap();
+    let empty = store.empty().unwrap();
+    let originals = [
+        event(0, 0, &[0xc0, 3]),
+        event(16, 0, &[0x90, 60, 100]),
+        event(63, 0, &[0x80, 60, 0]),
+        event(64, 0, &[0xc0, 12]),
+        event(128, 0, &[0xc0, 13]),
+    ];
+    let version = store.edit(empty, Frame(0)..Frame(192), &originals).unwrap();
+    let clip = store.clip(version, Frame(16)..Frame(64)).unwrap();
+    store.reset_work();
+    let normalized = assert_no_heap(|| store.normalize(clip)).unwrap();
+    assert!(store.is_normalized(normalized).unwrap());
+    assert!(store.work().directory_writes <= 32);
+    let inserted = [event(129, 0, &[0x90, 62, 90])];
+    let extended = assert_no_heap(|| store.append(normalized, &inserted)).unwrap();
+    read(
+        &mut store,
+        extended,
+        &[originals[1], originals[2], inserted[0]],
+    );
+    read(&mut store, version, &originals);
+    let owners = [empty, version, clip, normalized, extended];
+    assert_no_heap(|| {
+        for owner in owners {
+            store.release(owner).unwrap();
+        }
+    });
+    drain(&mut store);
+    assert_eq!(store.usage().pages, 0);
+    assert_eq!(store.usage().directories, 0);
+}

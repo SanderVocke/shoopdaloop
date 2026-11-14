@@ -6,7 +6,10 @@
 use crate::Error;
 
 mod short;
-pub use short::{EventRecord, MessageDisposition, MessagePolicy, PolicyRejection, ShortMessage};
+pub use short::{
+    EventRecord, MessageDisposition, MessagePolicy, PolicyRejection, ShortMessage,
+    MAX_MESSAGE_BYTES,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MessageKind {

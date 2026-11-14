@@ -106,14 +106,7 @@ impl PositionJobs {
         {
             return Err(Error::InvalidFrame);
         }
-        if (0..16).any(|channel| {
-            let state = seed.channel(channel).unwrap();
-            state.parameter_history_untracked()
-                || state.parameter_family().is_some()
-                || [6, 38, 96, 97, 98, 99, 100, 101]
-                    .iter()
-                    .any(|&cc| state.controller(cc).is_some())
-        }) {
+        if !seed.is_basic() {
             return Err(Error::InvalidParameter);
         }
         if self.jobs.available() == 0 {

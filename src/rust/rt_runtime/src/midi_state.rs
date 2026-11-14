@@ -301,6 +301,15 @@ impl MidiState {
     pub fn channel(&self, channel: u8) -> Option<&ChannelState> {
         self.channels.get(channel as usize)
     }
+    pub fn is_basic(&self) -> bool {
+        self.channels.iter().all(|state| {
+            !state.parameter_history_untracked()
+                && state.parameter_family().is_none()
+                && [6, 38, 96, 97, 98, 99, 100, 101]
+                    .iter()
+                    .all(|&cc| state.controller(cc).is_none())
+        })
+    }
     pub fn apply_packet(&mut self, data: &[u8], max_bytes: usize) -> Result<(), Error> {
         let message = Message::parse(data, max_bytes)?;
         self.apply(message);

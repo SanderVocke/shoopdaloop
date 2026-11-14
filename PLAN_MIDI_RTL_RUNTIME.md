@@ -106,3 +106,44 @@ review until approved. No autonomous merge.
 - Foundation milestone is intentionally not wired into production yet. Next:
   normalize clipped views before editing, adapt the production writer/resource
   APIs to the new block store and integrate ready positions at loop activation.
+- Added append-only insertion and explicit clipped-view normalization. Normalization
+  prunes complete radix branches and rebuilds at most two boundary tiles, using a
+  fixed-depth iterative walker. Its tests prove later extension cannot resurrect
+  hidden input events. Targeted block/position tests pass.
+- Added a fixed-pool writer FSM with separate current/pending state banks and roots.
+  Intervals publish only after every declared span is staged; abort preserves the
+  last complete cut and freezes continuation. Tests cover an early replacement
+  with a retained long suffix, held-pedal state, old snapshots and a refused
+  second wrap span. Sparse append skips empty tile coordinates. The full runtime
+  suite passes 305 tests and the warning-denying workspace build passes.
+
+### Integration notes
+
+Production currently enters `resource/indexed_midi.rs`, whose private `Core` is
+`resource/midi_writer.rs`; input history is `midi_writer/history.rs`. It is not
+enough to replace the older `shared_midi` implementation. The current Core API
+owns source histories, imported resource bases, writer admissions, windows,
+snapshots, serialized reads, state queries and retirement credits.
+
+The new `midi_runtime::Store` already handles immutable roots, fixed-depth ordered
+lookup, wire-byte prefix sums, append, replacement, clipping and normalization.
+`PositionJobs` performs explicit finite preparation; `BasicUpdate` decomposes
+controller/key/reset work into bounded state-cell steps. Current legacy paths
+are unchanged until their adapter is replaced.
+
+Do not implement `Core::state` by driving a whole-prefix replay to completion
+inside `RenderIo`. State at zero and a writer's advancing frontier are ready fast
+paths; cold positions require preparation. Reusing a valid active playback
+reader's strict-before-next-frame state can seed an immediately activated writer.
+This is relevant to `shoop_loops/runtime/shared/writer.rs`: existing Windowed
+writers are admitted before their actual raw start position is supplied in a
+`WriteSpan`. Preserve exact public transitions with an explicit ready-state
+handoff/preparation, rather than hiding a prefix scan or shifting an accepted cut.
+
+Clipped views currently return Busy for edits until `Store::normalize` produces a
+root containing only visible originals. Root ownership uses separate version
+leases for retain, so releasing the original token cannot release a job's pin.
+Include directory/page retirement debt, sparse-tile fragmentation and state-bank
+copies in profile sizing. Existing default source history advertises 65,536 total
+record slots and 4,096 MIDI arena pages; preserve its supported density with an
+honest new memory profile, not an accidental effective reduction from page packing.

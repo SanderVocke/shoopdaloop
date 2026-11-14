@@ -9,6 +9,9 @@ mod pool;
 use pool::{Pool, Queue};
 mod positions;
 pub use positions::{PositionId, PositionJobs, PositionStatus, PositionWork, PreparedPosition};
+mod prune;
+mod writer;
+pub use writer::{InputStamp, MediaImage, WriteMode, WriteSpan, WriterId, WriterSet};
 
 pub const RECORDS_PER_PAGE: usize = 32;
 const RADIX: usize = 16;
@@ -112,6 +115,18 @@ struct View {
     root: u32,
     visible: Option<(u64, u64)>,
 }
+
+#[derive(Clone, Copy)]
+struct EditRange {
+    start: Frame,
+    end: Frame,
+    erase: bool,
+}
+impl EditRange {
+    fn contains(self, frame: Frame) -> bool {
+        self.erase && self.start <= frame && frame < self.end
+    }
+}
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Version {
     scope: u32,
@@ -132,6 +147,16 @@ pub struct Work {
     pub record_writes: u64,
     pub directory_writes: u64,
     pub retirement_steps: u64,
+    pub counter_overflow: bool,
+}
+fn count_work(counter: &mut u64, amount: u64, overflow: &mut bool) {
+    match counter.checked_add(amount) {
+        Some(next) => *counter = next,
+        None => {
+            *counter = u64::MAX;
+            *overflow = true;
+        }
+    }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Usage {
@@ -262,7 +287,11 @@ impl Store {
         self.tile_pages[(tile as usize - 1) * self.profile.pages_per_tile + page]
     }
     fn record(&mut self, tile: u32, index: usize) -> EventRecord {
-        self.work.record_reads = self.work.record_reads.saturating_add(1);
+        count_work(
+            &mut self.work.record_reads,
+            1,
+            &mut self.work.counter_overflow,
+        );
         let page = self
             .pages
             .row(self.tile_page(tile, index / RECORDS_PER_PAGE));
@@ -274,7 +303,11 @@ impl Store {
             if root == 0 {
                 return 0;
             }
-            self.work.directory_reads = self.work.directory_reads.saturating_add(1);
+            count_work(
+                &mut self.work.directory_reads,
+                1,
+                &mut self.work.counter_overflow,
+            );
             root =
                 self.directories.value(root).children[((coordinate >> (level * 4)) & 15) as usize];
         }
@@ -285,7 +318,11 @@ impl Store {
             return 0;
         }
         for level in (0..LEVELS).rev() {
-            self.work.directory_reads = self.work.directory_reads.saturating_add(1);
+            count_work(
+                &mut self.work.directory_reads,
+                1,
+                &mut self.work.counter_overflow,
+            );
             let row = self.directories.value(root);
             let mut next = 0;
             for &child in &row.children {
@@ -350,7 +387,11 @@ impl Store {
             if root == 0 {
                 return result;
             }
-            self.work.directory_reads = self.work.directory_reads.saturating_add(1);
+            count_work(
+                &mut self.work.directory_reads,
+                1,
+                &mut self.work.counter_overflow,
+            );
             let row = self.directories.value(root);
             let index = ((coordinate >> (level * 4)) & 15) as usize;
             for &child in &row.children[..index] {
@@ -422,7 +463,11 @@ impl Store {
                 .map_or(0, |(start, _)| self.prefix(view.root, start).bytes);
         let mut root = view.root;
         for level in (0..LEVELS).rev() {
-            self.work.directory_reads = self.work.directory_reads.saturating_add(1);
+            count_work(
+                &mut self.work.directory_reads,
+                1,
+                &mut self.work.counter_overflow,
+            );
             let row = self.directories.value(root);
             let mut next = 0;
             for &child in &row.children {
@@ -518,18 +563,22 @@ impl Store {
                 first: first.unwrap(),
                 last,
             });
-            self.work.directory_writes = self.work.directory_writes.saturating_add(1);
+            count_work(
+                &mut self.work.directory_writes,
+                1,
+                &mut self.work.counter_overflow,
+            );
         }
         child
     }
-    fn outside(&mut self, tile: u32, range: &Range<Frame>) -> usize {
+    fn outside(&mut self, tile: u32, range: EditRange) -> usize {
         if tile == 0 {
             return 0;
         }
         let mut count = 0;
         for index in 0..self.tiles.value(tile).count as usize {
             let event = self.record(tile, index);
-            count += usize::from(!range.contains(&event.frame));
+            count += usize::from(!range.contains(event.frame));
         }
         count
     }
@@ -537,7 +586,7 @@ impl Store {
         &mut self,
         coordinate: u64,
         old: u32,
-        range: &Range<Frame>,
+        range: EditRange,
         input: &[EventRecord],
         count: usize,
     ) -> u32 {
@@ -556,6 +605,11 @@ impl Store {
                 records: [[0; EventRecord::ENCODED_BYTES]; RECORDS_PER_PAGE],
             });
             self.tile_pages[(tile as usize - 1) * self.profile.pages_per_tile + page] = id;
+            count_work(
+                &mut self.work.record_writes,
+                RECORDS_PER_PAGE as u64,
+                &mut self.work.counter_overflow,
+            );
         }
         let old_count = if old == 0 {
             0
@@ -571,7 +625,7 @@ impl Store {
             while old_event.is_none() && previous < old_count {
                 let event = self.record(old, previous);
                 previous += 1;
-                if !range.contains(&event.frame) {
+                if !range.contains(event.frame) {
                     old_event = Some(event);
                 }
             }
@@ -600,7 +654,11 @@ impl Store {
             let page = self.tile_page(tile, index / RECORDS_PER_PAGE);
             self.pages.row_mut(page).records[index % RECORDS_PER_PAGE] = event.encode();
             bytes += 12 + event.message().as_bytes().len() as u64;
-            self.work.record_writes = self.work.record_writes.saturating_add(1);
+            count_work(
+                &mut self.work.record_writes,
+                1,
+                &mut self.work.counter_overflow,
+            );
         }
         let mut row = self.tiles.value(tile);
         row.bytes = bytes;
@@ -612,6 +670,35 @@ impl Store {
         version: Version,
         range: Range<Frame>,
         input: &[EventRecord],
+    ) -> Result<Version, Error> {
+        self.patch(version, range, input, true)
+    }
+    pub fn append(&mut self, version: Version, input: &[EventRecord]) -> Result<Version, Error> {
+        let Some(first) = input.first() else {
+            return self.retain(version);
+        };
+        let last = input.last().unwrap();
+        let view = self.view(version)?;
+        if view.root != 0 {
+            let tile = self.tile_at(view.root, self.directories.value(view.root).last);
+            let tail = self.record(tile, self.tiles.value(tile).count as usize - 1);
+            if (first.frame, first.order) <= (tail.frame, tail.order) {
+                return Err(Error::InvalidEvent);
+            }
+        }
+        self.patch(
+            version,
+            first.frame..last.frame.checked_add(1)?,
+            input,
+            false,
+        )
+    }
+    fn patch(
+        &mut self,
+        version: Version,
+        range: Range<Frame>,
+        input: &[EventRecord],
+        erase: bool,
     ) -> Result<Version, Error> {
         let view = self.view(version)?;
         self.version_credit()?;
@@ -628,7 +715,24 @@ impl Store {
         }
         let first = range.start.0 >> self.profile.tile_shift;
         let last = (range.end.0 - 1) >> self.profile.tile_shift;
-        let touched = usize::try_from(last - first + 1).map_err(|_| Error::Capacity)?;
+        let shift = self.profile.tile_shift;
+        let distinct_input = || {
+            input.iter().enumerate().filter_map(|(index, event)| {
+                let coordinate = event.frame.0 >> shift;
+                (index == 0 || input[index - 1].frame.0 >> shift != coordinate)
+                    .then_some(coordinate)
+            })
+        };
+        let touched = if erase {
+            usize::try_from(last - first + 1).map_err(|_| Error::Capacity)?
+        } else {
+            distinct_input().count()
+        };
+        let coordinates = || {
+            (first..=last)
+                .take(if erase { touched } else { 0 })
+                .chain(distinct_input().take(if erase { 0 } else { touched }))
+        };
         if touched > self.profile.touched_tiles
             || self.versions.available() == 0
             || self.directories.available() < touched.saturating_mul(LEVELS)
@@ -637,9 +741,14 @@ impl Store {
         }
         let mut needed_pages = 0usize;
         let mut needed_tiles = 0;
-        for coordinate in first..=last {
+        let selection = EditRange {
+            start: range.start,
+            end: range.end,
+            erase,
+        };
+        for coordinate in coordinates() {
             let old = self.tile_at(view.root, coordinate);
-            let count = self.outside(old, &range)
+            let count = self.outside(old, selection)
                 + input
                     .iter()
                     .filter(|event| event.frame.0 >> self.profile.tile_shift == coordinate)
@@ -656,14 +765,14 @@ impl Store {
         }
         let mut root = view.root;
         self.directories.retain(root);
-        for coordinate in first..=last {
+        for coordinate in coordinates() {
             let old = self.tile_at(root, coordinate);
-            let count = self.outside(old, &range)
+            let count = self.outside(old, selection)
                 + input
                     .iter()
                     .filter(|event| event.frame.0 >> self.profile.tile_shift == coordinate)
                     .count();
-            let tile = self.build_tile(coordinate, old, &range, input, count);
+            let tile = self.build_tile(coordinate, old, selection, input, count);
             let next = self.replace_tile(root, coordinate, tile);
             self.release_directory(root);
             root = next;
@@ -722,7 +831,11 @@ impl Store {
             }
             completed += 1;
         }
-        self.work.retirement_steps = self.work.retirement_steps.saturating_add(completed as u64);
+        count_work(
+            &mut self.work.retirement_steps,
+            completed as u64,
+            &mut self.work.counter_overflow,
+        );
         completed
     }
     fn version_credit(&self) -> Result<(), Error> {
