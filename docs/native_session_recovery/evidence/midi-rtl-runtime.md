@@ -103,6 +103,9 @@ Native Lua device ports now apply the common policy; the script-command envelope
 remains separate from supported device-message length. The final 91-test native
 scripting/adapter follow-up and twenty strict JACK routing/retirement/shutdown
 repetitions passed. Shutdown xrun recovery preserves ordinary live MIDI progress.
+The exact native driver feature matrix also passes: JACK, CPAL, both, neither,
+and system-preview-only builds, with their library tests. JACK-only recovery
+fields and allocations are excluded when the direct adapter is absent.
 
 Key executable evidence:
 

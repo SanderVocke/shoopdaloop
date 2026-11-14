@@ -206,3 +206,8 @@ and parity evidence; push the implementation milestone and resolve CI/review.
   routing/retirement/shutdown repetitions pass. Native Lua device controls now use
   the same classifier as browser controls; ordinary JACK xruns do not starve live
   MIDI. Remaining work is final platform CI/review and closure documentation.
+- Final CI reached and passed all real-JACK and application workflows, then found
+  JACK-only recovery fields in CPAL/no-driver builds. The fields now share the
+  direct adapter's feature gate. The exact CI matrix (JACK, CPAL, both, neither,
+  plus system preview), its library tests and the warning-denying workspace build
+  pass locally. This changes preparation only when the direct adapter is absent.

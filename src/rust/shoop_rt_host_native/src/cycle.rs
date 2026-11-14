@@ -17,7 +17,9 @@ pub(crate) struct Cycle {
     outputs: Box<[Box<[f32]>]>,
     midi_inputs: Box<[MidiBuffer]>,
     midi_outputs: Box<[MidiBuffer]>,
+    #[cfg(any(feature = "jack", test))]
     input_lost: Box<[bool]>,
+    #[cfg(any(feature = "jack", test))]
     output_reset: Box<[rt_runtime::midi::ResetState]>,
     receivers: Box<[Option<MidiInputReceiver>]>,
     senders: Box<[Option<MidiOutputSender>]>,
@@ -79,7 +81,9 @@ impl Cycle {
             outputs: audio(host.audio_outputs.len()),
             midi_inputs: midi(host.midi_inputs.len(), false)?,
             midi_outputs: midi(host.midi_outputs.len(), true)?,
+            #[cfg(any(feature = "jack", test))]
             input_lost: vec![false; host.midi_inputs.len()].into_boxed_slice(),
+            #[cfg(any(feature = "jack", test))]
             output_reset: vec![Default::default(); host.midi_outputs.len()].into_boxed_slice(),
             receivers: receivers.into_boxed_slice(),
             senders: senders.into_boxed_slice(),
