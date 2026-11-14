@@ -1694,6 +1694,7 @@ impl ControlEndpoint {
             core::mem::swap(&mut self.model, &mut self.next);
             return false;
         }
+        self.snapshots.confirmed = (self.graph_epoch.0, self.topology_epoch.0);
         for slot in 0..self.model.loops.len() {
             if self.model.loops[slot].map(|l| l.id) != self.next.loops[slot].map(|l| l.id) {
                 self.planned[slot] = [None; PLANNED];

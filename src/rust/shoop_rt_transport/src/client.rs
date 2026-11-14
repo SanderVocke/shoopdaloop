@@ -31,6 +31,7 @@ pub struct ProtocolClient<C> {
     next_correlation: u64,
     reliable_in_flight: u32,
     bulk_in_flight: u32,
+    snapshot_in_flight: bool,
 }
 
 impl<C: Carrier> ProtocolClient<C> {
@@ -44,6 +45,7 @@ impl<C: Carrier> ProtocolClient<C> {
             next_correlation: 1,
             reliable_in_flight: 0,
             bulk_in_flight: 0,
+            snapshot_in_flight: false,
         }
     }
 
@@ -70,6 +72,7 @@ impl<C: Carrier> ProtocolClient<C> {
     }
 
     pub fn connect(&mut self) -> Result<(), ClientError> {
+        self.snapshot_in_flight = false;
         self.send(ClientMessage::Hello {
             version: PROTOCOL_VERSION,
         })?;
@@ -103,12 +106,42 @@ impl<C: Carrier> ProtocolClient<C> {
         Ok(())
     }
 
+    pub fn observe_snapshots(&mut self, enabled: bool) -> Result<(), ClientError> {
+        self.connected()?;
+        self.send(ClientMessage::ObserveSnapshots(enabled))
+    }
+    pub fn default_snapshot_delivery(&self) -> shoop_rt_protocol::snapshot::SnapshotDelivery {
+        self.carrier
+            .as_ref()
+            .expect("carrier was closed")
+            .default_snapshot_delivery()
+    }
+    pub fn configure_snapshots(
+        &mut self,
+        mode: shoop_rt_protocol::snapshot::SnapshotDelivery,
+    ) -> Result<(), ClientError> {
+        self.connected()?;
+        self.send(ClientMessage::ConfigureSnapshots(mode))
+    }
+    pub fn request_snapshot(&mut self, after: u32) -> Result<(), ClientError> {
+        self.connected()?;
+        if self.snapshot_in_flight {
+            return Err(ClientError::Busy);
+        }
+        self.send(ClientMessage::RequestSnapshot { after })?;
+        self.snapshot_in_flight = true;
+        Ok(())
+    }
+    pub fn snapshot_in_flight(&self) -> bool {
+        self.snapshot_in_flight
+    }
     pub fn resync(&mut self) -> Result<(), ClientError> {
         self.connected()?;
         self.send(ClientMessage::Resync)
     }
 
     pub fn disconnect(&mut self) {
+        self.snapshot_in_flight = false;
         if let Some(carrier) = &mut self.carrier {
             let _ = carrier.send(ClientMessage::Goodbye);
         }
@@ -125,6 +158,7 @@ impl<C: Carrier> ProtocolClient<C> {
     pub fn poll(&mut self) -> Option<EngineMessage> {
         let message = self.carrier.as_mut()?.receive()?;
         match message {
+            EngineMessage::SnapshotReady { .. } => self.snapshot_in_flight = false,
             EngineMessage::Welcome {
                 version,
                 capabilities,
@@ -156,9 +190,14 @@ impl<C: Carrier> ProtocolClient<C> {
                 self.state = ClientState::Disconnected;
                 self.reliable_in_flight = 0;
                 self.bulk_in_flight = 0;
+                self.snapshot_in_flight = false;
             }
-            EngineMessage::Telemetry(_) | EngineMessage::State(_) | EngineMessage::Profiling(_) => {
-            }
+            EngineMessage::SnapshotReply(_)
+            | EngineMessage::Snapshot(_)
+            | EngineMessage::SnapshotConfiguration { .. }
+            | EngineMessage::Telemetry(_)
+            | EngineMessage::State(_)
+            | EngineMessage::Profiling(_) => {}
         }
         Some(message)
     }

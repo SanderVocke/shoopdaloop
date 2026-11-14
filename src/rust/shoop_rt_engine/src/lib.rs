@@ -65,6 +65,7 @@ mod render;
 mod replacement;
 mod resync;
 mod ring;
+mod snapshots;
 mod stream;
 mod timing;
 mod topology;
@@ -655,6 +656,9 @@ fn prepare_complete(
     if quantum.frames() > 1 {
         runtime.prepare_host_buffering_with_midi_output(settings.midi.tick)?;
     }
+    let (snapshot_capture, snapshot_state) =
+        snapshots::prepare(cells.clone(), strips, loops, buses, description.sample_rate)?;
+    runtime.set_snapshot_observer(Box::new(snapshot_capture));
     runtime.prepare_graph_staging(1)?;
     control.prepare_submissions()?;
     let mut master_outputs = [model::HostMask::EMPTY; shoop_rt_protocol::MAX_STRIP_CHANNELS];
@@ -716,6 +720,7 @@ fn prepare_complete(
         bulk_credits: description.bulk_credits,
     };
     let endpoint = ControlEndpoint {
+        snapshots: snapshot_state,
         projected_bus_processors: vec![None; description.buses as usize].into_boxed_slice(),
         processor_projection_cursor: 0,
         projected_processors: vec![None; strips].into_boxed_slice(),

@@ -39,7 +39,8 @@ impl<S: Sample> LoopPlanner<S> {
             .filter(|r| r.assigned && r.binding.target == target)
             .ok_or(Error::InvalidId)
     }
-    fn cut(&self, target: LoopId, frame: Frame) -> Result<Cut<S>, Failure> {
+    /// Borrow a render-owned state cut at a settled boundary without acquiring media leases.
+    pub fn cut(&self, target: LoopId, frame: Frame) -> Result<Cut<S>, Failure> {
         let state = self.resolver.state(target)?;
         if let Ok(row) = self.row(target) {
             let media = self

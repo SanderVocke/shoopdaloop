@@ -9,12 +9,13 @@
 //! at once; requests are queued and sent together when the backend pumps (`poll`,
 //! `advance`, `wait_idle`), so the engine can apply the structural ones of one application
 //! tick as one transaction. The outcome confirms the change in the snapshot or reports a
-//! mutation failure. `poll` assembles the snapshot from outcomes and
-//! telemetry and never waits. `wait_idle` waits through the clock until every request has
-//! its outcome and newer telemetry has arrived.
+//! mutation failure. `poll` never waits. Ordinary loop and mixer display state comes
+//! from coherent RT publications by default; [`Observation::Legacy`] selects the
+//! existing feedback path. Media, structural outcomes, and diagnostics retain their
+//! own protocols. `wait_idle` waits for outcomes and fresh observation.
 //!
 //! Loop modes, positions, lengths and planned transitions in the snapshot describe the state
-//! at the start of the last rendered callback, one callback behind the legacy backends, which
+//! at the first settled processing tick of a callback in snapshot mode. The legacy backends
 //! report the state of the next frame to render. Delays the application derives from a
 //! position and the sync loop's length can therefore come out one cycle later when a request
 //! falls within one callback of a wrap.
@@ -53,7 +54,9 @@ mod processors;
 mod reads;
 mod requests;
 mod session;
+mod snapshots;
 mod timing;
+pub use snapshots::{Observation, SnapshotDelivery};
 
 #[cfg(all(feature = "std", not(target_arch = "wasm32")))]
 pub use clock::Sleep;
@@ -159,6 +162,7 @@ fn profiling_connection() -> Option<u64> {
 
 /// The application backend over a protocol client. See the crate documentation.
 pub struct RtBackend<C, K> {
+    snapshots: snapshots::Snapshots,
     host_port_inventory: Option<alloc::boxed::Box<dyn HostPortInventory>>,
     inventory_reconcile: bool,
     retired_host_ports:
@@ -226,7 +230,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .connect()
             .map_err(|error| anyhow!("could not reach the engine: {error:?}"))?;
         tracing::debug!("backend.rt.connecting");
+        let mut snapshots = snapshots::Snapshots::default();
+        snapshots.delivery = client.default_snapshot_delivery();
         Ok(Self {
+            snapshots,
             host_port_inventory: None,
             inventory_reconcile: false,
             retired_host_ports: alloc::collections::BTreeMap::new(),
@@ -483,6 +490,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 replacement.job.fail(error.to_string());
             }
         }
+        let mut requested_snapshot = false;
         for _ in 0..MAX_PUMP_ROUNDS {
             if self.read_cancel_needed
                 && self.is_ready()
@@ -499,7 +507,21 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             self.advance_composites();
             self.advance_preview();
             self.advance_persistence();
-            let sent = self.send();
+            let mut sent = self.send();
+            if !requested_snapshot
+                && self.is_ready()
+                && self.snapshots.delivery == SnapshotDelivery::Pull
+            {
+                requested_snapshot = true;
+                match self.request_latest_snapshot() {
+                    Ok(true) => sent += 1,
+                    Ok(false) => {}
+                    Err(error) => {
+                        self.lose(error.to_string());
+                        return;
+                    }
+                }
+            }
             let mut received = 0;
             for _ in 0..MAX_MESSAGES_PER_PUMP_ROUND {
                 let Some(message) = self.client.poll() else {

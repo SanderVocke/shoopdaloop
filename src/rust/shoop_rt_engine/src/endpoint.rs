@@ -162,6 +162,7 @@ impl Work {
 }
 
 pub struct ControlEndpoint {
+    pub(crate) snapshots: crate::snapshots::State,
     pub(crate) projected_timing: Box<[Option<(LoopSlotId, shoop_rt_protocol::TimingState)>]>,
     pub(crate) projected_recorded: Box<[Option<(LoopSlotId, u64, bool)>]>,
     pub(crate) processor_catalog: crate::ProcessorCatalog,
@@ -577,6 +578,7 @@ impl ControlEndpoint {
         self.results.clear();
         self.unanswered = 0;
         self.resync = None;
+        self.snapshots.reset();
         self.processor_projection_cursor = 0;
         self.projected_bus_processors.fill(None);
         self.projected_processors.fill(None);
@@ -1451,32 +1453,45 @@ impl ControlEndpoint {
                 output_peak: peaks.as_slice()[1],
                 driver: self.cells.driver(),
             }));
-            for slot in 0..self.model.strips.len() {
-                let Some(strip) = self.model.strips[slot] else {
-                    continue;
-                };
-                let cells = &self.cells.strips[slot];
-                let _ = out.push(EngineMessage::Telemetry(Telemetry::Strip {
-                    strip: strip.id,
-                    input_peaks: cells.input.take(strip.shape.audio_inputs as usize),
-                    output_peaks: cells.output.take(strip.shape.audio_outputs as usize),
-                    midi_in: cells.midi_in.swap(false, Ordering::Relaxed),
-                    midi_out: cells.midi_out.swap(false, Ordering::Relaxed),
-                    latest_input_midi: (cells.owner_generation.load(Ordering::Relaxed)
-                        == strip.id.0.generation)
-                        .then(|| cells.latest_midi())
-                        .flatten(),
-                    automatic_monitoring: cells.automatic_monitoring.load(Ordering::Relaxed),
-                }));
-            }
-            for (slot, bus) in self.model.buses.iter().enumerate() {
-                if let Some(bus) = bus {
-                    let _ = out.push(EngineMessage::Telemetry(Telemetry::Bus {
-                        bus: bus.id,
-                        peaks: self.cells.buses[slot].take(bus.channels as usize),
+            if !self.snapshots.enabled {
+                for slot in 0..self.model.strips.len() {
+                    let Some(strip) = self.model.strips[slot] else {
+                        continue;
+                    };
+                    let cells = &self.cells.strips[slot];
+                    let _ = out.push(EngineMessage::Telemetry(Telemetry::Strip {
+                        strip: strip.id,
+                        input_peaks: cells.input.take(strip.shape.audio_inputs as usize),
+                        output_peaks: cells.output.take(strip.shape.audio_outputs as usize),
+                        midi_in: cells.midi_in.swap(false, Ordering::Relaxed),
+                        midi_out: cells.midi_out.swap(false, Ordering::Relaxed),
+                        latest_input_midi: (cells.owner_generation.load(Ordering::Relaxed)
+                            == strip.id.0.generation)
+                            .then(|| cells.latest_midi())
+                            .flatten(),
+                        automatic_monitoring: cells.automatic_monitoring.load(Ordering::Relaxed),
                     }));
                 }
+                for (slot, bus) in self.model.buses.iter().enumerate() {
+                    if let Some(bus) = bus {
+                        let _ = out.push(EngineMessage::Telemetry(Telemetry::Bus {
+                            bus: bus.id,
+                            peaks: self.cells.buses[slot].take(bus.channels as usize),
+                        }));
+                    }
+                }
             }
+        }
+        if self.snapshots.enabled {
+            for slot in 0..self.model.loops.len() {
+                if let Some(record) = self.composite_telemetry(slot) {
+                    let _ = out.push(EngineMessage::Telemetry(record));
+                    if let Some(record) = self.loop_telemetry(slot) {
+                        let _ = out.push(EngineMessage::Telemetry(record));
+                    }
+                }
+            }
+            return;
         }
         for slot in 0..self.model.loops.len() {
             if !(periodic || self.dirty[slot]) {
@@ -1642,6 +1657,9 @@ impl Endpoint for ControlEndpoint {
                 }
             }
             ClientMessage::Bulk(read) => self.deliver_bulk(read, out),
+            ClientMessage::ObserveSnapshots(enabled) => self.snapshots.observe(enabled),
+            ClientMessage::ConfigureSnapshots(delivery) => self.snapshots.configure(delivery),
+            ClientMessage::RequestSnapshot { after } => self.snapshots.request(after),
             ClientMessage::Goodbye => {
                 if self.connected {
                     self.reset_connection();
@@ -1680,6 +1698,7 @@ impl Endpoint for ControlEndpoint {
         self.project_recorded(out);
         self.project_timing(out);
         self.telemetry(out);
+        self.project_snapshots(out);
         self.forward_profiling(out);
     }
 }

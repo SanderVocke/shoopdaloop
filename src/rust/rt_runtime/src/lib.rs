@@ -61,6 +61,7 @@ mod quantum;
 pub mod render;
 pub mod resource;
 pub mod schedule;
+pub mod snapshot;
 pub mod transport;
 
 pub use config::{Budgets, Config, PreparedConfig};

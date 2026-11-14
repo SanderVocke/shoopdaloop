@@ -108,6 +108,16 @@ impl Outbox {
     pub fn dropped_telemetry(&self) -> u64 {
         self.dropped_telemetry
     }
+
+    /// Supersede only undelivered push snapshots, preserving other traffic.
+    pub fn discard_push_snapshots(&mut self) {
+        let before = self.telemetry.len();
+        self.telemetry
+            .retain(|message| !matches!(message, EngineMessage::Snapshot(_)));
+        self.dropped_telemetry = self
+            .dropped_telemetry
+            .saturating_add((before - self.telemetry.len()) as u64);
+    }
 }
 
 /// The engine side of a connection.
@@ -123,6 +133,10 @@ pub trait Endpoint {
 pub trait Carrier {
     fn send(&mut self, message: ClientMessage) -> Result<(), CarrierError>;
     fn receive(&mut self) -> Option<EngineMessage>;
+    /// Asynchronous carriers default to a bounded push stream.
+    fn default_snapshot_delivery(&self) -> shoop_rt_protocol::snapshot::SnapshotDelivery {
+        Default::default()
+    }
 }
 
 /// Direct calls into an endpoint owned by the carrier, without serialization.
@@ -147,6 +161,13 @@ impl<E: Endpoint> InProcess<E> {
 }
 
 impl<E: Endpoint> Carrier for InProcess<E> {
+    fn default_snapshot_delivery(&self) -> shoop_rt_protocol::snapshot::SnapshotDelivery {
+        if cfg!(target_arch = "wasm32") {
+            Default::default()
+        } else {
+            shoop_rt_protocol::snapshot::SnapshotDelivery::Pull
+        }
+    }
     fn send(&mut self, message: ClientMessage) -> Result<(), CarrierError> {
         self.endpoint.deliver(message, &mut self.outbox);
         Ok(())

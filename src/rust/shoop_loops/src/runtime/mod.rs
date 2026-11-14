@@ -1160,6 +1160,23 @@ impl<S: Sample> LoopPlanner<S> {
         }
         Ok(())
     }
+    /// Borrow the settled resolver from the render owner; this is not a shared control view.
+    pub fn display_channels(&self, id: LoopId) -> usize {
+        self.row(id).map_or(0, |row| {
+            if self
+                .resolver
+                .state(id)
+                .is_ok_and(|state| state.mode.dry_playback())
+            {
+                row.binding.auxiliary_channels
+            } else {
+                row.binding.channels
+            }
+        })
+    }
+    pub fn resolver(&self) -> &Resolver {
+        &self.resolver
+    }
     pub fn observer(&self) -> &dyn BoundaryObserver {
         &*self.observer
     }

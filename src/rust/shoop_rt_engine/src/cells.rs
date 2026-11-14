@@ -14,13 +14,17 @@ use shoop_rt_protocol::{DriverKind, DriverRunState, DriverStatus, Peaks, MAX_STR
 
 /// Per-channel absolute peaks since the last read.
 #[derive(Default)]
-pub(crate) struct Peak([AtomicU32; MAX_STRIP_CHANNELS]);
+pub(crate) struct Peak(
+    [AtomicU32; MAX_STRIP_CHANNELS],
+    [AtomicU32; MAX_STRIP_CHANNELS],
+);
 
 impl Peak {
     pub(crate) fn raise(&self, channel: usize, value: f32) {
         if value.is_finite() && value > 0. {
             if let Some(cell) = self.0.get(channel) {
                 cell.fetch_max(value.to_bits(), Ordering::Relaxed);
+                self.1[channel].fetch_max(value.to_bits(), Ordering::Relaxed);
             }
         }
     }
@@ -31,6 +35,18 @@ impl Peak {
             *value = f32::from_bits(cell.swap(0, Ordering::Relaxed));
         }
         Peaks::new(&values[..channels]).expect("bounded channels")
+    }
+    pub(crate) fn snapshot(&self, channels: usize) -> Peaks {
+        let mut values = [0.; MAX_STRIP_CHANNELS];
+        for (value, cell) in values.iter_mut().zip(&self.1) {
+            *value = f32::from_bits(cell.swap(0, Ordering::Relaxed));
+        }
+        Peaks::new(&values[..channels.min(MAX_STRIP_CHANNELS)]).expect("bounded channels")
+    }
+    pub(crate) fn reset_snapshot(&self) {
+        for cell in &self.1 {
+            cell.store(0, Ordering::Relaxed);
+        }
     }
     pub(crate) fn clear(&self) {
         for cell in &self.0 {
@@ -49,6 +65,9 @@ struct MonitoringPolicy {
 pub(crate) struct StripCells {
     pub input: Peak,
     pub output: Peak,
+    pub snapshot_output_channels: AtomicU32,
+    pub snapshot_midi_in: AtomicBool,
+    pub snapshot_midi_out: AtomicBool,
     pub midi_in: AtomicBool,
     pub midi_out: AtomicBool,
     pub latest_input_midi: AtomicU64,
@@ -62,6 +81,15 @@ pub(crate) struct StripCells {
     pub automatic_monitoring: AtomicBool,
 }
 impl StripCells {
+    pub(crate) fn mark_midi(&self, input: bool, value: bool) {
+        let (legacy, snapshot) = if input {
+            (&self.midi_in, &self.snapshot_midi_in)
+        } else {
+            (&self.midi_out, &self.snapshot_midi_out)
+        };
+        legacy.store(value, Ordering::Relaxed);
+        snapshot.store(value, Ordering::Relaxed);
+    }
     pub(crate) fn observe_midi(&self, packet: &[u8]) {
         if packet.is_empty() || packet.len() > 4 {
             return;
@@ -84,6 +112,9 @@ impl StripCells {
         Self {
             input: Peak::default(),
             output: Peak::default(),
+            snapshot_output_channels: AtomicU32::new(0),
+            snapshot_midi_in: AtomicBool::new(false),
+            snapshot_midi_out: AtomicBool::new(false),
             midi_in: AtomicBool::new(false),
             midi_out: AtomicBool::new(false),
             latest_input_midi: AtomicU64::new(0),

@@ -110,6 +110,9 @@ impl Endpoint for TestEndpoint {
                     payload: BulkPayload::audio(&samples).unwrap(),
                 })
             }
+            ClientMessage::ConfigureSnapshots(_)
+            | ClientMessage::RequestSnapshot { .. }
+            | ClientMessage::ObserveSnapshots(_) => return,
             ClientMessage::Goodbye => EngineMessage::Disconnected(DisconnectReason::Shutdown),
         };
         out.push(answer).unwrap();

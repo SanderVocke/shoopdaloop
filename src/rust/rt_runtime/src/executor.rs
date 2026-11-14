@@ -314,6 +314,8 @@ fn activation_compatible<P, S: Sample>(
 }
 
 pub struct GraphRuntime<P, L: Planner<S> = NoPlanner, Q: ProcessorOperation = (), S: Sample = f32> {
+    snapshot_observer: Option<Box<dyn crate::snapshot::Observer<P, L>>>,
+    snapshot_callback: Option<Frame>,
     profiling: rt_profiling::Recorder,
     quantum: crate::Quantum,
     tick_frame: Frame,
@@ -502,6 +504,8 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
                 config,
             },
             Self {
+                snapshot_observer: None,
+                snapshot_callback: None,
                 profiling: rt_profiling::Recorder::default(),
                 quantum,
                 tick_frame: Frame(0),
@@ -638,6 +642,10 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
     }
     pub fn render_work(&self) -> resource::RenderWork {
         self.resources.render_work()
+    }
+
+    pub fn set_snapshot_observer(&mut self, observer: Box<dyn crate::snapshot::Observer<P, L>>) {
+        self.snapshot_observer = Some(observer);
     }
 
     pub fn set_profiling(&mut self, recorder: rt_profiling::Recorder) {
@@ -1295,6 +1303,32 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
         })?;
         if self.scheduler.recovery_pending() {
             return Err(Error::InvalidState);
+        }
+        if self.snapshot_callback != Some(callback_start) {
+            self.snapshot_callback = Some(callback_start);
+            if let Some(observer) = &mut self.snapshot_observer {
+                for slot in self.slots.iter_mut().flatten() {
+                    if self
+                        .active
+                        .as_ref()
+                        .is_some_and(|plan| plan.contains(slot.id))
+                    {
+                        if let Some(processor) = &mut slot.processor {
+                            processor.settle(self.epoch, &self.planner);
+                        }
+                    }
+                }
+                let mut nodes = self.slots.iter().flatten().filter_map(|slot| {
+                    self.active.as_ref().filter(|plan| plan.contains(slot.id))?;
+                    Some((slot.id, slot.processor.as_ref()?))
+                });
+                observer.capture(crate::snapshot::Capture {
+                    frame,
+                    graph_epoch: self.epoch,
+                    planner: &self.planner,
+                    nodes: &mut nodes,
+                });
+            }
         }
         self.profiling.phase(rt_profiling::Phase::StateSettled);
         self.profiling.graph_start(self.epoch.0, frame.0);
