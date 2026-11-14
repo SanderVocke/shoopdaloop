@@ -72,7 +72,12 @@ module public_native_probe #(
     wire unused_observation_valid;
     wire [7:0] unused_observation_opcode;
     wire [511:0] unused_observation_data;
+    wire unused_configuration_valid;
+    wire [7:0] unused_configuration_opcode;
+    wire [511:0] unused_configuration_data;
     audio_native #(.REQUESTS(REQUESTS)) native (
+        .configuration_valid(unused_configuration_valid),.configuration_ready(1'b0),.configuration_opcode(unused_configuration_opcode),
+        .configuration_data(unused_configuration_data),.configuration_done(1'b0),.configuration_result(512'b0),
         .observation_valid(unused_observation_valid),.observation_opcode(unused_observation_opcode),.observation_data(unused_observation_data),
         .observation_ready(1'b0),.observation_done(1'b0),.observation_error(4'b0),.observation_result(512'b0),
         .clk(clk),.reset(reset),.request_valid(resident_valid),.request_ready(resident_ready),.request_opcode(resident_opcode),

@@ -105,6 +105,12 @@ pub fn clear(target: LoopId, requested: Frame) -> Transfer {
     put(&mut t.words, 64, 64, requested.0);
     t
 }
+pub fn repeat(target: LoopId, enabled: bool) -> Transfer {
+    let mut t = transfer(action::REPEAT);
+    put(&mut t.words, 0, 64, identity(target));
+    put(&mut t.words, 64, 1, u64::from(enabled));
+    t
+}
 pub fn cancel(sequence: rt_runtime::Sequence) -> Transfer {
     let mut t = transfer(action::CANCEL);
     put(&mut t.words, 0, 64, sequence.0);

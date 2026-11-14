@@ -63,7 +63,12 @@ module observations_probe # (parameter integer SLOTS=8) (
     wire [7:0] unused_tp_opcode;
     wire [31:0] unused_tp_index;
     wire [639:0] unused_tp_data;
+    wire unused_configuration_valid;
+    wire [7:0] unused_configuration_opcode;
+    wire [511:0] unused_configuration_data;
     audio_native #(.REQUESTS(4)) native (
+        .configuration_valid(unused_configuration_valid),.configuration_ready(1'b0),.configuration_opcode(unused_configuration_opcode),
+        .configuration_data(unused_configuration_data),.configuration_done(1'b0),.configuration_result(512'b0),
         .clk(clk),.reset(reset),.request_valid(resident_valid),.request_ready(resident_ready),.request_opcode(resident_opcode),
         .request_flags(cfg_address),.request_mode(resident_mode),.request_data(resident_data),.request_sequence(resident_sequence),
         .request_frame(resident_frame),.request_reference(resident_reference),.response_valid(resident_done),.response_pending(resident_pending),

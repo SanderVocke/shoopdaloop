@@ -121,6 +121,37 @@ impl Transfer {
         }
         v
     }
+    pub fn begin_bank(bank: u16, version: u64, dimensions: Dimensions) -> Self {
+        let mut t = Self::begin(version, dimensions);
+        t.address = bank;
+        t
+    }
+    pub fn status_bank(bank: u16) -> Self {
+        Self::new(7, false, bank)
+    }
+    pub fn activate_canonical(nonce: u64) -> Self {
+        let mut t = Self::activate(nonce);
+        t.state = true;
+        t
+    }
+    pub fn patch_staged(address: u16, words: [u32; 5], ramp: bool, nonce: u64) -> Self {
+        let mut t = Self::new(9, ramp, address);
+        t.words[..5].copy_from_slice(&words);
+        put(&mut t.words, 129, 64, nonce);
+        t
+    }
+    pub fn read_staged(address: u16, ramp: bool, nonce: u64) -> Self {
+        let mut t = Self::new(10, ramp, address);
+        put(&mut t.words, 129, 64, nonce);
+        t
+    }
+    pub fn evaluate_ramp(words: [u32; 5], target: i32, duration: u32) -> Self {
+        let mut t = Self::new(11, true, 0);
+        t.words[..5].copy_from_slice(&words);
+        put(&mut t.words, 129, 32, u64::from(target as u32));
+        put(&mut t.words, 161, 32, u64::from(duration));
+        t
+    }
     pub fn upload(state: bool, address: u16, words: [u32; 5], nonce: u64) -> Self {
         let mut v = Self::new(if state { 3 } else { 2 }, state, address);
         v.words[..5].copy_from_slice(&words);

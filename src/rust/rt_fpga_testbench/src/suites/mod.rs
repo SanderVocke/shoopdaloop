@@ -24,3 +24,5 @@ pub mod zedboard;
 pub mod resident_continuous;
 
 pub mod observations;
+pub mod resident_configuration;
+pub mod stages;

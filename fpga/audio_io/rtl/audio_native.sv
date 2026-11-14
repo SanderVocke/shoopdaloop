@@ -19,12 +19,14 @@ module audio_native #(
     input wire update_done, input wire [3:0] update_error,
     output wire observation_valid, input wire observation_ready, output wire [7:0] observation_opcode,
     output wire [511:0] observation_data, input wire observation_done,
-    input wire [3:0] observation_error, input wire [511:0] observation_result
+    input wire [3:0] observation_error, input wire [511:0] observation_result,
+    output wire configuration_valid,input wire configuration_ready,output wire [7:0] configuration_opcode,
+    output wire [511:0] configuration_data,input wire configuration_done,input wire [511:0] configuration_result
 );
     localparam [7:0] RUNTIME=1,TIMELINE=2,QUEUED_CANCELLED=3,CANCEL_RESULT=9;
     typedef enum reg [4:0] {IDLE,CHECK_TARGET,PREPARE_INSTALL,INSTALL_RESULT,RESOLVE_RESULT,RELEASE_RESULT,
         LOOKUP_SEND,LOOKUP_WAIT,LOOKUP_CHECK,CANCEL_RESULT_WAIT,UPDATE_SEND,UPDATE_WAIT,
-        NATIVE_SEND,NATIVE_WAIT,OBSERVATION_SEND,OBSERVATION_WAIT} phase_t;
+        NATIVE_SEND,NATIVE_WAIT,OBSERVATION_SEND,OBSERVATION_WAIT,CONFIGURATION_SEND,CONFIGURATION_WAIT,REPEAT_RESULT} phase_t;
     phase_t phase, return_phase;
     reg [7:0] opcode,native_opcode;
     reg [1:0] mode;
@@ -57,6 +59,9 @@ module audio_native #(
     assign observation_valid=phase == OBSERVATION_SEND;
     assign observation_opcode=opcode;
     assign observation_data=payload;
+    assign configuration_valid=phase == CONFIGURATION_SEND;
+    assign configuration_opcode=opcode;
+    assign configuration_data=payload;
     task automatic finish(input [7:0] tag, input [511:0] data, input pending);
         begin response_valid<=1; response_pending<=pending; response_data<=data; response_data[511:504]<=tag; phase<=IDLE; end
     endtask
@@ -93,19 +98,22 @@ module audio_native #(
                     if (request_data[63:32] == 0 || request_data[31:0] >= 32'(REQUESTS)) internal_failure();
                     else send(request_mode == 1 ? 8'd13 : 8'd6,request_data[31:0],{608'b0,request_data[63:32]},
                         request_mode == 1 ? RESOLVE_RESULT : RELEASE_RESULT);
-                end else if (request_opcode == 9 || request_opcode == 10) send(12,0,0,CHECK_TARGET);
+                end else if (request_opcode == 9 || request_opcode == 10 || request_opcode == 15) send(12,0,0,CHECK_TARGET);
                 else if (request_opcode == 11 && request_mode == 0) begin
                     if (request_data[63:0] == request_sequence) fail(RUNTIME,request_flags[2] ? 8'd1 : 8'd6);
                     else if (request_reference[47:16] == 0) fail(RUNTIME,1); else phase<=LOOKUP_SEND;
                 end else if ((request_opcode == 12 || request_opcode == 13) && request_mode == 0) finish(0,request_data,1);
                 else if (((request_opcode == 12 || request_opcode == 13) && request_mode == 1)
                     || ((request_opcode == 14 || request_opcode == 19 || request_opcode == 20) && request_mode == 0)) phase<=OBSERVATION_SEND;
+                else if ((request_opcode == 17 || request_opcode == 18) && request_mode == 0) phase<=CONFIGURATION_SEND;
                 else fail(RUNTIME,2);
             end
             OBSERVATION_SEND: if (observation_ready) phase<=OBSERVATION_WAIT;
             OBSERVATION_WAIT: if (observation_done) begin
                 if (observation_error != 0) internal_failure();else finish(observation_result[511:504],observation_result,0);
             end
+            CONFIGURATION_SEND: if (configuration_ready) phase<=CONFIGURATION_WAIT;
+            CONFIGURATION_WAIT: if (configuration_done) finish(configuration_result[511:504],configuration_result,0);
             NATIVE_SEND: if (native_ready) phase<=NATIVE_WAIT;
             NATIVE_WAIT: if (native_done) begin native_result<=native_response_data;native_error<=native_response_error;phase<=return_phase;end
             CHECK_TARGET: begin
@@ -122,8 +130,10 @@ module audio_native #(
                     install[35:34]=3;install[44]=1;install[108:45]=payload[63:0];
                     install[172:109]=sequence_number;install[236:173]=payload[127:64];install[428:365]=native_result[511:448]+1'b1;
                 end
-                send(4,0,install,INSTALL_RESULT);
+                if (opcode == 15) send(17,0,{607'b0,payload[64],native_result[32:1]},REPEAT_RESULT);
+                else send(4,0,install,INSTALL_RESULT);
             end
+            REPEAT_RESULT: if (native_error != 0) fail(TIMELINE,{4'b0,native_error});else finish(4,0,0);
             INSTALL_RESULT: if (native_error != 0) fail(TIMELINE,{4'b0,native_error}); else finish(0,native_result,1);
             RESOLVE_RESULT: begin
                 if (native_error != 0 || !native_result[0] || native_result[32:1] != payload[63:32]) internal_failure();

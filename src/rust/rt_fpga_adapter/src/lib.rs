@@ -19,3 +19,5 @@ pub mod engine;
 pub mod resident;
 
 pub mod observations;
+pub mod resident_parameters;
+pub mod resident_stages;

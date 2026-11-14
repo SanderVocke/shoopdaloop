@@ -522,3 +522,13 @@ Execution checkpoint: resident public delivery and historical query/export cuts
 pass the connected 1,312-quantum stereo comparison in all three memory models
 (41,984 exact frames, 2,624 coherent cuts, 1,040-quanta ARM pause). This extends
 the earlier component checkpoint; it does not mark M5/M6 or timing complete.
+
+Canonical configuration checkpoint: two inactive image banks and device-owned
+parameter/binding maps now support actual-cut initial/graph activation. Stage
+guards retain scoped identities/readiness; committed graph/topology epochs feed
+historical observations. Component tests cover live/frozen ramp continuity and
+smoothing identity. The connected fixed-stall case passes 5,217 exact stereo
+frames across two service pauses, including relocated ramp addresses, preserved
+initial TP time, repeat-sync delivery and a historical epoch-stamped query.
+Runtime signal/monitoring controls, bulk reads, application service migration,
+firmware/codec integration and final workload/timing qualification remain open.

@@ -62,7 +62,7 @@ module audio_actions #(
         && request_data[127:64] == nonce && 32'(request_address) == written && written < stage_count
         && {16'b0,request_data[15:0]} < 32'(SLOTS) && request_data[47:16] != 0;
     wire [63:0] effective=selected_row[96:33] < cut_frame ? cut_frame : selected_row[96:33];
-    wire [W-1:0] cost=selected_row[168:161] == 5 ? W'(ACTIVATION_WORK)
+    wire [W-1:0] cost=selected_row[168:161] == 5 || selected_row[168:161] == 17 || selected_row[168:161] == 18 ? W'(ACTIVATION_WORK)
         : selected_row[168:161] == 6 ? W'(128) : W'(16);
     wire unused=&{1'b0,host_data[639:576],host_state,node_data[15:0]};
     assign busy=phase != IDLE;

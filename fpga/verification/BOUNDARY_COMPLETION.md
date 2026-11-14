@@ -544,8 +544,48 @@ mutable current state, scope/error precedence, empty exports, borrowed cursor
 retirement, word bounds and generation/session reset. Managed raw mutations
 return Unsupported without dispatching around ownership or faulting audio.
 
-Current real-pipeline query fixtures use initial parameter and activation epoch
-values. Canonical mutable DSP state and actual graph/topology activation counters,
-bounded bulk reads, the real application/mono service split and near-capacity
-migration remain open. These connected tests are not M5 completion or physical
-qualification. Final timing and ARM firmware/codec integration remain required.
+The original query fixtures use initial parameter and activation epoch values.
+The following checkpoint adds actual canonical configuration/activation work.
+Bounded bulk reads, runtime signal/monitoring controls, the real application/mono
+service split and near-capacity migration remain open. These connected tests are
+not M5 completion or physical qualification. Final timing and ARM firmware/codec
+integration remain required.
+
+## Canonical configuration and actual activation checkpoint
+
+The managed wrapper now connects independent inactive image banks, a canonical
+parameter/binding owner, stage identity/readiness guards and a bounded activation
+executor to resident initial/graph actions. Public graph and topology epochs
+advance only on successful device completion. Private host configuration can
+upload immutable bindings and guards; it cannot dispatch retiming/activation
+suboperations around resident ownership.
+
+Component comparisons use the real State Processor for full-range ramp
+evaluation, first-binding retiming, writes to duplicate bindings, ordered
+last-binding snapshots, frozen dropped keys, changed smoothing buffer bases and
+LinearRestart(0) identity. Stage checks compare error precedence and epochs with
+production PreparedGraphs, including cancellation/release/reuse and delayed or
+refused backend completion.
+
+The connected continuous-audio case passes 5,217 exact stereo frames with fixed
+memory stalls. Initial activation at frame 2,048 preserves advancing TP time;
+graph activation at 4,096 relocates live ramp bindings without discontinuity.
+Two service pauses cover the actual activations. A resident repeat-sync change
+and a historical query verify the committed graph/topology epochs (2/1).
+An additional 5,217-frame case activates a graph before initial activation:
+the initial cut restarts from canonical fields, subsequent graph activation
+retains live progress, TP time stays continuous, and the final epochs are 3/1.
+The first run's frame assertion compared a completed TP frame with input frames
+including an in-flight quantum; audio already matched. The corrected check uses
+the actual process sequence and retains the first log.
+
+The normal wrapper and the managed one-loop/16-native/256-public-row profile
+pass strict lint and generic inference. Nine image/configuration cases pass
+across the main sweep and targeted initial-activation reruns; six native/control/
+query regressions pass, including the 1,312-quantum Instant audio case. The prior
+unchanged fixed/DRAM and full-size M4 continuous cases were not rerun.
+The replay sources and logs are in
+[`canonical-configuration`](../audio_io/measurements/canonical-configuration/).
+Resource/timing and
+deadline qualification of the final integrated runtime remain pending. This
+checkpoint does not migrate the application callback or ARM firmware.

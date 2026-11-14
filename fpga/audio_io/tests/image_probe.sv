@@ -1,6 +1,6 @@
 `include "state_processor_defs.svh"
 module image_probe #(
-    parameter integer PROGRAM_DEPTH=16, STATE_DEPTH=8, JOB_DEPTH=16, INITIAL_STATES=2
+    parameter integer PROGRAM_DEPTH=16, STATE_DEPTH=8, JOB_DEPTH=16, INITIAL_STATES=2, BANKS=1, CANONICAL=0
 ) (
     input wire clk, input wire reset,
     input wire request_valid, output wire request_ready,
@@ -16,7 +16,7 @@ module image_probe #(
     wire [128:0] cfg_write_data, cfg_read_data;
     wire override_counts;
     wire [31:0] instructions, states, jobs, buffers;
-    audio_image #(.PROGRAM_DEPTH(PROGRAM_DEPTH),.STATE_DEPTH(STATE_DEPTH),.JOB_DEPTH(JOB_DEPTH),.BUFFERS(8)) image (
+    audio_image #(.PROGRAM_DEPTH(PROGRAM_DEPTH),.STATE_DEPTH(STATE_DEPTH),.JOB_DEPTH(JOB_DEPTH),.BUFFERS(8),.BANKS(BANKS),.CANONICAL(CANONICAL)) image (
         .clk(clk),.reset(reset),.execution_idle(!busy && !run_valid),.current_state_count(32'(INITIAL_STATES)),
         .request_valid(request_valid),.request_ready(request_ready),.request_opcode(request_opcode),
         .request_state(request_state),.request_address(request_address),.request_data(request_data),

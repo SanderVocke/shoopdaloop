@@ -301,3 +301,52 @@ cancel, collect and membership/repeat mutation, and for raw active image/ramp
 writes or legacy resident actions. They cannot bypass the private resident owner.
 Status, staging uploads, native public commands and record reads remain service
 operations. Full replies, held records and a stopped reader leave audio runnable.
+
+## Canonical configuration profile
+
+The managed profile has two inactive image banks; the diagnostic profile keeps
+one. BEGIN/STATUS select a bank by address. Upload tokens and activation nonces
+include the bank in their low bit and advance monotonically without reuse.
+Consuming one bank leaves the other staged image intact. Ordinary activation
+still checks the active image version and copy map. Private canonical activation
+requires a complete map-free image and independent stage preflight.
+
+Configuration **49** uploads canonical keys and immutable binding maps. Its
+payload is opcode u8 at 0, key u16 at 8, bank bit 24, nonce u64 at 32, count/index
+u32 at 96, state address u16 at 128, value 129 bits at 144, target i32 at 273
+and duration u32 at 305. Host operations are seed (0, before initial load),
+begin map (1), append ramp (2), read key (7), validate map (8), and append
+smoothing word (10). Other suboperations return Unsupported. Active retiming,
+snapshotting and activation are private fabric operations. Ordered map uploads
+are bounded by STATE_DEPTH and checked before addresses are narrowed.
+
+Canonical keys preserve inactive ramps. Retiming reads the first active binding
+at the actual cut, evaluates full-range Q8.24 progress, and writes all bindings.
+Graph activation snapshots old bindings in order (the last duplicate wins),
+patches the staged image from canonical state, installs it, then rebuilds active
+bindings. Smoothing entries combine the new compiled buffer base with current
+smoothing frames. The distinct None/LinearRestart(0) state remains observable.
+
+Configuration **50** installs/releases immutable stage guards; its suboperation
+is the byte at 632. Graph stage/release are 0/1, pair ready/cancel/recycle 2/3/4,
+topology ready/cancel/recycle 5/6/7. Shared constructors encode complete scoped
+identities. The device retains generation, readiness and validated graph epoch;
+ARM construction does not authorize a future activation after release/reuse.
+
+Native **17 INITIAL** and **18 GRAPH** preflight epochs, identities and readiness
+in application error order. Their executor checks the complete image/map and,
+for INITIAL, the actual empty TP and supported primitive specification before
+changing active state. Graph activation snapshots old bindings; initial
+activation installs canonical fields without snapshotting an earlier program's
+elapsed progress. Patch/install/map-swap and INITIAL_LOOP then finish without
+another ARM transfer. Unexpected failure after checked mutation
+faults the session. Successful activation advances the actual graph epoch;
+INITIAL also advances topology epoch and preserves the running TP frame.
+Results retain tag 7/6 and the committed identities/epochs. Native **15 REPEAT**
+checks the actual loop identity and applies its repeat bit before PROCESS.
+
+Canonical activation work is conservatively charged as
+`48*STATE_DEPTH + 6*PROGRAM_DEPTH + 256`; the managed action controller uses a
+32,000-cycle work allowance and 65,536-cycle watchdog. These bounds include map
+and state-copy work. Final workload admission/deadline qualification and routed
+timing remain open; the watchdog alone is not an audio deadline guarantee.
