@@ -153,6 +153,34 @@ fn invalid_target_rejects_whole_batch_and_exclusive_mode_blocks_legacy_edits() {
     );
     h.run(16, 16);
     assert_eq!(gain(&mut h), 0.25);
+    use shoop_rt_transport::carrier::{Endpoint, Outbox};
+    let mut out = Outbox::new(1, 1, 1);
+    out.push(EngineMessage::SnapshotReady { sequence: 0 })
+        .unwrap();
+    assert_no_heap(|| {
+        h.host.endpoint().deliver(
+            ClientMessage::Request {
+                correlation: u64::MAX,
+                request: Request::LoopGain {
+                    loop_id: loop_id(0, 1),
+                    gain: 0.75,
+                },
+            },
+            &mut out,
+        )
+    });
+    assert_eq!(
+        out.pop(),
+        Some(EngineMessage::SnapshotReady { sequence: 0 })
+    );
+    assert_no_heap(|| h.host.endpoint().poll(&mut out));
+    assert_eq!(
+        out.pop(),
+        Some(EngineMessage::Result {
+            correlation: u64::MAX,
+            outcome: Outcome::Refused(Refusal::Busy)
+        })
+    );
 }
 
 #[shoop_test]

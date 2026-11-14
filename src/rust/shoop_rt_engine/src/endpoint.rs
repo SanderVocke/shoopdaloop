@@ -1660,10 +1660,14 @@ impl Endpoint for ControlEndpoint {
                 if self.immediate.active
                     && !matches!(request, Request::Diagnostic(_) | Request::CancelBulk)
                 {
-                    let _ = out.push(EngineMessage::Result {
-                        correlation,
-                        outcome: Outcome::Refused(Refusal::Busy),
-                    });
+                    if self
+                        .results
+                        .push((correlation, Outcome::Refused(Refusal::Busy)))
+                        .is_err()
+                    {
+                        self.protocol_error = true;
+                    }
+                    self.flush(out);
                     return;
                 }
                 if self.unanswered >= self.limits.reliable_credits as usize || self.queue.is_full()
