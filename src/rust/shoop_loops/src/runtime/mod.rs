@@ -33,8 +33,10 @@ pub use shared::{
     CandidateId, CandidateStatus, HistoryId, HistorySettings, HistoryStatus, LiveWriterId,
     SharedCapacity, SharedSettings, SharedTake, SharedWork,
 };
+mod immediate;
 mod node_pairs;
 mod planner;
+pub use immediate::Immediate;
 mod processor;
 mod topology;
 use crate::topology::staging::{Progress, StageId, Status};

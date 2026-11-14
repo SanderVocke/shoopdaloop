@@ -58,6 +58,7 @@ pub struct TestEndpoint {
 impl Endpoint for TestEndpoint {
     fn deliver(&mut self, message: ClientMessage, out: &mut Outbox) {
         let answer = match message {
+            ClientMessage::Immediate(_) => return,
             ClientMessage::Hello { version } if version == PROTOCOL_VERSION => {
                 EngineMessage::Welcome {
                     version,

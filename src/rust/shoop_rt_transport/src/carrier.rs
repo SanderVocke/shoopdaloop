@@ -277,30 +277,41 @@ impl<E: Endpoint, P: RecordPort> RecordServer<E, P> {
         &mut self.endpoint
     }
 
+    fn fail(&mut self, error: CarrierError) {
+        self.pending = None;
+        self.failure = Some(error);
+        self.endpoint
+            .deliver(ClientMessage::Goodbye, &mut self.outbox);
+    }
+
     /// Deliver up to `max_records` received records, poll the endpoint and post its
     /// output until the port is full.
     pub fn pump(&mut self, max_records: usize) {
+        if self.failure.is_some() {
+            return;
+        }
         if let Some(error) = self.port.failure() {
-            self.pending = None;
-            self.failure = Some(error);
+            self.fail(error);
             return;
         }
         for _ in 0..max_records {
             if let Some(message) = self.pending.take() {
                 match self.endpoint.try_deliver(message, &mut self.outbox) {
-                    Ok(()) => {}
+                    Ok(()) => continue,
                     Err(CarrierError::Full) => {
                         self.pending = Some(message);
                         break;
                     }
                     Err(error) => {
-                        self.failure = Some(error);
+                        self.fail(error);
                         break;
                     }
                 }
             }
             let Some(len) = self.port.take(&mut self.buf) else {
-                self.failure = self.failure.or_else(|| self.port.failure());
+                if let Some(error) = self.port.failure() {
+                    self.fail(error);
+                }
                 break;
             };
             match codec::decode_client(&self.buf[..len]) {
@@ -311,19 +322,22 @@ impl<E: Endpoint, P: RecordPort> RecordServer<E, P> {
                         break;
                     }
                     Err(error) => {
-                        self.failure = Some(error);
+                        self.fail(error);
                         break;
                     }
                 },
                 Err(error) => {
-                    self.failure = Some(CarrierError::Codec(error));
+                    self.fail(CarrierError::Codec(error));
                     let _ = self
                         .outbox
                         .push(EngineMessage::Disconnected(DisconnectReason::ProtocolError));
+                    break;
                 }
             }
         }
-        self.endpoint.poll(&mut self.outbox);
+        if self.failure.is_none() {
+            self.endpoint.poll(&mut self.outbox);
+        }
         while let Some(message) = self.outbox.pop() {
             let len = match codec::encode_engine(&message, &mut self.buf) {
                 Ok(len) => len,
@@ -331,7 +345,8 @@ impl<E: Endpoint, P: RecordPort> RecordServer<E, P> {
             };
             if let Err(error) = self.port.post_on_lane(&self.buf[..len], message.lane()) {
                 if error != CarrierError::Full {
-                    self.failure = Some(error);
+                    self.fail(error);
+                    break;
                 }
                 self.outbox.unpop(message);
                 break;

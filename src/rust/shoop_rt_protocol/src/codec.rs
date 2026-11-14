@@ -1722,6 +1722,13 @@ impl Wire for crate::MemoryReport {
 impl Wire for Telemetry {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
+            Self::Immediate(d) => {
+                w.u8(7)?;
+                w.u32(d.control_refused)?;
+                w.u32(d.rt_refused)?;
+                w.u8(d.last_control)?;
+                w.u8(d.last_rt)
+            }
             Self::Memory(report) => {
                 w.u8(6)?;
                 report.put(w)
@@ -1827,6 +1834,12 @@ impl Wire for Telemetry {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            7 => Self::Immediate(crate::immediate::Diagnostics {
+                control_refused: r.u32()?,
+                rt_refused: r.u32()?,
+                last_control: r.u8()?,
+                last_rt: r.u8()?,
+            }),
             6 => Self::Memory(crate::MemoryReport::get(r)?),
             5 => Self::Composite {
                 loop_id: LoopSlotId::get(r)?,

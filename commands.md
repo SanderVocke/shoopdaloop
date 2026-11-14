@@ -276,12 +276,12 @@ the synchronized playback case was delivered or tested.
   choices cover the acceptance criteria. Identify any application dependency on
   execution confirmation; specify a simple snapshot observation or document and
   defer the affected command.
-- [ ] **2. Implement the bounded transports.** Add the dedicated UI message,
+- [x] **2. Implement the bounded transports.** Add the dedicated UI message,
   nonblocking submission API, control buffering, and immediate FIFO with atomic
   whole-batch publication. Verify full-queue refusal/backpressure, producer
   publication racing the cutoff, FIFO ordering, and bounded draining. Confirm
   that neither bridge allocates application request/cancellation records.
-- [ ] **3. Connect scalar and playback execution.** Add complete-batch preflight,
+- [x] **3. Connect scalar and playback execution.** Add complete-batch preflight,
   immediate application and settlement, diagnostics, and application submission.
   Enforce the experiment's graph/media and legacy-routing restrictions. Smoke-test
   scalar changes, stale configuration and generation rejection, invalid-batch
@@ -328,7 +328,7 @@ Execution is authorized. The implementation uses these concrete bounds:
   snapshot capture. No tick means no dequeue. Preflight examines at most 32
   targets plus a bounded pairwise check for duplicate playback transitions.
 - The experimental session latches on the first group accepted while legacy
-  work is idle. Thereafter legacy mutation requests are refused; snapshot,
+  work is idle. Thereafter legacy mutation requests are refused (diagnostics and bulk-read cancellation remain allowed); snapshot,
   resynchronization, diagnostics and bulk-read traffic remain available. The
   latch survives disconnect, preventing previously RT-admitted work from racing
   graph/media changes after reconnect. Reprepare the engine to leave this first
@@ -345,3 +345,42 @@ The four-batch service allowance is an explicit experimental bound, not a proven
 hard deadline on all supported machines. Focused release timing will report the
 measured cost; deployments must validate their audio period and session size
 before raising these limits.
+
+
+## Implemented API and scope
+
+`shoop_rt_backend::RtBackend::immediate_group(&[ImmediateCommand])` is the explicit
+application entry point. It resolves existing application loop/track/bus identities
+through the retained mirror and uses the active snapshot configuration. Gains use
+linear amplitude and balances use -1 through 1. It returns immediately with local
+acceptance or refusal; it does not advance the mutation cursor, reserve reliable
+request credits, or wait for execution. Ordinary `Backend` mutation methods retain
+their legacy behavior outside the experiment.
+
+At the protocol boundary, `ClientMessage::Immediate(Batch)` carries one complete
+group. `ProtocolClient::immediate` sends it without a correlation. Custom carriers
+must call `Endpoint::try_deliver` to propagate `Full`; the in-process carrier,
+record server, and native process wrapper do this. Encoded records use the existing
+little-endian codec; Rust object layout is not a hardware ABI. Protocol version is
+29. `rt_runtime::immediate` contains only the generic FIFO and processing-boundary
+hook; engine and loop semantics live in their own `immediate` modules.
+
+Playback is included. It restarts at zero or stops without creating resolver
+request records. Control checks the retained strip configuration is primitive
+and audio-only; RT checks actual prepared audio, empty MIDI content, current
+stopped/playing mode, and absence of pending musical/program work, recording
+storage, failures, or repeat-sync behavior. MIDI-capable, processed/dry-wet,
+composite, recording and repeat-sync playback remain outside this first set.
+There is no legacy fallback inside a group.
+
+The first accepted group latches the stable-session restriction. Reprepare the
+engine to resume legacy mutations. The latch persists across reconnects; control
+staging and a record server's blocked message do not. Previously RT-admitted work
+may still execute. This deliberately narrow entry point does not switch every
+ordinary application control to the experiment automatically.
+
+Snapshots remain the only execution observation. `immediate_diagnostics()` exposes
+cumulative control and RT refusal counts plus compact classifications (unavailable,
+configuration, target, unsupported state, invalid value). Diagnostics are resent
+on new callback frames so lossy telemetry cannot permanently hide a changed count.
+They carry no command identity and do not establish individual command history.

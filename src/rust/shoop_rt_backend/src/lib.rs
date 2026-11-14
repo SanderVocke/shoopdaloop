@@ -40,6 +40,7 @@ mod capture;
 mod clock;
 mod composites;
 mod family;
+mod immediate;
 mod import;
 mod incoming;
 mod input;
@@ -54,6 +55,7 @@ mod reads;
 mod requests;
 mod session;
 mod snapshots;
+pub use immediate::ImmediateCommand;
 mod timing;
 pub use snapshots::SnapshotDelivery;
 
@@ -92,6 +94,7 @@ enum Link {
 
 #[derive(Clone, Copy, Debug, Default)]
 struct Status {
+    immediate: shoop_rt_protocol::immediate::Diagnostics,
     memory: Option<shoop_rt_protocol::MemoryReport>,
     frame: u64,
     callbacks: u64,

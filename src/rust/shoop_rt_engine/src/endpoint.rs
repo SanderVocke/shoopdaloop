@@ -161,6 +161,7 @@ impl Work {
 }
 
 pub struct ControlEndpoint {
+    pub(crate) immediate: crate::immediate::Control,
     pub(crate) snapshots: crate::snapshots::State,
     pub(crate) projected_timing: Box<[Option<(LoopSlotId, shoop_rt_protocol::TimingState)>]>,
     pub(crate) projected_recorded: Box<[Option<(LoopSlotId, u64, bool)>]>,
@@ -573,6 +574,7 @@ impl ControlEndpoint {
 
     fn reset_connection(&mut self) {
         self.connected = false;
+        self.immediate.disconnect();
         self.queue.clear();
         self.results.clear();
         self.unanswered = 0;
@@ -1591,8 +1593,31 @@ impl ControlEndpoint {
 }
 
 impl Endpoint for ControlEndpoint {
+    fn try_deliver(
+        &mut self,
+        message: ClientMessage,
+        out: &mut Outbox,
+    ) -> Result<(), shoop_rt_transport::carrier::CarrierError> {
+        if let ClientMessage::Immediate(batch) = message {
+            if self.immediate.full() {
+                return Err(shoop_rt_transport::carrier::CarrierError::Full);
+            }
+            self.deliver_immediate(batch);
+        } else {
+            self.deliver(message, out);
+        }
+        Ok(())
+    }
+
     fn deliver(&mut self, message: ClientMessage, out: &mut Outbox) {
         match message {
+            ClientMessage::Immediate(batch) => {
+                if self.immediate.full() {
+                    self.immediate.refuse(1);
+                } else {
+                    self.deliver_immediate(batch);
+                }
+            }
             ClientMessage::Hello { version } => {
                 if self.cells.faulted.load(Ordering::Relaxed) {
                     let _ = out.push(EngineMessage::Disconnected(DisconnectReason::Fault));
@@ -1629,6 +1654,15 @@ impl Endpoint for ControlEndpoint {
                     let _ = out.push(EngineMessage::Result {
                         correlation,
                         outcome: Outcome::Refused(Refusal::NotConnected),
+                    });
+                    return;
+                }
+                if self.immediate.active
+                    && !matches!(request, Request::Diagnostic(_) | Request::CancelBulk)
+                {
+                    let _ = out.push(EngineMessage::Result {
+                        correlation,
+                        outcome: Outcome::Refused(Refusal::Busy),
                     });
                     return;
                 }
@@ -1680,6 +1714,7 @@ impl Endpoint for ControlEndpoint {
             return;
         }
         self.drain_runtime();
+        self.immediate.advance();
         self.forced_monitoring(None);
         self.advance_job();
         self.refresh_snapshot_timing();
@@ -1697,6 +1732,10 @@ impl Endpoint for ControlEndpoint {
         self.project_timing(out);
         self.telemetry(out);
         self.project_snapshots(out);
+        if self.connected {
+            let frame = self.next_frame().0;
+            self.immediate.project(out, frame);
+        }
         self.forward_profiling(out);
     }
 }
@@ -1704,5 +1743,63 @@ impl Endpoint for ControlEndpoint {
 impl Drop for ControlEndpoint {
     fn drop(&mut self) {
         self.cells.endpoint_alive.store(false, Ordering::Relaxed);
+    }
+}
+
+impl ControlEndpoint {
+    fn deliver_immediate(&mut self, batch: shoop_rt_protocol::immediate::Batch) {
+        if !self.connected || self.cells.faulted.load(Ordering::Relaxed) {
+            self.immediate.refuse(1);
+            return;
+        }
+        if !batch.valid() {
+            self.immediate.refuse(5);
+            return;
+        }
+        if (batch.graph, batch.topology) != (self.graph_epoch.0, self.topology_epoch.0) {
+            self.immediate.refuse(2);
+            return;
+        }
+        for command in batch.commands() {
+            if let Some(id) = command.playback() {
+                let supported = self
+                    .model
+                    .loops
+                    .get(id.0.index as usize)
+                    .and_then(|v| *v)
+                    .filter(|l| l.id == id)
+                    .and_then(|l| l.strip)
+                    .and_then(|s| self.model.strip(s))
+                    .is_some_and(|s| {
+                        !s.shape.midi_input
+                            && !s.shape.midi_output
+                            && !s.default_dry
+                            && s.processor.is_none()
+                    });
+                if !supported {
+                    self.immediate.refuse(4);
+                    return;
+                }
+            }
+        }
+        if !self.immediate.active {
+            let stable = self.is_idle()
+                && self.planned.iter().flatten().all(Option::is_none)
+                && self.input.idle()
+                && self.family.id.is_none()
+                && self.composite.description.is_none()
+                && self.cells.loops.iter().all(|cell| {
+                    matches!(
+                        mode_from_code(cell.mode.load(Ordering::Relaxed)),
+                        Mode::Stopped | Mode::Playing
+                    )
+                });
+            if !stable {
+                self.immediate.refuse(1);
+                return;
+            }
+            self.immediate.active = true;
+        }
+        self.immediate.submit(batch);
     }
 }

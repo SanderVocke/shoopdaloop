@@ -185,6 +185,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
 
     pub(crate) fn telemetry(&mut self, record: Telemetry) {
         match record {
+            Telemetry::Immediate(diagnostics) => self.status.immediate = diagnostics,
             Telemetry::Memory(report) => self.status.memory = Some(report),
             Telemetry::Composite { .. } => self.composite_telemetry(record),
             Telemetry::Preview { request_id } => self.preview_playing = request_id,

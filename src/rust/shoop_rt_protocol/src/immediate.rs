@@ -4,6 +4,17 @@ pub const COMMANDS: usize = 32;
 pub const FIFO_BATCHES: usize = 4;
 pub const STAGED_BATCHES: usize = 4;
 
+/// Cumulative refusals, never a receipt for an individual group.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct Diagnostics {
+    pub control_refused: u32,
+    pub rt_refused: u32,
+    /// 0: none, 1: unavailable/busy, 2: configuration, 3: target,
+    /// 4: unsupported state, 5: invalid value.
+    pub last_control: u8,
+    pub last_rt: u8,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Command {
     LoopGain(LoopSlotId, f32),
