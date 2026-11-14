@@ -1,4 +1,4 @@
-# Fabric control batches, ABI 2
+# Fabric control batches, ABI 3
 
 The 746-bit ingress carries complete control batches. This replaces the old
 per-quantum fence protocol; old marker opcode zero is rejected. The TP action
@@ -10,7 +10,7 @@ provide its required retained admission/query replies.
 | --- | --- | --- |
 | 745:682 | Earliest logical quantum | Same quantum tag as its header |
 | 681:680 | 2 | 0: TP command; 1: configuration operation |
-| 679:672 | 0xa2, including ABI 2 | TP or configuration opcode |
+| 679:672 | 0xa3, including ABI 3 | TP or configuration opcode |
 | 671:640 | Number of following operations, 1 through DEPTH−1 | TP index; or state-select bit 31 plus address bits 15:0 |
 | 639:0 | Batch identity in low 64 bits; remainder reserved | TP payload; configuration uses its specified payload fields |
 
@@ -176,22 +176,54 @@ duplicate protection until collection.
 | --- | --- | --- |
 | 0x80, 0x85, 0x86, 0x88 INSTALL | Operation address is action slot; native payload 224 bits at 0, requested frame u64 at 384, sequence u64 at 448, generation u32 at 512, native address u16 at 544, native state bit at 560 | Private row |
 | 16 BEGIN_ORDER | Expected active version u64 at 0, count u32 at 64 | Fresh nonce u64 |
-| 17 ORDER_NODE | Ordered operation address; action slot u16 at 0, generation u32 at 16, nonce u64 at 64 | Zero |
+| 17 ORDER_NODE | Ordered operation address; action slot u16 at 0, generation u32 at 16, nonce u64 at 64; cancellation target slot u16 at 128, generation u32 at 144 | Zero |
 | 18 COMMIT_ORDER | Nonce u64 at 0 | New version u64 at 0, actual publication frame u64 at 64 |
 | 19 READ_ACTION | Action slot address, generation u32 at 0 | Retained row |
 | 20 COLLECT_ACTION | Same; requires terminal | Retained row, then advances generation |
 | 21 ORDER_STATUS | No payload | Count/version/nonce/frame u64 at 0/64/128/192; staging bit at 256 |
 | 22 ABORT_PRIVATE | Slot address and generation; refuses published rows | Private row, then advances generation |
 | 23 CANCEL_ACTION | Slot address and generation; retains terminal | Terminal row |
+| 24 PAYLOAD_PRIVATE | Slot address; generation u32 at 0, native payload 512 bits at 64 | Private row |
 
-A 480-bit resident row contains valid at 0, generation u32 at 1, effective frame
-u64 at 33, sequence u64 at 97, native opcode u8 at 161, native state bit at 169,
-native address u16 at 170, terminal bit at 186, error u4 at 187, terminal frame
-u64 at 191, payload 224 bits at 255 and published bit at 479. A pending row holds
-the immutable native input; a terminal holds its 129-bit reply and zero high bits.
-Cancellation uses terminal error 11; transport errors remain 0–10. The original
-request/frame stays in ARM storage for reconstruction. Terminal payloads remain
-until collection and no background cleanup is needed.
+A 768-bit resident row contains valid at 0, generation u32 at 1, effective frame
+u64 at 33, sequence u64 at 97, native opcode u8 at 161, state bit at 169,
+address/flags u16 at 170, terminal bit at 186, native error u4 at 187, terminal
+frame u64 at 191, payload 512 bits at 255 and published bit at 767. Legacy
+configuration actions retain zero padding above their native input/reply. Their
+cancellation uses terminal error 11; transport errors remain 0–10. Native public
+results instead use the payload's tag byte at bit 504. ARM retains the original
+request/frame for reconstruction. Terminal payloads remain until collection.
+
+With `NATIVE_ACTIONS=1`, INSTALL opcodes `0x89..0x92` reserve public rows for
+transition, clear, cancellation, query, export, release, repeat, parameter, initial
+activation and graph activation. INSTALL writes only the header; PAYLOAD_PRIVATE
+must complete before publication. Publication rejects an incomplete native row
+before changing the active bank. General prepared/demo/board parents currently
+leave this profile disabled; the native public delivery integration remains M5
+work. Do not infer support for those operations in a deployed parent from the
+component's private reservation whitelist.
+
+Each ordered node is 96 bits: its row slot/generation occupies the low 48 bits;
+the cancellation target slot/generation occupies the high 48. The shared ARM
+owner rebuilds these references when publishing a later-admitted target. An
+unknown target has generation zero. Lookup/writeback checks generation and
+sequence, so collected/reused targets cannot alias. The private write guard is
+single-use and acknowledges only after synchronous RAM commit. It cannot change
+row validity, generation or publication identity. No public sequence CAM is
+required in fabric.
+
+The native delivery component uses three device phases: mode 0 delivers before
+PROCESS; mode 1 resolves native outcomes/queries after PROCESS and capture cuts;
+mode 2 collects native execution cells after FINISH. Public results remain
+retained through that native collection. Transition outcomes carry their actual
+TP terminal frame. Future public rows consume native execution cells only at
+delivery, preserving lowest-slot allocation and stop-cancellation behavior.
+Family flags at address bits 1:0 distinguish planner, processor and ordinary
+commands; bit 2 identifies recovery-lane commands. Planner cancellation uses
+public references and distinguishes queued, delivered, terminal, recovery and
+collected targets. Repeated cancellation of a still-pending native request in
+one delivery phase remains idempotent. Public row collection is a separate
+user-receipt lifetime; an ARM copy of a result does not authorize row reuse.
 
 The continuous coordinator reserves a configuration cut before PROCESS. It scans
 at most `ACTION_SLOTS` generation-qualified nodes in published order and executes

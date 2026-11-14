@@ -2,7 +2,7 @@
 use crate::protocol::{get, put};
 use rt_runtime::Error;
 
-pub const ABI: u8 = 2;
+pub const ABI: u8 = 3;
 pub const HEADER_OPCODE: u8 = 0xa0 | ABI;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -24,7 +24,7 @@ impl Completion {
         let opcode = get(words, 838, 8) as u8;
         let cfg_bits = match opcode {
             0..=8 | 16..=18 => 129,
-            19 | 20 | 22 | 23 | 128 | 133 | 134 | 136 => 480,
+            19 | 20 | 22..=24 | 128 | 133 | 134 | 136..=146 => 768,
             21 => 257,
             _ => 0,
         };

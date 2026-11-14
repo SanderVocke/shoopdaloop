@@ -61,7 +61,7 @@ module media_store #(
     output reg [159:0] cfg_read_data
 );
     localparam [3:0] CREATE = 0, SLICE = 1, CLEAR = 2, REMOVE = 3,
-        RECLAIM = 4, APPEND = 5, READ = 6, FENCE = 7;
+        RECLAIM = 4, APPEND = 5, READ = 6, FENCE = 7, SEAL = 11;
     localparam [7:0] OK = 0, INVALID_VIEW = 1, INVALID_STATE = 2,
         MEMORY_FULL = 3, INVALID_SHAPE = 4, MEMORY_FAULT = 5;
     localparam integer SHIFT = $clog2(CHUNK_FRAMES);
@@ -640,6 +640,13 @@ module media_store #(
                     new_chunks <= 0;
                     case (opcode)
                         SLICE: phase <= SLICE_START;
+                        SEAL: begin
+                            if (descriptor[1]) begin error_code<=INVALID_STATE; phase<=FINISH; end
+                            else if (length > frames || offset != 0) begin error_code<=INVALID_VIEW; phase<=FINISH; end
+                            else begin
+                                new_range<=1; new_offset<=0; new_frames<=length; new_chunks<=chunks; phase<=PUBLISH;
+                            end
+                        end
                         CLEAR, REMOVE: begin
                             remaining <= chunks;
                             phase <= (chunks == 0) ? PUBLISH : DETACH_ROOT;

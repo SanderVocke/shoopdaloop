@@ -1,0 +1,14 @@
+{
+  "base_commit": "928d42f830e635d19ae0b91a24947504a3acf2ae",
+  "source_files": 215,
+  "scope": "M5 components, not application or deployed native profile",
+  "models": "Marlin 0.21.1 / Verilator 5.032",
+  "rustc": "1.100.0",
+  "public_rows": 64,
+  "native_cells": 4,
+  "unserviced_quanta": 1040,
+  "retained_future_results": 32,
+  "read_only_test_instrumentation": true,
+  "physical_hardware": false,
+  "initial_failure": "Non-quantum-aligned seek positions in test fixture were correctly refused; corrected valid fixture uses initial play and aligned seeks."
+}

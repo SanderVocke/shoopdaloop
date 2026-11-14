@@ -119,7 +119,7 @@ def prepare(output, q=32, chunk=None, channels=16, monitoring=False, routing="id
         if not step['actions']:
             continue
         if n != 0:
-            events.append(packet(sequence=n, kind=2, opcode=0xa2, index=len(step['actions']), data=n+1))
+            events.append(packet(sequence=n, kind=2, opcode=0xa3, index=len(step['actions']), data=n+1))
         for _ in step['actions']:
             transfer = next(actions)
             word = packet(sequence=n, opcode=transfer['opcode'], index=transfer['index'], data=wire.port_value(transfer['words']))

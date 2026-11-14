@@ -334,6 +334,15 @@ tests. Public query/export wiring, actual session epochs, near-capacity applicat
 migration and callback separation remain open; no stage-4 checkbox is complete.
 See [device-cut evidence](fpga/loop_pipeline/measurements/device-cuts/).
 
+A later component checkpoint separates retained public rows from native execution
+credits. Thirty-two admitted future actions execute over 1,040 quanta with four
+native cells, no ARM owner service/collection and a held host reply; states and
+ordered events match production. Cancellation reasons and frame-preserving
+initialization are covered. In-place capture sealing avoids reference-vector
+copying and passes all four memory modes. This is not public query/export or
+application integration; stage-4/5 boxes remain open.
+See [native ownership](fpga/loop_pipeline/NATIVE_REQUESTS.md).
+
 - [ ] Define coherent frame/epoch/version-stamped observations for state, outcomes,
   capture starts, content changes and query barriers. Define bounded ownership,
   reserved result capacity and how ARM resumes after missed optional telemetry.

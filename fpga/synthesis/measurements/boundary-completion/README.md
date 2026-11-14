@@ -25,6 +25,8 @@ AXI64, Q32 and xc7z020clg400-1, with the same clock and uncertainty.
 | Wide TP reply change | 28,607 | 19,215 | 57.5 | -0.317 / +0.002 |
 | Separate speculative hint selection | 28,508 | 19,288 | 57.5 | -0.194 / +0.016 |
 | Separate manual media grant | 28,638 | 19,478 | 57.5 | -0.290 / +0.009 |
+| Registered speculative hint | 28,213 | 24,715 | 57.5 | -0.266 / +0.008 |
+| Registered DMA logical address | 28,320 | 26,574 | 57.5 | -0.047 / +0.019 |
 
 Later changes can alter placement, replication and the worst path; the results
 are not monotonic. None of these complete-core runs closes timing. The autonomous
@@ -32,8 +34,16 @@ I/O wrapper has additional image, action and reply storage and needs its own
 measurement; it is not included in this older complete-core context. The first
 wrapper route misses setup by 2.105 ns (hold +0.005 ns). Its raw reports are in
 `autonomous-wrapper-m4/`; the registered control/action variant is a later run.
+The registered admission/action wrapper misses setup by 1.170 ns; unconditional
+action-row capture and hint registration improve this to -0.963 ns (hold +0.005
+ns, 35,259 LUT, 33,938 FF, 102 BRAM36). These are earlier M4 wrappers, before
+public native rows/capture integration, and cannot qualify the final M5 system.
+Their sources and negative reports remain in `autonomous-wrapper-pipelined/` and
+`autonomous-wrapper-row-register/`.
 `fullcore-dma-select/` adds registered fill/flush selection and a metadata miss
-phase; it also misses setup (-0.351 ns, hold +0.005 ns). These misses remain open.
+phase; it also misses setup (-0.351 ns, hold +0.005 ns). The later registered DMA address retains full 64-bit validation and adds one
+clock per DMA request; its -0.047 ns setup result still fails the 100 MHz gate.
+These misses remain open.
 
 `reclaimer-equivalence/` proves unbounded sequential equivalence of the budget
 mux restructuring (890/890 equivalence points). Only renamed internal grant

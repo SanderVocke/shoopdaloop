@@ -154,12 +154,15 @@ module loop_pipeline #(
     wire [3:0] cut_error;
     wire ledger_valid, ledger_ready, ledger_done;
     wire [3:0] ledger_opcode;
-    wire [63:0] ledger_view, capture_roots, playback_roots;
+    wire [63:0] ledger_view, ledger_length, capture_roots, playback_roots;
     wire ledger_owns=CAPTURE_CHANNELS != 0 && (phase == PRE_CUT || phase == PRE_CUT_WAIT || phase == POST_CUT || phase == POST_CUT_WAIT);
     wire [7:0] internal_store_error;
     wire [31:0] internal_store_result;
     wire internal_store_done;
-    wire unused_cut=&{1'b0,cut_busy,observe_phase,observed_state,observed_frame,ledger_ready,ledger_done};
+    wire unused_resident_ready,unused_resident_done;
+    wire [3:0] unused_resident_error;
+    wire [831:0] unused_resident_result;
+    wire unused_cut=&{1'b0,unused_resident_ready,unused_resident_done,unused_resident_error,unused_resident_result,cut_busy,observe_phase,observed_state,observed_frame,ledger_ready,ledger_done};
     generate if (CAPTURE_CHANNELS != 0) begin : managed_media
         initial if (LOOP_DEPTH != 1 || REUSE_VIEWS == 0 || CHUNK_FRAMES != 32 || CAPTURE_CHANNELS > 2)
             $fatal(1,"Invalid application capture profile");
@@ -170,12 +173,12 @@ module loop_pipeline #(
             .response_valid(cut_response_valid),.response_error(cut_error),.response_data(cut_snapshot_data),.busy(cut_busy),.fault(cut_fault),
             .capture_view0(capture_roots[31:0]),.capture_view1(capture_roots[63:32]),
             .playback_view0(playback_roots[31:0]),.playback_view1(playback_roots[63:32]),
-            .media_valid(ledger_valid),.media_ready(ledger_ready),.media_opcode(ledger_opcode),.media_view(ledger_view),
+            .media_valid(ledger_valid),.media_ready(ledger_ready),.media_opcode(ledger_opcode),.media_view(ledger_view),.media_length(ledger_length),
             .media_done(ledger_done),.media_error(internal_store_error),.media_result_view(internal_store_result)
         );
     end else begin : unmanaged_media
         assign cut_request_ready=0; assign cut_response_valid=0; assign cut_error=0; assign cut_fault=0; assign cut_busy=0;
-        assign capture_roots=0; assign playback_roots=0; assign ledger_valid=0; assign ledger_opcode=0; assign ledger_view=0;
+        assign capture_roots=0; assign playback_roots=0; assign ledger_valid=0; assign ledger_opcode=0; assign ledger_view=0; assign ledger_length=0;
         assign cut_snapshot_data=0;
     end endgenerate
     assign cut_snapshot_valid=cut_response_valid && cut_error == 0;
@@ -232,8 +235,8 @@ module loop_pipeline #(
         .observe_valid(observe_valid),.observe_ready(observe_ready),.observe_kind(2'b0),.observe_index(32'b0),
         .observe_response_valid(observe_response_valid),.observe_response_error(observe_response_error),
         .observe_frame(observe_frame),.observe_phase(observe_phase),.observe_data(observe_data),
-        .resident_valid(1'b0),.resident_ready(),.resident_opcode(8'b0),.resident_index(32'b0),.resident_data(640'b0),
-        .resident_done(),.resident_error(),.resident_result(),
+        .resident_valid(1'b0),.resident_ready(unused_resident_ready),.resident_opcode(8'b0),.resident_index(32'b0),.resident_data(640'b0),
+        .resident_done(unused_resident_done),.resident_error(unused_resident_error),.resident_result(unused_resident_result),
         .configured_quantum(configured_quantum)
     );
     wire maintenance_start = (run_valid && run_ready && phase != BOUNDARY)
@@ -270,7 +273,7 @@ module loop_pipeline #(
         .arena_base((phase == IDLE || phase == FAULT || phase == BOUNDARY) ? arena_base : quantum_arena),
         .store_cmd_valid(ledger_owns ? ledger_valid : CAPTURE_CHANNELS == 0 && store_cmd_valid && configure), .store_cmd_ready(host_store_cmd_ready),
         .store_cmd_opcode(ledger_owns ? ledger_opcode : store_cmd_opcode), .store_cmd_view(ledger_owns ? ledger_view : store_cmd_view),
-        .store_cmd_start(ledger_owns ? 64'b0 : store_cmd_start), .store_cmd_length(ledger_owns ? 64'b0 : store_cmd_length),
+        .store_cmd_start(ledger_owns ? 64'b0 : store_cmd_start), .store_cmd_length(ledger_owns ? ledger_length : store_cmd_length),
         .store_cmd_count(ledger_owns ? 32'b0 : store_cmd_count),
         .store_busy(store_busy), .store_done(internal_store_done), .store_error_code(internal_store_error),
         .store_result_view(internal_store_result), .store_result_empty(store_result_empty),

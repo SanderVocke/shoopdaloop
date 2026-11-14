@@ -134,7 +134,53 @@
     audio_events #(.WORDS(EVENT_WORDS),.FILE_NAME(EVENT_FILE)) events (
         .clk(clk),.reset(core_reset),.enable(running),.valid(control_valid),.ready(control_ready),.data(control_data)
     );
+    wire unused_action_resident_valid;
+    wire [7:0] unused_action_resident_opcode;
+    wire [511:0] unused_action_resident_data;
+    wire [63:0] unused_action_resident_sequence;
+    wire [63:0] unused_action_resident_frame;
+    wire [47:0] unused_action_resident_reference;
+    wire [15:0] unused_action_resident_slot;
+    wire [31:0] unused_action_resident_generation;
+    wire [1:0] unused_action_resident_mode;
+    wire unused_action_lookup_ready;
+    wire unused_action_lookup_done;
+    wire [3:0] unused_action_lookup_error;
+    wire [767:0] unused_action_lookup_data;
+    wire unused_action_update_ready;
+    wire unused_action_update_done;
+    wire [3:0] unused_action_update_error;
+    wire unused_action_private=&{1'b0,unused_action_resident_valid,unused_action_resident_opcode,unused_action_resident_data,unused_action_resident_sequence,unused_action_resident_frame,unused_action_resident_reference,unused_action_resident_slot,unused_action_resident_generation,unused_action_resident_mode,unused_action_lookup_ready,unused_action_lookup_done,unused_action_lookup_error,unused_action_lookup_data,unused_action_update_ready,unused_action_update_done,unused_action_update_error};
     audio_actions #(.SLOTS(128),.QUANTUM(MAX_FRAMES),.ACTIVATION_WORK(10*STATE_DEPTH+4*PROGRAM_DEPTH+32)) actions (
+        .resident_valid(unused_action_resident_valid),
+        .resident_opcode(unused_action_resident_opcode),
+        .resident_data(unused_action_resident_data),
+        .resident_sequence(unused_action_resident_sequence),
+        .resident_frame(unused_action_resident_frame),
+        .resident_reference(unused_action_resident_reference),
+        .resident_slot(unused_action_resident_slot),
+        .resident_generation(unused_action_resident_generation),
+        .resident_mode(unused_action_resident_mode),
+        .lookup_ready(unused_action_lookup_ready),
+        .lookup_done(unused_action_lookup_done),
+        .lookup_error(unused_action_lookup_error),
+        .lookup_data(unused_action_lookup_data),
+        .update_ready(unused_action_update_ready),
+        .update_done(unused_action_update_done),
+        .update_error(unused_action_update_error),
+        .cut_mode(2'b0),
+        .resident_ready(1'b0),
+        .resident_done(1'b0),
+        .resident_pending(1'b0),
+        .resident_error(4'b0),
+        .resident_result(512'b0),
+        .lookup_valid(1'b0),
+        .lookup_slot(16'b0),
+        .update_valid(1'b0),
+        .update_slot(16'b0),
+        .update_generation(32'b0),
+        .update_data(768'b0),
+
         .clk(clk),.reset(core_reset),.current_frame(quantum*64'(MAX_FRAMES)),
         .cut_start(action_start),.cut_done(action_done),.busy(action_busy),.fault(action_fault),
         .request_valid(queued_cfg_valid),.request_ready(queued_cfg_ready),.request_opcode(queued_cfg_opcode),

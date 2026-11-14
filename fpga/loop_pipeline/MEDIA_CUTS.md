@@ -10,8 +10,8 @@ The application/mono Rust consumers have not migrated to this profile yet.
 owns eight content cells and four export leases, matching the current adapter.
 Before sample execution it chooses playback and allocates any new recording
 roots. After FINISH it records the exact completed capture length. A completed
-take keeps its actual roots; there is no Slice or walk over its block references
-at finalization. Beginning another take creates fresh mutable roots. Removing an
+take validates its materialized length and seals its actual roots read-only in
+place; there is no Slice or walk over its block references at finalization. Beginning another take creates fresh mutable roots. Removing an
 unused completed take detaches those roots and uses the existing bounded
 background reclaimer. Validity, lowest-free reuse, checked generations, bank
 revision accounting and error ordering remain explicit.
@@ -20,8 +20,9 @@ The sample pipeline maps logical channel IDs to the ledger's capture/playback
 roots. It range-checks the whole logical ID before narrowing it. Read hints use
 playback roots; capture and BeginCapture use the new recording roots. Raw host
 media mutation/configuration is disabled in this profile. Completed roots are
-private: the eventual bulk-read service must validate an export lease before
-reading them and cannot write them. General kernel profiles retain their raw
+private: the eventual bulk-read service must validate its content identity and
+reserve temporary ownership before reading them; it cannot write them. Borrowed
+cursors must retain their existing content-lifetime semantics after export release. General kernel profiles retain their raw
 store operations. The current coordinator runs with observation epoch zero;
 final application/transport epoch wiring remains open.
 

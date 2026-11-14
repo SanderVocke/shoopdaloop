@@ -15,3 +15,5 @@ mod tests;
 pub mod transition_service;
 
 pub mod engine;
+
+pub mod resident;

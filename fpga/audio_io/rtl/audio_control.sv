@@ -17,7 +17,7 @@ module audio_control #(
     output wire [7:0] cfg_opcode, output wire [15:0] cfg_address, output wire [639:0] cfg_write_data,
     input wire cfg_response_valid, input wire [3:0] cfg_response_error, input wire [831:0] cfg_read_data
 );
-    localparam [7:0] BATCH_HEADER=8'ha2;
+    localparam [7:0] BATCH_HEADER=8'ha3;
     localparam integer C=$clog2(MAX_BATCH_WORK+2);
     localparam integer S=$clog2(ACTIVATION_WORK+14*ACTION_SLOTS+129);
     localparam integer SUM=(C>S ? C : S)+1;
@@ -43,8 +43,8 @@ module audio_control #(
             op=operation[7:0];
             allowed=(operation[9:8] == 0 && (op == 0 || (op >= 4 && op <= 6)
                 || op == 12 || op == 13 || op == 15 || (op >= 17 && op <= 21)))
-                || (operation[9:8] == 1 && (op <= 8 || (op >= 16 && op <= 23)
-                    || op == 128 || op == 133 || op == 134 || op == 136));
+                || (operation[9:8] == 1 && (op <= 8 || (op >= 16 && op <= 24)
+                    || op == 128 || op == 133 || op == 134 || (op >= 136 && op <= 146)));
         end
     endfunction
     wire [1:0] kind=head[681:680];

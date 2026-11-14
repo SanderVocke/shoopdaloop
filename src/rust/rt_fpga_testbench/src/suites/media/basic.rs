@@ -343,3 +343,72 @@ pub fn media_protocol(d: &mut Store, s: &mut Sim<'_>) {
     s.model.set("arena_base", d.base);
     assert_eq!(d.read_config(s, 0, 0), 0);
 }
+
+pub fn seal(d: &mut Store, s: &mut Sim<'_>) {
+    fn raw(d: &mut Store, s: &mut Sim<'_>, view: u64, length: u64, error: u64) {
+        let after = d.admit(s, 11, view, 0, length, 0);
+        if after.get(&d.port("done")) == 0 {
+            let done = d.port("done");
+            s.until(32, "constant-time view seal", |m| m.get(&done) != 0);
+        }
+        assert_eq!(d.get(s, "error_code"), error);
+        d.tick(s);
+    }
+    d.load(s, &empty(d));
+    raw(d, s, 0, 0, 1);
+    completed(d, s, json!({"kind":"create"}));
+    let cf = d.geometry.chunk_frames;
+    let samples: Vec<_> = (0..3 * cf + 1).map(|i| i as i32 - 17).collect();
+    completed(d, s, json!({"kind":"append","view":0,"samples":samples}));
+    let before = d.snapshot(s);
+    raw(d, s, 0, samples.len() as u64 + 1, 1);
+    assert_eq!(d.snapshot(s), before, "invalid seal changed ownership");
+    let old_descriptor = d.configure(s, 1, 0, None, false);
+    let refs: Vec<_> = (0..d.geometry.blocks())
+        .map(|i| d.read_config(s, 3, i))
+        .collect();
+    raw(d, s, 0, cf + 1, 0);
+    let descriptor = d.configure(s, 1, 0, None, false);
+    assert_eq!(descriptor.get(0, 2), 3);
+    assert_eq!(descriptor.get(32, 32), 0);
+    assert_eq!(descriptor.get(64, 64), cf + 1);
+    assert_eq!(descriptor.get(128, 32), old_descriptor.get(128, 32));
+    assert_eq!(
+        (0..d.geometry.blocks())
+            .map(|i| d.read_config(s, 3, i))
+            .collect::<Vec<_>>(),
+        refs,
+        "seal walked or replaced the retained block ownership"
+    );
+    read_equals(d, s, 0, &samples[..(cf + 1) as usize], 0, None);
+    let before = d.snapshot(s);
+    raw(d, s, 0, cf + 1, 2);
+    for data in [vec![], vec![42]] {
+        let result = d.command(
+            s,
+            &json!({"kind":"append","view":0,"samples":data}),
+            true,
+            true,
+            true,
+        );
+        assert_eq!(result["status"]["kind"], "failed");
+        assert_eq!(result["media"], before);
+    }
+    completed(d, s, json!({"kind":"remove","view":0}));
+    d.drain(s);
+    let after = d.snapshot(s);
+    assert!(
+        after["views"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|v| v.is_null())
+    );
+    assert_eq!(after["free_chunks"].as_array().unwrap().len(), 4);
+    completed(d, s, json!({"kind":"create"}));
+    // IDs grow in the general profile; physical reuse is tested by the cut owner.
+    raw(d, s, 1, 0, 0);
+    let descriptor = d.configure(s, 1, 1, None, false);
+    assert_eq!(descriptor.get(0, 2), 3);
+    assert_eq!(descriptor.get(64, 64), 0);
+}

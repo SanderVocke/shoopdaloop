@@ -1,4 +1,4 @@
-use super::{Identity, Record, begin, collect, commit, install, node, read};
+use super::{Identity, Record, begin, collect, commit, install, node_reference, read};
 use crate::{audio_image::Transfer, protocol::get};
 use rt_runtime::Error;
 
@@ -24,6 +24,7 @@ enum Kind {
 }
 enum Stage {
     Install,
+    Payload,
     Publication(usize),
     Record,
 }
@@ -108,8 +109,18 @@ impl Service {
         self.program.clear();
         self.program.push(begin(self.version, members.len() as u32));
         for (index, (_, _, slot)) in members.into_iter().enumerate() {
+            let entry = self.slots[slot].entry.as_ref().unwrap();
+            let target = if entry.original.opcode == super::CANCEL {
+                let sequence = get(&entry.original.words, 0, 64);
+                self.slots
+                    .iter()
+                    .position(|s| s.entry.as_ref().is_some_and(|e| e.sequence == sequence))
+                    .map(|slot| self.identity(slot))
+            } else {
+                None
+            };
             self.program
-                .push(node(index as u16, self.identity(slot), 0));
+                .push(node_reference(index as u16, self.identity(slot), 0, target));
         }
         self.program.push(commit(0));
     }
@@ -194,9 +205,19 @@ impl Service {
         if r.identity != self.identity(slot)
             || r.sequence != e.sequence
             || r.opcode != e.original.opcode
-            || r.state != e.original.state
+            || (e.original.opcode < 9 && r.state != e.original.state)
             || r.address != e.original.address
-            || (!r.terminal && r.payload != e.original.words[..7])
+            || (!r.terminal
+                && e.original.opcode < 9
+                && (r.payload[..7] != e.original.words[..7]
+                    || r.payload[7..].iter().any(|&v| v != 0)))
+            || (!r.terminal
+                && e.original.opcode >= 9
+                && (r.state && r.payload != e.original.words[..16]))
+            || (e.original.opcode >= 9
+                && !r.published
+                && !r.state
+                && r.payload.iter().any(|&word| word != 0))
             || r.published != e.published
             || r.effective_frame != e.effective
             || e.terminal.as_ref().is_some_and(|old| old != &r)
@@ -265,6 +286,25 @@ impl Service {
                     return Err(Error::Disconnected);
                 }
                 self.slots[t.slot].entry.as_mut().unwrap().effective = record.effective_frame;
+                if self.slots[t.slot].entry.as_ref().unwrap().original.opcode >= 9 {
+                    t.stage = Stage::Payload;
+                    let transfer = super::payload(
+                        self.identity(t.slot),
+                        &self.slots[t.slot].entry.as_ref().unwrap().original,
+                    );
+                    self.transaction = Some(t);
+                    return Ok(Progress::Transfer(transfer));
+                }
+                self.publication(device_frame);
+                t.stage = Stage::Publication(0);
+                self.transaction = Some(t);
+                Ok(Progress::Transfer(self.program[0].clone()))
+            }
+            Stage::Payload => {
+                let record = self.checked_record(t.slot, &words)?;
+                if !record.state || record.published || record.terminal {
+                    return Err(Error::Disconnected);
+                }
                 self.publication(device_frame);
                 t.stage = Stage::Publication(0);
                 self.transaction = Some(t);

@@ -278,3 +278,36 @@ harness failures. Public action/query delivery, export bulk reads, real session
 epoch wiring, callback/worker separation and application/mono migration remain
 open. The optional cut pulse alone is not an accepted historical query. M5 is
 not complete, and this checkpoint does not advance physical qualification.
+
+## M5 public-row / native-credit component checkpoint
+
+The [frozen sources and test logs](../loop_pipeline/measurements/public-native/)
+accompany the [native ownership contract](../loop_pipeline/NATIVE_REQUESTS.md), which separates
+future public admission and receipt retention from cut-time TP allocation. The
+real public/TP component passes 1,040 quanta with ARM owner service stopped,
+32 public results retained, four native cells and a held host STATUS reply. All
+loop states and ordered events match production Rust. Slot zero reuses successive
+generations; native collection after FINISH does not free public receipts.
+Directed checks preserve duplicate, terminal, normal/recovery self and unknown
+planner-cancellation reasons, forward tick membership and STOP cancellation.
+Private INITIAL_LOOP preserves advancing musical time.
+
+Control ABI 3 versions the wider 768-bit row and 96-bit ordered node. Native
+payload upload must complete before atomic publication. Generation-qualified
+references avoid an FPGA sequence CAM; guarded mutation ACK follows actual RAM
+commit. Native public actions remain disabled in current continuous parents.
+Query/export records, canonical parameters, initial/graph composites and actual
+application queue/clock migration are still required. This checkpoint checks no
+M5 completion box and establishes no final timing or physical claim.
+
+Capture finalization now seals a materialized writable view in place, validating
+its range and retaining its existing reference vector. Its constant work avoids
+Slice's per-block reference copy. Invalid/truncated/empty/repeated seals, append
+refusal and later retirement are exercised in instant, fixed, DRAMsim3 and legacy
+memory. The three-memory 1,050-quantum capture/state comparison also passes.
+
+Additional frozen negative routes are retained in the boundary timing archive.
+The older complete core improves to -0.047 ns setup / +0.019 ns hold with a
+registered 64-bit DMA address calculation, but still fails 100 MHz. Earlier M4
+wrapper registration experiments end at -1.170 and -0.963 ns setup. Neither
+qualifies the wider public/capture integration or final board.

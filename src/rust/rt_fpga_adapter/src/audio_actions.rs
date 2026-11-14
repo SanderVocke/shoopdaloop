@@ -6,6 +6,16 @@ use crate::{
 use rt_runtime::Error;
 mod service;
 pub use service::{Progress, Service};
+pub const TRANSITION: u8 = 9;
+pub const CLEAR: u8 = 10;
+pub const CANCEL: u8 = 11;
+pub const QUERY: u8 = 12;
+pub const EXPORT: u8 = 13;
+pub const RELEASE: u8 = 14;
+pub const REPEAT: u8 = 15;
+pub const PARAMETER: u8 = 16;
+pub const INITIAL: u8 = 17;
+pub const GRAPH: u8 = 18;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Identity {
@@ -24,7 +34,7 @@ pub struct Record {
     pub terminal: bool,
     pub error: u8,
     pub terminal_frame: u64,
-    pub payload: [u32; 7],
+    pub payload: [u32; 16],
 }
 impl Record {
     pub fn decode(slot: u16, words: &[u32; 26]) -> Result<Self, Error> {
@@ -32,17 +42,17 @@ impl Record {
         if get(words, 0, 1) == 0
             || generation == 0
             || get(words, 187, 4) > 11
-            || words[15..].iter().any(|&w| w != 0)
+            || words[24..].iter().any(|&w| w != 0)
         {
             return Err(Error::Disconnected);
         }
-        let mut payload = [0; 7];
+        let mut payload = [0; 16];
         for (i, word) in payload.iter_mut().enumerate() {
             *word = get(words, 255 + i * 32, 32) as u32;
         }
+        let opcode = get(words, 161, 8) as u8;
         if get(words, 186, 1) != 0
-            && (get(words, 384, 63) != 0
-                || get(words, 447, 32) != 0
+            && ((opcode < 9 && (384..767).any(|bit| get(words, bit, 1) != 0))
                 || (get(words, 187, 4) != 0 && payload.iter().any(|&w| w != 0)))
         {
             return Err(Error::Disconnected);
@@ -54,7 +64,7 @@ impl Record {
             opcode: get(words, 161, 8) as u8,
             state: get(words, 169, 1) != 0,
             address: get(words, 170, 16) as u16,
-            published: get(words, 479, 1) != 0,
+            published: get(words, 767, 1) != 0,
             terminal: get(words, 186, 1) != 0,
             error: get(words, 187, 4) as u8,
             terminal_frame: get(words, 191, 64),
@@ -76,20 +86,31 @@ pub fn install(
     requested_frame: u64,
     action: &Transfer,
 ) -> Result<Transfer, Error> {
-    if id.generation == 0 || !matches!(action.opcode, 0 | 5 | 6 | 8) {
+    if id.generation == 0 || !matches!(action.opcode, 0 | 5 | 6 | 8 | 9..=18) {
         return Err(Error::InvalidParameter);
     }
-    if action.words[7..].iter().any(|&v| v != 0) {
+    if action.words[if action.opcode >= 9 { 16 } else { 7 }..]
+        .iter()
+        .any(|&v| v != 0)
+    {
         return Err(Error::InvalidShape);
     }
     let mut t = root(128 | action.opcode, id.slot);
-    t.words[..7].copy_from_slice(&action.words[..7]);
+    if action.opcode < 9 {
+        t.words[..7].copy_from_slice(&action.words[..7]);
+    }
     put(&mut t.words, 384, 64, requested_frame);
     put(&mut t.words, 448, 64, sequence);
     put(&mut t.words, 512, 32, u64::from(id.generation));
     put(&mut t.words, 544, 16, u64::from(action.address));
     put(&mut t.words, 560, 1, u64::from(action.state));
     Ok(t)
+}
+pub fn payload(id: Identity, action: &Transfer) -> Transfer {
+    let mut t = root(24, id.slot);
+    t.words[0] = id.generation;
+    t.words[2..18].copy_from_slice(&action.words[..16]);
+    t
 }
 pub fn begin(version: u64, count: u32) -> Transfer {
     let mut t = root(16, 0);
@@ -102,6 +123,15 @@ pub fn node(index: u16, id: Identity, nonce: u64) -> Transfer {
     put(&mut t.words, 0, 16, u64::from(id.slot));
     put(&mut t.words, 16, 32, u64::from(id.generation));
     put(&mut t.words, 64, 64, nonce);
+    put(&mut t.words, 128, 16, u64::from(u16::MAX));
+    t
+}
+pub fn node_reference(index: u16, id: Identity, nonce: u64, target: Option<Identity>) -> Transfer {
+    let mut t = node(index, id, nonce);
+    if let Some(target) = target {
+        put(&mut t.words, 128, 16, u64::from(target.slot));
+        put(&mut t.words, 144, 32, u64::from(target.generation));
+    }
     t
 }
 pub fn commit(nonce: u64) -> Transfer {

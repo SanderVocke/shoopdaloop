@@ -3,6 +3,7 @@ module transition_processor #(
     parameter integer REQUEST_DEPTH = 64,
     parameter integer EVENT_DEPTH = 192,
     parameter integer INTEGRATED = 0,
+    parameter integer RESIDENT_ROSTER = 0,
     parameter integer LA = (LOOP_DEPTH > 1) ? $clog2(LOOP_DEPTH) : 1,
     parameter integer RA = (REQUEST_DEPTH > 1) ? $clog2(REQUEST_DEPTH) : 1,
     parameter integer EA = (EVENT_DEPTH > 1) ? $clog2(EVENT_DEPTH) : 1,
@@ -49,7 +50,7 @@ module transition_processor #(
     localparam [7:0] STATUS=0, WRITE_SPEC=1, WRITE_ORDER=2, PREPARE=3,
         INSTALL=4, CANCEL=5, COLLECT=6, PROCESS=9, FINISH=11, READ_STATE=12,
         READ_REQUEST=13, READ_EVENT=15, SET_REPEAT=17,
-        MEMBER_BEGIN=18, MEMBER_NODE=19, MEMBER_HEAD=20, MEMBER_COMMIT=21;
+        MEMBER_BEGIN=18, MEMBER_NODE=19, MEMBER_HEAD=20, MEMBER_COMMIT=21, INITIAL_LOOP=22;
     localparam integer VALID=0, GENERATION=1, MODE=33, REPEAT=35, LAST_VALID=36,
         LENGTH=64, POSITION=128, CAPTURE=192, CYCLES=256,
         CONTENT_REV=320, CAPTURE_REV=384, WATERMARK=448, LAST_PULSE=512,
@@ -91,9 +92,11 @@ module transition_processor #(
         S_APPLY, S_APPLY_PLAN, S_APPLY_CHECK, S_CANCEL_OLDER, S_CANCEL_OLDER_CHECK, S_CANCEL_OLDER_NEXT,
         S_NATURAL, S_NATURAL_SOURCE, S_NATURAL_WRAP,
         S_FINAL, S_FINISH_LOOP,
-        S_READ_LOOP_REPLY, S_READ_REQUEST_REPLY, S_READ_EVENT_REPLY, S_SET_REPEAT
+        S_READ_LOOP_REPLY, S_READ_REQUEST_REPLY, S_READ_EVENT_REPLY, S_SET_REPEAT, S_INITIAL_REPLY
     } state_t;
     state_t state, read_return, offer_return, apply_return, natural_return, react_return;
+    initial if (RESIDENT_ROSTER != 0 && LOOP_DEPTH != 1)
+        $fatal(1,"The resident roster requires the one-loop application profile");
     reg configured, execution_command, resident_command;
     reg [3:0] fault_error;
     reg [1:0] phase;
@@ -581,8 +584,23 @@ module transition_processor #(
                             else if (index >= request_slots || payload[W_TARGET+:32] >= loop_slots) reply_empty(INVALID_ID);
                             else read_spec(payload[W_TARGET+:32], S_INSTALL_TARGET);
                         end
+                        INITIAL_LOOP: begin
+                            if (RESIDENT_ROSTER == 0) reply_empty(UNSUPPORTED);
+                            else if (phase != IDLE_PHASE || valid_loops != 0) reply_empty(INVALID_STATE);
+                            else if (index != 0) reply_empty(INVALID_ID);
+                            else if (!payload[VALID] || payload[GENERATION+:32] == 0) reply_empty(INVALID_ID);
+                            else if (payload[SPEC_KIND+:2] != 0 || payload[SPEC_TIMELINE] || payload[SPEC_LENGTH+:64] != 0) reply_empty(UNSUPPORTED);
+                            else if (payload[SPEC_SOURCE_VALID] && payload[SPEC_SOURCE+:64] != {payload[GENERATION+:32],32'b0}) reply_empty(INVALID_ID);
+                            else begin
+                                temporary_loop=0; temporary_loop[VALID]=1;
+                                temporary_loop[GENERATION+:32]=payload[GENERATION+:32]; temporary_loop[REPEAT]=payload[SPEC_REPEAT];
+                                write_loop(0,temporary_loop); sw_en<=1; sw_address<=0; sw_data<=payload[191:0];
+                                mw_en<=1; mw_address<=0; mw_data<=0; order_count<=1; valid_loops<=1;
+                                state<=S_INITIAL_REPLY;
+                            end
+                        end
                         MEMBER_BEGIN: begin
-                            if (phase != IDLE_PHASE) reply_empty(INVALID_STATE);
+                            if (RESIDENT_ROSTER != 0 || phase != IDLE_PHASE) reply_empty(INVALID_STATE);
                             else if (payload[63:0] != active_publication) reply_empty(INVALID_ID);
                             else if (payload[95:64] > request_slots) reply_empty(CAPACITY);
                             else if (&stage_counter) reply_empty(EXHAUSTED);
@@ -746,7 +764,7 @@ module transition_processor #(
                     else state <= S_PREP_WRITE;
                 end
                 S_PREP_WRITE: begin
-                    hw_address <= SA'(cursor); hw_data <= {HW{1'b1}};
+                    hw_address <= SA'(cursor); hw_data <= RESIDENT_ROSTER != 0 ? {HW{1'b0}} : {HW{1'b1}};
                     hw0_en <= 1; hw1_en <= 1;
                     cursor <= cursor+1'b1; state <= S_PREP_LOOP;
                 end
@@ -774,10 +792,19 @@ module transition_processor #(
                 S_PREP_REQUEST: begin
                     temporary_request = 0; temporary_request[R_GEN+:32] = 1;
                     write_request(cursor, temporary_request);
+                    if (RESIDENT_ROSTER != 0) begin
+                        active_seen[PA'(cursor)]<=1; nw_address<=RA'(cursor); nw0_en<=1; nw1_en<=1;
+                        nw_data<={32'd1,cursor+1'b1 == request_slots ? NO_REQUEST : H'(cursor+1'b1)};
+                    end
                     if (cursor+1'b1 == request_slots) state <= S_PREP_COMPLETE;
                     else cursor <= cursor+1'b1;
                 end
-                S_PREP_COMPLETE: begin configured <= 1; phase <= IDLE_PHASE; reply_empty(OK); end
+                S_PREP_COMPLETE: begin
+                    configured <= 1; phase <= IDLE_PHASE;
+                    if (RESIDENT_ROSTER != 0) begin active_publication<=1; stage_counter<=1; end
+                    reply_empty(OK);
+                end
+                S_INITIAL_REPLY: reply_empty(OK);
                 S_SET_REPEAT: begin
                     if (!loop_row[VALID] || loop_row[GENERATION+:32]!=payload[31:0]) reply_empty(INVALID_ID);
                     else begin temporary_loop=loop_row;temporary_loop[REPEAT]=payload[32];write_loop(index,temporary_loop);reply_empty(OK);end
@@ -830,6 +857,10 @@ module transition_processor #(
                         temporary_request = 0;
                         temporary_request[R_GEN+:32] = request_row[R_GEN+:32]+1'b1;
                         write_request(index, temporary_request);
+                        if (RESIDENT_ROSTER != 0) begin
+                            nw_address<=RA'(index); nw0_en<=1; nw1_en<=1;
+                            nw_data<={request_row[R_GEN+:32]+32'd1,index+1'b1 == request_slots ? NO_REQUEST : H'(index+1'b1)};
+                        end
                         reply(OK, 832'(request_row[396:0]));
                     end
                 end

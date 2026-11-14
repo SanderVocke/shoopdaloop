@@ -128,7 +128,7 @@ pub fn state(b: &Bits, slot: u64) -> Value {
     }
     v
 }
-fn request(b: &Bits, slot: u64) -> Value {
+pub fn request(b: &Bits, slot: u64) -> Value {
     if b.get(0, 1) == 0 {
         return Value::Null;
     }
@@ -157,7 +157,7 @@ fn completion(b: &Bits, slot: u64) -> Value {
     assert!(!r.is_null() && !r["outcome"].is_null());
     json!({"id":r["id"],"sequence":r["command"]["sequence"],"requested":r["command"]["at"],"effective":r["effective"],"outcome":r["outcome"]})
 }
-fn event(b: &Bits) -> Value {
+pub fn event(b: &Bits) -> Value {
     let code = b.get(254, 2);
     let kind = if code == 0 {
         json!({"kind":"transition","value":operation(b.get(192,2),b.get(128,64),b.get(194,1))})

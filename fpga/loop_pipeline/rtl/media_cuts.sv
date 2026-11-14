@@ -12,14 +12,14 @@ module media_cuts #(
     output wire [31:0] capture_view0, output wire [31:0] capture_view1,
     output wire [31:0] playback_view0, output wire [31:0] playback_view1,
     output wire media_valid, input wire media_ready, output wire [3:0] media_opcode,
-    output wire [63:0] media_view, input wire media_done,
+    output wire [63:0] media_view, output wire [63:0] media_length, input wire media_done,
     input wire [7:0] media_error, input wire [31:0] media_result_view
 );
     localparam [31:0] NONE=32'hffffffff;
     localparam [3:0] CAPACITY=2, INVALID_ID=3, INVALID_STATE=5, EXHAUSTED=8;
     typedef enum reg [4:0] {INIT, IDLE, UPDATE_CAPTURE, FINALIZE, WRITE_DESCRIPTOR,
         EMPTY_UPDATE, FIND_PLAYBACK, FIND_WAIT, FIND_GET, START_CAPTURE,
-        CREATE_SEND, CREATE_WAIT, CLEANUP, ROOT_READ, ROOT_WAIT, ROOT_GET,
+        CREATE_SEND, CREATE_WAIT, SEAL_SEND, SEAL_WAIT, CLEANUP, ROOT_READ, ROOT_WAIT, ROOT_GET,
         REMOVE_SEND, REMOVE_WAIT, RESULT_READ, RESULT_WAIT, RESULT_GET, RESPOND} phase_t;
     phase_t phase;
     reg [2:0] operation;
@@ -73,9 +73,11 @@ module media_cuts #(
     );
     assign busy=phase != IDLE;
     assign request_ready=phase == IDLE && !fault && !reset;
-    assign media_valid=phase == CREATE_SEND || phase == REMOVE_SEND;
-    assign media_opcode=phase == CREATE_SEND ? 4'd0 : 4'd3;
-    assign media_view=phase == CREATE_SEND ? 64'b0 : {32'b0,channel ? roots[63:32] : roots[31:0]};
+    assign media_valid=phase == CREATE_SEND || phase == REMOVE_SEND || phase == SEAL_SEND;
+    assign media_opcode=phase == CREATE_SEND ? 4'd0 : phase == SEAL_SEND ? 4'd11 : 4'd3;
+    assign media_view=phase == CREATE_SEND ? 64'b0 : phase == SEAL_SEND
+        ? {32'b0,channel ? capture_root1 : capture_root0} : {32'b0,channel ? roots[63:32] : roots[31:0]};
+    assign media_length=phase == SEAL_SEND ? capture_frames : 64'b0;
     assign capture_view0=capture_valid ? capture_root0 : NONE;
     assign capture_view1=capture_valid ? capture_root1 : NONE;
     assign playback_view0=playback_root0;
@@ -171,7 +173,7 @@ module media_cuts #(
                     free_slot=NONE;
                     for (i=CONTENTS-1;i>=0;i=i-1) if (!content_valid[i]) free_slot=32'(i);
                     if (free_slot == NONE) finish(CAPACITY);
-                    else begin selected<=free_slot; word_index<=0; phase<=WRITE_DESCRIPTOR; end
+                    else begin selected<=free_slot; word_index<=0; channel<=0; phase<=SEAL_SEND; end
                 end else phase<=EMPTY_UPDATE;
             end
             WRITE_DESCRIPTOR: begin
@@ -179,6 +181,12 @@ module media_cuts #(
                     content_valid[selected]<=1; references[selected]<=0; latest<=selected; capture_valid<=0;
                     phase<=EMPTY_UPDATE;
                 end else word_index<=word_index+1'b1;
+            end
+            SEAL_SEND: if (media_ready) phase<=SEAL_WAIT;
+            SEAL_WAIT: if (media_done) begin
+                if (media_error != 0) finish(media_error == 3 ? CAPACITY : INVALID_STATE);
+                else if (CHANNELS == 2 && !channel) begin channel<=1; phase<=SEAL_SEND; end
+                else phase<=WRITE_DESCRIPTOR;
             end
             EMPTY_UPDATE: begin
                 if (observed[127:64] == 0 && observed[34:33] != 2 && empty_revision != observed[383:320]) begin

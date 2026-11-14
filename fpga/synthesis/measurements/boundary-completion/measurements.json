@@ -106,5 +106,49 @@
     "wns_ns": -2.105,
     "whs_ns": 0.005,
     "met_100mhz": false
+  },
+  {
+    "name": "fullcore-hint-register",
+    "part": "xc7z020clg400-1",
+    "clock_mhz": 100,
+    "wns_ns": -0.266,
+    "whs_ns": 0.008,
+    "met_100mhz": false,
+    "luts": 28213.0,
+    "flip_flops": 24715.0,
+    "bram36_equivalent": 57.5
+  },
+  {
+    "name": "autonomous-wrapper-pipelined",
+    "part": "xc7z020clg400-1",
+    "clock_mhz": 100,
+    "wns_ns": -1.17,
+    "whs_ns": 0.005,
+    "met_100mhz": false,
+    "luts": 35199.0,
+    "flip_flops": 33725.0,
+    "bram36_equivalent": 102.0
+  },
+  {
+    "name": "autonomous-wrapper-row-register",
+    "part": "xc7z020clg400-1",
+    "clock_mhz": 100,
+    "wns_ns": -0.963,
+    "whs_ns": 0.005,
+    "met_100mhz": false,
+    "luts": 35259.0,
+    "flip_flops": 33938.0,
+    "bram36_equivalent": 102.0
+  },
+  {
+    "name": "fullcore-dma-input-register",
+    "part": "xc7z020clg400-1",
+    "clock_mhz": 100,
+    "wns_ns": -0.047,
+    "whs_ns": 0.019,
+    "met_100mhz": false,
+    "luts": 28320.0,
+    "flip_flops": 26574.0,
+    "bram36_equivalent": 57.5
   }
 ]

@@ -213,3 +213,13 @@ pub fn read_equals(
         json!({"kind":"samples","value":(0..count).map(|i| values[((position+i)%values.len() as u64) as usize]).collect::<Vec<_>>()})
     );
 }
+
+pub fn run_seal(mode: Mode) -> Result<()> {
+    let g = Geometry::new([8, 16, 4], 1);
+    let compiled =
+        design(&g, 64, mode).build(&crate::root().join("work/marlin-suite/media-seal"))?;
+    let mut s = Sim::new(compiled.session(None)?, &[("clk", 10_000, 0)]);
+    let mut d = Store::new(&mut s, g, mode, 20261114, "")?;
+    basic::seal(&mut d, &mut s);
+    Ok(())
+}

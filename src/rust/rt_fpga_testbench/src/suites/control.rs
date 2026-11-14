@@ -272,8 +272,8 @@ pub fn batches_and_failures() -> Result<()> {
 
     for malformed in [
         control_packet(0, 2, &Bits::default(), 0, 0),
-        control_packet(0, 2, &Bits::default(), 0xa2, 5),
-        control_packet(0, 2, &Bits::default(), 0xa2, 0),
+        control_packet(0, 2, &Bits::default(), 0xa3, 5),
+        control_packet(0, 2, &Bits::default(), 0xa3, 0),
     ] {
         reset(&mut s);
         source.borrow_mut().queue.push_back(malformed);

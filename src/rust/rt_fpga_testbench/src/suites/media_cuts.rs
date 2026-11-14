@@ -15,6 +15,7 @@ struct Views {
     cycle: u64,
     creates: usize,
     removes: usize,
+    seals: usize,
 }
 impl Agent for Views {
     fn drive(&mut self, m: &mut Model<'_>, e: Edges) {
@@ -55,6 +56,12 @@ impl Agent for Views {
                     let id = m.get("media_view") as u32;
                     assert!(self.live.remove(&id), "double remove {id}");
                     self.removes += 1;
+                    id
+                }
+                11 => {
+                    let id = m.get("media_view") as u32;
+                    assert!(self.live.contains(&id));
+                    self.seals += 1;
                     id
                 }
                 op => panic!("cut-time ownership performed unbounded store operation {op}"),

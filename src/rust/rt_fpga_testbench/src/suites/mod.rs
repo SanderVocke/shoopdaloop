@@ -11,6 +11,7 @@ pub mod live_image;
 pub mod media;
 pub mod media_cuts;
 pub mod metadata;
+pub mod native_actions;
 pub mod pipeline;
 pub mod production;
 pub mod production_faults;

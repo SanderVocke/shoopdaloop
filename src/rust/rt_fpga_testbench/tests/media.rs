@@ -9,3 +9,11 @@ fn media_store_retained_slices_atomic_refusals_protocols_and_reset() {
         }
     }
 }
+
+#[shoop_test]
+fn capture_views_seal_in_place_with_bounded_work_and_retained_ownership() {
+    use rt_fpga_testbench::{memory::Mode, suites::media};
+    for mode in [Mode::Instant, Mode::Fixed, Mode::Dramsim3, Mode::Legacy] {
+        media::run_seal(mode).unwrap();
+    }
+}
