@@ -14,6 +14,7 @@ module loop_pipeline #(
     parameter integer OUTPUT_PORTS = 2,
     parameter integer REUSE_VIEWS = 0,
     parameter integer CAPTURE_CHANNELS = 0,
+    parameter integer RESIDENT_ACTIONS = 0,
     parameter integer VIEWS = 32,
     parameter integer SLOTS = 1024,
     parameter integer CHUNK_FRAMES = 32,
@@ -35,6 +36,18 @@ module loop_pipeline #(
     input wire clk,
     input wire reset,
     input wire maintenance_enable,
+    input wire resident_command_valid, output wire resident_command_ready,
+    input wire [7:0] resident_command_opcode, input wire [31:0] resident_command_index,
+    input wire [639:0] resident_command_data, output wire resident_command_done,
+    output wire [3:0] resident_command_error, output wire [831:0] resident_command_result,
+    output wire resident_cut_valid, input wire resident_cut_ready,
+    output wire [1:0] resident_cut_mode, input wire resident_cut_done,
+    input wire [63:0] resident_epoch,
+    input wire resident_media_valid, output wire resident_media_ready,
+    input wire [2:0] resident_media_opcode, input wire resident_media_latest,
+    input wire [31:0] resident_media_slot, input wire [31:0] resident_media_generation,
+    output wire resident_media_done, output wire [3:0] resident_media_error,
+    output wire [1727:0] resident_media_data,
     output wire cut_snapshot_valid, output wire [1727:0] cut_snapshot_data,
     output wire [31:0] reclaim_pending, output wire [31:0] reclaim_high_water,
     output wire [63:0] reclaim_references, output wire reclaim_active, output wire reclaim_released,
@@ -130,7 +143,8 @@ module loop_pipeline #(
     typedef enum logic [4:0] { IDLE, SETTLE_SEND, SETTLE_WAIT, AUDIO_START,
         AUDIO_WAIT, FINISH_SEND, FINISH_WAIT, FAULT, HOST_SETTLE_WAIT, BOUNDARY,
         PRE_READ, PRE_WAIT, PRE_CUT, PRE_CUT_WAIT,
-        POST_READ, POST_WAIT, POST_CUT, POST_CUT_WAIT } phase_t;
+        POST_READ, POST_WAIT, POST_CUT, POST_CUT_WAIT,
+        RESOLVE_SEND, RESOLVE_WAIT, RELEASE_SEND, RELEASE_WAIT } phase_t;
     phase_t phase;
     wire host_access = phase == IDLE || phase == FAULT || phase == HOST_SETTLE_WAIT || phase == BOUNDARY;
     wire coordinator_send = (phase == SETTLE_SEND || phase == FINISH_SEND) && !memory_fault;
@@ -155,21 +169,30 @@ module loop_pipeline #(
     wire ledger_valid, ledger_ready, ledger_done;
     wire [3:0] ledger_opcode;
     wire [63:0] ledger_view, ledger_length, capture_roots, playback_roots;
-    wire ledger_owns=CAPTURE_CHANNELS != 0 && (phase == PRE_CUT || phase == PRE_CUT_WAIT || phase == POST_CUT || phase == POST_CUT_WAIT);
+    reg resident_media_busy;
+    wire autonomous_media=phase == PRE_CUT || phase == PRE_CUT_WAIT || phase == POST_CUT || phase == POST_CUT_WAIT;
+    wire ledger_owns=CAPTURE_CHANNELS != 0 && (autonomous_media || resident_media_busy || (RESIDENT_ACTIONS != 0 && resident_access && resident_media_valid));
+    assign resident_media_ready=RESIDENT_ACTIONS != 0 && resident_access && !autonomous_media && cut_request_ready;
+    assign resident_media_done=cut_response_valid && resident_media_busy;
+    assign resident_media_error=cut_error;
+    assign resident_media_data=cut_snapshot_data;
     wire [7:0] internal_store_error;
     wire [31:0] internal_store_result;
     wire internal_store_done;
-    wire unused_resident_ready,unused_resident_done;
-    wire [3:0] unused_resident_error;
-    wire [831:0] unused_resident_result;
-    wire unused_cut=&{1'b0,unused_resident_ready,unused_resident_done,unused_resident_error,unused_resident_result,cut_busy,observe_phase,observed_state,observed_frame,ledger_ready,ledger_done};
+    wire tp_resident_ready;
+    wire resident_access=phase == IDLE || phase == BOUNDARY || phase == RESOLVE_WAIT || phase == RELEASE_WAIT;
+    assign resident_command_ready=RESIDENT_ACTIONS != 0 && resident_access && tp_resident_ready;
+    assign resident_cut_valid=RESIDENT_ACTIONS != 0 && (phase == RESOLVE_SEND || phase == RELEASE_SEND);
+    assign resident_cut_mode=phase == RELEASE_SEND || phase == RELEASE_WAIT ? 2'd2 : 2'd1;
+    wire unused_cut=&{1'b0,tp_resident_ready,resident_cut_ready,resident_cut_done,resident_epoch,resident_media_valid,resident_media_opcode,resident_media_latest,resident_media_slot,resident_media_generation,cut_busy,observe_phase,observed_state,observed_frame,ledger_ready,ledger_done};
     generate if (CAPTURE_CHANNELS != 0) begin : managed_media
         initial if (LOOP_DEPTH != 1 || REUSE_VIEWS == 0 || CHUNK_FRAMES != 32 || CAPTURE_CHANNELS > 2)
             $fatal(1,"Invalid application capture profile");
         media_cuts #(.CHANNELS(CAPTURE_CHANNELS)) ownership (
-            .clk(clk),.reset(reset),.request_valid(phase == PRE_CUT || phase == POST_CUT),.request_ready(cut_request_ready),
-            .request_opcode(3'b0),.request_latest(1'b0),.request_slot(32'b0),.request_generation(32'b0),
-            .request_state(observed_state),.request_frame(observed_frame),.request_epoch(64'b0),
+            .clk(clk),.reset(reset),.request_valid(phase == PRE_CUT || phase == POST_CUT || (RESIDENT_ACTIONS != 0 && resident_access && resident_media_valid)),.request_ready(cut_request_ready),
+            .request_opcode(autonomous_media ? 3'b0 : resident_media_opcode),.request_latest(resident_media_latest),
+            .request_slot(resident_media_slot),.request_generation(resident_media_generation),
+            .request_state(observed_state),.request_frame(observed_frame),.request_epoch(autonomous_media ? resident_epoch : cut_snapshot_data[959:896]),
             .response_valid(cut_response_valid),.response_error(cut_error),.response_data(cut_snapshot_data),.busy(cut_busy),.fault(cut_fault),
             .capture_view0(capture_roots[31:0]),.capture_view1(capture_roots[63:32]),
             .playback_view0(playback_roots[31:0]),.playback_view1(playback_roots[63:32]),
@@ -181,7 +204,7 @@ module loop_pipeline #(
         assign capture_roots=0; assign playback_roots=0; assign ledger_valid=0; assign ledger_opcode=0; assign ledger_view=0; assign ledger_length=0;
         assign cut_snapshot_data=0;
     end endgenerate
-    assign cut_snapshot_valid=cut_response_valid && cut_error == 0;
+    assign cut_snapshot_valid=cut_response_valid && cut_error == 0 && autonomous_media;
     assign ledger_ready=host_store_cmd_ready && ledger_owns;
     assign ledger_done=internal_store_done && ledger_owns;
     assign store_done=internal_store_done && !ledger_owns;
@@ -197,7 +220,8 @@ module loop_pipeline #(
     reg [63:0] quantum_arena;
     reg [31:0] instructions, states, quantum, chunk_frames, budget, buffers, inputs, outputs;
     reg fault_report_pending;
-    wire configure = phase == IDLE || phase == FAULT || phase == BOUNDARY;
+    wire configure = phase == IDLE || phase == FAULT || phase == BOUNDARY
+        || (RESIDENT_ACTIONS != 0 && (phase == RESOLVE_WAIT || phase == RELEASE_WAIT));
     reg output_valid, response_is_output;
     wire [31:0] sample_read_data;
     assign faulted = phase == FAULT;
@@ -206,6 +230,7 @@ module loop_pipeline #(
 
     assign busy = (phase != IDLE && phase != FAULT) || audio_busy;
     assign run_ready = (phase == IDLE || phase == BOUNDARY) && tp_execute_ready
+        && !resident_media_busy && (RESIDENT_ACTIONS == 0 || (!resident_command_valid && !resident_media_valid))
         && !cfg_valid && !audio_cfg_valid && !store_cmd_valid && !store_cfg_valid
         && !cfg_response_valid && !audio_cfg_response_valid && !store_cfg_response_valid && !reset;
     assign command_ready = host_access && !reserved_command && !(command_opcode == 16 && phase != IDLE) && tp_command_ready && !(run_valid && run_ready) && !reset;
@@ -219,7 +244,7 @@ module loop_pipeline #(
     assign store_write_ready = CAPTURE_CHANNELS == 0 && configure && host_store_write_ready;
     assign store_read_valid = CAPTURE_CHANNELS == 0 && configure && host_store_read_valid;
 
-    transition_processor #(.LOOP_DEPTH(LOOP_DEPTH), .REQUEST_DEPTH(REQUEST_DEPTH), .EVENT_DEPTH(EVENT_DEPTH), .INTEGRATED(1)) timing (
+    transition_processor #(.LOOP_DEPTH(LOOP_DEPTH), .REQUEST_DEPTH(REQUEST_DEPTH), .EVENT_DEPTH(EVENT_DEPTH), .INTEGRATED(1), .RESIDENT_ROSTER(RESIDENT_ACTIONS)) timing (
         .clk(clk), .reset(reset),
         .command_valid(host_access && command_valid && !reserved_command && !(command_opcode == 16 && phase != IDLE) && !(run_valid && run_ready)),
         .command_ready(tp_command_ready),
@@ -235,8 +260,9 @@ module loop_pipeline #(
         .observe_valid(observe_valid),.observe_ready(observe_ready),.observe_kind(2'b0),.observe_index(32'b0),
         .observe_response_valid(observe_response_valid),.observe_response_error(observe_response_error),
         .observe_frame(observe_frame),.observe_phase(observe_phase),.observe_data(observe_data),
-        .resident_valid(1'b0),.resident_ready(unused_resident_ready),.resident_opcode(8'b0),.resident_index(32'b0),.resident_data(640'b0),
-        .resident_done(unused_resident_done),.resident_error(unused_resident_error),.resident_result(unused_resident_result),
+        .resident_valid(RESIDENT_ACTIONS != 0 && resident_access && resident_command_valid),.resident_ready(tp_resident_ready),
+        .resident_opcode(resident_command_opcode),.resident_index(resident_command_index),.resident_data(resident_command_data),
+        .resident_done(resident_command_done),.resident_error(resident_command_error),.resident_result(resident_command_result),
         .configured_quantum(configured_quantum)
     );
     wire maintenance_start = (run_valid && run_ready && phase != BOUNDARY)
@@ -299,9 +325,11 @@ module loop_pipeline #(
             output_valid <= 0; response_is_output <= 0;
             instructions <= 0; states <= 0; quantum <= 0; chunk_frames <= 0; budget <= 0;
             buffers <= 0; inputs <= 0; outputs <= 0; quantum_arena <= 0;
-            fault_report_pending <= 0; observed_state<=0; observed_frame<=0;
+            fault_report_pending <= 0; observed_state<=0; observed_frame<=0; resident_media_busy<=0;
         end else begin
             done <= 0;
+            if (resident_media_valid && resident_media_ready) resident_media_busy<=1;
+            if (resident_media_done) resident_media_busy<=0;
             if (audio_cfg_valid && audio_cfg_ready) response_is_output <= audio_cfg_space == 1 && !audio_cfg_write;
             if (memory_fault && phase != FAULT) begin
                 error_code <= 8; error_stage <= 3; fault_report_pending <= 1; output_valid <= 0; phase <= FAULT;
@@ -324,7 +352,7 @@ module loop_pipeline #(
                         instructions <= run_instruction_count; states <= run_state_count; quantum <= run_quantum; chunk_frames <= run_chunk_frames;
                         budget <= run_job_budget; buffers <= run_buffers; inputs <= run_inputs; outputs <= run_outputs;
                         quantum_arena <= arena_base;
-                        phase <= phase == BOUNDARY ? (CAPTURE_CHANNELS == 0 ? AUDIO_START : PRE_READ) : SETTLE_SEND;
+                        phase <= phase == BOUNDARY ? (CAPTURE_CHANNELS != 0 ? PRE_READ : RESIDENT_ACTIONS != 0 ? RESOLVE_SEND : AUDIO_START) : SETTLE_SEND;
                     end
                 end
                 else if (phase == IDLE && command_valid && command_ready && command_opcode == 16) phase <= HOST_SETTLE_WAIT;
@@ -332,7 +360,7 @@ module loop_pipeline #(
                 SETTLE_WAIT: if (tp_execute_done) begin
                     if (tp_execute_error != 0) begin
                         error_stage <= 1; error_code <= {4'b0,tp_execute_error}; done <= 1; phase <= FAULT;
-                    end else phase <= CAPTURE_CHANNELS == 0 ? AUDIO_START : PRE_READ;
+                    end else phase <= CAPTURE_CHANNELS != 0 ? PRE_READ : RESIDENT_ACTIONS != 0 ? RESOLVE_SEND : AUDIO_START;
                 end
                 PRE_READ, POST_READ: if (observe_ready) phase<=phase == PRE_READ ? PRE_WAIT : POST_WAIT;
                 PRE_WAIT, POST_WAIT: if (observe_response_valid) begin
@@ -345,8 +373,15 @@ module loop_pipeline #(
                 PRE_CUT, POST_CUT: if (cut_request_ready) phase<=phase == PRE_CUT ? PRE_CUT_WAIT : POST_CUT_WAIT;
                 PRE_CUT_WAIT, POST_CUT_WAIT: if (cut_response_valid || cut_fault) begin
                     if (cut_error != 0 || cut_fault) begin error_stage<=3; error_code<={4'b0,cut_error}; done<=1; phase<=FAULT; end
-                    else if (phase == PRE_CUT_WAIT) phase<=AUDIO_START;
+                    else if (phase == PRE_CUT_WAIT) phase<=RESIDENT_ACTIONS != 0 ? RESOLVE_SEND : AUDIO_START;
+                    else if (RESIDENT_ACTIONS != 0) phase<=RELEASE_SEND;
                     else begin error_stage<=0; error_code<=0; done<=1; output_valid<=1; phase<=IDLE; end
+                end
+                RESOLVE_SEND: if (resident_cut_ready) phase<=RESOLVE_WAIT;
+                RESOLVE_WAIT: if (resident_cut_done) phase<=AUDIO_START;
+                RELEASE_SEND: if (resident_cut_ready) phase<=RELEASE_WAIT;
+                RELEASE_WAIT: if (resident_cut_done) begin
+                    error_stage<=0; error_code<=0; done<=1; output_valid<=1; phase<=IDLE;
                 end
                 AUDIO_START: if (audio_run_ready) phase <= AUDIO_WAIT;
                 AUDIO_WAIT: if (audio_done) begin
@@ -358,9 +393,9 @@ module loop_pipeline #(
                 FINISH_SEND: if (tp_execute_ready) phase <= FINISH_WAIT;
                 FINISH_WAIT: if (tp_execute_done) begin
                     error_stage <= tp_execute_error == 0 ? 2'd0 : 2'd1;
-                    error_code <= {4'b0,tp_execute_error}; done <= CAPTURE_CHANNELS == 0 || tp_execute_error != 0;
-                    output_valid <= tp_execute_error == 0 && CAPTURE_CHANNELS == 0;
-                    phase <= tp_execute_error != 0 ? FAULT : CAPTURE_CHANNELS == 0 ? IDLE : POST_READ;
+                    error_code <= {4'b0,tp_execute_error}; done <= (CAPTURE_CHANNELS == 0 && RESIDENT_ACTIONS == 0) || tp_execute_error != 0;
+                    output_valid <= tp_execute_error == 0 && CAPTURE_CHANNELS == 0 && RESIDENT_ACTIONS == 0;
+                    phase <= tp_execute_error != 0 ? FAULT : CAPTURE_CHANNELS != 0 ? POST_READ : RESIDENT_ACTIONS != 0 ? RELEASE_SEND : IDLE;
                 end
                 FAULT: if (fault_report_pending && !audio_busy) begin done <= 1; fault_report_pending <= 0; end
                 default: phase <= FAULT;

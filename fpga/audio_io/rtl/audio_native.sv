@@ -16,12 +16,15 @@ module audio_native #(
     input wire lookup_done, input wire [3:0] lookup_error, input wire [767:0] lookup_data,
     output wire update_valid, input wire update_ready, output wire [15:0] update_slot,
     output wire [31:0] update_generation, output wire [767:0] update_data,
-    input wire update_done, input wire [3:0] update_error
+    input wire update_done, input wire [3:0] update_error,
+    output wire observation_valid, input wire observation_ready, output wire [7:0] observation_opcode,
+    output wire [511:0] observation_data, input wire observation_done,
+    input wire [3:0] observation_error, input wire [511:0] observation_result
 );
     localparam [7:0] RUNTIME=1,TIMELINE=2,QUEUED_CANCELLED=3,CANCEL_RESULT=9;
     typedef enum reg [4:0] {IDLE,CHECK_TARGET,PREPARE_INSTALL,INSTALL_RESULT,RESOLVE_RESULT,RELEASE_RESULT,
         LOOKUP_SEND,LOOKUP_WAIT,LOOKUP_CHECK,CANCEL_RESULT_WAIT,UPDATE_SEND,UPDATE_WAIT,
-        NATIVE_SEND,NATIVE_WAIT} phase_t;
+        NATIVE_SEND,NATIVE_WAIT,OBSERVATION_SEND,OBSERVATION_WAIT} phase_t;
     phase_t phase, return_phase;
     reg [7:0] opcode,native_opcode;
     reg [1:0] mode;
@@ -51,6 +54,9 @@ module audio_native #(
     assign update_slot=reference[15:0];
     assign update_generation=reference[47:16];
     assign update_data=mutation;
+    assign observation_valid=phase == OBSERVATION_SEND;
+    assign observation_opcode=opcode;
+    assign observation_data=payload;
     task automatic finish(input [7:0] tag, input [511:0] data, input pending);
         begin response_valid<=1; response_pending<=pending; response_data<=data; response_data[511:504]<=tag; phase<=IDLE; end
     endtask
@@ -92,7 +98,13 @@ module audio_native #(
                     if (request_data[63:0] == request_sequence) fail(RUNTIME,request_flags[2] ? 8'd1 : 8'd6);
                     else if (request_reference[47:16] == 0) fail(RUNTIME,1); else phase<=LOOKUP_SEND;
                 end else if ((request_opcode == 12 || request_opcode == 13) && request_mode == 0) finish(0,request_data,1);
+                else if (((request_opcode == 12 || request_opcode == 13) && request_mode == 1)
+                    || ((request_opcode == 14 || request_opcode == 19 || request_opcode == 20) && request_mode == 0)) phase<=OBSERVATION_SEND;
                 else fail(RUNTIME,2);
+            end
+            OBSERVATION_SEND: if (observation_ready) phase<=OBSERVATION_WAIT;
+            OBSERVATION_WAIT: if (observation_done) begin
+                if (observation_error != 0) internal_failure();else finish(observation_result[511:504],observation_result,0);
             end
             NATIVE_SEND: if (native_ready) phase<=NATIVE_WAIT;
             NATIVE_WAIT: if (native_done) begin native_result<=native_response_data;native_error<=native_response_error;phase<=return_phase;end

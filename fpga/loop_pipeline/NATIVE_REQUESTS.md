@@ -2,9 +2,11 @@
 
 This is an M5 component checkpoint, not the migrated application transport.
 `public_native_probe` connects the shared ARM public-row owner, real public
-storage, private delivery and real TP. The continuous production parents still
-disable native public actions. Query/export, parameter/graph continuity and the
-application service/clock split remain open.
+storage, private delivery and real TP. The continuous wrapper now connects that
+owner in its explicit resident application profile; general prepared/demo/board
+defaults retain their raw profile. Historical query/export wiring is implemented.
+Mutable parameter/graph continuity and the actual Rust application service/clock
+split remain open.
 
 The two capacities have different lifetimes. A public row reserves an admitted
 future action and retains its eventual receipt. Native TP cells represent only
@@ -66,3 +68,19 @@ checks cover duplicate, retained-terminal, self, recovery and unknown cancels,
 plus pending tick reuse, STOP cancellation, target/static/capacity error
 precedence, full-cache invalidation and frame-preserving initialization.
 This component test establishes no continuous-audio deadline or physical claim.
+
+The connected continuous comparison now covers 1,312 quanta, 41,984 stereo
+frames, 2,624 coherent cuts, nine transitions and five historical queries/exports
+in instant, fixed and DRAMsim3 memory. A 1,040-quantum ARM pause includes both
+stereo takes, future AT/self-sync/tick actions and STOP cancellation. All audio,
+ordered events and post-FINISH states match independent production Rust. Queries
+match the independent pre-FINISH state, preserve their actual scalar/epoch values
+and retain original capture start/end metadata when delivered much later.
+
+Native state/export records have a separate receipt lifetime from export leases.
+Generation/session-checked word reads do not release them; public row collection
+acknowledges the retained record first. Component tests fill every public slot,
+advance 1,050 cuts with no host service and recover exact historical metadata.
+They check scope/error precedence, empty exports, borrowed cursors, retirement,
+word bounds, generation reuse and session reset. These tests do not complete
+application migration, canonical mutable state, bulk reads or physical timing.

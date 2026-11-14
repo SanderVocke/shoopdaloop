@@ -113,3 +113,24 @@ pub fn cancel(sequence: rt_runtime::Sequence) -> Transfer {
 pub fn tag(payload: &[u32; 16]) -> u8 {
     get(payload, TAG, 8) as u8
 }
+
+pub fn state(target: LoopId) -> Transfer {
+    let mut t = transfer(action::QUERY);
+    put(&mut t.words, 0, 64, identity(target));
+    t
+}
+pub fn export(target: LoopId, selection: shoop_loops::runtime::Selection) -> Transfer {
+    let mut t = transfer(action::EXPORT);
+    put(&mut t.words, 0, 64, identity(target));
+    put(
+        &mut t.words,
+        64,
+        2,
+        match selection {
+            shoop_loops::runtime::Selection::Playback => 0,
+            shoop_loops::runtime::Selection::Latest => 1,
+            shoop_loops::runtime::Selection::Recording => 2,
+        },
+    );
+    t
+}

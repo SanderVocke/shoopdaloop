@@ -39,6 +39,12 @@ impl Agent for Views {
         if !e.rises(0) {
             return;
         }
+        if m.get("reset") != 0 {
+            self.live.clear();
+            self.pending = None;
+            self.cycle += 1;
+            return;
+        }
         if m.get("media_done") != 0 {
             self.pending = None;
         }
@@ -70,6 +76,9 @@ impl Agent for Views {
         }
         self.cycle += 1;
     }
+}
+pub(super) fn attach_views(s: &mut Sim<'_>) {
+    s.agent(Views::default());
 }
 fn request(s: &mut Sim<'_>, op: u64, latest: bool, slot: u64, generation: u64) -> (u64, Bits) {
     s.until(1000, "media cut ready", |m| m.get("request_ready") != 0);
@@ -466,7 +475,7 @@ pub fn samples() -> Result<()> {
 
 pub fn retained_records() -> Result<()> {
     let root = crate::root();
-    for slots in [3, 256] {
+    for (slots, words) in [(3, 29), (256, 29), (256, 30)] {
         let compiled = Design::new(
             "cut_records",
             vec![
@@ -474,7 +483,7 @@ pub fn retained_records() -> Result<()> {
                 root.join("fpga/state_processor/rtl/sp_ram.sv"),
             ],
         )
-        .parameters(&[("SLOTS", slots)])
+        .parameters(&[("SLOTS", slots), ("WORDS", words)])
         .build(&root.join("work/marlin-suite/cut-records"))?;
         let mut s = Sim::new(compiled.session(None)?, &[("clk", 10000, 0)]);
         s.model.set_all(&[("reset", 1), ("epoch", 7)]);
@@ -482,8 +491,8 @@ pub fn retained_records() -> Result<()> {
         s.model.set("reset", 0);
         s.idle(1);
         let value = |slot: u64| {
-            let mut data = Bits::zero(1856);
-            for word in 0..29 {
+            let mut data = Bits::zero(words as usize * 64);
+            for word in 0..words as usize {
                 data.set(
                     word * 64,
                     64,
@@ -506,7 +515,7 @@ pub fn retained_records() -> Result<()> {
             s.model.set("commit_valid", 0);
             let start = s.cycles;
             s.until(33, "bounded snapshot copy", |m| m.get("commit_done") != 0);
-            assert!(s.cycles - start <= 30);
+            assert!(s.cycles - start <= words + 1);
             let error = s.model.get("commit_error");
             s.idle(1);
             error
@@ -537,22 +546,25 @@ pub fn retained_records() -> Result<()> {
             assert_eq!(commit(&mut s, slot, 1, &value(slot)), 0);
         }
         assert_eq!(
-            commit(&mut s, 0, 2, &Bits::zero(1856)),
+            commit(&mut s, 0, 2, &Bits::zero(words as usize * 64)),
             5,
             "full records allowed overwrite"
         );
         s.idle(1024 * 64);
         for slot in 0..slots {
-            for word in 0..29 {
+            for word in 0..words {
                 assert_eq!(
                     read(&mut s, slot, 1, 7, word, false),
                     (0, value(slot).get(word as usize * 64, 64))
                 );
             }
         }
-        for (slot, generation, epoch, word) in
-            [(0, 2, 7, 0), (0, 1, 6, 0), (slots, 1, 7, 0), (0, 1, 7, 29)]
-        {
+        for (slot, generation, epoch, word) in [
+            (0, 2, 7, 0),
+            (0, 1, 6, 0),
+            (slots, 1, 7, 0),
+            (0, 1, 7, words),
+        ] {
             assert_eq!(read(&mut s, slot, generation, epoch, word, false), (3, 0));
         }
         assert_eq!(read(&mut s, 0, 2, 7, 0, true), (3, 0));
@@ -562,8 +574,8 @@ pub fn retained_records() -> Result<()> {
         assert_eq!(commit(&mut s, 0, 2, &value(99)), 0);
         assert_eq!(read(&mut s, 0, 1, 7, 0, true), (3, 0));
         assert_eq!(
-            read(&mut s, 0, 2, 7, 28, false),
-            (0, value(99).get(28 * 64, 64))
+            read(&mut s, 0, 2, 7, words - 1, false),
+            (0, value(99).get((words as usize - 1) * 64, 64))
         );
         assert_eq!(read(&mut s, 1, 1, 7, 0, true), (0, 0));
         s.model.set_all(&[
@@ -586,7 +598,7 @@ pub fn retained_records() -> Result<()> {
         assert_eq!(read(&mut s, 0, 1, 7, 0, true), (3, 0));
         assert_eq!(read(&mut s, 0, 1, 8, 0, false), (0, value(22).get(0, 64)));
         println!(
-            "retained cut records/{slots}: all credits filled, 1,024-quantum pause, exact historical words, generation/epoch/ack/reuse and partial-copy reset"
+            "retained cut records/{slots}/{words}: all credits filled, 1,024-quantum pause, exact historical words, generation/epoch/ack/reuse and partial-copy reset"
         );
     }
     Ok(())

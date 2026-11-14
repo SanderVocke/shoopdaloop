@@ -302,3 +302,121 @@ pub fn batches_and_failures() -> Result<()> {
     );
     Ok(())
 }
+
+pub fn managed_owner_isolation() -> Result<()> {
+    let root = crate::root();
+    let compiled = Design::new(
+        "audio_control",
+        vec![
+            root.join("fpga/state_processor/rtl/sp_ram.sv"),
+            root.join("fpga/audio_io/rtl/audio_command_fifo.sv"),
+            root.join("fpga/audio_io/rtl/audio_control.sv"),
+        ],
+    )
+    .parameters(&[("DEPTH", 8), ("RESIDENT_ACTIONS", 1)])
+    .build(&root.join("work/marlin-suite/managed-control"))?;
+    let mut s = Sim::new(compiled.session(None)?, &[("clk", 10000, 0)]);
+    s.model.set("reset", 1);
+    s.idle(2);
+    s.model.set_all(&[
+        ("reset", 0),
+        ("enable", 1),
+        ("command_ready", 1),
+        ("cfg_ready", 1),
+    ]);
+    s.idle(2);
+    let source = Source::attach(
+        &mut s,
+        "control_valid",
+        "control_ready",
+        "control_data",
+        vec![],
+    );
+    let operations: Vec<_> = [4, 5, 6, 17, 18, 19, 20, 21]
+        .into_iter()
+        .map(|op| (0, op))
+        .chain([0, 5, 6, 128, 133, 134, 136].into_iter().map(|op| (1, op)))
+        .collect();
+    let mut sequence = 0;
+    for (kind, opcode) in operations {
+        source.borrow_mut().queue.extend([
+            Bits(rt_fpga_adapter::audio_control::header(sequence, sequence + 1, 1, 8)?.to_vec()),
+            control_packet(sequence, kind, &Bits::default(), opcode, 0),
+        ]);
+        s.until(1000, "managed raw mutation refusal", |m| {
+            m.get("result_valid") != 0
+        });
+        let row = s.model.bits("result_data");
+        assert_eq!(row.get(832, 4), 10, "kind {kind}, opcode {opcode}");
+        assert_eq!(row.get(838, 8), opcode);
+        assert_eq!(
+            s.model.get("command_valid") | s.model.get("cfg_valid") | s.model.get("fault"),
+            0
+        );
+        s.idle(12);
+        assert_eq!(s.model.bits("result_data"), row);
+        s.model.set("result_ready", 1);
+        s.idle(1);
+        s.model.set("result_ready", 0);
+        s.idle(2);
+        assert_eq!(s.model.get("run_permitted"), 1);
+        s.model.set("run_start", 1);
+        s.idle(1);
+        sequence += 1;
+        s.model
+            .set_all(&[("run_start", 0), ("sequence_number", sequence)]);
+    }
+    for (kind, opcode) in [(0, 0), (1, 1), (1, 137), (1, 24)] {
+        source.borrow_mut().queue.extend([
+            Bits(rt_fpga_adapter::audio_control::header(sequence, sequence + 1, 1, 8)?.to_vec()),
+            control_packet(sequence, kind, &Bits::default(), opcode, 0),
+        ]);
+        s.until(1000, "managed service routing", |m| {
+            m.get(if kind == 0 {
+                "command_valid"
+            } else {
+                "cfg_valid"
+            }) != 0
+        });
+        assert_eq!(
+            s.model.get(if kind == 0 {
+                "command_opcode"
+            } else {
+                "cfg_opcode"
+            }),
+            opcode
+        );
+        s.idle(1);
+        s.model.set(
+            if kind == 0 {
+                "response_valid"
+            } else {
+                "cfg_response_valid"
+            },
+            1,
+        );
+        s.idle(1);
+        s.model.set(
+            if kind == 0 {
+                "response_valid"
+            } else {
+                "cfg_response_valid"
+            },
+            0,
+        );
+        s.until(1000, "managed service reply", |m| {
+            m.get("result_valid") != 0
+        });
+        assert_eq!(s.model.bits("result_data").get(832, 4), 0);
+        s.model.set("result_ready", 1);
+        s.idle(1);
+        s.model.set("result_ready", 0);
+        s.model.set("run_start", 1);
+        s.idle(1);
+        sequence += 1;
+        s.model
+            .set_all(&[("run_start", 0), ("sequence_number", sequence)]);
+    }
+    assert_eq!(s.model.get("fault"), 0);
+    Ok(())
+}

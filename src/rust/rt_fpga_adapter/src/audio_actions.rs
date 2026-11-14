@@ -16,6 +16,8 @@ pub const REPEAT: u8 = 15;
 pub const PARAMETER: u8 = 16;
 pub const INITIAL: u8 = 17;
 pub const GRAPH: u8 = 18;
+pub const CURSOR: u8 = 19;
+pub const RETIRE: u8 = 20;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Identity {
@@ -86,7 +88,7 @@ pub fn install(
     requested_frame: u64,
     action: &Transfer,
 ) -> Result<Transfer, Error> {
-    if id.generation == 0 || !matches!(action.opcode, 0 | 5 | 6 | 8 | 9..=18) {
+    if id.generation == 0 || !matches!(action.opcode, 0 | 5 | 6 | 8 | 9..=20) {
         return Err(Error::InvalidParameter);
     }
     if action.words[if action.opcode >= 9 { 16 } else { 7 }..]

@@ -1,313 +1,551 @@
-# ARM–FPGA boundary completion evidence
+# Finish the ARM–FPGA boundary roadmap
 
-Work started at `4b08728b17ab9d28b28d66fe2c78c92690ffd2ea` on
-`plan/fpga-boundary-completion`, stacked on #993 at
-`60beabb53e1f4a5051db9baa2e3f69815f61ad18`. The parent was fetched and
-its PR head checked before execution. No parent changes were needed.
-The [completion plan](../../PLAN_FPGA_BOUNDARY_COMPLETION.md) remains the
-acceptance contract. This document records evidence, not roadmap completion.
+Status: execution in progress; focused resource review and M4 functional gate
+complete. M5, full-system timing and M6 physical qualification remain open.
+Execution evidence: [boundary completion](fpga/verification/BOUNDARY_COMPLETION.md).
+Parent roadmap: [PLAN_LONGTERM_FPGA_BOUNDARY.md](PLAN_LONGTERM_FPGA_BOUNDARY.md).
+Prerequisite: [milestones 2–3](PLAN_FPGA_COMPACT_ACTIONS_AND_MEMBERSHIP.md),
+[PR #993](https://github.com/SanderVocke/shoopdaloop/pull/993).
+Planning/initial execution branch: `plan/fpga-boundary-completion`.
+Stack base: `plan/fpga-compact-actions-membership` at
+`60beabb53e1f4a5051db9baa2e3f69815f61ad18`.
+Eventual integration target: `proto/fpga-rust-reference`.
 
-## Frozen baseline
+This plan completes the remaining roadmap: a focused TP resource review and
+opportunistic optimization, autonomous progression (M4), application integration
+(M5), and system/physical qualification (M6). It includes the missing physical ARM
+control and audio driver work needed for qualification. Writing this plan does
+not execute those stages.
+The user's instruction not to inspect CI after pushing overrides the planning
+template's default CI-to-green loop. No autonomous merging is authorized.
+Execution steering: no ZedBoard is available here. Defer actual hardware tests
+until independent software/RTL/firmware/build/timing work is done, then stop at
+that dependency. Do not request board access again in this execution or mark
+physical qualification complete without its evidence.
 
-`work/fpga-completion/baseline-source-manifest.json` freezes SHA256 hashes for
-97 RTL, service, simulator, application-worker and testbench source files.
-Every TP RTL hash matches the preserved #993 routed source manifest in
-`work/fpga-compact/m3-route-common/`. The committed
-[M2–3 report](../transition_processor/measurements/COMPACT_ACTIONS_AND_MEMBERSHIP.md)
-and its raw reports remain the baseline; an identical input does not require
-another route just to change its date. Frozen implementation source and report
-hashes will accompany each new checkpoint.
+## Goals and scope
 
-| Profile | Capacities / clocks | Role |
-| --- | --- | --- |
-| TP comparison | L64/R272/E400, xc7z020clg484-1, 100 MHz, 0.2 ns uncertainty | Matched M1/M2/#993 area, cycles and timing |
-| Complete-core OOC | L64/R128/E256, program/state/jobs 512, 8 in/out, AXI64, xc7z020clg400-1, Q32, 100 MHz, 0.2 ns | Existing core area/timing comparison; separate package from ZedBoard |
-| Kernel support | Q1/16/32/64/128; existing operation whitelist | Preserve all production-supported profiles |
-| Transition loads | Dense shared pool, 8×8, 64-loop chains, stale and full terminals | Event/action/state/identity comparisons |
-| Continuous I/O | Existing Q16/CF8/P8 default, 2–16 logical lanes; instant/fixed/DRAMsim3; alternate clock phases | Bank/CDC/deadline/sample and service-pause comparisons |
-| Physical target | Initial reference ZedBoard XC7Z020, 100 MHz PL, Q32/48 kHz | Board revision/silicon, codec fixture and endpoint still unconfirmed |
+ARM owns command validation/construction, admission bookkeeping, membership
+preparation, public replies, queries and non-real-time exports. FPGA owns musical
+time, admitted actions, dynamic validation, natural wraps, repeat waits, sync
+propagation, arbitration, stop cancellation, sample processing and required media
+operations at transition cuts. An admitted action never needs an ARM continuation.
 
-Use Vivado 2021.1 build 3247384 / IP 3246043 and the preserved shared TP
-context. The recovered runtime and pinned public image layers are described in
-[the board catalog notes](../zedboard/CATALOG.md). The absolute local wrapper
-is `work/fpga-boundary/tools/vivado/vivado-container` under this checkout.
-Do not overwrite earlier frozen runs. New scratch/evidence starts in
-`work/fpga-completion/`.
+Finish with an engine that runs from fabric/audio clocks while ARM command and
+response service is absent. An empty control queue means ordinary progression.
+Control traffic has bounded access to device resources and cannot determine when
+audio runs. Application service consumes authoritative frame-stamped results
+later, without a per-quantum settlement rendezvous.
 
-## Service/deadline inventory
+Pursue clear-cut opportunities to reduce TP LUT usage where the measured benefit
+justifies complexity, risk and verification cost. Investigate the M3 increase
+before choosing another protocol and record the resource tradeoffs. LUT reduction
+is welcome but is not required for roadmap completion or progression to M4.
+An open-ended area search must not hold up autonomy/integration. The final system
+must close timing. Existing musical behavior, supported operation profiles and
+shared capacities remain. Composites/new modes, unrelated application rewrites,
+other board ports and production boot/security redesign are outside this scope.
 
-| Current operation | Current path | Required disposition |
-| --- | --- | --- |
-| Command validation, graph compilation, request ownership, membership construction | Adapter service, shared transition owner, prepared Rust/Python producers | ARM service; complete before device admission |
-| INSTALL, cancel, repeat; rounded effective frame and outcome | TP command FSM; synchronous transport used by callback today | Bounded device admission, then resident execution; retain authoritative results |
-| Per-quantum fence generation and sequence matching | Prepared events, continuous source, demo ROM, board runner, audio control | Remove the empty-stream dependency; complete batch visibility at a device cut |
-| PROCESS/FINISH, arbitration, pulse propagation, wrap/repeat and countdown | TP/coordinator | Fabric deadline work; no ARM continuation |
-| State reads, pending request reads, completion collection | Application `Core::quantum`, mono `LoopAdapter::process` | Coherent retained device observations; asynchronous ARM delivery/collection |
-| Host SETTLE 16, then state/media reads before audio | Both application and mono adapters | Remove only after device-side cut work and observations replace it |
-| Capture completion snapshot/view acquisition | `Media::observe`, media opcode 1 once per channel | Required cut-time pin before a later retake can replace the source; move to device |
-| Capture revision/frame tracking and latest/playback identities | `Media::observe` before/after processing | Device-stamped history; ARM reconstruction must tolerate missed service |
-| Unreferenced content/view retirement | `Media::observe` / `retire`, media opcode 3 | Deferred cleanup; cannot be needed each quantum to keep ordinary playback running |
-| Accepted state/export query cut and reference reservation | Adapter pending query and media export/read/release | Reserve historical state/media at the accepted cut; deliver later without substitution |
-| Monitor mode and pre-recording changes | Application quantum reads pending actions then writes ramps | Device cut-time behavior, including the quantum before tick recording; no future ARM wakeup |
-| Gain/balance/processor controls and graph activation | Scheduler delivery, parameter writes, `snapshot_parameters` | Resident timed controls; device establishes ramp continuity at actual activation, not from stale ARM state |
-| Sample/job execution, capture storage, prefetch and reclamation | State/job/media/sample-memory pipelines | Device work; include DDR interference in deadline accounting |
-| Model clock advancement and sample transport | Simulator/Marlin worker and continuous scheduler | One model owner; audio clock advances independently of command-service progress |
-| ARM/audio transport | Zynq platform currently dummy audio; benchmark halts CPUs and disables GP0 | New real service/PL transport and codec integration required |
+## Starting evidence and implementation
 
-The synchronous `LoopDevice` trait is shared by mono and application adapters;
-moving one callback's calls to a thread does not fix the other path or establish
-device-cut media ownership. The existing continuous harness already provides
-independent audio/fabric clocks and expected digital samples. It is the first
-integration target; diagnostic stepped simulation remains distinct.
+[The M2–3 report](fpga/transition_processor/measurements/COMPACT_ACTIONS_AND_MEMBERSHIP.md)
+contains matched sources, harnesses, tool versions, raw reports and replay patches.
 
-## Qualification envelope
+| Metric | Matched M1 | M2 | Latest M2–3 |
+| --- | ---: | ---: | ---: |
+| TP routed LUTs, L64/R272/E400 | 11,320 | 11,356 | 13,312 |
+| TP flip-flops | 8,148 | 7,898 | 8,813 |
+| TP BRAM36 equivalents | 29 | 25.5 | 28.5 |
+| Dense PROCESS | 5,465 | 5,465 | 4,380 cycles |
+| TP setup/hold, 100 MHz | +0.010/+0.047 | +0.030/+0.006 | +0.105/+0.007 ns |
 
-Freeze the software comparison profiles above. The initial physical design target
-is Q32/48 kHz/100 MHz with the existing fixed-latency choices preserved, at least
-1,024 quanta with all command/observation/media service stopped, and a one-hour
-endurance capture after smoke/correctness qualification. Require zero unintended
-input loss, output deadline misses or faults, and at least 10% measured margin
-to the actual publication cutoff in the frozen contention workload. Exercise
-idle, sparse, dense, stale/full-credit, retained media, 8×8/64 chains, command
-floods and concurrent ARM/cache/DMA/DDR traffic. Record maximum processing and
-publication time, not only mean CPU utilization.
+Full dense admission now takes 276 transfers / 1,654 elapsed fabric clocks in
+the one-loop workload. Retained terminals raise the steady 64-loop chain from
+1,033 to 1,609 cycles. The separate L64/R128/E256 core experiment reduces LUTs
+from 30,011 to 29,419 but worsens setup from -1.353 to -1.845 ns; both miss
+100 MHz. Smaller raw records and removed responsibilities have not established
+TP LUT savings. Banks/guards are candidate costs, not a completed attribution.
 
-These numbers do not establish a board qualification contract yet. In particular,
-48 kHz makes Q32 nominally 666.667 microseconds / 66,666.7 PL cycles, but this is
-not the publication budget. Input quantum n is published on its last input
-sample edge; output eligibility closes before sample `n*Q + Q + P`, two audio
-clock edges before the first output sample. Account for descriptor synchronizers,
-phase, prefetch and memory traffic between those edges. Measure the actual
-cutoff and derive control/processing budgets and admission lead time before
-claiming that a profile fits. Keep internal Q8.24 exactness separate from physical
-codec word length, conversion and analog tolerance. Simulated tick spacing is a
-test parameter, not a physical sample-rate measurement.
+The final combined sweep ran 3,342 tests: 3,340 passed, two failed, 11 skipped.
+Both failures pass targeted corrected reruns (an interrupted model cache and a
+direct continuous setup path missing prepared membership). Keep that distinction;
+do not relabel the initial sweep as wholly green or rerun it merely to erase it.
 
-The user confirmed that no ZedBoard is available here and instructed execution
-to defer actual hardware tests as long as possible, then stop at that dependency.
-No board/serial endpoint or audio fixture is configured in the managed workspace,
-and no hardware-server process or serial device is present. Old
-Windows-local JTAG instructions and the halted-CPU benchmark do not establish
-current access. Exact board/silicon/codec/pins/physical channel count, firmware
-memory map, service CPU budget and contention bounds remain open until that
-fixture is identified. Complete independent work first; physical qualification
-and overall roadmap completion stay open. No further access request is pending.
+Important entry points:
 
-## Focused resource review
+- `fpga/transition_processor/rtl/transition_processor.sv`: bank selection,
+  `staging_seen`/`active_seen`, publication/version guards, wide writeback and
+  resolver FSM. [COMPACT.md](fpga/transition_processor/COMPACT.md) is ABI 3.
+- `fpga/audio_io/rtl/{audio_control,audio_loop_pipeline,audio_io}.sv`: control
+  fences, run gating, clock crossings, bank ownership, deadlines and recovery.
+- `fpga/loop_pipeline/rtl/loop_pipeline.sv`: `HOST_SETTLE_WAIT`/`BOUNDARY`,
+  execution priority, PROCESS/FINISH and state/job/media sequencing.
+- `src/rust/rt_fpga_adapter/src/{transition_service,engine,looping,loop_media}.rs`:
+  shared ownership; `Adapter::process` services commands; `Core::quantum` sends
+  opcode 16, reads state/pending requests and observes media before rendering.
+- `src/rust/shoop_rt_host_fpga_sim/src/{worker,lib}.rs` and
+  `src/rust/rt_fpga_sim/src/simulator.rs`: model ownership, software-driven frame
+  advancement, transport and application execution.
+- `src/rust/rt_fpga_testbench/src/{prepared,command_measurements}.rs`, drivers,
+  suites and tests: direct/prepared producers, independent production comparisons
+  and continuous/deployed tests. Update Python preparation through the Rust owner.
+- `fpga/{transition_processor/measure.py,synthesis/run.py,zedboard/}` and
+  `platforms/zynq7000/`: matched physical experiments and actual ARM deployment.
 
-The #993 shared-context synthesis reports 13,340 TP LUTs / 8,539 FFs / 28.5 BRAM36
-equivalents before implementation; route reports 13,312 / 8,813 / 28.5. Hierarchy
-attributes 8,845 synthesized LUTs to the processor body, 2,052 to loop RAM logic,
-1,206 to request RAM logic, 542 to events, 540 to specs, 116 to dependency order
-and 39 to the two membership/root bank wrappers. Hierarchy alone cannot divide
-the processor body's shared mux/control logic into independent protocol costs.
+The current ZedBoard benchmark keeps both CPUs halted, generates its input and
+has no expected-output comparison. Its old hardware digest is not an audio
+correctness proof. The ARM platform currently uses dummy audio; GP0 control is
+disabled in the FPGA benchmark build. Real ARM/PL integration and codec I/O are
+work in this plan, not existing capabilities to assume.
 
-Both membership node banks contain `(32+H)*R` bits and both root banks contain
-`2*H*L` bits, where `H=ceil(log2(R))+1`. Staging/active masks each retain R bits.
-Resident requests are 397 bits per slot. The generation comparisons protect
-reused slots; checked publication/nonce values protect bank lifetimes; staging
-counts and presence checks protect complete publication. None can be removed
-merely because the ARM is trusted. Read/return-state muxes, 64-bit frame math and
-wide RAM writeback share logic with resolver execution and require controlled
-experiments for attribution.
+## Immutable acceptance criteria
 
-The first controlled variant restores the old numeric encodings of the 66
-retained FSM states without restoring unused states, selectors, ports or guards.
-It leaves the ABI and all storage/lifetime rules unchanged. Inputs, assigned
-values and synthesis provenance are frozen in `work/fpga-completion/encoding-*`.
-The [raw reports and replay patch](../transition_processor/measurements/boundary-completion/encoding/)
-preserve the experiment; the baseline source manifest is stored alongside them.
+1. **Behavior:** at identical device admission cuts, match production Rust for
+   loop state, ordered events, pending countdowns, identities, requested/effective/
+   terminal frames, outcomes and reasons. Preserve exact Q8.24 digital audio,
+   captured/exported samples and media ownership, plus independent float bounds.
+   Preserve every current supported quantum/profile and operation whitelist.
+2. **Ownership:** preserve shared pool sizes, public queue/receipt semantics,
+   error precedence, lowest-slot reuse, duplicate retention through collection,
+   cancellation without release, generation retirement and coordinated reset.
+   Unknown transport outcomes quarantine ownership. No counter/version wrap
+   aliases an old action, observation, bank or media reference.
+3. **Autonomy:** after setup/admission, continuous fabric I/O runs for at least
+   1,024 quanta with zero ARM fences, settlement, command/membership updates,
+   completion draining or required observation/media service. Cover future AT
+   actions, source/self-sync, repeat waits, chains, supersession, failed winners
+   and stop cancellation. Retained terminals and stale membership need no cleanup.
+4. **Isolation:** held replies, full result/telemetry storage, partial updates,
+   command floods and a stopped service worker cannot stall runnable audio.
+   Bound control arbitration, transfer size and work admitted between quanta.
+   Preserve existing legitimate media-capacity exhaustion and fault/silence rules.
+5. **Visibility:** a control batch has a specified atomic boundary and admission
+   point. Incomplete batches leave committed state usable. FPGA computes actual
+   effective frames and reports late/refused work; ARM predicts no pulse time.
+   Concurrent observations are coherent and frame/epoch stamped. Accepted query,
+   capture/export and ownership results cannot be silently overwritten.
+6. **Callback separation:** the ARM audio/deadline path performs no command
+   compilation, membership construction, completion polling, synchronous MMIO
+   waits, settlement rendezvous or media housekeeping. It uses bounded prepared
+   transport where required. Required capture allocation/pinning/reference work
+   remains device-side. Slow ARM observation delivery changes delivery time only.
+7. **Resource accounting and timing:** publish matched LUT/FF/BRAM/storage/cycle/
+   transfer costs throughout, including final integration and timing work. Seek
+   clear-cut LUT savings; #993's 13,312 and M1's 11,320 are comparison references,
+   not acceptance thresholds. No decrease or saving percentage is required.
+   Any claimed saving must be distinguishable from observed run variation.
+   The design must fit the selected device, preserve standalone TP timing and
+   achieve nonnegative setup/hold for the complete core and selected board
+   deployment. Do not lower clocks/capacities or hide paths to pass.
+8. **Physical qualification:** a real ARM runs the shared service against the
+   final FPGA and physical audio path on the selected board. Verify output,
+   timing, reset, cache/DMA coherence and service/memory interference under the
+   frozen workload envelope. Simulated clocks, QEMU, a successful bitstream or
+   an unverified digest cannot satisfy this criterion.
+9. **One maintained implementation:** all transports/producers use the shared
+   Rust owner and final versioned contract. Remove obsolete production fence/
+   settle protocols and experimental representation selectors after migration.
+   Diagnostic stepping and archived evidence must not become hidden prerequisites
+   or a second resolver. Public functionality is not reduced to achieve area.
 
-| Same-context synthesis | LUTs | FFs | BRAM36 | Estimated setup/hold slack |
-| --- | ---: | ---: | ---: | ---: |
-| #993 current encoding | 13,340 | 8,539 | 28.5 | +1.120/+0.063 ns |
-| Old retained-state numbers | 13,461 | 8,523 | 28.5 | +0.946/+0.063 ns |
+These criteria are completion gates. Inability to meet correctness, safety,
+device capacity, deadline or hardware requirements requires a recorded blocker/redesign,
+not a checked completion box. Absence of LUT savings alone is not a blocker.
 
-Decision: discard the variant and retain #993 unchanged. It increases LUTs by
-121 (0.91%); it does not justify routing or a production encoding change.
-The original prototype's smaller mapping cannot be recovered just by restoring
-these numbers. This experiment does not prove the entire M3 increase came from
-banks/guards, nor quantify a routed saving. No guard, check or lifetime rule was
-removed. All protocol, construction, transfer, traversal and storage costs stay
-as reported at #993; its functional and routed evidence remains applicable.
-Stage 2's conditional protocol cutover, candidate campaigns and route are not
-applicable. The focused review is complete and does not block M4.
+## Design rules and boundary decisions
 
-## Prepared-profile autonomous control checkpoint
+- Treat the shared ARM producer as trusted for global construction properties.
+  Inventory device checks individually: required safety/identity/atomicity checks,
+  trusted-producer validation, or redundant state. Prove a lifetime/bound before
+  moving or deleting a check. Malformed raw input must remain bounded and unable
+  to access out of range, corrupt live storage or alias a reused identity.
+- Attribute LUT cost using hierarchy, mux/register/RAM inference, critical paths
+  and controlled variants. Separate masks/bank selection/guards from resolver
+  datapaths and FSM encoding/mapping. Sequential old work can cost cycles without
+  much logic; fewer RTL states alone is not evidence of lower area.
+- Keep staging off live execution state. Consider simpler ordered writes, RAM
+  validity/version representations and less duplicated metadata when attribution
+  warrants them. Use the current linked layout as the control; reopen the layout
+  choice only with evidence. Retain one final representation and checked versions.
+- Specify atomic action/membership publication and multi-control batch visibility
+  together. A synchronous ARM exchange may involve bounded transfers; audio never
+  waits for the next transfer or acknowledgement consumer. Do not remove a fence
+  wire while retaining its dependency elsewhere in the driver or scheduler.
+- Define early/on-time/late publication, cancellation ordering, batching order,
+  producer restart and reset. Preserve valid public delivery semantics; do not
+  turn ordinary ARM delay into a device-wide fault or apply a partial batch.
+  Distinguish public queue acceptance from device admission. Every supported
+  future control that requires an exact execution cut, including signal/parameter
+  changes, must be resident or have an explicit admission deadline; it cannot
+  rely on ARM waking at that future frame. Preserve public completion semantics.
+- Separate optional latest telemetry from accepted queries/results requiring
+  retention. Reserve bounded capacity before acceptance; backpressure new service
+  work without backpressuring audio. Optional loss needs a detectable policy.
+- Audit every device operation currently issued by `loop_media::Media::observe`.
+  Capture cuts, old-content retention, retakes and required reference changes must
+  occur at the correct device frame. Moving their calls to a later ARM thread is
+  insufficient. Bound retained snapshots/pins and preserve exhaustion behavior.
+- Audit `snapshot_parameters` and supported signal-program updates as well:
+  compilation can move to ARM service, while any required continuity of mutable
+  DSP/ramp state must be established at the device's actual activation cut.
+  Publishing an old ARM snapshot back over advancing state is unsafe.
+- Keep a single owner for each Marlin model/context. Independent service/audio
+  progression may use the existing clock scheduler and queues; do not introduce
+  concurrent unsafe model calls or count faster host simulation as ARM evidence.
+- Reuse Zynq boot/BSP/service infrastructure, with an explicit PS/PL memory map,
+  cache maintenance, ordering and ownership protocol. The benchmark's DDR arena
+  cannot be assumed safe when live ARM firmware also occupies DDR.
 
-[Control ABI 1](../audio_io/CONTROL.md) replaces the prepared live fence stream.
-A nonempty batch contains a versioned header and all of its operations before
-execution begins. Empty/future/unfinished ingress leaves audio runnable. One
-complete due batch may execute between quanta, with a device watchdog bounding
-the window. Late admission uses the actual device frame; the TP still owns
-rounding, dynamic validation and transition outcomes.
+## Ordered implementation stages
 
-The device reserves every transport reply before starting a batch. Full retained
-replies defer new control work without backpressuring audio; held results remain
-stable until acknowledgement. Ordinary command refusals are retained replies,
-while malformed transport/timeout/processing faults retain fault-to-silence.
-A direct host reply pending at arm is preserved and blocks new control admission,
-not PROCESS/FINISH. Direct configuration/sample/media handshakes are setup and
-diagnostic interfaces with audio disabled; live traffic uses bounded batches.
+Begin with a focused stage-1 review. Stage-2 implementation is conditional on
+finding worthwhile changes; retaining the current design with recorded evidence
+is an acceptable outcome. LUT savings are not a prerequisite for M4. M4 gates M5;
+coherent device observations and media cuts gate application migration.
+Timing/resource checks recur at each architectural checkpoint; final hardware
+qualification follows functional and timing closure.
 
-Rust and Python prepared producers load frame-zero admissions in boot, emit only
-nonempty future batches and stop at the end of the ROM. The continuous wrapper,
-demo and unpaced board runner use the same batch protocol. The normal application
-and mono adapters still require the later migration; this checkpoint does not
-claim callback separation or autonomous application media ownership.
+### 0. Establish the stack, baselines and qualification contract
 
-The [raw checkpoint directory](../audio_io/measurements/autonomous-control/)
-contains compressed complete sample/state/outcome/media/publication reports,
-source hashes, generic statistics and test logs. Each pause case runs 1,040
-quanta and compares all 16,648 stereo sample frames against independent production
-Rust. Future absolute actions, self/source sync, repeat waits, a retake and stop
-cancellation execute from resident requests; all 11 terminal results are retained.
-The host status reply stays unchanged. Runtime assertions reject ingress,
-collection or accepted direct service traffic while audio runs; hostile held
-legacy requests are presented throughout the pause.
+- [x] Fetch #993 and create this planning branch at the recorded head.
+- [x] At execution, refresh the parent and preserve the stack; freeze current
+  RTL/service/driver sources, profiles and evidence. Reuse valid M1/M2/#993
+  measurements, and rerun only invalidated/missing comparisons.
+- [x] Inventory control, observation and media service calls in every production,
+  mono, application, prepared and board path; classify their actual deadline role.
+- [ ] Freeze a profile matrix: supported kernel quanta; TP 64/272/400; existing
+  complete-core 64/128/256; 8×8/64-loop workloads; continuous 16-channel tests;
+  and a physical reference profile. Use the existing ZedBoard as the initial
+  hardware reference, recording exact silicon/codec/pins/toolchain and supported
+  physical channel count. Keep the Zybo-package OOC experiment separate.
+- [ ] Set concrete sample rate, latency, admission lead time, service budgets,
+  memory contention envelope, run lengths and required deadline margin before
+  implementation. Start from Q32/48 kHz/100 MHz; derive deadlines from actual
+  ingress/publication edges, including CDC/DDR costs. Record physical sample
+  formats and codec quantization separately from internal Q8.24 behavior.
 
-| Memory | Audio clocks/frame | Processed | Control transfers | Missed/discarded |
-| --- | ---: | ---: | ---: | ---: |
-| Instant | 256 | 1,040 | 0 | 0/0 |
-| Stalled fixed latency | 256 | 1,040 | 0 | 0/0 |
-| DRAMsim3 with stalls | 512 | 1,040 | 0 | 0/0 |
+Verification/gate: reproducible inputs and observable frame/event/sample/media
+results; each eventual acceptance claim has a test or physical measurement.
+Hardware access is not established by this planning session. Identify the board,
+debug access and audio fixture early; keep independent work moving if absent.
 
-These are Q16/CF8/P8 simulations with a 10 ns core clock and 13 ns audio clock,
-not physical 48 kHz measurements. The reports retain every publication edge;
-derive simulation margins from the recorded last-input/prefetch edges. Existing
-continuous historical comparisons pass for coincident clocks, stalls and output
-overrun. Demo input-loss/memory-fault/reset recovery passes in all three memory
-models. Board-runner simulation, odd-depth credit/backpressure/refusal/timeout
-tests, ROM parity, Q16 strict lint/generic synthesis, warning-denying workspace
-build and the Rust test-attribute policy pass.
+### 1. Investigate TP LUT costs and assess clear-cut optimizations
 
-Default ingress remains 128×746 bits (11,936 bytes). The new result array is
-128×1,088 bits (17,408 bytes), plus its synchronous head register and control
-state. Each padded ingress transfer is 24 u32 words; each result is 34. The
-watchdog/quota are containment and arbitration bounds, not physical deadline
-qualification. TP RTL, resident storage and the #993 TP resource checkpoint are
-unchanged. Native mapped/routed wrapper accounting and full-core timing closure
-remain open; generic cell counts are not FPGA LUT counts.
+Start with existing reports and a small set of attribution experiments. Expand
+the investigation only when the evidence exposes a promising opportunity.
 
-M4 is not complete. Larger live graph updates still need inactive image
-publication and activation-time ramp continuity. Required media pinning,
-historical queries and monitoring must move into device cuts before removing
-normal SETTLE or migrating application service. The final native/application
-matrix is intentionally reserved for the final behavioral milestone.
+- [x] Reuse #993's mapped result after verifying frozen RTL and harness hashes
+  (no invalidated input required a new baseline run). Build a field/check/
+  state ownership and resource ledger, including both banks, masks, read muxes,
+  version/generation comparisons, writeback and resolver datapaths.
+- [x] Use controlled variants to distinguish actual logic cost from encoding,
+  fanout and synthesis mapping. Do not infer the cause solely from source size
+  or the 13,312 versus 11,320 difference. Disabled guards are diagnostic only.
+- [x] Prototype only alternatives supported by attribution on the real resolver.
+  Compare ARM construction, full transfer/ack cost, stale visits, storage,
+  LUT/FF/BRAM and timing. Include dense/shared-pool, empty, one-loop, mixed-class,
+  full terminal, reused-slot, 8×8 and 64-chain cases.
+- [x] Decide which changes, if any, justify their complexity and risk. Retain the
+  current protocol if no worthwhile candidate emerges. Publish the evidence and,
+  for proposed changes, the check/lifetime proof and visibility/admission cuts.
+  Account for later autonomy/observation needs and their resource costs.
 
-## M4 live-image and combined functional gate
+Verification/gate: owner tests and small independent RTL comparisons for candidates
+actually pursued; same-geometry synthesis, then route promising candidates.
+Record the decision and its evidence, including an unchanged-design outcome.
+Keep the investigation focused; lack of savings does not delay M4. Do not carry
+an unsafe shortcut or make an unsupported causal claim.
 
-The prepared ABI-1 checkpoint above is historical. The current contract is
-[control ABI 2](../audio_io/CONTROL.md), including inactive signal images and
-resident actions managed by the shared Rust owner. Complete-body preflight
-rejects invalid/overbudget batches before mutation. A registered admission
-decision is valid only for the current device sequence. Result capacity is
-reserved before dispatch; no held reply or incomplete producer blocks audio.
+### 2. Apply worthwhile simplifications and record the resource checkpoint
 
-A staged image contains the whole program, initial state and live-copy map.
-Ordered uploads leave the active image untouched. At the admitted activation
-cut, all old mutable values are copied before any active rewrite, supporting
-permutations without publishing a stale ARM snapshot. Ramp changes read the
-actual device value at their cut and retain their result. Private action rows
-are admitted only by complete ordered-bank publication; moving-cut refusal is
-retried by the shared owner, with uncertain outcomes quarantined.
+Implement the following changes only if stage 1 identifies a worthwhile candidate.
+Otherwise record the decision to retain the current design and reuse its valid
+baseline evidence; no protocol rewrite or ABI cutover is required for this stage.
+Mark conditional implementation/verification items not applicable with that decision.
 
-The [combined evidence](../audio_io/measurements/resident-images/combined/)
-freezes 173 sources and all 12 passing continuous/demo/image/board tests. It
-includes the three-memory 1,040-quantum pause, exact resident transition/media
-comparisons, held legacy results, full transport credits, unfinished ingress,
-command flood, fault recovery and prepared-ROM parity. The live 512-program /
-512-state / 512-copy case matches all 34,340 stereo frames, including activation
-at frame 2,048 and channel ramp changes at 2,560. The independent floating bound
-is 5.9582816902548075e-8; the smallest simulated publication margin is 118.742 us.
-This uses accelerated clocks, not a physical 48 kHz measurement. The flood runs
-160 quanta with all 128 results held and a backpressured source. No quantum is
-missed or discarded. Strict lint/generic mapping passes Q16/Q32/Q64; ECP5 mapping,
-warning-denying workspace build and test-attribute policy pass. M4's functional
-gate is complete, while M5 application and final timing/physical gates remain.
+Execution decision: retain #993. The encoding-only candidate increased synthesized
+LUTs by 121; no production protocol or RTL changes are selected. Frozen baseline
+and candidate evidence are linked in the execution report. The first three
+conditional implementation items below and candidate-only verification are
+**not applicable**. Existing #993 costs and correctness/timing evidence remain the
+resource checkpoint. No M4–M6 acceptance claim follows from this decision.
 
-[Timing experiments](../synthesis/measurements/boundary-completion/) retain exact
-sources, matched harnesses and raw reports. The TP reply change routes at 13,078
-LUTs / 8,773 FF / 28.5 BRAM36, setup/hold +0.236/+0.008 ns against #993's
-13,312 / 8,813 / 28.5 and +0.105/+0.007 ns. These are single matched runs, without
-a variation study or a claim about final system savings. Full-core runs improve
-the original -1.845 ns miss but do not close timing; the latest archived run is
--0.351/+0.005 ns. The first autonomous-wrapper route is -2.105/+0.005 ns; later
-registered admission/action timing work is measured separately. No clock,
-capacity or constraint exception hides these misses. An unbounded Yosys proof
-covers the reclaimer budget mux; DMA/metadata tests cover all original memory
-models, alternate widths/geometries, odd cache depths and retirement races.
+- [x] (N/A: retain #993) Implement the chosen owner/publication contract, with bounded staging,
+  generation-safe reuse, checked versions and definite/uncertain failure handling.
+  Remove redundant masks/checks/state only where stage 1 supplies the proof.
+- [x] (N/A: retain #993) Migrate every transport, guard, prepared stream and generated artifact in
+  one ABI cutover. Preserve full numeric ranges, acceptance/error precedence,
+  original-command reconstruction and independently runnable execution.
+- [x] (N/A: retain #993) Remove the discarded prototypes and obsolete production paths. Test partial
+  writes, stale tokens, cancellation/terminal/collection races, held replies,
+  counter exhaustion and coordinated reset at each transfer phase.
+- [x] (retained #993 checkpoint) Publish a working checkpoint against M1/M2/#993: whole admission elapsed
+  clocks/bytes/ARM preparation, PROCESS/FINISH, stale traversal, total storage,
+  routed TP resources and complete-core timing impact.
 
-Required capture pinning, historical queries, monitoring and application service
-separation still belong to M5. The final broad native/application gate remains
-reserved for that behavioral milestone. There is no ZedBoard here: complete
-independent software, RTL, firmware, build and timing work, then stop before
-physical tests. The overall roadmap remains incomplete without physical evidence.
+Verification/gate for implemented changes: focused owner/ABI tests; all five TP
+capacities with at least 20 seeds; exact production/app replay and 1,024-quanta
+service-pause variants; lint/generic mapping and matched TP route. Preserve TP
+timing and report all resource tradeoffs. Repeat paired physical runs only when
+a claimed marginal saving needs a variation check. Record the changed or retained
+design before changing cadence or observation machinery; LUT reduction is not a gate.
 
-## M5 prerequisite: device-side capture ownership and coherent reads
+### 3. Make fabric progression independent of per-quantum fences (M4)
 
-The [device-cut checkpoint](../loop_pipeline/measurements/device-cuts/) moves
-capture finalization, retake roots and required reference cleanup into the device
-for the supported one-loop mono/stereo capture profile. It observes full TP state
-after PROCESS and after FINISH. Completed takes retain their actual physical
-roots; new recordings receive fresh roots. Logical channel mapping protects
-completed roots and raw host media mutation is disabled in this profile. The
-general kernel profile retains its existing raw interface and loop capacity.
+M4 functional gate passed: bounded complete batches, retained replies/credits,
+fence-free ingress, finite ROMs, legacy isolation and resident signal-image
+actions. A full 512-word image is staged while audio runs; activation copies
+actual live ramp values at its cut. Independent future ramp changes also execute
+without ARM service. Combined continuous/demo/image/board tests pass (12 tests),
+including 1,040 unserviced quanta in three memory models, full results, partial
+ingress, command floods, faults and recovery. See the execution report and
+[live-image evidence](fpga/audio_io/measurements/resident-images/combined/).
+Application media/observation migration remains M5. Routed wrapper/core timing
+is measured but does not yet close 100 MHz; final resource/timing gates remain
+open, and this functional checkpoint makes no physical qualification claim.
 
-All three memory modes match 33,600 stereo frames and 2,100 coherent cuts over
-1,050 quanta, with no host TP/media/observation service after initial admission.
-Modes, positions, lengths, revisions, capture counts, cycles and pulses match
-production Rust. Component tests cover retained export and historical empty
-identities, allocation stalls, counter exhaustion and reset. Long-take component
-finalization is bounded without slicing all references. The real near-capacity
-two-take application case is still required after application migration.
+- [x] Specify and implement bounded control access around autonomous PROCESS/
+  state/job/audio/FINISH progression. Input availability and device resources
+  drive execution. An empty, stalled or unfinished control stream cannot stop it.
+- [x] Publish complete batches at explicit cuts, preserving within-batch ordering
+  and authoritative effective-frame reporting. Bound the largest non-preemptible
+  command and total control work per quantum, including configuration/media traffic.
+  Include supported processor/parameter updates in this audit, not just TP actions.
+- [x] Remove normal fence production/consumption and stale-sequence assumptions
+  from audio control, coordinator, drivers, prepared ROMs, demo and board runner.
+  Version incompatible inputs; keep diagnostic stepping explicitly separate.
+- [x] Preserve input/output bank ownership, fixed latency, prefill, overrun,
+  watchdog, sticky fault/silence and quiescent reset/drain behavior.
 
-The independent TP observer reads complete loop/request/event rows with their
-actual frame and phase; a private resident command/result port permits future
-fabric delivery/collection independently of a held host reply. They share the
-existing resolver/RAMs and preserve execution/SP priority. General-profile ties
-remove unused private ports. Five TP capacities with 20 seeds pass the observer
-checkpoint; directed resident-port tests also pass. A separate retained-record
-RAM component passes full 256-credit storage, 1,024-quantum retention, exact
-historical reads, checked generation/epoch ACK and reset during partial capture.
+Verification/gate: continuous I/O with no control producer for 1,024+ quanta,
+held replies, full credits, incomplete publication, command floods and adversarial
+arrival at every boundary. Check exact samples/state/events/results against Rust,
+deadline counters, bus stability and fault recovery in instant/fixed/DRAMsim3
+memory. Instrument the harness to reject hidden fences/settlement/service calls.
 
-Combined media/demo/board tests, strict general/capture lint, Q32 generic
-synthesis, formatting, test policy and warning-denying workspace build pass.
-The source overlay and complete reports/logs preserve both success and initial
-harness failures. Public action/query delivery, export bulk reads, real session
-epoch wiring, callback/worker separation and application/mono migration remain
-open. The optional cut pulse alone is not an accepted historical query. M5 is
-not complete, and this checkpoint does not advance physical qualification.
+### 4. Make observations and media cuts autonomous (M5 prerequisite)
 
-## M5 public-row / native-credit component checkpoint
+Partial checkpoint: the mono/stereo device capture profile now owns capture
+finalization, fresh retake roots and required cleanup at pre/post execution cuts.
+Three memory modes match 1,050 quanta, 33,600 stereo frames and 2,100 coherent
+observations against production Rust. Observer/private-command and retained-record
+components pass held-reply, full-credit, identity/epoch, exhaustion and reset
+tests. Public query/export wiring is now connected in the resident profile with checked
+session epochs and retained snapshot ACKs. Canonical mutable parameters, actual
+graph/topology activation counters, bulk reads, near-capacity application migration
+and callback separation remain open; no stage-4 checkbox is complete.
+See [device-cut evidence](fpga/loop_pipeline/measurements/device-cuts/).
 
-The [frozen sources and test logs](../loop_pipeline/measurements/public-native/)
-accompany the [native ownership contract](../loop_pipeline/NATIVE_REQUESTS.md), which separates
-future public admission and receipt retention from cut-time TP allocation. The
-real public/TP component passes 1,040 quanta with ARM owner service stopped,
-32 public results retained, four native cells and a held host STATUS reply. All
-loop states and ordered events match production Rust. Slot zero reuses successive
-generations; native collection after FINISH does not free public receipts.
-Directed checks preserve duplicate, terminal, normal/recovery self and unknown
-planner-cancellation reasons, forward tick membership and STOP cancellation.
-Private INITIAL_LOOP preserves advancing musical time.
+A later component checkpoint separates retained public rows from native execution
+credits. Thirty-two admitted future actions execute over 1,040 quanta with four
+native cells, no ARM owner service/collection and a held host reply; states and
+ordered events match production. Cancellation reasons and frame-preserving
+initialization are covered. In-place capture sealing avoids reference-vector
+copying and passes all four memory modes. This is not public query/export or
+application integration; stage-4/5 boxes remain open.
+See [native ownership](fpga/loop_pipeline/NATIVE_REQUESTS.md).
 
-Control ABI 3 versions the wider 768-bit row and 96-bit ordered node. Native
-payload upload must complete before atomic publication. Generation-qualified
-references avoid an FPGA sequence CAM; guarded mutation ACK follows actual RAM
-commit. Native public actions remain disabled in current continuous parents.
-Query/export records, canonical parameters, initial/graph composites and actual
-application queue/clock migration are still required. This checkpoint checks no
-M5 completion box and establishes no final timing or physical claim.
+- [ ] Define coherent frame/epoch/version-stamped observations for state, outcomes,
+  capture starts, content changes and query barriers. Define bounded ownership,
+  reserved result capacity and how ARM resumes after missed optional telemetry.
+- [ ] Implement device-side capture/retake/reference/pin work currently relying
+  on ARM inspection between settlement and sample execution. Keep every required
+  continuation inside the device and account for its worst-case resources/work.
+- [ ] Retain exact data for accepted queries/exports and preserve receipt order.
+  Delayed ARM delivery must not substitute a later loop state, revision or media
+  view for the accepted operation's actual cut. Release only on validated ack.
+- [ ] Remove normal host SETTLE/opcode-16 rendezvous and dependent mutation/read
+  assumptions after replacement observations work. Preserve one coordinated
+  reset epoch across in-flight actions, snapshots, replies and media ownership.
 
-Capture finalization now seals a materialized writable view in place, validating
-its range and retaining its existing reference vector. Its constant work avoids
-Slice's per-block reference copy. Invalid/truncated/empty/repeated seals, append
-refusal and later retirement are exercised in instant, fixed, DRAMsim3 and legacy
-memory. The three-memory 1,050-quantum capture/state comparison also passes.
+Verification/gate: stop observation/collection/export service for 1,024+ quanta
+while recording, playing, wrapping, retaking and replacing content. Resume exact
+historical queries/results/media; fill all observation credits; hold/reorder
+transport delivery where allowed; test reset and faults at cut/ack/reuse races.
+Extend the near-capacity two-take test; do not replace it with short recordings.
 
-Additional frozen negative routes are retained in the boundary timing archive.
-The older complete core improves to -0.047 ns setup / +0.019 ns hold with a
-registered 64-bit DMA address calculation, but still fails 100 MHz. Earlier M4
-wrapper registration experiments end at -1.170 and -0.963 ns setup. Neither
-qualifies the wider public/capture integration or final board.
+### 5. Move application command/response service off the deadline path (M5)
+
+- [ ] Split admission/construction, transport, response reconstruction, queries,
+  waveform/export work and cleanup from audio/deadline execution. Reuse public
+  queues, scheduler identities, receipts and the shared Rust owner.
+- [ ] Replace `Adapter::process` / `Core::quantum` service/settlement coupling and
+  worker-driven command dependencies with bounded handoff and asynchronous device
+  observations. Audit mono and application paths, graph/parameter updates,
+  monitoring, clear, stop replacement, read budgets and media retirement.
+- [ ] Keep queue/exhaustion and fault/reset behavior explicit. The service worker
+  may lag or stop; it cannot hold a device/model mutex needed by the deadline
+  path or require that path to poll to complete a previously admitted action.
+- [ ] Migrate application/simulator transports and benchmarks coherently. Add
+  instrumentation that detects allocations, waits and service work in the
+  deadline path, and timestamps effects separately from observation delivery.
+
+Verification/gate: exact application/mono comparisons, all current controls,
+queries/exports, variable callback sizes and startup/recovery. Pause the real
+service worker while the independent audio driver continues. Assert bounded
+handoff/ownership and no mandatory callbacks into command service. Native model
+wall time is diagnostic; ARM scheduling bounds require stage 7 measurements.
+
+### 6. Integrate real ARM/audio transport and close timing (M6 preparation)
+
+- [ ] Implement the physical ARM control/status transport and firmware driver
+  for the shared service (MMIO/mailbox or equivalent chosen from measured needs).
+  Specify register/descriptor layout, ABI/epoch handshake, ordering, backpressure,
+  reset/drain, cache maintenance and sample/media arena ownership. Bound bursts
+  and shared-memory traffic; host polling cannot gate PL cadence.
+- [ ] Reuse existing Zynq boot/BSP/application infrastructure and PS7 initialization.
+  Add the real FPGA/audio backend and required board codec/serial-audio/clock/CDC
+  path. Wire actual application queues to the same service; generated-workload
+  JTAG runs and dummy-audio firmware alone do not satisfy integration.
+- [ ] Close 100 MHz setup/hold for the full core, then full board with ARM bridge,
+  I/O, clocks and reset logic included. Profile the known sample-memory DMA paths;
+  pipeline/simplify with handshake and deadline proofs. Include added cycles and
+  final area in the checkpoint comparisons.
+- [ ] Build reproducible firmware/bitstream/deployment manifests. Check all clock
+  domains, CDC and valid constraints, routing, DRC and reset behavior. Keep debug
+  overhead and historical clg400 experiments separate from the selected board.
+
+Verification/gate: targeted protocol/cache/DMA/CDC tests and equivalent simulation
+of the actual transport/I/O wrapper; full-core and board routes have nonnegative
+setup/hold and no unexplained paths or critical DRC defects. Report the resource
+effect of timing work, including changes to any earlier savings. Do not use
+false/multicycle paths, lower fabric clocks, smaller pools or a reduced workload
+to conceal a timing miss.
+
+### 7. Qualify ARM independence, interference and physical audio (M6)
+
+- [ ] Load the exact final bitstream/firmware on the recorded board. Verify PS DDR,
+  ARM/PL ownership, cache coherency, actual sample clocks, analog/digital routing,
+  latency and reset. Capture expected and actual PCM; replace the old digest-only
+  benchmark's correctness gap with attributable sample/result/media evidence.
+- [ ] With resident future/tick actions, pause command, membership, observation
+  and completion service for 1,024+ quanta while physical audio continues.
+  Resume and verify identities, frames, state and retained media. Keep unrelated
+  platform watchdog support explicit rather than hiding audio service inside it.
+- [ ] Measure release-build ARM service CPU/time/memory, callback/handoff worst
+  work and complete audio processing/publication times separately. Exercise idle,
+  sparse, dense, stale, full-credit and retained-media workloads, 8×8/64 chains,
+  command floods, cache/DMA/DDR contention and concurrent application activity.
+- [ ] Demonstrate the stage-0 deadline/latency envelope and margin, zero unintended
+  underruns/overruns, long-run stability, correct explicit overload behavior,
+  fault-to-silence and coordinated recovery. Record worst cases, not just averages.
+
+Verification/gate: source/tool/board/silicon/clock/profile hashes, raw timings and
+sample/media/outcome captures are reproducible and satisfy criteria 1–8. QEMU and
+DRAMsim3 supplement this evidence. If physical access or instrumentation is
+missing, finish independent work, state the exact dependency and leave physical
+qualification and the overall roadmap incomplete until evidence exists.
+
+### 8. Final end-to-end validation and handoff
+
+- [ ] Run the full native suite once at the final behavioral milestone, plus the
+  complete relevant Marlin/component/simulator/application/continuous/demo/board
+  matrix. Include stalls, faults, all memory models, long sessions, alternate
+  geometries, 64-loop loads, near-capacity retained media and independent float
+  bounds. Reuse one combined feature build or serialize workspace builds with
+  native tests so host executable aliases remain consistent.
+- [ ] Check generated wrappers, prepared ROM parity, coverage, dependency boundaries,
+  formatting, warning-denying builds and test-attribute policy. Investigate each
+  failure; rerun affected cases after repair and broaden only when justified.
+  Preserve initial failures, interrupted runs and skips in the evidence.
+- [ ] Publish matched M1/M2/#993/resource-checkpoint/final measurements with identical
+  capacities, parts and constraints within each comparison. Include whole public
+  command/observation traffic, host preparation, stale work, all storage/banks,
+  routed area/timing and physical deadline evidence. Recheck final area after
+  timing replication and board integration, stating which savings persist and
+  which costs increase. Final LUT reduction is not required for completion.
+- [ ] Update contracts, adapter/testbench/board docs, this plan and the long-term
+  roadmap against an explicit acceptance-evidence map. Mark M4/M5/M6 complete
+  only when their gates pass, with scope and physical limitations stated.
+- [ ] Commit coherent milestones and push this stack's branch. Reuse this PR for
+  implementation or create explicit checkpoint children; rewrite PR scope as it
+  changes. While #993 is open, retain its branch as the base. After parent merges,
+  rebase/retarget onto the integration result without duplicating parent changes.
+- [ ] Let configured CI run normally. Do not inspect, poll or rerun CI after
+  pushing unless the user changes that instruction. Inspect available automated
+  review feedback, address actionable items with affected local verification and
+  repeat for new feedback. No submitted review means no approval; do not wait
+  indefinitely for an absent reviewer or merge any PR autonomously.
+
+Gate: every immutable criterion links to actual evidence. Publish software-only
+progress honestly if hardware is blocked; do not call that the finished roadmap.
+
+## Verification cost and representative entry points
+
+Use the selected project environment. Begin each change with owner/transport
+doubles and one small real-RTL case; mocks never resolve musical decisions. Broaden
+to all capacities and directed workloads at ABI/cadence/ownership cutovers. Route
+only measured viable area candidates, then each architectural checkpoint. Run the
+expensive full native/application/media sweep at the final behavioral milestone.
+Repeat narrower tests for fixes; repeat broad checks only for changed assumptions,
+failures or unresolved concerns. Hardware gates have their own staged smoke,
+correctness, stress and endurance runs; their duration is fixed in stage 0.
+
+Adapt the existing entry points to the new contracts without dropping coverage:
+
+```sh
+cargo test --locked -p rt_fpga_adapter -p rt_backend_testbench
+cargo run --locked -p rt_fpga_testbench --features sim -- transition --config small --random-cases 2
+cargo run --locked -p rt_fpga_testbench --features sim -- transition --config all --random-cases 20
+cargo test --locked -p rt_fpga_sim --features sim --test transition_boundary -- --test-threads=1
+cargo run --locked -p rt_fpga_testbench --features sim -- production --directed --random-cases 30 --stalls
+cargo test --locked -p rt_fpga_testbench --features sim
+cargo test --locked -p shoop_rt_host_fpga_sim --features sim --tests -- --test-threads=1
+SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --locked --workspace \
+  --features shoop_engine/app_backend,shoop_backend/native-fx,rt_fpga_testbench/sim,shoop_rt_host_fpga_sim/sim \
+  --profile ci --test-threads 2
+```
+
+Use `measure_commands.py`, `measure.py --context shared`, `fpga/synthesis/run.py`,
+the generated/coverage/float checks and the board build/load/control frontends
+documented in their READMEs. Preserve Vivado 2021.1 and matched harness hashes for
+historical comparisons; pin a supported board toolchain and rebuild both sides
+if a tool/harness change invalidates a comparison. Reuse the documented public
+Vivado payload/catalog/runtime instead of assuming a fresh full installation.
+
+Before Rust commits run `cargo fmt --all` and a workspace build with
+`RUSTFLAGS="-D warnings"`, enabling simulator/application features for changed
+feature-gated code. Changed Rust tests require
+`python3 scripts/check_shoop_test_usage.py`. Board qualification must build and
+execute the ARM target, beyond host-only compilation. No CI or review pass may
+be inferred from publishing a branch.
+
+## Execution contract
+
+- Keep the plan updated as work progresses and check off completed items.
+- Commit each completed stage or meaningful milestone.
+- Implementation steps may be revised when new evidence warrants it.
+- Design rules may be revised for a documented, well-supported reason.
+- Goals and acceptance criteria must not be changed without explicit user approval.
+
+Execution checkpoint: resident public delivery and historical query/export cuts
+pass the connected 1,312-quantum stereo comparison in all three memory models
+(41,984 exact frames, 2,624 coherent cuts, 1,040-quanta ARM pause). This extends
+the earlier component checkpoint; it does not mark M5/M6 or timing complete.
+
+## Connected public delivery and historical query checkpoint
+
+The explicit resident application profile now connects the private TP allocator,
+public row controller, pre/post execution hooks, managed media and retained
+query/export storage. The general kernel/deployed diagnostic defaults remain.
+All three memory models pass 1,312 quanta / 41,984 exact stereo frames / 2,624
+coherent cuts with nine transitions and five historical queries/exports. The
+ARM owner pauses for 1,040 quanta covering both takes, future AT/self-sync/tick
+actions and STOP cancellation, then reconstructs all results and historical data.
+Every ordered TP event and post-FINISH state matches production. Pre-audio query
+states match the production state before FINISH advancement; export source
+capture cuts retain their original frames, independently of later delivery.
+
+Snapshot RAM uses 30 u64 payload words per public row and a separate session
+epoch header. Reads validate each word's identity. Public collection ACKs record
+RAM before row reuse; it never releases an export lease. Full-credit component
+checks cover 1,050 advancing cuts, historical scalar/graph/topology values,
+mutable current state, scope/error precedence, empty exports, borrowed cursor
+retirement, word bounds and generation/session reset. Managed raw mutations
+return Unsupported without dispatching around ownership or faulting audio.
+
+Current real-pipeline query fixtures use initial parameter and activation epoch
+values. Canonical mutable DSP state and actual graph/topology activation counters,
+bounded bulk reads, the real application/mono service split and near-capacity
+migration remain open. These connected tests are not M5 completion or physical
+qualification. Final timing and ARM firmware/codec integration remain required.

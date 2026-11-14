@@ -558,6 +558,7 @@ module transition_processor #(
                         else if (payload[160+:32] != 3
                             || payload[31:0] == 0 || payload[31:0] > LOOP_DEPTH
                             || payload[63:32] == 0 || payload[63:32] > REQUEST_DEPTH
+                            || (RESIDENT_ROSTER != 0 && (payload[31:0] != 1 || payload[63:32] != 32'(REQUEST_DEPTH)))
                             || payload[95:64] > EVENT_DEPTH
                             || {1'b0,payload[95:64]} < prepare_events
                             || payload[127:96] > payload[31:0]

@@ -19,14 +19,18 @@ module audio_actions #(
     output reg lookup_done, output reg [3:0] lookup_error, output wire [767:0] lookup_data,
     input wire update_valid, output wire update_ready, input wire [15:0] update_slot,
     input wire [31:0] update_generation, input wire [767:0] update_data,
-    output reg update_done, output reg [3:0] update_error
+    output reg update_done, output reg [3:0] update_error,
+    output wire record_request_valid, input wire record_request_ready, output wire record_request_ack,
+    output wire [15:0] record_request_slot, output wire [31:0] record_request_generation,
+    output wire [31:0] record_request_epoch, output wire [4:0] record_request_word,
+    input wire record_response_valid, input wire [3:0] record_response_error, input wire [63:0] record_response_data
 );
     localparam integer A=SLOTS > 1 ? $clog2(SLOTS) : 1;
     localparam integer B=$clog2(2*SLOTS);
     localparam integer W=$clog2(MAX_WORK+ACTIVATION_WORK+129);
     localparam [3:0] CAPACITY=2, INVALID_ID=3, INVALID_STATE=5, EXHAUSTED=8, UNSUPPORTED=10;
     typedef enum reg [4:0] {CLEAR, IDLE, HOST_READ, HOST_EVAL, SEND, REPLY,
-        NODE_READ, NODE_WAIT, ROW_READ, ROW_WAIT, VISIT, COMMIT_DONE, CHECK_ORDER, PUBLISH_ROW, EXECUTE_ROW} phase_t;
+        NODE_READ, NODE_WAIT, ROW_READ, ROW_WAIT, VISIT, COMMIT_DONE, CHECK_ORDER, PUBLISH_ROW, EXECUTE_ROW, RECORD_SEND, RECORD_WAIT} phase_t;
     phase_t phase;
     reg [31:0] cursor, active_count, stage_count, written, elapsed;
     reg active_bank, staging, committing, applying, executing;
@@ -77,6 +81,12 @@ module audio_actions #(
     assign resident_slot=16'(selected_slot);
     assign resident_generation=selected_row[32:1];
     assign resident_mode=mode;
+    assign record_request_valid=phase == RECORD_SEND && !fault;
+    assign record_request_ack=host_opcode == 20;
+    assign record_request_slot=16'(selected_slot);
+    assign record_request_generation=host_opcode == 20 ? selected_row[32:1] : host_data[31:0];
+    assign record_request_epoch=host_opcode == 20 ? selected_row[334:303] : host_data[63:32];
+    assign record_request_word=host_data[68:64];
     assign lookup_ready=NATIVE_ACTIONS != 0 && phase == REPLY && native_opcode >= 9
         && !lookup_done && !update_valid && !update_pending && !row_write;
     wire lookup_accept=lookup_valid && lookup_ready;
@@ -116,6 +126,7 @@ module audio_actions #(
         reg [767:0] result_row;
         begin
             result_row=selected_row; result_row[186]=1; result_row[190:187]=error;
+            if (selected_row[168:161] >= 12) result_row[169]=1;
             result_row[254:191]=mode == 1 && (selected_row[168:161] == 9 || selected_row[168:161] == 10)
                 && data[511:504] == 0 && error == 0 ? data[460:397] : cut_frame;
             result_row[766:255]=data;
@@ -199,6 +210,11 @@ module audio_actions #(
                                 phase<=stage_count == 0 ? COMMIT_DONE : NODE_READ;
                             end
                         end else if (request_opcode == 21) reply(0,{575'b0,staging,current_frame,nonce,version,64'(active_count)});
+                        else if (request_opcode == 48) begin
+                            if (NATIVE_ACTIONS == 0) reply_empty(UNSUPPORTED);
+                            else if (32'(request_address) >= 32'(SLOTS) || request_data[71:64] >= 30) reply_empty(INVALID_ID);
+                            else begin selected_slot<=A'(request_address); phase<=RECORD_SEND; end
+                        end
                         else if ((request_opcode >= 19 && request_opcode <= 24 || request_opcode[7])
                             && 32'(request_address) < 32'(SLOTS)) begin
                             selected_slot<=A'(request_address); phase<=HOST_READ;
@@ -210,7 +226,7 @@ module audio_actions #(
                     if (host_opcode[7]) begin
                         rounded=(host_data[447:384]+64'(QUANTUM-1)) & ~64'(QUANTUM-1);
                         if (!(host_opcode[6:0] == 0 || host_opcode[6:0] == 5 || host_opcode[6:0] == 6 || host_opcode[6:0] == 8
-                            || (NATIVE_ACTIONS != 0 && host_opcode[6:0] >= 9 && host_opcode[6:0] <= 18))) reply_empty(UNSUPPORTED);
+                            || (NATIVE_ACTIONS != 0 && host_opcode[6:0] >= 9 && host_opcode[6:0] <= 20))) reply_empty(UNSUPPORTED);
                         else if (row_data[32:1] == 0 || host_data[543:512] != row_data[32:1]) reply_empty(INVALID_ID);
                         else if (row_data[0] && row_data[767]) reply_empty(INVALID_STATE);
                         else if (rounded < host_data[447:384]) reply_empty(EXHAUSTED);
@@ -236,10 +252,24 @@ module audio_actions #(
                             updated[766:255]=0; write_row(selected_slot,updated); reply(0,{64'b0,updated});
                         end
                     end else if (host_opcode == 22 ? row_data[767] : !row_data[186]) reply_empty(INVALID_STATE);
+                    else if (host_opcode == 20 && row_data[168:161] >= 9 && row_data[766:759] == 5) begin
+                        if (row_data[270:255] != 16'(selected_slot) || row_data[302:271] != row_data[32:1]) begin fault<=1;reply_empty(INVALID_STATE);end
+                        else begin selected_row<=row_data;phase<=RECORD_SEND;end
+                    end
                     else begin
                         updated=0; updated[32:1]=&row_data[32:1] ? 32'b0 : row_data[32:1]+1'b1;
                         write_row(selected_slot,updated); reply(0,{64'b0,row_data});
                     end
+                end
+                RECORD_SEND: if (record_request_ready) phase<=RECORD_WAIT;
+                RECORD_WAIT: if (record_response_valid) begin
+                    if (record_response_error != 0) begin
+                        if (host_opcode == 20) fault<=1;
+                        reply_empty(record_response_error);
+                    end else if (host_opcode == 20) begin
+                        updated=0; updated[32:1]=&selected_row[32:1] ? 32'b0 : selected_row[32:1]+1'b1;
+                        write_row(selected_slot,updated); reply(0,{64'b0,selected_row});
+                    end else reply(0,{672'b0,host_data[63:32],host_data[31:0],16'(selected_slot),8'b0,host_data[71:64],record_response_data});
                 end
                 SEND: if (native_opcode < 9 ? cfg_ready : resident_ready) phase<=REPLY;
                 REPLY: if (!update_accept && (native_opcode < 9 ? cfg_response_valid : resident_done)) begin

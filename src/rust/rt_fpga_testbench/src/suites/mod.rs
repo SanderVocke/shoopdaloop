@@ -20,3 +20,7 @@ pub mod smoothing;
 pub mod state;
 pub mod transition;
 pub mod zedboard;
+
+pub mod resident_continuous;
+
+pub mod observations;

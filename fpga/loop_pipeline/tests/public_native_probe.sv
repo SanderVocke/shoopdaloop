@@ -44,7 +44,24 @@ module public_native_probe #(
     wire [831:0] tp_result;
     assign fault=actions_fault || native_fault;
     assign current_frame=timing.frame;
+    wire unused_record_request_valid;
+    wire unused_record_request_ack;
+    wire [15:0] unused_record_request_slot;
+    wire [31:0] unused_record_request_generation;
+    wire [31:0] unused_record_request_epoch;
+    wire [4:0] unused_record_request_word;
     audio_actions #(.SLOTS(SLOTS),.QUANTUM(QUANTUM),.NATIVE_ACTIONS(1)) actions (
+        .record_request_valid(unused_record_request_valid),
+        .record_request_ack(unused_record_request_ack),
+        .record_request_slot(unused_record_request_slot),
+        .record_request_generation(unused_record_request_generation),
+        .record_request_epoch(unused_record_request_epoch),
+        .record_request_word(unused_record_request_word),
+        .record_request_ready(1'b0),
+        .record_response_valid(1'b0),
+        .record_response_error(4'b0),
+        .record_response_data(64'b0),
+
         .clk(clk),.reset(reset),.current_frame(current_frame),.cut_start(cut_start),.cut_mode(cut_mode),.cut_done(cut_done),
         .busy(actions_busy),.fault(actions_fault),.request_valid(control_valid),.request_ready(control_ready),
         .request_opcode(control_opcode),.request_state(control_state),.request_address(control_address),.request_data(control_data),
@@ -52,7 +69,12 @@ module public_native_probe #(
         .cfg_valid(cfg_valid),.cfg_ready(1'b0),.cfg_opcode(cfg_opcode),.cfg_state(cfg_state),.cfg_address(cfg_address),.cfg_data(cfg_data),
         .cfg_response_valid(1'b0),.cfg_response_error(4'b0),.cfg_response_data(129'b0),.*
     );
+    wire unused_observation_valid;
+    wire [7:0] unused_observation_opcode;
+    wire [511:0] unused_observation_data;
     audio_native #(.REQUESTS(REQUESTS)) native (
+        .observation_valid(unused_observation_valid),.observation_opcode(unused_observation_opcode),.observation_data(unused_observation_data),
+        .observation_ready(1'b0),.observation_done(1'b0),.observation_error(4'b0),.observation_result(512'b0),
         .clk(clk),.reset(reset),.request_valid(resident_valid),.request_ready(resident_ready),.request_opcode(resident_opcode),
         .request_flags(cfg_address),.request_mode(resident_mode),.request_data(resident_data),.request_sequence(resident_sequence),
         .request_frame(resident_frame),.request_reference(resident_reference),.response_valid(resident_done),

@@ -35,7 +35,24 @@ module actions_probe #(
     wire unused_action_update_done;
     wire [3:0] unused_action_update_error;
     wire unused_action_private=&{1'b0,unused_action_resident_valid,unused_action_resident_opcode,unused_action_resident_data,unused_action_resident_sequence,unused_action_resident_frame,unused_action_resident_reference,unused_action_resident_slot,unused_action_resident_generation,unused_action_resident_mode,unused_action_lookup_ready,unused_action_lookup_done,unused_action_lookup_error,unused_action_lookup_data,unused_action_update_ready,unused_action_update_done,unused_action_update_error};
+    wire unused_record_request_valid;
+    wire unused_record_request_ack;
+    wire [15:0] unused_record_request_slot;
+    wire [31:0] unused_record_request_generation;
+    wire [31:0] unused_record_request_epoch;
+    wire [4:0] unused_record_request_word;
     audio_actions #(.SLOTS(SLOTS),.MAX_WORK(MAX_WORK),.ACTIVATION_WORK(176),.WATCHDOG(16384)) actions (
+        .record_request_valid(unused_record_request_valid),
+        .record_request_ack(unused_record_request_ack),
+        .record_request_slot(unused_record_request_slot),
+        .record_request_generation(unused_record_request_generation),
+        .record_request_epoch(unused_record_request_epoch),
+        .record_request_word(unused_record_request_word),
+        .record_request_ready(1'b0),
+        .record_response_valid(1'b0),
+        .record_response_error(4'b0),
+        .record_response_data(64'b0),
+
         .resident_valid(unused_action_resident_valid),
         .resident_opcode(unused_action_resident_opcode),
         .resident_data(unused_action_resident_data),

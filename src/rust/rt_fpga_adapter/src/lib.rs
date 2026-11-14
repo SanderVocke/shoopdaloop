@@ -17,3 +17,5 @@ pub mod transition_service;
 pub mod engine;
 
 pub mod resident;
+
+pub mod observations;

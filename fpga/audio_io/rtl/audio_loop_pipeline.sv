@@ -14,6 +14,7 @@ module audio_loop_pipeline #(
     parameter integer OUTPUT_PORTS = 16,
     parameter integer REUSE_VIEWS = 0,
     parameter integer CAPTURE_CHANNELS = 0,
+    parameter integer RESIDENT_ACTIONS = 0,
     parameter integer VIEWS = 32,
     parameter integer SLOTS = 1024,
     parameter integer CHUNK_FRAMES = 32,
@@ -183,6 +184,28 @@ module audio_loop_pipeline #(
     wire [31:0] sample_output_data;
     wire core_reset;
     wire core_maintenance_enable;
+    wire core_resident_command_valid;
+    wire core_resident_command_ready;
+    wire [7:0] core_resident_command_opcode;
+    wire [31:0] core_resident_command_index;
+    wire [639:0] core_resident_command_data;
+    wire core_resident_command_done;
+    wire [3:0] core_resident_command_error;
+    wire [831:0] core_resident_command_result;
+    wire core_resident_cut_valid;
+    wire core_resident_cut_ready;
+    wire [1:0] core_resident_cut_mode;
+    wire core_resident_cut_done;
+    wire [63:0] core_resident_epoch;
+    wire core_resident_media_valid;
+    wire core_resident_media_ready;
+    wire [2:0] core_resident_media_opcode;
+    wire core_resident_media_latest;
+    wire [31:0] core_resident_media_slot;
+    wire [31:0] core_resident_media_generation;
+    wire core_resident_media_done;
+    wire [3:0] core_resident_media_error;
+    wire [1727:0] core_resident_media_data;
     wire core_run_valid;
     wire [31:0] core_run_instruction_count;
     wire [31:0] core_run_state_count;
@@ -281,6 +304,7 @@ module audio_loop_pipeline #(
         .OUTPUT_PORTS(OUTPUT_PORTS),
         .REUSE_VIEWS(REUSE_VIEWS),
         .CAPTURE_CHANNELS(CAPTURE_CHANNELS),
+        .RESIDENT_ACTIONS(RESIDENT_ACTIONS),
         .VIEWS(VIEWS),
         .SLOTS(SLOTS),
         .CHUNK_FRAMES(CHUNK_FRAMES),
@@ -308,6 +332,28 @@ module audio_loop_pipeline #(
         .clk(clk),
         .reset(core_reset),
         .maintenance_enable(core_maintenance_enable),
+        .resident_command_valid(core_resident_command_valid),
+        .resident_command_ready(core_resident_command_ready),
+        .resident_command_opcode(core_resident_command_opcode),
+        .resident_command_index(core_resident_command_index),
+        .resident_command_data(core_resident_command_data),
+        .resident_command_done(core_resident_command_done),
+        .resident_command_error(core_resident_command_error),
+        .resident_command_result(core_resident_command_result),
+        .resident_cut_valid(core_resident_cut_valid),
+        .resident_cut_ready(core_resident_cut_ready),
+        .resident_cut_mode(core_resident_cut_mode),
+        .resident_cut_done(core_resident_cut_done),
+        .resident_epoch(core_resident_epoch),
+        .resident_media_valid(core_resident_media_valid),
+        .resident_media_ready(core_resident_media_ready),
+        .resident_media_opcode(core_resident_media_opcode),
+        .resident_media_latest(core_resident_media_latest),
+        .resident_media_slot(core_resident_media_slot),
+        .resident_media_generation(core_resident_media_generation),
+        .resident_media_done(core_resident_media_done),
+        .resident_media_error(core_resident_media_error),
+        .resident_media_data(core_resident_media_data),
         .cut_snapshot_valid(cut_snapshot_valid),
         .cut_snapshot_data(cut_snapshot_data),
         .reclaim_pending(reclaim_pending),
@@ -462,11 +508,18 @@ module audio_loop_pipeline #(
     wire [639:0] action_cfg_data;
     wire [3:0] action_response_error;
     wire [831:0] action_response_data;
-    reg cut_reserved, cut_ready;
-    wire action_start = io_process_valid && !io_busy && run_permitted && !action_busy && !cut_reserved
+    reg cut_reserved, cut_ready, post_action;
+    wire native_fault;
+    wire pre_action_start = io_process_valid && !io_busy && run_permitted && !action_busy && !cut_reserved
         && enable && !quiesce && !recovery_requested;
+    assign core_resident_cut_ready=!action_busy && !cut_reserved && enable && !quiesce && !recovery_requested;
+    wire post_action_start=core_resident_cut_valid && core_resident_cut_ready;
+    wire action_start=pre_action_start || post_action_start;
+    assign core_resident_cut_done=action_done && post_action;
+    assign core_resident_epoch=0;
+    wire unused_resident_core=&{1'b0,core_resident_command_ready,core_resident_command_done,core_resident_command_error,core_resident_command_result,core_resident_cut_mode,core_resident_media_ready,core_resident_media_done,core_resident_media_error,core_resident_media_data};
     wire image_owns_cfg = enable || image_busy;
-    assign control_fault = batch_fault || image_fault || action_fault;
+    assign control_fault = batch_fault || image_fault || action_fault || native_fault;
     assign core_run_instruction_count = image_override ? image_instructions : run_instruction_count;
     assign core_run_state_count = image_override ? image_states : run_state_count;
     assign core_run_job_budget = image_override ? image_jobs : run_job_budget;
@@ -480,10 +533,10 @@ module audio_loop_pipeline #(
     assign core_run_valid = io_process_valid && run_permitted && cut_ready && enable && !quiesce;
     assign io_process_ready = run_ready && run_permitted && cut_ready && enable && !quiesce;
     always @(posedge clk) begin
-        if (core_reset) begin cut_reserved<=0; cut_ready<=0; end
+        if (core_reset) begin cut_reserved<=0; cut_ready<=0; post_action<=0; end
         else begin
-            if (action_start) cut_reserved<=1;
-            if (action_done) cut_ready<=1;
+            if (action_start) begin post_action<=post_action_start; if (!post_action_start) cut_reserved<=1; end
+            if (action_done && !post_action) cut_ready<=1;
             if (core_run_valid && run_ready) begin cut_reserved<=0; cut_ready<=0; end
         end
     end
@@ -546,52 +599,140 @@ module audio_loop_pipeline #(
     assign store_cfg_response_error = core_store_cfg_response_error;
     assign store_cfg_read_data = core_store_cfg_read_data;
 
-    wire unused_action_resident_valid;
-    wire [7:0] unused_action_resident_opcode;
-    wire [511:0] unused_action_resident_data;
-    wire [63:0] unused_action_resident_sequence;
-    wire [63:0] unused_action_resident_frame;
-    wire [47:0] unused_action_resident_reference;
-    wire [15:0] unused_action_resident_slot;
-    wire [31:0] unused_action_resident_generation;
-    wire [1:0] unused_action_resident_mode;
-    wire unused_action_lookup_ready;
-    wire unused_action_lookup_done;
-    wire [3:0] unused_action_lookup_error;
-    wire [767:0] unused_action_lookup_data;
-    wire unused_action_update_ready;
-    wire unused_action_update_done;
-    wire [3:0] unused_action_update_error;
-    wire unused_action_private=&{1'b0,unused_action_resident_valid,unused_action_resident_opcode,unused_action_resident_data,unused_action_resident_sequence,unused_action_resident_frame,unused_action_resident_reference,unused_action_resident_slot,unused_action_resident_generation,unused_action_resident_mode,unused_action_lookup_ready,unused_action_lookup_done,unused_action_lookup_error,unused_action_lookup_data,unused_action_update_ready,unused_action_update_done,unused_action_update_error};
-    audio_actions #(.SLOTS(CONTROL_DEPTH),.QUANTUM(MAX_FRAMES),.ACTIVATION_WORK(10*STATE_DEPTH+4*PROGRAM_DEPTH+32)) actions (
-        .resident_valid(unused_action_resident_valid),
-        .resident_opcode(unused_action_resident_opcode),
-        .resident_data(unused_action_resident_data),
-        .resident_sequence(unused_action_resident_sequence),
-        .resident_frame(unused_action_resident_frame),
-        .resident_reference(unused_action_resident_reference),
-        .resident_slot(unused_action_resident_slot),
-        .resident_generation(unused_action_resident_generation),
-        .resident_mode(unused_action_resident_mode),
-        .lookup_ready(unused_action_lookup_ready),
-        .lookup_done(unused_action_lookup_done),
-        .lookup_error(unused_action_lookup_error),
-        .lookup_data(unused_action_lookup_data),
-        .update_ready(unused_action_update_ready),
-        .update_done(unused_action_update_done),
-        .update_error(unused_action_update_error),
-        .cut_mode(2'b0),
-        .resident_ready(1'b0),
-        .resident_done(1'b0),
-        .resident_pending(1'b0),
-        .resident_error(4'b0),
-        .resident_result(512'b0),
-        .lookup_valid(1'b0),
-        .lookup_slot(16'b0),
-        .update_valid(1'b0),
-        .update_slot(16'b0),
-        .update_generation(32'b0),
-        .update_data(768'b0),
+    wire action_resident_valid;
+    wire [7:0] action_resident_opcode;
+    wire [511:0] action_resident_data;
+    wire [63:0] action_resident_sequence;
+    wire [63:0] action_resident_frame;
+    wire [47:0] action_resident_reference;
+    wire [15:0] action_resident_slot;
+    wire [31:0] action_resident_generation;
+    wire [1:0] action_resident_mode;
+    wire action_lookup_ready;
+    wire action_lookup_done;
+    wire [3:0] action_lookup_error;
+    wire [767:0] action_lookup_data;
+    wire action_update_ready;
+    wire action_update_done;
+    wire [3:0] action_update_error;
+    wire unused_action_private=&{1'b0,action_resident_valid,action_resident_opcode,action_resident_data,action_resident_sequence,action_resident_frame,action_resident_reference,action_resident_slot,action_resident_generation,action_resident_mode,action_lookup_ready,action_lookup_done,action_lookup_error,action_lookup_data,action_update_ready,action_update_done,action_update_error};
+    wire action_record_request_valid,action_record_request_ready,action_record_request_ack;
+    wire [15:0] action_record_request_slot;
+    wire [31:0] action_record_request_generation,action_record_request_epoch;
+    wire [4:0] action_record_request_word;
+    wire action_record_response_valid;
+    wire [3:0] action_record_response_error;
+    wire [63:0] action_record_response_data;
+    wire unused_record_service=&{1'b0,action_record_request_valid,action_record_request_ack,action_record_request_slot,
+        action_record_request_generation,action_record_request_epoch,action_record_request_word};
+    wire action_resident_ready,action_resident_done,action_resident_pending;
+    wire [3:0] action_resident_error;
+    wire [511:0] action_resident_result;
+    wire action_lookup_valid,action_update_valid;
+    wire [15:0] action_lookup_slot,action_update_slot;
+    wire [31:0] action_update_generation;
+    wire [767:0] action_update_data;
+    generate if (RESIDENT_ACTIONS != 0) begin : public_delivery
+        wire observation_valid,observation_ready,observation_done;
+        wire [7:0] observation_opcode;
+        wire [511:0] observation_data,observation_result;
+        wire [3:0] observation_error;
+        wire observation_fault;
+        wire observation_record_valid,observation_record_ready,observation_record_done;
+        wire [15:0] observation_record_slot;
+        wire [31:0] observation_record_generation;
+        wire [1919:0] observation_record_data;
+        wire [3:0] observation_record_error;
+        wire [63:0] unused_observation_epoch;
+        wire native_delivery_fault;
+        assign native_fault=native_delivery_fault || observation_fault;
+        audio_observations #(.SLOTS(CONTROL_DEPTH)) observations (
+            .clk(clk),.reset(core_reset),.epoch(epoch),.request_valid(observation_valid),.request_ready(observation_ready),
+            .request_opcode(observation_opcode),.request_data(observation_data),.request_slot(action_resident_slot),.request_generation(action_resident_generation),
+            .cut_data(core_resident_media_data),.scalar_data({1'b0,32'b0,32'b0,32'h3f800000}),.topology_epoch(64'b0),
+            .response_valid(observation_done),.response_error(observation_error),.response_data(observation_result),.fault(observation_fault),
+            .ledger_valid(core_resident_media_valid),.ledger_ready(core_resident_media_ready),.ledger_opcode(core_resident_media_opcode),
+            .ledger_latest(core_resident_media_latest),.ledger_slot(core_resident_media_slot),.ledger_generation(core_resident_media_generation),
+            .ledger_epoch(unused_observation_epoch),.ledger_done(core_resident_media_done),.ledger_error(core_resident_media_error),
+            .record_valid(observation_record_valid),.record_ready(observation_record_ready),.record_slot(observation_record_slot),
+            .record_generation(observation_record_generation),.record_data(observation_record_data),.record_done(observation_record_done),.record_error(observation_record_error)
+        );
+        cut_records #(.SLOTS(CONTROL_DEPTH),.WORDS(30)) records (
+            .clk(clk),.reset(core_reset),.epoch(epoch),.commit_valid(observation_record_valid),.commit_ready(observation_record_ready),
+            .commit_slot(observation_record_slot),.commit_generation(observation_record_generation),.commit_data(observation_record_data),
+            .commit_done(observation_record_done),.commit_error(observation_record_error),
+            .request_valid(action_record_request_valid),.request_ready(action_record_request_ready),.request_ack(action_record_request_ack),
+            .request_slot(action_record_request_slot),.request_generation(action_record_request_generation),.request_epoch(action_record_request_epoch),.request_word(action_record_request_word),
+            .response_valid(action_record_response_valid),.response_error(action_record_response_error),.response_data(action_record_response_data)
+        );
+        audio_native #(.REQUESTS(REQUEST_DEPTH)) native (
+            .clk(clk),.reset(core_reset),.request_valid(action_resident_valid),.request_ready(action_resident_ready),
+            .request_opcode(action_resident_opcode),.request_flags(action_cfg_address),.request_mode(action_resident_mode),
+            .request_data(action_resident_data),.request_sequence(action_resident_sequence),.request_frame(action_resident_frame),
+            .request_reference(action_resident_reference),.response_valid(action_resident_done),.response_pending(action_resident_pending),
+            .response_error(action_resident_error),.response_data(action_resident_result),.fault(native_delivery_fault),
+            .observation_valid(observation_valid),.observation_ready(observation_ready),.observation_opcode(observation_opcode),.observation_data(observation_data),
+            .observation_done(observation_done),.observation_error(observation_error),.observation_result(observation_result),
+            .tp_valid(core_resident_command_valid),.tp_ready(core_resident_command_ready),.tp_opcode(core_resident_command_opcode),
+            .tp_index(core_resident_command_index),.tp_data(core_resident_command_data),.tp_done(core_resident_command_done),
+            .tp_error(core_resident_command_error),.tp_result(core_resident_command_result),
+            .lookup_valid(action_lookup_valid),.lookup_ready(action_lookup_ready),.lookup_slot(action_lookup_slot),
+            .lookup_done(action_lookup_done),.lookup_error(action_lookup_error),.lookup_data(action_lookup_data),
+            .update_valid(action_update_valid),.update_ready(action_update_ready),.update_slot(action_update_slot),
+            .update_generation(action_update_generation),.update_data(action_update_data),.update_done(action_update_done),.update_error(action_update_error)
+        );
+    end else begin : configuration_delivery
+        assign native_fault=0;
+        assign action_record_request_ready=0;assign action_record_response_valid=0;assign action_record_response_error=0;assign action_record_response_data=0;
+        assign core_resident_media_valid=0;assign core_resident_media_opcode=0;assign core_resident_media_latest=0;
+        assign core_resident_media_slot=0;assign core_resident_media_generation=0;
+        assign core_resident_command_valid=0; assign core_resident_command_opcode=0;
+        assign core_resident_command_index=0; assign core_resident_command_data=0;
+        assign action_resident_ready=0; assign action_resident_done=0; assign action_resident_pending=0;
+        assign action_resident_error=0; assign action_resident_result=0;
+        assign action_lookup_valid=0; assign action_lookup_slot=0; assign action_update_valid=0;
+        assign action_update_slot=0; assign action_update_generation=0; assign action_update_data=0;
+    end endgenerate
+    audio_actions #(.SLOTS(CONTROL_DEPTH),.QUANTUM(MAX_FRAMES),.ACTIVATION_WORK(10*STATE_DEPTH+4*PROGRAM_DEPTH+32),.NATIVE_ACTIONS(RESIDENT_ACTIONS)) actions (
+        .record_request_valid(action_record_request_valid),
+        .record_request_ack(action_record_request_ack),
+        .record_request_slot(action_record_request_slot),
+        .record_request_generation(action_record_request_generation),
+        .record_request_epoch(action_record_request_epoch),
+        .record_request_word(action_record_request_word),
+        .record_request_ready(action_record_request_ready),
+        .record_response_valid(action_record_response_valid),
+        .record_response_error(action_record_response_error),
+        .record_response_data(action_record_response_data),
+
+        .resident_valid(action_resident_valid),
+        .resident_opcode(action_resident_opcode),
+        .resident_data(action_resident_data),
+        .resident_sequence(action_resident_sequence),
+        .resident_frame(action_resident_frame),
+        .resident_reference(action_resident_reference),
+        .resident_slot(action_resident_slot),
+        .resident_generation(action_resident_generation),
+        .resident_mode(action_resident_mode),
+        .lookup_ready(action_lookup_ready),
+        .lookup_done(action_lookup_done),
+        .lookup_error(action_lookup_error),
+        .lookup_data(action_lookup_data),
+        .update_ready(action_update_ready),
+        .update_done(action_update_done),
+        .update_error(action_update_error),
+        .cut_mode(post_action_start ? core_resident_cut_mode : 2'b0),
+        .resident_ready(action_resident_ready),
+        .resident_done(action_resident_done),
+        .resident_pending(action_resident_pending),
+        .resident_error(action_resident_error),
+        .resident_result(action_resident_result),
+        .lookup_valid(action_lookup_valid),
+        .lookup_slot(action_lookup_slot),
+        .update_valid(action_update_valid),
+        .update_slot(action_update_slot),
+        .update_generation(action_update_generation),
+        .update_data(action_update_data),
 
         .clk(clk),.reset(core_reset),.current_frame(process_sequence*64'(MAX_FRAMES)),
         .cut_start(action_start),.cut_done(action_done),.busy(action_busy),.fault(action_fault),
@@ -612,7 +753,7 @@ module audio_loop_pipeline #(
         .cfg_address(image_cfg_address),.cfg_write_data(image_cfg_data),.cfg_response_valid(core_cfg_response_valid),
         .cfg_response_error(core_cfg_response_error),.cfg_read_data(core_cfg_read_data)
     );
-    audio_control #(.DEPTH(CONTROL_DEPTH),.ACTION_SLOTS(CONTROL_DEPTH),.ACTIVATION_WORK(10*STATE_DEPTH+4*PROGRAM_DEPTH+32)) controls (
+    audio_control #(.RESIDENT_ACTIONS(RESIDENT_ACTIONS),.DEPTH(CONTROL_DEPTH),.ACTION_SLOTS(CONTROL_DEPTH),.ACTIVATION_WORK(10*STATE_DEPTH+4*PROGRAM_DEPTH+32)) controls (
         .clk(clk),.reset(core_reset),.enable(enable && !recovery_requested && !quiesce),
         .sequence_number(process_sequence),.epoch(epoch),.busy(io_busy || action_busy || cut_reserved),.run_start(core_run_valid && run_ready),
         .admission_blocked(external_command_pending),

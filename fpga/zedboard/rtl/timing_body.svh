@@ -151,7 +151,24 @@
     wire unused_action_update_done;
     wire [3:0] unused_action_update_error;
     wire unused_action_private=&{1'b0,unused_action_resident_valid,unused_action_resident_opcode,unused_action_resident_data,unused_action_resident_sequence,unused_action_resident_frame,unused_action_resident_reference,unused_action_resident_slot,unused_action_resident_generation,unused_action_resident_mode,unused_action_lookup_ready,unused_action_lookup_done,unused_action_lookup_error,unused_action_lookup_data,unused_action_update_ready,unused_action_update_done,unused_action_update_error};
+    wire unused_record_request_valid;
+    wire unused_record_request_ack;
+    wire [15:0] unused_record_request_slot;
+    wire [31:0] unused_record_request_generation;
+    wire [31:0] unused_record_request_epoch;
+    wire [4:0] unused_record_request_word;
     audio_actions #(.SLOTS(128),.QUANTUM(MAX_FRAMES),.ACTIVATION_WORK(10*STATE_DEPTH+4*PROGRAM_DEPTH+32)) actions (
+        .record_request_valid(unused_record_request_valid),
+        .record_request_ack(unused_record_request_ack),
+        .record_request_slot(unused_record_request_slot),
+        .record_request_generation(unused_record_request_generation),
+        .record_request_epoch(unused_record_request_epoch),
+        .record_request_word(unused_record_request_word),
+        .record_request_ready(1'b0),
+        .record_response_valid(1'b0),
+        .record_response_error(4'b0),
+        .record_response_data(64'b0),
+
         .resident_valid(unused_action_resident_valid),
         .resident_opcode(unused_action_resident_opcode),
         .resident_data(unused_action_resident_data),
@@ -338,3 +355,13 @@
         drain_valid,response_data,transition_busy,store_cmd_ready,store_busy,store_done,store_error_code,
         store_result_view,store_result_empty,store_write_ready,store_read_valid,store_read_data,
         store_cfg_read_data,state_busy,state_done,jobs_busy,jobs_done};
+    assign resident_command_valid=0; assign resident_command_opcode=0;
+    assign resident_command_index=0; assign resident_command_data=0;
+    assign resident_cut_ready=0; assign resident_cut_done=0; assign resident_epoch=0;
+    wire unused_resident_service=&{1'b0,resident_command_ready,resident_command_done,resident_command_error,
+        resident_command_result,resident_cut_valid,resident_cut_mode};
+    initial if (RESIDENT_ACTIONS != 0) $fatal(1,"The diagnostic timing runner uses raw TP admissions");
+
+    assign resident_media_valid=0;assign resident_media_opcode=0;assign resident_media_latest=0;
+    assign resident_media_slot=0;assign resident_media_generation=0;
+    wire unused_resident_media=&{1'b0,resident_media_ready,resident_media_done,resident_media_error,resident_media_data};

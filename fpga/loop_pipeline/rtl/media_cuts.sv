@@ -97,7 +97,7 @@ module media_cuts #(
         begin selected<=slot; word_index<=0; descriptor<=0; loading_playback<=0; phase<=slot == NONE ? RESPOND : RESULT_READ; end
     endtask
     task automatic next_cleanup;
-        begin cursor<=cursor+1'b1; phase<=CLEANUP; end
+        begin if (operation == 5) finish(0); else begin cursor<=cursor+1'b1; phase<=CLEANUP; end end
     endtask
     initial if (CHANNELS < 1 || CHANNELS > 2 || CONTENTS < 1 || CONTENTS > 256 || EXPORTS < 1 || EXPORTS > 256)
         $fatal(1,"Invalid managed media profile");
@@ -142,6 +142,14 @@ module media_cuts #(
                             references[request_latest ? latest : playback]<=references[request_latest ? latest : playback]+1'b1;
                         result(request_latest ? latest : playback);
                     end
+                end else if (request_opcode == 4 || request_opcode == 5) begin
+                    if (request_opcode == 5 && request_slot == NONE && request_generation != 0 && request_generation <= empty_generation) finish(0);
+                    else if (request_slot >= 32'(CONTENTS)) finish(INVALID_ID);
+                    else if (!content_valid[request_slot] || content_generation[request_slot] != request_generation) finish(INVALID_ID);
+                    else if (request_opcode == 4) result(request_slot);
+                    else if (request_slot == latest || request_slot == playback || references[request_slot] != 0) finish(0);
+                    else if (&content_generation[request_slot]) finish(EXHAUSTED);
+                    else begin cursor<=request_slot;phase<=ROOT_READ;end
                 end else if (request_opcode == 2 || request_opcode == 3) begin
                     if (request_slot >= 32'(EXPORTS)) finish(INVALID_ID);
                     else if (!export_valid[request_slot] || export_generation[request_slot] != request_generation) finish(INVALID_ID);

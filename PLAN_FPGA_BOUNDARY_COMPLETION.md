@@ -330,8 +330,10 @@ finalization, fresh retake roots and required cleanup at pre/post execution cuts
 Three memory modes match 1,050 quanta, 33,600 stereo frames and 2,100 coherent
 observations against production Rust. Observer/private-command and retained-record
 components pass held-reply, full-credit, identity/epoch, exhaustion and reset
-tests. Public query/export wiring, actual session epochs, near-capacity application
-migration and callback separation remain open; no stage-4 checkbox is complete.
+tests. Public query/export wiring is now connected in the resident profile with checked
+session epochs and retained snapshot ACKs. Canonical mutable parameters, actual
+graph/topology activation counters, bulk reads, near-capacity application migration
+and callback separation remain open; no stage-4 checkbox is complete.
 See [device-cut evidence](fpga/loop_pipeline/measurements/device-cuts/).
 
 A later component checkpoint separates retained public rows from native execution
@@ -515,3 +517,8 @@ be inferred from publishing a branch.
 - Implementation steps may be revised when new evidence warrants it.
 - Design rules may be revised for a documented, well-supported reason.
 - Goals and acceptance criteria must not be changed without explicit user approval.
+
+Execution checkpoint: resident public delivery and historical query/export cuts
+pass the connected 1,312-quantum stereo comparison in all three memory models
+(41,984 exact frames, 2,624 coherent cuts, 1,040-quanta ARM pause). This extends
+the earlier component checkpoint; it does not mark M5/M6 or timing complete.

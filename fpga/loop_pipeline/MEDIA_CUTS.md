@@ -40,8 +40,11 @@ plus a generation/epoch header at word 31. A fabric producer holds its immutable
 snapshot through the bounded 30-clock copy. Cells cannot overwrite valid data;
 reads and ACKs validate slot, generation and epoch. Full records backpressure new
 query admission, never sample processing. Reset invalidates all cells, including
-a partial copy. The public action/query controller is not connected yet, so an
-optional cut pulse is not a retained public query or an M5 completion claim.
+a partial copy. The resident application profile now connects a public query/export controller
+and uses 30 payload words to include scalar parameters and topology epoch.
+Public row collection acknowledges that record before row reuse. An optional
+cut pulse remains distinct from a retained public query, and application
+migration/canonical mutable state remain open.
 
 Ledger record fields (little-endian):
 
@@ -74,3 +77,11 @@ empty identities, stale IDs, exhaustion and reset, and bound 240,000-frame
 finalization independently of recording length. That long-length component uses
 a stalled allocator double; the existing real near-capacity two-take application
 test still needs migration and must not be replaced by this shorter sample run.
+
+Private ledger operations 4/5 look up a borrowed content identity and retire a
+content, respectively. Lookup validates the full slot/generation without acquiring
+a persistent reference. Retire preserves protected latest/playback/export content;
+valid historical empty identities are no-ops. These operations support the
+existing borrowed-cursor lifetime without treating a cursor as an export lease.
+Service requests use the ledger's current observed graph epoch, allowing existing
+exports to survive a graph change before the next autonomous observation.

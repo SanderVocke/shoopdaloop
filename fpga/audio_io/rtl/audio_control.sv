@@ -1,7 +1,7 @@
 module audio_control #(
     parameter integer DEPTH=128, RESULT_DEPTH=DEPTH,
     parameter integer MAX_BATCH_CYCLES=16384, MAX_BATCH_WORK=12000,
-    parameter integer ACTIVATION_WORK=7200, ACTION_SLOTS=128
+    parameter integer ACTIVATION_WORK=7200, ACTION_SLOTS=128, RESIDENT_ACTIONS=0
 ) (
     input wire clk, input wire reset, input wire enable,
     input wire [63:0] sequence_number, input wire [31:0] epoch,
@@ -43,8 +43,8 @@ module audio_control #(
             op=operation[7:0];
             allowed=(operation[9:8] == 0 && (op == 0 || (op >= 4 && op <= 6)
                 || op == 12 || op == 13 || op == 15 || (op >= 17 && op <= 21)))
-                || (operation[9:8] == 1 && (op <= 8 || (op >= 16 && op <= 24)
-                    || op == 128 || op == 133 || op == 134 || (op >= 136 && op <= 146)));
+                || (operation[9:8] == 1 && (op <= 8 || op == 48 || (op >= 16 && op <= 24)
+                    || op == 128 || op == 133 || op == 134 || (op >= 136 && op <= 148)));
         end
     endfunction
     wire [1:0] kind=head[681:680];
@@ -56,8 +56,12 @@ module audio_control #(
     wire available=enable && !busy && !waiting && !fault;
     wire decision_current=decision_sequence == sequence_number[0];
     wire begin_batch=available && !active && !serviced && !admission_blocked && ready_to_admit && decision_current;
-    wire dispatch=available && active && !rejecting && head_valid;
-    wire discard=available && active && rejecting && head_valid;
+    wire blocked_operation=RESIDENT_ACTIONS != 0 &&
+        ((kind == 0 && ((head[679:672] >= 4 && head[679:672] <= 6) || head[679:672] >= 17))
+        || (kind == 1 && (head[679:672] == 0 || head[679:672] == 5 || head[679:672] == 6
+            || head[679:672] == 128 || head[679:672] == 133 || head[679:672] == 134 || head[679:672] == 136)));
+    wire dispatch=available && active && !rejecting && !blocked_operation && head_valid;
+    wire discard=available && active && (rejecting || blocked_operation) && head_valid;
     wire peek_valid=enable && !fault && scan_active && !scan_waiting;
     wire [S-1:0] step_cost=peek_data[681:680] == 0 ? S'(80) : peek_data[679:672] == 5 ? S'(ACTIVATION_WORK)
         : peek_data[679:672] == 6 ? S'(128) : peek_data[679:672] == 18 ? S'(14*ACTION_SLOTS+32) : S'(16);
@@ -77,7 +81,7 @@ module audio_control #(
     assign cfg_write_data=head[639:0];
     wire accepted=(command_valid && command_ready) || (cfg_valid && cfg_ready);
     wire completed=discard || (waiting && (waiting_cfg ? cfg_response_valid : response_valid && response_ready));
-    wire [3:0] result_error=discard ? 4'd2 : waiting_cfg ? cfg_response_error : response_error;
+    wire [3:0] result_error=discard ? (rejecting ? 4'd2 : 4'd10) : waiting_cfg ? cfg_response_error : response_error;
     wire [831:0] result_payload=discard ? 832'b0 : waiting_cfg ? cfg_read_data : response_data;
     wire [1087:0] completed_result={50'b0,batch_epoch,admitted_sequence,batch_id,
         discard ? ordinal : issued_ordinal,discard ? head[679:672] : issued_opcode,

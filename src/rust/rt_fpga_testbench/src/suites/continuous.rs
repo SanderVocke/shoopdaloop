@@ -63,7 +63,7 @@ pub fn sources(demo: bool) -> Vec<std::path::PathBuf> {
     let root = crate::root();
     let mut sources = rt_fpga_sim::pipeline_sources();
     sources.extend(
-        "audio_lane_ram audio_io audio_command_fifo audio_image audio_actions audio_control audio_loop_pipeline"
+        "audio_lane_ram audio_io audio_command_fifo audio_image audio_actions audio_native audio_observations audio_control audio_loop_pipeline"
             .split_whitespace()
             .map(|n| root.join(format!("fpga/audio_io/rtl/{n}.sv"))),
     );
@@ -87,6 +87,13 @@ pub fn prepare(c: &Config) -> Result<Prepared> {
     )
 }
 pub fn design(c: &Config, mode: Mode, demo: bool, p: &Prepared) -> Design {
+    design_inner(c, mode, demo.then_some(p))
+}
+pub fn live_design(c: &Config, mode: Mode) -> Design {
+    design_inner(c, mode, None)
+}
+fn design_inner(c: &Config, mode: Mode, p: Option<&Prepared>) -> Design {
+    let demo = p.is_some();
     assert_ne!(mode, Mode::Legacy);
     let g = geometry(c);
     let mut d = Design::new(
@@ -97,7 +104,7 @@ pub fn design(c: &Config, mode: Mode, demo: bool, p: &Prepared) -> Design {
         },
         sources(demo),
     );
-    let mut parameters = if demo {
+    let mut parameters = if let Some(p) = p {
         vec![
             ("Q", c.q),
             ("CHANNELS", c.channels),
@@ -140,7 +147,7 @@ pub fn design(c: &Config, mode: Mode, demo: bool, p: &Prepared) -> Design {
         }),
     );
     d = d.parameters(&parameters);
-    if demo {
+    if let Some(p) = p {
         for name in ["BOOT", "EVENT"] {
             d.parameters.insert(
                 format!("{name}_FILE"),

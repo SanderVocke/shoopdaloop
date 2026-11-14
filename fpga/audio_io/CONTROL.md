@@ -194,9 +194,9 @@ cancellation uses terminal error 11; transport errors remain 0–10. Native publ
 results instead use the payload's tag byte at bit 504. ARM retains the original
 request/frame for reconstruction. Terminal payloads remain until collection.
 
-With `NATIVE_ACTIONS=1`, INSTALL opcodes `0x89..0x92` reserve public rows for
+With `NATIVE_ACTIONS=1`, INSTALL opcodes `0x89..0x94` reserve public rows for
 transition, clear, cancellation, query, export, release, repeat, parameter, initial
-activation and graph activation. INSTALL writes only the header; PAYLOAD_PRIVATE
+activation, graph activation, cursor and retirement. INSTALL writes only the header; PAYLOAD_PRIVATE
 must complete before publication. Publication rejects an incomplete native row
 before changing the active bank. General prepared/demo/board parents currently
 leave this profile disabled; the native public delivery integration remains M5
@@ -247,3 +247,57 @@ The image and resident-action component tests cover full-size copy activation,
 1,050 unserviced quanta with future image/ramp effects, private/partial/unsorted
 publication, exact late cuts, cancellation, full credits, generation reuse,
 ordinary work-budget refusal, stale identities and uncertain ownership.
+
+## Historical public observations (resident application profile)
+
+`RESIDENT_ACTIONS=1` connects native public delivery to device phases before
+PROCESS, after PROCESS/capture cuts and after FINISH. The application profile has
+one loop and mono/stereo managed capture. General prepared/demo/board defaults
+retain their raw kernel profile. The existing Rust application/mono consumers
+have not migrated yet.
+
+Native actions 12/13 retain State/Export results at the post-PROCESS cut. Each
+public row reserves its corresponding retained-record cell before admission.
+The fabric holds the coherent source through a bounded 31-clock copy; neither
+ARM readiness nor response delivery participates. A public snapshot has 30 u64
+payload words in a 32-word stride; word 31 stores its generation/session epoch.
+The smaller standalone component's default remains 29 payload words.
+
+The payload is the 1,728-bit media cut, followed by gain/balance f32 bits at
+1728/1760, smoothing frames u32 at 1792, LinearRestart flag at 1824, topology
+epoch u64 at 1825 and 31 reserved zero bits. LinearRestart(0) remains distinct
+from None. The transport session epoch, media cut graph epoch and topology epoch
+are separate. The current connected fixture has initial gain/balance/smoothing
+and epoch values; mutable parameter/graph integration remains open.
+
+Snapshot result tag 5 uses payload slot u16 at 0, generation u32 at 16, session
+epoch u32 at 48, word count u8 at 80 (30), export flag at 88, actual cut frame
+u64 at 96, graph epoch u64 at 160 and topology epoch u64 at 224. All remaining
+payload bits below the tag byte are zero. The shared reader verifies this
+identity against the retained public row and checks every returned word's
+metadata before reconstructing public values. Global application frames use a
+fixed session-origin offset; initial activation must not reset that offset.
+
+Configuration operation **48 READ_RECORD_WORD** takes the public slot as its
+address, generation u32 at payload 0, session epoch u32 at 32 and word index u8
+at 64. It returns 160 bits: data u64 at 0, word u16 at 64, slot u16 at 80,
+generation u32 at 96 and session epoch u32 at 128. The full index is checked
+before narrowing. Reads retain ownership. COLLECT_ACTION (20) validates and
+acknowledges snapshot RAM before freeing its public row; it never releases an
+export lease. Old-generation/session reads return InvalidId without changing
+storage. Reset invalidates both partial and complete records.
+
+Native **14 RELEASE**, **19 CURSOR** and **20 RETIRE** use generation-qualified
+export/content identities. ARM validates immutable scopes and defers ordinary
+errors to delivery; the device validates the current lease/content. Cursor
+results use tag 8 with a content slot/generation in the low 64 bits, and borrow
+that content. Releasing an export does not invalidate a cursor while its content
+is still latest/playback or otherwise retained; retirement invalidates subsequent
+reads. Empty-export cursors return InvalidShape. MIDI cursor requests retain
+their unsupported-operation error precedence.
+
+Managed live batches return bounded Unsupported replies for raw TP install,
+cancel, collect and membership/repeat mutation, and for raw active image/ramp
+writes or legacy resident actions. They cannot bypass the private resident owner.
+Status, staging uploads, native public commands and record reads remain service
+operations. Full replies, held records and a stopped reader leave audio runnable.

@@ -10,7 +10,7 @@ workspace = true
 
 [features]
 default = []
-sim = ["dep:marlin", "dep:quick-xml", "dep:serde", "dep:serde_json", "dep:clap", "dep:libloading", "dep:rt_fpga_sim", "dep:rt_backend_testbench", "dep:rt_fpga_adapter", "dep:rt_audio_math", "dep:rt_runtime", "dep:sha2"]
+sim = ["dep:marlin", "dep:quick-xml", "dep:serde", "dep:serde_json", "dep:clap", "dep:libloading", "dep:rt_fpga_sim", "dep:rt_backend_testbench", "dep:rt_fpga_adapter", "dep:rt_audio_math", "dep:rt_runtime", "dep:sha2", "dep:shoop_loops"]
 
 [dependencies]
 sha2 = { workspace = true, optional = true }
@@ -22,6 +22,7 @@ rt_backend_testbench = { path = "../rt_backend_testbench", optional = true }
 rt_fpga_adapter = { path = "../rt_fpga_adapter", optional = true }
 rt_audio_math = { path = "../rt_audio_math", optional = true }
 rt_runtime = { path = "../rt_runtime", optional = true }
+shoop_loops = { path = "../shoop_loops", optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 marlin = { version = "=0.21.1", features = ["verilog"], optional = true }
