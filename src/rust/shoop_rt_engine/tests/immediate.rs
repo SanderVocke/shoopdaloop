@@ -1,3 +1,6 @@
+#[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
+shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
+
 mod support;
 use shoop_rt_protocol::{
     immediate::{Batch, Command},
