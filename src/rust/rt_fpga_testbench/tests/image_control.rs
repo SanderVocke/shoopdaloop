@@ -49,3 +49,18 @@ fn initial_and_graph_activation_use_actual_canonical_state_with_autonomous_audio
 fn initial_activation_after_an_earlier_graph_uses_canonical_fields_and_preserves_the_clock() {
     rt_fpga_testbench::suites::resident_configuration::graph_before_initial().unwrap();
 }
+
+#[shoop_test]
+fn resident_signal_controls_validate_current_nodes_and_preserve_actual_ramps_and_monitoring() {
+    rt_fpga_testbench::suites::runtime_control::signals().unwrap();
+}
+
+#[shoop_test]
+fn conditional_balance_templates_keep_disabled_ramps_frozen_across_channel_shape_changes() {
+    rt_fpga_testbench::suites::runtime_control::conditional_balance().unwrap();
+}
+
+#[shoop_test]
+fn resident_runtime_controls_and_historical_scalars_run_with_autonomous_stereo_audio() {
+    rt_fpga_testbench::suites::resident_configuration::runtime_controls().unwrap();
+}

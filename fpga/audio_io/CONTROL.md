@@ -346,7 +346,42 @@ Results retain tag 7/6 and the committed identities/epochs. Native **15 REPEAT**
 checks the actual loop identity and applies its repeat bit before PROCESS.
 
 Canonical activation work is conservatively charged as
-`48*STATE_DEPTH + 6*PROGRAM_DEPTH + 256`; the managed action controller uses a
+`48*STATE_DEPTH + 6*PROGRAM_DEPTH + 4352`; the managed action controller uses a
 32,000-cycle work allowance and 65,536-cycle watchdog. These bounds include map
 and state-copy work. Final workload admission/deadline qualification and routed
 timing remain open; the watchdog alone is not an audio deadline guarantee.
+
+## Resident signal controls and monitoring
+
+Native **16 PARAMETER** carries the node/loop identity in low 64 bits and the
+operation byte at 64. Operations are gain/balance/mute/presence/crossfade/monitor
+(0–5), loop gain/balance/smoothing (6–8), input-source/discard/configure (9–11),
+and reader start/stop (12–13). ARM encodes immutable float validation and Q8.24
+targets; the device checks the actual node/loop and mutable state in application
+error order. Original f32 loop values remain in historical observations.
+Reader controls validate delivery; ARM bulk stream servicing remains separate.
+
+Configuration **51** installs immutable node metadata before loading (suboperation
+0), updates a generation-qualified monitoring policy (1), or reads status (2).
+The suboperation is at bit 632. Metadata contains node generation, signal kind,
+channel/ramp limits, manual monitoring, policy generation and pending configuration.
+The current managed profile reserves 128 metadata rows and seven canonical keys
+per node. Configure and discard retain distinct processor-pending and canonical
+configuration ownership, matching the application executor. Initial activation
+applies canonical configuration; a later graph commit consumes only matching
+pending processor epochs.
+
+After PROCESS, before query/audio execution, the fabric scans native requests
+for the final tick of a pending RECORD and updates strip monitoring from actual
+recording/pre-recording state, manual demand and policy generation. An unchanged
+target does not restart its ramp. The core holds its coherent cut throughout this
+work; no ARM polling or copied per-quantum state image is required.
+
+Immutable binding upload **49/12** describes a conditional balance binding.
+Its base word packs program address u16 and destination buffer u16. At activation
+the device reads the node's canonical stereo flag. A disabled balance instruction
+becomes a zero constant in inactive program memory and its ramp is excluded from
+active heads/snapshots. The frozen parameter still accepts commands. Enabling it
+in a newly uploaded graph restores the original gain instruction and retained
+progress. This preserves inactive-ramp behavior across channel-shape changes.
+Private image operation 13 patches only a fully uploaded inactive program.

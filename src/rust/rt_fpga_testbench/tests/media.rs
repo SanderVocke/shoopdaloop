@@ -17,3 +17,8 @@ fn capture_views_seal_in_place_with_bounded_work_and_retained_ownership() {
         media::run_seal(mode).unwrap();
     }
 }
+
+#[shoop_test]
+fn reusable_view_usage_counts_sparse_descriptors_and_reset_for_single_and_odd_capacities() {
+    rt_fpga_testbench::suites::media::reusable_view_usage().unwrap();
+}

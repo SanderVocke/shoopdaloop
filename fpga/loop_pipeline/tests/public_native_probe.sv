@@ -75,7 +75,10 @@ module public_native_probe #(
     wire unused_configuration_valid;
     wire [7:0] unused_configuration_opcode;
     wire [511:0] unused_configuration_data;
+    wire unused_signal_valid;
+    wire [511:0] unused_signal_data;
     audio_native #(.REQUESTS(REQUESTS)) native (
+        .signal_valid(unused_signal_valid),.signal_ready(1'b0),.signal_data(unused_signal_data),.signal_done(1'b0),.signal_result(512'b0),
         .configuration_valid(unused_configuration_valid),.configuration_ready(1'b0),.configuration_opcode(unused_configuration_opcode),
         .configuration_data(unused_configuration_data),.configuration_done(1'b0),.configuration_result(512'b0),
         .observation_valid(unused_observation_valid),.observation_opcode(unused_observation_opcode),.observation_data(unused_observation_data),

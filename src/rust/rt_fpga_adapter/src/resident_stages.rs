@@ -36,6 +36,22 @@ pub fn pair_ready(stage: NodePairStageId, initial: Option<shoop_loops::LoopId>) 
         put(&mut t.words, 96, 32, u64::from(target.slot()));
         put(&mut t.words, 128, 32, u64::from(target.generation()));
         put(&mut t.words, 160, 1, 1);
+        put(&mut t.words, 161, 1, 1);
+    }
+    t
+}
+pub fn pair_initial(
+    stage: NodePairStageId,
+    initial: Option<shoop_loops::runtime::NodePairInitial>,
+) -> Transfer {
+    let mut t = pair_ready(stage, initial.map(|i| i.target));
+    if let Some(initial) = initial {
+        put(
+            &mut t.words,
+            161,
+            1,
+            u64::from(initial.audio_widths.map_or(2, |w| w[0]) == 2),
+        );
     }
     t
 }

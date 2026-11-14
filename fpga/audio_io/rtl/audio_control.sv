@@ -43,7 +43,7 @@ module audio_control #(
             op=operation[7:0];
             allowed=(operation[9:8] == 0 && (op == 0 || (op >= 4 && op <= 6)
                 || op == 12 || op == 13 || op == 15 || (op >= 17 && op <= 21)))
-                || (operation[9:8] == 1 && (op <= 8 || op == 48 || (RESIDENT_ACTIONS != 0 && (op == 49 || op == 50)) || (op >= 16 && op <= 24)
+                || (operation[9:8] == 1 && (op <= 8 || op == 48 || (RESIDENT_ACTIONS != 0 && (op == 49 || op == 50 || op == 51)) || (op >= 16 && op <= 24)
                     || op == 128 || op == 133 || op == 134 || (op >= 136 && op <= 148)));
         end
     endfunction

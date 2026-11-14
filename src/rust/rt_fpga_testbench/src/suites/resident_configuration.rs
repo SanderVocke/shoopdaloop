@@ -20,10 +20,11 @@ use rt_fpga_adapter::{
     observations::{Reader, Reference},
     protocol, resident,
     resident_parameters::Command,
-    resident_stages as stage,
+    resident_runtime as signal, resident_stages as stage,
 };
-use rt_runtime::{Epoch, graph::activation::StageId};
+use rt_runtime::{Epoch, NodeId, graph::activation::StageId};
 use shoop_loops::{LoopId, runtime::NodePairStageId, topology::staging};
+use shoop_rt_engine::{EngineOp, external::SignalKind};
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
 struct Replies(Rc<RefCell<VecDeque<Completion>>>);
@@ -43,6 +44,7 @@ struct Host {
     frame: u64,
     batch: u64,
     graph_before_initial: bool,
+    runtime_controls: bool,
 }
 impl Host {
     fn pulse(&mut self, s: &mut Sim<'_>) {
@@ -57,13 +59,17 @@ impl Host {
                 0
             } else {
                 let at = self.frame - 64;
-                let gain = rt_audio_math::Ramp {
-                    start: rt_audio_math::Q824::ZERO,
-                    target: rt_audio_math::Q824::ONE,
-                    duration: 8192,
-                    elapsed: 0,
-                }
-                .at((at - if at < 64 * 32 { 32 * 32 } else { 64 * 32 }) as u32);
+                let gain = if self.runtime_controls && at >= 192 * 32 {
+                    rt_audio_math::Q824(1 << 22)
+                } else {
+                    rt_audio_math::Ramp {
+                        start: rt_audio_math::Q824::ZERO,
+                        target: rt_audio_math::Q824::ONE,
+                        duration: 8192,
+                        elapsed: 0,
+                    }
+                    .at((at - if at < 64 * 32 { 32 * 32 } else { 64 * 32 }) as u32)
+                };
                 rt_audio_math::Q824(
                     (if ch == 0 {
                         100003 + at * 37
@@ -232,12 +238,15 @@ fn program(ramp: u16) -> Vec<Instruction> {
     ]
 }
 pub fn activation() -> Result<()> {
-    activation_inner(false)
+    activation_inner(false, false)
 }
 pub fn graph_before_initial() -> Result<()> {
-    activation_inner(true)
+    activation_inner(true, false)
 }
-fn activation_inner(graph_before_initial: bool) -> Result<()> {
+pub fn runtime_controls() -> Result<()> {
+    activation_inner(false, true)
+}
+fn activation_inner(graph_before_initial: bool, runtime_controls: bool) -> Result<()> {
     let c = Config {
         q: 32,
         cf: 32,
@@ -332,6 +341,7 @@ fn activation_inner(graph_before_initial: bool) -> Result<()> {
         frame: 0,
         batch: 0,
         graph_before_initial,
+        runtime_controls,
     };
     let mut owner = Service::new(64, 32)?;
     s.model.set("enable", 1);
@@ -351,6 +361,44 @@ fn activation_inner(graph_before_initial: bool) -> Result<()> {
             .transfer(),
         ],
     );
+    if runtime_controls {
+        let node = NodeId::from_parts(0, 1).unwrap();
+        let mut setup = vec![signal::metadata(
+            node,
+            SignalKind::Playback {
+                slot: 0,
+                channels: 2,
+                auxiliary: 0,
+            },
+        )?];
+        for p in [
+            signal::Parameter::Balance,
+            signal::Parameter::Mute,
+            signal::Parameter::Presence,
+            signal::Parameter::Bank,
+            signal::Parameter::Monitor,
+            signal::Parameter::Stereo,
+        ] {
+            let value = if matches!(p, signal::Parameter::Mute | signal::Parameter::Presence) {
+                1 << 24
+            } else {
+                0
+            };
+            setup.push(
+                Command::seed(
+                    signal::key(node, p)?,
+                    Ramp {
+                        start: value,
+                        target: value,
+                        duration: 0,
+                        elapsed: 0,
+                    },
+                )
+                .transfer(),
+            );
+        }
+        host.ok(&mut s, setup);
+    }
     let mut nonce = host.stage_image(&mut s, 0, 0, false);
     let mut graph = StageId::from_parts(11, 0, 1).unwrap();
     let pair = NodePairStageId::from_parts([21, 0, 1]).unwrap();
@@ -413,6 +461,49 @@ fn activation_inner(graph_before_initial: bool) -> Result<()> {
     assert!(record.terminal);
     assert_eq!(record.terminal_frame, 64 * 32);
     assert_eq!(resident::tag(&record.payload), resident::INITIAL_ACTIVATED);
+    let mut extra_results = Vec::new();
+    if runtime_controls {
+        let actions = [
+            (
+                190,
+                signal::processor(NodeId::from_parts(0, 1).unwrap(), EngineOp::Gain(0.5)),
+                resident::RUNTIME_ERROR,
+                12,
+            ),
+            (
+                191,
+                signal::loop_parameter(LoopId::from_parts(0, 8).unwrap(), f32::NAN, false),
+                resident::TIMELINE_ERROR,
+                3,
+            ),
+            (
+                192,
+                signal::loop_parameter(target, 0.25, false),
+                resident::DONE,
+                0,
+            ),
+            (
+                193,
+                signal::loop_parameter(target, -0.25, true),
+                resident::DONE,
+                0,
+            ),
+            (
+                194,
+                signal::smoothing(
+                    target,
+                    shoop_loops::audio::Smoothing::LinearRestart { frames: 0 },
+                ),
+                resident::DONE,
+                0,
+            ),
+        ];
+        for (i, (at, action, tag, code)) in actions.into_iter().enumerate() {
+            let id = host.admit(&mut s, &mut owner, 5 + i as u64, at * 32, action);
+            extra_results.push((id, at * 32, tag, code));
+        }
+    }
+    let graph_cut = if runtime_controls { 224 } else { 128 };
     let graph2 = StageId::from_parts(11, 0, 2 + offset as u32).unwrap();
     host.ok(
         &mut s,
@@ -431,31 +522,31 @@ fn activation_inner(graph_before_initial: bool) -> Result<()> {
         &mut s,
         &mut owner,
         2 + offset,
-        128 * 32,
+        graph_cut * 32,
         stage::graph(graph2, Epoch(1 + offset), Epoch(1), nonce),
     );
     let repeat = host.admit(
         &mut s,
         &mut owner,
         3 + offset,
-        130 * 32,
+        (graph_cut + 2) * 32,
         resident::repeat(target, false),
     );
     let query = host.admit(
         &mut s,
         &mut owner,
         4 + offset,
-        131 * 32,
+        (graph_cut + 3) * 32,
         resident::state(target),
     );
     let sent = host.source.borrow().sent;
     s.model.set("control_result_ready", 0);
-    host.until(&mut s, 160 * 32);
+    host.until(&mut s, (graph_cut + 32) * 32);
     assert_eq!(host.source.borrow().sent, sent);
     assert_eq!(s.model.get("control_valid"), 0);
     s.model.set("control_result_ready", 1);
     let r = host.record(&mut s, &mut owner, graph_action);
-    assert_eq!(r.terminal_frame, 128 * 32);
+    assert_eq!(r.terminal_frame, graph_cut * 32);
     assert_eq!(resident::tag(&r.payload), resident::GRAPH_ACTIVATED);
     assert_eq!(protocol::get(&r.payload, 96, 64), 2 + offset);
     let r = host.record(&mut s, &mut owner, repeat);
@@ -468,7 +559,7 @@ fn activation_inner(graph_before_initial: bool) -> Result<()> {
             reference.graph_epoch.0,
             reference.topology_epoch.0
         ),
-        (131 * 32, 2 + offset, 1)
+        ((graph_cut + 3) * 32, 2 + offset, 1)
     );
     let mut reader = Reader::new(reference);
     for r in host.ok(
@@ -478,6 +569,25 @@ fn activation_inner(graph_before_initial: bool) -> Result<()> {
         reader.accept(r.error, r.payload)?;
     }
     let words = reader.finish()?;
+    if runtime_controls {
+        assert_eq!(
+            (words[27] as u32, (words[27] >> 32) as u32),
+            (0.25f32.to_bits(), (-0.25f32).to_bits())
+        );
+        assert_eq!(
+            words[28] & 0x1ffffffff,
+            1u64 << 32,
+            "historical LinearRestart(0) became None"
+        );
+        for (id, frame, tag, code) in extra_results {
+            let r = host.record(&mut s, &mut owner, id);
+            assert_eq!(r.terminal_frame, frame);
+            assert_eq!(resident::tag(&r.payload), tag);
+            if code != 0 {
+                assert_eq!(protocol::get(&r.payload, 0, 8), code);
+            }
+        }
+    }
     let state = protocol::state(
         &words[..13]
             .iter()

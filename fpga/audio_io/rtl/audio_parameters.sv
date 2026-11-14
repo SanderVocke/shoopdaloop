@@ -26,10 +26,11 @@ module audio_parameters #(
         LIVE_SEND, LIVE_WAIT, EVAL_SEND, EVAL_WAIT, KEY_WRITE,
         WRITE_SEND, WRITE_WAIT, SNAP_WRITE,
         MAP_READ, MAP_WAIT, MAP_GET, PATCH_SEND, PATCH_WAIT,
-        BUILD_HEAD_READ, BUILD_HEAD_WAIT, BUILD_HEAD_GET, BUILD_WRITE} phase_t;
+        BUILD_HEAD_READ, BUILD_HEAD_WAIT, BUILD_HEAD_GET, BUILD_WRITE,
+        STEREO_READ,STEREO_WAIT,STEREO_GET,PROGRAM_SEND,PROGRAM_WAIT} phase_t;
     phase_t phase;
     reg [7:0] operation;
-    reg bank, writing, binding_ramp;
+    reg bank, writing, binding_ramp,binding_enabled;
     reg [15:0] key, address;
     reg [63:0] nonce;
     reg [31:0] cursor, next_pointer, target, duration;
@@ -44,44 +45,48 @@ module audio_parameters #(
     wire accept=request_valid && request_ready;
     wire valid_key=32'(request_key) < 32'(KEYS);
     wire valid_stage=staged[request_bank] && stage_nonce[request_bank] == request_nonce;
-    wire seed=accept && request_opcode == 0 && initialization_open && valid_key && request_value[128];
-    wire bind_write=accept && (request_opcode == 2 || request_opcode == 10) && valid_stage
-        && (request_opcode == 10 || (valid_key && initialized[K'(request_key)])) && request_count == stage_written[request_bank]
+    wire seed=accept && (request_opcode == 0 || request_opcode == 11) && (initialization_open || request_opcode == 11) && valid_key && request_value[128];
+    wire valid_conditional=32'(request_key)+5 < 32'(KEYS) && 32'(request_key)%7 == 1 && initialized[K'(32'(request_key)+5)];
+    wire bind_write=accept && (request_opcode == 2 || request_opcode == 10 || request_opcode == 12) && valid_stage
+        && (request_opcode == 10 || (valid_key && initialized[K'(request_key)]))
+        && (request_opcode != 12 || valid_conditional) && request_count == stage_written[request_bank]
         && request_count < stage_count[request_bank] && 32'(request_address) < 32'(STATE_DEPTH);
     wire [128:0] key_data;
     sp_ram #(.WIDTH(129),.DEPTH(KEYS),.ADDR_BITS(K)) canonical (
-        .clk(clk),.read_enable(phase == KEY_READ),.read_address(K'(key)),.read_data(key_data),
+        .clk(clk),.read_enable(phase == KEY_READ || phase == STEREO_READ),
+        .read_address(phase == STEREO_READ ? K'(32'(key)+5) : K'(key)),.read_data(key_data),
         .write_enable(seed || phase == KEY_WRITE || phase == SNAP_WRITE),
         .write_address(seed ? K'(request_key) : K'(key)),
         .write_data(seed ? request_value : value)
     );
-    wire [64:0] map_data;
-    sp_ram #(.WIDTH(65),.DEPTH(2*STATE_DEPTH),.ADDR_BITS(M)) staged_bindings (
+    wire [65:0] map_data;
+    sp_ram #(.WIDTH(66),.DEPTH(2*STATE_DEPTH),.ADDR_BITS(M)) staged_bindings (
         .clk(clk),.read_enable(phase == MAP_READ),
         .read_address(M'(bank)*M'(STATE_DEPTH)+M'(cursor)),.read_data(map_data),
         .write_enable(bind_write),
         .write_address(M'(request_bank)*M'(STATE_DEPTH)+M'(request_count)),
-        .write_data({request_opcode == 2,request_value[31:0],request_key,request_address})
+        .write_data({request_opcode == 12,request_opcode != 10,request_value[31:0],request_key,request_address})
     );
     reg [31:0] binding_base;
-    wire [96:0] active_data;
-    sp_ram #(.WIDTH(97),.DEPTH(STATE_DEPTH),.ADDR_BITS(A)) active_bindings (
+    wire [97:0] active_data;
+    sp_ram #(.WIDTH(98),.DEPTH(STATE_DEPTH),.ADDR_BITS(A)) active_bindings (
         .clk(clk),.read_enable(phase == ACTIVE_READ),.read_address(A'(cursor)),.read_data(active_data),
         .write_enable(phase == BUILD_WRITE),.write_address(A'(cursor)),
-        .write_data({binding_ramp,next_pointer,binding_base,key,address})
+        .write_data({binding_enabled,binding_ramp,next_pointer,binding_base,key,address})
     );
     wire [31:0] head_data;
     sp_ram #(.WIDTH(32),.DEPTH(KEYS),.ADDR_BITS(K)) heads (
         .clk(clk),.read_enable(phase == HEAD_READ || phase == BUILD_HEAD_READ),
         .read_address(K'(key)),.read_data(head_data),
-        .write_enable(phase == BUILD_WRITE && binding_ramp),.write_address(K'(key)),.write_data(cursor)
+        .write_enable(phase == BUILD_WRITE && binding_ramp && binding_enabled),.write_address(K'(key)),.write_data(cursor)
     );
-    assign image_valid=phase == LIVE_SEND || phase == EVAL_SEND || phase == WRITE_SEND || phase == PATCH_SEND;
-    assign image_opcode=phase == LIVE_SEND ? 8'd8 : phase == EVAL_SEND ? 8'd11 : phase == PATCH_SEND ? 8'd9 : 8'd0;
-    assign image_state=phase == PATCH_SEND ? binding_ramp : 1'b1;
-    assign image_address=address;
+    assign image_valid=phase == LIVE_SEND || phase == EVAL_SEND || phase == WRITE_SEND || phase == PATCH_SEND || phase == PROGRAM_SEND;
+    assign image_opcode=phase == LIVE_SEND ? 8'd8 : phase == EVAL_SEND ? 8'd11 : phase == PATCH_SEND ? 8'd9 : phase == PROGRAM_SEND ? 8'd13 : 8'd0;
+    assign image_state=phase == PATCH_SEND ? binding_ramp : phase != PROGRAM_SEND;
+    assign image_address=phase == PROGRAM_SEND ? binding_base[15:0] : address;
     assign image_data=phase == EVAL_SEND ? {447'b0,duration,target,value}
-        : phase == PATCH_SEND ? {447'b0,nonce,value} : {511'b0,value};
+        : phase == PATCH_SEND ? {447'b0,nonce,value}
+        : phase == PROGRAM_SEND ? {447'b0,nonce,73'b0,binding_base[31:16],32'b0,8'd9} : {511'b0,value};
     task automatic reply(input [3:0] error, input [128:0] data);
         begin phase<=IDLE;response_valid<=1;response_error<=error;response_data<=data;end
     endtask
@@ -99,7 +104,7 @@ module audio_parameters #(
     always @(posedge clk) begin
         response_valid<=0;
         if (reset) begin
-            phase<=IDLE;operation<=0;bank<=0;writing<=0;binding_ramp<=0;binding_base<=0;key<=0;address<=0;nonce<=0;cursor<=0;next_pointer<=NONE;
+            phase<=IDLE;operation<=0;bank<=0;writing<=0;binding_ramp<=0;binding_enabled<=0;binding_base<=0;key<=0;address<=0;nonce<=0;cursor<=0;next_pointer<=NONE;
             target<=0;duration<=0;value<=0;initialized<=0;active_seen<=0;staged<=0;active_count<=0;
             response_valid<=0;response_error<=0;response_data<=0;fault<=0;smoothing_frames<=0;smoothing_linear<=0;
             for (integer i=0;i<2;i=i+1) begin stage_nonce[i]<=0;stage_count[i]<=0;stage_written[i]<=0;end
@@ -108,8 +113,8 @@ module audio_parameters #(
                 operation<=request_opcode;bank<=request_bank;key<=request_key;nonce<=request_nonce;
                 target<=request_target;duration<=request_duration;writing<=0;
                 case (request_opcode)
-                    0: if (!valid_key) reply(INVALID_ID,0);
-                        else if (!initialization_open || !request_value[128]) reply(INVALID_STATE,0);
+                    0,11: if (!valid_key) reply(INVALID_ID,0);
+                        else if ((request_opcode == 0 && !initialization_open) || !request_value[128]) reply(INVALID_STATE,0);
                         else begin initialized[K'(request_key)]<=1;reply(0,0);end
                     1: if (request_nonce == 0 || request_nonce[0] != request_bank) reply(INVALID_ID,0);
                         else if (request_count > 32'(STATE_DEPTH)) reply(INVALID_STATE,0);
@@ -117,7 +122,7 @@ module audio_parameters #(
                             staged[request_bank]<=1;stage_nonce[request_bank]<=request_nonce;
                             stage_count[request_bank]<=request_count;stage_written[request_bank]<=0;reply(0,0);
                         end
-                    2,10: if (!valid_stage || (request_opcode == 2 && !valid_key)) reply(INVALID_ID,0);
+                    2,10,12: if (!valid_stage || (request_opcode != 10 && !valid_key)) reply(INVALID_ID,0);
                         else if (!bind_write) reply(INVALID_STATE,0);
                         else begin stage_written[request_bank]<=request_count+1'b1;reply(0,0);end
                     3,7: if (!valid_key) reply(INVALID_ID,0);
@@ -146,7 +151,8 @@ module audio_parameters #(
             ACTIVE_WAIT: phase<=ACTIVE_GET;
             ACTIVE_GET: begin
                 address<=active_data[15:0];next_pointer<=active_data[95:64];
-                if (operation == 9) begin
+                if (!active_data[97]) begin if (operation == 4 || operation == 9) advance_active();else fail();end
+                else if (operation == 9) begin
                     if (active_data[96]) advance_active();
                     else begin value<={65'b0,smoothing_frames,active_data[63:32]};phase<=WRITE_SEND;end
                 end else if (operation == 4) begin
@@ -189,12 +195,25 @@ module audio_parameters #(
             MAP_WAIT: phase<=MAP_GET;
             MAP_GET: begin
                 address<=map_data[15:0];key<=map_data[31:16];
-                binding_ramp<=map_data[64];binding_base<=map_data[63:32];
-                if (operation == 6) begin
+                binding_ramp<=map_data[64];binding_base<=map_data[63:32];binding_enabled<=1;
+                if (map_data[65]) phase<=STEREO_READ;
+                else if (operation == 6) begin
                     if (map_data[64]) phase<=BUILD_HEAD_READ;else begin next_pointer<=NONE;phase<=BUILD_WRITE;end
                 end else if (map_data[64]) phase<=KEY_READ;
                 else begin value<={65'b0,smoothing_frames,map_data[63:32]};phase<=PATCH_SEND;end
             end
+            STEREO_READ: phase<=STEREO_WAIT;
+            STEREO_WAIT: phase<=STEREO_GET;
+            STEREO_GET: if (!key_data[128] || (key_data[63:32] != 0 && key_data[63:32] != 32'd16777216)) fail();
+                else begin
+                    binding_enabled<=key_data[63:32] != 0;
+                    if (operation == 6) begin
+                        if (key_data[63:32] == 0) begin next_pointer<=NONE;phase<=BUILD_WRITE;end
+                        else phase<=BUILD_HEAD_READ;
+                    end else phase<=key_data[63:32] == 0 ? PROGRAM_SEND : KEY_READ;
+                end
+            PROGRAM_SEND: if (image_ready) phase<=PROGRAM_WAIT;
+            PROGRAM_WAIT: if (image_response_valid) begin if (image_response_error != 0) fail();else phase<=KEY_READ;end
             PATCH_SEND: if (image_ready) phase<=PATCH_WAIT;
             PATCH_WAIT: if (image_response_valid) begin
                 if (image_response_error != 0) fail();
@@ -205,7 +224,7 @@ module audio_parameters #(
             BUILD_HEAD_WAIT: phase<=BUILD_HEAD_GET;
             BUILD_HEAD_GET: begin next_pointer<=active_seen[K'(key)] ? head_data : NONE;phase<=BUILD_WRITE;end
             BUILD_WRITE: begin
-                if (binding_ramp) active_seen[K'(key)]<=1;
+                if (binding_ramp && binding_enabled) active_seen[K'(key)]<=1;
                 if (cursor == 0) begin staged[bank]<=0;reply(0,0);end
                 else begin cursor<=cursor-1'b1;phase<=MAP_READ;end
             end

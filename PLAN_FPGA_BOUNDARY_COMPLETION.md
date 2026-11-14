@@ -530,5 +530,16 @@ historical observations. Component tests cover live/frozen ramp continuity and
 smoothing identity. The connected fixed-stall case passes 5,217 exact stereo
 frames across two service pauses, including relocated ramp addresses, preserved
 initial TP time, repeat-sync delivery and a historical epoch-stamped query.
-Runtime signal/monitoring controls, bulk reads, application service migration,
+ARM integration of runtime signal/monitoring controls, bulk reads, application service migration,
 firmware/codec integration and final workload/timing qualification remain open.
+
+Resident runtime checkpoint: signal controls, actual loop scalars, configuration
+ownership and automatic monitoring now execute in the managed fabric. Conditional
+balance bindings preserve frozen ramps across shape changes. Twelve image/runtime/
+activation cases and five native/control/query component regressions pass,
+including a connected 8,449-frame fixed-stall case with paused service and
+historical scalar/epoch checks. ARM template compilation and complete profile/
+capacity parity remain part of application migration. The first managed Vivado
+run exposed an unsupported dynamic usage counter; its portable replacement is
+tested and a separate frozen managed-profile resource/timing run is in progress.
+No M5, routed timing, firmware or physical completion is claimed.

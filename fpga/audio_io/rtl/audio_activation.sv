@@ -11,11 +11,13 @@ module audio_activation (
     input wire image_done, input wire [3:0] image_error,
     output wire tp_valid, input wire tp_ready, output wire [7:0] tp_opcode,
     output wire [639:0] tp_data,
-    input wire tp_done, input wire [3:0] tp_error, input wire [831:0] tp_result
+    input wire tp_done, input wire [3:0] tp_error, input wire [831:0] tp_result,
+    output wire metadata_valid,input wire metadata_ready,output wire metadata_initial,
+    input wire metadata_done,input wire metadata_fault
 );
-    typedef enum reg [3:0] {IDLE,IMAGE_CHECK_SEND,IMAGE_CHECK_WAIT,MAP_CHECK_SEND,MAP_CHECK_WAIT,
+    typedef enum reg [4:0] {IDLE,IMAGE_CHECK_SEND,IMAGE_CHECK_WAIT,MAP_CHECK_SEND,MAP_CHECK_WAIT,
         TP_CHECK_SEND,TP_CHECK_WAIT,SNAPSHOT_SEND,SNAPSHOT_WAIT,PREPARE_SEND,PREPARE_WAIT,
-        ACTIVATE_SEND,ACTIVATE_WAIT,MAP_SEND,MAP_WAIT,TP_INITIAL} phase_t;
+        ACTIVATE_SEND,ACTIVATE_WAIT,MAP_SEND,MAP_WAIT,TP_INITIAL,METADATA_SEND,METADATA_WAIT} phase_t;
     phase_t phase;
     reg initial_action,initial_sent;
     reg [63:0] nonce;
@@ -32,6 +34,8 @@ module audio_activation (
     assign tp_valid=phase == TP_CHECK_SEND || (phase == TP_INITIAL && !initial_sent);
     assign tp_opcode=phase == TP_CHECK_SEND ? 8'd12 : 8'd22;
     assign tp_data=phase == TP_CHECK_SEND ? 640'b0 : {448'b0,specification};
+    assign metadata_valid=phase == METADATA_SEND;
+    assign metadata_initial=initial_action;
     wire valid_spec=specification[0] && specification[32:1] != 0 && specification[101:99] == 0
         && specification[191:128] == 0 && (!specification[33] || specification[97:34] == {specification[32:1],32'b0});
     wire unused=&{1'b0,tp_result[831:1],specification[127:102]};
@@ -63,7 +67,7 @@ module audio_activation (
             end
             TP_CHECK_SEND: if (tp_ready) phase<=TP_CHECK_WAIT;
             TP_CHECK_WAIT: if (tp_done) begin
-                if (tp_error != 0) fail();else if (tp_result[0]) reply(4);else phase<=PREPARE_SEND;
+                if (tp_error != 0) fail();else if (tp_result[0]) reply(4);else phase<=METADATA_SEND;
             end
             SNAPSHOT_SEND: if (parameter_ready) phase<=SNAPSHOT_WAIT;
             SNAPSHOT_WAIT: if (parameter_done) begin if (parameter_error != 0) fail();else phase<=PREPARE_SEND;end
@@ -73,8 +77,10 @@ module audio_activation (
             ACTIVATE_WAIT: if (image_done) begin if (image_error != 0) fail();else phase<=MAP_SEND;end
             MAP_SEND: if (parameter_ready) phase<=MAP_WAIT;
             MAP_WAIT: if (parameter_done) begin
-                if (parameter_error != 0) fail();else if (initial_action) phase<=TP_INITIAL;else reply(0);
+                if (parameter_error != 0) fail();else if (initial_action) phase<=TP_INITIAL;else phase<=METADATA_SEND;
             end
+            METADATA_SEND: if (metadata_ready) phase<=METADATA_WAIT;
+            METADATA_WAIT: if (metadata_done) begin if (metadata_fault) fail();else if (initial_action) phase<=PREPARE_SEND;else reply(0);end
             TP_INITIAL: begin
                 if (tp_ready && !initial_sent) initial_sent<=1;
                 if (initial_sent && tp_done) begin if (tp_error != 0) fail();else reply(0);end

@@ -63,7 +63,7 @@ pub fn sources(demo: bool) -> Vec<std::path::PathBuf> {
     let root = crate::root();
     let mut sources = rt_fpga_sim::pipeline_sources();
     sources.extend(
-        "audio_lane_ram audio_io audio_command_fifo audio_image audio_parameters audio_stages audio_activation audio_configuration audio_actions audio_native audio_observations audio_control audio_loop_pipeline"
+        "audio_lane_ram audio_io audio_command_fifo audio_image audio_parameters audio_stages audio_activation audio_configuration audio_runtime audio_monitor audio_actions audio_native audio_observations audio_control audio_loop_pipeline"
             .split_whitespace()
             .map(|n| root.join(format!("fpga/audio_io/rtl/{n}.sv"))),
     );

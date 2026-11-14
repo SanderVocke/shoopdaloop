@@ -4829,6 +4829,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "shoop_loops",
+ "shoop_rt_engine",
  "shoop_wasm_test_support",
 ]
 

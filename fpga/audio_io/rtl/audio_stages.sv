@@ -9,6 +9,7 @@ module audio_stages (
     output reg response_valid, output reg [511:0] response_data, output reg fault,
     output wire activation_valid, input wire activation_ready, output wire activation_initial,
     output wire [63:0] activation_nonce, output wire [191:0] activation_spec,
+    output wire activation_stereo,
     input wire activation_done, input wire [7:0] activation_error, input wire activation_fault
 );
     localparam [1:0] IDLE=0,READY=1,TAKEN=2;
@@ -18,7 +19,7 @@ module audio_stages (
     reg [63:0] topology_id,validated_epoch,pair_target;
     reg [191:0] topology_spec;
     reg [1:0] graph_status,pair_status,topology_status;
-    reg pair_initial,topology_supported,is_loaded;
+    reg pair_initial,pair_stereo,topology_supported,is_loaded;
     reg [63:0] current_graph,current_topology;
     reg [7:0] opcode;
     reg [511:0] payload;
@@ -31,6 +32,7 @@ module audio_stages (
     assign activation_initial=opcode == 17;
     assign activation_nonce=opcode == 17 ? payload[447:384] : payload[287:224];
     assign activation_spec=topology_spec;
+    assign activation_stereo=pair_stereo;
     wire graph_identity=payload[95:0] == graph_id && graph_status != IDLE;
     wire [63:0] expected_graph=opcode == 17 ? payload[319:256] : payload[159:96];
     wire [63:0] expected_topology=opcode == 17 ? payload[383:320] : payload[223:160];
@@ -54,7 +56,7 @@ module audio_stages (
         configuration_done<=0;response_valid<=0;
         if (reset) begin
             phase<=WAITING;graph_id<=0;pair_id<=0;topology_id<=0;validated_epoch<=0;pair_target<=0;topology_spec<=0;
-            graph_status<=IDLE;pair_status<=IDLE;topology_status<=IDLE;pair_initial<=0;topology_supported<=0;
+            graph_status<=IDLE;pair_status<=IDLE;topology_status<=IDLE;pair_initial<=0;pair_stereo<=0;topology_supported<=0;
             is_loaded<=0;current_graph<=0;current_topology<=0;opcode<=0;payload<=0;
             configuration_done<=0;configuration_error<=0;response_valid<=0;response_data<=0;fault<=0;
         end else if (!fault) case (phase)
@@ -69,7 +71,7 @@ module audio_stages (
                     2: if (!new_pair) configure(1);
                         else if (pair_status != IDLE) configure(4);
                         else begin pair_id<=configuration_data[95:0];pair_target<=configuration_data[159:96];
-                            pair_initial<=configuration_data[160];pair_status<=READY;configure(0);end
+                            pair_initial<=configuration_data[160];pair_stereo<=configuration_data[161];pair_status<=READY;configure(0);end
                     3,4: if (configuration_data[95:0] != pair_id || pair_id == 0) configure(1);
                         else if (configuration_opcode == 4 ? pair_status != TAKEN : pair_status != READY) configure(6);
                         else begin pair_status<=IDLE;pair_initial<=0;configure(0);end

@@ -25,4 +25,5 @@ pub mod resident_continuous;
 
 pub mod observations;
 pub mod resident_configuration;
+pub mod runtime_control;
 pub mod stages;

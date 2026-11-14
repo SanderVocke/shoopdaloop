@@ -589,3 +589,40 @@ The replay sources and logs are in
 Resource/timing and
 deadline qualification of the final integrated runtime remain pending. This
 checkpoint does not migrate the application callback or ARM firmware.
+
+## Resident runtime controls checkpoint
+
+The managed wrapper now executes signal controls and automatic monitoring through
+the canonical owner. Device node metadata preserves configure/discard ownership,
+node/loop error precedence, generation-qualified policies and actual ramp state.
+The post-PROCESS monitor reads real native countdowns before historical queries
+and sample execution. Initial activation applies pending canonical configuration;
+graph activation consumes matching processor epochs. Runtime reads/writes remain
+fabric work while ARM service is paused.
+
+Component checks cover all supported node classes, invalid-node versus invalid-
+float ordering, loaded/configuration errors, pending-token conflict, discard
+lifetime, reader validation, duplicate ramp writes, actual elapsed interpolation,
+manual/policy/pre-recording monitoring and unchanged-target continuity.
+Conditional balance templates preserve disabled ramps across repeated stereo
+shape changes by patching inactive programs and excluding inactive bindings.
+
+The connected fixed-stall case passes 8,449 exact stereo frames. During a service
+pause it applies loop gain/balance/LinearRestart(0), rejects wrong node/loop
+commands in the correct error order, activates a relocated graph and retains the
+original scalar values and epochs for a later query. The combined image/runtime/
+activation sweep passes 12 cases and five native/control/query component
+regressions. The long three-memory capture campaign remains prior evidence; the
+new runtime checkpoint does not replace the final complete campaign.
+
+Vivado 2021.1 first rejected the reusable-view usage counter's dynamic
+`$countones`, a path absent from earlier raw-profile routes. An equivalent
+balanced counter uses separately named generate levels. Sparse descriptor usage
+and reset pass at view capacities 1, 3, 5 and 32. The managed-profile synthesis
+runner now freezes its complete dimensions separately from the historical
+matched profile. Its routed results remain pending until actual reports exist.
+
+ARM compilation of these templates, complete profile/capacity parity, bounded
+bulk reads, application/mono service migration, firmware/codec integration and
+final timing/physical qualification remain open. This is a device execution
+checkpoint, not M5 completion.

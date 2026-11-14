@@ -1,4 +1,4 @@
-module parameters_probe (
+module parameters_probe #(parameter integer KEYS=8) (
     input wire clk, reset, initialization_open,
     input wire request_valid, output wire request_ready,
     input wire [7:0] request_opcode, input wire request_state,
@@ -22,7 +22,7 @@ module parameters_probe (
     wire [639:0] id;
     wire [3:0] re;
     wire [128:0] rd;
-    audio_parameters #(.KEYS(8),.STATE_DEPTH(8)) parameters (
+    audio_parameters #(.KEYS(KEYS),.STATE_DEPTH(8)) parameters (
         .clk(clk),.reset(reset),.initialization_open(initialization_open),
         .request_valid(parameter_valid),.request_ready(parameter_ready),
         .request_opcode(parameter_opcode),.request_key(parameter_key),.request_bank(parameter_bank),

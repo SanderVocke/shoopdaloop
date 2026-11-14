@@ -95,7 +95,27 @@ module media_store #(
     reg [31:0] allocation_view;
     reg [31:0] view_count, slot_count, free_count, slot_limit;
     reg [VIEWS-1:0] valid_views;
-    wire [31:0] views_used = REUSE_VIEWS != 0 ? 32'($countones(valid_views)) : view_count;
+    wire [31:0] views_used;
+    generate if (REUSE_VIEWS != 0) begin : reused_view_count
+        localparam integer LEVELS=$clog2(VIEWS),PAD=2**LEVELS,COUNT_BITS=$clog2(VIEWS+1);
+        for (genvar level=0;level<=LEVELS;level=level+1) begin : levels
+            wire [COUNT_BITS-1:0] counts [0:(PAD >> level)-1];
+            for (genvar i=0;i<(PAD >> level);i=i+1) begin : entries
+                if (level == 0) begin : leaf
+                    if (i < VIEWS) begin : valid_leaf
+                        assign counts[i]=COUNT_BITS'(valid_views[i]);
+                    end else begin : padding
+                        assign counts[i]=0;
+                    end
+                end else begin : branch
+                    assign counts[i]=levels[level-1].counts[2*i]+levels[level-1].counts[2*i+1];
+                end
+            end
+        end
+        assign views_used=32'(levels[LEVELS].counts[0]);
+    end else begin : monotonic_view_count
+        assign views_used=view_count;
+    end endgenerate
     reg cfg_pending, cfg_result_valid, faulted, cfg_was_write;
     reg cfg_request_valid, cfg_request_write, cfg_request_in_range, cfg_request_value_valid;
     reg [2:0] cfg_request_space;

@@ -54,7 +54,11 @@ def main():
     parser.add_argument('--output', type=Path, default=ROOT/'work/vivado-current')
     parser.add_argument('--threads', type=int, default=4)
     parser.add_argument('--audio', action='store_true', help='measure the autonomous continuous wrapper, including both clock domains')
+    parser.add_argument('--profile', choices=('matched','resident'), default='matched',
+                        help='retain the historical matched dimensions or measure the managed application boundary')
     args = parser.parse_args()
+    if args.profile == 'resident' and not args.audio:
+        parser.error('--profile resident requires --audio')
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     if any(output.iterdir()):
@@ -91,6 +95,19 @@ def main():
             constraints.write('\ncreate_clock -name audio_clk -period 325.520833 [get_ports audio_clk]\n'
                               'set_clock_uncertainty 0.200 [get_clocks audio_clk]\n'
                               'set_clock_groups -asynchronous -group [get_clocks core_clk] -group [get_clocks audio_clk]\n')
+    resident_generics = dict(AXI_DATA_WIDTH=64, BURST_MEMORY=1, RESIDENT_ACTIONS=1,
+        LOOP_DEPTH=1, REQUEST_DEPTH=16, EVENT_DEPTH=18, PROGRAM_DEPTH=512,
+        STATE_DEPTH=512, JOB_DEPTH=512, MAX_FRAMES=32, BUFFERS=256,
+        INPUT_PORTS=2, OUTPUT_PORTS=2, VIEWS=32, SLOTS=32768,
+        CHUNK_FRAMES=32, BLOCK_CHUNKS=32, READ_BUFFERS=4, WRITE_BUFFERS=4,
+        CAPTURE_CHANNELS=2, REUSE_VIEWS=1, CONTROL_DEPTH=256)
+    if args.profile == 'resident':
+        import re
+        path = output/'run.tcl'
+        script = re.sub(r'set generics \{[^}]+\}',
+                        'set generics {'+' '.join(f'{k}={v}' for k,v in resident_generics.items())+'}',
+                        path.read_text(), count=1)
+        path.write_text(script)
     (output/'source-manifest.json').write_text(json.dumps(hashes, indent=2)+'\n')
     (output/'provenance.json').write_text(json.dumps(dict(
         revision=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
@@ -98,6 +115,7 @@ def main():
         command=sys.argv, part='xc7z020clg400-1', clock_mhz=100,
         top='audio_loop_pipeline' if args.audio else 'loop_pipeline_axi',
         audio_clock_mhz=3.072 if args.audio else None,
+        profile=args.profile, generics=resident_generics if args.profile == 'resident' else 'historical matched run.tcl',
     ), indent=2)+'\n')
     command = [args.vivado,'-mode','batch','-nojournal','-log','vivado.log',
                '-source','run.tcl','-tclargs',str(args.threads)]

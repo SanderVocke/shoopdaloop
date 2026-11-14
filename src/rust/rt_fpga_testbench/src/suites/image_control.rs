@@ -42,7 +42,7 @@ fn request(s: &mut Sim<'_>, t: Transfer) -> (u64, Bits) {
     s.idle(1);
     result
 }
-fn ok(s: &mut Sim<'_>, t: Transfer) -> Bits {
+pub(super) fn ok(s: &mut Sim<'_>, t: Transfer) -> Bits {
     let op = t.opcode;
     let address = t.address;
     let (error, data) = request(s, t);
@@ -61,7 +61,7 @@ fn run(s: &mut Sim<'_>, jobs: &Rc<RefCell<Vec<Bits>>>) -> Bits {
     assert_eq!(rows.len(), 1);
     rows.pop().unwrap()
 }
-fn design() -> Design {
+pub(super) fn design() -> Design {
     let root = crate::root();
     Design::new(
         "image_probe",

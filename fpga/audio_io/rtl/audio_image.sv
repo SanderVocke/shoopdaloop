@@ -44,7 +44,7 @@ module audio_image #(
     wire [A-1:0] stage_base=A'(selected_bank)*A'(DEPTH);
     wire [M-1:0] map_base=M'(selected_bank)*M'(STATE_DEPTH);
     reg [15:0] source, destination, address;
-    reg expected_ramp, selected_state, selected_read;
+    reg expected_ramp, selected_state, selected_read,selected_program;
     reg [128:0] selected_data;
     reg [31:0] target, duration, ramp_start, ramp_duration, ramp_elapsed, magnitude, next_start;
     reg negative;
@@ -69,11 +69,12 @@ module audio_image #(
     wire stage_write = upload || copy_write || phase == STAGE_WRITE;
     wire [A-1:0] stage_write_address = stage_base+(upload ?
         (upload_program ? A'(request_address) : A'(PROGRAM_DEPTH)+A'(request_address))
-        : A'(PROGRAM_DEPTH)+A'(phase == STAGE_WRITE ? address : destination));
+        : (phase == STAGE_WRITE && selected_program ? A'(address) : A'(PROGRAM_DEPTH)+A'(phase == STAGE_WRITE ? address : destination)));
     wire [128:0] stage_write_data = upload ?
         (upload_program ? {33'b0,request_data[95:0]} : request_data[128:0]) : phase == STAGE_WRITE ? selected_data : cfg_read_data;
     wire stage_read = phase == PROGRAM_FETCH || phase == STATE_FETCH || phase == MAP_GET || phase == STAGE_READ;
     wire [A-1:0] stage_read_address = stage_base+(phase == PROGRAM_FETCH ? A'(cursor)
+        : phase == STAGE_READ && selected_program ? A'(address)
         : A'(PROGRAM_DEPTH)+(phase == MAP_GET ? A'(map_read_data[31:16]) : phase == STAGE_READ ? A'(address) : A'(cursor)));
     wire [128:0] stage_read_data;
     wire [32:0] map_read_data;
@@ -131,7 +132,7 @@ module audio_image #(
                 bank_p_written[i]<=0;bank_s_written[i]<=0;bank_m_written[i]<=0;
             end
             source<=0; destination<=0; address<=0; expected_ramp<=0;
-            selected_state<=0; selected_read<=0; selected_data<=0;
+            selected_state<=0; selected_read<=0; selected_program<=0;selected_data<=0;
             target<=0; duration<=0; ramp_start<=0; ramp_duration<=0; ramp_elapsed<=0;
             magnitude<=0; next_start<=0; negative<=0; numerator<=0;
         end else case (phase)
@@ -195,7 +196,7 @@ module audio_image #(
                         else if (32'(request_address) >= states) reply(INVALID_ID,0);
                         else if (p_written != programs || s_written != states || m_written != maps) reply(INVALID_STATE,0);
                         else if (request_opcode == 9 && request_data[128] != request_state) reply(INVALID_STATE,0);
-                        else begin selected_state<=request_state;selected_read<=request_opcode == 10;selected_data<=request_data[128:0];address<=request_address;phase<=STAGE_READ;end
+                        else begin selected_state<=request_state;selected_read<=request_opcode == 10;selected_program<=0;selected_data<=request_data[128:0];address<=request_address;phase<=STAGE_READ;end
                     end
                     11: begin
                         if (CANONICAL == 0) reply(UNSUPPORTED,0);
@@ -207,6 +208,10 @@ module audio_image #(
                         else if (p_written != programs || s_written != states || m_written != maps || maps != 0) reply(INVALID_STATE,0);
                         else if (&version) reply(EXHAUSTED,0);
                         else reply(0,0);
+                    13: if (CANONICAL == 0) reply(UNSUPPORTED,0);
+                        else if (!token || 32'(request_address) >= programs) reply(INVALID_ID,0);
+                        else if (p_written != programs || s_written != states || m_written != maps) reply(INVALID_STATE,0);
+                        else begin selected_program<=1;selected_read<=0;selected_state<=0;selected_data<={33'b0,request_data[95:0]};address<=request_address;phase<=STAGE_READ;end
                     default: reply(UNSUPPORTED,0);
                 endcase
             end
@@ -252,7 +257,7 @@ module audio_image #(
             STAGE_READ: phase<=STAGE_WAIT;
             STAGE_WAIT: phase<=STAGE_GET;
             STAGE_GET: begin
-                if (stage_read_data[128] != selected_state) reply(INVALID_STATE,0);
+                if (!selected_program && stage_read_data[128] != selected_state) reply(INVALID_STATE,0);
                 else if (selected_read) reply(0,stage_read_data);else phase<=STAGE_WRITE;
             end
             STAGE_WRITE: phase<=STAGE_ACK;

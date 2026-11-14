@@ -23,7 +23,7 @@ impl Completion {
         let batch = get(words, 878, 64);
         let opcode = get(words, 838, 8) as u8;
         let cfg_bits = match opcode {
-            0..=8 | 16..=18 | 49 | 50 => 129,
+            0..=8 | 16..=18 | 49..=51 => 129,
             48 => 160,
             19 | 20 | 22..=24 | 128 | 133 | 134 | 136..=148 => 768,
             21 => 257,

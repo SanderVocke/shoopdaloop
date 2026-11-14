@@ -80,4 +80,25 @@ impl Command {
             ..Self::default()
         }
     }
+    pub fn conditional_balance(
+        nonce: u64,
+        index: u32,
+        key: u16,
+        address: u16,
+        program: u16,
+        destination: u16,
+    ) -> Self {
+        Self {
+            opcode: 12,
+            bank: nonce & 1 != 0,
+            nonce,
+            count: index,
+            key,
+            address,
+            value: Some(Value::Word(
+                u64::from(program) | (u64::from(destination) << 16),
+            )),
+            ..Self::default()
+        }
+    }
 }
