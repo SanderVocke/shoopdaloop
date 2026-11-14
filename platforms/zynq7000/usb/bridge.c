@@ -196,6 +196,30 @@ void shoop_usb_receive_packet(uint8_t index, const uint8_t packet[4], uint64_t n
     }
 }
 
+uint32_t shoop_usb_input_epoch(unsigned slot) {
+    return slot < SHOOP_MIDI_PORTS ? atomic_load_explicit(&ports[0][slot].recovery, memory_order_acquire) : UINT32_MAX;
+}
+
+uint32_t shoop_usb_begin_input(unsigned slot) {
+    if (slot >= SHOOP_MIDI_PORTS) return UINT32_MAX;
+    struct port *port = &ports[0][slot];
+    port->input_epoch = shoop_usb_input_epoch(slot);
+    port->input_resets = 0;
+    return port->input_epoch;
+}
+
+size_t shoop_usb_output_capacity(unsigned slot) {
+    if (slot >= SHOOP_MIDI_PORTS) return 0;
+    struct port *port = &ports[1][slot];
+    if (!(atomic_load_explicit(&port->state, memory_order_acquire) & 1) || atomic_load(&port->recovery)) return 0;
+    uint32_t used = atomic_load_explicit(&port->head, memory_order_acquire) - atomic_load_explicit(&port->tail, memory_order_acquire);
+    return used < SHOOP_MIDI_QUEUE ? SHOOP_MIDI_QUEUE - used : 0;
+}
+
+void shoop_usb_refuse_input(unsigned slot) {
+    if (slot < SHOOP_MIDI_PORTS) atomic_fetch_add(&ports[0][slot].refused, 1);
+}
+
 size_t shoop_usb_read(unsigned slot, uint8_t *bytes, size_t capacity, uint64_t *arrival) {
     if (slot >= SHOOP_MIDI_PORTS || !bytes || !arrival) return 0;
     struct port *port = &ports[0][slot];

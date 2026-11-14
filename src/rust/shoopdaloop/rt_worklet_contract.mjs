@@ -3,6 +3,7 @@
 // record and moves records, MIDI and audio over a simulated MessagePort.
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+const MIDI_IN = 2;
 
 const wasmPath = process.argv[2] || './dist/generated/shoop_rt_host_worklet.wasm';
 const codecPath = process.argv[3] || join(dirname(wasmPath), 'shoop_persistence_codec_bg.wasm');
@@ -36,6 +37,7 @@ for (const name of [
   'shoop_rt_worklet_buffer_capacity',
   'shoop_rt_worklet_buffer_len',
   'shoop_rt_worklet_commit',
+  'shoop_rt_worklet_midi_input_loss',
   'shoop_rt_worklet_process',
   'shoop_rt_worklet_counter',
   'shoop_rt_worklet_profiling_clock',
@@ -168,8 +170,21 @@ for (let index = 0; index < 200; index += 1) quantum(node, 0.25);
 node.port.deliver({ kind: 'status' });
 const [status] = node.port.take('status');
 const counters = status?.counters;
-if (counters?.midiInDropped !== 1 || counters?.midiInLate !== 1 || counters?.discontinuities !== 0) {
+if (counters?.midiInDropped !== 2 || counters?.midiInLate !== 1 || counters?.discontinuities !== 0) {
   throw new Error(`unexpected counters: ${JSON.stringify(counters)}`);
+}
+{
+  const overloaded = processor(configRecord());
+  overloaded.port.deliver({ kind: 'midi', bytes: new Uint8Array(overloaded.capacities[MIDI_IN] * 2 + 1) });
+  overloaded.port.deliver({ kind: 'midi', bytes: event(globalThis.currentFrame, 0, [0x90, 60, 100]) });
+  if (overloaded.inbound[MIDI_IN].length || !overloaded.midiLost || overloaded.midiQueuedBytes !== 0) {
+    throw new Error('MIDI ingress overload retained bytes or an unfenced baseline');
+  }
+  const frame = globalThis.currentFrame;
+  if (!quantum(overloaded, 0).alive) throw new Error('MIDI ingress overload stopped unrelated audio');
+  globalThis.currentFrame = frame;
+  overloaded.port.deliver({ kind: 'status' });
+  if (overloaded.port.take('status')[0]?.counters.midiInDropped !== 1) throw new Error('MIDI transport loss was not counted');
 }
 if (node.wasm.memory.buffer.byteLength !== preparedBytes) {
   throw new Error('module memory grew after preparation');

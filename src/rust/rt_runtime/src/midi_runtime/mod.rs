@@ -183,6 +183,42 @@ pub struct Store {
     exhausted: bool,
 }
 impl Store {
+    pub fn prepared_bytes(profile: Profile) -> Result<usize, Error> {
+        let p = profile.validate()?;
+        let pool = |count: usize, row: usize| {
+            count
+                .checked_mul(row + size_of::<u32>() + size_of::<Option<u32>>())
+                .ok_or(Error::Capacity)
+        };
+        let objects = p.pages + p.tiles + p.directories + p.versions;
+        let mut total = pool(p.pages, size_of::<Option<Page>>())?;
+        for n in [
+            pool(p.tiles, size_of::<Option<Tile>>())?,
+            pool(p.directories, size_of::<Option<Directory>>())?,
+            pool(p.versions, size_of::<Option<View>>())?,
+            p.versions
+                .checked_mul(size_of::<u64>())
+                .ok_or(Error::Capacity)?,
+            p.tiles
+                .checked_mul(p.pages_per_tile)
+                .and_then(|n| n.checked_mul(4))
+                .ok_or(Error::Capacity)?,
+            objects
+                .checked_mul(size_of::<Option<Release>>())
+                .ok_or(Error::Capacity)?,
+        ] {
+            total = total.checked_add(n).ok_or(Error::Capacity)?;
+        }
+        if total > i32::MAX as usize {
+            return Err(Error::Capacity);
+        }
+        Ok(total)
+    }
+    pub fn same_content(&self, a: Version, b: Version) -> Result<bool, Error> {
+        let a = self.view(a)?;
+        let b = self.view(b)?;
+        Ok(a.root == b.root && a.visible == b.visible)
+    }
     pub fn prepare(profile: Profile) -> Result<Self, Error> {
         let profile = profile.validate()?;
         let scope = NEXT_SCOPE
@@ -363,16 +399,22 @@ impl Store {
             if (row.coordinate << self.profile.tile_shift) >= end {
                 return Ok(None);
             }
-            for index in 0..row.count as usize {
-                let event = self.record(tile, index);
-                if event.frame.0 >= end {
-                    return Ok(None);
-                }
-                if event.frame.0 >= start
-                    && after.is_none_or(|point| (event.frame, event.order) > point)
+            let (mut low, mut high) = (0, row.count as usize);
+            let mut candidate = None;
+            while low < high {
+                let middle = low + (high - low) / 2;
+                let event = self.record(tile, middle);
+                if event.frame.0 < start
+                    || after.is_some_and(|point| (event.frame, event.order) <= point)
                 {
-                    return Ok(Some(event));
+                    low = middle + 1;
+                } else {
+                    high = middle;
+                    candidate = Some(event);
                 }
+            }
+            if let Some(event) = candidate {
+                return Ok((event.frame.0 < end).then_some(event));
             }
             coordinate = match row.coordinate.checked_add(1) {
                 Some(next) => next,
@@ -447,6 +489,20 @@ impl Store {
         let (start, end) = view.visible.unwrap_or((0, u64::MAX));
         Ok(self.prefix(view.root, frame.0.max(start).min(end)).bytes
             - self.prefix(view.root, start).bytes)
+    }
+    pub fn range_totals(&mut self, version: Version, range: Range<Frame>) -> Result<Totals, Error> {
+        if range.start > range.end {
+            return Err(Error::InvalidFrame);
+        }
+        let view = self.view(version)?;
+        let (start, end) = view.visible.unwrap_or((0, u64::MAX));
+        let a = self.prefix(view.root, range.start.0.max(start).min(end));
+        let b = self.prefix(view.root, range.end.0.max(start).min(end));
+        Ok(Totals {
+            events: b.events - a.events,
+            bytes: b.bytes - a.bytes,
+            pages: 0,
+        })
     }
     pub fn record_at_byte(
         &mut self,
@@ -689,6 +745,34 @@ impl Store {
         self.patch(
             version,
             first.frame..last.frame.checked_add(1)?,
+            input,
+            false,
+        )
+    }
+    pub fn insert(&mut self, version: Version, input: &[EventRecord]) -> Result<Version, Error> {
+        let Some(first) = input.first() else {
+            return self.retain(version);
+        };
+        for event in input {
+            let after = if event.order != 0 {
+                Some((event.frame, event.order - 1))
+            } else {
+                event
+                    .frame
+                    .0
+                    .checked_sub(1)
+                    .map(|frame| (Frame(frame), u16::MAX))
+            };
+            if self
+                .first(version, after)?
+                .is_some_and(|old| (old.frame, old.order) == (event.frame, event.order))
+            {
+                return Err(Error::InvalidEvent);
+            }
+        }
+        self.patch(
+            version,
+            first.frame..input.last().unwrap().frame.checked_add(1)?,
             input,
             false,
         )

@@ -145,9 +145,7 @@ mod tests {
             (&[0xc2, 3], &[0xc3, 3]),
             (&[0xd8, 4], &[0xd9, 4]),
             (&[0xef, 0, 64], &[0xe0, 0, 64]),
-            (&[0xf8], &[0xf8]),
-            (&[0xf2, 1, 2], &[0xf2, 1, 2]),
-            (&[0xf0, 1, 2, 3, 4, 0xf7], &[0xf0, 1, 2, 3, 4, 0xf7]),
+            (&[0xff], &[0xff]),
         ];
         let mut backend = InlineTestProcessor::new(6);
         let mut input = MidiBuffer::new(packets.len(), 64).unwrap();

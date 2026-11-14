@@ -48,6 +48,10 @@ extern "C" {
 extern "C" {
     fn shoop_usb_micros() -> u64;
     fn shoop_usb_read(slot: u32, bytes: *mut u8, capacity: usize, arrival: *mut u64) -> usize;
+    fn shoop_usb_input_epoch(slot: u32) -> u32;
+    fn shoop_usb_begin_input(slot: u32) -> u32;
+    fn shoop_usb_refuse_input(slot: u32);
+    fn shoop_usb_output_capacity(slot: u32) -> usize;
     fn shoop_usb_write(slot: u32, bytes: *const u8, len: usize, due: u64) -> bool;
     fn shoop_usb_begin_stop();
     fn shoop_usb_recover_port(slot: u32);
@@ -325,6 +329,17 @@ struct Dummy {
     reset: bool,
     #[cfg(feature = "usb-midi")]
     usb_scratch: [u8; 2048],
+    #[cfg(feature = "usb-midi")]
+    usb_inputs: [UsbInput; crate::MIDI_PORTS],
+}
+
+#[cfg(feature = "usb-midi")]
+#[derive(Clone, Copy, Default)]
+struct UsbInput {
+    generation: u32,
+    epoch: u32,
+    lost: bool,
+    announced: bool,
 }
 
 #[cfg(feature = "fixture")]
@@ -411,8 +426,22 @@ pub unsafe fn render_step(owner: *mut c_void, frames: usize) -> i32 {
     let block_time = {
         let now = shoop_usb_micros();
         for (slot, buffer) in dummy.midi_in.iter_mut().enumerate() {
+            let state = &mut dummy.usb_inputs[slot];
+            if let Some(info) = usb_port_info(0, slot as u32).filter(|info| info.connected != 0) {
+                if state.generation != info.generation {
+                    *state = UsbInput {
+                        generation: info.generation,
+                        epoch: shoop_usb_begin_input(slot as u32),
+                        ..UsbInput::default()
+                    };
+                }
+            }
+            state.lost |= state.epoch != shoop_usb_input_epoch(slot as u32);
             let mut floor = 0;
-            for _ in 0..64 {
+            for _ in 0..256 {
+                if state.lost {
+                    break;
+                }
                 let capacity = crate::MIDI_BLOCK_BYTES.saturating_sub(buffer.byte_len());
                 if capacity == 0 {
                     break;
@@ -427,15 +456,29 @@ pub unsafe fn render_step(owner: *mut c_void, frames: usize) -> i32 {
                 if len == 0 {
                     break;
                 }
+                if rt_runtime::midi::ShortMessage::managed(&dummy.usb_scratch[..len]).is_err() {
+                    shoop_usb_refuse_input(slot as u32);
+                    continue;
+                }
                 let offset =
                     shoop_midi_offset(arrival, now, frames as u32, crate::SAMPLE_RATE).max(floor);
                 if buffer
                     .push(offset, frames, &dummy.usb_scratch[..len])
                     .is_err()
                 {
+                    state.lost = true;
                     break;
                 }
                 floor = offset;
+            }
+            state.lost |= state.epoch != shoop_usb_input_epoch(slot as u32);
+            if state.lost {
+                if state.announced {
+                    buffer.mark_input_loss_silent();
+                } else {
+                    buffer.mark_input_loss();
+                    state.announced = true;
+                }
             }
         }
         now
@@ -471,11 +514,16 @@ pub unsafe fn render_step(owner: *mut c_void, frames: usize) -> i32 {
     #[cfg(feature = "usb-midi")]
     if report.phase != Phase::Disconnected {
         for (slot, buffer) in dummy.midi_out.iter().enumerate() {
-            if dummy
-                .render
-                .midi_recovery(slot)
-                .is_some_and(|recovery| !recovery.is_empty())
+            if buffer.is_recovery()
+                || dummy
+                    .render
+                    .midi_recovery(slot)
+                    .is_some_and(|recovery| !recovery.is_empty())
             {
+                shoop_usb_recover_port(slot as u32);
+                continue;
+            }
+            if buffer.len() > shoop_usb_output_capacity(slot as u32) {
                 shoop_usb_recover_port(slot as u32);
                 continue;
             }
@@ -486,7 +534,10 @@ pub unsafe fn render_step(owner: *mut c_void, frames: usize) -> i32 {
                 let due = block_time.saturating_add(
                     (u64::from(offset) * 1_000_000).div_ceil(u64::from(crate::SAMPLE_RATE)),
                 );
-                shoop_usb_write(slot as u32, bytes.as_ptr(), bytes.len(), due);
+                if !shoop_usb_write(slot as u32, bytes.as_ptr(), bytes.len(), due) {
+                    shoop_usb_recover_port(slot as u32);
+                    break;
+                }
             }
         }
     }
@@ -624,6 +675,8 @@ pub fn run() {
         reset: false,
         #[cfg(feature = "usb-midi")]
         usb_scratch: [0; 2048],
+        #[cfg(feature = "usb-midi")]
+        usb_inputs: [UsbInput::default(); crate::MIDI_PORTS],
     });
     let owner = Box::into_raw(dummy).cast::<c_void>();
     let mut render_owner = Some(owner);

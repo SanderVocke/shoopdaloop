@@ -50,7 +50,10 @@ fn check(
     let index = midi.take_index(take).unwrap();
     assert_eq!(midi.info(index).unwrap().frames, duration);
     assert_eq!(midi.info(index).unwrap().events, events.len());
-    assert_eq!(midi.initial_state(index).unwrap(), initial);
+    assert_eq!(
+        *midi.initial_state(index).unwrap(),
+        initial.basic_projection()
+    );
     let mut cursor = midi.cursor(index).unwrap();
     let mut packet = [0; 48];
     for &(frame, data) in events {
@@ -70,7 +73,7 @@ fn check(
             expected.apply_packet(data, 48).unwrap();
         }
         let position = midi.seek(&mut store.render_io(), index, frame).unwrap();
-        assert_eq!(position.state, expected, "at {frame}");
+        assert_eq!(position.state, expected.basic_projection(), "at {frame}");
         assert_eq!(
             midi.parameter_history_untracked(&mut store.render_io(), index, frame)
                 .unwrap(),
@@ -115,14 +118,12 @@ fn cleanup(store: &mut ResourceStore, midi: &mut MidiStore) {
 #[shoop_test]
 fn overlapping_cuts_share_packets_and_preserve_strict_boundary_state() {
     let (mut store, mut midi, mut input) = setup(8, 64);
-    let mut sysex = [7; 35];
-    sysex[0] = 0xf0;
-    sysex[34] = 0xf7;
+    let control = [0xb0, 1, 35];
     let original = [
         (0, &[0x90, 60, 90][..]),
         (3, &[0xb0, 64, 127][..]),
         (3, &[0x80, 60, 0][..]),
-        (5, &sysex[..]),
+        (5, &control[..]),
         (8, &[0xb0, 64, 0][..]),
     ];
     for &(at, data) in &original {
@@ -153,7 +154,7 @@ fn overlapping_cuts_share_packets_and_preserve_strict_boundary_state() {
             &[
                 (0, original[1].1),
                 (0, original[2].1),
-                (2, &sysex),
+                (2, &control),
                 (5, original[4].1),
             ],
             &at3,
@@ -161,7 +162,7 @@ fn overlapping_cuts_share_packets_and_preserve_strict_boundary_state() {
         let mut at4 = at3;
         at4.apply_packet(original[1].1, 48).unwrap();
         at4.apply_packet(original[2].1, 48).unwrap();
-        check(&mut store, &mut midi, b, 4, &[(1, &sysex)], &at4);
+        check(&mut store, &mut midi, b, 4, &[(1, &control)], &at4);
         input.clear();
         midi.append(&mut store.render_io(), Frame(12), 100, &input)
             .unwrap();
@@ -169,6 +170,7 @@ fn overlapping_cuts_share_packets_and_preserve_strict_boundary_state() {
             .grab(&mut store.render_io(), Frame(90)..Frame(100))
             .unwrap();
         let mut final_state = at4;
+        final_state.apply_packet(original[3].1, 48).unwrap();
         final_state.apply_packet(original[4].1, 48).unwrap();
         check(&mut store, &mut midi, empty, 10, &[], &final_state);
         assert_eq!(midi.begin_cleanup(), Err(Error::Busy));
@@ -904,12 +906,13 @@ fn repeated_wrapping_edits_match_an_independent_raw_splice_oracle() {
                     }
                 });
                 if position == 0 || end > 32 {
-                    initial = observed;
+                    initial = observed.basic_projection();
                     let zero = if position == 0 { 0 } else { 32 - position };
                     for event in 0..input.len() {
                         let (offset, packet) = input.get(event).unwrap();
                         if u64::from(offset) < zero {
                             initial.apply_packet(packet, 48).unwrap();
+                            initial = initial.basic_projection();
                         }
                     }
                 }
@@ -933,13 +936,14 @@ fn repeated_wrapping_edits_match_an_independent_raw_splice_oracle() {
                     position,
                     frames,
                     &input,
-                    &observed,
+                    &observed.basic_projection(),
                 )
                 .unwrap();
             for event in 0..input.len() {
                 observed
                     .apply_packet(input.get(event).unwrap().1, 48)
                     .unwrap();
+                observed = observed.basic_projection();
             }
             while midi.progress_edit(&mut store.render_io(), edit, 3) == Ok(EditStatus::Building) {}
             if frames > 0 {
@@ -991,23 +995,11 @@ fn edit_admission_refuses_event_packet_byte_index_and_owner_exhaustion() {
         let take = midi
             .grab(&mut store.render_io(), Frame(0)..Frame(32))
             .unwrap();
-        large.push(0, 32, &packet).unwrap();
+        assert_eq!(large.push(0, 32, &packet), Err(Error::Capacity));
         let before = midi.usage();
-        assert_eq!(
-            midi.prepare_replace(
-                &mut store.render_io(),
-                take,
-                Revision(0),
-                0,
-                32,
-                &large,
-                &MidiState::default()
-            ),
-            Err(Error::Capacity)
-        );
         large.clear();
         for _ in 0..33 {
-            large.push(0, 32, &[0xf8]).unwrap();
+            large.push(0, 32, &[0xff]).unwrap();
         }
         assert_eq!(
             midi.prepare_replace(
@@ -1038,9 +1030,9 @@ fn edit_admission_refuses_event_packet_byte_index_and_owner_exhaustion() {
             Err(Error::Capacity)
         );
         large.clear();
-        packet[47] = 0xf7;
+        midi.config.max_bytes = 16;
         for _ in 0..6 {
-            large.push(0, 32, &packet[..48]).unwrap();
+            large.push(0, 32, &[0x90, 60, 80]).unwrap();
         }
         assert_eq!(
             midi.prepare_replace(
@@ -1068,6 +1060,7 @@ fn edit_admission_refuses_event_packet_byte_index_and_owner_exhaustion() {
         );
         assert_eq!(midi.usage(), before);
         check_owned(&mut store, &mut midi, take, &[], &MidiState::default());
+        midi.config.max_bytes = 256;
         let mut owners = [None; 7];
         for owner in &mut owners {
             *owner = Some(midi.fork(take).unwrap());
@@ -1095,15 +1088,15 @@ fn edit_admission_refuses_event_packet_byte_index_and_owner_exhaustion() {
 }
 
 #[shoop_test]
-fn compact_parameter_history_matches_shifted_checkpoints_and_reset_boundaries() {
+fn basic_history_checkpoints_exclude_parameters_across_reset_boundaries() {
     let (mut store, mut midi, mut input) = setup(8, 64);
     let packets: &[(u64, &[u8])] = &[
-        (0, &[0xb0, 6, 1]),
+        (0, &[0xb0, 7, 1]),
         (3, &[0xff]),
-        (5, &[0xbf, 96, 0]),
+        (5, &[0xbf, 1, 0]),
         (6, &[0xbf, 123, 0]),
         (8, &[0xff]),
-        (9, &[0xb1, 38, 2]),
+        (9, &[0xb1, 11, 2]),
     ];
     for start in [0, 5] {
         input.clear();

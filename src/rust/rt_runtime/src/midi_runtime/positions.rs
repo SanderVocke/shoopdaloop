@@ -39,10 +39,21 @@ pub struct PreparedPosition {
 }
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct PositionWork {
-    pub seed_copies: usize,
-    pub state_cells: usize,
-    pub lookups: usize,
-    pub update_steps: usize,
+    pub seed_copies: u64,
+    pub state_cells: u64,
+    pub lookups: u64,
+    pub update_steps: u64,
+    pub result_copies: u64,
+    pub counter_overflow: bool,
+}
+fn count(counter: &mut u64, overflow: &mut bool) {
+    match counter.checked_add(1) {
+        Some(next) => *counter = next,
+        None => {
+            *counter = u64::MAX;
+            *overflow = true;
+        }
+    }
 }
 pub struct PositionJobs {
     scope: u32,
@@ -54,6 +65,18 @@ pub struct PositionJobs {
     exhausted: bool,
 }
 impl PositionJobs {
+    pub fn prepared_bytes(capacity: usize) -> Result<usize, Error> {
+        capacity
+            .checked_mul(
+                2 * size_of::<MidiState>()
+                    + size_of::<Option<Job>>()
+                    + size_of::<u32>()
+                    + size_of::<Option<u32>>()
+                    + size_of::<u64>(),
+            )
+            .filter(|&n| n <= i32::MAX as usize)
+            .ok_or(Error::Capacity)
+    }
     pub fn prepare(capacity: usize) -> Result<Self, Error> {
         if capacity == 0 || capacity > u32::MAX as usize {
             return Err(Error::InvalidConfig);
@@ -83,6 +106,9 @@ impl PositionJobs {
     }
     pub fn work(&self) -> PositionWork {
         self.work
+    }
+    pub fn reset_work(&mut self) {
+        self.work = PositionWork::default();
     }
     fn job(&self, id: PositionId) -> Result<Job, Error> {
         if id.scope != self.scope
@@ -125,7 +151,7 @@ impl PositionJobs {
             phase: Phase::Copy(0),
         });
         self.seeds[slot as usize - 1] = *seed;
-        self.work.seed_copies = self.work.seed_copies.saturating_add(1);
+        count(&mut self.work.seed_copies, &mut self.work.counter_overflow);
         Ok(PositionId {
             scope: self.scope,
             slot,
@@ -145,7 +171,7 @@ impl PositionJobs {
                 Phase::Copy(cell) => {
                     let index = id.slot as usize - 1;
                     self.states[index].copy_basic_cell(Some(&self.seeds[index]), cell);
-                    self.work.state_cells = self.work.state_cells.saturating_add(1);
+                    count(&mut self.work.state_cells, &mut self.work.counter_overflow);
                     job.phase = if cell + 1 == BASIC_STATE_CELLS {
                         Phase::Read
                     } else {
@@ -153,7 +179,7 @@ impl PositionJobs {
                     };
                 }
                 Phase::Read => {
-                    self.work.lookups = self.work.lookups.saturating_add(1);
+                    count(&mut self.work.lookups, &mut self.work.counter_overflow);
                     job.phase = match store.first(job.version, job.after)? {
                         Some(event) if event.frame < job.target => {
                             job.after = Some((event.frame, event.order));
@@ -163,7 +189,7 @@ impl PositionJobs {
                     };
                 }
                 Phase::Apply(mut update) => {
-                    self.work.update_steps = self.work.update_steps.saturating_add(1);
+                    count(&mut self.work.update_steps, &mut self.work.counter_overflow);
                     job.phase = if update.step(&mut self.states[id.slot as usize - 1]) {
                         Phase::Read
                     } else {
@@ -195,6 +221,10 @@ impl PositionJobs {
             return Err(Error::Busy);
         }
         let state = self.states[id.slot as usize - 1];
+        count(
+            &mut self.work.result_copies,
+            &mut self.work.counter_overflow,
+        );
         self.release_slot(id);
         Ok(PreparedPosition {
             expected: job.expected,

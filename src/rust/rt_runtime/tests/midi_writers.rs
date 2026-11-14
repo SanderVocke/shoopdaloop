@@ -58,7 +58,9 @@ fn replacement_commits_one_complete_cut_and_preserves_retained_events() {
         let id = writers
             .begin(&mut store, &source, WriteMode::Fixed, 0)
             .unwrap();
-        assert!(matches!(writers.snapshot(&mut store, id), Err(Error::Busy)));
+        let entry = writers.snapshot(&mut store, id).unwrap();
+        assert_eq!(entry.frontier_position, 0);
+        store.release(entry.version).unwrap();
         assert_eq!(
             writers.progress(&mut store, id, 5000),
             Ok(PositionStatus::Ready)

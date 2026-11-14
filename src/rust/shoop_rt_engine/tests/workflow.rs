@@ -62,3 +62,49 @@ fn records_and_plays_back_through_a_strip() {
     assert_eq!(total, 6);
     assert_eq!(samples, [1., 2., 3., 4., 5., 6.]);
 }
+
+#[shoop_test]
+fn lost_midi_input_keeps_the_last_paired_capture_and_unrelated_audio_running() {
+    let mut h = Harness::new(&description());
+    let track = strip(0, 1);
+    h.done(Request::CreateStrip {
+        strip: track,
+        shape: shape(1, 1, true),
+    });
+    for (kind, host) in [
+        (PortKind::AudioIn, audio_in(0)),
+        (PortKind::AudioOut, audio_out(0)),
+        (PortKind::MidiIn, HostPortId(4)),
+    ] {
+        h.done(Request::Connect {
+            port: port(track, kind, 0),
+            host,
+            connected: true,
+        });
+    }
+    h.done(Request::StripControl {
+        strip: track,
+        control: StripControl::Monitoring(true),
+    });
+    let looped = loop_id(0, 1);
+    h.done(Request::CreateLoop {
+        loop_id: looped,
+        strip: track,
+    });
+    h.input = Box::new(|_, _| 1.);
+    h.done(transition(looped, LoopMode::Recording, None));
+    h.run(8, 4);
+    let before = h.frame();
+    h.host.midi_input_mut(0).mark_input_loss();
+    h.run(1, 1);
+    let from = h.outputs[0].len();
+    h.run(16, 4);
+    assert!(h.outputs[0][from..].iter().all(|sample| *sample == 1.));
+    h.done(transition(looped, LoopMode::Stopped, None));
+    let (frames, samples, _) = h.read(looped, BulkSelector::Audio { channel: 0 });
+    assert!(frames != 0 && frames <= before);
+    assert!(samples.iter().all(|sample| *sample == 1.));
+    let from = h.frame();
+    h.run(8, 4);
+    assert_eq!(h.frame(), from + 8);
+}

@@ -47,15 +47,15 @@ logical decisions for typed and encoded carriers.
 - [x] **1. Establish delivery and contract.** Create implementation branch, retain
   the design/investigation and this plan, and open a draft PR targeting the
   replacement branch. The PR checkbox is completed when its URL is recorded below.
-- [ ] **2. Short-message policy and state.** Introduce the fixed record and common
+- [x] **2. Short-message policy and state.** Introduce the fixed record and common
   policy/validation, canonical supported-state behavior and reserved recovery.
   Verify ordinary MIDI oracles and intentional rejection behavior; audit initial
   prefix migration and live routing separately from file loading.
-- [ ] **3. Block storage and ownership.** Implement fixed-depth directories,
+- [x] **3. Block storage and ownership.** Implement fixed-depth directories,
   immutable versions, private tile writes, finite credits and incremental
   retirement. Verify old/new versions, clipping, density, slot reuse and allocator
   guards against independent packet-list oracles.
-- [ ] **4. State preparation and continuous writers.** Replace semantic index
+- [x] **4. State preparation and continuous writers.** Replace semantic index
   dependencies with bounded replay jobs, cached entries and advancing writer
   state; integrate history, Grab, recording, Replace and coherent cuts. Verify
   early edits with long suffixes, all boundaries/mode exits and pressure.
@@ -90,7 +90,7 @@ review until approved. No autonomous merge.
 - PR: [#996](https://github.com/SanderVocke/shoopdaloop/pull/996), draft, targeting
   `feat/backend-replacement`.
 - Added canonical 128-bit event records and exhaustive short-message/policy tests.
-  Production integration is pending; this is not yet a change in live policy.
+  Production ingress, resources, host bridges and codec paths now share this policy.
 - Initial full native run: 3,241 passed, 11 skipped. New policy/block-store
   foundation: seven focused tests passed, including independent edit oracles,
   retained versions, dense pages, refusal, generation/scope checks and no-heap
@@ -103,9 +103,7 @@ review until approved. No autonomous merge.
 - Added a fixed-cell basic-state update FSM, canonical managed-state copying and
   explicit position preparation/cancellation. Preparation pins an independent
   version lease, excludes target-frame originals and preserves them for playback.
-- Foundation milestone is intentionally not wired into production yet. Next:
-  normalize clipped views before editing, adapt the production writer/resource
-  APIs to the new block store and integrate ready positions at loop activation.
+- Production now uses normalized immutable block roots, explicit replay jobs and advancing writer frontiers. All live-source configurations select the block store, including automatically sized compatibility settings.
 - Added append-only insertion and explicit clipped-view normalization. Normalization
   prunes complete radix branches and rebuilds at most two boundary tiles, using a
   fixed-depth iterative walker. Its tests prove later extension cannot resurrect
@@ -117,33 +115,64 @@ review until approved. No autonomous merge.
   second wrap span. Sparse append skips empty tile coordinates. The full runtime
   suite passes 305 tests and the warning-denying workspace build passes.
 
-### Integration notes
+### Integrated implementation and outstanding acceptance
 
-Production currently enters `resource/indexed_midi.rs`, whose private `Core` is
-`resource/midi_writer.rs`; input history is `midi_writer/history.rs`. It is not
-enough to replace the older `shared_midi` implementation. The current Core API
-owns source histories, imported resource bases, writer admissions, windows,
-snapshots, serialized reads, state queries and retirement credits.
+- Replaced the production resource Core and history with fixed inline records,
+  sixteen-level directories and normalized immutable views. Removed the superseded
+  packet-slab/semantic-index implementations. Imported files retain their existing
+  streaming wire format and become fixed records before live editing.
+- Added pinned, asynchronous Grab preparation plus an explicit complete replay
+  grant before immediate input transactions enter the resolver. Playback entries,
+  window/preplay changes and writer jumps use prepared state. Entry banks survive
+  prefix-preserving edits; arbitrary readers never drive replay implicitly.
+- Added bounded private block patches with sparse traversal, wrap handling,
+  cancellation and atomic candidate publication. No suffix-state index is rebuilt.
+- New `BlockLimits` names record pages, directories, versions, media banks, import
+  bases and owner credits. State banks are sized by actual writer/job capacity;
+  resource memory accounting includes the fixed pages and excludes the removed
+  MIDI payload reservation from the common audio arena.
+- Native output queues refuse complete batches and fence/recover affected ports;
+  reset heads advance only on device acceptance. Generation fences discard an
+  interrupted producer's old batch after recovery. Native/worklet ingress loss
+  invalidates state until a fresh host baseline; reserved cleanup is announced once.
+- Legacy null-selector-only initial prefixes normalize with explicit conversion
+  metadata carried through codec workers and surfaced in completed import results.
+  Unsupported timeline messages and meaningful parameter prefixes refuse atomically.
+- Validation baseline: 3,241 native tests passed before implementation. The five
+  low-level crates passed 581 tests during integration. Runtime/loop/engine checks
+  subsequently reached 657/659; the remaining memory assertion and synchronized
+  Grab credit-retirement issue were corrected. Final integrated/native/browser
+  gates are still in progress, and P11 is not yet marked complete.
 
-The new `midi_runtime::Store` already handles immutable roots, fixed-depth ordered
-lookup, wire-byte prefix sums, append, replacement, clipping and normalization.
-`PositionJobs` performs explicit finite preparation; `BasicUpdate` decomposes
-controller/key/reset work into bounded state-cell steps. Current legacy paths
-are unchanged until their adapter is replaced.
+Remaining work: finish integrated failure checks and the full warning-denying
+workspace build; verify native application canaries and actual browser workflows;
+complete work/capacity/recovery audits and update design, persistence, capabilities
+and parity evidence; push the implementation milestone and resolve CI/review.
 
-Do not implement `Core::state` by driving a whole-prefix replay to completion
-inside `RenderIo`. State at zero and a writer's advancing frontier are ready fast
-paths; cold positions require preparation. Reusing a valid active playback
-reader's strict-before-next-frame state can seed an immediately activated writer.
-This is relevant to `shoop_loops/runtime/shared/writer.rs`: existing Windowed
-writers are admitted before their actual raw start position is supplied in a
-`WriteSpan`. Preserve exact public transitions with an explicit ready-state
-handoff/preparation, rather than hiding a prefix scan or shifting an accepted cut.
+### Acceptance progress
 
-Clipped views currently return Busy for edits until `Store::normalize` produces a
-root containing only visible originals. Root ownership uses separate version
-leases for retain, so releasing the original token cannot release a job's pin.
-Include directory/page retirement debt, sparse-tile fragmentation and state-bank
-copies in profile sizing. Existing default source history advertises 65,536 total
-record slots and 4,096 MIDI arena pages; preserve its supported density with an
-honest new memory profile, not an accidental effective reduction from page packing.
+- Integrated runtime/loop/engine/native checks: 724/725 passed; the remaining
+  fixed-depth lookup assertion identified a redundant record read, which was
+  removed. The focused rerun passed.
+- All fifteen isolated reruns of earlier full-suite failures passed, including
+  both process transports, native UI recovery and driver preference/switch tests.
+  The first broad run had overlapped Wasm compilation; the final run is isolated.
+- The warning-denying workspace build, test-attribute policy and four-target
+  dependency-boundary audit passed. Final work-accounting and worker-envelope
+  regression changes will receive focused checks after the broad suite.
+- The actual worklet/codec artifact contract passed, including bounded JavaScript
+  ingress and explicit loss reporting. The unoptimized browser workflow progressed
+  through all three hosted processor families but reached its five-minute total
+  limit during the last load. Per-step checks did not fail; render memory growth,
+  discontinuities and command overflows were zero. A local timeout override is
+  available without changing the core CI deadline or per-step checks. The combined composite workflow has a separate seven-minute overall allowance; its earlier release CI run exhausted five minutes during the final resave after all composite checks passed.
+- Firmware USB now reports loss epochs separately from cleanup, rejects excluded
+  messages at the engine boundary and preflights complete output batches. The
+  portable bridge passed address/undefined-behavior sanitizers; the ARM USB build
+  check passed. The actual guest canary now expects exact basic MIDI and explicit
+  exclusion of unsupported messages. The generic C transport codec remains an
+  adapter with its own legacy transport vectors.
+- Final isolated complete native suite: **3,242 passed, 11 skipped** (495 seconds).
+  Subsequent accounting/worker-envelope changes: **757 focused tests passed,
+  one skipped**. Final ARM USB check and both firmware probe example tests passed.
+  The final warning-denying workspace build passed.

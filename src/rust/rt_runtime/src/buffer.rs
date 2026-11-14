@@ -2,7 +2,9 @@
 
 use crate::Sample;
 use crate::{Error, Frame};
-use alloc::{boxed::Box, vec, vec::Vec};
+#[cfg(test)]
+use alloc::vec::Vec;
+use alloc::{boxed::Box, vec};
 
 /// Byte range in its containing event buffer. Construction is validated when a
 /// packet enters the buffer; callers cannot inject arbitrary ranges.
@@ -211,15 +213,17 @@ pub struct MidiCapacity {
 }
 impl MidiCapacity {
     pub fn prepared_bytes(self) -> Result<usize, Error> {
+        if self
+            .bytes
+            .checked_add(crate::midi::ResetState::BYTES)
+            .is_none_or(|n| n > i32::MAX as usize)
+        {
+            return Err(Error::Capacity);
+        }
         self.events
             .checked_add(crate::midi::ResetState::EVENTS)
-            .and_then(|events| events.checked_mul(size_of::<Event>()))
-            .and_then(|events| {
-                self.bytes
-                    .checked_add(crate::midi::ResetState::BYTES)
-                    .and_then(|bytes| events.checked_add(bytes))
-            })
-            .filter(|bytes| *bytes <= i32::MAX as usize)
+            .and_then(|events| events.checked_mul(size_of::<MidiRow>()))
+            .filter(|&bytes| bytes <= i32::MAX as usize)
             .ok_or(Error::Capacity)
     }
     pub fn checked_add(self, other: Self) -> Result<Self, Error> {
@@ -239,57 +243,43 @@ impl MidiCapacity {
     }
 }
 
-/// Owned fixed-capacity MIDI/event storage. Construct and destroy outside RT;
-/// clearing and appending never resize or free the backing arenas.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct MidiRow {
+    offset: u32,
+    data: [u8; crate::midi::MAX_MESSAGE_BYTES],
+    len: u8,
+}
+
+/// Prepared inline MIDI records with a separate logical payload-byte quota.
 pub struct MidiBuffer {
-    events: Box<[Event]>,
-    bytes: Box<[u8]>,
+    events: Box<[MidiRow]>,
     event_len: usize,
     byte_len: usize,
     event_capacity: usize,
     byte_capacity: usize,
     recovering: bool,
+    input_lost: bool,
 }
-
 impl MidiBuffer {
-    /// Prepared backing storage, excluding this descriptor and allocator overhead.
     pub fn prepared_bytes(&self) -> usize {
-        self.events.len() * size_of::<Event>() + self.bytes.len()
+        self.events.len() * size_of::<MidiRow>()
     }
     pub fn new(events: usize, bytes: usize) -> Result<Self, Error> {
-        let reserved_events = events
-            .checked_add(crate::midi::ResetState::EVENTS)
-            .ok_or(Error::Capacity)?;
-        let reserved_bytes = bytes
-            .checked_add(crate::midi::ResetState::BYTES)
-            .ok_or(Error::Capacity)?;
-        if reserved_events
-            .checked_mul(size_of::<Event>())
-            .is_none_or(|n| n > i32::MAX as usize)
-            || reserved_bytes > i32::MAX as usize
-        {
-            return Err(Error::Capacity);
+        MidiCapacity { events, bytes }.prepared_bytes()?;
+        let mut rows =
+            vec![MidiRow::default(); events + crate::midi::ResetState::EVENTS].into_boxed_slice();
+        for row in &mut rows {
+            *core::hint::black_box(row) = MidiRow::default();
         }
-        let initial = [Event::default(); 64];
-        let mut event_storage = Vec::with_capacity(reserved_events);
-        while event_storage.len() < reserved_events {
-            let count = (reserved_events - event_storage.len()).min(initial.len());
-            event_storage.extend_from_slice(&initial[..count]);
-        }
-        let mut buffer = Self {
-            events: event_storage.into_boxed_slice(),
-            bytes: vec![0; reserved_bytes].into_boxed_slice(),
+        Ok(Self {
+            events: rows,
             event_len: 0,
             byte_len: 0,
             event_capacity: events,
             byte_capacity: bytes,
             recovering: false,
-        };
-        for chunk in core::hint::black_box(&mut *buffer.events).chunks_mut(initial.len()) {
-            chunk.copy_from_slice(&initial[..chunk.len()]);
-        }
-        core::hint::black_box(&mut *buffer.bytes).fill(0);
-        Ok(buffer)
+            input_lost: false,
+        })
     }
     pub fn len(&self) -> usize {
         self.event_len
@@ -304,9 +294,23 @@ impl MidiBuffer {
         self.event_len = 0;
         self.byte_len = 0;
         self.recovering = false;
+        self.input_lost = false;
     }
     pub fn is_recovery(&self) -> bool {
         self.recovering
+    }
+    /// Transport loss invalidates source state until the host supplies a new baseline.
+    pub fn input_lost(&self) -> bool {
+        self.input_lost
+    }
+    pub fn mark_input_loss(&mut self) {
+        self.force_reset(0);
+        self.input_lost = true;
+    }
+    /// Keep an already announced loss fence without repeating cleanup messages.
+    pub fn mark_input_loss_silent(&mut self) {
+        self.clear();
+        self.input_lost = true;
     }
     pub fn remaining_events(&self) -> usize {
         if self.recovering {
@@ -324,17 +328,16 @@ impl MidiBuffer {
     }
     pub(crate) fn force_reset(&mut self, offset: u32) {
         for index in 0..crate::midi::ResetState::EVENTS {
-            let start = index * 3;
-            self.events[index] = Event {
+            self.events[index] = MidiRow {
                 offset,
-                start: start as u32,
                 len: 3,
+                data: [
+                    0xb0 | (index / 2) as u8,
+                    if index % 2 == 0 { 120 } else { 123 },
+                    0,
+                    0,
+                ],
             };
-            self.bytes[start..start + 3].copy_from_slice(&[
-                0xb0 | (index / 2) as u8,
-                if index % 2 == 0 { 120 } else { 123 },
-                0,
-            ]);
         }
         self.event_len = crate::midi::ResetState::EVENTS;
         self.byte_len = crate::midi::ResetState::BYTES;
@@ -344,27 +347,33 @@ impl MidiBuffer {
         if index >= self.event_len {
             return None;
         }
-        let event = self.events[index];
-        Some((
-            event.offset,
-            &self.bytes[event.start as usize..event.start as usize + event.len as usize],
-        ))
+        let event = &self.events[index];
+        Some((event.offset, &event.data[..event.len as usize]))
     }
     pub fn push(&mut self, offset: u32, frames: usize, payload: &[u8]) -> Result<(), Error> {
-        if self.recovering || payload.len() > self.byte_capacity {
+        if offset as usize >= frames {
+            return Err(Error::InvalidEvent);
+        }
+        if self.event_len != 0 && self.events[self.event_len - 1].offset > offset {
+            return Err(Error::InvalidEvent);
+        }
+        if self.recovering
+            || self.event_len == self.event_capacity
+            || payload.len() > self.byte_capacity - self.byte_len
+        {
             return Err(Error::Full);
         }
-        crate::midi::Message::parse(payload, self.byte_capacity)?;
-        let mut view = EventBuffer {
-            events: &mut self.events[..self.event_capacity],
-            bytes: &mut self.bytes[..self.byte_capacity],
-            event_len: self.event_len,
-            byte_len: self.byte_len,
+        crate::midi::ShortMessage::managed(payload).map_err(Error::from)?;
+        let mut data = [0; crate::midi::MAX_MESSAGE_BYTES];
+        data[..payload.len()].copy_from_slice(payload);
+        self.events[self.event_len] = MidiRow {
+            offset,
+            data,
+            len: payload.len() as u8,
         };
-        let result = view.push(offset, frames, payload);
-        self.event_len = view.event_len;
-        self.byte_len = view.byte_len;
-        result
+        self.event_len += 1;
+        self.byte_len += payload.len();
+        Ok(())
     }
     /// Stable ordered insertion for fan-in. Equal-time events keep source order.
     /// Moving descriptors is bounded by event capacity; byte payloads never move.
@@ -396,8 +405,8 @@ impl MidiBuffer {
         {
             return Err(Error::Full);
         }
-        crate::midi::Message::parse(payload, self.byte_capacity)?;
-        let precedes = |event: &Event| {
+        crate::midi::ShortMessage::managed(payload).map_err(Error::from)?;
+        let precedes = |event: &MidiRow| {
             if before_equal {
                 event.offset < offset
             } else {
@@ -411,12 +420,13 @@ impl MidiBuffer {
             self.events.copy_within(index..self.event_len, index + 1);
             index
         };
-        self.events[index] = Event {
+        let mut data = [0; crate::midi::MAX_MESSAGE_BYTES];
+        data[..payload.len()].copy_from_slice(payload);
+        self.events[index] = MidiRow {
             offset,
-            start: self.byte_len as u32,
-            len: payload.len() as u32,
+            data,
+            len: payload.len() as u8,
         };
-        self.bytes[self.byte_len..self.byte_len + payload.len()].copy_from_slice(payload);
         self.event_len += 1;
         self.byte_len += payload.len();
         Ok(())
@@ -448,6 +458,14 @@ impl MidiBuffer {
         if target_end > target_frames || target_end > u32::MAX as usize {
             return Err(Error::InvalidFrame);
         }
+        if self.input_lost || source.input_lost {
+            if self.recovering || source.recovering {
+                self.mark_input_loss();
+            } else {
+                self.mark_input_loss_silent();
+            }
+            return Ok(());
+        }
         if self.recovering || source.recovering {
             self.force_reset(target_start as u32);
             return Err(Error::Full);
@@ -478,10 +496,7 @@ impl MidiBuffer {
                 target.copy_from_slice(events);
                 for event in target {
                     event.offset = (event.offset as usize - source_start + target_start) as u32;
-                    event.start += self.byte_len as u32;
                 }
-                self.bytes[self.byte_len..self.byte_len + bytes]
-                    .copy_from_slice(&source.bytes[..bytes]);
                 self.event_len += end;
                 self.byte_len += bytes;
                 return Ok(());
@@ -618,27 +633,39 @@ mod tests {
         for events in [0, 1, 31, 32, 33, 63, 64, 65, 127, 128, 129] {
             let buffer = MidiBuffer::new(events, events * 3).unwrap();
             assert_eq!(buffer.events.len(), events + 32);
-            assert_eq!(buffer.bytes.len(), events * 3 + 96);
-            assert!(buffer.events.iter().all(|event| *event == Event::default()));
-            assert!(buffer.bytes.iter().all(|byte| *byte == 0));
+            assert!(buffer
+                .events
+                .iter()
+                .all(|event| *event == MidiRow::default()));
+            assert_eq!(
+                buffer.prepared_bytes(),
+                MidiCapacity {
+                    events,
+                    bytes: events * 3
+                }
+                .prepared_bytes()
+                .unwrap()
+            );
             assert!(buffer.is_empty());
         }
         let mut seed = 0x913a_d4_u64;
         let mut outcomes = [0; 3];
         for capacity in [0, 1, 8, 32, 65] {
             let mut source = MidiBuffer::new(32, 512).unwrap();
-            let mut target = MidiBuffer::new(capacity, capacity * 8).unwrap();
+            let mut target = MidiBuffer::new(capacity, capacity * 2 + 3).unwrap();
             for round in 0..256 {
                 assert_no_heap(|| {
                     source.clear();
                     target.clear();
                 });
                 let mut from = Model::new(32, 512);
-                let mut to = Model::new(capacity, capacity * 8);
-                let mut sysex = vec![0x01; 25];
-                sysex[0] = 0xf0;
-                sysex[24] = 0xf7;
-                let payloads = [vec![0xf8], vec![0xc1, 7], vec![0x90, 60, 100], sysex];
+                let mut to = Model::new(capacity, capacity * 2 + 3);
+                let payloads = [
+                    vec![0xff],
+                    vec![0xc1, 7],
+                    vec![0x90, 60, 100],
+                    vec![0xb0, 1, 13],
+                ];
                 for index in 0..round % 21 {
                     seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
                     let offset = match round % 4 {

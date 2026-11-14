@@ -216,6 +216,10 @@ impl Provider {
             );
             task.view.status = status;
             task.view.message = message.into();
+            if status == IoTaskStatus::Completed && !task.output_warning.is_empty() {
+                task.view.message.push(' ');
+                task.view.message.push_str(&task.output_warning);
+            }
             task.view.progress = 1.;
             task.view.format_conversion_warning = None;
             task.view.audio_channel_mapping = None;
@@ -679,12 +683,6 @@ impl PersistenceIo for Provider {
                 if self.matches(task_id) && matches!(self.phase, Phase::Output) =>
             {
                 let (status, message) = match outcome { FileOutputOutcome::Saved => (IoTaskStatus::Completed, "File saved"), FileOutputOutcome::DownloadHandedOff => (IoTaskStatus::Completed, "Download handed to the browser; disk completion is controlled by the browser"), FileOutputOutcome::Cancelled => (IoTaskStatus::Cancelled, "File output cancelled") };
-                let warning = &self.task.as_ref().unwrap().output_warning;
-                let message = if status == IoTaskStatus::Completed && !warning.is_empty() {
-                    format!("{message}. {warning}")
-                } else {
-                    message.to_owned()
-                };
                 self.finish(status, message);
             }
             _ => {}

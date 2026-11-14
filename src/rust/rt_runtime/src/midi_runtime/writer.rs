@@ -85,8 +85,33 @@ pub struct WriterSet {
     exhausted: bool,
     pub state_copy_cells: u64,
     pub state_update_steps: u64,
+    pub counter_overflow: bool,
 }
 impl WriterSet {
+    pub fn prepared_bytes(writers: usize, events: usize) -> Result<usize, Error> {
+        writers
+            .checked_mul(
+                4 * size_of::<MidiState>()
+                    + size_of::<Option<Writer>>()
+                    + size_of::<u32>()
+                    + size_of::<Option<u32>>()
+                    + size_of::<u64>(),
+            )
+            .and_then(|n| n.checked_add(events.checked_mul(size_of::<EventRecord>())?))
+            .and_then(|n| n.checked_add(PositionJobs::prepared_bytes(writers).ok()?))
+            .filter(|&n| n <= i32::MAX as usize)
+            .ok_or(Error::Capacity)
+    }
+    pub fn allocated_bytes(&self) -> usize {
+        self.writers.allocated_bytes()
+            + core::mem::size_of_val(&*self.generations)
+            + core::mem::size_of_val(&*self.states)
+            + core::mem::size_of_val(&*self.scratch)
+            + self.positions.allocated_bytes()
+    }
+    pub fn version(&self, id: WriterId) -> Result<Version, Error> {
+        Ok(self.writer(id)?.content.version)
+    }
     pub fn prepare(writers: usize, quantum: usize, events: usize) -> Result<Self, Error> {
         if writers == 0
             || writers > u32::MAX as usize
@@ -116,6 +141,7 @@ impl WriterSet {
             exhausted: false,
             state_copy_cells: 0,
             state_update_steps: 0,
+            counter_overflow: false,
         })
     }
     fn writer(&self, id: WriterId) -> Result<Writer, Error> {
@@ -131,15 +157,17 @@ impl WriterSet {
     }
     fn copy_state(&mut self, index: usize, state: MidiState) {
         self.states[index] = state;
-        self.state_copy_cells = self
-            .state_copy_cells
-            .saturating_add(crate::midi_state::BASIC_STATE_CELLS as u64);
+        super::count_work(
+            &mut self.state_copy_cells,
+            crate::midi_state::BASIC_STATE_CELLS as u64,
+            &mut self.counter_overflow,
+        );
     }
     fn apply_state(&mut self, index: usize, event: EventRecord) {
         let mut update = BasicUpdate::begin(event.message()).expect("managed event");
         while !update.complete() {
             update.step(&mut self.states[index]);
-            self.state_update_steps = self.state_update_steps.saturating_add(1);
+            super::count_work(&mut self.state_update_steps, 1, &mut self.counter_overflow);
         }
     }
     pub fn begin(
@@ -183,14 +211,22 @@ impl WriterSet {
         let normalized = store.normalize(clip);
         store.release(clip)?;
         let version = normalized?;
-        let prepared = self
-            .positions
-            .begin(store, version, &source.initial, target);
-        let prepared = match prepared {
-            Ok(job) => job,
-            Err(error) => {
-                store.release(version)?;
-                return Err(error);
+        if !source.initial.is_basic() || !source.frontier.is_basic() {
+            store.release(version)?;
+            return Err(Error::InvalidParameter);
+        }
+        let phase = if position == 0 || position == source.frontier_position {
+            Phase::Ready
+        } else {
+            match self
+                .positions
+                .begin(store, version, &source.initial, target)
+            {
+                Ok(job) => Phase::Preparing(job),
+                Err(error) => {
+                    store.release(version)?;
+                    return Err(error);
+                }
             }
         };
         let slot = self.writers.insert(Writer {
@@ -203,7 +239,7 @@ impl WriterSet {
                 frontier: position,
             },
             mode,
-            phase: Phase::Preparing(prepared),
+            phase,
             bank: 0,
             next: None,
             interval: None,
@@ -214,6 +250,16 @@ impl WriterSet {
             generation: self.generations[slot as usize - 1],
         };
         self.copy_state(Self::state_index(id, 0, false), source.initial);
+        if matches!(phase, Phase::Ready) {
+            self.copy_state(
+                Self::state_index(id, 0, true),
+                if position == 0 {
+                    source.initial
+                } else {
+                    source.frontier
+                },
+            );
+        }
         Ok(id)
     }
     pub fn progress(
@@ -253,6 +299,7 @@ impl WriterSet {
     ) -> Result<(), Error> {
         let mut writer = self.writer(id)?;
         if writer.interval.is_some()
+            || matches!(writer.phase, Phase::Frozen)
             || position.expected != writer.content.version
             || position.target < writer.content.origin
             || position.target.0 - writer.content.origin.0 > writer.content.frames
@@ -261,6 +308,132 @@ impl WriterSet {
         }
         writer.content.frontier = position.target.0 - writer.content.origin.0;
         self.copy_state(Self::state_index(id, writer.bank, true), position.state);
+        self.writers.replace(id.slot, writer);
+        Ok(())
+    }
+    pub fn prepare_position(
+        &mut self,
+        store: &mut Store,
+        id: WriterId,
+        position: u64,
+    ) -> Result<(), Error> {
+        let mut writer = self.writer(id)?;
+        if writer.interval.is_some()
+            || matches!(writer.phase, Phase::Frozen)
+            || position > writer.content.frames
+        {
+            return Err(Error::Busy);
+        }
+        if let Phase::Preparing(job) = writer.phase {
+            self.positions.cancel(store, job)?;
+        }
+        let target = Frame(
+            writer
+                .content
+                .origin
+                .0
+                .checked_add(position)
+                .ok_or(Error::InvalidFrame)?,
+        );
+        let seed = self.states[Self::state_index(id, writer.bank, false)];
+        let job = self
+            .positions
+            .begin(store, writer.content.version, &seed, target)?;
+        writer.content.frontier = position;
+        writer.phase = Phase::Preparing(job);
+        writer.next = None;
+        self.writers.replace(id.slot, writer);
+        Ok(())
+    }
+    pub fn advance_frontier(
+        &mut self,
+        store: &mut Store,
+        id: WriterId,
+        position: u64,
+        maximum_records: usize,
+    ) -> Result<(), Error> {
+        let mut writer = self.writer(id)?;
+        if writer.interval.is_some()
+            || matches!(writer.phase, Phase::Preparing(_) | Phase::Frozen)
+            || position < writer.content.frontier
+            || position - writer.content.frontier > self.quantum as u64
+            || position > writer.content.frames
+        {
+            return Err(Error::Busy);
+        }
+        let begin = writer
+            .content
+            .origin
+            .0
+            .checked_add(writer.content.frontier)
+            .ok_or(Error::InvalidFrame)?;
+        let end = writer
+            .content
+            .origin
+            .0
+            .checked_add(position)
+            .ok_or(Error::InvalidFrame)?;
+        let mut after = begin.checked_sub(1).map(|frame| (Frame(frame), u16::MAX));
+        let source = self.states[Self::state_index(id, writer.bank, true)];
+        let destination = Self::state_index(id, writer.bank ^ 1, true);
+        self.copy_state(destination, source);
+        let mut count = 0;
+        while let Some(record) = store.first(writer.content.version, after)? {
+            if record.frame.0 >= end {
+                break;
+            }
+            if count == maximum_records {
+                return Err(Error::Capacity);
+            }
+            self.apply_state(destination, record);
+            after = Some((record.frame, record.order));
+            count += 1;
+        }
+        self.copy_state(
+            Self::state_index(id, writer.bank, true),
+            self.states[destination],
+        );
+        writer.content.frontier = position;
+        self.writers.replace(id.slot, writer);
+        Ok(())
+    }
+    pub fn set_mode(&mut self, id: WriterId, mode: WriteMode) -> Result<(), Error> {
+        let mut writer = self.writer(id)?;
+        if writer.interval.is_some() || matches!(writer.phase, Phase::Preparing(_) | Phase::Frozen)
+        {
+            return Err(Error::Busy);
+        }
+        writer.mode = mode;
+        writer.phase = Phase::Ready;
+        writer.next = None;
+        self.writers.replace(id.slot, writer);
+        Ok(())
+    }
+    pub fn insert_prefix(
+        &mut self,
+        store: &mut Store,
+        id: WriterId,
+        prefix_frames: u64,
+        event: EventRecord,
+    ) -> Result<(), Error> {
+        let mut writer = self.writer(id)?;
+        if writer.interval.is_some()
+            || !matches!(writer.mode, WriteMode::Growing { .. })
+            || event.frame < writer.content.origin
+            || event.frame.0 - writer.content.origin.0 >= prefix_frames
+            || prefix_frames > writer.content.frames
+        {
+            return Err(Error::InvalidFrame);
+        }
+        let revision = writer
+            .content
+            .revision
+            .checked_add(1)
+            .ok_or(Error::Exhausted)?;
+        let next = store.insert(writer.content.version, core::slice::from_ref(&event))?;
+        store.release(writer.content.version)?;
+        writer.content.version = next;
+        writer.content.revision = revision;
         self.writers.replace(id.slot, writer);
         Ok(())
     }
@@ -431,6 +604,18 @@ impl WriterSet {
         self.writers.replace(id.slot, writer);
         Ok(())
     }
+    pub fn freeze(&mut self, store: &mut Store, id: WriterId) -> Result<(), Error> {
+        let mut writer = self.writer(id)?;
+        if writer.interval.is_some() {
+            return self.abort_interval(store, id);
+        }
+        if matches!(writer.phase, Phase::Preparing(_)) {
+            return Err(Error::Busy);
+        }
+        writer.phase = Phase::Frozen;
+        self.writers.replace(id.slot, writer);
+        Ok(())
+    }
     pub fn snapshot(&mut self, store: &mut Store, id: WriterId) -> Result<MediaImage, Error> {
         let writer = self.writer(id)?;
         if matches!(writer.phase, Phase::Preparing(_)) {
@@ -456,6 +641,28 @@ impl WriterSet {
             store.release(interval.content.version)?;
         }
         store.release(writer.content.version)?;
+        self.release_slot(id);
+        Ok(())
+    }
+    pub fn finish(&mut self, id: WriterId) -> Result<MediaImage, Error> {
+        let writer = self.writer(id)?;
+        if writer.interval.is_some() || matches!(writer.phase, Phase::Preparing(_)) {
+            return Err(Error::Busy);
+        }
+        let image = MediaImage {
+            version: writer.content.version,
+            origin: writer.content.origin,
+            frames: writer.content.frames,
+            revision: writer.content.revision,
+            cut: writer.content.cut,
+            initial: self.states[Self::state_index(id, writer.bank, false)],
+            frontier: self.states[Self::state_index(id, writer.bank, true)],
+            frontier_position: writer.content.frontier,
+        };
+        self.release_slot(id);
+        Ok(image)
+    }
+    fn release_slot(&mut self, id: WriterId) {
         assert!(self.writers.release(id.slot));
         let generation = &mut self.generations[id.slot as usize - 1];
         if let Some(next) = generation.checked_add(1) {
@@ -464,6 +671,5 @@ impl WriterSet {
         } else {
             self.exhausted = true;
         }
-        Ok(())
     }
 }

@@ -2,23 +2,96 @@ use super::*;
 use shoop_wasm_test_support::{heap::assert_no_heap, shoop_test};
 
 const Q: usize = 32;
+
+#[shoop_test]
+fn prepared_grab_pins_its_cut_while_live_history_advances_and_cancellation_returns_the_pin() {
+    let mut resources = resources();
+    let baseline = resources.usage();
+    let pool = resources.prepare_indexed_midi_store(config()).unwrap();
+    let source = resources.indexed_midi_source(pool, 0).unwrap();
+    let mut input = MidiBuffer::new(8, 128).unwrap();
+    let mut expected = [0; 60];
+    for (index, (frame, packet)) in [
+        (5, [0xb0, 7, 1]),
+        (27, [0x90, 62, 90]),
+        (37, [0xb0, 7, 2]),
+        (59, [0x90, 63, 90]),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        encode_midi_record(frame, &packet, &mut expected[index * 15..(index + 1) * 15]).unwrap();
+    }
+    assert_no_heap(|| {
+        for tick in 0..4u64 {
+            resources.begin_callback();
+            input.clear();
+            input.push(0, Q, &[0x90, 60 + tick as u8, 90]).unwrap();
+            input.push(10, Q, &[0xb0, 7, tick as u8]).unwrap();
+            resources
+                .render_io()
+                .append_indexed_midi_source(source, Frame(tick * Q as u64), &input)
+                .unwrap();
+        }
+        let grab = resources
+            .prepare_indexed_midi_grab(source, Frame(37)..Frame(100), 64)
+            .unwrap();
+        assert_eq!(resources.finish_indexed_midi_grab(grab), Err(Error::Busy));
+        let mut tick = 4;
+        loop {
+            resources.begin_callback();
+            if resources.progress_indexed_midi_grab(grab, 256).unwrap() == Status::Ready {
+                break;
+            }
+            assert!(tick < 100);
+            input.clear();
+            input.push(0, Q, &[0xb0, 7, tick as u8]).unwrap();
+            resources
+                .render_io()
+                .append_indexed_midi_source(source, Frame(tick * Q as u64), &input)
+                .unwrap();
+            tick += 1;
+        }
+        assert!(resources.indexed_midi_coverage(source).unwrap().start > Frame(128));
+        let take = resources.finish_indexed_midi_grab(grab).unwrap();
+        let snapshot = resources.snapshot(take, Frame(tick * Q as u64)).unwrap();
+        assert_eq!(bytes::<60>(&mut resources, snapshot), expected);
+        let index = resources.read_index(snapshot.id).unwrap();
+        let initial = resources.render_io().midi_seek(index, 0).unwrap().state;
+        assert_eq!(initial.channel(0).unwrap().controller(7), Some(0));
+        assert!(initial.channel(0).unwrap().note(60).unwrap().held());
+        assert!(initial.channel(0).unwrap().note(61).unwrap().held());
+        assert!(!initial.channel(0).unwrap().note(62).unwrap().held());
+        let end = resources.render_io().midi_seek(index, 64).unwrap().state;
+        assert_eq!(end.channel(0).unwrap().controller(7), Some(2));
+        assert!(end.channel(0).unwrap().note(63).unwrap().held());
+        let coverage = resources.indexed_midi_coverage(source).unwrap();
+        let cancelled = resources
+            .prepare_indexed_midi_grab(source, coverage.clone(), coverage.end.0 - coverage.start.0)
+            .unwrap();
+        resources.progress_indexed_midi_grab(cancelled, 1).unwrap();
+        resources.cancel_indexed_midi_grab(cancelled).unwrap();
+        assert_eq!(
+            resources.progress_indexed_midi_grab(cancelled, 1),
+            Err(Error::InvalidId)
+        );
+        resources.release_snapshot(snapshot.id).unwrap();
+        resources.remove(take).unwrap();
+        drain(&mut resources);
+        resources.cleanup_indexed_midi_store(pool).unwrap();
+        drain(&mut resources);
+        assert_eq!(resources.usage(), baseline);
+    });
+}
 fn config() -> Config {
     Config {
-        packets: PacketLimits {
-            pages: 128,
-            bodies: 512,
-            records: 2048,
-            max_packet: 64,
-            bases: 4,
-        },
-        indexes: IndexLimits {
-            leases: 32,
-            versions: 16,
-            category_pages: 256,
-            packet_nodes: 4096,
-            scalar_nodes: 4096,
-            hold_nodes: 1024,
-            sostenuto_nodes: 1024,
+        blocks: BlockLimits {
+            event_credits: 2048,
+            record_pages: 2048,
+            import_bases: 4,
+            media: 32,
+            versions: (32) * 8,
+            directories: 4096,
         },
         sources: 2,
         history_frames: 128,
@@ -32,8 +105,109 @@ fn config() -> Config {
         maintenance_steps_per_tick: 32,
     }
 }
+
+#[shoop_test]
+fn private_block_patches_wrap_atomically_and_keep_old_exports_and_boundary_state() {
+    let mut resources = resources();
+    let pool = resources.prepare_indexed_midi_store(config()).unwrap();
+    let mut original = [0; 45];
+    for (index, (frame, message)) in [
+        (0, [0x90, 60, 100]),
+        (32, [0xb0, 1, 12]),
+        (96, [0x80, 60, 0]),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        encode_midi_record(frame, &message, &mut original[index * 15..]).unwrap();
+    }
+    let loaded = upload(&mut resources, &original, 128);
+    resources.begin_callback();
+    let loaded_snapshot = resources.snapshot(loaded, Frame(0)).unwrap();
+    let import = resources
+        .prepare_indexed_midi_import(pool, loaded_snapshot.id, &MidiState::default())
+        .unwrap();
+    while resources.progress_indexed_midi_import(import, 8).unwrap() != Status::Ready {}
+    let resource = resources.finish_indexed_midi_import(import).unwrap();
+    let old = resources.snapshot(resource, Frame(0)).unwrap();
+    let mut input = MidiBuffer::new(4, 12).unwrap();
+    for (at, message) in [
+        (0, [0xb0, 7, 93]),
+        (47, [0x90, 67, 80]),
+        (48, [0x80, 60, 0]),
+        (63, [0x90, 68, 90]),
+    ] {
+        input.push(at, 64, &message).unwrap();
+    }
+    let mut before = MidiState::default();
+    crate::midi::ShortMessage::managed(&[0x90, 60, 100])
+        .unwrap()
+        .apply(&mut before)
+        .unwrap();
+    assert_no_heap(|| {
+        let edit = resources
+            .prepare_indexed_midi_patch(resource, Revision(1), 80, 64, &input, &before)
+            .unwrap();
+        assert_eq!(resources.commit_indexed_midi_patch(edit), Err(Error::Busy));
+        assert_eq!(
+            resources.progress_indexed_midi_patch(edit, 1),
+            Ok(Status::Building)
+        );
+        assert_eq!(bytes::<45>(&mut resources, old), original);
+        assert_eq!(
+            resources.progress_indexed_midi_patch(edit, 16),
+            Ok(Status::Ready)
+        );
+        assert_eq!(resources.commit_indexed_midi_patch(edit), Ok(Revision(2)));
+        assert_eq!(
+            resources.progress_indexed_midi_patch(edit, 1),
+            Err(Error::InvalidId)
+        );
+        let current = resources.snapshot(resource, Frame(1)).unwrap();
+        let mut expected = [0; 75];
+        for (index, (frame, message)) in [
+            (0, [0x80, 60, 0]),
+            (15, [0x90, 68, 90]),
+            (32, [0xb0, 1, 12]),
+            (80, [0xb0, 7, 93]),
+            (127, [0x90, 67, 80]),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            encode_midi_record(frame, &message, &mut expected[index * 15..]).unwrap();
+        }
+        assert_eq!(bytes::<75>(&mut resources, current), expected);
+        assert_eq!(bytes::<45>(&mut resources, old), original);
+        let index = resources.read_index(current.id).unwrap();
+        let start = resources.render_io().midi_seek(index, 0).unwrap().state;
+        assert_eq!(start.channel(0).unwrap().controller(7), Some(93));
+        assert!(start.channel(0).unwrap().note(60).unwrap().held());
+        assert!(start.channel(0).unwrap().note(67).unwrap().held());
+        assert!(!start.channel(0).unwrap().note(68).unwrap().held());
+        let edit = resources
+            .prepare_indexed_midi_patch(resource, Revision(2), 80, 64, &input, &before)
+            .unwrap();
+        assert_eq!(
+            resources.progress_indexed_midi_patch(edit, 1),
+            Ok(Status::Building)
+        );
+        resources.cancel_indexed_midi_patch(edit).unwrap();
+        let unchanged = resources.snapshot(resource, Frame(2)).unwrap();
+        assert_eq!(bytes::<75>(&mut resources, unchanged), expected);
+        for snapshot in [old, current, unchanged, loaded_snapshot] {
+            resources.release_snapshot(snapshot.id).unwrap();
+        }
+        for resource in [resource, loaded] {
+            resources.remove(resource).unwrap();
+        }
+        drain(&mut resources);
+        resources.cleanup_indexed_midi_store(pool).unwrap();
+        drain(&mut resources);
+    });
+}
 fn resources() -> ResourceStore {
-    ResourceStore::new(
+    ResourceStore::with_midi_indexing(
         crate::Config {
             max_frames: Q,
             page_bytes: 64,
@@ -48,6 +222,11 @@ fn resources() -> ResourceStore {
         .prepare()
         .unwrap(),
         Quantum::new(Q).unwrap(),
+        MidiIndexConfig {
+            versions: 32,
+            checkpoints_per_version: 32,
+            replay_events: 32,
+        },
     )
     .unwrap()
 }
@@ -89,13 +268,22 @@ fn admit(
         steps += 1;
         assert!(steps < 100);
     }
+    for attempt in 0..1000 {
+        if resources
+            .prepare_indexed_midi_writer_position(id, position, 256)
+            .unwrap()
+        {
+            break;
+        }
+        assert!(attempt < 999);
+    }
     resources.start_indexed_midi_writer(id, position).unwrap();
     id
 }
 fn upload(resources: &mut ResourceStore, data: &[u8], frames: u64) -> ResourceId {
     let resource = resources.create().unwrap();
     let id = resources
-        .begin_upload(
+        .begin_indexed_midi_upload(
             resource,
             Revision(0),
             Description {
@@ -103,6 +291,7 @@ fn upload(resources: &mut ResourceStore, data: &[u8], frames: u64) -> ResourceId
                 frames,
                 bytes: data.len(),
             },
+            &MidiState::default(),
         )
         .unwrap();
     for (page, chunk) in data.chunks(64).enumerate() {
@@ -137,15 +326,9 @@ fn ordinary_resources_keep_uploaded_and_grabbed_versions_through_continuous_writ
     let mut input = MidiBuffer::new(8, 128).unwrap();
     let mut initial = MidiState::default();
     initial.apply_packet(&[0xb0, 7, 42], 64).unwrap();
-    let mut original = [0; 35];
-    let mut sysex = [37; 20];
-    sysex[0] = 0xf0;
-    sysex[19] = 0xf7;
-    encode_midi_record(96, &sysex, &mut original[..32]).unwrap();
-    // One complete note-on at the same frame follows the full SysEx body.
-    let mut encoded = [0; 47];
-    encoded[..32].copy_from_slice(&original[..32]);
-    encode_midi_record(96, &[0x90, 60, 90], &mut encoded[32..]).unwrap();
+    let mut encoded = [0; 30];
+    encode_midi_record(96, &[0xb0, 1, 37], &mut encoded[..15]).unwrap();
+    encode_midi_record(96, &[0x90, 60, 90], &mut encoded[15..]).unwrap();
     let loaded = upload(&mut resources, &encoded, 128);
     resources.begin_callback();
     let snapshot = resources.snapshot(loaded, Frame(0)).unwrap();
@@ -155,13 +338,19 @@ fn ordinary_resources_keep_uploaded_and_grabbed_versions_through_continuous_writ
     drain(&mut resources);
     assert_no_heap(|| {
         let old = resources.snapshot(resource, Frame(0)).unwrap();
-        assert_eq!(bytes::<47>(&mut resources, old), encoded);
+        assert_eq!(bytes::<30>(&mut resources, old), encoded);
         let old_index = resources.read_index(old.id).unwrap();
+        while !resources
+            .io()
+            .prepare_midi_position(old_index, 97, 256)
+            .unwrap()
+        {}
         let position = resources.render_io().midi_seek(old_index, 97).unwrap();
         let mut expected = initial;
+        expected.apply_packet(&[0xb0, 1, 37], 64).unwrap();
         expected.apply_packet(&[0x90, 60, 90], 64).unwrap();
         assert_eq!(position.state, expected);
-        assert_eq!(position.cursor.byte_position(), 47);
+        assert_eq!(position.cursor.byte_position(), 30);
         let peer = resources.fork_indexed_midi(pool, old.id).unwrap();
         let writer = admit(&mut resources, resource, WriteKind::Fixed, 0);
         let second = admit(&mut resources, peer, WriteKind::Fixed, 0);
@@ -215,7 +404,7 @@ fn ordinary_resources_keep_uploaded_and_grabbed_versions_through_continuous_writ
                     .write_indexed_midi_tick(writer, source, frame),
                 Err(Error::InvalidFrame)
             );
-            assert_eq!(bytes::<47>(&mut resources, old), encoded);
+            assert_eq!(bytes::<30>(&mut resources, old), encoded);
             resources.reclaim();
         }
         assert_eq!(
@@ -260,7 +449,7 @@ fn ordinary_resources_keep_uploaded_and_grabbed_versions_through_continuous_writ
         encode_midi_record(71, &[0xb0, 7, 46], &mut expected[15..30]).unwrap();
         encode_midi_record(103, &[0xb0, 7, 47], &mut expected[30..]).unwrap();
         assert_eq!(bytes::<45>(&mut resources, current), expected);
-        assert_eq!(bytes::<47>(&mut resources, old), encoded);
+        assert_eq!(bytes::<30>(&mut resources, old), encoded);
         assert_eq!(resources.currentness(old.id), Ok(Currentness::Stale));
         let continued = resources.snapshot(prefix, Frame(1536)).unwrap();
         assert_eq!(continued.description.frames, 1536);
@@ -458,10 +647,13 @@ fn bounded_imports_and_exports_refuse_atomically_and_return_every_credit() {
         .capacity(resources.config(), resources.quantum())
         .unwrap();
     assert!(capacity.metadata_bytes < 8 * 1024 * 1024);
-    assert_eq!(capacity.reserved_payload_bytes, 128 * 64);
+    assert_eq!(
+        capacity.reserved_payload_bytes,
+        limits.blocks.record_pages * 32 * 16
+    );
     let pool = resources.prepare_indexed_midi_store(limits).unwrap();
     let mut encoded = [0; 15];
-    encode_midi_record(0, &[0xb0, 96, 90], &mut encoded).unwrap();
+    encode_midi_record(0, &[0xb0, 7, 90], &mut encoded).unwrap();
     let loaded = upload(&mut resources, &encoded, 64);
     resources.begin_callback();
     let source = resources.snapshot(loaded, Frame(0)).unwrap();
@@ -498,7 +690,7 @@ fn bounded_imports_and_exports_refuse_atomically_and_return_every_credit() {
             resources
                 .render_io()
                 .midi_parameter_history_untracked(index, 1),
-            Ok(true)
+            Ok(false)
         );
 
         let pinned = resources.usage();
@@ -516,9 +708,8 @@ fn bounded_imports_and_exports_refuse_atomically_and_return_every_credit() {
         assert_eq!(resources.read(&mut cursor, &mut output), Err(Error::Budget));
         assert_eq!(cursor.position(), 0);
         resources.begin_callback();
-        assert_eq!(resources.read(&mut cursor, &mut output), Ok(12));
-        assert_eq!(resources.work().copied_bytes, 12);
-        assert_eq!(resources.read(&mut cursor, &mut output[12..]), Ok(3));
+        assert_eq!(resources.read(&mut cursor, &mut output), Ok(15));
+        assert_eq!(resources.work().copied_bytes, 15);
         assert_eq!(output, encoded);
         let retained = resources.retain_snapshot(source.id).unwrap();
         resources.release_snapshot(source.id).unwrap();
@@ -532,7 +723,7 @@ fn bounded_imports_and_exports_refuse_atomically_and_return_every_credit() {
         assert_eq!(resources.usage(), baseline);
     });
     let mut invalid = limits;
-    invalid.sources = invalid.indexes.versions + 1;
+    invalid.sources = invalid.blocks.media + 1;
     assert_eq!(
         invalid.capacity(resources.config(), resources.quantum()),
         Err(Error::InvalidConfig)
@@ -551,7 +742,7 @@ fn bounded_imports_and_exports_refuse_atomically_and_return_every_credit() {
 }
 
 #[shoop_test]
-fn byte_pressure_evicts_a_large_prefix_at_one_complete_cut_and_preserves_old_exports() {
+fn byte_pressure_evicts_whole_quanta_and_keeps_state_and_old_exports() {
     let mut resources = resources();
     let baseline = resources.usage();
     let mut limits = config();
@@ -561,40 +752,18 @@ fn byte_pressure_evicts_a_large_prefix_at_one_complete_cut_and_preserves_old_exp
     let pool = resources.prepare_indexed_midi_store(limits).unwrap();
     let source = resources.indexed_midi_source(pool, 0).unwrap();
     let mut input = MidiBuffer::new(8, 128).unwrap();
-    let mut before = [0; 507];
-    for tick in 1..40 {
-        encode_midi_record(
-            (tick - 1) as u64 * Q as u64,
-            &[0xf8],
-            &mut before[(tick - 1) * 13..tick * 13],
-        )
-        .unwrap();
-    }
-    let mut expected = [0; 510];
-    for tick in 18..40 {
-        encode_midi_record(
-            (tick - 18) as u64 * Q as u64,
-            &[0xf8],
-            &mut expected[(tick - 18) * 13..(tick - 17) * 13],
-        )
-        .unwrap();
-    }
-    let mut packet = [1; 16];
-    packet[0] = 0xf0;
-    packet[15] = 0xf7;
-    for event in 0..8 {
-        encode_midi_record(
-            (40 - 18) * Q as u64 + event as u64,
-            &packet,
-            &mut expected[286 + event * 28..286 + (event + 1) * 28],
-        )
-        .unwrap();
-    }
+    let mut rows = Vec::<(u64, [u8; 3], usize)>::with_capacity(128);
+    let mut encoded = Vec::with_capacity(512);
+    let mut old_bytes = Vec::with_capacity(512);
+    let mut old = None;
+    let mut origin = 0;
+    let mut initial = MidiState::default();
     assert_no_heap(|| {
-        for tick in 0..40 {
+        for tick in 0..64u64 {
             resources.begin_callback();
+            resources.copy_remaining = 0;
+            resources.steps_remaining = 0;
             input.clear();
-            input.push(0, Q, &[0xf8]).unwrap();
             if tick == 0 {
                 for packet in [
                     [0xb0, 7, 33],
@@ -606,108 +775,86 @@ fn byte_pressure_evicts_a_large_prefix_at_one_complete_cut_and_preserves_old_exp
                     input.push(0, Q, &packet).unwrap();
                 }
             }
+            if tick < 40 {
+                input.push(0, Q, &[0xc0, tick as u8]).unwrap();
+            } else {
+                for key in 0..8 {
+                    input.push(key, Q, &[0x91, key as u8, tick as u8]).unwrap();
+                }
+            }
+            for index in 0..input.len() {
+                let (offset, bytes) = input.get(index).unwrap();
+                let mut packet = [0; 3];
+                packet[..bytes.len()].copy_from_slice(bytes);
+                rows.push((tick * Q as u64 + offset as u64, packet, bytes.len()));
+            }
+            let end = (tick + 1) * Q as u64;
+            origin = origin.max(end.saturating_sub(limits.history_frames));
+            while rows.first().is_some_and(|row| row.0 < origin)
+                || rows.len() > limits.history_events
+                || rows.iter().map(|row| 12 + row.2).sum::<usize>() > limits.history_bytes
+            {
+                let (frame, packet, len) = rows.remove(0);
+                origin = origin.max((frame + 1).div_ceil(Q as u64) * Q as u64);
+                initial.apply_packet(&packet[..len], 4).unwrap();
+            }
             resources
                 .render_io()
                 .append_indexed_midi_source(source, Frame(tick * Q as u64), &input)
                 .unwrap();
-            resources.reclaim();
-        }
-        assert_eq!(
-            resources.indexed_midi_coverage(source),
-            Ok(Frame(32)..Frame(1280))
-        );
-        let take = resources
-            .grab_indexed_midi(source, Frame(32)..Frame(1280), 1248)
-            .unwrap();
-        let old = resources.snapshot(take, Frame(1280)).unwrap();
-        assert_eq!(bytes::<507>(&mut resources, old), before);
-        resources.begin_callback();
-        resources.copy_remaining = 0;
-        resources.steps_remaining = 0;
-        input.clear();
-        for event in 0..8 {
-            input.push(event, Q, &packet).unwrap();
-        }
-        resources
-            .render_io()
-            .append_indexed_midi_source(source, Frame(1280), &input)
-            .unwrap();
-        assert_eq!(
-            resources.indexed_midi_coverage(source),
-            Ok(Frame(576)..Frame(1312))
-        );
-        let current = resources
-            .grab_indexed_midi(source, Frame(576)..Frame(1312), 736)
-            .unwrap();
-        let snapshot = resources.snapshot(current, Frame(1312)).unwrap();
-        assert_eq!(bytes::<510>(&mut resources, snapshot), expected);
-        assert_eq!(bytes::<507>(&mut resources, old), before);
-        let index = resources.read_index(snapshot.id).unwrap();
-        let state = resources.render_io().midi_seek(index, 0).unwrap().state;
-        let mut projected = MidiState::default();
-        for packet in [
-            [0xb0, 7, 33],
-            [0x90, 60, 90],
-            [0xb0, 66, 127],
-            [0xb0, 64, 127],
-            [0x80, 60, 0],
-        ] {
-            projected.apply_packet(&packet, 64).unwrap();
-        }
-        assert_eq!(state, projected);
-        input.clear();
-        for event in 0..8 {
-            input.push(event, Q, &packet).unwrap();
-        }
-        resources
-            .render_io()
-            .append_indexed_midi_source(source, Frame(1312), &input)
-            .unwrap();
-        assert_eq!(
-            resources.indexed_midi_coverage(source),
-            Ok(Frame(1152)..Frame(1344))
-        );
-        let second = resources
-            .grab_indexed_midi(source, Frame(1152)..Frame(1344), 192)
-            .unwrap();
-        let second_snapshot = resources.snapshot(second, Frame(1344)).unwrap();
-        let mut second_bytes = [0; 500];
-        for tick in 36..40 {
-            encode_midi_record(
-                (tick - 36) * Q as u64,
-                &[0xf8],
-                &mut second_bytes[(tick as usize - 36) * 13..(tick as usize - 35) * 13],
-            )
-            .unwrap();
-        }
-        for tick in 40..42 {
-            for event in 0..8 {
-                let offset = 52 + (tick - 40) * 8 * 28 + event * 28;
-                encode_midi_record(
-                    (tick - 36) as u64 * Q as u64 + event as u64,
-                    &packet,
-                    &mut second_bytes[offset..offset + 28],
-                )
-                .unwrap();
+            assert_eq!(
+                resources.indexed_midi_coverage(source),
+                Ok(Frame(origin)..Frame(end))
+            );
+            if tick >= 39 && tick <= 42 || tick == 63 {
+                let take = resources
+                    .grab_indexed_midi(source, Frame(origin)..Frame(end), end - origin)
+                    .unwrap();
+                let snapshot = resources.snapshot(take, Frame(end)).unwrap();
+                resources.remove(take).unwrap();
+                encoded.clear();
+                for &(frame, packet, len) in &rows {
+                    let mut bytes = [0; 16];
+                    let n = encode_midi_record(frame - origin, &packet[..len], &mut bytes).unwrap();
+                    encoded.extend_from_slice(&bytes[..n]);
+                }
+                let index = resources.read_index(snapshot.id).unwrap();
+                assert_eq!(
+                    resources.render_io().midi_seek(index, 0).unwrap().state,
+                    initial.basic_projection()
+                );
+                assert_eq!(snapshot.description.bytes, encoded.len());
+                let mut cursor = resources.cursor(snapshot.id).unwrap();
+                let mut actual = [0; 512];
+                let mut count = 0;
+                while count < encoded.len() {
+                    count += resources
+                        .render_io()
+                        .read(&mut cursor, &mut actual[count..encoded.len()])
+                        .unwrap();
+                }
+                assert_eq!(&actual[..count], &encoded);
+                if old.is_none() {
+                    old = Some(snapshot);
+                    old_bytes.extend_from_slice(&encoded);
+                } else {
+                    resources.release_snapshot(snapshot.id).unwrap();
+                }
+            }
+            if let Some(snapshot) = old {
+                let mut cursor = resources.cursor(snapshot.id).unwrap();
+                let mut actual = [0; 512];
+                let mut count = 0;
+                while count < old_bytes.len() {
+                    count += resources
+                        .render_io()
+                        .read(&mut cursor, &mut actual[count..old_bytes.len()])
+                        .unwrap();
+                }
+                assert_eq!(&actual[..count], &old_bytes);
             }
         }
-        assert_eq!(bytes::<500>(&mut resources, second_snapshot), second_bytes);
-        assert_eq!(bytes::<510>(&mut resources, snapshot), expected);
-        assert_eq!(bytes::<507>(&mut resources, old), before);
-        resources
-            .render_io()
-            .append_indexed_midi_source(source, Frame(1344), &input)
-            .unwrap();
-        assert_eq!(
-            resources.indexed_midi_coverage(source),
-            Ok(Frame(1312)..Frame(1376))
-        );
-        resources.release_snapshot(second_snapshot.id).unwrap();
-        resources.remove(second).unwrap();
-        resources.release_snapshot(snapshot.id).unwrap();
-        resources.release_snapshot(old.id).unwrap();
-        resources.remove(take).unwrap();
-        resources.remove(current).unwrap();
+        resources.release_snapshot(old.unwrap().id).unwrap();
         drain(&mut resources);
         resources.cleanup_indexed_midi_store(pool).unwrap();
         drain(&mut resources);
@@ -791,7 +938,7 @@ fn required_cleanup_recovers_hidden_packets_while_capture_runs_without_optional_
             input.clear();
             for event in 0..8 {
                 input
-                    .push(event as u32, Q, &[0xb0, (tick * 8 + event + 2) as u8, 1])
+                    .push(event as u32, Q, &[0xb0, (event + 10) as u8, 1])
                     .unwrap();
             }
             resources
@@ -818,11 +965,11 @@ fn required_cleanup_recovers_hidden_packets_while_capture_runs_without_optional_
                 .unwrap();
         }
         let usage = resources.indexed_midi_usage(pool).unwrap();
-        assert_eq!(usage.available_records, limits.packets.records - 1);
-        assert_eq!(usage.available_bodies, limits.packets.bodies - 1);
+        assert!(usage.available_records >= limits.blocks.record_pages - 2);
+        assert_eq!(usage.available_bodies, usage.available_records);
         assert_eq!(usage.views, 3);
         let mut expected = [0; 15];
-        encode_midi_record(0, &[0xb0, 2, 1], &mut expected).unwrap();
+        encode_midi_record(0, &[0xb0, 10, 1], &mut expected).unwrap();
         assert_eq!(bytes::<15>(&mut resources, old), expected);
         assert_eq!(bytes::<15>(&mut resources, peer), expected);
         assert_eq!(resources.copy_remaining(), 0);
@@ -870,11 +1017,11 @@ fn mapped_writer_keeps_nonquantized_raw_tails_zero_projection_and_the_complete_c
         .reserve_writer_snapshot(take, Frame(0), 39)
         .unwrap();
     let mut input = MidiBuffer::new(8, 128).unwrap();
-    let mut expected = [0; 92];
+    let mut expected = [0; 90];
     let mut at = 0;
     for (frame, packet) in [
         (0, &[0x90, 60, 90][..]),
-        (1, &[0xf0, 1, 2, 3, 0xf7][..]),
+        (1, &[0xb0, 1, 41][..]),
         (26, &[0x80, 60, 0][..]),
         (32, &[0x90, 61, 80][..]),
         (35, &[0xb0, 2, 88][..]),
@@ -904,7 +1051,7 @@ fn mapped_writer_keeps_nonquantized_raw_tails_zero_projection_and_the_complete_c
         for (offset, packet) in [
             (1, &[0xb0, 7, 44][..]),
             (5, &[0x90, 60, 90][..]),
-            (6, &[0xf0, 1, 2, 3, 0xf7][..]),
+            (6, &[0xb0, 1, 41][..]),
             (31, &[0x80, 60, 0][..]),
         ] {
             input.push(offset, Q, packet).unwrap();
@@ -950,7 +1097,7 @@ fn mapped_writer_keeps_nonquantized_raw_tails_zero_projection_and_the_complete_c
         let resource = resources.snapshot_indexed_midi_writer(writer).unwrap();
         let intermediate = resources.snapshot(resource, Frame(64)).unwrap();
         resources.remove(resource).unwrap();
-        assert_eq!(bytes::<92>(&mut resources, intermediate), expected);
+        assert_eq!(bytes::<90>(&mut resources, intermediate), expected);
         for tick in 2..4 {
             input.clear();
             for value in 0..8 {
@@ -963,6 +1110,10 @@ fn mapped_writer_keeps_nonquantized_raw_tails_zero_projection_and_the_complete_c
                 .render_io()
                 .append_indexed_midi_source(source, frame, &input)
                 .unwrap();
+            while !resources
+                .prepare_indexed_midi_writer_position(writer, tick - 1, 256)
+                .unwrap()
+            {}
             let result = resources.render_io().write_indexed_midi_window_tick(
                 writer,
                 source,
@@ -992,12 +1143,17 @@ fn mapped_writer_keeps_nonquantized_raw_tails_zero_projection_and_the_complete_c
             .unwrap();
         assert_eq!(complete.description.frames, 39);
         assert_eq!(bytes::<195>(&mut resources, complete), final_expected);
-        assert_eq!(bytes::<92>(&mut resources, intermediate), expected);
+        assert_eq!(bytes::<90>(&mut resources, intermediate), expected);
         assert_eq!(bytes::<45>(&mut resources, old_file), encoded);
         let index = resources.read_index(complete.id).unwrap();
         let zero = resources.render_io().midi_seek(index, 0).unwrap().state;
         assert_eq!(zero.channel(0).unwrap().controller(1), None);
         assert_eq!(zero.channel(0).unwrap().controller(7), Some(44));
+        while !resources
+            .io()
+            .prepare_midi_position(index, 39, 256)
+            .unwrap()
+        {}
         let end = resources.render_io().midi_seek(index, 39).unwrap().state;
         assert_eq!(end.channel(0).unwrap().controller(2), Some(99));
         assert_eq!(end.channel(0).unwrap().controller(9), Some(7));
@@ -1155,11 +1311,10 @@ fn retained_cuts_cannot_spend_live_capture_credits_without_optional_maintenance(
         let mut resources = resources();
         let baseline = resources.usage();
         let mut limits = config();
-        limits.packets.records = 128;
-        limits.packets.bodies = 128;
+        limits.blocks.record_pages = if fragmented { 100 } else { 112 };
+        limits.blocks.event_credits = limits.blocks.record_pages;
         limits.history_bytes = 512;
         if fragmented {
-            limits.packets.pages = 32;
             limits.history_frames = 1024;
         }
         let pool = resources.prepare_indexed_midi_store(limits).unwrap();
@@ -1168,12 +1323,10 @@ fn retained_cuts_cannot_spend_live_capture_credits_without_optional_maintenance(
             resources.indexed_midi_source(pool, 1).unwrap(),
         ];
         let mut input = MidiBuffer::new(8, 128).unwrap();
-        let mut sysex_input = MidiBuffer::new(8, 128).unwrap();
-        let mut sysex = [7; 64];
-        sysex[0] = 0xf0;
-        sysex[63] = 0xf7;
-        sysex_input.push(0, Q, &sysex).unwrap();
-        sysex_input.push(1, Q, &sysex).unwrap();
+        let mut denser_input = MidiBuffer::new(8, 128).unwrap();
+        for key in 0..8 {
+            denser_input.push(key, Q, &[0x91, key as u8, 7]).unwrap();
+        }
         let mut held = [None; 7];
         let mut admitted = 0;
         let mut refused = false;
@@ -1194,7 +1347,7 @@ fn retained_cuts_cannot_spend_live_capture_credits_without_optional_maintenance(
                 for (index, source) in sources.into_iter().enumerate() {
                     let begin = Frame(tick * Q as u64);
                     let packets = if fragmented && index == 1 {
-                        &sysex_input
+                        &denser_input
                     } else {
                         &input
                     };
@@ -1266,7 +1419,7 @@ fn retained_cuts_cannot_spend_live_capture_credits_without_optional_maintenance(
             if fragmented {
                 assert!(
                     resources.indexed_midi_coverage(sources[0]).unwrap().start.0
-                        > (200 * Q - 1024) as u64
+                        >= (200 * Q - 1024) as u64
                 );
             }
             let old = old.unwrap();

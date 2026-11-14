@@ -283,13 +283,18 @@ pub(super) fn run(client: &mut Client, connection: &mut Connection, path: OsStri
     let mut sysex = vec![0xf0];
     sysex.extend((1..2047).map(|i| (i % 128) as u8));
     sysex.push(0xf7);
-    let mut messages = vec![
+    let messages = vec![
         vec![0x90, 60, 100],
         vec![0xa2, 60, 42],
         vec![0xb3, 74, 99],
         vec![0xc4, 12],
         vec![0xd5, 33],
         vec![0xe6, 0, 64],
+        vec![0xff],
+        vec![0x80, 60, 0],
+    ];
+    let mut injected = messages[..6].to_vec();
+    injected.extend([
         vec![0xf1, 7],
         vec![0xf2, 3, 4],
         vec![0xf3, 5],
@@ -299,18 +304,19 @@ pub(super) fn run(client: &mut Client, connection: &mut Connection, path: OsStri
         vec![0xfb],
         vec![0xfc],
         vec![0xfe],
-        vec![0xff],
         sysex,
-        vec![0x80, 60, 0],
-    ];
+        vec![0xf0, 1, 0xf7],
+    ]);
+    injected.extend([6, 38, 96, 97, 98, 99, 100, 101].map(|cc| vec![0xb0, cc, 7]));
+    injected.extend_from_slice(&messages[6..]);
     if cable > 0 {
         peer.stream
             .write_all(&packets(&[0x91, 99, 123], 0))
             .unwrap();
     }
-    for message in &messages {
+    for message in &injected {
         let bytes = packets(message, cable);
-        if message[0] == 0xf0 {
+        if message.len() > 128 {
             peer.stream.write_all(&bytes[..128]).unwrap();
             peer.stream.write_all(&packets(&[0xf8], cable)).unwrap();
             peer.stream.write_all(&bytes[128..]).unwrap();
@@ -321,8 +327,7 @@ pub(super) fn run(client: &mut Client, connection: &mut Connection, path: OsStri
             pump(client, connection);
         }
     }
-    messages.insert(messages.len() - 2, vec![0xf8]);
-    let expected_count = messages.len();
+    let expected_count = injected.len() + 1;
     let consumption =
         std::thread::spawn(move || topology(&format!("consumed {cable} {expected_count}")));
     let deadline = Instant::now() + Duration::from_secs(30);
@@ -387,7 +392,7 @@ pub(super) fn run(client: &mut Client, connection: &mut Connection, path: OsStri
         actual, recorded_expected,
         "actual USB IN recording changed payload, order or cable isolation"
     );
-    println!("Actual USB IN recorded exact channel/system/realtime and 2048-byte SysEx messages");
+    println!("Actual USB IN recorded exact basic MIDI and refused short/2048-byte SysEx, parameter and unsupported system messages");
     peer.read();
     peer.bytes.clear();
     let expected: Vec<_> = messages.iter().flat_map(|m| packets(m, cable)).collect();

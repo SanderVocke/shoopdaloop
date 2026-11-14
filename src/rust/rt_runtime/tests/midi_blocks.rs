@@ -194,6 +194,11 @@ fn normalized_grabs_extend_without_revealing_hidden_originals() {
         &[originals[1], originals[2], inserted[0]],
     );
     read(&mut store, version, &originals);
+    let aligned = store.clip(version, Frame(64)..Frame(128)).unwrap();
+    let aligned_normalized = assert_no_heap(|| store.normalize(aligned)).unwrap();
+    read(&mut store, aligned_normalized, &originals[3..4]);
+    store.release(aligned).unwrap();
+    store.release(aligned_normalized).unwrap();
     let owners = [empty, version, clip, normalized, extended];
     assert_no_heap(|| {
         for owner in owners {

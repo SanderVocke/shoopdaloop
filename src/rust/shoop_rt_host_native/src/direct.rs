@@ -31,11 +31,18 @@ impl Cycle {
             }
             for (port, input) in self.midi_inputs.iter_mut().enumerate() {
                 let counters = &self.shared.counters;
+                let lost = &mut self.input_lost[port];
+                let already_lost = *lost;
                 io.midi_input(port, &mut |offset, bytes| {
                     let offset = offset as usize;
                     if offset >= base && offset < base + count {
+                        if *lost {
+                            Shared::count(&counters.midi_in_dropped, 1);
+                            return;
+                        }
                         if let Err(error) = input.push((offset - base) as u32, count, bytes) {
                             let counter = if error == rt_runtime::Error::Full {
+                                *lost = true;
                                 &counters.midi_in_dropped
                             } else {
                                 &counters.midi_in_refused
@@ -46,45 +53,61 @@ impl Cycle {
                         Shared::count(&counters.midi_in_refused, 1);
                     }
                 });
+                if *lost {
+                    if already_lost {
+                        input.mark_input_loss_silent();
+                    } else {
+                        input.mark_input_loss();
+                    }
+                }
             }
             self.render(count, 0, false);
             for (port, output) in self.outputs.iter().enumerate() {
                 io.output(port, base, &output[..count]);
             }
             for (port, output) in self.midi_outputs.iter().enumerate() {
-                let recovery = self.render.midi_recovery(port);
-                let (mut ordinary, mut reset) = (0, 0);
-                loop {
-                    let next = output.get(ordinary);
-                    let next_reset = recovery.and_then(|buffer| buffer.get(reset));
-                    let event = match (next, next_reset) {
-                        (None, None) => break,
-                        (Some(event), None) => {
-                            ordinary += 1;
-                            event
+                let reset = &mut self.output_reset[port];
+                if output.is_recovery()
+                    || self
+                        .render
+                        .midi_recovery(port)
+                        .is_some_and(|b| !b.is_empty())
+                {
+                    reset.request();
+                }
+                if !reset.pending() {
+                    for index in 0..output.len() {
+                        let (offset, bytes) = output.get(index).expect("bounded output");
+                        if io.midi_output(port, base as u32 + offset, bytes) {
+                            continue;
                         }
-                        (None, Some(event)) => {
-                            reset += 1;
-                            event
-                        }
-                        (Some(event), Some(recovery)) if event.0 <= recovery.0 => {
-                            ordinary += 1;
-                            event
-                        }
-                        (_, Some(event)) => {
-                            reset += 1;
-                            event
-                        }
-                    };
-                    if !io.midi_output(port, base as u32 + event.0, event.1) {
                         Shared::count(&self.shared.counters.midi_out_failed, 1);
+                        Shared::count(
+                            &self.shared.counters.midi_out_dropped,
+                            (output.len() - index) as u64,
+                        );
+                        reset.request();
+                        break;
                     }
+                }
+                while let Some(packet) = reset.peek() {
+                    if !io.midi_output(port, base as u32, &packet) {
+                        Shared::count(&self.shared.counters.midi_out_failed, 1);
+                        break;
+                    }
+                    reset.acknowledge().expect("accepted reset");
                 }
             }
         }
         self.shared.set_load(
             started.elapsed().as_secs_f32() * self.shared.sample_rate() as f32 / frames as f32,
         );
+        if self.phase == shoop_rt_engine::Phase::Disconnected {
+            self.shared.reset_flushed.store(
+                self.output_reset.iter().all(|reset| !reset.pending()),
+                std::sync::atomic::Ordering::Release,
+            );
+        }
     }
 }
 
@@ -290,7 +313,14 @@ mod tests {
         let stats = cycle.shared.stats();
         assert_eq!(stats.midi_in_dropped, 1);
         assert_eq!(stats.midi_in_refused, 1);
-        assert_eq!(stats.midi_out_failed, 2);
+        assert_eq!(stats.midi_out_failed, 1);
+        assert!(cycle.output_reset[0].pending());
+        io.reject = false;
+        io.events.clear();
+        assert_no_heap(|| cycle.process_direct(8, &mut io));
+        assert!(!cycle.output_reset[0].pending());
+        assert_eq!(io.messages().len(), 32);
+        assert_eq!(io.messages()[0].1, [0xb0, 120, 0]);
     }
     #[shoop_test(no_wasm = "native allocator guard")]
     fn direct_callback_heap_guard_detects_allocations_and_destruction() {

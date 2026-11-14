@@ -265,7 +265,7 @@ fn midi_merge_orders_offsets_then_sources_and_preserves_payload_bytes() {
     h.midi_in[0].push(1, 8, &[0x90, 60, 100]).unwrap();
     h.midi_in[0].push(5, 8, &[0x80, 60, 0]).unwrap();
     h.midi_in[1].push(1, 8, &[0x90, 61, 110]).unwrap();
-    h.midi_in[1].push(3, 8, &[0xf0, 1, 2, 3, 0xf7]).unwrap();
+    h.midi_in[1].push(3, 8, &[0xb0, 1, 42]).unwrap();
     h.install(GraphDescription {
         nodes: vec![id(0)],
         connections: vec![
@@ -278,7 +278,7 @@ fn midi_merge_orders_offsets_then_sources_and_preserves_payload_bytes() {
     assert_eq!(result.len(), 4);
     assert_eq!(result.get(0), Some((1, &[0x90, 60, 100][..])));
     assert_eq!(result.get(1), Some((1, &[0x90, 61, 110][..])));
-    assert_eq!(result.get(2), Some((3, &[0xf0, 1, 2, 3, 0xf7][..])));
+    assert_eq!(result.get(2), Some((3, &[0xb0, 1, 42][..])));
     assert_eq!(result.get(3), Some((5, &[0x80, 60, 0][..])));
     assert!(h.midi_out[1].is_empty());
 }
@@ -683,13 +683,13 @@ fn block_edge_parameters_and_injected_midi_preserve_host_offsets_across_splits()
             node: id(0),
             port: 0,
         },
-        payload: vec![0xf0, 0x7d, 1, 0xf7].into_boxed_slice(),
+        payload: vec![0xb0, 1, 43].into_boxed_slice(),
     });
     h.step(8);
     assert_eq!(h.output[0], [1.0; 8]);
     assert_eq!(h.midi_out[0].len(), 3);
     assert_eq!(h.midi_out[0].get(0), Some((2, &[0x90, 60, 100][..])));
-    assert_eq!(h.midi_out[0].get(1), Some((3, &[0xf0, 0x7d, 1, 0xf7][..])));
+    assert_eq!(h.midi_out[0].get(1), Some((3, &[0xb0, 1, 43][..])));
     assert_eq!(h.midi_out[0].get(2), Some((5, &[0x80, 60, 0][..])));
     assert_eq!(
         h.control.try_execution().unwrap().actual_frame,
@@ -819,7 +819,7 @@ fn midi_overflow_keeps_audio_running_and_recovers_through_reserved_one_event_sin
 }
 
 #[shoop_test]
-fn sysex_copy_budget_defers_admission_without_delaying_an_accepted_deadline() {
+fn short_message_copy_budget_defers_admission_without_delaying_an_accepted_deadline() {
     use rt_runtime::schedule::Action;
     let drops = Arc::new(AtomicUsize::new(0));
     let mut limits = config();
@@ -838,11 +838,11 @@ fn sysex_copy_budget_defers_admission_without_delaying_an_accepted_deadline() {
                 node: id(0),
                 port: 0,
             },
-            payload: vec![0xf0, 0x7d, value, 0xf7].into_boxed_slice(),
+            payload: vec![0xb0, 1, value].into_boxed_slice(),
         });
     }
     h.step(8);
-    assert_eq!(h.runtime.diagnostics().transfer_bytes, 4);
+    assert_eq!(h.runtime.diagnostics().transfer_bytes, 3);
     assert!(matches!(
         h.control.try_completion().unwrap().outcome,
         Outcome::Scheduled { late_by: 0, .. }
@@ -850,13 +850,13 @@ fn sysex_copy_budget_defers_admission_without_delaying_an_accepted_deadline() {
     assert!(h.control.try_completion().is_none());
     assert!(h.control.try_execution().is_none());
     h.step(8);
-    assert_eq!(h.runtime.diagnostics().transfer_bytes, 4);
+    assert_eq!(h.runtime.diagnostics().transfer_bytes, 3);
     assert!(matches!(
         h.control.try_completion().unwrap().outcome,
         Outcome::Scheduled { late_by: 0, .. }
     ));
-    assert_eq!(h.midi_out[0].get(0), Some((2, &[0xf0, 0x7d, 1, 0xf7][..])));
-    assert_eq!(h.midi_out[0].get(1), Some((2, &[0xf0, 0x7d, 2, 0xf7][..])));
+    assert_eq!(h.midi_out[0].get(0), Some((2, &[0xb0, 1, 1][..])));
+    assert_eq!(h.midi_out[0].get(1), Some((2, &[0xb0, 1, 2][..])));
     for _ in 0..2 {
         assert_eq!(
             h.control.try_execution().unwrap().actual_frame,

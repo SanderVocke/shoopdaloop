@@ -275,6 +275,13 @@ mode produces a diagnostic. Audio/MIDI access depends on browser secure-context 
 permission policies. Physical port inventory is fixed at engine preparation; reload
 when new MIDI endpoints need engine ports. Same-page UI recovery is not provided.
 
+Native and browser MIDI use the same four-byte payload cap and strict basic-MIDI
+policy: complete channel messages and System Reset. SysEx, parameter CC6/38/96–101
+and other system messages are refused. Notes, ordinary controls, pedals, banks and
+programs, bend, pressure and modes participate in state restoration. See the
+[MIDI runtime contract](../../../docs/native_session_recovery/midi-runtime-rtl-design.md)
+for preparation, capacity, loss recovery and legacy initial-prefix conversion.
+
 Hosted bundles carry external built-ins, the RT worklet and the client codec module.
 Release packaging also embeds them in a single HTML file, subject to browser restrictions on `file:` URLs.
 
@@ -319,6 +326,9 @@ Browser core workflow after a Trunk build (Chromium and pinned Node 22.22.2):
 
 ```sh
 NEW_ENGINE=1 CHROME_BIN=chromium node --experimental-websocket browser_smoke.mjs
+# An unoptimized local build may need an explicit overall workflow allowance;
+# per-step checks and the default CI deadline remain unchanged.
+WORKFLOW_TIMEOUT_MS=600000 WEB_MIDI=1 CHROME_BIN=chromium node --experimental-websocket browser_smoke.mjs
 # After release packaging:
 NEW_ENGINE=1 SELF_CONTAINED=1 CHROME_BIN=chromium node --experimental-websocket browser_smoke.mjs
 python3 browser_firefox_smoke.py --backend new_engine

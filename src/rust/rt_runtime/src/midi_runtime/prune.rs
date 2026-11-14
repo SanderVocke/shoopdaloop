@@ -28,7 +28,11 @@ impl Store {
             return Selection::None;
         }
         let mask = (1u64 << self.profile.tile_shift) - 1;
-        if (first > low || start & mask == 0) && (last < high || end & mask == 0) {
+        if first >= low
+            && last <= high
+            && (first > low || start & mask == 0)
+            && (last < high || end & mask == 0)
+        {
             Selection::All
         } else {
             Selection::Edge

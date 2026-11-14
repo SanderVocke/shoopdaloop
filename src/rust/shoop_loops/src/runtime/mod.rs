@@ -596,6 +596,10 @@ struct Row<S: Sample = f32> {
 #[derive(Clone, Copy)]
 enum PendingKind<S: Sample = f32> {
     InputBatch,
+    Grab {
+        id: shared::GrabWorkId,
+        window: Option<(u64, u64, Frame)>,
+    },
     Program {
         id: StageId,
         request: RequestId,

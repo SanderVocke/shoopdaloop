@@ -383,11 +383,27 @@ impl<S: Sample> LoopPlanner<S> {
             return Ok(false);
         }
         for slot in 0..self.rows.len() {
+            if self.rows[slot].as_ref().is_none_or(|row| !row.assigned) {
+                continue;
+            }
+            let decision = self.views[slot].decision;
+            if let Err(error) = self.prepare_playback_position(slot, decision, io) {
+                if let Some(request) = decision.origin {
+                    if self.failures.len() == self.failures.capacity() {
+                        return Err(Error::Capacity);
+                    }
+                    self.failures.push(crate::Observation::Refused {
+                        request,
+                        reason: timeline_error(error),
+                    });
+                    return Ok(false);
+                }
+                return Err(error);
+            }
             // Borrow rather than copy: rows are large and this runs every quantum.
             let Some(current) = self.rows[slot].as_ref().filter(|row| row.assigned) else {
                 continue;
             };
-            let decision = self.views[slot].decision;
             let recording = decision.state.writes();
             let starting = recording
                 && current
@@ -444,6 +460,68 @@ impl<S: Sample> LoopPlanner<S> {
             }
         }
         Ok(true)
+    }
+    fn prepare_playback_position(
+        &mut self,
+        slot: usize,
+        decision: Decision,
+        io: &mut ResourceIo<'_, S>,
+    ) -> Result<(), Error> {
+        let row = self.rows[slot].as_ref().ok_or(Error::InvalidId)?;
+        let eta = self
+            .resolver
+            .preplay_eta(decision.state.id)
+            .map(|(eta, _)| eta);
+        if !decision.state.plays() && eta.is_none()
+            || !decision.playback_discontinuity && (eta.is_none() || self.views[slot].lead)
+        {
+            return Ok(());
+        }
+        if let Some(writer) = row.active.and_then(|take| take.writer) {
+            self.shared
+                .as_mut()
+                .ok_or(Error::InvalidState)?
+                .prepare_live_position(writer, decision.state.position, io)?;
+        }
+        let selected = decision.origin.and_then(|origin| {
+            self.input_batch_pin(origin).or_else(|| {
+                self.pending
+                    .iter()
+                    .flatten()
+                    .find_map(|pending| match pending.kind {
+                        PendingKind::Transition { request, pin, .. } if request == origin => pin,
+                        _ => None,
+                    })
+            })
+        });
+        let media = match selected {
+            Some(pin) => Some(self.ledger.pinned(pin)?),
+            None => self.ledger.playback(decision.state.id)?,
+        };
+        if let Some(media) = media {
+            let media = self.ledger.view_ref(media)?;
+            if let Some(source) = media.midi {
+                let window = if selected.is_some() {
+                    media.windows.unwrap_or_default().midi
+                } else {
+                    row.windows.midi
+                };
+                let raw = eta.map_or(decision.state.position as i64, |eta| {
+                    -(eta.min(i64::MAX as u64) as i64)
+                });
+                let span = crate::windows::span(
+                    raw,
+                    window,
+                    eta.is_some(),
+                    self.resolver.quantum().frames(),
+                    source.snapshot.description.frames,
+                );
+                if span.frames != 0 {
+                    prepare_midi_position(io, source.index, span.position)?;
+                }
+            }
+        }
+        Ok(())
     }
     fn input_from_frozen(
         &self,
@@ -704,10 +782,11 @@ impl<S: Sample> LoopPlanner<S> {
                 .and_then(|take| take.writer)
                 .filter(|_| decision.state.mode == Mode::Replacing)
             {
-                self.shared
-                    .as_mut()
-                    .ok_or(Error::InvalidState)?
-                    .seek_live(writer, decision.state.position)?;
+                self.shared.as_mut().ok_or(Error::InvalidState)?.seek_live(
+                    writer,
+                    decision.state.position,
+                    io,
+                )?;
             }
             let media = self
                 .ledger
@@ -977,6 +1056,26 @@ impl<S: Sample> LoopPlanner<S> {
             }
             let reply = match pending.kind {
                 PendingKind::InputBatch => self.input_batch_reply()?,
+                PendingKind::Grab { id, window } => {
+                    match self
+                        .shared
+                        .as_mut()
+                        .ok_or(Error::InvalidState)?
+                        .grab_result(id, io)
+                    {
+                        Ok(Some(take)) => Some(match window {
+                            Some((position, padding, frame)) => Reply::WindowGrabbed {
+                                take,
+                                position,
+                                padding,
+                                frame,
+                            },
+                            None => Reply::Grabbed(take),
+                        }),
+                        Ok(None) => None,
+                        Err(error) => Some(Reply::Failed(error.into())),
+                    }
+                }
                 PendingKind::Program {
                     id, request, graph, ..
                 } => self
@@ -1215,6 +1314,85 @@ impl<S: Sample> LoopPlanner<S> {
         self.graph_epoch = context.graph_epoch;
         self.topologies.callback(context.callback_start);
         self.node_pairs.callback(context.callback_start);
+        if matches!(
+            operation,
+            Operation::HistoryGrab { .. } | Operation::HistoryWindow { .. }
+        ) {
+            let result = (|| -> Result<Disposition<Reply<S>>, Failure> {
+                if !context.payload.is_empty() {
+                    return Err(Error::InvalidShape.into());
+                }
+                let slot = self.pending_slot(context.recovery)?;
+                let q = self.resolver.quantum().frames();
+                let shared = self.shared.as_mut().ok_or(Error::InvalidState)?;
+                let (source, window, reply_window) = match operation {
+                    Operation::HistoryGrab { source, start, end } => {
+                        if source.graph != context.graph_epoch {
+                            return Err(Error::StaleEpoch.into());
+                        }
+                        if start >= end || end > context.frame || (end.0 - start.0) % q as u64 != 0
+                        {
+                            return Err(Error::InvalidFrame.into());
+                        }
+                        (
+                            source,
+                            crate::grab::Window {
+                                source: start..end,
+                                frames: end.0 - start.0,
+                                go_to_frame: 0,
+                                trailing_empty_frames: 0,
+                            },
+                            None,
+                        )
+                    }
+                    Operation::HistoryWindow {
+                        source,
+                        window,
+                        sync_frames,
+                        sync_position,
+                    } => {
+                        if source.graph != context.graph_epoch {
+                            return Err(Error::StaleEpoch.into());
+                        }
+                        let status = shared.status(
+                            source.source,
+                            context.graph_epoch,
+                            &mut context.resources,
+                        )?;
+                        if status.end != context.frame {
+                            return Err(Error::Busy.into());
+                        }
+                        let window =
+                            window.resolve(status.start..status.end, sync_frames, sync_position)?;
+                        let info = (window.go_to_frame, window.trailing_empty_frames, status.end);
+                        (source, window, Some(info))
+                    }
+                    _ => unreachable!(),
+                };
+                let id = shared.begin_grab_work(source, &window, q, &mut context.resources)?;
+                if let Some(take) = shared.grab_result(id, &mut context.resources)? {
+                    return Ok(Disposition::Complete(match reply_window {
+                        Some((position, padding, frame)) => Reply::WindowGrabbed {
+                            take,
+                            position,
+                            padding,
+                            frame,
+                        },
+                        None => Reply::Grabbed(take),
+                    }));
+                }
+                self.pending[slot] = Some(Pending {
+                    token: context.token,
+                    kind: PendingKind::Grab {
+                        id,
+                        window: reply_window,
+                    },
+                    forwarded: false,
+                });
+                Ok(Disposition::Pending)
+            })();
+            return Ok(result.unwrap_or_else(|error| Disposition::Complete(Reply::Failed(error))));
+        }
         if let Operation::InputBatch {
             count,
             timing,
@@ -1621,6 +1799,27 @@ impl<S: Sample> LoopPlanner<S> {
                                 .input_batch_first_request()
                                 .ok_or(Error::InvalidState)?;
                             self.resolver.cancel(request)?;
+                        } else if let PendingKind::Grab { id, .. } = pending.kind {
+                            if pending.forwarded {
+                                return Err(Error::InvalidState.into());
+                            }
+                            self.shared
+                                .as_mut()
+                                .ok_or(Error::InvalidState)?
+                                .cancel_grab_work(id, &mut context.resources)?;
+                            context.receipts.complete(
+                                pending.token,
+                                Ok(Reply::Cancelled {
+                                    sequence,
+                                    delivered: true,
+                                }),
+                            )?;
+                            self.pending
+                                .iter_mut()
+                                .flatten()
+                                .find(|p| p.token == pending.token)
+                                .ok_or(Error::InvalidState)?
+                                .forwarded = true;
                         } else {
                             return Err(Error::InvalidState.into());
                         }
@@ -2142,6 +2341,32 @@ impl<S: Sample> LoopPlanner<S> {
                 continue;
             }
             self.settle(context.frame, &mut context.resources)?;
+            for (slot, view) in self.views.iter().enumerate() {
+                if self.rows[slot]
+                    .as_ref()
+                    .is_none_or(|row| !row.assigned || row.binding.target != view.decision.state.id)
+                {
+                    continue;
+                }
+                if let Some(index) = view.midi {
+                    let frames = context
+                        .resources
+                        .render()
+                        .snapshot(index)?
+                        .description
+                        .frames;
+                    let span = crate::windows::span(
+                        view.raw_position,
+                        view.windows.midi,
+                        view.lead,
+                        self.resolver.quantum().frames(),
+                        frames,
+                    );
+                    if span.frames != 0 && view.decision.playback_discontinuity {
+                        context.resources.render().midi_seek(index, span.position)?;
+                    }
+                }
+            }
             self.resolver.commit().map_err(runtime_error)?;
             let _ = self.prepare_program_inputs(context.frame, &mut context.resources);
             if let Some(permit) = permit {
@@ -2228,12 +2453,26 @@ fn validate_midi_window<S: Sample>(
     for position in [window.origin(), window.origin() - i64::from(window.preplay)] {
         let position = position.max(0) as u64;
         if position < frames {
+            prepare_midi_position(resources, index, position)?;
             if resources
                 .render()
                 .midi_parameter_history_untracked(index, position)?
             {
                 return Err(Error::InvalidParameter);
             }
+        }
+    }
+    Ok(())
+}
+fn prepare_midi_position<S: Sample>(
+    resources: &mut ResourceIo<'_, S>,
+    index: ReadIndex,
+    position: u64,
+) -> Result<(), Error> {
+    if !resources.prepare_midi_position(index, position, 0)? {
+        let grant = resources.midi_position_replay_bound(index)?;
+        if !resources.prepare_midi_position(index, position, grant)? {
+            return Err(Error::Busy);
         }
     }
     Ok(())

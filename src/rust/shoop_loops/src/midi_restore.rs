@@ -1,7 +1,7 @@
 //! Fixed-protocol MIDI cleanup/restoration. Packets borrow stack storage only
 //! for the sink call. This does not reconstruct synthesizer voices or parameters.
 use rt_runtime::{
-    midi_state::{ChannelState, MidiState, ParameterFamily},
+    midi_state::{ChannelState, MidiState},
     Error,
 };
 
@@ -73,27 +73,16 @@ fn control(
         result.send(sink, &[0xb0 | channel, cc, value]);
     }
 }
-fn selectors(
-    result: &mut Emission,
-    sink: &mut impl FnMut(&[u8]) -> Result<(), Error>,
-    state: &ChannelState,
-    channel: u8,
-    family: ParameterFamily,
-) {
-    let pair = match family {
-        ParameterFamily::Rpn => [101, 100],
-        ParameterFamily::Nrpn => [99, 98],
-    };
-    for cc in pair {
-        control(result, sink, state, channel, cc);
-    }
-}
-
 /// Establish known projected state before delivering events at the seek offset.
-/// Cleanup must precede this operation. Data-entry values are emitted only while
-/// selectors are null; relative parameter commands are never replayed as state.
-/// The report exposes parameter history that this projection cannot reconstruct.
+/// Cleanup must precede this operation. Nonbasic parameter state is refused
+/// before any output is emitted.
 pub fn restore(state: &MidiState, mut sink: impl FnMut(&[u8]) -> Result<(), Error>) -> Emission {
+    if !state.is_basic() {
+        return Emission {
+            first_error: Some(Error::InvalidParameter),
+            ..Emission::default()
+        };
+    }
     let mut result = Emission::default();
     if state.system_reset_seen() {
         result.send(&mut sink, &[0xff]);
@@ -116,8 +105,12 @@ pub fn restore_channel(
     mut sink: impl FnMut(&[u8]) -> Result<(), Error>,
 ) -> Emission {
     let mut result = Emission::default();
-    if channel >= 16 {
-        result.first_error = Some(Error::InvalidShape);
+    if channel >= 16 || !state.is_basic() {
+        result.first_error = Some(if channel >= 16 {
+            Error::InvalidShape
+        } else {
+            Error::InvalidParameter
+        });
         return result;
     }
     restore_channel_into(&mut result, state, channel, &mut sink);
@@ -154,21 +147,6 @@ fn restore_channel_into(
         ) {
             result.send(sink, &[0xb0 | channel, cc, value]);
         }
-    }
-    if state.controller(6).is_some() || state.controller(38).is_some() {
-        for cc in [101, 100, 99, 98] {
-            result.send(sink, &[0xb0 | channel, cc, 127]);
-        }
-        for cc in [6, 38] {
-            control(result, sink, state, channel, cc);
-        }
-    }
-    let families = match state.parameter_family() {
-        Some(ParameterFamily::Nrpn) => [ParameterFamily::Rpn, ParameterFamily::Nrpn],
-        _ => [ParameterFamily::Nrpn, ParameterFamily::Rpn],
-    };
-    for family in families {
-        selectors(result, sink, state, channel, family);
     }
     let pitch = state.pitch_bend();
     result.send(

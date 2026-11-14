@@ -1,7 +1,6 @@
-use super::Message;
 use crate::{midi_state::MidiState, Error, Frame};
 
-pub const MAX_MESSAGE_BYTES: usize = 4;
+pub use shoop_midi_protocol::{Rejection as PolicyRejection, MAX_MESSAGE_BYTES};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 #[repr(u8)]
@@ -11,15 +10,6 @@ pub enum MessagePolicy {
     LiveOnlyParameters = 1,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[repr(u8)]
-pub enum PolicyRejection {
-    TooLong = 0,
-    SysEx = 1,
-    Parameter = 2,
-    UnsupportedStatus = 3,
-    Malformed = 4,
-}
 impl From<PolicyRejection> for Error {
     fn from(rejection: PolicyRejection) -> Self {
         match rejection {
@@ -49,36 +39,19 @@ impl MessageDisposition {
     }
 }
 
-pub fn parameter_controller(controller: u8) -> bool {
-    matches!(controller, 6 | 38 | 96..=101)
-}
-
 impl MessagePolicy {
     pub fn classify(self, data: &[u8]) -> Result<MessageDisposition, PolicyRejection> {
-        if data.len() > MAX_MESSAGE_BYTES {
-            return Err(PolicyRejection::TooLong);
-        }
-        let status = *data.first().ok_or(PolicyRejection::Malformed)?;
-        if matches!(status, 0xf0 | 0xf7) {
-            return Err(PolicyRejection::SysEx);
-        }
-        if !matches!(status, 0x80..=0xef | 0xff) {
-            return Err(PolicyRejection::UnsupportedStatus);
-        }
-        Message::parse(data, MAX_MESSAGE_BYTES).map_err(|_| PolicyRejection::Malformed)?;
+        let disposition = shoop_midi_protocol::classify(data, self == Self::LiveOnlyParameters)?;
         let mut bytes = [0; MAX_MESSAGE_BYTES];
         bytes[..data.len()].copy_from_slice(data);
         let message = ShortMessage {
             bytes,
             len: data.len() as u8,
         };
-        if status & 0xf0 == 0xb0 && parameter_controller(data[1]) {
-            return match self {
-                Self::RejectParameters => Err(PolicyRejection::Parameter),
-                Self::LiveOnlyParameters => Ok(MessageDisposition::LiveOnly(message)),
-            };
-        }
-        Ok(MessageDisposition::Managed(message))
+        Ok(match disposition {
+            shoop_midi_protocol::Disposition::Managed => MessageDisposition::Managed(message),
+            shoop_midi_protocol::Disposition::LiveOnly => MessageDisposition::LiveOnly(message),
+        })
     }
 }
 

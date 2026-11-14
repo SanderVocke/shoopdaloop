@@ -17,6 +17,8 @@ pub(crate) struct Cycle {
     outputs: Box<[Box<[f32]>]>,
     midi_inputs: Box<[MidiBuffer]>,
     midi_outputs: Box<[MidiBuffer]>,
+    input_lost: Box<[bool]>,
+    output_reset: Box<[rt_runtime::midi::ResetState]>,
     receivers: Box<[Option<MidiInputReceiver>]>,
     senders: Box<[Option<MidiOutputSender>]>,
     max_frames: usize,
@@ -70,6 +72,8 @@ impl Cycle {
             outputs: audio(host.audio_outputs.len()),
             midi_inputs: midi(host.midi_inputs.len(), false)?,
             midi_outputs: midi(host.midi_outputs.len(), true)?,
+            input_lost: vec![false; host.midi_inputs.len()].into_boxed_slice(),
+            output_reset: vec![Default::default(); host.midi_outputs.len()].into_boxed_slice(),
             receivers: receivers.into_boxed_slice(),
             senders: senders.into_boxed_slice(),
             max_frames: frames,
@@ -148,9 +152,14 @@ impl Cycle {
         };
         for (port, sender) in self.senders.iter_mut().enumerate() {
             if let Some(sender) = sender {
-                sender.send(&self.midi_outputs[port], &self.shared);
-                if let Some(recovery) = self.render.midi_recovery(port) {
-                    sender.send(recovery, &self.shared);
+                if self
+                    .render
+                    .midi_recovery(port)
+                    .is_some_and(|buffer| !buffer.is_empty())
+                {
+                    sender.request_recovery();
+                } else {
+                    sender.send(&self.midi_outputs[port], &self.shared);
                 }
             }
         }

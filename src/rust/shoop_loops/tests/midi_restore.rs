@@ -112,7 +112,7 @@ fn cleanup_and_sostenuto_restore_match_an_independent_key_pedal_machine() {
     }
 }
 #[shoop_test]
-fn program_bank_pending_selectors_modes_and_parameter_order_are_not_conflated() {
+fn program_bank_pending_bank_and_modes_restore_without_parameter_packets() {
     let mut source = MidiState::default();
     let mut output = buffer();
     assert_no_heap(|| {
@@ -125,14 +125,6 @@ fn program_bank_pending_selectors_modes_and_parameter_order_are_not_conflated() 
         for packet in [
             [0xb0, 0, 3],
             [0xb0, 32, 4],
-            [0xb0, 101, 5],
-            [0xb0, 100, 6],
-            [0xb0, 6, 12],
-            [0xb0, 38, 1],
-            [0xb0, 96, 0],
-            [0xb0, 97, 0],
-            [0xb0, 99, 7],
-            [0xb0, 98, 8],
             [0xb0, 125, 0],
             [0xb0, 124, 0],
             [0xb0, 127, 0],
@@ -140,6 +132,7 @@ fn program_bank_pending_selectors_modes_and_parameter_order_are_not_conflated() 
         ] {
             source.apply_packet(&packet, 3).unwrap();
         }
+        source = source.basic_projection();
         let mut bank = [99, 99];
         let mut loaded = None;
         let mut selectors = [[9, 9], [8, 8]];
@@ -188,12 +181,12 @@ fn program_bank_pending_selectors_modes_and_parameter_order_are_not_conflated() 
             Ok(())
         });
         assert_eq!(report.first_error, None);
-        assert!(report.parameter_history_untracked);
+        assert!(!report.parameter_history_untracked);
         assert_eq!(output.get(0).unwrap().1, &[0xff]);
         assert_eq!(loaded, Some((10, [1, 2])));
         assert_eq!(bank, [3, 4]);
-        assert_eq!(selectors, [[5, 6], [7, 8]]);
-        assert_eq!(family, 1);
+        assert_eq!(selectors, [[127, 127], [127, 127]]);
+        assert_eq!(family, 0);
         assert_eq!(parameter_writes, 0);
         for i in 0..output.len() {
             let (_, packet) = output.get(i).unwrap();
@@ -215,7 +208,7 @@ fn fixed_emission_bounds_cover_all_channels_keys_controls_and_pressure() {
         for channel in 0..16 {
             source.apply_packet(&[0xb0 | channel, 121, 0], 3).unwrap();
             for cc in 0..128 {
-                if !matches!(cc, 120 | 121 | 123) {
+                if !matches!(cc, 6 | 38 | 96..=101 | 120 | 121 | 123) {
                     source.apply_packet(&[0xb0 | channel, cc, 1], 3).unwrap();
                 }
             }
@@ -233,6 +226,7 @@ fn fixed_emission_bounds_cover_all_channels_keys_controls_and_pressure() {
                 source.apply_packet(&[0xa0 | channel, key, 77], 3).unwrap();
             }
         }
+        source = source.basic_projection();
         let report = restore(&source, |packet| {
             restored.apply_packet(packet, 3)?;
             output.push(0, 1, packet)
@@ -256,7 +250,7 @@ fn fixed_emission_bounds_cover_all_channels_keys_controls_and_pressure() {
             assert_eq!(actual.program_bank(), expected.program_bank());
             assert_eq!(actual.pitch_bend(), expected.pitch_bend());
             assert_eq!(actual.pressure(), expected.pressure());
-            assert_eq!(actual.parameter_family(), expected.parameter_family());
+            assert!(expected.is_basic());
         }
         output.clear();
         let report = cleanup(&source, |packet| output.push(0, 1, packet));

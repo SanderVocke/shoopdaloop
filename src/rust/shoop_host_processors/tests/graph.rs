@@ -755,7 +755,10 @@ fn global_notes_and_global_overflow_never_trigger_or_reset_ordinary_synth_voices
         tick(&mut h, 128);
     }
     assert!(h.output(0)[..128].iter().any(|sample| sample.abs() > 0.001));
-    for controller in 0..32 {
+    for controller in (0..128)
+        .filter(|&cc| !matches!(cc, 6 | 38 | 96..=101))
+        .take(32)
+    {
         h.midi_input_mut(1)
             .push(3, 128, &[0xb0, controller, 64])
             .unwrap();

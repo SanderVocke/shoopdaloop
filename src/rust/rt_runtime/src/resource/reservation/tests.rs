@@ -20,21 +20,13 @@ fn resources() -> ResourceStore {
 }
 fn midi_config() -> indexed_midi::Config {
     indexed_midi::Config {
-        packets: indexed_midi::PacketLimits {
-            pages: 128,
-            bodies: 512,
-            records: 2048,
-            max_packet: 64,
-            bases: 4,
-        },
-        indexes: indexed_midi::IndexLimits {
-            leases: 32,
-            versions: 16,
-            category_pages: 128,
-            packet_nodes: 4096,
-            scalar_nodes: 4096,
-            hold_nodes: 1024,
-            sostenuto_nodes: 1024,
+        blocks: indexed_midi::BlockLimits {
+            event_credits: 2048,
+            record_pages: 2048,
+            import_bases: 4,
+            media: 32,
+            versions: (32) * 8,
+            directories: 4096,
         },
         sources: 1,
         history_frames: 128,

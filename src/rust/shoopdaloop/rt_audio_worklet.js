@@ -26,6 +26,8 @@ class ShoopRtAudioProcessor extends AudioWorkletProcessor {
   constructor(options) {
     super();
     this.inbound = { [RECORDS_IN]: [], [MIDI_IN]: [] };
+    this.midiQueuedBytes = 0;
+    this.midiLost = false;
     this.load = -1;
     this.port.onmessage = event => this.receive(event.data);
     try {
@@ -89,7 +91,20 @@ class ShoopRtAudioProcessor extends AudioWorkletProcessor {
         this.inbound[RECORDS_IN].push(bytesOf(data.bytes));
         break;
       case 'midi':
-        this.inbound[MIDI_IN].push(bytesOf(data.bytes));
+        if (this.midiLost) break;
+        {
+          const bytes = bytesOf(data.bytes);
+          if (!bytes.length) break;
+          if (this.inbound[MIDI_IN].length >= 64 || this.midiQueuedBytes + bytes.length > this.capacities[MIDI_IN] * 2) {
+            this.inbound[MIDI_IN].length = 0;
+            this.midiQueuedBytes = 0;
+            this.midiLost = true;
+            this.wasm.shoop_rt_worklet_midi_input_loss();
+            break;
+          }
+          this.inbound[MIDI_IN].push(bytes);
+          this.midiQueuedBytes += bytes.length;
+        }
         break;
       case 'profiling-credit':
         this.wasm.shoop_rt_worklet_profiling_credit(data.count >>> 0);
@@ -122,6 +137,7 @@ class ShoopRtAudioProcessor extends AudioWorkletProcessor {
       if (count <= 0) return;
       this.bytes.set(queue[0].subarray(0, count), this.pointers[id] + length);
       this.wasm.shoop_rt_worklet_commit(id, count);
+      if (id === MIDI_IN) this.midiQueuedBytes -= count;
       if (count === queue[0].length) queue.shift();
       else queue[0] = queue[0].subarray(count);
     }

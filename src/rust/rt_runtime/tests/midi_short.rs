@@ -8,6 +8,47 @@ use support::assert_no_heap;
 
 #[global_allocator]
 static ALLOCATOR: support::TrackingAllocator = support::TrackingAllocator;
+
+#[shoop_test]
+fn legacy_initial_conversion_only_removes_null_selectors_and_reports_its_version() {
+    use rt_runtime::midi::{InitialDecoder, InitialFormat};
+    let mut legacy = InitialDecoder::new(InitialFormat::LegacyPrefixV0);
+    let mut current = InitialDecoder::new(InitialFormat::BasicPrefixV1);
+    assert_no_heap(|| {
+        for packet in [
+            &[0xb0, 0, 2][..],
+            &[0xc0, 9],
+            &[0xb0, 32, 3],
+            &[0x90, 60, 100],
+            &[0xb0, 66, 127],
+            &[0x80, 60, 0],
+            &[0xb0, 121, 0],
+        ] {
+            legacy.push(packet).unwrap();
+            current.push(packet).unwrap();
+        }
+        for cc in 98..=101 {
+            legacy.push(&[0xb0, cc, 127]).unwrap();
+            assert_eq!(current.push(&[0xb0, cc, 127]), Err(Error::InvalidParameter));
+        }
+        assert_eq!(legacy.normalized_selectors(), 4);
+        assert_eq!(legacy.state(), current.state());
+        assert!(legacy.state().is_basic());
+        let before = *legacy.state();
+        for packet in [
+            &[0xb0, 98, 1][..],
+            &[0xb0, 6, 2],
+            &[0xb0, 38, 3],
+            &[0xb0, 96, 1],
+            &[0xb0, 97, 1],
+            &[0xf0, 1, 0xf7],
+        ] {
+            assert!(legacy.push(packet).is_err());
+            assert_eq!(*legacy.state(), before);
+            assert_eq!(legacy.normalized_selectors(), 4);
+        }
+    });
+}
 #[cfg(all(target_arch = "wasm32", feature = "wasm-test-browser"))]
 shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 

@@ -4566,6 +4566,7 @@ dependencies = [
  "rt_audio_math",
  "rt_profiling",
  "rtrb",
+ "shoop_midi_protocol",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",
 ]
@@ -4923,6 +4924,7 @@ dependencies = [
  "profiling_protocol",
  "serde",
  "shoop_app_api",
+ "shoop_midi_protocol",
  "shoop_transport",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",
@@ -5279,6 +5281,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_midi_protocol"
+version = "0.3.0"
+
+[[package]]
 name = "shoop_persistence_codec"
 version = "0.3.0"
 dependencies = [
@@ -5323,6 +5329,7 @@ version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
+ "shoop_midi_protocol",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",
 ]
@@ -5672,6 +5679,7 @@ dependencies = [
  "shoop_egui",
  "shoop_host",
  "shoop_host_manager",
+ "shoop_midi_protocol",
  "shoop_persistence_codec",
  "shoop_plugin_protocol",
  "shoop_rt_backend",

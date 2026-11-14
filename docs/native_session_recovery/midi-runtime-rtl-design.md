@@ -1,11 +1,12 @@
 # A MIDI runtime for Rust and RTL
 
-Status: proposed design, not implemented.
+Status: Rust implementation integrated; final acceptance in progress.
 
 Written 2026-11-13 against `feat/backend-replacement` at `bfe73c9a`.
-This document supersedes the broad MIDI-history proposal in the
+The design was written against the revision above; section 18 records its Rust
+implementation. This document supersedes the broad MIDI-history proposal in the
 [P11 investigation](../investigations/p11-midi-state.md). It does not change the
-feature ledger or claim that the current implementation has these properties.
+feature ledger until the implementation's acceptance evidence is complete.
 
 ## 1. Objective and decisions
 
@@ -790,3 +791,136 @@ writer frontiers and explicitly prepared arbitrary-position replay. It does not
 claim the same random-seek throughput. That tradeoff is intentional: the software
 and future RTL should perform the same finite, understandable work, with their
 limits and readiness visible at the command boundary.
+
+## 18. Rust implementation
+
+The production engine uses this store through `resource::indexed_midi`. The
+historical API name remains for callers; the packet slab and persistent semantic
+state tree have been removed. File upload/read staging retains its existing byte
+encoding and read offsets. These are adapter formats, not the editable runtime's
+representation. The older standalone shared-MIDI utility API remains covered by
+tests; the application's live sources and continuous writers select the new store.
+
+### 18.1 Data path and ownership
+
+`shoop_midi_protocol` is the common allocation-free classifier used by runtime,
+application and processor protocols and browser MIDI. Production selects the
+reject-parameter policy. The optional LiveOnly classifier has no advertised host
+setting. It cannot construct a managed event or mutate supported state.
+
+An event has the section 4 sixteen-byte encoding: little-endian frame, four inline
+payload bytes, length, zero flags and a sixteen-bit equal-frame ordinal. Each page
+contains 32 records. The directory is radix sixteen with sixteen levels over a
+64-bit tile coordinate. Production tiles span two quanta. A quantum edit touches
+at most two tiles; the per-tile record allowance includes shifted raw windows and
+the permitted density across intersecting raw buckets. Reads use fixed-depth
+directory traversal and binary search inside the bounded sorted tile.
+
+`BlockLimits` declares independent event credits, record pages, directories,
+version leases, media/state-cache banks and borrowed import-base slots. Physical
+page counts and logical event credits are separate. Desktop sizing retains the
+previous event limits and reserves one page per credit to cover sparse layouts;
+dense pages use fewer physical pages. This is intentionally conservative and can
+cost more memory than packed packet storage. `capacity()` and prepared/allocated
+byte accounting include all pools, including edit scratch and state banks.
+
+Published roots are immutable. Clipping makes a read-only view; normalization
+prunes complete directory branches and copies at most two boundary tiles before
+extension. Retained exports keep their old roots. Retirement drains by explicit
+grants; logical credits are not reused ahead of physical reclamation. Scope and
+generation fences reject stale job/version handles. Resource or density refusal
+leaves the previously published media intact.
+
+### 18.2 State and preparation
+
+The basic-state interpreter has 4,225 addressable cells. `BasicUpdate` advances
+large reset/pedal/mode changes one cell per step. State copy and projection also
+have stepped forms. Native `MidiState` is a typed in-memory bank, not the proposed
+10,512-byte wire/RAM layout in section 8. No native struct is persisted or sent as
+a raw hardware record. Files retain canonical initial-message vectors; the
+versioned prefix decoder defines their supported semantics independently of Rust
+layout. A future RTL bank encoding must preserve these cells and known flags.
+
+`PositionJobs` pins an immutable root and executes Copy → Read → Apply → Ready.
+Target-frame originals remain unread. Each media cache has a cold preparation
+bank, a separately warmed playback bank and two prepared entry banks. Warming a
+reader cannot change an in-progress cold job. Entry reuse checks identity and the
+unchanged prefix. Read-only `midi_seek` never starts replay: a cold query returns
+Busy until explicitly prepared.
+
+Background Grab jobs share finite grants with private edits. They pin the exact
+requested source cut and prepare both start and end states before publication;
+later history eviction does not change their result. Immediate input transactions
+obtain a checked complete replay grant before entering the resolver. Discontinuous
+playback positions and window/preplay entries are prepared during preflight,
+before mutation. The conservative full grant is
+`(4,225 + 1) * event_count + 4,225 + 2` interpreter steps. Sparse time is skipped.
+This bounds work but is linear in prefix events; it is not a fixed-duration seek
+or a hardware deadline guarantee. Embedded profiles must budget this path or use
+asynchronous preparation before accepting a musical deadline.
+
+Writers keep separate current and pending roots/state banks. An interval declares
+all spans, including a wrap, and publishes only after every span completes.
+Contiguous ticks advance the frontier using new input, without rebuilding suffix
+state. A failed interval freezes the writer at its last complete cut. Private
+patch jobs use prepared scratch, skip empty directory regions, support cancellation
+and publish a finished candidate atomically. The loop planner remains the sole
+frame/action authority and coordinates paired audio/MIDI cuts.
+
+### 18.3 Boundaries and failures
+
+All buffers and host bridges enforce the same complete-message policy. MIDI loss
+is distinct from a rejected unsupported message: losing accepted managed input
+invalidates the source baseline. Histories and captures keep their last complete
+cut and refuse further stateful continuation until a fresh host baseline. Other
+audio keeps running. Cleanup is announced once rather than becoming newly
+recorded input on every lost tick.
+
+Native egress sizes its queue from the complete prepared output batch plus the
+reserved reset. A batch that cannot fit is refused as a whole. An interrupted
+producer is fenced by an epoch. Recovery retries the same reset head until the
+device accepts it, discards stale ordinary traffic and only then resumes. The
+direct JACK writer and the worklet use equivalent persistent recovery cursors.
+The firmware USB adapter preflights its fixed transport queue, observes input
+recovery epochs and establishes a new baseline only on device-generation change.
+Frontend Web MIDI also retries device-send failures rather than consuming the
+failed reset head. Shutdown confirmation requires the host's actual completion.
+
+The worklet MIDI lane has a separate zero-length transport-loss descriptor; it is
+never a zero-length MIDI event. JavaScript ingress retains at most twice the
+configured lane byte capacity and 64 queued chunks. Overflow clears the
+interrupted stream and explicitly fences all affected input baselines. Output
+lane sizing includes complete prepared batches; explicitly smaller profiles use
+the reserved recovery state across quanta.
+
+Legacy prefix version 0 may normalize only CC98–101 with value 127. Meaningful
+selectors, Data Entry, relative parameter operations and unsupported timeline
+messages refuse the complete document, even if followed by a reset. Successful
+normalization reports version 0 → 1 and the removed artifact count through native
+and browser codec workers to the completed import result. New prefixes use the
+strict basic policy. Exact supported timeline bytes/order and canonical state
+remain preserved. SMF's separate representation-loss report remains applicable.
+
+### 18.4 Verification and RTL handoff
+
+The executable reference consists of the fixed record encoder, block-store
+operations, `BasicUpdate`, `PositionJobs`, `WriterSet` and acknowledged reset
+cursor. Test inputs can drive identical normalized records, interval declarations,
+grants and output acknowledgements through these modules. Compare event bytes and
+ordering, published roots' visible contents, initial/frontier state, complete cuts,
+readiness, refusals and recovery heads; allocator addresses are not trace fields.
+Counters expose directory/record reads and writes, state cells, copies and
+retirement. Checked counters report saturation instead of wrapping.
+
+Independent packet-list/state oracles cover the store, writers and application
+flows. Tests retain old versions, replace early tiles with a long suffix, cross
+raw-window/wrap boundaries, pin Grab across eviction, force capacity refusal and
+output backpressure, and guard callback allocation/destruction. Existing native
+typed/socket/shared-memory and actual AudioWorklet acceptance cover integration.
+The final evidence record identifies the tested revision and commands.
+
+No synthesizable RTL, concrete RAM-port arbiter or FPGA timing target is delivered
+by this Rust change. Section 16's cycle/port feasibility gate applies before such
+a target is claimed. The logical work counters must be expanded into RAM requests
+with explicit latency and backpressure for that gate; an interpreter grant is not
+assumed to equal one clock cycle.

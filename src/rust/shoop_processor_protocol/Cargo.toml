@@ -18,6 +18,7 @@ serde = ["dep:serde"]
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
+shoop_midi_protocol = { path = "../shoop_midi_protocol" }
 serde = { workspace = true, features = ["derive"], optional = true }
 
 [dev-dependencies]

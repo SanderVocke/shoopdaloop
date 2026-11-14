@@ -830,7 +830,9 @@ fn socket_file_loss(
     })
     .run()?
     {
-        Value::Image(image) | Value::PreparedSession { image, .. } => image,
+        Value::Image(image)
+        | Value::PreparedSession { image, .. }
+        | Value::NormalizedImage { image, .. } => image,
         _ => anyhow::bail!("expected musical image"),
     };
     let source =

@@ -2,7 +2,7 @@
 
 `LoopPlanner::prepare_shared` installs prepared history stores before the planner
 transfers to a runtime. `shoop_rt_engine::prepare_with_shared` connects them to
-strip input capture feeds in the production graph. Normal engine preparation installs common thirty-second audio and indexed MIDI
+strip input capture feeds in the production graph. Normal engine preparation installs common thirty-second audio and fixed-record MIDI
 histories using a separate bounded reservation. Application input transactions and
 continuous fixed/growing writers use these stores; see the
 [application contract](../../../../docs/native_session_recovery/grab-replace.md).
@@ -31,6 +31,9 @@ advanced. The next accepted input starts a new segment from the observed state;
 missing audio is never represented by fabricated silence or callback replay.
 `audio_history_discontinuity` retires the old history root while retained takes and
 exports keep their own roots. Old retirement can delay admission of a new segment.
+Transport loss is different: accepted MIDI is missing, so the baseline is invalid.
+The last complete paired cut stays frozen until a new observation/host baseline;
+cleanup is announced once, and unrelated audio continues.
 
 `HistoryStatus` reports the intersection of audio/MIDI coverage, capped by the last
 successfully finished core tick. A tap can write before a later processor faults;
@@ -63,10 +66,10 @@ Generic independently acquired snapshot leases retain their ordinary release rul
 `CandidateBegin` binds a private take to a primitive loop's current content,
 length, slot generation, graph and topology. Its sources must match the loop's
 audio/MIDI shape and fixed logical duration. Shared sources fork immutable roots.
-Loaded PCM retains an immutable base. Loaded indexed MIDI imports descriptors and
-checkpoints incrementally without copying packet bodies; it reports `Building`
-until complete. Loaded media may exceed the history horizon, within prepared
-descriptor/page/owner capacities.
+Loaded PCM retains an immutable base. Loaded MIDI validates and imports capped
+inline records into immutable block pages; it reports `Building` until complete.
+Loaded media may exceed the history horizon, within prepared directory/page/owner
+capacities. No semantic suffix index or packet-body allocator is used.
 
 `CandidateAudio` copies at most Q input frames from an immutable snapshot into
 prepared interleaved scratch and applies one wrapping private edit. `CandidateMidi`
@@ -77,7 +80,9 @@ initial state; outside originals retain their bytes and order. Stored splices ad
 no restoration messages. An empty positive MIDI interval erases originals.
 
 The prepared candidate table rotates fairly through pending edits/imports. One
-step advances at most one event under the store's limits. The total allowance is
+step advances one bounded store/import action or a fixed grant of state cells.
+Grab preparation pins the requested cut and prepares its boundary states under
+the same finite background allowance. The total allowance is
 `edit_steps_per_callback`, shared across every tick in that host callback. Scanning
 is bounded by that allowance times the candidate table size; idle tables perform
 no repeated scan. Input capture and required playback use render accounting and
@@ -104,7 +109,10 @@ pending uploads or capture writers. It does not consume background validation
 credits. Permanent shared-owner teardown also cancels unfinished ordinary uploads
 before returning their resource and reserved-page credits.
 
-Ordinary MIDI cleanup, seek and restoration occur on the playback discontinuity.
+MIDI entry state is prepared before selection, window/preplay changes or a
+discontinuous writer move; a read-only cold lookup returns Busy. Immediate input
+transactions explicitly grant the complete checked replay bound before resolver
+admission. Ordinary MIDI cleanup and restoration occur on playback discontinuity.
 They are output policy, separate from stored replacement packet data. Old exports
 and sibling takes retain their original complete revisions after selection, source
 removal, a superseding upload or whole-configuration replacement.
@@ -112,13 +120,18 @@ removal, a superseding upload or whole-configuration replacement.
 ## Capacity, cleanup and evidence
 
 `SharedCapacity` reports coordinator tables/scratch, store metadata and the MIDI
-state subset separately. Reserved payload bytes are a subset of the ordinary
-arena, not another allocation. Figures exclude allocator overhead and common
-resource/runtime/graph metadata. Page reservations, owner/index credits, candidate
+state subset separately. Shared audio reserves payload in the ordinary arena;
+MIDI pages and state banks are independent prepared pools. Figures exclude
+allocator overhead and common resource/runtime/graph metadata. Page reservations,
+owner/directory credits, candidate
 slots and queued retirement remain finite; free raw bytes alone do not guarantee
 admission. `SharedWork` reports callback-local history ticks/refusals, preparation
 steps and scans. Resource render/background and MIDI-store counters supply the
-remaining copy, state, index and retirement diagnostics.
+remaining copy, state, directory and retirement diagnostics. See the
+[runtime design and implementation](../../../../docs/native_session_recovery/midi-runtime-rtl-design.md)
+for fixed layouts, grants, complete publication and recovery rules. The older
+measurements below describe their recorded revisions; final replacement evidence
+is maintained with the MIDI implementation.
 
 Permanent stopped cleanup cancels private work, releases tracked returned owners
 and retires histories. Bounded reclamation must finish before destruction. A

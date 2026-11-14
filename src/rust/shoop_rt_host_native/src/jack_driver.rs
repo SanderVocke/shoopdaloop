@@ -141,27 +141,6 @@ impl jack::ProcessHandler for Process {
                     port.as_mut_slice(scope).fill(0.);
                 }
             } else {
-                if self.shared.phase() == RenderPhase::Disconnected
-                    && self.shared.stopping.load(Ordering::Acquire)
-                {
-                    for writer in writers.iter_mut().flatten() {
-                        let mut reset = rt_runtime::midi::ResetState::default();
-                        reset.request();
-                        while let Some(bytes) = reset.peek() {
-                            if writer
-                                .write(&jack::RawMidi {
-                                    time: 0,
-                                    bytes: &bytes,
-                                })
-                                .is_err()
-                            {
-                                Shared::count(&self.shared.counters.midi_out_failed, 1);
-                                break;
-                            }
-                            reset.acknowledge().expect("pending reset packet");
-                        }
-                    }
-                }
                 let mut io = Io {
                     scope,
                     inputs: &self.ports.inputs,
@@ -435,9 +414,11 @@ pub(crate) fn start(
                 {
                     thread::sleep(Duration::from_millis(1));
                 }
-                observed
-                    .reset_flushed
-                    .store(observed.stats().callbacks >= through, Ordering::Release);
+                observed.reset_flushed.store(
+                    observed.stats().callbacks >= through
+                        && observed.reset_flushed.load(Ordering::Acquire),
+                    Ordering::Release,
+                );
             }
             if shutdown.load(Ordering::Acquire) {
                 observed.fail(StreamFailure::DeviceNotAvailable);

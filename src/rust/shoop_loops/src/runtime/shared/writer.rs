@@ -639,7 +639,7 @@ impl<S: Sample> Shared<S> {
         if self.live_building == 0 {
             return;
         }
-        let budget = if self.building > 0 {
+        let budget = if self.building > 0 || self.grab_building > 0 {
             self.remaining.div_ceil(2)
         } else {
             self.remaining
@@ -676,6 +676,7 @@ impl<S: Sample> Shared<S> {
         position: u64,
         io: &mut ResourceIo<'_, S>,
     ) -> Result<(), Error> {
+        self.prepare_live_position(id, position, io)?;
         let job = self.live_job(id)?;
         if job.active && job.following_recording.is_none() || !job.ready {
             return Err(Error::Busy);
@@ -932,7 +933,40 @@ impl<S: Sample> Shared<S> {
         }
         Ok(())
     }
-    pub fn seek_live(&mut self, id: LiveWriterId, position: u64) -> Result<(), Error> {
+    pub(in crate::runtime) fn prepare_live_position(
+        &mut self,
+        id: LiveWriterId,
+        position: u64,
+        io: &mut ResourceIo<'_, S>,
+    ) -> Result<(), Error> {
+        let job = self.live_job(id)?;
+        if let Some(writer) = job.writer {
+            let position = if job.kind == indexed_midi::WriteKind::Fixed {
+                crate::windows::write_span(
+                    position,
+                    job.windows.midi,
+                    self.max_frames,
+                    job.midi_frames,
+                )
+                .position
+            } else {
+                position
+            };
+            if !io.prepare_indexed_midi_writer_position(writer, position, 0)? {
+                let grant = io.indexed_midi_writer_replay_bound(writer)?;
+                if !io.prepare_indexed_midi_writer_position(writer, position, grant)? {
+                    return Err(Error::Busy);
+                }
+            }
+        }
+        Ok(())
+    }
+    pub fn seek_live(
+        &mut self,
+        id: LiveWriterId,
+        position: u64,
+        io: &mut ResourceIo<'_, S>,
+    ) -> Result<(), Error> {
         let job = self.live_job(id)?;
         if !job.active || job.kind != indexed_midi::WriteKind::Fixed || position > job.frames {
             return Err(Error::InvalidFrame);
@@ -940,6 +974,7 @@ impl<S: Sample> Shared<S> {
         if job.position == position {
             return Ok(());
         }
+        self.prepare_live_position(id, position, io)?;
         self.live[id.slot as usize].value.as_mut().unwrap().position = position;
         Ok(())
     }

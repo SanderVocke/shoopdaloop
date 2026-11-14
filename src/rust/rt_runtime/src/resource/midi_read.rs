@@ -164,17 +164,8 @@ impl<S: Sample> ResourceStore<S> {
             return Err(Error::InvalidFrame);
         }
         if let Some(take) = lease.indexed_midi {
-            return self.with_indexed_midi(take.store, |store, pool| {
-                let state =
-                    pool.core
-                        .state(&mut store.render_io(), pool.views.get(take.media)?, frame)?;
-                Ok((0..16).any(|channel| {
-                    state
-                        .channel(channel)
-                        .expect("MIDI channel")
-                        .parameter_history_untracked()
-                }))
-            });
+            self.with_indexed_midi(take.store, |_, pool| pool.views.get(take.media).map(|_| ()))?;
+            return Ok(false);
         }
         if let Some(midi) = lease.shared_midi {
             return self.with_midi(midi.store, |store, midi_store| {
@@ -272,6 +263,23 @@ impl<S: Sample> ResourceStore<S> {
     }
 }
 impl<S: Sample> RenderIo<'_, S> {
+    pub fn publish_midi_position(
+        &mut self,
+        index: ReadIndex,
+        frame: u64,
+        state: &MidiState,
+    ) -> Result<(), Error> {
+        let lease = self.store.midi_lease(index)?;
+        if let Some(take) = lease.indexed_midi {
+            self.store.with_indexed_midi(take.store, |store, pool| {
+                pool.core
+                    .publish_position(pool.views.get(take.media)?, frame, state)?;
+                pool.core.flush_work(&mut store.render_io())?;
+                store.charge_work(WorkClass::Render, size_of::<MidiState>(), 0)
+            })?;
+        }
+        Ok(())
+    }
     /// Export one initial channel without copying all sixteen channel states.
     pub fn midi_initial_channel(
         &mut self,
@@ -304,5 +312,39 @@ impl<S: Sample> RenderIo<'_, S> {
     }
     pub fn midi_seek(&mut self, index: ReadIndex, frame: u64) -> Result<MidiPosition, Error> {
         self.store.midi_seek_impl(index, frame)
+    }
+}
+impl<S: Sample> ResourceIo<'_, S> {
+    pub fn midi_position_replay_bound(&mut self, index: ReadIndex) -> Result<usize, Error> {
+        let lease = self.store.midi_lease(index)?;
+        if let Some(take) = lease.indexed_midi {
+            return self.store.with_indexed_midi(take.store, |_, pool| {
+                pool.core.replay_bound(pool.views.get(take.media)?)
+            });
+        }
+        Ok(0)
+    }
+    /// Prepare a cold position before an operation acquires an execution frame.
+    pub fn prepare_midi_position(
+        &mut self,
+        index: ReadIndex,
+        frame: u64,
+        steps: usize,
+    ) -> Result<bool, Error> {
+        let lease = self.store.midi_lease(index)?;
+        if frame > lease.snapshot.description.frames {
+            return Err(Error::InvalidFrame);
+        }
+        if let Some(take) = lease.indexed_midi {
+            return self.store.with_indexed_midi(take.store, |store, pool| {
+                pool.core.prepare_state(
+                    &mut store.render_io(),
+                    pool.views.get(take.media)?,
+                    frame,
+                    steps,
+                )
+            });
+        }
+        Ok(true)
     }
 }

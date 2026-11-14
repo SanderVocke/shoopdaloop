@@ -82,6 +82,9 @@ them.
 The processor queues posted bytes and copies them into the module's inbound
 buffers as space allows, so a batch may be split anywhere; it posts at most one
 `records` and one `midi` message per quantum.
+The JavaScript MIDI queue is bounded by twice the configured inbound lane bytes
+and 64 chunks. Overflow clears the interrupted MIDI stream and reports loss to
+the module; the source stays fenced until a new host baseline.
 
 ### Record framing
 
@@ -108,7 +111,7 @@ MIDI travels apart from protocol records. An event is:
 | --- | --- |
 | 8 | Frame on the AudioWorklet `currentFrame` timeline, little-endian `u64` |
 | 1 | Host MIDI port index: an input index on the MIDI-in lane, an output index on the MIDI-out lane |
-| 1 | Message length, 1 to 255 |
+| 1 | Message length, 1 to 4; zero is an input transport-loss descriptor |
 | n | The MIDI message |
 
 `lane::MidiEvent::encode`, `lane::decode` and `lane::events` implement it. The
@@ -116,16 +119,21 @@ main thread converts Web MIDI timestamps to frames, for example through
 `AudioContext.getOutputTimestamp()`, and may add a fixed delay so events arrive
 before their quantum.
 
+- Supported channel messages and System Reset use the common strict policy.
+  SysEx, parameter CC6/38/96–101 and other system messages are refused.
 - Events due in the current quantum go into the engine's host MIDI input at their
-  offset. Late events go to the quantum's first frame and count as late.
+  offset. A late managed event counts as late and invalidates the input baseline.
 - Events for later quanta stay in the lane, which holds `midi_in_bytes`.
-- Events for unknown ports, invalid messages and events beyond a port's
-  per-quantum capacity (`midi_events`, `midi_bytes`) are dropped and counted.
-- A zero length discards the lane's contents and counts a framing error.
+- Unknown ports are refused and counted. Malformed streams and loss of accepted
+  managed events fence the affected baseline, announce reserved cleanup once and
+  refuse stateful continuation. Restart/rebind establishes a fresh baseline.
+- A zero length explicitly reports input transport loss; it is never a MIDI packet.
 
-After rendering, every event of the engine's host MIDI outputs, followed by its
-MIDI recovery output, is posted with its frame on the `currentFrame` timeline.
-Events beyond `midi_out_bytes` per quantum are dropped and counted.
+After rendering, complete engine output batches are posted with their frames on
+the `currentFrame` timeline. Recovery supersedes ordinary output. If a complete
+port batch cannot fit, the port is fenced and its persistent reserved reset
+advances across quanta; ordinary output resumes only after recovery. Default lane
+sizing includes the complete prepared batch and reset allowance.
 
 ## Configuration record
 

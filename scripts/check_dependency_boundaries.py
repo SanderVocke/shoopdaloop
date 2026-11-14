@@ -31,8 +31,9 @@ def rule(forbidden=(), prefixes=(), allowed=()):
 RULES = {
     "profiling_protocol": rule(PORTABLE | {"rt_runtime", "rt_profiling", "freertos_profiling"}, prefixes=('shoop_',)),
     "freertos_profiling": rule(PORTABLE | {"rt_runtime", "rt_profiling"}, prefixes=('shoop_',)),
-    "rt_runtime rt_buffered": rule(PORTABLE, prefixes=('shoop_',)),
-    "shoop_loops": rule(PORTABLE, prefixes=('shoop_',), allowed=('shoop_loop_plan', 'shoop_loops')),
+    "shoop_midi_protocol": rule(PORTABLE | {'rt_runtime', 'rt_profiling'}, prefixes=('shoop_',)),
+    "rt_runtime rt_buffered": rule(PORTABLE, prefixes=('shoop_',), allowed=('shoop_midi_protocol',)),
+    "shoop_loops": rule(PORTABLE, prefixes=('shoop_',), allowed=('shoop_loop_plan', 'shoop_loops', 'shoop_midi_protocol')),
     "shoop_loop_plan": rule(
         PORTABLE | {"rt_runtime"},
         prefixes=('shoop_',),

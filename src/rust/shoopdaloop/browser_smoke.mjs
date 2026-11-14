@@ -406,7 +406,7 @@ try {
             this.outputs = new Map([[output.id, output]]);
             input.access = this;
             output.access = this;
-            this.sysexEnabled = true;
+            this.sysexEnabled = false;
             this.onstatechange = null;
           }
         }
@@ -515,6 +515,9 @@ try {
     webMidiEndpoints: Number(document.getElementById('runtime_status')?.getAttribute('data-web-midi-endpoints')),
     webMidiSelfTest: document.getElementById('runtime_status')?.getAttribute('data-web-midi-self-test'),
     webMidiTrackDrops: Number(document.getElementById('runtime_status')?.getAttribute('data-web-midi-track-drops')),
+    newMidiDrops: Number(document.getElementById('runtime_status')?.getAttribute('data-new-engine-midi-dropped')),
+    ioTaskKind: document.getElementById('runtime_status')?.getAttribute('data-io-task-kind'),
+    ioTaskStatus: document.getElementById('runtime_status')?.getAttribute('data-io-task-status'),
     webMidiTrackRefusals: Number(document.getElementById('runtime_status')?.getAttribute('data-web-midi-track-refusals')),
     webMidiControlRefusals: Number(document.getElementById('runtime_status')?.getAttribute('data-web-midi-control-refusals')),
     webMidiStatus: document.getElementById('enable_midi')?.title,
@@ -584,7 +587,7 @@ try {
       candidate => {
         if (candidate.newEngineSelfTest !== step) {
           step = candidate.newEngineSelfTest;
-          console.log(`new engine self-test: ${step}`);
+          console.log(`${new Date().toISOString()} new engine self-test: ${step}`);
         }
         if (composites && candidate.compositeSelfTest !== compositeStep) {
           compositeStep = candidate.compositeSelfTest;
@@ -596,7 +599,7 @@ try {
         return candidate.newEngineSelfTest === 'passed';
       },
       'the new engine workflow did not finish',
-      largeMedia ? 900_000 : 300_000,
+      Number(process.env.WORKFLOW_TIMEOUT_MS || (largeMedia ? 900_000 : composites ? 420_000 : 300_000)),
     );
     if (!previewOnly && (!inputStalled || state.inputSelfTest !== 'Passed')) { throw new Error(`input acceptance incomplete: ${JSON.stringify(state)}`); }
     if (composites && (!compositeStalled || state.compositeSelfTest !== 'Passed')) {
@@ -858,8 +861,8 @@ try {
       120_000,
     );
     const request = await evaluate('window.__shoopWebMidi.requested[0]');
-    if (!request?.sysex) {
-      throw new Error(`Web MIDI SysEx permission was not explicit: ${JSON.stringify(request)}`);
+    if (!request || request.sysex) {
+      throw new Error(`basic MIDI requested unexpected SysEx permission: ${JSON.stringify(request)}`);
     }
     await evaluate(`(() => {
       const input = window.__shoopWebMidi.input;
@@ -914,7 +917,7 @@ try {
 
     await evaluate(`(() => {
       window.__shoopWebMidi.output.failNext = true;
-      window.__shoopWebMidi.input.emit([0xf8]);
+      window.__shoopWebMidi.input.emit([0xb0, 11, 91]);
     })()`);
     await waitFor(
       candidate => candidate.webMidiStatus?.includes('could not send Web MIDI'),
@@ -925,14 +928,16 @@ try {
     await evaluate(`(() => {
       window.__shoopWebMidi.input.emit([]);
       window.__shoopWebMidi.input.emit(new Array(257).fill(1));
+      window.__shoopWebMidi.input.emit([0xf0, 1, 0xf7]);
+      window.__shoopWebMidi.input.emit([0xb0, 6, 1]);
       for (let index = 0; index < 1100; index += 1) {
-        window.__shoopWebMidi.input.emit([0xf8]);
+        window.__shoopWebMidi.input.emit([0xb0, 11, index % 128]);
       }
     })()`);
     await waitFor(
-      candidate => candidate.webMidiTrackDrops > 0
-        && candidate.webMidiTrackRefusals >= 2
-        && candidate.webMidiControlRefusals >= 2
+      candidate => candidate.newMidiDrops > 0
+        && candidate.webMidiTrackRefusals >= 4
+        && candidate.webMidiControlRefusals >= 4
         && candidate.callbacks > callbacksBeforeOverflow,
       'bounded Web MIDI refusal/drop counters or callback recovery were missing',
     );

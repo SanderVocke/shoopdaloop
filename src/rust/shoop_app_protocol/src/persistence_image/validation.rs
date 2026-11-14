@@ -185,6 +185,7 @@ impl Progress {
                     check(&channel.content, false)?;
                 }
                 for channel in midi {
+                    validate_initial(&channel.content.initial)?;
                     check(&channel.content.channel, true)?;
                 }
                 Vec::new()
@@ -252,6 +253,7 @@ impl Progress {
                 check(channel, false)?;
             }
             for channel in &content.midi {
+                validate_initial(&channel.initial)?;
                 check(&channel.channel, true)?;
             }
         }
@@ -318,13 +320,12 @@ impl Progress {
                         let event = &events[self.position];
                         if event.frame < self.previous
                             || u64::from(event.frame) >= self.frames[self.payload]
-                            || event.data.is_empty()
-                            || event.data.len() > 1024 * 1024
+                            || shoop_midi_protocol::classify(&event.data, false).is_err()
                         {
                             return Err(Refusal::Invalid);
                         }
                         let used = 12 + event.data.len();
-                        // A packet is the atomic unit, capped at one MiB by the protocol.
+                        // Each complete short message is one validation unit.
                         self.bytes = self
                             .bytes
                             .checked_add(used as u64)
@@ -354,6 +355,21 @@ impl Progress {
         }
         Ok(self.payload == image.payloads.len())
     }
+}
+
+fn validate_initial(packets: &[Vec<u8>]) -> Result<(), Refusal> {
+    if packets.len() > 16_384 {
+        return Err(Refusal::Overloaded);
+    }
+    for packet in packets {
+        match shoop_midi_protocol::classify(packet, true).map_err(|_| Refusal::Invalid)? {
+            shoop_midi_protocol::Disposition::Managed => {}
+            shoop_midi_protocol::Disposition::LiveOnly
+                if matches!(packet[1], 98..=101) && packet[2] == 127 => {}
+            _ => return Err(Refusal::Invalid),
+        }
+    }
+    Ok(())
 }
 
 fn validate_relations(loops: &[&Loop], sample_rate: u32) -> Result<(), Refusal> {

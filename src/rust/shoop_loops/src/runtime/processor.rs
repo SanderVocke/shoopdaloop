@@ -275,6 +275,24 @@ impl<S: Sample> Processor<LoopPlanner<S>, (), S> for CaptureNode<S> {
         {
             return Err(Error::InvalidId);
         }
+        if let Some(midi) = &mut self.midi {
+            if view.reset_input {
+                midi.reset();
+            }
+            let input = block.midi_inputs.first().ok_or(Error::InvalidShape)?;
+            if input.input_lost() || !midi.valid() {
+                let _ = midi.process(
+                    &mut block.resources.render(),
+                    input,
+                    block.quantum.frames(),
+                    None,
+                );
+                let row = block.domain.rows[slot].as_mut().ok_or(Error::InvalidId)?;
+                row.failure = Some(Error::InvalidState);
+                row.aborted = true;
+                return Ok(());
+            }
+        }
         if let (Some(audio), Some(interval)) = (&mut self.audio, view.capture) {
             audio.stage_port_range(&mut block.resources.render(), interval, 0, &block.audio, 0)?;
         }
