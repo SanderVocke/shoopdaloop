@@ -184,3 +184,11 @@ and parity evidence; push the implementation milestone and resolve CI/review.
   Subsequent accounting/worker-envelope changes: **757 focused tests passed,
   one skipped**. Final ARM USB check and both firmware probe example tests passed.
   The final warning-denying workspace build passed.
+- Hosted Chromium/Web MIDI completed with zero xruns, including real device
+  ingress, exact recording/playback, output-send/reset recovery, unsupported
+  refusal, bounded ingress loss and reconnect. These active-engine checks now run
+  in browser CI. Further platform acceptance moved initial/frontier states out of
+  descriptors into prepared banks (128-byte descriptor ceiling), and budgets
+  512-KiB firmware control/render stacks inside the existing RTOS heap. All 708
+  focused tests, real-JACK input/persistence, a one-MiB-stack socket workflow and
+  the warning-denying workspace build passed. Refreshed final gates remain open.

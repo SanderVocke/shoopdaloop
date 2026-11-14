@@ -337,12 +337,10 @@ impl Config {
                 .writers
                 .max(1)
                 .checked_mul(6)
-                .and_then(|n| n.checked_add(self.blocks.media.checked_mul(6)?))
-                .and_then(|n| n.checked_add(self.views.checked_mul(2)?))
-                .and_then(|n| n.checked_add(self.sources.checked_mul(4)?))
-                .and_then(|n| n.checked_add(self.writers.checked_mul(4)?))
-                .and_then(|n| n.checked_add(self.writers.max(1).checked_mul(2)?))
-                .and_then(|n| n.checked_add(self.imports.checked_mul(6)?))
+                .and_then(|n| {
+                    n.checked_add(self.blocks.media.checked_mul(writer::STATE_BANKS + 2)?)
+                })
+                .and_then(|n| n.checked_add(self.sources.checked_mul(2)?))
                 .and_then(|n| n.checked_mul(size_of::<MidiState>()))
                 .ok_or(Error::Capacity)?,
             history_frames: q.ceil(Frame(self.history_frames))?.0,

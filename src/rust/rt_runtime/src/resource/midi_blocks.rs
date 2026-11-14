@@ -62,20 +62,45 @@ impl Staging {
         size_of_val(&*self.records)
     }
 }
+// Cold, warm, two entries, initial and frontier. Media descriptors carry only
+// the bank index so nested ownership transfers never copy these states.
+pub(super) const STATE_BANKS: usize = 6;
+#[derive(Clone, Copy)]
+pub(super) struct Image {
+    pub(super) version: Version,
+    pub(super) origin: Frame,
+    pub(super) frames: u64,
+    pub(super) revision: u64,
+    pub(super) cut: Frame,
+    pub(super) frontier_position: u64,
+}
+impl From<MediaImage> for Image {
+    fn from(image: MediaImage) -> Self {
+        Self {
+            version: image.version,
+            origin: image.origin,
+            frames: image.frames,
+            revision: image.revision,
+            cut: image.cut,
+            frontier_position: image.frontier_position,
+        }
+    }
+}
 pub(super) struct Media {
-    image: MediaImage,
+    image: Image,
     identity: Version,
     cache: usize,
     credit: Option<usize>,
 }
+const _: () = assert!(size_of::<Media>() <= 128);
 impl Deref for Media {
-    type Target = MediaImage;
-    fn deref(&self) -> &MediaImage {
+    type Target = Image;
+    fn deref(&self) -> &Image {
         &self.image
     }
 }
 impl DerefMut for Media {
-    fn deref_mut(&mut self) -> &mut MediaImage {
+    fn deref_mut(&mut self) -> &mut Image {
         &mut self.image
     }
 }
@@ -197,7 +222,9 @@ impl Core {
             .and_then(|n| n.checked_add(PositionJobs::prepared_bytes(capacity).ok()?))
             .and_then(|n| {
                 n.checked_add(capacity.checked_mul(
-                    size_of::<Option<Cache>>() + size_of::<Credit>() + 4 * size_of::<MidiState>(),
+                    size_of::<Option<Cache>>()
+                        + size_of::<Credit>()
+                        + STATE_BANKS * size_of::<MidiState>(),
                 )?)
             })
             .and_then(|n| n.checked_add(config.blocks.import_bases.checked_mul(size_of::<Base>())?))
@@ -230,7 +257,7 @@ impl Core {
             writers: WriterSet::prepare(config.writers.max(1), q.frames(), config.events_per_tick)?,
             positions: PositionJobs::prepare(capacity)?,
             caches: (0..capacity).map(|_| None).collect(),
-            cache_states: vec![MidiState::default(); capacity * 4].into_boxed_slice(),
+            cache_states: vec![MidiState::default(); capacity * STATE_BANKS].into_boxed_slice(),
             bases: (0..config.blocks.import_bases)
                 .map(|_| Base {
                     generation: 1,
@@ -387,6 +414,29 @@ impl Core {
             .event_credits
             .saturating_sub(self.blocks.usage().pages)
     }
+    fn initial(&self, media: &Media) -> &MidiState {
+        &self.cache_states[media.cache * STATE_BANKS + 4]
+    }
+    fn frontier(&self, media: &Media) -> &MidiState {
+        &self.cache_states[media.cache * STATE_BANKS + 5]
+    }
+    fn image(&self, media: &Media) -> MediaImage {
+        MediaImage {
+            version: media.version,
+            origin: media.origin,
+            frames: media.frames,
+            revision: media.revision,
+            cut: media.cut,
+            initial: *self.initial(media),
+            frontier: *self.frontier(media),
+            frontier_position: media.frontier_position,
+        }
+    }
+    fn set_image(&mut self, media: &mut Media, image: MediaImage) {
+        self.cache_states[media.cache * STATE_BANKS + 4] = image.initial;
+        self.cache_states[media.cache * STATE_BANKS + 5] = image.frontier;
+        media.image = image.into();
+    }
     pub fn available_bodies(&self) -> usize {
         self.available_records()
     }
@@ -407,11 +457,13 @@ impl Core {
             entries: [None; 2],
             entry_turn: 0,
         });
-        self.cache_states[cache * 4] = image.initial;
-        self.cache_states[cache * 4 + 1] = image.initial;
+        self.cache_states[cache * STATE_BANKS] = image.initial;
+        self.cache_states[cache * STATE_BANKS + 1] = image.initial;
+        self.cache_states[cache * STATE_BANKS + 4] = image.initial;
+        self.cache_states[cache * STATE_BANKS + 5] = image.frontier;
         Ok(Media {
             identity: image.version,
-            image,
+            image: image.into(),
             cache,
             credit: None,
         })
@@ -456,8 +508,8 @@ impl Core {
                 frames: media.frames,
                 revision: media.revision,
                 cut: media.cut,
-                initial: media.initial,
-                frontier: media.frontier,
+                initial: *self.initial(media),
+                frontier: *self.frontier(media),
                 frontier_position: media.frontier_position,
             })
             .map_err(|(error, _)| error)
@@ -473,8 +525,10 @@ impl Core {
         cache.identity = media.identity;
         cache.job = None;
         self.caches[retained.cache] = Some(cache);
-        self.cache_states
-            .copy_within(media.cache * 4..media.cache * 4 + 4, retained.cache * 4);
+        self.cache_states.copy_within(
+            media.cache * STATE_BANKS..media.cache * STATE_BANKS + STATE_BANKS,
+            retained.cache * STATE_BANKS,
+        );
         Ok(retained)
     }
     pub fn retarget_empty(&mut self, target: &mut Media, source: &Media) -> Result<(), Error> {
@@ -494,15 +548,17 @@ impl Core {
         if let Some(id) = source.credit {
             self.credits[id].references += 1;
         }
-        target.image = MediaImage {
+        target.image = Image {
             version,
             ..source.image
         };
         target.identity = source.identity;
         target.credit = source.credit;
         self.caches[target.cache] = Some(cache);
-        self.cache_states
-            .copy_within(source.cache * 4..source.cache * 4 + 4, target.cache * 4);
+        self.cache_states.copy_within(
+            source.cache * STATE_BANKS..source.cache * STATE_BANKS + STATE_BANKS,
+            target.cache * STATE_BANKS,
+        );
         Ok(())
     }
     pub fn release(&mut self, media: Media) -> Result<(), Error> {
@@ -585,7 +641,11 @@ impl Core {
         self.blocks.release(media.version)?;
         media.image.version = next;
         media.identity = next;
-        Self::apply_state(io, record.message(), &mut media.image.frontier)?;
+        Self::apply_state(
+            io,
+            record.message(),
+            &mut self.cache_states[media.cache * STATE_BANKS + 5],
+        )?;
         self.account(io)
     }
     pub fn pin_import<S: Sample>(
@@ -730,11 +790,11 @@ impl Core {
                 cache.identity = media.identity;
                 cache.target = frame;
                 cache.prefix = prefix;
-                self.cache_states[media.cache * 4] = state;
+                self.cache_states[media.cache * STATE_BANKS] = state;
                 cache.ready = true;
                 Self::cache_entry(
                     cache,
-                    &mut self.cache_states[media.cache * 4..][..4],
+                    &mut self.cache_states[media.cache * STATE_BANKS..][..4],
                     frame,
                     prefix,
                     state,
@@ -770,7 +830,7 @@ impl Core {
                 let job = self.positions.begin(
                     &mut self.blocks,
                     media.version,
-                    &media.initial,
+                    &self.cache_states[media.cache * STATE_BANKS + 4],
                     target,
                 )?;
                 cache.target = frame;
@@ -784,13 +844,13 @@ impl Core {
             let position = self.positions.finish(job)?;
             self.blocks.release(position.version)?;
             let cache = self.caches[media.cache].as_mut().unwrap();
-            self.cache_states[media.cache * 4] = position.state;
+            self.cache_states[media.cache * STATE_BANKS] = position.state;
             cache.prefix = self.blocks.byte_before(media.version, target)?;
             cache.job = None;
             cache.ready = true;
             Self::cache_entry(
                 cache,
-                &mut self.cache_states[media.cache * 4..][..4],
+                &mut self.cache_states[media.cache * STATE_BANKS..][..4],
                 frame,
                 cache.prefix,
                 position.state,
@@ -833,9 +893,9 @@ impl Core {
             return Err(Error::InvalidFrame);
         }
         let state = if frame == 0 {
-            media.initial
+            *self.initial(media)
         } else if frame == media.frontier_position {
-            media.frontier
+            *self.frontier(media)
         } else {
             let offset = self.blocks.byte_before(
                 media.version,
@@ -850,9 +910,9 @@ impl Core {
             let total = self.blocks.totals(media.version)?;
             self.account(io)?;
             if offset == 0 {
-                media.initial
+                *self.initial(media)
             } else if offset == total.bytes && media.frontier_position == media.frames {
-                media.frontier
+                *self.frontier(media)
             } else {
                 self.caches
                     .iter()
@@ -863,15 +923,15 @@ impl Core {
                             return None;
                         }
                         if cache.ready && cache.prefix == offset {
-                            Some(self.cache_states[index * 4])
+                            Some(self.cache_states[index * STATE_BANKS])
                         } else if cache.warm_prefix == Some(offset) {
-                            Some(self.cache_states[index * 4 + 1])
+                            Some(self.cache_states[index * STATE_BANKS + 1])
                         } else {
                             cache
                                 .entries
                                 .iter()
                                 .position(|entry| entry.is_some_and(|entry| entry.1 == offset))
-                                .map(|entry| self.cache_states[index * 4 + 2 + entry])
+                                .map(|entry| self.cache_states[index * STATE_BANKS + 2 + entry])
                         }
                     })
                     .ok_or(Error::Busy)?
@@ -905,7 +965,7 @@ impl Core {
             .ok_or(Error::InvalidState)?;
         cache.identity = media.identity;
         cache.warm_prefix = Some(prefix);
-        self.cache_states[media.cache * 4 + 1] = *state;
+        self.cache_states[media.cache * STATE_BANKS + 1] = *state;
         Ok(())
     }
     pub fn flush_work<S: Sample>(&mut self, io: &mut RenderIo<'_, S>) -> Result<(), Error> {
@@ -930,7 +990,7 @@ impl Core {
         if !state.is_basic() || !matches!(admission.kind, Kind::Growing { .. }) {
             return Err(Error::InvalidParameter);
         }
-        admission.media.image.frontier = *state;
+        self.cache_states[admission.media.cache * STATE_BANKS + 5] = *state;
         admission.media.image.frontier_position = admission.media.frames;
         Ok(())
     }
@@ -991,15 +1051,15 @@ impl Core {
             if !cache.ready || cache.target != position {
                 return Err((Error::Busy, admission));
             }
-            admission.media.image.frontier = self.cache_states[admission.media.cache * 4];
+            self.cache_states[admission.media.cache * STATE_BANKS + 5] =
+                self.cache_states[admission.media.cache * STATE_BANKS];
             admission.media.image.frontier_position = position;
         }
-        let id = match self.writers.begin(
-            &mut self.blocks,
-            &admission.media.image,
-            admission.kind.into(),
-            position,
-        ) {
+        let image = self.image(&admission.media);
+        let id = match self
+            .writers
+            .begin(&mut self.blocks, &image, admission.kind.into(), position)
+        {
             Ok(id) => id,
             Err(error) => return Err((error, admission)),
         };
@@ -1047,7 +1107,7 @@ impl Core {
         self.invalidate(&writer.media)?;
         self.blocks.release(writer.media.version)?;
         writer.media.identity = image.version;
-        writer.media.image = image;
+        self.set_image(&mut writer.media, image);
         Ok(())
     }
     pub fn writer_totals<S: Sample>(
@@ -1065,7 +1125,7 @@ impl Core {
         self.blocks
             .release(writer.media.version)
             .expect("owned mirror");
-        writer.media.image = image;
+        self.set_image(&mut writer.media, image);
         writer.media
     }
     pub fn write_tick<S: Sample>(

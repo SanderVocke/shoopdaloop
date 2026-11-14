@@ -60,7 +60,7 @@ impl Core {
             } else {
                 source.frames - position
             };
-            media.image.initial = *initial;
+            self.cache_states[media.cache * STATE_BANKS + 4] = *initial;
             io.store.charge_work(
                 WorkClass::Render,
                 size_of::<MidiState>(),
@@ -74,7 +74,7 @@ impl Core {
                 Self::apply_state(
                     io,
                     ShortMessage::managed(bytes).map_err(Error::from)?,
-                    &mut media.image.initial,
+                    &mut self.cache_states[media.cache * STATE_BANKS + 4],
                 )?;
             }
         }
@@ -183,7 +183,7 @@ impl Core {
         if patch.done != patch.frames {
             return Err((Error::Busy, patch));
         }
-        patch.media.image.frontier = patch.media.initial;
+        self.cache_states[patch.media.cache * STATE_BANKS + 5] = *self.initial(&patch.media);
         patch.media.image.frontier_position = 0;
         self.edit_busy[patch.slot] = false;
         Ok(patch.media)

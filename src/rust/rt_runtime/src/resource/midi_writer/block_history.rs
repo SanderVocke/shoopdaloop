@@ -78,8 +78,8 @@ impl Core {
                     frames,
                     revision: 0,
                     cut: range.end,
-                    initial: pinned.initial,
-                    frontier: pinned.initial,
+                    initial: *self.initial(&pinned),
+                    frontier: *self.initial(&pinned),
                     frontier_position: 0,
                 })
                 .map_err(|(error, _)| error)
@@ -124,9 +124,9 @@ impl Core {
         }
         let state = self.state(io, &grab.source, target)?;
         if grab.phase == 0 {
-            grab.output.image.initial = state;
+            self.cache_states[grab.output.cache * STATE_BANKS + 4] = state;
         } else {
-            grab.output.image.frontier = state;
+            self.cache_states[grab.output.cache * STATE_BANKS + 5] = state;
             grab.output.image.frontier_position = grab.output.frames;
         }
         grab.phase += 1;
@@ -227,7 +227,7 @@ impl Core {
             Self::apply_state(
                 io,
                 record.message(),
-                initial.get_or_insert(source.media.initial),
+                initial.get_or_insert(*self.initial(&source.media)),
             )?;
             events -= 1;
             bytes -= 12 + record.message().as_bytes().len();
@@ -264,9 +264,9 @@ impl Core {
         source.media.image.origin = Frame(origin);
         source.media.image.frames = end.0 - origin;
         if let Some(initial) = initial {
-            source.media.image.initial = initial;
+            self.cache_states[source.media.cache * STATE_BANKS + 4] = initial;
         }
-        source.media.image.frontier = current;
+        self.cache_states[source.media.cache * STATE_BANKS + 5] = current;
         source.media.image.frontier_position = source.media.frames;
         source.media.image.revision = revision;
         source.media.image.cut = end;

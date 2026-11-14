@@ -74,6 +74,16 @@ loop fixture now checks mixed two-/three-byte basic messages; all sixty tests an
 both independent native replay harnesses passed. Its fixed transport buffer uses
 the declared upload prefix and returns the complete prepared buffer.
 
+The next acceptance pass also moved each media owner's initial/frontier values
+into prepared banks. Descriptors now have a compile-time 128-byte ceiling; nested
+Grab/writer ownership no longer copies full states. All 708 focused tests passed,
+the previously crashing real-JACK application input/persistence workflow passed,
+and the socket application workflow passed with a one-MiB process stack. Firmware
+diagnosis identified its 256-KiB task-stack overflow as RTOS bookkeeping damage;
+the explicit control/render budget is now 512 KiB inside the existing RTOS heap.
+Zeroed media arenas touch backing pages instead of redundantly writing every
+byte again during preparation. The warning-denying workspace build passed.
+
 Key executable evidence:
 
 - `rt_runtime/tests/midi_short.rs`: exhaustive status/length/controller policy,
@@ -109,7 +119,12 @@ no per-step failure, render-memory growth, command overflow or discontinuity was
 reported. A local `WORKFLOW_TIMEOUT_MS` override leaves the core CI deadline and per-step checks unchanged. The combined
 composite workflow has a separate seven-minute overall allowance: earlier release
 CI exhausted five minutes during the final resave after the composite checks had
-passed. Complete browser/Web MIDI acceptance remains pending.
+passed. The complete hosted Chromium workflow subsequently passed with zero
+xruns, including all three hosted processor families and actual device MIDI
+ingress, exact note recording/playback, output-send failure/reset acknowledgement,
+unsupported-message refusal, bounded ingress loss and endpoint recovery. The
+active workflow now exercises these checks in browser CI. The final state-bank
+change still requires refreshed browser and platform acceptance.
 
 The firmware USB adapter distinguishes recovery epochs from recorded messages,
 establishes a new baseline on device-generation changes and preflights its fixed

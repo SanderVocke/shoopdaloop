@@ -848,6 +848,13 @@ reader cannot change an in-progress cold job. Entry reuse checks identity and th
 unchanged prefix. Read-only `midi_seek` never starts replay: a cold query returns
 Busy until explicitly prepared.
 
+The same prepared pool holds each media owner's initial and frontier banks.
+Media, writer and Grab descriptors carry bank indices and small metadata; moving
+ownership does not copy a full state bank through nested calls. Rust still uses
+bounded temporary state values at interpreter/snapshot boundaries. The firmware
+budgets 512 KiB per control/render task inside its existing RTOS heap; native
+callback and small-stack startup acceptance verify those paths separately.
+
 Background Grab jobs share finite grants with private edits. They pin the exact
 requested source cut and prepare both start and end states before publication;
 later history eviction does not change their result. Immediate input transactions

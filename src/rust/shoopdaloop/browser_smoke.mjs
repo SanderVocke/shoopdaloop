@@ -37,6 +37,8 @@ const largeMedia = process.env.LARGE_MEDIA === '1';
 const composites = process.env.COMPOSITES === '1';
 let compositeStalled = false;
 let inputStalled = false;
+let basicMidiPhase = null;
+let basicMidiRecoveryStart = 0;
 const settingsOnly = process.env.SETTINGS_ONLY === '1';
 const settingsUnavailable = process.env.SETTINGS_UNAVAILABLE === '1';
 const webMidi = process.env.WEB_MIDI === '1';
@@ -261,6 +263,41 @@ try {
     let diagnosticAt = 0;
     while (Date.now() < deadline) {
       state = await evaluate(statusExpression);
+      if (webMidi && newEngine && state?.newEngineSelfTest === 'NotePressed' && basicMidiPhase === null) {
+        await evaluate(`(() => {
+          window.__shoopWebMidi.input.emit([0x90, 60, 99]);
+          document.getElementById('runtime_status').setAttribute('data-basic-midi-ack', 'note-on');
+        })()`);
+        basicMidiPhase = 'note-on';
+      } else if (webMidi && newEngine && state?.newEngineSelfTest === 'NoteReleased' && basicMidiPhase === 'note-on') {
+        await evaluate(`(() => {
+          window.__shoopWebMidi.input.emit([0x80, 60, 64]);
+          document.getElementById('runtime_status').setAttribute('data-basic-midi-ack', 'note-off');
+        })()`);
+        basicMidiPhase = 'note-off';
+      } else if (webMidi && newEngine && state?.newEngineSelfTest === 'ImmediateMidiPlayback') {
+        if (basicMidiPhase === 'note-off') {
+          await evaluate('window.__shoopWebMidi.sent = []');
+          basicMidiPhase = 'playing';
+        } else if (basicMidiPhase === 'playing') {
+          const sent = await evaluate('window.__shoopWebMidi.sent');
+          const on = sent.findIndex(message => message.join(',') === '144,60,99');
+          const off = sent.findIndex((message, index) => index > on && message.join(',') === '128,60,64');
+          if (on >= 0 && off > on) {
+            basicMidiRecoveryStart = sent.length;
+            await evaluate('window.__shoopWebMidi.output.failNext = true');
+            basicMidiPhase = 'send-failure';
+          }
+        } else if (basicMidiPhase === 'send-failure' && state.webMidiStatus?.includes('could not send Web MIDI')) {
+          const sent = (await evaluate('window.__shoopWebMidi.sent')).slice(basicMidiRecoveryStart);
+          if ([120, 123].every(cc => Array.from({ length: 16 }, (_, channel) => channel)
+            .every(channel => sent.some(message => message.join(',') === `${176 + channel},${cc},0`)))) {
+            await evaluate("document.getElementById('runtime_status').setAttribute('data-basic-midi-ack', 'playback')");
+            basicMidiPhase = 'passed';
+            console.log('Web MIDI device ingress, exact recording/playback and acknowledged output recovery passed');
+          }
+        }
+      }
       if (!inputStalled && state?.inputSelfTest === 'Stall') {
         inputStalled = true;
         await evaluate(`(() => { const end = performance.now() + 2000; while (performance.now() < end) {} document.getElementById('runtime_status').setAttribute('data-input-stalled', 'true'); })()`);
@@ -447,7 +484,7 @@ try {
     });
   }
   let entryUrl;
-  const newEngineQuery = `?new-engine-self-test=1${previewOnly ? '&preview-only=1' : ''}${previewResume ? '&preview-denied=1' : ''}${stress ? '&stress=1' : ''}${largeMedia ? '&persistence-large=1' : ''}${composites ? '&composites=1' : ''}`;
+  const newEngineQuery = `?new-engine-self-test=1${webMidi ? '&web-midi-basic=1' : ''}${previewOnly ? '&preview-only=1' : ''}${previewResume ? '&preview-denied=1' : ''}${stress ? '&stress=1' : ''}${largeMedia ? '&persistence-large=1' : ''}${composites ? '&composites=1' : ''}`;
   if (newEngine) {
     entryUrl = selfContained
       ? `${selfContainedUrl}${newEngineQuery}`
@@ -611,6 +648,32 @@ try {
     if (state.renderMemoryGrowths !== 0 || state.overflows !== 0) throw new Error(`render boundary invariant failed: ${JSON.stringify(state)}`);
     if (webMidi && (state.webMidiTrackDrops !== 0 || state.webMidiTrackRefusals !== 0 || !state.webMidiInputHandler)) throw new Error(`Web MIDI bridge evidence failed: ${JSON.stringify(state)}`);
     console.log(`${selfContained ? (process.env.SELF_CONTAINED_URL ? 'single-file URL' : 'direct-file') : 'hosted'} new engine workflow passed at ${browserSize}, xruns ${state.xruns}`);
+    if (webMidi) {
+      if (basicMidiPhase !== 'passed') throw new Error(`device MIDI acceptance incomplete: ${basicMidiPhase}`);
+      const request = await evaluate('window.__shoopWebMidi.requested[0]');
+      if (!request || request.sysex) throw new Error('basic MIDI requested SysEx permission');
+      await evaluate(`(() => {
+        const input = window.__shoopWebMidi.input;
+        input.emit([]);
+        input.emit(new Array(257).fill(1));
+        input.emit([0xf0, 1, 0xf7]);
+        input.emit([0xb0, 6, 1]);
+        for (let index = 0; index < 1100; index++) input.emit([0xb0, 11, index % 128]);
+      })()`);
+      const refused = await waitFor(candidate => candidate.webMidiTrackRefusals >= 4
+        && candidate.webMidiControlRefusals >= 4 && candidate.newMidiDrops > 0
+        && candidate.callbacks > state.callbacks, 'MIDI policy/capacity refusal did not preserve audio progress');
+      await evaluate(`(() => {
+        const midi = window.__shoopWebMidi;
+        midi.input.connection = 'closed';
+        midi.output.connection = 'closed';
+        midi.access.onstatechange?.(new Event('statechange'));
+      })()`);
+      await waitFor(candidate => candidate.webMidiInputConnection === 'open'
+        && candidate.webMidiOutputConnection === 'open' && candidate.webMidiInputHandler
+        && candidate.callbacks > refused.callbacks, 'MIDI endpoint recovery did not resume audio');
+      console.log('Web MIDI unsupported-message refusal, bounded ingress loss and endpoint recovery passed');
+    }
   } else if (settingsOnly && settingsUnavailable) {
     const state = await waitFor(
       candidate => candidate.settingsTest === 'unavailable'
