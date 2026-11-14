@@ -105,13 +105,16 @@ module audio_pipeline #(
     wire [$clog2(JOB_DEPTH+1)-1:0] hint_count;
     wire unused_hint_count = &{1'b0,hint_count,hint_pop_data[63:1],hint_push_data[63:0]};
     wire [`SHOOP_SP_JOB_BITS-1:0] late_hint_data = {late_hint_length,late_hint_position,late_hint_view,56'b0,`SHOOP_SP_JOB_READ};
-    wire [`SHOOP_SP_JOB_BITS-1:0] hint_push_data = read_intent_valid ? read_intent_data : late_hint_data;
+    reg hint_pending;
+    reg [`SHOOP_SP_JOB_BITS-1:0] hint_push_data;
+    wire hint_stage_ready = !hint_pending || hint_push_ready;
+    wire hint_stage_valid = read_intent_valid || (late_hint_valid && phase == JOB_WAIT);
     wire hint_push_in_range = hint_push_data[191:128] <= (64'hffffffffffffffff >> chunk_shift)
         && hint_push_data[255:192] <= (64'hffffffffffffffff >> chunk_shift);
     wire [`SHOOP_SP_JOB_BITS-1:0] translated_hint = {hint_push_data[255:192] << chunk_shift,
         hint_push_data[191:128] << chunk_shift,hint_push_data[127:64],63'b0,hint_push_in_range};
     wire hint_in_range = hint_pop_data[0];
-    assign late_hint_ready = phase != JOB_WAIT || (hint_push_ready && !read_intent_valid);
+    assign late_hint_ready = phase != JOB_WAIT || (hint_stage_ready && !read_intent_valid);
     assign media_hint_valid = ENABLE_MEDIA != 0 && hint_pop_valid && hint_in_range && busy && !reset;
     assign media_hint_view = hint_pop_data[127:64];
     assign media_hint_position = hint_pop_data[191:128];
@@ -120,7 +123,7 @@ module audio_pipeline #(
 
     sp_job_fifo #(.DEPTH(JOB_DEPTH), .COUNT_BITS($clog2(JOB_DEPTH+1))) read_intents (
         .clk(clk), .reset(reset || (run_valid && run_ready)),
-        .push_valid(ENABLE_MEDIA != 0 && (read_intent_valid || (late_hint_valid && phase == JOB_WAIT))), .push_ready(hint_push_ready),
+        .push_valid(ENABLE_MEDIA != 0 && hint_pending), .push_ready(hint_push_ready),
         .push_data(translated_hint),
         .pop_valid(hint_pop_valid), .pop_ready((media_hint_ready || !hint_in_range) && busy && !reset),
         .pop_data(hint_pop_data), .count(hint_count)
@@ -180,11 +183,17 @@ module audio_pipeline #(
             error_code <= 0;
             error_stage <= 0;
             quantum <= 0; chunk_frames <= 0; chunk_shift <= 0;
+            hint_pending <= 0; hint_push_data <= 0;
             buffers <= 0;
             inputs <= 0;
             outputs <= 0;
         end else begin
             done <= 0;
+            if (run_valid && run_ready) hint_pending <= 0;
+            else if (hint_stage_ready) begin
+                hint_pending <= hint_stage_valid;
+                hint_push_data <= read_intent_valid ? read_intent_data : late_hint_data;
+            end
             if ((ENABLE_MEDIA != 0) && media_fault && phase != IDLE) begin
                 error_code <= 8; error_stage <= 2; done <= 1; phase <= IDLE;
             end else case (phase)

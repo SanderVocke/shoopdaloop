@@ -12,7 +12,7 @@ def sources(demo=False):
         ('chunk_memory', ['chunk_ram', 'chunk_memory']),
         ('media_store', ['media_ram', 'metadata_cache', 'media_metadata', 'media_reclaimer', 'media_prefetch_resolver',
                          'media_store', 'memory_delay', 'media_audio_pipeline']),
-        ('loop_pipeline', ['loop_pipeline']),
+        ('loop_pipeline', ['media_cuts', 'loop_pipeline']),
         ('axi_memory', ['axi_master', 'axi_burst_mux', 'shared_axi', 'chunk_dma', 'word_dma',
                         'word_axi', 'chunk_axi', 'loop_pipeline_axi']),
         ('audio_io', ['audio_lane_ram', 'audio_io', 'audio_command_fifo', 'audio_image', 'audio_actions', 'audio_control', 'audio_loop_pipeline'])]

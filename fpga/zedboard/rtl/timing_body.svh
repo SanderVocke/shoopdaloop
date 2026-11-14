@@ -287,7 +287,7 @@
             end
         end
     end
-    wire unused = &{1'b0,reclaim_pages_used,reclaim_pages_available,reclaim_pages_freed,reclaim_capacity_failures,reclaim_pending,reclaim_high_water,reclaim_references,reclaim_active,reclaim_released,reclaim_block,reclaim_blocks,reclaim_freed,reclaim_cycles,EXTERNAL_IO,buffer_ready,cfg_read_data,audio_cfg_ready,audio_cfg_response_valid,
+    wire unused = &{1'b0,cut_snapshot_valid,cut_snapshot_data,reclaim_pages_used,reclaim_pages_available,reclaim_pages_freed,reclaim_capacity_failures,reclaim_pending,reclaim_high_water,reclaim_references,reclaim_active,reclaim_released,reclaim_block,reclaim_blocks,reclaim_freed,reclaim_cycles,EXTERNAL_IO,buffer_ready,cfg_read_data,audio_cfg_ready,audio_cfg_response_valid,
         audio_cfg_response_error,audio_cfg_read_data,monitor_valid,monitor_ready,monitor_data,queued_jobs,
         drain_valid,response_data,transition_busy,store_cmd_ready,store_busy,store_done,store_error_code,
         store_result_view,store_result_empty,store_write_ready,store_read_valid,store_read_data,

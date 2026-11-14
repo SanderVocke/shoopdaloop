@@ -23,8 +23,10 @@ pub fn design(depths: [u64; 10], g: &Geometry, width: u64, mode: Mode) -> Design
     .into();
     d.sources
         .extend(super::transition::design(depths[..3].try_into().unwrap()).sources);
-    d.sources
-        .push(root.join("fpga/loop_pipeline/rtl/loop_pipeline.sv"));
+    d.sources.extend([
+        root.join("fpga/loop_pipeline/rtl/media_cuts.sv"),
+        root.join("fpga/loop_pipeline/rtl/loop_pipeline.sv"),
+    ]);
     if mode != Mode::Legacy {
         d.sources
             .push(root.join("fpga/axi_memory/rtl/loop_pipeline_axi.sv"));

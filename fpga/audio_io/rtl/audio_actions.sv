@@ -42,7 +42,7 @@ module audio_actions #(
     wire node_write=accept && request_opcode == 17 && staging
         && request_data[127:64] == nonce && 32'(request_address) == written && written < stage_count
         && {16'b0,request_data[15:0]} < 32'(SLOTS) && request_data[47:16] != 0;
-    wire [63:0] effective=row_data[96:33] < cut_frame ? cut_frame : row_data[96:33];
+    wire [63:0] effective=selected_row[96:33] < cut_frame ? cut_frame : selected_row[96:33];
     wire [W-1:0] cost=selected_row[168:161] == 5 ? W'(ACTIVATION_WORK)
         : selected_row[168:161] == 6 ? W'(128) : W'(16);
     wire unused=&{1'b0,host_data[639:561],host_data[383:224],host_state,node_data[15:0]};
@@ -193,17 +193,17 @@ module audio_actions #(
                     selected_slot<=A'(node_data[15:0]); selected_generation<=node_data[47:16]; phase<=ROW_READ;
                 end
                 ROW_READ: phase<=ROW_WAIT;
-                ROW_WAIT: phase<=VISIT;
+                ROW_WAIT: begin selected_row<=row_data; phase<=VISIT; end
                 VISIT: begin
                     if (committing) begin
-                        if (!row_data[0] || row_data[32:1] != selected_generation || row_data[186]) next_node();
-                        else if (!applying || !row_data[479]) begin
-                            selected_row<=row_data; selected_effective<=effective;
+                        if (!selected_row[0] || selected_row[32:1] != selected_generation || selected_row[186]) next_node();
+                        else if (!applying || !selected_row[479]) begin
+                            selected_effective<=effective;
                             phase<=applying ? PUBLISH_ROW : CHECK_ORDER;
                         end else next_node();
-                    end else if (row_data[0] && row_data[479] && row_data[32:1] == selected_generation
-                        && !row_data[186] && row_data[96:33] <= cut_frame) begin
-                        selected_row<=row_data; phase<=EXECUTE_ROW;
+                    end else if (selected_row[0] && selected_row[479] && selected_row[32:1] == selected_generation
+                        && !selected_row[186] && selected_row[96:33] <= cut_frame) begin
+                        phase<=EXECUTE_ROW;
                     end else next_node();
                 end
                 CHECK_ORDER: begin

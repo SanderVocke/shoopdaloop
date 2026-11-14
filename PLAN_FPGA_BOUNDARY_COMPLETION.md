@@ -325,6 +325,15 @@ memory. Instrument the harness to reject hidden fences/settlement/service calls.
 
 ### 4. Make observations and media cuts autonomous (M5 prerequisite)
 
+Partial checkpoint: the mono/stereo device capture profile now owns capture
+finalization, fresh retake roots and required cleanup at pre/post execution cuts.
+Three memory modes match 1,050 quanta, 33,600 stereo frames and 2,100 coherent
+observations against production Rust. Observer/private-command and retained-record
+components pass held-reply, full-credit, identity/epoch, exhaustion and reset
+tests. Public query/export wiring, actual session epochs, near-capacity application
+migration and callback separation remain open; no stage-4 checkbox is complete.
+See [device-cut evidence](fpga/loop_pipeline/measurements/device-cuts/).
+
 - [ ] Define coherent frame/epoch/version-stamped observations for state, outcomes,
   capture starts, content changes and query barriers. Define bounded ownership,
   reserved result capacity and how ARM resumes after missed optional telemetry.

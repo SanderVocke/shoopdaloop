@@ -152,6 +152,12 @@ See [execution evidence](fpga/verification/BOUNDARY_COMPLETION.md).
 The completion plan makes device-side observation/media continuity a prerequisite
 for moving application command and response work off the deadline path.
 
+The device-cut prerequisite now passes real stereo capture/playback/retakes for
+1,050 unserviced quanta in three memory models, with exact samples and coherent
+state. Retained-record and private TP service components also pass. Public
+query/export delivery, session epochs, application/mono migration and callback
+separation remain open. [Checkpoint evidence](fpga/loop_pipeline/measurements/device-cuts/).
+
 - [ ] Put command management and response service outside the ARM audio callback.
   Replace the application adapter's per-quantum settlement pause with autonomous,
   frame-stamped observations that ARM can consume later.

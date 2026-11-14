@@ -6,6 +6,7 @@ module media_audio_pipeline #(
     parameter integer JOB_DEPTH = 32, parameter integer MAX_FRAMES = 32,
     parameter integer BUFFERS = 16, parameter integer INPUT_PORTS = 2, parameter integer OUTPUT_PORTS = 2,
     parameter integer REUSE_VIEWS = 0,
+    parameter integer CAPTURE_CHANNELS = 0,
     parameter integer MAINTENANCE_AT_RUN = 1,
     parameter integer VIEWS = 32, parameter integer SLOTS = 1024, parameter integer CHUNK_FRAMES = 32,
     parameter integer MEMORY_RESPONSE_CYCLES = 1,
@@ -24,6 +25,7 @@ module media_audio_pipeline #(
     output wire [31:0] sample_output_address,
     output wire [31:0] sample_output_data,
     input wire clk, input wire reset,
+    input wire [63:0] capture_roots, input wire [63:0] playback_roots,
     input wire maintenance_enable, input wire maintenance_tick,
     output wire [31:0] reclaim_pending, output wire [31:0] reclaim_high_water,
     output wire [63:0] reclaim_references, output wire reclaim_active, output wire reclaim_released,
@@ -99,6 +101,13 @@ module media_audio_pipeline #(
     wire hint_valid, hint_ready;
     wire [63:0] hint_view, hint_position, hint_length;
     wire [31:0] hint_count;
+    wire [63:0] selected_roots=job_opcode == 6 ? playback_roots : capture_roots;
+    wire [63:0] mapped_job_view=CAPTURE_CHANNELS == 0 ? job_view
+        : job_view >= 64'(CAPTURE_CHANNELS) ? 64'hffffffffffffffff
+        : {32'b0,job_view[0] ? selected_roots[63:32] : selected_roots[31:0]};
+    wire [63:0] mapped_hint_view=CAPTURE_CHANNELS == 0 ? hint_view
+        : hint_view >= 64'(CAPTURE_CHANNELS) ? 64'hffffffffffffffff
+        : {32'b0,hint_view[0] ? playback_roots[63:32] : playback_roots[31:0]};
     assign busy = pipeline_busy || store_busy;
     assign done = (pipeline_done || completion_pending) && !store_busy;
     always @(posedge clk) begin
@@ -159,9 +168,9 @@ module media_audio_pipeline #(
         .reclaim_references(reclaim_references),.reclaim_active(reclaim_active),.reclaim_released(reclaim_released),
         .reclaim_block(reclaim_block),.reclaim_blocks(reclaim_blocks),.reclaim_freed(reclaim_freed),
         .reclaim_cycles(reclaim_cycles),.reclaim_quiescent(reclaim_quiescent),
-        .hint_valid(hint_valid), .hint_ready(hint_ready), .hint_view(hint_view), .hint_position(hint_position), .hint_length(hint_length), .hint_count(hint_count),
+        .hint_valid(hint_valid), .hint_ready(hint_ready), .hint_view(mapped_hint_view), .hint_position(hint_position), .hint_length(hint_length), .hint_count(hint_count),
         .cmd_valid(pipeline_busy ? job_cmd_valid : store_cmd_valid), .cmd_ready(internal_ready),
-        .cmd_opcode(pipeline_busy ? job_opcode : store_cmd_opcode), .cmd_view(pipeline_busy ? job_view : store_cmd_view),
+        .cmd_opcode(pipeline_busy ? job_opcode : store_cmd_opcode), .cmd_view(pipeline_busy ? mapped_job_view : store_cmd_view),
         .cmd_start(pipeline_busy ? job_start : store_cmd_start), .cmd_length(pipeline_busy ? job_length : store_cmd_length),
         .cmd_count(pipeline_busy ? job_count : store_cmd_count),
         .busy(store_busy), .done(internal_done), .error_code(store_error_code), .memory_meta_valid(memory_meta_valid), .memory_meta_ready(memory_meta_ready), .memory_meta_write(memory_meta_write), .memory_meta_address(memory_meta_address), .memory_meta_write_data(memory_meta_write_data), .memory_meta_count(memory_meta_count), .memory_meta_write_valid(memory_meta_write_valid), .memory_meta_write_ready(memory_meta_write_ready), .memory_meta_read_valid(memory_meta_read_valid), .memory_meta_read_ready(memory_meta_read_ready), .memory_meta_response_valid(memory_meta_response_valid), .memory_meta_response_ready(memory_meta_response_ready), .memory_meta_response_error(memory_meta_response_error), .memory_meta_read_data(memory_meta_read_data), .memory_fault(memory_fault),

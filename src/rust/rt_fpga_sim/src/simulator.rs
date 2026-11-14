@@ -101,7 +101,7 @@ fn pipeline_sources_at(root: &Path) -> Vec<PathBuf> {
             "media_store",
             "media_ram metadata_cache media_metadata media_reclaimer media_prefetch_resolver media_store memory_delay media_audio_pipeline",
         ),
-        ("loop_pipeline", "loop_pipeline"),
+        ("loop_pipeline", "media_cuts loop_pipeline"),
         (
             "axi_memory",
             "axi_master axi_burst_mux shared_axi chunk_dma word_dma word_axi chunk_axi loop_pipeline_axi",

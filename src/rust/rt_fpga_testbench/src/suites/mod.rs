@@ -9,6 +9,7 @@ pub mod direct;
 pub mod image_control;
 pub mod live_image;
 pub mod media;
+pub mod media_cuts;
 pub mod metadata;
 pub mod pipeline;
 pub mod production;

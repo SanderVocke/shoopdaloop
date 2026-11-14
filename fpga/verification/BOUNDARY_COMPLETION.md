@@ -243,3 +243,38 @@ separation still belong to M5. The final broad native/application gate remains
 reserved for that behavioral milestone. There is no ZedBoard here: complete
 independent software, RTL, firmware, build and timing work, then stop before
 physical tests. The overall roadmap remains incomplete without physical evidence.
+
+## M5 prerequisite: device-side capture ownership and coherent reads
+
+The [device-cut checkpoint](../loop_pipeline/measurements/device-cuts/) moves
+capture finalization, retake roots and required reference cleanup into the device
+for the supported one-loop mono/stereo capture profile. It observes full TP state
+after PROCESS and after FINISH. Completed takes retain their actual physical
+roots; new recordings receive fresh roots. Logical channel mapping protects
+completed roots and raw host media mutation is disabled in this profile. The
+general kernel profile retains its existing raw interface and loop capacity.
+
+All three memory modes match 33,600 stereo frames and 2,100 coherent cuts over
+1,050 quanta, with no host TP/media/observation service after initial admission.
+Modes, positions, lengths, revisions, capture counts, cycles and pulses match
+production Rust. Component tests cover retained export and historical empty
+identities, allocation stalls, counter exhaustion and reset. Long-take component
+finalization is bounded without slicing all references. The real near-capacity
+two-take application case is still required after application migration.
+
+The independent TP observer reads complete loop/request/event rows with their
+actual frame and phase; a private resident command/result port permits future
+fabric delivery/collection independently of a held host reply. They share the
+existing resolver/RAMs and preserve execution/SP priority. General-profile ties
+remove unused private ports. Five TP capacities with 20 seeds pass the observer
+checkpoint; directed resident-port tests also pass. A separate retained-record
+RAM component passes full 256-credit storage, 1,024-quantum retention, exact
+historical reads, checked generation/epoch ACK and reset during partial capture.
+
+Combined media/demo/board tests, strict general/capture lint, Q32 generic
+synthesis, formatting, test policy and warning-denying workspace build pass.
+The source overlay and complete reports/logs preserve both success and initial
+harness failures. Public action/query delivery, export bulk reads, real session
+epoch wiring, callback/worker separation and application/mono migration remain
+open. The optional cut pulse alone is not an accepted historical query. M5 is
+not complete, and this checkpoint does not advance physical qualification.

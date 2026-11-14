@@ -634,3 +634,164 @@ fn scratch_initialization_and_reset(d: &mut Transition, s: &mut Sim<'_>) -> Resu
     assert_eq!(result["states"][0]["position"], 16);
     Ok(())
 }
+
+pub fn coherent_observations() -> Result<()> {
+    let compiled = design([1, 2, 4])
+        .parameters(&[("INTEGRATED", 1)])
+        .build(&crate::root().join("work/marlin-suite/coherent-observations"))?;
+    let mut s = Sim::new(compiled.session(None)?, &[("clk", 10000, 0)]);
+    let mut d = Transition::new([1, 2, 4]);
+    let image = case(
+        "coherent-cut",
+        vec![spec(0, 0, Some(0), true)],
+        vec![],
+        32,
+        Some(1),
+        2,
+    );
+    load(&mut d, &mut s, &image)?;
+    d.ok(
+        &mut s,
+        4,
+        0,
+        &abi::command(&command(0, 1, json!({"kind":"record"}), 0, None, 0)),
+    );
+    let held = d.hold_raw_command(&mut s, 0, 0, &Bits::default(), false);
+    let stable = |s: &Sim<'_>| {
+        assert_eq!(s.model.get("response_valid"), 1);
+        assert_eq!(s.model.get("response_error"), held.0);
+        assert_eq!(s.model.bits("response_data"), held.1);
+    };
+    let execute = |s: &mut Sim<'_>, finish: bool| {
+        s.model
+            .set_all(&[("execute_valid", 1), ("execute_finish", u64::from(finish))]);
+        s.until(1000, "independent execution ready", |m| {
+            m.get("execute_ready") != 0
+        });
+        s.idle(1);
+        s.model.set("execute_valid", 0);
+        s.until(1000, "independent execution done", |m| {
+            m.get("execute_done") != 0
+        });
+        assert_eq!(s.model.get("execute_error"), 0);
+        s.idle(1);
+    };
+    let observe = |s: &mut Sim<'_>, kind: u64, index: u64, frame: u64, phase: u64| {
+        s.model.set_all(&[
+            ("observe_valid", 1),
+            ("observe_kind", kind),
+            ("observe_index", index),
+        ]);
+        s.until(1000, "observation ready", |m| m.get("observe_ready") != 0);
+        s.idle(1);
+        s.model.set("observe_valid", 0);
+        assert_eq!(s.model.get("observe_response_valid"), 1);
+        assert_eq!(s.model.get("observe_frame"), frame);
+        assert_eq!(s.model.get("observe_phase"), phase);
+        let row = (
+            s.model.get("observe_response_error"),
+            s.model.bits("observe_data"),
+        );
+        s.idle(1);
+        row
+    };
+    let resident = |s: &mut Sim<'_>, opcode: u64, index: u64, data: &Bits| {
+        s.model.set_all(&[
+            ("resident_valid", 1),
+            ("resident_opcode", opcode),
+            ("resident_index", index),
+        ]);
+        s.model.set_bits("resident_data", data);
+        s.until(1000, "resident command ready", |m| {
+            m.get("resident_ready") != 0
+        });
+        s.idle(1);
+        s.model.set("resident_valid", 0);
+        s.until(1000, "resident command result", |m| {
+            m.get("resident_done") != 0
+        });
+        let reply = (
+            s.model.get("resident_error"),
+            s.model.bits("resident_result"),
+        );
+        s.idle(1);
+        reply
+    };
+    execute(&mut s, false);
+    stable(&s);
+    let (error, row) = observe(&mut s, 0, 0, 0, 2);
+    assert_eq!(error, 0);
+    assert_eq!(row.get(33, 2), 2);
+    assert_eq!(row.get(192, 64), 0);
+    stable(&s);
+    assert_eq!(resident(&mut s, 12, 0, &Bits::default()), (0, row));
+    assert_eq!(
+        resident(&mut s, 12, u32::MAX.into(), &Bits::default()),
+        (3, Bits::zero(832))
+    );
+    stable(&s);
+    let (error, row) = observe(&mut s, 1, 0, 0, 2);
+    assert_eq!(error, 0);
+    assert_eq!(row.get(37, 3), 1);
+    let (error, event) = observe(&mut s, 2, 0, 0, 2);
+    assert_eq!(error, 0);
+    assert_eq!(event.get(192, 2), 2);
+    for kind in 0..4 {
+        let (error, row) = observe(&mut s, kind, u32::MAX.into(), 0, 2);
+        assert_eq!(error, 1);
+        assert_eq!(row, Bits::zero(832));
+        stable(&s);
+    }
+    s.model.set_all(&[
+        ("observe_valid", 1),
+        ("loop_read_valid", 1),
+        ("loop_read_slot", 0),
+    ]);
+    s.model.eval();
+    assert_eq!(s.model.get("observe_ready"), 0);
+    assert_eq!(s.model.get("loop_read_ready"), 1);
+    s.idle(1);
+    s.model.set("loop_read_valid", 0);
+    assert_eq!(s.model.get("loop_response_valid"), 1);
+    assert_eq!(s.model.get("observe_response_valid"), 0);
+    s.idle(1);
+    s.model.set("observe_valid", 0);
+    s.idle(1);
+    s.model.set_all(&[
+        ("observe_valid", 1),
+        ("execute_valid", 1),
+        ("execute_finish", 1),
+    ]);
+    s.model.eval();
+    assert_eq!(s.model.get("observe_ready"), 0);
+    assert_eq!(s.model.get("execute_ready"), 1);
+    s.idle(1);
+    s.model
+        .set_all(&[("observe_valid", 0), ("execute_valid", 0)]);
+    s.until(1000, "finish before observation", |m| {
+        m.get("execute_done") != 0
+    });
+    s.idle(1);
+    let (error, row) = observe(&mut s, 0, 0, 32, 0);
+    assert_eq!(error, 0);
+    assert_eq!(row.get(192, 64), 32);
+    stable(&s);
+    let (error, collected) = resident(&mut s, 6, 0, &Bits::from_u64(1));
+    assert_eq!(error, 0);
+    assert_eq!(collected.get(37, 3), 1);
+    let (error, empty) = resident(&mut s, 13, 0, &Bits::default());
+    assert_eq!(error, 0);
+    assert_eq!((empty.get(0, 1), empty.get(1, 32)), (0, 2));
+    stable(&s);
+    s.model
+        .set_all(&[("observe_valid", 1), ("resident_valid", 1), ("reset", 1)]);
+    s.idle(1);
+    assert_eq!(s.model.get("observe_response_valid"), 0);
+    assert_eq!(s.model.get("observe_ready"), 0);
+    assert_eq!(s.model.get("resident_ready"), 0);
+    assert_eq!(s.model.get("resident_done"), 0);
+    println!(
+        "coherent observations: full loop/request/event rows, PROCESS/FINISH phase and frame, held host reply, invalid bounds, execution/SP priority and reset"
+    );
+    Ok(())
+}

@@ -13,6 +13,7 @@ module timing_bench #(
     parameter integer INPUT_PORTS = 16,
     parameter integer OUTPUT_PORTS = 16,
     parameter integer REUSE_VIEWS = 0,
+    parameter integer CAPTURE_CHANNELS = 0,
     parameter integer VIEWS = 32,
     parameter integer SLOTS = 1024,
     parameter integer CHUNK_FRAMES = 32,
@@ -76,6 +77,8 @@ module timing_bench #(
     wire [31:0] sample_output_data;
     wire core_reset;
     wire maintenance_enable;
+    wire cut_snapshot_valid;
+    wire [1727:0] cut_snapshot_data;
     wire [31:0] reclaim_pending;
     wire [31:0] reclaim_high_water;
     wire [63:0] reclaim_references;
@@ -217,6 +220,7 @@ module timing_bench #(
         .INPUT_PORTS(INPUT_PORTS),
         .OUTPUT_PORTS(OUTPUT_PORTS),
         .REUSE_VIEWS(REUSE_VIEWS),
+        .CAPTURE_CHANNELS(CAPTURE_CHANNELS),
         .VIEWS(VIEWS),
         .SLOTS(SLOTS),
         .CHUNK_FRAMES(CHUNK_FRAMES),
@@ -244,6 +248,8 @@ module timing_bench #(
         .clk(clk),
         .reset(core_reset),
         .maintenance_enable(maintenance_enable),
+        .cut_snapshot_valid(cut_snapshot_valid),
+        .cut_snapshot_data(cut_snapshot_data),
         .reclaim_pending(reclaim_pending),
         .reclaim_high_water(reclaim_high_water),
         .reclaim_references(reclaim_references),

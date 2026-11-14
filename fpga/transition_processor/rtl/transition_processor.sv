@@ -31,6 +31,15 @@ module transition_processor #(
     output reg loop_response_valid,
     output reg loop_response_error,
     output wire [163:0] loop_response_data,
+    input wire observe_valid, output wire observe_ready,
+    input wire [1:0] observe_kind, input wire [31:0] observe_index,
+    output reg observe_response_valid, output reg observe_response_error,
+    output reg [63:0] observe_frame, output reg [1:0] observe_phase,
+    output wire [831:0] observe_data,
+    input wire resident_valid, output wire resident_ready,
+    input wire [7:0] resident_opcode, input wire [31:0] resident_index,
+    input wire [639:0] resident_data,
+    output reg resident_done, output reg [3:0] resident_error, output reg [831:0] resident_result,
     output wire [31:0] configured_quantum
 );
     localparam [3:0] OK=0, INVALID_CONFIG=1, CAPACITY=2, INVALID_ID=3,
@@ -85,7 +94,7 @@ module transition_processor #(
         S_READ_LOOP_REPLY, S_READ_REQUEST_REPLY, S_READ_EVENT_REPLY, S_SET_REPEAT
     } state_t;
     state_t state, read_return, offer_return, apply_return, natural_return, react_return;
-    reg configured, execution_command;
+    reg configured, execution_command, resident_command;
     reg [3:0] fault_error;
     reg [1:0] phase;
     reg [63:0] frame;
@@ -168,18 +177,26 @@ module transition_processor #(
     wire loop_accept = loop_read_valid && loop_read_ready;
     wire loop_in_range = loop_read_slot < loop_slots;
     wire [LA-1:0] shared_address = LA'(loop_read_slot);
+    wire observe_accept=observe_valid && observe_ready;
+    wire observe_in_range=observe_kind == 0 ? observe_index < loop_slots
+        : observe_kind == 1 ? observe_index < request_slots
+        : observe_kind == 2 && observe_index < event_count;
+    wire observe_loop=observe_accept && observe_kind == 0 && observe_in_range;
+    wire observe_request=observe_accept && observe_kind == 1 && observe_in_range;
+    wire observe_event=observe_accept && observe_kind == 2 && observe_in_range;
+    reg [1:0] observation_kind;
     tp_ram #(.WIDTH(832), .DEPTH(LOOP_DEPTH), .ADDR_BITS(LA)) loops (
-        clk, loop_stream ? loop_stream_read : lr_en || (loop_accept && loop_in_range),
-        loop_stream ? stream_loop_address : loop_accept ? shared_address : lr_address,
+        clk, loop_stream ? loop_stream_read : lr_en || (loop_accept && loop_in_range) || observe_loop,
+        loop_stream ? stream_loop_address : loop_accept ? shared_address : observe_loop ? LA'(observe_index) : lr_address,
         lr_data, lw_en, lw_address, lw_data);
     tp_ram #(.WIDTH(RW), .DEPTH(REQUEST_DEPTH), .ADDR_BITS(RA)) requests (
-        clk, rr_en, rr_address, rr_data, rw_en, rw_address, rw_data);
+        clk, rr_en || observe_request, observe_request ? RA'(observe_index) : rr_address, rr_data, rw_en, rw_address, rw_data);
     tp_ram #(.WIDTH(192), .DEPTH(LOOP_DEPTH), .ADDR_BITS(SA)) specs (
         clk, sr_en, sr_address, sr_data, sw_en, sw_address, sw_data);
     tp_ram #(.WIDTH(SA), .DEPTH(LOOP_DEPTH), .ADDR_BITS(SA)) dependency_order (
         clk, mr_en, mr_address, mr_data, mw_en, mw_address, mw_data);
     tp_ram #(.WIDTH(256), .DEPTH(EVENT_DEPTH), .ADDR_BITS(EA)) events (
-        clk, er_en, er_address, er_data, ew_en, ew_address, ew_data);
+        clk, er_en || observe_event, observe_event ? EA'(observe_index) : er_address, er_data, ew_en, ew_address, ew_data);
 
     tp_ram #(.WIDTH(NW), .DEPTH(REQUEST_DEPTH), .ADDR_BITS(RA)) membership0 (
         clk, nr_en, nr_address, nr0_data, nw0_en, nw_address, nw_data);
@@ -191,9 +208,14 @@ module transition_processor #(
         clk, head_read, head_address, hr1_data, hw1_en, hw_address, hw_data);
 
     assign busy = state != S_IDLE;
-    assign execute_ready = !reset && state == S_IDLE && !loop_response_valid
+    assign execute_ready = !reset && state == S_IDLE && !loop_response_valid && !observe_response_valid
         && !(phase == SETTLED && loop_read_valid);
-    assign command_ready = execute_ready && !execute_valid && !response_valid;
+    assign command_ready = execute_ready && !execute_valid && !response_valid && !observe_accept && !resident_valid;
+    assign resident_ready = execute_ready && !execute_valid && !observe_accept;
+    assign observe_ready = !reset && state == S_IDLE && !execute_valid
+        && !loop_read_valid && !loop_response_valid && !observe_response_valid;
+    assign observe_data = observe_response_error ? 832'b0 : observation_kind == 0 ? lr_data
+        : observation_kind == 1 ? {{(832-RW){1'b0}},rr_data} : {576'b0,er_data};
     assign loop_read_ready = !reset && state == S_IDLE && phase == SETTLED
         && !loop_response_valid && !execute_valid;
     assign loop_response_data = loop_response_error ? 164'b0 :
@@ -203,9 +225,16 @@ module transition_processor #(
         if (reset) begin
             loop_response_valid <= 0;
             loop_response_error <= 0;
+            observe_response_valid <= 0; observe_response_error <= 0;
+            observe_frame <= 0; observe_phase <= 0; observation_kind <= 0;
         end else begin
             loop_response_valid <= loop_accept;
             if (loop_accept) loop_response_error <= !loop_in_range;
+            observe_response_valid <= observe_accept;
+            if (observe_accept) begin
+                observe_response_error <= !observe_in_range; observation_kind <= observe_kind;
+                observe_frame <= frame; observe_phase <= phase;
+            end
         end
     end
 
@@ -336,6 +365,9 @@ module transition_processor #(
             if (execution_command) begin
                 execute_done <= 1;
                 execute_error <= error;
+            end else if (resident_command) begin
+                resident_done <= 1;
+                resident_error <= error;
             end else begin
                 response_valid <= 1;
                 response_error <= error;
@@ -349,7 +381,10 @@ module transition_processor #(
     task automatic reply(input [3:0] error, input [831:0] data);
         begin
             reply_empty(error);
-            if (!execution_command) response_data <= data;
+            if (!execution_command) begin
+                if (resident_command) resident_result <= data;
+                else response_data <= data;
+            end
         end
     endtask
     task automatic read_loop(input [31:0] slot, input source_only,
@@ -439,11 +474,13 @@ module transition_processor #(
         finish_valid <= 0;
         nr_en <= 0; nw0_en <= 0; nw1_en <= 0; hw0_en <= 0; hw1_en <= 0;
         execute_done <= 0;
+        resident_done <= 0;
         if (response_valid && response_ready) response_valid <= 0;
         if (reset) begin
             state <= S_IDLE;
-            configured <= 0; fault_error <= 0; execution_command <= 0;
+            configured <= 0; fault_error <= 0; execution_command <= 0; resident_command <= 0;
             execute_done <= 0; execute_error <= 0;
+            resident_done <= 0; resident_error <= 0; resident_result <= 0;
             phase <= IDLE_PHASE; frame <= 0;
             active_bank <= 0; staging_open <= 0;
             stage_counter <= 0; active_publication <= 0;
@@ -465,12 +502,17 @@ module transition_processor #(
         end else begin
             case (state)
                 S_IDLE: if (execute_valid && execute_ready) begin
-                    execution_command <= 1;
+                    execution_command <= 1; resident_command <= 0;
                     opcode <= execute_finish ? FINISH : PROCESS;
                     index <= 0; payload <= 0;
                     state <= S_DISPATCH;
+                end else if (resident_valid && resident_ready) begin
+                    execution_command <= 0; resident_command <= 1; resident_result <= 0;
+                    opcode <= resident_opcode; index <= resident_index; payload <= resident_data;
+                    prepare_events <= ({1'b0,resident_data[31:0]} << 1)+{1'b0,resident_data[63:32]};
+                    state <= S_DISPATCH;
                 end else if (command_valid && command_ready) begin
-                    execution_command <= 0;
+                    execution_command <= 0; resident_command <= 0;
                     response_data <= 0;
                     opcode <= command_opcode; index <= command_index; payload <= command_data;
                     prepare_events <= ({1'b0,command_data[31:0]} << 1)+{1'b0,command_data[63:32]};

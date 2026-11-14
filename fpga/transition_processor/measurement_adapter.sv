@@ -53,6 +53,10 @@ module transition_measure_adapter #(
         .loop_response_valid(loop_response_valid),
         .loop_response_error(loop_response_error),
         .loop_response_data(loop_response_data),
+        .observe_valid(1'b0),.observe_ready(),.observe_kind(2'b0),.observe_index(32'b0),
+        .observe_response_valid(),.observe_response_error(),.observe_frame(),.observe_phase(),.observe_data(),
+        .resident_valid(1'b0),.resident_ready(),.resident_opcode(8'b0),.resident_index(32'b0),.resident_data(640'b0),
+        .resident_done(),.resident_error(),.resident_result(),
         .configured_quantum(configured_quantum),
         .execute_valid(execute_valid),
         .execute_ready(execute_ready),
@@ -84,6 +88,10 @@ module transition_measure_adapter #(
         .loop_response_valid(loop_response_valid),
         .loop_response_error(loop_response_error),
         .loop_response_data(loop_response_data),
+        .observe_valid(1'b0),.observe_ready(),.observe_kind(2'b0),.observe_index(32'b0),
+        .observe_response_valid(),.observe_response_error(),.observe_frame(),.observe_phase(),.observe_data(),
+        .resident_valid(1'b0),.resident_ready(),.resident_opcode(8'b0),.resident_index(32'b0),.resident_data(640'b0),
+        .resident_done(),.resident_error(),.resident_result(),
         .configured_quantum(configured_quantum)
     );
     assign execute_ready = 0;
