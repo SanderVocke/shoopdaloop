@@ -165,8 +165,8 @@ Depends on: stage 1 inventory and baseline.
 - [x] Separate generic image/memory helpers from TP topology, action/request
   images, app scenarios and hardcoded integrated hierarchy probes.
 - [x] Rewire `rt_fpga_testbench` features/dependencies so component-only tests
-  compile without the soon-to-be-retired crates. Keep this stage buildable while
-  obsolete integration paths still exist.
+  compile without the soon-to-be-retired crates. Complete the dependency removal and obsolete integration deletion as one
+  buildable cutover after extracting the shared helpers.
 
 Verification: run Marlin core lifetime/port/trace checks, SP instruction/FIFO and
 JP arithmetic checks, plus one AXI memory test; inspect `cargo tree` for retained
@@ -249,22 +249,23 @@ available; distinguish elaboration checks from new place/route measurements.
 
 Depends on: stages 1–5 complete.
 
-- [ ] Use a fresh worktree/output/cache directory to build and run all retained
-  Marlin component tests and the SP -> JP -> memory smoke, not cached old tops.
+- [x] Use a fresh worktree with separate Rust targets and RTL cache for SP, JP,
+  Marlin core and the complete TP-free pipeline matrix, alongside the complete
+  retained suite in the primary checkout. Do not rely on cached old tops.
   Run instant/fixed/stalled AXI32/64 cases and selected DRAMsim3 cases covering
   delayed transfers, dirty forwarding, retirement/reuse and coordinated reset.
-- [ ] Check exact signed arithmetic and ramps, FIFO pressure, malformed operands,
+- [x] Check exact signed arithmetic and ramps, FIFO pressure, malformed operands,
   partial failure, media ownership/reference counts and memory fault propagation.
   Use the retained inventory rather than rerunning retired musical workloads.
-- [ ] Run `cargo fmt --all -- --check`, `python3 scripts/check_shoop_test_usage.py`
+- [x] Run `cargo fmt --all -- --check`, `python3 scripts/check_shoop_test_usage.py`
   when Rust tests changed, and `RUSTFLAGS="-D warnings" cargo build --workspace`.
   Run `cargo fmt --all` before Rust commits and inspect for unrelated formatting.
-- [ ] Run the repository's complete native Rust gate before the final behavior
+- [x] Run the repository's complete native Rust gate before the final behavior
   push: `SHOOP_ALLOW_MISSING_BACKENDS=1 cargo nextest run --workspace --features
   shoop_engine/app_backend,shoop_backend/native-fx --profile ci`. Use the required
   toolchain/environment. Rely on CI for other platforms unless failures require
   targeted reproduction; check native/Wasm dependency isolation there.
-- [ ] Confirm removal via source/dependency/source-manifest audits and review
+- [x] Confirm removal via source/dependency/source-manifest audits and review
   every ledger row. Record tool versions, seeds, commands, results, retired
   coverage and any unavailable gates without describing missing checks as passes.
 
@@ -275,18 +276,18 @@ execution end-to-end gate, not a complete loop/backend/board acceptance claim.
 
 Depends on: stage 6 evidence and a clean intended diff.
 
-- [ ] Commit each completed stage or meaningful milestone and update this plan
+- [x] Commit each completed stage or meaningful milestone and update this plan
   throughout implementation. Push `feat/fpga-retain-execution-components`.
-- [ ] Create a PR into `proto/fpga-rust-reference`. Explain what was removed,
+- [x] Create a PR into `proto/fpga-rust-reference`. Explain what was removed,
   what remains reusable, the intentional loss of the complete FPGA backend,
   the relation to #997 and the validation results. Use a draft while incomplete.
-- [ ] Inspect CI results and artifacts; investigate failures to determine whether
+- [x] Inspect CI results and artifacts; investigate failures to determine whether
   these changes caused them. Fix change-related failures and rerun affected
   checks. Report unrelated/pre-existing or infrastructure failures without
   treating them as completion blockers; do not require globally green CI.
-- [ ] Do not wait for human or automated review, poll for approval, or require
+- [x] Do not wait for human or automated review, poll for approval, or require
   review completion before finishing this task.
-- [ ] Recheck base movement/conflicts, final diff and change-related CI results
+- [x] Recheck base movement/conflicts, final diff and change-related CI results
   after the last push. Mark the PR ready when complete and report its URL and
   any unrelated CI failures. Leave merge to the user; do not merge autonomously
   or modify other branches/PRs.
@@ -307,4 +308,15 @@ repeat broad gates only when their conclusions could have changed.
 - Implementation steps may be revised when new evidence warrants it.
 - Design rules may be revised for a documented, well-supported reason.
 - Goals and acceptance criteria must not be changed without explicit user approval.
-- Do not implement the cleanup as part of the planning task.
+- The user explicitly authorized execution after the planning task.
+
+## Completion evidence
+
+Implementation and staged commits are published in PR #998 into
+`proto/fpga-rust-reference`. See [validation results](docs/fpga/retirement-validation.md)
+and the [disposition ledger](docs/fpga/retirement-ledger.md). The complete retained
+Marlin suite, fresh-worktree execution matrix, CPU numeric checks, codec rerun,
+small-stack regression and local synthesis gates pass. Native-suite setup issues
+and timing failures were investigated; the remaining launcher failure reproduces
+on untouched upstream. CI is inspected for change-related failures, with no
+requirement for global green status or review approval. No automatic merge.

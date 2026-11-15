@@ -25,8 +25,8 @@ System package helper and sudo are unavailable. A workspace-owned Rust toolchain
 is installed. Debian Verilator 5.032 and CMake were extracted into the workspace;
 Yosys comes from the pinned OSS CAD Suite. The original compiled SP, JP and Marlin
 core baseline tests pass. Extracted SP/JP/core/smoothing and production CPU tests
-pass with Rust warnings denied. DRAMsim3 builds successfully. Complete retained
-simulation and native gates are in progress. No board or place/route validation
+pass with Rust warnings denied. DRAMsim3 builds successfully. The complete retained simulation passes; native results and isolated reruns
+are documented in retirement-validation.md. No board or place/route validation
 is implied by component simulation.
 
 The independent float/fixed bound checker now consumes canonical CPU graph
@@ -34,3 +34,7 @@ ordering through the production testbench's `graph` command. No hardware image,
 view addresses, ramp addresses, instructions or transition topology are exported.
 Six Python checks include deliberate error/clipping detection, canonical-order
 roundtrips, fan-in, successive gains, recording and playback bounds.
+
+Native startup helper separation and the original 1 MiB stack regression are
+preserved. The remaining launcher-shutdown test failure reproduces on the
+untouched FPGA base (`247c4974`), outside this retirement's scope.
