@@ -11,6 +11,7 @@ pub struct Capabilities {
     pub enabled: bool,
     /// Direct audio loops supporting immediate Record, Start and Stop.
     pub playback: Vec<LoopId>,
+    pub grab: Vec<LoopId>,
     pub refused: u64,
 }
 
@@ -21,6 +22,20 @@ pub enum Command {
     Start(LoopId),
     Stop(LoopId),
     Record(LoopId),
+    AdoptRingbuffers {
+        loop_id: LoopId,
+        reverse_cycle_start: u32,
+        cycles_length: u32,
+        go_to_cycle: u32,
+        mode: LoopMode,
+    },
+    Grab {
+        loop_id: LoopId,
+        sync: LoopId,
+        target: Option<LoopId>,
+        cycles: u32,
+        play_after_record: bool,
+    },
     InputGainDb(TrackId, f32),
     InputBalance(TrackId, f32),
     OutputGainDb(TrackId, f32),
@@ -84,6 +99,52 @@ pub fn group(action: &Action, state: &SessionSnapshot) -> Option<Vec<Command>> {
         }));
         Some(commands)
     };
+    let grab = |ids: Vec<LoopId>| -> Option<Vec<Command>> {
+        if !state.global.sync || ids.iter().any(|id| !state.immediate.grab.contains(id)) {
+            return None;
+        }
+        let sync = state
+            .tracks
+            .iter()
+            .flat_map(|t| &t.loops)
+            .find(|l| l.sync)?
+            .id;
+        let target = state
+            .tracks
+            .iter()
+            .flat_map(|t| &t.loops)
+            .find(|l| l.targeted)
+            .map(|l| l.id);
+        if find(sync).is_none_or(|l| l.composite_kind != CompositeKind::None)
+            || target
+                .is_some_and(|id| find(id).is_none_or(|l| l.composite_kind != CompositeKind::None))
+        {
+            return None;
+        }
+        let mut commands = Vec::new();
+        if state.global.solo {
+            for track in &state.tracks {
+                if track.loops.iter().any(|l| ids.contains(&l.id)) {
+                    for other in track.loops.iter().filter(|l| !ids.contains(&l.id)) {
+                        if !state.immediate.playback.contains(&other.id)
+                            && !state.immediate.grab.contains(&other.id)
+                        {
+                            return None;
+                        }
+                        commands.push(Command::Stop(other.id));
+                    }
+                }
+            }
+        }
+        commands.extend(ids.into_iter().map(|loop_id| Command::Grab {
+            loop_id,
+            sync,
+            target,
+            cycles: state.global.apply_n_cycles.max(1),
+            play_after_record: state.global.play_after_record,
+        }));
+        Some(commands)
+    };
     let track = |id, action: &TrackAction| -> Option<Command> {
         Some(match *action {
             TrackAction::InputGainChanged(v) => Command::InputGainDb(id, v),
@@ -104,6 +165,29 @@ pub fn group(action: &Action, state: &SessionSnapshot) -> Option<Vec<Command>> {
     };
     let unsynced = !state.global.sync;
     let commands = match action {
+        Action::Loop {
+            loop_id,
+            action: LoopAction::GrabClicked,
+            ..
+        } => {
+            let entry = find(*loop_id)?;
+            grab(if entry.selected {
+                selected()
+            } else {
+                vec![*loop_id]
+            })?
+        }
+        Action::Loop {
+            loop_id,
+            action: LoopAction::DefaultClicked,
+            ..
+        } if state.global.sync
+            && state.global.default_recording_action == DefaultRecordingAction::Grab
+            && find(*loop_id).is_some_and(|l| l.empty && l.mode == LoopMode::Stopped) =>
+        {
+            grab(vec![*loop_id])?
+        }
+
         Action::Loop {
             loop_id,
             action: LoopAction::GainChanged(v),
@@ -166,6 +250,34 @@ pub fn group(action: &Action, state: &SessionSnapshot) -> Option<Vec<Command>> {
             true,
         )?,
         Action::Control(operation) => match operation {
+            ControlOperation::Grab { loops } => grab(loops.clone())?,
+            ControlOperation::AdoptRingbuffers {
+                loops,
+                reverse_cycle_start,
+                cycles_length,
+                go_to_cycle,
+                go_to_mode,
+            } if matches!(
+                go_to_mode,
+                LoopMode::Stopped | LoopMode::Playing | LoopMode::Recording | LoopMode::Unknown
+            ) && loops.iter().all(|id| state.immediate.grab.contains(id)) =>
+            {
+                loops
+                    .iter()
+                    .map(|loop_id| Command::AdoptRingbuffers {
+                        loop_id: *loop_id,
+                        reverse_cycle_start: *reverse_cycle_start,
+                        cycles_length: *cycles_length,
+                        go_to_cycle: *go_to_cycle,
+                        mode: if *go_to_mode == LoopMode::Unknown {
+                            LoopMode::Stopped
+                        } else {
+                            *go_to_mode
+                        },
+                    })
+                    .collect()
+            }
+
             ControlOperation::SetLoopGain { loops, gain } => loops
                 .iter()
                 .map(|id| Command::LoopGain(*id, *gain))

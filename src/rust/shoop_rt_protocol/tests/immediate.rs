@@ -33,7 +33,7 @@ fn deadlines_and_fixed_result_records_roundtrip_without_semantic_preflight() {
     assert_eq!(codec::decode_client(&bytes[..len]).unwrap(), message);
     let input = CommandRecord::new(Command::LoopGain(9, 0.25));
     assert_eq!(input.code(), Code::Unprocessed);
-    assert_eq!(&input.bytes()[12..], &[0; 4]);
+    assert_eq!(&input.bytes()[28..], &[0; 4]);
     assert_eq!(&input.bytes()[4..8], &9u32.to_le_bytes());
     let applied = input.complete(Code::Applied);
     assert_eq!(applied.command(), input.command());
@@ -49,7 +49,7 @@ fn deadlines_and_fixed_result_records_roundtrip_without_semantic_preflight() {
     assert!(len < MAX_RECORD_BYTES);
     assert_eq!(codec::decode_engine(&bytes[..len]).unwrap(), response);
     let mut invalid = *applied.bytes();
-    invalid[12..].copy_from_slice(&999u32.to_le_bytes());
+    invalid[28..].copy_from_slice(&999u32.to_le_bytes());
     assert!(CommandRecord::from_bytes(invalid).is_none());
     let mut invalid = *header.bytes();
     invalid[44] = 1;
@@ -77,7 +77,7 @@ fn groups_preserve_commands_without_semantic_preflight() {
 fn recording_and_capture_failure_use_the_existing_result_layout() {
     let command = Command::Record(12);
     let record = CommandRecord::new(command).complete(Code::CaptureUnavailable);
-    assert_eq!(record.bytes().len(), 16);
+    assert_eq!(record.bytes().len(), 32);
     assert_eq!(CommandRecord::from_bytes(*record.bytes()), Some(record));
     assert_eq!(record.command(), command);
     let header = Header::new(7, 8, None).complete(400, Code::Applied);
@@ -85,4 +85,61 @@ fn recording_and_capture_failure_use_the_existing_result_layout() {
     let mut bytes = [0; MAX_RECORD_BYTES];
     let len = codec::encode_engine(&message, &mut bytes).unwrap();
     assert_eq!(codec::decode_engine(&bytes[..len]).unwrap(), message);
+}
+
+#[shoop_test]
+fn maximum_grab_groups_and_responses_fit_one_transport_record() {
+    use shoop_rt_protocol::immediate::{Grab, GrabGesture, GrabMode};
+    let values = [
+        Command::Grab(
+            9,
+            Grab {
+                sync: Some(2),
+                reverse_start_cycle: Some(0),
+                cycles_length: Some(4),
+                go_to_cycle: Some(2),
+                mode: GrabMode::Recording,
+            },
+        ),
+        Command::Grab(
+            9,
+            Grab {
+                sync: None,
+                reverse_start_cycle: None,
+                cycles_length: None,
+                go_to_cycle: None,
+                mode: GrabMode::Stopped,
+            },
+        ),
+        Command::GrabGesture(
+            9,
+            GrabGesture {
+                sync: 2,
+                target: Some(4),
+                cycles: 3,
+                play_after_record: true,
+            },
+        ),
+    ];
+    let mut bytes = [0; MAX_RECORD_BYTES];
+    for command in values {
+        let input = ClientMessage::Immediate(Batch::new(7, 8, &[command; COMMANDS]).unwrap());
+        let len = codec::encode_client(&input, &mut bytes).unwrap();
+        assert!(len <= MAX_RECORD_BYTES);
+        assert_eq!(codec::decode_client(&bytes[..len]).unwrap(), input);
+        let record = CommandRecord::new(command).complete(Code::Applied);
+        assert_eq!(CommandRecord::from_bytes(*record.bytes()), Some(record));
+        let header = Header::new(7, 8, None).complete(400, Code::Applied);
+        let response =
+            EngineMessage::ImmediateResponse(Response::new(header, &[record; COMMANDS]).unwrap());
+        let len = codec::encode_engine(&response, &mut bytes).unwrap();
+        assert!(len <= MAX_RECORD_BYTES);
+        assert_eq!(codec::decode_engine(&bytes[..len]).unwrap(), response);
+        for prefix in 0..len {
+            assert!(codec::decode_engine(&bytes[..prefix]).is_err());
+        }
+    }
+    let mut noncanonical = *CommandRecord::new(Command::Stop(9)).bytes();
+    noncanonical[12] = 1;
+    assert!(CommandRecord::from_bytes(noncanonical).is_none());
 }

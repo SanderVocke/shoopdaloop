@@ -1171,7 +1171,7 @@ fn recording_milestone_exhaustion_preserves_prefix_and_finish_reservations() {
 }
 
 #[shoop_test]
-fn recording_milestone_encoded_record_finish_results_match_published_state() {
+fn encoded_record_and_grab_commands_return_results_matching_published_state() {
     use shoop_rt_transport::carrier::{RecordPort, RecordServer};
     use std::{cell::RefCell, rc::Rc};
     struct Port {
@@ -1228,7 +1228,48 @@ fn recording_milestone_encoded_record_finish_results_match_published_state() {
                 if mode == if matches!(finish, Command::Start(_)) { LoopMode::Playing } else { LoopMode::Stopped }
         )));
     }
-    assert_eq!(responses.borrow().len(), 4);
+    use immediate::{Grab, GrabMode};
+    for (mode, frames) in [(GrabMode::Stopped, 1), (GrabMode::Recording, 4)] {
+        let spec = Grab {
+            sync: Some(0),
+            reverse_start_cycle: Some(1),
+            cycles_length: Some(1),
+            go_to_cycle: Some(if mode == GrabMode::Recording { 1 } else { 0 }),
+            mode,
+        };
+        let command = Command::Grab(0, spec);
+        let batch = Batch::new(c.0, c.1, &[command]).unwrap();
+        let len = codec::encode_client(&ClientMessage::Immediate(batch), &mut bytes).unwrap();
+        *input.borrow_mut() = Some(bytes[..len].to_vec());
+        server.pump(16);
+        assert_no_heap(|| offline.run(frames, |_, _| 0.25)).unwrap();
+        server.pump(16);
+        assert_eq!(
+            responses.borrow().last().unwrap().records()[0].code(),
+            immediate::Code::Applied
+        );
+    }
+    let batch = Batch::new(c.0, c.1, &[Command::Stop(0)]).unwrap();
+    let len = codec::encode_client(&ClientMessage::Immediate(batch), &mut bytes).unwrap();
+    *input.borrow_mut() = Some(bytes[..len].to_vec());
+    server.pump(16);
+    assert_no_heap(|| offline.run(1, |_, _| 0.25)).unwrap();
+    server.pump(16);
+    assert_eq!(
+        responses.borrow().last().unwrap().records()[0].code(),
+        immediate::Code::Applied
+    );
+    let mut payload = vec![0; server.endpoint().snapshot_capacity()];
+    let (_, len) = server.endpoint().read_snapshot(&mut payload).unwrap();
+    assert!(Records(&payload[HEADER..len]).any(|r| matches!(
+        r,
+        Ok(Record::Telemetry(Telemetry::Loop {
+            mode: LoopMode::Stopped,
+            length: 12,
+            ..
+        }))
+    )));
+    assert_eq!(responses.borrow().len(), 7);
 }
 
 #[shoop_test]
@@ -1283,4 +1324,438 @@ fn recording_milestone_disconnect_keeps_active_take_without_replaying_staged_rec
         d.history_capacity().unwrap().total_resource_pages
     );
     assert_eq!(stopped.resource_usage().reserved_pages, 0);
+}
+
+fn grab_fixture(q: usize) -> (Harness, (u64, u64)) {
+    let mut d = description();
+    d.quantum = q;
+    d.ramp_frames = 0;
+    grab_fixture_for(&d)
+}
+fn grab_fixture_for(d: &shoop_rt_engine::EngineDescription) -> (Harness, (u64, u64)) {
+    let q = d.quantum;
+    let (mut h, c) = recording_fixture(d);
+    h.run((q as u64 - h.frame() % q as u64) as usize % q, 1);
+    send(&mut h, c, &[Command::Record(0)]);
+    h.run(2 * q.max(8), 1);
+    send(&mut h, c, &[Command::Stop(0), Command::Start(0)]);
+    h.run(4 * q.max(8), 1);
+    let c = configuration(&mut h);
+    h.run((q as u64 - h.frame() % q as u64) as usize % q, 1);
+    (h, c)
+}
+fn sync_position(h: &mut Harness) -> (u64, u64) {
+    let Telemetry::Loop { length, .. } = observed_loop(h, loop_id(0, 1)) else {
+        panic!()
+    };
+    let start = immediate_results(h)
+        .into_iter()
+        .find(|r| r.records().iter().any(|v| v.command() == Command::Start(0)))
+        .unwrap()
+        .header
+        .frame();
+    (
+        length,
+        (h.host.endpoint().command_clock().frame().0 - start) % length,
+    )
+}
+
+#[shoop_test]
+fn grab_milestone_completed_audio_and_continuation_have_exact_samples_and_cut() {
+    use immediate::{Code, Grab, GrabMode};
+    let (mut h, c) = grab_fixture(1);
+    let cut = h.frame();
+    let (length, position) = sync_position(&mut h);
+    let spec = Grab {
+        sync: Some(0),
+        reverse_start_cycle: Some(1),
+        cycles_length: Some(1),
+        go_to_cycle: Some(0),
+        mode: GrabMode::Stopped,
+    };
+    send(&mut h, c, &[Command::Grab(1, spec)]);
+    h.run(1, 1);
+    assert_eq!(
+        immediate_results(&h).last().unwrap().records()[0].code(),
+        Code::Applied
+    );
+    let (frames, audio, _) = h.read(loop_id(1, 1), BulkSelector::AudioFrames);
+    assert_eq!(frames, length);
+    let expected: Vec<_> = (cut - position - length..cut - position)
+        .flat_map(|f| [f as f32 / 2000., -0.125])
+        .collect();
+    assert_eq!(audio, expected);
+    h.settle();
+    let cut = h.frame();
+    let (length, position) = sync_position(&mut h);
+    let prefix = length + position;
+    let spec = Grab {
+        reverse_start_cycle: None,
+        go_to_cycle: Some(1),
+        mode: GrabMode::Recording,
+        ..spec
+    };
+    send(&mut h, c, &[Command::Grab(1, spec)]);
+    h.run(4, 1);
+    assert_eq!(
+        immediate_results(&h).last().unwrap().records()[0].code(),
+        Code::Applied
+    );
+    assert!(matches!(
+        observed_loop(&mut h, loop_id(1, 1)),
+        Telemetry::Loop {
+            mode: LoopMode::Recording,
+            ..
+        }
+    ));
+    send(&mut h, c, &[Command::Start(1)]);
+    h.run(1, 1);
+    assert_eq!(
+        immediate_results(&h).last().unwrap().records()[0].code(),
+        Code::Applied
+    );
+    let (frames, audio, _) = h.read(loop_id(1, 1), BulkSelector::AudioFrames);
+    assert_eq!(frames, prefix + 4);
+    let expected: Vec<_> = (cut - prefix..cut + 4)
+        .flat_map(|f| [f as f32 / 2000., -0.125])
+        .collect();
+    assert_eq!(
+        audio, expected,
+        "history and new input must join without dropped or repeated samples"
+    );
+}
+
+fn continuing_grab(id: u32) -> Command {
+    Command::Grab(
+        id,
+        immediate::Grab {
+            sync: Some(0),
+            reverse_start_cycle: None,
+            cycles_length: Some(1),
+            go_to_cycle: Some(1),
+            mode: immediate::GrabMode::Recording,
+        },
+    )
+}
+
+#[shoop_test]
+fn grab_milestone_buffer_only_callbacks_finish_and_preserve_a_repeated_grab_prefix() {
+    use immediate::Code;
+    let (mut h, c) = grab_fixture(16);
+    let cut = h.host.endpoint().command_clock().frame().0;
+    let (length, position) = sync_position(&mut h);
+    let prefix = length + position;
+    let count = immediate_results(&h).len();
+    send(
+        &mut h,
+        c,
+        &[
+            continuing_grab(1),
+            continuing_grab(1),
+            Command::LoopGain(1, 0.25),
+        ],
+    );
+    h.run(1, 1);
+    let response = *immediate_results(&h).last().unwrap();
+    assert_eq!(response.header.frame(), cut);
+    assert_eq!(
+        response
+            .records()
+            .iter()
+            .map(|r| r.code())
+            .collect::<Vec<_>>(),
+        [Code::Applied, Code::CannotApply, Code::Applied]
+    );
+    send(&mut h, c, &[Command::Stop(1)]);
+    h.run(1, 1);
+    assert_eq!(immediate_results(&h).len(), count + 2);
+    assert_eq!(immediate_results(&h).last().unwrap().header.frame(), cut);
+    assert_eq!(
+        immediate_results(&h).last().unwrap().records()[0].code(),
+        Code::Applied
+    );
+    h.run(32, 1);
+    let (frames, audio, _) = h.read(loop_id(1, 1), BulkSelector::AudioFrames);
+    assert_eq!(
+        frames, prefix,
+        "no new audio was rendered between Grab and Stop"
+    );
+    let expected: Vec<_> = (cut - prefix..cut)
+        .flat_map(|f| [f as f32 / 2000., -0.125])
+        .collect();
+    assert_eq!(audio, expected);
+}
+
+#[shoop_test]
+fn grab_milestone_grouped_gestures_share_the_cut_and_fail_independently() {
+    use immediate::{Code, GrabGesture};
+    let (mut h, _) = grab_fixture(1);
+    h.done(Request::CreateLoop {
+        loop_id: loop_id(2, 1),
+        strip: strip(0, 1),
+    });
+    let c = configuration(&mut h);
+    let (length, position) = sync_position(&mut h);
+    let cut = h.frame();
+    let spec = GrabGesture {
+        sync: 0,
+        target: None,
+        cycles: 1,
+        play_after_record: true,
+    };
+    send(
+        &mut h,
+        c,
+        &[
+            Command::GrabGesture(1, spec),
+            Command::GrabGesture(u32::MAX, spec),
+            Command::GrabGesture(2, spec),
+        ],
+    );
+    h.run(1, 1);
+    let response = *immediate_results(&h).last().unwrap();
+    assert_eq!(response.header.frame(), cut);
+    assert_eq!(response.header.deadline(), None);
+    assert_eq!(
+        response
+            .records()
+            .iter()
+            .map(|r| r.code())
+            .collect::<Vec<_>>(),
+        [Code::Applied, Code::TargetUnavailable, Code::Applied]
+    );
+    for id in [1, 2] {
+        assert!(
+            matches!(observed_loop(&mut h, loop_id(id, 1)), Telemetry::Loop { mode: LoopMode::Playing, position: p, length: l, .. } if p == position && l == length)
+        );
+    }
+    let (_, a, _) = h.read(loop_id(1, 1), BulkSelector::AudioFrames);
+    let (_, b, _) = h.read(loop_id(2, 1), BulkSelector::AudioFrames);
+    assert_eq!(a, b);
+    assert_eq!(a[0], (cut - position - length) as f32 / 2000.);
+}
+
+#[shoop_test]
+fn grab_milestone_storage_failures_and_exhaustion_keep_a_usable_prefix() {
+    use immediate::Code;
+    let mut d = description();
+    d.ramp_frames = 0;
+    d.history.writers = 1;
+    d.history.audio_take_pages = 32;
+    let (mut h, _) = grab_fixture_for(&d);
+    h.done(Request::CreateLoop {
+        loop_id: loop_id(2, 1),
+        strip: strip(0, 1),
+    });
+    let c = configuration(&mut h);
+    send(
+        &mut h,
+        c,
+        &[
+            continuing_grab(1),
+            continuing_grab(2),
+            Command::LoopGain(2, 0.25),
+        ],
+    );
+    h.run(1, 1);
+    let response = *immediate_results(&h).last().unwrap();
+    assert_eq!(
+        response
+            .records()
+            .iter()
+            .map(|r| r.code())
+            .collect::<Vec<_>>(),
+        [Code::Applied, Code::CaptureUnavailable, Code::Applied]
+    );
+    assert!(matches!(
+        observed_loop(&mut h, loop_id(2, 1)),
+        Telemetry::Loop {
+            mode: LoopMode::Stopped,
+            length: 0,
+            ..
+        }
+    ));
+    h.run(2048, 16);
+    assert!(
+        matches!(observed_loop(&mut h, loop_id(1, 1)), Telemetry::Loop { mode: LoopMode::Stopped, length, capture_incomplete: true, .. } if length > 0)
+    );
+    let responses = immediate_results(&h).len();
+    let (frames, audio, _) = h.read(loop_id(1, 1), BulkSelector::AudioFrames);
+    assert!(frames > 0);
+    assert!(audio.chunks_exact(2).all(|s| s[1] == -0.125));
+    h.settle();
+    send(&mut h, c, &[Command::Start(1)]);
+    h.settle();
+    assert_eq!(
+        immediate_results(&h).len(),
+        responses + 1,
+        "exhaustion generates no unsolicited response"
+    );
+    assert_eq!(
+        immediate_results(&h).last().unwrap().records()[0].code(),
+        Code::Applied
+    );
+}
+
+#[shoop_test]
+fn grab_milestone_missing_history_preserves_existing_audio_and_later_commands() {
+    use immediate::{Code, Grab, GrabMode};
+    let mut d = description();
+    d.history.seconds = 0;
+    let (mut h, c) = recording_fixture(&d);
+    send(&mut h, c, &[Command::Record(1)]);
+    h.run(8, 1);
+    send(&mut h, c, &[Command::Stop(1)]);
+    h.run(1, 1);
+    let (_, old, _) = h.read(loop_id(1, 1), BulkSelector::AudioFrames);
+    h.settle();
+    send(
+        &mut h,
+        c,
+        &[
+            Command::Grab(
+                1,
+                Grab {
+                    sync: None,
+                    reverse_start_cycle: None,
+                    cycles_length: None,
+                    go_to_cycle: None,
+                    mode: GrabMode::Stopped,
+                },
+            ),
+            Command::LoopGain(1, 0.5),
+        ],
+    );
+    h.run(1, 1);
+    let response = *immediate_results(&h).last().unwrap();
+    assert_eq!(
+        response
+            .records()
+            .iter()
+            .map(|r| r.code())
+            .collect::<Vec<_>>(),
+        [Code::HistoryUnavailable, Code::Applied]
+    );
+    let (_, current, _) = h.read(loop_id(1, 1), BulkSelector::AudioFrames);
+    assert_eq!(old, current);
+}
+
+#[shoop_test]
+fn grab_milestone_disconnect_keeps_capture_and_drops_unsent_finish() {
+    let (mut h, c) = grab_fixture(1);
+    let (length, position) = sync_position(&mut h);
+    let prefix = length + position;
+    send(&mut h, c, &[continuing_grab(1)]);
+    h.run(4, 1);
+    assert_eq!(
+        immediate_results(&h).last().unwrap().records()[0].code(),
+        immediate::Code::Applied
+    );
+    for _ in 0..FIFO_SINGLETONS {
+        send(&mut h, c, &[Command::LoopGain(0, 0.5)]);
+    }
+    send(&mut h, c, &[Command::Stop(1)]);
+    h.host.disconnect();
+    h.pump();
+    h.host.connect().unwrap();
+    h.pump();
+    h.lifecycle.clear();
+    h.run(4, 1);
+    assert!(matches!(
+        observed_loop(&mut h, loop_id(1, 1)),
+        Telemetry::Loop {
+            mode: LoopMode::Recording,
+            ..
+        }
+    ));
+    assert!(immediate_results(&h).is_empty());
+    send(&mut h, c, &[Command::Stop(1)]);
+    h.run(1, 1);
+    assert_eq!(immediate_results(&h).len(), 1);
+    assert_eq!(
+        immediate_results(&h)[0].records()[0].code(),
+        immediate::Code::Applied
+    );
+    let (frames, _, _) = h.read(loop_id(1, 1), BulkSelector::AudioFrames);
+    assert_eq!(frames, prefix + 8);
+    let expected_pages = description()
+        .history_capacity()
+        .unwrap()
+        .total_resource_pages;
+    let mut stopped = h.host.into_render().into_stopped();
+    stopped.cleanup().unwrap();
+    assert_eq!(stopped.media_usage().references, 0);
+    assert_eq!(stopped.resource_usage().free_pages, expected_pages);
+    assert_eq!(stopped.resource_usage().reserved_pages, 0);
+}
+
+#[shoop_test]
+fn grab_milestone_wrap_cut_and_empty_continuation_match_the_current_cycle() {
+    use immediate::{Code, Grab, GrabMode};
+    let (mut h, c) = grab_fixture(1);
+    let (length, position) = sync_position(&mut h);
+    h.run((length - position) as usize, 1);
+    let cut = h.frame();
+    send(
+        &mut h,
+        c,
+        &[Command::Grab(
+            1,
+            Grab {
+                sync: Some(0),
+                reverse_start_cycle: Some(1),
+                cycles_length: Some(1),
+                go_to_cycle: Some(0),
+                mode: GrabMode::Stopped,
+            },
+        )],
+    );
+    h.run(1, 1);
+    assert_eq!(
+        immediate_results(&h).last().unwrap().records()[0].code(),
+        Code::Applied
+    );
+    let (_, audio, _) = h.read(loop_id(1, 1), BulkSelector::AudioFrames);
+    let expected: Vec<_> = (cut - length..cut)
+        .flat_map(|f| [f as f32 / 2000., -0.125])
+        .collect();
+    assert_eq!(
+        audio, expected,
+        "a wrap belongs to the new cycle at this cut"
+    );
+
+    let (mut h, c) = grab_fixture(16);
+    let (length, position) = sync_position(&mut h);
+    h.run((length - position) as usize, 1);
+    let cut = h.host.endpoint().command_clock().frame().0;
+    send(
+        &mut h,
+        c,
+        &[Command::Grab(
+            1,
+            Grab {
+                sync: Some(0),
+                reverse_start_cycle: Some(0),
+                cycles_length: Some(1),
+                go_to_cycle: Some(0),
+                mode: GrabMode::Recording,
+            },
+        )],
+    );
+    h.run(1, 1);
+    assert_eq!(
+        immediate_results(&h).last().unwrap().records()[0].code(),
+        Code::Applied
+    );
+    send(&mut h, c, &[Command::Stop(1)]);
+    h.run(1, 1);
+    assert_eq!(immediate_results(&h).last().unwrap().header.frame(), cut);
+    assert_eq!(
+        immediate_results(&h).last().unwrap().records()[0].code(),
+        Code::Applied
+    );
+    h.run(32, 1);
+    let (frames, audio, _) = h.read(loop_id(1, 1), BulkSelector::AudioFrames);
+    assert_eq!(frames, 0);
+    assert!(audio.is_empty());
 }

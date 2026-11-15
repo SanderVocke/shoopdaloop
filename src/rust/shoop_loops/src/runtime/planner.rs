@@ -205,6 +205,7 @@ impl<S: Sample> LoopPlanner<S> {
             }
         };
         let mut take = Take {
+            audio_only: false,
             publish_incomplete: false,
             started_at: self.resolver.frame(),
             writer: None,
@@ -308,6 +309,7 @@ impl<S: Sample> LoopPlanner<S> {
             channel.raw_frames = None;
         }
         self.rows[slot].as_mut().expect("row").prepared = Some(Take {
+            audio_only: false,
             publish_incomplete: false,
             started_at: self.resolver.frame(),
             windows,
@@ -489,7 +491,7 @@ impl<S: Sample> LoopPlanner<S> {
                         .content_length,
                     channels: row.binding.channels as u32,
                     auxiliary_channels: row.binding.auxiliary_channels as u32,
-                    midi: row.binding.midi,
+                    midi: row.binding.midi && !take.audio_only,
                 },
                 audio: Some(media::Source {
                     snapshot,
@@ -509,7 +511,11 @@ impl<S: Sample> LoopPlanner<S> {
         } else {
             None
         };
-        let midi = if row.binding.midi { source()? } else { None };
+        let midi = if row.binding.midi && !take.audio_only {
+            source()?
+        } else {
+            None
+        };
         Ok(media::Input {
             auxiliary,
             description: media::Description {
@@ -522,7 +528,7 @@ impl<S: Sample> LoopPlanner<S> {
                 revision: take.revision,
                 frames,
                 channels: row.binding.channels as u32,
-                midi: row.binding.midi,
+                midi: row.binding.midi && !take.audio_only,
             },
             audio,
             midi,
@@ -814,7 +820,7 @@ impl<S: Sample> LoopPlanner<S> {
             revision: take.revision,
             frames: 0,
             channels: row.binding.channels as u32,
-            midi: row.binding.midi,
+            midi: row.binding.midi && !take.audio_only,
         })?;
         if let Some((resource, _)) = take.edit {
             let mut sources = [None; 3];
@@ -848,7 +854,7 @@ impl<S: Sample> LoopPlanner<S> {
                                 frames: state.content_length,
                                 channels: row.binding.channels as u32,
                                 auxiliary_channels: row.binding.auxiliary_channels as u32,
-                                midi: row.binding.midi,
+                                midi: row.binding.midi && !take.audio_only,
                             },
                             audio: Some(media::Source {
                                 snapshot: wet,
@@ -924,7 +930,7 @@ impl<S: Sample> LoopPlanner<S> {
                             revision: take.revision,
                             frames: state.capture_frames,
                             channels: row.binding.channels as u32,
-                            midi: row.binding.midi,
+                            midi: row.binding.midi && !take.audio_only,
                         },
                         audio,
                         midi,

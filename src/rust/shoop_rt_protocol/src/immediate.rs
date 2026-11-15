@@ -15,6 +15,28 @@ pub struct Diagnostics {
     pub last_rt: u8,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GrabMode {
+    Stopped,
+    Playing,
+    Recording,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Grab {
+    pub sync: Option<u32>,
+    pub reverse_start_cycle: Option<u32>,
+    pub cycles_length: Option<u32>,
+    pub go_to_cycle: Option<u32>,
+    pub mode: GrabMode,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GrabGesture {
+    pub sync: u32,
+    pub target: Option<u32>,
+    pub cycles: u32,
+    pub play_after_record: bool,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Command {
     LoopGain(u32, f32),
@@ -22,6 +44,8 @@ pub enum Command {
     Start(u32),
     Stop(u32),
     Record(u32),
+    Grab(u32, Grab),
+    GrabGesture(u32, GrabGesture),
     InputGain(u32, f32),
     InputBalance(u32, f32),
     OutputGain(u32, f32),
@@ -79,6 +103,7 @@ pub enum Code {
     Unsupported = 6,
     CannotApply = 7,
     CaptureUnavailable = 8,
+    HistoryUnavailable = 9,
 }
 impl Code {
     pub fn from_raw(value: u32) -> Option<Self> {
@@ -92,6 +117,7 @@ impl Code {
             6 => Self::Unsupported,
             7 => Self::CannotApply,
             8 => Self::CaptureUnavailable,
+            9 => Self::HistoryUnavailable,
             _ => return None,
         })
     }
@@ -103,7 +129,7 @@ impl Code {
             Self::Unsupported | Self::CannotApply => Some(4),
             Self::InvalidValue => Some(5),
             Self::DeadlineMissed => Some(6),
-            Self::CaptureUnavailable => Some(1),
+            Self::CaptureUnavailable | Self::HistoryUnavailable => Some(1),
         }
     }
 }
@@ -159,40 +185,76 @@ impl Header {
     }
 }
 
-/// Four little-endian u32 words: opcode, target, argument bits, response code.
+/// Eight little-endian u32 words: opcode, target, five argument words, result.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(transparent)]
-pub struct CommandRecord([u8; 16]);
+pub struct CommandRecord([u8; 32]);
 impl CommandRecord {
     pub fn new(command: Command) -> Self {
         use Command::*;
-        let (op, target, argument): (u32, u32, u32) = match command {
-            LoopGain(id, v) => (0, id, v.to_bits()),
-            LoopBalance(id, v) => (1, id, v.to_bits()),
-            Start(id) => (2, id, 0),
-            Stop(id) => (3, id, 0),
-            Record(id) => (12, id, 0),
-            InputGain(id, v) => (4, id, v.to_bits()),
-            InputBalance(id, v) => (5, id, v.to_bits()),
-            OutputGain(id, v) => (6, id, v.to_bits()),
-            OutputBalance(id, v) => (7, id, v.to_bits()),
-            OutputMute(id, v) => (8, id, u32::from(v)),
-            BusGain(id, v) => (9, id, v.to_bits()),
-            BusBalance(id, v) => (10, id, v.to_bits()),
-            BusMute(id, v) => (11, id, u32::from(v)),
+        let words = match command {
+            Grab(id, grab) => [
+                13,
+                id,
+                grab.sync.unwrap_or(0),
+                grab.reverse_start_cycle.unwrap_or(0),
+                grab.cycles_length.unwrap_or(0),
+                grab.go_to_cycle.unwrap_or(0),
+                u32::from(grab.sync.is_some())
+                    | (u32::from(grab.reverse_start_cycle.is_some()) << 1)
+                    | (u32::from(grab.cycles_length.is_some()) << 2)
+                    | (u32::from(grab.go_to_cycle.is_some()) << 3)
+                    | ((match grab.mode {
+                        GrabMode::Stopped => 0,
+                        GrabMode::Playing => 1,
+                        GrabMode::Recording => 2,
+                    }) << 4),
+                0,
+            ],
+            GrabGesture(id, grab) => [
+                14,
+                id,
+                grab.sync,
+                grab.target.unwrap_or(0),
+                grab.cycles,
+                u32::from(grab.play_after_record),
+                u32::from(grab.target.is_some()),
+                0,
+            ],
+            _ => {
+                let (op, id, value) = match command {
+                    LoopGain(id, v) => (0, id, v.to_bits()),
+                    LoopBalance(id, v) => (1, id, v.to_bits()),
+                    Start(id) => (2, id, 0),
+                    Stop(id) => (3, id, 0),
+                    Record(id) => (12, id, 0),
+                    InputGain(id, v) => (4, id, v.to_bits()),
+                    InputBalance(id, v) => (5, id, v.to_bits()),
+                    OutputGain(id, v) => (6, id, v.to_bits()),
+                    OutputBalance(id, v) => (7, id, v.to_bits()),
+                    OutputMute(id, v) => (8, id, u32::from(v)),
+                    BusGain(id, v) => (9, id, v.to_bits()),
+                    BusBalance(id, v) => (10, id, v.to_bits()),
+                    BusMute(id, v) => (11, id, u32::from(v)),
+                    Grab(..) | GrabGesture(..) => unreachable!(),
+                };
+                [op, id, value, 0, 0, 0, 0, 0]
+            }
         };
-        let mut record = Self([0; 16]);
-        record.0[..4].copy_from_slice(&op.to_le_bytes());
-        record.0[4..8].copy_from_slice(&target.to_le_bytes());
-        record.0[8..12].copy_from_slice(&argument.to_le_bytes());
+        let mut record = Self([0; 32]);
+        for (bytes, word) in record.0.chunks_exact_mut(4).zip(words) {
+            bytes.copy_from_slice(&word.to_le_bytes());
+        }
         record
+    }
+    fn word(self, index: usize) -> u32 {
+        u32::from_le_bytes(self.0[index * 4..index * 4 + 4].try_into().unwrap())
     }
     fn decode(self) -> Option<Command> {
         use Command::*;
-        let op = u32::from_le_bytes(self.0[..4].try_into().unwrap());
-        let id = u32::from_le_bytes(self.0[4..8].try_into().unwrap());
-        let value = u32::from_le_bytes(self.0[8..12].try_into().unwrap());
-        Some(match op {
+        let id = self.word(1);
+        let value = self.word(2);
+        Some(match self.word(0) {
             0 => LoopGain(id, f32::from_bits(value)),
             1 => LoopBalance(id, f32::from_bits(value)),
             2 if value == 0 => Start(id),
@@ -206,6 +268,36 @@ impl CommandRecord {
             9 => BusGain(id, f32::from_bits(value)),
             10 => BusBalance(id, f32::from_bits(value)),
             11 if value <= 1 => BusMute(id, value == 1),
+            13 => {
+                let flags = self.word(6);
+                if flags & !63 != 0 {
+                    return None;
+                }
+                Grab(
+                    id,
+                    self::Grab {
+                        sync: (flags & 1 != 0).then_some(value),
+                        reverse_start_cycle: (flags & 2 != 0).then_some(self.word(3)),
+                        cycles_length: (flags & 4 != 0).then_some(self.word(4)),
+                        go_to_cycle: (flags & 8 != 0).then_some(self.word(5)),
+                        mode: match flags >> 4 {
+                            0 => GrabMode::Stopped,
+                            1 => GrabMode::Playing,
+                            2 => GrabMode::Recording,
+                            _ => return None,
+                        },
+                    },
+                )
+            }
+            14 if self.word(5) <= 1 && self.word(6) <= 1 => GrabGesture(
+                id,
+                self::GrabGesture {
+                    sync: value,
+                    target: (self.word(6) == 1).then_some(self.word(3)),
+                    cycles: self.word(4),
+                    play_after_record: self.word(5) == 1,
+                },
+            ),
             _ => return None,
         })
     }
@@ -213,20 +305,20 @@ impl CommandRecord {
         self.decode().unwrap()
     }
     pub fn code(self) -> Code {
-        Code::from_raw(u32::from_le_bytes(self.0[12..].try_into().unwrap())).unwrap()
+        Code::from_raw(self.word(7)).unwrap()
     }
     pub fn complete(mut self, code: Code) -> Self {
-        self.0[12..].copy_from_slice(&(code as u32).to_le_bytes());
+        self.0[28..].copy_from_slice(&(code as u32).to_le_bytes());
         self
     }
-    pub fn bytes(&self) -> &[u8; 16] {
+    pub fn bytes(&self) -> &[u8; 32] {
         &self.0
     }
-    pub fn from_bytes(bytes: [u8; 16]) -> Option<Self> {
+    pub fn from_bytes(bytes: [u8; 32]) -> Option<Self> {
         let record = Self(bytes);
-        (record.decode().is_some()
-            && Code::from_raw(u32::from_le_bytes(bytes[12..].try_into().unwrap())).is_some())
-        .then_some(record)
+        let command = record.decode()?;
+        (Self::new(command).0[..28] == bytes[..28] && Code::from_raw(record.word(7)).is_some())
+            .then_some(record)
     }
 }
 
@@ -262,6 +354,15 @@ impl Response {
 impl Command {
     pub fn valid(self) -> bool {
         match self {
+            Self::Grab(_, grab) => [
+                grab.reverse_start_cycle,
+                grab.cycles_length,
+                grab.go_to_cycle,
+            ]
+            .into_iter()
+            .flatten()
+            .all(|v| v <= i32::MAX as u32),
+            Self::GrabGesture(_, grab) => grab.cycles <= i32::MAX as u32,
             Self::LoopGain(_, v)
             | Self::InputGain(_, v)
             | Self::OutputGain(_, v)

@@ -4,7 +4,7 @@ use shoop_app_protocol::immediate::{self, Command as Immediate};
 impl Service {
     pub(super) fn immediate_capabilities(&self) -> immediate::Capabilities {
         let enabled = self.backend.supports_immediate_commands();
-        let playback = self
+        let eligible: Vec<_> = self
             .loops
             .iter()
             .filter_map(|(id, entry)| {
@@ -26,14 +26,29 @@ impl Service {
                             | BackendLoopMode::Recording
                     )
                     && state.next_mode.is_none()
-                    && !state.recording_armed
-                    && !state.repeat_sync)
-                    .then_some(*id)
+                    && !state.recording_armed)
+                    .then_some((*id, state))
             })
+            .collect();
+        let playback = eligible
+            .iter()
+            .filter(|(_, state)| !state.repeat_sync)
+            .map(|(id, _)| *id)
+            .collect();
+        let grab = eligible
+            .iter()
+            .filter(|(_, state)| {
+                self.backend
+                    .capabilities()
+                    .supports(BackendCapability::Grab)
+                    && state.mode != BackendLoopMode::Recording
+            })
+            .map(|(id, _)| *id)
             .collect();
         immediate::Capabilities {
             enabled,
             playback,
+            grab,
             refused: self
                 .immediate_refused
                 .saturating_add(self.backend.immediate_refusals()),
@@ -63,7 +78,11 @@ impl Service {
         let playback = commands.iter().any(|command| {
             matches!(
                 command,
-                Immediate::Start(_) | Immediate::Stop(_) | Immediate::Record(_)
+                Immediate::Start(_)
+                    | Immediate::Stop(_)
+                    | Immediate::Record(_)
+                    | Immediate::Grab { .. }
+                    | Immediate::AdoptRingbuffers { .. }
             )
         });
         if self.duplication.is_some()
@@ -104,6 +123,37 @@ impl Service {
                     Immediate::Start(id) => B::Start(loop_id(id)),
                     Immediate::Stop(id) => B::Stop(loop_id(id)),
                     Immediate::Record(id) => B::Record(loop_id(id)),
+                    Immediate::AdoptRingbuffers {
+                        loop_id: id,
+                        reverse_cycle_start,
+                        cycles_length,
+                        go_to_cycle,
+                        mode,
+                    } => B::Grab(BackendGrabRequest {
+                        loop_id: loop_id(id),
+                        reverse_start_cycle: Some(i32::try_from(reverse_cycle_start).unwrap_or(-1)),
+                        cycles_length: Some(i32::try_from(cycles_length).unwrap_or(-1)),
+                        go_to_cycle: Some(i32::try_from(go_to_cycle).unwrap_or(-1)),
+                        go_to_mode: match mode {
+                            LoopMode::Playing => BackendLoopMode::Playing,
+                            LoopMode::Recording => BackendLoopMode::Recording,
+                            LoopMode::Stopped | LoopMode::Unknown => BackendLoopMode::Stopped,
+                            _ => BackendLoopMode::Replacing,
+                        },
+                    }),
+                    Immediate::Grab {
+                        loop_id: id,
+                        sync,
+                        target,
+                        cycles,
+                        play_after_record,
+                    } => B::GrabGesture {
+                        loop_id: loop_id(id),
+                        sync: loop_id(sync),
+                        target: target.map(loop_id),
+                        cycles,
+                        play_after_record,
+                    },
                     Immediate::InputGainDb(id, v) => B::InputGainDb(track(id), v),
                     Immediate::InputBalance(id, v) => B::InputBalance(track(id), v),
                     Immediate::OutputGainDb(id, v) => B::OutputGainDb(track(id), v),

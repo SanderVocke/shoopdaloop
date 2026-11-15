@@ -1,7 +1,9 @@
 //! Explicit opt-in entry point; ordinary backend mutations retain their protocol.
 use crate::{EngineClock, Link, RtBackend};
 use anyhow::{anyhow, Result};
-use shoop_backend::{BackendBusControl, BackendImmediateCommand};
+use shoop_backend::{
+    BackendBusControl, BackendGrabRequest, BackendImmediateCommand, BackendLoopMode,
+};
 use shoop_backend::{BackendBusId, BackendLoopId, BackendTrackId};
 use shoop_rt_protocol::immediate::{Batch, Command, Diagnostics, COMMANDS};
 use shoop_rt_transport::carrier::Carrier;
@@ -15,6 +17,14 @@ pub enum ImmediateCommand {
     Start(BackendLoopId),
     Stop(BackendLoopId),
     Record(BackendLoopId),
+    Grab(BackendGrabRequest),
+    GrabGesture {
+        loop_id: BackendLoopId,
+        sync: BackendLoopId,
+        target: Option<BackendLoopId>,
+        cycles: u32,
+        play_after_record: bool,
+    },
     InputGain(BackendTrackId, f32),
     InputBalance(BackendTrackId, f32),
     OutputGain(BackendTrackId, f32),
@@ -65,6 +75,20 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 Start(id) => ImmediateCommand::Start(id),
                 Stop(id) => ImmediateCommand::Stop(id),
                 Record(id) => ImmediateCommand::Record(id),
+                Grab(request) => ImmediateCommand::Grab(request),
+                GrabGesture {
+                    loop_id,
+                    sync,
+                    target,
+                    cycles,
+                    play_after_record,
+                } => ImmediateCommand::GrabGesture {
+                    loop_id,
+                    sync,
+                    target,
+                    cycles,
+                    play_after_record,
+                },
                 OutputGainDb(id, v) => ImmediateCommand::OutputGain(id, amplitude(v)),
                 InputGainDb(id, v) => ImmediateCommand::InputGain(id, amplitude(v)),
                 OutputBalance(id, v) => ImmediateCommand::OutputBalance(id, bounded(v, -1.0, 1.0)),
@@ -149,6 +173,55 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 Start(id) => Command::Start(loop_slot(id)),
                 Stop(id) => Command::Stop(loop_slot(id)),
                 Record(id) => Command::Record(loop_slot(id)),
+                Grab(request) => {
+                    use shoop_rt_protocol::immediate::{Grab as Value, GrabMode};
+                    let number = |v: Option<i32>| v.map(|v| u32::try_from(v).unwrap_or(u32::MAX));
+                    let sync = self
+                        .mirror
+                        .loops
+                        .get(&request.loop_id)
+                        .and_then(|l| l.sync)
+                        .map(loop_slot);
+                    let valid_mode = matches!(
+                        request.go_to_mode,
+                        BackendLoopMode::Stopped
+                            | BackendLoopMode::Playing
+                            | BackendLoopMode::Recording
+                    );
+                    Command::Grab(
+                        loop_slot(request.loop_id),
+                        Value {
+                            sync,
+                            reverse_start_cycle: number(request.reverse_start_cycle),
+                            cycles_length: if valid_mode {
+                                number(request.cycles_length)
+                            } else {
+                                Some(u32::MAX)
+                            },
+                            go_to_cycle: number(request.go_to_cycle),
+                            mode: match request.go_to_mode {
+                                BackendLoopMode::Playing => GrabMode::Playing,
+                                BackendLoopMode::Recording => GrabMode::Recording,
+                                _ => GrabMode::Stopped,
+                            },
+                        },
+                    )
+                }
+                GrabGesture {
+                    loop_id,
+                    sync,
+                    target,
+                    cycles,
+                    play_after_record,
+                } => Command::GrabGesture(
+                    loop_slot(loop_id),
+                    shoop_rt_protocol::immediate::GrabGesture {
+                        sync: loop_slot(sync),
+                        target: target.map(loop_slot),
+                        cycles,
+                        play_after_record,
+                    },
+                ),
                 InputGain(id, v) => Command::InputGain(strip(id), v),
                 InputBalance(id, v) => Command::InputBalance(strip(id), v),
                 OutputGain(id, v) => Command::OutputGain(strip(id), v),

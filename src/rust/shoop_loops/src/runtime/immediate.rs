@@ -54,10 +54,17 @@ impl<S: Sample> LoopPlanner<S> {
                     .expect("row")
                     .balance = value
             }
-            Immediate::Playback(start) => self
+            Immediate::Playback(true) => self
                 .resolver
-                .immediate_playback(target, start)
+                .immediate_playback(target, true)
                 .map_err(runtime_error)?,
+            Immediate::Playback(false) => {
+                let decision = self
+                    .resolver
+                    .immediate_capture_decision(target, Transition::Stop)
+                    .map_err(runtime_error)?;
+                self.resolver.commit_immediate_capture(decision);
+            }
             Immediate::Record => unreachable!(),
         }
         Ok(())
@@ -104,8 +111,7 @@ impl<S: Sample> LoopPlanner<S> {
         let slot = target.slot() as usize;
         if state.mode == Mode::Recording {
             let take = row.active.ok_or(Error::InvalidState)?;
-            if take.token.is_none()
-                || take.writer.is_some()
+            if (take.token.is_none() && !(take.audio_only && take.writer.is_some()))
                 || take.revision != state.capture_revision
             {
                 return Err(Error::InvalidState);

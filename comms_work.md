@@ -5,7 +5,7 @@
 Move the application toward complete state snapshots and ordered command groups,
 with a simple communication model inside `rt_runtime`. This is the sole working
 document for that migration. It describes the implemented system, the completed
-response and immediate-recording milestones, and the remaining legacy areas.
+response, immediate-recording and audio-Grab milestones, and remaining legacy areas.
 
 Snapshot observation, ordinary UI command wiring, and the ordered RT response
 extension are implemented. The command transport supports optional expiry
@@ -13,12 +13,12 @@ deadlines and a reliable response FIFO. Further feature migrations listed below
 remain separate work.
 
 Immediate recording and finish-to-stop/play for ordinary audio loops are now
-implemented end to end. Audio Grab and Grab-and-continue are the next planned
-milestone, described below; they still use legacy communication today. Automatic
-finishing at musical boundaries remains a separate, deferred design decision.
+implemented end to end. Completed audio Grab and Grab-and-continue with explicit
+Play/Stop finishing are also implemented. Automatic finishing at musical boundaries
+remains a separate, deferred design decision.
 
 The response extension delivers deadline capability only. All application
-commands on the new path, including recording and planned Grab commands, must
+commands on the new path, including recording and Grab commands, must
 continue with no deadline. Assigning deadlines to specific application commands is
 separate future work, outside these completed milestones.
 
@@ -173,10 +173,15 @@ Ordinary UI controls and eligible Lua operations use the new path automatically:
   loops on direct, unprocessed strips. Play/Stop finish an active take in RT,
   without relying on a fresh UI mode. Selected actions and solo stops use one
   complete group when they fit.
+- Completed audio Grab gestures in sync mode and explicit history adoption left
+  Stopped, Playing or Recording. Grab-and-continue is finished by new-path Play/Stop.
+  Solo Grab stops supported siblings in the same group.
 
-Eligible transport has no pending musical work, repeat-sync, MIDI or
-processed/composite behavior. Fixed-cycle gestures retain their legacy route. A synchronized action such as
-starting 30 loops reaches RT as one complete group. Independent singleton groups
+Immediate starts/Record retain their existing restrictions on pending musical
+work, repeat-sync, MIDI and processed/composite behavior. Grab has separate
+eligibility that preserves existing primitive repeat-sync behavior. Automatic
+finishes and fixed-cycle gestures retain their legacy route. A synchronized action
+such as starting 30 loops reaches RT as one complete group. Independent singleton groups
 may execute in the same callback; they need no intervening snapshot.
 
 The service advertises direct audio transport eligibility from observed state,
@@ -213,7 +218,7 @@ observation where needed; failures and disconnect outcomes remain available.
 | Other scalar controls | Monitoring policy, playback defaults, smoothing and some effect parameters need explicit command semantics and failure behavior. Some are straightforward additions. |
 | Graph and processor lifecycle | Creation, removal, routing and replacement require preparation, activation, configuration changes and safe retirement of displaced owners. |
 | Media and persistence | Loading, exporting and saving need reliable bulk delivery, content revisions, stable read cuts and resource lifetimes. Snapshots carry no media bytes. |
-| Audio Grab | Completed grabs and grabs left recording are the next milestone. History selection, protected audio ownership and growing-take attachment still use the legacy input transaction today. |
+| Advanced Grab | Completed audio grabs and manual continuation use the new path. Grabs promising automatic musical-boundary finishes, MIDI/processed/composite variants, active-recording targets and unsupported mixed/oversized gestures retain their existing routes. |
 | Advanced recording and capture | Immediate ordinary audio recording and finishing use the new path. Replacing, automatic musical-boundary finishes, quantized/armed/fixed-cycle/processed/MIDI recording and clearing content retain legacy semantics and ownership workflows. |
 | Musical timing | Quantization, repeat-sync, seeking and timing edits require exact musical behavior and interaction with existing processor state. |
 | Composites, processed playback and MIDI | Nested programs, dry/wet processing, processor-state restoration and MIDI note/state cleanup need feature-specific behavior. |
@@ -267,12 +272,21 @@ The internal value layouts are explicit and little-endian:
 | Value | Layout |
 | --- | --- |
 | `Header`, 48 bytes | Five `u64` words: graph, topology, deadline-present, deadline, attempt frame; then a `u32` header result and a reserved zero `u32` |
-| `CommandRecord`, 16 bytes | Four `u32` words: opcode, configuration-local target, argument bits, response code |
+| `CommandRecord`, 32 bytes | Eight `u32` words: opcode, configuration-local target, five argument words, response code |
 
 Input result fields are `Unprocessed`. RT overwrites them in the response copy.
 The generic ring supplies group counts and framing; its Rust enum layout is not
-a hardware ABI. The RT carrier protocol is version 32; the UI/application protocol
-is version 37. Existing production batch constructors default to no deadline.
+a hardware ABI. The RT carrier protocol is version 33; the UI/application protocol
+is version 38. Existing production batch constructors default to no deadline.
+
+Scalar commands use the first argument word and zero the remaining four. Grab
+opcode 13 uses sync address, reverse-start cycle, cycle count, go-to cycle and
+flags. Flag bits 0–3 mark those four fields present; bits 4–5 select Stopped (0),
+Playing (1) or Recording (2). Absent fields are zero. Completed gesture opcode 14
+uses sync address, optional target address, cycle count, play-after flag and
+target-present flag. Result codes occupy the last word, at byte offset 28.
+Maximum 32-Grab requests occupy 821 bytes without a deadline (829 with one);
+maximum responses occupy 1,076 bytes. Both fit the existing 1,280-byte envelope.
 
 The preallocated SPSC response FIFO sits alongside the command FIFO inside
 `rt_runtime`. RT streams command copies into reserved response records with
@@ -285,7 +299,8 @@ configurations, expired groups and individual failures. Preserve the input heade
 and record the attempt's processing frame so control can interpret the results.
 The result codes are `Applied` (including successful no-ops), `DeadlineMissed`,
 `StaleConfiguration`, `TargetUnavailable`, `InvalidValue`, `Unsupported` and
-`CannotApply`, plus `CaptureUnavailable` when capture storage cannot be acquired.
+`CannotApply`, plus `CaptureUnavailable` when storage cannot be acquired and
+`HistoryUnavailable` for missing, expired or discontinuous history.
 `Unprocessed` never appears in a completed response. Header
 `Applied` means its checks passed; individual member results determine which
 commands succeeded. More specific codes can be added as features migrate.
@@ -354,7 +369,7 @@ a snapshot covering its frame; control must wait for matching fresh observation
 when a dependent workflow needs that state. Preserve ordering and reconciliation
 with legacy work while migrating dependencies to the new results.
 
-## Next milestone: audio Grab and continued recording
+## Completed milestone: audio Grab and continued recording
 
 ### Goal and scope
 
@@ -453,42 +468,69 @@ take; audio bytes and owning leases remain on their existing media/export paths.
 
 1. **Grab contract and reusable storage**
 
-   - [ ] Map eligible Grab gestures and explicit history-adoption operations to
+   - [x] Map eligible Grab gestures and explicit history-adoption operations to
      the new values. Define cycle/position, repeat, empty/short-history and target
      preconditions. Keep automatic finishes and unsupported variants on their
      full legacy route before submission.
-   - [ ] Identify reusable protected-history, growing-writer, metadata and finish
+   - [x] Identify reusable protected-history, growing-writer, metadata and finish
      reservations. Make them acquirable by RT without a control-side preparation
      protocol. Verify failed acquisition leaves existing content/capture intact.
 
 2. **RT Grab, continuation and finishing**
 
-   - [ ] Implement completed Grab and Grab-and-continue at the immediate command
+   - [x] Implement completed Grab and Grab-and-continue at the immediate command
      point. Extend Play/Stop to finish the resulting growing take in that callback.
-   - [ ] Smoke-test real audio, exact history cuts and the join to newly captured
+   - [x] Smoke-test real audio, exact history cuts and the join to newly captured
      input, finish-to-stop/play, buffer-only callbacks, individual failures,
      insufficient history/storage and preservation of old media. Check incomplete
      prefix handling without adding work-budget enforcement.
 
 3. **UI/control and carrier integration**
 
-   - [ ] Wire eligible UI/Lua and explicit adoption actions through complete
+   - [x] Wire eligible UI/Lua and explicit adoption actions through complete
      groups over direct and encoded delivery. Use current RT state for history
      selection and finishing; snapshots remain the display source.
-   - [ ] Keep unsupported, mixed, oversized and automatic-finish gestures on their
+   - [x] Keep unsupported, mixed, oversized and automatic-finish gestures on their
      existing complete route. Preserve manual/automatic monitoring and media
      export behavior. Never alter a gesture's promised finish behavior to migrate it.
 
 4. **Focused end-to-end validation and completion**
 
-   - [ ] Exercise completed Grab and Grab -> continued input -> explicit Play/Stop,
+   - [x] Exercise completed Grab and Grab -> continued input -> explicit Play/Stop,
      including grouped cuts, stale UI snapshots, resource failure, disconnect
      without replay and an unchanged legacy automatic-finish gesture.
-   - [ ] Run relevant smoke checks, formatting and warning-denying builds; update
+   - [x] Run relevant smoke checks, formatting and warning-denying builds; update
      this document and the existing draft PR. Follow the execution policy below:
      check off progress, commit meaningful stages on the existing branch and push,
      address relevant review feedback, and obtain user approval for changes to
      goals or acceptance criteria. Do not wait for broad CI or merge automatically.
+
+### Delivered implementation
+
+- UI/Lua value commands and shared/backend immediate APIs carry completed Grab
+  gestures or explicit history-adoption parameters through the same paired FIFOs.
+  Groups retain the existing 1–32 command limit and absent application deadlines.
+- `LoopPlanner::grab_immediate` selects history from current RT state, protects
+  shared audio pages, and installs completed or growing takes before replying.
+  Primitive phase lookup accounts for natural wraps and inherited sync pulses at
+  the command cut; no UI cursor or new request/scheduling machinery is involved.
+- Growing takes reuse existing shared-audio writers with audio-only metadata,
+  first-append capacity and reserved final exports. Play/Stop finalize them as one
+  action, including before a fresh snapshot or a full processing block. Existing
+  capture-bank recordings continue to use their established handlers.
+- Repeated grabs on Stopped/Playing targets replace content in FIFO order. A new
+  Grab against an already Recording target returns `CannotApply` and preserves its
+  prefix. The UI retains the legacy route when it observes that unsupported state.
+  Empty continuation is allowed; explicit Stop can seal an empty take. Existing
+  window rules still govern empty playback and startup padding.
+- Grab eligibility is separate from unsynced playback eligibility. Synced completed
+  grabs preserve repeat-sync; solo sibling stops execute in the same group.
+  Composite references and gestures requiring future automatic finishes retain
+  their whole legacy route before submission, with no silent behavior change.
+- Missing history and insufficient storage produce individual errors without
+  replacing prior audio. Continuing capture exhaustion seals the usable prefix
+  and marks it incomplete. Readers/exports survive replacement, and disconnect
+  discards unsent work without replay or stopping already active capture.
 
 ### Grab milestone acceptance criteria
 
@@ -770,18 +812,18 @@ findings within scope; leave the PR in draft and do not merge automatically.
 
 ### Validation record
 
-The recording milestone passes 34 selected native/offline smoke checks:
+The Grab milestone passes 44 selected native/offline smoke checks:
 
-- Generic command/result FIFO: 4; command/result protocol: 4.
-- Engine immediate-command and coexistence checks: 16, including five recording
-  cases for exact samples/frames, overlapping monitoring, buffer-only callbacks,
-  empty/repeated actions, capacity failures, incomplete-prefix playback, encoded
-  delivery, disconnect without replay and final pool reclamation.
-- Backend immediate commands: 4, including recording before a fresh snapshot and
-  audio exports retained across a later take.
-- UI immediate-command cases: 3, including 30-loop Record/finish/Play groups and
-  encoded UI messages with stale display state. One existing fixed-cycle case,
-  one UI/Lua case and one legacy capture-exhaustion case also pass.
+- Generic command/result FIFO: 4; command/result protocol: 5, including maximum
+  32-Grab request/response envelopes and canonical argument/result layouts.
+- Engine immediate commands: 23, covering exact cuts and samples, grouped cuts and
+  independent failures, history/live joins, natural wrap boundaries, empty takes,
+  buffer-only callbacks, missing history, unavailable storage, incomplete-prefix
+  playback, encoded delivery, disconnect without replay and full pool reclamation.
+- Backend immediate commands: 5, including retained exports across continuing Grab.
+- UI immediate commands: 4, including synced solo Grab and Lua continuation finished
+  before a fresh UI snapshot. Existing UI/Lua, fixed-cycle and legacy Grab/replacing
+  compatibility cases also pass (1 each).
 
 Formatting, test-attribute policy and a native UI build with Rust warnings denied
 pass. The build disables optional native audio-provider features and retains its

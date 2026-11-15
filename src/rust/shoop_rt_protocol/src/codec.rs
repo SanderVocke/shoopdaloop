@@ -2444,6 +2444,11 @@ impl Wire for crate::immediate::Command {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         use crate::immediate::Command::*;
         match *self {
+            Grab(..) | GrabGesture(..) => {
+                let record = crate::immediate::CommandRecord::new(*self);
+                w.u8(record.bytes()[0])?;
+                w.bytes(&record.bytes()[4..28])
+            }
             LoopGain(id, v) => {
                 w.u8(0)?;
                 w.u32(id)?;
@@ -2524,6 +2529,14 @@ impl Wire for crate::immediate::Command {
             9 => BusGain(r.u32()?, r.f32()?),
             10 => BusBalance(r.u32()?, r.f32()?),
             11 => BusMute(r.u32()?, r.bool()?),
+            op @ (13 | 14) => {
+                let mut bytes = [0; 32];
+                bytes[0] = op;
+                bytes[4..28].copy_from_slice(r.bytes(24)?);
+                crate::immediate::CommandRecord::from_bytes(bytes)
+                    .ok_or(CodecError::Invalid)?
+                    .command()
+            }
             _ => return Err(CodecError::Invalid),
         })
     }
@@ -2580,7 +2593,7 @@ impl Wire for crate::immediate::Response {
         }
         let mut records = [CommandRecord::new(Command::Start(0)); COMMANDS];
         for record in &mut records[..count] {
-            *record = CommandRecord::from_bytes(r.bytes(16)?.try_into().unwrap())
+            *record = CommandRecord::from_bytes(r.bytes(32)?.try_into().unwrap())
                 .ok_or(CodecError::Invalid)?;
         }
         Response::new(header, &records[..count]).ok_or(CodecError::Invalid)

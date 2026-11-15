@@ -34,9 +34,11 @@ pub use shared::{
     SharedCapacity, SharedSettings, SharedTake, SharedWork,
 };
 mod immediate;
+mod immediate_grab;
 mod node_pairs;
 mod planner;
 pub use immediate::Immediate;
+pub use immediate_grab::ImmediateGrab;
 mod processor;
 mod topology;
 use crate::topology::staging::{Progress, StageId, Status};
@@ -560,6 +562,7 @@ pub struct View<S: Sample = f32> {
 }
 #[derive(Clone, Copy)]
 struct Take {
+    audio_only: bool,
     publish_incomplete: bool,
     started_at: Frame,
     windows: Windows,

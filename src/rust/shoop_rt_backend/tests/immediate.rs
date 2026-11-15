@@ -468,3 +468,102 @@ fn immediate_recording_uses_rt_state_before_snapshots_and_preserves_exported_aud
     assert_eq!(&*old[0], &[0.25; 8]);
     assert_eq!(b.immediate_diagnostics().rt_refused, 0);
 }
+
+#[shoop_test]
+fn immediate_grab_exports_survive_a_later_continuing_take_and_manual_finish() {
+    fn advance_until(
+        b: &mut Stack,
+        responses: &std::sync::Arc<std::sync::Mutex<Vec<shoop_rt_protocol::immediate::Response>>>,
+        count: usize,
+    ) {
+        for _ in 0..100 {
+            b.clock_mut().render(1);
+            b.pump();
+            if responses.lock().unwrap().len() == count {
+                for _ in 0..8 {
+                    b.pump();
+                }
+                return;
+            }
+        }
+        panic!("command was not executed");
+    }
+    fn audio(b: &mut Stack, id: BackendLoopId) -> Vec<std::sync::Arc<[f32]>> {
+        for _ in 0..100 {
+            if let Some(audio) = b.loop_audio_data(id).unwrap() {
+                return audio;
+            }
+            b.clock_mut().render(1);
+            b.pump();
+        }
+        panic!("audio export did not arrive");
+    }
+    let mut b = stack(&description());
+    b.clock_mut().capture = |_| 0.25;
+    let created = b
+        .create_direct_track(DirectTrackRequest {
+            port_name_base: "grab".into(),
+            audio_channels: 2,
+            midi: false,
+            initial_loops: 2,
+        })
+        .unwrap();
+    let (sync, target) = (created.loops[0], created.loops[1]);
+    b.set_port_connected(created.ports[0].id, "audio_in_1", true)
+        .unwrap();
+    b.set_loop_sync_source(target, Some(sync)).unwrap();
+    b.wait_idle();
+    for _ in 0..8 {
+        b.clock_mut().render(1);
+        b.pump();
+    }
+    let responses = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let received = responses.clone();
+    b.set_immediate_response_handler(move |r| received.lock().unwrap().push(*r));
+    b.immediate_group(&[Command::Record(sync)]).unwrap();
+    advance_until(&mut b, &responses, 1);
+    b.clock_mut().render(15);
+    b.immediate_group(&[Command::Stop(sync), Command::Start(sync)])
+        .unwrap();
+    advance_until(&mut b, &responses, 2);
+    b.clock_mut().render(32);
+    b.pump();
+    b.immediate_group(&[Command::Grab(BackendGrabRequest {
+        loop_id: target,
+        reverse_start_cycle: Some(1),
+        cycles_length: Some(1),
+        go_to_cycle: Some(0),
+        go_to_mode: BackendLoopMode::Stopped,
+    })])
+    .unwrap();
+    advance_until(&mut b, &responses, 3);
+    let old = audio(&mut b, target);
+    assert_eq!(&*old[0], &[0.25; 16]);
+    b.clock_mut().capture = |_| -0.5;
+    b.immediate_group(&[Command::Grab(BackendGrabRequest {
+        loop_id: target,
+        reverse_start_cycle: None,
+        cycles_length: Some(1),
+        go_to_cycle: Some(1),
+        go_to_mode: BackendLoopMode::Recording,
+    })])
+    .unwrap();
+    advance_until(&mut b, &responses, 4);
+    b.clock_mut().render(4);
+    b.immediate_group(&[Command::Stop(target)]).unwrap();
+    advance_until(&mut b, &responses, 5);
+    let state = b.poll().unwrap();
+    assert_eq!(state.loops[&target].mode, BackendLoopMode::Stopped);
+    let current = audio(&mut b, target);
+    assert!(current[0].len() > 5);
+    assert_eq!(&current[0][current[0].len() - 5..], &[-0.5; 5]);
+    assert_eq!(&*old[0], &[0.25; 16]);
+    assert!(responses
+        .lock()
+        .unwrap()
+        .iter()
+        .all(|r| r.header.deadline().is_none()
+            && r.records()
+                .iter()
+                .all(|r| r.code() == shoop_rt_protocol::immediate::Code::Applied)));
+}

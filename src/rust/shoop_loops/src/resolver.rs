@@ -338,6 +338,67 @@ impl Resolver {
         Ok(())
     }
 
+    pub(crate) fn immediate_state(&self, id: LoopId) -> Result<State, Error> {
+        let mut state = self.state(id)?;
+        if state.composite.is_some() {
+            return Err(Error::InvalidState);
+        }
+        if state.content_length != 0
+            && state.position == state.content_length
+            && (state.mode.playback_mode()
+                || state.mode == Mode::Replacing
+                || (state.mode == Mode::Recording && state.monitor_previous))
+        {
+            let parent = self
+                .topology
+                .node(id)?
+                .sync_source
+                .filter(|source| *source != id);
+            let ready = !state.repeat_sync
+                || match parent {
+                    None => true,
+                    Some(parent) => {
+                        !self.state(parent)?.mode.playback_mode() || self.immediate_pulse(parent)?
+                    }
+                };
+            if ready {
+                state.position = 0;
+            }
+        }
+        Ok(state)
+    }
+    fn immediate_pulse(&self, mut id: LoopId) -> Result<bool, Error> {
+        loop {
+            let state = self.state(id)?;
+            if state.composite.is_some() {
+                return Err(Error::InvalidState);
+            }
+            let parent = self
+                .topology
+                .node(id)?
+                .sync_source
+                .filter(|source| *source != id);
+            let wraps = state.content_length != 0
+                && state.position == state.content_length
+                && (state.mode.playback_mode()
+                    || state.mode == Mode::Replacing
+                    || (state.mode == Mode::Recording && state.monitor_previous));
+            if wraps
+                && (!state.repeat_sync
+                    || match parent {
+                        None => true,
+                        Some(parent) => !self.state(parent)?.mode.playback_mode(),
+                    })
+            {
+                return Ok(true);
+            }
+            let Some(parent) = parent else {
+                return Ok(false);
+            };
+            id = parent;
+        }
+    }
+
     pub(crate) fn immediate_capture_decision(
         &self,
         id: LoopId,
@@ -351,7 +412,9 @@ impl Resolver {
             || self.program_change.is_some()
             || self.topology.node(id)?.kind != LoopKind::Primitive
             || !matches!(state.mode, Mode::Stopped | Mode::Playing | Mode::Recording)
-            || state.repeat_sync
+            || (state.repeat_sync
+                && !matches!(operation, Transition::Adopt { .. } | Transition::Stop)
+                && !(state.mode == Mode::Recording && matches!(operation, Transition::Play { .. })))
         {
             return Err(Error::InvalidState);
         }

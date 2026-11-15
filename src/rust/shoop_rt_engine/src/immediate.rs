@@ -5,7 +5,7 @@ use crate::{
     ring::Ring,
 };
 use rt_runtime::immediate::{self, Boundary, Handler};
-use shoop_loops::runtime::{Immediate, LoopPlanner};
+use shoop_loops::runtime::{Immediate, ImmediateGrab, LoopPlanner};
 use shoop_rt_protocol::immediate::{
     Batch, Code, Command, CommandRecord, Diagnostics, Header, Response, COMMANDS, FIFO_RECORDS,
     STAGED_BATCHES,
@@ -215,6 +215,65 @@ impl Render {
     ) -> Result<(), Code> {
         if !command.valid() {
             return Err(Code::InvalidValue);
+        }
+        if let Command::Grab(id, _) | Command::GrabGesture(id, _) = command {
+            let resolve = |id| {
+                boundary
+                    .planner
+                    .resolver()
+                    .id_at_slot(id)
+                    .ok_or(Code::TargetUnavailable)
+            };
+            let target = resolve(id)?;
+            if id as usize >= pool.loops()
+                || !boundary
+                    .processors
+                    .get(pool.fader(id as usize))
+                    .is_some_and(EngineNode::immediate_playback_supported)
+            {
+                return Err(Code::Unsupported);
+            }
+            let grab = match command {
+                Command::Grab(_, value) => {
+                    use shoop_rt_protocol::immediate::GrabMode;
+                    ImmediateGrab::Window {
+                        sync: value.sync.map(resolve).transpose()?,
+                        window: shoop_loops::grab::WindowSpec {
+                            reverse_start_cycle: value.reverse_start_cycle,
+                            cycles_length: value.cycles_length,
+                            go_to_cycle: value.go_to_cycle,
+                            continue_recording: value.mode == GrabMode::Recording,
+                        },
+                        mode: match value.mode {
+                            GrabMode::Stopped => shoop_loops::Mode::Stopped,
+                            GrabMode::Playing => shoop_loops::Mode::Playing,
+                            GrabMode::Recording => shoop_loops::Mode::Recording,
+                        },
+                    }
+                }
+                Command::GrabGesture(_, value) => ImmediateGrab::Gesture {
+                    sync: resolve(value.sync)?,
+                    target: value.target.map(resolve).transpose()?,
+                    spec: shoop_loops::grab::GestureSpec {
+                        synced: true,
+                        cycles: value.cycles,
+                        play_after_record: value.play_after_record,
+                    },
+                },
+                _ => unreachable!(),
+            };
+            return boundary
+                .planner
+                .grab_immediate(target, grab, boundary.frame, &mut boundary.resources)
+                .map_err(|error| match error {
+                    rt_runtime::Error::InvalidOffset => Code::HistoryUnavailable,
+                    rt_runtime::Error::Capacity | rt_runtime::Error::Exhausted => {
+                        Code::CaptureUnavailable
+                    }
+                    rt_runtime::Error::InvalidParameter => Code::InvalidValue,
+                    rt_runtime::Error::InvalidId => Code::TargetUnavailable,
+                    _ => Code::CannotApply,
+                });
         }
         if let Some((id, op)) = loop_command(command) {
             let target = boundary
