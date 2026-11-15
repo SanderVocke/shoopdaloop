@@ -12,9 +12,14 @@ extension are implemented. The command transport supports optional expiry
 deadlines and a reliable response FIFO. Feature migrations listed below remain
 separate work; this milestone supplies their communication foundation.
 
-This milestone delivers deadline capability only. All existing application
-commands on the new path must continue with no deadline. Assigning deadlines to
-specific application commands is separate future work, outside this milestone.
+The next milestone is immediate recording for ordinary audio loops, described
+below. It is planned, not implemented. Grabbing and quantized recording remain
+outside that milestone.
+
+The response extension delivers deadline capability only. All application
+commands on the new path, including the planned recording commands, must continue
+with no deadline. Assigning deadlines to specific application commands is
+separate future work, outside both milestones.
 
 There are two distinct boundaries:
 
@@ -203,7 +208,7 @@ observation where needed; failures and disconnect outcomes remain available.
 | Other scalar controls | Monitoring policy, playback defaults, smoothing and some effect parameters need explicit command semantics and failure behavior. Some are straightforward additions. |
 | Graph and processor lifecycle | Creation, removal, routing and replacement require preparation, activation, configuration changes and safe retirement of displaced owners. |
 | Media and persistence | Loading, exporting and saving need reliable bulk delivery, content revisions, stable read cuts and resource lifetimes. Snapshots carry no media bytes. |
-| Recording and capture | Recording, replacing, grabbing history and clearing content manage writers, reserved storage and finalized takes. A mode change alone does not complete these workflows. |
+| Recording and capture | The next milestone moves immediate ordinary audio recording and finishing to the new path. Recording is still legacy today. Replacing, grabbing history, quantized/processed/MIDI recording and clearing content remain separate migrations. |
 | Musical timing | Quantization, repeat-sync, seeking and timing edits require exact musical behavior and interaction with existing processor state. |
 | Composites, processed playback and MIDI | Nested programs, dry/wet processing, processor-state restoration and MIDI note/state cleanup need feature-specific behavior. |
 | Additional observation | Composite/plugin state, processor metadata, preview, profiling, memory and engine health retain separate streams. Decide which need coherent snapshots and which remain independent. |
@@ -341,6 +346,165 @@ Snapshots remain the source of current display state. A response can arrive befo
 a snapshot covering its frame; control must wait for matching fresh observation
 when a dependent workflow needs that state. Preserve ordering and reconciliation
 with legacy work while migrating dependencies to the new results.
+
+## Next milestone: immediate audio recording
+
+### Goal and scope
+
+Move immediate recording of ordinary audio-only primitive loops on direct,
+unprocessed strips to the new UI/control/RT command path. Support starting a take,
+finishing into Stopped, and finishing into Playing. Preserve the familiar
+record -> record audio -> stop or play behavior, with snapshots showing the
+actual state and ordered results reporting command success or failure.
+
+This milestone excludes grabbing, replacing, quantized or armed starts,
+fixed-cycle automatic finishes, MIDI recording, processed/dry-wet recording and
+composites. Those actions keep their existing routes and remain available in the
+UI. This is a recording migration; it does not introduce scheduling behavior.
+All new recording commands use `deadline = None`, without new timeout policies,
+request IDs, cancellation tickets or callback-work budgets.
+
+### Capture storage is opaque to control
+
+"Prepared capture resources" means recording storage ready for RT to acquire:
+audio pages from a preallocated pool, a recording slot with its write position
+and frame count, and the handles/reservations needed to seal and publish a take.
+Audio pages can be acquired from that pool as recording grows; there is no
+assumption of unlimited recording storage or allocation of a maximum-length take
+for every loop.
+
+Control configures capacities, allocates backing storage outside the callback,
+and handles final reclamation. It does not select pages, advance write positions,
+manage per-take preparation steps or understand the recording storage layout.
+RT manages those details behind the loop command interface. Reuse existing
+capture banks, snapshot reservations, media ownership and retirement mechanisms
+where suitable. Resource handles are ownership handles, never command IDs.
+
+Prepare ready resources during startup/configuration or safe recycling. A Record
+command with no available ready storage fails individually in its receiving
+callback, leaving the loop unchanged. Do not hold it pending or introduce a
+per-click prepare/status/commit exchange. A successful start reserves the resources
+needed to finish, so ordinary stopping does not depend on finding spare memory.
+
+### Commands and observable behavior
+
+The logical operations are `Record(loop)` and
+`FinishRecording(loop, after_mode = Stopped | Playing)`. Exact opcodes may reuse
+or extend existing Play/Stop commands. The required behavior is:
+
+- **Record:** acquire ready capture resources, enter Recording and start a new
+  take at the first sample of the next unrendered processing block. Later
+  callbacks append input without further commands. Success means capture is
+  attached and the recording state has changed, not that a completed take exists.
+- **Finish into Stopped:** seal the captured prefix, publish it as completed
+  media, release recording demand and enter Stopped at the command's processing
+  frame.
+- **Finish into Playing:** perform that same finish and select the completed
+  take for playback from its beginning as one semantic action. Do not implement
+  this as separate stop/play commands with an asynchronous preparation gap.
+
+RT decides from its current state whether Play/Stop must finish a recording or
+perform ordinary playback control. Snapshot lag must not route a real recording
+through a playback-only handler that rejects it. Define repeated Record and
+empty-take behavior explicitly, preserving existing ordinary behavior where
+possible; an invalid repeat must not accidentally discard the captured prefix.
+
+Use the existing command-consumption point, not a future execution timestamp.
+Apply received groups and publish responses in the same callback, including
+buffer-only callbacks. Recording changes affect the next unrendered processing
+block and never rewrite audio already rendered. The RT command context needs
+safe access to capture/resource operations and the corresponding state settlement;
+changing only the public mode field is insufficient.
+
+Finish success means the take is sealed and available to the requested next mode.
+Keep loop lengths, positions, content revisions and capture flags consistent in
+snapshots. Preserve existing input gain, monitoring intent and automatic monitoring
+behavior, including overlapping recorders on the same strip. Completed takes
+must also remain accessible through existing media/export APIs; a scalar snapshot
+does not transfer their ownership.
+
+### Failure and preservation rules
+
+- Multiple Record commands in one group take effect at one processing frame.
+  They may succeed or fail independently. Do not require a batch-wide preflight,
+  all-or-nothing commit, rollback or a global input-transaction lock.
+- Keep each loop's audio channels coherent as one take. Failed acquisition leaves
+  the previous mode/content unchanged; successful replacement of playback media
+  must preserve older exports and readers until their owners are released.
+- Retain configuration identity, resource ownership, capacity checks and any
+  content-revision checks needed to prevent stale prepared media overwriting a
+  newer take. An unchanged graph version does not imply unchanged content.
+- If storage is exhausted while recording, preserve the captured prefix, stop
+  further capture safely and expose the incomplete/error state. Spontaneous
+  capture errors use snapshots/diagnostics, never an unsolicited response group
+  that would break command/response FIFO correspondence.
+- Add recording-specific result codes where useful, such as unavailable capture
+  storage. A failed command does not suppress later members. Never silently
+  replay or retry a submitted recording command through the legacy path.
+
+### Implementation stages
+
+1. **Recording contract and resource preparation**
+
+   - [ ] Map the existing capture/finish/ownership operations to the logical
+     commands, define repeat/empty-take handling and identify the ready resources
+     and finish reservations each take needs.
+   - [ ] Prepare storage and readiness behind the RT interface. Verify failure
+     to acquire a recording slot leaves the old loop intact, and finishing uses
+     already reserved resources. Do not add control-side per-take polling.
+
+2. **Capture-aware RT handlers**
+
+   - [ ] Provide safe resource access at the immediate execution point and
+     implement Record plus finish-to-stop/play with real capture settlement.
+     Keep application-specific behavior outside generic FIFO code.
+   - [ ] Smoke-test actual recorded samples and start/finish frames, buffer-only
+     callbacks, independent group failures, empty/repeated actions, resource
+     exhaustion and retained old media. No processing-time budget checks.
+
+3. **UI and control wiring**
+
+   - [ ] Route eligible recording, stop and play actions through complete groups,
+     including selected-loop and solo gestures that fit the existing envelope.
+     Base recording finalization on RT state, not a possibly stale UI mode.
+   - [ ] Keep unsupported/mixed/oversized actions on their complete legacy route,
+     selected before submission. Verify snapshots, monitoring and existing
+     recording exports remain correct, without UI request IDs or deadlines.
+
+4. **Focused end-to-end validation and completion**
+
+   - [ ] Exercise Record -> audio capture -> finish-to-stop/play through direct
+     and encoded delivery. Check a grouped start, Play/Stop before a fresh UI
+     snapshot, unavailable storage, disconnect without replay and an unchanged
+     legacy recording variant.
+   - [ ] Run relevant smoke tests, formatting and warning-denying builds. Update
+     this document and the existing draft PR; leave broad CI in the background.
+
+### Recording milestone acceptance criteria
+
+- Eligible ordinary audio recording uses the new command/result transport end
+  to end. Every command returns a meaningful result in its receiving callback;
+  no legacy transition is merely queued behind a reported success.
+- Recorded samples and take length match the RT start/finish frames. Finish into
+  Playing makes the completed take playable as one action; finish into Stopped
+  leaves it available for later playback/export.
+- A grouped start shares one processing frame among successful members, while
+  failed members preserve their previous state. Snapshot lag cannot make Play
+  or Stop bypass recording finalization.
+- Capture resources remain opaque to control. No per-command preparation
+  protocol, RT pending-request table, new request IDs, application deadlines,
+  arming/scheduling or processing-time accounting is added.
+- Capacity exhaustion, incomplete takes, monitoring and media ownership are
+  handled explicitly. Unsupported recording variants remain functional through
+  their existing routes. No automatic replay or legacy retry is introduced.
+- Focused direct/encoded/UI smoke checks and the relevant build/format checks
+  pass. No broad integration matrix or CI completion wait is required.
+
+The execution and verification policy below applies to this milestone: keep its
+checkboxes current, commit meaningful milestones on the existing branch, document
+supported revisions to implementation/design, and obtain explicit user approval
+before changing the goals or acceptance criteria. Do not merge the draft PR
+automatically.
 
 ## Completed response-extension stages
 
