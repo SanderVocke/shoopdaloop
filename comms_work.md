@@ -12,6 +12,10 @@ step adds optional expiry deadlines and an ordered response FIFO between control
 and RT. That extension is planned, not implemented. It supersedes the restriction
 that the new internal command path must never return individual results.
 
+This step delivers deadline capability only. All existing application commands
+on the new path must continue with no deadline. Assigning deadlines to specific
+application commands is separate future work, outside this milestone.
+
 There are two distinct boundaries:
 
 ```text
@@ -229,6 +233,12 @@ frame, not guaranteed delivery latency. A stopped audio clock cannot produce
 callback responses. There is no per-command timer, execution-cost check or
 attempt to reserve CPU time against a deadline.
 
+Do not introduce command-specific deadline policies, default timeouts, automatic
+deadline assignment or UI deadline settings in this step. Existing production
+callers must send `deadline = None`. Exercise explicit deadlines using synthetic
+transport test groups; these tests do not establish application policies. Existing
+legacy command behavior remains unchanged.
+
 ### Records and response publication
 
 Define an explicit internal command record layout with space reserved for a
@@ -333,7 +343,8 @@ with legacy work while migrating dependencies to the new results.
 4. **Control and application integration**
 
    - [ ] Drain results in order, preserve legacy handoff and reconnect rules,
-     and expose useful failures without requiring UI request IDs.
+     and expose useful failures without requiring UI request IDs. Keep deadlines
+     absent for all existing application commands; add no deadline policies.
    - [ ] Verify that existing snapshot-driven controls, dependencies and push/pull
      delivery keep working. Preserve unmigrated features through their routes.
 
@@ -350,6 +361,10 @@ with legacy work while migrating dependencies to the new results.
   the same callback, with a meaningful code for every command.
 - Optional deadlines reject an already-late group as a whole and never schedule
   work for the future. An absent deadline preserves immediate FIFO execution.
+- All existing application commands on the new path use `deadline = None`.
+  Explicit deadlines are exercised only in synthetic transport tests. No
+  command-specific policy or automatic/default deadline assignment is delivered;
+  applying deadlines to application commands requires separate future work.
 - Thirty successful starts in one group share one processing frame. Individual
   failures preserve subsequent effects and do not introduce rollback.
 - Slow control cannot force RT to wait or lose responses; admission reserves
