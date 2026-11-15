@@ -22,6 +22,9 @@ execution start). Future integration follows PR #997; this change does not merge
 
 Environment: Debian 13, initially no Rust, Verilator, CMake, Nix or Vivado.
 System package helper and sudo are unavailable. A workspace-owned Rust toolchain
-is installed; pinned prebuilt HDL tools are being prepared. No baseline simulation
-pass is claimed until the tools can run. No board or place/route validation is
-implied by component simulation.
+is installed. Debian Verilator 5.032 and CMake were extracted into the workspace;
+Yosys comes from the pinned OSS CAD Suite. The original compiled SP, JP and Marlin
+core baseline tests pass. Extracted SP/JP/core/smoothing and production CPU tests
+pass with Rust warnings denied. DRAMsim3 builds successfully. Complete retained
+simulation and native gates are in progress. No board or place/route validation
+is implied by component simulation.

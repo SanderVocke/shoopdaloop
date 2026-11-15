@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Guard the complete historical coverage mapping and native simulator boundary."""
+"""Guard historical coverage dispositions and the native component boundary."""
 import json
 from pathlib import Path
 import re
@@ -12,7 +12,24 @@ def main():
     rows = inventory['rows']
     assert len(rows) == inventory['original_definitions'] == 75
     assert len({(row['original_source'], row['original_test']) for row in rows}) == 75
+    for retired in ('fpga/transition_processor', 'fpga/loop_pipeline',
+                    'src/rust/rt_fpga_adapter', 'src/rust/rt_fpga_sim',
+                    'src/rust/shoop_rt_host_fpga_sim'):
+        assert not (ROOT/retired).exists(), retired
+    forbidden = ('rt_fpga_adapter', 'rt_fpga_sim', 'shoop_rt_host_fpga_sim')
+    for manifest in (ROOT/'src/rust').glob('*/Cargo.toml'):
+        assert not any(name in manifest.read_text() for name in forbidden), manifest
+    for source in (ROOT/'src/rust/rt_fpga_testbench/src').rglob('*.rs'):
+        assert not any(name in source.read_text() for name in forbidden), source
+    retained = 0
     for row in rows:
+        assert re.fullmatch('[0-9a-f]{64}', row['original_definition_sha256']), row
+        assert row['disposition'] in ('retained', 'retired'), row
+        if row['disposition'] == 'retired':
+            assert row['reason'], row
+            assert not (ROOT/row['rust_source']).exists(), row
+            continue
+        retained += 1
         source = (ROOT/row['rust_source']).read_text()
         assert re.search(r'\bfn\s+'+re.escape(row['rust_function'])+r'\s*\(', source), row
         target = ROOT/f"src/rust/rt_fpga_testbench/tests/{row['cargo_test']}.rs"
@@ -28,8 +45,7 @@ def main():
         lines = [line.strip() for line in path.read_text().splitlines()
                  if line.strip() and not line.lstrip().startswith('#')]
         assert lines == ['-r ../../scripts/rt_backend_testbench/requirements.txt'], path
-    assert not (ROOT/'src/rust/rt_fpga_sim/tests/bench').exists(), 'duplicate pilot harness'
-    print('Marlin coverage: all 75 baseline definitions mapped; FPGA Python tools are preparation/launchers only')
+    print(f'Marlin coverage: {retained} retained and {len(rows)-retained} explicitly retired baseline definitions')
 
 
 if __name__ == '__main__':

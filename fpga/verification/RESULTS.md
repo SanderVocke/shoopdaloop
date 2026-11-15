@@ -1,3 +1,7 @@
+> Historical/superseded integration document. TP and the current ARM interface
+> are retired; see `FPGA_ARCHITECTURE.md` and `docs/fpga/retirement-ledger.md`.
+> Old commands and backend/timing claims below describe their recorded revision.
+
 # Production Rust / RTL verification results
 
 The production Current backend now supplies both floating-point and Q8.24

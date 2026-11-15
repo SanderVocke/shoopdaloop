@@ -1,12 +1,6 @@
 #!/usr/bin/env python3
-"""Measure the complete loop core in a synchronous registered fabric context."""
-import argparse
-import hashlib
-import json
-import os
+"""Registered fabric context generator used by subsystem measurements."""
 from pathlib import Path
-import shutil
-import subprocess
 import sys
 
 HERE = Path(__file__).resolve().parent
@@ -15,7 +9,7 @@ sys.path.insert(0, str(ROOT/'fpga/axi_memory'))
 from generate_tops import header
 
 
-def context(source, module_name='loop_pipeline_axi'):
+def context(source, module_name):
     match, ports = header(source)
     parameters = match[2]
     import re
@@ -45,65 +39,3 @@ def context(source, module_name='loop_pipeline_axi'):
               ',\n'.join(f'.{name}({name})' for name in names), ') core_under_test (',
               ',\n'.join(f'.{name}({name})' for _, name in ports), ');', 'endmodule']
     return '\n'.join(lines)+'\n'
-
-
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--vivado', default='vivado')
-    parser.add_argument('--output', type=Path, default=ROOT/'work/vivado-current')
-    parser.add_argument('--threads', type=int, default=4)
-    args = parser.parse_args()
-    output = args.output.resolve()
-    output.mkdir(parents=True, exist_ok=True)
-    if any(output.iterdir()):
-        parser.error('output must be empty to preserve run provenance')
-    if args.threads < 1:
-        parser.error('threads must be positive')
-    sources = []
-    for directory in ('state_processor','job_processor','transition_processor',
-                      'chunk_memory','media_store','loop_pipeline','axi_memory'):
-        sources.extend(sorted((ROOT/'fpga'/directory/'rtl').glob('*.sv')))
-    sources.extend(sorted((ROOT/'fpga/state_processor/rtl').glob('*.svh')))
-    hashes = {}
-    for path in sources:
-        relative = path.relative_to(ROOT)
-        destination = output/'source'/relative
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(path, destination)
-        hashes[str(relative)] = hashlib.sha256(path.read_bytes()).hexdigest()
-    (output/'registered_core_context.sv').write_text(context((ROOT/'fpga/axi_memory/rtl/loop_pipeline_axi.sv').read_text()))
-    for name in ('run.tcl','core.xdc'):
-        shutil.copyfile(HERE/name, output/name)
-    (output/'source-manifest.json').write_text(json.dumps(hashes, indent=2)+'\n')
-    (output/'provenance.json').write_text(json.dumps(dict(
-        revision=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
-        working_tree_dirty=bool(subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True)),
-        command=sys.argv, part='xc7z020clg400-1', clock_mhz=100,
-    ), indent=2)+'\n')
-    command = [args.vivado,'-mode','batch','-nojournal','-log','vivado.log',
-               '-source','run.tcl','-tclargs',str(args.threads)]
-    # Reap Vivado's detached synthesis workers in containers whose PID 1 does not.
-    if sys.platform == 'linux':
-        import ctypes
-        if ctypes.CDLL(None).prctl(36, 1, 0, 0, 0) != 0:
-            raise RuntimeError('cannot enable child subreaper')
-    with (output/'console.log').open('w') as log:
-        process = subprocess.Popen(command,cwd=output,stdout=log,stderr=subprocess.STDOUT)
-        main_status = None
-        while True:
-            try:
-                pid, status = os.waitpid(-1, 0)
-            except ChildProcessError:
-                break
-            if pid == process.pid:
-                main_status = os.waitstatus_to_exitcode(status)
-    if main_status != 0:
-        raise SystemExit(f'Vivado failed ({main_status}); see {output}/console.log')
-    result = json.loads((output/'timing.json').read_text())
-    print(json.dumps(result,indent=2))
-    if not result['met_100mhz']:
-        raise SystemExit('Routed design does not meet 100 MHz; see timing reports')
-
-
-if __name__ == '__main__':
-    main()

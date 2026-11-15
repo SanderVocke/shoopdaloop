@@ -1,3 +1,7 @@
+> Historical/superseded integration document. TP and the current ARM interface
+> are retired; see `FPGA_ARCHITECTURE.md` and `docs/fpga/retirement-ledger.md`.
+> Old commands and backend/timing claims below describe their recorded revision.
+
 # Default application Sync loop through the FPGA simulator
 
 Status: completed on `feat/fpga-app-sync-loop`; PR #983 targets

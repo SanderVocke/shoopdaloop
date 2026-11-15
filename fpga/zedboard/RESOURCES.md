@@ -1,3 +1,7 @@
+> Historical/superseded integration document. TP and the current ARM interface
+> are retired; see `FPGA_ARCHITECTURE.md` and `docs/fpga/retirement-ledger.md`.
+> Old commands and backend/timing claims below describe their recorded revision.
+
 # Routed resource usage
 
 These numbers come from the fully routed **complete ZedBoard deployment**, using

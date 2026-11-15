@@ -1,3 +1,7 @@
+> Historical/superseded integration document. TP and the current ARM interface
+> are retired; see `FPGA_ARCHITECTURE.md` and `docs/fpga/retirement-ledger.md`.
+> Old commands and backend/timing claims below describe their recorded revision.
+
 # FPGA audio I/O implementation plan
 
 All simulation benches now use the shared [Rust/Marlin suite](src/rust/rt_fpga_testbench/README.md).

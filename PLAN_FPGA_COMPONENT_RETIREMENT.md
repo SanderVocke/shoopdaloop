@@ -224,19 +224,19 @@ are absent or give a clear unsupported-command error, never apparent success.
 
 Depends on: stage 4 final retained surface.
 
-- [ ] Update `fpga/synthesis` source collection and Tcl tops for standalone
+- [x] Update `fpga/synthesis` source collection and Tcl tops for standalone
   state/job/memory builds. Remove live integrated TP/board synthesis targets and
   accidental dependencies on archived source manifests.
-- [ ] Update `.github/workflows/fpga_simulation.yml` and any affected build/Zynq
+- [x] Update `.github/workflows/fpga_simulation.yml` and any affected build/Zynq
   workflows/path filters. Keep component simulation and default-build isolation
   gates; replace full-loop/ARM demos and 64-loop campaigns with retained suites
   and the execution smoke. Preserve independent audio/CPU numeric gates.
-- [ ] Update `coverage.json` and `scripts/check_fpga_testbench_coverage.py` with
+- [x] Update `coverage.json` and `scripts/check_fpga_testbench_coverage.py` with
   explicit retained, moved and retired obligations and real executable targets.
-- [ ] Update `FPGA_ARCHITECTURE.md`, `SIMPLIFY.md`, active plans/READMEs, component
+- [x] Update `FPGA_ARCHITECTURE.md`, `SIMPLIFY.md`, active plans/READMEs, component
   docs, verification contract/results and launcher help. Clearly supersede old
   architectural plans without implying their former requirements still apply.
-- [ ] Keep historical timing/board reports and hashes with a retirement notice
+- [x] Keep historical timing/board reports and hashes with a retirement notice
   and revision provenance. Document deferred communication/ARM split work and
   link PR #997 as context; do not specify a replacement hardware protocol.
 

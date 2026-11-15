@@ -1,3 +1,7 @@
+> Historical/superseded integration document. TP and the current ARM interface
+> are retired; see `FPGA_ARCHITECTURE.md` and `docs/fpga/retirement-ledger.md`.
+> Old commands and backend/timing claims below describe their recorded revision.
+
 # Reference retirement coverage ledger
 
 Baseline: `e5c015be` on `proto/fpga-rust-reference`. The completed plan is

@@ -45,8 +45,8 @@ def main():
         parser.error('output must be empty to preserve run provenance')
     directory, top, parameters = PROFILES[args.subsystem]
     hashes = {}
-    for library in ('state_processor', 'job_processor', 'transition_processor',
-                    'chunk_memory', 'media_store', 'loop_pipeline', 'axi_memory'):
+    for library in ('state_processor', 'job_processor',
+                    'chunk_memory', 'media_store', 'axi_memory'):
         for path in sorted((ROOT / 'fpga' / library / 'rtl').glob('*')):
             if path.suffix not in ('.sv', '.svh'):
                 continue

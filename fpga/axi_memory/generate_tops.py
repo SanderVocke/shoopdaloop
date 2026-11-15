@@ -29,7 +29,7 @@ def generate():
                  for prefix, name in word_ports if name.startswith("m_axi_")]
     result = {}
     for directory, name in (("chunk_memory", "chunk_memory"), ("media_store", "media_store"),
-                            ("media_store", "media_audio_pipeline"), ("loop_pipeline", "loop_pipeline")):
+                            ("media_store", "media_audio_pipeline")):
         match, ports = header((FPGA/directory/"rtl"/f"{name}.sv").read_text())
         params = match[2].strip().replace('BURST_MEMORY = 0', 'BURST_MEMORY = 1')
         param_names = re.findall(r"parameter\s+integer\s+(\w+)\s*=", params)
