@@ -1,4 +1,4 @@
-//! Audio frame strobes shared by continuous and autonomous-loader benches.
+//! Audio frame strobes for clock-domain and ownership checks.
 use crate::{bits::Bits, sim::Sim};
 pub struct Frames {
     pub ticks: u64,

@@ -1,4 +1,4 @@
-use crate::{production, rtl, spec::*};
+use crate::{production, spec::*};
 use shoop_wasm_test_support::shoop_test;
 
 fn scenario() -> Scenario {
@@ -9,11 +9,10 @@ fn scenario() -> Scenario {
 }
 
 #[shoop_test]
-fn common_session_executes_both_production_policies_and_lowers_a_constant_program() {
+fn common_session_executes_both_production_policies() {
     let scenario = scenario();
     let q = production::run::<rt_runtime::Q824>(&scenario).unwrap();
     let f = production::run::<f32>(&scenario).unwrap();
-    let original = rtl::compile(&scenario).unwrap();
     assert_eq!(q.quanta.len(), 9);
     assert_eq!(q.media[0].frames, 64);
     for (a, b) in q.quanta.iter().zip(&f.quanta) {
@@ -28,26 +27,6 @@ fn common_session_executes_both_production_policies_and_lowers_a_constant_progra
             assert!((q as f64 / (1u64 << 24) as f64 - f as f64).abs() <= f64::from(f32::EPSILON));
         }
     }
-    let mut changed = scenario.clone();
-    changed.steps.clear();
-    assert_eq!(
-        rtl::compile(&changed).unwrap(),
-        original,
-        "control activity must not specialize the program"
-    );
-    assert_eq!(
-        original.node_order,
-        vec![
-            Identity {
-                slot: 0,
-                generation: 1
-            },
-            Identity {
-                slot: 1,
-                generation: 1
-            }
-        ]
-    );
 }
 
 #[shoop_test]
@@ -57,11 +36,6 @@ fn schema_documents_roundtrip_and_reject_unknown_duplicate_or_lossy_inputs() {
     assert_eq!(
         serde_json::from_str::<Scenario>(&encoded).unwrap(),
         scenario
-    );
-    let image = rtl::compile(&scenario).unwrap();
-    assert_eq!(
-        serde_json::from_str::<rtl::Image>(&serde_json::to_string(&image).unwrap()).unwrap(),
-        image
     );
     let result = production::run::<rt_runtime::Q824>(&scenario).unwrap();
     assert_eq!(
@@ -74,21 +48,6 @@ fn schema_documents_roundtrip_and_reject_unknown_duplicate_or_lossy_inputs() {
         encoded.replacen("{", "{\"extra\":0,", 1),
     ] {
         assert!(serde_json::from_str::<Scenario>(&source).is_err());
-    }
-    for (start, target, duration, elapsed) in [
-        (i32::MIN, i32::MAX, 0, 0),
-        (i32::MAX, i32::MIN, u32::MAX, u32::MAX),
-    ] {
-        let value = rtl::Value::Ramp(rtl::Ramp {
-            start,
-            target,
-            duration,
-            elapsed,
-        });
-        assert_eq!(
-            serde_json::from_str::<rtl::Value>(&serde_json::to_string(&value).unwrap()).unwrap(),
-            value
-        );
     }
     let mut bad = scenario.clone();
     bad.format_version += 1;

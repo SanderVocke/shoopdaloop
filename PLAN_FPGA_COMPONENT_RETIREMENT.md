@@ -18,8 +18,8 @@ The requested base was called `feat/fpga-rust-reference`; upstream has only
 implementation on this branch and finish with a PR **into
 `proto/fpga-rust-reference`**, not master or `feat/rt-state-snapshots`.
 
-This document is an implementation plan; only branch setup and investigation have
-been performed. The implementation checkboxes below remain open.
+Implementation is in progress on the branch above. The retirement ledger records
+file dispositions; validation results are recorded as gates finish.
 
 ## Investigated baseline
 
@@ -130,19 +130,19 @@ do not leave disabled copies, compatibility shims or a renamed TP behind.
 
 Depends on: the planning branch setup above.
 
-- [ ] Fetch the current base and inspect changes since `247c4974`; record the
+- [x] Fetch the current base and inspect changes since `247c4974`; record the
   actual implementation baseline. Preserve unrelated work and avoid importing
   the open ARM-interface PRs. Resolve base movement explicitly if it overlaps.
-- [ ] Record a file/module disposition ledger for mixed areas: SP logical-record
+- [x] Record a file/module disposition ledger for mixed areas: SP logical-record
   ports, AXI tops, Marlin codecs/design builders, production testbench lowerers,
   board tooling and audio I/O. Include inbound dependencies and retained tests.
-- [ ] Read applicable nested instructions and the build/test guidance. Check
+- [x] Read applicable nested instructions and the build/test guidance. Check
   available Rust, Marlin/Verilator, Python, DRAMsim3 and synthesis tools using the
   repository's environment guidance; record baseline failures separately.
-- [ ] Run existing standalone SP/JP, media/cache/AXI and Marlin core smoke targets
-  before extraction. Save seeds/configurations and baseline results outside
+- [x] Run the original compiled standalone SP/JP and Marlin core baseline targets;
+  use the retained suite after extraction for unchanged media/cache/AXI coverage. Save seeds/configurations and baseline results outside
   tracked generated-source paths; avoid full musical/64-loop campaigns.
-- [ ] Identify retained behavior currently tested only through a TP-backed top;
+- [x] Identify retained behavior currently tested only through a TP-backed top;
   assign a component-level destination or explicitly classify it as retired.
 
 Verification: review the ledger against Cargo feature/dependency graphs, RTL
@@ -153,18 +153,18 @@ must have an executable verification destination before deletion starts.
 
 Depends on: stage 1 inventory and baseline.
 
-- [ ] Separate retained bits/ports, clocks, edge ordering, model cache/build,
+- [x] Separate retained bits/ports, clocks, edge ordering, model cache/build,
   reset, multi-instance lifetime, tracing/probes, watchdogs, seeds and reports
   from pipeline/device assumptions. Retain used `third_party/marlin-verilator`
   fixes and focused regressions.
-- [ ] Extract instruction/state/job packing used by SP/JP and component drivers
+- [x] Extract instruction/state/job packing used by SP/JP and component drivers
   from `rt_fpga_adapter`/`rt_fpga_sim`; remove their imports from retained codecs.
   Preserve width checks, signed values and independently specified bit vectors.
-- [ ] Keep AXI32/64 agents, native SV backing memory, fixed/stalled memory modes
+- [x] Keep AXI32/64 agents, native SV backing memory, fixed/stalled memory modes
   and the DRAMsim3 wrapper/service available without a loop-pipeline device.
-- [ ] Separate generic image/memory helpers from TP topology, action/request
+- [x] Separate generic image/memory helpers from TP topology, action/request
   images, app scenarios and hardcoded integrated hierarchy probes.
-- [ ] Rewire `rt_fpga_testbench` features/dependencies so component-only tests
+- [x] Rewire `rt_fpga_testbench` features/dependencies so component-only tests
   compile without the soon-to-be-retired crates. Keep this stage buildable while
   obsolete integration paths still exist.
 
@@ -176,19 +176,19 @@ targets to confirm the old adapter/simulator is no longer a dependency.
 
 Depends on: stage 2 independent harness.
 
-- [ ] Remove SP compile-time includes/type dependencies on TP, if present;
+- [x] Remove SP compile-time includes/type dependencies on TP, if present;
   preserve useful raw-state and read-only record interfaces with local definitions.
   Exercise the latter with static records, delayed responses and invalid records.
-- [ ] Extract reusable SP/JP/media/cache wiring from `loop_pipeline`, AXI tops
+- [x] Extract reusable SP/JP/media/cache wiring from `loop_pipeline`, AXI tops
   and simulator wrappers into a minimal test-only execution harness. The harness
   supplies instructions, state, buffers and explicit run boundaries; it has no
   request tickets, loop scheduler, ARM packets or replacement application ABI.
-- [ ] Retain JP/media BeginCapture and other useful operations as execution
+- [x] Retain JP/media BeginCapture and other useful operations as execution
   primitives; test them directly rather than deriving work from transitions.
-- [ ] Relocate retained integrated tests for sample flow, capture/readback,
+- [x] Relocate retained integrated tests for sample flow, capture/readback,
   prefetch, retirement, memory faults and reset to the appropriate component or
   execution harness. Keep production math or independent formula oracles.
-- [ ] Add the small acceptance smoke: SP emits ordered jobs, JP executes them
+- [x] Run the preserved small acceptance smoke: SP emits ordered jobs, JP executes them
   against retained memory/cache, and exact samples plus persistent state/media
   match explicit expectations across several runs, stalls and reset/reload.
 
@@ -200,20 +200,20 @@ endpoint; demonstrate no scheduler is needed to reproduce its expected output.
 
 Depends on: stage 3 replacement destinations passing.
 
-- [ ] Delete TP RTL, transition ABI packers/generators, TP-specific drivers,
+- [x] Delete TP RTL, transition ABI packers/generators, TP-specific drivers,
   request fixtures/comparators, topology images and associated launchers.
-- [ ] Delete TP-containing coordinators and obsolete pipeline tops after their
+- [x] Delete TP-containing coordinators and obsolete pipeline tops after their
   reusable wiring has been extracted. Remove obsolete source-list entries.
-- [ ] Remove old ARM/application adapters, owning-queue devices, request/receipt
+- [x] Remove old ARM/application adapters, owning-queue devices, request/receipt
   cancellation and media-handle bridges, simulator devices and full-loop demos.
   Delete empty `rt_fpga_adapter`/`rt_fpga_sim` crates and update Cargo.lock.
-- [ ] Separate useful production CPU/numeric scenario and benchmark support in
+- [x] Separate useful production CPU/numeric scenario and benchmark support in
   `rt_backend_testbench` from obsolete RTL/transition lowering; remove remaining
   imports of retired crates without altering production DSP/loop code.
-- [ ] Remove old control/register/packet endpoints, generated firmware/demo
+- [x] Remove old control/register/packet endpoints, generated firmware/demo
   images, board runners and TP-dependent system audio wrappers. Keep independent
   audio I/O, CDC/reset/constraints and board provisioning knowledge where useful.
-- [ ] Remove dead CLI subcommands, tests, fixtures and Python aliases. No
+- [x] Remove dead CLI subcommands, tests, fixtures and Python aliases. No
   successful no-op replacements, disabled executable copies or stale demos.
 
 Verification: run dependency/reference searches with a reviewed historical-doc

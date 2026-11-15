@@ -1,9 +1,9 @@
-use crate::SimResult;
+use crate::Result;
 use std::{ffi::OsStr, process::Command};
 
 pub const SUPPORTED_VERILATOR: &str = "5.032";
 
-pub fn check_verilator(executable: &OsStr) -> SimResult<()> {
+pub fn check_verilator(executable: &OsStr) -> Result<()> {
     let output = Command::new(executable)
         .arg("--version")
         .output()
@@ -25,11 +25,11 @@ pub fn check_verilator(executable: &OsStr) -> SimResult<()> {
     validate_version(&String::from_utf8_lossy(&output.stdout))
 }
 
-fn validate_version(output: &str) -> SimResult<()> {
+fn validate_version(output: &str) -> Result<()> {
     let mut words = output.split_whitespace();
     if words.next() != Some("Verilator") || words.next() != Some(SUPPORTED_VERILATOR) {
         return Err(format!(
-            "unsupported Verilator version: {}; the FPGA RTL backend requires Verilator {SUPPORTED_VERILATOR}",
+            "unsupported Verilator version: {}; the component simulator requires Verilator {SUPPORTED_VERILATOR}",
             output.trim()
         )
         .into());

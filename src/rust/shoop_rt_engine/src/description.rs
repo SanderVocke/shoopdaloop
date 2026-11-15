@@ -46,7 +46,6 @@ impl HostPorts {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct EngineDescription {
-    pub audio_backend: shoop_rt_protocol::AudioBackendKind,
     pub audio_render_mode: rt_runtime::AudioRenderMode,
     pub audio_bench_only: bool,
     pub history: shoop_rt_protocol::host::InputHistorySettings,
@@ -99,7 +98,6 @@ pub struct EngineDescription {
 impl Default for EngineDescription {
     fn default() -> Self {
         Self {
-            audio_backend: shoop_rt_protocol::AudioBackendKind::NewEngine,
             audio_render_mode: rt_runtime::AudioRenderMode::Current,
             audio_bench_only: false,
             history: shoop_rt_protocol::host::InputHistorySettings::default(),
