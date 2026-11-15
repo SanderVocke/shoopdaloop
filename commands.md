@@ -545,7 +545,7 @@ target above. Do not migrate ordinary UI controls or expand the opcode subset in
 this milestone. Keep the existing legacy coexistence path and RT snapshot
 publication cadence.
 
-- [ ] **1. Establish configuration-owned identity.** Audit every supported target
+- [x] **1. Establish configuration-owned identity.** Audit every supported target
   lifecycle, candidate preparation, activation, removal and slot reuse against the
   full snapshot graph/topology version. Make the active mapping immutable within
   a version, including during replacement preparation, and advance the version
@@ -586,6 +586,13 @@ Stage 1 is the prerequisite for trusting a header instead of individual expected
 generations. Stage 2 establishes command failure semantics; stage 3 connects them
 to the new storage and addressing. Stage 4 validates the combination. None of
 these stages is completed by the prior smoke-test results.
+
+Identity audit: loop incarnation changes require node-pair configuration and a
+new topology/graph activation; strip identity/processor binding changes require
+a new graph; bus identity/processor changes also require a new graph. Whole-session
+replacement always advances both epochs. Candidate node configuration is staged
+for the next epoch and does not replace the active mapping during preparation.
+Focused loop/strip/bus slot-reuse and prepared-replacement snapshot checks pass.
 
 
 ## Validation record

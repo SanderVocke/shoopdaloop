@@ -47,6 +47,55 @@ fn fixture_for(description: &shoop_rt_engine::EngineDescription) -> (Harness, (u
     (h, config)
 }
 
+fn configuration(h: &mut Harness) -> (u64, u64) {
+    h.run(1, 1);
+    let mut bytes = vec![0; h.host.endpoint().snapshot_capacity()];
+    let (_, len) = h.host.endpoint().read_snapshot(&mut bytes).unwrap();
+    let header = Header::read(&bytes[..len]).unwrap();
+    (header.graph, header.topology)
+}
+
+#[shoop_test]
+fn configuration_versions_cover_loop_strip_and_bus_address_reuse() {
+    let (mut h, mut previous) = fixture();
+    for request in [
+        Request::RemoveLoop {
+            loop_id: loop_id(0, 1),
+        },
+        Request::CreateLoop {
+            loop_id: loop_id(0, 2),
+            strip: strip(0, 1),
+        },
+        Request::RemoveLoop {
+            loop_id: loop_id(0, 2),
+        },
+        Request::RemoveStrip { strip: strip(0, 1) },
+        Request::CreateStrip {
+            strip: strip(0, 2),
+            shape: shape(2, 2, false),
+        },
+        Request::CreateBus {
+            bus: BusId(SlotId::new(1, 1)),
+            channels: 2,
+        },
+        Request::RemoveBus {
+            bus: BusId(SlotId::new(1, 1)),
+        },
+        Request::CreateBus {
+            bus: BusId(SlotId::new(1, 2)),
+            channels: 2,
+        },
+    ] {
+        h.done(request);
+        let next = configuration(&mut h);
+        assert_ne!(
+            previous, next,
+            "identity change must activate a new version: {request:?}"
+        );
+        previous = next;
+    }
+}
+
 #[shoop_test]
 fn partial_callbacks_leave_batches_queued_until_the_next_unrendered_quantum() {
     let mut d = description();
@@ -349,6 +398,21 @@ fn prepared_replacement_can_commit_after_live_groups_without_retargeting_them() 
         },
     });
     h.done(Request::ReplacementPrepare { id: 7 });
+    assert_eq!(
+        configuration(&mut h),
+        c,
+        "candidate preparation preserves the active version"
+    );
+    let mut prepared = vec![0; h.host.endpoint().snapshot_capacity()];
+    let (_, len) = h.host.endpoint().read_snapshot(&mut prepared).unwrap();
+    let identities: Vec<_> = Records(&prepared[HEADER..len])
+        .map(Result::unwrap)
+        .collect();
+    assert!(identities
+        .iter()
+        .any(|r| matches!(r, Record::LoopLevels { id, .. } if *id == loop_id(0, 1))));
+    assert!(identities.iter().any(|r| matches!(r, Record::State(StateRecord::StripControl { strip: id, .. }) if *id == strip(0, 1))));
+    assert!(!identities.iter().any(|r| matches!(r, Record::State(StateRecord::StripControl { strip: id, .. }) if *id == strip(0, 2))));
     send(
         &mut h,
         c,
