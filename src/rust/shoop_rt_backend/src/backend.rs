@@ -16,12 +16,12 @@ use shoop_backend::{
     Backend, BackendAsyncResult, BackendAudioData, BackendAudioDataChunk, BackendBusChannelId,
     BackendBusControl, BackendBusCreation, BackendBusFxControl, BackendBusId, BackendBusRequest,
     BackendCompositeConfig, BackendCompositeId, BackendConnectionSnapshot,
-    BackendDefaultPlaybackMode, BackendDriverState, BackendGrabRequest, BackendLoopContentUpdate,
-    BackendLoopId, BackendLoopMode, BackendMidiData, BackendMidiEvent, BackendMixerSnapshot,
-    BackendPortId, BackendProcessorLatencyAdjustment, BackendRecordingOffsetAdjustment,
-    BackendSessionData, BackendSessionReplacement, BackendSnapshot, BackendStatus,
-    BackendTrackControl, BackendTrackCreation, BackendTrackFxControl, BackendTrackId,
-    BackendTrackTopology, DirectTrackRequest, TrackRequest,
+    BackendDefaultPlaybackMode, BackendDriverState, BackendGrabRequest, BackendImmediateCommand,
+    BackendLoopContentUpdate, BackendLoopId, BackendLoopMode, BackendMidiData, BackendMidiEvent,
+    BackendMixerSnapshot, BackendPortId, BackendProcessorLatencyAdjustment,
+    BackendRecordingOffsetAdjustment, BackendSessionData, BackendSessionReplacement,
+    BackendSnapshot, BackendStatus, BackendTrackControl, BackendTrackCreation,
+    BackendTrackFxControl, BackendTrackId, BackendTrackTopology, DirectTrackRequest, TrackRequest,
 };
 use shoop_rt_protocol::{Capabilities, DriverKind, DriverRunState, LoopMode, MidiMessage, Request};
 use shoop_rt_transport::carrier::Carrier;
@@ -255,6 +255,12 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
 }
 
 impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
+    fn supports_immediate_commands(&self) -> bool {
+        true
+    }
+    fn submit_immediate_commands(&mut self, commands: &[BackendImmediateCommand]) -> Result<bool> {
+        self.submit_ui_immediate(commands)
+    }
     fn release_host_port_identity(&mut self, id: &str) -> bool {
         if self.replacement.is_some() || self.host_identity_in_use(id) {
             return false;

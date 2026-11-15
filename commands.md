@@ -31,7 +31,7 @@ interfaces, and drivers are outside this work.
 | Larger FIFO storing each group's actual command count | Implemented and smoke-tested |
 | Configuration version guarantees stable object identities; configuration-local command addresses | Implemented and smoke-tested |
 | One-pass RT execution with individual command failures | Implemented and smoke-tested |
-| Migration of ordinary UI controls to the immediate API | Not implemented; outside the simplification milestone |
+| Migration of ordinary UI controls to the immediate API | Implemented and smoke-tested for the supported subset |
 
 The current FIFO has **256 fixed-size records**. Each group occupies one header
 plus its actual command count, from 1 through 32. One callback can therefore
@@ -42,8 +42,8 @@ later effects.
 
 The initial and coexistence checklists preserve the historical implementation
 steps. The simplification checklist and latest validation record describe the
-current implementation. Ordinary UI controls have not been migrated automatically;
-that remains outside this plan's scope.
+current implementation. The subsequent UI integration automatically routes the
+supported subset through the immediate API; its scope is recorded below.
 
 ## Design principles
 
@@ -510,9 +510,10 @@ control does not wait indefinitely for them before publishing scalar groups.
 Immediate playback continues to refuse pending musical/program conflicts during
 its command handler. No future scheduling is introduced into the immediate path.
 
-This narrow entry point does not switch ordinary application controls over
-automatically. No controls need to be disabled merely because immediate groups
-have been used. Unsupported immediate playback states fail individually while
+The UI runtime selects the immediate path for supported ordinary controls, while
+the low-level backend mutation methods retain their existing tracked semantics
+for other workflows. No controls need to be disabled merely because immediate
+groups have been used. Unsupported immediate playback states fail individually while
 the rest of the group continues; their legacy operations remain available.
 
 ## Completed coexistence milestone
@@ -699,3 +700,40 @@ and cache behavior. Formatting, test policy and a warning-denying build of the
 engine, backend and native process wrapper (without native audio-provider
 features) pass. No full integration matrix or CI completion wait is part of this
 follow-up.
+
+## Ordinary UI integration
+
+The shared UI runtime now selects `shoop_app_protocol::immediate` groups for loop
+gain/balance, strip input/output gain/balance and output mute, and bus
+gain/balance/mute. Eligible Lua control operations use the same runtime queue.
+The service advertises immediate support and ordinary-audio playback eligibility
+in its session snapshot. Unquantized Play/Stop, default loop clicks, selected
+playback and solo stops use one complete group when all targets qualify and the
+whole action fits the current 32-command envelope. Start restarts at zero.
+
+The UI sends `ClientMessage::Immediate` without reserving an operation identity.
+The service maps existing UI identities through `BackendImmediateCommand` into
+the existing RT adapter, converting decibel controls to linear amplitudes there.
+There are no individual acceptance or execution replies and no new RT tracking.
+Snapshots update the display. A cumulative service refusal counter produces an
+uncorrelated UI notice; it does not prove an individual command's outcome.
+
+When local transport is full, the service retains the complete group and later
+UI messages in an ordered queue of at most 256 messages. Local and encoded
+receivers stop taking messages when that queue is full. Consecutive immediate
+groups still need no intervening snapshot; the existing barrier applies before
+later legacy work. Disconnect discards service-owned unsent work, while work
+already accepted by the backend remains with the host.
+
+Unsupported, mixed, scheduled or oversized actions keep their entire existing
+route, chosen before immediate submission. Recording stops still finalize media;
+composites, MIDI, processed playback and musical timing remain legacy. There is
+no fallback after an immediate group is submitted. Explicit `Client::command`
+and ordinary `Backend` mutation methods retain their tracked contracts for
+compatibility clients and lifecycle, duplication and persistence workflows.
+
+The application protocol is version 36; RT protocol version 30 and callback
+publication are unchanged. Focused smoke checks cover scalar controls, slider
+bursts and ordering into legacy monitoring, discarding unsent groups on UI loss,
+one group starting 30 loops, encoded message bounds/routing, Lua snapshot reads
+and fixed-cycle recording. No broad test suite or CI completion wait was used.

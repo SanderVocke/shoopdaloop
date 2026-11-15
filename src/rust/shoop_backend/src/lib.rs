@@ -1213,7 +1213,33 @@ pub struct BackendSnapshot {
     pub mutation_completions: Vec<BackendMutationCompletion>,
 }
 
+/// Value-only commands with local admission and snapshot-based observation.
+#[derive(Clone, Copy, Debug)]
+pub enum BackendImmediateCommand {
+    LoopGain(BackendLoopId, f32),
+    LoopBalance(BackendLoopId, f32),
+    Start(BackendLoopId),
+    Stop(BackendLoopId),
+    InputGainDb(BackendTrackId, f32),
+    InputBalance(BackendTrackId, f32),
+    OutputGainDb(BackendTrackId, f32),
+    OutputBalance(BackendTrackId, f32),
+    OutputMute(BackendTrackId, bool),
+    BusGainDb(BackendBusId, f32),
+    BusBalance(BackendBusId, f32),
+    BusMute(BackendBusId, bool),
+}
+
 pub trait Backend {
+    fn supports_immediate_commands(&self) -> bool {
+        false
+    }
+    /// False means no command was admitted because local transport is full.
+    fn submit_immediate_commands(&mut self, _commands: &[BackendImmediateCommand]) -> Result<bool> {
+        Err(anyhow!(
+            "Immediate commands are unavailable on this backend"
+        ))
+    }
     fn release_host_port_identity(&mut self, _id: &str) -> bool {
         false
     }

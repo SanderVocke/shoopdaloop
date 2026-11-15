@@ -16,6 +16,7 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 pub mod audio_driver;
 pub mod codec;
 pub mod composite;
+pub mod immediate;
 #[cfg(feature = "std")]
 pub mod local;
 pub mod persistence;
@@ -27,7 +28,7 @@ use alloc::sync::Arc;
 use serde::{Deserialize, Serialize};
 use shoop_app_api::*;
 
-pub const VERSION: u16 = 35;
+pub const VERSION: u16 = 36;
 pub const CHUNK_BYTES: usize = 1024;
 pub const MAX_MEDIA_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_SNAPSHOT_BYTES: usize = 8 * 1024 * 1024;
@@ -252,6 +253,7 @@ pub struct OperationResult {
 /// Ordinary shared state, without Lua, file workflows, editor drafts or media reads.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SessionSnapshot {
+    pub immediate: immediate::Capabilities,
     pub composites: Vec<composite::View>,
     pub preview: ClickTrackState,
     pub preview_bus: Option<BusId>,
@@ -284,6 +286,11 @@ impl SessionSnapshot {
             .flat_map(|track| track.loops.iter().map(|entry| entry.id))
             .collect::<alloc::collections::BTreeSet<_>>();
         let mut composites = alloc::collections::BTreeSet::new();
+        if self.immediate.playback.len() > loops.len()
+            || self.immediate.playback.iter().any(|id| !loops.contains(id))
+        {
+            return false;
+        }
         if self
             .status
             .memory
@@ -449,6 +456,11 @@ impl ServiceMessage {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum ClientMessage {
+    Immediate {
+        authority: Authority,
+        session_epoch: u64,
+        commands: Vec<immediate::Command>,
+    },
     Persistence {
         authority: Authority,
         request: persistence::Request,
@@ -632,6 +644,11 @@ impl WireMessage {
                 command,
                 ..
             }) => *session_epoch != 0 && operation_valid(authority, operation) && command.bounded(),
+            Self::Client(ClientMessage::Immediate {
+                authority,
+                session_epoch,
+                commands,
+            }) => authority.is_valid() && *session_epoch != 0 && immediate::bounded(commands),
             Self::Client(ClientMessage::Shutdown {
                 authority,
                 operation,

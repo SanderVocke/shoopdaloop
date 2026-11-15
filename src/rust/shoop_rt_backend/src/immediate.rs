@@ -1,6 +1,7 @@
 //! Explicit opt-in entry point; ordinary backend mutations retain their protocol.
 use crate::{EngineClock, Link, RtBackend};
 use anyhow::{anyhow, Result};
+use shoop_backend::{BackendBusControl, BackendImmediateCommand};
 use shoop_backend::{BackendBusId, BackendLoopId, BackendTrackId};
 use shoop_rt_protocol::immediate::{Batch, Command, Diagnostics, COMMANDS};
 use shoop_rt_transport::carrier::Carrier;
@@ -21,10 +22,80 @@ pub enum ImmediateCommand {
     BusMute(BackendBusId, bool),
 }
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
+    pub(crate) fn submit_ui_immediate(
+        &mut self,
+        commands: &[BackendImmediateCommand],
+    ) -> Result<bool> {
+        if commands.is_empty() || commands.len() > COMMANDS {
+            return Err(anyhow!("immediate groups contain 1 to {COMMANDS} commands"));
+        }
+        let mut values = [ImmediateCommand::BusMute(BackendBusId::from_raw(0), false); COMMANDS];
+        // Non-finite values remain individual RT failures.
+        let bounded = |value: f32, min: f32, max: f32| {
+            if value.is_finite() {
+                value.clamp(min, max)
+            } else {
+                f32::NAN
+            }
+        };
+        let amplitude = |value: f32| {
+            if value.is_finite() {
+                crate::mirror::db_amplitude(value)
+            } else {
+                f32::NAN
+            }
+        };
+        for (output, command) in values.iter_mut().zip(commands) {
+            use BackendImmediateCommand::*;
+            *output = match *command {
+                LoopGain(id, v) => ImmediateCommand::LoopGain(id, bounded(v, 0.0, 1.0)),
+                LoopBalance(id, v) => ImmediateCommand::LoopBalance(id, bounded(v, -1.0, 1.0)),
+                Start(id) => ImmediateCommand::Start(id),
+                Stop(id) => ImmediateCommand::Stop(id),
+                OutputGainDb(id, v) => ImmediateCommand::OutputGain(id, amplitude(v)),
+                InputGainDb(id, v) => ImmediateCommand::InputGain(id, amplitude(v)),
+                OutputBalance(id, v) => ImmediateCommand::OutputBalance(id, bounded(v, -1.0, 1.0)),
+                InputBalance(id, v) => ImmediateCommand::InputBalance(id, bounded(v, -1.0, 1.0)),
+                OutputMute(id, v) => ImmediateCommand::OutputMute(id, v),
+                BusGainDb(id, v) => {
+                    let gain = match BackendBusControl::GainDb(v).normalized(0) {
+                        Ok(BackendBusControl::GainDb(value)) => amplitude(value),
+                        _ => f32::NAN,
+                    };
+                    ImmediateCommand::BusGain(id, gain)
+                }
+                BusBalance(id, v) => {
+                    let stereo = self
+                        .mirror
+                        .buses
+                        .get(&id)
+                        .is_some_and(|b| b.channels.len() == 2);
+                    ImmediateCommand::BusBalance(
+                        id,
+                        if stereo {
+                            bounded(v, -1.0, 1.0)
+                        } else {
+                            f32::NAN
+                        },
+                    )
+                }
+                BusMute(id, v) => ImmediateCommand::BusMute(id, v),
+            };
+        }
+        self.try_immediate_group(&values[..commands.len()])
+    }
     /// Nonblocking, without request tracking. Control orders groups with legacy
     /// mutations at settled boundaries. Acceptance is local;
     /// observe conditions in snapshots, never infer an individual execution receipt.
     pub fn immediate_group(&mut self, commands: &[ImmediateCommand]) -> Result<()> {
+        if self.try_immediate_group(commands)? {
+            Ok(())
+        } else {
+            Err(anyhow!("immediate group locally refused: transport full"))
+        }
+    }
+
+    fn try_immediate_group(&mut self, commands: &[ImmediateCommand]) -> Result<bool> {
         if self.link != Link::Ready {
             return Err(anyhow!("immediate groups require a connected session"));
         }
@@ -78,13 +149,15 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .ok_or_else(|| anyhow!("invalid immediate group"))?;
         self.send();
         if !self.requests.outgoing.is_empty() {
-            return Err(anyhow!(
-                "earlier commands are waiting for transport capacity"
-            ));
+            return Ok(false);
         }
-        self.client
-            .immediate(batch)
-            .map_err(|e| anyhow!("immediate group locally refused: {e:?}"))
+        match self.client.immediate(batch) {
+            Ok(()) => Ok(true),
+            Err(shoop_rt_transport::client::ClientError::Carrier(
+                shoop_rt_transport::carrier::CarrierError::Full,
+            )) => Ok(false),
+            Err(error) => Err(anyhow!("immediate group locally refused: {error:?}")),
+        }
     }
     pub fn immediate_diagnostics(&self) -> Diagnostics {
         self.status.immediate

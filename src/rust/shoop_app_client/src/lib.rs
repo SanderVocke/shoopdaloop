@@ -203,6 +203,25 @@ impl Client {
         Ok(ClientMessage::Attach { version: VERSION })
     }
 
+    /// Construct a complete value group without operation tracking or replay.
+    pub fn immediate(&self, commands: Vec<immediate::Command>) -> Result<ClientMessage, Error> {
+        if self.state != State::Ready {
+            return Err(Error::NotReady);
+        }
+        if !immediate::bounded(&commands) {
+            return Err(Error::Protocol);
+        }
+        Ok(ClientMessage::Immediate {
+            authority: self.authority.ok_or(Error::NotReady)?,
+            session_epoch: self
+                .snapshot
+                .as_ref()
+                .ok_or(Error::NotReady)?
+                .persistence_epoch,
+            commands,
+        })
+    }
+
     /// Construct one operation, without submission or replay. The caller must deliver it once.
     pub fn command(
         &mut self,

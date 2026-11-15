@@ -48,6 +48,24 @@ boundary, not an additional implementation plan.
   input/output gain/balance and output mute, bus gain/balance/mute, and immediate
   restart-at-zero/stop for prepared ordinary audio loops. Unsupported playback
   conditions fail individually; recording finalization is not an immediate stop.
+- Ordinary UI controls, and eligible Lua control operations passing through the
+  same UI runtime, now use that path automatically. This includes loop gain and
+  balance, strip input/output gain and balance, output mute, and bus gain, balance
+  and mute. Track/bus decibel controls are converted to linear amplitude by the
+  backend adapter.
+- Unquantized Play/Stop, the ordinary loop button, selected playback and solo
+  stops use a single group when every target is an eligible ordinary audio loop
+  and the whole action fits 32 commands. Start restarts at zero. The service
+  advertises eligibility from observed state. Mixed, scheduled, recording and
+  oversized playback actions retain their existing route as a whole, preserving
+  functionality without splitting a synchronized action.
+- These UI groups carry no operation IDs, deadlines or execution replies through
+  either bridge. Display state comes from snapshots. Local UI/service queues are
+  bounded; full transport defers complete groups and later UI work in order.
+  Service admission refusals appear as an aggregate snapshot counter and UI
+  notice. Detaching discards service-owned unsent groups; RT-admitted work may
+  still execute. Invalid individual targets/values still fail independently on
+  RT. There is no automatic legacy retry after immediate submission.
 - The internal command ring stores actual group sizes. Its 256 records support
   128 singleton groups or up to 248 commands in larger groups; each application
   message currently holds 1–32 commands. Complete publication and a fixed cutoff
@@ -61,7 +79,7 @@ boundary, not an additional implementation plan.
 
 | Area | Current boundary and migration complication |
 | --- | --- |
-| **Ordinary UI command wiring** | Normal `Backend` mutation methods still use legacy requests, including gain, balance and basic playback. The new immediate API is available but ordinary controls have not been switched to it. This is relatively straightforward integration work: route suitable actions through groups and replace assumptions about execution replies with snapshot observation. |
+| **Compatibility command entry points and larger/mixed actions** | Ordinary UI actions use the new path for the supported subset. Explicit `Client::command` submissions and ordinary `Backend` mutation methods retain their tracked semantics for persistence, duplication, lifecycle workflows and compatibility clients/backends. UI playback actions with unsupported members, musical scheduling or more than 32 commands keep their entire existing route. Scalar actions over 32 commands also retain their existing route. Enlarging the group envelope and migrating workflows that depend on execution outcomes are separate steps. |
 | **Other simple controls** | Monitoring policy, playback defaults, smoothing settings and some effect parameters remain on their existing paths. Some may be easy additions, but each needs bounded execution and defined individual failure behavior. Not every remaining legacy command is intrinsically difficult. |
 | **Graph changes and processor lifecycle** | Creating/removing loops, strips, buses and processors, changing routing, and replacing a session use staged operations. They require preparation, coordinated activation, configuration-version changes and safe retirement of displaced objects. A simple scalar command does not cover that lifecycle. |
 | **Media transfer and persistence** | Loading recordings, exporting audio/MIDI and saving sessions use content operations and bulk transfers. They involve chunked reliable data, revisions, stable read cuts and resource ownership. Latest-state snapshots cannot replace reliable delivery of media bytes or preserve an export's lifetime. |
@@ -92,4 +110,14 @@ or execution replies to ordinary immediate commands.
 The remaining work must preserve configuration identity, ordering between command
 paths, musical behavior and object lifetimes while keeping RT execution bounded.
 The completed snapshot and command experiments provide the transport foundation;
-the remaining application and lifecycle migrations are still separate work.
+the remaining workflow and lifecycle migrations are still separate work.
+
+## UI wiring verification
+
+Focused smoke checks cover ordinary scalar UI controls, ordered slider bursts
+followed by a legacy monitoring change, disconnect without replay of unsent
+groups, a single UI group starting 30 loops with matching cursors, encoded group
+size/routing limits, Lua snapshot reads and fixed-cycle recording. These check
+the service and offline audio engine without a full test-suite or CI wait.
+The native UI builds with warnings denied, without optional audio-provider features.
+The application protocol is version 36; the RT command protocol remains version 30.

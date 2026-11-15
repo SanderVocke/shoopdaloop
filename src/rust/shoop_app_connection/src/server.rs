@@ -111,7 +111,7 @@ impl<P: RecordPort> Session<P> {
         let mut bytes = [0; MAX_RECORD_BYTES];
         let mut commands = 0;
         for _ in 0..MAX_PERSISTENCE_RECORDS_PER_TURN {
-            if commands == MAX_COMMANDS_PER_TURN {
+            if commands == MAX_COMMANDS_PER_TURN || !service.can_receive() {
                 break;
             }
             let Some(length) = self.port.take(&mut bytes) else {

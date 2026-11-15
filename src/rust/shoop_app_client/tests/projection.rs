@@ -45,6 +45,7 @@ fn profiling(revision: u64) -> shoop_app_api::ProfilingView {
 
 fn snapshot(revision: u64) -> Arc<SessionSnapshot> {
     Arc::new(SessionSnapshot {
+        immediate: Default::default(),
         composites: Vec::new(),
         sync_sources: Vec::new(),
         preview: Default::default(),
@@ -71,6 +72,77 @@ fn snapshot(revision: u64) -> Arc<SessionSnapshot> {
         pending: vec![],
         results: vec![],
     })
+}
+
+#[shoop_test]
+fn immediate_ui_groups_fit_records_and_leave_other_actions_on_their_existing_path() {
+    use shoop_app_api::*;
+    let mut state = (*snapshot(1)).clone();
+    state.immediate.enabled = true;
+    state.global.sync = false;
+    state.tracks[0].loops = (1..=33)
+        .map(|id| LoopState {
+            id: LoopId::from_raw(id),
+            selected: id <= 30,
+            empty: false,
+            mode: LoopMode::Stopped,
+            has_audio: true,
+            ..Default::default()
+        })
+        .collect();
+    state.immediate.playback = state.tracks[0].loops.iter().map(|l| l.id).collect();
+    let play = Command::Loop {
+        track: state.tracks[0].id,
+        loop_id: LoopId::from_raw(1),
+        action: LoopAction::PlayClicked,
+    };
+    let group = immediate::group(&play, &state).unwrap();
+    assert_eq!(group.len(), 30);
+    state.global.sync = true;
+    assert!(immediate::group(&play, &state).is_none());
+    state.global.sync = false;
+    state.immediate.playback.remove(0);
+    assert!(
+        immediate::group(&play, &state).is_none(),
+        "mixed playback keeps one route"
+    );
+    state.immediate.playback.insert(0, LoopId::from_raw(1));
+    for entry in &mut state.tracks[0].loops {
+        entry.selected = true;
+    }
+    assert!(
+        immediate::group(&play, &state).is_none(),
+        "oversized actions are not split"
+    );
+    let recording = Command::Loop {
+        track: state.tracks[0].id,
+        loop_id: LoopId::from_raw(1),
+        action: LoopAction::RecordClicked,
+    };
+    assert!(immediate::group(&recording, &state).is_none());
+
+    let message = WireMessage::Client(ClientMessage::Immediate {
+        authority: Authority {
+            lease: LeaseId(u128::MAX),
+            client: ClientId(u128::MAX),
+            generation: ConnectionGeneration(u64::MAX),
+        },
+        session_epoch: u64::MAX,
+        commands: vec![
+            immediate::Command::OutputGainDb(TrackId::from_raw(u64::MAX), -12.0);
+            immediate::COMMANDS
+        ],
+    });
+    let mut bytes = [0; MAX_RECORD_BYTES];
+    let used = codec::encode(&message, &mut bytes).unwrap();
+    assert_eq!(codec::decode(&bytes[..used]).unwrap(), message);
+    assert!(used < MAX_RECORD_BYTES);
+    let WireMessage::Client(ClientMessage::Immediate { commands, .. }) = message else {
+        panic!()
+    };
+    let mut too_many = commands;
+    too_many.push(immediate::Command::Stop(LoopId::from_raw(1)));
+    assert!(!immediate::bounded(&too_many));
 }
 
 #[shoop_test]
