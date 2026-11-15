@@ -648,7 +648,34 @@ pub fn carla_hosting_mode_from_snapshot(
         .map_err(|error: shoop_settings::CarlaHostingModeParseError| error.to_string())
 }
 
-pub use shoop_app_api::AudioBackendKind;
+/// The audio backend the application starts with.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum AudioBackendKind {
+    /// The engine supports the core looping workflow.
+    #[default]
+    NewEngine,
+}
+
+impl AudioBackendKind {
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::NewEngine => "new_engine",
+        }
+    }
+}
+
+impl std::str::FromStr for AudioBackendKind {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "new_engine" => Ok(Self::NewEngine),
+            _ => Err(format!(
+                "unknown audio backend {value:?}; expected new_engine"
+            )),
+        }
+    }
+}
 
 /// Native new-engine message delivery, selected at application startup.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -733,27 +760,6 @@ pub fn processor_settings_from_snapshot(
 pub fn register_audio_backend_settings(
     builder: &mut SettingsRegistryBuilder,
 ) -> Result<(), SettingsRegistryError> {
-    let choices: &'static [(&'static str, &'static str)] = if cfg!(feature = "fpga-sim") {
-        &[
-            ("new_engine", "Native"),
-            ("fpga_rtl_sim", "FPGA RTL simulation"),
-        ]
-    } else {
-        &[("new_engine", "Native")]
-    };
-    builder.register(
-        SettingDefinition::new(
-            AUDIO_BACKEND,
-            "new_engine".to_owned(),
-            "Audio",
-            "Audio backend",
-            "Audio graph processor used when starting a host.",
-        )
-        .category_order(5)
-        .setting_order(1)
-        .effect(SettingEffect::RestartRequired)
-        .editor(SettingEditor::StringChoice { choices }),
-    )?;
     for (key, label, order) in [
         (PROCESSOR_FX_POLICY, "Built-in FX", 58),
         (PROCESSOR_SYNTH_POLICY, "Built-in Synth", 59),
@@ -976,7 +982,9 @@ fn audio_driver_config(
             Ok(AudioDriverConfig::Cpal(config))
         }
         AudioDriverKind::WebAudio => Ok(AudioDriverConfig::WebAudio),
-        AudioDriverKind::Simulated => Ok(AudioDriverConfig::Simulated(Default::default())),
+        AudioDriverKind::Simulated => {
+            Err("a simulated clock cannot be selected as an audio driver".to_owned())
+        }
     }
 }
 
@@ -3269,11 +3277,7 @@ impl AppWidget {
                 .as_ref()
                 .map(|active| active.configured.kind().label())
                 .unwrap_or("Unavailable");
-            ui.label(format!(
-                "Audio backend: {}",
-                state.status.audio_backend.label()
-            ));
-            ui.label(format!("Audio driver: {backend_type}"));
+            ui.label(format!("Backend type: {backend_type}"));
             ui.label(format!("Driver status: {:?}", state.status.audio_driver));
             ui.label(if callbacks_active {
                 "Audio callbacks are active"
@@ -4179,7 +4183,7 @@ mod tests {
         register_audio_backend_settings(&mut builder).unwrap();
         let registry = builder.finish();
         let defaults = registry.defaults(1);
-        assert!(registry.definition(AUDIO_BACKEND.id()).is_some());
+        assert!(registry.definition(AUDIO_BACKEND.id()).is_none());
         assert_eq!(
             new_engine_pools_from_snapshot(&defaults).unwrap(),
             NewEnginePools::default()
@@ -4336,79 +4340,6 @@ mod tests {
         });
         frame(&context, &mut widget, &state, Vec::new());
         assert!(widget.empty_tracks_welcome_rect.is_none());
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn overlay_reports_the_backend_and_driver_independently() {
-        let context = egui::Context::default();
-        crate::initialize(&context);
-        let mut widget = AppWidget::default();
-        let mut state = AppState::default();
-        state.status.audio_backend = AudioBackendKind::FpgaRtlSim;
-        state.audio_drivers.active = Some(crate::ResolvedAudioDriverConfig {
-            configured: AudioDriverConfig::Simulated(Default::default()),
-            sample_rate: 48_000,
-            buffer_size: 512,
-            instance_name: "Simulation".into(),
-        });
-        let mut draw = |events| {
-            context.run_ui(
-                egui::RawInput {
-                    events,
-                    ..Default::default()
-                },
-                |ui| widget.show_backend_status(ui, &state),
-            )
-        };
-        let mut first = draw(vec![]);
-        first.textures_delta.clear();
-        drop(draw);
-        let position = widget.host_controls.status_rect.unwrap().center();
-        for pressed in [true, false] {
-            let mut output = context.run_ui(
-                egui::RawInput {
-                    events: vec![
-                        egui::Event::PointerMoved(position),
-                        egui::Event::PointerButton {
-                            pos: position,
-                            button: egui::PointerButton::Primary,
-                            pressed,
-                            modifiers: egui::Modifiers::NONE,
-                        },
-                    ],
-                    ..Default::default()
-                },
-                |ui| widget.show_backend_status(ui, &state),
-            );
-            output.textures_delta.clear();
-        }
-        let mut output = context.run_ui(egui::RawInput::default(), |ui| {
-            widget.show_backend_status(ui, &state)
-        });
-        fn text(shape: &egui::Shape, output: &mut String) {
-            match shape {
-                egui::Shape::Text(text) => output.push_str(text.galley.text()),
-                egui::Shape::Vec(shapes) => {
-                    for shape in shapes {
-                        text(shape, output);
-                    }
-                }
-                _ => {}
-            }
-        }
-        let mut labels = String::new();
-        for shape in &output.shapes {
-            text(&shape.shape, &mut labels);
-        }
-        output.textures_delta.clear();
-        assert!(
-            labels.contains("Audio backend: FPGA RTL simulation"),
-            "{labels}"
-        );
-        assert!(
-            labels.contains("Audio driver: Simulated clock (unpaced)"),
-            "{labels}"
-        );
     }
 
     fn frame(

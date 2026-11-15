@@ -61,12 +61,3 @@ impl Agent for Source {
         }
     }
 }
-pub fn control_packet(sequence: u64, kind: u64, data: &Bits, opcode: u64, index: u64) -> Bits {
-    let mut packet = data.resized(640);
-    packet
-        .set(640, 32, index)
-        .set(672, 8, opcode)
-        .set(680, 2, kind)
-        .set(682, 64, sequence);
-    packet
-}

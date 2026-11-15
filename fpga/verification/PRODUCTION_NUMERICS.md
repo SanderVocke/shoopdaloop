@@ -26,8 +26,9 @@ planner, capture groups and media codecs, checks raw fixed readback, and checks 
 justified float error bound. Runtime routing tests use saturating operands to
 verify canonical compiled connection order. Shared arithmetic tests cover extreme
 and interrupted ramps; production control tests check partition invariance and
-float agreement. Full-session error statistics and drift checks remain a required
-part of the common runner, not a replacement for exact Q8.24/RTL comparisons.
+float agreement. CPU session error statistics and drift checks use production graph ordering,
+without hardware images. Exact component sample/vector checks remain a separate
+Marlin obligation.
 
 `production-numeric.json` records paired release measurements against the saved
 baseline: Q=32, 128-frame callbacks, four stereo voices, three alternating runs

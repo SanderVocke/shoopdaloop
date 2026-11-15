@@ -322,19 +322,16 @@ references. Clearing detaches the existing table; its references and pages are
 released by budgeted maintenance. Physical capacity must cover pending cleanup
 and new captures simultaneously.
 
-The standalone media tests use per-node playback/capture state.
-`fpga/loop_pipeline` owns fatal processing policy: any required media error latches
-a fault, suppresses output and requires reset/reload. Clock advancement follows
-successful jobs. The integrated coordinator also permits host media operations at its explicit
-pre-audio settlement pause; there is no external executor.
+The standalone media tests use per-node playback/capture state. The TP-free
+media audio pipeline executes explicit SP/JP programs against this store; component
+fault and reset behavior remains tested without an application coordinator.
 
 ## Verification
 
-Full musical/state/media behavior is compared with the production float and
-Q8.24 runtime via [common sessions](../verification/README.md). Static lowering
-uses production signal and timing compilation. There is no software FPGA executor.
-Standalone tests preserve hardware-specific protocol, configuration, stream,
-cache, capacity, fault and reset checks without a duplicate looping backend.
+Component checks exercise explicit operations and sample/state vectors.
+The TP-free execution pipeline compares exact outputs and logical media content;
+standalone tests cover protocol, configuration, streams, cache coherence,
+capacity, ownership, faults and reset without a musical scheduler.
 
 ```sh
 cargo run --locked -p rt_fpga_testbench --features sim -- media --random-cases 12
@@ -343,8 +340,7 @@ cargo run --locked -p rt_fpga_testbench --features sim -- resolver
 cargo run --locked -p rt_fpga_testbench --features sim -- metadata
 ```
 
-The subsystem's `check.sh` retains lint and synthesis entry points. Current
-coverage and local evidence are recorded in [the retirement ledger](../verification/MIGRATION.md)
+The subsystem's `check.sh` retains lint and synthesis entry points. Coverage scope and historical evidence are recorded in [the retirement ledger](../../docs/fpga/retirement-ledger.md)
 and [subsystem gates](../verification/subsystem-gates.json). [Historical results](HISTORY.md)
 retain the earlier reference-backed measurements; their commands are retired.
 

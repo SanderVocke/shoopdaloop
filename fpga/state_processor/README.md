@@ -17,8 +17,8 @@ synchronous program/state RAMs, and a finite job FIFO. It implements state execu
 only. Transitions, logical clocks, sample processing, view storage, and the host
 transport are outside this block.
 
-`fpga/loop_pipeline` connects it to transition processing and sample/job execution.
-Its logical instructions read the settled loop RAM directly while view handles
+The TP-free media audio pipeline connects it to sample/job execution.
+Its logical instructions read explicit read-only records while view handles
 and ramps remain in node-state RAM. The raw-state instruction ABI remains usable
 for isolated fixtures.
 

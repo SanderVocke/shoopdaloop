@@ -153,30 +153,26 @@ reuses the frame-based metadata interface below that boundary. No graph topology
 loop transitions or next-quantum prediction are involved. See
 [early prefetch](../../FPGA_CHUNK_PREFETCH.md).
 
-Both `media_audio_pipeline` and the transition-coordinated `loop_pipeline` use
-this path for real recording/playback. The host media interface adds opcode 7,
-Fence. Snapshots fence before inspecting backing memory; audio completion does
-not wait for writeback. `memory_fault` propagates through both wrappers. The loop
-coordinator stops work and reports stage 3/code 8 after quiescence. Late writeback
-failure freezes clocks at their current value; a completed quantum is not rolled
-back. Reset is required for recovery.
+`media_audio_pipeline` uses this path for recording/playback. The component
+media interface adds opcode 7, Fence. Snapshots fence before inspecting backing
+memory; audio completion does not wait for writeback. `memory_fault` propagates
+through the retained wrappers. Component fault/reset behavior is tested directly;
+complete-backend clock advancement and sticky-silence policy are retired.
 
 The production CPU path uses its prepared resource/page storage. It does not
 model BRAM caches, physical chunk IDs or DMA timing.
 
 ## Verification
 
-Full musical/state/media behavior is compared with the production float and
-Q8.24 runtime via [common sessions](../verification/README.md). Static lowering
-uses production signal and timing compilation. There is no software FPGA executor.
-Standalone tests preserve hardware-specific protocol, configuration, stream,
-cache, capacity, fault and reset checks without a duplicate looping backend.
+Component checks exercise explicit operations and sample/state vectors.
+The TP-free execution pipeline compares exact outputs and logical media content;
+standalone tests cover protocol, configuration, streams, cache coherence,
+capacity, ownership, faults and reset without a musical scheduler.
 
 ```sh
 cargo run --locked -p rt_fpga_testbench --features sim -- chunk --memory-model fixed --axi-data-width 64
 ```
 
-The subsystem's `check.sh` retains lint and synthesis entry points. Current
-coverage and local evidence are recorded in [the retirement ledger](../verification/MIGRATION.md)
+The subsystem's `check.sh` retains lint and synthesis entry points. Coverage scope and historical evidence are recorded in [the retirement ledger](../../docs/fpga/retirement-ledger.md)
 and [subsystem gates](../verification/subsystem-gates.json). [Historical results](HISTORY.md)
 retain the earlier reference-backed measurements; their commands are retired.

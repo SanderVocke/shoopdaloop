@@ -28,35 +28,24 @@ pub(crate) struct NewEngine {
 
 /// Stops the native host when dropped. Drop the backend first: the engine then sees its
 /// client leave and resets MIDI before the driver stops.
-enum Host {
-    Native(NativeHost),
-    #[cfg(feature = "fpga-sim")]
-    Fpga(shoop_host::fpga::Host),
-}
-pub(crate) struct EngineHost(Option<Host>, Option<shoop_host::audio_driver::Owner>);
+pub(crate) struct EngineHost(Option<NativeHost>, Option<shoop_host::audio_driver::Owner>);
 impl EngineHost {
     pub fn enable_audio_driver_switching(
         &mut self,
         settings: shoop_app_api::HostSettings,
         preferences: shoop_host::audio_driver::PreferenceWriter,
-    ) -> Result<Option<Box<dyn shoop_app::AudioDriverController>>> {
-        let Some(Host::Native(_)) = self.0.as_ref() else {
-            return Ok(None);
-        };
-        let Some(Host::Native(host)) = self.0.take() else {
-            unreachable!()
-        };
+    ) -> Result<Box<dyn shoop_app::AudioDriverController>> {
+        let host = self
+            .0
+            .take()
+            .ok_or_else(|| anyhow!("native host is already managed"))?;
         let (owner, controller) =
             shoop_host::audio_driver::controller(host, settings, preferences)?;
         self.1 = Some(owner);
-        Ok(Some(controller))
+        Ok(controller)
     }
     pub fn graph_controller(&self) -> Option<Box<dyn shoop_app::HostGraphController>> {
-        match self.0.as_ref()? {
-            Host::Native(host) => shoop_host::host_graph::controller(host),
-            #[cfg(feature = "fpga-sim")]
-            Host::Fpga(_) => None,
-        }
+        shoop_host::host_graph::controller(self.0.as_ref()?)
     }
     #[cfg(test)]
     pub fn stop(mut self) -> Vec<String> {
@@ -68,11 +57,6 @@ impl EngineHost {
         }
         let Some(host) = self.0.take() else {
             return Vec::new();
-        };
-        let host = match host {
-            Host::Native(host) => host,
-            #[cfg(feature = "fpga-sim")]
-            Host::Fpga(host) => return host.stop().err().into_iter().collect(),
         };
         let report = host.stop();
         let problems = stop_problems(
@@ -106,47 +90,6 @@ pub(crate) fn start_selected_with_processors(
     anyhow::ensure!(transport == shoop_egui::EngineTransportKind::InProcess,
         "external sessions must be launched as independent host/UI roles or attached with --host-profile");
     start_with(driver, pools, &inventory(driver), processors)
-}
-
-pub(crate) fn start_backend(
-    kind: shoop_app_api::AudioBackendKind,
-    driver: &AudioDriverConfig,
-    pools: &NewEnginePools,
-    transport: shoop_egui::EngineTransportKind,
-    processors: shoop_app_api::ProcessorSettings,
-) -> Result<NewEngine> {
-    use shoop_app_api::{AudioBackendKind, HostSettings};
-    if kind == AudioBackendKind::NewEngine {
-        return start_selected_with_processors(driver, pools, transport, processors);
-    }
-    anyhow::ensure!(
-        transport == shoop_egui::EngineTransportKind::InProcess,
-        "external sessions require a companion host"
-    );
-    let settings = HostSettings {
-        backend: kind,
-        driver: driver.clone(),
-        pools: *pools,
-        processors,
-        ..Default::default()
-    };
-    settings.validate().map_err(anyhow::Error::msg)?;
-    shoop_host::fpga::validate_available(&settings)?;
-    #[cfg(feature = "fpga-sim")]
-    {
-        let (started, profile, _) = shoop_host::fpga::start(&settings)?;
-        let mut backend = RtBackend::connect(started.client, Sleep::default())?;
-        backend.set_driver_profile(profile);
-        Ok(NewEngine {
-            backend: Box::new(backend),
-            host: EngineHost(Some(Host::Fpga(started.host)), None),
-            warnings: vec![],
-        })
-    }
-    #[cfg(not(feature = "fpga-sim"))]
-    {
-        anyhow::bail!("FPGA RTL simulation requires --features fpga-sim")
-    }
 }
 
 fn start_with(
@@ -207,7 +150,7 @@ fn start_with(
         buffer_size: status.buffer_frames,
         instance_name: started.host.instance_name().to_owned(),
     };
-    let host = EngineHost(Some(Host::Native(started.host)), None);
+    let host = EngineHost(Some(started.host), None);
     let mut backend = RtBackend::connect(started.client, Sleep::default())
         .map_err(|error| anyhow!("the new engine backend did not connect: {error:#}"))?;
     backend.set_driver_profile(profile);
@@ -584,11 +527,7 @@ mod jack_acceptance {
         assert_eq!(active.configured, config);
         assert!(active.instance_name.starts_with("jack-application-"));
         assert!(engine.warnings.is_empty());
-        let host = match engine.host.0.as_ref().unwrap() {
-            Host::Native(host) => host,
-            #[cfg(feature = "fpga-sim")]
-            Host::Fpga(_) => panic!("expected a native host"),
-        };
+        let host = engine.host.0.as_ref().unwrap();
         assert_eq!(active.sample_rate, host.status().driver.sample_rate);
         assert_eq!(active.buffer_size, host.status().driver.buffer_frames);
     }

@@ -7,7 +7,7 @@ set part xc7z020clg484-1
 create_project -in_memory -part $part
 set_property include_dirs [list [file normalize source/fpga/state_processor/rtl]] [current_fileset]
 set sources {}
-foreach directory {state_processor job_processor transition_processor chunk_memory media_store loop_pipeline axi_memory} {
+foreach directory {state_processor job_processor chunk_memory media_store axi_memory} {
     foreach source [lsort [glob source/fpga/$directory/rtl/*.sv]] {lappend sources $source}
 }
 lappend sources context.sv

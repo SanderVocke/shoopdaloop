@@ -2,14 +2,13 @@
 name = "rt_backend_testbench"
 version.workspace = true
 edition = "2021"
-description = "Common production audio and RTL behavioral verification"
+description = "Production audio behavioral and numeric verification"
 publish = false
 
 [lints]
 workspace = true
 
 [dependencies]
-rt_fpga_adapter = { path = "../rt_fpga_adapter" }
 rt_audio_math = { path = "../rt_audio_math" }
 rt_runtime = { path = "../rt_runtime" }
 shoop_loops = { path = "../shoop_loops" }

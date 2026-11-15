@@ -1,3 +1,7 @@
+> Historical/superseded integration document. TP and the current ARM interface
+> are retired; see `FPGA_ARCHITECTURE.md` and `docs/fpga/retirement-ledger.md`.
+> Old commands and backend/timing claims below describe their recorded revision.
+
 # First FPGA runtime adapter: Marlin simulation and queued gain graphs
 
 Status: completed on `feat/fpga-runtime-adapter`.

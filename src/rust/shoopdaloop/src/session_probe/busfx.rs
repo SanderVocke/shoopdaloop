@@ -7,7 +7,6 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
     let (root, mut host, entry) = launch_with_settings(
         transport,
         HostSettings {
-            backend: Default::default(),
             driver: AudioDriverConfig::Dummy(DummyAudioDriverConfig {
                 sample_rate: 8000,
                 buffer_size: 128,

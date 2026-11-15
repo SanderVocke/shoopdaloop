@@ -25,9 +25,6 @@ fn run() -> anyhow::Result<()> {
     struct Args {
         #[command(flatten)]
         audio: shoop_host::audio_args::AudioArgs,
-        /// Audio graph backend: new_engine or fpga_rtl_sim.
-        #[arg(long)]
-        audio_backend: Option<shoop_app_api::AudioBackendKind>,
         #[arg(long)]
         config: Option<PathBuf>,
         #[arg(long)]
@@ -126,20 +123,9 @@ fn run() -> anyhow::Result<()> {
             serde_json::from_slice(&bytes)?
         }
     };
-    if config.backend == shoop_app_api::AudioBackendKind::NewEngine {
-        if let Some(path) = &options.driver_preferences {
-            if let Some(profile) = shoop_host::audio_driver::read_preferences(path)? {
-                config.settings.driver = profile;
-            }
-        }
-    }
-    if let Some(backend) = args.audio_backend {
-        config.settings.backend = backend;
-        if backend == shoop_app_api::AudioBackendKind::FpgaRtlSim
-            && args.audio.audio_driver.is_none()
-        {
-            config.settings.driver =
-                shoop_app_api::AudioDriverConfig::Simulated(Default::default());
+    if let Some(path) = &options.driver_preferences {
+        if let Some(profile) = shoop_host::audio_driver::read_preferences(path)? {
+            config.settings.driver = profile;
         }
     }
     config.settings.driver = args.audio.apply(config.settings.driver)?;

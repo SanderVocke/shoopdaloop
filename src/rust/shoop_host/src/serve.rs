@@ -219,8 +219,6 @@ impl Drop for Acceptor {
 
 struct StartedBackend {
     host: Option<shoop_rt_host_native::NativeHost>,
-    #[cfg(feature = "fpga-sim")]
-    fpga_host: Option<shoop_rt_host_fpga_sim::Host>,
     backend: Box<dyn shoop_backend::Backend>,
     warnings: Vec<String>,
     settings: crate::config::HostSettings,
@@ -236,92 +234,75 @@ fn connect_backend(
 }
 
 fn start_backend(config: &HostConfig) -> Result<StartedBackend> {
-    #[cfg(feature = "fpga-sim")]
-    let mut fpga_host = None;
-    let (host, backend, warnings, settings) =
-        if config.backend == shoop_app_api::AudioBackendKind::FpgaRtlSim {
-            #[cfg(feature = "fpga-sim")]
+    let (host, backend, warnings, settings) = {
+        let (mut native, mut warnings) = engine::native_config(
+            &config.driver,
+            &config.pools,
+            &engine::inventory(&config.driver),
+        );
+        #[cfg(feature = "testing")]
+        if config.test_signal {
+            match &mut native.driver {
+                DriverConfig::Dummy(dummy) => dummy.input = Some(|_, _| 0.25),
+                #[cfg(feature = "cpal")]
+                DriverConfig::Cpal(_) => {}
+                #[cfg(feature = "jack")]
+                DriverConfig::Jack(_) => {}
+            }
+        }
+        #[cfg(not(feature = "testing"))]
+        let _ = &mut native;
+        native.engine.processors = config.settings.processors;
+        let started = match shoop_rt_host_native::start(&native) {
+            Ok(started) => started,
+            Err(error)
+                if !matches!(native.driver, DriverConfig::Dummy(_))
+                    && std::env::var_os("SHOOP_AUDIO_RENDER").is_none()
+                    && std::env::var_os("SHOOP_AUDIO_BENCH_OUTPUT").is_none()
+                    && !matches!(error, shoop_rt_host_native::StartError::Processors(_)) =>
             {
-                let (started, profile, effective) = crate::fpga::start(&config.settings)?;
-                fpga_host = Some(started.host);
-                let backend = connect_backend(started.client, profile)?;
-                (None, backend, vec![], effective)
+                warnings.push(format!(
+                    "Could not start the configured audio driver: {error}; using dummy"
+                ));
+                let dummy = shoop_app_api::DummyAudioDriverConfig::default();
+                let fallback = NativeConfig {
+                    driver: DriverConfig::Dummy(engine::dummy_config(&dummy)),
+                    engine: shoop_rt_engine::EngineDescription {
+                        processors: config.settings.processors,
+                        ..engine::engine_description(&config.pools, dummy.buffer_size)
+                    },
+                };
+                let started = shoop_rt_host_native::start(&fallback)?;
+                started
             }
-            #[cfg(not(feature = "fpga-sim"))]
-            {
-                anyhow::bail!("FPGA RTL simulation requires --features fpga-sim");
-            }
-        } else {
-            let (mut native, mut warnings) = engine::native_config(
-                &config.driver,
-                &config.pools,
-                &engine::inventory(&config.driver),
-            );
-            #[cfg(feature = "testing")]
-            if config.test_signal {
-                match &mut native.driver {
-                    DriverConfig::Dummy(dummy) => dummy.input = Some(|_, _| 0.25),
-                    #[cfg(feature = "cpal")]
-                    DriverConfig::Cpal(_) => {}
-                    #[cfg(feature = "jack")]
-                    DriverConfig::Jack(_) => {}
-                }
-            }
-            #[cfg(not(feature = "testing"))]
-            let _ = &mut native;
-            native.engine.processors = config.settings.processors;
-            let started = match shoop_rt_host_native::start(&native) {
-                Ok(started) => started,
-                Err(error)
-                    if !matches!(native.driver, DriverConfig::Dummy(_))
-                        && std::env::var_os("SHOOP_AUDIO_RENDER").is_none()
-                        && std::env::var_os("SHOOP_AUDIO_BENCH_OUTPUT").is_none()
-                        && !matches!(error, shoop_rt_host_native::StartError::Processors(_)) =>
-                {
-                    warnings.push(format!(
-                        "Could not start the configured audio driver: {error}; using dummy"
-                    ));
-                    let dummy = shoop_app_api::DummyAudioDriverConfig::default();
-                    let fallback = NativeConfig {
-                        driver: DriverConfig::Dummy(engine::dummy_config(&dummy)),
-                        engine: shoop_rt_engine::EngineDescription {
-                            processors: config.settings.processors,
-                            ..engine::engine_description(&config.pools, dummy.buffer_size)
-                        },
-                    };
-                    let started = shoop_rt_host_native::start(&fallback)?;
-                    started
-                }
-                Err(error) => return Err(error.into()),
-            };
-            warnings.extend(started.host.warnings().iter().cloned());
-            for warning in &warnings {
-                tracing::warn!("{warning}");
-            }
-            let status = started.host.status().driver;
-            let profile = shoop_app_api::ResolvedAudioDriverConfig {
-                configured: engine::effective_driver_config(
-                    &config.driver,
-                    started.host.driver_config(),
-                    status.sample_rate,
-                    status.buffer_frames,
-                ),
-                sample_rate: status.sample_rate,
-                buffer_size: status.buffer_frames,
-                instance_name: started.host.instance_name().to_owned(),
-            };
-            let backend = connect_backend(started.client, profile)?;
-            (
-                Some(started.host),
-                backend,
-                warnings,
-                config.settings.clone(),
-            )
+            Err(error) => return Err(error.into()),
         };
+        warnings.extend(started.host.warnings().iter().cloned());
+        for warning in &warnings {
+            tracing::warn!("{warning}");
+        }
+        let status = started.host.status().driver;
+        let profile = shoop_app_api::ResolvedAudioDriverConfig {
+            configured: engine::effective_driver_config(
+                &config.driver,
+                started.host.driver_config(),
+                status.sample_rate,
+                status.buffer_frames,
+            ),
+            sample_rate: status.sample_rate,
+            buffer_size: status.buffer_frames,
+            instance_name: started.host.instance_name().to_owned(),
+        };
+        let backend = connect_backend(started.client, profile)?;
+        (
+            Some(started.host),
+            backend,
+            warnings,
+            config.settings.clone(),
+        )
+    };
     Ok(StartedBackend {
         host,
-        #[cfg(feature = "fpga-sim")]
-        fpga_host,
         backend,
         warnings,
         settings,
@@ -347,8 +328,6 @@ pub fn run_with_ready(
     ensure!(options.name.len() <= 128, "invalid host identity or name");
     let StartedBackend {
         mut host,
-        #[cfg(feature = "fpga-sim")]
-        mut fpga_host,
         backend,
         warnings,
         settings,
@@ -375,7 +354,7 @@ pub fn run_with_ready(
         driver_owner = Some(owner);
     }
     service.set_host_settings(config.settings.clone(), warnings.clone())?;
-    let deadline = Instant::now() + crate::fpga::startup_timeout(config.backend);
+    let deadline = Instant::now() + Duration::from_secs(12);
     while !service.is_ready() {
         service.tick(Duration::from_millis(2));
         ensure!(
@@ -553,8 +532,6 @@ pub fn run_with_ready(
                 cleanup_deadline = Some(Instant::now() + Duration::from_secs(5));
             }
             let result = driver_owner.as_mut().and_then(|owner| owner.poll_stop());
-            #[cfg(feature = "fpga-sim")]
-            let result = result.or_else(|| fpga_host.take().map(|host| host.stop()));
             let result = result.or_else(|| {
                 cleanup_deadline
                     .is_some_and(|deadline| Instant::now() >= deadline)
@@ -586,8 +563,6 @@ pub fn run_with_ready(
     }
     drop(service);
     drop(driver_owner);
-    #[cfg(feature = "fpga-sim")]
-    drop(fpga_host);
     drop(host);
     Ok(())
 }

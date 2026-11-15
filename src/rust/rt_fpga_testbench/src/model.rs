@@ -102,10 +102,14 @@ impl Design {
     }
     pub fn build(self, cache: &Path) -> Result<Compiled> {
         crate::report::record_model(&self)?;
-        let runtime_config = rt_fpga_sim::RuntimeConfig::development(cache);
-        let executable = runtime_config.verilator;
-        rt_fpga_sim::check_verilator(&executable)?;
-        if runtime_config.jobs == 0 {
+        let executable = std::env::var_os("SHOOP_VERILATOR").unwrap_or_else(|| "verilator".into());
+        crate::toolchain::check_verilator(&executable)?;
+        let jobs = std::env::var("SHOOP_VERILATOR_JOBS")
+            .ok()
+            .map(|v| v.parse::<usize>())
+            .transpose()?
+            .unwrap_or(2);
+        if jobs == 0 {
             return Err("Verilator build jobs must be positive".into());
         }
         let mut hash = std::hash::DefaultHasher::new();
@@ -400,7 +404,7 @@ impl Design {
         sources.push(wrapper.clone());
         let options = VerilatorRuntimeOptions {
             verilator_executable: executable,
-            build_jobs: runtime_config.jobs,
+            build_jobs: jobs,
             ..Default::default()
         };
         let runtime = VerilatorRuntime::new2(
