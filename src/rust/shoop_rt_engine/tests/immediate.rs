@@ -260,8 +260,8 @@ fn commands_run_in_order_and_failures_do_not_suppress_later_effects() {
             Command::LoopGain(99, 0.9),
             Command::LoopBalance(l.0.index, 2.),
             Command::LoopGain(l.0.index, f32::NAN),
-            Command::Transition(l.0.index, TransitionMode::Stopped),
-            Command::Transition(l.0.index, TransitionMode::Playing),
+            Command::Transition(l.0.index, TransitionMode::Stopped.into()),
+            Command::Transition(l.0.index, TransitionMode::Playing.into()),
             Command::LoopGain(l.0.index, 0.75),
         ],
     );
@@ -488,7 +488,7 @@ fn recording_and_media_edits_resume_between_immediate_groups() {
         &mut h,
         c,
         &[
-            Command::Transition(l.0.index, TransitionMode::Playing),
+            Command::Transition(l.0.index, TransitionMode::Playing.into()),
             Command::LoopGain(l.0.index, 0.9),
         ],
     );
@@ -507,7 +507,10 @@ fn recording_and_media_edits_resume_between_immediate_groups() {
     send(
         &mut h,
         c,
-        &[Command::Transition(l.0.index, TransitionMode::Playing)],
+        &[Command::Transition(
+            l.0.index,
+            TransitionMode::Playing.into(),
+        )],
     );
     h.run(128, 16);
     assert_eq!(h.results.get(&stop), Some(&Outcome::Done));
@@ -965,9 +968,9 @@ fn recording_milestone_grouped_capture_finishes_to_play_and_stop_at_exact_frames
         &mut h,
         c,
         &[
-            Command::Transition(0, TransitionMode::Recording),
-            Command::Transition(u32::MAX, TransitionMode::Recording),
-            Command::Transition(1, TransitionMode::Recording),
+            Command::Transition(0, TransitionMode::Recording.into()),
+            Command::Transition(u32::MAX, TransitionMode::Recording.into()),
+            Command::Transition(1, TransitionMode::Recording.into()),
         ],
     );
     h.run(8, 4);
@@ -989,7 +992,7 @@ fn recording_milestone_grouped_capture_finishes_to_play_and_stop_at_exact_frames
     send(
         &mut h,
         c,
-        &[Command::Transition(0, TransitionMode::Playing)],
+        &[Command::Transition(0, TransitionMode::Playing.into())],
     );
     h.run(1, 1);
     assert_eq!(
@@ -1000,7 +1003,7 @@ fn recording_milestone_grouped_capture_finishes_to_play_and_stop_at_exact_frames
     send(
         &mut h,
         c,
-        &[Command::Transition(1, TransitionMode::Stopped)],
+        &[Command::Transition(1, TransitionMode::Stopped.into())],
     );
     h.run(1, 1);
     assert_eq!(
@@ -1058,9 +1061,9 @@ fn recording_milestone_buffer_only_callbacks_and_empty_repeated_actions() {
         &mut h,
         c,
         &[
-            Command::Transition(0, TransitionMode::Recording),
-            Command::Transition(0, TransitionMode::Recording),
-            Command::Transition(0, TransitionMode::Playing),
+            Command::Transition(0, TransitionMode::Recording.into()),
+            Command::Transition(0, TransitionMode::Recording.into()),
+            Command::Transition(0, TransitionMode::Playing.into()),
         ],
     );
     h.run(1, 1);
@@ -1073,14 +1076,14 @@ fn recording_milestone_buffer_only_callbacks_and_empty_repeated_actions() {
     send(
         &mut h,
         c,
-        &[Command::Transition(0, TransitionMode::Stopped)],
+        &[Command::Transition(0, TransitionMode::Stopped.into())],
     );
     h.run(1, 1);
     assert_eq!(immediate_results(&h)[1].records()[0].code(), Code::Applied);
     send(
         &mut h,
         c,
-        &[Command::Transition(0, TransitionMode::Recording)],
+        &[Command::Transition(0, TransitionMode::Recording.into())],
     );
     h.run(32, 1);
     let end = h.host.endpoint().command_clock().frame().0;
@@ -1088,8 +1091,8 @@ fn recording_milestone_buffer_only_callbacks_and_empty_repeated_actions() {
         &mut h,
         c,
         &[
-            Command::Transition(0, TransitionMode::Recording),
-            Command::Transition(0, TransitionMode::Playing),
+            Command::Transition(0, TransitionMode::Recording.into()),
+            Command::Transition(0, TransitionMode::Playing.into()),
         ],
     );
     h.run(1, 1);
@@ -1122,7 +1125,7 @@ fn recording_milestone_exhaustion_preserves_prefix_and_finish_reservations() {
     send(
         &mut h,
         c,
-        &[Command::Transition(0, TransitionMode::Recording)],
+        &[Command::Transition(0, TransitionMode::Recording.into())],
     );
     h.run(64, 16);
     assert!(
@@ -1140,9 +1143,9 @@ fn recording_milestone_exhaustion_preserves_prefix_and_finish_reservations() {
         &mut h,
         c,
         &[
-            Command::Transition(1, TransitionMode::Recording),
+            Command::Transition(1, TransitionMode::Recording.into()),
             Command::LoopGain(1, 0.25),
-            Command::Transition(0, TransitionMode::Stopped),
+            Command::Transition(0, TransitionMode::Stopped.into()),
         ],
     );
     h.run(1, 1);
@@ -1159,7 +1162,7 @@ fn recording_milestone_exhaustion_preserves_prefix_and_finish_reservations() {
     send(
         &mut h,
         c,
-        &[Command::Transition(0, TransitionMode::Recording)],
+        &[Command::Transition(0, TransitionMode::Recording.into())],
     );
     h.run(1, 1);
     assert_eq!(
@@ -1177,7 +1180,7 @@ fn recording_milestone_exhaustion_preserves_prefix_and_finish_reservations() {
     send(
         &mut h,
         c,
-        &[Command::Transition(0, TransitionMode::Recording)],
+        &[Command::Transition(0, TransitionMode::Recording.into())],
     );
     h.run(65, 1);
     assert!(matches!(
@@ -1201,7 +1204,7 @@ fn recording_milestone_exhaustion_preserves_prefix_and_finish_reservations() {
     send(
         &mut h,
         c,
-        &[Command::Transition(0, TransitionMode::Playing)],
+        &[Command::Transition(0, TransitionMode::Playing.into())],
     );
     h.settle();
     assert_eq!(immediate_results(&h).len(), 2);
@@ -1256,12 +1259,12 @@ fn encoded_record_and_grab_commands_return_results_matching_published_state() {
     );
     let mut bytes = [0; MAX_RECORD_BYTES];
     for finish in [
-        Command::Transition(0, TransitionMode::Playing),
-        Command::Transition(0, TransitionMode::Stopped),
+        Command::Transition(0, TransitionMode::Playing.into()),
+        Command::Transition(0, TransitionMode::Stopped.into()),
     ] {
         let start = offline.next_frame();
         for (command, frames) in [
-            (Command::Transition(0, TransitionMode::Recording), 8),
+            (Command::Transition(0, TransitionMode::Recording.into()), 8),
             (finish, 1),
         ] {
             let batch = Batch::new(c.0, c.1, &[command]).unwrap();
@@ -1281,7 +1284,7 @@ fn encoded_record_and_grab_commands_return_results_matching_published_state() {
         let (_, len) = server.endpoint().read_snapshot(&mut payload).unwrap();
         assert!(Records(&payload[HEADER..len]).any(|r| matches!(r,
             Ok(Record::Telemetry(Telemetry::Loop { mode, length: 8, .. }))
-                if mode == if matches!(finish, Command::Transition(_, TransitionMode::Playing)) { LoopMode::Playing } else { LoopMode::Stopped }
+                if mode == if finish == Command::Transition(0, TransitionMode::Playing.into()) { LoopMode::Playing } else { LoopMode::Stopped }
         )));
     }
     use immediate::Grab;
@@ -1309,7 +1312,12 @@ fn encoded_record_and_grab_commands_return_results_matching_published_state() {
             immediate::Code::Applied
         );
     }
-    let batch = Batch::new(c.0, c.1, &[Command::Transition(0, TransitionMode::Stopped)]).unwrap();
+    let batch = Batch::new(
+        c.0,
+        c.1,
+        &[Command::Transition(0, TransitionMode::Stopped.into())],
+    )
+    .unwrap();
     let len = codec::encode_client(&ClientMessage::Immediate(batch), &mut bytes).unwrap();
     *input.borrow_mut() = Some(bytes[..len].to_vec());
     server.pump(16);
@@ -1330,6 +1338,36 @@ fn encoded_record_and_grab_commands_return_results_matching_published_state() {
         }))
     )));
     assert_eq!(responses.borrow().len(), 7);
+    let plan = immediate::TransitionPlan {
+        now: Some(TransitionMode::Playing),
+        first: Some(immediate::PlannedTransition {
+            mode: TransitionMode::Stopped,
+            skip: 0,
+        }),
+        second: None,
+    };
+    let batch = Batch::new(c.0, c.1, &[Command::Transition(0, plan)]).unwrap();
+    let len = codec::encode_client(&ClientMessage::Immediate(batch), &mut bytes).unwrap();
+    *input.borrow_mut() = Some(bytes[..len].to_vec());
+    server.pump(16);
+    assert_no_heap(|| offline.run(1, |_, _| 0.25)).unwrap();
+    server.pump(16);
+    assert_eq!(
+        responses.borrow().last().unwrap().records()[0].code(),
+        immediate::Code::Scheduled
+    );
+    assert_no_heap(|| offline.run(12, |_, _| 0.25)).unwrap();
+    server.pump(16);
+    assert_eq!(responses.borrow().len(), 8);
+    assert_no_heap(|| offline.run(1, |_, _| 0.25)).unwrap();
+    let (_, len) = server.endpoint().read_snapshot(&mut payload).unwrap();
+    assert!(Records(&payload[HEADER..len]).any(|r| matches!(
+        r,
+        Ok(Record::Telemetry(Telemetry::Loop {
+            mode: LoopMode::Stopped,
+            ..
+        }))
+    )));
 }
 
 #[shoop_test]
@@ -1340,7 +1378,7 @@ fn recording_milestone_disconnect_keeps_active_take_without_replaying_staged_rec
     send(
         &mut h,
         c,
-        &[Command::Transition(0, TransitionMode::Recording)],
+        &[Command::Transition(0, TransitionMode::Recording.into())],
     );
     h.run(4, 1);
     for _ in 0..FIFO_SINGLETONS {
@@ -1349,7 +1387,7 @@ fn recording_milestone_disconnect_keeps_active_take_without_replaying_staged_rec
     send(
         &mut h,
         c,
-        &[Command::Transition(1, TransitionMode::Recording)],
+        &[Command::Transition(1, TransitionMode::Recording.into())],
     );
     h.host.disconnect();
     h.pump();
@@ -1379,7 +1417,7 @@ fn recording_milestone_disconnect_keeps_active_take_without_replaying_staged_rec
     send(
         &mut h,
         c,
-        &[Command::Transition(0, TransitionMode::Stopped)],
+        &[Command::Transition(0, TransitionMode::Stopped.into())],
     );
     h.run(1, 1);
     assert_eq!(
@@ -1411,15 +1449,15 @@ fn grab_fixture_for(d: &shoop_rt_engine::EngineDescription) -> (Harness, (u64, u
     send(
         &mut h,
         c,
-        &[Command::Transition(0, TransitionMode::Recording)],
+        &[Command::Transition(0, TransitionMode::Recording.into())],
     );
     h.run(2 * q.max(8), 1);
     send(
         &mut h,
         c,
         &[
-            Command::Transition(0, TransitionMode::Stopped),
-            Command::Transition(0, TransitionMode::Playing),
+            Command::Transition(0, TransitionMode::Stopped.into()),
+            Command::Transition(0, TransitionMode::Playing.into()),
         ],
     );
     h.run(4 * q.max(8), 1);
@@ -1436,7 +1474,7 @@ fn sync_position(h: &mut Harness) -> (u64, u64) {
         .find(|r| {
             r.records()
                 .iter()
-                .any(|v| v.command() == Command::Transition(0, TransitionMode::Playing))
+                .any(|v| v.command() == Command::Transition(0, TransitionMode::Playing.into()))
         })
         .unwrap()
         .header
@@ -1498,7 +1536,7 @@ fn grab_milestone_completed_audio_and_continuation_have_exact_samples_and_cut() 
     send(
         &mut h,
         c,
-        &[Command::Transition(1, TransitionMode::Playing)],
+        &[Command::Transition(1, TransitionMode::Playing.into())],
     );
     h.run(1, 1);
     assert_eq!(
@@ -1560,7 +1598,7 @@ fn grab_milestone_buffer_only_callbacks_finish_and_preserve_a_repeated_grab_pref
     send(
         &mut h,
         c,
-        &[Command::Transition(1, TransitionMode::Stopped)],
+        &[Command::Transition(1, TransitionMode::Stopped.into())],
     );
     h.run(1, 1);
     assert_eq!(immediate_results(&h).len(), count + 2);
@@ -1593,6 +1631,7 @@ fn grab_milestone_grouped_gestures_share_the_cut_and_fail_independently() {
     let (length, position) = sync_position(&mut h);
     let cut = h.frame();
     let spec = GrabGesture {
+        synced: true,
         sync: 0,
         target: None,
         cycles: 1,
@@ -1682,7 +1721,7 @@ fn grab_milestone_storage_failures_and_exhaustion_keep_a_usable_prefix() {
     send(
         &mut h,
         c,
-        &[Command::Transition(1, TransitionMode::Playing)],
+        &[Command::Transition(1, TransitionMode::Playing.into())],
     );
     h.settle();
     assert_eq!(
@@ -1705,13 +1744,13 @@ fn grab_milestone_missing_history_preserves_existing_audio_and_later_commands() 
     send(
         &mut h,
         c,
-        &[Command::Transition(1, TransitionMode::Recording)],
+        &[Command::Transition(1, TransitionMode::Recording.into())],
     );
     h.run(8, 1);
     send(
         &mut h,
         c,
-        &[Command::Transition(1, TransitionMode::Stopped)],
+        &[Command::Transition(1, TransitionMode::Stopped.into())],
     );
     h.run(1, 1);
     let (_, old, _) = h.read(loop_id(1, 1), BulkSelector::AudioFrames);
@@ -1764,7 +1803,7 @@ fn grab_milestone_disconnect_keeps_capture_and_drops_unsent_finish() {
     send(
         &mut h,
         c,
-        &[Command::Transition(1, TransitionMode::Stopped)],
+        &[Command::Transition(1, TransitionMode::Stopped.into())],
     );
     h.host.disconnect();
     h.pump();
@@ -1783,7 +1822,7 @@ fn grab_milestone_disconnect_keeps_capture_and_drops_unsent_finish() {
     send(
         &mut h,
         c,
-        &[Command::Transition(1, TransitionMode::Stopped)],
+        &[Command::Transition(1, TransitionMode::Stopped.into())],
     );
     h.run(1, 1);
     assert_eq!(immediate_results(&h).len(), 1);
@@ -1865,7 +1904,7 @@ fn grab_milestone_wrap_cut_and_empty_continuation_match_the_current_cycle() {
     send(
         &mut h,
         c,
-        &[Command::Transition(1, TransitionMode::Stopped)],
+        &[Command::Transition(1, TransitionMode::Stopped.into())],
     );
     h.run(1, 1);
     assert_eq!(immediate_results(&h).last().unwrap().header.frame(), cut);
@@ -1877,4 +1916,504 @@ fn grab_milestone_wrap_cut_and_empty_continuation_match_the_current_cycle() {
     let (frames, audio, _) = h.read(loop_id(1, 1), BulkSelector::AudioFrames);
     assert_eq!(frames, 0);
     assert!(audio.is_empty());
+}
+
+fn musical_fixture(q: usize) -> (Harness, (u64, u64)) {
+    let (mut h, _) = grab_fixture(q);
+    h.done(Request::LoopSync {
+        loop_id: loop_id(1, 1),
+        source: Some(loop_id(0, 1)),
+    });
+    h.settle();
+    let c = configuration(&mut h);
+    (h, c)
+}
+fn musical_observation(h: &mut Harness, slot: u32) -> (immediate::TransitionPlan, u32) {
+    let mut bytes = vec![0; h.host.endpoint().snapshot_capacity()];
+    let (_, len) = h.host.endpoint().read_snapshot(&mut bytes).unwrap();
+    Records(&bytes[HEADER..len])
+        .find_map(|r| match r.unwrap() {
+            Record::LoopPlan { id, plan, failures } if id == loop_id(slot, 1) => {
+                Some((plan, failures))
+            }
+            _ => None,
+        })
+        .unwrap()
+}
+#[shoop_test]
+fn musical_plans_record_at_second_pulse_finish_at_sixth_and_keep_exact_audio() {
+    use immediate::{Code, PlannedTransition as Step, TransitionPlan as Plan};
+    for q in [1, 16] {
+        let (mut h, c) = musical_fixture(q);
+        let (period, position) = sync_position(&mut h);
+        let cut = h.host.endpoint().command_clock().frame().0;
+        let start = cut + (period - position) % period + period;
+        let finish = start + 4 * period;
+        let before = immediate_results(&h).len();
+        send(
+            &mut h,
+            c,
+            &[Command::Transition(
+                1,
+                Plan {
+                    now: None,
+                    first: Some(Step {
+                        mode: TransitionMode::Recording,
+                        skip: 1,
+                    }),
+                    second: Some(Step {
+                        mode: TransitionMode::Playing,
+                        skip: 5,
+                    }),
+                },
+            )],
+        );
+        h.run(1, 1);
+        assert_eq!(immediate_results(&h).len(), before + 1);
+        assert_eq!(
+            immediate_results(&h).last().unwrap().records()[0].code(),
+            Code::Scheduled
+        );
+        h.run((finish + q as u64 - h.frame()) as usize, 1);
+        assert!(
+            matches!(observed_loop(&mut h, loop_id(1, 1)), Telemetry::Loop { mode: LoopMode::Playing, length, .. } if length == 4 * period)
+        );
+        assert_eq!(musical_observation(&mut h, 1).0, Plan::default());
+        assert_eq!(
+            immediate_results(&h).len(),
+            before + 1,
+            "future execution creates no transport response"
+        );
+        let (frames, audio, _) = h.read(loop_id(1, 1), BulkSelector::AudioFrames);
+        assert_eq!(frames, finish - start);
+        for (offset, sample) in audio.chunks_exact(2).enumerate() {
+            assert_eq!(sample, &[(start + offset as u64) as f32 / 2000., -0.125]);
+        }
+    }
+}
+#[shoop_test]
+fn musical_clear_preserves_the_other_countdown_and_failed_now_preserves_plan() {
+    use immediate::{ClearPlanned, Code, PlannedTransition as Step, TransitionPlan as Plan};
+    let (mut h, c) = musical_fixture(1);
+    let plan = Plan {
+        now: None,
+        first: Some(Step {
+            mode: TransitionMode::Recording,
+            skip: 2,
+        }),
+        second: Some(Step {
+            mode: TransitionMode::Stopped,
+            skip: 6,
+        }),
+    };
+    send(&mut h, c, &[Command::Transition(1, plan)]);
+    h.run(1, 1);
+    let before = musical_observation(&mut h, 1).0;
+    send(
+        &mut h,
+        c,
+        &[Command::Transition(1, TransitionMode::Playing.into())],
+    );
+    h.run(1, 1);
+    assert_eq!(
+        immediate_results(&h).last().unwrap().records()[0].code(),
+        Code::CannotApply
+    );
+    assert_eq!(musical_observation(&mut h, 1).0, before);
+    send(
+        &mut h,
+        c,
+        &[Command::ClearPlannedTransitions(1, ClearPlanned::First)],
+    );
+    h.run(1, 1);
+    let after = musical_observation(&mut h, 1).0;
+    assert!(after.first.is_none());
+    assert_eq!(after.second, before.second);
+    send(
+        &mut h,
+        c,
+        &[
+            Command::ClearPlannedTransitions(1, ClearPlanned::Second),
+            Command::ClearPlannedTransitions(1, ClearPlanned::Both),
+        ],
+    );
+    h.run(1, 1);
+    assert_eq!(musical_observation(&mut h, 1).0, Plan::default());
+    assert!(immediate_results(&h)
+        .last()
+        .unwrap()
+        .records()
+        .iter()
+        .all(|r| r.code() == Code::Applied));
+    send(
+        &mut h,
+        c,
+        &[Command::Transition(
+            1,
+            Plan {
+                now: None,
+                first: Some(Step {
+                    mode: TransitionMode::Playing,
+                    skip: 0,
+                }),
+                second: Some(Step {
+                    mode: TransitionMode::Recording,
+                    skip: 1,
+                }),
+            },
+        )],
+    );
+    let (length, _) = sync_position(&mut h);
+    h.run((3 * length) as usize, 1);
+    let (plan, failures) = musical_observation(&mut h, 1);
+    assert_eq!(plan, Plan::default());
+    assert_eq!(failures, 1);
+    assert!(matches!(
+        observed_loop(&mut h, loop_id(1, 1)),
+        Telemetry::Loop {
+            mode: LoopMode::Stopped,
+            ..
+        }
+    ));
+}
+#[shoop_test]
+fn musical_grab_continues_until_boundary_then_stops_or_plays_without_another_command() {
+    use immediate::{Code, GrabGesture};
+    for (play_after_record, at_boundary) in
+        [(false, false), (true, false), (false, true), (true, true)]
+    {
+        let (mut h, c) = grab_fixture(1);
+        let (period, position) = sync_position(&mut h);
+        if at_boundary {
+            h.run(((period - position) % period) as usize, 1);
+        } else if position == 0 {
+            h.run(3, 1);
+        }
+        let (_, position) = sync_position(&mut h);
+        let cut = h.frame();
+        let finish = cut
+            + if position == 0 {
+                period
+            } else {
+                period - position
+            };
+        let before = immediate_results(&h).len();
+        send(
+            &mut h,
+            c,
+            &[Command::GrabGesture(
+                1,
+                GrabGesture {
+                    sync: 0,
+                    target: None,
+                    cycles: 2,
+                    play_after_record,
+                    synced: false,
+                },
+            )],
+        );
+        h.run(1, 1);
+        assert_eq!(immediate_results(&h).len(), before + 1);
+        assert_eq!(
+            immediate_results(&h).last().unwrap().records()[0].code(),
+            Code::Scheduled
+        );
+        assert!(matches!(
+            observed_loop(&mut h, loop_id(1, 1)),
+            Telemetry::Loop {
+                mode: LoopMode::Recording,
+                ..
+            }
+        ));
+        h.run((finish + 1 - h.frame()) as usize, 1);
+        let mode = if play_after_record {
+            LoopMode::Playing
+        } else {
+            LoopMode::Stopped
+        };
+        assert!(
+            matches!(observed_loop(&mut h, loop_id(1, 1)), Telemetry::Loop { mode: actual, length, .. } if actual == mode && length == 2 * period)
+        );
+        assert!(musical_observation(&mut h, 1).0.first.is_none());
+        let (frames, audio, _) = h.read(loop_id(1, 1), BulkSelector::AudioFrames);
+        assert_eq!(frames, 2 * period);
+        for (offset, sample) in audio.chunks_exact(2).enumerate() {
+            assert_eq!(
+                sample,
+                &[(finish - frames + offset as u64) as f32 / 2000., -0.125]
+            );
+        }
+    }
+}
+
+#[shoop_test]
+fn musical_thirty_two_step_plans_share_boundaries_without_waiting_for_snapshots() {
+    use immediate::{Code, PlannedTransition as Step, TransitionPlan as Plan};
+    let mut d = description();
+    d.segments = vec![shoop_rt_engine::Segment {
+        strips: 1,
+        loops: 32,
+    }];
+    d.resource_pages = 2048;
+    d.ramp_frames = 0;
+    let (mut h, _) = grab_fixture_for(&d);
+    for slot in 2..=30 {
+        h.done(Request::CreateLoop {
+            loop_id: loop_id(slot, 1),
+            strip: strip(0, 1),
+        });
+    }
+    for slot in 1..=30 {
+        h.done(Request::LoopSync {
+            loop_id: loop_id(slot, 1),
+            source: Some(loop_id(0, 1)),
+        });
+    }
+    h.settle();
+    let c = configuration(&mut h);
+    let record: Vec<_> = (1..=30)
+        .map(|slot| Command::Transition(slot, TransitionMode::Recording.into()))
+        .collect();
+    send(&mut h, c, &record);
+    h.run(4, 1);
+    let stop: Vec<_> = (1..=30)
+        .map(|slot| Command::Transition(slot, TransitionMode::Stopped.into()))
+        .collect();
+    send(&mut h, c, &stop);
+    h.run(1, 1);
+    let (period, position) = sync_position(&mut h);
+    let cut = h.frame();
+    let start = cut + (period - position) % period + period;
+    let finish = start + 4 * period;
+    let plans: Vec<_> = (1..=30)
+        .map(|slot| {
+            Command::Transition(
+                slot,
+                Plan {
+                    now: None,
+                    first: Some(Step {
+                        mode: TransitionMode::Playing,
+                        skip: 1,
+                    }),
+                    second: Some(Step {
+                        mode: TransitionMode::Stopped,
+                        skip: 5,
+                    }),
+                },
+            )
+        })
+        .collect();
+    send(&mut h, c, &plans);
+    h.run(1, 1);
+    assert!(immediate_results(&h)
+        .last()
+        .unwrap()
+        .records()
+        .iter()
+        .all(|r| r.code() == Code::Scheduled));
+    h.run((start - h.frame()) as usize, 1);
+    for slot in 1..=30 {
+        assert!(matches!(
+            observed_loop(&mut h, loop_id(slot, 1)),
+            Telemetry::Loop {
+                mode: LoopMode::Stopped,
+                ..
+            }
+        ));
+    }
+    h.run(1, 1);
+    for slot in 1..=30 {
+        assert!(matches!(
+            observed_loop(&mut h, loop_id(slot, 1)),
+            Telemetry::Loop {
+                mode: LoopMode::Playing,
+                position: 0,
+                ..
+            }
+        ));
+    }
+    h.run((finish - h.frame()) as usize, 1);
+    for slot in 1..=30 {
+        assert!(matches!(
+            observed_loop(&mut h, loop_id(slot, 1)),
+            Telemetry::Loop {
+                mode: LoopMode::Playing,
+                ..
+            }
+        ));
+    }
+    h.run(1, 1);
+    for slot in 1..=30 {
+        assert!(matches!(
+            observed_loop(&mut h, loop_id(slot, 1)),
+            Telemetry::Loop {
+                mode: LoopMode::Stopped,
+                ..
+            }
+        ));
+    }
+}
+
+#[shoop_test]
+fn musical_legacy_replacement_and_source_change_disarm_old_followups() {
+    use immediate::{ClearPlanned, PlannedTransition as Step, TransitionPlan as Plan};
+    let (mut h, mut c) = musical_fixture(1);
+    let plan = Plan {
+        now: None,
+        first: Some(Step {
+            mode: TransitionMode::Recording,
+            skip: 2,
+        }),
+        second: Some(Step {
+            mode: TransitionMode::Playing,
+            skip: 4,
+        }),
+    };
+    send(&mut h, c, &[Command::Transition(1, plan)]);
+    h.run(1, 1);
+    h.done(Request::LoopTransition {
+        loop_id: loop_id(1, 1),
+        mode: LoopMode::Stopped,
+        delay: None,
+    });
+    assert_eq!(musical_observation(&mut h, 1).0, Plan::default());
+    h.send(Request::LoopTransition {
+        loop_id: loop_id(1, 1),
+        mode: LoopMode::Recording,
+        delay: Some(2),
+    });
+    h.run(2, 1);
+    send(
+        &mut h,
+        c,
+        &[Command::ClearPlannedTransitions(1, ClearPlanned::Both)],
+    );
+    h.run(1, 1);
+    let (period, _) = sync_position(&mut h);
+    h.run((5 * period) as usize, 1);
+    assert!(matches!(
+        observed_loop(&mut h, loop_id(1, 1)),
+        Telemetry::Loop {
+            mode: LoopMode::Stopped,
+            ..
+        }
+    ));
+    send(&mut h, c, &[Command::Transition(1, plan)]);
+    h.run(1, 1);
+    h.done(Request::LoopSync {
+        loop_id: loop_id(1, 1),
+        source: None,
+    });
+    c = configuration(&mut h);
+    assert_eq!(musical_observation(&mut h, 1).0, Plan::default());
+    send(&mut h, c, &[Command::LoopGain(1, 0.4)]);
+    h.run(1, 1);
+    assert_eq!(
+        immediate_results(&h).last().unwrap().records()[0].code(),
+        immediate::Code::Applied
+    );
+}
+
+#[shoop_test]
+fn musical_paused_clock_resumes_counting_at_its_next_completed_wrap() {
+    use immediate::{PlannedTransition as Step, TransitionPlan as Plan};
+    let (mut h, c) = musical_fixture(1);
+    let (period, _) = sync_position(&mut h);
+    send(
+        &mut h,
+        c,
+        &[Command::Transition(0, TransitionMode::Stopped.into())],
+    );
+    h.run(1, 1);
+    send(
+        &mut h,
+        c,
+        &[Command::Transition(
+            1,
+            Plan {
+                now: None,
+                first: Some(Step {
+                    mode: TransitionMode::Recording,
+                    skip: 0,
+                }),
+                second: None,
+            },
+        )],
+    );
+    h.run((2 * period) as usize, 1);
+    assert_eq!(musical_observation(&mut h, 1).0.first.unwrap().skip, 0);
+    let restart = h.frame();
+    send(
+        &mut h,
+        c,
+        &[Command::Transition(0, TransitionMode::Playing.into())],
+    );
+    h.run(period as usize, 1);
+    assert!(matches!(
+        observed_loop(&mut h, loop_id(1, 1)),
+        Telemetry::Loop {
+            mode: LoopMode::Stopped,
+            ..
+        }
+    ));
+    h.run(1, 1);
+    assert!(matches!(
+        observed_loop(&mut h, loop_id(1, 1)),
+        Telemetry::Loop {
+            mode: LoopMode::Recording,
+            ..
+        }
+    ));
+    send(
+        &mut h,
+        c,
+        &[Command::Transition(1, TransitionMode::Stopped.into())],
+    );
+    h.run(1, 1);
+    assert_eq!(
+        immediate_results(&h).last().unwrap().header.frame(),
+        restart + period + 1
+    );
+}
+
+#[shoop_test]
+fn musical_installed_plan_finishes_during_disconnect_without_replay() {
+    use immediate::{PlannedTransition as Step, TransitionPlan as Plan};
+    let (mut h, c) = musical_fixture(1);
+    let (period, _) = sync_position(&mut h);
+    send(
+        &mut h,
+        c,
+        &[Command::Transition(
+            1,
+            Plan {
+                now: None,
+                first: Some(Step {
+                    mode: TransitionMode::Recording,
+                    skip: 1,
+                }),
+                second: Some(Step {
+                    mode: TransitionMode::Stopped,
+                    skip: 5,
+                }),
+            },
+        )],
+    );
+    h.run(1, 1);
+    assert_eq!(
+        immediate_results(&h).last().unwrap().records()[0].code(),
+        immediate::Code::Scheduled
+    );
+    h.host.disconnect();
+    h.pump();
+    h.run((8 * period) as usize, 1);
+    h.host.connect().unwrap();
+    h.pump();
+    h.lifecycle.clear();
+    h.run(2, 1);
+    assert!(immediate_results(&h).is_empty());
+    assert!(
+        matches!(observed_loop(&mut h, loop_id(1, 1)), Telemetry::Loop { mode: LoopMode::Stopped, length, .. } if length == 4 * period)
+    );
+    assert_eq!(musical_observation(&mut h, 1).0, Plan::default());
 }

@@ -228,12 +228,15 @@ fn thirty_loaded_loops_start_together_with_ordered_results_and_snapshots() {
         .loops
         .iter()
         .copied()
-        .map(|id| Command::Transition(id, TransitionMode::Playing))
+        .map(|id| Command::Transition(id, TransitionMode::Playing.into()))
         .collect();
     let mut first_starts = starts.clone();
     first_starts.insert(
         15,
-        Command::Transition(BackendLoopId::from_raw(u64::MAX), TransitionMode::Playing),
+        Command::Transition(
+            BackendLoopId::from_raw(u64::MAX),
+            TransitionMode::Playing.into(),
+        ),
     );
     let responses = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let received = responses.clone();
@@ -300,7 +303,7 @@ fn thirty_loaded_loops_start_together_with_ordered_results_and_snapshots() {
         .loops
         .iter()
         .copied()
-        .map(|id| Command::Transition(id, TransitionMode::Stopped))
+        .map(|id| Command::Transition(id, TransitionMode::Stopped.into()))
         .collect();
     b.immediate_group(&stops).unwrap();
     b.clock_mut().render(16);
@@ -343,7 +346,7 @@ fn thirty_loaded_loops_start_together_with_ordered_results_and_snapshots() {
         let group: Vec<_> = ids
             .iter()
             .copied()
-            .map(|id| Command::Transition(id, TransitionMode::Playing))
+            .map(|id| Command::Transition(id, TransitionMode::Playing.into()))
             .collect();
         let begin = Arc::new(Barrier::new(2));
         let done = Arc::new(Barrier::new(2));
@@ -419,10 +422,10 @@ fn immediate_recording_uses_rt_state_before_snapshots_and_preserves_exported_aud
     let received = responses.clone();
     b.set_immediate_response_handler(move |r| received.lock().unwrap().push(*r));
     let cursor = b.mutation_cursor();
-    b.immediate_group(&[Command::Transition(id, TransitionMode::Recording)])
+    b.immediate_group(&[Command::Transition(id, TransitionMode::Recording.into())])
         .unwrap();
     assert_no_heap(|| b.clock_mut().render(8));
-    b.immediate_group(&[Command::Transition(id, TransitionMode::Playing)])
+    b.immediate_group(&[Command::Transition(id, TransitionMode::Playing.into())])
         .unwrap();
     assert_no_heap(|| b.clock_mut().render(1));
     for _ in 0..8 {
@@ -442,7 +445,7 @@ fn immediate_recording_uses_rt_state_before_snapshots_and_preserves_exported_aud
     assert_eq!(&*old[0], &[0.25; 8]);
     b.wait_idle();
     b.clock_mut().capture = |_| -0.5;
-    b.immediate_group(&[Command::Transition(id, TransitionMode::Recording)])
+    b.immediate_group(&[Command::Transition(id, TransitionMode::Recording.into())])
         .unwrap();
     for _ in 0..64 {
         assert_no_heap(|| b.clock_mut().render(1));
@@ -458,7 +461,7 @@ fn immediate_recording_uses_rt_state_before_snapshots_and_preserves_exported_aud
     );
     let start = responses.lock().unwrap()[2].header.frame();
     assert_no_heap(|| b.clock_mut().render(4));
-    b.immediate_group(&[Command::Transition(id, TransitionMode::Stopped)])
+    b.immediate_group(&[Command::Transition(id, TransitionMode::Stopped.into())])
         .unwrap();
     assert_no_heap(|| b.clock_mut().render(1));
     for _ in 0..8 {
@@ -541,13 +544,13 @@ fn immediate_grab_exports_survive_a_later_continuing_take_and_manual_finish() {
     let responses = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let received = responses.clone();
     b.set_immediate_response_handler(move |r| received.lock().unwrap().push(*r));
-    b.immediate_group(&[Command::Transition(sync, TransitionMode::Recording)])
+    b.immediate_group(&[Command::Transition(sync, TransitionMode::Recording.into())])
         .unwrap();
     advance_until(&mut b, &responses, 1);
     b.clock_mut().render(15);
     b.immediate_group(&[
-        Command::Transition(sync, TransitionMode::Stopped),
-        Command::Transition(sync, TransitionMode::Playing),
+        Command::Transition(sync, TransitionMode::Stopped.into()),
+        Command::Transition(sync, TransitionMode::Playing.into()),
     ])
     .unwrap();
     advance_until(&mut b, &responses, 2);
@@ -575,7 +578,7 @@ fn immediate_grab_exports_survive_a_later_continuing_take_and_manual_finish() {
     .unwrap();
     advance_until(&mut b, &responses, 4);
     b.clock_mut().render(4);
-    b.immediate_group(&[Command::Transition(target, TransitionMode::Stopped)])
+    b.immediate_group(&[Command::Transition(target, TransitionMode::Stopped.into())])
         .unwrap();
     advance_until(&mut b, &responses, 5);
     let state = b.poll().unwrap();

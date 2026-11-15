@@ -99,7 +99,18 @@ fn immediate_ui_groups_fit_records_and_leave_other_actions_on_their_existing_pat
     let group = immediate::group(&play, &state).unwrap();
     assert_eq!(group.len(), 30);
     state.global.sync = true;
-    assert!(immediate::group(&play, &state).is_none());
+    let planned = immediate::group(&play, &state).unwrap();
+    assert!(
+        matches!(planned[0], immediate::Command::Transition(_, plan) if plan.now.is_none() && plan.first.is_some())
+    );
+    state.tracks[0].loops[31].targeted = true;
+    state.tracks[0].loops[31].next_transition_delay = Some(3);
+    let targeted = immediate::group(&play, &state).unwrap();
+    assert!(
+        matches!(targeted[0], immediate::Command::Transition(_, plan) if plan.first.unwrap().skip == 3)
+    );
+    state.tracks[0].loops[31].targeted = false;
+    state.tracks[0].loops[31].next_transition_delay = None;
     state.global.sync = false;
     state.immediate.playback.remove(0);
     assert!(
@@ -143,7 +154,7 @@ fn immediate_ui_groups_fit_records_and_leave_other_actions_on_their_existing_pat
     let mut too_many = commands;
     too_many.push(immediate::Command::Transition(
         LoopId::from_raw(1),
-        TransitionMode::Stopped,
+        TransitionMode::Stopped.into(),
     ));
     assert!(!immediate::bounded(&too_many));
 }

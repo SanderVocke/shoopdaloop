@@ -32,6 +32,33 @@ impl TransitionMode {
         })
     }
 }
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct TransitionPlan {
+    pub now: Option<TransitionMode>,
+    pub first: Option<PlannedTransition>,
+    pub second: Option<PlannedTransition>,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PlannedTransition {
+    pub mode: TransitionMode,
+    pub skip: u32,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u32)]
+pub enum ClearPlanned {
+    First = 1,
+    Second = 2,
+    Both = 3,
+}
+impl From<TransitionMode> for TransitionPlan {
+    fn from(mode: TransitionMode) -> Self {
+        Self {
+            now: Some(mode),
+            first: None,
+            second: None,
+        }
+    }
+}
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Grab {
     pub sync: Option<u32>,
@@ -46,13 +73,15 @@ pub struct GrabGesture {
     pub target: Option<u32>,
     pub cycles: u32,
     pub play_after_record: bool,
+    pub synced: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Command {
     LoopGain(u32, f32),
     LoopBalance(u32, f32),
-    Transition(u32, TransitionMode),
+    Transition(u32, TransitionPlan),
+    ClearPlannedTransitions(u32, ClearPlanned),
     Grab(u32, Grab),
     GrabGesture(u32, GrabGesture),
     InputGain(u32, f32),
@@ -83,7 +112,7 @@ impl Batch {
             topology,
             deadline: None,
             len: commands.len() as u8,
-            commands: [Command::Transition(0, TransitionMode::Playing); COMMANDS],
+            commands: [Command::Transition(0, TransitionMode::Playing.into()); COMMANDS],
         };
         batch.commands[..commands.len()].copy_from_slice(commands);
         Some(batch)
@@ -113,6 +142,7 @@ pub enum Code {
     CannotApply = 7,
     CaptureUnavailable = 8,
     HistoryUnavailable = 9,
+    Scheduled = 10,
 }
 impl Code {
     pub fn from_raw(value: u32) -> Option<Self> {
@@ -127,12 +157,13 @@ impl Code {
             7 => Self::CannotApply,
             8 => Self::CaptureUnavailable,
             9 => Self::HistoryUnavailable,
+            10 => Self::Scheduled,
             _ => return None,
         })
     }
     pub fn diagnostic(self) -> Option<u8> {
         match self {
-            Self::Unprocessed | Self::Applied => None,
+            Self::Unprocessed | Self::Applied | Self::Scheduled => None,
             Self::StaleConfiguration => Some(2),
             Self::TargetUnavailable => Some(3),
             Self::Unsupported | Self::CannotApply => Some(4),
@@ -202,6 +233,16 @@ impl CommandRecord {
     pub fn new(command: Command) -> Self {
         use Command::*;
         let words = match command {
+            Transition(id, plan) => [
+                2,
+                id,
+                plan.now.map_or(u32::MAX, |m| m as u32),
+                plan.first.map_or(u32::MAX, |s| s.mode as u32),
+                plan.first.map_or(0, |s| s.skip),
+                plan.second.map_or(u32::MAX, |s| s.mode as u32),
+                plan.second.map_or(0, |s| s.skip),
+                0,
+            ],
             Grab(id, grab) => [
                 13,
                 id,
@@ -223,14 +264,15 @@ impl CommandRecord {
                 grab.target.unwrap_or(0),
                 grab.cycles,
                 u32::from(grab.play_after_record),
-                u32::from(grab.target.is_some()),
+                u32::from(grab.target.is_some()) | (u32::from(grab.synced) << 1),
                 0,
             ],
             _ => {
                 let (op, id, value) = match command {
                     LoopGain(id, v) => (0, id, v.to_bits()),
                     LoopBalance(id, v) => (1, id, v.to_bits()),
-                    Transition(id, mode) => (2, id, mode as u32),
+                    ClearPlannedTransitions(id, which) => (15, id, which as u32),
+                    Transition(..) => unreachable!(),
                     InputGain(id, v) => (4, id, v.to_bits()),
                     InputBalance(id, v) => (5, id, v.to_bits()),
                     OutputGain(id, v) => (6, id, v.to_bits()),
@@ -260,7 +302,35 @@ impl CommandRecord {
         Some(match self.word(0) {
             0 => LoopGain(id, f32::from_bits(value)),
             1 => LoopBalance(id, f32::from_bits(value)),
-            2 => Transition(id, TransitionMode::from_raw(value)?),
+            2 => {
+                let mode = |v| {
+                    if v == u32::MAX {
+                        Some(None)
+                    } else {
+                        TransitionMode::from_raw(v).map(Some)
+                    }
+                };
+                let step = |m, skip| -> Option<Option<PlannedTransition>> {
+                    Some(mode(m)?.map(|mode| PlannedTransition { mode, skip }))
+                };
+                Transition(
+                    id,
+                    TransitionPlan {
+                        now: mode(value)?,
+                        first: step(self.word(3), self.word(4))?,
+                        second: step(self.word(5), self.word(6))?,
+                    },
+                )
+            }
+            15 => ClearPlannedTransitions(
+                id,
+                match value {
+                    1 => ClearPlanned::First,
+                    2 => ClearPlanned::Second,
+                    3 => ClearPlanned::Both,
+                    _ => return None,
+                },
+            ),
             4 => InputGain(id, f32::from_bits(value)),
             5 => InputBalance(id, f32::from_bits(value)),
             6 => OutputGain(id, f32::from_bits(value)),
@@ -285,11 +355,12 @@ impl CommandRecord {
                     },
                 )
             }
-            14 if self.word(5) <= 1 && self.word(6) <= 1 => GrabGesture(
+            14 if self.word(5) <= 1 && self.word(6) <= 3 => GrabGesture(
                 id,
                 self::GrabGesture {
                     sync: value,
-                    target: (self.word(6) == 1).then_some(self.word(3)),
+                    target: (self.word(6) & 1 != 0).then_some(self.word(3)),
+                    synced: self.word(6) & 2 != 0,
                     cycles: self.word(4),
                     play_after_record: self.word(5) == 1,
                 },
@@ -338,7 +409,7 @@ impl Response {
         let mut response = Self {
             header,
             len: records.len() as u8,
-            records: [CommandRecord::new(Command::Transition(0, TransitionMode::Playing));
+            records: [CommandRecord::new(Command::Transition(0, TransitionMode::Playing.into()));
                 COMMANDS],
         };
         response.records[..records.len()].copy_from_slice(records);

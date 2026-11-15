@@ -34,6 +34,8 @@ pub const CONTROL_FUNCTION_NAMES: &[&str] = &[
     "loop_get_length",
     "loop_get_by_track",
     "loop_transition",
+    "loop_transition_plan",
+    "loop_clear_planned_transitions",
     "loop_trigger",
     "loop_trigger_default_playback",
     "loop_trigger_grab",
@@ -915,6 +917,67 @@ fn install_loop_mutations(
     module: &Table,
     bridge: &SharedControlBridge,
 ) -> omnilua::Result<()> {
+    let bridge_ = Rc::clone(bridge);
+    module.set(
+        "loop_transition_plan",
+        lua.create_function(move |lua, (selector, rest): (Value, Variadic<Value>)| {
+            let [now, first, first_skip, second, second_skip] =
+                exact_arguments::<5>(rest, "loop_transition_plan")?;
+            let now = Option::<i64>::from_lua(now, lua)?;
+            let first = Option::<i64>::from_lua(first, lua)?;
+            let first_skip = Option::<u32>::from_lua(first_skip, lua)?;
+            let second = Option::<i64>::from_lua(second, lua)?;
+            let second_skip = Option::<u32>::from_lua(second_skip, lua)?;
+            use shoop_app_api::{PlannedTransition, TransitionMode, TransitionPlan};
+            let mode = |value| -> omnilua::Result<TransitionMode> {
+                Ok(match parse_mode(value)? {
+                    LoopMode::Stopped => TransitionMode::Stopped,
+                    LoopMode::Playing => TransitionMode::Playing,
+                    LoopMode::Recording => TransitionMode::Recording,
+                    _ => return Err(runtime_error("unsupported plan mode")),
+                })
+            };
+            let step = |value, skip| -> omnilua::Result<Option<PlannedTransition>> {
+                match (value, skip) {
+                    (None, None) => Ok(None),
+                    (Some(value), Some(skip)) => Ok(Some(PlannedTransition {
+                        mode: mode(value)?,
+                        skip,
+                    })),
+                    _ => Err(runtime_error("a planned mode needs a delay")),
+                }
+            };
+            let plan = TransitionPlan {
+                now: now.map(mode).transpose()?,
+                first: step(first, first_skip)?,
+                second: step(second, second_skip)?,
+            };
+            let mut bridge = bridge_.borrow_mut();
+            let loops = selected_loop_ids(&bridge.snapshot, &selector)?;
+            bridge.enqueue(shoop_app_api::ControlOperation::SetTransitionPlan { loops, plan })?;
+            Ok(())
+        })?,
+    )?;
+    let bridge_ = Rc::clone(bridge);
+    module.set(
+        "loop_clear_planned_transitions",
+        lua.create_function(move |_, (selector, which): (Value, i64)| {
+            use shoop_app_api::ClearPlanned;
+            let which = match which {
+                1 => ClearPlanned::First,
+                2 => ClearPlanned::Second,
+                3 => ClearPlanned::Both,
+                _ => return Err(runtime_error("planned entry mask must be 1, 2 or 3")),
+            };
+            let mut bridge = bridge_.borrow_mut();
+            let loops = selected_loop_ids(&bridge.snapshot, &selector)?;
+            bridge.enqueue(shoop_app_api::ControlOperation::ClearPlannedTransitions {
+                loops,
+                which,
+            })?;
+            Ok(())
+        })?,
+    )?;
     let bridge_ = Rc::clone(bridge);
     module.set(
         "loop_transition",

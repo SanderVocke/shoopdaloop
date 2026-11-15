@@ -13,13 +13,21 @@ pub struct Capabilities {
     pub playback: Vec<LoopId>,
     pub grab: Vec<LoopId>,
     pub refused: u64,
+    pub plans: Vec<LoopTransitionPlan>,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+pub struct LoopTransitionPlan {
+    pub loop_id: LoopId,
+    pub plan: TransitionPlan,
+    pub failures: u32,
+}
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub enum Command {
     LoopGain(LoopId, f32),
     LoopBalance(LoopId, f32),
-    Transition(LoopId, TransitionMode),
+    Transition(LoopId, TransitionPlan),
+    ClearPlannedTransitions(LoopId, ClearPlanned),
     AdoptRingbuffers {
         loop_id: LoopId,
         reverse_cycle_start: u32,
@@ -33,6 +41,7 @@ pub enum Command {
         target: Option<LoopId>,
         cycles: u32,
         play_after_record: bool,
+        synced: bool,
     },
     InputGainDb(TrackId, f32),
     InputBalance(TrackId, f32),
@@ -68,37 +77,107 @@ pub fn group(action: &Action, state: &SessionSnapshot) -> Option<Vec<Command>> {
             .map(|l| l.id)
             .collect::<Vec<_>>()
     };
-    let playback = |ids: Vec<LoopId>, mode, solo: bool| -> Option<Vec<Command>> {
-        if !matches!(
-            mode,
-            LoopMode::Playing | LoopMode::Stopped | LoopMode::Recording
-        ) || state.global.apply_n_cycles != 0
-            || ids.iter().any(|id| !state.immediate.playback.contains(id))
+    let default_delay = state.global.sync.then(|| {
+        let sync = state
+            .tracks
+            .iter()
+            .flat_map(|t| &t.loops)
+            .find(|l| l.sync)
+            .map_or(0, |l| l.length_frames);
+        state
+            .tracks
+            .iter()
+            .flat_map(|t| &t.loops)
+            .find(|l| l.targeted)
+            .map_or(0, |l| {
+                if let Some(delay) = l.next_transition_delay {
+                    delay
+                } else if sync == 0 {
+                    0
+                } else {
+                    u32::try_from(
+                        l.length_frames.saturating_sub(
+                            (f64::from(l.position) * l.length_frames as f64).round() as u64,
+                        ) / sync,
+                    )
+                    .unwrap_or(u32::MAX)
+                }
+            })
+    });
+    let planned = |ids: Vec<LoopId>,
+                   mode,
+                   solo: bool,
+                   delay: Option<u32>,
+                   cycles: u32|
+     -> Option<Vec<Command>> {
+        let mode = match mode {
+            LoopMode::Playing => TransitionMode::Playing,
+            LoopMode::Recording => TransitionMode::Recording,
+            LoopMode::Stopped => TransitionMode::Stopped,
+            _ => return None,
+        };
+        if ids.iter().any(|id| !state.immediate.playback.contains(id)) {
+            return None;
+        }
+        if mode == TransitionMode::Recording
+            && cycles > 0
+            && (delay.is_none() || ids.iter().any(|id| find(*id).is_some_and(|l| l.sync)))
         {
             return None;
         }
         let mut commands = Vec::new();
-        if solo && state.global.solo && matches!(mode, LoopMode::Playing | LoopMode::Recording) {
+        let plan = |mode| -> Option<TransitionPlan> {
+            let mut plan = TransitionPlan::default();
+            let step = PlannedTransition {
+                mode,
+                skip: delay.unwrap_or(0),
+            };
+            if delay.is_some() {
+                plan.first = Some(step);
+            } else {
+                plan.now = Some(mode);
+            }
+            if mode == TransitionMode::Recording && cycles > 0 {
+                let finish = PlannedTransition {
+                    mode: if state.global.play_after_record {
+                        TransitionMode::Playing
+                    } else {
+                        TransitionMode::Stopped
+                    },
+                    skip: delay.unwrap_or(0).checked_add(cycles)?,
+                };
+                if delay.is_some() {
+                    plan.second = Some(finish);
+                } else {
+                    plan.first = Some(finish);
+                }
+            }
+            Some(plan)
+        };
+        if solo && state.global.solo && mode != TransitionMode::Stopped {
             for track in &state.tracks {
                 if track.loops.iter().any(|l| ids.contains(&l.id)) {
                     for other in track.loops.iter().filter(|l| !ids.contains(&l.id)) {
                         if !state.immediate.playback.contains(&other.id) {
                             return None;
                         }
-                        commands.push(Command::Transition(other.id, TransitionMode::Stopped));
+                        commands.push(Command::Transition(
+                            other.id,
+                            plan(TransitionMode::Stopped)?,
+                        ));
                     }
                 }
             }
         }
-        commands.extend(ids.into_iter().map(|id| match mode {
-            LoopMode::Playing => Command::Transition(id, TransitionMode::Playing),
-            LoopMode::Recording => Command::Transition(id, TransitionMode::Recording),
-            _ => Command::Transition(id, TransitionMode::Stopped),
-        }));
+        for id in ids {
+            commands.push(Command::Transition(id, plan(mode)?));
+        }
         Some(commands)
     };
+    let playback =
+        |ids, mode, solo| planned(ids, mode, solo, default_delay, state.global.apply_n_cycles);
     let grab = |ids: Vec<LoopId>| -> Option<Vec<Command>> {
-        if !state.global.sync || ids.iter().any(|id| !state.immediate.grab.contains(id)) {
+        if ids.iter().any(|id| !state.immediate.grab.contains(id)) {
             return None;
         }
         let sync = state
@@ -129,7 +208,10 @@ pub fn group(action: &Action, state: &SessionSnapshot) -> Option<Vec<Command>> {
                         {
                             return None;
                         }
-                        commands.push(Command::Transition(other.id, TransitionMode::Stopped));
+                        commands.push(Command::Transition(
+                            other.id,
+                            TransitionMode::Stopped.into(),
+                        ));
                     }
                 }
             }
@@ -140,6 +222,7 @@ pub fn group(action: &Action, state: &SessionSnapshot) -> Option<Vec<Command>> {
             target,
             cycles: state.global.apply_n_cycles.max(1),
             play_after_record: state.global.play_after_record,
+            synced: state.global.sync,
         }));
         Some(commands)
     };
@@ -161,8 +244,22 @@ pub fn group(action: &Action, state: &SessionSnapshot) -> Option<Vec<Command>> {
             _ => return None,
         })
     };
-    let unsynced = !state.global.sync;
     let commands = match action {
+        Action::Loop {
+            loop_id,
+            action: LoopAction::DefaultClicked,
+            ..
+        } if find(*loop_id).is_some_and(|l| {
+            l.mode == LoopMode::Stopped
+                && l.next_transition_delay.is_some()
+                && !matches!(l.next_mode, LoopMode::Unknown | LoopMode::Stopped)
+        }) && state.immediate.playback.contains(loop_id) =>
+        {
+            vec![Command::ClearPlannedTransitions(
+                *loop_id,
+                ClearPlanned::Both,
+            )]
+        }
         Action::Loop {
             loop_id,
             action: LoopAction::GrabClicked,
@@ -179,8 +276,7 @@ pub fn group(action: &Action, state: &SessionSnapshot) -> Option<Vec<Command>> {
             loop_id,
             action: LoopAction::DefaultClicked,
             ..
-        } if state.global.sync
-            && state.global.default_recording_action == DefaultRecordingAction::Grab
+        } if state.global.default_recording_action == DefaultRecordingAction::Grab
             && find(*loop_id).is_some_and(|l| l.empty && l.mode == LoopMode::Stopped) =>
         {
             grab(vec![*loop_id])?
@@ -200,7 +296,7 @@ pub fn group(action: &Action, state: &SessionSnapshot) -> Option<Vec<Command>> {
         Action::Bus { bus: id, action } => vec![bus(*id, action)?],
         Action::Loop {
             loop_id, action, ..
-        } if unsynced => {
+        } => {
             let entry = find(*loop_id)?;
             let (ids, mode) = match action {
                 LoopAction::PlayClicked | LoopAction::StopClicked | LoopAction::RecordClicked => (
@@ -219,11 +315,15 @@ pub fn group(action: &Action, state: &SessionSnapshot) -> Option<Vec<Command>> {
                 ),
                 LoopAction::DefaultClicked => (
                     vec![*loop_id],
-                    if entry.mode == LoopMode::Recording {
+                    if entry.next_transition_delay.is_some()
+                        && !matches!(entry.next_mode, LoopMode::Unknown | LoopMode::Stopped)
+                    {
+                        LoopMode::Stopped
+                    } else if entry.mode == LoopMode::Recording {
                         LoopMode::Playing
                     } else if entry.mode == LoopMode::Stopped && entry.empty {
                         if state.global.default_recording_action == DefaultRecordingAction::Grab {
-                            return None;
+                            return grab(vec![*loop_id]);
                         }
                         LoopMode::Recording
                     } else if entry.mode == LoopMode::Stopped {
@@ -236,8 +336,8 @@ pub fn group(action: &Action, state: &SessionSnapshot) -> Option<Vec<Command>> {
             };
             playback(ids, mode, true)?
         }
-        Action::PlaySelected if unsynced => playback(selected(), LoopMode::Playing, true)?,
-        Action::Global(GlobalControlAction::StopAll) if unsynced => playback(
+        Action::PlaySelected => playback(selected(), LoopMode::Playing, true)?,
+        Action::Global(GlobalControlAction::StopAll) => playback(
             state
                 .tracks
                 .iter()
@@ -248,6 +348,26 @@ pub fn group(action: &Action, state: &SessionSnapshot) -> Option<Vec<Command>> {
             true,
         )?,
         Action::Control(operation) => match operation {
+            ControlOperation::SetTransitionPlan { loops, plan } => loops
+                .iter()
+                .map(|id| Command::Transition(*id, *plan))
+                .collect(),
+            ControlOperation::ClearPlannedTransitions { loops, which } => loops
+                .iter()
+                .map(|id| Command::ClearPlannedTransitions(*id, *which))
+                .collect(),
+            ControlOperation::RecordN {
+                loops,
+                n_cycles,
+                cycles_delay,
+            } => planned(
+                loops.clone(),
+                LoopMode::Recording,
+                true,
+                Some(*cycles_delay),
+                *n_cycles,
+            )?,
+
             ControlOperation::Grab { loops } => grab(loops.clone())?,
             ControlOperation::AdoptRingbuffers {
                 loops,
@@ -321,11 +441,9 @@ pub fn group(action: &Action, state: &SessionSnapshot) -> Option<Vec<Command>> {
                 mode,
                 cycles_delay: None,
                 align_to_sync_at: None,
-            } => playback(loops.clone(), *mode, false)?,
-            ControlOperation::Trigger { loops, mode } if unsynced => {
-                playback(loops.clone(), *mode, true)?
-            }
-            ControlOperation::TriggerDefaultPlayback { loops } if unsynced => {
+            } => planned(loops.clone(), *mode, false, None, 0)?,
+            ControlOperation::Trigger { loops, mode } => playback(loops.clone(), *mode, true)?,
+            ControlOperation::TriggerDefaultPlayback { loops } => {
                 playback(loops.clone(), LoopMode::Playing, true)?
             }
             _ => return None,

@@ -5042,7 +5042,7 @@ fn ui_immediate_recording_works_before_fresh_snapshots_and_keeps_fixed_cycle_leg
         runtime.tick(STEP);
         let message = port.commands.try_recv().unwrap();
         assert!(
-            matches!(&message, ClientMessage::Immediate { commands, .. } if commands == &[immediate::Command::Transition(loop_id, TransitionMode::Recording)])
+            matches!(&message, ClientMessage::Immediate { commands, .. } if commands == &[immediate::Command::Transition(loop_id, TransitionMode::Recording.into())])
         );
         let mut bytes = [0; shoop_transport::MAX_RECORD_BYTES];
         let len = codec::encode(&WireMessage::Client(message), &mut bytes).unwrap();
@@ -5102,7 +5102,7 @@ fn ui_immediate_recording_works_before_fresh_snapshots_and_keeps_fixed_cycle_leg
 }
 
 #[shoop_test]
-fn ui_immediate_grab_and_lua_continuation_keep_automatic_finish_gestures_legacy() {
+fn ui_immediate_grab_and_lua_continuation_include_automatic_musical_finishing() {
     let mut f = fixture();
     let connection = ConnectionId(1);
     let mut client = attach(&mut f.service, 1, connection, true);
@@ -5247,7 +5247,7 @@ fn ui_immediate_grab_and_lua_continuation_keep_automatic_finish_gestures_legacy(
     runtime.tick(STEP);
     let message = port.commands.try_recv().unwrap();
     assert!(
-        matches!(&message, ClientMessage::Immediate { commands, .. } if commands == &[immediate::Command::Transition(id, TransitionMode::Stopped)])
+        matches!(&message, ClientMessage::Immediate { commands, .. } if commands == &[immediate::Command::Transition(id, TransitionMode::Stopped.into())])
     );
     f.service.handle(ConnectionId(99), message).unwrap();
     pump_runtime(&mut f.service, &mut runtime, &port, 4);
@@ -5272,14 +5272,17 @@ fn ui_immediate_grab_and_lua_continuation_keep_automatic_finish_gestures_legacy(
     runtime.tick(STEP);
     let message = port.commands.try_recv().unwrap();
     assert!(
-        matches!(&message, ClientMessage::Submit { .. }),
-        "unsynced gesture promises a future automatic finish and must retain its route"
+        matches!(&message, ClientMessage::Immediate { commands, .. } if matches!(commands.last(), Some(immediate::Command::Grab { synced: false, .. }))),
+        "continuation and its automatic finish use one new-path gesture"
     );
     f.service.handle(ConnectionId(99), message).unwrap();
     pump_runtime(&mut f.service, &mut runtime, &port, 40);
     assert_eq!(
         runtime.snapshot().tracks[1].loops[0].mode,
-        LoopMode::Playing
+        LoopMode::Playing,
+        "state {:?}; sync {:?}",
+        runtime.client().snapshot().unwrap().immediate,
+        runtime.snapshot().tracks[0].loops
     );
     assert!(f
         .immediate_groups
@@ -5287,4 +5290,202 @@ fn ui_immediate_grab_and_lua_continuation_keep_automatic_finish_gestures_legacy(
         .iter()
         .all(|b| b.deadline.is_none()));
     assert_eq!(f.waits.get(), f.initial_waits);
+}
+
+#[shoop_test]
+fn ui_immediate_musical_plans_and_lua_clearing_expose_both_entries_and_fixed_cycle_finish() {
+    let mut f = fixture();
+    let connection = ConnectionId(1);
+    let mut client = attach(&mut f.service, 1, connection, true);
+    command(
+        &mut f.service,
+        &mut client,
+        connection,
+        Command::Global(GlobalControlAction::SetSync(false)),
+    );
+    let sync = f
+        .service
+        .snapshot()
+        .tracks
+        .iter()
+        .find(|t| t.is_sync)
+        .unwrap()
+        .clone();
+    command(
+        &mut f.service,
+        &mut client,
+        connection,
+        Command::Loop {
+            track: sync.id,
+            loop_id: sync.loops[0].id,
+            action: LoopAction::RecordClicked,
+        },
+    );
+    for _ in 0..8 {
+        f.service.tick(STEP);
+    }
+    command(
+        &mut f.service,
+        &mut client,
+        connection,
+        Command::Loop {
+            track: sync.id,
+            loop_id: sync.loops[0].id,
+            action: LoopAction::PlayClicked,
+        },
+    );
+    let (track, loops) = created(command(
+        &mut f.service,
+        &mut client,
+        connection,
+        new_track("Plans", false),
+    ));
+    let id = loops[0];
+    command(
+        &mut f.service,
+        &mut client,
+        connection,
+        Command::Global(GlobalControlAction::SetSync(true)),
+    );
+    f.service.detach(connection);
+    let (mut runtime, port) = runtime(
+        &mut f.service,
+        shoop_app_client::runtime::Startup::Connected(Vec::new()),
+    );
+    pump_runtime(&mut f.service, &mut runtime, &port, 24);
+    runtime.dispatch(AppIntent::AddScriptSource { name: "install-plan.lua".into(), kind: ScriptKind::User, enabled: true, source: Arc::from("shoop_announce_api_version(1,0); local c=require('shoop_control'); c.loop_transition_plan({0,0},nil,c.constants.LoopMode_Recording,100,c.constants.LoopMode_Playing,200)") }).unwrap();
+    runtime.tick(STEP);
+    let message = port.commands.try_recv().unwrap();
+    assert!(
+        matches!(&message, ClientMessage::Immediate { commands, .. } if matches!(commands.as_slice(), [immediate::Command::Transition(_, plan)] if plan.now.is_none() && plan.first.is_some() && plan.second.is_some()))
+    );
+    let mut bytes = [0; shoop_transport::MAX_RECORD_BYTES];
+    let len = codec::encode(&WireMessage::Client(message), &mut bytes).unwrap();
+    let WireMessage::Client(message) = codec::decode(&bytes[..len]).unwrap() else {
+        panic!()
+    };
+    f.service.handle(ConnectionId(99), message).unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 4);
+    let state = runtime
+        .client()
+        .snapshot()
+        .unwrap()
+        .immediate
+        .plans
+        .iter()
+        .find(|s| s.loop_id == id)
+        .unwrap();
+    assert_eq!(state.plan.first.unwrap().mode, TransitionMode::Recording);
+    assert_eq!(state.plan.second.unwrap().mode, TransitionMode::Playing);
+    runtime.dispatch(AppIntent::AddScriptSource { name: "clear-plan.lua".into(), kind: ScriptKind::User, enabled: true, source: Arc::from("shoop_announce_api_version(1,0); require('shoop_control').loop_clear_planned_transitions({0,0},1)") }).unwrap();
+    runtime.tick(STEP);
+    let message = port.commands.try_recv().unwrap();
+    assert!(
+        matches!(&message, ClientMessage::Immediate { commands, .. } if matches!(commands.as_slice(), [immediate::Command::ClearPlannedTransitions(_, ClearPlanned::First)]))
+    );
+    f.service.handle(ConnectionId(99), message).unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 4);
+    let state = runtime
+        .client()
+        .snapshot()
+        .unwrap()
+        .immediate
+        .plans
+        .iter()
+        .find(|s| s.loop_id == id)
+        .unwrap();
+    assert!(state.plan.first.is_none());
+    assert!(state.plan.second.is_some());
+    runtime
+        .dispatch(AppIntent::Loop {
+            track_id: track,
+            loop_id: id,
+            action: LoopAction::DefaultClicked,
+        })
+        .unwrap();
+    runtime.tick(STEP);
+    let message = port.commands.try_recv().unwrap();
+    assert!(
+        matches!(&message, ClientMessage::Immediate { commands, .. } if matches!(commands.as_slice(), [immediate::Command::ClearPlannedTransitions(_, ClearPlanned::Both)]))
+    );
+    f.service.handle(ConnectionId(99), message).unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 4);
+    assert!(runtime
+        .client()
+        .snapshot()
+        .unwrap()
+        .immediate
+        .plans
+        .iter()
+        .find(|s| s.loop_id == id)
+        .unwrap()
+        .plan
+        .second
+        .is_none());
+    runtime
+        .dispatch(AppIntent::Global(GlobalControlAction::SetApplyNCycles(2)))
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 4);
+    runtime
+        .dispatch(AppIntent::Loop {
+            track_id: track,
+            loop_id: id,
+            action: LoopAction::RecordClicked,
+        })
+        .unwrap();
+    runtime.tick(STEP);
+    let message = port.commands.try_recv().unwrap();
+    assert!(
+        matches!(&message, ClientMessage::Immediate { commands, .. } if matches!(commands.as_slice(), [immediate::Command::Transition(_, plan)] if plan.first.is_some_and(|s| s.mode == TransitionMode::Recording) && plan.second.is_some_and(|s| s.mode == TransitionMode::Playing && s.skip == 2)))
+    );
+    f.service.handle(ConnectionId(99), message).unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 40);
+    assert_eq!(
+        runtime.snapshot().tracks[1].loops[0].mode,
+        LoopMode::Playing
+    );
+    assert!(runtime.snapshot().tracks[1].loops[0].length_frames > 0);
+    assert_eq!(runtime.client().snapshot().unwrap().immediate.refused, 0);
+    assert!(runtime
+        .snapshot()
+        .scripting
+        .scripts
+        .iter()
+        .all(|s| s.latest_error.is_none()));
+}
+
+#[shoop_test]
+fn ui_immediate_sync_loop_can_start_recording_before_any_clock_is_running() {
+    let mut f = fixture();
+    let (mut runtime, port) = runtime(
+        &mut f.service,
+        shoop_app_client::runtime::Startup::Connected(Vec::new()),
+    );
+    pump_runtime(&mut f.service, &mut runtime, &port, 8);
+    assert!(runtime.client().snapshot().unwrap().global.sync);
+    let track = runtime.snapshot().tracks[0].id;
+    let id = runtime.snapshot().tracks[0].loops[0].id;
+    for action in [LoopAction::RecordClicked, LoopAction::PlayClicked] {
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track,
+                loop_id: id,
+                action,
+            })
+            .unwrap();
+        runtime.tick(STEP);
+        let message = port.commands.try_recv().unwrap();
+        assert!(matches!(&message, ClientMessage::Immediate { .. }));
+        f.service.handle(ConnectionId(99), message).unwrap();
+        pump_runtime(&mut f.service, &mut runtime, &port, 8);
+    }
+    assert_eq!(
+        runtime.snapshot().tracks[0].loops[0].mode,
+        LoopMode::Playing,
+        "caps {:?}; loop {:?}",
+        runtime.client().snapshot().unwrap().immediate,
+        runtime.snapshot().tracks[0].loops[0]
+    );
+    assert!(runtime.snapshot().tracks[0].loops[0].length_frames > 0);
+    assert_eq!(runtime.client().snapshot().unwrap().immediate.refused, 0);
 }

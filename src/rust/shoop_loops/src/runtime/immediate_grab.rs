@@ -40,12 +40,9 @@ impl<S: Sample> LoopPlanner<S> {
         {
             return Err(Error::InvalidState);
         }
-        let (sync, window, mode) = match grab {
-            ImmediateGrab::Window { sync, window, mode } => (sync, window, mode),
+        let (sync, window, mode, finish) = match grab {
+            ImmediateGrab::Window { sync, window, mode } => (sync, window, mode, None),
             ImmediateGrab::Gesture { sync, target, spec } => {
-                if !spec.synced {
-                    return Err(Error::InvalidParameter);
-                }
                 let sync_state = self.resolver.immediate_state(sync).map_err(runtime_error)?;
                 let target = target
                     .map(|id| {
@@ -57,18 +54,24 @@ impl<S: Sample> LoopPlanner<S> {
                                 state.content_length
                             },
                             position: state.position,
-                            next_transition_delay: self
-                                .resolver
-                                .pending_delay(id)
-                                .map(|n| u32::try_from(n).map_err(|_| Error::Capacity))
-                                .transpose()?,
+                            next_transition_delay: self.pending_musical_delay(id),
                         })
                     })
                     .transpose()?;
                 let gesture = spec
                     .resolve(sync_state.content_length, target)
                     .map_err(runtime_error)?;
-                (Some(sync), gesture.window, gesture.mode)
+                let finish = gesture
+                    .finish
+                    .map(|mut finish| -> Result<_, Error> {
+                        if self.resolver.immediate_pulse(sync).map_err(runtime_error)? {
+                            finish.delay =
+                                finish.delay.checked_add(1).ok_or(Error::InvalidFrame)?;
+                        }
+                        Ok(finish)
+                    })
+                    .transpose()?;
+                (Some(sync), gesture.window, gesture.mode, finish)
             }
         };
         if !matches!(mode, Mode::Stopped | Mode::Playing | Mode::Recording)
@@ -76,6 +79,7 @@ impl<S: Sample> LoopPlanner<S> {
         {
             return Err(Error::InvalidParameter);
         }
+        let source = sync;
         let sync = sync
             .map(|id| self.resolver.immediate_state(id).map_err(runtime_error))
             .transpose()?;
@@ -238,6 +242,7 @@ impl<S: Sample> LoopPlanner<S> {
             });
         }
         self.resolver.commit_immediate_capture(decision);
+        self.install_grab_plan(target, source, finish)?;
         Ok(())
     }
 }

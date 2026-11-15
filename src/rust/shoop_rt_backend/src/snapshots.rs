@@ -22,6 +22,10 @@ pub(crate) struct Snapshots {
     bus_generations: Vec<u32>,
     pub frame: Option<u64>,
     pub after: u64,
+    pub plans: alloc::collections::BTreeMap<
+        shoop_backend::BackendLoopId,
+        (shoop_backend::TransitionPlan, u32),
+    >,
 }
 impl Default for Snapshots {
     fn default() -> Self {
@@ -39,6 +43,7 @@ impl Default for Snapshots {
             bus_generations: Vec::new(),
             frame: None,
             after: 0,
+            plans: Default::default(),
         }
     }
 }
@@ -180,7 +185,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         };
         // Validate record classes and identities for the known configuration first.
         if !records.iter().all(|record| match record {
-            Record::LoopLevels { id, .. }
+            Record::LoopPlan { id, .. }
+            | Record::LoopLevels { id, .. }
             | Record::State(StateRecord::LoopTiming { loop_id: id, .. })
             | Record::Telemetry(Telemetry::Loop { loop_id: id, .. }) => {
                 self.mirror.slot_loops.contains_key(id)
@@ -200,8 +206,41 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         self.snapshots.loop_generations.fill(0);
         self.snapshots.strip_generations.fill(0);
         self.snapshots.bus_generations.fill(0);
+        self.snapshots.plans.clear();
         for record in records {
             match record {
+                Record::LoopPlan { id, plan, failures } => {
+                    let mode = |m| match m {
+                        shoop_rt_protocol::immediate::TransitionMode::Stopped => {
+                            shoop_backend::TransitionMode::Stopped
+                        }
+                        shoop_rt_protocol::immediate::TransitionMode::Playing => {
+                            shoop_backend::TransitionMode::Playing
+                        }
+                        shoop_rt_protocol::immediate::TransitionMode::Recording => {
+                            shoop_backend::TransitionMode::Recording
+                        }
+                    };
+                    let step = |s: shoop_rt_protocol::immediate::PlannedTransition| {
+                        shoop_backend::PlannedTransition {
+                            mode: mode(s.mode),
+                            skip: s.skip,
+                        }
+                    };
+                    if let Some(id) = self.mirror.slot_loops.get(&id) {
+                        self.snapshots.plans.insert(
+                            *id,
+                            (
+                                shoop_backend::TransitionPlan {
+                                    now: None,
+                                    first: plan.first.map(step),
+                                    second: plan.second.map(step),
+                                },
+                                failures,
+                            ),
+                        );
+                    }
+                }
                 Record::LoopLevels {
                     id,
                     gain,

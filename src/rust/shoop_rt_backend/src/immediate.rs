@@ -2,7 +2,8 @@
 use crate::{EngineClock, Link, RtBackend};
 use anyhow::{anyhow, Result};
 use shoop_backend::{
-    BackendBusControl, BackendGrabRequest, BackendImmediateCommand, BackendLoopMode, TransitionMode,
+    BackendBusControl, BackendGrabRequest, BackendImmediateCommand, BackendLoopMode, ClearPlanned,
+    TransitionMode, TransitionPlan,
 };
 use shoop_backend::{BackendBusId, BackendLoopId, BackendTrackId};
 use shoop_rt_protocol::immediate::{
@@ -16,7 +17,8 @@ pub(crate) type ResponseHandler = dyn FnMut(&shoop_rt_protocol::immediate::Respo
 pub enum ImmediateCommand {
     LoopGain(BackendLoopId, f32),
     LoopBalance(BackendLoopId, f32),
-    Transition(BackendLoopId, TransitionMode),
+    Transition(BackendLoopId, TransitionPlan),
+    ClearPlannedTransitions(BackendLoopId, ClearPlanned),
     Grab(BackendGrabRequest),
     GrabGesture {
         loop_id: BackendLoopId,
@@ -24,6 +26,7 @@ pub enum ImmediateCommand {
         target: Option<BackendLoopId>,
         cycles: u32,
         play_after_record: bool,
+        synced: bool,
     },
     InputGain(BackendTrackId, f32),
     InputBalance(BackendTrackId, f32),
@@ -73,6 +76,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 LoopGain(id, v) => ImmediateCommand::LoopGain(id, bounded(v, 0.0, 1.0)),
                 LoopBalance(id, v) => ImmediateCommand::LoopBalance(id, bounded(v, -1.0, 1.0)),
                 Transition(id, mode) => ImmediateCommand::Transition(id, mode),
+                ClearPlannedTransitions(id, which) => {
+                    ImmediateCommand::ClearPlannedTransitions(id, which)
+                }
                 Grab(request) => ImmediateCommand::Grab(request),
                 GrabGesture {
                     loop_id,
@@ -80,12 +86,14 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     target,
                     cycles,
                     play_after_record,
+                    synced,
                 } => ImmediateCommand::GrabGesture {
                     loop_id,
                     sync,
                     target,
                     cycles,
                     play_after_record,
+                    synced,
                 },
                 OutputGainDb(id, v) => ImmediateCommand::OutputGain(id, amplitude(v)),
                 InputGainDb(id, v) => ImmediateCommand::InputGain(id, amplitude(v)),
@@ -168,12 +176,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             *output = match *command {
                 LoopGain(id, v) => Command::LoopGain(loop_slot(id), v),
                 LoopBalance(id, v) => Command::LoopBalance(loop_slot(id), v),
-                Transition(id, mode) => Command::Transition(
+                Transition(id, plan) => Command::Transition(loop_slot(id), encode_plan(plan)),
+                ClearPlannedTransitions(id, which) => Command::ClearPlannedTransitions(
                     loop_slot(id),
-                    match mode {
-                        TransitionMode::Stopped => RtMode::Stopped,
-                        TransitionMode::Playing => RtMode::Playing,
-                        TransitionMode::Recording => RtMode::Recording,
+                    match which {
+                        ClearPlanned::First => shoop_rt_protocol::immediate::ClearPlanned::First,
+                        ClearPlanned::Second => shoop_rt_protocol::immediate::ClearPlanned::Second,
+                        ClearPlanned::Both => shoop_rt_protocol::immediate::ClearPlanned::Both,
                     },
                 ),
                 Grab(request) => {
@@ -216,6 +225,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     target,
                     cycles,
                     play_after_record,
+                    synced,
                 } => Command::GrabGesture(
                     loop_slot(loop_id),
                     shoop_rt_protocol::immediate::GrabGesture {
@@ -223,6 +233,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         target: target.map(loop_slot),
                         cycles,
                         play_after_record,
+                        synced,
                     },
                 ),
                 InputGain(id, v) => Command::InputGain(strip(id), v),
@@ -251,5 +262,23 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     }
     pub fn immediate_diagnostics(&self) -> Diagnostics {
         self.status.immediate
+    }
+}
+
+fn encode_plan(plan: TransitionPlan) -> shoop_rt_protocol::immediate::TransitionPlan {
+    let mode = |m| match m {
+        TransitionMode::Stopped => RtMode::Stopped,
+        TransitionMode::Playing => RtMode::Playing,
+        TransitionMode::Recording => RtMode::Recording,
+    };
+    let step =
+        |s: shoop_backend::PlannedTransition| shoop_rt_protocol::immediate::PlannedTransition {
+            mode: mode(s.mode),
+            skip: s.skip,
+        };
+    shoop_rt_protocol::immediate::TransitionPlan {
+        now: plan.now.map(mode),
+        first: plan.first.map(step),
+        second: plan.second.map(step),
     }
 }

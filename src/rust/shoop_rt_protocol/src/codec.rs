@@ -2444,7 +2444,7 @@ impl Wire for crate::immediate::Command {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         use crate::immediate::Command::*;
         match *self {
-            Grab(..) | GrabGesture(..) => {
+            Transition(..) | Grab(..) | GrabGesture(..) => {
                 let record = crate::immediate::CommandRecord::new(*self);
                 w.u8(record.bytes()[0])?;
                 w.bytes(&record.bytes()[4..28])
@@ -2459,10 +2459,10 @@ impl Wire for crate::immediate::Command {
                 w.u32(id)?;
                 w.f32(v)
             }
-            Transition(id, mode) => {
-                w.u8(2)?;
+            ClearPlannedTransitions(id, which) => {
+                w.u8(15)?;
                 w.u32(id)?;
-                w.u32(mode as u32)
+                w.u32(which as u32)
             }
             InputGain(id, v) => {
                 w.u8(4)?;
@@ -2511,9 +2511,14 @@ impl Wire for crate::immediate::Command {
         Ok(match r.u8()? {
             0 => LoopGain(r.u32()?, r.f32()?),
             1 => LoopBalance(r.u32()?, r.f32()?),
-            2 => Transition(
+            15 => ClearPlannedTransitions(
                 r.u32()?,
-                crate::immediate::TransitionMode::from_raw(r.u32()?).ok_or(CodecError::Invalid)?,
+                match r.u32()? {
+                    1 => crate::immediate::ClearPlanned::First,
+                    2 => crate::immediate::ClearPlanned::Second,
+                    3 => crate::immediate::ClearPlanned::Both,
+                    _ => return Err(CodecError::Invalid),
+                },
             ),
             4 => InputGain(r.u32()?, r.f32()?),
             5 => InputBalance(r.u32()?, r.f32()?),
@@ -2523,7 +2528,7 @@ impl Wire for crate::immediate::Command {
             9 => BusGain(r.u32()?, r.f32()?),
             10 => BusBalance(r.u32()?, r.f32()?),
             11 => BusMute(r.u32()?, r.bool()?),
-            op @ (13 | 14) => {
+            op @ (2 | 13 | 14) => {
                 let mut bytes = [0; 32];
                 bytes[0] = op;
                 bytes[4..28].copy_from_slice(r.bytes(24)?);
@@ -2558,7 +2563,7 @@ impl Wire for crate::immediate::Batch {
         if len == 0 || len > COMMANDS {
             return Err(CodecError::Invalid);
         }
-        let mut commands = [Command::Transition(0, TransitionMode::Playing); COMMANDS];
+        let mut commands = [Command::Transition(0, TransitionMode::Playing.into()); COMMANDS];
         for command in &mut commands[..len] {
             *command = Command::get(r)?;
         }
@@ -2588,7 +2593,7 @@ impl Wire for crate::immediate::Response {
             return Err(CodecError::Invalid);
         }
         let mut records =
-            [CommandRecord::new(Command::Transition(0, TransitionMode::Playing)); COMMANDS];
+            [CommandRecord::new(Command::Transition(0, TransitionMode::Playing.into())); COMMANDS];
         for record in &mut records[..count] {
             *record = CommandRecord::from_bytes(r.bytes(32)?.try_into().unwrap())
                 .ok_or(CodecError::Invalid)?;
@@ -2895,6 +2900,15 @@ impl Wire for crate::snapshot::Record {
                 w.u8(1)?;
                 record.put(w)
             }
+            Self::LoopPlan { id, plan, failures } => {
+                w.u8(3)?;
+                id.put(w)?;
+                let record = crate::immediate::CommandRecord::new(
+                    crate::immediate::Command::Transition(0, *plan),
+                );
+                w.bytes(&record.bytes()[8..28])?;
+                w.u32(*failures)
+            }
             Self::LoopLevels {
                 id,
                 gain,
@@ -2913,6 +2927,27 @@ impl Wire for crate::snapshot::Record {
         Ok(match r.u8()? {
             0 => Self::Telemetry(Telemetry::get(r)?),
             1 => Self::State(StateRecord::get(r)?),
+            3 => {
+                let id = LoopSlotId::get(r)?;
+                let mut bytes = [0; 32];
+                bytes[0] = 2;
+                bytes[8..28].copy_from_slice(r.bytes(20)?);
+                let crate::immediate::Command::Transition(_, plan) =
+                    crate::immediate::CommandRecord::from_bytes(bytes)
+                        .ok_or(CodecError::Invalid)?
+                        .command()
+                else {
+                    return Err(CodecError::Invalid);
+                };
+                if plan.now.is_some() {
+                    return Err(CodecError::Invalid);
+                }
+                Self::LoopPlan {
+                    id,
+                    plan,
+                    failures: r.u32()?,
+                }
+            }
             2 => Self::LoopLevels {
                 id: LoopSlotId::get(r)?,
                 gain: r.f32()?,

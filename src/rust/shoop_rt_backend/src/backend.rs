@@ -255,6 +255,19 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
 }
 
 impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
+    fn transition_plans(&self) -> Vec<shoop_backend::BackendTransitionPlanState> {
+        self.snapshots
+            .plans
+            .iter()
+            .map(
+                |(&loop_id, &(plan, failures))| shoop_backend::BackendTransitionPlanState {
+                    loop_id,
+                    plan,
+                    failures,
+                },
+            )
+            .collect()
+    }
     fn supports_immediate_commands(&self) -> bool {
         true
     }

@@ -73,7 +73,7 @@ impl Control {
     }
     pub fn publish(&mut self, batch: Batch) -> bool {
         let mut records =
-            [CommandRecord::new(Command::Transition(0, TransitionMode::Playing)); COMMANDS];
+            [CommandRecord::new(Command::Transition(0, TransitionMode::Playing.into())); COMMANDS];
         for (record, &command) in records.iter_mut().zip(batch.commands()) {
             *record = CommandRecord::new(command);
         }
@@ -113,7 +113,8 @@ impl Control {
         while let Some(group) = self.tx.response() {
             let header = group.header;
             let mut records =
-                [CommandRecord::new(Command::Transition(0, TransitionMode::Playing)); COMMANDS];
+                [CommandRecord::new(Command::Transition(0, TransitionMode::Playing.into()));
+                    COMMANDS];
             let mut count = 0;
             for &record in group.commands() {
                 records[count] = record;
@@ -172,9 +173,6 @@ fn loop_command(command: Command) -> Option<(u32, Immediate)> {
     match command {
         Command::LoopGain(id, v) => Some((id, Immediate::Gain(v))),
         Command::LoopBalance(id, v) => Some((id, Immediate::Balance(v))),
-        Command::Transition(id, TransitionMode::Playing) => Some((id, Immediate::Playback(true))),
-        Command::Transition(id, TransitionMode::Stopped) => Some((id, Immediate::Playback(false))),
-        Command::Transition(id, TransitionMode::Recording) => Some((id, Immediate::Record)),
         _ => None,
     }
 }
@@ -218,6 +216,56 @@ impl Render {
         if !command.valid() {
             return Err(Code::InvalidValue);
         }
+        if let Command::Transition(id, _) | Command::ClearPlannedTransitions(id, _) = command {
+            let target = boundary
+                .planner
+                .resolver()
+                .id_at_slot(id)
+                .ok_or(Code::TargetUnavailable)?;
+            if id as usize >= pool.loops()
+                || !boundary
+                    .processors
+                    .get(pool.fader(id as usize))
+                    .is_some_and(EngineNode::immediate_playback_supported)
+            {
+                return Err(Code::Unsupported);
+            }
+            let mode = |m| match m {
+                TransitionMode::Stopped => shoop_loops::Mode::Stopped,
+                TransitionMode::Playing => shoop_loops::Mode::Playing,
+                TransitionMode::Recording => shoop_loops::Mode::Recording,
+            };
+            let result = match command {
+                Command::Transition(_, plan) => {
+                    let step = |s: shoop_rt_protocol::immediate::PlannedTransition| {
+                        shoop_loops::runtime::PlannedTransition {
+                            mode: mode(s.mode),
+                            skip: s.skip,
+                        }
+                    };
+                    boundary.planner.apply_transition_plan(
+                        target,
+                        shoop_loops::runtime::TransitionPlan {
+                            now: plan.now.map(mode),
+                            first: plan.first.map(step),
+                            second: plan.second.map(step),
+                        },
+                        boundary.frame,
+                        &mut boundary.resources,
+                    )
+                }
+                Command::ClearPlannedTransitions(_, which) => {
+                    boundary.planner.clear_planned(target, which as u8)
+                }
+                _ => unreachable!(),
+            };
+            return result.map_err(|error| match error {
+                rt_runtime::Error::Capacity | rt_runtime::Error::Exhausted => {
+                    Code::CaptureUnavailable
+                }
+                _ => Code::CannotApply,
+            });
+        }
         if let Command::Grab(id, _) | Command::GrabGesture(id, _) = command {
             let resolve = |id| {
                 boundary
@@ -254,7 +302,7 @@ impl Render {
                     sync: resolve(value.sync)?,
                     target: value.target.map(resolve).transpose()?,
                     spec: shoop_loops::grab::GestureSpec {
-                        synced: true,
+                        synced: value.synced,
                         cycles: value.cycles,
                         play_after_record: value.play_after_record,
                     },
@@ -345,8 +393,21 @@ impl Handler<EngineNode, LoopPlanner> for Render {
             group.respond(header.complete(boundary.frame.0, code), |record| {
                 let outcome = if code == Code::Applied {
                     Self::execute(&self.pool, record.command(), &mut boundary)
-                        .err()
-                        .unwrap_or(Code::Applied)
+                        .map(|()| match record.command() {
+                            Command::Transition(id, _)
+                                if boundary.planner.resolver().id_at_slot(id).is_some_and(
+                                    |target| {
+                                        let (plan, _) = boundary.planner.transition_plan(target);
+                                        plan.first.is_some() || plan.second.is_some()
+                                    },
+                                ) =>
+                            {
+                                Code::Scheduled
+                            }
+                            Command::GrabGesture(_, value) if !value.synced => Code::Scheduled,
+                            _ => Code::Applied,
+                        })
+                        .unwrap_or_else(|code| code)
                 } else {
                     code
                 };

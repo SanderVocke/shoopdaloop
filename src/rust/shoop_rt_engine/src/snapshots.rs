@@ -153,6 +153,32 @@ impl snapshot::Observer<EngineNode, LoopPlanner> for Capture {
                     }
                 }
             }
+            let (plan, failures) = context.planner.transition_plan(state.id);
+            let convert = |step: shoop_loops::runtime::PlannedTransition| {
+                shoop_rt_protocol::immediate::PlannedTransition {
+                    mode: match step.mode {
+                        Mode::Playing => shoop_rt_protocol::immediate::TransitionMode::Playing,
+                        Mode::Recording => shoop_rt_protocol::immediate::TransitionMode::Recording,
+                        _ => shoop_rt_protocol::immediate::TransitionMode::Stopped,
+                    },
+                    skip: step.skip,
+                }
+            };
+            for step in [plan.first, plan.second].into_iter().flatten() {
+                armed |= step.mode == Mode::Recording;
+                if next.is_none_or(|(delay, _)| step.skip < delay) {
+                    next = Some((step.skip, protocol_mode(step.mode)));
+                }
+            }
+            emit(Record::LoopPlan {
+                id,
+                plan: shoop_rt_protocol::immediate::TransitionPlan {
+                    now: None,
+                    first: plan.first.map(convert),
+                    second: plan.second.map(convert),
+                },
+                failures,
+            });
             emit(Record::LoopLevels {
                 id,
                 gain: cut.gain,

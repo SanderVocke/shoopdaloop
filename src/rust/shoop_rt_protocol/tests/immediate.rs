@@ -63,9 +63,9 @@ fn groups_preserve_commands_without_semantic_preflight() {
     assert!(Batch::new(1, 1, &[Command::LoopGain(id, f32::NAN)]).is_some());
     let commands = [
         Command::LoopBalance(id, 1.1),
-        Command::Transition(id, TransitionMode::Playing),
-        Command::Transition(id, TransitionMode::Stopped),
-        Command::Transition(id, TransitionMode::Recording),
+        Command::Transition(id, TransitionMode::Playing.into()),
+        Command::Transition(id, TransitionMode::Stopped.into()),
+        Command::Transition(id, TransitionMode::Recording.into()),
     ];
     let message = ClientMessage::Immediate(Batch::new(1, 1, &commands).unwrap());
     let mut bytes = [0; MAX_RECORD_BYTES];
@@ -75,7 +75,7 @@ fn groups_preserve_commands_without_semantic_preflight() {
 
 #[shoop_test]
 fn recording_and_capture_failure_use_the_existing_result_layout() {
-    let command = Command::Transition(12, TransitionMode::Recording);
+    let command = Command::Transition(12, TransitionMode::Recording.into());
     let record = CommandRecord::new(command).complete(Code::CaptureUnavailable);
     assert_eq!(record.bytes().len(), 32);
     assert_eq!(CommandRecord::from_bytes(*record.bytes()), Some(record));
@@ -95,7 +95,7 @@ fn transitions_share_one_opcode_and_reject_unknown_modes() {
         (TransitionMode::Playing, 1),
         (TransitionMode::Recording, 2),
     ] {
-        let command = Command::Transition(9, mode);
+        let command = Command::Transition(9, mode.into());
         let record = CommandRecord::new(command).complete(Code::Applied);
         assert_eq!(&record.bytes()[..4], &2u32.to_le_bytes());
         assert_eq!(&record.bytes()[8..12], &raw.to_le_bytes());
@@ -104,11 +104,11 @@ fn transitions_share_one_opcode_and_reject_unknown_modes() {
         let len = codec::encode_client(&message, &mut bytes).unwrap();
         assert_eq!(codec::decode_client(&bytes[..len]).unwrap(), message);
 
-        for invalid_mode in [3u32, u32::MAX] {
+        for invalid_mode in [3u32, 4] {
             let mut invalid = *record.bytes();
             invalid[8..12].copy_from_slice(&invalid_mode.to_le_bytes());
             assert!(CommandRecord::from_bytes(invalid).is_none());
-            bytes[len - 4..len].copy_from_slice(&invalid_mode.to_le_bytes());
+            bytes[len - 20..len - 16].copy_from_slice(&invalid_mode.to_le_bytes());
             assert!(codec::decode_client(&bytes[..len]).is_err());
         }
         for removed_opcode in [3u32, 12] {
@@ -146,6 +146,7 @@ fn maximum_grab_groups_and_responses_fit_one_transport_record() {
         Command::GrabGesture(
             9,
             GrabGesture {
+                synced: true,
                 sync: 2,
                 target: Some(4),
                 cycles: 3,
@@ -172,7 +173,45 @@ fn maximum_grab_groups_and_responses_fit_one_transport_record() {
         }
     }
     let mut noncanonical =
-        *CommandRecord::new(Command::Transition(9, TransitionMode::Stopped)).bytes();
+        *CommandRecord::new(Command::Transition(9, TransitionMode::Stopped.into())).bytes();
     noncanonical[12] = 1;
     assert!(CommandRecord::from_bytes(noncanonical).is_none());
+}
+
+#[shoop_test]
+fn complete_plans_clearing_and_observation_keep_the_value_envelope() {
+    use shoop_rt_protocol::immediate::{ClearPlanned, PlannedTransition, TransitionPlan};
+    let plan = TransitionPlan {
+        now: None,
+        first: Some(PlannedTransition {
+            mode: TransitionMode::Recording,
+            skip: 1,
+        }),
+        second: Some(PlannedTransition {
+            mode: TransitionMode::Playing,
+            skip: 5,
+        }),
+    };
+    let mut bytes = [0; MAX_RECORD_BYTES];
+    for command in [
+        Command::Transition(8, plan),
+        Command::Transition(8, TransitionPlan::default()),
+        Command::ClearPlannedTransitions(8, ClearPlanned::First),
+        Command::ClearPlannedTransitions(8, ClearPlanned::Second),
+        Command::ClearPlannedTransitions(8, ClearPlanned::Both),
+    ] {
+        let message = ClientMessage::Immediate(Batch::new(7, 8, &[command; COMMANDS]).unwrap());
+        let len = codec::encode_client(&message, &mut bytes).unwrap();
+        assert!(len <= MAX_RECORD_BYTES);
+        assert_eq!(codec::decode_client(&bytes[..len]).unwrap(), message);
+        let record = CommandRecord::new(command).complete(Code::Scheduled);
+        assert_eq!(CommandRecord::from_bytes(*record.bytes()), Some(record));
+    }
+    let record = shoop_rt_protocol::snapshot::Record::LoopPlan {
+        id: shoop_rt_protocol::LoopSlotId(shoop_rt_protocol::SlotId::new(8, 3)),
+        plan,
+        failures: 4,
+    };
+    let len = codec::encode_snapshot(&record, &mut bytes).unwrap();
+    assert_eq!(codec::decode_snapshot(&bytes[..len]).unwrap(), record);
 }

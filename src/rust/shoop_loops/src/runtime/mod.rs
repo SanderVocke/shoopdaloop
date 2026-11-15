@@ -35,6 +35,8 @@ pub use shared::{
 };
 mod immediate;
 mod immediate_grab;
+mod transition_plan;
+pub use transition_plan::{PlannedTransition, TransitionPlan};
 mod node_pairs;
 mod planner;
 pub use immediate::Immediate;
@@ -681,6 +683,8 @@ pub struct LoopPlanner<S: Sample = f32> {
     input_batch: input_batch::InputBatch,
     family: Vec<family::Selection>,
     replacing_targets: Box<[bool]>,
+    musical: Box<[transition_plan::MusicalState]>,
+    musical_pulses: Box<[bool]>,
 }
 
 /// Preparation choices beyond the loops themselves; the default enables none.
@@ -1070,6 +1074,8 @@ impl<S: Sample> LoopPlanner<S> {
             input_batch: input_batch::InputBatch::prepare(slots, dummy)?,
             family: family::prepare(slots, dummy),
             replacing_targets,
+            musical: vec![transition_plan::MusicalState::default(); slots].into_boxed_slice(),
+            musical_pulses: vec![false; slots].into_boxed_slice(),
         };
         Ok(Prepared {
             planner,

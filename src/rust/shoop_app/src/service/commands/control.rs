@@ -6,6 +6,31 @@ impl Service {
     pub(super) fn control_operation(&mut self, operation: ControlOperation) -> CommandResult {
         use ControlOperation::*;
         match operation {
+            SetTransitionPlan { loops, plan } => {
+                let commands = loops
+                    .into_iter()
+                    .map(|id| shoop_app_protocol::immediate::Command::Transition(id, plan))
+                    .collect::<Vec<_>>();
+                self.immediate_commands(self.persistence_epoch, &commands)
+                    .map_err(|reason| CommandError {
+                        reason,
+                        message: "Transition plan refused".into(),
+                    })?;
+            }
+            ClearPlannedTransitions { loops, which } => {
+                let commands = loops
+                    .into_iter()
+                    .map(|id| {
+                        shoop_app_protocol::immediate::Command::ClearPlannedTransitions(id, which)
+                    })
+                    .collect::<Vec<_>>();
+                self.immediate_commands(self.persistence_epoch, &commands)
+                    .map_err(|reason| CommandError {
+                        reason,
+                        message: "Plan clearing refused".into(),
+                    })?;
+            }
+
             Transition {
                 loops,
                 mode,

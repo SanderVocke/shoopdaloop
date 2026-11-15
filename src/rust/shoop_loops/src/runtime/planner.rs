@@ -380,6 +380,10 @@ impl<S: Sample> LoopPlanner<S> {
         }
         self.failures.push(observation);
         self.rows[slot].as_mut().expect("row").failure = Some(error);
+        if self.musical[slot].entries.iter().any(Option::is_some) {
+            self.musical[slot].entries = [None; 2];
+            self.musical[slot].failures = self.musical[slot].failures.saturating_add(1);
+        }
         Ok(())
     }
     fn preflight(
@@ -2001,6 +2005,7 @@ impl<S: Sample> LoopPlanner<S> {
                             return Err(error.into());
                         }
                     };
+                    self.musical[target.slot() as usize].entries = [None; 2];
                     self.pending[slot] = Some(Pending {
                         token: context.token,
                         kind: PendingKind::Transition {
@@ -2067,6 +2072,7 @@ impl<S: Sample> LoopPlanner<S> {
         if context.frame != self.resolver.frame() {
             return Err(Error::InvalidFrame);
         }
+        self.advance_musical_plans(context.frame, &mut context.resources)?;
         self.failures.clear();
         for row in self.rows.iter().flatten() {
             if row.aborted {

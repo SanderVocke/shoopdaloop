@@ -308,12 +308,10 @@ impl Resolver {
         if self.quiescent
             || self.committed
             || self.preview.is_some()
-            || self.pending_transitions().next().is_some()
             || self.program_change.is_some()
             || self.topology.node(id)?.kind != LoopKind::Primitive
             || !matches!(state.mode, Mode::Stopped | Mode::Playing)
             || state.content_length == 0
-            || state.repeat_sync
         {
             return Err(Error::InvalidState);
         }
@@ -367,7 +365,7 @@ impl Resolver {
         }
         Ok(state)
     }
-    fn immediate_pulse(&self, mut id: LoopId) -> Result<bool, Error> {
+    pub(crate) fn immediate_pulse(&self, mut id: LoopId) -> Result<bool, Error> {
         loop {
             let state = self.state(id)?;
             if state.composite.is_some() {
@@ -408,13 +406,9 @@ impl Resolver {
         if self.quiescent
             || self.committed
             || self.preview.is_some()
-            || self.pending_transitions().next().is_some()
             || self.program_change.is_some()
             || self.topology.node(id)?.kind != LoopKind::Primitive
             || !matches!(state.mode, Mode::Stopped | Mode::Playing | Mode::Recording)
-            || (state.repeat_sync
-                && !matches!(operation, Transition::Adopt { .. } | Transition::Stop)
-                && !(state.mode == Mode::Recording && matches!(operation, Transition::Play { .. })))
         {
             return Err(Error::InvalidState);
         }
@@ -432,6 +426,16 @@ impl Resolver {
         self.immediate_discontinuities[slot] |= decision.playback_discontinuity;
     }
 
+    pub(crate) fn cancel_target(&mut self, id: LoopId) -> Result<(), Error> {
+        self.state(id)?;
+        for record in self.records.iter_mut().flatten() {
+            if record.request.target == id && record.terminal.is_none() {
+                record.terminal = Some(Outcome::Cancelled { frame: self.frame });
+            }
+        }
+        self.preview = None;
+        Ok(())
+    }
     pub fn set_repeat_sync(&mut self, id: LoopId, enabled: bool) -> Result<(), Error> {
         if self.quiescent || self.committed {
             return Err(Error::InvalidState);

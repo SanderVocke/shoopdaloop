@@ -20,7 +20,7 @@ impl Default for SnapshotDelivery {
     }
 }
 
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 pub const HEADER: usize = 44;
 pub const CHUNK_BYTES: usize = 1024;
 
@@ -46,6 +46,11 @@ pub struct Chunk {
 pub enum Record {
     Telemetry(Telemetry),
     State(StateRecord),
+    LoopPlan {
+        id: LoopSlotId,
+        plan: crate::immediate::TransitionPlan,
+        failures: u32,
+    },
     LoopLevels {
         id: LoopSlotId,
         gain: f32,

@@ -17,19 +17,16 @@ UI/application <-> control <-> RT processing in the audio callback
 ```
 
 **Delivered:** coherent snapshots and push/pull UI delivery; ordinary scalar UI/Lua
-controls; immediate `Transition(loop, mode)`; ordinary audio recording and finishing;
-completed audio Grab and Grab-and-continue with explicit finishing; ordered
-same-callback responses and optional expiry-deadline capability.
+controls; complete loop transition-plan replacement and selective clearing;
+ordinary audio recording, quantized transitions and fixed-cycle finishing;
+completed audio Grab and Grab-and-continue with explicit or automatic musical
+finishing; ordered same-callback responses and optional expiry capability.
+The transition-plan milestone below is complete. Remaining operation families are
+listed separately; full legacy-operation coverage remains the overall goal.
 
-**Next, not implemented:** replace a loop's complete transition plan in one command,
-with an optional immediate action and up to two future musical actions; selectively
-clear either future entry; observe both entries through snapshots. Eligible
-quantized transitions, fixed-cycle audio recording, and Grab-and-continue followed
-by automatic Stop/Play at a musical boundary will move to this path.
-
-All application commands continue to use `deadline = None`, including the next
-milestone. Musical delays describe loop behavior. Assigning transport expiry
-deadlines to application commands remains separate future work.
+All application commands continue to use `deadline = None`. Musical delays
+belong to loop behavior; assigning transport expiry deadlines to application
+commands remains separate future work.
 
 ## Coverage goal and permitted tradeoffs
 
@@ -98,7 +95,7 @@ publication. UI delivery settings never reduce RT capture frequency.
 | State | Included information |
 | --- | --- |
 | Header | Schema, capture frame, graph/topology epochs, counts and payload length |
-| Loops | Identity/generation, mode, nearest pending transition/countdown, recording flags, cursor, length, gain, balance, repeat-sync, content/timing revisions |
+| Loops | Identity/generation, mode, nearest transition/countdown plus both new-plan entries and failure count, recording flags, cursor, length, gain, balance, repeat-sync, content/timing revisions |
 | Media metadata | Audio/MIDI lengths and channel windows, gain, offsets, alignment and preplay; no media bytes or owning leases |
 | Meters | Per-channel loop/strip/bus peaks; independent accumulators preserve legacy readers |
 | Strips | Input/output gain and balance, output mute, monitoring policy/demand, MIDI activity and latest short input message |
@@ -164,14 +161,18 @@ later callback, retry, musical event or another group's arrival.
 
 Input results are `Unprocessed`; RT copies commands and fills result codes.
 The generic FIFO supplies counts/framing; its Rust enum layout is not a hardware
-ABI. Current RT protocol version is 34; UI/application version is 39. Transition
-opcode 2 currently carries Stopped (0), Playing (1) or Recording (2) in its first
-argument; the others are zero. Grab/window and Grab/gesture use opcodes 13 and 14.
+ABI. RT protocol version is 35, UI/application version 40 and snapshot schema 2.
+Transition opcode 2 uses all five argument words: optional immediate mode, First
+mode/delay, Second mode/delay. Modes are Stopped (0), Playing (1), Recording (2);
+`u32::MAX` marks an absent mode, with zero delay for an absent entry. Opcode 15
+clears First (1), Second (2) or Both (3). Grab/window and Grab/gesture use opcodes
+13 and 14; the gesture flags also carry synced/continue intent.
 Unknown modes, noncanonical fields and removed Stop/Record opcodes are rejected.
 Maximum current Grab requests use 821 bytes without a deadline (829 with one);
 maximum responses use 1,076 bytes, within the carrier envelope.
 
-Results include `Applied` (also successful no-ops), `DeadlineMissed`,
+Results include `Applied` (also successful no-ops), `Scheduled` for installed future
+work, `DeadlineMissed`,
 `StaleConfiguration`, `TargetUnavailable`, `InvalidValue`, `Unsupported`,
 `CannotApply`, `CaptureUnavailable` and `HistoryUnavailable`. Header `Applied`
 means header checks passed; each member has its own result. Completed responses
@@ -225,7 +226,7 @@ replay and no old results.
 
 ## Implemented loop, recording and Grab behavior
 
-`Transition(loop, mode)` is used throughout UI, shared backend, adapter and RT;
+`Transition(loop, TransitionPlan)` is used throughout UI, shared backend, adapter and RT;
 Grab shares its destination-mode enum. Eligible UI/Lua controls also include loop
 gain/balance, strip input/output gain/balance and output mute, and bus gain/balance/
 mute. The adapter converts UI decibels to linear amplitude. Selected/solo actions
@@ -260,18 +261,20 @@ its existing rules. Grab against an already Recording target fails individually
 and preserves its prefix. Successful continuing capture retains finish resources
 and publishes its usable prefix on exhaustion.
 
-Grab has separate eligibility from unsynced playback and preserves supported
-primitive repeat-sync behavior. Current immediate transitions restrict pending
-musical work, repeat-sync, MIDI and processed/composite modes. Until the next
-milestone, quantized/automatic-finish/fixed-cycle gestures retain their whole legacy
-route. Unsupported, mixed or oversized actions remain available through legacy.
+Grab retains separate eligibility and supports primitive repeat-sync behavior.
+New plans coexist with immediate controls and other loops' pending actions.
+Eligible quantized and fixed-cycle recording gestures and automatic Grab finishing
+use the new path. MIDI, processed/composite, unsupported/mixed/oversized actions,
+longer/incremental plans and no-clock fixed-cycle recording retain legacy routes.
+Both plan entries and their cumulative per-incarnation failure count reach the
+UI in `snapshot.immediate.plans`; existing nearest-transition displays still work.
 
 ## Remaining migration areas
 
 | Area | Status and remaining difficulty |
 | --- | --- |
-| Musical plans | Next milestone below. Today delayed transitions and automatic finishes retain legacy scheduling; seeking, repeat-sync changes and timing edits also need precise semantics. |
-| Advanced capture/Grab | Ordinary audio Grab with automatic musical finishing is required by the next milestone. Replacing, MIDI, processed/composite capture, active-recording Grab targets and clearing content need later migration of their ownership/behavior. |
+| Musical plans | Two-action replacement, clearing and ordinary automatic finishes are migrated. Longer/incremental plans, no-clock fixed-cycle recording, seeking, repeat-sync changes and timing edits retain legacy routes. |
+| Advanced capture/Grab | Ordinary audio Grab with automatic musical finishing is migrated. Replacing, MIDI, processed/composite capture, active-recording Grab targets and clearing content need later migration of their ownership/behavior. |
 | Graph/processors | Creation, routing, replacement and removal need preparation, versioned activation and retirement of displaced owners. |
 | Media/persistence | Loading, exporting and saving need reliable bulk delivery, stable cuts, content revisions and resource lifetimes. Snapshots carry no media bytes. |
 | Composites/processed playback/MIDI | Nested programs, dry/wet behavior, processor restoration and MIDI note/state cleanup need feature-specific migration. |
@@ -282,7 +285,7 @@ Ownership return remains reliable and separate from lossy snapshots. Never copy
 an owning Rust object as a value packet or remove its return path before a safe
 replacement exists.
 
-## Next milestone: complete loop transition plans
+## Completed milestone: complete loop transition plans
 
 ### Goal and scope
 
@@ -301,8 +304,8 @@ model end to end.**
 This stage does not migrate processed/MIDI/composite modes or add transport
 scheduling; these remain part of the overall coverage goal. Other unsupported
 actions keep their whole legacy route. The legacy engine permits eight planned
-transitions per loop; the new interface initially carries two. Preserve longer legacy plans and
-incremental APIs that cannot safely express full replacement; do not truncate
+transitions per loop; the new interface carries two. Preserve longer legacy plans
+and incremental APIs that cannot safely express full replacement; do not truncate
 them or claim their migration is complete. Deliberate replacement/clearing must
 also disarm old legacy follow-ups for that target, with reliable retirement;
 they must not fire later over a new plan. Leave other targets' plans intact.
@@ -332,9 +335,9 @@ fails, retain the old state/content and old plan. Installing future actions is n
 a promise that their later resource-dependent execution will succeed. Preserve
 per-command coherence without adding group-wide preflight or rollback.
 
-The five argument words can hold `now mode`, `first mode/delay`, `second mode/delay`
-within the existing 32-byte record. Define canonical absent-value encoding and
-update protocol versions; there is no new handle or request identity. Thirty
+The five argument words hold `now mode`, `first mode/delay`, `second mode/delay`
+within the existing 32-byte record using the versioned canonical encoding above;
+there is no new handle or request identity. Thirty
 complete two-action plans still fit one 30-command group and the current envelope.
 Use only ordinary format/safety checks; trust the app to supply sensible plans.
 
@@ -380,7 +383,8 @@ does not satisfy this milestone.
   unrendered frame. A pulse resolved there counts consistently for installed
   entries; cancellation before settlement can prevent a due action. Already
   executed actions are never undone. Preserve alignment across grouped loops.
-- Use existing sync-source/self-clock behavior and meaningful pulse boundaries;
+- Use sync-source/self-clock wraps and meaningful musical boundaries, with the
+  documented restart difference below;
   do not translate cycle delays into audio-clock deadlines or wall-clock timers.
   Preserve supported no-sync UI behavior through the appropriate route. A paused
   source pauses its countdown; target removal or a changed sync source must
@@ -427,44 +431,44 @@ before admitting ordinary later new-path commands.
 
 1. **Value protocol and snapshot contract**
 
-   - [ ] Extend UI/shared/backend/RT values with complete replacement and selective
+   - [x] Extend UI/shared/backend/RT values with complete replacement and selective
      clearing, canonical encoding and synchronous result meaning; expose both
      future entries in snapshots and bump affected versions. Carry automatic
      Grab-continuation finish intent through the new interface as well.
-   - [ ] Verify absent fields, all three modes, maximum groups, stable entry
+   - [x] Verify absent fields, all three modes, maximum groups, stable entry
      positions, skip counting and distinction from expiry deadlines with focused
      codec/state examples.
 
 2. **RT musical state and capture integration**
 
-   - [ ] Install/replace/clear loop-owned plans synchronously, reuse pulse and
+   - [x] Install/replace/clear loop-owned plans synchronously, reuse pulse and
      capture machinery, preserve repeated-action semantics and remove global
      pending-plan restrictions without retaining transport requests. Integrate
      history attachment, continuation start and automatic finish installation.
-   - [ ] Smoke-test exact pulse/frame execution, two-step plans, immediate-action
+   - [x] Smoke-test exact pulse/frame execution, two-step plans, immediate-action
      failure preserving an old plan, future failure clearing its remainder,
      recording/Grab-continuation finishing, monitoring, source changes, buffer-only
      callbacks and ordinary controls while other loops have plans.
 
 3. **UI/control integration and compatibility**
 
-   - [ ] Send eligible complete scheduled/fixed-cycle recording intents and Grab
+   - [x] Send eligible complete scheduled/fixed-cycle recording intents and Grab
      gestures that continue recording and finish at a boundary through the new
      UI/Lua path; wire clearing and both-entry displays over direct/encoded delivery.
      Keep transition plans as one command per loop and deadline fields absent.
-   - [ ] Check stale-snapshot cancellation without moving the survivor, replacement
+   - [x] Check stale-snapshot cancellation without moving the survivor, replacement
      before a fresh snapshot, legacy/new handoff without leftover follow-ups,
      selected/solo grouping and unchanged unsupported/longer-plan legacy behavior.
      Never silently split, retry or replay.
 
 4. **Focused end-to-end validation and completion**
 
-   - [ ] Exercise 30 grouped loops sharing a sync source, starting at the same
+   - [x] Exercise 30 grouped loops sharing a sync source, starting at the same
      boundary and stopping four cycles later; plan replacement and clearing,
      scheduled recording/finishing and Grab -> continued input -> automatic
      Stop/Play with real samples, resource failure and disconnect without replay.
      Verify snapshots, exact history/live joins and same-callback results.
-   - [ ] Run relevant smoke checks, formatting, test-attribute policy and a
+   - [x] Run relevant smoke checks, formatting, test-attribute policy and a
      warning-denying build. Update this document and the existing draft PR;
      commit/push completed work and report behavior relaxations/remaining limits
      in this chat. No broad suite or CI completion gate.
@@ -495,6 +499,39 @@ before admitting ordinary later new-path commands.
   on completion, as authorized above. Removing required operation coverage or
   changing the core communication model requires explicit user approval.
 
+### Delivered design choices and remaining limits
+
+- New musical state is a preallocated pair of entries per loop in `LoopPlanner`.
+  The existing capture-aware immediate handlers execute due actions before tick
+  settlement. The old resolver's request/receipt lifetime is not used for new
+  plans. Successful installation, cancellation and responses remain synchronous.
+- **Timing relaxation:** new countdowns advance on completed primitive sync wraps.
+  Starting/restarting a paused source does not itself consume a count, so an
+  already armed plan can run one cycle later than legacy's entry-pulse behavior.
+  This keeps timing independent of legacy request/completion and event-origin
+  bookkeeping. Ordinary running-clock boundaries and grouped sample alignment
+  are preserved; a focused paused/restart check documents the difference.
+- A single delayed action on an unsynchronized, non-playing loop uses the legacy
+  immediate fallback, so the sync loop can start recording before any clock runs.
+  A two-step plan requires a usable musical source. UI fixed-cycle recording with
+  sync disabled (or on the sync loop itself) retains its complete legacy route;
+  no virtual clock, wall-clock timer or deadline policy was introduced.
+- The new packet contains two future entries, as agreed; longer and incremental
+  legacy plans remain supported on their old route. Existing delayed
+  `loop_transition` calls retain incremental semantics. Explicit Lua
+  `loop_transition_plan(selector, now, first_mode, first_skip, second_mode,
+  second_skip)` sends a full replacement (`nil` for absent values), and
+  `loop_clear_planned_transitions(selector, mask)` clears entry mask 1/2/3.
+- UI quantization uses the latest observed target position for its requested
+  delay; network/snapshot lag is not hidden by extra synchronization. Grab's
+  history selection and target-dependent finish are resolved from RT state.
+  A continuation installed exactly on a wrap finishes at a later boundary,
+  allowing live recording instead of immediately sealing an empty take.
+- Scheduled resource failure clears the loop's remaining plan and is visible in
+  snapshots as a failure counter. Storage and media ownership remain protected;
+  future execution creates no additional command response. Processed/MIDI/
+  composite, graph/media lifecycle and other areas above remain unmigrated.
+
 ## Execution and verification policy
 
 Keep this document current and check off completed work. Commit each completed
@@ -511,9 +548,14 @@ integration matrices or callback-cost certification. Check relevant review feedb
 and address findings within scope; keep CI in the background, without waiting for
 a large suite. Leave the PR in draft and do not merge automatically.
 
-Latest implementation baseline: 39 selected native/offline checks passed
-(protocol 6, engine immediate 23, backend immediate 5, UI immediate 4, UI client 1),
-plus formatting, test-attribute policy and a Rust-warning-denying native UI build
-with optional native audio-provider features disabled. Its existing unused
-message-port dependency manifest warning remains. This validates delivered work,
-not the next milestone; no broad suite, live browser run or CI wait was used.
+Latest milestone validation: 52 selected native/offline checks pass: protocol 7,
+engine immediate 30 (including seven new musical scenarios), backend immediate 5,
+UI immediate 6, UI client 1, existing legacy timing 2 and aligned legacy recording
+1. Coverage includes direct/encoded delivery, exact samples and history/live joins,
+30-loop alignment, stable clearing, failed-now preservation, future failure,
+source changes, legacy replacement, buffer-only callbacks, paused-clock behavior,
+startup recording, automatic Grab finish and disconnect without replay.
+Formatting, test-attribute policy and a Rust-warning-denying native UI build pass
+with optional native audio-provider features disabled. The existing unused
+message-port dependency manifest warning remains. No broad suite, callback timing
+benchmark, live browser run or CI completion wait was used.

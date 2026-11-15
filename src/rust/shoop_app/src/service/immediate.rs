@@ -24,17 +24,11 @@ impl Service {
                         BackendLoopMode::Stopped
                             | BackendLoopMode::Playing
                             | BackendLoopMode::Recording
-                    )
-                    && state.next_mode.is_none()
-                    && !state.recording_armed)
-                    .then_some((*id, state))
+                    ))
+                .then_some((*id, state))
             })
             .collect();
-        let playback = eligible
-            .iter()
-            .filter(|(_, state)| !state.repeat_sync)
-            .map(|(id, _)| *id)
-            .collect();
+        let playback = eligible.iter().map(|(id, _)| *id).collect();
         let grab = eligible
             .iter()
             .filter(|(_, state)| {
@@ -47,6 +41,21 @@ impl Service {
             .collect();
         immediate::Capabilities {
             enabled,
+            plans: self
+                .backend
+                .transition_plans()
+                .into_iter()
+                .filter_map(|state| {
+                    self.loops
+                        .iter()
+                        .find(|(_, entry)| entry.backend == state.loop_id)
+                        .map(|(&loop_id, _)| immediate::LoopTransitionPlan {
+                            loop_id,
+                            plan: state.plan,
+                            failures: state.failures,
+                        })
+                })
+                .collect(),
             playback,
             grab,
             refused: self
@@ -79,6 +88,7 @@ impl Service {
             matches!(
                 command,
                 Immediate::Transition(..)
+                    | Immediate::ClearPlannedTransitions(..)
                     | Immediate::Grab { .. }
                     | Immediate::AdoptRingbuffers { .. }
             )
@@ -119,6 +129,9 @@ impl Service {
                     Immediate::LoopGain(id, v) => B::LoopGain(loop_id(id), v),
                     Immediate::LoopBalance(id, v) => B::LoopBalance(loop_id(id), v),
                     Immediate::Transition(id, mode) => B::Transition(loop_id(id), mode),
+                    Immediate::ClearPlannedTransitions(id, which) => {
+                        B::ClearPlannedTransitions(loop_id(id), which)
+                    }
                     Immediate::AdoptRingbuffers {
                         loop_id: id,
                         reverse_cycle_start,
@@ -143,12 +156,14 @@ impl Service {
                         target,
                         cycles,
                         play_after_record,
+                        synced,
                     } => B::GrabGesture {
                         loop_id: loop_id(id),
                         sync: loop_id(sync),
                         target: target.map(loop_id),
                         cycles,
                         play_after_record,
+                        synced,
                     },
                     Immediate::InputGainDb(id, v) => B::InputGainDb(track(id), v),
                     Immediate::InputBalance(id, v) => B::InputBalance(track(id), v),
