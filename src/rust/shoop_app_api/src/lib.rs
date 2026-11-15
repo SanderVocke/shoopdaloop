@@ -726,6 +726,15 @@ pub enum LoopMode {
     RecordingDryIntoWet,
 }
 
+/// Destination modes supported by immediate loop transitions.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum TransitionMode {
+    Stopped,
+    Playing,
+    Recording,
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum CompositeKind {

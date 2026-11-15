@@ -5042,7 +5042,7 @@ fn ui_immediate_recording_works_before_fresh_snapshots_and_keeps_fixed_cycle_leg
         runtime.tick(STEP);
         let message = port.commands.try_recv().unwrap();
         assert!(
-            matches!(&message, ClientMessage::Immediate { commands, .. } if commands == &[immediate::Command::Record(loop_id)])
+            matches!(&message, ClientMessage::Immediate { commands, .. } if commands == &[immediate::Command::Transition(loop_id, TransitionMode::Recording)])
         );
         let mut bytes = [0; shoop_transport::MAX_RECORD_BYTES];
         let len = codec::encode(&WireMessage::Client(message), &mut bytes).unwrap();
@@ -5247,7 +5247,7 @@ fn ui_immediate_grab_and_lua_continuation_keep_automatic_finish_gestures_legacy(
     runtime.tick(STEP);
     let message = port.commands.try_recv().unwrap();
     assert!(
-        matches!(&message, ClientMessage::Immediate { commands, .. } if commands == &[immediate::Command::Stop(id)])
+        matches!(&message, ClientMessage::Immediate { commands, .. } if commands == &[immediate::Command::Transition(id, TransitionMode::Stopped)])
     );
     f.service.handle(ConnectionId(99), message).unwrap();
     pump_runtime(&mut f.service, &mut runtime, &port, 4);

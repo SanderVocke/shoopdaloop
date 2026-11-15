@@ -16,10 +16,21 @@ pub struct Diagnostics {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum GrabMode {
-    Stopped,
-    Playing,
-    Recording,
+#[repr(u32)]
+pub enum TransitionMode {
+    Stopped = 0,
+    Playing = 1,
+    Recording = 2,
+}
+impl TransitionMode {
+    pub fn from_raw(value: u32) -> Option<Self> {
+        Some(match value {
+            0 => Self::Stopped,
+            1 => Self::Playing,
+            2 => Self::Recording,
+            _ => return None,
+        })
+    }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Grab {
@@ -27,7 +38,7 @@ pub struct Grab {
     pub reverse_start_cycle: Option<u32>,
     pub cycles_length: Option<u32>,
     pub go_to_cycle: Option<u32>,
-    pub mode: GrabMode,
+    pub mode: TransitionMode,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct GrabGesture {
@@ -41,9 +52,7 @@ pub struct GrabGesture {
 pub enum Command {
     LoopGain(u32, f32),
     LoopBalance(u32, f32),
-    Start(u32),
-    Stop(u32),
-    Record(u32),
+    Transition(u32, TransitionMode),
     Grab(u32, Grab),
     GrabGesture(u32, GrabGesture),
     InputGain(u32, f32),
@@ -74,7 +83,7 @@ impl Batch {
             topology,
             deadline: None,
             len: commands.len() as u8,
-            commands: [Command::Start(0); COMMANDS],
+            commands: [Command::Transition(0, TransitionMode::Playing); COMMANDS],
         };
         batch.commands[..commands.len()].copy_from_slice(commands);
         Some(batch)
@@ -204,11 +213,7 @@ impl CommandRecord {
                     | (u32::from(grab.reverse_start_cycle.is_some()) << 1)
                     | (u32::from(grab.cycles_length.is_some()) << 2)
                     | (u32::from(grab.go_to_cycle.is_some()) << 3)
-                    | ((match grab.mode {
-                        GrabMode::Stopped => 0,
-                        GrabMode::Playing => 1,
-                        GrabMode::Recording => 2,
-                    }) << 4),
+                    | ((grab.mode as u32) << 4),
                 0,
             ],
             GrabGesture(id, grab) => [
@@ -225,9 +230,7 @@ impl CommandRecord {
                 let (op, id, value) = match command {
                     LoopGain(id, v) => (0, id, v.to_bits()),
                     LoopBalance(id, v) => (1, id, v.to_bits()),
-                    Start(id) => (2, id, 0),
-                    Stop(id) => (3, id, 0),
-                    Record(id) => (12, id, 0),
+                    Transition(id, mode) => (2, id, mode as u32),
                     InputGain(id, v) => (4, id, v.to_bits()),
                     InputBalance(id, v) => (5, id, v.to_bits()),
                     OutputGain(id, v) => (6, id, v.to_bits()),
@@ -257,9 +260,7 @@ impl CommandRecord {
         Some(match self.word(0) {
             0 => LoopGain(id, f32::from_bits(value)),
             1 => LoopBalance(id, f32::from_bits(value)),
-            2 if value == 0 => Start(id),
-            3 if value == 0 => Stop(id),
-            12 if value == 0 => Record(id),
+            2 => Transition(id, TransitionMode::from_raw(value)?),
             4 => InputGain(id, f32::from_bits(value)),
             5 => InputBalance(id, f32::from_bits(value)),
             6 => OutputGain(id, f32::from_bits(value)),
@@ -280,12 +281,7 @@ impl CommandRecord {
                         reverse_start_cycle: (flags & 2 != 0).then_some(self.word(3)),
                         cycles_length: (flags & 4 != 0).then_some(self.word(4)),
                         go_to_cycle: (flags & 8 != 0).then_some(self.word(5)),
-                        mode: match flags >> 4 {
-                            0 => GrabMode::Stopped,
-                            1 => GrabMode::Playing,
-                            2 => GrabMode::Recording,
-                            _ => return None,
-                        },
+                        mode: TransitionMode::from_raw(flags >> 4)?,
                     },
                 )
             }
@@ -342,7 +338,8 @@ impl Response {
         let mut response = Self {
             header,
             len: records.len() as u8,
-            records: [CommandRecord::new(Command::Start(0)); COMMANDS],
+            records: [CommandRecord::new(Command::Transition(0, TransitionMode::Playing));
+                COMMANDS],
         };
         response.records[..records.len()].copy_from_slice(records);
         Some(response)

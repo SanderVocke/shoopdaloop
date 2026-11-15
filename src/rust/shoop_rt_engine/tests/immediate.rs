@@ -3,7 +3,7 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 mod support;
 use shoop_rt_protocol::{
-    immediate::{Batch, Command, FIFO_SINGLETONS, STAGED_BATCHES},
+    immediate::{Batch, Command, TransitionMode, FIFO_SINGLETONS, STAGED_BATCHES},
     snapshot::{Header, Record, Records, HEADER},
     *,
 };
@@ -260,8 +260,8 @@ fn commands_run_in_order_and_failures_do_not_suppress_later_effects() {
             Command::LoopGain(99, 0.9),
             Command::LoopBalance(l.0.index, 2.),
             Command::LoopGain(l.0.index, f32::NAN),
-            Command::Stop(l.0.index),
-            Command::Start(l.0.index),
+            Command::Transition(l.0.index, TransitionMode::Stopped),
+            Command::Transition(l.0.index, TransitionMode::Playing),
             Command::LoopGain(l.0.index, 0.75),
         ],
     );
@@ -487,7 +487,10 @@ fn recording_and_media_edits_resume_between_immediate_groups() {
     send(
         &mut h,
         c,
-        &[Command::Start(l.0.index), Command::LoopGain(l.0.index, 0.9)],
+        &[
+            Command::Transition(l.0.index, TransitionMode::Playing),
+            Command::LoopGain(l.0.index, 0.9),
+        ],
     );
     h.run(16, 16);
     assert_eq!(
@@ -501,7 +504,11 @@ fn recording_and_media_edits_resume_between_immediate_groups() {
         mode: LoopMode::Stopped,
         delay: None,
     });
-    send(&mut h, c, &[Command::Start(l.0.index)]);
+    send(
+        &mut h,
+        c,
+        &[Command::Transition(l.0.index, TransitionMode::Playing)],
+    );
     h.run(128, 16);
     assert_eq!(h.results.get(&stop), Some(&Outcome::Done));
     assert_eq!(gain(&mut h), 0.5);
@@ -958,9 +965,9 @@ fn recording_milestone_grouped_capture_finishes_to_play_and_stop_at_exact_frames
         &mut h,
         c,
         &[
-            Command::Record(0),
-            Command::Record(u32::MAX),
-            Command::Record(1),
+            Command::Transition(0, TransitionMode::Recording),
+            Command::Transition(u32::MAX, TransitionMode::Recording),
+            Command::Transition(1, TransitionMode::Recording),
         ],
     );
     h.run(8, 4);
@@ -979,14 +986,22 @@ fn recording_milestone_grouped_capture_finishes_to_play_and_stop_at_exact_frames
         }
     ));
     assert_eq!(h.outputs[0][start as usize], start as f32 / 2000.);
-    send(&mut h, c, &[Command::Start(0)]);
+    send(
+        &mut h,
+        c,
+        &[Command::Transition(0, TransitionMode::Playing)],
+    );
     h.run(1, 1);
     assert_eq!(
         *h.outputs[0].last().unwrap(),
         start as f32 / 2000. + (start + 8) as f32 / 2000.,
         "other recorder retains automatic monitoring"
     );
-    send(&mut h, c, &[Command::Stop(1)]);
+    send(
+        &mut h,
+        c,
+        &[Command::Transition(1, TransitionMode::Stopped)],
+    );
     h.run(1, 1);
     assert_eq!(
         *h.outputs[0].last().unwrap(),
@@ -1042,7 +1057,11 @@ fn recording_milestone_buffer_only_callbacks_and_empty_repeated_actions() {
     send(
         &mut h,
         c,
-        &[Command::Record(0), Command::Record(0), Command::Start(0)],
+        &[
+            Command::Transition(0, TransitionMode::Recording),
+            Command::Transition(0, TransitionMode::Recording),
+            Command::Transition(0, TransitionMode::Playing),
+        ],
     );
     h.run(1, 1);
     let r = immediate_results(&h)[0];
@@ -1051,13 +1070,28 @@ fn recording_milestone_buffer_only_callbacks_and_empty_repeated_actions() {
         r.records().iter().map(|r| r.code()).collect::<Vec<_>>(),
         [Code::Applied, Code::Applied, Code::CannotApply]
     );
-    send(&mut h, c, &[Command::Stop(0)]);
+    send(
+        &mut h,
+        c,
+        &[Command::Transition(0, TransitionMode::Stopped)],
+    );
     h.run(1, 1);
     assert_eq!(immediate_results(&h)[1].records()[0].code(), Code::Applied);
-    send(&mut h, c, &[Command::Record(0)]);
+    send(
+        &mut h,
+        c,
+        &[Command::Transition(0, TransitionMode::Recording)],
+    );
     h.run(32, 1);
     let end = h.host.endpoint().command_clock().frame().0;
-    send(&mut h, c, &[Command::Record(0), Command::Start(0)]);
+    send(
+        &mut h,
+        c,
+        &[
+            Command::Transition(0, TransitionMode::Recording),
+            Command::Transition(0, TransitionMode::Playing),
+        ],
+    );
     h.run(1, 1);
     let responses = immediate_results(&h);
     assert!(responses.iter().all(|r| r.header.deadline().is_none()));
@@ -1085,7 +1119,11 @@ fn recording_milestone_exhaustion_preserves_prefix_and_finish_reservations() {
     d.ramp_frames = 0;
     d.history.seconds = 0;
     let (mut h, c) = recording_fixture(&d);
-    send(&mut h, c, &[Command::Record(0)]);
+    send(
+        &mut h,
+        c,
+        &[Command::Transition(0, TransitionMode::Recording)],
+    );
     h.run(64, 16);
     assert!(
         matches!(
@@ -1102,9 +1140,9 @@ fn recording_milestone_exhaustion_preserves_prefix_and_finish_reservations() {
         &mut h,
         c,
         &[
-            Command::Record(1),
+            Command::Transition(1, TransitionMode::Recording),
             Command::LoopGain(1, 0.25),
-            Command::Stop(0),
+            Command::Transition(0, TransitionMode::Stopped),
         ],
     );
     h.run(1, 1);
@@ -1118,7 +1156,11 @@ fn recording_milestone_exhaustion_preserves_prefix_and_finish_reservations() {
         frames, 64,
         "finish works while there is no room to start another recorder"
     );
-    send(&mut h, c, &[Command::Record(0)]);
+    send(
+        &mut h,
+        c,
+        &[Command::Transition(0, TransitionMode::Recording)],
+    );
     h.run(1, 1);
     assert_eq!(
         immediate_results(&h).last().unwrap().records()[0].code(),
@@ -1132,7 +1174,11 @@ fn recording_milestone_exhaustion_preserves_prefix_and_finish_reservations() {
 
     let (mut h, c) = recording_fixture(&d);
     let start = h.frame();
-    send(&mut h, c, &[Command::Record(0)]);
+    send(
+        &mut h,
+        c,
+        &[Command::Transition(0, TransitionMode::Recording)],
+    );
     h.run(65, 1);
     assert!(matches!(
         observed_loop(&mut h, loop_id(0, 1)),
@@ -1152,7 +1198,11 @@ fn recording_milestone_exhaustion_preserves_prefix_and_finish_reservations() {
         1,
         "exhaustion produces no unsolicited response"
     );
-    send(&mut h, c, &[Command::Start(0)]);
+    send(
+        &mut h,
+        c,
+        &[Command::Transition(0, TransitionMode::Playing)],
+    );
     h.settle();
     assert_eq!(immediate_results(&h).len(), 2);
     assert_eq!(
@@ -1205,9 +1255,15 @@ fn encoded_record_and_grab_commands_return_results_matching_published_state() {
         out,
     );
     let mut bytes = [0; MAX_RECORD_BYTES];
-    for finish in [Command::Start(0), Command::Stop(0)] {
+    for finish in [
+        Command::Transition(0, TransitionMode::Playing),
+        Command::Transition(0, TransitionMode::Stopped),
+    ] {
         let start = offline.next_frame();
-        for (command, frames) in [(Command::Record(0), 8), (finish, 1)] {
+        for (command, frames) in [
+            (Command::Transition(0, TransitionMode::Recording), 8),
+            (finish, 1),
+        ] {
             let batch = Batch::new(c.0, c.1, &[command]).unwrap();
             let len = codec::encode_client(&ClientMessage::Immediate(batch), &mut bytes).unwrap();
             *input.borrow_mut() = Some(bytes[..len].to_vec());
@@ -1225,16 +1281,20 @@ fn encoded_record_and_grab_commands_return_results_matching_published_state() {
         let (_, len) = server.endpoint().read_snapshot(&mut payload).unwrap();
         assert!(Records(&payload[HEADER..len]).any(|r| matches!(r,
             Ok(Record::Telemetry(Telemetry::Loop { mode, length: 8, .. }))
-                if mode == if matches!(finish, Command::Start(_)) { LoopMode::Playing } else { LoopMode::Stopped }
+                if mode == if matches!(finish, Command::Transition(_, TransitionMode::Playing)) { LoopMode::Playing } else { LoopMode::Stopped }
         )));
     }
-    use immediate::{Grab, GrabMode};
-    for (mode, frames) in [(GrabMode::Stopped, 1), (GrabMode::Recording, 4)] {
+    use immediate::Grab;
+    for (mode, frames) in [(TransitionMode::Stopped, 1), (TransitionMode::Recording, 4)] {
         let spec = Grab {
             sync: Some(0),
             reverse_start_cycle: Some(1),
             cycles_length: Some(1),
-            go_to_cycle: Some(if mode == GrabMode::Recording { 1 } else { 0 }),
+            go_to_cycle: Some(if mode == TransitionMode::Recording {
+                1
+            } else {
+                0
+            }),
             mode,
         };
         let command = Command::Grab(0, spec);
@@ -1249,7 +1309,7 @@ fn encoded_record_and_grab_commands_return_results_matching_published_state() {
             immediate::Code::Applied
         );
     }
-    let batch = Batch::new(c.0, c.1, &[Command::Stop(0)]).unwrap();
+    let batch = Batch::new(c.0, c.1, &[Command::Transition(0, TransitionMode::Stopped)]).unwrap();
     let len = codec::encode_client(&ClientMessage::Immediate(batch), &mut bytes).unwrap();
     *input.borrow_mut() = Some(bytes[..len].to_vec());
     server.pump(16);
@@ -1277,12 +1337,20 @@ fn recording_milestone_disconnect_keeps_active_take_without_replaying_staged_rec
     let mut d = description();
     d.ramp_frames = 0;
     let (mut h, c) = recording_fixture(&d);
-    send(&mut h, c, &[Command::Record(0)]);
+    send(
+        &mut h,
+        c,
+        &[Command::Transition(0, TransitionMode::Recording)],
+    );
     h.run(4, 1);
     for _ in 0..FIFO_SINGLETONS {
         send(&mut h, c, &[Command::LoopGain(1, 0.5)]);
     }
-    send(&mut h, c, &[Command::Record(1)]);
+    send(
+        &mut h,
+        c,
+        &[Command::Transition(1, TransitionMode::Recording)],
+    );
     h.host.disconnect();
     h.pump();
     h.host.connect().unwrap();
@@ -1308,7 +1376,11 @@ fn recording_milestone_disconnect_keeps_active_take_without_replaying_staged_rec
         immediate_results(&h).is_empty(),
         "old-session responses are discarded"
     );
-    send(&mut h, c, &[Command::Stop(0)]);
+    send(
+        &mut h,
+        c,
+        &[Command::Transition(0, TransitionMode::Stopped)],
+    );
     h.run(1, 1);
     assert_eq!(
         immediate_results(&h).last().unwrap().records()[0].code(),
@@ -1336,9 +1408,20 @@ fn grab_fixture_for(d: &shoop_rt_engine::EngineDescription) -> (Harness, (u64, u
     let q = d.quantum;
     let (mut h, c) = recording_fixture(d);
     h.run((q as u64 - h.frame() % q as u64) as usize % q, 1);
-    send(&mut h, c, &[Command::Record(0)]);
+    send(
+        &mut h,
+        c,
+        &[Command::Transition(0, TransitionMode::Recording)],
+    );
     h.run(2 * q.max(8), 1);
-    send(&mut h, c, &[Command::Stop(0), Command::Start(0)]);
+    send(
+        &mut h,
+        c,
+        &[
+            Command::Transition(0, TransitionMode::Stopped),
+            Command::Transition(0, TransitionMode::Playing),
+        ],
+    );
     h.run(4 * q.max(8), 1);
     let c = configuration(&mut h);
     h.run((q as u64 - h.frame() % q as u64) as usize % q, 1);
@@ -1350,7 +1433,11 @@ fn sync_position(h: &mut Harness) -> (u64, u64) {
     };
     let start = immediate_results(h)
         .into_iter()
-        .find(|r| r.records().iter().any(|v| v.command() == Command::Start(0)))
+        .find(|r| {
+            r.records()
+                .iter()
+                .any(|v| v.command() == Command::Transition(0, TransitionMode::Playing))
+        })
         .unwrap()
         .header
         .frame();
@@ -1362,7 +1449,7 @@ fn sync_position(h: &mut Harness) -> (u64, u64) {
 
 #[shoop_test]
 fn grab_milestone_completed_audio_and_continuation_have_exact_samples_and_cut() {
-    use immediate::{Code, Grab, GrabMode};
+    use immediate::{Code, Grab};
     let (mut h, c) = grab_fixture(1);
     let cut = h.frame();
     let (length, position) = sync_position(&mut h);
@@ -1371,7 +1458,7 @@ fn grab_milestone_completed_audio_and_continuation_have_exact_samples_and_cut() 
         reverse_start_cycle: Some(1),
         cycles_length: Some(1),
         go_to_cycle: Some(0),
-        mode: GrabMode::Stopped,
+        mode: TransitionMode::Stopped,
     };
     send(&mut h, c, &[Command::Grab(1, spec)]);
     h.run(1, 1);
@@ -1392,7 +1479,7 @@ fn grab_milestone_completed_audio_and_continuation_have_exact_samples_and_cut() 
     let spec = Grab {
         reverse_start_cycle: None,
         go_to_cycle: Some(1),
-        mode: GrabMode::Recording,
+        mode: TransitionMode::Recording,
         ..spec
     };
     send(&mut h, c, &[Command::Grab(1, spec)]);
@@ -1408,7 +1495,11 @@ fn grab_milestone_completed_audio_and_continuation_have_exact_samples_and_cut() 
             ..
         }
     ));
-    send(&mut h, c, &[Command::Start(1)]);
+    send(
+        &mut h,
+        c,
+        &[Command::Transition(1, TransitionMode::Playing)],
+    );
     h.run(1, 1);
     assert_eq!(
         immediate_results(&h).last().unwrap().records()[0].code(),
@@ -1433,7 +1524,7 @@ fn continuing_grab(id: u32) -> Command {
             reverse_start_cycle: None,
             cycles_length: Some(1),
             go_to_cycle: Some(1),
-            mode: immediate::GrabMode::Recording,
+            mode: immediate::TransitionMode::Recording,
         },
     )
 }
@@ -1466,7 +1557,11 @@ fn grab_milestone_buffer_only_callbacks_finish_and_preserve_a_repeated_grab_pref
             .collect::<Vec<_>>(),
         [Code::Applied, Code::CannotApply, Code::Applied]
     );
-    send(&mut h, c, &[Command::Stop(1)]);
+    send(
+        &mut h,
+        c,
+        &[Command::Transition(1, TransitionMode::Stopped)],
+    );
     h.run(1, 1);
     assert_eq!(immediate_results(&h).len(), count + 2);
     assert_eq!(immediate_results(&h).last().unwrap().header.frame(), cut);
@@ -1584,7 +1679,11 @@ fn grab_milestone_storage_failures_and_exhaustion_keep_a_usable_prefix() {
     assert!(frames > 0);
     assert!(audio.chunks_exact(2).all(|s| s[1] == -0.125));
     h.settle();
-    send(&mut h, c, &[Command::Start(1)]);
+    send(
+        &mut h,
+        c,
+        &[Command::Transition(1, TransitionMode::Playing)],
+    );
     h.settle();
     assert_eq!(
         immediate_results(&h).len(),
@@ -1599,13 +1698,21 @@ fn grab_milestone_storage_failures_and_exhaustion_keep_a_usable_prefix() {
 
 #[shoop_test]
 fn grab_milestone_missing_history_preserves_existing_audio_and_later_commands() {
-    use immediate::{Code, Grab, GrabMode};
+    use immediate::{Code, Grab};
     let mut d = description();
     d.history.seconds = 0;
     let (mut h, c) = recording_fixture(&d);
-    send(&mut h, c, &[Command::Record(1)]);
+    send(
+        &mut h,
+        c,
+        &[Command::Transition(1, TransitionMode::Recording)],
+    );
     h.run(8, 1);
-    send(&mut h, c, &[Command::Stop(1)]);
+    send(
+        &mut h,
+        c,
+        &[Command::Transition(1, TransitionMode::Stopped)],
+    );
     h.run(1, 1);
     let (_, old, _) = h.read(loop_id(1, 1), BulkSelector::AudioFrames);
     h.settle();
@@ -1620,7 +1727,7 @@ fn grab_milestone_missing_history_preserves_existing_audio_and_later_commands() 
                     reverse_start_cycle: None,
                     cycles_length: None,
                     go_to_cycle: None,
-                    mode: GrabMode::Stopped,
+                    mode: TransitionMode::Stopped,
                 },
             ),
             Command::LoopGain(1, 0.5),
@@ -1654,7 +1761,11 @@ fn grab_milestone_disconnect_keeps_capture_and_drops_unsent_finish() {
     for _ in 0..FIFO_SINGLETONS {
         send(&mut h, c, &[Command::LoopGain(0, 0.5)]);
     }
-    send(&mut h, c, &[Command::Stop(1)]);
+    send(
+        &mut h,
+        c,
+        &[Command::Transition(1, TransitionMode::Stopped)],
+    );
     h.host.disconnect();
     h.pump();
     h.host.connect().unwrap();
@@ -1669,7 +1780,11 @@ fn grab_milestone_disconnect_keeps_capture_and_drops_unsent_finish() {
         }
     ));
     assert!(immediate_results(&h).is_empty());
-    send(&mut h, c, &[Command::Stop(1)]);
+    send(
+        &mut h,
+        c,
+        &[Command::Transition(1, TransitionMode::Stopped)],
+    );
     h.run(1, 1);
     assert_eq!(immediate_results(&h).len(), 1);
     assert_eq!(
@@ -1691,7 +1806,7 @@ fn grab_milestone_disconnect_keeps_capture_and_drops_unsent_finish() {
 
 #[shoop_test]
 fn grab_milestone_wrap_cut_and_empty_continuation_match_the_current_cycle() {
-    use immediate::{Code, Grab, GrabMode};
+    use immediate::{Code, Grab};
     let (mut h, c) = grab_fixture(1);
     let (length, position) = sync_position(&mut h);
     h.run((length - position) as usize, 1);
@@ -1706,7 +1821,7 @@ fn grab_milestone_wrap_cut_and_empty_continuation_match_the_current_cycle() {
                 reverse_start_cycle: Some(1),
                 cycles_length: Some(1),
                 go_to_cycle: Some(0),
-                mode: GrabMode::Stopped,
+                mode: TransitionMode::Stopped,
             },
         )],
     );
@@ -1738,7 +1853,7 @@ fn grab_milestone_wrap_cut_and_empty_continuation_match_the_current_cycle() {
                 reverse_start_cycle: Some(0),
                 cycles_length: Some(1),
                 go_to_cycle: Some(0),
-                mode: GrabMode::Recording,
+                mode: TransitionMode::Recording,
             },
         )],
     );
@@ -1747,7 +1862,11 @@ fn grab_milestone_wrap_cut_and_empty_continuation_match_the_current_cycle() {
         immediate_results(&h).last().unwrap().records()[0].code(),
         Code::Applied
     );
-    send(&mut h, c, &[Command::Stop(1)]);
+    send(
+        &mut h,
+        c,
+        &[Command::Transition(1, TransitionMode::Stopped)],
+    );
     h.run(1, 1);
     assert_eq!(immediate_results(&h).last().unwrap().header.frame(), cut);
     assert_eq!(

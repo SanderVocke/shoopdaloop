@@ -224,9 +224,17 @@ fn thirty_loaded_loops_start_together_with_ordered_results_and_snapshots() {
     b.wait_idle();
     b.clock_mut().render(16);
     b.pump();
-    let starts: Vec<_> = track.loops.iter().copied().map(Command::Start).collect();
+    let starts: Vec<_> = track
+        .loops
+        .iter()
+        .copied()
+        .map(|id| Command::Transition(id, TransitionMode::Playing))
+        .collect();
     let mut first_starts = starts.clone();
-    first_starts.insert(15, Command::Start(BackendLoopId::from_raw(u64::MAX)));
+    first_starts.insert(
+        15,
+        Command::Transition(BackendLoopId::from_raw(u64::MAX), TransitionMode::Playing),
+    );
     let responses = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let received = responses.clone();
     b.set_immediate_response_handler(move |response| received.lock().unwrap().push(*response));
@@ -288,7 +296,12 @@ fn thirty_loaded_loops_start_together_with_ordered_results_and_snapshots() {
     let state = b.poll().unwrap();
     assert_eq!(state.loops[&track.loops[0]].gain, 0.25);
     assert_eq!(state.tracks[&track.track_id].output_balance, 0.5);
-    let stops: Vec<_> = track.loops.iter().copied().map(Command::Stop).collect();
+    let stops: Vec<_> = track
+        .loops
+        .iter()
+        .copied()
+        .map(|id| Command::Transition(id, TransitionMode::Stopped))
+        .collect();
     b.immediate_group(&stops).unwrap();
     b.clock_mut().render(16);
     b.pump();
@@ -327,7 +340,11 @@ fn thirty_loaded_loops_start_together_with_ordered_results_and_snapshots() {
         let mut clock = std::mem::replace(b.clock_mut(), placeholder);
         let mut ui = b;
         let ids = track.loops.clone();
-        let group: Vec<_> = ids.iter().copied().map(Command::Start).collect();
+        let group: Vec<_> = ids
+            .iter()
+            .copied()
+            .map(|id| Command::Transition(id, TransitionMode::Playing))
+            .collect();
         let begin = Arc::new(Barrier::new(2));
         let done = Arc::new(Barrier::new(2));
         let (render_begin, render_done) = (begin.clone(), done.clone());
@@ -402,9 +419,11 @@ fn immediate_recording_uses_rt_state_before_snapshots_and_preserves_exported_aud
     let received = responses.clone();
     b.set_immediate_response_handler(move |r| received.lock().unwrap().push(*r));
     let cursor = b.mutation_cursor();
-    b.immediate_group(&[Command::Record(id)]).unwrap();
+    b.immediate_group(&[Command::Transition(id, TransitionMode::Recording)])
+        .unwrap();
     assert_no_heap(|| b.clock_mut().render(8));
-    b.immediate_group(&[Command::Start(id)]).unwrap();
+    b.immediate_group(&[Command::Transition(id, TransitionMode::Playing)])
+        .unwrap();
     assert_no_heap(|| b.clock_mut().render(1));
     for _ in 0..8 {
         b.pump();
@@ -423,7 +442,8 @@ fn immediate_recording_uses_rt_state_before_snapshots_and_preserves_exported_aud
     assert_eq!(&*old[0], &[0.25; 8]);
     b.wait_idle();
     b.clock_mut().capture = |_| -0.5;
-    b.immediate_group(&[Command::Record(id)]).unwrap();
+    b.immediate_group(&[Command::Transition(id, TransitionMode::Recording)])
+        .unwrap();
     for _ in 0..64 {
         assert_no_heap(|| b.clock_mut().render(1));
         b.pump();
@@ -438,7 +458,8 @@ fn immediate_recording_uses_rt_state_before_snapshots_and_preserves_exported_aud
     );
     let start = responses.lock().unwrap()[2].header.frame();
     assert_no_heap(|| b.clock_mut().render(4));
-    b.immediate_group(&[Command::Stop(id)]).unwrap();
+    b.immediate_group(&[Command::Transition(id, TransitionMode::Stopped)])
+        .unwrap();
     assert_no_heap(|| b.clock_mut().render(1));
     for _ in 0..8 {
         b.pump();
@@ -520,11 +541,15 @@ fn immediate_grab_exports_survive_a_later_continuing_take_and_manual_finish() {
     let responses = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let received = responses.clone();
     b.set_immediate_response_handler(move |r| received.lock().unwrap().push(*r));
-    b.immediate_group(&[Command::Record(sync)]).unwrap();
+    b.immediate_group(&[Command::Transition(sync, TransitionMode::Recording)])
+        .unwrap();
     advance_until(&mut b, &responses, 1);
     b.clock_mut().render(15);
-    b.immediate_group(&[Command::Stop(sync), Command::Start(sync)])
-        .unwrap();
+    b.immediate_group(&[
+        Command::Transition(sync, TransitionMode::Stopped),
+        Command::Transition(sync, TransitionMode::Playing),
+    ])
+    .unwrap();
     advance_until(&mut b, &responses, 2);
     b.clock_mut().render(32);
     b.pump();
@@ -550,7 +575,8 @@ fn immediate_grab_exports_survive_a_later_continuing_take_and_manual_finish() {
     .unwrap();
     advance_until(&mut b, &responses, 4);
     b.clock_mut().render(4);
-    b.immediate_group(&[Command::Stop(target)]).unwrap();
+    b.immediate_group(&[Command::Transition(target, TransitionMode::Stopped)])
+        .unwrap();
     advance_until(&mut b, &responses, 5);
     let state = b.poll().unwrap();
     assert_eq!(state.loops[&target].mode, BackendLoopMode::Stopped);

@@ -2,10 +2,12 @@
 use crate::{EngineClock, Link, RtBackend};
 use anyhow::{anyhow, Result};
 use shoop_backend::{
-    BackendBusControl, BackendGrabRequest, BackendImmediateCommand, BackendLoopMode,
+    BackendBusControl, BackendGrabRequest, BackendImmediateCommand, BackendLoopMode, TransitionMode,
 };
 use shoop_backend::{BackendBusId, BackendLoopId, BackendTrackId};
-use shoop_rt_protocol::immediate::{Batch, Command, Diagnostics, COMMANDS};
+use shoop_rt_protocol::immediate::{
+    Batch, Command, Diagnostics, TransitionMode as RtMode, COMMANDS,
+};
 use shoop_rt_transport::carrier::Carrier;
 
 pub(crate) type ResponseHandler = dyn FnMut(&shoop_rt_protocol::immediate::Response) + Send;
@@ -14,9 +16,7 @@ pub(crate) type ResponseHandler = dyn FnMut(&shoop_rt_protocol::immediate::Respo
 pub enum ImmediateCommand {
     LoopGain(BackendLoopId, f32),
     LoopBalance(BackendLoopId, f32),
-    Start(BackendLoopId),
-    Stop(BackendLoopId),
-    Record(BackendLoopId),
+    Transition(BackendLoopId, TransitionMode),
     Grab(BackendGrabRequest),
     GrabGesture {
         loop_id: BackendLoopId,
@@ -72,9 +72,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             *output = match *command {
                 LoopGain(id, v) => ImmediateCommand::LoopGain(id, bounded(v, 0.0, 1.0)),
                 LoopBalance(id, v) => ImmediateCommand::LoopBalance(id, bounded(v, -1.0, 1.0)),
-                Start(id) => ImmediateCommand::Start(id),
-                Stop(id) => ImmediateCommand::Stop(id),
-                Record(id) => ImmediateCommand::Record(id),
+                Transition(id, mode) => ImmediateCommand::Transition(id, mode),
                 Grab(request) => ImmediateCommand::Grab(request),
                 GrabGesture {
                     loop_id,
@@ -170,11 +168,16 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             *output = match *command {
                 LoopGain(id, v) => Command::LoopGain(loop_slot(id), v),
                 LoopBalance(id, v) => Command::LoopBalance(loop_slot(id), v),
-                Start(id) => Command::Start(loop_slot(id)),
-                Stop(id) => Command::Stop(loop_slot(id)),
-                Record(id) => Command::Record(loop_slot(id)),
+                Transition(id, mode) => Command::Transition(
+                    loop_slot(id),
+                    match mode {
+                        TransitionMode::Stopped => RtMode::Stopped,
+                        TransitionMode::Playing => RtMode::Playing,
+                        TransitionMode::Recording => RtMode::Recording,
+                    },
+                ),
                 Grab(request) => {
-                    use shoop_rt_protocol::immediate::{Grab as Value, GrabMode};
+                    use shoop_rt_protocol::immediate::Grab as Value;
                     let number = |v: Option<i32>| v.map(|v| u32::try_from(v).unwrap_or(u32::MAX));
                     let sync = self
                         .mirror
@@ -200,9 +203,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                             },
                             go_to_cycle: number(request.go_to_cycle),
                             mode: match request.go_to_mode {
-                                BackendLoopMode::Playing => GrabMode::Playing,
-                                BackendLoopMode::Recording => GrabMode::Recording,
-                                _ => GrabMode::Stopped,
+                                BackendLoopMode::Playing => RtMode::Playing,
+                                BackendLoopMode::Recording => RtMode::Recording,
+                                _ => RtMode::Stopped,
                             },
                         },
                     )

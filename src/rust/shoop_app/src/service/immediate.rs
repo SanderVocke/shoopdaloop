@@ -78,9 +78,7 @@ impl Service {
         let playback = commands.iter().any(|command| {
             matches!(
                 command,
-                Immediate::Start(_)
-                    | Immediate::Stop(_)
-                    | Immediate::Record(_)
+                Immediate::Transition(..)
                     | Immediate::Grab { .. }
                     | Immediate::AdoptRingbuffers { .. }
             )
@@ -120,9 +118,7 @@ impl Service {
                 match *command {
                     Immediate::LoopGain(id, v) => B::LoopGain(loop_id(id), v),
                     Immediate::LoopBalance(id, v) => B::LoopBalance(loop_id(id), v),
-                    Immediate::Start(id) => B::Start(loop_id(id)),
-                    Immediate::Stop(id) => B::Stop(loop_id(id)),
-                    Immediate::Record(id) => B::Record(loop_id(id)),
+                    Immediate::Transition(id, mode) => B::Transition(loop_id(id), mode),
                     Immediate::AdoptRingbuffers {
                         loop_id: id,
                         reverse_cycle_start,

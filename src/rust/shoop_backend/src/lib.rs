@@ -24,8 +24,9 @@ pub use shoop_app_api::{
     BackendCapabilities, BackendCapability, BuiltInFxControl, BuiltInFxDriveType,
     BuiltInFxMidiCcAssignment, BuiltInFxModulationType, BuiltInFxParameter, BuiltInFxReverbType,
     BuiltInFxStage, BuiltInFxState, OxiSynthControl, OxiSynthMidiCcAssignment, OxiSynthParameter,
-    OxiSynthState, TrackProcessorEditorState, TrackProcessorTypeId, MAX_BUSES, MAX_BUS_CHANNELS,
-    MAX_BUS_HOST_LINKS, MAX_BUS_NAME_BYTES, MAX_MIXER_ROUTES, MAX_TOTAL_BUS_CHANNELS,
+    OxiSynthState, TrackProcessorEditorState, TrackProcessorTypeId, TransitionMode, MAX_BUSES,
+    MAX_BUS_CHANNELS, MAX_BUS_HOST_LINKS, MAX_BUS_NAME_BYTES, MAX_MIXER_ROUTES,
+    MAX_TOTAL_BUS_CHANNELS,
 };
 
 use alloc::collections::{BTreeMap, BTreeSet};
@@ -1218,9 +1219,7 @@ pub struct BackendSnapshot {
 pub enum BackendImmediateCommand {
     LoopGain(BackendLoopId, f32),
     LoopBalance(BackendLoopId, f32),
-    Start(BackendLoopId),
-    Stop(BackendLoopId),
-    Record(BackendLoopId),
+    Transition(BackendLoopId, TransitionMode),
     Grab(BackendGrabRequest),
     GrabGesture {
         loop_id: BackendLoopId,

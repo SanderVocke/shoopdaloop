@@ -2459,17 +2459,10 @@ impl Wire for crate::immediate::Command {
                 w.u32(id)?;
                 w.f32(v)
             }
-            Start(id) => {
+            Transition(id, mode) => {
                 w.u8(2)?;
-                w.u32(id)
-            }
-            Stop(id) => {
-                w.u8(3)?;
-                w.u32(id)
-            }
-            Record(id) => {
-                w.u8(12)?;
-                w.u32(id)
+                w.u32(id)?;
+                w.u32(mode as u32)
             }
             InputGain(id, v) => {
                 w.u8(4)?;
@@ -2518,9 +2511,10 @@ impl Wire for crate::immediate::Command {
         Ok(match r.u8()? {
             0 => LoopGain(r.u32()?, r.f32()?),
             1 => LoopBalance(r.u32()?, r.f32()?),
-            2 => Start(r.u32()?),
-            3 => Stop(r.u32()?),
-            12 => Record(r.u32()?),
+            2 => Transition(
+                r.u32()?,
+                crate::immediate::TransitionMode::from_raw(r.u32()?).ok_or(CodecError::Invalid)?,
+            ),
             4 => InputGain(r.u32()?, r.f32()?),
             5 => InputBalance(r.u32()?, r.f32()?),
             6 => OutputGain(r.u32()?, r.f32()?),
@@ -2556,7 +2550,7 @@ impl Wire for crate::immediate::Batch {
         Ok(())
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
-        use crate::immediate::{Batch, Command, COMMANDS};
+        use crate::immediate::{Batch, Command, TransitionMode, COMMANDS};
         let graph = r.u64()?;
         let topology = r.u64()?;
         let deadline = if r.bool()? { Some(r.u64()?) } else { None };
@@ -2564,7 +2558,7 @@ impl Wire for crate::immediate::Batch {
         if len == 0 || len > COMMANDS {
             return Err(CodecError::Invalid);
         }
-        let mut commands = [Command::Start(0); COMMANDS];
+        let mut commands = [Command::Transition(0, TransitionMode::Playing); COMMANDS];
         for command in &mut commands[..len] {
             *command = Command::get(r)?;
         }
@@ -2584,14 +2578,17 @@ impl Wire for crate::immediate::Response {
         Ok(())
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
-        use crate::immediate::{Command, CommandRecord, Header, Response, COMMANDS};
+        use crate::immediate::{
+            Command, CommandRecord, Header, Response, TransitionMode, COMMANDS,
+        };
         let header =
             Header::from_bytes(r.bytes(48)?.try_into().unwrap()).ok_or(CodecError::Invalid)?;
         let count = usize::from(r.u8()?);
         if count == 0 || count > COMMANDS {
             return Err(CodecError::Invalid);
         }
-        let mut records = [CommandRecord::new(Command::Start(0)); COMMANDS];
+        let mut records =
+            [CommandRecord::new(Command::Transition(0, TransitionMode::Playing)); COMMANDS];
         for record in &mut records[..count] {
             *record = CommandRecord::from_bytes(r.bytes(32)?.try_into().unwrap())
                 .ok_or(CodecError::Invalid)?;

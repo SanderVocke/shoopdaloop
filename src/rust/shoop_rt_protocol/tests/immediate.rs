@@ -3,7 +3,7 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 use shoop_rt_protocol::{
     codec,
-    immediate::{Batch, Code, Command, CommandRecord, Header, Response, COMMANDS},
+    immediate::{Batch, Code, Command, CommandRecord, Header, Response, TransitionMode, COMMANDS},
     ClientMessage, EngineMessage, MAX_RECORD_BYTES,
 };
 use shoop_wasm_test_support::shoop_test;
@@ -63,9 +63,9 @@ fn groups_preserve_commands_without_semantic_preflight() {
     assert!(Batch::new(1, 1, &[Command::LoopGain(id, f32::NAN)]).is_some());
     let commands = [
         Command::LoopBalance(id, 1.1),
-        Command::Start(id),
-        Command::Stop(id),
-        Command::Record(id),
+        Command::Transition(id, TransitionMode::Playing),
+        Command::Transition(id, TransitionMode::Stopped),
+        Command::Transition(id, TransitionMode::Recording),
     ];
     let message = ClientMessage::Immediate(Batch::new(1, 1, &commands).unwrap());
     let mut bytes = [0; MAX_RECORD_BYTES];
@@ -75,7 +75,7 @@ fn groups_preserve_commands_without_semantic_preflight() {
 
 #[shoop_test]
 fn recording_and_capture_failure_use_the_existing_result_layout() {
-    let command = Command::Record(12);
+    let command = Command::Transition(12, TransitionMode::Recording);
     let record = CommandRecord::new(command).complete(Code::CaptureUnavailable);
     assert_eq!(record.bytes().len(), 32);
     assert_eq!(CommandRecord::from_bytes(*record.bytes()), Some(record));
@@ -88,8 +88,40 @@ fn recording_and_capture_failure_use_the_existing_result_layout() {
 }
 
 #[shoop_test]
+fn transitions_share_one_opcode_and_reject_unknown_modes() {
+    let mut bytes = [0; MAX_RECORD_BYTES];
+    for (mode, raw) in [
+        (TransitionMode::Stopped, 0u32),
+        (TransitionMode::Playing, 1),
+        (TransitionMode::Recording, 2),
+    ] {
+        let command = Command::Transition(9, mode);
+        let record = CommandRecord::new(command).complete(Code::Applied);
+        assert_eq!(&record.bytes()[..4], &2u32.to_le_bytes());
+        assert_eq!(&record.bytes()[8..12], &raw.to_le_bytes());
+        assert_eq!(CommandRecord::from_bytes(*record.bytes()), Some(record));
+        let message = ClientMessage::Immediate(Batch::new(7, 8, &[command]).unwrap());
+        let len = codec::encode_client(&message, &mut bytes).unwrap();
+        assert_eq!(codec::decode_client(&bytes[..len]).unwrap(), message);
+
+        for invalid_mode in [3u32, u32::MAX] {
+            let mut invalid = *record.bytes();
+            invalid[8..12].copy_from_slice(&invalid_mode.to_le_bytes());
+            assert!(CommandRecord::from_bytes(invalid).is_none());
+            bytes[len - 4..len].copy_from_slice(&invalid_mode.to_le_bytes());
+            assert!(codec::decode_client(&bytes[..len]).is_err());
+        }
+        for removed_opcode in [3u32, 12] {
+            let mut invalid = *record.bytes();
+            invalid[..4].copy_from_slice(&removed_opcode.to_le_bytes());
+            assert!(CommandRecord::from_bytes(invalid).is_none());
+        }
+    }
+}
+
+#[shoop_test]
 fn maximum_grab_groups_and_responses_fit_one_transport_record() {
-    use shoop_rt_protocol::immediate::{Grab, GrabGesture, GrabMode};
+    use shoop_rt_protocol::immediate::{Grab, GrabGesture};
     let values = [
         Command::Grab(
             9,
@@ -98,7 +130,7 @@ fn maximum_grab_groups_and_responses_fit_one_transport_record() {
                 reverse_start_cycle: Some(0),
                 cycles_length: Some(4),
                 go_to_cycle: Some(2),
-                mode: GrabMode::Recording,
+                mode: TransitionMode::Recording,
             },
         ),
         Command::Grab(
@@ -108,7 +140,7 @@ fn maximum_grab_groups_and_responses_fit_one_transport_record() {
                 reverse_start_cycle: None,
                 cycles_length: None,
                 go_to_cycle: None,
-                mode: GrabMode::Stopped,
+                mode: TransitionMode::Stopped,
             },
         ),
         Command::GrabGesture(
@@ -139,7 +171,8 @@ fn maximum_grab_groups_and_responses_fit_one_transport_record() {
             assert!(codec::decode_engine(&bytes[..prefix]).is_err());
         }
     }
-    let mut noncanonical = *CommandRecord::new(Command::Stop(9)).bytes();
+    let mut noncanonical =
+        *CommandRecord::new(Command::Transition(9, TransitionMode::Stopped)).bytes();
     noncanonical[12] = 1;
     assert!(CommandRecord::from_bytes(noncanonical).is_none());
 }

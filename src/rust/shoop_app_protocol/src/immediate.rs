@@ -9,7 +9,7 @@ pub const COMMANDS: usize = 32;
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct Capabilities {
     pub enabled: bool,
-    /// Direct audio loops supporting immediate Record, Start and Stop.
+    /// Direct audio loops supporting immediate transitions.
     pub playback: Vec<LoopId>,
     pub grab: Vec<LoopId>,
     pub refused: u64,
@@ -19,9 +19,7 @@ pub struct Capabilities {
 pub enum Command {
     LoopGain(LoopId, f32),
     LoopBalance(LoopId, f32),
-    Start(LoopId),
-    Stop(LoopId),
-    Record(LoopId),
+    Transition(LoopId, TransitionMode),
     AdoptRingbuffers {
         loop_id: LoopId,
         reverse_cycle_start: u32,
@@ -87,15 +85,15 @@ pub fn group(action: &Action, state: &SessionSnapshot) -> Option<Vec<Command>> {
                         if !state.immediate.playback.contains(&other.id) {
                             return None;
                         }
-                        commands.push(Command::Stop(other.id));
+                        commands.push(Command::Transition(other.id, TransitionMode::Stopped));
                     }
                 }
             }
         }
         commands.extend(ids.into_iter().map(|id| match mode {
-            LoopMode::Playing => Command::Start(id),
-            LoopMode::Recording => Command::Record(id),
-            _ => Command::Stop(id),
+            LoopMode::Playing => Command::Transition(id, TransitionMode::Playing),
+            LoopMode::Recording => Command::Transition(id, TransitionMode::Recording),
+            _ => Command::Transition(id, TransitionMode::Stopped),
         }));
         Some(commands)
     };
@@ -131,7 +129,7 @@ pub fn group(action: &Action, state: &SessionSnapshot) -> Option<Vec<Command>> {
                         {
                             return None;
                         }
-                        commands.push(Command::Stop(other.id));
+                        commands.push(Command::Transition(other.id, TransitionMode::Stopped));
                     }
                 }
             }

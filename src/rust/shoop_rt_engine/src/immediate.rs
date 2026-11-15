@@ -7,8 +7,8 @@ use crate::{
 use rt_runtime::immediate::{self, Boundary, Handler};
 use shoop_loops::runtime::{Immediate, ImmediateGrab, LoopPlanner};
 use shoop_rt_protocol::immediate::{
-    Batch, Code, Command, CommandRecord, Diagnostics, Header, Response, COMMANDS, FIFO_RECORDS,
-    STAGED_BATCHES,
+    Batch, Code, Command, CommandRecord, Diagnostics, Header, Response, TransitionMode, COMMANDS,
+    FIFO_RECORDS, STAGED_BATCHES,
 };
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Incoming {
@@ -72,7 +72,8 @@ impl Control {
         Some(incoming)
     }
     pub fn publish(&mut self, batch: Batch) -> bool {
-        let mut records = [CommandRecord::new(Command::Start(0)); COMMANDS];
+        let mut records =
+            [CommandRecord::new(Command::Transition(0, TransitionMode::Playing)); COMMANDS];
         for (record, &command) in records.iter_mut().zip(batch.commands()) {
             *record = CommandRecord::new(command);
         }
@@ -111,7 +112,8 @@ impl Control {
     pub fn responses(&mut self, out: &mut shoop_rt_transport::carrier::Outbox, connected: bool) {
         while let Some(group) = self.tx.response() {
             let header = group.header;
-            let mut records = [CommandRecord::new(Command::Start(0)); COMMANDS];
+            let mut records =
+                [CommandRecord::new(Command::Transition(0, TransitionMode::Playing)); COMMANDS];
             let mut count = 0;
             for &record in group.commands() {
                 records[count] = record;
@@ -170,9 +172,9 @@ fn loop_command(command: Command) -> Option<(u32, Immediate)> {
     match command {
         Command::LoopGain(id, v) => Some((id, Immediate::Gain(v))),
         Command::LoopBalance(id, v) => Some((id, Immediate::Balance(v))),
-        Command::Start(id) => Some((id, Immediate::Playback(true))),
-        Command::Stop(id) => Some((id, Immediate::Playback(false))),
-        Command::Record(id) => Some((id, Immediate::Record)),
+        Command::Transition(id, TransitionMode::Playing) => Some((id, Immediate::Playback(true))),
+        Command::Transition(id, TransitionMode::Stopped) => Some((id, Immediate::Playback(false))),
+        Command::Transition(id, TransitionMode::Recording) => Some((id, Immediate::Record)),
         _ => None,
     }
 }
@@ -234,23 +236,20 @@ impl Render {
                 return Err(Code::Unsupported);
             }
             let grab = match command {
-                Command::Grab(_, value) => {
-                    use shoop_rt_protocol::immediate::GrabMode;
-                    ImmediateGrab::Window {
-                        sync: value.sync.map(resolve).transpose()?,
-                        window: shoop_loops::grab::WindowSpec {
-                            reverse_start_cycle: value.reverse_start_cycle,
-                            cycles_length: value.cycles_length,
-                            go_to_cycle: value.go_to_cycle,
-                            continue_recording: value.mode == GrabMode::Recording,
-                        },
-                        mode: match value.mode {
-                            GrabMode::Stopped => shoop_loops::Mode::Stopped,
-                            GrabMode::Playing => shoop_loops::Mode::Playing,
-                            GrabMode::Recording => shoop_loops::Mode::Recording,
-                        },
-                    }
-                }
+                Command::Grab(_, value) => ImmediateGrab::Window {
+                    sync: value.sync.map(resolve).transpose()?,
+                    window: shoop_loops::grab::WindowSpec {
+                        reverse_start_cycle: value.reverse_start_cycle,
+                        cycles_length: value.cycles_length,
+                        go_to_cycle: value.go_to_cycle,
+                        continue_recording: value.mode == TransitionMode::Recording,
+                    },
+                    mode: match value.mode {
+                        TransitionMode::Stopped => shoop_loops::Mode::Stopped,
+                        TransitionMode::Playing => shoop_loops::Mode::Playing,
+                        TransitionMode::Recording => shoop_loops::Mode::Recording,
+                    },
+                },
                 Command::GrabGesture(_, value) => ImmediateGrab::Gesture {
                     sync: resolve(value.sync)?,
                     target: value.target.map(resolve).transpose()?,

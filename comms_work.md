@@ -17,6 +17,10 @@ implemented end to end. Completed audio Grab and Grab-and-continue with explicit
 Play/Stop finishing are also implemented. Automatic finishing at musical boundaries
 remains a separate, deferred design decision.
 
+Immediate loop control uses one `Transition(loop, mode)` command end to end,
+with Stopped, Playing and Recording as its supported destination modes. The UI's
+Play, Stop and Record actions remain convenient ways to construct that command.
+
 The response extension delivers deadline capability only. All application
 commands on the new path, including recording and Grab commands, must
 continue with no deadline. Assigning deadlines to specific application commands is
@@ -169,8 +173,8 @@ Ordinary UI controls and eligible Lua operations use the new path automatically:
 - Loop gain and balance.
 - Strip input/output gain and balance, and output mute.
 - Bus gain, balance and mute.
-- Immediate Record, restart at zero and Stop for ordinary audio-only primitive
-  loops on direct, unprocessed strips. Play/Stop finish an active take in RT,
+- Immediate transitions to Recording, Playing and Stopped for ordinary audio-only
+  primitive loops on direct, unprocessed strips. Play/Stop finish an active take in RT,
   without relying on a fresh UI mode. Selected actions and solo stops use one
   complete group when they fit.
 - Completed audio Grab gestures in sync mode and explicit history adoption left
@@ -183,6 +187,28 @@ eligibility that preserves existing primitive repeat-sync behavior. Automatic
 finishes and fixed-cycle gestures retain their legacy route. A synchronized action
 such as starting 30 loops reaches RT as one complete group. Independent singleton groups
 may execute in the same callback; they need no intervening snapshot.
+
+### Loop transition contract
+
+`Transition(loop, mode)` carries the existing configuration-local loop address
+and a destination mode. It replaces separate Start, Stop and Record command
+variants in the UI protocol, shared backend interface, RT adapter and RT protocol.
+Grab uses the same destination-mode enum. Supported modes are deliberately limited
+to Stopped, Playing and Recording; this does not enable other loop modes.
+
+- **Playing:** start or restart loaded audio from the beginning. If recording,
+  first seal the captured take and select it for playback as one action.
+- **Recording:** acquire ready capture resources and begin a new take. If already
+  recording, succeed without replacing or restarting the active take.
+- **Stopped:** finish an active recording into completed media, then stop.
+  Stopping an already stopped loop succeeds without changing it.
+
+RT chooses the required behavior from its current state. A transition is not a
+raw assignment to a mode field: capture acquisition, finishing, media ownership
+and existing precondition checks still run in the established handlers. Playing
+an empty active take fails individually and leaves it recording. Application
+groups still execute immediately with no deadline. Future planned transitions,
+musical scheduling, seeking and additional modes remain separate work.
 
 The service advertises direct audio transport eligibility from observed state,
 including ordinary Recording. Empty-loop playback is decided by RT rather than
@@ -276,10 +302,14 @@ The internal value layouts are explicit and little-endian:
 
 Input result fields are `Unprocessed`. RT overwrites them in the response copy.
 The generic ring supplies group counts and framing; its Rust enum layout is not
-a hardware ABI. The RT carrier protocol is version 33; the UI/application protocol
-is version 38. Existing production batch constructors default to no deadline.
+a hardware ABI. The RT carrier protocol is version 34; the UI/application protocol
+is version 39. Existing production batch constructors default to no deadline.
 
-Scalar commands use the first argument word and zero the remaining four. Grab
+Scalar commands use the first argument word and zero the remaining four.
+Transition opcode 2 uses that first argument for the destination mode: Stopped
+(0), Playing (1) or Recording (2). Remaining argument words are zero. Unknown
+modes and the removed Stop/Record opcodes 3 and 12 are rejected by decoding;
+there is no compatibility fallback within the new protocol version. Grab
 opcode 13 uses sync address, reverse-start cycle, cycle count, go-to cycle and
 flags. Flag bits 0–3 mark those four fields present; bits 4–5 select Stopped (0),
 Playing (1) or Recording (2). Absent fields are zero. Completed gesture opcode 14
@@ -594,9 +624,8 @@ needed to finish, so ordinary stopping does not depend on finding spare memory.
 
 ### Commands and observable behavior
 
-The logical operations are `Record(loop)` and
-`FinishRecording(loop, after_mode = Stopped | Playing)`. Exact opcodes may reuse
-or extend existing Play/Stop commands. The required behavior is:
+Recording uses `Transition(loop, Recording)` to start, and
+`Transition(loop, Stopped | Playing)` to finish. The required behavior is:
 
 - **Record:** acquire ready capture resources, enter Recording and start a new
   take at the first sample of the next unrendered processing block. Later
@@ -691,8 +720,9 @@ does not transfer their ownership.
 - `rt_runtime::immediate::Boundary` lends planner resource access at the existing
   command point, including buffer-only callbacks. The generic FIFO still knows
   nothing about recording.
-- `Record` is a value command throughout the UI, shared backend, adapter, encoded
-  protocol and RT handler. Existing Start/Stop perform capture-aware finishing.
+- `Transition` is a value command throughout the UI, shared backend, adapter,
+  encoded protocol and RT handler. Its destination mode selects recording,
+  capture-aware finishing or ordinary playback control.
   No new application deadlines, request IDs, preparation exchanges or work quotas
   were added.
 - The loop planner acquires from configured capture banks, reserves a media slot,
@@ -812,18 +842,19 @@ findings within scope; leave the PR in draft and do not merge automatically.
 
 ### Validation record
 
-The Grab milestone passes 44 selected native/offline smoke checks:
+Transition unification passes 39 selected native/offline smoke checks:
 
-- Generic command/result FIFO: 4; command/result protocol: 5, including maximum
-  32-Grab request/response envelopes and canonical argument/result layouts.
+- Command/result protocol: 6, including all three transition modes, rejected
+  unknown modes/removed opcodes, maximum 32-Grab request/response envelopes and
+  canonical argument/result layouts.
 - Engine immediate commands: 23, covering exact cuts and samples, grouped cuts and
   independent failures, history/live joins, natural wrap boundaries, empty takes,
   buffer-only callbacks, missing history, unavailable storage, incomplete-prefix
   playback, encoded delivery, disconnect without replay and full pool reclamation.
 - Backend immediate commands: 5, including retained exports across continuing Grab.
-- UI immediate commands: 4, including synced solo Grab and Lua continuation finished
-  before a fresh UI snapshot. Existing UI/Lua, fixed-cycle and legacy Grab/replacing
-  compatibility cases also pass (1 each).
+- UI immediate commands: 4, including synced solo Grab, Lua continuation finished
+  before a fresh UI snapshot and unchanged fixed-cycle routing. UI client group
+  construction and encoded delivery: 1.
 
 Formatting, test-attribute policy and a native UI build with Rust warnings denied
 pass. The build disables optional native audio-provider features and retains its

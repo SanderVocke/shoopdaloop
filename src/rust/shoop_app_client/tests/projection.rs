@@ -141,7 +141,10 @@ fn immediate_ui_groups_fit_records_and_leave_other_actions_on_their_existing_pat
         panic!()
     };
     let mut too_many = commands;
-    too_many.push(immediate::Command::Stop(LoopId::from_raw(1)));
+    too_many.push(immediate::Command::Transition(
+        LoopId::from_raw(1),
+        TransitionMode::Stopped,
+    ));
     assert!(!immediate::bounded(&too_many));
 }
 
