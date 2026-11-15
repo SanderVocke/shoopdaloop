@@ -295,7 +295,7 @@ impl Resolver {
         let program = self.topology.program(id).ok_or(Error::InvalidId)?;
         Ok(program_needs_entry_at(program, self.state(id)?, frame))
     }
-    /// Check a direct, unscheduled transition before a whole group mutates state.
+    /// Check the current state of one direct, unscheduled playback transition.
     pub fn validate_immediate_playback(&self, id: LoopId) -> Result<(), Error> {
         let state = self.state(id)?;
         if self.quiescent
@@ -312,7 +312,7 @@ impl Resolver {
         }
         Ok(())
     }
-    /// Apply only after all members of an immediate group have passed preflight.
+    /// Apply one direct playback transition without creating a request record.
     pub fn immediate_playback(&mut self, id: LoopId, start: bool) -> Result<(), Error> {
         self.validate_immediate_playback(id)?;
         let operation = if start {

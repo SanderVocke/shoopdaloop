@@ -49,29 +49,13 @@ impl Batch {
             commands: [Command::Start(LoopSlotId(SlotId::new(0, 0))); COMMANDS],
         };
         batch.commands[..commands.len()].copy_from_slice(commands);
-        batch.valid().then_some(batch)
+        Some(batch)
     }
     pub fn commands(&self) -> &[Command] {
         &self.commands[..usize::from(self.len)]
     }
-    pub fn valid(&self) -> bool {
-        self.commands().iter().enumerate().all(|(i, command)| {
-            command.valid()
-                && command.playback().is_none_or(|id| {
-                    !self.commands()[..i]
-                        .iter()
-                        .any(|previous| previous.playback() == Some(id))
-                })
-        })
-    }
 }
 impl Command {
-    pub fn playback(self) -> Option<LoopSlotId> {
-        match self {
-            Self::Start(id) | Self::Stop(id) => Some(id),
-            _ => None,
-        }
-    }
     pub fn valid(self) -> bool {
         match self {
             Self::LoopGain(_, v)

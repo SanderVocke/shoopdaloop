@@ -552,7 +552,7 @@ publication cadence.
   with any changed mapping. Reuse existing typed slot indices and mappings; keep
   internal ownership generations as needed. Verify replacement and slot reuse
   with focused tests before removing command-level generation checks.
-- [ ] **2. Execute commands once with individual outcomes.** Remove semantic
+- [x] **2. Execute commands once with individual outcomes.** Remove semantic
   whole-group scans and conflict rejection from adapter, builder/codec, control
   and RT. Retain memory-safe framing/decoding. Use the handler behaviors specified
   above, with no-op failure, aggregate diagnostics and continued processing by

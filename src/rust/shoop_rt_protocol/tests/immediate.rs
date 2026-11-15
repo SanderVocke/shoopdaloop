@@ -22,10 +22,17 @@ fn maximum_group_is_one_small_canonical_record() {
 }
 
 #[shoop_test]
-fn groups_refuse_bad_values_and_conflicting_playback() {
+fn groups_preserve_commands_without_semantic_preflight() {
     let id = LoopSlotId(SlotId::new(0, 1));
     assert!(Batch::new(1, 1, &[]).is_none());
-    assert!(Batch::new(1, 1, &[Command::LoopGain(id, f32::NAN)]).is_none());
-    assert!(Batch::new(1, 1, &[Command::LoopBalance(id, 1.1)]).is_none());
-    assert!(Batch::new(1, 1, &[Command::Start(id), Command::Stop(id)]).is_none());
+    assert!(Batch::new(1, 1, &[Command::LoopGain(id, f32::NAN)]).is_some());
+    let commands = [
+        Command::LoopBalance(id, 1.1),
+        Command::Start(id),
+        Command::Stop(id),
+    ];
+    let message = ClientMessage::Immediate(Batch::new(1, 1, &commands).unwrap());
+    let mut bytes = [0; MAX_RECORD_BYTES];
+    let len = codec::encode_client(&message, &mut bytes).unwrap();
+    assert_eq!(codec::decode_client(&bytes[..len]).unwrap(), message);
 }

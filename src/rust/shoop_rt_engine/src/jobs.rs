@@ -286,6 +286,7 @@ impl ControlEndpoint {
             return true;
         };
         let base = crate::NodeConfiguration {
+            immediate_playback: false,
             recorded_state: None,
             processor: None,
             generation: 0,
@@ -359,6 +360,14 @@ impl ControlEndpoint {
                     job,
                     self.pool.fader(slot),
                     crate::NodeConfiguration {
+                        immediate_playback: self
+                            .next
+                            .strip(entry.strip.expect("primitive owner"))
+                            .is_some_and(|strip| {
+                                !strip.shape.midi_input
+                                    && !strip.shape.midi_output
+                                    && strip.processor.is_none()
+                            }),
                         processor,
                         generation: entry.id.0.generation,
                         recorded_state: if job.replacing() {

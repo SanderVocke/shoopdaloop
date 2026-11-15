@@ -1752,10 +1752,6 @@ impl ControlEndpoint {
             self.immediate.refuse(1);
             return;
         }
-        if !batch.valid() {
-            self.immediate.refuse(5);
-            return;
-        }
         self.immediate.stage(batch);
         self.advance_incoming(false);
     }
@@ -1798,28 +1794,6 @@ impl ControlEndpoint {
         if (batch.graph, batch.topology) != (self.graph_epoch.0, self.topology_epoch.0) {
             self.immediate.refuse(2);
             return false;
-        }
-        for command in batch.commands() {
-            if let Some(id) = command.playback() {
-                let supported = self
-                    .model
-                    .loops
-                    .get(id.0.index as usize)
-                    .and_then(|v| *v)
-                    .filter(|l| l.id == id)
-                    .and_then(|l| l.strip)
-                    .and_then(|s| self.model.strip(s))
-                    .is_some_and(|s| {
-                        !s.shape.midi_input
-                            && !s.shape.midi_output
-                            && !s.default_dry
-                            && s.processor.is_none()
-                    });
-                if !supported {
-                    self.immediate.refuse(4);
-                    return false;
-                }
-            }
         }
         true
     }

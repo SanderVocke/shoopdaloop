@@ -152,120 +152,116 @@ fn loop_id(id: LoopSlotId) -> Result<LoopId, u8> {
     LoopId::from_parts(id.0.index, id.0.generation).map_err(|_| 3)
 }
 impl Render {
-    fn node(&self, command: Command) -> Result<(rt_runtime::NodeId, SlotId, EngineOp), u8> {
+    fn node(pool: &Pool, command: Command) -> Result<(rt_runtime::NodeId, SlotId, EngineOp), u8> {
         use Command::*;
         let (id, slot, op) = match command {
-            InputGain(id, v) if (id.0.index as usize) < self.pool.strips() => (
-                self.pool.strip_input(id.0.index as usize),
+            InputGain(id, v) if (id.0.index as usize) < pool.strips() => (
+                pool.strip_input(id.0.index as usize),
                 id.0,
                 EngineOp::Gain(v),
             ),
-            InputBalance(id, v) if (id.0.index as usize) < self.pool.strips() => (
-                self.pool.strip_input(id.0.index as usize),
+            InputBalance(id, v) if (id.0.index as usize) < pool.strips() => (
+                pool.strip_input(id.0.index as usize),
                 id.0,
                 EngineOp::Balance(v),
             ),
-            OutputGain(id, v) if (id.0.index as usize) < self.pool.strips() => (
-                self.pool.strip_output(id.0.index as usize),
+            OutputGain(id, v) if (id.0.index as usize) < pool.strips() => (
+                pool.strip_output(id.0.index as usize),
                 id.0,
                 EngineOp::Gain(v),
             ),
-            OutputBalance(id, v) if (id.0.index as usize) < self.pool.strips() => (
-                self.pool.strip_output(id.0.index as usize),
+            OutputBalance(id, v) if (id.0.index as usize) < pool.strips() => (
+                pool.strip_output(id.0.index as usize),
                 id.0,
                 EngineOp::Balance(v),
             ),
-            OutputMute(id, v) if (id.0.index as usize) < self.pool.strips() => (
-                self.pool.strip_output(id.0.index as usize),
+            OutputMute(id, v) if (id.0.index as usize) < pool.strips() => (
+                pool.strip_output(id.0.index as usize),
                 id.0,
                 EngineOp::Mute(v),
             ),
-            BusGain(id, v) if (id.0.index as usize) < self.pool.buses() => {
-                (self.pool.bus(id.0.index as usize), id.0, EngineOp::Gain(v))
+            BusGain(id, v) if (id.0.index as usize) < pool.buses() => {
+                (pool.bus(id.0.index as usize), id.0, EngineOp::Gain(v))
             }
-            BusBalance(id, v) if (id.0.index as usize) < self.pool.buses() => (
-                self.pool.bus(id.0.index as usize),
-                id.0,
-                EngineOp::Balance(v),
-            ),
-            BusMute(id, v) if (id.0.index as usize) < self.pool.buses() => {
-                (self.pool.bus(id.0.index as usize), id.0, EngineOp::Mute(v))
+            BusBalance(id, v) if (id.0.index as usize) < pool.buses() => {
+                (pool.bus(id.0.index as usize), id.0, EngineOp::Balance(v))
+            }
+            BusMute(id, v) if (id.0.index as usize) < pool.buses() => {
+                (pool.bus(id.0.index as usize), id.0, EngineOp::Mute(v))
             }
             _ => return Err(3),
         };
         Ok((id, slot, op))
     }
-    fn validate(
-        &self,
-        batch: &Batch,
-        boundary: &Boundary<'_, EngineNode, LoopPlanner>,
+    fn execute(
+        pool: &Pool,
+        command: Command,
+        boundary: &mut Boundary<'_, EngineNode, LoopPlanner>,
     ) -> Result<(), u8> {
-        if batch.graph != boundary.graph.0
-            || batch.topology != boundary.planner.resolver().epoch().0
-        {
-            return Err(2);
-        }
-        if !batch.valid() {
+        if !command.valid() {
             return Err(5);
         }
-        for &command in batch.commands() {
-            if let Some((id, op)) = loop_command(command) {
-                let target = loop_id(id)?;
-                if (id.0.index as usize) >= self.pool.loops()
-                    || boundary
-                        .processors
-                        .get(self.pool.playback(id.0.index as usize))
-                        .is_none()
-                    || boundary.planner.resolver().state(target).is_err()
-                {
-                    return Err(3);
-                }
-                boundary
-                    .planner
-                    .validate_immediate(target, op)
-                    .map_err(|_| 4)?;
-            } else {
-                let (node, target, _) = self.node(command)?;
-                if boundary
+        if let Some((id, op)) = loop_command(command) {
+            let target = loop_id(id)?;
+            if (id.0.index as usize) >= pool.loops()
+                || boundary
                     .processors
-                    .get(node)
-                    .and_then(EngineNode::immediate_generation)
-                    != Some(target.generation)
-                {
-                    return Err(3);
-                }
+                    .get(pool.playback(id.0.index as usize))
+                    .is_none()
+            {
+                return Err(3);
             }
+            if matches!(op, Immediate::Playback(_))
+                && !boundary
+                    .processors
+                    .get(pool.fader(id.0.index as usize))
+                    .is_some_and(EngineNode::immediate_playback_supported)
+            {
+                return Err(4);
+            }
+            boundary
+                .planner
+                .apply_immediate(target, op)
+                .map_err(|error| {
+                    if error == rt_runtime::Error::InvalidId {
+                        3
+                    } else {
+                        4
+                    }
+                })
+        } else {
+            let (node, target, op) = Self::node(pool, command)?;
+            if boundary
+                .processors
+                .get(node)
+                .and_then(EngineNode::immediate_generation)
+                != Some(target.generation)
+            {
+                return Err(3);
+            }
+            boundary
+                .processors
+                .get_mut(node)
+                .ok_or(3)?
+                .apply_signal(op, boundary.graph)
+                .map_err(|_| 4)
         }
-        Ok(())
     }
 }
 impl Handler<EngineNode, LoopPlanner> for Render {
     fn begin_callback(&mut self) {
         self.rx.begin_callback();
     }
-    fn apply(&mut self, boundary: Boundary<'_, EngineNode, LoopPlanner>) {
+    fn apply(&mut self, mut boundary: Boundary<'_, EngineNode, LoopPlanner>) {
         while let Some(batch) = self.rx.pop() {
-            if let Err(code) = self.validate(&batch, &boundary) {
-                self.failures.last.store(u32::from(code), Ordering::Relaxed);
-                let count = self.failures.count.load(Ordering::Relaxed);
-                self.failures
-                    .count
-                    .store(count.saturating_add(1), Ordering::Relaxed);
+            if batch.graph != boundary.graph.0
+                || batch.topology != boundary.planner.resolver().epoch().0
+            {
+                refuse(&self.failures, 2);
             } else {
                 for &command in batch.commands() {
-                    if let Some((id, op)) = loop_command(command) {
-                        boundary
-                            .planner
-                            .apply_immediate(loop_id(id).expect("validated target"), op)
-                            .expect("preflighted command");
-                    } else {
-                        let (node, _, op) = self.node(command).expect("validated target");
-                        boundary
-                            .processors
-                            .get_mut(node)
-                            .expect("validated processor")
-                            .apply_signal(op, boundary.graph)
-                            .expect("preflighted command");
+                    if let Err(code) = Self::execute(&self.pool, command, &mut boundary) {
+                        refuse(&self.failures, code);
                     }
                 }
             }
@@ -280,4 +276,12 @@ impl Handler<EngineNode, LoopPlanner> for Render {
             self.progress.retired.store(retired, Ordering::Release);
         }
     }
+}
+
+fn refuse(failures: &Failures, code: u8) {
+    failures.last.store(u32::from(code), Ordering::Relaxed);
+    let count = failures.count.load(Ordering::Relaxed);
+    failures
+        .count
+        .store(count.saturating_add(1), Ordering::Relaxed);
 }

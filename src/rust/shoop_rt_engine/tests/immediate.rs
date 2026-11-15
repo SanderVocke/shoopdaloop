@@ -108,6 +108,29 @@ fn partial_callbacks_leave_batches_queued_until_the_next_unrendered_quantum() {
     assert_eq!(gain(&mut h), 0.25);
 }
 
+#[shoop_test]
+fn commands_run_in_order_and_failures_do_not_suppress_later_effects() {
+    let (mut h, c) = fixture();
+    let l = loop_id(0, 1);
+    send(
+        &mut h,
+        c,
+        &[
+            Command::LoopGain(l, 0.25),
+            Command::LoopGain(loop_id(99, 1), 0.9),
+            Command::LoopBalance(l, 2.),
+            Command::LoopGain(l, f32::NAN),
+            Command::Stop(l),
+            Command::Start(l),
+            Command::LoopGain(l, 0.75),
+        ],
+    );
+    h.run(16, 16);
+    assert_eq!(gain(&mut h), 0.75);
+    assert!(h.telemetry.iter().any(|(_, t)| matches!(t,
+        Telemetry::Immediate(d) if d.rt_refused == 4 && d.last_rt == 4)));
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 #[shoop_test(no_wasm = "native callback timing smoke")]
 fn full_callback_scalar_allowance_is_heap_free() {
@@ -163,7 +186,7 @@ fn send(h: &mut Harness, config: (u64, u64), commands: &[Command]) {
 }
 
 #[shoop_test]
-fn invalid_target_rejects_whole_batch_and_both_paths_keep_arrival_order() {
+fn invalid_target_fails_individually_and_both_paths_keep_arrival_order() {
     let (mut h, c) = fixture();
     h.done(Request::ReplacementBegin { id: 123 });
     send(&mut h, c, &[Command::LoopGain(loop_id(0, 1), 0.2)]);
@@ -179,11 +202,11 @@ fn invalid_target_rejects_whole_batch_and_both_paths_keep_arrival_order() {
         c,
         &[
             Command::LoopGain(loop_id(0, 1), 0.25),
-            Command::OutputGain(strip(0, 2), 0.5),
+            Command::OutputGain(strip(99, 1), 0.5),
         ],
     );
     h.run(16, 16);
-    assert_eq!(gain(&mut h), 0.2);
+    assert_eq!(gain(&mut h), 0.25);
     assert!(h
         .telemetry
         .iter()
@@ -331,8 +354,8 @@ fn recording_and_media_edits_resume_between_immediate_groups() {
     h.run(16, 16);
     assert_eq!(
         gain(&mut h),
-        0.25,
-        "starting a recording loop rejects the whole group"
+        0.9,
+        "the recording start fails individually while the gain still changes"
     );
     send(&mut h, c, &[Command::LoopGain(l, 0.5)]);
     let stop = h.send(Request::LoopTransition {
@@ -444,7 +467,7 @@ fn prepared_replacement_can_commit_after_live_groups_without_retargeting_them() 
         &mut h,
         next,
         &[
-            Command::LoopGain(loop_id(0, 1), 0.8),
+            Command::LoopGain(loop_id(99, 1), 0.8),
             Command::OutputMute(strip(0, 2), true),
         ],
     );
@@ -454,7 +477,7 @@ fn prepared_replacement_can_commit_after_live_groups_without_retargeting_them() 
     assert!(Records(&bytes[HEADER..len]).any(|r| r
         == Ok(Record::State(StateRecord::StripControl {
             strip: strip(0, 2),
-            control: StripControl::OutputMute(false)
+            control: StripControl::OutputMute(true)
         }))));
     send(&mut h, next, &[Command::LoopGain(loop_id(0, 2), 0.8)]);
     h.run(16, 16);
