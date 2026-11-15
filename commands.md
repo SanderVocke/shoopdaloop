@@ -547,10 +547,9 @@ They carry no command identity and do not establish individual command history.
 
 ## Simplification milestone
 
-Replace the current fixed batch slots and whole-group refusal rules with the
-target above. Do not migrate ordinary UI controls or expand the opcode subset in
-this milestone. Keep the existing legacy coexistence path and RT snapshot
-publication cadence.
+The fixed batch slots and whole-group refusal rules have been replaced with the
+target above. Ordinary UI controls and the opcode subset have not been expanded.
+The legacy coexistence path and RT snapshot publication cadence are preserved.
 
 - [x] **1. Establish configuration-owned identity.** Audit every supported target
   lifecycle, candidate preparation, activation, removal and slot reuse against the
@@ -578,7 +577,7 @@ publication cadence.
   the legacy handoff using FIFO progress plus snapshots. Test wrapping, full
   admission, many singleton groups, mixed sizes and an interrupted producer whose
   unfinished group must stay invisible to RT.
-- [ ] **4. Smoke-test and publish the connected result.** After stages 1–3, check
+- [x] **4. Smoke-test and publish the connected result.** After stages 1–3, check
   the documented singleton capacity in one callback, mixed-size groups, partial
   success, thirty-loop alignment and cutoff races through the application API.
   Check stale-header rejection and new-version address reuse, encoded delivery,
@@ -604,8 +603,42 @@ Focused loop/strip/bus slot-reuse and prepared-replacement snapshot checks pass.
 The structural queue also prevents reusing an occupied address within the same
 activation: removal settles before a subsequent creation can activate.
 
+The adapter also retains the identities from its last validated snapshot. A new
+configuration announcement alone cannot pair a new version with stale local
+addresses. Unknown or not-yet-observed application objects encode an invalid
+index and fail individually, leaving other commands in the group usable.
+
 
 ## Validation record
+
+### Simplification
+
+All four simplification stages are complete. The focused checks pass:
+
+- Twenty command checks: two generic FIFO tests, one paused-producer test, two
+  protocol tests, eleven engine tests, three application adapter tests and one
+  observed-configuration address test. They cover wrapping and exact occupancy,
+  whole-group publication racing a cutoff, a producer paused before publication,
+  partial success and repeated targets, header rejection, slot reuse and candidate
+  preparation, recording/media coexistence, encoded backpressure, reconnect,
+  partial host callbacks, and heap-free execution at the 248-command allowance.
+- The application test submits 128 singleton groups without intervening snapshots
+  and observes their effects after one callback. Thirty valid starts remain
+  aligned when an invalid member is inserted into the same group, including the
+  existing callback race. Submission creates no reliable mutation identity.
+- Eleven snapshot smoke tests preserve push/pull delivery, timing cache behavior,
+  graph transitions, bounded payloads and legacy success observation.
+- Formatting, test-attribute policy, diff checks and warning-denying builds of the
+  engine, backend and native process wrapper pass. The process wrapper build uses
+  no native audio-provider features. No full integration matrix, live browser run
+  or broad CI completion gate was used. These checks do not certify worst-case
+  callback deadlines on other hardware or session sizes.
+
+The implementation and this record are committed on the existing draft PR branch.
+No automatic merge is authorized. Ordinary UI-control migration, additional command
+families and ARM/FPGA implementations remain outside the completed scope.
+
+### Initial and coexistence implementations
 
 The following is the historical validation of the initial and coexistence
 implementations, completed on 2026-11-14. The simplification's results are recorded
