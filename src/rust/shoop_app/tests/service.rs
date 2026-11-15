@@ -2370,6 +2370,11 @@ fn ui_immediate_controls_use_snapshots_and_keep_bursts_ordered_without_results()
         10 + QUEUE_CAPACITY
     );
     assert_eq!(runtime.client().snapshot().unwrap().immediate.refused, 0);
+    assert!(f
+        .immediate_groups
+        .borrow()
+        .iter()
+        .all(|group| group.deadline.is_none()));
     let message = runtime
         .client()
         .immediate(vec![
@@ -2384,6 +2389,12 @@ fn ui_immediate_controls_use_snapshots_and_keep_bursts_ordered_without_results()
     assert_eq!(runtime.snapshot().tracks[1].loops[0].gain, 0.75);
     assert_eq!(runtime.snapshot().tracks[1].controls.output_balance, 0.4);
     assert!(!runtime.client().snapshot().unwrap().buses[0].muted);
+    assert_eq!(runtime.client().snapshot().unwrap().immediate.refused, 2);
+    assert!(runtime
+        .snapshot()
+        .notifications
+        .iter()
+        .any(|notice| notice.message.contains("immediate commands")));
     f.advance.set(false);
     let before_loss = f.immediate_groups.borrow().len();
     for index in 0..QUEUE_CAPACITY {

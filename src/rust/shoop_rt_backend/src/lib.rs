@@ -164,6 +164,7 @@ fn profiling_connection() -> Option<u64> {
 
 /// The application backend over a protocol client. See the crate documentation.
 pub struct RtBackend<C, K> {
+    immediate_response_handler: Option<alloc::boxed::Box<immediate::ResponseHandler>>,
     snapshots: snapshots::Snapshots,
     host_port_inventory: Option<alloc::boxed::Box<dyn HostPortInventory>>,
     inventory_reconcile: bool,
@@ -235,6 +236,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         let mut snapshots = snapshots::Snapshots::default();
         snapshots.delivery = client.default_snapshot_delivery();
         Ok(Self {
+            immediate_response_handler: None,
             snapshots,
             host_port_inventory: None,
             inventory_reconcile: false,

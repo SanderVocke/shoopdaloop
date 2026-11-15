@@ -363,7 +363,7 @@ impl Runtime {
             .immediate_refused
             .is_some_and(|previous| refused > previous)
         {
-            self.notify("Some immediate controls could not be admitted. The display shows the observed state.");
+            self.notify("Some immediate commands failed or were refused. The display shows the observed state.");
         }
         self.immediate_refused = Some(refused);
         self.reconcile_results();

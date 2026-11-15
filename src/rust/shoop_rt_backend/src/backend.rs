@@ -258,6 +258,10 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     fn supports_immediate_commands(&self) -> bool {
         true
     }
+    fn immediate_refusals(&self) -> u64 {
+        u64::from(self.status.immediate.control_refused)
+            + u64::from(self.status.immediate.rt_refused)
+    }
     fn submit_immediate_commands(&mut self, commands: &[BackendImmediateCommand]) -> Result<bool> {
         self.submit_ui_immediate(commands)
     }

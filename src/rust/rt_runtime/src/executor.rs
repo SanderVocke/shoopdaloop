@@ -729,9 +729,6 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
                 }
             }
         }
-        if let Some(handler) = &mut self.immediate {
-            handler.begin_callback();
-        }
         let frame = audio.frame;
         let frames = audio.frames;
         self.profiling.begin_callback(
@@ -748,6 +745,9 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
         }) {
             self.profiling.end_callback(false);
             return Err(error);
+        }
+        if let Some(handler) = &mut self.immediate {
+            handler.begin_callback(self.tick_frame);
         }
         self.diagnostics = Diagnostics {
             frame,
@@ -767,6 +767,24 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
         self.profiling.callback_phase(rt_profiling::Phase::Commands);
         self.diagnostics.epoch = self.epoch;
         let result = self.run_ticks(&mut audio, &mut midi, self.quantum);
+        if self.immediate_callback != Some(frame) {
+            self.immediate_callback = Some(frame);
+            if let Some(handler) = &mut self.immediate {
+                handler.apply(crate::immediate::Boundary {
+                    frame: self.tick_frame,
+                    graph: self.epoch,
+                    available: result.is_ok(),
+                    planner: &mut self.planner,
+                    processors: &mut ImmediateProcessors {
+                        slots: &mut self.slots,
+                        active: &self.active,
+                    },
+                });
+            }
+        }
+        if let Some(handler) = &mut self.immediate {
+            handler.end_callback(self.tick_frame);
+        }
         self.diagnostics.epoch = self.epoch;
         self.ingress.set_epoch(self.epoch);
         if let Err(error) = result {
@@ -1331,6 +1349,7 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
                 handler.apply(crate::immediate::Boundary {
                     frame,
                     graph: self.epoch,
+                    available: true,
                     planner: &mut self.planner,
                     processors: &mut ImmediateProcessors {
                         slots: &mut self.slots,

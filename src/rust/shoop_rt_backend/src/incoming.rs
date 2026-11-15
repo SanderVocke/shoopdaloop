@@ -49,6 +49,13 @@ fn app_control(control: StripControl) -> Option<BackendTrackControl> {
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     pub(crate) fn handle(&mut self, message: EngineMessage) {
         match message {
+            EngineMessage::ImmediateResponse(response) => {
+                if matches!(self.link, Link::Ready | Link::Resyncing) {
+                    if let Some(handler) = &mut self.immediate_response_handler {
+                        handler(&response);
+                    }
+                }
+            }
             EngineMessage::SnapshotReply(chunk) | EngineMessage::Snapshot(chunk) => {
                 self.snapshot_chunk(chunk)
             }

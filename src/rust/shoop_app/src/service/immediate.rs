@@ -33,7 +33,9 @@ impl Service {
         immediate::Capabilities {
             enabled,
             playback,
-            refused: self.immediate_refused,
+            refused: self
+                .immediate_refused
+                .saturating_add(self.backend.immediate_refusals()),
         }
     }
 

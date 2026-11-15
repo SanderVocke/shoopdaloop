@@ -4,17 +4,17 @@
 
 Move the application toward complete state snapshots and ordered command groups,
 with a simple communication model inside `rt_runtime`. This is the sole working
-document for that migration. It describes the implemented system, the remaining
-legacy areas, and the next extension to implement.
+document for that migration. It describes the implemented system, the completed
+response extension, and the remaining legacy migration areas.
 
-Snapshot observation and ordinary UI command wiring are implemented. The next
-step adds optional expiry deadlines and an ordered response FIFO between control
-and RT. That extension is planned, not implemented. It supersedes the restriction
-that the new internal command path must never return individual results.
+Snapshot observation, ordinary UI command wiring, and the ordered RT response
+extension are implemented. The command transport supports optional expiry
+deadlines and a reliable response FIFO. Feature migrations listed below remain
+separate work; this milestone supplies their communication foundation.
 
-This step delivers deadline capability only. All existing application commands
-on the new path must continue with no deadline. Assigning deadlines to specific
-application commands is separate future work, outside this milestone.
+This milestone delivers deadline capability only. All existing application
+commands on the new path must continue with no deadline. Assigning deadlines to
+specific application commands is separate future work, outside this milestone.
 
 There are two distinct boundaries:
 
@@ -22,7 +22,7 @@ There are two distinct boundaries:
 UI/application <-> control <-> real-time processing in the audio callback
                        snapshot ring: RT -> control
                        command FIFO: control -> RT
-                       response FIFO: RT -> control (next step)
+                       response FIFO: RT -> control
 ```
 
 Networking, browser messaging, UI pacing and application workflows belong on the
@@ -146,12 +146,16 @@ The current command FIFO stores fixed-size records with variable-length groups:
 one configuration/count header followed by the actual commands. Control reserves
 and publishes a whole group at once. RT captures the published record count at
 callback entry, executes directly from readable records across wrapping and
-releases each group afterward. Current execution occurs at the callback's first
-unrendered processing quantum; no tick currently means no dequeue.
+releases each group afterward. Execution occurs before the callback's first
+unrendered processing quantum, or before return at the next unrendered frame if
+the callback only buffers audio. Every captured group produces its complete
+response in that callback. Already rendered audio is unchanged; snapshots still
+publish only at settled processing ticks.
 
-The FIFO contains 256 records. Each application group contains 1–32 commands and
-fits the 1,280-byte transport envelope. Control can stage four waiting groups;
-the UI service has an ordered queue of up to 256 messages. These are existing
+Each command and response FIFO contains 256 records. Each application group
+contains 1–32 commands and fits the 1,280-byte transport envelope. Control can
+stage four waiting groups; the UI service has an ordered queue of up to 256
+messages. These are existing
 capacity limits, not callback processing-time guarantees.
 
 Ordinary UI controls and eligible Lua operations use the new path automatically:
@@ -172,8 +176,9 @@ mixed, scheduled or oversized UI actions retain their entire existing route,
 chosen before submission. A group is never silently split to make it fit. Track
 and bus decibel controls are converted to linear amplitude by the backend adapter.
 
-Current new-style commands have no deadlines or individual responses. Snapshots
-show resulting state; diagnostics count failures. `RtBackend::immediate_group`
+Existing application commands have no deadlines. RT returns individual results
+in order; ordinary UI actions remain fire-and-forget. Snapshots show resulting
+state, and diagnostics count failures. `RtBackend::immediate_group`
 and the shared backend immediate interface do not advance legacy mutation cursors
 or reserve legacy outcome credits. Explicit tracked client commands and ordinary
 backend mutation methods remain available for compatibility and other workflows.
@@ -184,7 +189,7 @@ discard connection-owned unsent work; work already accepted by the backend may
 still execute. Never replay automatically after reconnect.
 
 Control preserves order across new and legacy paths. Immediate work waits for a
-preceding legacy prefix to settle. Later legacy work waits for FIFO retirement
+preceding legacy prefix to settle. Later legacy work waits for ordered responses
 and a configuration-matched snapshot covering the execution frame. Control
 reconciles scalar values before releasing graph/media work, so a later graph edit
 cannot restore old controls. Successful legacy completions also wait for fresh
@@ -210,15 +215,20 @@ destruction. Neither lossy snapshots nor byte-copying an owning Rust object can
 provide that lifetime protocol. Preserve the existing return paths until their
 replacements are designed.
 
-## Next extension: ordered command responses
+## Implemented ordered command responses
 
 ### Clock and expiry deadlines
 
-RT owns a global audio-frame index that control can read atomically at any time.
-Define its publication boundary and relationship to snapshot and command frames.
-Audit and reuse the existing atomic `next_frame` where its semantics match;
-avoid an unrelated clock. The index is independent of loop seeks. Engine restart
-establishes a fresh time domain so old queued deadlines cannot be reinterpreted.
+`ControlEndpoint::command_clock()` returns an atomic read handle for the next
+unrendered processing frame. RT publishes it at callback entry and after processing,
+independently of control polling and snapshot delivery. Responses record the frame
+at which the group was attempted. These use the same `Frame` timeline as snapshots.
+
+The host's existing `next_frame` tracks consumed callback frames and can differ
+while buffering a quantum, so it cannot substitute for this processing-frame
+observation. A buffer-only callback can leave the processing clock unchanged.
+Loop seeks do not change it. A fresh engine creates fresh FIFOs and a fresh clock;
+reconnecting to the same engine preserves the clock and never replays queued input.
 
 A group header may carry an optional latest execution frame. At its command
 boundary, RT checks configuration and deadline before attempting any member.
@@ -241,24 +251,32 @@ legacy command behavior remains unchanged.
 
 ### Records and response publication
 
-Define an explicit internal command record layout with space reserved for a
-response code. Initialize that field to an unprocessed value. Specify widths,
-encoding, initialization and versioning; ordinary Rust enum layout is not a
-hardware or binary ABI.
+The internal value layouts are explicit and little-endian:
 
-Add a preallocated SPSC response FIFO alongside the command FIFO inside
-`rt_runtime`. RT copies the command stream directly into its reserved response
-records and fills codes as it attempts commands. Preserve input order and group
-boundaries. Publish the complete response group only after processing it. Control
-must never see a partial response, and RT needs no separate whole-group buffer.
+| Value | Layout |
+| --- | --- |
+| `Header`, 48 bytes | Five `u64` words: graph, topology, deadline-present, deadline, attempt frame; then a `u32` header result and a reserved zero `u32` |
+| `CommandRecord`, 16 bytes | Four `u32` words: opcode, configuration-local target, argument bits, response code |
+
+Input result fields are `Unprocessed`. RT overwrites them in the response copy.
+The generic ring supplies group counts and framing; its Rust enum layout is not
+a hardware ABI. The RT carrier protocol is version 31; the UI/application protocol
+remains version 36. Existing production batch constructors default to no deadline.
+
+The preallocated SPSC response FIFO sits alongside the command FIFO inside
+`rt_runtime`. RT streams command copies into reserved response records with
+their result codes, preserving input order and group boundaries. Only the complete
+response group is published. Control never sees a partial response, and RT needs
+no separate whole-group buffer.
 
 Every consumed group produces exactly one response group, including stale
 configurations, expired groups and individual failures. Preserve the input header
 and record the attempt's processing frame so control can interpret the results.
-Initial codes should cover applied/no-op success, deadline missed, stale
-configuration, unavailable target, invalid value and unsupported preconditions.
-No returned record may remain unprocessed. More specific codes can be added as
-features migrate.
+The result codes are `Applied` (including successful no-ops), `DeadlineMissed`,
+`StaleConfiguration`, `TargetUnavailable`, `InvalidValue`, `Unsupported` and
+`CannotApply`. `Unprocessed` never appears in a completed response. Header
+`Applied` means its checks passed; individual member results determine which
+commands succeeded. More specific codes can be added as features migrate.
 
 There are no request IDs, cancellation tickets or reordered results. FIFO order
 provides correspondence. Control may track outstanding groups and dependencies;
@@ -266,6 +284,12 @@ RT only consumes commands, attempts them and publishes their results. Ordinary
 UI actions can remain fire-and-forget, with control draining responses and
 snapshots providing display state. The extension does not require forwarding an
 individual reply to the UI for every action.
+
+Control forwards `EngineMessage::ImmediateResponse` reliably. The backend drains
+these automatically. Callers that need each result can install
+`RtBackend::set_immediate_response_handler`; it runs on control while pumping,
+including during configuration resynchronization. Aggregate RT and local
+admission failures feed the existing UI notice, without creating UI operation IDs.
 
 ### Same-callback execution
 
@@ -275,11 +299,12 @@ its complete response before the callback returns. Later publications wait for
 the next callback. Every started group finishes in that callback; RT never
 retains a command to retry or match with later input.
 
-The current no-tick/no-dequeue behavior must be addressed explicitly. The next
-implementation needs a safe command boundary even when a callback only services
-buffered audio, or an explicit cannot-apply response in that callback. Respect
-the first unrendered audio frame and never modify audio already rendered. Do not
-silently leave a received group pending or report success for an unapplied step.
+Buffer-only callbacks apply their prefix at the next unrendered frame before
+returning. Fresh state is captured when processing next reaches a settled tick;
+commands do not modify previously rendered audio. If tick setup fails before
+command application, the prefix receives `CannotApply` results. Host blocks are
+validated before capturing a command prefix, so a rejected block does not receive
+groups for execution. There is no silent deferral or success for an unapplied step.
 
 ### Response capacity and backpressure
 
@@ -294,9 +319,10 @@ When capacity is exhausted, control stops admitting groups and propagates
 backpressure while audio continues. Reservation/accounting belongs on control;
 RT writes into the guaranteed space using normal FIFO ownership rules.
 
-Reconnection must preserve correspondence for already admitted work, or establish
-an explicit fresh command/response session. Never pair an old response with a new
-submission or automatically replay a group whose outcome is uncertain.
+On disconnect, control drops unsent staging and marks the exact outstanding
+response prefix for discard. Already RT-published commands may execute, and their
+responses still release reservations, but they are not exposed to the replacement
+connection. Fresh submissions retain FIFO correspondence without replay.
 
 ### Advanced workflows and observation
 
@@ -316,43 +342,43 @@ a snapshot covering its frame; control must wait for matching fresh observation
 when a dependent workflow needs that state. Preserve ordering and reconciliation
 with legacy work while migrating dependencies to the new results.
 
-## Implementation sequence for the next step
+## Completed response-extension stages
 
 1. **Clock and record contract**
 
-   - [ ] Define clock publication/reset semantics, optional deadline encoding,
+   - [x] Define clock publication/reset semantics, optional deadline encoding,
      response fields/codes and layout versioning.
-   - [ ] Resolve callback/quantum buffering against the same-callback rule.
+   - [x] Resolve callback/quantum buffering against the same-callback rule.
      Verify deadline equality, expiry and unchanged group ordering with focused
      clock/codec examples. Do not add execution-cost or time-budget machinery.
 
 2. **Paired FIFOs and response reservations**
 
-   - [ ] Add generic response storage and control-side reservation accounting;
+   - [x] Add generic response storage and control-side reservation accounting;
      copy command records and publish complete result groups.
-   - [ ] Verify wrapping, a paused control reader, exhausted response capacity
+   - [x] Verify wrapping, a paused control reader, exhausted response capacity
      and credit release on response consumption. RT must never wait for space.
 
 3. **RT handler integration**
 
-   - [ ] Apply header checks once, attempt commands in order and fill every code;
+   - [x] Apply header checks once, attempt commands in order and fill every code;
      return all results before the receiving callback exits.
-   - [ ] Smoke-test successful, expired and stale groups, individual failures,
+   - [x] Smoke-test successful, expired and stale groups, individual failures,
      cutoff races, buffered callbacks and a group of 30 aligned starts.
 
 4. **Control and application integration**
 
-   - [ ] Drain results in order, preserve legacy handoff and reconnect rules,
+   - [x] Drain results in order, preserve legacy handoff and reconnect rules,
      and expose useful failures without requiring UI request IDs. Keep deadlines
      absent for all existing application commands; add no deadline policies.
-   - [ ] Verify that existing snapshot-driven controls, dependencies and push/pull
+   - [x] Verify that existing snapshot-driven controls, dependencies and push/pull
      delivery keep working. Preserve unmigrated features through their routes.
 
 5. **Focused end-to-end validation and documentation**
 
-   - [ ] Exercise UI -> control -> RT -> response -> control with both direct
+   - [x] Exercise UI -> control -> RT -> response -> control with both direct
      and encoded delivery, stalled consumption and disconnect without replay.
-   - [ ] Run relevant smoke tests, formatting and warning-denying builds; update
+   - [x] Run relevant smoke tests, formatting and warning-denying builds; update
      this document to distinguish delivered behavior from remaining work.
 
 ### Acceptance criteria
@@ -389,3 +415,17 @@ recording and disconnect without replay. Do not run broad integration matrices
 or add a callback-cost certification exercise. Keep CI in the background rather
 than waiting for a large suite as a completion gate. Address relevant review
 findings within scope; leave the PR in draft and do not merge automatically.
+
+### Validation record
+
+All 27 selected smoke checks pass: five generic FIFO/publication checks, three
+protocol checks, eleven engine command/coexistence checks, three backend command
+checks, three snapshot delivery checks and two UI service checks. They cover
+complete publication under a paused producer, response-space exhaustion and
+wrapping, inclusive expiry and future deadlines, clock lifetime, buffer-only
+callbacks, individual failures, graph/media ordering, 30-loop alignment, encoded
+delivery under backpressure, disconnect without replay and unchanged UI deadlines.
+
+Formatting, test-attribute policy and a native UI build with Rust warnings denied
+pass. The build disables optional native audio-provider features. No broad suite,
+live browser run, callback timing benchmark or CI completion wait was used.

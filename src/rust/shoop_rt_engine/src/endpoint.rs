@@ -1711,6 +1711,7 @@ impl Endpoint for ControlEndpoint {
             return;
         }
         self.drain_runtime();
+        self.immediate.responses(out, self.connected);
         self.refresh_snapshot_timing();
         self.reconcile_immediate();
         if !self.immediate.busy() {
@@ -1780,7 +1781,7 @@ impl ControlEndpoint {
                     if !settled {
                         break;
                     }
-                    if self.immediate_supported(&batch) && !self.immediate.publish(batch) {
+                    if !self.immediate.publish(batch) {
                         break;
                     }
                     self.immediate.pop();
@@ -1790,11 +1791,8 @@ impl ControlEndpoint {
         self.process_queue(stage);
     }
 
-    fn immediate_supported(&mut self, batch: &shoop_rt_protocol::immediate::Batch) -> bool {
-        if (batch.graph, batch.topology) != (self.graph_epoch.0, self.topology_epoch.0) {
-            self.immediate.refuse(2);
-            return false;
-        }
-        true
+    /// Readable independently of polling and snapshot delivery.
+    pub fn command_clock(&self) -> rt_runtime::immediate::Clock {
+        self.immediate.clock()
     }
 }

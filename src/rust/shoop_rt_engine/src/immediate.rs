@@ -1,76 +1,57 @@
-//! Dedicated fire-and-forget command execution; no legacy scheduling or receipts.
+//! Ordered command execution and synchronous results, without legacy scheduling.
 use crate::{
     node::{EngineNode, EngineOp},
     pool::Pool,
     ring::Ring,
 };
-use alloc::sync::Arc;
-use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use rt_runtime::immediate::{self, Boundary, Handler};
 use shoop_loops::runtime::{Immediate, LoopPlanner};
-use shoop_rt_protocol::immediate::{Batch, Command, Diagnostics, FIFO_RECORDS, STAGED_BATCHES};
-
-#[derive(Default)]
-struct Failures {
-    count: AtomicU32,
-    last: AtomicU32,
-}
-#[derive(Default)]
-struct Progress {
-    // The read cursor advances after application. Control also waits for a
-    // snapshot covering that frame before releasing later legacy work.
-    retired: AtomicU32,
-    frame: AtomicU64,
-}
+use shoop_rt_protocol::immediate::{
+    Batch, Code, Command, CommandRecord, Diagnostics, Header, Response, COMMANDS, FIFO_RECORDS,
+    STAGED_BATCHES,
+};
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Incoming {
     Request(u64, shoop_rt_protocol::Request),
     Batch(Batch),
 }
 pub(crate) struct Control {
-    tx: immediate::Producer<(u64, u64), Command>,
+    tx: immediate::Producer<Header, CommandRecord>,
     pub incoming: Ring<Incoming>,
     waiting: usize,
     published: u32,
-    progress: Arc<Progress>,
+    retired: u32,
+    frame: u64,
+    discard: u32,
     pub reconcile: bool,
     observed: bool,
-    failures: Arc<Failures>,
     diagnostics: Diagnostics,
     sent: Option<(Diagnostics, u64)>,
 }
 struct Render {
-    rx: immediate::Consumer<(u64, u64), Command>,
+    rx: immediate::Consumer<Header, CommandRecord>,
     pool: Pool,
-    failures: Arc<Failures>,
-    progress: Arc<Progress>,
 }
 pub(crate) fn prepare(
     pool: Pool,
     credits: usize,
 ) -> (Control, impl Handler<EngineNode, LoopPlanner>) {
-    let (tx, rx) = immediate::channel(FIFO_RECORDS);
-    let failures = Arc::new(Failures::default());
-    let progress = Arc::new(Progress::default());
+    let (tx, rx) = immediate::paired_channel(FIFO_RECORDS);
     (
         Control {
             tx,
             incoming: Ring::new(credits + STAGED_BATCHES),
             waiting: 0,
             published: 0,
-            progress: progress.clone(),
+            retired: 0,
+            frame: 0,
+            discard: 0,
             reconcile: false,
             observed: false,
-            failures: failures.clone(),
             diagnostics: Diagnostics::default(),
             sent: None,
         },
-        Render {
-            rx,
-            pool,
-            failures,
-            progress,
-        },
+        Render { rx, pool },
     )
 }
 impl Control {
@@ -91,9 +72,13 @@ impl Control {
         Some(incoming)
     }
     pub fn publish(&mut self, batch: Batch) -> bool {
+        let mut records = [CommandRecord::new(Command::Start(0)); COMMANDS];
+        for (record, &command) in records.iter_mut().zip(batch.commands()) {
+            *record = CommandRecord::new(command);
+        }
         if self
             .tx
-            .push((batch.graph, batch.topology), batch.commands())
+            .push(batch.header(), &records[..batch.commands().len()])
             .is_err()
         {
             return false;
@@ -104,8 +89,7 @@ impl Control {
         true
     }
     pub fn settled_frame(&self) -> Option<u64> {
-        (self.progress.retired.load(Ordering::Acquire) == self.published)
-            .then(|| self.progress.frame.load(Ordering::Relaxed))
+        (self.retired == self.published).then_some(self.frame)
     }
     pub fn busy(&self) -> bool {
         self.reconcile
@@ -118,14 +102,59 @@ impl Control {
         self.incoming.clear();
         self.waiting = 0;
         self.sent = None;
+        self.discard = self.published.wrapping_sub(self.retired);
+    }
+    pub fn clock(&self) -> immediate::Clock {
+        self.tx.clock()
+    }
+
+    pub fn responses(&mut self, out: &mut shoop_rt_transport::carrier::Outbox, connected: bool) {
+        while let Some(group) = self.tx.response() {
+            let header = group.header;
+            let mut records = [CommandRecord::new(Command::Start(0)); COMMANDS];
+            let mut count = 0;
+            for &record in group.commands() {
+                records[count] = record;
+                count += 1;
+            }
+            if connected && self.discard == 0 {
+                let response =
+                    Response::new(header, &records[..count]).expect("processed response");
+                if out
+                    .push(shoop_rt_protocol::EngineMessage::ImmediateResponse(
+                        response,
+                    ))
+                    .is_err()
+                {
+                    group.leave_unread();
+                    break;
+                }
+            }
+            if self.discard > 0 {
+                self.discard -= 1;
+            }
+            let mut record_failure = |code: Code| {
+                if let Some(code) = code.diagnostic() {
+                    self.diagnostics.rt_refused = self.diagnostics.rt_refused.saturating_add(1);
+                    self.diagnostics.last_rt = code;
+                }
+            };
+            if header.code() != Code::Applied {
+                record_failure(header.code());
+            } else {
+                for record in &records[..count] {
+                    record_failure(record.code());
+                }
+            }
+            self.frame = header.frame();
+            self.retired = self.retired.wrapping_add(1);
+        }
     }
     pub fn project(&mut self, out: &mut shoop_rt_transport::carrier::Outbox, frame: u64) {
         if !self.observed && self.diagnostics.control_refused == 0 {
             return;
         }
-        let mut d = self.diagnostics;
-        d.rt_refused = self.failures.count.load(Ordering::Relaxed);
-        d.last_rt = self.failures.last.load(Ordering::Relaxed) as u8;
+        let d = self.diagnostics;
         if self.sent != Some((d, frame))
             && out
                 .push(shoop_rt_protocol::EngineMessage::Telemetry(
@@ -147,7 +176,7 @@ fn loop_command(command: Command) -> Option<(u32, Immediate)> {
     }
 }
 impl Render {
-    fn node(pool: &Pool, command: Command) -> Result<(rt_runtime::NodeId, EngineOp), u8> {
+    fn node(pool: &Pool, command: Command) -> Result<(rt_runtime::NodeId, EngineOp), Code> {
         use Command::*;
         let (node, op) = match command {
             InputGain(id, v) if (id as usize) < pool.strips() => {
@@ -174,7 +203,7 @@ impl Render {
             BusMute(id, v) if (id as usize) < pool.buses() => {
                 (pool.bus(id as usize), EngineOp::Mute(v))
             }
-            _ => return Err(3),
+            _ => return Err(Code::TargetUnavailable),
         };
         Ok((node, op))
     }
@@ -182,19 +211,23 @@ impl Render {
         pool: &Pool,
         command: Command,
         boundary: &mut Boundary<'_, EngineNode, LoopPlanner>,
-    ) -> Result<(), u8> {
+    ) -> Result<(), Code> {
         if !command.valid() {
-            return Err(5);
+            return Err(Code::InvalidValue);
         }
         if let Some((id, op)) = loop_command(command) {
-            let target = boundary.planner.resolver().id_at_slot(id).ok_or(3)?;
+            let target = boundary
+                .planner
+                .resolver()
+                .id_at_slot(id)
+                .ok_or(Code::TargetUnavailable)?;
             if (id as usize) >= pool.loops()
                 || boundary
                     .processors
                     .get(pool.playback(id as usize))
                     .is_none()
             {
-                return Err(3);
+                return Err(Code::TargetUnavailable);
             }
             if matches!(op, Immediate::Playback(_))
                 && !boundary
@@ -202,16 +235,16 @@ impl Render {
                     .get(pool.fader(id as usize))
                     .is_some_and(EngineNode::immediate_playback_supported)
             {
-                return Err(4);
+                return Err(Code::Unsupported);
             }
             boundary
                 .planner
                 .apply_immediate(target, op)
                 .map_err(|error| {
                     if error == rt_runtime::Error::InvalidId {
-                        3
+                        Code::TargetUnavailable
                     } else {
-                        4
+                        Code::Unsupported
                     }
                 })
         } else {
@@ -219,45 +252,47 @@ impl Render {
             boundary
                 .processors
                 .get_mut(node)
-                .ok_or(3)?
+                .ok_or(Code::TargetUnavailable)?
                 .apply_signal(op, boundary.graph)
-                .map_err(|_| 4)
+                .map_err(|_| Code::Unsupported)
         }
     }
 }
 impl Handler<EngineNode, LoopPlanner> for Render {
-    fn begin_callback(&mut self) {
+    fn begin_callback(&mut self, frame: rt_runtime::Frame) {
+        self.rx.publish_frame(frame);
         self.rx.begin_callback();
+    }
+    fn end_callback(&mut self, frame: rt_runtime::Frame) {
+        self.rx.publish_frame(frame);
     }
     fn apply(&mut self, mut boundary: Boundary<'_, EngineNode, LoopPlanner>) {
         while let Some(group) = self.rx.pop() {
-            if group.header != (boundary.graph.0, boundary.planner.resolver().epoch().0) {
-                refuse(&self.failures, 2);
+            let header = group.header;
+            let code = if (header.graph(), header.topology())
+                != (boundary.graph.0, boundary.planner.resolver().epoch().0)
+            {
+                Code::StaleConfiguration
+            } else if header
+                .deadline()
+                .is_some_and(|deadline| boundary.frame.0 > deadline)
+            {
+                Code::DeadlineMissed
+            } else if !boundary.available {
+                Code::CannotApply
             } else {
-                for &command in group.commands() {
-                    if let Err(code) = Self::execute(&self.pool, command, &mut boundary) {
-                        refuse(&self.failures, code);
-                    }
-                }
-            }
-            drop(group);
-            self.progress
-                .frame
-                .store(boundary.frame.0, Ordering::Relaxed);
-            let retired = self
-                .progress
-                .retired
-                .load(Ordering::Relaxed)
-                .wrapping_add(1);
-            self.progress.retired.store(retired, Ordering::Release);
+                Code::Applied
+            };
+            group.respond(header.complete(boundary.frame.0, code), |record| {
+                let outcome = if code == Code::Applied {
+                    Self::execute(&self.pool, record.command(), &mut boundary)
+                        .err()
+                        .unwrap_or(Code::Applied)
+                } else {
+                    code
+                };
+                record.complete(outcome)
+            });
         }
     }
-}
-
-fn refuse(failures: &Failures, code: u8) {
-    failures.last.store(u32::from(code), Ordering::Relaxed);
-    let count = failures.count.load(Ordering::Relaxed);
-    failures
-        .count
-        .store(count.saturating_add(1), Ordering::Relaxed);
 }

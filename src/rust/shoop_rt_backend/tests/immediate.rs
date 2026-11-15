@@ -46,7 +46,7 @@ fn immediate_controls_and_graph_edits_share_the_application_session() {
     assert_eq!(state.loops[&track.loops[0]].gain, 0.25);
     assert_eq!(state.tracks[&track.track_id].output_balance, -0.5);
     assert_eq!(
-        b.immediate_diagnostics().control_refused,
+        b.immediate_diagnostics().rt_refused,
         1,
         "the queued old configuration is refused"
     );
@@ -104,7 +104,7 @@ fn immediate_controls_and_graph_edits_share_the_application_session() {
     assert_no_heap(|| b.clock_mut().render(1));
     b.pump();
     assert_eq!(b.poll().unwrap().loops[&track.loops[0]].gain, 0.5);
-    assert_eq!(b.immediate_diagnostics().rt_refused, 1);
+    assert_eq!(b.immediate_diagnostics().rt_refused, 2);
 }
 
 #[shoop_test]
@@ -164,7 +164,7 @@ fn additional_bus_uses_the_snapshot_generation_for_immediate_controls() {
 }
 
 #[shoop_test]
-fn thirty_loaded_loops_start_together_and_snapshots_observe_without_receipts() {
+fn thirty_loaded_loops_start_together_with_ordered_results_and_snapshots() {
     let mut d = description();
     d.master_connections = vec![(0, 0), (1, 1)];
     d.ramp_frames = 0;
@@ -227,11 +227,31 @@ fn thirty_loaded_loops_start_together_and_snapshots_observe_without_receipts() {
     let starts: Vec<_> = track.loops.iter().copied().map(Command::Start).collect();
     let mut first_starts = starts.clone();
     first_starts.insert(15, Command::Start(BackendLoopId::from_raw(u64::MAX)));
+    let responses = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let received = responses.clone();
+    b.set_immediate_response_handler(move |response| received.lock().unwrap().push(*response));
     let credits = b.mutation_cursor();
     b.immediate_group(&first_starts).unwrap();
     assert_eq!(b.mutation_cursor(), credits);
     assert_no_heap(|| b.clock_mut().render(1));
     b.pump();
+    {
+        use shoop_rt_protocol::immediate::Code;
+        let observed = responses.lock().unwrap();
+        assert_eq!(observed.len(), 1);
+        assert_eq!(observed[0].header.deadline(), None);
+        assert_eq!(observed[0].records().len(), 31);
+        for (index, record) in observed[0].records().iter().enumerate() {
+            assert_eq!(
+                record.code(),
+                if index == 15 {
+                    Code::TargetUnavailable
+                } else {
+                    Code::Applied
+                }
+            );
+        }
+    }
     let state = b.poll().unwrap();
     assert_eq!(
         b.immediate_diagnostics().rt_refused,

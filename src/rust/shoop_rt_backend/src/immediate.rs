@@ -6,6 +6,8 @@ use shoop_backend::{BackendBusId, BackendLoopId, BackendTrackId};
 use shoop_rt_protocol::immediate::{Batch, Command, Diagnostics, COMMANDS};
 use shoop_rt_transport::carrier::Carrier;
 
+pub(crate) type ResponseHandler = dyn FnMut(&shoop_rt_protocol::immediate::Response) + Send;
+
 #[derive(Clone, Copy, Debug)]
 pub enum ImmediateCommand {
     LoopGain(BackendLoopId, f32),
@@ -22,6 +24,15 @@ pub enum ImmediateCommand {
     BusMute(BackendBusId, bool),
 }
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
+    /// Observes ordered RT results while pumping. The default consumer drains
+    /// them without creating UI operations or retaining an unbounded backlog.
+    /// A result can precede the snapshot covering its execution frame.
+    pub fn set_immediate_response_handler(
+        &mut self,
+        handler: impl FnMut(&shoop_rt_protocol::immediate::Response) + Send + 'static,
+    ) {
+        self.immediate_response_handler = Some(alloc::boxed::Box::new(handler));
+    }
     pub(crate) fn submit_ui_immediate(
         &mut self,
         commands: &[BackendImmediateCommand],

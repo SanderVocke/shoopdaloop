@@ -201,6 +201,7 @@ impl<C: Carrier> ProtocolClient<C> {
                 self.snapshot_in_flight = false;
             }
             EngineMessage::SnapshotReply(_)
+            | EngineMessage::ImmediateResponse(_)
             | EngineMessage::Snapshot(_)
             | EngineMessage::SnapshotConfiguration { .. }
             | EngineMessage::Telemetry(_)

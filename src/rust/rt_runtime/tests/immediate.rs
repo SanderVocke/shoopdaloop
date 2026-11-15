@@ -5,6 +5,70 @@ use rt_runtime::immediate;
 use shoop_wasm_test_support::shoop_test;
 
 #[shoop_test]
+fn paired_responses_reserve_capacity_until_consumed_and_preserve_wrapping() {
+    let (mut tx, mut rx) = immediate::paired_channel(8);
+    let clock = tx.clock();
+    rx.publish_frame(rt_runtime::Frame(7));
+    assert_eq!(clock.frame(), rt_runtime::Frame(7));
+    tx.push(10, &[1, 2]).unwrap();
+    tx.push(20, &[3, 4, 5, 6]).unwrap();
+    rx.begin_callback();
+    rx.pop().unwrap().respond(11, |value| value + 100);
+    assert_eq!(tx.push(30, &[7, 8]), Err(rt_runtime::Error::Full));
+    {
+        let response = tx.response().unwrap();
+        assert_eq!(response.header, 11);
+        assert!(response.commands().copied().eq([101, 102]));
+        response.leave_unread();
+    }
+    assert_eq!(tx.push(30, &[7, 8]), Err(rt_runtime::Error::Full));
+    drop(tx.response().unwrap());
+    tx.push(30, &[7, 8]).unwrap();
+    rx.pop().unwrap().respond(21, |value| value + 100);
+    assert!(
+        rx.pop().is_none(),
+        "later publication waits for next callback"
+    );
+    let response = tx.response().unwrap();
+    assert_eq!(response.header, 21);
+    assert!(response.commands().copied().eq([103, 104, 105, 106]));
+    drop(response);
+    rx.begin_callback();
+    rx.pop().unwrap().respond(31, |value| value + 100);
+    assert!(tx.response().unwrap().commands().copied().eq([107, 108]));
+    assert!(tx.response().is_none());
+    rx.publish_frame(rt_runtime::Frame(8));
+    assert_eq!(clock.frame(), rt_runtime::Frame(8));
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[shoop_test(no_wasm = "paused native response producer")]
+fn paired_response_is_invisible_until_every_result_is_written() {
+    use std::sync::{Arc, Barrier};
+    let (mut tx, mut rx) = immediate::paired_channel(8);
+    tx.push(1, &[1, 2, 3]).unwrap();
+    let writing = Arc::new(Barrier::new(2));
+    let resume = Arc::new(Barrier::new(2));
+    let (worker_writing, worker_resume) = (writing.clone(), resume.clone());
+    let worker = std::thread::spawn(move || {
+        rx.begin_callback();
+        rx.pop().unwrap().respond(2, |command| {
+            if command == 2 {
+                worker_writing.wait();
+                worker_resume.wait();
+            }
+            command + 100
+        });
+    });
+    writing.wait();
+    assert!(tx.response().is_none());
+    resume.wait();
+    worker.join().unwrap();
+    let response = tx.response().unwrap();
+    assert!(response.commands().copied().eq([101, 102, 103]));
+}
+
+#[shoop_test]
 fn actual_record_lengths_wrap_and_cutoff_excludes_later_groups() {
     let (mut tx, mut rx) = immediate::channel(8);
     tx.push(10, &[1, 2]).unwrap();

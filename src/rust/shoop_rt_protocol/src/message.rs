@@ -37,6 +37,7 @@ pub enum DisconnectReason {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum EngineMessage {
+    ImmediateResponse(crate::immediate::Response),
     Snapshot(crate::snapshot::Chunk),
     SnapshotReply(crate::snapshot::Chunk),
     /// Ends a pull response, including when no new snapshot is available.

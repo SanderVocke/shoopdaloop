@@ -2527,6 +2527,10 @@ impl Wire for crate::immediate::Batch {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         w.u64(self.graph)?;
         w.u64(self.topology)?;
+        w.bool(self.deadline.is_some())?;
+        if let Some(deadline) = self.deadline {
+            w.u64(deadline)?;
+        }
         w.u8(self.commands().len() as u8)?;
         for command in self.commands() {
             command.put(w)?;
@@ -2537,6 +2541,7 @@ impl Wire for crate::immediate::Batch {
         use crate::immediate::{Batch, Command, COMMANDS};
         let graph = r.u64()?;
         let topology = r.u64()?;
+        let deadline = if r.bool()? { Some(r.u64()?) } else { None };
         let len = usize::from(r.u8()?);
         if len == 0 || len > COMMANDS {
             return Err(CodecError::Invalid);
@@ -2545,7 +2550,35 @@ impl Wire for crate::immediate::Batch {
         for command in &mut commands[..len] {
             *command = Command::get(r)?;
         }
-        Batch::new(graph, topology, &commands[..len]).ok_or(CodecError::Invalid)
+        let mut batch = Batch::new(graph, topology, &commands[..len]).ok_or(CodecError::Invalid)?;
+        batch.deadline = deadline;
+        Ok(batch)
+    }
+}
+
+impl Wire for crate::immediate::Response {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.bytes(self.header.bytes())?;
+        w.u8(self.records().len() as u8)?;
+        for record in self.records() {
+            w.bytes(record.bytes())?;
+        }
+        Ok(())
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        use crate::immediate::{Command, CommandRecord, Header, Response, COMMANDS};
+        let header =
+            Header::from_bytes(r.bytes(48)?.try_into().unwrap()).ok_or(CodecError::Invalid)?;
+        let count = usize::from(r.u8()?);
+        if count == 0 || count > COMMANDS {
+            return Err(CodecError::Invalid);
+        }
+        let mut records = [CommandRecord::new(Command::Start(0)); COMMANDS];
+        for record in &mut records[..count] {
+            *record = CommandRecord::from_bytes(r.bytes(16)?.try_into().unwrap())
+                .ok_or(CodecError::Invalid)?;
+        }
+        Response::new(header, &records[..count]).ok_or(CodecError::Invalid)
     }
 }
 
@@ -2619,6 +2652,10 @@ impl Wire for ClientMessage {
 impl Wire for EngineMessage {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
+            Self::ImmediateResponse(response) => {
+                w.u8(13)?;
+                response.put(w)
+            }
             Self::SnapshotConfiguration { graph, topology } => {
                 w.u8(10)?;
                 w.u64(*graph)?;
@@ -2698,6 +2735,7 @@ impl Wire for EngineMessage {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            13 => Self::ImmediateResponse(crate::immediate::Response::get(r)?),
             10 => Self::SnapshotConfiguration {
                 graph: r.u64()?,
                 topology: r.u64()?,

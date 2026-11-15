@@ -1234,6 +1234,9 @@ pub trait Backend {
     fn supports_immediate_commands(&self) -> bool {
         false
     }
+    fn immediate_refusals(&self) -> u64 {
+        0
+    }
     /// False means no command was admitted because local transport is full.
     fn submit_immediate_commands(&mut self, _commands: &[BackendImmediateCommand]) -> Result<bool> {
         Err(anyhow!(

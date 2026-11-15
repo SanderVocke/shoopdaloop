@@ -131,15 +131,121 @@ fn configuration_versions_cover_loop_strip_and_bus_address_reuse() {
 }
 
 #[shoop_test]
-fn partial_callbacks_leave_batches_queued_until_the_next_unrendered_quantum() {
+fn partial_callbacks_return_results_before_the_next_snapshot() {
     let mut d = description();
     d.quantum = 16;
     let (mut h, c) = fixture_for(&d);
+    let clock = h.host.endpoint().command_clock();
+    let frame = clock.frame().0;
+    h.lifecycle.clear();
     send(&mut h, c, &[Command::LoopGain(0, 0.25)]);
-    h.run(1, 1);
+    assert_no_heap(|| h.host.process(1)).unwrap();
+    assert_eq!(clock.frame().0, frame);
+    h.pump();
+    let responses: Vec<_> = h
+        .lifecycle
+        .iter()
+        .filter_map(|message| match message {
+            EngineMessage::ImmediateResponse(response) => Some(*response),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(responses.len(), 1);
+    assert_eq!(responses[0].header.frame(), frame);
+    assert_eq!(responses[0].records()[0].code(), immediate::Code::Applied);
     assert_eq!(gain(&mut h), 1.);
     h.run(15, 1);
     assert_eq!(gain(&mut h), 0.25);
+    assert_eq!(clock.frame().0, frame + 16);
+}
+
+#[shoop_test]
+fn optional_deadlines_use_processing_frames_and_return_every_result_in_order() {
+    use immediate::Code;
+    let (mut h, c) = fixture();
+    let clock = h.host.endpoint().command_clock();
+    let frame = clock.frame().0;
+    assert!(frame > 0);
+    h.lifecycle.clear();
+    let groups = [
+        Batch::new(
+            c.0,
+            c.1,
+            &[
+                Command::LoopGain(0, 0.25),
+                Command::LoopGain(u32::MAX, 0.9),
+                Command::LoopBalance(0, 2.0),
+                Command::LoopGain(0, 0.75),
+            ],
+        )
+        .unwrap()
+        .with_deadline(frame),
+        Batch::new(c.0, c.1, &[Command::LoopGain(0, 0.9)])
+            .unwrap()
+            .with_deadline(frame - 1),
+        Batch::new(c.0, c.1, &[Command::LoopBalance(0, 0.5)])
+            .unwrap()
+            .with_deadline(frame + 100),
+        Batch::new(c.0.wrapping_add(1), c.1, &[Command::LoopGain(0, 0.1)]).unwrap(),
+    ];
+    for group in groups {
+        assert_no_heap(|| h.host.client.immediate(group)).unwrap();
+    }
+    assert_eq!(h.host.client.reliable_in_flight(), 0);
+    assert_no_heap(|| h.host.process(1)).unwrap();
+    assert_eq!(clock.frame().0, frame + 1);
+    h.pump();
+    let responses: Vec<_> = h
+        .lifecycle
+        .iter()
+        .filter_map(|message| match message {
+            EngineMessage::ImmediateResponse(response) => Some(*response),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(responses.len(), groups.len());
+    for (response, submitted) in responses.iter().zip(groups) {
+        assert_eq!(response.header.frame(), frame);
+        assert_eq!(response.header.deadline(), submitted.deadline);
+        assert!(response
+            .records()
+            .iter()
+            .map(|record| record.command())
+            .eq(submitted.commands().iter().copied()));
+        assert!(response
+            .records()
+            .iter()
+            .all(|record| record.code() != Code::Unprocessed));
+    }
+    assert_eq!(
+        responses[0]
+            .records()
+            .iter()
+            .map(|r| r.code())
+            .collect::<Vec<_>>(),
+        [
+            Code::Applied,
+            Code::TargetUnavailable,
+            Code::InvalidValue,
+            Code::Applied
+        ]
+    );
+    assert_eq!(responses[1].header.code(), Code::DeadlineMissed);
+    assert_eq!(responses[1].records()[0].code(), Code::DeadlineMissed);
+    assert_eq!(
+        responses[2].records()[0].code(),
+        Code::Applied,
+        "future expiry never delays execution"
+    );
+    assert_eq!(responses[3].header.code(), Code::StaleConfiguration);
+    assert_eq!(gain(&mut h), 0.75);
+    let mut fresh = Harness::new(&description());
+    assert_eq!(fresh.host.endpoint().command_clock().frame().0, 0);
+    assert_eq!(
+        clock.frame().0,
+        frame + 1,
+        "a new engine owns a fresh clock"
+    );
 }
 
 #[shoop_test]
@@ -312,7 +418,7 @@ fn graph_edits_wait_for_groups_preserve_scalars_and_reject_old_configuration() {
     assert_eq!(h.results.get(&edit), Some(&Outcome::Done));
     assert_eq!(gain(&mut h), 0.25);
     assert!(h.telemetry.iter().any(|(_, t)| matches!(t,
-        Telemetry::Immediate(d) if d.control_refused == 1 && d.last_control == 2)));
+        Telemetry::Immediate(d) if d.rt_refused == 1 && d.last_rt == 2)));
     let mut bytes = vec![0; h.host.endpoint().snapshot_capacity()];
     let (_, len) = h.host.endpoint().read_snapshot(&mut bytes).unwrap();
     let header = Header::read(&bytes[..len]).unwrap();
@@ -603,10 +709,33 @@ fn bounded_staging_preserves_order_and_disconnect_does_not_replay_unsent_work() 
     h.run(16, 16);
     h.settle();
     assert_eq!(h.results.get(&edit), Some(&Outcome::Done));
+    assert!(
+        h.lifecycle
+            .iter()
+            .all(|message| !matches!(message, EngineMessage::ImmediateResponse(_))),
+        "responses from the disconnected command session must not reach its replacement"
+    );
     assert_eq!(
         gain(&mut h),
         (FIFO_SINGLETONS - 1) as f32 / 1000.,
         "only RT-published groups survive disconnect"
+    );
+    let current = configuration(&mut h);
+    h.lifecycle.clear();
+    send(&mut h, current, &[Command::LoopGain(0, 0.5)]);
+    h.run(1, 1);
+    let responses: Vec<_> = h
+        .lifecycle
+        .iter()
+        .filter_map(|message| match message {
+            EngineMessage::ImmediateResponse(response) => Some(response),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(responses.len(), 1);
+    assert_eq!(
+        responses[0].records()[0].command(),
+        Command::LoopGain(0, 0.5)
     );
     assert_eq!(
         h.apply(Request::RemoveLoop {
@@ -632,12 +761,18 @@ fn encoded_fragmentation_and_paused_receiver_preserve_bounded_command_delivery()
         taken: Rc<Cell<usize>>,
         paused: Rc<Cell<bool>>,
         closed: Rc<Cell<bool>>,
+        responses: Rc<RefCell<Vec<immediate::Response>>>,
     }
     impl RecordPort for Port {
-        fn post(&mut self, _: &[u8]) -> Result<(), CarrierError> {
+        fn post(&mut self, bytes: &[u8]) -> Result<(), CarrierError> {
             if self.paused.get() {
                 Err(CarrierError::Full)
             } else {
+                if let EngineMessage::ImmediateResponse(response) =
+                    codec::decode_engine(bytes).unwrap()
+                {
+                    self.responses.borrow_mut().push(response);
+                }
                 Ok(())
             }
         }
@@ -676,6 +811,7 @@ fn encoded_fragmentation_and_paused_receiver_preserve_bounded_command_delivery()
     let taken = Rc::new(Cell::new(0));
     let paused = Rc::new(Cell::new(true));
     let closed = Rc::new(Cell::new(false));
+    let responses = Rc::new(RefCell::new(Vec::with_capacity(512)));
     let mut server = RecordServer::new(
         endpoint,
         Port {
@@ -683,6 +819,7 @@ fn encoded_fragmentation_and_paused_receiver_preserve_bounded_command_delivery()
             taken: taken.clone(),
             paused: paused.clone(),
             closed: closed.clone(),
+            responses: responses.clone(),
         },
         out,
     );
@@ -698,7 +835,7 @@ fn encoded_fragmentation_and_paused_receiver_preserve_bounded_command_delivery()
     assert_no_heap(|| server.pump(16));
     assert_no_heap(|| offline.run(16, |_, _| 0.)).unwrap();
     assert_eq!(observed(server.endpoint()), 0.25);
-    let sent = FIFO_SINGLETONS + STAGED_BATCHES + 2;
+    let sent = 2 * FIFO_SINGLETONS + STAGED_BATCHES + 2;
     for i in 0..sent {
         let batch = Batch::new(c.0, c.1, &[Command::LoopGain(0, i as f32 / 1000.)]).unwrap();
         let len = codec::encode_client(&ClientMessage::Immediate(batch), &mut bytes).unwrap();
@@ -708,20 +845,50 @@ fn encoded_fragmentation_and_paused_receiver_preserve_bounded_command_delivery()
     let blocked = taken.get();
     assert_eq!(
         blocked,
-        1 + FIFO_SINGLETONS + STAGED_BATCHES + 1,
-        "initial message, published groups, control staging, and one retained record"
+        FIFO_SINGLETONS + STAGED_BATCHES + 1,
+        "the initial response still reserves space during command intake"
     );
     assert_no_heap(|| server.pump(16));
-    assert_eq!(taken.get(), blocked);
+    assert!(taken.get() <= blocked + 1);
     for _ in 0..5 {
         assert_no_heap(|| offline.run(16, |_, _| 0.)).unwrap();
         assert_no_heap(|| server.pump(16));
     }
+    assert!(
+        taken.get() < sent + 1,
+        "paused result delivery must eventually stop command intake"
+    );
+    paused.set(false);
+    for _ in 0..64 {
+        assert_no_heap(|| server.pump(16));
+        assert_no_heap(|| offline.run(16, |_, _| 0.)).unwrap();
+        assert_no_heap(|| server.pump(16));
+        if responses.borrow().len() == sent + 1 {
+            break;
+        }
+    }
     assert_eq!(observed(server.endpoint()), (sent - 1) as f32 / 1000.);
     assert_eq!(taken.get(), sent + 1);
     assert!(input.borrow().pending().is_empty());
-    paused.set(false);
-    assert_no_heap(|| server.pump(16));
+    let returned = responses.borrow();
+    assert_eq!(returned.len(), sent + 1);
+    for (index, response) in returned.iter().enumerate() {
+        assert_eq!(response.header.deadline(), None);
+        assert_eq!(response.records().len(), 1);
+        assert_eq!(response.records()[0].code(), immediate::Code::Applied);
+        assert_eq!(
+            response.records()[0].command(),
+            Command::LoopGain(
+                0,
+                if index == 0 {
+                    0.25
+                } else {
+                    (index - 1) as f32 / 1000.
+                }
+            )
+        );
+    }
+    drop(returned);
     closed.set(true);
     assert_no_heap(|| server.pump(16));
     assert_eq!(server.failure(), Some(CarrierError::Disconnected));
