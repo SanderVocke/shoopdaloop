@@ -1,862 +1,449 @@
 # RT communication: design and working plan
 
-## Purpose and status
+## Purpose and current status
 
-Move the application toward complete state snapshots and ordered command groups,
-with a simple communication model inside `rt_runtime`. This is the sole working
-document for that migration. It describes the implemented system, the completed
-response, immediate-recording and audio-Grab milestones, and remaining legacy areas.
-
-Snapshot observation, ordinary UI command wiring, and the ordered RT response
-extension are implemented. The command transport supports optional expiry
-deadlines and a reliable response FIFO. Further feature migrations listed below
-remain separate work.
-
-Immediate recording and finish-to-stop/play for ordinary audio loops are now
-implemented end to end. Completed audio Grab and Grab-and-continue with explicit
-Play/Stop finishing are also implemented. Automatic finishing at musical boundaries
-remains a separate, deferred design decision.
-
-Immediate loop control uses one `Transition(loop, mode)` command end to end,
-with Stopped, Playing and Recording as its supported destination modes. The UI's
-Play, Stop and Record actions remain convenient ways to construct that command.
-
-The response extension delivers deadline capability only. All application
-commands on the new path, including recording and Grab commands, must
-continue with no deadline. Assigning deadlines to specific application commands is
-separate future work, outside these completed milestones.
-
-There are two distinct boundaries:
+Move the application toward coherent state snapshots and ordered value commands,
+with simple transport inside `rt_runtime`. This is the sole working document.
+Generic rings and handoffs belong in `rt_runtime`; loop/strip/bus behavior belongs
+in `shoop_rt_engine` and `shoop_loops`. Networking, browser messaging and UI pacing
+remain outside the audio callback. Implementation is Rust-only; straightforward
+future ARM/FPGA mapping is a design aim, not hardware work to implement now.
 
 ```text
-UI/application <-> control <-> real-time processing in the audio callback
+UI/application <-> control <-> RT processing in the audio callback
                        snapshot ring: RT -> control
                        command FIFO: control -> RT
                        response FIFO: RT -> control
 ```
 
-Networking, browser messaging, UI pacing and application workflows belong on the
-control/UI side. Generic rings and handoff mechanisms belong in `rt_runtime`;
-loop, strip and bus semantics belong in `shoop_rt_engine` and `shoop_loops`.
-Implementation is Rust-only. The logical model should map readily to ARM/FPGA
-later; hardware interfaces, drivers and RTL are outside this work.
+**Delivered:** coherent snapshots and push/pull UI delivery; ordinary scalar UI/Lua
+controls; immediate `Transition(loop, mode)`; ordinary audio recording and finishing;
+completed audio Grab and Grab-and-continue with explicit finishing; ordered
+same-callback responses and optional expiry-deadline capability.
 
-## Design rules
+**Next, not implemented:** replace a loop's complete transition plan in one command,
+with an optional immediate action and up to two future musical actions; selectively
+clear either future entry; observe both entries through snapshots. Eligible
+quantized transitions and fixed-cycle audio recording will move to this path.
 
-- Preserve complete publication, FIFO order and grouped execution. RT never
-  waits for an unfinished group or chases commands published after its callback
-  cutoff. Groups run at one processing boundary, in their written order.
-- Commands and snapshots share the same configuration and object identity scheme.
-  Do not introduce another object registry or request-ID system.
-- Trust the application to construct sensible groups. Retain framing, opcode,
-  length and memory-safety checks, without whole-group semantic preflight or
-  rollback. Individual command failures leave their targets unchanged and allow
-  later commands to proceed. Duplicate and opposing commands execute in order.
-- Prepare storage and resources off RT. RT handlers avoid heap allocation,
-  destruction of owning resources, locks, waits and I/O. Return owners reliably
-  to control for retirement or reuse.
-- **Execution is best effort. Do not introduce checks or bookkeeping to prove
-  that callback work is bounded.** Do not add per-command cost estimates,
-  processing-time accounting, callback work quotas or time-budget admission.
-  Pursue reliable audio through efficient handlers and off-thread preparation.
-  The optional deadline check below is an expiry check, not a CPU-work budget.
-- Fixed queue sizes, message limits and complete-group admission remain storage
-  safeguards. The callback-entry cutoff defines which input to consume; it is
-  not a processing-time allowance. Process that published prefix without
-  introducing a separate work quota.
-- The UI keeps drawing with its latest accepted snapshot. Control may maintain
-  dependencies and response bookkeeping without adding pending requests,
-  cancellation tickets or execution reordering to RT.
-- Preserve existing functionality through clearly separated legacy paths until
-  each replacement is implemented. Never silently retry an executed or failed
-  new-style command through the legacy protocol.
+All application commands continue to use `deadline = None`, including the next
+milestone. Musical delays describe loop behavior. Assigning transport expiry
+deadlines to application commands remains separate future work.
 
-## Shared configuration and addressing
+## Design rules and configuration identity
 
-The configuration version is the graph/topology epoch pair already used by
-snapshots. Within one active version, a typed slot address denotes the same object
-incarnation. Creation, removal, replacement or reuse that changes this mapping
-activates a new version. Preparing a candidate must preserve the active mapping.
+- Publish complete snapshots and command groups. RT captures the readable command
+  prefix at callback entry, consumes it in FIFO order and finishes every group it
+  starts in that callback. Later publications wait for the next callback.
+- Trust the application to construct sensible groups. Keep framing, opcode,
+  length, value and memory-safety checks; add no whole-group semantic preflight
+  or rollback. Individual failures preserve their targets and allow later members
+  to proceed. Duplicate/opposing commands execute in order.
+- **Execution is best effort. Do not introduce bookkeeping to prove callback work
+  is bounded:** no processing-time accounting, command-cost estimates, CPU-time
+  admission or callback work quotas. Fixed storage/message limits and the input
+  cutoff remain storage and ordering rules, not processing-time guarantees.
+- Prepare backing storage off RT. Handlers avoid heap allocation, destruction of
+  owning resources, locks, waits and I/O. Return owners reliably for control-side
+  retirement or reuse. Capture/history storage stays opaque to control.
+- Use the existing graph/topology epoch pair and configuration-local typed slots.
+  The same version denotes the same object incarnations. Creation, removal or
+  replacement/reuse that changes the mapping activates a new version; preparing
+  a candidate leaves the active mapping intact. No separate object registry or
+  request-ID system is introduced.
+- Check the configuration once per group. A stale version refuses the whole group;
+  an unavailable target fails individually. Internal ownership handles and
+  snapshot identities may retain generations. Content/history revisions remain
+  necessary: unchanged graph identity does not imply unchanged media.
+- Control retains active/pending configuration descriptions. Snapshots contain
+  live state for that context, without repeating topology. A requested UI graph
+  becomes active only after RT observation and matching context are available.
+  Reject unknown/retired versions; resynchronize new clients before displaying them.
+- Preserve unsupported functionality through clearly separated legacy routes,
+  selected before submission. Never silently retry a submitted command through
+  legacy, split a synchronized action to fit, or replay it after reconnect.
 
-Put the version once in a command-group header. Commands use existing typed
-configuration-local indices; internal ownership handles and snapshot identities
-may retain their generations. RT checks the header once. A stale version skips
-the whole group, without retargeting it or waiting for another configuration.
-Safe lookup handles an unavailable address as an individual failure.
+## Implemented snapshots
 
-Control retains active and pending configuration descriptions. Snapshots contain
-live state for a known configuration, without repeating the topology. A pending
-UI graph is distinct from the graph actually running. Activate the displayed
-configuration only when RT observation confirms it and matching context is
-available. Reject unknown versions and delayed observations of retired versions.
-New clients obtain configuration context through resynchronization.
+RT captures after same-frame settlement, before the next audio interval, at the
+first settled tick of every callback. Buffer-only callbacks retain the preceding
+publication. UI delivery settings never reduce RT capture frequency.
 
-## Implemented snapshot path
-
-RT captures coherent state after changes and same-frame settlement, before
-processing the next audio interval. Capture occurs at the first settled processing
-tick of every audio callback. Callbacks that only buffer a partial quantum retain
-the previous publication. UI delivery settings never reduce RT capture frequency.
-
-| State | Included fields |
+| State | Included information |
 | --- | --- |
-| Header | Schema, capture frame, graph/topology epochs, object counts and payload length |
-| Ordinary loops | Identity/generation, mode and pending transition, recording flags, cursor, length, gain, balance, repeat-sync, content/timing revisions |
-| Loop media metadata | Audio/MIDI lengths and channel playback windows, gain, offsets, alignment and preplay; no media bytes or owning leases |
-| Loop meters | Per-channel peaks over the interval since the preceding capture |
-| Strips | Input/output gain and balance, output mute, monitoring policy and demand, peaks, MIDI activity and latest short input message |
-| Buses | Identity/generation, gain, balance, mute and per-channel peaks |
+| Header | Schema, capture frame, graph/topology epochs, counts and payload length |
+| Loops | Identity/generation, mode, nearest pending transition/countdown, recording flags, cursor, length, gain, balance, repeat-sync, content/timing revisions |
+| Media metadata | Audio/MIDI lengths and channel windows, gain, offsets, alignment and preplay; no media bytes or owning leases |
+| Meters | Per-channel loop/strip/bus peaks; independent accumulators preserve legacy readers |
+| Strips | Input/output gain and balance, output mute, monitoring policy/demand, MIDI activity and latest short input message |
+| Buses | Identity/generation, gain, balance and mute |
 
-Controls describe applied targets, while ramps remain processor state. Meters
-use independent accumulators so legacy readers cannot consume snapshot data.
+Control values describe applied targets; ramps remain processor state.
 
-The internal ring has ten preallocated slots of equal payload capacity. Capacity
-is selected from prepared session limits; each publication uses an actual length.
-Control rejects configurations that cannot fit before activation. There is no
-live resizing, allocation during capture or truncated successful snapshot.
-A failed capture leaves the last complete publication available and reports an
-error.
+The internal ring contains ten preallocated slots of equal payload capacity,
+chosen from prepared session limits. Each publication has an actual length.
+Reject a configuration that cannot fit before activation; do not resize live or
+publish truncated success. Failed capture preserves the last complete snapshot.
 
-Only RT writes slot metadata and payload. It marks a slot in progress, fills it,
-marks it complete and advertises the latest complete sequence. It may overwrite
-old publications and never waits for control. This deliberately loses intermediate
-state; it is not a reliable event queue.
+Only RT writes slots. It marks a slot in progress, fills it, marks it complete and
+advertises its sequence. RT can overwrite old publications and never waits for
+control. Control reads the sequence, copies into private storage, then rereads it;
+only an unchanged complete sequence is accepted. Otherwise it keeps its last copy.
+No finite ring guarantees non-overlap if control pauses indefinitely. Rust uses
+atomic payload words and ordered metadata: sequence validation alone cannot make
+concurrent ordinary-memory copying safe. Sequence exhaustion stops publication
+with an error instead of wrapping ambiguously.
 
-Control reads the sequence, copies into private storage, then reads the sequence
-again. It accepts only a matching complete publication and otherwise keeps its
-previous accepted copy. A finite number of slots cannot prevent overlap if
-control pauses indefinitely. The Rust implementation uses atomic payload words
-and ordered metadata accesses; sequence validation alone would not make a
-concurrent ordinary-memory copy safe. Sequence exhaustion reports an error and
-stops publication while retaining the last snapshot; sequences must not wrap
-into an ambiguous read.
+Control validates configuration before updating its timing cache or forwarding
+state. The UI assembles and validates a complete publication before applying it
+to existing objects. Incomplete, unknown or obsolete publications never partially
+change the display. Redundant timing queries and the legacy display selector are
+removed. Snapshot age remains observable.
 
-Control validates configuration context before updating its timing cache or
-forwarding state. The UI assembles and validates a complete publication before
-applying it to existing objects. Incomplete, obsolete or unknown-configuration
-data never partially changes the display. Redundant timing queries and the
-temporary legacy display selector have been removed.
+Every carrier supports both delivery modes:
 
-Both delivery modes are available on every carrier:
+- Native in-process defaults to pull: serve the newest complete snapshot without
+  waiting for RT, with at most one adapter pull outstanding.
+- Browser/network delivery defaults to push at 60 Hz. Delivery is configurable;
+  control supersedes obsolete undelivered state and avoids catch-up bursts.
 
-- Native in-process defaults to pull. Control serves the newest complete snapshot
-  without waiting for RT. The adapter permits one outstanding pull and the UI
-  keeps drawing if no newer snapshot is available.
-- Browser and encoded/network carriers default to push at 60 Hz. Delivery can be
-  configured or switched at runtime. Control forwards recent complete state,
-  supersedes obsolete undelivered push data and avoids catch-up bursts.
+The UI draws on its own schedule using its latest accepted state. Network/browser
+pulls remain asynchronous. Policy changes preserve complete assembly. Delivery
+requests/settings stay outside the RT command FIFO.
 
-Network/browser pulls remain asynchronous. A delivery-policy change preserves
-whole-publication assembly. Snapshot requests and delivery settings stay outside
-the RT command FIFO. Snapshot age remains observable.
+## Implemented commands, responses and clock
 
-## Implemented command path and UI integration
+Control publishes a whole group: one header followed by its actual commands.
+RT executes directly from readable FIFO records, including wrapping. Each command
+and response FIFO has 256 records. Application groups contain 1–32 commands within
+the 1,280-byte carrier envelope; control can stage four waiting groups and the UI
+service queues up to 256 messages. Independent groups can execute in one callback
+without waiting for an intervening snapshot. Thirty synchronized starts use one
+group and one processing frame.
 
-The current command FIFO stores fixed-size records with variable-length groups:
-one configuration/count header followed by the actual commands. Control reserves
-and publishes a whole group at once. RT captures the published record count at
-callback entry, executes directly from readable records across wrapping and
-releases each group afterward. Execution occurs before the callback's first
-unrendered processing quantum, or before return at the next unrendered frame if
-the callback only buffers audio. Every captured group produces its complete
-response in that callback. Already rendered audio is unchanged; snapshots still
-publish only at settled processing ticks.
+Every received group is attempted or explicitly refused, with its complete ordered
+response published before that callback returns. Execution precedes its first
+unrendered quantum; buffer-only callbacks apply at the next unrendered frame.
+Already rendered audio is unchanged. Snapshot capture still requires a settled
+tick. Tick setup failure produces `CannotApply`; an invalid host block is rejected
+before capturing a command prefix. RT never retains a transport command for a
+later callback, retry, musical event or another group's arrival.
 
-Each command and response FIFO contains 256 records. Each application group
-contains 1–32 commands and fits the 1,280-byte transport envelope. Control can
-stage four waiting groups; the UI service has an ordered queue of up to 256
-messages. These are existing
-capacity limits, not callback processing-time guarantees.
+### Records and reliable results
 
-Ordinary UI controls and eligible Lua operations use the new path automatically:
+| Value | Explicit little-endian layout |
+| --- | --- |
+| Header, 48 bytes | Five `u64`: graph, topology, deadline-present, deadline, attempt frame; then `u32` result and reserved zero `u32` |
+| Command/result, 32 bytes | Eight `u32`: opcode, target, five argument words, result at byte offset 28 |
 
-- Loop gain and balance.
-- Strip input/output gain and balance, and output mute.
-- Bus gain, balance and mute.
-- Immediate transitions to Recording, Playing and Stopped for ordinary audio-only
-  primitive loops on direct, unprocessed strips. Play/Stop finish an active take in RT,
-  without relying on a fresh UI mode. Selected actions and solo stops use one
-  complete group when they fit.
-- Completed audio Grab gestures in sync mode and explicit history adoption left
-  Stopped, Playing or Recording. Grab-and-continue is finished by new-path Play/Stop.
-  Solo Grab stops supported siblings in the same group.
+Input results are `Unprocessed`; RT copies commands and fills result codes.
+The generic FIFO supplies counts/framing; its Rust enum layout is not a hardware
+ABI. Current RT protocol version is 34; UI/application version is 39. Transition
+opcode 2 currently carries Stopped (0), Playing (1) or Recording (2) in its first
+argument; the others are zero. Grab/window and Grab/gesture use opcodes 13 and 14.
+Unknown modes, noncanonical fields and removed Stop/Record opcodes are rejected.
+Maximum current Grab requests use 821 bytes without a deadline (829 with one);
+maximum responses use 1,076 bytes, within the carrier envelope.
 
-Immediate starts/Record retain their existing restrictions on pending musical
-work, repeat-sync, MIDI and processed/composite behavior. Grab has separate
-eligibility that preserves existing primitive repeat-sync behavior. Automatic
-finishes and fixed-cycle gestures retain their legacy route. A synchronized action
-such as starting 30 loops reaches RT as one complete group. Independent singleton groups
-may execute in the same callback; they need no intervening snapshot.
+Results include `Applied` (also successful no-ops), `DeadlineMissed`,
+`StaleConfiguration`, `TargetUnavailable`, `InvalidValue`, `Unsupported`,
+`CannotApply`, `CaptureUnavailable` and `HistoryUnavailable`. Header `Applied`
+means header checks passed; each member has its own result. Completed responses
+contain no `Unprocessed`. Feature-specific result codes may be added.
 
-### Loop transition contract
+Control reserves response space for the entire group before publishing input,
+and retains that reservation until it consumes the response. Releasing command
+records does not release response credit. RT never waits for a response reader,
+drops results or needs a separate whole-group buffer. Exhausted storage creates
+control-side backpressure while audio continues. FIFO order provides result
+correspondence without request IDs or cancellation tickets.
 
-`Transition(loop, mode)` carries the existing configuration-local loop address
-and a destination mode. It replaces separate Start, Stop and Record command
-variants in the UI protocol, shared backend interface, RT adapter and RT protocol.
-Grab uses the same destination-mode enum. Supported modes are deliberately limited
-to Stopped, Playing and Recording; this does not enable other loop modes.
+Control forwards responses reliably and the backend drains them automatically.
+`RtBackend::set_immediate_response_handler` optionally observes them while pumping.
+Ordinary UI commands remain fire-and-forget; snapshots drive display and aggregate
+failure notices report problems without UI operation IDs. A response can precede
+the snapshot covering its frame. Control waits for fresh matching observation
+only when a dependent workflow requires it.
 
-- **Playing:** start or restart loaded audio from the beginning. If recording,
-  first seal the captured take and select it for playback as one action.
-- **Recording:** acquire ready capture resources and begin a new take. If already
-  recording, succeed without replacing or restarting the active take.
-- **Stopped:** finish an active recording into completed media, then stop.
-  Stopping an already stopped loop succeeds without changing it.
+### Processing clock and expiry
 
-RT chooses the required behavior from its current state. A transition is not a
-raw assignment to a mode field: capture acquisition, finishing, media ownership
-and existing precondition checks still run in the established handlers. Playing
-an empty active take fails individually and leaves it recording. Application
-groups still execute immediately with no deadline. Future planned transitions,
-musical scheduling, seeking and additional modes remain separate work.
+`ControlEndpoint::command_clock()` atomically exposes the next unrendered
+processing frame, published at callback entry/exit independently of polling.
+Responses stamp the attempt frame on that same snapshot timeline. The host's
+consumed-frame counter can differ during quantum buffering; loop seeking does
+not change this clock. Reconnecting preserves it; a fresh engine resets it.
 
-The service advertises direct audio transport eligibility from observed state,
-including ordinary Recording. Empty-loop playback is decided by RT rather than
-by a stale UI length. Unsupported,
-mixed, scheduled or oversized UI actions retain their entire existing route,
-chosen before submission. A group is never silently split to make it fit. Track
-and bus decibel controls are converted to linear amplitude by the backend adapter.
+An optional group deadline is an inclusive latest execution frame. RT skips an
+already-late group with `DeadlineMissed` before attempting members. A future
+deadline never delays execution or schedules work. It applies to the synchronous
+command step, not the eventual end of a take or musical plan. The atomic clock
+offers observation, not a delivery-latency guarantee or a CPU reservation.
 
-Existing application commands have no deadlines. RT returns individual results
-in order; ordinary UI actions remain fire-and-forget. Snapshots show resulting
-state, and diagnostics count failures. `RtBackend::immediate_group`
-and the shared backend immediate interface do not advance legacy mutation cursors
-or reserve legacy outcome credits. Explicit tracked client commands and ordinary
-backend mutation methods remain available for compatibility and other workflows.
+**All application groups use `deadline = None`.** Explicit expiry is exercised
+only by synthetic transport checks. No default timeouts, automatic deadlines,
+command-specific policies or UI deadline settings belong to this work.
 
-Local acceptance does not certify RT execution. Full transport retains complete
-groups and later UI work in order, propagating backpressure. On disconnect,
-discard connection-owned unsent work; work already accepted by the backend may
-still execute. Never replay automatically after reconnect.
+### Ordering, legacy handoff and disconnect
 
-Control preserves order across new and legacy paths. Immediate work waits for a
-preceding legacy prefix to settle. Later legacy work waits for ordered responses
-and a configuration-matched snapshot covering the execution frame. Control
-reconciles scalar values before releasing graph/media work, so a later graph edit
-cannot restore old controls. Successful legacy completions also wait for fresh
-observation where needed; failures and disconnect outcomes remain available.
+Local admission does not prove RT execution. Backpressure preserves complete
+groups and later UI work in order. New-path calls do not advance legacy mutation
+cursors or reserve legacy outcome credits. Earlier legacy work must settle before
+handoff; later graph/media work waits for ordered results and an appropriate
+snapshot. Reconcile applied scalar values so a later graph edit cannot restore
+old controls. Preserve legacy failure and disconnect outcomes.
+
+Disconnect drops connection-owned unsent staging and marks the exact outstanding
+response prefix for discard. Published work may execute and still releases its
+response reservations. Active capture can continue. New connections receive no
+replay and no old results.
+
+## Implemented loop, recording and Grab behavior
+
+`Transition(loop, mode)` is used throughout UI, shared backend, adapter and RT;
+Grab shares its destination-mode enum. Eligible UI/Lua controls also include loop
+gain/balance, strip input/output gain/balance and output mute, and bus gain/balance/
+mute. The adapter converts UI decibels to linear amplitude. Selected/solo actions
+use a complete group when supported and within capacity.
+
+- **Playing:** start/restart loaded audio at zero, or seal an active take and
+  select it for playback as one action.
+- **Recording:** acquire ready capture storage and begin recording. Repeating it
+  while recording succeeds without restarting or replacing the take.
+- **Stopped:** seal active capture and stop. Repeated Stop succeeds harmlessly.
+
+RT chooses behavior from its actual state, including before a fresh UI snapshot.
+Playing an empty active take fails and preserves recording; Stop can seal it.
+These are capture-aware actions, not assignments to a public mode field.
+
+Control prepares capacity and backing pools off RT and handles final reclamation.
+It does not manage pages, write positions or per-take preparation. RT acquires
+existing capture banks and media/finish reservations before changing state;
+ordinary finishing uses reserved resources. No per-click prepare/status/commit
+exchange is needed. Acquisition failure preserves previous state/content. Capture
+exhaustion retains an observable, exportable incomplete prefix. Input gain,
+automatic/manual monitoring, overlapping demand and older readers/exports remain
+valid. Media bytes and ownership use existing reliable paths.
+
+`LoopPlanner::grab_immediate` chooses history using current RT phase, including
+natural wraps and inherited sync pulses. It protects shared pages, installs a
+completed take or attaches growing capture in that callback, with no missing or
+duplicated samples at the history/live join. Explicit Playing/Stopped finishes
+both capture-bank takes and history-backed growing takes. Missing/expired/gapped
+history or unavailable storage preserves the old take; startup padding retains
+its existing rules. Grab against an already Recording target fails individually
+and preserves its prefix. Successful continuing capture retains finish resources
+and publishes its usable prefix on exhaustion.
+
+Grab has separate eligibility from unsynced playback and preserves supported
+primitive repeat-sync behavior. Current immediate transitions restrict pending
+musical work, repeat-sync, MIDI and processed/composite modes. Until the next
+milestone, quantized/automatic-finish/fixed-cycle gestures retain their whole legacy
+route. Unsupported, mixed or oversized actions remain available through legacy.
 
 ## Remaining migration areas
 
-| Area | Why it still uses legacy communication |
+| Area | Status and remaining difficulty |
 | --- | --- |
-| Compatibility and larger/mixed actions | Tracked APIs support existing workflows and compatibility backends. Actions exceeding the current group envelope or including unsupported members retain their whole route. |
-| Other scalar controls | Monitoring policy, playback defaults, smoothing and some effect parameters need explicit command semantics and failure behavior. Some are straightforward additions. |
-| Graph and processor lifecycle | Creation, removal, routing and replacement require preparation, activation, configuration changes and safe retirement of displaced owners. |
-| Media and persistence | Loading, exporting and saving need reliable bulk delivery, content revisions, stable read cuts and resource lifetimes. Snapshots carry no media bytes. |
-| Advanced Grab | Completed audio grabs and manual continuation use the new path. Grabs promising automatic musical-boundary finishes, MIDI/processed/composite variants, active-recording targets and unsupported mixed/oversized gestures retain their existing routes. |
-| Advanced recording and capture | Immediate ordinary audio recording and finishing use the new path. Replacing, automatic musical-boundary finishes, quantized/armed/fixed-cycle/processed/MIDI recording and clearing content retain legacy semantics and ownership workflows. |
-| Musical timing | Quantization, repeat-sync, seeking and timing edits require exact musical behavior and interaction with existing processor state. |
-| Composites, processed playback and MIDI | Nested programs, dry/wet processing, processor-state restoration and MIDI note/state cleanup need feature-specific behavior. |
-| Additional observation | Composite/plugin state, processor metadata, preview, profiling, memory and engine health retain separate streams. Decide which need coherent snapshots and which remain independent. |
-| Setup and resynchronization | Capability negotiation and structural context are needed before interpreting live snapshots; connection recovery must avoid replay. |
+| Musical plans | Next milestone below. Today delayed transitions and automatic finishes retain legacy scheduling; seeking, repeat-sync changes and timing edits also need precise semantics. |
+| Advanced capture/Grab | Replacing, MIDI, processed/composite capture, active-recording Grab targets, clearing content and unsupported automatic Grab gestures retain legacy ownership/behavior. |
+| Graph/processors | Creation, routing, replacement and removal need preparation, versioned activation and retirement of displaced owners. |
+| Media/persistence | Loading, exporting and saving need reliable bulk delivery, stable cuts, content revisions and resource lifetimes. Snapshots carry no media bytes. |
+| Composites/processed playback/MIDI | Nested programs, dry/wet behavior, processor restoration and MIDI note/state cleanup need feature-specific migration. |
+| Other controls/observation | Monitoring policy, playback defaults, smoothing/effect controls; composite/plugin state, preview, profiling, memory and health need suitable semantics/streams. |
+| Compatibility/setup | Tracked APIs, larger/mixed gestures, capability negotiation and resynchronization remain supported; preserve complete routes and avoid replay. |
 
-Ownership return is a separate reliable responsibility. Graph plans, processors,
-media buffers and other owners must eventually reach control for reuse or
-destruction. Neither lossy snapshots nor byte-copying an owning Rust object can
-provide that lifetime protocol. Preserve the existing return paths until their
-replacements are designed.
+Ownership return remains reliable and separate from lossy snapshots. Never copy
+an owning Rust object as a value packet or remove its return path before a safe
+replacement exists.
 
-## Implemented ordered command responses
-
-### Clock and expiry deadlines
-
-`ControlEndpoint::command_clock()` returns an atomic read handle for the next
-unrendered processing frame. RT publishes it at callback entry and after processing,
-independently of control polling and snapshot delivery. Responses record the frame
-at which the group was attempted. These use the same `Frame` timeline as snapshots.
-
-The host's existing `next_frame` tracks consumed callback frames and can differ
-while buffering a quantum, so it cannot substitute for this processing-frame
-observation. A buffer-only callback can leave the processing clock unchanged.
-Loop seeks do not change it. A fresh engine creates fresh FIFOs and a fresh clock;
-reconnecting to the same engine preserves the clock and never replays queued input.
-
-A group header may carry an optional latest execution frame. At its command
-boundary, RT checks configuration and deadline before attempting any member.
-Execution at or before the deadline is permitted. A later boundary skips the
-whole group with `DeadlineMissed`; there are no partial deadline refusals within
-a group. A future deadline never delays execution, reorders groups or creates a
-pending command. A deadline applies to the synchronous command step, not the
-eventual completion of a recording or musical program.
-
-This is a best-effort expiry policy. An atomic read gives the latest published
-frame, not guaranteed delivery latency. A stopped audio clock cannot produce
-callback responses. There is no per-command timer, execution-cost check or
-attempt to reserve CPU time against a deadline.
-
-Do not introduce command-specific deadline policies, default timeouts, automatic
-deadline assignment or UI deadline settings in this step. Existing production
-callers must send `deadline = None`. Exercise explicit deadlines using synthetic
-transport test groups; these tests do not establish application policies. Existing
-legacy command behavior remains unchanged.
-
-### Records and response publication
-
-The internal value layouts are explicit and little-endian:
-
-| Value | Layout |
-| --- | --- |
-| `Header`, 48 bytes | Five `u64` words: graph, topology, deadline-present, deadline, attempt frame; then a `u32` header result and a reserved zero `u32` |
-| `CommandRecord`, 32 bytes | Eight `u32` words: opcode, configuration-local target, five argument words, response code |
-
-Input result fields are `Unprocessed`. RT overwrites them in the response copy.
-The generic ring supplies group counts and framing; its Rust enum layout is not
-a hardware ABI. The RT carrier protocol is version 34; the UI/application protocol
-is version 39. Existing production batch constructors default to no deadline.
-
-Scalar commands use the first argument word and zero the remaining four.
-Transition opcode 2 uses that first argument for the destination mode: Stopped
-(0), Playing (1) or Recording (2). Remaining argument words are zero. Unknown
-modes and the removed Stop/Record opcodes 3 and 12 are rejected by decoding;
-there is no compatibility fallback within the new protocol version. Grab
-opcode 13 uses sync address, reverse-start cycle, cycle count, go-to cycle and
-flags. Flag bits 0–3 mark those four fields present; bits 4–5 select Stopped (0),
-Playing (1) or Recording (2). Absent fields are zero. Completed gesture opcode 14
-uses sync address, optional target address, cycle count, play-after flag and
-target-present flag. Result codes occupy the last word, at byte offset 28.
-Maximum 32-Grab requests occupy 821 bytes without a deadline (829 with one);
-maximum responses occupy 1,076 bytes. Both fit the existing 1,280-byte envelope.
-
-The preallocated SPSC response FIFO sits alongside the command FIFO inside
-`rt_runtime`. RT streams command copies into reserved response records with
-their result codes, preserving input order and group boundaries. Only the complete
-response group is published. Control never sees a partial response, and RT needs
-no separate whole-group buffer.
-
-Every consumed group produces exactly one response group, including stale
-configurations, expired groups and individual failures. Preserve the input header
-and record the attempt's processing frame so control can interpret the results.
-The result codes are `Applied` (including successful no-ops), `DeadlineMissed`,
-`StaleConfiguration`, `TargetUnavailable`, `InvalidValue`, `Unsupported` and
-`CannotApply`, plus `CaptureUnavailable` when storage cannot be acquired and
-`HistoryUnavailable` for missing, expired or discontinuous history.
-`Unprocessed` never appears in a completed response. Header
-`Applied` means its checks passed; individual member results determine which
-commands succeeded. More specific codes can be added as features migrate.
-
-There are no request IDs, cancellation tickets or reordered results. FIFO order
-provides correspondence. Control may track outstanding groups and dependencies;
-RT only consumes commands, attempts them and publishes their results. Ordinary
-UI actions can remain fire-and-forget, with control draining responses and
-snapshots providing display state. The extension does not require forwarding an
-individual reply to the UI for every action.
-
-Control forwards `EngineMessage::ImmediateResponse` reliably. The backend drains
-these automatically. Callers that need each result can install
-`RtBackend::set_immediate_response_handler`; it runs on control while pumping,
-including during configuration resynchronization. Aggregate RT and local
-admission failures feed the existing UI notice, without creating UI operation IDs.
-
-### Same-callback execution
-
-RT receives a group for execution when it belongs to the published prefix captured
-at callback entry. It must attempt or explicitly refuse that group and publish
-its complete response before the callback returns. Later publications wait for
-the next callback. Every started group finishes in that callback; RT never
-retains a command to retry or match with later input.
-
-Buffer-only callbacks apply their prefix at the next unrendered frame before
-returning. Fresh state is captured when processing next reaches a settled tick;
-commands do not modify previously rendered audio. If tick setup fails before
-command application, the prefix receives `CannotApply` results. Host blocks are
-validated before capturing a command prefix, so a rejected block does not receive
-groups for execution. There is no silent deferral or success for an unapplied step.
-
-### Response capacity and backpressure
-
-Control reserves enough response capacity for a whole group before publishing
-its commands. Account for response headers and every possible result record.
-Keep that reservation until control consumes the response; freeing command FIFO
-space does not release response credit.
-
-This makes response space available even if control pauses. RT never waits for
-space, drops a response or executes a group whose response cannot be stored.
-When capacity is exhausted, control stops admitting groups and propagates
-backpressure while audio continues. Reservation/accounting belongs on control;
-RT writes into the guaranteed space using normal FIFO ownership rules.
-
-On disconnect, control drops unsent staging and marks the exact outstanding
-response prefix for discard. Already RT-published commands may execute, and their
-responses still release reservations, but they are not exposed to the replacement
-connection. Fresh submissions retain FIFO correspondence without replay.
-
-### Advanced workflows and observation
-
-A response confirms the synchronous step represented by its code. For example,
-starting recording can complete now while recording continues; arming a prepared
-musical program can return an explicit armed result while snapshots later show
-playback beginning. Do not describe arming as completion of a future action.
-
-Prepare graph, processor and media resources on control, then use commands to
-activate, swap or freeze them. Keep musical behavior in processor/program state,
-without a future-deadline scheduler in the transport. Define ownership transfer
-and reliable retirement explicitly when adding handles or result data. Those
-feature migrations are subsequent work, not delivered by the response FIFO alone.
-
-Snapshots remain the source of current display state. A response can arrive before
-a snapshot covering its frame; control must wait for matching fresh observation
-when a dependent workflow needs that state. Preserve ordering and reconciliation
-with legacy work while migrating dependencies to the new results.
-
-## Completed milestone: audio Grab and continued recording
+## Next milestone: complete loop transition plans
 
 ### Goal and scope
 
-Move ordinary audio Grab on direct, unprocessed primitive loops to the new
-UI/control/RT command and response path. Include both completed grabs and grabs
-that immediately continue recording. Continued recording is not a reason to
-exclude a command: its synchronous work is complete when the history is attached
-and ongoing capture has started. Reuse existing history/window, shared-audio and
-growing-take machinery where suitable.
+Extend the new interface for ordinary audio-only primitive loops on direct,
+unprocessed strips: install up to two future musical transitions together, replace
+the complete plan, clear individual entries or both, and observe the complete
+plan through snapshots. Wire eligible quantized Play/Stop/Record and fixed-cycle
+recording through it. Scheduled finishing must handle ordinary recordings and
+history-backed growing takes through the existing capture machinery.
 
-Support completed takes left Stopped or Playing at the requested position, and
-grabbed prefixes left Recording until a later explicit Play or Stop. Preserve
-existing cycle selection and phase behavior for eligible actions. In particular,
-include eligible explicit `AdoptRingbuffers` operations with an after-mode of
-Stopped, Playing or Recording, alongside completed Grab gestures.
+This milestone does not migrate processed/MIDI/composite modes, redesign Grab
+gestures or add transport scheduling. Existing unsupported actions keep their
+whole legacy route. The legacy engine permits eight planned transitions per loop;
+the new interface initially carries two. Preserve longer legacy plans and
+incremental APIs that cannot safely express full replacement; do not truncate
+them or claim their migration is complete. Deliberate replacement/clearing must
+also disarm old legacy follow-ups for that target, with reliable retirement;
+they must not fire later over a new plan. Leave other targets' plans intact.
 
-**Automatic finishing at a future musical boundary is outside this milestone.**
-That decision is deferred for both ordinary recording and Grab-and-continue.
-Do not implement a finish rule, delayed follow-up request, scheduled transport
-command or application deadline as part of this work. Existing gestures that
-require such a finish retain their complete legacy route and existing behavior;
-never silently turn them into indefinite recording. MIDI, processed/dry-wet,
-composite and replacing variants also remain on their existing routes.
+### Command contract
 
-### Command meaning and execution
+Extend the logical transition value to:
 
-Use one logical Grab operation with a requested history window, optional sync or
-target references, playback position and after-mode: Stopped, Playing or Recording.
-Exact opcodes and record extensions are implementation choices. Use a bounded,
-pointer-free value format with the existing configuration version and typed
-addresses. Do not add a separate object registry or input-transaction identifier.
-All application groups continue to use `deadline = None`.
+```text
+Transition {
+    loop,
+    now: optional mode,
+    first: optional (mode, sync delay),
+    second: optional (mode, sync delay),
+}
+ClearPlannedTransitions(loop, First | Second | Both)
+```
 
-At the existing RT command point, in FIFO order:
+Modes remain Stopped, Playing and Recording. `now = None` leaves current playback,
+cursor and capture untouched. Every successful Transition replaces the entire
+future plan; omitted entries remove the corresponding old actions. An immediate
+transition without future entries therefore clears the old plan. A Transition
+with no immediate or future actions cancels the plan without stopping audio.
 
-1. Resolve the source and cycle/phase selection from current RT state. The UI
-   supplies intent; its possibly stale snapshot is not the authority for the cut.
-   A group of grabs uses the same processing frame; each member observes preceding
-   command effects in the group's written order.
-2. Protect the selected history audio from overwrite using existing page-sharing
-   and ownership mechanisms. Acquire the metadata and handles needed to install
-   the take while keeping previous takes and existing readers valid.
-3. For Stopped or Playing, install a completed take and the requested mode/position
-   before reporting success. Preserve established playback-window semantics.
-4. For Recording, attach the grabbed prefix to a writable growing take, reserve
-   first-append and finish resources, and enter Recording before reporting success.
-   Append new input from that cut as processing continues, starting with the next
-   unrendered block. The join must have no missing or duplicated samples and all
-   audio channels must agree on the cut.
+The immediate action and replacement are one command. If the immediate action
+fails, retain the old state/content and old plan. Installing future actions is not
+a promise that their later resource-dependent execution will succeed. Preserve
+per-command coherence without adding group-wide preflight or rollback.
 
-Return a meaningful result in that callback, including buffer-only callbacks.
-Changes affect the next unrendered processing block and never rewrite rendered
-samples. Success for Grab-and-continue means capture is running with its prefix
-attached; it does not claim that the eventual take has finished. No command is
-retained pending a later callback, preparation result or musical event.
+The five argument words can hold `now mode`, `first mode/delay`, `second mode/delay`
+within the existing 32-byte record. Define canonical absent-value encoding and
+update protocol versions; there is no new handle or request identity. Thirty
+complete two-action plans still fit one 30-command group and the current envelope.
+Use only ordinary format/safety checks; trust the app to supply sensible plans.
 
-The existing new-path Play/Stop handlers must also finalize history-backed growing
-captures, as well as ordinary capture-bank recordings. Finish-to-Playing seals
-and selects the take as one operation. RT chooses the correct finish behavior
-from its actual capture state, so Play/Stop before a fresh UI snapshot still work.
-Snapshot lengths, positions, modes and content revisions describe the resulting
-take; audio bytes and owning leases remain on their existing media/export paths.
+### Musical timing and execution
 
-### Storage, failure and preservation rules
+- Both future points count actual sync pulses from the same RT installation
+  boundary. Keep the existing skip convention: 0 means the next eligible pulse,
+  1 the second, and so on. The second delay is relative to installation, not to
+  the first action. Thus Playing at pulse two then Stopped four cycles later is
+  `first = (Playing, 1)`, `second = (Stopped, 5)`.
+- Keep pending musical state in the loop/planner. Consume and answer the command
+  in its receiving callback, including buffer-only callbacks; do not retain a
+  transport group or allocate a legacy request lifetime until a future event.
+  Installation success reports its synchronous meaning, e.g. `Scheduled`.
+  Future execution/failure is observed through snapshots/diagnostics, without an
+  unsolicited response that breaks FIFO correspondence.
+- Apply the callback's command prefix before musical settlement at its next
+  unrendered frame. A pulse resolved there counts consistently for installed
+  entries; cancellation before settlement can prevent a due action. Already
+  executed actions are never undone. Preserve alignment across grouped loops.
+- Use existing sync-source/self-clock behavior and meaningful pulse boundaries;
+  do not translate cycle delays into audio-clock deadlines or wall-clock timers.
+  Preserve supported no-sync UI behavior through the appropriate route. A paused
+  source pauses its countdown; target removal or a changed sync source must
+  invalidate the affected plan safely. An unrelated graph edit must not retarget it.
+- Immediate Playing keeps its current restart-at-zero behavior. Scheduled Playing
+  preserves legacy position when already playing; finishing recording into Playing
+  still seals and selects the take from its beginning. Recording repeats retain
+  the active take; scheduled Stop/Play performs real capture finalization.
+- Acquire capture storage and update monitoring through existing RT/planner
+  resource operations. On a failed future action, preserve valid current state/
+  media and clear that loop's remaining plan, so a failed recording start cannot
+  later play an older take through its planned finish. Other loops and later
+  command-group members remain independent. Preserve incomplete-prefix handling.
 
-- History retention and recording storage stay opaque to control. Control prepares
-  backing capacity outside the callback and handles final retirement. RT selects
-  history pages, attaches growing capture and manages write positions internally.
-  Do not add a per-click begin/prepare/status/commit exchange or readiness polling.
-- Reuse shared audio pages instead of introducing a copy of the whole audio take
-  during the callback. Keep ownership, history-generation, content-revision and
-  source-gap checks needed to prevent expired or unrelated audio being adopted.
-  An unchanged graph version does not imply unchanged history or loop content.
-- Acquire what is needed before replacing a loop's current content or capture.
-  If history, a valid window or ready storage is unavailable, fail that member
-  immediately and preserve its previous content/state, including any active
-  recording prefix. Release temporary ownership acquired by the failed attempt.
-- Preserve existing startup-padding rules; do not mask expired history or a later
-  source gap by inventing silence. Define repeated Grab and active-recording
-  target behavior explicitly, consistent with existing ordinary Grab semantics.
-- Groups share an execution frame, not an all-or-nothing transaction. Each Grab
-  succeeds or fails independently and later members still execute. Do not retain
-  the global input-transaction lock, group-wide witnesses, semantic preflight or
-  rollback on the new path. Per-command coherent acquisition remains necessary.
-- Preserve input gain, monitoring intent, overlapping recording demand and existing
-  readers/exports. After a successful continuing grab, ordinary finishing must
-  use already reserved resources. If subsequent capture runs out of storage,
-  preserve the grabbed-and-recorded prefix, stop safely and mark it incomplete.
-  Spontaneous capture errors use snapshots/diagnostics, never unsolicited responses.
-- Use existing ordered responses and useful per-command error codes, extending
-  codes where needed. Do not retry a failed/submitted group through legacy or
-  replay it after reconnect. Add no callback work quotas, cost estimates,
-  processing-time accounting or CPU-time admission checks.
+### Cancellation and observation
 
-### Implementation stages
+`ClearPlannedTransitions` clears only the selected fixed entry positions. First
+executing or being cleared never renames Second. Clearing an absent entry succeeds
+harmlessly; clearing future work leaves current audio/capture untouched. Clearing
+First preserves Second; the app chooses Both to cancel a whole linked gesture.
+Use groups to coordinate cancellation across supported loops.
 
-1. **Grab contract and reusable storage**
+Selective clearing operates on RT's current plan and retains the other entry's
+exact countdown. Do not reconstruct the surviving entry from an old UI snapshot
+and restart its delay. Cancellation addresses the loop's current entry positions;
+it introduces no cancellation ticket or historical request ID. FIFO order decides
+which replacement/clear wins.
 
-   - [x] Map eligible Grab gestures and explicit history-adoption operations to
-     the new values. Define cycle/position, repeat, empty/short-history and target
-     preconditions. Keep automatic finishes and unsupported variants on their
-     full legacy route before submission.
-   - [x] Identify reusable protected-history, growing-writer, metadata and finish
-     reservations. Make them acquirable by RT without a control-side preparation
-     protocol. Verify failed acquisition leaves existing content/capture intact.
+Publish both entries, their presence/modes and remaining delays coherently with
+current loop state and configuration. Keep positions stable after execution, and
+make plan failure/cancellation observable through existing state/diagnostics as
+appropriate. The UI must not infer execution merely from local admission or a
+plan-installation result. Current nearest-transition displays can be derived from
+the complete observed plan.
 
-2. **RT Grab, continuation and finishing**
-
-   - [x] Implement completed Grab and Grab-and-continue at the immediate command
-     point. Extend Play/Stop to finish the resulting growing take in that callback.
-   - [x] Smoke-test real audio, exact history cuts and the join to newly captured
-     input, finish-to-stop/play, buffer-only callbacks, individual failures,
-     insufficient history/storage and preservation of old media. Check incomplete
-     prefix handling without adding work-budget enforcement.
-
-3. **UI/control and carrier integration**
-
-   - [x] Wire eligible UI/Lua and explicit adoption actions through complete
-     groups over direct and encoded delivery. Use current RT state for history
-     selection and finishing; snapshots remain the display source.
-   - [x] Keep unsupported, mixed, oversized and automatic-finish gestures on their
-     existing complete route. Preserve manual/automatic monitoring and media
-     export behavior. Never alter a gesture's promised finish behavior to migrate it.
-
-4. **Focused end-to-end validation and completion**
-
-   - [x] Exercise completed Grab and Grab -> continued input -> explicit Play/Stop,
-     including grouped cuts, stale UI snapshots, resource failure, disconnect
-     without replay and an unchanged legacy automatic-finish gesture.
-   - [x] Run relevant smoke checks, formatting and warning-denying builds; update
-     this document and the existing draft PR. Follow the execution policy below:
-     check off progress, commit meaningful stages on the existing branch and push,
-     address relevant review feedback, and obtain user approval for changes to
-     goals or acceptance criteria. Do not wait for broad CI or merge automatically.
-
-### Delivered implementation
-
-- UI/Lua value commands and shared/backend immediate APIs carry completed Grab
-  gestures or explicit history-adoption parameters through the same paired FIFOs.
-  Groups retain the existing 1–32 command limit and absent application deadlines.
-- `LoopPlanner::grab_immediate` selects history from current RT state, protects
-  shared audio pages, and installs completed or growing takes before replying.
-  Primitive phase lookup accounts for natural wraps and inherited sync pulses at
-  the command cut; no UI cursor or new request/scheduling machinery is involved.
-- Growing takes reuse existing shared-audio writers with audio-only metadata,
-  first-append capacity and reserved final exports. Play/Stop finalize them as one
-  action, including before a fresh snapshot or a full processing block. Existing
-  capture-bank recordings continue to use their established handlers.
-- Repeated grabs on Stopped/Playing targets replace content in FIFO order. A new
-  Grab against an already Recording target returns `CannotApply` and preserves its
-  prefix. The UI retains the legacy route when it observes that unsupported state.
-  Empty continuation is allowed; explicit Stop can seal an empty take. Existing
-  window rules still govern empty playback and startup padding.
-- Grab eligibility is separate from unsynced playback eligibility. Synced completed
-  grabs preserve repeat-sync; solo sibling stops execute in the same group.
-  Composite references and gestures requiring future automatic finishes retain
-  their whole legacy route before submission, with no silent behavior change.
-- Missing history and insufficient storage produce individual errors without
-  replacing prior audio. Continuing capture exhaustion seals the usable prefix
-  and marks it incomplete. Readers/exports survive replacement, and disconnect
-  discards unsent work without replay or stopping already active capture.
-
-### Grab milestone acceptance criteria
-
-- Both completed audio Grab and Grab-and-continue use the new path end to end.
-  Every received command group gets its ordered response in the same callback;
-  success never merely queues a legacy operation or waits for future preparation.
-- The captured window, playback position and appended samples match the RT cut.
-  Grouped grabs share a processing frame, channels remain coherent and the
-  history/live join contains no dropped or duplicated samples.
-- A continuing grab is Recording with protected prefix and ready capture on
-  success. Later new-path Play/Stop seals it correctly even with stale UI state.
-  Storage exhaustion preserves an observable, exportable incomplete prefix.
-- Failed members preserve prior state/content and do not suppress later members.
-  Existing readers, exports and monitoring remain valid. Control stays unaware
-  of recording storage layout and per-take preparation.
-- No application deadlines, new request IDs, pending transport commands, global
-  input transaction, group-wide rollback or callback-work budgets are introduced.
-  Automatic musical-boundary finishing remains deferred and is not implemented
-  by this milestone. Existing unsupported gestures remain available unchanged.
-- Focused direct/encoded/UI checks and relevant build/format checks pass. No broad
-  integration matrix, live hardware implementation or CI completion wait is required.
-
-## Completed milestone: immediate audio recording
-
-### Goal and scope
-
-Move immediate recording of ordinary audio-only primitive loops on direct,
-unprocessed strips to the new UI/control/RT command path. Support starting a take,
-finishing into Stopped, and finishing into Playing. Preserve the familiar
-record -> record audio -> stop or play behavior, with snapshots showing the
-actual state and ordered results reporting command success or failure.
-
-This milestone excludes grabbing, replacing, quantized or armed starts,
-fixed-cycle automatic finishes, MIDI recording, processed/dry-wet recording and
-composites. Those actions keep their existing routes and remain available in the
-UI. This is a recording migration; it does not introduce scheduling behavior.
-All new recording commands use `deadline = None`, without new timeout policies,
-request IDs, cancellation tickets or callback-work budgets.
-
-### Capture storage is opaque to control
-
-"Prepared capture resources" means recording storage ready for RT to acquire:
-audio pages from a preallocated pool, a recording slot with its write position
-and frame count, and the handles/reservations needed to seal and publish a take.
-Audio pages can be acquired from that pool as recording grows; there is no
-assumption of unlimited recording storage or allocation of a maximum-length take
-for every loop.
-
-Control configures capacities, allocates backing storage outside the callback,
-and handles final reclamation. It does not select pages, advance write positions,
-manage per-take preparation steps or understand the recording storage layout.
-RT manages those details behind the loop command interface. Reuse existing
-capture banks, snapshot reservations, media ownership and retirement mechanisms
-where suitable. Resource handles are ownership handles, never command IDs.
-
-Prepare ready resources during startup/configuration or safe recycling. A Record
-command with no available ready storage fails individually in its receiving
-callback, leaving the loop unchanged. Do not hold it pending or introduce a
-per-click prepare/status/commit exchange. A successful start reserves the resources
-needed to finish, so ordinary stopping does not depend on finding spare memory.
-
-### Commands and observable behavior
-
-Recording uses `Transition(loop, Recording)` to start, and
-`Transition(loop, Stopped | Playing)` to finish. The required behavior is:
-
-- **Record:** acquire ready capture resources, enter Recording and start a new
-  take at the first sample of the next unrendered processing block. Later
-  callbacks append input without further commands. Success means capture is
-  attached and the recording state has changed, not that a completed take exists.
-- **Finish into Stopped:** seal the captured prefix, publish it as completed
-  media, release recording demand and enter Stopped at the command's processing
-  frame.
-- **Finish into Playing:** perform that same finish and select the completed
-  take for playback from its beginning as one semantic action. Do not implement
-  this as separate stop/play commands with an asynchronous preparation gap.
-
-RT decides from its current state whether Play/Stop must finish a recording or
-perform ordinary playback control. Snapshot lag must not route a real recording
-through a playback-only handler that rejects it. Record while already recording is a successful no-op that preserves the take.
-Play on an empty take returns `CannotApply` and leaves it recording; Stop seals
-the empty take into Stopped. Repeated Stop is a successful no-op.
-
-Use the existing command-consumption point, not a future execution timestamp.
-Apply received groups and publish responses in the same callback, including
-buffer-only callbacks. Recording changes affect the next unrendered processing
-block and never rewrite audio already rendered. The RT command context needs
-safe access to capture/resource operations and the corresponding state settlement;
-changing only the public mode field is insufficient.
-
-Finish success means the take is sealed and available to the requested next mode.
-Keep loop lengths, positions, content revisions and capture flags consistent in
-snapshots. Preserve existing input gain, monitoring intent and automatic monitoring
-behavior, including overlapping recorders on the same strip. Completed takes
-must also remain accessible through existing media/export APIs; a scalar snapshot
-does not transfer their ownership.
-
-### Failure and preservation rules
-
-- Multiple Record commands in one group take effect at one processing frame.
-  They may succeed or fail independently. Do not require a batch-wide preflight,
-  all-or-nothing commit, rollback or a global input-transaction lock.
-- Keep each loop's audio channels coherent as one take. Failed acquisition leaves
-  the previous mode/content unchanged; successful replacement of playback media
-  must preserve older exports and readers until their owners are released.
-- Retain configuration identity, resource ownership, capacity checks and any
-  content-revision checks needed to prevent stale prepared media overwriting a
-  newer take. An unchanged graph version does not imply unchanged content.
-- If storage is exhausted while recording, preserve the captured prefix, stop
-  further capture safely and expose the incomplete/error state. Spontaneous
-  capture errors use snapshots/diagnostics, never an unsolicited response group
-  that would break command/response FIFO correspondence.
-- Add recording-specific result codes where useful, such as unavailable capture
-  storage. A failed command does not suppress later members. Never silently
-  replay or retry a submitted recording command through the legacy path.
+Control/UI must assemble a complete intent before submission. Translating the
+old separate start/finish calls one-for-one would erase the start plan. New plans
+must coexist with immediate controls and unrelated loops' pending work; remove
+the blanket rejection of immediate transitions whenever any plan is pending.
+Preserve ordered legacy handoff without waiting for a musical plan to finish
+before admitting ordinary later new-path commands.
 
 ### Implementation stages
 
-1. **Recording contract and resource preparation**
+1. **Value protocol and snapshot contract**
 
-   - [x] Map the existing capture/finish/ownership operations to the logical
-     commands, define repeat/empty-take handling and identify the ready resources
-     and finish reservations each take needs.
-   - [x] Prepare storage and readiness behind the RT interface. Verify failure
-     to acquire a recording slot leaves the old loop intact, and finishing uses
-     already reserved resources. Do not add control-side per-take polling.
+   - [ ] Extend UI/shared/backend/RT values with complete replacement and selective
+     clearing, canonical encoding and synchronous result meaning; expose both
+     future entries in snapshots and bump affected versions.
+   - [ ] Verify absent fields, all three modes, maximum groups, stable entry
+     positions, skip counting and distinction from expiry deadlines with focused
+     codec/state examples.
 
-2. **Capture-aware RT handlers**
+2. **RT musical state and capture integration**
 
-   - [x] Provide safe resource access at the immediate execution point and
-     implement Record plus finish-to-stop/play with real capture settlement.
-     Keep application-specific behavior outside generic FIFO code.
-   - [x] Smoke-test actual recorded samples and start/finish frames, buffer-only
-     callbacks, independent group failures, empty/repeated actions, resource
-     exhaustion and retained old media. No processing-time budget checks.
+   - [ ] Install/replace/clear loop-owned plans synchronously, reuse pulse and
+     capture machinery, preserve repeated-action semantics and remove global
+     pending-plan restrictions without retaining transport requests.
+   - [ ] Smoke-test exact pulse/frame execution, two-step plans, immediate-action
+     failure preserving an old plan, future failure clearing its remainder,
+     recording/Grab-continuation finishing, monitoring, source changes, buffer-only
+     callbacks and ordinary controls while other loops have plans.
 
-3. **UI and control wiring**
+3. **UI/control integration and compatibility**
 
-   - [x] Route eligible recording, stop and play actions through complete groups,
-     including selected-loop and solo gestures that fit the existing envelope.
-     Base recording finalization on RT state, not a possibly stale UI mode.
-   - [x] Keep unsupported/mixed/oversized actions on their complete legacy route,
-     selected before submission. Verify snapshots, monitoring and existing
-     recording exports remain correct, without UI request IDs or deadlines.
+   - [ ] Send eligible complete scheduled and fixed-cycle recording intents as
+     one command per loop; wire selective/all-entry clearing and both-entry
+     displays through direct and encoded delivery. Keep deadline fields absent.
+   - [ ] Check stale-snapshot cancellation without moving the survivor, replacement
+     before a fresh snapshot, legacy/new handoff without leftover follow-ups,
+     selected/solo grouping and unchanged unsupported/longer-plan legacy behavior.
+     Never silently split, retry or replay.
 
 4. **Focused end-to-end validation and completion**
 
-   - [x] Exercise Record -> audio capture -> finish-to-stop/play through direct
-     and encoded delivery. Check a grouped start, Play/Stop before a fresh UI
-     snapshot, unavailable storage, disconnect without replay and an unchanged
-     legacy recording variant.
-   - [x] Run relevant smoke tests, formatting and warning-denying builds. Update
-     this document and the existing draft PR; leave broad CI in the background.
-
-### Delivered implementation
-
-- `rt_runtime::immediate::Boundary` lends planner resource access at the existing
-  command point, including buffer-only callbacks. The generic FIFO still knows
-  nothing about recording.
-- `Transition` is a value command throughout the UI, shared backend, adapter,
-  encoded protocol and RT handler. Its destination mode selects recording,
-  capture-aware finishing or ordinary playback control.
-  No new application deadlines, request IDs, preparation exchanges or work quotas
-  were added.
-- The loop planner acquires from configured capture banks, reserves a media slot,
-  final snapshot leases and the first audio interval before changing state.
-  Acquisition failure cancels those reservations and preserves previous content.
-  Finishing freezes the take and selects it for playback before reporting success.
-- New-path takes publish their captured prefix on exhaustion, set the incomplete
-  flag and stop. Legacy exhaustion behavior is unchanged. Completed prefixes can
-  be played and exported; spontaneous errors create no command response.
-- Ordinary Record/default-empty-loop gestures, Play/Stop, selected-loop actions
-  and solo groups use the new path. Unsupported, mixed, oversized, quantized and
-  fixed-cycle gestures keep their complete legacy route before submission.
-  Automatic and manual monitoring remain owned by existing strip policy.
-- Export/media retirement can still delay admission behind earlier legacy work.
-  Once a group reaches RT, its result is published in that callback. No group is
-  held for a later snapshot merely because the preceding group used recording.
-
-### Recording milestone acceptance criteria
-
-- Eligible ordinary audio recording uses the new command/result transport end
-  to end. Every command returns a meaningful result in its receiving callback;
-  no legacy transition is merely queued behind a reported success.
-- Recorded samples and take length match the RT start/finish frames. Finish into
-  Playing makes the completed take playable as one action; finish into Stopped
-  leaves it available for later playback/export.
-- A grouped start shares one processing frame among successful members, while
-  failed members preserve their previous state. Snapshot lag cannot make Play
-  or Stop bypass recording finalization.
-- Capture resources remain opaque to control. No per-command preparation
-  protocol, RT pending-request table, new request IDs, application deadlines,
-  arming/scheduling or processing-time accounting is added.
-- Capacity exhaustion, incomplete takes, monitoring and media ownership are
-  handled explicitly. Unsupported recording variants remain functional through
-  their existing routes. No automatic replay or legacy retry is introduced.
-- Focused direct/encoded/UI smoke checks and the relevant build/format checks
-  pass. No broad integration matrix or CI completion wait is required.
-
-The execution and verification policy below applies to this milestone: keep its
-checkboxes current, commit meaningful milestones on the existing branch, document
-supported revisions to implementation/design, and obtain explicit user approval
-before changing the goals or acceptance criteria. Do not merge the draft PR
-automatically.
-
-## Completed response-extension stages
-
-1. **Clock and record contract**
-
-   - [x] Define clock publication/reset semantics, optional deadline encoding,
-     response fields/codes and layout versioning.
-   - [x] Resolve callback/quantum buffering against the same-callback rule.
-     Verify deadline equality, expiry and unchanged group ordering with focused
-     clock/codec examples. Do not add execution-cost or time-budget machinery.
-
-2. **Paired FIFOs and response reservations**
-
-   - [x] Add generic response storage and control-side reservation accounting;
-     copy command records and publish complete result groups.
-   - [x] Verify wrapping, a paused control reader, exhausted response capacity
-     and credit release on response consumption. RT must never wait for space.
-
-3. **RT handler integration**
-
-   - [x] Apply header checks once, attempt commands in order and fill every code;
-     return all results before the receiving callback exits.
-   - [x] Smoke-test successful, expired and stale groups, individual failures,
-     cutoff races, buffered callbacks and a group of 30 aligned starts.
-
-4. **Control and application integration**
-
-   - [x] Drain results in order, preserve legacy handoff and reconnect rules,
-     and expose useful failures without requiring UI request IDs. Keep deadlines
-     absent for all existing application commands; add no deadline policies.
-   - [x] Verify that existing snapshot-driven controls, dependencies and push/pull
-     delivery keep working. Preserve unmigrated features through their routes.
-
-5. **Focused end-to-end validation and documentation**
-
-   - [x] Exercise UI -> control -> RT -> response -> control with both direct
-     and encoded delivery, stalled consumption and disconnect without replay.
-   - [x] Run relevant smoke tests, formatting and warning-denying builds; update
-     this document to distinguish delivered behavior from remaining work.
+   - [ ] Exercise 30 grouped loops sharing a sync source, starting at the same
+     boundary and stopping four cycles later; plan replacement and clearing,
+     scheduled recording/finishing with real samples, resource failure and
+     disconnect without replay. Verify snapshots and same-callback results.
+   - [ ] Run relevant smoke checks, formatting, test-attribute policy and a
+     warning-denying build. Update this document and the existing draft PR;
+     commit/push completed work. No broad suite or CI completion gate.
 
 ### Acceptance criteria
 
-- Every complete received group gets exactly one complete ordered response in
-  the same callback, with a meaningful code for every command.
-- Optional deadlines reject an already-late group as a whole and never schedule
-  work for the future. An absent deadline preserves immediate FIFO execution.
-- All existing application commands on the new path use `deadline = None`.
-  Explicit deadlines are exercised only in synthetic transport tests. No
-  command-specific policy or automatic/default deadline assignment is delivered;
-  applying deadlines to application commands requires separate future work.
-- Thirty successful starts in one group share one processing frame. Individual
-  failures preserve subsequent effects and do not introduce rollback.
-- Slow control cannot force RT to wait or lose responses; admission reserves
-  response capacity before command publication.
-- Configuration identity, current snapshots, existing UI behavior, legacy handoff
-  and ownership lifetimes remain correct. No automatic replay or legacy retry.
-- No request IDs, RT pending-request table, execution reordering, cancellation,
-  processing-time bounds checks, cost accounting or callback work budgets are
-  introduced. RT makes its best effort using efficient command handlers.
+- A complete two-action plan is installed by one command in its receiving callback.
+  Both points share the RT installation origin; successful grouped loops with the
+  same sync source and delays execute at identical intended musical boundaries.
+- Successful replacement removes the old plan. Failed immediate execution preserves
+  old state/content and plan. Selective clearing never shifts or renames the
+  surviving entry; clearing Both leaves current audio/capture running unchanged.
+- All accepted commands receive their ordered response in that callback, including
+  buffer-only callbacks. Future actions live in loop state, with no retained
+  transport command, new request IDs, tickets, reordering or execution reply later.
+- Snapshots expose both entries and actual state coherently. Future failure cannot
+  trigger a stale dependent finish; capture/media ownership and monitoring remain
+  correct. Pending plans do not globally block ordinary new-path controls.
+- Eligible UI/Lua scheduled and fixed-cycle recording behavior uses the new path;
+  unsupported/mixed/oversized/longer plans remain functional through their complete
+  legacy routes. No application deadline assignment or callback-work accounting.
+- Focused direct/encoded/UI smoke coverage and relevant build/format checks pass.
+  Goals and acceptance criteria require explicit user approval to change.
 
-### Execution and verification policy
+## Execution and verification policy
 
-Keep this document current and check off completed work. Commit meaningful
-milestones on the existing branch and update the existing draft PR. Implementation
-steps may change with new evidence; document supported design changes. Goals and
-acceptance criteria require explicit user approval to change.
+Keep this document current and check off completed work. Commit each completed
+stage or meaningful milestone on `feat/rt-state-snapshots`, push to draft PR #997
+against `feat/backend-replacement`, and update the PR. Implementation steps may
+change with evidence; design revisions require a documented, supported reason.
+Do not change goals/acceptance criteria without explicit user approval.
 
-Use focused smoke tests for each stage and one focused end-to-end pass. Existing
-smoke coverage includes snapshots/configuration changes, push/pull, scalar UI
-controls, slider bursts, individual failures, 30-loop alignment, Lua observation,
-recording and disconnect without replay. Do not run broad integration matrices
-or add a callback-cost certification exercise. Keep CI in the background rather
-than waiting for a large suite as a completion gate. Address relevant review
-findings within scope; leave the PR in draft and do not merge automatically.
+Use focused smoke checks per stage and a focused end-to-end pass. Do not run broad
+integration matrices or callback-cost certification. Check relevant review feedback
+and address findings within scope; keep CI in the background, without waiting for
+a large suite. Leave the PR in draft and do not merge automatically.
 
-### Validation record
-
-Transition unification passes 39 selected native/offline smoke checks:
-
-- Command/result protocol: 6, including all three transition modes, rejected
-  unknown modes/removed opcodes, maximum 32-Grab request/response envelopes and
-  canonical argument/result layouts.
-- Engine immediate commands: 23, covering exact cuts and samples, grouped cuts and
-  independent failures, history/live joins, natural wrap boundaries, empty takes,
-  buffer-only callbacks, missing history, unavailable storage, incomplete-prefix
-  playback, encoded delivery, disconnect without replay and full pool reclamation.
-- Backend immediate commands: 5, including retained exports across continuing Grab.
-- UI immediate commands: 4, including synced solo Grab, Lua continuation finished
-  before a fresh UI snapshot and unchanged fixed-cycle routing. UI client group
-  construction and encoded delivery: 1.
-
-Formatting, test-attribute policy and a native UI build with Rust warnings denied
-pass. The build disables optional native audio-provider features and retains its
-existing Cargo manifest warning about an unused message-port dependency. No broad
-suite, live browser run, callback timing benchmark or CI completion wait was used.
+Latest implementation baseline: 39 selected native/offline checks passed
+(protocol 6, engine immediate 23, backend immediate 5, UI immediate 4, UI client 1),
+plus formatting, test-attribute policy and a Rust-warning-denying native UI build
+with optional native audio-provider features disabled. Its existing unused
+message-port dependency manifest warning remains. This validates delivered work,
+not the next milestone; no broad suite, live browser run or CI wait was used.
