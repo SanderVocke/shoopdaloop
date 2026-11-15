@@ -13,12 +13,13 @@ deadlines and a reliable response FIFO. Further feature migrations listed below
 remain separate work.
 
 Immediate recording and finish-to-stop/play for ordinary audio loops are now
-implemented end to end. Grabbing and quantized recording remain on their existing
-routes.
+implemented end to end. Audio Grab and Grab-and-continue are the next planned
+milestone, described below; they still use legacy communication today. Automatic
+finishing at musical boundaries remains a separate, deferred design decision.
 
 The response extension delivers deadline capability only. All application
-commands on the new path, including recording commands, must continue
-with no deadline. Assigning deadlines to specific application commands is
+commands on the new path, including recording and planned Grab commands, must
+continue with no deadline. Assigning deadlines to specific application commands is
 separate future work, outside these completed milestones.
 
 There are two distinct boundaries:
@@ -212,7 +213,8 @@ observation where needed; failures and disconnect outcomes remain available.
 | Other scalar controls | Monitoring policy, playback defaults, smoothing and some effect parameters need explicit command semantics and failure behavior. Some are straightforward additions. |
 | Graph and processor lifecycle | Creation, removal, routing and replacement require preparation, activation, configuration changes and safe retirement of displaced owners. |
 | Media and persistence | Loading, exporting and saving need reliable bulk delivery, content revisions, stable read cuts and resource lifetimes. Snapshots carry no media bytes. |
-| Advanced recording and capture | Immediate ordinary audio recording and finishing use the new path. Replacing, grabbing history, quantized/armed/fixed-cycle/processed/MIDI recording and clearing content retain legacy semantics and ownership workflows. |
+| Audio Grab | Completed grabs and grabs left recording are the next milestone. History selection, protected audio ownership and growing-take attachment still use the legacy input transaction today. |
+| Advanced recording and capture | Immediate ordinary audio recording and finishing use the new path. Replacing, automatic musical-boundary finishes, quantized/armed/fixed-cycle/processed/MIDI recording and clearing content retain legacy semantics and ownership workflows. |
 | Musical timing | Quantization, repeat-sync, seeking and timing edits require exact musical behavior and interaction with existing processor state. |
 | Composites, processed playback and MIDI | Nested programs, dry/wet processing, processor-state restoration and MIDI note/state cleanup need feature-specific behavior. |
 | Additional observation | Composite/plugin state, processor metadata, preview, profiling, memory and engine health retain separate streams. Decide which need coherent snapshots and which remain independent. |
@@ -351,6 +353,163 @@ Snapshots remain the source of current display state. A response can arrive befo
 a snapshot covering its frame; control must wait for matching fresh observation
 when a dependent workflow needs that state. Preserve ordering and reconciliation
 with legacy work while migrating dependencies to the new results.
+
+## Next milestone: audio Grab and continued recording
+
+### Goal and scope
+
+Move ordinary audio Grab on direct, unprocessed primitive loops to the new
+UI/control/RT command and response path. Include both completed grabs and grabs
+that immediately continue recording. Continued recording is not a reason to
+exclude a command: its synchronous work is complete when the history is attached
+and ongoing capture has started. Reuse existing history/window, shared-audio and
+growing-take machinery where suitable.
+
+Support completed takes left Stopped or Playing at the requested position, and
+grabbed prefixes left Recording until a later explicit Play or Stop. Preserve
+existing cycle selection and phase behavior for eligible actions. In particular,
+include eligible explicit `AdoptRingbuffers` operations with an after-mode of
+Stopped, Playing or Recording, alongside completed Grab gestures.
+
+**Automatic finishing at a future musical boundary is outside this milestone.**
+That decision is deferred for both ordinary recording and Grab-and-continue.
+Do not implement a finish rule, delayed follow-up request, scheduled transport
+command or application deadline as part of this work. Existing gestures that
+require such a finish retain their complete legacy route and existing behavior;
+never silently turn them into indefinite recording. MIDI, processed/dry-wet,
+composite and replacing variants also remain on their existing routes.
+
+### Command meaning and execution
+
+Use one logical Grab operation with a requested history window, optional sync or
+target references, playback position and after-mode: Stopped, Playing or Recording.
+Exact opcodes and record extensions are implementation choices. Use a bounded,
+pointer-free value format with the existing configuration version and typed
+addresses. Do not add a separate object registry or input-transaction identifier.
+All application groups continue to use `deadline = None`.
+
+At the existing RT command point, in FIFO order:
+
+1. Resolve the source and cycle/phase selection from current RT state. The UI
+   supplies intent; its possibly stale snapshot is not the authority for the cut.
+   A group of grabs uses the same processing frame; each member observes preceding
+   command effects in the group's written order.
+2. Protect the selected history audio from overwrite using existing page-sharing
+   and ownership mechanisms. Acquire the metadata and handles needed to install
+   the take while keeping previous takes and existing readers valid.
+3. For Stopped or Playing, install a completed take and the requested mode/position
+   before reporting success. Preserve established playback-window semantics.
+4. For Recording, attach the grabbed prefix to a writable growing take, reserve
+   first-append and finish resources, and enter Recording before reporting success.
+   Append new input from that cut as processing continues, starting with the next
+   unrendered block. The join must have no missing or duplicated samples and all
+   audio channels must agree on the cut.
+
+Return a meaningful result in that callback, including buffer-only callbacks.
+Changes affect the next unrendered processing block and never rewrite rendered
+samples. Success for Grab-and-continue means capture is running with its prefix
+attached; it does not claim that the eventual take has finished. No command is
+retained pending a later callback, preparation result or musical event.
+
+The existing new-path Play/Stop handlers must also finalize history-backed growing
+captures, as well as ordinary capture-bank recordings. Finish-to-Playing seals
+and selects the take as one operation. RT chooses the correct finish behavior
+from its actual capture state, so Play/Stop before a fresh UI snapshot still work.
+Snapshot lengths, positions, modes and content revisions describe the resulting
+take; audio bytes and owning leases remain on their existing media/export paths.
+
+### Storage, failure and preservation rules
+
+- History retention and recording storage stay opaque to control. Control prepares
+  backing capacity outside the callback and handles final retirement. RT selects
+  history pages, attaches growing capture and manages write positions internally.
+  Do not add a per-click begin/prepare/status/commit exchange or readiness polling.
+- Reuse shared audio pages instead of introducing a copy of the whole audio take
+  during the callback. Keep ownership, history-generation, content-revision and
+  source-gap checks needed to prevent expired or unrelated audio being adopted.
+  An unchanged graph version does not imply unchanged history or loop content.
+- Acquire what is needed before replacing a loop's current content or capture.
+  If history, a valid window or ready storage is unavailable, fail that member
+  immediately and preserve its previous content/state, including any active
+  recording prefix. Release temporary ownership acquired by the failed attempt.
+- Preserve existing startup-padding rules; do not mask expired history or a later
+  source gap by inventing silence. Define repeated Grab and active-recording
+  target behavior explicitly, consistent with existing ordinary Grab semantics.
+- Groups share an execution frame, not an all-or-nothing transaction. Each Grab
+  succeeds or fails independently and later members still execute. Do not retain
+  the global input-transaction lock, group-wide witnesses, semantic preflight or
+  rollback on the new path. Per-command coherent acquisition remains necessary.
+- Preserve input gain, monitoring intent, overlapping recording demand and existing
+  readers/exports. After a successful continuing grab, ordinary finishing must
+  use already reserved resources. If subsequent capture runs out of storage,
+  preserve the grabbed-and-recorded prefix, stop safely and mark it incomplete.
+  Spontaneous capture errors use snapshots/diagnostics, never unsolicited responses.
+- Use existing ordered responses and useful per-command error codes, extending
+  codes where needed. Do not retry a failed/submitted group through legacy or
+  replay it after reconnect. Add no callback work quotas, cost estimates,
+  processing-time accounting or CPU-time admission checks.
+
+### Implementation stages
+
+1. **Grab contract and reusable storage**
+
+   - [ ] Map eligible Grab gestures and explicit history-adoption operations to
+     the new values. Define cycle/position, repeat, empty/short-history and target
+     preconditions. Keep automatic finishes and unsupported variants on their
+     full legacy route before submission.
+   - [ ] Identify reusable protected-history, growing-writer, metadata and finish
+     reservations. Make them acquirable by RT without a control-side preparation
+     protocol. Verify failed acquisition leaves existing content/capture intact.
+
+2. **RT Grab, continuation and finishing**
+
+   - [ ] Implement completed Grab and Grab-and-continue at the immediate command
+     point. Extend Play/Stop to finish the resulting growing take in that callback.
+   - [ ] Smoke-test real audio, exact history cuts and the join to newly captured
+     input, finish-to-stop/play, buffer-only callbacks, individual failures,
+     insufficient history/storage and preservation of old media. Check incomplete
+     prefix handling without adding work-budget enforcement.
+
+3. **UI/control and carrier integration**
+
+   - [ ] Wire eligible UI/Lua and explicit adoption actions through complete
+     groups over direct and encoded delivery. Use current RT state for history
+     selection and finishing; snapshots remain the display source.
+   - [ ] Keep unsupported, mixed, oversized and automatic-finish gestures on their
+     existing complete route. Preserve manual/automatic monitoring and media
+     export behavior. Never alter a gesture's promised finish behavior to migrate it.
+
+4. **Focused end-to-end validation and completion**
+
+   - [ ] Exercise completed Grab and Grab -> continued input -> explicit Play/Stop,
+     including grouped cuts, stale UI snapshots, resource failure, disconnect
+     without replay and an unchanged legacy automatic-finish gesture.
+   - [ ] Run relevant smoke checks, formatting and warning-denying builds; update
+     this document and the existing draft PR. Follow the execution policy below:
+     check off progress, commit meaningful stages on the existing branch and push,
+     address relevant review feedback, and obtain user approval for changes to
+     goals or acceptance criteria. Do not wait for broad CI or merge automatically.
+
+### Grab milestone acceptance criteria
+
+- Both completed audio Grab and Grab-and-continue use the new path end to end.
+  Every received command group gets its ordered response in the same callback;
+  success never merely queues a legacy operation or waits for future preparation.
+- The captured window, playback position and appended samples match the RT cut.
+  Grouped grabs share a processing frame, channels remain coherent and the
+  history/live join contains no dropped or duplicated samples.
+- A continuing grab is Recording with protected prefix and ready capture on
+  success. Later new-path Play/Stop seals it correctly even with stale UI state.
+  Storage exhaustion preserves an observable, exportable incomplete prefix.
+- Failed members preserve prior state/content and do not suppress later members.
+  Existing readers, exports and monitoring remain valid. Control stays unaware
+  of recording storage layout and per-take preparation.
+- No application deadlines, new request IDs, pending transport commands, global
+  input transaction, group-wide rollback or callback-work budgets are introduced.
+  Automatic musical-boundary finishing remains deferred and is not implemented
+  by this milestone. Existing unsupported gestures remain available unchanged.
+- Focused direct/encoded/UI checks and relevant build/format checks pass. No broad
+  integration matrix, live hardware implementation or CI completion wait is required.
 
 ## Completed milestone: immediate audio recording
 
