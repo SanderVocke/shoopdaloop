@@ -267,3 +267,12 @@ fn serialize_finite_channels<S: serde::Serializer>(
     }
     values.serialize(serializer)
 }
+
+/// Canonical production signal ordering for numeric error-bound analysis.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SignalOrder {
+    pub format_version: u32,
+    pub nodes: Vec<Identity>,
+    pub connections: Vec<Connection>,
+}

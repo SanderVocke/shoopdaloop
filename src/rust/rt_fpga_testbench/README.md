@@ -52,3 +52,8 @@ against actual source functions and Cargo test targets. The old transition,
 production RTL, ARM control, continuous full-loop, demo and ZedBoard commands are
 removed. Production CPU scenarios and numeric checks remain in
 `rt_backend_testbench`, independently of hardware.
+
+Production CPU analysis also offers `rt-backend-testbench graph`: canonical node
+and connection ordering for numeric error bounds, obtained from the production
+compiler. It emits no instructions, physical media layout or ARM transport data.
+The independent Python float/fixed gate uses that ordering and logical sessions.

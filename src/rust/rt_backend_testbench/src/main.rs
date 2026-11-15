@@ -11,7 +11,7 @@ fn execute() -> std::result::Result<(), String> {
     let args: Vec<_> = std::env::args().skip(1).collect();
     if args.first().is_some_and(|s| s == "schema") {
         let schemas = serde_json::json!({"format_version":FORMAT_VERSION,
-            "scenario":schemars::schema_for!(Scenario),"result":schemars::schema_for!(Result),"audit":schemars::schema_for!(audit::Report)});
+            "scenario":schemars::schema_for!(Scenario),"result":schemars::schema_for!(Result),"audit":schemars::schema_for!(audit::Report),"graph":schemars::schema_for!(SignalOrder)});
         println!(
             "{}",
             serde_json::to_string_pretty(&schemas).map_err(|e| e.to_string())?
@@ -27,13 +27,14 @@ fn execute() -> std::result::Result<(), String> {
         };
         return match kind {
             Some("scenario") => roundtrip::<Scenario>(),
+            Some("graph") => roundtrip::<SignalOrder>(),
             Some("result") => roundtrip::<Result>(),
             Some("audit") => roundtrip::<audit::Report>(),
-            _ => Err("roundtrip requires --kind scenario|result|audit".into()),
+            _ => Err("roundtrip requires --kind scenario|result|audit|graph".into()),
         };
     }
-    if !matches!(command, "run" | "validate" | "audit") {
-        return Err("usage: rt-backend-testbench run [--numeric float|q824] | validate | schema; input is JSONL".into());
+    if !matches!(command, "run" | "validate" | "audit" | "graph") {
+        return Err("usage: rt-backend-testbench run [--numeric float|q824] | validate | graph | schema; input is JSONL".into());
     }
     let float = match args.get(1).map(String::as_str) {
         None => false,
@@ -56,6 +57,7 @@ fn execute() -> std::result::Result<(), String> {
             .map_err(|e| format!("line {}: {e}", index + 1))?;
         let output = match command {
             "audit" => serde_json::to_value(audit::run(&scenario)?),
+            "graph" => serde_json::to_value(production::signal_order(&scenario)?),
             "validate" => serde_json::to_value(scenario),
             _ => serde_json::to_value(if float {
                 production::run::<f32>(&scenario)?

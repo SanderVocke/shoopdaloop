@@ -28,3 +28,9 @@ core baseline tests pass. Extracted SP/JP/core/smoothing and production CPU test
 pass with Rust warnings denied. DRAMsim3 builds successfully. Complete retained
 simulation and native gates are in progress. No board or place/route validation
 is implied by component simulation.
+
+The independent float/fixed bound checker now consumes canonical CPU graph
+ordering through the production testbench's `graph` command. No hardware image,
+view addresses, ramp addresses, instructions or transition topology are exported.
+Six Python checks include deliberate error/clipping detection, canonical-order
+roundtrips, fan-in, successive gains, recording and playback bounds.

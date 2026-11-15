@@ -24,9 +24,11 @@ class CommonContract(unittest.TestCase):
     def test_roundtrip_all_documents_and_raw_integer_extremes_in_a_batch(self):
         scenario=deepcopy(self.scenario)
         scenario['steps'][0]['inputs'][0][:4]=[-2147483648,2147483647,-16777217,16777217]
+        order=wire.run(scenario,executable=self.executable,command='graph')
+        self.assertEqual(set(order),{'format_version','nodes','connections'})
         result=wire.run(scenario,executable=self.executable)
         floating=wire.run(scenario,executable=self.executable,numeric='float')
-        for kind,value in [('scenario',scenario),('result',result),('result',floating)]:
+        for kind,value in [('scenario',scenario),('graph',order),('result',result),('result',floating)]:
             self.assertEqual(wire.loads(wire.dumps(value,kind),kind),value)
             self.assertEqual(wire.run_batch([value,value],executable=self.executable,command='roundtrip',kind=kind),[value,value])
         self.assertEqual(wire.run(scenario,executable=self.executable,command='validate'),scenario)
@@ -58,25 +60,40 @@ class CommonContract(unittest.TestCase):
         from rt_backend_testbench.accuracy import compare
         scenario=wire.load(ROOT/'fpga/verification/scenarios/gain-ramps.json')
         def execute(source):
-            return (wire.run(source,executable=self.executable,command='compile'),
+            return (wire.run(source,executable=self.executable,command='graph'),
                     wire.run(source,executable=self.executable),
                     wire.run(source,executable=self.executable,numeric='float'),
                     wire.run(source,executable=self.executable,command='audit'))
-        image,q,f,audit=execute(scenario)
-        report=compare(scenario,image,q,f,audit)
+        order,q,f,audit=execute(scenario)
+        report=compare(scenario,order,q,f,audit)
         self.assertLess(report['max_abs'],1e-7)
         self.assertEqual(report['saturating_operations'],0)
         bad=deepcopy(f);bad['quanta'][0]['outputs']['channels'][0][7]+=1e-3
-        with self.assertRaisesRegex(AssertionError,'exceeds derived bound'):compare(scenario,image,q,bad,audit)
+        with self.assertRaisesRegex(AssertionError,'exceeds derived bound'):compare(scenario,order,q,bad,audit)
         clip=deepcopy(scenario);clip['nodes'][0]['operation']['initial']=2<<24
         for step in clip['steps']:step['actions']=[];step['inputs'][0]=[100<<24]*32
-        image,q,f,audit=execute(clip)
-        with self.assertRaisesRegex(AssertionError,'undeclared saturations'):compare(clip,image,q,f,audit)
+        order,q,f,audit=execute(clip)
+        with self.assertRaisesRegex(AssertionError,'undeclared saturations'):compare(clip,order,q,f,audit)
         clip['arithmetic']='intentional_clipping'
-        report=compare(clip,image,q,f,audit)
+        report=compare(clip,order,q,f,audit)
         self.assertEqual(report['saturating_operations'],320)
         self.assertGreater(report['max_abs'],70)
 
+
+    def test_numeric_bounds_cover_production_routing_recording_and_playback(self):
+        from rt_backend_testbench.accuracy import compare
+        from rt_backend_testbench.cases import directed
+        cases=[wire.load(ROOT/'fpga/verification/scenarios/mono-record.json')]
+        cases += [case for case in directed() if case['name'] in
+                  ('ordered-fan-in-cancelling','successive-gains-keep-intermediate-rounding')]
+        self.assertEqual(len(cases),3)
+        for scenario in cases:
+            with self.subTest(name=scenario['name']):
+                order=wire.run(scenario,executable=self.executable,command='graph')
+                fixed=wire.run(scenario,executable=self.executable)
+                floating=wire.run(scenario,executable=self.executable,numeric='float')
+                audit=wire.run(scenario,executable=self.executable,command='audit')
+                compare(scenario,order,fixed,floating,audit)
 
     def test_a_deliberate_one_bit_mismatch_reports_frame_port_and_sample(self):
         expected=wire.run(self.scenario,executable=self.executable)

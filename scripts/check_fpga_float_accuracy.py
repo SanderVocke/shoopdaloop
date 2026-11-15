@@ -14,7 +14,7 @@ def main():
     for root in args.directories:
         for audit_file in sorted(root.rglob('audit.json')):
             directory = audit_file.parent
-            files = [directory/f'{name}.json' for name in ('scenario', 'image', 'expected', 'float', 'audit')]
+            files = [directory/f'{name}.json' for name in ('scenario', 'graph', 'expected', 'float', 'audit')]
             if not all(path.is_file() for path in files):
                 continue
             result = compare(*(json.loads(path.read_text()) for path in files))

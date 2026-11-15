@@ -577,6 +577,100 @@
     "type": "object"
   },
   "format_version": 1,
+  "graph": {
+    "$defs": {
+      "Connection": {
+        "additionalProperties": false,
+        "properties": {
+          "destination": {
+            "$ref": "#/$defs/Endpoint"
+          },
+          "source": {
+            "$ref": "#/$defs/Endpoint"
+          }
+        },
+        "required": [
+          "source",
+          "destination"
+        ],
+        "type": "object"
+      },
+      "Endpoint": {
+        "additionalProperties": false,
+        "properties": {
+          "node": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Identity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "port": {
+            "format": "uint16",
+            "maximum": 65535,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "port"
+        ],
+        "type": "object"
+      },
+      "Identity": {
+        "additionalProperties": false,
+        "properties": {
+          "generation": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "slot": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slot",
+          "generation"
+        ],
+        "type": "object"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "description": "Canonical production signal ordering for numeric error-bound analysis.",
+    "properties": {
+      "connections": {
+        "items": {
+          "$ref": "#/$defs/Connection"
+        },
+        "type": "array"
+      },
+      "format_version": {
+        "format": "uint32",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "nodes": {
+        "items": {
+          "$ref": "#/$defs/Identity"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "format_version",
+      "nodes",
+      "connections"
+    ],
+    "title": "SignalOrder",
+    "type": "object"
+  },
   "result": {
     "$defs": {
       "ActionResult": {

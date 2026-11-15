@@ -842,3 +842,35 @@ fn read_media<S: OracleSample>(
         samples: S::samples(planar),
     })
 }
+
+pub fn signal_order(scenario: &wire::Scenario) -> Checked<wire::SignalOrder> {
+    let Prepared { ordered, .. } = prepare::<Q824>(scenario)?;
+    let identity = |id: NodeId| wire::Identity {
+        slot: id.slot(),
+        generation: id.generation(),
+    };
+    let endpoint = |ep: graph::Endpoint| -> Checked<wire::Endpoint> {
+        Ok(wire::Endpoint {
+            node: ep.node.map(identity),
+            port: u16::try_from(ep.port).map_err(|e| e.to_string())?,
+        })
+    };
+    Ok(wire::SignalOrder {
+        format_version: wire::FORMAT_VERSION,
+        nodes: ordered
+            .steps
+            .iter()
+            .map(|step| identity(step.node))
+            .collect(),
+        connections: ordered
+            .connections
+            .into_iter()
+            .map(|edge| {
+                Ok(wire::Connection {
+                    source: endpoint(edge.source)?,
+                    destination: endpoint(edge.destination)?,
+                })
+            })
+            .collect::<Checked<_>>()?,
+    })
+}

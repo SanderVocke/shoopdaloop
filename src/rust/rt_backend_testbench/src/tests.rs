@@ -11,6 +11,11 @@ fn scenario() -> Scenario {
 #[shoop_test]
 fn common_session_executes_both_production_policies() {
     let scenario = scenario();
+    let order = production::signal_order(&scenario).unwrap();
+    let mut without_actions = scenario.clone();
+    without_actions.steps.clear();
+    assert_eq!(order, production::signal_order(&without_actions).unwrap());
+    assert_eq!(order.nodes.len(), scenario.nodes.len());
     let q = production::run::<rt_runtime::Q824>(&scenario).unwrap();
     let f = production::run::<f32>(&scenario).unwrap();
     assert_eq!(q.quanta.len(), 9);

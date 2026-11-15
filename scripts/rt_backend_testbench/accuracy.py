@@ -1,4 +1,4 @@
-"""A separate float accuracy gate. Fixed/RTL comparisons remain exact."""
+"""Independent float/fixed error bounds using production signal ordering."""
 import math
 import struct
 from . import assert_exact
@@ -44,16 +44,16 @@ class RampBound:
         return max(self.start[0],self.target[0]),max(self.start[1],self.target[1])+self.roundoff()
     def advance(self,frames):self.elapsed=min(self.duration,self.elapsed+frames)
 
-def error_budgets(scenario,image,fixed):
+def error_budgets(scenario,order,fixed):
     """Propagate magnitude/error bounds in the real compiled arithmetic order.
 
     State and media ownership decisions come from equal observed logical states;
-    this computes error bounds only, never audio or expected FPGA decisions.
+    this computes error bounds only, never audio or transition decisions.
     A recording retains the largest bound of its captured chunks. Thus repeated
     read-only playback does not accumulate error with session duration.
     """
-    loop_rows={identity(v['id']):v for v in image['loop_views']}
-    view_owner={v:(identity(row['id']),c) for row in image['loop_views'] for c,v in enumerate(row['views'])}
+    loop_rows={identity(v['id']):v for v in scenario['loops']}
+    nodes={identity(v['id']):v['operation'] for v in scenario['nodes']}
     banks={m['name']:m for m in scenario['media']}
     media={};recording={};previous={};exported={}
     for logical in scenario['loops']:
@@ -66,7 +66,8 @@ def error_budgets(scenario,image,fixed):
             recording[key,channel]=(0.0,0.0)
         previous[key]='stopped'
     controls={}
-    gain_bindings={identity(b['id']):b['ramps'] for b in image['gains']}
+    gain_bindings={identity(n['id']):[(identity(n['id']),c) for c in range(n['operation']['channels'])]
+                   for n in scenario['nodes'] if n['operation']['kind']=='gain'}
     for node in scenario['nodes']:
         if node['operation']['kind']=='gain':
             magnitude,error=source_bound([node['operation']['initial']])
@@ -89,29 +90,38 @@ def error_budgets(scenario,image,fixed):
             if action['kind']=='export':
                 key=identity(action['target'])
                 exported[action['name']]=[recording[key,c] if action['selection']=='recording' else media[key,c]
-                                          for c in range(len(loop_rows[key]['views']))]
-        buffers={};output=[0.0]*scenario['output_ports']
-        for instruction in image['program']['instructions']:
-            kind=instruction['kind']
-            if kind=='process_input':value=source_bound(step['inputs'][instruction['port']])
-            elif kind=='process_silence':value=(0.0,0.0)
-            elif kind=='process_logical_playback':
-                owner=view_owner[image['initial_state']['memory'][instruction['view']]['value']]
-                value=media[owner] if states[owner[0]]['mode']=='playing' else (0.0,0.0)
-            elif kind=='process_gain':
-                control=controls[instruction['ramp']]
-                value=gain(buffers[instruction['source']],control.bound())
-                control.advance(scenario['quantum'])
-            elif kind=='process_mix':value=mix(buffers[instruction['left']],buffers[instruction['right']])
-            elif kind=='process_logical_capture':
-                owner=view_owner[image['initial_state']['memory'][instruction['view']]['value']]
-                if states[owner[0]]['mode']=='recording':
-                    a,b=recording[owner],buffers[instruction['source']]
-                    recording[owner]=(max(a[0],b[0]),max(a[1],b[1]))
-                continue
-            elif kind=='process_output':output[instruction['port']]=buffers[instruction['source']][1];continue
-            else:raise ValueError(f'no numeric bound rule for {kind}')
-            buffers[instruction['destination']]=value
+                                          for c in range(loop_rows[key]['channels'])]
+        values={};output=[0.0]*scenario['output_ports']
+        def source(ep):
+            return (source_bound(step['inputs'][ep['port']]) if ep['node'] is None
+                    else values[identity(ep['node']),ep['port']])
+        def incoming(node,port):
+            terms=[source(edge['source']) for edge in order['connections']
+                   if edge['destination']['node']==node and edge['destination']['port']==port]
+            if not terms:return (0.0,0.0)
+            result=terms[0]
+            for term in terms[1:]:result=mix(result,term)
+            return result
+        for node in order['nodes']:
+            key=identity(node);operation=nodes[key];kind=operation['kind']
+            channels=operation['channels'] if kind=='gain' else loop_rows[identity(operation['target'])]['channels']
+            for channel in range(channels):
+                if kind=='playback':
+                    owner=identity(operation['target']),channel
+                    value=media[owner] if states[owner[0]]['mode']=='playing' else (0.0,0.0)
+                elif kind=='gain':
+                    control=controls[key,channel]
+                    value=gain(incoming(node,channel),control.bound())
+                    control.advance(scenario['quantum'])
+                elif kind=='capture':
+                    owner=identity(operation['target']),channel
+                    if states[owner[0]]['mode']=='recording':
+                        a,b=recording[owner],incoming(node,channel)
+                        recording[owner]=(max(a[0],b[0]),max(a[1],b[1]))
+                    continue
+                else:raise ValueError(f'no numeric bound rule for {kind}')
+                values[key,channel]=value
+        for port in range(scenario['output_ports']):output[port]=incoming(None,port)[1]
         output_budgets.append(output)
         previous={key:state['mode'] for key,state in states.items()}
     for logical in scenario['loops']:
@@ -119,7 +129,7 @@ def error_budgets(scenario,image,fixed):
         exported[f"loop:{logical['id']['slot']}:{logical['id']['generation']}"]=[media[key,c] for c in range(logical['channels'])]
     return output_budgets,{name:[bound[1] for bound in values] for name,values in exported.items()}
 
-def compare(scenario,image,fixed,floating,audit):
+def compare(scenario,order,fixed,floating,audit):
     assert_exact(audit['result'],fixed)
     assert len(fixed['quanta'])==len(floating['quanta'])==len(scenario['steps'])
     clips=sum(row['counts'][k] for row in audit['quanta'] for k in
@@ -127,7 +137,7 @@ def compare(scenario,image,fixed,floating,audit):
     intentional=scenario.get('arithmetic','bounded')=='intentional_clipping'
     if clips and not intentional:raise AssertionError(f'{scenario["name"]}: {clips} undeclared saturations')
     if intentional and not clips:raise AssertionError('intentional clipping scenario did not exercise saturation')
-    output_budgets,media_budgets=error_budgets(scenario,image,fixed)
+    output_budgets,media_budgets=error_budgets(scenario,order,fixed)
     errors=[];maximum_budget=0.0;worst=None;outside=[];per_quantum=[]
     def samples(qa,fa,budgets,path):
         nonlocal maximum_budget,worst
