@@ -10,9 +10,10 @@ workspace = true
 
 [features]
 default = []
-sim = ["dep:marlin", "dep:quick-xml", "dep:serde", "dep:serde_json", "dep:clap", "dep:libloading", "dep:rt_audio_math", "dep:rt_runtime", "dep:sha2"]
+sim = ["dep:rt_fpga_reference", "dep:marlin", "dep:quick-xml", "dep:serde", "dep:serde_json", "dep:clap", "dep:libloading", "dep:rt_audio_math", "dep:rt_runtime", "dep:sha2"]
 
 [dependencies]
+rt_fpga_reference = { path = "../rt_fpga_reference", features = ["serde"], optional = true }
 sha2 = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive", "std"], optional = true }
 serde_json = { workspace = true, optional = true }

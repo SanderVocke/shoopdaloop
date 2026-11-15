@@ -1,5 +1,10 @@
 # Native FPGA component verification
 
+The restored [Rust component reference](../rt_fpga_reference/README.md) is exercised
+by `--test reference`. The same explicit programs, records and samples run through
+independent Rust models and real RTL; jobs, state, errors, buffers and output
+samples are compared exactly. Existing vector tests remain independent checks.
+
 `rt_fpga_testbench` preserves the Marlin/Verilator simulation framework and
 component drivers. It needs Verilator **5.032**, a C++ compiler and Rust. Simulation
 is opt-in; default native and Wasm builds do not depend on Marlin.

@@ -62,9 +62,16 @@ fn vector(
 ) {
     let value = case(vec![instruction], memory.clone(), d.depths[2], budget, q);
     d.load(s, &value);
-    assert_eq!(d.execute(s, &[]), status, "vector {value}");
-    assert_eq!(d.drain(s), jobs, "vector {value}");
-    assert_eq!(d.snapshot(s), json!({"memory":after.unwrap_or(memory)}));
+    let actual_status = d.execute(s, &[]);
+    let actual_jobs = d.drain(s);
+    let actual_state = d.snapshot(s);
+    assert_eq!(actual_status, status, "vector {value}");
+    assert_eq!(actual_jobs, jobs, "vector {value}");
+    assert_eq!(actual_state, json!({"memory":after.unwrap_or(memory)}));
+    assert_eq!(
+        (actual_status, actual_state, actual_jobs),
+        crate::reference::state(&value, &[])
+    );
 }
 fn instruction_vectors(d: &mut State, s: &mut Sim<'_>) {
     for (instruction, job) in [

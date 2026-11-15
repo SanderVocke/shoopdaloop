@@ -9,6 +9,7 @@ pub mod memory;
 pub mod model;
 pub mod protocol;
 pub mod random;
+pub mod reference;
 pub mod report;
 pub mod sim;
 pub mod suites;

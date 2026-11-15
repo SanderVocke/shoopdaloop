@@ -81,6 +81,21 @@ pub fn job(bits: &Bits) -> Value {
             assert_eq!((a, b, p1, p2), (0, 0, 0, 0));
             json!({"kind":"begin_capture","view":p0})
         }
+        8 => {
+            assert_eq!((b, p1, p2), (0, 0, 0));
+            assert_eq!(p0 >> 32, 0);
+            json!({"kind":"constant","value":p0 as i32,"destination":a})
+        }
+        9 => {
+            assert_eq!((p0 >> 32, p1, p2), (0, 0, 0));
+            let mode =
+                ["multiply", "left_balance", "right_balance", "one_minus"][(p0 >> 16) as usize];
+            json!({"kind":"arithmetic","left":a,"right":b,"destination":p0 & 65535,"mode":mode})
+        }
+        10 => {
+            assert_eq!((p1 >> 2, p2), (0, 0));
+            json!({"kind":"smoothing","source":a,"destination":b,"history":p0 as u32,"duration":p0 >> 32,"playing":p1 & 1 != 0,"restart":p1 & 2 != 0})
+        }
         _ => panic!("unknown job opcode {kind}"),
     }
 }

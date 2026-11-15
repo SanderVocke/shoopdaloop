@@ -23,6 +23,11 @@ cache coherence, transfer backpressure, retirement and reset behavior remain
 verified. Faults are exposed by the relevant component; there is no active
 application-level sticky-silence/reset protocol or full-loop timing guarantee.
 
+The [scoped Rust reference](src/rust/rt_fpga_reference/README.md) provides
+functional counterparts of the retained state, job and logical-memory components.
+Marlin differential tests compare jobs, state and samples exactly. This does not
+restore transition processing, the former ARM interface or an application backend.
+
 See [verification commands](src/rust/rt_fpga_testbench/README.md), the
 [retirement ledger](docs/fpga/retirement-ledger.md), and the
 [implementation plan](PLAN_FPGA_COMPONENT_RETIREMENT.md). Old timing and board

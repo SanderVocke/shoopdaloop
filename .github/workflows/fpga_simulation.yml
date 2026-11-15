@@ -14,6 +14,7 @@ on:
       - 'src/rust/rt_audio_math/**'
       - 'src/rust/rt_backend_testbench/**'
       - 'src/rust/rt_fpga_testbench/**'
+      - 'src/rust/rt_fpga_reference/**'
       - 'third_party/marlin-verilator/**'
       - 'src/rust/rt_runtime/**'
       - 'src/rust/shoop_loops/**'
@@ -35,6 +36,7 @@ on:
     paths:
       - 'fpga/**'
       - 'src/rust/rt_fpga_testbench/**'
+      - 'src/rust/rt_fpga_reference/**'
       - 'third_party/marlin-verilator/**'
       - '.github/workflows/fpga_simulation.yml'
       - 'scripts/build_verilator.sh'
@@ -97,6 +99,10 @@ jobs:
           set -o pipefail
           cargo test --locked -p rt_fpga_testbench --features sim -- --nocapture 2>&1 | tee work/marlin-suite/regression.log
           cargo check --locked -p rt_fpga_testbench
+      - name: Check restored Rust component reference
+        run: |
+          cargo build --locked -p rt_fpga_reference --no-default-features
+          cargo test --locked -p rt_fpga_reference --all-features
       - name: Verify production CPU numeric checks
         run: |
           cargo test --locked -p rt_backend_testbench
