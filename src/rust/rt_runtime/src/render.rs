@@ -1,6 +1,7 @@
 //! Single-owner render endpoint. Final destruction requires stopped callbacks.
 
 use crate::buffer::AudioBlock;
+use crate::Sample;
 use crate::{Error, Frame, PreparedConfig};
 
 pub struct RenderRuntime {
@@ -25,7 +26,7 @@ impl RenderRuntime {
         self.config
     }
 
-    pub fn process(&mut self, mut block: AudioBlock<'_, '_>) -> Result<(), Error> {
+    pub fn process<S: Sample>(&mut self, mut block: AudioBlock<'_, '_, S>) -> Result<(), Error> {
         if block.frames == 0 {
             return Ok(());
         }

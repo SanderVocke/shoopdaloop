@@ -27,6 +27,6 @@ impl AudioRenderMode {
     }
 
     pub fn chunked(self) -> bool {
-        self != Self::Current
+        matches!(self, Self::Chunks | Self::ChunksDescriptors)
     }
 }

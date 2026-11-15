@@ -353,13 +353,9 @@ impl LoopWidget {
         if !state.sync {
             let duplicate = add_with_capabilities(
                 ui,
-                &[
-                    BackendCapability::SessionCapture,
-                    BackendCapability::LoopContentImport,
-                    BackendCapability::LoopDuplication,
-                ],
+                &[BackendCapability::LoopDuplication],
                 egui::Button::new("Clone"),
-            );
+            ).on_hover_text("Copy into a stopped slot below. Supports primitive loops and Play/Stop/Record composites. Replacing and dry/wet composite modes cannot be copied yet.");
             #[cfg(test)]
             {
                 self.test_duplicate_rect = Some(duplicate.rect);
@@ -1602,6 +1598,10 @@ mod tests {
     fn context_menu_labels_clone_and_requests_duplication_for_non_sync_loops() {
         let context = egui::Context::default();
         crate::initialize(&context);
+        crate::set_backend_capabilities(
+            &context,
+            crate::BackendCapabilities::NONE.with(BackendCapability::LoopDuplication, true),
+        );
         let mut widget = LoopWidget::default();
         let state = state();
         let mut initial_response = LoopWidgetResponse::default();

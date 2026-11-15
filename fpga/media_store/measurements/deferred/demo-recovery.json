@@ -1,0 +1,12 @@
+{
+  "q": 32,
+  "p": 32,
+  "channels": 16,
+  "generated_input": true,
+  "prepared_loader": true,
+  "recoveries": 4,
+  "epoch": 5,
+  "input_exhaustion_recovered": true,
+  "memory_fault_recovered": true,
+  "pending_response_drained": true
+}

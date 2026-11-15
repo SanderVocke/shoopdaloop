@@ -1,9 +1,10 @@
 use super::*;
 use rt_runtime::buffer::AudioPorts;
+use rt_runtime::Sample;
 
-pub(super) fn mark_replacing_targets(
+pub(super) fn mark_replacing_targets<S: Sample>(
     topology: &PreparedTopology,
-    rows: &[Option<Row>],
+    rows: &[Option<Row<S>>],
     targets: &mut [bool],
 ) {
     for node in topology.nodes() {
@@ -23,12 +24,12 @@ pub(super) fn mark_replacing_targets(
     }
 }
 
-impl LoopPlanner {
+impl<S: Sample> LoopPlanner<S> {
     pub(super) fn prepare_candidate_inputs(
         &mut self,
         id: StageId,
         frame: Frame,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<bool, Failure> {
         let mut ready = true;
         for slot in 0..self.rows.len() {
@@ -156,8 +157,8 @@ impl LoopPlanner {
         slot: usize,
         frame: Frame,
         q: usize,
-        ports: &AudioPorts<'_>,
-        io: &mut ResourceIo<'_>,
+        ports: &AudioPorts<'_, S>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<(), Error> {
         let row = self.rows[slot].ok_or(Error::InvalidId)?;
         if let Some(writer) = row
@@ -190,7 +191,7 @@ impl LoopPlanner {
     pub(super) fn prepare_program_inputs(
         &mut self,
         frame: Frame,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<bool, Error> {
         self.refresh_replacing_targets();
         if let Some(shared) = &mut self.shared {

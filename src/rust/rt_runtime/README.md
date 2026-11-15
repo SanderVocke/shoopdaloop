@@ -35,6 +35,12 @@ flowchart LR
 
 **The real-time contract is conditional:** runtime callback paths use prepared storage and finite application-dependent rendering work without heap allocation, freeing, locks, waits, or external I/O. Your processors and host callback must satisfy the same contract. This is not a hard-real-time deadline guarantee.
 
+The production audio path accepts a compile-time sample policy with `f32` defaults.
+`Q824` uses the same buffers, processors, routing and media codecs with raw fixed
+samples. The FPGA comparison profile uses this path and the production loop
+planner; it does not select a separate runtime renderer. See
+[production/RTL verification](../../../fpga/verification/README.md).
+
 ## Documentation
 
 The [nineteen-chapter book](docs/README.md) is the primary guide. Its tasks use small independent public-API examples rather than a growing application.
@@ -66,7 +72,7 @@ The [gain graph example](examples/gain_graph.rs) checks output samples, exact-fr
 - Generic planning supports render-owned domain state and whole-quantum processing through `GraphRuntime<P, L = NoPlanner, Q = ()>`. Planner and processor operations are typed independently; they have reliable terminal receipts and finite independent recovery. A planner admits generic graph and processor changes before they publish. Required resource access has separate counters; legacy optional access retains shared quotas. MIDI checkpoints and coordinated capture are opt-in prepared stores. [Staged graph activation](docs/part-4-coordinate-processors-and-changes/15-staging-and-coordinating-graph-activation.md) separates Ready/retired owners and actual-boundary preflight/publication. Loop timing, node pairs, restoration, media/configuration and paired program/graph transactions belong to the [separate loop library](../shoop_loops/README.md) over prepared physical templates, not arbitrary new processor construction.
 - Graphs are acyclic: no feedback edges or automatic delay compensation.
 - Processor slots and port signatures are reserved at startup. Rewiring is live; arbitrary new slots or larger signatures are not.
-- Audio processing uses planar `f32`; resource audio uses interleaved little-endian `f32`. Conversion, resampling, codecs, and playback DSP belong to the host/processors.
+- Audio defaults to planar `f32` with interleaved little-endian resource samples. The compile-time `Sample` policy also supports raw Q8.24 buffers and resources; see [audio arithmetic](../rt_audio_math/README.md). Conversion, resampling, codecs, and playback DSP belong to the host/processors. Device and persistence formats keep their existing encoding.
 - MIDI is complete MIDI 1.0 packets, including bounded SysEx—not a raw byte-stream parser or MIDI 2.0 API.
 - Native and Wasm hosts need their own adapters. The crate does not install an AudioWorklet or bridge separate Wasm memories.
 - Packaging is still workspace-managed, including version, dependency settings, and dev-only test support. The documentation is standalone; the directory is not yet a separately buildable/published package.

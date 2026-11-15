@@ -1,0 +1,38 @@
+{
+  "revision": "0d5978abb98ede42b63aaad47d9c506c3c677451",
+  "working_tree_dirty": true,
+  "command": [
+    "fpga/synthesis/subsystems.py",
+    "memory",
+    "--threads",
+    "1",
+    "--strategy",
+    "timing",
+    "--vivado",
+    "/workspace/toolchains/vivado",
+    "--output",
+    "work/150mhz/memory-dma-tag-stage"
+  ],
+  "subsystem": "memory",
+  "top": "media_store_axi",
+  "parameters": {
+    "VIEWS": 64,
+    "SLOTS": 2048,
+    "CHUNK_FRAMES": 32,
+    "BLOCK_CHUNKS": 32,
+    "READ_BUFFERS": 4,
+    "WRITE_BUFFERS": 4,
+    "TABLE_LINES": 8,
+    "REF_LINES": 4,
+    "STACK_LINES": 2,
+    "AXI_DATA_WIDTH": 64,
+    "BURST_MEMORY": 1
+  },
+  "part": "xc7z020clg484-1",
+  "clock_mhz": 150,
+  "uncertainty_ns": 0.2,
+  "stage": "route",
+  "threads": 1,
+  "strategy": "timing",
+  "implementation_setup_uncertainty_ns": 0.9
+}

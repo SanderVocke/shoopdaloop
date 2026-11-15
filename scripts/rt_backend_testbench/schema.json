@@ -1,0 +1,1751 @@
+{
+  "audit": {
+    "$defs": {
+      "ActionResult": {
+        "additionalProperties": false,
+        "properties": {
+          "delivered": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "requested": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "terminal": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "requested",
+          "terminal",
+          "outcome"
+        ],
+        "type": "object"
+      },
+      "Counts": {
+        "additionalProperties": false,
+        "properties": {
+          "clipped_mixes": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "clipped_negations": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "clipped_products": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "clipped_subtractions": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "first_clip_operation": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "mixes": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "negations": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "products": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "subtractions": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "products",
+          "mixes",
+          "subtractions",
+          "negations",
+          "clipped_products",
+          "clipped_mixes",
+          "clipped_subtractions",
+          "clipped_negations"
+        ],
+        "type": "object"
+      },
+      "Event": {
+        "additionalProperties": false,
+        "properties": {
+          "frame": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kind": {
+            "$ref": "#/$defs/EventKind"
+          },
+          "target": {
+            "$ref": "#/$defs/Identity"
+          }
+        },
+        "required": [
+          "frame",
+          "target",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "EventKind": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "transition",
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/Transition"
+              }
+            },
+            "required": [
+              "kind",
+              "value"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "wrap",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "pulse",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "Identity": {
+        "additionalProperties": false,
+        "properties": {
+          "generation": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "slot": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slot",
+          "generation"
+        ],
+        "type": "object"
+      },
+      "LoopState": {
+        "additionalProperties": false,
+        "properties": {
+          "capture_frames": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "capture_revision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "content_length": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "content_revision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "cycles": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "id": {
+            "$ref": "#/$defs/Identity"
+          },
+          "last_pulse": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "mode": {
+            "type": "string"
+          },
+          "position": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "repeat_sync": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "mode",
+          "content_length",
+          "position",
+          "capture_frames",
+          "cycles",
+          "content_revision",
+          "capture_revision",
+          "repeat_sync"
+        ],
+        "type": "object"
+      },
+      "MediaResult": {
+        "additionalProperties": false,
+        "properties": {
+          "frames": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "samples": {
+            "$ref": "#/$defs/Samples"
+          }
+        },
+        "required": [
+          "name",
+          "frames",
+          "samples"
+        ],
+        "type": "object"
+      },
+      "Numeric": {
+        "enum": [
+          "float",
+          "q824"
+        ],
+        "type": "string"
+      },
+      "PendingRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "effective": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "remaining_ticks": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "requested": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "requested",
+          "effective"
+        ],
+        "type": "object"
+      },
+      "Quantum": {
+        "additionalProperties": false,
+        "properties": {
+          "counts": {
+            "$ref": "#/$defs/Counts"
+          },
+          "frame": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "frame",
+          "counts"
+        ],
+        "type": "object"
+      },
+      "QuantumResult": {
+        "additionalProperties": false,
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/$defs/Event"
+            },
+            "type": "array"
+          },
+          "frame": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "next_frame": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "outcomes": {
+            "items": {
+              "$ref": "#/$defs/ActionResult"
+            },
+            "type": "array"
+          },
+          "outputs": {
+            "$ref": "#/$defs/Samples"
+          },
+          "pending": {
+            "items": {
+              "$ref": "#/$defs/PendingRequest"
+            },
+            "type": "array"
+          },
+          "states": {
+            "items": {
+              "$ref": "#/$defs/LoopState"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "frame",
+          "next_frame",
+          "outputs",
+          "states",
+          "outcomes",
+          "events",
+          "pending"
+        ],
+        "type": "object"
+      },
+      "Result": {
+        "additionalProperties": false,
+        "properties": {
+          "format_version": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "media": {
+            "items": {
+              "$ref": "#/$defs/MediaResult"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "numeric": {
+            "$ref": "#/$defs/Numeric"
+          },
+          "quanta": {
+            "items": {
+              "$ref": "#/$defs/QuantumResult"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "format_version",
+          "name",
+          "numeric",
+          "quanta",
+          "media"
+        ],
+        "type": "object"
+      },
+      "Samples": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "channels": {
+                "items": {
+                  "items": {
+                    "format": "float",
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              "encoding": {
+                "const": "float",
+                "type": "string"
+              }
+            },
+            "required": [
+              "encoding",
+              "channels"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "channels": {
+                "items": {
+                  "items": {
+                    "format": "int32",
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              "encoding": {
+                "const": "q824",
+                "type": "string"
+              }
+            },
+            "required": [
+              "encoding",
+              "channels"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "Transition": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "stop",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "record",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "play",
+                "type": "string"
+              },
+              "position": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "retrigger": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "kind",
+              "position",
+              "retrigger"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "seek",
+                "type": "string"
+              },
+              "position": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "retrigger": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "kind",
+              "position",
+              "retrigger"
+            ],
+            "type": "object"
+          }
+        ]
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "format_version": {
+        "format": "uint32",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "quanta": {
+        "items": {
+          "$ref": "#/$defs/Quantum"
+        },
+        "type": "array"
+      },
+      "result": {
+        "$ref": "#/$defs/Result"
+      }
+    },
+    "required": [
+      "format_version",
+      "result",
+      "quanta"
+    ],
+    "title": "Report",
+    "type": "object"
+  },
+  "format_version": 1,
+  "graph": {
+    "$defs": {
+      "Connection": {
+        "additionalProperties": false,
+        "properties": {
+          "destination": {
+            "$ref": "#/$defs/Endpoint"
+          },
+          "source": {
+            "$ref": "#/$defs/Endpoint"
+          }
+        },
+        "required": [
+          "source",
+          "destination"
+        ],
+        "type": "object"
+      },
+      "Endpoint": {
+        "additionalProperties": false,
+        "properties": {
+          "node": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Identity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "port": {
+            "format": "uint16",
+            "maximum": 65535,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "port"
+        ],
+        "type": "object"
+      },
+      "Identity": {
+        "additionalProperties": false,
+        "properties": {
+          "generation": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "slot": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slot",
+          "generation"
+        ],
+        "type": "object"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "description": "Canonical production signal ordering for numeric error-bound analysis.",
+    "properties": {
+      "connections": {
+        "items": {
+          "$ref": "#/$defs/Connection"
+        },
+        "type": "array"
+      },
+      "format_version": {
+        "format": "uint32",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "nodes": {
+        "items": {
+          "$ref": "#/$defs/Identity"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "format_version",
+      "nodes",
+      "connections"
+    ],
+    "title": "SignalOrder",
+    "type": "object"
+  },
+  "result": {
+    "$defs": {
+      "ActionResult": {
+        "additionalProperties": false,
+        "properties": {
+          "delivered": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "requested": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "terminal": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "requested",
+          "terminal",
+          "outcome"
+        ],
+        "type": "object"
+      },
+      "Event": {
+        "additionalProperties": false,
+        "properties": {
+          "frame": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kind": {
+            "$ref": "#/$defs/EventKind"
+          },
+          "target": {
+            "$ref": "#/$defs/Identity"
+          }
+        },
+        "required": [
+          "frame",
+          "target",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "EventKind": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "transition",
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/Transition"
+              }
+            },
+            "required": [
+              "kind",
+              "value"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "wrap",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "pulse",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "Identity": {
+        "additionalProperties": false,
+        "properties": {
+          "generation": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "slot": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slot",
+          "generation"
+        ],
+        "type": "object"
+      },
+      "LoopState": {
+        "additionalProperties": false,
+        "properties": {
+          "capture_frames": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "capture_revision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "content_length": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "content_revision": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "cycles": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "id": {
+            "$ref": "#/$defs/Identity"
+          },
+          "last_pulse": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "mode": {
+            "type": "string"
+          },
+          "position": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "repeat_sync": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "mode",
+          "content_length",
+          "position",
+          "capture_frames",
+          "cycles",
+          "content_revision",
+          "capture_revision",
+          "repeat_sync"
+        ],
+        "type": "object"
+      },
+      "MediaResult": {
+        "additionalProperties": false,
+        "properties": {
+          "frames": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "samples": {
+            "$ref": "#/$defs/Samples"
+          }
+        },
+        "required": [
+          "name",
+          "frames",
+          "samples"
+        ],
+        "type": "object"
+      },
+      "Numeric": {
+        "enum": [
+          "float",
+          "q824"
+        ],
+        "type": "string"
+      },
+      "PendingRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "effective": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "remaining_ticks": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "requested": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "requested",
+          "effective"
+        ],
+        "type": "object"
+      },
+      "QuantumResult": {
+        "additionalProperties": false,
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/$defs/Event"
+            },
+            "type": "array"
+          },
+          "frame": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "next_frame": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "outcomes": {
+            "items": {
+              "$ref": "#/$defs/ActionResult"
+            },
+            "type": "array"
+          },
+          "outputs": {
+            "$ref": "#/$defs/Samples"
+          },
+          "pending": {
+            "items": {
+              "$ref": "#/$defs/PendingRequest"
+            },
+            "type": "array"
+          },
+          "states": {
+            "items": {
+              "$ref": "#/$defs/LoopState"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "frame",
+          "next_frame",
+          "outputs",
+          "states",
+          "outcomes",
+          "events",
+          "pending"
+        ],
+        "type": "object"
+      },
+      "Samples": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "channels": {
+                "items": {
+                  "items": {
+                    "format": "float",
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              "encoding": {
+                "const": "float",
+                "type": "string"
+              }
+            },
+            "required": [
+              "encoding",
+              "channels"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "channels": {
+                "items": {
+                  "items": {
+                    "format": "int32",
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              "encoding": {
+                "const": "q824",
+                "type": "string"
+              }
+            },
+            "required": [
+              "encoding",
+              "channels"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "Transition": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "stop",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "record",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "play",
+                "type": "string"
+              },
+              "position": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "retrigger": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "kind",
+              "position",
+              "retrigger"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "seek",
+                "type": "string"
+              },
+              "position": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "retrigger": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "kind",
+              "position",
+              "retrigger"
+            ],
+            "type": "object"
+          }
+        ]
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "format_version": {
+        "format": "uint32",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "media": {
+        "items": {
+          "$ref": "#/$defs/MediaResult"
+        },
+        "type": "array"
+      },
+      "name": {
+        "type": "string"
+      },
+      "numeric": {
+        "$ref": "#/$defs/Numeric"
+      },
+      "quanta": {
+        "items": {
+          "$ref": "#/$defs/QuantumResult"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "format_version",
+      "name",
+      "numeric",
+      "quanta",
+      "media"
+    ],
+    "title": "Result",
+    "type": "object"
+  },
+  "scenario": {
+    "$defs": {
+      "Action": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "at": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
+                "const": "transition",
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "operation": {
+                "$ref": "#/$defs/Transition"
+              },
+              "target": {
+                "$ref": "#/$defs/Identity"
+              },
+              "timing": {
+                "$ref": "#/$defs/Timing"
+              }
+            },
+            "required": [
+              "kind",
+              "name",
+              "target",
+              "at",
+              "timing",
+              "operation"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "at": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "duration": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
+                "const": "gain",
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "node": {
+                "$ref": "#/$defs/Identity"
+              },
+              "target": {
+                "format": "int32",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "kind",
+              "name",
+              "node",
+              "at",
+              "target",
+              "duration"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "cancel",
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "request": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "name",
+              "request"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "export",
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "selection": {
+                "$ref": "#/$defs/Selection"
+              },
+              "target": {
+                "$ref": "#/$defs/Identity"
+              }
+            },
+            "required": [
+              "kind",
+              "name",
+              "target",
+              "selection"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "Arithmetic": {
+        "enum": [
+          "bounded",
+          "intentional_clipping"
+        ],
+        "type": "string"
+      },
+      "Connection": {
+        "additionalProperties": false,
+        "properties": {
+          "destination": {
+            "$ref": "#/$defs/Endpoint"
+          },
+          "source": {
+            "$ref": "#/$defs/Endpoint"
+          }
+        },
+        "required": [
+          "source",
+          "destination"
+        ],
+        "type": "object"
+      },
+      "Content": {
+        "additionalProperties": false,
+        "properties": {
+          "length_chunks": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "media": {
+            "type": "string"
+          },
+          "start_chunks": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "media",
+          "start_chunks",
+          "length_chunks"
+        ],
+        "type": "object"
+      },
+      "Endpoint": {
+        "additionalProperties": false,
+        "properties": {
+          "node": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Identity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "port": {
+            "format": "uint16",
+            "maximum": 65535,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "port"
+        ],
+        "type": "object"
+      },
+      "Identity": {
+        "additionalProperties": false,
+        "properties": {
+          "generation": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "slot": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slot",
+          "generation"
+        ],
+        "type": "object"
+      },
+      "Loop": {
+        "additionalProperties": false,
+        "properties": {
+          "channels": {
+            "format": "uint16",
+            "maximum": 65535,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Content"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "$ref": "#/$defs/Identity"
+          },
+          "repeat_sync": {
+            "type": "boolean"
+          },
+          "sync_source": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Identity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "channels",
+          "repeat_sync"
+        ],
+        "type": "object"
+      },
+      "Media": {
+        "additionalProperties": false,
+        "properties": {
+          "channels": {
+            "items": {
+              "items": {
+                "format": "int32",
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "channels"
+        ],
+        "type": "object"
+      },
+      "Node": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/Identity"
+          },
+          "operation": {
+            "$ref": "#/$defs/NodeKind"
+          }
+        },
+        "required": [
+          "id",
+          "operation"
+        ],
+        "type": "object"
+      },
+      "NodeKind": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "playback",
+                "type": "string"
+              },
+              "target": {
+                "$ref": "#/$defs/Identity"
+              }
+            },
+            "required": [
+              "kind",
+              "target"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "capture",
+                "type": "string"
+              },
+              "target": {
+                "$ref": "#/$defs/Identity"
+              }
+            },
+            "required": [
+              "kind",
+              "target"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "channels": {
+                "format": "uint16",
+                "maximum": 65535,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "initial": {
+                "format": "int32",
+                "type": "integer"
+              },
+              "kind": {
+                "const": "gain",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "channels",
+              "initial"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "Selection": {
+        "enum": [
+          "playback",
+          "latest",
+          "recording"
+        ],
+        "type": "string"
+      },
+      "Step": {
+        "additionalProperties": false,
+        "properties": {
+          "actions": {
+            "items": {
+              "$ref": "#/$defs/Action"
+            },
+            "type": "array"
+          },
+          "collect_completed": {
+            "type": "boolean"
+          },
+          "inputs": {
+            "items": {
+              "items": {
+                "format": "int32",
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "inputs",
+          "actions",
+          "collect_completed"
+        ],
+        "type": "object"
+      },
+      "Timing": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "at",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "after_ticks",
+                "type": "string"
+              },
+              "skip": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "source": {
+                "$ref": "#/$defs/Identity"
+              }
+            },
+            "required": [
+              "kind",
+              "source",
+              "skip"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "Transition": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "stop",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "record",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "play",
+                "type": "string"
+              },
+              "position": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "retrigger": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "kind",
+              "position",
+              "retrigger"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "seek",
+                "type": "string"
+              },
+              "position": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "retrigger": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "kind",
+              "position",
+              "retrigger"
+            ],
+            "type": "object"
+          }
+        ]
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "arithmetic": {
+        "$ref": "#/$defs/Arithmetic"
+      },
+      "chunk_frames": {
+        "format": "uint32",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "connections": {
+        "items": {
+          "$ref": "#/$defs/Connection"
+        },
+        "type": "array"
+      },
+      "format_version": {
+        "format": "uint32",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "input_ports": {
+        "format": "uint16",
+        "maximum": 65535,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "loops": {
+        "items": {
+          "$ref": "#/$defs/Loop"
+        },
+        "type": "array"
+      },
+      "media": {
+        "items": {
+          "$ref": "#/$defs/Media"
+        },
+        "type": "array"
+      },
+      "name": {
+        "type": "string"
+      },
+      "nodes": {
+        "items": {
+          "$ref": "#/$defs/Node"
+        },
+        "type": "array"
+      },
+      "output_ports": {
+        "format": "uint16",
+        "maximum": 65535,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "quantum": {
+        "format": "uint32",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "request_capacity": {
+        "format": "uint16",
+        "maximum": 65535,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "steps": {
+        "items": {
+          "$ref": "#/$defs/Step"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "format_version",
+      "name",
+      "quantum",
+      "chunk_frames",
+      "input_ports",
+      "output_ports",
+      "request_capacity",
+      "loops",
+      "nodes",
+      "connections",
+      "media",
+      "steps"
+    ],
+    "title": "Scenario",
+    "type": "object"
+  }
+}

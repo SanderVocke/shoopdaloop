@@ -1,0 +1,343 @@
+{
+  "scope": "Migrated standalone checks and production full-pipeline gates",
+  "pending": [],
+  "campaigns": [
+    {
+      "name": "unify-transition",
+      "results": [
+        {
+          "config": "default",
+          "tests": [
+            "directed_against_rust",
+            "seeded_against_rust",
+            "transport_and_negative_cases",
+            "scratch_initialization_and_reset",
+            "sixty_four_loop_workload"
+          ],
+          "passed": true
+        },
+        {
+          "config": "minimum",
+          "tests": [
+            "directed_against_rust",
+            "seeded_against_rust",
+            "transport_and_negative_cases",
+            "scratch_initialization_and_reset",
+            "sixty_four_loop_workload"
+          ],
+          "passed": true
+        },
+        {
+          "config": "small",
+          "tests": [
+            "directed_against_rust",
+            "seeded_against_rust",
+            "transport_and_negative_cases",
+            "scratch_initialization_and_reset",
+            "sixty_four_loop_workload"
+          ],
+          "passed": true
+        },
+        {
+          "config": "wide",
+          "tests": [
+            "directed_against_rust",
+            "seeded_against_rust",
+            "transport_and_negative_cases",
+            "scratch_initialization_and_reset",
+            "sixty_four_loop_workload"
+          ],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "name": "unify-sp",
+      "results": [
+        {
+          "config": "default",
+          "tests": [
+            "instruction_vectors",
+            "fifo_order_wrap_and_partial_failure",
+            "configuration_and_error_protocol",
+            "nonempty_admission_and_reset"
+          ],
+          "passed": true
+        },
+        {
+          "config": "minimum",
+          "tests": [
+            "instruction_vectors",
+            "fifo_order_wrap_and_partial_failure",
+            "configuration_and_error_protocol",
+            "nonempty_admission_and_reset"
+          ],
+          "passed": true
+        },
+        {
+          "config": "small",
+          "tests": [
+            "instruction_vectors",
+            "fifo_order_wrap_and_partial_failure",
+            "configuration_and_error_protocol",
+            "nonempty_admission_and_reset"
+          ],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "name": "unify-jp",
+      "results": [
+        {
+          "config": "default",
+          "tests": [
+            "directed_audio",
+            "randomized_audio",
+            "sample_protocol",
+            "arithmetic_stream_protocol"
+          ],
+          "passed": true
+        },
+        {
+          "config": "small",
+          "tests": [
+            "directed_audio",
+            "randomized_audio",
+            "sample_protocol",
+            "arithmetic_stream_protocol"
+          ],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "name": "unify-chunk",
+      "results": [
+        {
+          "config": "default",
+          "tests": [
+            "conformance",
+            "buffering_protocol",
+            "faults_and_reset",
+            "read_stream_protocol"
+          ],
+          "passed": true
+        },
+        {
+          "config": "minimum",
+          "tests": [
+            "conformance",
+            "buffering_protocol",
+            "faults_and_reset",
+            "read_stream_protocol"
+          ],
+          "passed": true
+        },
+        {
+          "config": "odd",
+          "tests": [
+            "conformance",
+            "buffering_protocol",
+            "faults_and_reset",
+            "read_stream_protocol"
+          ],
+          "passed": true
+        },
+        {
+          "config": "small",
+          "tests": [
+            "conformance",
+            "buffering_protocol",
+            "faults_and_reset",
+            "read_stream_protocol"
+          ],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "name": "unify-resolver",
+      "results": [
+        {
+          "config": "default",
+          "tests": [
+            "resolver_conformance"
+          ],
+          "passed": true
+        },
+        {
+          "config": "odd",
+          "tests": [
+            "resolver_conformance"
+          ],
+          "passed": true
+        },
+        {
+          "config": "small",
+          "tests": [
+            "resolver_conformance"
+          ],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "name": "unify-media",
+      "results": [
+        {
+          "config": "default",
+          "tests": [
+            "directed_media",
+            "randomized_media",
+            "media_protocol"
+          ],
+          "passed": true
+        },
+        {
+          "config": "odd",
+          "tests": [
+            "directed_media",
+            "randomized_media",
+            "media_protocol"
+          ],
+          "passed": true
+        },
+        {
+          "config": "small",
+          "tests": [
+            "directed_media",
+            "randomized_media",
+            "media_protocol"
+          ],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "name": "unify-media-pipeline",
+      "results": [
+        {
+          "config": "default",
+          "tests": [
+            "directed_pipeline",
+            "randomized_pipeline",
+            "playback_stream_protocol",
+            "pipeline_protocol"
+          ],
+          "passed": true
+        },
+        {
+          "config": "odd",
+          "tests": [
+            "directed_pipeline",
+            "randomized_pipeline",
+            "playback_stream_protocol",
+            "pipeline_protocol"
+          ],
+          "passed": true
+        },
+        {
+          "config": "small",
+          "tests": [
+            "directed_pipeline",
+            "randomized_pipeline",
+            "playback_stream_protocol",
+            "pipeline_protocol"
+          ],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "name": "unify-extra-faults",
+      "results": [
+        {
+          "config": ".",
+          "tests": [
+            "production_scenarios",
+            "fatal_processing_faults_silence_hold_and_reset"
+          ],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "name": "unify-metadata-stalled",
+      "results": [
+        {
+          "config": ".",
+          "tests": [
+            "production_scenarios",
+            "fatal_processing_faults_silence_hold_and_reset"
+          ],
+          "passed": true
+        }
+      ]
+    },
+    {
+      "name": "unify-axi",
+      "results": [
+        {
+          "config": "axi_master-32",
+          "tests": [
+            "words_and_bursts",
+            "independent_channels_and_reset"
+          ],
+          "passed": true
+        },
+        {
+          "config": "axi_master-64",
+          "tests": [
+            "words_and_bursts",
+            "independent_channels_and_reset"
+          ],
+          "passed": true
+        },
+        {
+          "config": "chunk_axi-32",
+          "tests": [
+            "packing_splitting_and_backpressure",
+            "bounds_fault_drain_and_reset"
+          ],
+          "passed": true
+        },
+        {
+          "config": "chunk_axi-64",
+          "tests": [
+            "packing_splitting_and_backpressure",
+            "bounds_fault_drain_and_reset"
+          ],
+          "passed": true
+        },
+        {
+          "config": "word_axi-32",
+          "tests": [
+            "word_adapter"
+          ],
+          "passed": true
+        },
+        {
+          "config": "word_axi-64",
+          "tests": [
+            "word_adapter"
+          ],
+          "passed": true
+        }
+      ]
+    }
+  ],
+  "faults": {
+    "arena_exhaustion": true,
+    "partial_output_silenced": true,
+    "late_memory_error": true,
+    "sticky_silence": true,
+    "reset_reload": true,
+    "state_generation": true,
+    "descriptor_exhaustion": true,
+    "automatic_view_creation": true,
+    "cold_metadata_error": true,
+    "reset_outstanding": true,
+    "posted_writeback": true
+  }
+}

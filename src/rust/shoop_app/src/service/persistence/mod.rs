@@ -149,7 +149,10 @@ impl Service {
             return Err(Refusal::NotReady);
         }
         self.target_current(key, target)?;
-        if self.persistence_job.is_some() || self.driver_freezes_session() {
+        if self.persistence_job.is_some()
+            || self.duplication.is_some()
+            || self.driver_freezes_session()
+        {
             return Err(Refusal::Busy);
         }
         if self
@@ -469,7 +472,8 @@ impl Service {
         }
     }
     pub(super) fn persistence_reads_busy(&self) -> bool {
-        self.driver_freezes_session()
+        self.duplication.is_some()
+            || self.driver_freezes_session()
             || matches!(
                 self.persistence_job,
                 Some(Job::Capture { .. } | Job::Commit(_))
@@ -539,6 +543,9 @@ impl Service {
         })
     }
     pub(super) fn persistence_detach(&mut self) {
+        if self.duplication.is_some() {
+            return;
+        }
         if !matches!(self.persistence_job, Some(Job::Commit(_))) {
             self.persistence_job = None;
             if !self.driver_freezes_session() {

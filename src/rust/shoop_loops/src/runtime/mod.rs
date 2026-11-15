@@ -11,6 +11,7 @@ use crate::{
     Transition,
 };
 use alloc::{boxed::Box, vec, vec::Vec};
+use rt_runtime::Sample;
 use rt_runtime::{
     executor::Command,
     graph::{Catalog, GraphDescription, PreparedPlan},
@@ -35,11 +36,13 @@ pub use shared::{
 mod node_pairs;
 mod planner;
 mod processor;
+mod state_boundary;
 mod topology;
+mod transitions;
 use crate::topology::staging::{Progress, StageId, Status};
 pub use node_pairs::{
-    NodePairInitial, NodePairSettings, NodePairSourceId, NodePairSourceStatus, NodePairStageId,
-    NodePairStatus,
+    NodePairInitial, NodePairScope, NodePairSettings, NodePairSourceId, NodePairSourceStatus,
+    NodePairStageId, NodePairStatus,
 };
 pub use processor::{CaptureNode, LoopNode, LoopNodes, PlaybackNode};
 pub use rt_runtime::graph::activation::{StageId as GraphStageId, StageStatus as GraphStageStatus};
@@ -85,7 +88,7 @@ pub struct Settings {
     pub export_slots: usize,
 }
 #[derive(Clone, Copy, Debug)]
-pub struct Binding {
+pub struct Binding<S: Sample = f32> {
     pub target: LoopId,
     pub playback: NodeId,
     pub capture: NodeId,
@@ -93,7 +96,7 @@ pub struct Binding {
     pub auxiliary_channels: usize,
     pub dry_wet: bool,
     pub midi: bool,
-    pub gain: f32,
+    pub gain: S,
     pub smoothing: audio::Smoothing,
     pub midi_events: usize,
     pub midi_bytes: usize,
@@ -115,7 +118,7 @@ pub enum Selection {
 /// distinct. Recovery permits Cancel, TopologyCancel, NodePairCancel, NodePairSourceRelease
 /// and nonfuture Timing::At Stop; activation/queries/exports use the normal lane.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Operation {
+pub enum Operation<S: Sample = f32> {
     InputBatch {
         count: usize,
         timing: Timing,
@@ -222,7 +225,7 @@ pub enum Operation {
     NodePairAppend {
         id: NodePairStageId,
         previous: Option<LoopId>,
-        initial: Option<NodePairInitial>,
+        initial: Option<NodePairInitial<S>>,
     },
     NodePairStatus {
         id: NodePairStageId,
@@ -340,11 +343,11 @@ pub enum Operation {
     },
     Gain {
         target: LoopId,
-        value: f32,
+        value: S,
     },
     Balance {
         target: LoopId,
-        value: f32,
+        value: S,
     },
     /// Boundary smoothing of the primitive's audio playback from its next restart.
     Smoothing {
@@ -388,7 +391,7 @@ pub enum Operation {
 /// Settled pre-render state at one frame, including actual publication epochs.
 /// Media identities here are borrowed; use a successful export for independent ownership.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Cut {
+pub struct Cut<S: Sample = f32> {
     pub raw_audio_frames: u64,
     pub raw_midi_frames: u64,
     pub windows: Windows,
@@ -399,14 +402,14 @@ pub struct Cut {
     pub state: State,
     pub playback: Option<media::MediaId>,
     pub latest: Option<media::MediaId>,
-    pub gain: f32,
-    pub balance: f32,
+    pub gain: S,
+    pub balance: S,
     pub smoothing: audio::Smoothing,
     pub capture_failure: Option<Error>,
     pub midi_overflows: u64,
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Reply {
+pub enum Reply<S: Sample = f32> {
     ReplacingPrepared {
         id: Option<LiveWriterId>,
         status: CandidateStatus,
@@ -422,7 +425,7 @@ pub enum Reply {
         status: CandidateStatus,
     },
 
-    Timing(Cut),
+    Timing(Cut<S>),
     History(HistoryStatus),
     Grabbed(SharedTake),
     WindowGrabbed {
@@ -515,10 +518,10 @@ pub enum Reply {
     },
     Failed(Failure),
     Transition(crate::Completion),
-    State(Cut),
+    State(Cut<S>),
     Export {
         id: media::ExportId,
-        cut: Cut,
+        cut: Cut<S>,
         media: media::Export,
     },
     Cursor(Cursor),
@@ -534,7 +537,7 @@ pub enum Reply {
     },
 }
 #[derive(Clone, Copy)]
-pub struct View {
+pub struct View<S: Sample = f32> {
     pub audio_widths: [usize; 2],
     pub windows: Windows,
     pub raw_position: i64,
@@ -544,8 +547,8 @@ pub struct View {
     pub auxiliary: Option<ReadIndex>,
     pub midi: Option<ReadIndex>,
     pub capture: Option<CaptureTickId>,
-    pub gain: f32,
-    pub balance: f32,
+    pub gain: S,
+    pub balance: S,
     pub smoothing: audio::Smoothing,
     pub playback_node: NodeId,
     pub capture_node: NodeId,
@@ -570,11 +573,11 @@ struct Take {
     midi: Option<media::Source>,
 }
 #[derive(Clone, Copy)]
-struct Row {
+struct Row<S: Sample = f32> {
     windows: Windows,
     timing_revision: u64,
     length_override: Option<(Revision, u64)>,
-    binding: Binding,
+    binding: Binding<S>,
     assigned: bool,
     dry_wet: bool,
     history_source: u32,
@@ -590,10 +593,10 @@ struct Row {
     failure: Option<Error>,
     aborted: bool,
     overflows: u64,
-    balance: f32,
+    balance: S,
 }
 #[derive(Clone, Copy)]
-enum PendingKind {
+enum PendingKind<S: Sample = f32> {
     InputBatch,
     Program {
         id: StageId,
@@ -606,12 +609,12 @@ enum PendingKind {
         pin: Option<media::PinId>,
         clear: bool,
     },
-    Query(Operation),
+    Query(Operation<S>),
 }
 #[derive(Clone, Copy)]
-struct Pending {
+struct Pending<S: Sample = f32> {
     token: ReceiptToken,
-    kind: PendingKind,
+    kind: PendingKind<S>,
     forwarded: bool,
 }
 
@@ -656,20 +659,20 @@ pub struct SourceActivity {
     pub pre_rerecording: bool,
 }
 
-pub struct LoopPlanner {
-    shared: Option<shared::Shared>,
+pub struct LoopPlanner<S: Sample = f32> {
+    shared: Option<shared::Shared<S>>,
     wet_edits: Option<AudioStoreId>,
     observer: Box<dyn BoundaryObserver>,
     settings: Settings,
     resolver: Resolver,
     topologies: topology::Topologies,
-    node_pairs: node_pairs::NodePairs,
+    node_pairs: node_pairs::NodePairs<S>,
     graph_epoch: Epoch,
     ledger: media::Ledger,
-    rows: Box<[Option<Row>]>,
+    rows: Box<[Option<Row<S>>]>,
     inputs: Box<[MidiState]>,
-    views: Box<[View]>,
-    pending: Box<[Option<Pending>]>,
+    views: Box<[View<S>]>,
+    pending: Box<[Option<Pending<S>>]>,
     failures: Vec<crate::Observation>,
     input_batch: input_batch::InputBatch,
     family: Vec<family::Selection>,
@@ -687,11 +690,11 @@ pub struct Options {
 }
 
 /// Prepared parts for installation into an application-owned runtime.
-pub struct Prepared {
+pub struct Prepared<S: Sample = f32> {
     /// The runtime's planner.
-    pub planner: LoopPlanner,
+    pub planner: LoopPlanner<S>,
     /// Processors to install under their identities.
-    pub nodes: LoopNodes,
+    pub nodes: LoopNodes<S>,
     pub client: LoopClient,
 }
 
@@ -719,20 +722,20 @@ impl LoopClient {
     }
     /// Typed loop work at `at`. Admission, delivery and the domain outcome are
     /// reported separately by the runtime.
-    pub fn command<P, Q: ProcessorOperation>(
+    pub fn command<P, Q: ProcessorOperation, S: Sample>(
         &self,
         at: Frame,
-        operation: Operation,
-    ) -> Command<P, LoopPlanner, Q> {
+        operation: Operation<S>,
+    ) -> Command<P, LoopPlanner<S>, Q, S> {
         self.command_with_payload(at, operation, Box::new([]))
     }
     /// Build topology and content-family payloads off-render.
-    pub fn command_with_payload<P, Q: ProcessorOperation>(
+    pub fn command_with_payload<P, Q: ProcessorOperation, S: Sample>(
         &self,
         at: Frame,
-        operation: Operation,
+        operation: Operation<S>,
         payload: Box<[u8]>,
-    ) -> Command<P, LoopPlanner, Q> {
+    ) -> Command<P, LoopPlanner<S>, Q, S> {
         Command::Schedule {
             at,
             action: schedule::Action::Planner {
@@ -744,7 +747,7 @@ impl LoopClient {
     }
 }
 
-impl LoopPlanner {
+impl<S: Sample> LoopPlanner<S> {
     /// Allocating preparation of the planner, its playback/capture nodes and the
     /// control-side client. Capture resources and imported media are created in
     /// `resources`, which the application then gives to its runtime together with
@@ -754,12 +757,12 @@ impl LoopPlanner {
         config: PreparedConfig,
         quantum: rt_runtime::Quantum,
         topology: PreparedTopology,
-        resources: &mut ResourceStore,
+        resources: &mut ResourceStore<S>,
         settings: Settings,
-        bindings: Vec<Binding>,
+        bindings: Vec<Binding<S>>,
         imports: Vec<media::Input>,
         options: Options,
-    ) -> Result<Prepared, Failure> {
+    ) -> Result<Prepared<S>, Failure> {
         if resources.config() != config || resources.quantum() != quantum {
             return Err(Error::InvalidConfig.into());
         }
@@ -773,9 +776,9 @@ impl LoopPlanner {
         let node_pairs = node_pairs::NodePairs::prepare(slots, options.node_pairs)?;
         let bytes = slots
             .checked_mul(
-                size_of::<Row>()
+                size_of::<Row<S>>()
                     + size_of::<MidiState>()
-                    + size_of::<View>()
+                    + size_of::<View<S>>()
                     + size_of::<bool>()
                     + size_of::<family::Selection>(),
             )
@@ -783,7 +786,7 @@ impl LoopPlanner {
                 settings
                     .normal_requests
                     .checked_add(1)
-                    .and_then(|c| c.checked_mul(size_of::<Option<Pending>>()))
+                    .and_then(|c| c.checked_mul(size_of::<Option<Pending<S>>>()))
                     .and_then(|p| n.checked_add(p))
             })
             .ok_or(Error::Capacity)?;
@@ -847,7 +850,7 @@ impl LoopPlanner {
                 failure: None,
                 aborted: false,
                 overflows: 0,
-                balance: 0.,
+                balance: S::ZERO,
             };
             for bank in 0..2 {
                 for roles in 0..2 {
@@ -1015,8 +1018,8 @@ impl LoopPlanner {
             auxiliary: None,
             midi: None,
             capture: None,
-            gain: 1.,
-            balance: 0.,
+            gain: S::ONE,
+            balance: S::ZERO,
             smoothing: audio::Smoothing::None,
             playback_node: NodeId::from_parts(0, 1)?,
             capture_node: NodeId::from_parts(0, 1)?,
@@ -1076,7 +1079,7 @@ impl LoopPlanner {
     /// Prepare source-aligned wet edits without maintaining an input history.
     pub fn prepare_wet_edits(
         &mut self,
-        resources: &mut ResourceStore,
+        resources: &mut ResourceStore<S>,
         config: shared_audio::Config,
     ) -> Result<(), Error> {
         if self.wet_edits.is_some() || config.history_frames != 0 {
@@ -1145,7 +1148,7 @@ impl LoopPlanner {
         })
     }
 
-    fn validate_media_shape(row: Row, view: media::View) -> Result<(), Error> {
+    fn validate_media_shape(row: Row<S>, view: media::View) -> Result<(), Error> {
         if view.description.channels as usize != row.binding.channels
             || view.description.auxiliary_channels as usize
                 != if row.dry_wet {
@@ -1158,6 +1161,21 @@ impl LoopPlanner {
             return Err(Error::InvalidShape);
         }
         Ok(())
+    }
+    /// Initial repeat policy before processing begins.
+    pub fn prepare_repeat_sync(&mut self, target: LoopId, enabled: bool) -> Result<(), Failure> {
+        if self.resolver.frame() != Frame(0) || self.pending.iter().any(Option::is_some) {
+            return Err(Error::InvalidState.into());
+        }
+        self.resolver.set_repeat_sync(target, enabled)?;
+        Ok(())
+    }
+    /// Settled timing and retained logical media, borrowed between callbacks.
+    pub fn resolver(&self) -> &Resolver {
+        &self.resolver
+    }
+    pub fn media_ledger(&self) -> &media::Ledger {
+        &self.ledger
     }
     pub fn observer(&self) -> &dyn BoundaryObserver {
         &*self.observer

@@ -1274,6 +1274,41 @@ fn lifecycle_controller_bounds_outstanding_work_and_reports_worker_loss() {
 }
 
 #[shoop_test]
+fn native_owner_keeps_cleanup_pending_without_blocking_or_resubmitting() {
+    let (sender, requests) = mpsc::sync_channel(2);
+    let (started, receive_started) = mpsc::channel();
+    let (release, receive_release) = mpsc::channel();
+    let join = std::thread::spawn(move || {
+        let Request::Stop(reply) = requests.recv().unwrap() else {
+            panic!("expected stop")
+        };
+        started.send(()).unwrap();
+        receive_release.recv().unwrap();
+        assert!(matches!(
+            requests.try_recv(),
+            Err(mpsc::TryRecvError::Empty)
+        ));
+        reply.send(Ok(())).unwrap();
+    });
+    let mut owner = Owner {
+        sender,
+        join: Some(join),
+        stopping: None,
+        stop_result: None,
+    };
+    assert_eq!(owner.poll_stop(), None);
+    receive_started
+        .recv_timeout(Duration::from_secs(2))
+        .unwrap();
+    for _ in 0..100 {
+        assert_eq!(owner.poll_stop(), None);
+    }
+    release.send(()).unwrap();
+    assert_eq!(owner.stop(), Ok(()));
+    assert_eq!(owner.poll_stop(), Some(Ok(())));
+}
+
+#[shoop_test]
 fn native_owner_retains_terminal_cleanup_failure_across_shutdown_retries() {
     for result in [Ok(()), Err("injected MIDI cleanup failure".to_owned())] {
         let expected = result.clone();

@@ -50,6 +50,13 @@ impl State {
         }
     }
 
+    /// Plain observed state for an external execution backend; this does not settle a resolver.
+    pub fn from_observation(id: LoopId, revision_watermark: Revision) -> Self {
+        Self {
+            revision_watermark,
+            ..Self::new(id, 0)
+        }
+    }
     pub fn writes(self) -> bool {
         self.mode.records() || self.mode == Mode::Replacing
     }

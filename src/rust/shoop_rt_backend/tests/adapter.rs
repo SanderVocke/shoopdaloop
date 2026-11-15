@@ -302,6 +302,7 @@ fn completed_adapter_capabilities_are_reported_and_other_operations_refuse_with_
             .with(BackendCapability::SessionCapture, true)
             .with(BackendCapability::SessionContentLoad, true)
             .with(BackendCapability::LoopContentImport, true)
+            .with(BackendCapability::LoopDuplication, true)
             .with(BackendCapability::LoopTimingEdits, true)
             .with(BackendCapability::Grab, true)
             .with(BackendCapability::ReplacingMode, true)

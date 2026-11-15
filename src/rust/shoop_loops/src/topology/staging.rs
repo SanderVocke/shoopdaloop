@@ -138,8 +138,7 @@ impl Stager {
                     ordinal: 0,
                 },
             ),
-            components: pretouched(limits.loop_slots, range),
-            members: pretouched(limits.loop_slots, id),
+            order: pretouched(limits.loop_slots, id),
             relation_count: 0,
         };
         Ok(Self {
@@ -148,7 +147,7 @@ impl Stager {
             generation: 0,
             status: Status::Idle,
             topology: Some(topology),
-            counts: Counts([0; 7]),
+            counts: Counts([0; 6]),
             relations: 0,
             validator: Validator::prepare(limits),
             steps: 0,
@@ -170,8 +169,7 @@ impl Stager {
         topology.programs.clear();
         topology.targets.clear();
         topology.segments.clear();
-        topology.components.clear();
-        topology.members.clear();
+        topology.order.clear();
         topology.relation_count = 0;
     }
     pub fn begin(&mut self, header: &[u8; RECORD_BYTES]) -> Result<StageId, Error> {
@@ -327,8 +325,7 @@ impl Stager {
             topology.programs.capacity(),
             topology.targets.capacity(),
             topology.segments.capacity(),
-            topology.components.capacity(),
-            topology.members.capacity(),
+            topology.order.capacity(),
         ];
         if capacities
             .into_iter()

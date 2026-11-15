@@ -1483,80 +1483,55 @@ impl Boundary<'_> {
         if let Some(change) = self.replacement {
             self.prepare_replacement(change)?;
         }
-        for component in self.topology.components() {
-            for id in component.iter().copied() {
-                let slot = id.slot() as usize;
-                if let Some(intent) = self.scratch.intents[slot].take() {
-                    self.apply(slot, intent);
-                }
-                self.natural_boundary(id)?;
-                if self.scratch.states[slot].is_some_and(|state| state.composite.is_none())
-                    && self
-                        .topology
-                        .node(id)?
-                        .sync_source
-                        .is_some_and(|source| self.scratch.delivered[source.slot() as usize])
-                    && !self.scratch.masked[slot]
-                {
-                    self.scratch.pulses[slot] = true;
-                }
+        for id in self.topology.dependency_order().iter().copied() {
+            let slot = id.slot() as usize;
+            if let Some(intent) = self.scratch.intents[slot].take() {
+                self.apply(slot, intent);
             }
-            // Upstream source edges already occurred; internal source edges are
-            // considered as each member is delivered below.
-            for id in component.iter().copied() {
-                if let Some(source) = self.topology.node(id)?.sync_source {
-                    if self.scratch.delivered[source.slot() as usize] {
-                        self.react(id, source)?;
+            self.natural_boundary(id)?;
+            let source = self.topology.node(id)?.sync_source;
+            if let Some(source) = source.filter(|source| *source != id) {
+                if self.scratch.delivered[source.slot() as usize] {
+                    if self.scratch.states[slot].is_some_and(|state| state.composite.is_none())
+                        && !self.scratch.masked[slot]
+                    {
+                        self.scratch.pulses[slot] = true;
                     }
+                    self.react(id, source)?;
                 }
             }
-            while let Some(id) = component.iter().copied().find(|id| {
-                let slot = id.slot() as usize;
-                self.scratch.pulses[slot] && !self.scratch.delivered[slot]
-            }) {
-                let slot = id.slot() as usize;
+            if self.scratch.pulses[slot] {
                 self.scratch.delivered[slot] = true;
                 self.scratch.states[slot]
                     .as_mut()
                     .expect("prepared state")
                     .last_pulse = Some(self.frame);
                 self.event(id, EventKind::Pulse);
-                for follower in component.iter().copied() {
-                    if self.topology.node(follower)?.sync_source == Some(id) {
-                        let target = follower.slot() as usize;
-                        if !self.scratch.masked[target]
-                            && self.scratch.states[target]
-                                .is_some_and(|state| state.composite.is_none())
-                        {
-                            self.scratch.pulses[target] = true;
-                        }
-                        self.react(follower, id)?;
-                    }
+                if source == Some(id) {
+                    self.react(id, id)?;
                 }
             }
-            for id in component.iter().copied() {
-                if probe == Some(id) {
-                    self.advance_program(id)?;
-                    return Ok(());
-                }
-                self.emit_program(id)?;
-                if !self.scratch.delivered[id.slot() as usize] {
-                    continue;
-                }
-                for (ordinal, trigger) in self.topology.triggers().iter().enumerate() {
-                    if trigger.source == id {
-                        let intent = Intent {
-                            transition: mode_transition(trigger.mode),
-                            priority: Priority::Action {
-                                source: id,
-                                ordinal: 2 * self.topology.limits().program_entries + ordinal,
-                                inherited: false,
-                            },
-                            request: None,
-                            origin: None,
-                        };
-                        self.offer(trigger.target.slot() as usize, intent);
-                    }
+            if probe == Some(id) {
+                self.advance_program(id)?;
+                return Ok(());
+            }
+            self.emit_program(id)?;
+            if !self.scratch.delivered[slot] {
+                continue;
+            }
+            for (ordinal, trigger) in self.topology.triggers().iter().enumerate() {
+                if trigger.source == id {
+                    let intent = Intent {
+                        transition: mode_transition(trigger.mode),
+                        priority: Priority::Action {
+                            source: id,
+                            ordinal: 2 * self.topology.limits().program_entries + ordinal,
+                            inherited: false,
+                        },
+                        request: None,
+                        origin: None,
+                    };
+                    self.offer(trigger.target.slot() as usize, intent);
                 }
             }
         }
@@ -1664,7 +1639,7 @@ impl Boundary<'_> {
             .composite
             .expect("compiled composite");
         // The program is immutable, and every target belongs to a downstream
-        // component. No consumer can observe these intents before arbitration.
+        // loop. No consumer can observe these intents before arbitration.
         for index in 0..self
             .topology
             .program(id)

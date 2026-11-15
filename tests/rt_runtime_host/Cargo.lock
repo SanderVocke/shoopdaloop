@@ -63,6 +63,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "rt_audio_math"
+version = "0.3.0"
+
+[[package]]
 name = "rt_profiling"
 version = "0.3.0"
 dependencies = [
@@ -76,6 +80,7 @@ dependencies = [
 name = "rt_runtime"
 version = "0.3.0"
 dependencies = [
+ "rt_audio_math",
  "rt_profiling",
  "rtrb",
 ]

@@ -134,10 +134,12 @@ fn oracle(smooth: u32) -> [[f32; 2]; 40] {
         };
         let gained = [raw * 2., -raw * 2.];
         if elapsed < smooth {
-            elapsed += 1;
             let weight = elapsed as f32 / smooth as f32;
+            elapsed += 1;
             for channel in 0..2 {
-                output[channel] = anchor[channel] * (1. - weight) + gained[channel] * weight;
+                output[channel] = (f64::from(anchor[channel])
+                    + (f64::from(gained[channel]) - f64::from(anchor[channel])) * f64::from(weight))
+                    as f32;
             }
         } else {
             *output = gained;
@@ -351,14 +353,14 @@ fn smoothing_changes_apply_from_the_next_restart() {
         });
         output[..frames].to_vec()
     };
-    assert_eq!(render(&mut renderer, Some(index), 1., true, 1), [0.5]);
+    assert_eq!(render(&mut renderer, Some(index), 1., true, 1), [0.]);
     renderer.set_smoothing(Smoothing::LinearRestart { frames: 4 });
     // The ramp in progress keeps its length.
-    assert_eq!(render(&mut renderer, Some(index), 1., false, 2), [1., 1.]);
+    assert_eq!(render(&mut renderer, Some(index), 1., false, 2), [0.5, 1.]);
     assert_eq!(render(&mut renderer, None, 1., false, 1), [0.]);
     assert_eq!(
         render(&mut renderer, Some(index), 1., true, 5),
-        [0.25, 0.5, 0.75, 1., 1.]
+        [0., 0.25, 0.5, 0.75, 1.]
     );
     renderer.set_smoothing(Smoothing::None);
     assert_eq!(render(&mut renderer, Some(index), 0.5, true, 2), [0.5, 0.5]);
@@ -451,7 +453,7 @@ fn refusals_and_zero_frames_do_not_change_output_or_smoothing_state() {
                 &mut [&mut output],
             )
             .unwrap();
-        assert_eq!(output, [1.]);
+        assert_eq!(output, [0.]);
         for (source, position, gain, expected) in [
             (index, 4, 1., MediaError::InvalidFrame),
             (index, u64::MAX, 1., MediaError::InvalidFrame),
@@ -474,7 +476,7 @@ fn refusals_and_zero_frames_do_not_change_output_or_smoothing_state() {
                 ),
                 Err(expected)
             );
-            assert_eq!(output, [1.]);
+            assert_eq!(output, [0.]);
         }
         renderer
             .render(
@@ -502,7 +504,7 @@ fn refusals_and_zero_frames_do_not_change_output_or_smoothing_state() {
                 &mut [&mut output],
             )
             .unwrap();
-        assert_eq!(output, [4.]);
+        assert_eq!(output, [2.]);
         renderer
             .render(
                 &mut store.render_io(),
@@ -530,7 +532,7 @@ fn refusals_and_zero_frames_do_not_change_output_or_smoothing_state() {
                 &mut [&mut output],
             )
             .unwrap();
-        assert_eq!(output, [1.]);
+        assert_eq!(output, [0.]);
         store.release_snapshot(snapshot.id).unwrap();
         assert_eq!(
             renderer.render(
@@ -546,7 +548,7 @@ fn refusals_and_zero_frames_do_not_change_output_or_smoothing_state() {
             ),
             Err(MediaError::InvalidId)
         );
-        assert_eq!(output, [1.]);
+        assert_eq!(output, [0.]);
     });
     cleanup(
         &mut store,
@@ -556,11 +558,11 @@ fn refusals_and_zero_frames_do_not_change_output_or_smoothing_state() {
     cleanup(&mut foreign, &[other], &[other.resource]);
     for (channels, frames) in [(0, 1), (1, 0), (usize::MAX, 2), (2, usize::MAX)] {
         assert!(matches!(
-            AudioRenderer::prepare(channels, frames, Smoothing::None),
+            AudioRenderer::<f32>::prepare(channels, frames, Smoothing::None),
             Err(MediaError::InvalidConfig)
         ));
         assert!(matches!(
-            AudioCapture::prepare(channels, frames),
+            AudioCapture::<f32>::prepare(channels, frames),
             Err(MediaError::InvalidConfig)
         ));
     }

@@ -636,7 +636,7 @@ fn check_resource_allowances(required: bool, midi: bool) {
     config.budgets.transfer_bytes = 64;
     let config = config.prepare().unwrap();
     let mut store = if midi {
-        ResourceStore::with_midi_indexing(
+        ResourceStore::<f32>::with_midi_indexing(
             config,
             rt_runtime::Quantum::new(1).unwrap(),
             rt_runtime::resource::MidiIndexConfig {

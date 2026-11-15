@@ -432,7 +432,9 @@ impl Prepared {
         }
         description.audio_bench_only |=
             std::env::var("SHOOP_AUDIO_BENCH_AUDIO_ONLY").as_deref() == Ok("1");
-        if description.audio_render_mode.chunked() && !description.audio_bench_only {
+        if description.audio_render_mode != shoop_rt_engine::AudioRenderMode::Current
+            && !description.audio_bench_only
+        {
             return Err(StartError::InvalidConfig(
                 "experimental render modes require SHOOP_AUDIO_BENCH_AUDIO_ONLY=1",
             ));

@@ -84,7 +84,7 @@ at the resulting stopped cut. A refused seek does not create an artificial zero
 entry. Configuration selection is separate from musical-mode arbitration.
 
 After selection, the candidate DAG is used for the real preview. Removed active
-targets receive Stop intents before component traversal, so removal also works
+targets receive Stop intents before loop traversal, so removal also works
 when the new DAG places them before their former parent. An authoritative
 seek/restart/stop cut also stops removed declared targets. These intents participate
 in normal source/ordinal/mode precedence; a winning direct child command still

@@ -17,6 +17,7 @@ testing = []
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
+rt_audio_math = { path = "../rt_audio_math" }
 rt_profiling = { path = "../rt_profiling" }
 
 profiling_protocol = { path = "../profiling_protocol" }

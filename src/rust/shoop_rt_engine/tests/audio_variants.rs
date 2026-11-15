@@ -23,6 +23,7 @@ fn render(mode: AudioRenderMode, q: usize, partition: usize) -> ([Vec<f32>; 2], 
     d.quantum = q;
     d.max_frames = 128;
     d.history.seconds = 1;
+    d.smoothing_frames = 0;
     d.ramp_frames = (q * 3) as u32;
     let mut h = Harness::new(&d);
     let track = strip(0, 1);
@@ -59,7 +60,10 @@ fn render(mode: AudioRenderMode, q: usize, partition: usize) -> ([Vec<f32>; 2], 
     let padding = (q - h.frame() as usize % q) % q;
     h.run(padding, partition);
     h.run(q, q);
-    if mode != AudioRenderMode::Current {
+    if matches!(
+        mode,
+        AudioRenderMode::Chunks | AudioRenderMode::ChunksDescriptors
+    ) {
         assert!(
             h.host.render.resource_work().1.copied_bytes <= q * 16,
             "ordinary playback must use persistent chunk references"
@@ -98,6 +102,7 @@ fn render(mode: AudioRenderMode, q: usize, partition: usize) -> ([Vec<f32>; 2], 
         h.read(loop_id(0, 1), BulkSelector::Audio { channel: 0 }).1,
         frozen
     );
+
     h.done(Request::LoopClear {
         loop_id: loop_id(1, 1),
     });
@@ -126,16 +131,13 @@ fn reference_graph_preserves_samples_capture_controls_wrap_and_callback_partitio
         for partition in [1, 13, 128] {
             for mode in audio_modes() {
                 let (actual, media) = render(mode, q, partition);
+
                 assert_eq!(media, reference.1, "recording {mode:?}, Q={q}");
+
                 for (channel, expected) in actual.iter().zip(&reference.0) {
                     assert_eq!(channel.len(), expected.len(), "timing {mode:?}, Q={q}");
                     for (i, (&sample, &expected)) in channel.iter().zip(expected).enumerate() {
-                        if mode != AudioRenderMode::ChunksDescriptors
-                            || i % q == 0
-                            || i % q == q - 1
-                        {
-                            assert!(close(sample,expected),"{mode:?}, Q={q}, partition={partition}, sample={i}: {sample} != {expected}");
-                        }
+                        assert!(close(sample,expected),"{mode:?}, Q={q}, partition={partition}, sample={i}: {sample} != {expected}");
                     }
                 }
             }

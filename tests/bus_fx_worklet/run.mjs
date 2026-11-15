@@ -8,7 +8,11 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '../..');
 const wasmPath = resolve(process.argv[2] || join(root, 'target/wasm32-unknown-unknown/debug/shoop_rt_host_worklet.wasm'));
+const protocolSource = await readFile(join(root, 'src/rust/shoop_rt_protocol/src/lib.rs'), 'utf8');
+const protocolVersion = protocolSource.match(/pub const PROTOCOL_VERSION: u16 = (\d+);/)?.[1];
+if (!protocolVersion) throw new Error('missing canonical RT protocol version');
 const assets = new Map([
+  ['/protocol.js', ['text/javascript', `export const protocolVersion = ${protocolVersion};\n`]],
   ['/index.html', ['text/html', await readFile(join(here, 'index.html'))]],
   ['/scenario.js', ['text/javascript', await readFile(join(here, 'scenario.js'))]],
   ['/engine.wasm', ['application/wasm', await readFile(wasmPath)]],

@@ -1,0 +1,127 @@
+diff --git a/fpga/loop_pipeline/tests/execution_timing.py b/fpga/loop_pipeline/tests/execution_timing.py
+index 951d181b..67bd0995 100644
+--- a/fpga/loop_pipeline/tests/execution_timing.py
++++ b/fpga/loop_pipeline/tests/execution_timing.py
+@@ -30,9 +30,27 @@ class ExecutionTiming:
+         self.phases, self.jp_phases, self.tp_states = Counter(), Counter(), Counter()
+         self.state_cycles = self.job_cycles = self.fill_wait = self.dma_cycles = 0
+         self.jobs = []
++        self.completions = {}
++        self.metadata_start = self.metadata_snapshot()
+         self.segment = None
+         self.bus_segments = []
+ 
++    def metadata_snapshot(self):
++        if not hasattr(self.core.audio.media,'metadata'):return None
++        meta=self.core.audio.media.metadata
++        transport=self.dut.core.memory_endpoint.scheduler
++        result={}
++        for i,name in enumerate(('sample','metadata')):
++            for metric in ('reads','writes','bytes','wait_cycles'):
++                result[name+'_'+metric]=int(getattr(transport,metric)[i].value)
++        for i,name in enumerate(('table','reference','stack')):
++            cache=meta.banks[i].cache
++            for metric in ('hits','misses','fills','writebacks'):
++                result[name+'_'+metric]=int(getattr(cache,metric).value)
++        result['directory_reads']=int(meta.directory_reads.value)
++        result['table_reads']=int(meta.table_reads.value)
++        return result
++
+     def snapshot(self):
+         timing = self.memory.axi.memory.timing if self.memory.axi is not None else None
+         return timing.bus_snapshot() if hasattr(timing, 'bus_snapshot') else None
+@@ -46,6 +64,9 @@ class ExecutionTiming:
+                 self.start = cycle+1
+             return
+         time = cycle-self.start
++        for signal,label in (('state_done','state_done'),('jobs_done','jobs_done')):
++            if int(getattr(self.dut,signal).value):self.completions.setdefault(label,time)
++        if self.labels[int(self.core.phase.value)] == 'AUDIO_START':self.completions.setdefault('transition_settle_done',time)
+         phase = self.labels[int(self.core.phase.value)]
+         if self.segment is None:
+             self.segment = (phase, self.snapshot())
+@@ -53,6 +74,7 @@ class ExecutionTiming:
+             self.bus_segments.append((self.segment[0], self.segment[1], self.snapshot()))
+             self.segment = (phase, self.snapshot())
+         if int(self.dut.done.value):
++            self.completions["finish_done"]=time
+             self.total = time
+             self.enabled = False
+             return
+@@ -94,7 +116,9 @@ class ExecutionTiming:
+             group['cycles'] += row['end']-row['start']
+         tp_cycles = sum(value for name,value in self.phases.items() if name.startswith(('SETTLE_', 'FINISH_')))
+         active = self.total
+-        return dict(raw_cycles=self.total,
++        metadata_end=self.metadata_snapshot()
++        delta={key:metadata_end[key]-self.metadata_start[key] for key in metadata_end} if metadata_end else None
++        return dict(completion_cycles=self.completions,metadata_statistics=delta,raw_cycles=self.total,
+                     active_cycles=active, transition_cycles=tp_cycles, state_cycles=self.state_cycles,
+                     job_cycles=self.job_cycles, other_cycles=active-tp_cycles-self.state_cycles-self.job_cycles,
+                     coordinator_phases=dict(self.phases), job_phases=dict(self.jp_phases),
+diff --git a/fpga/loop_pipeline/tests/pipeline_driver.py b/fpga/loop_pipeline/tests/pipeline_driver.py
+index 2af60997..db5610f5 100644
+--- a/fpga/loop_pipeline/tests/pipeline_driver.py
++++ b/fpga/loop_pipeline/tests/pipeline_driver.py
+@@ -73,7 +73,7 @@ class PipelineDriver(Driver):
+             await self.media.load(initial)
+         else:
+             assert case['media'] is None,'media-bearing cases require a sample-memory slave'
+-    async def step(self, step):
++    async def step(self, step, *, snapshot_media=True):
+         control=step['transition'];frame=(await self.status())['frame']
+         collected=[]
+         if control['collect_completed']:
+@@ -140,5 +140,5 @@ class PipelineDriver(Driver):
+         outputs=[[await self.sample(1,i*self.capacities[6]+f) for f in range(q)] for i in range(self.case['output_ports'])]
+         audio=dict(jobs=emitted,remaining_jobs=remaining,state=state,buffers=buffers,outputs=outputs,
+             stage='jobs',status={'kind':'completed'} if error is None else {'kind':'failed','value':{'error':error['error']}},media=None)
+-        if self.case['media'] is not None and not (stage==3 and code==8): audio['media']=await self.media.snapshot()
++        if snapshot_media and self.case['media'] is not None and not (stage==3 and code==8): audio['media']=await self.media.snapshot()
+         return dict(transition=transition,jobs=emitted,state=state,error=error,audio=audio)
+diff --git a/fpga/loop_pipeline/tests/test_timing_pipeline.py b/fpga/loop_pipeline/tests/test_timing_pipeline.py
+index 492fc60f..d5272e9b 100644
+--- a/fpga/loop_pipeline/tests/test_timing_pipeline.py
++++ b/fpga/loop_pipeline/tests/test_timing_pipeline.py
+@@ -1,5 +1,6 @@
+ """Profile the complete 64-loop pipeline while comparing its full trace with Rust."""
+ import json
++from copy import deepcopy
+ import os
+ from pathlib import Path
+ import time
+@@ -40,10 +41,15 @@ async def benchmark64(dut):
+     started = time.perf_counter()
+     try:
+         await driver.initialize(value, image)
++        await memory.fence()
++        if hasattr(dut.core,'memory_endpoint') and hasattr(dut.core.memory_endpoint,'scheduler'):
++            await memory.configure(5,0,1)
+         for index, (row, target) in enumerate(zip(value['steps'], expected['payload']['value']['results'])):
+             reads, writes = memory.read_requests, memory.write_requests
+             probe.begin()
+-            actual = await driver.step(row)
++            actual = await driver.step(row,snapshot_media=False)
++            target=deepcopy(target)
++            target['audio']['media']=None
+             if actual != target:
+                 (output/'failure.observed.json').write_text(json.dumps(actual, indent=2)+'\n')
+                 wire.dump(expected, output/'failure.expected.trace.json')
+@@ -58,11 +64,17 @@ async def benchmark64(dut):
+             dut._log.info('quantum %s: %s active cycles, TP=%s SP=%s JP=%s',
+                           index, result['active_cycles'], result['transition_cycles'], result['state_cycles'],
+                           result['job_cycles'])
++        fence_started=memory.cycles
++        await memory.fence()
++        fence_cycles=memory.cycles-fence_started
++        final_media=await memory.snapshot()
++        assert final_media==expected['payload']['value']['results'][-1]['audio']['media']
+         statistics = memory.axi.report(final=True) if memory.axi is not None else None
+         (output/'execution-timing.json').write_text(json.dumps(dict(configuration=metadata(),
+             seed=20261110, random_stalls=False,
+             loop_slots=64, request_slots=128, quantum_frames=32, chunk_frames=32,
+             read_buffers=int(os.environ['LP_READ_BUFFERS']), write_buffers=int(os.environ['LP_WRITE_BUFFERS']),
++            final_fence_cycles=fence_cycles,observation="no intermediate media snapshots; cold metadata and sample caches",
+             simulation_seconds=time.perf_counter()-started, results=results, memory_statistics=statistics), indent=2)+'\n')
+     finally:
+         memory.close()

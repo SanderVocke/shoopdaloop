@@ -1,0 +1,7 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="20261110" />
+    <testcase name="thirty_second_mono_takes" classname="test_deferred_stress" file="/workspace/shoopdaloop/fpga/media_store/tests/test_deferred_stress.py" lineno="162" time="280.38122296333313" sim_time_ns="79255186.001" ratio_time="282669.3783676256" />
+    <testcase name="thirty_second_stereo_takes" classname="test_deferred_stress" file="/workspace/shoopdaloop/fpga/media_store/tests/test_deferred_stress.py" lineno="167" time="243.59994769096375" sim_time_ns="79255179.99999999" ratio_time="325349.74145620444" />
+  </testsuite>
+</testsuites>

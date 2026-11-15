@@ -36,6 +36,7 @@
 
       buildLibraries = with pkgs; [
         alsa-lib
+        zlib
         file
         fluidsynth
         gtk2
@@ -64,6 +65,9 @@
       devShells.${system}.default = pkgs.mkShell {
         nativeBuildInputs = with pkgs; [
           rustToolchain
+          autoconf
+          bison
+          flex
           cargo-llvm-cov
           cargo-nextest
           curl

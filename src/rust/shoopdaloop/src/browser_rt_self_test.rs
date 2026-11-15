@@ -96,6 +96,7 @@ enum Step {
     HostedDry,
     HostedWet,
     HostedStopped,
+    HostedCopied,
     HostedComposite,
     HostedSaving,
     HostedLoaded,
@@ -1620,6 +1621,28 @@ impl NewEngineSelfTest {
                 if pending || track.loops[0].mode != LoopMode::Stopped {
                     return Ok(None);
                 }
+                send(AppIntent::Loop {
+                    track_id: track.id,
+                    loop_id: track.loops[0].id,
+                    action: LoopAction::DuplicateTo(track.loops[3].id),
+                })?;
+                Step::HostedCopied
+            }
+            Step::HostedCopied => {
+                let track = snapshot
+                    .tracks
+                    .iter()
+                    .find(|t| t.name == format!("Hosted {}", self.hosted_index))
+                    .unwrap();
+                if track.loops[3].name != track.loops[0].name {
+                    return Ok(None);
+                }
+                if track.loops[3].length_frames != track.loops[0].length_frames
+                    || track.loops[3].mode != LoopMode::Stopped
+                    || track.loops[3].position != 0.
+                {
+                    return Err("processed copy changed length or started transport".into());
+                }
                 Step::HostedComposite
             }
             Step::HostedComposite => {
@@ -1695,6 +1718,31 @@ impl NewEngineSelfTest {
                     .ok_or("resaved hosted track missing")?;
                 if old.topology != new.topology {
                     return Err("hosted topology changed on reload".into());
+                }
+                if old.loops[3]
+                    .channels
+                    .iter()
+                    .filter_map(|c| {
+                        c.media_id
+                            .as_ref()
+                            .and_then(|id| before.media.get(id))
+                            .map(|media| (c, media))
+                    })
+                    .any(|(channel, media)| {
+                        if let shoop_session::MediaPayload::Audio(audio) = media {
+                            let expected =
+                                if channel.mode == shoop_session::ChannelModeDocument::Dry {
+                                    0.25
+                                } else {
+                                    0.
+                                };
+                            !audio.samples.iter().all(|sample| *sample == expected)
+                        } else {
+                            false
+                        }
+                    })
+                {
+                    return Err("processed source edits changed its earlier copy".into());
                 }
                 for (a, b) in old
                     .loops

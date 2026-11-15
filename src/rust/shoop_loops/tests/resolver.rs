@@ -365,17 +365,20 @@ fn pre_clock_stop_suppresses_wrap_and_losing_request_has_terminal_outcome() {
 }
 
 #[shoop_test]
-fn mutual_sync_needs_a_seed_and_delivers_each_clock_edge_once() {
-    let input = topology(vec![node(0, 4, Some(1)), node(1, 7, Some(0))], vec![]);
+fn sync_chain_needs_a_seed_and_delivers_each_clock_edge_once() {
+    let input = topology(
+        vec![node(0, 4, None), node(1, 7, Some(0)), node(2, 3, Some(1))],
+        vec![],
+    );
     let mut resolver = resolver(&input, Limits::default());
     let pending = submit(
         &mut resolver,
         Request {
             timing: Timing::AfterTicks {
-                source: id(0),
+                source: id(1),
                 skip: 1,
             },
-            ..request(1, 2, 0, play())
+            ..request(2, 2, 0, play())
         },
     );
     assert!(run(&mut resolver, &[7]).0.is_empty());
@@ -388,14 +391,14 @@ fn mutual_sync_needs_a_seed_and_delivers_each_clock_edge_once() {
                 .iter()
                 .filter(|event| event.frame == Frame(frame) && event.kind == EventKind::Pulse)
                 .count(),
-            2
+            3
         );
     }
     assert_eq!(
         resolver.completion(pending).unwrap().unwrap().outcome,
         Outcome::Applied { frame: Frame(11) }
     );
-    assert_eq!(resolver.state(id(1)).unwrap().cycles, 0);
+    assert_eq!(resolver.state(id(2)).unwrap().cycles, 0);
 }
 
 #[shoop_test]

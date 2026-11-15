@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::buffer::MidiBuffer;
+use crate::Sample;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct RenderWork {
@@ -36,10 +37,10 @@ pub(super) enum WorkClass {
 
 /// No upload, structural mutation, accounting reset, or reclamation authority.
 /// Data access still validates identities, shapes, timestamps, and fixed capacity.
-pub struct RenderIo<'a> {
-    pub(super) store: &'a mut ResourceStore,
+pub struct RenderIo<'a, S: Sample = f32> {
+    pub(super) store: &'a mut ResourceStore<S>,
 }
-impl RenderIo<'_> {
+impl<S: Sample> RenderIo<'_, S> {
     /// Metadata for the pinned prefix, not the resource's newer active version.
     pub fn snapshot(&mut self, index: ReadIndex) -> Result<Snapshot, Error> {
         self.store.note_operation(WorkClass::Render);
@@ -55,7 +56,7 @@ impl RenderIo<'_> {
         &mut self,
         capture: CaptureId,
         frame: Frame,
-        samples: &[f32],
+        samples: &[S],
     ) -> Result<Revision, Error> {
         self.store
             .capture_audio_with(capture, frame, samples, WorkClass::Render)
@@ -71,8 +72,8 @@ impl RenderIo<'_> {
             .capture_midi_with(capture, frame, frames, input, WorkClass::Render)
     }
 }
-impl ResourceStore {
-    pub fn render_io(&mut self) -> RenderIo<'_> {
+impl<S: Sample> ResourceStore<S> {
+    pub fn render_io(&mut self) -> RenderIo<'_, S> {
         RenderIo { store: self }
     }
     pub fn render_work(&self) -> RenderWork {

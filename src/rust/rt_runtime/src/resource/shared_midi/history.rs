@@ -1,13 +1,14 @@
 use super::*;
+use crate::Sample;
 
-impl MidiStore {
+impl<S: Sample> MidiStore<S> {
     /// Start a new complete segment after an unrecorded interval. The caller's
     /// observed input projection is authoritative; failed append is never replayed.
     /// Old retained owners remain valid. Retirement may need maintenance before
     /// storage admission recovers.
     pub fn discontinuity(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         next: Frame,
         observed: &MidiState,
     ) -> Result<(), Error> {
@@ -28,7 +29,7 @@ impl MidiStore {
     }
     pub fn append(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         frame: Frame,
         frames: usize,
         input: &MidiBuffer,
@@ -178,7 +179,7 @@ impl MidiStore {
     }
     pub(super) fn flush(
         &mut self,
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         root: &mut Option<usize>,
         serial: u64,
         count: usize,
@@ -194,7 +195,7 @@ impl MidiStore {
     }
     pub(super) fn flush_existing(
         &mut self,
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         root: &mut Option<usize>,
         serial: u64,
         count: usize,
@@ -214,7 +215,7 @@ impl MidiStore {
         self.publish_chunk(store, root, serial, count, state);
         *end = (*end).max(serial + 1);
     }
-    pub fn grab(&mut self, io: &mut RenderIo<'_>, range: Range<Frame>) -> Result<TakeId, Error> {
+    pub fn grab(&mut self, io: &mut RenderIo<'_, S>, range: Range<Frame>) -> Result<TakeId, Error> {
         self.check(io.store)?;
         let coverage = self.coverage()?;
         if range.start < coverage.start || range.end > coverage.end || range.start >= range.end {

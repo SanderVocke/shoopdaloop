@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::grab::WindowSpec;
+use rt_runtime::Sample;
 
 pub const INPUT_BATCH_RECORD_BYTES: usize = 64;
 
@@ -307,12 +308,12 @@ impl InputBatch {
         })
     }
 }
-impl LoopPlanner {
+impl<S: Sample> LoopPlanner<S> {
     fn prepare_grab_entry(
         &mut self,
         index: usize,
         frame: Frame,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<Transition, Failure> {
         let mut entry = self.input_batch.entries[index];
         if let InputAction::Gesture {
@@ -552,7 +553,7 @@ impl LoopPlanner {
                     snapshots[member] = Some(io.snapshot(resource, frame)?);
                 }
             }
-            let source = |snapshot: Option<Snapshot>, io: &mut ResourceIo<'_>| {
+            let source = |snapshot: Option<Snapshot>, io: &mut ResourceIo<'_, S>| {
                 snapshot
                     .map(|snapshot| {
                         io.read_index(snapshot.id)
@@ -603,7 +604,7 @@ impl LoopPlanner {
         requested: Frame,
         sequence: Sequence,
         frame: Frame,
-        io: &mut ResourceIo<'_>,
+        io: &mut ResourceIo<'_, S>,
     ) -> Result<(), Failure> {
         if !self.input_batch.entries.is_empty() {
             return Err(Error::Busy.into());
@@ -830,7 +831,7 @@ impl LoopPlanner {
         }
         Ok(true)
     }
-    pub(super) fn input_batch_reply(&self) -> Result<Option<Reply>, Error> {
+    pub(super) fn input_batch_reply(&self) -> Result<Option<Reply<S>>, Error> {
         let mut outcome = crate::Outcome::Applied {
             frame: self.resolver.frame(),
         };
@@ -853,7 +854,7 @@ impl LoopPlanner {
             outcome,
         }))
     }
-    pub(super) fn collect_input_batch(&mut self, io: &mut ResourceIo<'_>) -> Result<(), Error> {
+    pub(super) fn collect_input_batch(&mut self, io: &mut ResourceIo<'_, S>) -> Result<(), Error> {
         let applied = self.input_batch.ids[..self.input_batch.entries.len()]
             .iter()
             .flatten()
@@ -897,7 +898,7 @@ impl LoopPlanner {
         }
         Ok(())
     }
-    pub(super) fn release_input_batch(&mut self, io: &mut ResourceIo<'_>) -> Result<(), Error> {
+    pub(super) fn release_input_batch(&mut self, io: &mut ResourceIo<'_, S>) -> Result<(), Error> {
         for entry in &self.input_batch.entries {
             if let Some(request) = entry.finish_request {
                 self.resolver.cancel(request).map_err(runtime_error)?;

@@ -1,0 +1,51 @@
+{
+  "image": "siliconbootcamp/xilinx-vivado:stable",
+  "image_digest": "sha256:d24586405894b07f6af006d5cb15ba01c7e8585de97b28b6121fcf6282db7a5f",
+  "config_digest": "sha256:329b47483f395bee304a316a222b3414554b0623782f0beb1224b5a1000db784",
+  "vendor_layer": {
+    "mediaType": "application/vnd.docker.image.rootfs.diff.tar.gzip",
+    "size": 5729231096,
+    "digest": "sha256:187ac31317b800d0b7782a3aff7fdedd200a27303a22121d7c3a6a623b36bf26"
+  },
+  "vendor_diff_id": "sha256:76d65a6433dbde9549ef74115f68345be53d822a09cc25de6623f01e365ff78d",
+  "vendor_base_tcl_sha256": "8cc0d09e628be4ebaa97c35a4553849bcf1f719f8658055be76cbf7e23792766",
+  "vendor_files_modified": false,
+  "later_image_overlays_applied": false,
+  "runtime_layers": [
+    {
+      "mediaType": "application/vnd.docker.image.rootfs.diff.tar.gzip",
+      "size": 28564099,
+      "digest": "sha256:08c01a0ec47e82ebe2bec112f373d160983a6d1e9e66627f66a3322bc403221b"
+    },
+    {
+      "mediaType": "application/vnd.docker.image.rootfs.diff.tar.gzip",
+      "size": 325072884,
+      "digest": "sha256:87e2f8fcd73dbbaab585bee85ef14cb015054b622da62b3121ee2d38dc2dff07"
+    }
+  ],
+  "vivado": "2021.1",
+  "sw_build": 3247384,
+  "rtl_revision": "9386dffd14408df52b87179e834b1bdc383bf07c",
+  "complete_vendor_layer_extracted": true,
+  "catalog_ips_available": false,
+  "board_build": "blocked: missing PS7, proc_sys_reset, xlconstant, VIO and ILA definitions",
+  "canary_bitstream_sha256": "1d233c809687660d468e427f6b656fb813cbea3cd1db16f33a6d30c23f14e038",
+  "canary_physical_drc_errors": 0,
+  "benchmark_top": "zedboard_bench",
+  "benchmark_build_mode": "out_of_context",
+  "benchmark_synthesis_errors": 0,
+  "benchmark_synthesis_critical_warnings": 0,
+  "benchmark_routable_nets": 39744,
+  "benchmark_fully_routed_nets": 39744,
+  "benchmark_routing_errors": 0,
+  "benchmark_drc_errors": 0,
+  "benchmark_drc_critical_warnings": 0,
+  "benchmark_drc_warnings": 8,
+  "board_timing_qualified": false,
+  "part": "xc7z020clg484-1",
+  "requested_fabric_mhz": 100,
+  "workload_rom_hashes": {
+    "boot.hex": "c2cfdcff24007da1bdbb11acaef895018226d782bbdba5e9bfd0ff79456b1d14",
+    "events.hex": "f1b5e0d1dd654d260367d6047459c7ad91cb86274b59c4ea926d3c80ee929c09"
+  }
+}

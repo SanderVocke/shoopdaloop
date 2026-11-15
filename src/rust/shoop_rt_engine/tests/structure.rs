@@ -774,7 +774,7 @@ fn smoothing_applies_to_current_and_later_loops_within_the_limit() {
             Outcome::Refused(Refusal::InvalidValue)
         );
         harness.done(Request::SetSmoothing { frames: 4 });
-        let ramp = [0.25, 0.5, 0.75, 1., 1.];
+        let ramp = [0., 0.25, 0.5, 0.75, 1.];
         let start = harness.frame() as usize;
         harness.done(transition(first, LoopMode::Playing));
         harness.run(5, 2);

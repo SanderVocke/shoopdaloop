@@ -52,7 +52,7 @@ Enable graph-owner slots separately with `GraphRuntime::prepare_graph_staging(co
 
 ## 2. Make timing and graph candidates Ready
 
-Ingest a compiled timing candidate through `TopologyBegin`, ordered complete-record `TopologyAppend` and incremental `TopologyValidate`. The [staging guide](topology-staging.md) defines LTP1; it is timing metadata, not a complete controller/wire protocol. Each header/record is 64 bytes. Generic payload stride/transfer allowance must fit the chosen chunk too.
+Ingest a compiled timing candidate through `TopologyBegin`, ordered complete-record `TopologyAppend` and incremental `TopologyValidate`. The [staging guide](topology-staging.md) defines LTP2; it is timing metadata, not a complete controller/wire protocol. Each header/record is 64 bytes. Generic payload stride/transfer allowance must fit the chosen chunk too.
 
 Record and validation allowances are shared across all banks/operations/internal intervals of one callback. A failed call conservatively consumes the offered allowance. Continue preparation in later callbacks; do not wait/poll a producer or renew the budget per interval. Readiness does not block already admitted music.
 

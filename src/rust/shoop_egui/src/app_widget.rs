@@ -982,6 +982,9 @@ fn audio_driver_config(
             Ok(AudioDriverConfig::Cpal(config))
         }
         AudioDriverKind::WebAudio => Ok(AudioDriverConfig::WebAudio),
+        AudioDriverKind::Simulated => {
+            Err("a simulated clock cannot be selected as an audio driver".to_owned())
+        }
     }
 }
 
@@ -3176,6 +3179,8 @@ impl AppWidget {
                 .corner_radius(0),
         );
         ui.label("DSP");
+        ui.separator();
+        crate::memory::summary(ui, state.status.memory.as_ref());
         ui.separator();
         let milliseconds = state
             .status

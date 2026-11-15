@@ -141,7 +141,7 @@ fn runtime_output_ports_match_scalar_ramps_and_slices_without_touching_surroundi
                         let local = frame - 3;
                         let ordinal = cut as usize * 2 + local;
                         let raw = ((ordinal + 1) * 10 + channel + 1) as f32 * 0.5;
-                        let expected = raw * ((ordinal + 1).min(3) as f32 / 3.);
+                        let expected = raw * (ordinal.min(3) as f32 / 3.);
                         assert!((actual - expected).abs() < 1e-5);
                         assert_eq!(actual, planar[channel][local]);
                     } else {

@@ -17,6 +17,7 @@ mod global_controls;
 mod host_controls;
 mod key_input;
 mod loop_widget;
+mod memory;
 mod meter_ballistics;
 mod midi_sequence_widget;
 mod optimistic_value;
@@ -62,6 +63,7 @@ pub(crate) use details_pane::MediaView;
 pub use global_controls::GlobalControls;
 pub use host_controls::{HostAction, HostConnectionState, HostLocation, HostUiState};
 pub use loop_widget::{LoopWidget, LoopWidgetResponse};
+pub use memory::details as show_memory_usage;
 pub use midi_sequence_widget::MidiSequenceWidget;
 pub use piano_pane::{c_label, is_black, PianoLayout, PianoPane, MIDDLE_C, MIDI_NOTE_COUNT};
 pub use settings_dialog::{

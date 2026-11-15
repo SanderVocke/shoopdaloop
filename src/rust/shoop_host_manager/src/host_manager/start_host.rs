@@ -281,6 +281,9 @@ impl Dialog {
                 buffer_size: self.buffer_size,
             }),
             AudioDriverKind::WebAudio => anyhow::bail!("Web Audio is unavailable in native hosts"),
+            AudioDriverKind::Simulated => {
+                anyhow::bail!("a simulated clock is unavailable in native hosts")
+            }
         };
         let config = HostConfig {
             settings: HostSettings {

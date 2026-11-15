@@ -1,4 +1,5 @@
 use super::*;
+use crate::Sample;
 use core::ops::Range;
 
 pub(in crate::resource) struct Source {
@@ -57,9 +58,9 @@ impl Core {
             current: *initial,
         })
     }
-    pub fn commit_source(
+    pub fn commit_source<S: Sample>(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         source: &mut Source,
         staged: &Staging,
     ) -> Result<(), Error> {
@@ -277,9 +278,9 @@ impl Core {
         source.media.revision = Revision(revision);
         Ok(initial.is_some())
     }
-    pub fn grab_source(
+    pub fn grab_source<S: Sample>(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         source: &Source,
         range: Range<Frame>,
         frames: u64,

@@ -276,7 +276,7 @@ try {
           document.getElementById('runtime_status').setAttribute('data-composite-stalled', 'true');
         })()`);
       }
-      if (composites && ['Saving', 'Resaving'].includes(state?.compositeSelfTest)) {
+      if (composites && ['Saving', 'Resaving', 'P17Saving', 'P17Resaving'].includes(state?.compositeSelfTest)) {
         await evaluate("document.getElementById('rfd-output')?.click()");
       }
       if (process.env.UPLOAD_DIAGNOSTICS === '1' && Date.now() >= diagnosticAt) {

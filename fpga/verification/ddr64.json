@@ -1,0 +1,509 @@
+{
+  "memory": {
+    "model": "dramsim3",
+    "backend": "legacy-python",
+    "purpose": "realistic",
+    "fabric_hz": 100000000,
+    "physical_base": 16777216,
+    "fixed_cycles": 7,
+    "axi_data_width": 32,
+    "word_transfers": false,
+    "revision": "3505488d355e11f6dc5cc7672d643a906e4a17a5",
+    "working_tree_dirty": true,
+    "profile": "/workspace/shoopdaloop/fpga/axi_memory/configs/zynq7010-ddr3-1066-x16.ini",
+    "profile_sha256": "629ccabea75c16ca2faedc921675986ebe878a9e3b2a75872582fe7cc42b640e",
+    "library_sha256": "7c4bf7a0b6ebdafb5b70c6e20b8fb91ccfa7427930c1fc9233e11169a3e28caa",
+    "model_patch_sha256": "0b576afb7d62edc1570bf712c63ee2b762098db8ec2d08dc0a91d12a1ba93eca",
+    "model_revision": "29817593b3389f1337235d63cac515024ab8fd6e"
+  },
+  "scenarios": [
+    {
+      "name": "coordinated-8x8-production-playback-q32",
+      "quanta": [
+        {
+          "raw_cycles": 14879,
+          "active_cycles": 14879,
+          "transition_cycles": 2445,
+          "state_cycles": 1476,
+          "job_cycles": 10953,
+          "other_cycles": 5,
+          "coordinator_phases": {
+            "SETTLE_SEND": 1,
+            "SETTLE_WAIT": 2375,
+            "AUDIO_START": 1,
+            "AUDIO_WAIT": 12433,
+            "FINISH_SEND": 1,
+            "FINISH_WAIT": 68
+          },
+          "job_phases": {
+            "CLEAR_OUTPUT": 256,
+            "FETCH": 194,
+            "DECODE": 193,
+            "MEDIA_COMMAND": 64,
+            "MEDIA_READ": 3254,
+            "MEDIA_DONE": 192,
+            "STORE": 288,
+            "RAMP_PREPARE": 64,
+            "GAIN_STREAM": 2240,
+            "MIX_STREAM": 3696,
+            "READ_REQUEST": 256,
+            "READ_RESULT": 256
+          },
+          "transition_states": {
+            "S_IDLE": 4,
+            "S_DISPATCH": 2,
+            "S_CLEAR": 66,
+            "S_DIRECT_SCAN": 65,
+            "S_R_WAIT": 128,
+            "S_R_GET": 128,
+            "S_DIRECT_CHECK": 64,
+            "S_L_WAIT": 256,
+            "S_L_GET": 256,
+            "S_OFFER_CHECK": 64,
+            "S_OFFER_LOOP": 64,
+            "S_COMPONENT": 65,
+            "S_COMPONENT_END": 64,
+            "S_M_WAIT": 64,
+            "S_M_GET": 64,
+            "S_COMPONENT_END_CHECK": 64,
+            "S_FIRST_MEMBER": 64,
+            "S_FIRST_APPLY": 64,
+            "S_APPLY": 64,
+            "S_APPLY_CHECK": 64,
+            "S_UNLINK_BEGIN": 64,
+            "S_UNLINK_HEAD": 64,
+            "S_UNLINK_NEXT": 64,
+            "S_UNLINK_DONE": 64,
+            "S_APPLY_UNLINK_DONE": 64,
+            "S_FIRST_NATURAL": 64,
+            "S_FIRST_INHERIT": 64,
+            "S_FIND_PULSE": 128,
+            "S_PULSE_EMIT": 64,
+            "S_FOLLOW": 64,
+            "S_FINAL": 1,
+            "S_FINISH_LOOP": 66
+          },
+          "jobs": {
+            "read_view": {
+              "count": 64,
+              "cycles": 3638
+            },
+            "silence": {
+              "count": 1,
+              "cycles": 34
+            },
+            "gain": {
+              "count": 64,
+              "cycles": 2432
+            },
+            "mix": {
+              "count": 56,
+              "cycles": 3808
+            },
+            "output": {
+              "count": 8,
+              "cycles": 785
+            }
+          },
+          "demand_fill_wait_cycles": 566,
+          "transfer_active_cycles": 5269,
+          "raw_ddr_bus": {
+            "dram_ticks": 79355,
+            "channels": 1,
+            "elapsed_seconds": 0.000148790625,
+            "data_busy_cycles": 2048,
+            "data_bus_utilization": 0.025808077625858485,
+            "read_data_bus_utilization": 0.025808077625858485,
+            "write_data_bus_utilization": 0.0,
+            "command_bus_utilization": 0.00843047066977506,
+            "transferred_bytes": 8192,
+            "transfer_bytes_per_second": 55057232.26849809,
+            "peak_bytes_per_second": 2133333333.3333333,
+            "read_cycles": 2048,
+            "write_cycles": 0,
+            "read_commands": 512,
+            "write_commands": 0,
+            "command_cycles": 669
+          },
+          "active_ddr_bus": {
+            "dram_ticks": 79355,
+            "channels": 1,
+            "elapsed_seconds": 0.000148790625,
+            "data_busy_cycles": 2048,
+            "data_bus_utilization": 0.025808077625858485,
+            "read_data_bus_utilization": 0.025808077625858485,
+            "write_data_bus_utilization": 0.0,
+            "command_bus_utilization": 0.00843047066977506,
+            "transferred_bytes": 8192,
+            "transfer_bytes_per_second": 55057232.26849809,
+            "peak_bytes_per_second": 2133333333.3333333,
+            "read_cycles": 2048,
+            "write_cycles": 0,
+            "read_commands": 512,
+            "write_commands": 0,
+            "command_cycles": 669
+          }
+        },
+        {
+          "raw_cycles": 13344,
+          "active_cycles": 13344,
+          "transition_cycles": 873,
+          "state_cycles": 1476,
+          "job_cycles": 10990,
+          "other_cycles": 5,
+          "coordinator_phases": {
+            "SETTLE_SEND": 1,
+            "SETTLE_WAIT": 803,
+            "AUDIO_START": 1,
+            "AUDIO_WAIT": 12470,
+            "FINISH_SEND": 1,
+            "FINISH_WAIT": 68
+          },
+          "job_phases": {
+            "CLEAR_OUTPUT": 256,
+            "FETCH": 194,
+            "DECODE": 193,
+            "MEDIA_COMMAND": 64,
+            "MEDIA_READ": 3291,
+            "MEDIA_DONE": 192,
+            "STORE": 288,
+            "RAMP_PREPARE": 64,
+            "GAIN_STREAM": 2240,
+            "MIX_STREAM": 3696,
+            "READ_REQUEST": 256,
+            "READ_RESULT": 256
+          },
+          "transition_states": {
+            "S_IDLE": 4,
+            "S_DISPATCH": 2,
+            "S_CLEAR": 66,
+            "S_DIRECT_SCAN": 1,
+            "S_COMPONENT": 65,
+            "S_COMPONENT_END": 64,
+            "S_M_WAIT": 64,
+            "S_M_GET": 64,
+            "S_COMPONENT_END_CHECK": 64,
+            "S_FIRST_MEMBER": 64,
+            "S_L_WAIT": 68,
+            "S_L_GET": 68,
+            "S_FIRST_APPLY": 64,
+            "S_FIRST_INHERIT": 64,
+            "S_FIND_PULSE": 68,
+            "S_NATURAL": 4,
+            "S_NATURAL_WRAP": 4,
+            "S_PULSE_EMIT": 4,
+            "S_FOLLOW": 4,
+            "S_FINAL": 1,
+            "S_FINISH_LOOP": 66
+          },
+          "jobs": {
+            "read_view": {
+              "count": 64,
+              "cycles": 3675
+            },
+            "silence": {
+              "count": 1,
+              "cycles": 34
+            },
+            "gain": {
+              "count": 64,
+              "cycles": 2432
+            },
+            "mix": {
+              "count": 56,
+              "cycles": 3808
+            },
+            "output": {
+              "count": 8,
+              "cycles": 785
+            }
+          },
+          "demand_fill_wait_cycles": 603,
+          "transfer_active_cycles": 5303,
+          "raw_ddr_bus": {
+            "dram_ticks": 71168,
+            "channels": 1,
+            "elapsed_seconds": 0.00013344,
+            "data_busy_cycles": 2048,
+            "data_bus_utilization": 0.02877697841726619,
+            "read_data_bus_utilization": 0.02877697841726619,
+            "write_data_bus_utilization": 0.0,
+            "command_bus_utilization": 0.00937218974820144,
+            "transferred_bytes": 8192,
+            "transfer_bytes_per_second": 61390887.29016787,
+            "peak_bytes_per_second": 2133333333.3333333,
+            "read_cycles": 2048,
+            "write_cycles": 0,
+            "read_commands": 512,
+            "write_commands": 0,
+            "command_cycles": 667
+          },
+          "active_ddr_bus": {
+            "dram_ticks": 71168,
+            "channels": 1,
+            "elapsed_seconds": 0.00013344,
+            "data_busy_cycles": 2048,
+            "data_bus_utilization": 0.02877697841726619,
+            "read_data_bus_utilization": 0.02877697841726619,
+            "write_data_bus_utilization": 0.0,
+            "command_bus_utilization": 0.00937218974820144,
+            "transferred_bytes": 8192,
+            "transfer_bytes_per_second": 61390887.29016787,
+            "peak_bytes_per_second": 2133333333.3333333,
+            "read_cycles": 2048,
+            "write_cycles": 0,
+            "read_commands": 512,
+            "write_commands": 0,
+            "command_cycles": 667
+          }
+        },
+        {
+          "raw_cycles": 13327,
+          "active_cycles": 13327,
+          "transition_cycles": 873,
+          "state_cycles": 1476,
+          "job_cycles": 10973,
+          "other_cycles": 5,
+          "coordinator_phases": {
+            "SETTLE_SEND": 1,
+            "SETTLE_WAIT": 803,
+            "AUDIO_START": 1,
+            "AUDIO_WAIT": 12453,
+            "FINISH_SEND": 1,
+            "FINISH_WAIT": 68
+          },
+          "job_phases": {
+            "CLEAR_OUTPUT": 256,
+            "FETCH": 194,
+            "DECODE": 193,
+            "MEDIA_COMMAND": 64,
+            "MEDIA_READ": 3274,
+            "MEDIA_DONE": 192,
+            "STORE": 288,
+            "RAMP_PREPARE": 64,
+            "GAIN_STREAM": 2240,
+            "MIX_STREAM": 3696,
+            "READ_REQUEST": 256,
+            "READ_RESULT": 256
+          },
+          "transition_states": {
+            "S_IDLE": 4,
+            "S_DISPATCH": 2,
+            "S_CLEAR": 66,
+            "S_DIRECT_SCAN": 1,
+            "S_COMPONENT": 65,
+            "S_COMPONENT_END": 64,
+            "S_M_WAIT": 64,
+            "S_M_GET": 64,
+            "S_COMPONENT_END_CHECK": 64,
+            "S_FIRST_MEMBER": 64,
+            "S_L_WAIT": 68,
+            "S_L_GET": 68,
+            "S_FIRST_APPLY": 64,
+            "S_FIRST_INHERIT": 64,
+            "S_FIND_PULSE": 68,
+            "S_NATURAL": 4,
+            "S_NATURAL_WRAP": 4,
+            "S_PULSE_EMIT": 4,
+            "S_FOLLOW": 4,
+            "S_FINAL": 1,
+            "S_FINISH_LOOP": 66
+          },
+          "jobs": {
+            "read_view": {
+              "count": 64,
+              "cycles": 3658
+            },
+            "silence": {
+              "count": 1,
+              "cycles": 34
+            },
+            "gain": {
+              "count": 64,
+              "cycles": 2432
+            },
+            "mix": {
+              "count": 56,
+              "cycles": 3808
+            },
+            "output": {
+              "count": 8,
+              "cycles": 785
+            }
+          },
+          "demand_fill_wait_cycles": 586,
+          "transfer_active_cycles": 5288,
+          "raw_ddr_bus": {
+            "dram_ticks": 71077,
+            "channels": 1,
+            "elapsed_seconds": 0.000133269375,
+            "data_busy_cycles": 2048,
+            "data_bus_utilization": 0.02881382163006317,
+            "read_data_bus_utilization": 0.02881382163006317,
+            "write_data_bus_utilization": 0.0,
+            "command_bus_utilization": 0.009356050480464848,
+            "transferred_bytes": 8192,
+            "transfer_bytes_per_second": 61469486.14413476,
+            "peak_bytes_per_second": 2133333333.3333333,
+            "read_cycles": 2048,
+            "write_cycles": 0,
+            "read_commands": 512,
+            "write_commands": 0,
+            "command_cycles": 665
+          },
+          "active_ddr_bus": {
+            "dram_ticks": 71077,
+            "channels": 1,
+            "elapsed_seconds": 0.000133269375,
+            "data_busy_cycles": 2048,
+            "data_bus_utilization": 0.02881382163006317,
+            "read_data_bus_utilization": 0.02881382163006317,
+            "write_data_bus_utilization": 0.0,
+            "command_bus_utilization": 0.009356050480464848,
+            "transferred_bytes": 8192,
+            "transfer_bytes_per_second": 61469486.14413476,
+            "peak_bytes_per_second": 2133333333.3333333,
+            "read_cycles": 2048,
+            "write_cycles": 0,
+            "read_commands": 512,
+            "write_commands": 0,
+            "command_cycles": 665
+          }
+        },
+        {
+          "raw_cycles": 13350,
+          "active_cycles": 13350,
+          "transition_cycles": 873,
+          "state_cycles": 1476,
+          "job_cycles": 10996,
+          "other_cycles": 5,
+          "coordinator_phases": {
+            "SETTLE_SEND": 1,
+            "SETTLE_WAIT": 803,
+            "AUDIO_START": 1,
+            "AUDIO_WAIT": 12476,
+            "FINISH_SEND": 1,
+            "FINISH_WAIT": 68
+          },
+          "job_phases": {
+            "CLEAR_OUTPUT": 256,
+            "FETCH": 194,
+            "DECODE": 193,
+            "MEDIA_COMMAND": 64,
+            "MEDIA_READ": 3297,
+            "MEDIA_DONE": 192,
+            "STORE": 288,
+            "RAMP_PREPARE": 64,
+            "GAIN_STREAM": 2240,
+            "MIX_STREAM": 3696,
+            "READ_REQUEST": 256,
+            "READ_RESULT": 256
+          },
+          "transition_states": {
+            "S_IDLE": 4,
+            "S_DISPATCH": 2,
+            "S_CLEAR": 66,
+            "S_DIRECT_SCAN": 1,
+            "S_COMPONENT": 65,
+            "S_COMPONENT_END": 64,
+            "S_M_WAIT": 64,
+            "S_M_GET": 64,
+            "S_COMPONENT_END_CHECK": 64,
+            "S_FIRST_MEMBER": 64,
+            "S_L_WAIT": 68,
+            "S_L_GET": 68,
+            "S_FIRST_APPLY": 64,
+            "S_FIRST_INHERIT": 64,
+            "S_FIND_PULSE": 68,
+            "S_NATURAL": 4,
+            "S_NATURAL_WRAP": 4,
+            "S_PULSE_EMIT": 4,
+            "S_FOLLOW": 4,
+            "S_FINAL": 1,
+            "S_FINISH_LOOP": 66
+          },
+          "jobs": {
+            "read_view": {
+              "count": 64,
+              "cycles": 3681
+            },
+            "silence": {
+              "count": 1,
+              "cycles": 34
+            },
+            "gain": {
+              "count": 64,
+              "cycles": 2432
+            },
+            "mix": {
+              "count": 56,
+              "cycles": 3808
+            },
+            "output": {
+              "count": 8,
+              "cycles": 785
+            }
+          },
+          "demand_fill_wait_cycles": 609,
+          "transfer_active_cycles": 5306,
+          "raw_ddr_bus": {
+            "dram_ticks": 71200,
+            "channels": 1,
+            "elapsed_seconds": 0.0001335,
+            "data_busy_cycles": 2048,
+            "data_bus_utilization": 0.028764044943820226,
+            "read_data_bus_utilization": 0.028764044943820226,
+            "write_data_bus_utilization": 0.0,
+            "command_bus_utilization": 0.009367977528089887,
+            "transferred_bytes": 8192,
+            "transfer_bytes_per_second": 61363295.88014982,
+            "peak_bytes_per_second": 2133333333.3333333,
+            "read_cycles": 2048,
+            "write_cycles": 0,
+            "read_commands": 512,
+            "write_commands": 0,
+            "command_cycles": 667
+          },
+          "active_ddr_bus": {
+            "dram_ticks": 71200,
+            "channels": 1,
+            "elapsed_seconds": 0.0001335,
+            "data_busy_cycles": 2048,
+            "data_bus_utilization": 0.028764044943820226,
+            "read_data_bus_utilization": 0.028764044943820226,
+            "write_data_bus_utilization": 0.0,
+            "command_bus_utilization": 0.009367977528089887,
+            "transferred_bytes": 8192,
+            "transfer_bytes_per_second": 61363295.88014982,
+            "peak_bytes_per_second": 2133333333.3333333,
+            "read_cycles": 2048,
+            "write_cycles": 0,
+            "read_commands": 512,
+            "write_commands": 0,
+            "command_cycles": 667
+          }
+        }
+      ]
+    }
+  ],
+  "provenance": "Measured before upstream 012ed6bd DDR-metadata change; stage-5 source committed as e7b6ed01. New-upstream repetition cancelled at user request; no new measurement is claimed.",
+  "accuracy": [
+    {
+      "name": "coordinated-8x8-production-playback-q32",
+      "classification": "bounded",
+      "samples": 33792,
+      "max_abs": 2.980232238769531e-07,
+      "rms": 1.3281183572257607e-08,
+      "signed_bias": 2.9103830456733704e-11,
+      "drift_first_to_last_quantum": 3.841705620288849e-09,
+      "max_derived_error_budget": 3.0380213290667175e-06,
+      "worst": {
+        "path": "quanta[3].outputs.channels[3][23]",
+        "absolute_error": 2.980232238769531e-07
+      },
+      "saturating_operations": 0,
+      "clipping_quanta": [],
+      "float_samples_outside_fixed_range": []
+    }
+  ]
+}

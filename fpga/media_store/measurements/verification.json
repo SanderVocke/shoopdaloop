@@ -1,0 +1,74 @@
+[
+  {
+    "workload": "original",
+    "case_sha256": "86f64fe15f02b6d38857c13667f93d2c0f0325722e16a7995ffa1f08914c42f8",
+    "quanta": 4,
+    "full_intermediate_media": true,
+    "final_media": true,
+    "result": "passed",
+    "configuration": {
+      "metadata_lines": 128,
+      "reference_lines": 4,
+      "stack_lines": 2,
+      "metadata_pages": null,
+      "model": "instant",
+      "backend": "systemverilog",
+      "purpose": "functional",
+      "fabric_hz": 100000000,
+      "physical_base": 16777216,
+      "fixed_cycles": 7,
+      "axi_data_width": 64,
+      "word_transfers": false,
+      "revision": "b8687cfc2692ec63894c5383d3ffc3e21691f120",
+      "working_tree_dirty": true
+    }
+  },
+  {
+    "workload": "streaming",
+    "case_sha256": "7cd84aa68b7adf1e73ffc88c6cb0baa5733f8e053bb43d667a1909c0606e27a7",
+    "quanta": 24,
+    "full_intermediate_media": true,
+    "final_media": true,
+    "result": "passed",
+    "configuration": {
+      "metadata_lines": 128,
+      "reference_lines": 4,
+      "stack_lines": 2,
+      "metadata_pages": null,
+      "model": "instant",
+      "backend": "systemverilog",
+      "purpose": "functional",
+      "fabric_hz": 100000000,
+      "physical_base": 16777216,
+      "fixed_cycles": 7,
+      "axi_data_width": 64,
+      "word_transfers": false,
+      "revision": "2842301f01639057e291c07e6442d926b8d23ff1",
+      "working_tree_dirty": false
+    }
+  },
+  {
+    "workload": "mixed",
+    "case_sha256": "0603db1bce13e517476c33da74e159722da5bc063f56cbe0751500f412447a1e",
+    "quanta": 24,
+    "full_intermediate_media": true,
+    "final_media": true,
+    "result": "passed",
+    "configuration": {
+      "metadata_lines": 128,
+      "reference_lines": 4,
+      "stack_lines": 2,
+      "metadata_pages": null,
+      "model": "instant",
+      "backend": "systemverilog",
+      "purpose": "functional",
+      "fabric_hz": 100000000,
+      "physical_base": 16777216,
+      "fixed_cycles": 7,
+      "axi_data_width": 64,
+      "word_transfers": false,
+      "revision": "2842301f01639057e291c07e6442d926b8d23ff1",
+      "working_tree_dirty": false
+    }
+  }
+]

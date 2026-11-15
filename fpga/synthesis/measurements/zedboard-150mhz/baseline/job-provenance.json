@@ -1,0 +1,30 @@
+{
+  "revision": "2bdd10c979d4bc6ad2ca953002b4a481be38a9e3",
+  "working_tree_dirty": true,
+  "command": [
+    "fpga/synthesis/subsystems.py",
+    "job",
+    "--threads",
+    "2",
+    "--vivado",
+    "/workspace/toolchains/vivado",
+    "--output",
+    "work/150mhz/job-baseline-user"
+  ],
+  "subsystem": "job",
+  "top": "job_processor",
+  "parameters": {
+    "EXTERNAL_IO": 1,
+    "ENABLE_MEDIA": 1,
+    "MAX_FRAMES": 32,
+    "BUFFERS": 256,
+    "INPUT_PORTS": 8,
+    "OUTPUT_PORTS": 8,
+    "CHUNK_FRAMES": 32
+  },
+  "part": "xc7z020clg484-1",
+  "clock_mhz": 150,
+  "uncertainty_ns": 0.2,
+  "stage": "route",
+  "threads": 2
+}

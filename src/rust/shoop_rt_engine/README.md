@@ -142,7 +142,7 @@ own. Delayed requests are answered when admitted; immediate ones when applied.
 ## Structural transactions
 
 A transaction first prepares everything without touching the music: node-pair
-edits for added or removed loops, a validated LTP1 timing image of the new loop
+edits for added or removed loops, a validated LTP2 timing image of the new loop
 topology, and a staged graph built in a prepared plan. The three stages start
 together; the node-pair edits and timing records follow in the next poll, the
 records scheduled one callback apart (the loop library accepts one append per
@@ -216,9 +216,9 @@ credits within the prepared maximum and sends `LimitsChanged`.
 
 The `testing` feature adds `testing::OfflineHost`: it pulls callbacks
 synchronously with given inputs and pumps the endpoint through the in-process
-carrier and a `ProtocolClient`. There are no threads and no real time. Its
-`process`, `request` and `receive` do not allocate, so tests guard them with an
-allocator check. The crate's tests use it for the legacy timing reference,
+carrier and a `ProtocolClient`. There are no threads and no real time. Renderer callbacks, `request` and `receive` do not allocate, so tests
+guard them with an allocator check.
+The crate's tests use it for the legacy timing reference,
 structural edits while rendering, telemetry, bulk reads, resynchronization,
 credits and shutdown.
 
@@ -228,6 +228,12 @@ cargo test -p shoop_rt_engine --release
 ```
 
 ## Limits of this milestone
+
+Gain/balance DSP uses the shared [audio arithmetic](../rt_audio_math/README.md)
+and sample-duration ramps: sample zero retains the start value, sample D reaches
+the target, and a short ramp holds its target through the rest of the block.
+The application engine remains float; the runtime, loop library and shared DSP
+can separately instantiate Q8.24 processing at compile time.
 
 Pools are fixed after preparation (`GROWABLE_LIMITS` is not announced). As in
 the legacy engine, turning monitoring off releases the notes the monitoring feed

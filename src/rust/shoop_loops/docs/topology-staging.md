@@ -65,7 +65,11 @@ compatible bank or reliable owning-return location before activation. Actual
 metadata/scratch destruction, including destruction of a Taken receiver's scratch,
 is off-render. Recycling retained allocations is not a destructor exemption.
 
-## Wire representation: LTP1
+## Wire representation: LTP2
+
+LTP2 carries one ordered loop-ID table. Component ranges and grouped membership
+are not encoded. LTP1 images are rejected; producers and receivers must use the
+same version.
 
 `PreparedTopology::encode_header(&mut [u8; 64])`, `encoded_records()` and
 `encode_record(index, &mut [u8; 64])` are allocation-free readers. An out-of-range
@@ -77,10 +81,11 @@ Header fields:
 
 | Offset | Field |
 | ---: | --- |
-| 0 | Four bytes `LTP1` |
+| 0 | Four bytes `LTP2` |
 | 4 | Total body record count, u32 |
 | 8,12,16,20,24,28 | u32 limits: loop slots, relations, program entries, program segments, pending requests, journal events |
-| 32,36,40,44,48,52,56 | u32 counts: nodes, triggers, programs, targets, segments, components, members |
+| 32,36,40,44,48,52 | u32 counts: nodes, triggers, programs, targets, segments, dependency-order IDs |
+| 56 | Reserved u32, must be zero |
 | 60 | Deduplicated timing-relation count, u32 |
 
 Body tables follow that count order. Record kind is determined by the table,
@@ -95,8 +100,7 @@ A range is two u32 words: start then length.
 | Program | source ID0; kind8 (regular0/explicit1); nominal unit16 (u64); iterations24 (u64); target range32; segment range40 |
 | Target | target ID0; program-relative segment range8 |
 | Segment | start0, end8, occurrence-start16 (u64); ordinal24 (u32); mode28 |
-| Component | member range0 |
-| Member | ID0 |
+| Dependency order | ID0 |
 
 Modes encode Stopped0, Playing1, Recording2. Reserved bytes, unknown enum values
 and zero ID generations are refused. The header deliberately includes no native
@@ -121,22 +125,22 @@ The validator checks:
   bounds, occurrence starts, canonical contiguous-mode merging, ordinal ownership/
   mode consistency and entry-count lower bounds.
 - Regular versus explicit modes, including refusal of composite recording.
-- Complete unique ordered component membership and nonempty components.
+- Complete, unique dependency order with exact-generation loop IDs.
 - Recursive programs using a prepared queue and indegrees.
-- Deduplicated sync/action relations and their declared count; no internal action
-  edge in a sync component and no backward component dependency.
-- Strong pure-sync components and canonical minimum-ready-ID dependency order.
+- Deduplicated sync/action relations and their declared count.
+- Acyclic dependencies and canonical minimum-ready-ID loop order. Self-sync
+  contributes a relation but adds no ordering edge; self-targeted actions fail.
 
-A multi-node pure-sync component has one sync source per node and no internal
-action edge. Following those sources must visit exactly its declared members and
-return to the first. A falsely merged cycle-plus-downstream-tree therefore fails;
-checking only that members have some incoming edge would be insufficient.
+Validation reconstructs indegrees and consumes ready loops in canonical order.
+An exhausted ready set rejects cycles, and a supplied ID that differs from the
+next ready loop rejects malformed ordering. A caller-supplied order cannot make
+cyclic dependencies valid.
 
 Each validation step handles constant-sized metadata; cursors, queue positions
 and finite searches advance monotonically. No musical duration is enumerated.
 The implementation deliberately uses simple fixed scratch: duplicate-edge searches
-and ready-component/outgoing-edge scans give worst-case total work
-`O(rows + relations² + components² + components × relations)`. Memory remains
+and ready-loop/outgoing-edge scans give worst-case total work
+`O(rows + relations² + loops² + loops × relations)`. Memory remains
 linear in configured counts. This is not a linear-time preparation claim or a
 universal latency/deadline guarantee.
 

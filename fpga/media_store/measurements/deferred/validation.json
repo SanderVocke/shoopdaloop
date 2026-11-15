@@ -1,0 +1,729 @@
+{
+  "base": "bc833fc310817648c9e9c1d4c7ae3d6d21ac24c6",
+  "final_rtl_sources": {
+    "fpga/audio_io/rtl/audio_boot.sv": "eb11fb1330d46c85f3d31d74fb2b43866c43bd4f57bc842188058afe7fe11a0a",
+    "fpga/audio_io/rtl/audio_command_fifo.sv": "d918faa5d4e820ba69313493867ce7e9538cf1a34703b8fbda64bc60fdbdbc2b",
+    "fpga/audio_io/rtl/audio_control.sv": "a37596b147b947e5c516d34c302c8bc615cb30f64f168f06be5d763cf7a1cb62",
+    "fpga/audio_io/rtl/audio_demo.sv": "93fc902ce8c4b3cefa8ee8edb099fd72e7ff1f76910d3a81b885e3bf69080fe6",
+    "fpga/audio_io/rtl/audio_events.sv": "01126314bf0e2a975481cdc23e905e948f6eef5faa280e7dfaf1fb8e1adfc6e1",
+    "fpga/audio_io/rtl/audio_io.sv": "c5fb51d9b09cf6c41435135cd31866cb1caccad0377588eda173c7f5a1d7bd1d",
+    "fpga/audio_io/rtl/audio_lane_ram.sv": "5c510e4d595320304fde4dd64ac8b79c6f4d6e6025a2adb96574e72a55d86beb",
+    "fpga/audio_io/rtl/audio_loop_pipeline.sv": "88ec8638e5b8e1fd5e23781db627fcb54d355c67c418e308f48091301a2d19a5",
+    "fpga/axi_memory/rtl/axi_burst_mux.sv": "61ce3d023b9fb61109645eb9b6741088f14389e381ea63116fcbf670dfb79b91",
+    "fpga/axi_memory/rtl/axi_master.sv": "ece082912919f34927873195a83ae26536f9d4f3df050c2c84b856afcfda9c56",
+    "fpga/axi_memory/rtl/chunk_axi.sv": "d5265918080e4b4f8a8430831b72db9425639a7d29c21aa62b5949fc261e0ecb",
+    "fpga/axi_memory/rtl/chunk_dma.sv": "1bb3a55eaf6955401fbd9b2e171a3b58dc4f4eb57dd2cd2eee4644bbe7cc25b0",
+    "fpga/axi_memory/rtl/chunk_memory_axi.sv": "56d40ffb5fd1a505f8d50935cac328cd346e34ec2d438d181f3dd45bb7ef5a21",
+    "fpga/axi_memory/rtl/loop_pipeline_axi.sv": "e94179d8f2468c316e3ab9416141bec327e3d6098647fcad1c883d9bda12904e",
+    "fpga/axi_memory/rtl/media_audio_pipeline_axi.sv": "3a62e351300cc9ae210c34459cfac19e8629e699d8e6e072d818f90a9407238f",
+    "fpga/axi_memory/rtl/media_store_axi.sv": "c539e1818d0b25e096fa1f30b7a24c4d486680a186fa70608f8dc1f8c0ac986a",
+    "fpga/axi_memory/rtl/shared_axi.sv": "39e04665ee3d0ae82ba545250008df3ff77432d8b9c193582a8eff0df49a5cc9",
+    "fpga/axi_memory/rtl/word_axi.sv": "7edfae1a0b97fc5cc4e30f7a64223cd8879e4d27811a98fda3ac8c7fe504a27e",
+    "fpga/axi_memory/rtl/word_dma.sv": "292f48d1fa083a4f4ad5fe09c586043c5e02d4e1cc5b60ed68b14d0cb3eea772",
+    "fpga/chunk_memory/rtl/chunk_memory.sv": "40c9db16a1d82ad5da6ec251e9e875976f8d5cf286dfadbaacb1dde4dfef81a0",
+    "fpga/chunk_memory/rtl/chunk_ram.sv": "b3c85ff265ced37296ee0fbda1dd231efc56b40e3ebff6454c982f6f25021464",
+    "fpga/job_processor/rtl/audio_pipeline.sv": "3a6b4764b9f1785e0aa7090b1f43d72686090749e547bb135876934337dc2db6",
+    "fpga/job_processor/rtl/job_processor.sv": "d8abcb9878be42348cb95908bb7ab9b8ccc0054e0031cf570a1c9fd90c545b64",
+    "fpga/job_processor/rtl/jp_divider.sv": "330878c7b8eef450b44569df49bbb7501d913fcafc2038fbd58cbaf8ac1034e1",
+    "fpga/job_processor/rtl/jp_sample_ram.sv": "ce2509eec993043129e6210ed470b1e40c9478dd0d32e589146e099daae7a854",
+    "fpga/loop_pipeline/rtl/loop_pipeline.sv": "a6e7343061414ba8389153f56218a5c9c4b96d6f5f61756578ac73b17f7f43d4",
+    "fpga/media_store/rtl/media_audio_pipeline.sv": "88cc3ad4b79162daaddd4ece93f6b51cc056e9025b572d4055d89639b0bb9176",
+    "fpga/media_store/rtl/media_metadata.sv": "4eef2be8fb7811c935d99271e5a2bf72db4291e65f4adefdda185f4319c3a79e",
+    "fpga/media_store/rtl/media_prefetch_resolver.sv": "a650a2fb6f1cf379190483c5ad9af558228fa77fd2e565d7f49fb7027e89d2ba",
+    "fpga/media_store/rtl/media_ram.sv": "2c1f253e53ad420768598616da4a7ed5e8c246f786d9c9a56d25e64b46ee5178",
+    "fpga/media_store/rtl/media_reclaimer.sv": "ed6a75688d9d31ab82e9abd9bd5c2d1695cb1e35b976fd94dc47c77e7b60511d",
+    "fpga/media_store/rtl/media_store.sv": "a5b8aa87450ca82a2225a661465d7614bb94c17485039ba783947292e3e9b5f4",
+    "fpga/media_store/rtl/memory_delay.sv": "426bfea9b6bd377a5efdfc2fb98cfe15995a821810d23d60b7911dfe3788bee9",
+    "fpga/media_store/rtl/metadata_cache.sv": "3d86dc29a1970f201dfd967d6856329d0ec91bbcf94ba4e5122b9b57c7d5cab4",
+    "fpga/state_processor/rtl/sp_engine.sv": "1bb0bf3e1823c64669f7e36b2fe52ad5ed816b7e22f4880d1401c6a2f6e439d1",
+    "fpga/state_processor/rtl/sp_job_fifo.sv": "a39d66df7ebeb34b113ecfe42a0ed25e338613aabd7fc88493ad3704db727c7f",
+    "fpga/state_processor/rtl/sp_ram.sv": "0ada36fe7fc4bb515469c32c3cb2f6b7cbefd16b35349950c93f9bc2c925ff73",
+    "fpga/state_processor/rtl/state_processor.sv": "2b4bf5e174de880481114ed5e230ddceea5bcfe6475944703409e2d972a7b7d5",
+    "fpga/transition_processor/rtl/tp_priority.sv": "4838f6a3c517f162ef52a58b4d7f31dda9ad8a02c5dedef9e4f5a422da0e683a",
+    "fpga/transition_processor/rtl/tp_ram.sv": "ff9efc9e523668e4635062c12e002bdf9545f52e450161c57394d996bbc50303",
+    "fpga/transition_processor/rtl/transition_processor.sv": "07cdf6cb6836f14fc87ee75198a467810092b31fce77bffe2a8a98a0be96ba6e",
+    "fpga/zedboard/rtl/timing_bench.sv": "7c707c596b8007bf6af682a4964c52e51d6634b68dbcd37d83c2423fc2e3431e",
+    "fpga/audio_io/rtl/audio_demo_body.svh": "5b30ef03140c5ed9a5c4535d432e0f7d231d3912a64e1f4cbaff09d8f585435f",
+    "fpga/audio_io/rtl/audio_loop_body.svh": "6661530d598978e97e592531ea094684d590bdf174e05c4a64fa483f00a31938",
+    "fpga/state_processor/rtl/state_processor_defs.svh": "7a480b529e3748e6c6348469bd6df5a83c04c7b45eaccae97a2c44382dacdb61",
+    "fpga/zedboard/rtl/timing_body.svh": "b4d1f8708d715a4a11fb43a45dd8bb03a1590e2fcc2979f5e7337985168d7739"
+  },
+  "final_controller_gates": [
+    {
+      "name": "Deferred ownership / native AXI32",
+      "result": "passed",
+      "test_count": 9,
+      "reports": [
+        {
+          "path": "work/deferred-final/wide/results.xml",
+          "sha256": "a9333ec5c5958c7cd2aac568ce76619f306b5e0b0c86d4b3cdc7389a98b4fb2a",
+          "tests": [
+            "test_deferred_media.detachment_and_maintenance_budgets",
+            "test_deferred_media.clear_cancels_an_outstanding_metadata_hint",
+            "test_deferred_media.queue_full_preserves_the_live_recording",
+            "test_deferred_media.retained_ranges_and_repeated_view_reuse",
+            "test_deferred_media.reset_discards_active_cleanup_and_old_responses",
+            "test_deferred_media.invalid_retired_block_faults_before_reuse",
+            "test_deferred_media.status_reads_do_not_deadlock_atomic_cleanup",
+            "test_deferred_media.pause_at_ownership_and_checkpoint_boundaries",
+            "test_deferred_media.offline_drain_survives_budget_counter_expiration"
+          ]
+        }
+      ],
+      "expected_tests": 9
+    },
+    {
+      "name": "Deferred ownership / DRAMsim3 AXI64 single-line caches",
+      "result": "passed",
+      "test_count": 9,
+      "reports": [
+        {
+          "path": "work/deferred-dram/wide/results.xml",
+          "sha256": "7a0561e40cdbb3e06d977cc644e95a557b53e156fe1ffa6500de62eca5e72f7f",
+          "tests": [
+            "test_deferred_media.detachment_and_maintenance_budgets",
+            "test_deferred_media.clear_cancels_an_outstanding_metadata_hint",
+            "test_deferred_media.queue_full_preserves_the_live_recording",
+            "test_deferred_media.retained_ranges_and_repeated_view_reuse",
+            "test_deferred_media.reset_discards_active_cleanup_and_old_responses",
+            "test_deferred_media.invalid_retired_block_faults_before_reuse",
+            "test_deferred_media.status_reads_do_not_deadlock_atomic_cleanup",
+            "test_deferred_media.pause_at_ownership_and_checkpoint_boundaries",
+            "test_deferred_media.offline_drain_survives_budget_counter_expiration"
+          ]
+        }
+      ],
+      "expected_tests": 9
+    },
+    {
+      "name": "Full pools and transfer publication faults",
+      "result": "passed",
+      "test_count": 3,
+      "reports": [
+        {
+          "path": "work/deferred-capacity/wide/results.xml",
+          "sha256": "bab2d0c007375084744ff4180f615860120931e1f08b91c0d7bb2152fcc6d8ce",
+          "tests": [
+            "test_deferred_capacity.full_pools_and_pause_after_reference_release",
+            "test_deferred_capacity.failed_detachment_preserves_ownership_until_reset",
+            "test_deferred_capacity.published_retirement_fault_requires_a_coordinated_reset"
+          ]
+        }
+      ],
+      "expected_tests": 3
+    },
+    {
+      "name": "Thirty-second mono and stereo ownership / unique ID recovery",
+      "result": "passed",
+      "test_count": 2,
+      "reports": [
+        {
+          "path": "work/deferred-stress-final/retirement/results.xml",
+          "sha256": "cb8d842b5f75a7b1b2f09ceefafe54c564b4fd26c01c1043383d99d20de350f4",
+          "tests": [
+            "test_deferred_stress.thirty_second_mono_takes",
+            "test_deferred_stress.thirty_second_stereo_takes"
+          ]
+        }
+      ],
+      "expected_tests": 2
+    },
+    {
+      "name": "Integrated stereo retake and retained export / stalled AXI64",
+      "result": "passed",
+      "test_count": 1,
+      "reports": [
+        {
+          "path": "work/reclaim-final-retake/results.xml",
+          "sha256": "a1494895b2bbe73712ffcd2515edb4f37a840a61aac1d3aa612379c941ca0ea9",
+          "tests": [
+            "test_production_pipeline.production_scenarios"
+          ]
+        }
+      ],
+      "expected_tests": 1,
+      "logical_scenarios": 1
+    }
+  ],
+  "broader_regressions": [
+    {
+      "name": "Metadata caches and tables AXI32/64 through six levels",
+      "result": "passed",
+      "test_count": 15,
+      "reports": [
+        {
+          "path": "work/metadata-units/32--1/results.xml",
+          "sha256": "6c8562acb7772ea6d6389cfefba55f18189ade1b1bd35d0cc5a1f2ddc650d779",
+          "tests": [
+            "test_media_metadata.indexed_metadata_reuse_and_limits",
+            "test_media_metadata.detached_tables_survive_reuse_and_recover_pages"
+          ]
+        },
+        {
+          "path": "work/metadata-units/32--2/results.xml",
+          "sha256": "e475ffe9173c1ded29b1b8d32b5cae5ea0ef2592a63878e2e58248005d675d9c",
+          "tests": [
+            "test_media_metadata.indexed_metadata_reuse_and_limits",
+            "test_media_metadata.detached_tables_survive_reuse_and_recover_pages"
+          ]
+        },
+        {
+          "path": "work/metadata-units/32-0/results.xml",
+          "sha256": "a9c37f591999c884c2bb1d77d8791b3e0790d816312a9c4237734cecdd7391b1",
+          "tests": [
+            "test_media_metadata.indexed_metadata_reuse_and_limits",
+            "test_media_metadata.detached_tables_survive_reuse_and_recover_pages"
+          ]
+        },
+        {
+          "path": "work/metadata-units/32-64/results.xml",
+          "sha256": "7bd98a508f32a4d70bdca76985d71e585bcc658fb630276f53a6cff0068b40d1",
+          "tests": [
+            "test_metadata_cache.coherent_cache_and_transport"
+          ]
+        },
+        {
+          "path": "work/metadata-units/64--1/results.xml",
+          "sha256": "44fc53dbb5e0e535a5254db251beaa4a8ffa9fe642c6a8090854ae5177f2d3a8",
+          "tests": [
+            "test_media_metadata.indexed_metadata_reuse_and_limits",
+            "test_media_metadata.detached_tables_survive_reuse_and_recover_pages"
+          ]
+        },
+        {
+          "path": "work/metadata-units/64--2/results.xml",
+          "sha256": "2ca654902ebd6f2fd0b7a2d5c445e3215d1bdc22833355e1ec14ace465b87013",
+          "tests": [
+            "test_media_metadata.indexed_metadata_reuse_and_limits",
+            "test_media_metadata.detached_tables_survive_reuse_and_recover_pages"
+          ]
+        },
+        {
+          "path": "work/metadata-units/64-0/results.xml",
+          "sha256": "0c220d9e0f41b73f6d77d87706d0336da4cfa5510fadc20d428868488f22ed12",
+          "tests": [
+            "test_media_metadata.indexed_metadata_reuse_and_limits",
+            "test_media_metadata.detached_tables_survive_reuse_and_recover_pages"
+          ]
+        },
+        {
+          "path": "work/metadata-units/64-16/results.xml",
+          "sha256": "d5c351d0b185e920c86bab8bc7d3b8dfbcaf8fc656f615a6123f7a9b98a90905",
+          "tests": [
+            "test_metadata_cache.coherent_cache_and_transport"
+          ]
+        },
+        {
+          "path": "work/metadata-units/64-64/results.xml",
+          "sha256": "ba8cb67511fcf52e9bea53b1b0075a62cb57f9771250f0b3bb76c162d1b18da4",
+          "tests": [
+            "test_metadata_cache.coherent_cache_and_transport"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Block retirement / native",
+      "result": "passed",
+      "test_count": 2,
+      "reports": [
+        {
+          "path": "work/background-retirement/small/results.xml",
+          "sha256": "6b641249d0f18abb99696cb197cb677ff865088b4be1366d72b423283696a3fe",
+          "tests": [
+            "test_block_retire.block_retirement",
+            "test_block_retire.background_retirement_preserves_unrelated_commands"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Block retirement / DRAMsim3",
+      "result": "passed",
+      "test_count": 2,
+      "reports": [
+        {
+          "path": "work/reclaim-retirement-dram/small/results.xml",
+          "sha256": "c887a3377c5a46bdb77e35fb7b978a914ed9053097d35bad619b3bc4417a0cf6",
+          "tests": [
+            "test_block_retire.block_retirement",
+            "test_block_retire.background_retirement_preserves_unrelated_commands"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Legacy media default/small/odd",
+      "result": "passed",
+      "test_count": 9,
+      "reports": [
+        {
+          "path": "work/reclaim-media-regression/default/results.xml",
+          "sha256": "87f7a233ac736141b82e4026510851ee928e5c75e61ce18538765d1ef92ca333",
+          "tests": [
+            "test_media_store.directed_media",
+            "test_media_store.randomized_media",
+            "test_media_store.media_protocol"
+          ]
+        },
+        {
+          "path": "work/reclaim-media-regression/odd/results.xml",
+          "sha256": "f02aa277d5e523326cd4601f439d1ab9da35c343a562cfa5c2d70ca43e51b3d0",
+          "tests": [
+            "test_media_store.directed_media",
+            "test_media_store.randomized_media",
+            "test_media_store.media_protocol"
+          ]
+        },
+        {
+          "path": "work/reclaim-media-regression/small/results.xml",
+          "sha256": "9f8d27bf274bacf0d31257a0255c3fd565aea359d487fb16c21ae44e7631dd22",
+          "tests": [
+            "test_media_store.directed_media",
+            "test_media_store.randomized_media",
+            "test_media_store.media_protocol"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Standalone media audio / native AXI64",
+      "result": "passed",
+      "test_count": 4,
+      "reports": [
+        {
+          "path": "work/reclaim-pipeline/small/results.xml",
+          "sha256": "da3c23de972b3b879ec0f9d35d0d6c455f5a9ba35678749aacb17b42bb89ad50",
+          "tests": [
+            "test_media_pipeline.directed_pipeline",
+            "test_media_pipeline.randomized_pipeline",
+            "test_media_pipeline.playback_stream_protocol",
+            "test_media_pipeline.pipeline_protocol"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Block media audio / odd capacity / fixed AXI64",
+      "result": "passed",
+      "test_count": 1,
+      "reports": [
+        {
+          "path": "work/reclaim-block-pipeline/odd/results.xml",
+          "sha256": "6841ab873b4f9f8b8e32b5aac5ca8abcbc0b6058951f4c8110a3514e1653dfc0",
+          "tests": [
+            "test_block_audio.blocked_audio"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Minimum chunk capacity / native AXI64",
+      "result": "passed",
+      "test_count": 4,
+      "reports": [
+        {
+          "path": "work/reclaim-minimum/minimum/results.xml",
+          "sha256": "72e02b4ca8c5736969ba57c21bd50b934639b44e14149610dea818f2b5d10714",
+          "tests": [
+            "test_chunk_memory.conformance",
+            "test_chunk_memory.buffering_protocol",
+            "test_chunk_memory.faults_and_reset",
+            "test_chunk_memory.read_stream_protocol"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Production sessions and fatal recovery / stalled AXI64",
+      "result": "passed",
+      "test_count": 2,
+      "reports": [
+        {
+          "path": "work/reclaim-production-stalled/results.xml",
+          "sha256": "fa80d2fad72e9207bbf56b9d194358dcde620a571269f1c16fe6dd6d2626e9e3",
+          "tests": [
+            "test_production_pipeline.production_scenarios",
+            "test_production_pipeline.fatal_processing_faults_silence_hold_and_reset"
+          ]
+        }
+      ],
+      "logical_scenarios": 21
+    },
+    {
+      "name": "Retained exports with no intermediate drain",
+      "result": "passed",
+      "test_count": 1,
+      "reports": [
+        {
+          "path": "work/reclaim-retained-production/results.xml",
+          "sha256": "bbf20355f274bcd9ff6ffac5f98d19ff578c78edc30bec1284a445890f0f6bc0",
+          "tests": [
+            "test_production_pipeline.production_scenarios"
+          ]
+        }
+      ],
+      "logical_scenarios": 4
+    },
+    {
+      "name": "64-loop DRAMsim3 retake timing",
+      "result": "passed",
+      "test_count": 1,
+      "reports": [
+        {
+          "path": "work/reclaim-mixed64/results.xml",
+          "sha256": "52c48832fbfc9a19b87283a61515961b1c0ad3bfd2e36ff18c26d461189492da",
+          "tests": [
+            "test_production_pipeline.production_scenarios"
+          ]
+        }
+      ],
+      "logical_scenarios": 1
+    },
+    {
+      "name": "Continuous two-channel audio / fixed stalled AXI64",
+      "result": "passed",
+      "test_count": 1,
+      "reports": [
+        {
+          "path": "work/reclaim-continuous/results.xml",
+          "sha256": "0d106ccda93e097b91ed395184efbe62936986d4b9671d1a8734254dbf3c2249",
+          "tests": [
+            "test_continuous.continuous_record_playback"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Continuous sixteen-channel audio / DRAMsim3 stalled AXI64",
+      "result": "passed",
+      "test_count": 1,
+      "reports": [
+        {
+          "path": "work/reclaim-continuous16/results.xml",
+          "sha256": "ef2133fbe69e22cab9819f769f3666bcf5715f88bdcb22ac76582346684f5820",
+          "tests": [
+            "test_continuous.continuous_record_playback"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Prepared demo quiescence and recovery",
+      "result": "passed",
+      "test_count": 1,
+      "reports": [
+        {
+          "path": "work/reclaim-demo/results.xml",
+          "sha256": "abcc588eb82e00094e0b548893ed296a497cd7a395b892f4b2de92f883e314b4",
+          "tests": [
+            "test_demo.prepared_demo_and_recovery"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Board controls and timing counters",
+      "result": "passed",
+      "test_count": 1,
+      "reports": [
+        {
+          "path": "work/reclaim-board/results.xml",
+          "sha256": "1fd6a5ad670ba3278f94969156070a91f54c2172888f024a769ff89002f095e2",
+          "tests": [
+            "test_timing_bench.deployed_runner"
+          ]
+        }
+      ]
+    }
+  ],
+  "earlier_gate_note": "Broader integrated runs precede the final offline-drain fix. Their automatic-grant path is unchanged; final gates test the corrected drain mode and an integrated retake.",
+  "offline_drain_negative_control": {
+    "source_commit": "c2f63163",
+    "result": "failed as expected",
+    "regression": "offline_drain_survives_budget_counter_expiration",
+    "xml_sha256": "7ef2b9b1315813ea2fd3648f2bcfc917795943a4b4fda656e4cdbd128d9cdb5c"
+  },
+  "formatting": "cargo fmt --all -- --check: passed",
+  "warning_denying_workspace_build": {
+    "result": "passed",
+    "command": "RUSTFLAGS=\"-D warnings\" cargo build --locked --workspace",
+    "log_sha256": "7ba9e5b460fd0cdbf2ddeb9e680ed3db723694a4cf797c7a5be1e9f3a3a2d279"
+  },
+  "native_workspace": {
+    "result": "failed",
+    "run": 3221,
+    "passed": 3203,
+    "failed": 18,
+    "skipped": 11,
+    "failures": [
+      {
+        "binary": "shoop_host::lan",
+        "test": "exported_profiles_become_visible_complete_and_never_overwrite_an_existing_profile"
+      },
+      {
+        "binary": "shoop_host::lan",
+        "test": "ipv6_profiles_connect_and_ownerless_shutdown_is_confirmed"
+      },
+      {
+        "binary": "shoop_host::lan",
+        "test": "lan_profile_dns_identity_refusal_and_replacement_use_both_endpoints"
+      },
+      {
+        "binary": "shoop_host::lan",
+        "test": "losing_a_management_reply_reconciles_the_same_shutdown_operation"
+      },
+      {
+        "binary": "shoop_host::lan",
+        "test": "non_loopback_interface_is_supported_only_by_explicit_lan_policy"
+      },
+      {
+        "binary": "shoop_host::lan",
+        "test": "saved_endpoint_profile_and_client_accept_a_restarted_host_without_old_state"
+      },
+      {
+        "binary": "shoop_host::recovery",
+        "test": "app_version_and_endpoint_role_are_checked_before_shared_attachment_admission"
+      },
+      {
+        "binary": "shoop_host::recovery",
+        "test": "bounded_recovery_stress_preserves_recording_and_reclaims_departed_connections"
+      },
+      {
+        "binary": "shoop_host::recovery",
+        "test": "bus_lifecycle_uses_both_carriers_and_socket_recovery_does_not_recreate_master"
+      },
+      {
+        "binary": "shoop_host::recovery",
+        "test": "busy_and_identity_failures_do_not_evict_the_owner_and_shared_memory_starts_and_exits"
+      },
+      {
+        "binary": "shoop_host::recovery",
+        "test": "incompatible_greetings_versions_and_early_disconnects_leave_the_session_healthy"
+      },
+      {
+        "binary": "shoop_host::recovery",
+        "test": "invalid_startup_is_rolled_back_and_a_ready_host_survives_ui_spawn_failure"
+      },
+      {
+        "binary": "shoop_host::recovery",
+        "test": "killing_a_ui_preserves_recording_and_a_replacement_can_read_media_and_close_the_host"
+      },
+      {
+        "binary": "shoop_host::recovery",
+        "test": "management_can_close_a_shared_host_after_its_only_data_connection_is_lost"
+      },
+      {
+        "binary": "shoop_host::recovery",
+        "test": "management_monitoring_preserves_controller_and_logs_startup_failures"
+      },
+      {
+        "binary": "shoop_host::recovery",
+        "test": "master_preview_plays_in_the_independent_host_without_creating_loop_content"
+      },
+      {
+        "binary": "shoop_host::recovery",
+        "test": "siblings_survive_the_launcher_exit_and_later_control_needs_no_child_handle"
+      },
+      {
+        "binary": "shoop_host::recovery",
+        "test": "startup_fallback_retains_the_effective_dummy_profile_for_later_switches"
+      }
+    ],
+    "log_sha256": "c78abf4660c7faef3ec4d6f3a946d4351c8aa3d1484bc30cbd17c536494f4630"
+  },
+  "native_host_rerun": {
+    "result": "failed",
+    "run": 25,
+    "passed": 7,
+    "failed": 18,
+    "skipped": 2,
+    "failures": [
+      {
+        "binary": "shoop_host::lan",
+        "test": "exported_profiles_become_visible_complete_and_never_overwrite_an_existing_profile"
+      },
+      {
+        "binary": "shoop_host::lan",
+        "test": "lan_profile_dns_identity_refusal_and_replacement_use_both_endpoints"
+      },
+      {
+        "binary": "shoop_host::lan",
+        "test": "losing_a_management_reply_reconciles_the_same_shutdown_operation"
+      },
+      {
+        "binary": "shoop_host::lan",
+        "test": "native_host_reports_deployment_unsupported_independently_of_session_version"
+      },
+      {
+        "binary": "shoop_host::lan",
+        "test": "non_loopback_interface_is_supported_only_by_explicit_lan_policy"
+      },
+      {
+        "binary": "shoop_host::lan",
+        "test": "saved_endpoint_profile_and_client_accept_a_restarted_host_without_old_state"
+      },
+      {
+        "binary": "shoop_host::lan",
+        "test": "silent_network_loss_releases_the_controller_while_recording_continues"
+      },
+      {
+        "binary": "shoop_host::lan",
+        "test": "wildcard_profiles_and_remote_shared_memory_are_refused"
+      },
+      {
+        "binary": "shoop_host::recovery",
+        "test": "bounded_recovery_stress_preserves_recording_and_reclaims_departed_connections"
+      },
+      {
+        "binary": "shoop_host::recovery",
+        "test": "bus_lifecycle_uses_both_carriers_and_socket_recovery_does_not_recreate_master"
+      },
+      {
+        "binary": "shoop_host::recovery",
+        "test": "busy_and_identity_failures_do_not_evict_the_owner_and_shared_memory_starts_and_exits"
+      },
+      {
+        "binary": "shoop_host::recovery",
+        "test": "incompatible_greetings_versions_and_early_disconnects_leave_the_session_healthy"
+      },
+      {
+        "binary": "shoop_host::recovery",
+        "test": "invalid_startup_is_rolled_back_and_a_ready_host_survives_ui_spawn_failure"
+      },
+      {
+        "binary": "shoop_host::recovery",
+        "test": "killing_a_ui_preserves_recording_and_a_replacement_can_read_media_and_close_the_host"
+      },
+      {
+        "binary": "shoop_host::recovery",
+        "test": "management_can_close_a_shared_host_after_its_only_data_connection_is_lost"
+      },
+      {
+        "binary": "shoop_host::recovery",
+        "test": "management_monitoring_preserves_controller_and_logs_startup_failures"
+      },
+      {
+        "binary": "shoop_host::recovery",
+        "test": "siblings_survive_the_launcher_exit_and_later_control_needs_no_child_handle"
+      },
+      {
+        "binary": "shoop_host::recovery",
+        "test": "startup_fallback_retains_the_effective_dummy_profile_for_later_switches"
+      }
+    ],
+    "log_sha256": "0da96943192ef21f8f9d20a1886f227965af5528fbf4804df58fe550a17104f5"
+  },
+  "native_limit": "Host startup/recovery failures occur in unchanged host code. No base-branch native rerun establishes baseline status.",
+  "publication": {
+    "status": "complete",
+    "pull_request": "https://github.com/SanderVocke/shoopdaloop/pull/982",
+    "branch_pushed": true,
+    "ci": "passed_for_code_commit",
+    "automated_review": "checked_no_feedback_submitted",
+    "prior_ci_source": "98abb0301e12da27d0ffd412788c6be1a45badb9",
+    "prior_ci": {
+      "passed": 14,
+      "cancelled": 1,
+      "reason": "Demo inference plus mapping exceeded 45-minute job limit"
+    },
+    "expected_ci_checks": 16,
+    "ci_source_commit": "a14f99fbc09556d81b50c88817e06a692d7add32",
+    "ci_checks": [
+      {
+        "name": "FPGA instant memory",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/43392606478/job/131775878698"
+      },
+      {
+        "name": "DSP build and startup (neither)",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/43392606508/job/131775878978"
+      },
+      {
+        "name": "FPGA dramsim3 memory",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/43392606478/job/131775878750"
+      },
+      {
+        "name": "DSP build and startup (FX)",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/43392606508/job/131775878835"
+      },
+      {
+        "name": "DSP build and startup (synth)",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/43392606508/job/131775879097"
+      },
+      {
+        "name": "DSP build and startup (both)",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/43392606508/job/131775878741"
+      },
+      {
+        "name": "Deferred reclamation (instant)",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/43392606478/job/131775879077"
+      },
+      {
+        "name": "Portable processor ownership (Miri)",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/43392606508/job/131775878497"
+      },
+      {
+        "name": "Deferred reclamation (dramsim3)",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/43392606478/job/131775878535"
+      },
+      {
+        "name": "Audio I/O lint and synthesis (q16)",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/43392606478/job/131775878876"
+      },
+      {
+        "name": "Audio I/O lint and synthesis (q32)",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/43392606478/job/131775878730"
+      },
+      {
+        "name": "Audio I/O lint and synthesis (q64)",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/43392606478/job/131775878716"
+      },
+      {
+        "name": "Audio I/O lint and synthesis (map)",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/43392606478/job/131775878869"
+      },
+      {
+        "name": "Audio I/O lint and synthesis (demo)",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/43392606478/job/131775879036"
+      },
+      {
+        "name": "Audio I/O lint and synthesis (demo-map)",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/43392606478/job/131775879099"
+      },
+      {
+        "name": "Audio I/O lint and synthesis (media)",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/SanderVocke/shoopdaloop/actions/runs/43392606478/job/131775878924"
+      }
+    ],
+    "final_update": "Documentation and evidence only; GitHub may automatically repeat checks after publication.",
+    "workflow_runs": [
+      43392606508,
+      43392606478
+    ]
+  },
+  "toolchain": {
+    "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+    "cargo": "cargo 1.100.0 (3acc79c0c 2026-11-05)",
+    "verilator": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1+b2)",
+    "yosys": "Yosys 0.52 (git sha1 fee39a3284c90249e1d9684cf6944ffbbcbb8f90)"
+  },
+  "routed_timing": false,
+  "cycle_budget_evidence": "cycle-budget/validation.json",
+  "current_resources": "cycle-budget/resources.json"
+}

@@ -4,7 +4,7 @@ use crate::program::ProgramKind;
 pub const RECORD_BYTES: usize = 64;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) struct Counts(pub [usize; 7]);
+pub(super) struct Counts(pub [usize; 6]);
 impl Counts {
     pub fn total(self) -> usize {
         self.0.iter().sum()
@@ -25,8 +25,7 @@ impl Counts {
             topology.programs.len(),
             topology.targets.len(),
             topology.segments.len(),
-            topology.components.len(),
-            topology.members.len(),
+            topology.order.len(),
         ])
     }
     pub fn maximum(limits: Limits) -> Self {
@@ -36,7 +35,6 @@ impl Counts {
             limits.loop_slots,
             limits.program_entries,
             limits.program_segments,
-            limits.loop_slots,
             limits.loop_slots,
         ])
     }
@@ -99,7 +97,7 @@ pub(super) fn encode_header(
     bytes: &mut [u8; RECORD_BYTES],
 ) {
     bytes.fill(0);
-    bytes[..4].copy_from_slice(b"LTP1");
+    bytes[..4].copy_from_slice(b"LTP2");
     put32(bytes, 4, counts.total());
     for (index, value) in [
         limits.loop_slots,
@@ -123,7 +121,7 @@ pub(super) fn decode_header(
     limits: Limits,
     bytes: &[u8; RECORD_BYTES],
 ) -> Result<(Counts, usize), Error> {
-    if &bytes[..4] != b"LTP1" {
+    if &bytes[..4] != b"LTP2" {
         return Err(Error::InvalidProgram);
     }
     let expected = [
@@ -153,8 +151,8 @@ pub(super) fn decode_header(
     }
     if counts.total() != get32(bytes, 4)
         || counts.0[2] > counts.0[0]
-        || counts.0[5] > counts.0[0]
-        || counts.0[6] != counts.0[0]
+        || counts.0[5] != counts.0[0]
+        || get32(bytes, 56) != 0
     {
         return Err(Error::InvalidProgram);
     }
@@ -168,8 +166,7 @@ pub(super) enum Record {
     Program(ProgramRecord),
     Target(TargetRecord),
     Segment(Segment),
-    Component(TableRange),
-    Member(LoopId),
+    Order(LoopId),
 }
 impl Record {
     pub fn encode(self, bytes: &mut [u8; RECORD_BYTES]) {
@@ -214,8 +211,7 @@ impl Record {
                 put32(bytes, 24, segment.ordinal as usize);
                 bytes[28] = mode_byte(segment.mode);
             }
-            Self::Component(range) => put_range(bytes, 0, range),
-            Self::Member(id) => put_id(bytes, 0, id),
+            Self::Order(id) => put_id(bytes, 0, id),
         }
     }
     pub fn decode(kind: usize, input: &[u8]) -> Result<Self, Error> {
@@ -263,8 +259,7 @@ impl Record {
                 ordinal: get32(bytes, 24) as u32,
                 mode: mode(bytes[28])?,
             }),
-            5 => Self::Component(get_range(bytes, 0)),
-            6 => Self::Member(get_id(bytes, 0)?),
+            5 => Self::Order(get_id(bytes, 0)?),
             _ => return Err(Error::InvalidProgram),
         };
         let mut canonical = [0; RECORD_BYTES];
@@ -281,8 +276,7 @@ impl Record {
             Self::Program(row) => topology.programs.push(row),
             Self::Target(row) => topology.targets.push(row),
             Self::Segment(row) => topology.segments.push(row),
-            Self::Component(row) => topology.components.push(row),
-            Self::Member(row) => topology.members.push(row),
+            Self::Order(row) => topology.order.push(row),
         }
     }
 }
@@ -305,8 +299,7 @@ impl PreparedTopology {
             2 => Record::Program(self.programs[index]),
             3 => Record::Target(self.targets[index]),
             4 => Record::Segment(self.segments[index]),
-            5 => Record::Component(self.components[index]),
-            6 => Record::Member(self.members[index]),
+            5 => Record::Order(self.order[index]),
             _ => unreachable!(),
         };
         record.encode(output);

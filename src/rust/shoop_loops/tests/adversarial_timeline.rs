@@ -353,8 +353,7 @@ fn event_key(event: &Event) -> (Frame, LoopId, u8) {
 }
 
 #[shoop_test]
-fn seeded_sync_components_deliver_each_occurrence_once_with_saturated_results_and_optional_journals(
-) {
+fn seeded_sync_chains_deliver_each_occurrence_once_with_saturated_results_and_optional_journals() {
     controls();
     for mut seed in [0x47e2_b913_u64, 0x913a_0297, 0xb82d_6517, 0xf123_14a9] {
         for _ in 0..8 {
@@ -366,7 +365,7 @@ fn seeded_sync_components_deliver_each_occurrence_once_with_saturated_results_an
                         id: id(slot),
                         kind: LoopKind::Primitive,
                         length: if slot == 0 { period } else { 11 },
-                        sync_source: Some(id(if slot == 0 { count - 1 } else { slot - 1 })),
+                        sync_source: Some(id(slot.saturating_sub(1))),
                     })
                     .collect(),
                 programs: vec![],
@@ -421,7 +420,7 @@ fn seeded_sync_components_deliver_each_occurrence_once_with_saturated_results_an
                             sequence: Sequence(2),
                             at: Frame(0),
                             timing: Timing::AfterTicks {
-                                source: id(count - 1),
+                                source: id(0),
                                 skip: u64::MAX,
                             },
                             transition: Transition::Stop,

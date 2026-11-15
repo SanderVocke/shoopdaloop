@@ -189,6 +189,12 @@ fn slot(id: NonZeroU32) -> usize {
 }
 
 impl<V: Copy, S: Summary<V>> Pool<V, S> {
+    pub(crate) fn allocated_bytes(&self) -> usize {
+        crate::resource::memory::vec_bytes(&self.nodes)
+            + crate::resource::memory::vec_bytes(&self.free)
+            + crate::resource::memory::vec_bytes(&self.retired)
+    }
+
     pub(crate) fn prepare(capacity: usize) -> Result<Self, Error> {
         if capacity == 0 {
             return Err(Error::InvalidConfig);

@@ -1,4 +1,5 @@
 use super::*;
+use crate::Sample;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Cursor {
@@ -34,10 +35,10 @@ pub struct Position {
     pub replayed_events: usize,
 }
 
-impl MidiStore {
+impl<S: Sample> MidiStore<S> {
     pub(in crate::resource) fn read_bytes(
         &self,
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         index: ReadIndex,
         offset: usize,
         output: &mut [u8],
@@ -68,7 +69,7 @@ impl MidiStore {
     }
     fn read_piece(
         &self,
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         index: ReadIndex,
         offset: usize,
         output: &mut [u8],
@@ -204,7 +205,7 @@ impl MidiStore {
     }
     pub(super) fn state_at(
         &mut self,
-        store: &mut ResourceStore,
+        store: &mut ResourceStore<S>,
         view: View,
         time: u64,
     ) -> Result<(MidiState, usize), Error> {
@@ -282,7 +283,7 @@ impl MidiStore {
     }
     pub fn read_event(
         &self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         event: Event,
         output: &mut [u8],
     ) -> Result<usize, Error> {
@@ -308,7 +309,7 @@ impl MidiStore {
     }
     pub fn parameter_history_untracked(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         index: ReadIndex,
         frame: u64,
     ) -> Result<bool, Error> {
@@ -361,7 +362,7 @@ impl MidiStore {
     }
     pub fn seek(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         index: ReadIndex,
         frame: u64,
     ) -> Result<Position, Error> {

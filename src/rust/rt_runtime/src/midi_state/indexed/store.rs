@@ -212,6 +212,19 @@ fn retirement_queue(count: usize) -> Vec<NonZeroU32> {
     queue
 }
 impl<V: Copy> Store<V> {
+    pub(crate) fn allocated_bytes(&self) -> usize {
+        crate::resource::memory::vec_bytes(&self.tables)
+            + crate::resource::memory::vec_bytes(&self.free_tables)
+            + crate::resource::memory::vec_bytes(&self.retired_tables)
+            + crate::resource::memory::vec_bytes(&self.pages)
+            + crate::resource::memory::vec_bytes(&self.free_pages)
+            + crate::resource::memory::vec_bytes(&self.retired_pages)
+            + self.packets.allocated_bytes()
+            + self.scalars.allocated_bytes()
+            + self.holds.allocated_bytes()
+            + self.sostenuto.allocated_bytes()
+    }
+
     pub(crate) fn prepare(config: Config) -> Result<Self, Error> {
         config.prepared_bytes::<V>()?;
         let scope = NEXT_SCOPE

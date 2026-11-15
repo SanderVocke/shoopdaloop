@@ -771,6 +771,7 @@ impl SettingsDialog {
             AudioDriverKind::Jack => "audio.jack.",
             AudioDriverKind::Cpal => "audio.cpal.",
             AudioDriverKind::WebAudio => "audio.webaudio.",
+            AudioDriverKind::Simulated => "audio.simulated.",
         };
         let definitions = self
             .registry
@@ -896,7 +897,7 @@ impl SettingsDialog {
             Some(AudioDriverKind::Dummy) => "audio.dummy.",
             Some(AudioDriverKind::Cpal) => "audio.cpal.",
             Some(AudioDriverKind::Jack) => "audio.jack.",
-            Some(AudioDriverKind::WebAudio) | None => return,
+            Some(AudioDriverKind::WebAudio | AudioDriverKind::Simulated) | None => return,
         };
         let definitions = self
             .registry

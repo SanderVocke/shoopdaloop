@@ -5304,6 +5304,7 @@ fn engine_driver_settings(
             ))
         }
         AudioDriverConfig::WebAudio => Err(anyhow!("Web Audio is unavailable in native builds")),
+        AudioDriverConfig::Simulated => Err(anyhow!("a simulated clock is not an audio driver")),
     }
 }
 

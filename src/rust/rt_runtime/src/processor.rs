@@ -3,13 +3,14 @@
 use crate::buffer::{AudioPorts, MidiBuffer, MidiCapacity};
 use crate::graph::PortCounts;
 use crate::planner::{NoPlanner, Planner};
+use crate::Sample;
 use crate::{Error, Frame, NodeId, PreparedConfig};
 use alloc::boxed::Box;
 
 /// Construction and disposal of processors belong to non-render contexts.
 /// Implementations must preallocate and pre-touch their working storage here.
-pub trait PrepareProcessor<L: Planner = NoPlanner, Q: ProcessorOperation = ()> {
-    type Prepared: Processor<L, Q>;
+pub trait PrepareProcessor<L: Planner<S> = NoPlanner, Q: ProcessorOperation = (), S: Sample = f32> {
+    type Prepared: Processor<L, Q, S>;
     fn prepare(self, config: PreparedConfig) -> Result<Self::Prepared, Error>;
 }
 
@@ -86,22 +87,22 @@ impl MidiBufferSettings {
     }
 }
 
-pub struct ProcessBlock<'a, L: Planner = NoPlanner> {
+pub struct ProcessBlock<'a, L: Planner<S> = NoPlanner, S: Sample = f32> {
     pub node: NodeId,
     pub graph_epoch: crate::Epoch,
     pub callback_start: Frame,
     pub frame: Frame,
     pub frames: usize,
     pub quantum: crate::Quantum,
-    pub audio: AudioPorts<'a>,
+    pub audio: AudioPorts<'a, S>,
     pub midi_inputs: &'a [MidiBuffer],
     pub midi_outputs: &'a mut [MidiBuffer],
     pub midi_forwarded: &'a mut [bool],
-    pub resources: crate::resource::ResourceIo<'a>,
+    pub resources: crate::resource::ResourceIo<'a, S>,
     pub domain: &'a mut L,
 }
 
-impl<L: Planner> ProcessBlock<'_, L> {
+impl<L: Planner<S>, S: Sample> ProcessBlock<'_, L, S> {
     pub fn forward_midi(&mut self, port: usize) -> Result<(), Error> {
         *self
             .midi_forwarded
@@ -111,14 +112,14 @@ impl<L: Planner> ProcessBlock<'_, L> {
     }
 }
 
-pub struct OperationContext<'a> {
+pub struct OperationContext<'a, S: Sample = f32> {
     pub quantum: crate::Quantum,
     pub graph_epoch: crate::Epoch,
     pub frame: Frame,
     pub requested_frame: Frame,
     pub sequence: crate::Sequence,
     pub payload: &'a [u8],
-    pub resources: crate::resource::ResourceIo<'a>,
+    pub resources: crate::resource::ResourceIo<'a, S>,
 }
 
 /// A Copy operation family accepted by processors, independent of any planner's
@@ -133,7 +134,9 @@ impl ProcessorOperation for () {
 /// Implementations must not allocate, deallocate, lock, wait, perform I/O, or panic
 /// in normal processing. Return a compact error if a bounded output writer fills.
 /// No type-level promise is made about untrusted third-party implementations.
-pub trait Processor<L: Planner = NoPlanner, Q: ProcessorOperation = ()>: Send {
+pub trait Processor<L: Planner<S> = NoPlanner, Q: ProcessorOperation = (), S: Sample = f32>:
+    Send
+{
     /// Validate the actual node identity and domain before installation.
     /// Admission may run on-render and must obey the processing contract.
     fn admit(&self, _node: NodeId, _domain: &L) -> Result<(), Error> {
@@ -148,10 +151,11 @@ pub trait Processor<L: Planner = NoPlanner, Q: ProcessorOperation = ()>: Send {
     fn midi_buffer_settings(&self) -> Result<MidiBufferSettings, Error> {
         Ok(MidiBufferSettings::default())
     }
-    fn process(&mut self, block: &mut ProcessBlock<'_, L>) -> Result<(), Error>;
+    fn process(&mut self, block: &mut ProcessBlock<'_, L, S>) -> Result<(), Error>;
+
     fn process_references(
         &mut self,
-        _block: &mut crate::audio_refs::ReferenceBlock<'_, L>,
+        _block: &mut crate::audio_refs::ReferenceBlock<'_, L, S>,
     ) -> Result<bool, Error> {
         Ok(false)
     }
@@ -159,7 +163,7 @@ pub trait Processor<L: Planner = NoPlanner, Q: ProcessorOperation = ()>: Send {
     fn operation(
         &mut self,
         _operation: Q,
-        _context: OperationContext<'_>,
+        _context: OperationContext<'_, S>,
     ) -> Result<Q::Result, Error> {
         Err(Error::InvalidEvent)
     }
@@ -169,10 +173,12 @@ pub trait Processor<L: Planner = NoPlanner, Q: ProcessorOperation = ()>: Send {
     }
 }
 
-impl<L: Planner, Q: ProcessorOperation, P: Processor<L, Q> + ?Sized> Processor<L, Q> for Box<P> {
+impl<L: Planner<S>, Q: ProcessorOperation, P: Processor<L, Q, S> + ?Sized, S: Sample>
+    Processor<L, Q, S> for Box<P>
+{
     fn process_references(
         &mut self,
-        block: &mut crate::audio_refs::ReferenceBlock<'_, L>,
+        block: &mut crate::audio_refs::ReferenceBlock<'_, L, S>,
     ) -> Result<bool, Error> {
         (**self).process_references(block)
     }
@@ -188,7 +194,7 @@ impl<L: Planner, Q: ProcessorOperation, P: Processor<L, Q> + ?Sized> Processor<L
     fn operation(
         &mut self,
         operation: Q,
-        context: OperationContext<'_>,
+        context: OperationContext<'_, S>,
     ) -> Result<Q::Result, Error> {
         (**self).operation(operation, context)
     }
@@ -198,7 +204,7 @@ impl<L: Planner, Q: ProcessorOperation, P: Processor<L, Q> + ?Sized> Processor<L
     fn ports(&self) -> PortCounts {
         (**self).ports()
     }
-    fn process(&mut self, block: &mut ProcessBlock<'_, L>) -> Result<(), Error> {
+    fn process(&mut self, block: &mut ProcessBlock<'_, L, S>) -> Result<(), Error> {
         (**self).process(block)
     }
 }

@@ -1,0 +1,162 @@
+{
+  "arguments": [
+    "target/debug/fpga-testbench",
+    "chunk",
+    "--memory-model",
+    "fixed",
+    "--random-cases",
+    "64",
+    "--output",
+    "work/150mhz/verify-chunk-dma-tag"
+  ],
+  "format_version": 1,
+  "provenance": {
+    "models": [
+      {
+        "native_memory": null,
+        "parameters": {
+          "AXI_DATA_WIDTH": "64",
+          "CHUNK_FRAMES": "32",
+          "PHYSICAL_BASE": "16777216",
+          "READ_BUFFERS": "4",
+          "RETIRE_CHUNKS": "1",
+          "SLOTS": "16",
+          "WRITE_BUFFERS": "4"
+        },
+        "probes": [],
+        "sources_sha256": {
+          "fpga/axi_memory/rtl/axi_master.sv": "45241e8bff575cb49f84375297bf8affc8cffc0db9f749a8636b09ba39fdc9b3",
+          "fpga/axi_memory/rtl/chunk_axi.sv": "d5265918080e4b4f8a8430831b72db9425639a7d29c21aa62b5949fc261e0ecb",
+          "fpga/axi_memory/rtl/chunk_dma.sv": "632ebdfbb262c09c4a0a9a7ab7635a02b45e4b9571731bc9e2b393d1b00a503a",
+          "fpga/axi_memory/rtl/chunk_memory_axi.sv": "56d40ffb5fd1a505f8d50935cac328cd346e34ec2d438d181f3dd45bb7ef5a21",
+          "fpga/axi_memory/rtl/word_axi.sv": "7edfae1a0b97fc5cc4e30f7a64223cd8879e4d27811a98fda3ac8c7fe504a27e",
+          "fpga/axi_memory/rtl/word_dma.sv": "292f48d1fa083a4f4ad5fe09c586043c5e02d4e1cc5b60ed68b14d0cb3eea772",
+          "fpga/chunk_memory/rtl/chunk_memory.sv": "99e7a88cb0b93a1a5a07dc97dde65b240b9980096c68e7bce2b3ae765c150801",
+          "fpga/chunk_memory/rtl/chunk_priority.sv": "d3fbac8752264aa70127c9b9e5df4e3c9d363a2606e3c808100eb43a93263a75",
+          "fpga/chunk_memory/rtl/chunk_ram.sv": "b3c85ff265ced37296ee0fbda1dd231efc56b40e3ebff6454c982f6f25021464",
+          "fpga/state_processor/rtl/state_processor_defs.svh": "62b30dff8aaa507db132e68cc1bb8932dd4cc59c2050164ddbe8aaf2316ca5b7"
+        },
+        "top": "chunk_memory_axi"
+      },
+      {
+        "native_memory": null,
+        "parameters": {
+          "AXI_DATA_WIDTH": "64",
+          "CHUNK_FRAMES": "4",
+          "PHYSICAL_BASE": "16777216",
+          "READ_BUFFERS": "2",
+          "RETIRE_CHUNKS": "1",
+          "SLOTS": "8",
+          "WRITE_BUFFERS": "2"
+        },
+        "probes": [],
+        "sources_sha256": {
+          "fpga/axi_memory/rtl/axi_master.sv": "45241e8bff575cb49f84375297bf8affc8cffc0db9f749a8636b09ba39fdc9b3",
+          "fpga/axi_memory/rtl/chunk_axi.sv": "d5265918080e4b4f8a8430831b72db9425639a7d29c21aa62b5949fc261e0ecb",
+          "fpga/axi_memory/rtl/chunk_dma.sv": "632ebdfbb262c09c4a0a9a7ab7635a02b45e4b9571731bc9e2b393d1b00a503a",
+          "fpga/axi_memory/rtl/chunk_memory_axi.sv": "56d40ffb5fd1a505f8d50935cac328cd346e34ec2d438d181f3dd45bb7ef5a21",
+          "fpga/axi_memory/rtl/word_axi.sv": "7edfae1a0b97fc5cc4e30f7a64223cd8879e4d27811a98fda3ac8c7fe504a27e",
+          "fpga/axi_memory/rtl/word_dma.sv": "292f48d1fa083a4f4ad5fe09c586043c5e02d4e1cc5b60ed68b14d0cb3eea772",
+          "fpga/chunk_memory/rtl/chunk_memory.sv": "99e7a88cb0b93a1a5a07dc97dde65b240b9980096c68e7bce2b3ae765c150801",
+          "fpga/chunk_memory/rtl/chunk_priority.sv": "d3fbac8752264aa70127c9b9e5df4e3c9d363a2606e3c808100eb43a93263a75",
+          "fpga/chunk_memory/rtl/chunk_ram.sv": "b3c85ff265ced37296ee0fbda1dd231efc56b40e3ebff6454c982f6f25021464",
+          "fpga/state_processor/rtl/state_processor_defs.svh": "62b30dff8aaa507db132e68cc1bb8932dd4cc59c2050164ddbe8aaf2316ca5b7"
+        },
+        "top": "chunk_memory_axi"
+      },
+      {
+        "native_memory": null,
+        "parameters": {
+          "AXI_DATA_WIDTH": "64",
+          "CHUNK_FRAMES": "8",
+          "PHYSICAL_BASE": "16777216",
+          "READ_BUFFERS": "3",
+          "RETIRE_CHUNKS": "1",
+          "SLOTS": "9",
+          "WRITE_BUFFERS": "3"
+        },
+        "probes": [],
+        "sources_sha256": {
+          "fpga/axi_memory/rtl/axi_master.sv": "45241e8bff575cb49f84375297bf8affc8cffc0db9f749a8636b09ba39fdc9b3",
+          "fpga/axi_memory/rtl/chunk_axi.sv": "d5265918080e4b4f8a8430831b72db9425639a7d29c21aa62b5949fc261e0ecb",
+          "fpga/axi_memory/rtl/chunk_dma.sv": "632ebdfbb262c09c4a0a9a7ab7635a02b45e4b9571731bc9e2b393d1b00a503a",
+          "fpga/axi_memory/rtl/chunk_memory_axi.sv": "56d40ffb5fd1a505f8d50935cac328cd346e34ec2d438d181f3dd45bb7ef5a21",
+          "fpga/axi_memory/rtl/word_axi.sv": "7edfae1a0b97fc5cc4e30f7a64223cd8879e4d27811a98fda3ac8c7fe504a27e",
+          "fpga/axi_memory/rtl/word_dma.sv": "292f48d1fa083a4f4ad5fe09c586043c5e02d4e1cc5b60ed68b14d0cb3eea772",
+          "fpga/chunk_memory/rtl/chunk_memory.sv": "99e7a88cb0b93a1a5a07dc97dde65b240b9980096c68e7bce2b3ae765c150801",
+          "fpga/chunk_memory/rtl/chunk_priority.sv": "d3fbac8752264aa70127c9b9e5df4e3c9d363a2606e3c808100eb43a93263a75",
+          "fpga/chunk_memory/rtl/chunk_ram.sv": "b3c85ff265ced37296ee0fbda1dd231efc56b40e3ebff6454c982f6f25021464",
+          "fpga/state_processor/rtl/state_processor_defs.svh": "62b30dff8aaa507db132e68cc1bb8932dd4cc59c2050164ddbe8aaf2316ca5b7"
+        },
+        "top": "chunk_memory_axi"
+      },
+      {
+        "native_memory": null,
+        "parameters": {
+          "AXI_DATA_WIDTH": "64",
+          "CHUNK_FRAMES": "1",
+          "PHYSICAL_BASE": "16777216",
+          "READ_BUFFERS": "1",
+          "RETIRE_CHUNKS": "1",
+          "SLOTS": "3",
+          "WRITE_BUFFERS": "1"
+        },
+        "probes": [],
+        "sources_sha256": {
+          "fpga/axi_memory/rtl/axi_master.sv": "45241e8bff575cb49f84375297bf8affc8cffc0db9f749a8636b09ba39fdc9b3",
+          "fpga/axi_memory/rtl/chunk_axi.sv": "d5265918080e4b4f8a8430831b72db9425639a7d29c21aa62b5949fc261e0ecb",
+          "fpga/axi_memory/rtl/chunk_dma.sv": "632ebdfbb262c09c4a0a9a7ab7635a02b45e4b9571731bc9e2b393d1b00a503a",
+          "fpga/axi_memory/rtl/chunk_memory_axi.sv": "56d40ffb5fd1a505f8d50935cac328cd346e34ec2d438d181f3dd45bb7ef5a21",
+          "fpga/axi_memory/rtl/word_axi.sv": "7edfae1a0b97fc5cc4e30f7a64223cd8879e4d27811a98fda3ac8c7fe504a27e",
+          "fpga/axi_memory/rtl/word_dma.sv": "292f48d1fa083a4f4ad5fe09c586043c5e02d4e1cc5b60ed68b14d0cb3eea772",
+          "fpga/chunk_memory/rtl/chunk_memory.sv": "99e7a88cb0b93a1a5a07dc97dde65b240b9980096c68e7bce2b3ae765c150801",
+          "fpga/chunk_memory/rtl/chunk_priority.sv": "d3fbac8752264aa70127c9b9e5df4e3c9d363a2606e3c808100eb43a93263a75",
+          "fpga/chunk_memory/rtl/chunk_ram.sv": "b3c85ff265ced37296ee0fbda1dd231efc56b40e3ebff6454c982f6f25021464",
+          "fpga/state_processor/rtl/state_processor_defs.svh": "62b30dff8aaa507db132e68cc1bb8932dd4cc59c2050164ddbe8aaf2316ca5b7"
+        },
+        "top": "chunk_memory_axi"
+      },
+      {
+        "native_memory": null,
+        "parameters": {
+          "AXI_DATA_WIDTH": "64",
+          "CHUNK_FRAMES": "4",
+          "PHYSICAL_BASE": "16777216",
+          "READ_BUFFERS": "2",
+          "RETIRE_CHUNKS": "32",
+          "SLOTS": "256",
+          "WRITE_BUFFERS": "2"
+        },
+        "probes": [],
+        "sources_sha256": {
+          "fpga/axi_memory/rtl/axi_master.sv": "45241e8bff575cb49f84375297bf8affc8cffc0db9f749a8636b09ba39fdc9b3",
+          "fpga/axi_memory/rtl/chunk_axi.sv": "d5265918080e4b4f8a8430831b72db9425639a7d29c21aa62b5949fc261e0ecb",
+          "fpga/axi_memory/rtl/chunk_dma.sv": "632ebdfbb262c09c4a0a9a7ab7635a02b45e4b9571731bc9e2b393d1b00a503a",
+          "fpga/axi_memory/rtl/chunk_memory_axi.sv": "56d40ffb5fd1a505f8d50935cac328cd346e34ec2d438d181f3dd45bb7ef5a21",
+          "fpga/axi_memory/rtl/word_axi.sv": "7edfae1a0b97fc5cc4e30f7a64223cd8879e4d27811a98fda3ac8c7fe504a27e",
+          "fpga/axi_memory/rtl/word_dma.sv": "292f48d1fa083a4f4ad5fe09c586043c5e02d4e1cc5b60ed68b14d0cb3eea772",
+          "fpga/chunk_memory/rtl/chunk_memory.sv": "99e7a88cb0b93a1a5a07dc97dde65b240b9980096c68e7bce2b3ae765c150801",
+          "fpga/chunk_memory/rtl/chunk_priority.sv": "d3fbac8752264aa70127c9b9e5df4e3c9d363a2606e3c808100eb43a93263a75",
+          "fpga/chunk_memory/rtl/chunk_ram.sv": "b3c85ff265ced37296ee0fbda1dd231efc56b40e3ebff6454c982f6f25021464",
+          "fpga/state_processor/rtl/state_processor_defs.svh": "62b30dff8aaa507db132e68cc1bb8932dd4cc59c2050164ddbe8aaf2316ca5b7"
+        },
+        "top": "chunk_memory_axi"
+      }
+    ],
+    "revision": "0d5978abb98ede42b63aaad47d9c506c3c677451",
+    "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+    "simulator": "Marlin 0.21.1 / Verilator",
+    "verilator": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1+b2)",
+    "worktree": "M fpga/chunk_memory/rtl/chunk_memory.sv\n?? fpga/synthesis/measurements/zedboard-150mhz/"
+  },
+  "status": "passed",
+  "suites": [
+    {
+      "error": null,
+      "status": "passed",
+      "suite": "Chunk",
+      "wall_seconds": 96.350552707
+    }
+  ],
+  "wall_seconds": 96.350569633
+}

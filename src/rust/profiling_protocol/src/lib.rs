@@ -3,6 +3,8 @@
 #![forbid(unsafe_code)]
 extern crate alloc;
 
+pub mod memory;
+
 use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
 

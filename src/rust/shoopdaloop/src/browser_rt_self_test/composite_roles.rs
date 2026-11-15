@@ -92,22 +92,49 @@ impl Canary {
                 }) {
                     return Ok(false);
                 }
-                send(action(2, LoopAction::DefaultClicked))?;
+                send(action(0, LoopAction::DuplicateTo(track.loops[5].id)))?;
+                self.stage = 8;
+            }
+            8 => {
+                if track.loops[5].composite_kind != CompositeKind::None
+                    || track.loops[5].name != track.loops[0].name
+                {
+                    return Ok(false);
+                }
+                send(action(1, LoopAction::DuplicateTo(track.loops[5].id)))?;
+                self.stage = 9;
+            }
+            9 => {
+                if track.loops[5].composite_kind != CompositeKind::Script
+                    || track.loops[5].name != track.loops[1].name
+                {
+                    return Ok(false);
+                }
+                send(action(2, LoopAction::DuplicateTo(track.loops[6].id)))?;
+                self.stage = 10;
+            }
+            10 => {
+                if track.loops[6].composite_kind != CompositeKind::Regular
+                    || track.loops[6].name != track.loops[2].name
+                {
+                    return Ok(false);
+                }
+                send(action(6, LoopAction::DefaultClicked))?;
                 self.started = snapshot.status.processed_frames;
                 self.stage = 5;
             }
             5 => {
                 if track.loops[0].mode != modes[self.mode].0
-                    || track.loops[2].mode != LoopMode::Playing
+                    || track.loops[6].mode != LoopMode::Playing
                     || snapshot.status.processed_frames <= self.started + 512
                 {
                     return Ok(false);
                 }
-                send(action(2, LoopAction::StopClicked))?;
+                send(action(6, LoopAction::StopClicked))?;
                 self.stage = 6;
             }
             6 => {
-                if track.loops[..3].iter().any(|l| l.mode != LoopMode::Stopped) {
+                if track.loops[..7].iter().any(|l| l.mode != LoopMode::Stopped) {
                     return Ok(false);
                 }
                 self.mode += 1;

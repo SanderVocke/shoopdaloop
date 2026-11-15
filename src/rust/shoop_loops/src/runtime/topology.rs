@@ -1,5 +1,6 @@
 use super::*;
 use crate::topology::staging::{Progress, StageId, Stager, Status, RECORD_BYTES};
+use rt_runtime::Sample;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct TopologySettings {
@@ -25,7 +26,11 @@ pub(super) struct Topologies {
     operation_bytes: usize,
 }
 impl Topologies {
-    pub(super) fn mark_replacing_targets(&self, rows: &[Option<Row>], targets: &mut [bool]) {
+    pub(super) fn mark_replacing_targets<S: Sample>(
+        &self,
+        rows: &[Option<Row<S>>],
+        targets: &mut [bool],
+    ) {
         for slot in &self.slots {
             if let Some(candidate) = &slot.ready {
                 super::program_inputs::mark_replacing_targets(candidate, rows, targets);

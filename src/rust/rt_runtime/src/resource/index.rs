@@ -1,5 +1,6 @@
 //! Append-maintained page index. Every index node lives in its data-page slot.
 use super::*;
+use crate::Sample;
 use core::num::NonZeroU32;
 use core::sync::atomic::{AtomicU32, Ordering};
 
@@ -38,8 +39,8 @@ pub(super) struct VersionIndex {
 /// It is checked against its store instance and lease generation on every seek.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ReadIndex {
-    scope: u32,
-    snapshot: SnapshotId,
+    pub(super) scope: u32,
+    pub(super) snapshot: SnapshotId,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -48,7 +49,7 @@ pub struct IndexWork {
     pub render_steps: usize,
     pub counter_overflow: bool,
 }
-impl ResourceStore {
+impl<S: Sample> ResourceStore<S> {
     pub fn index_work(&self) -> IndexWork {
         self.index_work
     }

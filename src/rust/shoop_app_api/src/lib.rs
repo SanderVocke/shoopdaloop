@@ -785,6 +785,8 @@ pub enum AudioDriverKind {
     Jack,
     Cpal,
     WebAudio,
+    /// Advanced by a simulation harness; never selectable as a host driver.
+    Simulated,
 }
 
 impl AudioDriverKind {
@@ -794,6 +796,7 @@ impl AudioDriverKind {
             Self::Jack => "jack",
             Self::Cpal => "cpal",
             Self::WebAudio => "webaudio",
+            Self::Simulated => "simulated",
         }
     }
 
@@ -803,6 +806,7 @@ impl AudioDriverKind {
             Self::Jack => "JACK",
             Self::Cpal => "CPAL",
             Self::WebAudio => "Web Audio",
+            Self::Simulated => "Simulated clock (unpaced)",
         }
     }
 }
@@ -897,6 +901,8 @@ pub enum AudioDriverConfig {
     Jack(JackAudioDriverConfig),
     Cpal(CpalAudioDriverConfig),
     WebAudio,
+    /// Reported by engines that a simulation harness advances; it cannot be requested.
+    Simulated,
 }
 
 impl AudioDriverConfig {
@@ -944,7 +950,7 @@ impl AudioDriverConfig {
                     .sum::<usize>()
                         <= 768
             }
-            Self::WebAudio => false,
+            Self::WebAudio | Self::Simulated => false,
         }
     }
 
@@ -954,6 +960,7 @@ impl AudioDriverConfig {
             Self::Jack(_) => AudioDriverKind::Jack,
             Self::Cpal(_) => AudioDriverKind::Cpal,
             Self::WebAudio => AudioDriverKind::WebAudio,
+            Self::Simulated => AudioDriverKind::Simulated,
         }
     }
 }
@@ -1038,6 +1045,7 @@ impl ConversionTarget {
 #[derive(Clone, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct StatusState {
+    pub memory: Option<MemoryReport>,
     pub version: String,
     pub dsp_load_percent: f32,
     pub xruns: u32,
@@ -2143,7 +2151,7 @@ impl BackendCapability {
                 "The session engine cannot currently switch audio drivers at runtime; restart with other settings instead."
             }
             Self::MidiInjection => "The session engine does not yet support MIDI input injection.",
-            Self::LoopDuplication => "The session engine does not yet support loop duplication.",
+            Self::LoopDuplication => "The active host does not support loop copying.",
             Self::ClickTrackInsertion => "The session engine does not yet support generated click-track insertion.",
         }
     }
@@ -2232,6 +2240,7 @@ pub struct AppNotification {
     pub message: String,
 }
 
+pub use profiling_protocol::memory::{MemoryReport, MemoryResource, MemoryUnit};
 pub use rt_profiling as profiling_data;
 pub use rt_profiling::View as ProfilingView;
 

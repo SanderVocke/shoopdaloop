@@ -27,7 +27,7 @@ fn config() -> rt_runtime::PreparedConfig {
     .unwrap()
 }
 fn store(midi_versions: usize) -> ResourceStore {
-    ResourceStore::with_capture_groups(
+    ResourceStore::<f32>::with_capture_groups(
         config(),
         rt_runtime::Quantum::new(1).unwrap(),
         Some(MidiIndexConfig {
@@ -417,7 +417,7 @@ fn scoped_groups_and_occupied_freeze_outputs_cannot_retarget_or_lose_owners() {
 fn group_storage_shape_and_legacy_opt_in_are_explicit() {
     let cfg = config();
     assert!(matches!(
-        ResourceStore::with_capture_groups(
+        ResourceStore::<f32>::with_capture_groups(
             cfg,
             rt_runtime::Quantum::new(1).unwrap(),
             None,
@@ -430,7 +430,7 @@ fn group_storage_shape_and_legacy_opt_in_are_explicit() {
         Err(Error::InvalidConfig)
     ));
     assert!(matches!(
-        ResourceStore::with_capture_groups(
+        ResourceStore::<f32>::with_capture_groups(
             cfg,
             rt_runtime::Quantum::new(1).unwrap(),
             None,
@@ -443,7 +443,7 @@ fn group_storage_shape_and_legacy_opt_in_are_explicit() {
         Err(Error::Capacity)
     ));
     let mut legacy = ResourceStore::new(cfg, rt_runtime::Quantum::new(1).unwrap()).unwrap();
-    let mut no_staging = ResourceStore::with_capture_groups(
+    let mut no_staging = ResourceStore::<f32>::with_capture_groups(
         cfg,
         rt_runtime::Quantum::new(1).unwrap(),
         None,

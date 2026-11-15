@@ -35,9 +35,9 @@ fn identity(bytes: &mut Bytes, at: usize, slot: u32) {
     put32(bytes, at, slot);
     put32(bytes, at + 4, 1);
 }
-fn header(limits: Limits, counts: [u32; 7], relations: u32) -> Bytes {
+fn header(limits: Limits, counts: [u32; 6], relations: u32) -> Bytes {
     let mut bytes = [0; RECORD_BYTES];
-    bytes[..4].copy_from_slice(b"LTP1");
+    bytes[..4].copy_from_slice(b"LTP2");
     put32(&mut bytes, 4, counts.iter().sum());
     for (i, value) in [
         limits.loop_slots,
@@ -109,7 +109,7 @@ fn fixture() -> PreparedTopology {
     .unwrap()
 }
 fn golden() -> (Bytes, Vec<Bytes>) {
-    let mut rows = vec![[0; RECORD_BYTES]; 14];
+    let mut rows = vec![[0; RECORD_BYTES]; 11];
     for (slot, length) in [(0, 4), (1, 2), (2, 8)] {
         identity(&mut rows[slot], 0, slot as u32);
         put64(&mut rows[slot], 16, length);
@@ -135,14 +135,10 @@ fn golden() -> (Bytes, Vec<Bytes>) {
         put32(&mut rows[index], 24, ordinal);
         rows[index][28] = mode;
     }
-    for index in 0..3 {
-        put32(&mut rows[8 + index], 0, index as u32);
-        put32(&mut rows[8 + index], 4, 1);
-    }
     for (index, slot) in [0, 2, 1].into_iter().enumerate() {
-        identity(&mut rows[11 + index], 0, slot);
+        identity(&mut rows[8 + index], 0, slot);
     }
-    (header(limits(), [3, 1, 1, 1, 2, 3, 3], 3), rows)
+    (header(limits(), [3, 1, 1, 1, 2, 3], 3), rows)
 }
 fn encode(topology: &PreparedTopology) -> (Bytes, Vec<Bytes>) {
     let mut header = [0; RECORD_BYTES];
@@ -174,7 +170,7 @@ fn settle(stager: &mut Stager, token: StageId, budget: usize) -> Result<(), Erro
         assert!(progress.used <= budget);
         work += progress.used;
         // These fixtures have <= 8 edges and <= 4 nodes: this bound exceeds
-        // their row scans, quadratic edge deduplication and component scans.
+        // their row scans, quadratic edge deduplication and dependency-order scans.
         assert!(work < 2000);
         if progress.ready {
             return Ok(());
@@ -251,6 +247,7 @@ fn header_chunk_and_scope_refusals_preserve_received_prefix_and_owning_recycling
     let mut other = Stager::prepare(limits()).unwrap();
     for (offset, value, expected) in [
         (0, 0, Error::InvalidProgram),
+        (0, u32::from_le_bytes(*b"LTP1"), Error::InvalidProgram),
         (24, 5, Error::InvalidConfig),
         (32, 5, Error::Capacity),
         (4, 99, Error::InvalidProgram),
@@ -294,7 +291,7 @@ fn header_chunk_and_scope_refusals_preserve_received_prefix_and_owning_recycling
         stager.status(),
         Status::Receiving {
             received: 0,
-            total: 14
+            total: rows.len()
         }
     );
     assert_no_heap(|| stager.append(token, 0, &[], 0)).unwrap();
@@ -303,7 +300,7 @@ fn header_chunk_and_scope_refusals_preserve_received_prefix_and_owning_recycling
         assert_no_heap(|| stager.append(token, 0, &rows[0], 1)),
         Err(Error::InvalidState)
     );
-    for row in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] {
+    for row in 1..rows.len() {
         assert_no_heap(|| stager.append(token, row, &rows[row], 1)).unwrap();
     }
     settle(&mut stager, token, 1).unwrap();
@@ -347,7 +344,7 @@ fn header_chunk_and_scope_refusals_preserve_received_prefix_and_owning_recycling
 fn malformed_semantics_never_publish_and_failed_storage_can_be_reused() {
     let (bytes, rows) = golden();
     let mut stager = Stager::prepare(limits()).unwrap();
-    let changes: [(usize, usize, u64, usize, Error); 21] = [
+    let changes: [(usize, usize, u64, usize, Error); 19] = [
         (1, 0, 0, 4, Error::DuplicateId),
         (2, 24, 3, 4, Error::InvalidId),
         (4, 0, 1, 4, Error::InvalidProgram),
@@ -364,10 +361,8 @@ fn malformed_semantics_never_publish_and_failed_storage_can_be_reused() {
         (7, 0, 2, 8, Error::InvalidProgram),
         (6, 24, u32::MAX as u64, 4, Error::InvalidProgram),
         (7, 24, 0, 4, Error::InvalidProgram),
-        (8, 0, 1, 4, Error::InvalidProgram),
-        (8, 4, 0, 4, Error::InvalidProgram),
-        (12, 0, 0, 4, Error::InvalidProgram),
-        (12, 4, 2, 4, Error::InvalidId),
+        (9, 0, 0, 4, Error::InvalidProgram),
+        (9, 4, 2, 4, Error::InvalidId),
         (0, 0, u32::MAX as u64, 4, Error::Capacity),
     ];
     for (row, offset, value, width, expected) in changes {
@@ -428,7 +423,7 @@ fn malformed_semantics_never_publish_and_failed_storage_can_be_reused() {
                     stager.status(),
                     Status::Receiving {
                         received: row,
-                        total: 14
+                        total: rows.len()
                     }
                 );
                 break;
@@ -445,15 +440,16 @@ fn malformed_semantics_never_publish_and_failed_storage_can_be_reused() {
     assert_no_heap(|| stager.cancel(token)).unwrap();
 }
 
-fn graph_reference(sync: [Option<usize>; 3], bits: usize) -> (bool, Vec<Vec<usize>>) {
+fn graph_reference(sync: [Option<usize>; 3], bits: usize) -> (bool, Vec<usize>) {
     let actions = [(0, 1), (1, 2), (2, 0)];
     let mut reach = [[false; 3]; 3];
     let mut edges = Vec::new();
     for node in 0..3 {
-        reach[node][node] = true;
         if let Some(source) = sync[node] {
             reach[source][node] = true;
-            edges.push((source, node));
+            if source != node {
+                edges.push((source, node));
+            }
         }
     }
     for (index, (source, target)) in actions.into_iter().enumerate() {
@@ -469,48 +465,27 @@ fn graph_reference(sync: [Option<usize>; 3], bits: usize) -> (bool, Vec<Vec<usiz
             }
         }
     }
-    let valid = actions
-        .into_iter()
-        .enumerate()
-        .all(|(index, (source, target))| bits & (1 << index) == 0 || !reach[target][source]);
-    let mut groups: Vec<Vec<usize>> = Vec::new();
-    let mut assignment = [usize::MAX; 3];
-    for node in 0..3 {
-        if assignment[node] != usize::MAX {
-            continue;
-        }
-        let members = (0..3)
-            .filter(|other| reach[node][*other] && reach[*other][node])
-            .collect::<Vec<_>>();
-        for member in &members {
-            assignment[*member] = groups.len();
-        }
-        groups.push(members);
-    }
+    let valid = !(0..3)
+        .any(|source| (source + 1..3).any(|target| reach[source][target] && reach[target][source]));
     let mut ordered = Vec::new();
-    let mut emitted = vec![false; groups.len()];
-    while ordered.len() != groups.len() {
-        let choice = (0..groups.len())
-            .filter(|group| {
-                !emitted[*group]
-                    && !edges.iter().any(|(source, target)| {
-                        assignment[*target] == *group
-                            && assignment[*source] != *group
-                            && !emitted[assignment[*source]]
-                    })
-            })
-            .min_by_key(|group| groups[*group][0])
-            .unwrap();
-        emitted[choice] = true;
-        ordered.push(groups[choice].clone());
+    let mut emitted = [false; 3];
+    while let Some(node) = (0..3).find(|node| {
+        !emitted[*node]
+            && !edges
+                .iter()
+                .any(|(source, target)| *target == *node && !emitted[*source])
+    }) {
+        emitted[node] = true;
+        ordered.push(node);
     }
+    ordered.extend((0..3).filter(|node| !emitted[*node]));
     (valid, ordered)
 }
 fn graph_bytes(
     limits: Limits,
     sync: [Option<usize>; 3],
     bits: usize,
-    groups: &[Vec<usize>],
+    order: &[usize],
 ) -> (Bytes, Vec<Bytes>, TopologyDescription) {
     let mut rows = Vec::new();
     let mut description = TopologyDescription::default();
@@ -548,15 +523,7 @@ fn graph_bytes(
         rows.push(row);
         relations += 1;
     }
-    let mut start = 0;
-    for group in groups {
-        let mut row = [0; RECORD_BYTES];
-        put32(&mut row, 0, start);
-        put32(&mut row, 4, group.len() as u32);
-        start += group.len() as u32;
-        rows.push(row);
-    }
-    for member in groups.iter().flatten() {
+    for member in order {
         let mut row = [0; RECORD_BYTES];
         identity(&mut row, 0, *member as u32);
         rows.push(row);
@@ -564,15 +531,7 @@ fn graph_bytes(
     (
         header(
             limits,
-            [
-                3,
-                description.triggers.len() as u32,
-                0,
-                0,
-                0,
-                groups.len() as u32,
-                3,
-            ],
+            [3, description.triggers.len() as u32, 0, 0, 0, 3],
             relations,
         ),
         rows,
@@ -580,7 +539,7 @@ fn graph_bytes(
     )
 }
 #[shoop_test]
-fn all_small_sync_action_graphs_match_independent_reachability_and_canonical_sccs() {
+fn all_small_sync_action_graphs_match_independent_reachability_and_dependency_order() {
     let limits = Limits {
         loop_slots: 3,
         relations: 6,
@@ -598,8 +557,8 @@ fn all_small_sync_action_graphs_match_independent_reachability_and_canonical_scc
             (choice != 3).then_some(choice)
         });
         for bits in 0..8 {
-            let (valid, groups) = graph_reference(sync, bits);
-            let (bytes, rows, description) = graph_bytes(limits, sync, bits, &groups);
+            let (valid, order) = graph_reference(sync, bits);
+            let (bytes, rows, description) = graph_bytes(limits, sync, bits, &order);
             let token = assert_no_heap(|| stager.begin(&bytes)).unwrap();
             append(&mut stager, token, &rows, 1 + (choices + bits) % 4);
             let result = settle(&mut stager, token, [1, 7, usize::MAX][(choices + bits) % 3]);
@@ -609,12 +568,11 @@ fn all_small_sync_action_graphs_match_independent_reachability_and_canonical_scc
                 assert_no_heap(|| {
                     let view = stager.view(token).unwrap();
                     assert_eq!(view, &compiled);
-                    for (actual, expected) in view.components().into_iter().zip(&groups) {
-                        assert!(actual
-                            .iter()
-                            .map(|id| id.slot() as usize)
-                            .eq(expected.iter().copied()));
-                    }
+                    assert!(view
+                        .dependency_order()
+                        .iter()
+                        .map(|id| id.slot() as usize)
+                        .eq(order.iter().copied()));
                 });
                 let ready = assert_no_heap(|| stager.take(token)).unwrap();
                 assert_no_heap(|| stager.recycle(ready)).unwrap();
@@ -632,18 +590,22 @@ fn all_small_sync_action_graphs_match_independent_reachability_and_canonical_scc
     }
     assert_eq!(accepted + refused, 512);
     assert!(accepted > 50 && refused > 50);
-    // A falsely merged cycle plus a downstream tree is not strongly connected.
-    let (bytes, rows, _) = graph_bytes(limits, [Some(1), Some(0), Some(1)], 0, &[vec![0, 1, 2]]);
+    // A supplied order cannot make a sync cycle valid.
+    let (bytes, rows, _) = graph_bytes(limits, [Some(1), Some(0), Some(1)], 0, &[0, 1, 2]);
     let token = assert_no_heap(|| stager.begin(&bytes)).unwrap();
     append(&mut stager, token, &rows, 3);
-    assert_eq!(settle(&mut stager, token, 1), Err(Error::InvalidProgram));
+    assert_eq!(
+        settle(&mut stager, token, 1),
+        Err(Error::InstantaneousDependencyCycle)
+    );
     assert_no_heap(|| stager.cancel(token)).unwrap();
-    // Structurally valid SCCs must also use canonical ready-group tie order.
-    let (bytes, rows, _) = graph_bytes(limits, [None; 3], 0, &[vec![1], vec![0], vec![2]]);
-    let token = assert_no_heap(|| stager.begin(&bytes)).unwrap();
-    append(&mut stager, token, &rows, 3);
-    assert_eq!(settle(&mut stager, token, 1), Err(Error::InvalidProgram));
-    assert_no_heap(|| stager.cancel(token)).unwrap();
+    for order in [[1, 0, 2], [0, 0, 2]] {
+        let (bytes, rows, _) = graph_bytes(limits, [None; 3], 0, &order);
+        let token = assert_no_heap(|| stager.begin(&bytes)).unwrap();
+        append(&mut stager, token, &rows, 3);
+        assert_eq!(settle(&mut stager, token, 1), Err(Error::InvalidProgram));
+        assert_no_heap(|| stager.cancel(token)).unwrap();
+    }
 }
 
 #[shoop_test]
@@ -683,7 +645,7 @@ fn decoded_owners_replace_and_recycle_through_the_real_resolver_without_callback
 fn partial_and_failed_candidate_validation_does_not_change_active_clock_progression() {
     let original = fixture();
     let (bytes, mut rows) = golden();
-    put32(&mut rows[12], 4, 2);
+    put32(&mut rows[9], 4, 2);
     let mut resolver = Resolver::prepare(original, rt_runtime::Quantum::new(1).unwrap()).unwrap();
     assert_no_heap(|| {
         resolver.submit(Request {

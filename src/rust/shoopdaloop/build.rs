@@ -82,7 +82,13 @@ fn emit_build_identity() {
 }
 
 fn profile_output_directory(out_directory: &Path) -> Option<&Path> {
-    let build_directory = out_directory.parent()?.parent()?;
+    if out_directory.file_name() != Some(OsStr::new("out")) {
+        return None;
+    }
+    let mut build_directory = out_directory.parent()?.parent()?;
+    if build_directory.file_name() != Some(OsStr::new("build")) {
+        build_directory = build_directory.parent()?;
+    }
     if build_directory.file_name() != Some(OsStr::new("build")) {
         return None;
     }

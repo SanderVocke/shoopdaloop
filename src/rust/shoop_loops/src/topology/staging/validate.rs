@@ -23,11 +23,6 @@ enum Phase {
         segment: usize,
     },
     ProgramDone(usize),
-    Components(usize),
-    Members {
-        group: usize,
-        member: usize,
-    },
     RecursionSeed(usize),
     RecursionPop,
     RecursionEdges {
@@ -45,17 +40,13 @@ enum Phase {
         next: usize,
     },
     CheckEdges(usize),
-    Strong {
-        group: usize,
-        visited: usize,
-        current: usize,
-    },
     Choose {
-        group: usize,
+        index: usize,
         scan: usize,
     },
     RetireEdges {
-        group: usize,
+        index: usize,
+        node: usize,
         edge: usize,
     },
     Done,
@@ -65,8 +56,6 @@ pub(super) struct Validator {
     slots: Box<[usize]>,
     programs: Box<[usize]>,
     owners: Box<[usize]>,
-    groups: Box<[usize]>,
-    marks: Box<[usize]>,
     degrees: Box<[usize]>,
     queue: Box<[usize]>,
     ordinal_program: Box<[usize]>,
@@ -79,7 +68,6 @@ pub(super) struct Validator {
     composites: usize,
     target_end: usize,
     segment_end: usize,
-    member_end: usize,
     covered: usize,
     max_end: u64,
     max_ordinal: usize,
@@ -90,7 +78,7 @@ impl Validator {
     pub fn heap_bytes(limits: Limits) -> Result<usize, Error> {
         let mut bytes = 0usize;
         for (count, element) in [
-            (limits.loop_slots, 6 * size_of::<usize>()),
+            (limits.loop_slots, 4 * size_of::<usize>()),
             (
                 limits.program_entries,
                 3 * size_of::<usize>() + size_of::<Mode>(),
@@ -110,8 +98,6 @@ impl Validator {
             slots: nodes(),
             programs: nodes(),
             owners: initialized(limits.program_entries, usize::MAX).into_boxed_slice(),
-            groups: nodes(),
-            marks: nodes(),
             degrees: nodes(),
             queue: nodes(),
             ordinal_program: initialized(limits.program_entries, usize::MAX).into_boxed_slice(),
@@ -131,7 +117,6 @@ impl Validator {
             composites: 0,
             target_end: 0,
             segment_end: 0,
-            member_end: 0,
             covered: 0,
             max_end: 0,
             max_ordinal: 0,
@@ -143,8 +128,6 @@ impl Validator {
         self.phase = Phase::Nodes(0);
         self.slots.fill(usize::MAX);
         self.programs.fill(usize::MAX);
-        self.groups.fill(usize::MAX);
-        self.marks.fill(usize::MAX);
         self.degrees.fill(0);
         self.ordinal_program.fill(usize::MAX);
         self.edges.clear();
@@ -154,7 +137,6 @@ impl Validator {
         self.composites = 0;
         self.target_end = 0;
         self.segment_end = 0;
-        self.member_end = 0;
         self.covered = 0;
         self.max_end = 0;
         self.max_ordinal = 0;
@@ -255,7 +237,7 @@ impl Validator {
             }
             Phase::Target { program, target } => {
                 if program == t.programs.len() {
-                    Phase::Components(0)
+                    Phase::RecursionSeed(0)
                 } else {
                     let p = t.programs[program];
                     if target == 0 {
@@ -363,39 +345,6 @@ impl Validator {
                 Phase::Target {
                     program: program + 1,
                     target: 0,
-                }
-            }
-            Phase::Components(group) => {
-                if group == t.components.len() {
-                    if self.member_end != t.nodes.len() {
-                        return Err(Error::InvalidProgram);
-                    }
-                    Phase::RecursionSeed(0)
-                } else {
-                    let range = t.components[group];
-                    if range.start != self.member_end || range.len == 0 {
-                        return Err(Error::InvalidProgram);
-                    }
-                    self.member_end = Self::end(range, t.members.len())?;
-                    Phase::Members { group, member: 0 }
-                }
-            }
-            Phase::Members { group, member } => {
-                let range = t.components[group];
-                if member == range.len {
-                    Phase::Components(group + 1)
-                } else {
-                    let at = range.start + member;
-                    let id = t.members[at];
-                    let node = self.node(t, id)?;
-                    if self.groups[node] != usize::MAX || member > 0 && t.members[at - 1] >= id {
-                        return Err(Error::InvalidProgram);
-                    }
-                    self.groups[node] = group;
-                    Phase::Members {
-                        group,
-                        member: member + 1,
-                    }
                 }
             }
             Phase::RecursionSeed(index) => {
@@ -538,113 +487,56 @@ impl Validator {
             }
             Phase::CheckEdges(index) => {
                 if index == self.edges.len() {
-                    Phase::Strong {
-                        group: 0,
-                        visited: 0,
-                        current: 0,
-                    }
+                    Phase::Choose { index: 0, scan: 0 }
                 } else {
                     let edge = self.edges[index];
-                    let source = self.groups[edge.source];
-                    let target = self.groups[edge.target];
-                    if source == target && edge.action {
-                        return Err(Error::InstantaneousDependencyCycle);
-                    }
-                    if source > target {
-                        return Err(Error::InvalidProgram);
-                    }
-                    if source < target {
-                        self.degrees[target] += 1;
+                    if edge.source == edge.target {
+                        if edge.action {
+                            return Err(Error::InstantaneousDependencyCycle);
+                        }
+                    } else {
+                        self.degrees[edge.target] += 1;
                     }
                     Phase::CheckEdges(index + 1)
                 }
             }
-            Phase::Strong {
-                group,
-                visited,
-                current,
-            } => {
-                if group == t.components.len() {
-                    Phase::Choose { group: 0, scan: 0 }
-                } else {
-                    let range = t.components[group];
-                    if range.len == 1 {
-                        Phase::Strong {
-                            group: group + 1,
-                            visited: 0,
-                            current: 0,
-                        }
-                    } else {
-                        let first = self.node(t, t.members[range.start])?;
-                        let current = if visited == 0 { first } else { current };
-                        if self.marks[current] == group {
-                            return Err(Error::InvalidProgram);
-                        }
-                        self.marks[current] = group;
-                        let source = self.node(
-                            t,
-                            t.nodes[current].sync_source.ok_or(Error::InvalidProgram)?,
-                        )?;
-                        if self.groups[source] != group {
-                            return Err(Error::InvalidProgram);
-                        }
-                        if visited + 1 == range.len {
-                            if source != first {
-                                return Err(Error::InvalidProgram);
-                            }
-                            Phase::Strong {
-                                group: group + 1,
-                                visited: 0,
-                                current: 0,
-                            }
-                        } else {
-                            Phase::Strong {
-                                group,
-                                visited: visited + 1,
-                                current: source,
-                            }
-                        }
-                    }
-                }
-            }
-            Phase::Choose { group, scan } => {
-                if group == t.components.len() {
+            Phase::Choose { index, scan } => {
+                if index == t.nodes.len() {
                     Phase::Done
-                } else {
-                    if self.degrees[group] != 0 {
+                } else if scan == t.nodes.len() {
+                    return Err(Error::InstantaneousDependencyCycle);
+                } else if self.degrees[scan] == 0 {
+                    let supplied = self.node(t, t.order[index])?;
+                    if supplied != scan {
                         return Err(Error::InvalidProgram);
                     }
-                    if scan == t.components.len() {
-                        Phase::RetireEdges { group, edge: 0 }
-                    } else {
-                        if self.degrees[scan] == 0
-                            && t.members[t.components[scan].start]
-                                < t.members[t.components[group].start]
-                        {
-                            return Err(Error::InvalidProgram);
-                        }
-                        Phase::Choose {
-                            group,
-                            scan: scan + 1,
-                        }
+                    self.degrees[scan] = usize::MAX;
+                    Phase::RetireEdges {
+                        index,
+                        node: scan,
+                        edge: 0,
+                    }
+                } else {
+                    Phase::Choose {
+                        index,
+                        scan: scan + 1,
                     }
                 }
             }
-            Phase::RetireEdges { group, edge } => {
+            Phase::RetireEdges { index, node, edge } => {
                 if edge == self.edges.len() {
                     Phase::Choose {
-                        group: group + 1,
-                        scan: group + 1,
+                        index: index + 1,
+                        scan: 0,
                     }
                 } else {
                     let row = self.edges[edge];
-                    let source = self.groups[row.source];
-                    let target = self.groups[row.target];
-                    if source == group && source != target {
-                        self.degrees[target] -= 1;
+                    if row.source == node && row.source != row.target {
+                        self.degrees[row.target] -= 1;
                     }
                     Phase::RetireEdges {
-                        group,
+                        index,
+                        node,
                         edge: edge + 1,
                     }
                 }

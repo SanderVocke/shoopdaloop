@@ -1,0 +1,13 @@
+{
+  "q": 32,
+  "p": 16,
+  "channels": 16,
+  "processed": 13,
+  "missed": 0,
+  "discarded": 0,
+  "rx_high_water": 1,
+  "tx_high_water": 2,
+  "compared_frames": 432,
+  "media_exact": true,
+  "states_exact": true
+}

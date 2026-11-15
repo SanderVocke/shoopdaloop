@@ -47,8 +47,7 @@ pub struct PreparedTopology {
     programs: Vec<ProgramRecord>,
     targets: Vec<TargetRecord>,
     segments: Vec<Segment>,
-    components: Vec<TableRange>,
-    members: Vec<LoopId>,
+    order: Vec<LoopId>,
     relation_count: usize,
 }
 
@@ -86,11 +85,9 @@ impl PreparedTopology {
                 CompiledProgram::from_record(&self.programs[index], &self.targets, &self.segments)
             })
     }
-    pub fn components(&self) -> Components<'_> {
-        Components {
-            ranges: &self.components,
-            members: &self.members,
-        }
+    /// Loop IDs in canonical source-before-dependent order. Self-sync adds no ordering edge.
+    pub fn dependency_order(&self) -> &[LoopId] {
+        &self.order
     }
     pub fn relation_count(&self) -> usize {
         self.relation_count
@@ -104,8 +101,7 @@ impl PreparedTopology {
             self.programs.capacity(),
             self.targets.capacity(),
             self.segments.capacity(),
-            self.components.capacity(),
-            self.members.capacity(),
+            self.order.capacity(),
         )
         .expect("validated topology storage")
     }
@@ -117,8 +113,7 @@ pub(crate) fn storage_bytes(
     programs: usize,
     targets: usize,
     segments: usize,
-    components: usize,
-    members: usize,
+    order: usize,
 ) -> Result<usize, Error> {
     let mut bytes = size_of::<PreparedTopology>();
     for (count, element) in [
@@ -127,8 +122,7 @@ pub(crate) fn storage_bytes(
         (programs, size_of::<ProgramRecord>()),
         (targets, size_of::<TargetRecord>()),
         (segments, size_of::<Segment>()),
-        (components, size_of::<TableRange>()),
-        (members, size_of::<LoopId>()),
+        (order, size_of::<LoopId>()),
     ] {
         bytes = bytes
             .checked_add(crate::config::checked_storage(count, element)?)
@@ -136,70 +130,6 @@ pub(crate) fn storage_bytes(
     }
     crate::config::checked_storage(bytes, 1)
 }
-
-/// Borrowed component membership in canonical dependency order.
-#[derive(Clone, Copy, Debug)]
-pub struct Components<'a> {
-    ranges: &'a [TableRange],
-    members: &'a [LoopId],
-}
-impl<'a> Components<'a> {
-    pub fn len(&self) -> usize {
-        self.ranges.len()
-    }
-    pub fn is_empty(&self) -> bool {
-        self.ranges.is_empty()
-    }
-    pub fn get(&self, index: usize) -> Option<&'a [LoopId]> {
-        self.ranges
-            .get(index)
-            .map(|range| range.slice(self.members))
-    }
-    pub fn last(&self) -> Option<&'a [LoopId]> {
-        self.ranges.last().map(|range| range.slice(self.members))
-    }
-    pub fn iter(&self) -> ComponentIter<'a> {
-        ComponentIter {
-            ranges: self.ranges.iter(),
-            members: self.members,
-        }
-    }
-}
-impl core::ops::Index<usize> for Components<'_> {
-    type Output = [LoopId];
-    fn index(&self, index: usize) -> &Self::Output {
-        self.get(index).expect("component index")
-    }
-}
-impl<'a> IntoIterator for Components<'a> {
-    type Item = &'a [LoopId];
-    type IntoIter = ComponentIter<'a>;
-    fn into_iter(self) -> Self::IntoIter {
-        self.iter()
-    }
-}
-#[derive(Clone)]
-pub struct ComponentIter<'a> {
-    ranges: core::slice::Iter<'a, TableRange>,
-    members: &'a [LoopId],
-}
-impl<'a> Iterator for ComponentIter<'a> {
-    type Item = &'a [LoopId];
-    fn next(&mut self) -> Option<Self::Item> {
-        self.ranges.next().map(|range| range.slice(self.members))
-    }
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.ranges.size_hint()
-    }
-}
-impl DoubleEndedIterator for ComponentIter<'_> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        self.ranges
-            .next_back()
-            .map(|range| range.slice(self.members))
-    }
-}
-impl ExactSizeIterator for ComponentIter<'_> {}
 
 fn index(nodes: &[LoopSpec], id: LoopId) -> Result<usize, Error> {
     nodes
@@ -333,49 +263,34 @@ pub fn compile(
         return Err(Error::Capacity);
     }
     let mut forward = vec![Vec::new(); nodes.len()];
-    let mut reverse = vec![Vec::new(); nodes.len()];
-    for &(source, target, _) in &relations {
-        forward[source].push(target);
-        reverse[target].push(source);
-    }
-    let (groups, membership) = strongly_connected(&forward, &reverse);
-    if relations
-        .iter()
-        .any(|&(source, target, action)| action && membership[source] == membership[target])
-    {
-        return Err(Error::InstantaneousDependencyCycle);
-    }
-    let mut group_edges = BTreeSet::new();
-    let mut indegree = vec![0; groups.len()];
-    for &(source, target, _) in &relations {
-        let edge = (membership[source], membership[target]);
-        if edge.0 != edge.1 && group_edges.insert(edge) {
-            indegree[edge.1] += 1;
+    let mut indegree = vec![0; nodes.len()];
+    for &(source, target, action) in &relations {
+        if source == target {
+            if action {
+                return Err(Error::InstantaneousDependencyCycle);
+            }
+        } else {
+            forward[source].push(target);
+            indegree[target] += 1;
         }
     }
     let mut ready = BTreeSet::new();
-    for (group, members) in groups.iter().enumerate() {
-        if indegree[group] == 0 {
-            ready.insert((nodes[members[0]].id, group));
+    for (node, &degree) in indegree.iter().enumerate() {
+        if degree == 0 {
+            ready.insert(node);
         }
     }
-    let mut components = Vec::with_capacity(groups.len());
-    while let Some((_, group)) = ready.pop_first() {
-        components.push(
-            groups[group]
-                .iter()
-                .map(|&node| nodes[node].id)
-                .collect::<Vec<_>>()
-                .into_boxed_slice(),
-        );
-        for &(_, target) in group_edges.range((group, 0)..=(group, usize::MAX)) {
+    let mut order = Vec::with_capacity(nodes.len());
+    while let Some(node) = ready.pop_first() {
+        order.push(nodes[node].id);
+        for &target in &forward[node] {
             indegree[target] -= 1;
             if indegree[target] == 0 {
-                ready.insert((nodes[groups[target][0]].id, target));
+                ready.insert(target);
             }
         }
     }
-    if components.len() != groups.len() {
+    if order.len() != nodes.len() {
         return Err(Error::InstantaneousDependencyCycle);
     }
     let mut programs = Vec::with_capacity(compiled.len());
@@ -411,15 +326,6 @@ pub fn compile(
             },
         });
     }
-    let mut ranges = Vec::with_capacity(components.len());
-    let mut members = Vec::with_capacity(nodes.len());
-    for component in components {
-        ranges.push(TableRange {
-            start: members.len(),
-            len: component.len(),
-        });
-        members.extend_from_slice(&component);
-    }
     Ok(PreparedTopology {
         limits,
         nodes: nodes.into_boxed_slice().into_vec(),
@@ -427,61 +333,7 @@ pub fn compile(
         programs: programs.into_boxed_slice().into_vec(),
         targets: targets.into_boxed_slice().into_vec(),
         segments: segments.into_boxed_slice().into_vec(),
-        components: ranges.into_boxed_slice().into_vec(),
-        members: members.into_boxed_slice().into_vec(),
+        order: order.into_boxed_slice().into_vec(),
         relation_count: relations.len(),
     })
-}
-
-// Iterative passes avoid consuming the native/Wasm call stack on deep chains.
-fn strongly_connected(
-    forward: &[Vec<usize>],
-    reverse: &[Vec<usize>],
-) -> (Vec<Vec<usize>>, Vec<usize>) {
-    let mut seen = vec![false; forward.len()];
-    let mut finish = Vec::with_capacity(forward.len());
-    let mut stack = Vec::with_capacity(forward.len());
-    for start in 0..forward.len() {
-        if seen[start] {
-            continue;
-        }
-        seen[start] = true;
-        stack.push((start, 0usize));
-        while let Some((node, edge)) = stack.last_mut() {
-            if let Some(&target) = forward[*node].get(*edge) {
-                *edge += 1;
-                if !seen[target] {
-                    seen[target] = true;
-                    stack.push((target, 0));
-                }
-            } else {
-                finish.push(*node);
-                stack.pop();
-            }
-        }
-    }
-    let mut membership = vec![usize::MAX; forward.len()];
-    let mut groups = Vec::new();
-    let mut pending = Vec::with_capacity(forward.len());
-    for start in finish.into_iter().rev() {
-        if membership[start] != usize::MAX {
-            continue;
-        }
-        let group = groups.len();
-        let mut members = Vec::new();
-        pending.push(start);
-        membership[start] = group;
-        while let Some(node) = pending.pop() {
-            members.push(node);
-            for &target in &reverse[node] {
-                if membership[target] == usize::MAX {
-                    membership[target] = group;
-                    pending.push(target);
-                }
-            }
-        }
-        members.sort_unstable();
-        groups.push(members);
-    }
-    (groups, membership)
 }

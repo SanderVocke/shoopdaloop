@@ -1,5 +1,6 @@
 use super::*;
 use crate::buffer::MidiBuffer;
+use crate::Sample;
 
 /// Owning chunk buffers are prepared by control and returned in the reliable
 /// completion, including on refusal/cancellation. Nothing is freed by rendering.
@@ -116,6 +117,21 @@ impl ResourceCommand {
             reply: None,
         }
     }
+    /// Preserve the owning read envelope while another backend supplies its bytes.
+    pub fn external_read(
+        &mut self,
+        read: impl FnOnce(&mut Cursor, &mut [u8]) -> Result<(usize, bool), Error>,
+    ) -> Result<(), Error> {
+        let Request::Read { cursor, bytes } = &mut self.request else {
+            return Err(Error::InvalidParameter);
+        };
+        let (written, eof) = read(cursor, bytes)?;
+        if written > bytes.len() {
+            return Err(Error::InvalidShape);
+        }
+        self.reply = Some(Reply::Read { written, eof });
+        Ok(())
+    }
     pub fn reply(&self) -> Option<Reply> {
         self.reply
     }
@@ -151,7 +167,11 @@ impl ResourceCommand {
         }
         Ok(())
     }
-    pub(crate) fn apply(&mut self, store: &mut ResourceStore, frame: Frame) -> Result<(), Error> {
+    pub(crate) fn apply<S: Sample>(
+        &mut self,
+        store: &mut ResourceStore<S>,
+        frame: Frame,
+    ) -> Result<(), Error> {
         self.reply = None;
         self.envelope(store.config())?;
         let reply = match &mut self.request {
@@ -268,15 +288,18 @@ impl ResourceCommand {
 
 /// A processor view cannot replenish budgets or apply structural resource edits.
 /// Reborrowing it for another node/subrange keeps the same callback counters.
-pub struct ResourceIo<'a> {
-    pub(super) store: &'a mut ResourceStore,
+pub struct ResourceIo<'a, S: Sample = f32> {
+    pub(super) store: &'a mut ResourceStore<S>,
 }
-impl ResourceStore {
-    pub fn io(&mut self) -> ResourceIo<'_> {
+impl<S: Sample> ResourceStore<S> {
+    pub fn io(&mut self) -> ResourceIo<'_, S> {
         ResourceIo { store: self }
     }
 }
-impl ResourceIo<'_> {
+impl<S: Sample> ResourceIo<'_, S> {
+    pub fn audio_render_mode(&self) -> crate::AudioRenderMode {
+        self.store.audio_render_mode()
+    }
     pub fn remove(&mut self, resource: ResourceId) -> Result<(), Error> {
         self.store.remove(resource)
     }
@@ -313,7 +336,7 @@ impl ResourceIo<'_> {
         Ok(())
     }
     /// Borrow required data access without consuming or replenishing background quotas.
-    pub fn render(&mut self) -> RenderIo<'_> {
+    pub fn render(&mut self) -> RenderIo<'_, S> {
         self.store.render_io()
     }
     pub fn copy_remaining(&self) -> usize {
@@ -373,7 +396,7 @@ impl ResourceIo<'_> {
         &mut self,
         capture: CaptureId,
         frame: Frame,
-        samples: &[f32],
+        samples: &[S],
     ) -> Result<Revision, Error> {
         self.store.capture_audio(capture, frame, samples)
     }

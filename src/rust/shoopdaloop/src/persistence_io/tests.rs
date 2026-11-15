@@ -318,7 +318,7 @@ fn new_session_completion_waits_for_its_projection_and_preserves_confirmed_loss(
 }
 
 #[shoop_test]
-async fn public_core_file_capabilities_keep_duplication_refused() {
+async fn public_core_file_capabilities_include_copying_but_sync_clone_stays_refused() {
     let mut fixture = Fixture::new();
     let state = fixture.runtime.snapshot();
     for capability in [
@@ -326,12 +326,10 @@ async fn public_core_file_capabilities_keep_duplication_refused() {
         BackendCapability::SessionContentLoad,
         BackendCapability::LoopContentImport,
         BackendCapability::ClickTrackInsertion,
+        BackendCapability::LoopDuplication,
     ] {
         assert!(state.capabilities.supports(capability));
     }
-    assert!(!state
-        .capabilities
-        .supports(BackendCapability::LoopDuplication));
     let track = &state.tracks[0];
     fixture.dispatch(AppIntent::Loop {
         track_id: track.id,
@@ -344,9 +342,10 @@ async fn public_core_file_capabilities_keep_duplication_refused() {
     }
     let state = fixture.runtime.snapshot();
     assert!(
-        state.notifications.iter().any(|notice| notice
-            .message
-            .contains(BackendCapability::LoopDuplication.unavailable_reason())),
+        state
+            .notifications
+            .iter()
+            .any(|notice| notice.message.contains("the sync loop cannot be cloned")),
         "{:?}",
         state.notifications
     );
@@ -433,6 +432,173 @@ async fn generated_clicks_commit_and_export_through_the_public_route() {
         });
         f.step();
     }
+}
+
+#[shoop_test]
+async fn primitive_and_nested_definition_copies_survive_the_public_session_round_trip() {
+    let mut f = Fixture::new();
+    f.dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)));
+    f.dispatch(AppIntent::AddTrack(DirectTrackSpec {
+        name: "Copied session".into(),
+        audio_channels: 2,
+        midi: true,
+    }));
+    let state = f
+        .until(|s| s.tracks.len() == 2 && s.tracks[1].loops.len() == 8)
+        .await;
+    let track = state.tracks[1].id;
+    let loops = state.tracks[1]
+        .loops
+        .iter()
+        .map(|l| l.id)
+        .collect::<Vec<_>>();
+    for kind in [ClickTrackKind::Audio, ClickTrackKind::Midi] {
+        f.dispatch(AppIntent::GenerateClickTrack {
+            loop_id: loops[1],
+            request: ClickTrackRequest {
+                kind,
+                bpm: 120.,
+                ..Default::default()
+            },
+        });
+        f.until(|s| {
+            s.io_task
+                .as_ref()
+                .is_some_and(|task| task.status == IoTaskStatus::Completed)
+        })
+        .await;
+    }
+    for target in [0, 6] {
+        f.dispatch(AppIntent::Loop {
+            track_id: track,
+            loop_id: loops[1],
+            action: LoopAction::DuplicateTo(loops[target]),
+        });
+        f.until(|s| s.tracks[1].loops[target].name == s.tracks[1].loops[1].name)
+            .await;
+    }
+    for (source, target) in [(0, 2), (2, 3)] {
+        f.dispatch(AppIntent::Loop {
+            track_id: track,
+            loop_id: loops[source],
+            action: LoopAction::ComposeIntoEnd(loops[target]),
+        });
+        f.until(|s| s.tracks[1].loops[target].composite_kind == CompositeKind::Regular)
+            .await;
+    }
+    f.dispatch(AppIntent::Loop {
+        track_id: track,
+        loop_id: loops[3],
+        action: LoopAction::DuplicateTo(loops[7]),
+    });
+    f.until(|s| s.tracks[1].loops[7].name == s.tracks[1].loops[3].name)
+        .await;
+    f.dispatch(AppIntent::RequestSaveSession);
+    let saved = f.output().await;
+    let before = shoop_session::decode_session(&saved.bytes).unwrap();
+    crate::copy_probe::verify(&before).unwrap();
+    assert!(before.media.values().any(
+        |media| matches!(media, shoop_session::MediaPayload::Midi(midi) if midi.events.len() >= 2)
+    ));
+    f.dispatch(AppIntent::CompleteIoOutput {
+        task_id: saved.task_id,
+        outcome: FileOutputOutcome::Saved,
+    });
+    f.until(|s| {
+        s.io_task
+            .as_ref()
+            .is_some_and(|task| task.status == IoTaskStatus::Completed)
+    })
+    .await;
+    f.dispatch(AppIntent::LoadSessionBytes {
+        name: "copied.shoop".into(),
+        bytes: saved.bytes,
+    });
+    let restored = f
+        .until(|s| {
+            s.tracks[1].id != track
+                && s.io_task
+                    .as_ref()
+                    .is_some_and(|task| task.status == IoTaskStatus::Completed)
+        })
+        .await;
+    assert!(restored.tracks[1]
+        .loops
+        .iter()
+        .all(|l| l.mode == LoopMode::Stopped));
+    f.dispatch(AppIntent::RequestSaveSession);
+    let resaved = f.output().await;
+    let mut after = shoop_session::decode_session(&resaved.bytes).unwrap();
+    crate::copy_probe::verify(&after).unwrap();
+    assert_eq!(
+        before.media.values().collect::<Vec<_>>(),
+        after.media.values().collect::<Vec<_>>()
+    );
+    f.dispatch(AppIntent::CompleteIoOutput {
+        task_id: resaved.task_id,
+        outcome: FileOutputOutcome::Saved,
+    });
+    f.until(|s| {
+        s.io_task
+            .as_ref()
+            .is_some_and(|task| task.status == IoTaskStatus::Completed)
+    })
+    .await;
+    let saved_track = after
+        .document
+        .track_groups
+        .iter_mut()
+        .flat_map(|group| &mut group.tracks)
+        .nth(1)
+        .unwrap();
+    saved_track.loops[1].execution = Some(shoop_session::LoopExecutionDocument {
+        sync_source: Some(saved_track.loops[6].id),
+        repeat_sync: false,
+    });
+    f.dispatch(AppIntent::LoadSessionBytes {
+        name: "copy-clock.shoop".into(),
+        bytes: shoop_session::encode_session(&after, "copy-clock-test")
+            .unwrap()
+            .into(),
+    });
+    let clocks = f
+        .until(|s| {
+            s.tracks[1].id != restored.tracks[1].id
+                && s.io_task
+                    .as_ref()
+                    .is_some_and(|task| task.status == IoTaskStatus::Completed)
+        })
+        .await;
+    let track = &clocks.tracks[1];
+    f.dispatch(AppIntent::Loop {
+        track_id: track.id,
+        loop_id: track.loops[6].id,
+        action: LoopAction::PlayClicked,
+    });
+    let playing = f
+        .until(|s| s.tracks[1].loops[6].mode == LoopMode::Playing)
+        .await;
+    f.dispatch(AppIntent::Loop {
+        track_id: track.id,
+        loop_id: track.loops[1].id,
+        action: LoopAction::DuplicateTo(track.loops[6].id),
+    });
+    for _ in 0..20 {
+        f.step();
+    }
+    let unchanged = f.service.snapshot();
+    assert!(matches!(
+        unchanged.results.last().unwrap().outcome,
+        Outcome::Refused {
+            reason: Refusal::Invalid,
+            ..
+        }
+    ));
+    assert_eq!(unchanged.tracks[1].loops[6].mode, LoopMode::Playing);
+    assert_eq!(
+        unchanged.tracks[1].loops[6].content_revision,
+        playing.tracks[1].loops[6].content_revision
+    );
 }
 
 #[shoop_test]

@@ -1,6 +1,7 @@
 //! Lease-scoped MIDI records and bounded checkpoint-based positioning.
 use super::*;
 use crate::midi_state::MidiState;
+use crate::Sample;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct MidiCursor {
@@ -38,7 +39,7 @@ pub struct MidiPosition {
     pub replayed_events: usize,
 }
 
-impl ResourceStore {
+impl<S: Sample> ResourceStore<S> {
     fn midi_initial_channel_impl(
         &mut self,
         index: ReadIndex,
@@ -270,7 +271,7 @@ impl ResourceStore {
         Err(Error::InvalidState)
     }
 }
-impl RenderIo<'_> {
+impl<S: Sample> RenderIo<'_, S> {
     /// Export one initial channel without copying all sixteen channel states.
     pub fn midi_initial_channel(
         &mut self,

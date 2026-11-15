@@ -5,6 +5,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "xil_printf.h"
+#include "diagnostics.h"
 #include "xtime_l.h"
 #include <stdatomic.h>
 #include <stdio.h>
@@ -40,7 +41,7 @@ CFG_TUH_MEM_SECTION CFG_TUH_MEM_ALIGN static uint16_t identity_buffer[128];
 static void publish_mount(uint8_t index);
 
 void tuh_hub_descriptor_failed_cb(uint8_t address) {
-    xil_printf("SHOOP_USB_HUB_REFUSED addr=%u descriptor_or_ports\r\n", address);
+    shoop_logf("SHOOP_USB_HUB_REFUSED addr=%u descriptor_or_ports\r\n", address);
 }
 
 bool tuh_enum_descriptor_configuration_cb(uint8_t address, uint8_t config, const tusb_desc_configuration_t *descriptor) {
@@ -57,7 +58,7 @@ bool tuh_enum_descriptor_configuration_cb(uint8_t address, uint8_t config, const
         }
         valid = mounted + needed <= USB_INTERFACES;
     }
-    if (!valid) xil_printf("SHOOP_USB_MIDI_REFUSED addr=%u descriptor\r\n", address);
+    if (!valid) shoop_logf("SHOOP_USB_MIDI_REFUSED addr=%u descriptor\r\n", address);
     return valid;
 }
 
@@ -171,11 +172,11 @@ static void usb_run(void *unused) {
     (void)unused;
     tusb_rhport_init_t init = { .role = TUSB_ROLE_HOST, .speed = TUSB_SPEED_HIGH };
     if (!tusb_init(0, &init)) {
-        xil_printf("SHOOP_USB_FAILED init\r\n");
+        shoop_logf("SHOOP_USB_FAILED init\r\n");
         atomic_store(&stopped, -1);
         vTaskSuspend(NULL);
     }
-    xil_printf("SHOOP_USB_READY TinyUSB host\r\n");
+    shoop_logf("SHOOP_USB_READY TinyUSB host\r\n");
     uint64_t stop_at = 0, last_diagnostic = 0;
     bool drained = true;
     for (;;) {
@@ -197,7 +198,7 @@ static void usb_run(void *unused) {
                 struct shoop_usb_counters counters;
                 shoop_usb_counters(1, slot, &counters);
                 if (counters.refused || counters.dropped || counters.recovery_requests)
-                    xil_printf("SHOOP_USB_PRESSURE slot=%u refused=%u dropped=%u recovery_requests=%u queued=%u accepted=%u completed=%u packets=%u\r\n",
+                    shoop_logf("SHOOP_USB_PRESSURE slot=%u refused=%u dropped=%u recovery_requests=%u queued=%u accepted=%u completed=%u packets=%u\r\n",
                         slot, counters.refused, counters.dropped, counters.recovery_requests, counters.queued,
                         counters.received, counters.completed, counters.packets);
             }
@@ -214,12 +215,12 @@ static void usb_run(void *unused) {
         for (unsigned slot = 0; slot < SHOOP_MIDI_PORTS; ++slot) {
             struct shoop_usb_counters counters;
             shoop_usb_counters(direction, slot, &counters);
-            xil_printf("SHOOP_USB_COUNTER direction=%u slot=%u received=%u completed=%u refused=%u dropped=%u malformed=%u assembly_dropped=%u recovery_requests=%u packets=%u queued=%u\r\n",
+            shoop_logf("SHOOP_USB_COUNTER direction=%u slot=%u received=%u completed=%u refused=%u dropped=%u malformed=%u assembly_dropped=%u recovery_requests=%u packets=%u queued=%u\r\n",
                 direction, slot, counters.received, counters.completed, counters.refused, counters.dropped,
                 counters.malformed, counters.assembly_dropped, counters.recovery_requests, counters.packets, counters.queued);
         }
     }
-    xil_printf("SHOOP_USB_STOP drained=%u controller_stopped=%u lost_packets=%u errors=%u stack_free=%u elapsed_us=%u\r\n",
+    shoop_logf("SHOOP_USB_STOP drained=%u controller_stopped=%u lost_packets=%u errors=%u stack_free=%u elapsed_us=%u\r\n",
         drained, deinitialized, lost_packets, transfer_errors, (unsigned)uxTaskGetStackHighWaterMark(NULL),
         stop_at ? (unsigned)(shoop_usb_micros() - stop_at) : 0);
     atomic_store(&stopped, drained && deinitialized ? 1 : -1);
@@ -273,11 +274,11 @@ static void publish_mount(uint8_t index) {
     else snprintf(name, sizeof(name), "USB %04x:%04x %s if%u", vendor, product, path, info->bInterfaceNumber);
     if (!shoop_usb_mount(index, info->daddr, info->bInterfaceNumber, info->rx_cable_count,
                          info->tx_cable_count, vendor, product, tuh_speed_get(info->daddr), key, name)) {
-        xil_printf("SHOOP_USB_MIDI_REFUSED index=%u capacity\r\n", index);
+        shoop_logf("SHOOP_USB_MIDI_REFUSED index=%u capacity\r\n", index);
         return;
     }
     interfaces[index].active = true;
-    xil_printf("SHOOP_USB_MIDI_MOUNT index=%u addr=%u interface=%u rx=%u tx=%u\r\n",
+    shoop_logf("SHOOP_USB_MIDI_MOUNT index=%u addr=%u interface=%u rx=%u tx=%u\r\n",
         index, info->daddr, info->bInterfaceNumber, info->rx_cable_count, info->tx_cable_count);
 }
 
@@ -300,7 +301,7 @@ void tuh_midi_umount_cb(uint8_t index) {
     interface->tail = interface->head;
     atomic_store(&shoop_usb_pending_packets[index], 0);
     shoop_usb_unmount(index);
-    xil_printf("SHOOP_USB_MIDI_UNMOUNT index=%u\r\n", index);
+    shoop_logf("SHOOP_USB_MIDI_UNMOUNT index=%u\r\n", index);
 }
 
 void tuh_midi_tx_cb(uint8_t index, uint32_t transferred) {
@@ -326,6 +327,6 @@ void tuh_midi_rx_cb(uint8_t index, uint32_t transferred) {
 
 void tuh_midi_error_cb(uint8_t index, uint8_t endpoint, xfer_result_t result) {
     ++transfer_errors;
-    xil_printf("SHOOP_USB_MIDI_ERROR index=%u endpoint=%u result=%u\r\n", index, endpoint, result);
+    shoop_logf("SHOOP_USB_MIDI_ERROR index=%u endpoint=%u result=%u\r\n", index, endpoint, result);
     tuh_midi_umount_cb(index);
 }

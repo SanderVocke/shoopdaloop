@@ -1,6 +1,7 @@
 //! Fixed capture-group ownership and prepared take lifecycle.
 use super::*;
 use crate::midi_state::MidiState;
+use crate::Sample;
 mod tick;
 pub use tick::CaptureTickId;
 use tick::TickReservation;
@@ -79,6 +80,13 @@ pub(super) struct CapturePool {
     audio_writes: Vec<Option<CaptureAudioWrite>>,
 }
 impl CapturePool {
+    pub(super) fn allocated_bytes(&self) -> usize {
+        super::memory::vec_bytes(&self.groups)
+            + super::memory::vec_bytes(&self.free)
+            + super::memory::vec_bytes(&self.members)
+            + super::memory::vec_bytes(&self.staging)
+    }
+
     fn new(config: CaptureGroupConfig, prepared: PreparedConfig) -> Result<Self, Error> {
         if config.groups == 0 || config.members_per_group == 0 {
             return Err(Error::InvalidConfig);
@@ -151,7 +159,7 @@ impl CapturePool {
     }
 }
 
-impl ResourceStore {
+impl<S: Sample> ResourceStore<S> {
     /// Prepare group storage before handing the store to a render runtime.
     pub fn with_capture_groups(
         config: PreparedConfig,
@@ -162,7 +170,7 @@ impl ResourceStore {
         let pool = CapturePool::new(groups, config)?;
         let mut store = match indexing {
             Some(indexing) => Self::with_midi_indexing(config, quantum, indexing)?,
-            None => Self::new(config, quantum)?,
+            None => Self::new_numeric(config, quantum)?,
         };
         store.capture_groups = pool;
         Ok(store)
@@ -392,6 +400,7 @@ impl ResourceStore {
         if self.free_versions.len() < group.members || self.free_snapshots.len() < group.members {
             return Err(Error::Capacity);
         }
+
         if midi != 0 {
             self.midi_indexes.prepare()?;
             if self.midi_indexes.usage().free_versions < midi {

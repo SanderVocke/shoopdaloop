@@ -1,0 +1,351 @@
+{
+  "loops": 16,
+  "channels_per_loop": 2,
+  "recording_frames": 1440000,
+  "sample_rate": 48000,
+  "recording_seconds": 30,
+  "chunk_frames": 32,
+  "block_chunks": 32,
+  "blocks_per_take": 1407,
+  "released_references": 45024,
+  "view_capacity": 64,
+  "physical_chunk_capacity": 1441792,
+  "allocation_block_capacity": 45056,
+  "metadata_page_capacity": 3532,
+  "scope": "media-store ownership stress; old payloads unobserved; new captures/readback checked",
+  "configuration": {
+    "retired_tables": 256,
+    "reclaim_blocks": 20,
+    "reclaim_cycles": 10000,
+    "reclaim_guard": 1024,
+    "block_chunks": 32,
+    "metadata_lines": 128,
+    "reference_lines": 4,
+    "stack_lines": 2,
+    "metadata_pages": null,
+    "model": "instant",
+    "backend": "systemverilog",
+    "purpose": "functional",
+    "fabric_hz": 100000000,
+    "physical_base": 16777216,
+    "fixed_cycles": 7,
+    "axi_data_width": 64,
+    "word_transfers": false,
+    "revision": "c2f631632834b30ec28e958fe423d70b149f2c28",
+    "working_tree_dirty": true
+  },
+  "model_sha256": "e7c86037cf216bef1c735d7a0474b20d5d99fde364f2b3cecfd2db31ee0a40ae",
+  "generated_top_sha256": "f525613cb328564d02cf904711375a2e695f39c907e787efdb95d5589aa7e8cc",
+  "verilator": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1+b2)",
+  "sources": {
+    "fpga/media_store/rtl/media_reclaimer.sv": "ed6a75688d9d31ab82e9abd9bd5c2d1695cb1e35b976fd94dc47c77e7b60511d",
+    "fpga/media_store/rtl/media_store.sv": "a5b8aa87450ca82a2225a661465d7614bb94c17485039ba783947292e3e9b5f4",
+    "fpga/media_store/rtl/media_prefetch_resolver.sv": "a650a2fb6f1cf379190483c5ad9af558228fa77fd2e565d7f49fb7027e89d2ba",
+    "fpga/media_store/rtl/memory_delay.sv": "426bfea9b6bd377a5efdfc2fb98cfe15995a821810d23d60b7911dfe3788bee9",
+    "fpga/media_store/rtl/media_ram.sv": "2c1f253e53ad420768598616da4a7ed5e8c246f786d9c9a56d25e64b46ee5178",
+    "fpga/media_store/rtl/media_metadata.sv": "4eef2be8fb7811c935d99271e5a2bf72db4291e65f4adefdda185f4319c3a79e",
+    "fpga/media_store/rtl/media_audio_pipeline.sv": "88cc3ad4b79162daaddd4ece93f6b51cc056e9025b572d4055d89639b0bb9176",
+    "fpga/media_store/rtl/metadata_cache.sv": "3d86dc29a1970f201dfd967d6856329d0ec91bbcf94ba4e5122b9b57c7d5cab4",
+    "fpga/chunk_memory/rtl/chunk_ram.sv": "b3c85ff265ced37296ee0fbda1dd231efc56b40e3ebff6454c982f6f25021464",
+    "fpga/chunk_memory/rtl/chunk_memory.sv": "40c9db16a1d82ad5da6ec251e9e875976f8d5cf286dfadbaacb1dde4dfef81a0",
+    "fpga/axi_memory/rtl/loop_pipeline_axi.sv": "e94179d8f2468c316e3ab9416141bec327e3d6098647fcad1c883d9bda12904e",
+    "fpga/axi_memory/rtl/word_axi.sv": "7edfae1a0b97fc5cc4e30f7a64223cd8879e4d27811a98fda3ac8c7fe504a27e",
+    "fpga/axi_memory/rtl/media_store_axi.sv": "c539e1818d0b25e096fa1f30b7a24c4d486680a186fa70608f8dc1f8c0ac986a",
+    "fpga/axi_memory/rtl/axi_master.sv": "ece082912919f34927873195a83ae26536f9d4f3df050c2c84b856afcfda9c56",
+    "fpga/axi_memory/rtl/chunk_dma.sv": "1bb3a55eaf6955401fbd9b2e171a3b58dc4f4eb57dd2cd2eee4644bbe7cc25b0",
+    "fpga/axi_memory/rtl/chunk_memory_axi.sv": "56d40ffb5fd1a505f8d50935cac328cd346e34ec2d438d181f3dd45bb7ef5a21",
+    "fpga/axi_memory/rtl/media_audio_pipeline_axi.sv": "3a62e351300cc9ae210c34459cfac19e8629e699d8e6e072d818f90a9407238f",
+    "fpga/axi_memory/rtl/word_dma.sv": "292f48d1fa083a4f4ad5fe09c586043c5e02d4e1cc5b60ed68b14d0cb3eea772",
+    "fpga/axi_memory/rtl/chunk_axi.sv": "d5265918080e4b4f8a8430831b72db9425639a7d29c21aa62b5949fc261e0ecb",
+    "fpga/axi_memory/rtl/shared_axi.sv": "39e04665ee3d0ae82ba545250008df3ff77432d8b9c193582a8eff0df49a5cc9",
+    "fpga/axi_memory/rtl/axi_burst_mux.sv": "61ce3d023b9fb61109645eb9b6741088f14389e381ea63116fcbf670dfb79b91",
+    "fpga/axi_memory/tests/direct/media_store_axi.sv": "2b3762eca51f0c66d1382ca3054477e6ca7ebf91cfa169ec8e1ba0a8f19da706",
+    "fpga/axi_memory/tests/axi_direct_memory.sv": "5c919dbc97e33e3786cfcd0d5db52c3e6327a63fda557ea9c6b7cb8de13e390e"
+  },
+  "clear_cycles": [
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95
+  ],
+  "mass_clear_cycles": 3104,
+  "logical_bytes_retired": 184320000,
+  "allocated_bytes_retired": 184418304,
+  "block_id_bytes_retired": 180096,
+  "queue_record_bytes": 2048,
+  "metadata_pages_before_cleanup": 3072,
+  "recording_progress": [
+    {
+      "iteration": 0,
+      "free_blocks": 0,
+      "pending_references": 45020,
+      "freed_blocks": 4
+    },
+    {
+      "iteration": 1,
+      "free_blocks": 9,
+      "pending_references": 45011,
+      "freed_blocks": 13
+    },
+    {
+      "iteration": 2,
+      "free_blocks": 19,
+      "pending_references": 45002,
+      "freed_blocks": 23
+    },
+    {
+      "iteration": 3,
+      "free_blocks": 27,
+      "pending_references": 44993,
+      "freed_blocks": 31
+    },
+    {
+      "iteration": 4,
+      "free_blocks": 36,
+      "pending_references": 44984,
+      "freed_blocks": 40
+    },
+    {
+      "iteration": 5,
+      "free_blocks": 45,
+      "pending_references": 44975,
+      "freed_blocks": 49
+    },
+    {
+      "iteration": 6,
+      "free_blocks": 54,
+      "pending_references": 44966,
+      "freed_blocks": 58
+    },
+    {
+      "iteration": 7,
+      "free_blocks": 63,
+      "pending_references": 44957,
+      "freed_blocks": 67
+    },
+    {
+      "iteration": 8,
+      "free_blocks": 72,
+      "pending_references": 44948,
+      "freed_blocks": 76
+    },
+    {
+      "iteration": 9,
+      "free_blocks": 81,
+      "pending_references": 44940,
+      "freed_blocks": 85
+    },
+    {
+      "iteration": 10,
+      "free_blocks": 90,
+      "pending_references": 44931,
+      "freed_blocks": 94
+    },
+    {
+      "iteration": 11,
+      "free_blocks": 99,
+      "pending_references": 44922,
+      "freed_blocks": 103
+    },
+    {
+      "iteration": 12,
+      "free_blocks": 107,
+      "pending_references": 44913,
+      "freed_blocks": 111
+    },
+    {
+      "iteration": 13,
+      "free_blocks": 116,
+      "pending_references": 44904,
+      "freed_blocks": 120
+    },
+    {
+      "iteration": 14,
+      "free_blocks": 125,
+      "pending_references": 44895,
+      "freed_blocks": 129
+    },
+    {
+      "iteration": 15,
+      "free_blocks": 134,
+      "pending_references": 44886,
+      "freed_blocks": 138
+    },
+    {
+      "iteration": 16,
+      "free_blocks": 143,
+      "pending_references": 44877,
+      "freed_blocks": 147
+    },
+    {
+      "iteration": 17,
+      "free_blocks": 152,
+      "pending_references": 44868,
+      "freed_blocks": 156
+    },
+    {
+      "iteration": 18,
+      "free_blocks": 161,
+      "pending_references": 44860,
+      "freed_blocks": 165
+    },
+    {
+      "iteration": 19,
+      "free_blocks": 170,
+      "pending_references": 44851,
+      "freed_blocks": 174
+    },
+    {
+      "iteration": 20,
+      "free_blocks": 179,
+      "pending_references": 44842,
+      "freed_blocks": 183
+    },
+    {
+      "iteration": 21,
+      "free_blocks": 187,
+      "pending_references": 44833,
+      "freed_blocks": 191
+    },
+    {
+      "iteration": 22,
+      "free_blocks": 196,
+      "pending_references": 44824,
+      "freed_blocks": 200
+    },
+    {
+      "iteration": 23,
+      "free_blocks": 205,
+      "pending_references": 44815,
+      "freed_blocks": 209
+    },
+    {
+      "iteration": 24,
+      "free_blocks": 214,
+      "pending_references": 44806,
+      "freed_blocks": 218
+    },
+    {
+      "iteration": 25,
+      "free_blocks": 223,
+      "pending_references": 44797,
+      "freed_blocks": 227
+    },
+    {
+      "iteration": 26,
+      "free_blocks": 232,
+      "pending_references": 44788,
+      "freed_blocks": 236
+    },
+    {
+      "iteration": 27,
+      "free_blocks": 241,
+      "pending_references": 44780,
+      "freed_blocks": 245
+    },
+    {
+      "iteration": 28,
+      "free_blocks": 250,
+      "pending_references": 44771,
+      "freed_blocks": 254
+    },
+    {
+      "iteration": 29,
+      "free_blocks": 259,
+      "pending_references": 44762,
+      "freed_blocks": 263
+    },
+    {
+      "iteration": 30,
+      "free_blocks": 267,
+      "pending_references": 44753,
+      "freed_blocks": 271
+    },
+    {
+      "iteration": 31,
+      "free_blocks": 276,
+      "pending_references": 44744,
+      "freed_blocks": 280
+    },
+    {
+      "iteration": 32,
+      "free_blocks": 253,
+      "pending_references": 44735,
+      "freed_blocks": 289
+    },
+    {
+      "iteration": 33,
+      "free_blocks": 262,
+      "pending_references": 44726,
+      "freed_blocks": 298
+    },
+    {
+      "iteration": 34,
+      "free_blocks": 271,
+      "pending_references": 44717,
+      "freed_blocks": 307
+    },
+    {
+      "iteration": 35,
+      "free_blocks": 280,
+      "pending_references": 44708,
+      "freed_blocks": 316
+    },
+    {
+      "iteration": 36,
+      "free_blocks": 289,
+      "pending_references": 44700,
+      "freed_blocks": 325
+    },
+    {
+      "iteration": 37,
+      "free_blocks": 298,
+      "pending_references": 44691,
+      "freed_blocks": 334
+    },
+    {
+      "iteration": 38,
+      "free_blocks": 307,
+      "pending_references": 44682,
+      "freed_blocks": 343
+    },
+    {
+      "iteration": 39,
+      "free_blocks": 315,
+      "pending_references": 44673,
+      "freed_blocks": 351
+    }
+  ],
+  "maintenance_cycles": 5172606,
+  "metadata_pages_after_cleanup": 128,
+  "recovered_unique_blocks": 45052,
+  "result": "passed"
+}

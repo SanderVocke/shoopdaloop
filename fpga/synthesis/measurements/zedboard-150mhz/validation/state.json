@@ -1,0 +1,79 @@
+{
+  "arguments": [
+    "target/debug/fpga-testbench",
+    "state",
+    "--output",
+    "work/150mhz/verify-state-admission-queued"
+  ],
+  "format_version": 1,
+  "provenance": {
+    "models": [
+      {
+        "native_memory": null,
+        "parameters": {
+          "JOB_DEPTH": "256",
+          "PROGRAM_DEPTH": "256",
+          "STATE_DEPTH": "256"
+        },
+        "probes": [],
+        "sources_sha256": {
+          "fpga/state_processor/rtl/sp_engine.sv": "8116f4454f84837bccb6554664b751f01ec34eac414a482fc8779331fe97dd51",
+          "fpga/state_processor/rtl/sp_job_fifo.sv": "a39d66df7ebeb34b113ecfe42a0ed25e338613aabd7fc88493ad3704db727c7f",
+          "fpga/state_processor/rtl/sp_ram.sv": "0ada36fe7fc4bb515469c32c3cb2f6b7cbefd16b35349950c93f9bc2c925ff73",
+          "fpga/state_processor/rtl/state_processor.sv": "2b4bf5e174de880481114ed5e230ddceea5bcfe6475944703409e2d972a7b7d5",
+          "fpga/state_processor/rtl/state_processor_defs.svh": "62b30dff8aaa507db132e68cc1bb8932dd4cc59c2050164ddbe8aaf2316ca5b7"
+        },
+        "top": "state_processor"
+      },
+      {
+        "native_memory": null,
+        "parameters": {
+          "JOB_DEPTH": "5",
+          "PROGRAM_DEPTH": "7",
+          "STATE_DEPTH": "11"
+        },
+        "probes": [],
+        "sources_sha256": {
+          "fpga/state_processor/rtl/sp_engine.sv": "8116f4454f84837bccb6554664b751f01ec34eac414a482fc8779331fe97dd51",
+          "fpga/state_processor/rtl/sp_job_fifo.sv": "a39d66df7ebeb34b113ecfe42a0ed25e338613aabd7fc88493ad3704db727c7f",
+          "fpga/state_processor/rtl/sp_ram.sv": "0ada36fe7fc4bb515469c32c3cb2f6b7cbefd16b35349950c93f9bc2c925ff73",
+          "fpga/state_processor/rtl/state_processor.sv": "2b4bf5e174de880481114ed5e230ddceea5bcfe6475944703409e2d972a7b7d5",
+          "fpga/state_processor/rtl/state_processor_defs.svh": "62b30dff8aaa507db132e68cc1bb8932dd4cc59c2050164ddbe8aaf2316ca5b7"
+        },
+        "top": "state_processor"
+      },
+      {
+        "native_memory": null,
+        "parameters": {
+          "JOB_DEPTH": "1",
+          "PROGRAM_DEPTH": "1",
+          "STATE_DEPTH": "1"
+        },
+        "probes": [],
+        "sources_sha256": {
+          "fpga/state_processor/rtl/sp_engine.sv": "8116f4454f84837bccb6554664b751f01ec34eac414a482fc8779331fe97dd51",
+          "fpga/state_processor/rtl/sp_job_fifo.sv": "a39d66df7ebeb34b113ecfe42a0ed25e338613aabd7fc88493ad3704db727c7f",
+          "fpga/state_processor/rtl/sp_ram.sv": "0ada36fe7fc4bb515469c32c3cb2f6b7cbefd16b35349950c93f9bc2c925ff73",
+          "fpga/state_processor/rtl/state_processor.sv": "2b4bf5e174de880481114ed5e230ddceea5bcfe6475944703409e2d972a7b7d5",
+          "fpga/state_processor/rtl/state_processor_defs.svh": "62b30dff8aaa507db132e68cc1bb8932dd4cc59c2050164ddbe8aaf2316ca5b7"
+        },
+        "top": "state_processor"
+      }
+    ],
+    "revision": "2bdd10c979d4bc6ad2ca953002b4a481be38a9e3",
+    "rustc": null,
+    "simulator": "Marlin 0.21.1 / Verilator",
+    "verilator": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1+b2)",
+    "worktree": "M fpga/axi_memory/rtl/axi_master.sv\n M fpga/chunk_memory/rtl/chunk_memory.sv\n M fpga/job_processor/rtl/job_processor.sv\n M fpga/media_store/rtl/media_metadata.sv\n M fpga/media_store/rtl/media_reclaimer.sv\n M fpga/state_processor/rtl/sp_engine.sv\n M fpga/synthesis/README.md\n?? fpga/synthesis/subsystems.py\n?? fpga/synthesis/subsystems.tcl"
+  },
+  "status": "passed",
+  "suites": [
+    {
+      "error": null,
+      "status": "passed",
+      "suite": "State",
+      "wall_seconds": 23.193132172
+    }
+  ],
+  "wall_seconds": 23.193149178
+}

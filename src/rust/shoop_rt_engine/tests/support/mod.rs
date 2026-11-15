@@ -124,8 +124,7 @@ pub fn midi_out() -> HostPortId {
 
 type Input = Box<dyn FnMut(usize, u64) -> f32>;
 
-/// The offline host with collected engine messages. Every engine call is
-/// heap-guarded; collecting messages happens outside the guard.
+/// Engine calls are heap-guarded. Message collection happens outside the guard.
 pub struct Harness {
     pub host: OfflineHost,
     pub results: BTreeMap<u64, Outcome>,

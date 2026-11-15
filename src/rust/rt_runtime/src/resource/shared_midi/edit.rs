@@ -1,4 +1,5 @@
 use super::*;
+use crate::Sample;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct EditId(pub(super) Handle);
@@ -30,7 +31,7 @@ pub(super) struct Edit {
     pub(super) credit: usize,
 }
 
-impl MidiStore {
+impl<S: Sample> MidiStore<S> {
     pub(super) fn edit(&self, id: EditId) -> Result<Edit, Error> {
         if id.0.scope != self.scope {
             return Err(Error::InvalidId);
@@ -57,7 +58,7 @@ impl MidiStore {
     #[allow(clippy::too_many_arguments)]
     pub fn prepare_replace(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         take: TakeId,
         expected: Revision,
         position: u64,
@@ -288,7 +289,12 @@ impl MidiStore {
             }
         })
     }
-    pub(super) fn flush_edit(&mut self, store: &mut ResourceStore, slot: usize, edit: &mut Edit) {
+    pub(super) fn flush_edit(
+        &mut self,
+        store: &mut ResourceStore<S>,
+        slot: usize,
+        edit: &mut Edit,
+    ) {
         self.records = edit.records;
         let checkpoint = self.edit_states[slot * 3 + 2];
         self.publish_chunk(
@@ -308,7 +314,7 @@ impl MidiStore {
     /// one fixed-size chunk/index publication. Zero work never advances readiness.
     pub fn progress_edit(
         &mut self,
-        io: &mut RenderIo<'_>,
+        io: &mut RenderIo<'_, S>,
         id: EditId,
         quantum: usize,
     ) -> Result<EditStatus, Error> {
@@ -421,7 +427,7 @@ impl MidiStore {
         self.retire_edit(id, edit, edit.view.root);
         Ok(())
     }
-    pub fn commit_edit(&mut self, io: &mut RenderIo<'_>, id: EditId) -> Result<Revision, Error> {
+    pub fn commit_edit(&mut self, io: &mut RenderIo<'_, S>, id: EditId) -> Result<Revision, Error> {
         self.check(io.store)?;
         let mut edit = self.edit(id)?;
         if !edit.ready {
