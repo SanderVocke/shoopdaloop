@@ -6,7 +6,7 @@ explicit programs and emits jobs; JP performs sample work through media/memory.
 `media_audio_pipeline` and its AXI wrapper connect these components without a
 transition processor. This branch provides components, not an application backend.
 
-The transition processor, full-loop coordinator, old ARM control interfaces,
+The RTL transition processor, full-loop hardware coordinator, old ARM control interfaces,
 application simulator devices and prepared board demos have been retired.
 Future RT communication and the ARM/FPGA split follow the Rust work in
 [PR #997](https://github.com/SanderVocke/shoopdaloop/pull/997); their replacement
@@ -23,10 +23,13 @@ cache coherence, transfer backpressure, retirement and reset behavior remain
 verified. Faults are exposed by the relevant component; there is no active
 application-level sticky-silence/reset protocol or full-loop timing guarantee.
 
-The [scoped Rust reference](src/rust/rt_fpga_reference/README.md) provides
-functional counterparts of the retained state, job and logical-memory components.
-Marlin differential tests compare jobs, state and samples exactly. This does not
-restore transition processing, the former ARM interface or an application backend.
+The [Rust reference](src/rust/rt_fpga_reference/README.md) provides functional
+transition, state, job and logical-memory models, plus a combined functional
+pipeline. Transition traces are compared to the current native loop resolver;
+Marlin differential tests compare the retained SP/JP RTL's jobs, state and samples
+exactly. The Rust transition model follows native acyclic synchronization rules
+and supplies SP's explicit records. Its restoration does not restore transition
+RTL, the former ARM interface or an application backend.
 
 See [verification commands](src/rust/rt_fpga_testbench/README.md), the
 [retirement ledger](docs/fpga/retirement-ledger.md), and the

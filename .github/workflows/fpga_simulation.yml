@@ -99,9 +99,10 @@ jobs:
           set -o pipefail
           cargo test --locked -p rt_fpga_testbench --features sim -- --nocapture 2>&1 | tee work/marlin-suite/regression.log
           cargo check --locked -p rt_fpga_testbench
-      - name: Check restored Rust component reference
+      - name: Check functional processors and native resolver traces
         run: |
           cargo build --locked -p rt_fpga_reference --no-default-features
+          cargo test --locked -p rt_fpga_reference --no-default-features
           cargo test --locked -p rt_fpga_reference --all-features
       - name: Verify production CPU numeric checks
         run: |

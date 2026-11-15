@@ -5,6 +5,11 @@ by `--test reference`. The same explicit programs, records and samples run throu
 independent Rust models and real RTL; jobs, state, errors, buffers and output
 samples are compared exactly. Existing vector tests remain independent checks.
 
+The reference crate also has Rust-only transition and full functional pipeline
+tests: `cargo test --locked -p rt_fpga_reference --all-features`. They compare
+primitive-loop traces to the current native resolver and exercise TP -> SP -> JP
+with logical media. The RTL benches below remain TP-free.
+
 `rt_fpga_testbench` preserves the Marlin/Verilator simulation framework and
 component drivers. It needs Verilator **5.032**, a C++ compiler and Rust. Simulation
 is opt-in; default native and Wasm builds do not depend on Marlin.
