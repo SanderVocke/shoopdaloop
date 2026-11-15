@@ -29,6 +29,10 @@ pub enum Observation {
     CaptureExhausted {
         target: LoopId,
     },
+    /// Seal the captured prefix as current content and mark it incomplete.
+    CapturePrefixExhausted {
+        target: LoopId,
+    },
     /// Refuse capture starts/restarts for this primitive at the preview boundary.
     /// Use `Refused` instead when an entire request-origin family must fail.
     CaptureUnavailable {

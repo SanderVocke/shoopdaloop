@@ -188,16 +188,17 @@ pub trait Processors<P> {
     fn get(&self, id: NodeId) -> Option<&P>;
     fn get_mut(&mut self, id: NodeId) -> Option<&mut P>;
 }
-pub struct Boundary<'a, P, L> {
+pub struct Boundary<'a, P, L, S: crate::Sample = f32> {
     pub frame: Frame,
     pub graph: Epoch,
     pub available: bool,
     pub planner: &'a mut L,
     pub processors: &'a mut dyn Processors<P>,
+    pub resources: crate::resource::PlannerResourceIo<'a, S>,
 }
-pub trait Handler<P, L>: Send {
+pub trait Handler<P, L, S: crate::Sample = f32>: Send {
     fn begin_callback(&mut self, frame: Frame);
-    fn apply(&mut self, boundary: Boundary<'_, P, L>);
+    fn apply(&mut self, boundary: Boundary<'_, P, L, S>);
     fn end_callback(&mut self, _next_frame: Frame) {}
 }
 

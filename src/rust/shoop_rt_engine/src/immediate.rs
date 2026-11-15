@@ -172,6 +172,7 @@ fn loop_command(command: Command) -> Option<(u32, Immediate)> {
         Command::LoopBalance(id, v) => Some((id, Immediate::Balance(v))),
         Command::Start(id) => Some((id, Immediate::Playback(true))),
         Command::Stop(id) => Some((id, Immediate::Playback(false))),
+        Command::Record(id) => Some((id, Immediate::Record)),
         _ => None,
     }
 }
@@ -229,7 +230,7 @@ impl Render {
             {
                 return Err(Code::TargetUnavailable);
             }
-            if matches!(op, Immediate::Playback(_))
+            if matches!(op, Immediate::Playback(_) | Immediate::Record)
                 && !boundary
                     .processors
                     .get(pool.fader(id as usize))
@@ -239,13 +240,13 @@ impl Render {
             }
             boundary
                 .planner
-                .apply_immediate(target, op)
-                .map_err(|error| {
-                    if error == rt_runtime::Error::InvalidId {
-                        Code::TargetUnavailable
-                    } else {
-                        Code::Unsupported
+                .apply_immediate_capture(target, op, boundary.frame, &mut boundary.resources)
+                .map_err(|error| match error {
+                    rt_runtime::Error::InvalidId => Code::TargetUnavailable,
+                    rt_runtime::Error::Capacity | rt_runtime::Error::Exhausted => {
+                        Code::CaptureUnavailable
                     }
+                    _ => Code::CannotApply,
                 })
         } else {
             let (node, op) = Self::node(pool, command)?;

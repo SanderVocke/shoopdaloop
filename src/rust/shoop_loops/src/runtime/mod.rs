@@ -560,6 +560,7 @@ pub struct View<S: Sample = f32> {
 }
 #[derive(Clone, Copy)]
 struct Take {
+    publish_incomplete: bool,
     started_at: Frame,
     windows: Windows,
     writer: Option<LiveWriterId>,

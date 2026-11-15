@@ -1220,6 +1220,7 @@ pub enum BackendImmediateCommand {
     LoopBalance(BackendLoopId, f32),
     Start(BackendLoopId),
     Stop(BackendLoopId),
+    Record(BackendLoopId),
     InputGainDb(BackendTrackId, f32),
     InputBalance(BackendTrackId, f32),
     OutputGainDb(BackendTrackId, f32),

@@ -367,3 +367,104 @@ fn thirty_loaded_loops_start_together_with_ordered_results_and_snapshots() {
         );
     }
 }
+
+#[shoop_test]
+fn immediate_recording_uses_rt_state_before_snapshots_and_preserves_exported_audio() {
+    fn audio(b: &mut Stack, id: BackendLoopId) -> Vec<std::sync::Arc<[f32]>> {
+        for _ in 0..100 {
+            if let Some(audio) = b.loop_audio_data(id).unwrap() {
+                return audio;
+            }
+            b.clock_mut().render(16);
+            b.pump();
+        }
+        panic!("audio export did not arrive");
+    }
+    let mut b = stack(&description());
+    b.clock_mut().capture = |_| 0.25;
+    let created = b
+        .create_direct_track(DirectTrackRequest {
+            port_name_base: "recording".into(),
+            audio_channels: 2,
+            midi: false,
+            initial_loops: 1,
+        })
+        .unwrap();
+    let id = created.loops[0];
+    b.set_port_connected(created.ports[0].id, "audio_in_1", true)
+        .unwrap();
+    b.wait_idle();
+    for _ in 0..4 {
+        b.clock_mut().render(1);
+        b.pump();
+    }
+    let responses = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let received = responses.clone();
+    b.set_immediate_response_handler(move |r| received.lock().unwrap().push(*r));
+    let cursor = b.mutation_cursor();
+    b.immediate_group(&[Command::Record(id)]).unwrap();
+    assert_no_heap(|| b.clock_mut().render(8));
+    b.immediate_group(&[Command::Start(id)]).unwrap();
+    assert_no_heap(|| b.clock_mut().render(1));
+    for _ in 0..8 {
+        b.pump();
+    }
+    let state = b.poll().unwrap();
+    assert_eq!(
+        state.loops[&id].mode,
+        BackendLoopMode::Playing,
+        "{:?}",
+        responses.lock().unwrap()
+    );
+    assert_eq!(state.loops[&id].length, 8);
+    assert_eq!(b.mutation_cursor(), cursor, "no legacy recording requests");
+    assert_eq!(b.immediate_diagnostics().rt_refused, 0);
+    let old = audio(&mut b, id);
+    assert_eq!(&*old[0], &[0.25; 8]);
+    b.wait_idle();
+    b.clock_mut().capture = |_| -0.5;
+    b.immediate_group(&[Command::Record(id)]).unwrap();
+    for _ in 0..64 {
+        assert_no_heap(|| b.clock_mut().render(1));
+        b.pump();
+        if responses.lock().unwrap().len() == 3 {
+            break;
+        }
+    }
+    assert_eq!(
+        responses.lock().unwrap().len(),
+        3,
+        "bulk retirement must release later commands"
+    );
+    let start = responses.lock().unwrap()[2].header.frame();
+    assert_no_heap(|| b.clock_mut().render(4));
+    b.immediate_group(&[Command::Stop(id)]).unwrap();
+    assert_no_heap(|| b.clock_mut().render(1));
+    for _ in 0..8 {
+        b.pump();
+    }
+    let state = b.poll().unwrap();
+    assert_eq!(
+        state.loops[&id].mode,
+        BackendLoopMode::Stopped,
+        "{:?}",
+        responses
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|r| (
+                r.header.frame(),
+                r.records()
+                    .iter()
+                    .map(|v| (v.command(), v.code()))
+                    .collect::<Vec<_>>()
+            ))
+            .collect::<Vec<_>>()
+    );
+    let frames = responses.lock().unwrap()[3].header.frame() - start;
+    assert_eq!(u64::from(state.loops[&id].length), frames);
+    let new = audio(&mut b, id);
+    assert_eq!(&*new[0], vec![-0.5; frames as usize]);
+    assert_eq!(&*old[0], &[0.25; 8]);
+    assert_eq!(b.immediate_diagnostics().rt_refused, 0);
+}

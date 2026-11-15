@@ -21,12 +21,13 @@ impl Service {
                     && !self.composites.contains_key(id)
                     && matches!(
                         state.mode,
-                        BackendLoopMode::Stopped | BackendLoopMode::Playing
+                        BackendLoopMode::Stopped
+                            | BackendLoopMode::Playing
+                            | BackendLoopMode::Recording
                     )
                     && state.next_mode.is_none()
                     && !state.recording_armed
-                    && !state.repeat_sync
-                    && !state.capture_incomplete)
+                    && !state.repeat_sync)
                     .then_some(*id)
             })
             .collect();
@@ -59,9 +60,12 @@ impl Service {
         if !self.backend.supports_immediate_commands() {
             return Err(Refusal::Unsupported);
         }
-        let playback = commands
-            .iter()
-            .any(|command| matches!(command, Immediate::Start(_) | Immediate::Stop(_)));
+        let playback = commands.iter().any(|command| {
+            matches!(
+                command,
+                Immediate::Start(_) | Immediate::Stop(_) | Immediate::Record(_)
+            )
+        });
         if self.duplication.is_some()
             || self.persistence_immediate_busy(playback)
             || self.audio_driver_busy(None)
@@ -99,6 +103,7 @@ impl Service {
                     Immediate::LoopBalance(id, v) => B::LoopBalance(loop_id(id), v),
                     Immediate::Start(id) => B::Start(loop_id(id)),
                     Immediate::Stop(id) => B::Stop(loop_id(id)),
+                    Immediate::Record(id) => B::Record(loop_id(id)),
                     Immediate::InputGainDb(id, v) => B::InputGainDb(track(id), v),
                     Immediate::InputBalance(id, v) => B::InputBalance(track(id), v),
                     Immediate::OutputGainDb(id, v) => B::OutputGainDb(track(id), v),

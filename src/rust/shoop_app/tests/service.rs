@@ -2433,7 +2433,7 @@ fn ui_immediate_controls_use_snapshots_and_keep_bursts_ordered_without_results()
 }
 
 #[shoop_test]
-fn ui_immediate_thirty_loop_start_is_one_group_while_recording_stays_legacy() {
+fn ui_immediate_thirty_loop_record_finish_and_start_use_complete_groups() {
     let mut f = fixture();
     let connection = ConnectionId(1);
     let mut client = attach(&mut f.service, 1, connection, true);
@@ -2467,11 +2467,10 @@ fn ui_immediate_thirty_loop_start_is_one_group_while_recording_stays_legacy() {
         cycles_delay: None,
         align_to_sync_at: None,
     });
-    assert!(immediate::group(&recording, &f.service.snapshot()).is_none());
-    assert!(matches!(
-        command(&mut f.service, &mut client, connection, recording),
-        Outcome::Confirmed { .. }
-    ));
+    let group = immediate::group(&recording, &f.service.snapshot()).unwrap();
+    assert_eq!(group.len(), 30);
+    let message = client.immediate(group).unwrap();
+    f.service.handle(connection, message).unwrap();
     f.service.tick(STEP);
     let stop = Command::Control(ControlOperation::Transition {
         loops: loops.clone(),
@@ -2479,14 +2478,13 @@ fn ui_immediate_thirty_loop_start_is_one_group_while_recording_stays_legacy() {
         cycles_delay: None,
         align_to_sync_at: None,
     });
-    assert!(
-        immediate::group(&stop, &f.service.snapshot()).is_none(),
-        "recording finalization stays legacy"
-    );
-    assert!(matches!(
-        command(&mut f.service, &mut client, connection, stop),
-        Outcome::Confirmed { .. }
-    ));
+    let group = immediate::group(&stop, &f.service.snapshot()).unwrap();
+    assert_eq!(group.len(), 30);
+    let message = client.immediate(group).unwrap();
+    f.service.handle(connection, message).unwrap();
+    for _ in 0..4 {
+        f.service.tick(STEP);
+    }
     command(
         &mut f.service,
         &mut client,
@@ -4998,4 +4996,107 @@ fn memory_statistics_reach_typed_and_encoded_application_snapshots() {
             .flatten()
             .any(|pool| pool.name.as_str() == "Media payload"));
     }
+}
+
+#[shoop_test]
+fn ui_immediate_recording_works_before_fresh_snapshots_and_keeps_fixed_cycle_legacy() {
+    let mut f = fixture();
+    let (mut runtime, port) = runtime(
+        &mut f.service,
+        shoop_app_client::runtime::Startup::Fresh(Vec::new()),
+    );
+    runtime
+        .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+            name: "Capture".into(),
+            audio_channels: 2,
+            midi: false,
+        }))
+        .unwrap();
+    runtime
+        .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 24);
+    let track = runtime.snapshot().tracks[1].id;
+    let loop_id = runtime.snapshot().tracks[1].loops[0].id;
+    let legacy = f.legacy_controls.get();
+    let results = runtime.client().results().len();
+    for (start, finish, expected) in [
+        (
+            LoopAction::DefaultClicked,
+            LoopAction::PlayClicked,
+            LoopMode::Playing,
+        ),
+        (
+            LoopAction::RecordClicked,
+            LoopAction::StopClicked,
+            LoopMode::Stopped,
+        ),
+    ] {
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track,
+                loop_id,
+                action: start,
+            })
+            .unwrap();
+        runtime.tick(STEP);
+        let message = port.commands.try_recv().unwrap();
+        assert!(
+            matches!(&message, ClientMessage::Immediate { commands, .. } if commands == &[immediate::Command::Record(loop_id)])
+        );
+        let mut bytes = [0; shoop_transport::MAX_RECORD_BYTES];
+        let len = codec::encode(&WireMessage::Client(message), &mut bytes).unwrap();
+        let WireMessage::Client(message) = codec::decode(&bytes[..len]).unwrap() else {
+            panic!()
+        };
+        f.service.handle(ConnectionId(99), message).unwrap();
+        f.service.tick(STEP);
+        assert_ne!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Recording,
+            "UI still has the previous snapshot"
+        );
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track,
+                loop_id,
+                action: finish,
+            })
+            .unwrap();
+        runtime.tick(STEP);
+        let message = port.commands.try_recv().unwrap();
+        assert!(matches!(&message, ClientMessage::Immediate { .. }));
+        f.service.handle(ConnectionId(99), message).unwrap();
+        pump_runtime(&mut f.service, &mut runtime, &port, 4);
+        assert_eq!(runtime.snapshot().tracks[1].loops[0].mode, expected);
+        assert!(runtime.snapshot().tracks[1].loops[0].length_frames > 0);
+        assert_eq!(runtime.client().snapshot().unwrap().immediate.refused, 0);
+    }
+    assert_eq!(f.legacy_controls.get(), legacy);
+    assert_eq!(runtime.client().results().len(), results);
+    assert!(runtime.client().pending().is_empty());
+    runtime
+        .dispatch(AppIntent::Global(GlobalControlAction::SetApplyNCycles(2)))
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 4);
+    runtime
+        .dispatch(AppIntent::Loop {
+            track_id: track,
+            loop_id,
+            action: LoopAction::RecordClicked,
+        })
+        .unwrap();
+    runtime.tick(STEP);
+    assert!(
+        matches!(
+            port.commands.try_recv().unwrap(),
+            ClientMessage::Submit { .. }
+        ),
+        "fixed-cycle recording keeps its existing complete route"
+    );
+    assert!(f
+        .immediate_groups
+        .borrow()
+        .iter()
+        .all(|b| b.deadline.is_none()));
 }

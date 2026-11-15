@@ -338,6 +338,37 @@ impl Resolver {
         Ok(())
     }
 
+    pub(crate) fn immediate_capture_decision(
+        &self,
+        id: LoopId,
+        operation: Transition,
+    ) -> Result<Decision, Error> {
+        let mut state = self.state(id)?;
+        if self.quiescent
+            || self.committed
+            || self.preview.is_some()
+            || self.pending_transitions().next().is_some()
+            || self.program_change.is_some()
+            || self.topology.node(id)?.kind != LoopKind::Primitive
+            || !matches!(state.mode, Mode::Stopped | Mode::Playing | Mode::Recording)
+            || state.repeat_sync
+        {
+            return Err(Error::InvalidState);
+        }
+        let playback_discontinuity = transition(&mut state, operation)?;
+        Ok(Decision {
+            state,
+            playback_discontinuity,
+            origin: None,
+        })
+    }
+
+    pub(crate) fn commit_immediate_capture(&mut self, decision: Decision) {
+        let slot = decision.state.id.slot() as usize;
+        self.states[slot] = Some(decision.state);
+        self.immediate_discontinuities[slot] |= decision.playback_discontinuity;
+    }
+
     pub fn set_repeat_sync(&mut self, id: LoopId, enabled: bool) -> Result<(), Error> {
         if self.quiescent || self.committed {
             return Err(Error::InvalidState);
@@ -700,8 +731,10 @@ impl Resolver {
                         Observation::CaptureAborted { target: b, .. },
                     ) => a == b,
                     (
-                        Observation::CaptureExhausted { target: a },
-                        Observation::CaptureExhausted { target: b },
+                        Observation::CaptureExhausted { target: a }
+                        | Observation::CapturePrefixExhausted { target: a },
+                        Observation::CaptureExhausted { target: b }
+                        | Observation::CapturePrefixExhausted { target: b },
                     ) => a == b,
                     (
                         Observation::CaptureUnavailable { target: a, .. },
@@ -718,7 +751,8 @@ impl Resolver {
             }
             match *observation {
                 Observation::CaptureAborted { target, .. }
-                | Observation::CaptureExhausted { target } => {
+                | Observation::CaptureExhausted { target }
+                | Observation::CapturePrefixExhausted { target } => {
                     if !self.state(target)?.writes() {
                         return Err(Error::InvalidState);
                     }
@@ -1462,7 +1496,8 @@ impl Boundary<'_> {
     fn settle(&mut self, probe: Option<LoopId>) -> Result<(), Error> {
         for observation in self.observations {
             if let Observation::CaptureAborted { target, .. }
-            | Observation::CaptureExhausted { target } = *observation
+            | Observation::CaptureExhausted { target }
+            | Observation::CapturePrefixExhausted { target } = *observation
             {
                 for record in self.scratch.records.iter_mut().flatten() {
                     if record.followup
@@ -1484,12 +1519,20 @@ impl Boundary<'_> {
                 state.monitor_previous = false;
                 self.event(target, EventKind::Refused(reason));
             }
-            if let Observation::CaptureExhausted { target } = *observation {
+            if let Observation::CaptureExhausted { target }
+            | Observation::CapturePrefixExhausted { target } = *observation
+            {
                 let slot = target.slot() as usize;
                 let state = self.scratch.states[slot]
                     .as_mut()
                     .expect("validated observation");
                 state.capture_incomplete = true;
+                if matches!(observation, Observation::CapturePrefixExhausted { .. })
+                    && state.mode == Mode::Recording
+                {
+                    state.content_length = state.capture_frames;
+                    state.content_revision = state.capture_revision;
+                }
                 if state.mode == Mode::Replacing {
                     state.content_revision = state.capture_revision;
                 }

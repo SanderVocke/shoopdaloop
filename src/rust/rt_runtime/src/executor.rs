@@ -345,7 +345,7 @@ impl<P, S: Sample> crate::immediate::Processors<P> for ImmediateProcessors<'_, P
 pub struct GraphRuntime<P, L: Planner<S> = NoPlanner, Q: ProcessorOperation = (), S: Sample = f32> {
     snapshot_observer: Option<Box<dyn crate::snapshot::Observer<P, L>>>,
     snapshot_callback: Option<Frame>,
-    immediate: Option<Box<dyn crate::immediate::Handler<P, L>>>,
+    immediate: Option<Box<dyn crate::immediate::Handler<P, L, S>>>,
     immediate_callback: Option<Frame>,
     profiling: rt_profiling::Recorder,
     quantum: crate::Quantum,
@@ -677,7 +677,7 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
         self.resources.render_work()
     }
 
-    pub fn set_immediate_handler(&mut self, handler: Box<dyn crate::immediate::Handler<P, L>>) {
+    pub fn set_immediate_handler(&mut self, handler: Box<dyn crate::immediate::Handler<P, L, S>>) {
         self.immediate = Some(handler);
     }
 
@@ -774,6 +774,12 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
                     frame: self.tick_frame,
                     graph: self.epoch,
                     available: result.is_ok(),
+                    resources: self.resources.planner_io(
+                        self.tick_frame,
+                        self.tick_frame
+                            .checked_add(self.quantum.frames())
+                            .unwrap_or(self.tick_frame),
+                    ),
                     planner: &mut self.planner,
                     processors: &mut ImmediateProcessors {
                         slots: &mut self.slots,
@@ -1350,6 +1356,7 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
                     frame,
                     graph: self.epoch,
                     available: true,
+                    resources: self.resources.planner_io(frame, end),
                     planner: &mut self.planner,
                     processors: &mut ImmediateProcessors {
                         slots: &mut self.slots,

@@ -9,6 +9,7 @@ pub const COMMANDS: usize = 32;
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct Capabilities {
     pub enabled: bool,
+    /// Direct audio loops supporting immediate Record, Start and Stop.
     pub playback: Vec<LoopId>,
     pub refused: u64,
 }
@@ -19,6 +20,7 @@ pub enum Command {
     LoopBalance(LoopId, f32),
     Start(LoopId),
     Stop(LoopId),
+    Record(LoopId),
     InputGainDb(TrackId, f32),
     InputBalance(TrackId, f32),
     OutputGainDb(TrackId, f32),
@@ -54,16 +56,16 @@ pub fn group(action: &Action, state: &SessionSnapshot) -> Option<Vec<Command>> {
             .collect::<Vec<_>>()
     };
     let playback = |ids: Vec<LoopId>, mode, solo: bool| -> Option<Vec<Command>> {
-        if !matches!(mode, LoopMode::Playing | LoopMode::Stopped)
-            || ids.iter().any(|id| {
-                !state.immediate.playback.contains(id)
-                    || (mode == LoopMode::Playing && find(*id).is_none_or(|l| l.empty))
-            })
+        if !matches!(
+            mode,
+            LoopMode::Playing | LoopMode::Stopped | LoopMode::Recording
+        ) || state.global.apply_n_cycles != 0
+            || ids.iter().any(|id| !state.immediate.playback.contains(id))
         {
             return None;
         }
         let mut commands = Vec::new();
-        if solo && state.global.solo && mode == LoopMode::Playing {
+        if solo && state.global.solo && matches!(mode, LoopMode::Playing | LoopMode::Recording) {
             for track in &state.tracks {
                 if track.loops.iter().any(|l| ids.contains(&l.id)) {
                     for other in track.loops.iter().filter(|l| !ids.contains(&l.id)) {
@@ -75,12 +77,10 @@ pub fn group(action: &Action, state: &SessionSnapshot) -> Option<Vec<Command>> {
                 }
             }
         }
-        commands.extend(ids.into_iter().map(|id| {
-            if mode == LoopMode::Playing {
-                Command::Start(id)
-            } else {
-                Command::Stop(id)
-            }
+        commands.extend(ids.into_iter().map(|id| match mode {
+            LoopMode::Playing => Command::Start(id),
+            LoopMode::Recording => Command::Record(id),
+            _ => Command::Stop(id),
         }));
         Some(commands)
     };
@@ -121,7 +121,7 @@ pub fn group(action: &Action, state: &SessionSnapshot) -> Option<Vec<Command>> {
         } if unsynced => {
             let entry = find(*loop_id)?;
             let (ids, mode) = match action {
-                LoopAction::PlayClicked | LoopAction::StopClicked => (
+                LoopAction::PlayClicked | LoopAction::StopClicked | LoopAction::RecordClicked => (
                     if entry.selected {
                         selected()
                     } else {
@@ -129,13 +129,22 @@ pub fn group(action: &Action, state: &SessionSnapshot) -> Option<Vec<Command>> {
                     },
                     if matches!(action, LoopAction::PlayClicked) {
                         LoopMode::Playing
+                    } else if matches!(action, LoopAction::RecordClicked) {
+                        LoopMode::Recording
                     } else {
                         LoopMode::Stopped
                     },
                 ),
                 LoopAction::DefaultClicked => (
                     vec![*loop_id],
-                    if entry.mode == LoopMode::Stopped {
+                    if entry.mode == LoopMode::Recording {
+                        LoopMode::Playing
+                    } else if entry.mode == LoopMode::Stopped && entry.empty {
+                        if state.global.default_recording_action == DefaultRecordingAction::Grab {
+                            return None;
+                        }
+                        LoopMode::Recording
+                    } else if entry.mode == LoopMode::Stopped {
                         LoopMode::Playing
                     } else {
                         LoopMode::Stopped
@@ -146,7 +155,7 @@ pub fn group(action: &Action, state: &SessionSnapshot) -> Option<Vec<Command>> {
             playback(ids, mode, true)?
         }
         Action::PlaySelected if unsynced => playback(selected(), LoopMode::Playing, true)?,
-        Action::Global(GlobalControlAction::StopAll) => playback(
+        Action::Global(GlobalControlAction::StopAll) if unsynced => playback(
             state
                 .tracks
                 .iter()

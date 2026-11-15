@@ -21,6 +21,7 @@ pub enum Command {
     LoopBalance(u32, f32),
     Start(u32),
     Stop(u32),
+    Record(u32),
     InputGain(u32, f32),
     InputBalance(u32, f32),
     OutputGain(u32, f32),
@@ -77,6 +78,7 @@ pub enum Code {
     InvalidValue = 5,
     Unsupported = 6,
     CannotApply = 7,
+    CaptureUnavailable = 8,
 }
 impl Code {
     pub fn from_raw(value: u32) -> Option<Self> {
@@ -89,6 +91,7 @@ impl Code {
             5 => Self::InvalidValue,
             6 => Self::Unsupported,
             7 => Self::CannotApply,
+            8 => Self::CaptureUnavailable,
             _ => return None,
         })
     }
@@ -100,6 +103,7 @@ impl Code {
             Self::Unsupported | Self::CannotApply => Some(4),
             Self::InvalidValue => Some(5),
             Self::DeadlineMissed => Some(6),
+            Self::CaptureUnavailable => Some(1),
         }
     }
 }
@@ -167,6 +171,7 @@ impl CommandRecord {
             LoopBalance(id, v) => (1, id, v.to_bits()),
             Start(id) => (2, id, 0),
             Stop(id) => (3, id, 0),
+            Record(id) => (12, id, 0),
             InputGain(id, v) => (4, id, v.to_bits()),
             InputBalance(id, v) => (5, id, v.to_bits()),
             OutputGain(id, v) => (6, id, v.to_bits()),
@@ -192,6 +197,7 @@ impl CommandRecord {
             1 => LoopBalance(id, f32::from_bits(value)),
             2 if value == 0 => Start(id),
             3 if value == 0 => Stop(id),
+            12 if value == 0 => Record(id),
             4 => InputGain(id, f32::from_bits(value)),
             5 => InputBalance(id, f32::from_bits(value)),
             6 => OutputGain(id, f32::from_bits(value)),

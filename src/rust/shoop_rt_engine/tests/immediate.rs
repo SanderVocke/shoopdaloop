@@ -893,3 +893,394 @@ fn encoded_fragmentation_and_paused_receiver_preserve_bounded_command_delivery()
     assert_no_heap(|| server.pump(16));
     assert_eq!(server.failure(), Some(CarrierError::Disconnected));
 }
+
+fn recording_fixture(d: &shoop_rt_engine::EngineDescription) -> (Harness, (u64, u64)) {
+    let (mut h, _) = fixture_for(d);
+    h.done(Request::CreateLoop {
+        loop_id: loop_id(1, 1),
+        strip: strip(0, 1),
+    });
+    for channel in 0..2 {
+        h.done(Request::Connect {
+            port: port(strip(0, 1), PortKind::AudioIn, channel),
+            host: audio_in(u32::from(channel)),
+            connected: true,
+        });
+        h.done(route(strip(0, 1), channel, channel, true));
+    }
+    h.done(Request::StripControl {
+        strip: strip(0, 1),
+        control: StripControl::AutomaticMonitoring(true),
+    });
+    h.done(Request::StripControl {
+        strip: strip(0, 1),
+        control: StripControl::InputGain(0.5),
+    });
+    h.input = Box::new(|port, frame| {
+        if port == 0 {
+            frame as f32 / 1000.
+        } else {
+            -0.25
+        }
+    });
+    let c = configuration(&mut h);
+    (h, c)
+}
+fn immediate_results(h: &Harness) -> Vec<immediate::Response> {
+    h.lifecycle
+        .iter()
+        .filter_map(|m| match m {
+            EngineMessage::ImmediateResponse(r) => Some(*r),
+            _ => None,
+        })
+        .collect()
+}
+fn observed_loop(h: &mut Harness, id: LoopSlotId) -> Telemetry {
+    let mut bytes = vec![0; h.host.endpoint().snapshot_capacity()];
+    let (_, len) = h.host.endpoint().read_snapshot(&mut bytes).unwrap();
+    Records(&bytes[HEADER..len])
+        .find_map(|r| match r.unwrap() {
+            Record::Telemetry(t @ Telemetry::Loop { loop_id, .. }) if loop_id == id => Some(t),
+            _ => None,
+        })
+        .unwrap()
+}
+
+#[shoop_test]
+fn recording_milestone_grouped_capture_finishes_to_play_and_stop_at_exact_frames() {
+    use immediate::Code;
+    let mut d = description();
+    d.ramp_frames = 0;
+    let (mut h, c) = recording_fixture(&d);
+    h.lifecycle.clear();
+    let start = h.frame();
+    send(
+        &mut h,
+        c,
+        &[
+            Command::Record(0),
+            Command::Record(u32::MAX),
+            Command::Record(1),
+        ],
+    );
+    h.run(8, 4);
+    let r = immediate_results(&h)[0];
+    assert_eq!(r.header.frame(), start);
+    assert_eq!(r.header.deadline(), None);
+    assert_eq!(
+        r.records().iter().map(|r| r.code()).collect::<Vec<_>>(),
+        [Code::Applied, Code::TargetUnavailable, Code::Applied]
+    );
+    assert!(matches!(
+        observed_loop(&mut h, loop_id(0, 1)),
+        Telemetry::Loop {
+            mode: LoopMode::Recording,
+            ..
+        }
+    ));
+    assert_eq!(h.outputs[0][start as usize], start as f32 / 2000.);
+    send(&mut h, c, &[Command::Start(0)]);
+    h.run(1, 1);
+    assert_eq!(
+        *h.outputs[0].last().unwrap(),
+        start as f32 / 2000. + (start + 8) as f32 / 2000.,
+        "other recorder retains automatic monitoring"
+    );
+    send(&mut h, c, &[Command::Stop(1)]);
+    h.run(1, 1);
+    assert_eq!(
+        *h.outputs[0].last().unwrap(),
+        (start + 1) as f32 / 2000.,
+        "last recorder releases automatic monitoring without muting playback"
+    );
+    let responses = immediate_results(&h);
+    assert_eq!(responses[1].header.frame(), start + 8);
+    assert_eq!(responses[2].header.frame(), start + 9);
+    assert!(responses[1..]
+        .iter()
+        .all(|r| r.records()[0].code() == Code::Applied));
+    let (frames, audio, _) = h.read(loop_id(0, 1), BulkSelector::AudioFrames);
+    assert_eq!(frames, 8);
+    let expected: Vec<_> = (start..start + 8)
+        .flat_map(|f| [f as f32 / 2000., -0.125])
+        .collect();
+    assert_eq!(audio, expected);
+    let (frames, audio, _) = h.read(loop_id(1, 1), BulkSelector::AudioFrames);
+    assert_eq!(frames, 9);
+    assert_eq!(&audio[..16], &expected);
+    assert!(matches!(
+        observed_loop(&mut h, loop_id(1, 1)),
+        Telemetry::Loop {
+            mode: LoopMode::Stopped,
+            length: 9,
+            ..
+        }
+    ));
+    h.done(Request::StripControl {
+        strip: strip(0, 1),
+        control: StripControl::Monitoring(true),
+    });
+    h.run(1, 1);
+    let at = h.frame() - 1;
+    assert_eq!(
+        *h.outputs[0].last().unwrap(),
+        (start + (at - start - 8) % 8) as f32 / 2000. + at as f32 / 2000.,
+        "manual monitoring remains enabled"
+    );
+}
+
+#[shoop_test]
+fn recording_milestone_buffer_only_callbacks_and_empty_repeated_actions() {
+    use immediate::Code;
+    let mut d = description();
+    d.quantum = 16;
+    d.ramp_frames = 0;
+    let (mut h, c) = recording_fixture(&d);
+    h.run((16 - h.frame() % 16) as usize % 16, 1);
+    let frame = h.host.endpoint().command_clock().frame().0;
+    h.lifecycle.clear();
+    send(
+        &mut h,
+        c,
+        &[Command::Record(0), Command::Record(0), Command::Start(0)],
+    );
+    h.run(1, 1);
+    let r = immediate_results(&h)[0];
+    assert_eq!(r.header.frame(), frame);
+    assert_eq!(
+        r.records().iter().map(|r| r.code()).collect::<Vec<_>>(),
+        [Code::Applied, Code::Applied, Code::CannotApply]
+    );
+    send(&mut h, c, &[Command::Stop(0)]);
+    h.run(1, 1);
+    assert_eq!(immediate_results(&h)[1].records()[0].code(), Code::Applied);
+    send(&mut h, c, &[Command::Record(0)]);
+    h.run(32, 1);
+    let end = h.host.endpoint().command_clock().frame().0;
+    send(&mut h, c, &[Command::Record(0), Command::Start(0)]);
+    h.run(1, 1);
+    let responses = immediate_results(&h);
+    assert!(responses.iter().all(|r| r.header.deadline().is_none()));
+    assert_eq!(responses.last().unwrap().header.frame(), end);
+    assert!(responses
+        .last()
+        .unwrap()
+        .records()
+        .iter()
+        .all(|r| r.code() == Code::Applied));
+    h.run(32, 1);
+    let (frames, _, _) = h.read(loop_id(0, 1), BulkSelector::AudioFrames);
+    assert_eq!(
+        frames,
+        end - frame,
+        "repeat Record preserves the prefix and the original start frame"
+    );
+}
+
+#[shoop_test]
+fn recording_milestone_exhaustion_preserves_prefix_and_finish_reservations() {
+    use immediate::Code;
+    let mut d = description();
+    d.resource_pages = 7;
+    d.ramp_frames = 0;
+    d.history.seconds = 0;
+    let (mut h, c) = recording_fixture(&d);
+    send(&mut h, c, &[Command::Record(0)]);
+    h.run(64, 16);
+    assert!(
+        matches!(
+            observed_loop(&mut h, loop_id(0, 1)),
+            Telemetry::Loop {
+                mode: LoopMode::Recording,
+                ..
+            }
+        ),
+        "{:?}",
+        observed_loop(&mut h, loop_id(0, 1))
+    );
+    send(
+        &mut h,
+        c,
+        &[
+            Command::Record(1),
+            Command::LoopGain(1, 0.25),
+            Command::Stop(0),
+        ],
+    );
+    h.run(1, 1);
+    let r = *immediate_results(&h).last().unwrap();
+    assert_eq!(
+        r.records().iter().map(|r| r.code()).collect::<Vec<_>>(),
+        [Code::CaptureUnavailable, Code::Applied, Code::Applied]
+    );
+    let (frames, original, _) = h.read(loop_id(0, 1), BulkSelector::AudioFrames);
+    assert_eq!(
+        frames, 64,
+        "finish works while there is no room to start another recorder"
+    );
+    send(&mut h, c, &[Command::Record(0)]);
+    h.run(1, 1);
+    assert_eq!(
+        immediate_results(&h).last().unwrap().records()[0].code(),
+        Code::CaptureUnavailable
+    );
+    let (_, unchanged, _) = h.read(loop_id(0, 1), BulkSelector::AudioFrames);
+    assert_eq!(
+        original, unchanged,
+        "failed acquisition preserves existing media"
+    );
+
+    let (mut h, c) = recording_fixture(&d);
+    let start = h.frame();
+    send(&mut h, c, &[Command::Record(0)]);
+    h.run(65, 1);
+    assert!(matches!(
+        observed_loop(&mut h, loop_id(0, 1)),
+        Telemetry::Loop {
+            mode: LoopMode::Stopped,
+            length: 64,
+            capture_incomplete: true,
+            ..
+        }
+    ));
+    let (frames, audio, _) = h.read(loop_id(0, 1), BulkSelector::AudioFrames);
+    assert_eq!(frames, 64);
+    assert_eq!(audio[0], start as f32 / 2000.);
+    assert_eq!(audio[126], (start + 63) as f32 / 2000.);
+    assert_eq!(
+        immediate_results(&h).len(),
+        1,
+        "exhaustion produces no unsolicited response"
+    );
+    send(&mut h, c, &[Command::Start(0)]);
+    h.settle();
+    assert_eq!(immediate_results(&h).len(), 2);
+    assert_eq!(
+        immediate_results(&h).last().unwrap().records()[0].code(),
+        Code::Applied
+    );
+    assert!(matches!(
+        observed_loop(&mut h, loop_id(0, 1)),
+        Telemetry::Loop {
+            mode: LoopMode::Playing,
+            length: 64,
+            capture_incomplete: true,
+            ..
+        }
+    ));
+}
+
+#[shoop_test]
+fn recording_milestone_encoded_record_finish_results_match_published_state() {
+    use shoop_rt_transport::carrier::{RecordPort, RecordServer};
+    use std::{cell::RefCell, rc::Rc};
+    struct Port {
+        input: Rc<RefCell<Option<Vec<u8>>>>,
+        responses: Rc<RefCell<Vec<immediate::Response>>>,
+    }
+    impl RecordPort for Port {
+        fn post(&mut self, bytes: &[u8]) -> Result<(), CarrierError> {
+            if let EngineMessage::ImmediateResponse(r) = codec::decode_engine(bytes).unwrap() {
+                self.responses.borrow_mut().push(r);
+            }
+            Ok(())
+        }
+        fn take(&mut self, out: &mut [u8]) -> Option<usize> {
+            let bytes = self.input.borrow_mut().take()?;
+            out[..bytes.len()].copy_from_slice(&bytes);
+            Some(bytes.len())
+        }
+    }
+    let (h, c) = fixture();
+    let (mut offline, client) = h.host.into_parts();
+    let (endpoint, out) = client.into_carrier().into_parts();
+    let input = Rc::new(RefCell::new(None));
+    let responses = Rc::new(RefCell::new(Vec::new()));
+    let mut server = RecordServer::new(
+        endpoint,
+        Port {
+            input: input.clone(),
+            responses: responses.clone(),
+        },
+        out,
+    );
+    let mut bytes = [0; MAX_RECORD_BYTES];
+    for finish in [Command::Start(0), Command::Stop(0)] {
+        let start = offline.next_frame();
+        for (command, frames) in [(Command::Record(0), 8), (finish, 1)] {
+            let batch = Batch::new(c.0, c.1, &[command]).unwrap();
+            let len = codec::encode_client(&ClientMessage::Immediate(batch), &mut bytes).unwrap();
+            *input.borrow_mut() = Some(bytes[..len].to_vec());
+            server.pump(16);
+            assert_no_heap(|| offline.run(frames, |_, _| 0.25)).unwrap();
+            server.pump(16);
+            assert_eq!(
+                responses.borrow().last().unwrap().records()[0].code(),
+                immediate::Code::Applied
+            );
+            assert_eq!(responses.borrow().last().unwrap().header.deadline(), None);
+        }
+        assert_eq!(responses.borrow().last().unwrap().header.frame(), start + 8);
+        let mut payload = vec![0; server.endpoint().snapshot_capacity()];
+        let (_, len) = server.endpoint().read_snapshot(&mut payload).unwrap();
+        assert!(Records(&payload[HEADER..len]).any(|r| matches!(r,
+            Ok(Record::Telemetry(Telemetry::Loop { mode, length: 8, .. }))
+                if mode == if matches!(finish, Command::Start(_)) { LoopMode::Playing } else { LoopMode::Stopped }
+        )));
+    }
+    assert_eq!(responses.borrow().len(), 4);
+}
+
+#[shoop_test]
+fn recording_milestone_disconnect_keeps_active_take_without_replaying_staged_record() {
+    let mut d = description();
+    d.ramp_frames = 0;
+    let (mut h, c) = recording_fixture(&d);
+    send(&mut h, c, &[Command::Record(0)]);
+    h.run(4, 1);
+    for _ in 0..FIFO_SINGLETONS {
+        send(&mut h, c, &[Command::LoopGain(1, 0.5)]);
+    }
+    send(&mut h, c, &[Command::Record(1)]);
+    h.host.disconnect();
+    h.pump();
+    h.host.connect().unwrap();
+    h.pump();
+    h.lifecycle.clear();
+    h.run(4, 1);
+    assert!(matches!(
+        observed_loop(&mut h, loop_id(0, 1)),
+        Telemetry::Loop {
+            mode: LoopMode::Recording,
+            ..
+        }
+    ));
+    assert!(matches!(
+        observed_loop(&mut h, loop_id(1, 1)),
+        Telemetry::Loop {
+            mode: LoopMode::Stopped,
+            length: 0,
+            ..
+        }
+    ));
+    assert!(
+        immediate_results(&h).is_empty(),
+        "old-session responses are discarded"
+    );
+    send(&mut h, c, &[Command::Stop(0)]);
+    h.run(1, 1);
+    assert_eq!(
+        immediate_results(&h).last().unwrap().records()[0].code(),
+        immediate::Code::Applied
+    );
+    let (frames, _, _) = h.read(loop_id(0, 1), BulkSelector::AudioFrames);
+    assert_eq!(frames, 8);
+    let mut stopped = h.host.into_render().into_stopped();
+    stopped.cleanup().unwrap();
+    assert_eq!(stopped.media_usage().references, 0);
+    assert_eq!(
+        stopped.resource_usage().free_pages,
+        d.history_capacity().unwrap().total_resource_pages
+    );
+    assert_eq!(stopped.resource_usage().reserved_pages, 0);
+}

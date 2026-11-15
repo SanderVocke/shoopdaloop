@@ -205,6 +205,7 @@ impl<S: Sample> LoopPlanner<S> {
             }
         };
         let mut take = Take {
+            publish_incomplete: false,
             started_at: self.resolver.frame(),
             writer: None,
             windows,
@@ -239,7 +240,7 @@ impl<S: Sample> LoopPlanner<S> {
         }
         result
     }
-    fn prepare_take(
+    pub(super) fn prepare_take(
         &mut self,
         slot: usize,
         decision: Decision,
@@ -307,6 +308,7 @@ impl<S: Sample> LoopPlanner<S> {
             channel.raw_frames = None;
         }
         self.rows[slot].as_mut().expect("row").prepared = Some(Take {
+            publish_incomplete: false,
             started_at: self.resolver.frame(),
             windows,
             writer: None,
@@ -346,13 +348,20 @@ impl<S: Sample> LoopPlanner<S> {
                     reason: timeline_error(error),
                 },
             )
+        } else if self.rows[slot]
+            .and_then(|row| row.active)
+            .is_some_and(|take| take.publish_incomplete)
+        {
+            crate::Observation::CapturePrefixExhausted { target }
         } else {
             crate::Observation::CaptureExhausted { target }
         };
         let duplicate = self.failures.iter().any(|old| match (*old, observation) {
             (
-                crate::Observation::CaptureExhausted { target: a },
-                crate::Observation::CaptureExhausted { target: b },
+                crate::Observation::CaptureExhausted { target: a }
+                | crate::Observation::CapturePrefixExhausted { target: a },
+                crate::Observation::CaptureExhausted { target: b }
+                | crate::Observation::CapturePrefixExhausted { target: b },
             )
             | (
                 crate::Observation::CaptureUnavailable { target: a, .. },
@@ -519,7 +528,7 @@ impl<S: Sample> LoopPlanner<S> {
             midi,
         })
     }
-    fn freeze(
+    pub(super) fn freeze(
         &mut self,
         slot: usize,
         frame: Frame,
@@ -527,7 +536,7 @@ impl<S: Sample> LoopPlanner<S> {
     ) -> Result<media::MediaId, Error> {
         let row = self.rows[slot].ok_or(Error::InvalidId)?;
         let take = row.active.ok_or(Error::InvalidState)?;
-        let incomplete=self.failures.iter().any(|o|matches!(o,crate::Observation::CaptureExhausted { target } if *target==row.binding.target));
+        let incomplete=self.failures.iter().any(|o|matches!(o,crate::Observation::CaptureExhausted { target } | crate::Observation::CapturePrefixExhausted { target } if *target==row.binding.target));
         if let Some(id) = take.writer {
             let (frames, sources) = self
                 .shared

@@ -2462,6 +2462,10 @@ impl Wire for crate::immediate::Command {
                 w.u8(3)?;
                 w.u32(id)
             }
+            Record(id) => {
+                w.u8(12)?;
+                w.u32(id)
+            }
             InputGain(id, v) => {
                 w.u8(4)?;
                 w.u32(id)?;
@@ -2511,6 +2515,7 @@ impl Wire for crate::immediate::Command {
             1 => LoopBalance(r.u32()?, r.f32()?),
             2 => Start(r.u32()?),
             3 => Stop(r.u32()?),
+            12 => Record(r.u32()?),
             4 => InputGain(r.u32()?, r.f32()?),
             5 => InputBalance(r.u32()?, r.f32()?),
             6 => OutputGain(r.u32()?, r.f32()?),

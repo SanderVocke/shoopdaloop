@@ -65,9 +65,24 @@ fn groups_preserve_commands_without_semantic_preflight() {
         Command::LoopBalance(id, 1.1),
         Command::Start(id),
         Command::Stop(id),
+        Command::Record(id),
     ];
     let message = ClientMessage::Immediate(Batch::new(1, 1, &commands).unwrap());
     let mut bytes = [0; MAX_RECORD_BYTES];
     let len = codec::encode_client(&message, &mut bytes).unwrap();
     assert_eq!(codec::decode_client(&bytes[..len]).unwrap(), message);
+}
+
+#[shoop_test]
+fn recording_and_capture_failure_use_the_existing_result_layout() {
+    let command = Command::Record(12);
+    let record = CommandRecord::new(command).complete(Code::CaptureUnavailable);
+    assert_eq!(record.bytes().len(), 16);
+    assert_eq!(CommandRecord::from_bytes(*record.bytes()), Some(record));
+    assert_eq!(record.command(), command);
+    let header = Header::new(7, 8, None).complete(400, Code::Applied);
+    let message = EngineMessage::ImmediateResponse(Response::new(header, &[record]).unwrap());
+    let mut bytes = [0; MAX_RECORD_BYTES];
+    let len = codec::encode_engine(&message, &mut bytes).unwrap();
+    assert_eq!(codec::decode_engine(&bytes[..len]).unwrap(), message);
 }
