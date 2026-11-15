@@ -16,10 +16,34 @@ state returns through snapshots; bounded diagnostic counters report refusals.
 Command admission and snapshot observation are separate. Transport-level delivery
 mechanisms do not become application request IDs or execution acknowledgements.
 
-This document records the first experiment and its coexistence extension. The
-remaining command protocol stays available. Rust is the implementation target; the logical
-FIFO and publication rules should later map readily to hardware. ARM/FPGA code,
-register interfaces, and drivers are outside this work.
+This document records the completed experiment, its completed coexistence
+extension, and the agreed simplification still to implement. The remaining command
+protocol stays available. Rust is the implementation target; the logical FIFO and
+publication rules should later map readily to hardware. ARM/FPGA code, register
+interfaces, and drivers are outside this work.
+
+## Status
+
+| Work | Status |
+| --- | --- |
+| Immediate UI/control/RT path, scalar controls and synchronized playback | Implemented and smoke-tested |
+| Coexistence with legacy graph, media and recording operations | Implemented and smoke-tested |
+| Larger FIFO storing each group's actual command count | Agreed, not implemented |
+| Configuration version guarantees stable object identities; configuration-local command addresses | Agreed, not implemented as a verified contract |
+| One-pass RT execution with individual command failures | Agreed, not implemented |
+| Migration of ordinary UI controls to the immediate API | Not implemented; outside the simplification milestone |
+
+The current code still has four fixed-capacity FIFO entries, each holding **any
+count from 1 through 32** commands. It therefore accepts four singleton groups per
+callback, or up to 128 commands when the entries are full. It still carries target
+generations, scans whole groups, rejects conflicting playback instructions, and
+refuses a whole group when one member fails preflight.
+
+The design principles and acceptance criteria below describe the agreed target.
+The completed milestone checklists and validation record describe the code that
+shipped, including behavior superseded by that target. Only the unchecked
+**Simplification milestone** lists the remaining implementation work. This document
+revision changes the plan; it does not implement those changes.
 
 ## Design principles
 
@@ -36,10 +60,10 @@ quanta: apply commands before the next unrendered processing quantum, never
 retroactively to audio already rendered or buffered. Stamp resulting snapshots
 with the actual processing frame.
 
-### Atomic publication of groups
+### Complete publication and same-callback execution
 
 A synchronized UI action must reach control as an explicit complete group. Thirty
-independent UI messages cannot imply one atomic group: a callback or network
+independent UI messages cannot imply one synchronized group: a callback or network
 delivery gap could divide them. In the first milestone, each group fits one
 bounded application message, with room for at least thirty supported commands.
 Choose a compact encoding and verify its maximum encoded size against the existing
@@ -48,20 +72,29 @@ assembly protocol for this subset. Underlying network fragmentation is handled b
 transport framing before control sees the complete message.
 
 For example, control prepares thirty playback-start commands and publishes them
-in one step. RT sees either the complete group or none of it. All accepted starts
+in one step. RT sees either the complete group or none of it. Successful starts
 take effect before audio processing at the same frame; execution need not be
 parallel on the CPU to be simultaneous in audio time.
 
-Use either a bounded batch per queue entry or reserved queue slots made visible
-by one publication of the write position. Select and document one representation
-before implementation. A separately published Begin/End pair is insufficient if
-RT can consume the beginning before the group is complete.
+Use a larger ring of fixed-size records, with a group header containing its
+configuration version and command count, followed by that many command records.
+A group occupies its actual record count instead of a maximum-sized batch slot.
+Control reserves space for the complete header and commands, writes them, and
+advances the published write position once. Only the producer writes that
+publication position; only the consumer releases consumed space. Handle wrapping
+without allocating. A separately published Begin/End pair is insufficient if RT can consume the
+beginning before the group is complete.
 
 RT never waits for missing members, accumulates partial groups, or splits a group
-across callbacks. Preflight the entire batch before mutating state. A stale target,
-unsupported transition, or invalid value rejects the whole batch without partial
-application. Validation must cover interactions within a batch; initially reject
-conflicting playback transitions for the same loop rather than inventing rollback.
+across callbacks. Every supported group fits the prepared FIFO and one bounded
+application message by application/API contract. Groups larger than the FIFO are
+not supported by this design. RT never rounds its cutoff into unpublished data.
+
+RT checks the configuration version once at the group header. If it matches, RT
+consumes and attempts commands sequentially, directly from the ring, then releases
+their storage. It needs no separate whole-group buffer and no preliminary semantic
+scan. Grouping guarantees one processing boundary and command order; it does not
+guarantee that every command succeeds or that earlier effects are rolled back.
 
 ### Capacity and worst-case work
 
@@ -70,8 +103,8 @@ thirty playback-start commands in one batch. Also define maximum batch count,
 commands per batch, total admitted commands, and payload bytes.
 
 Memory capacity is only one constraint. The maximum published work at the cutoff,
-including preflight, application, and necessary boundary settlement, must fit the
-chosen callback work allowance alongside audio processing. Size that allowance
+including header handling, per-command execution/fallbacks, and boundary
+settlement, must fit the chosen callback work allowance alongside audio processing. Size that allowance
 against the smallest supported callback period and the supported operations'
 worst-case work, not average queue occupancy.
 
@@ -86,6 +119,14 @@ deallocation, locks, waits, or I/O on RT. Prefer fixed-layout value commands wit
 bounded payloads and ordinary object identities; avoid owned heap objects needing
 a return path. Use a sound Rust SPSC implementation with explicit publication
 ordering. Hardware memory ordering remains a future platform-specific concern.
+
+Size the ring for many singleton groups as well as larger groups. Account for
+header space and overhead: merely enlarging fixed maximum-sized batch entries
+does not meet the storage goal. Select and document concrete record/byte capacity,
+maximum published work, and any retained per-message command limit during the
+simplification milestone. A group may initially remain limited to 32 commands;
+that is independent of how many groups the RT FIFO can hold. The current
+1,280-byte application-message envelope still applies unless explicitly changed.
 
 ### Admission and observation
 
@@ -104,15 +145,16 @@ admitted start/stop group to make room for newer work.
 
 Control may retry a batch that has not yet been admitted to the RT FIFO. Such
 retries stay outside RT and carry no execution deadlines. RT does not wait, retry,
-or keep a future-work list. Invalid groups are rejected completely and reported
-through bounded diagnostics; this first experiment provides no correlated failure
-reply for an individual submitted group.
+or keep a future-work list. A stale configuration skips the whole group without
+effects. A command with unmet preconditions leaves its target unchanged, records
+a bounded diagnostic, and does not prevent later commands from being attempted.
+There is no correlated failure reply for a group or an individual command.
 
-RT still validates identities, generations, and the applicable configuration.
-These are object/configuration identities, not request correlation IDs. Reject
-stale or invalid batches immediately. Expose bounded refusal counters and a
-compact error classification through diagnostics/snapshots. Latest-state feedback
-does not promise a separate historical outcome for every command.
+There is no snapshot wait between consecutive immediate groups. The existing
+snapshot reconciliation barrier applies when handing control back to legacy
+operations that follow an immediate prefix. Preserve that coexistence mechanism.
+Latest-state feedback does not promise a separate historical outcome for every
+command.
 
 ### Addressing within the snapshot configuration
 
@@ -120,30 +162,66 @@ Commands and snapshots share the same versioned configuration and object identit
 scheme. Do not introduce an independent command-object registry or identifier
 namespace. Put the active configuration version once in each group header;
 currently this is the existing graph/topology epoch pair used by snapshots.
-Individual commands name typed targets using the existing identities belonging
-to that configuration, so loop 7 and strip 7 are unambiguous distinct targets.
+Individual commands use existing typed slot indices as addresses within that
+configuration, so loop 7 and strip 7 are unambiguous distinct targets. Do not
+introduce another object registry or repeat expected generations in each command.
 
 Use the retained configuration's mappings between logical application objects and
 runtime processors. A logical loop can map to playback, capture, and fader nodes;
 its identity must not be reinterpreted as an unrelated processor-slot index.
 Control may resolve these mappings before publication, but the resulting RT
-addresses must remain tied to the group's configuration and be checked on RT.
+addresses must remain tied to the group's configuration.
 
-RT first checks that the group's configuration is active and that every target
-belongs to it, then performs the remaining whole-batch preflight. Reject a stale
-configuration, missing target, or generation mismatch without applying any part
-of the group. Never silently retarget commands to a reused slot, translate them
-to a newer configuration, or hold them until an expected configuration activates.
+Establish this invariant before removing command-level generation checks:
+**within one active configuration version, an address always denotes the same
+object incarnation.** Every creation, removal, replacement, or reuse that changes
+that mapping activates a different graph/topology version. Candidate preparation
+must preserve the active version's mapping; candidate addresses become active
+only with the corresponding version. Keep that mapping stable while applying a
+group. Audit loop, strip, bus and relevant processor lifecycle paths, including
+staged and whole-session replacement.
 
-For the first milestone, reuse the existing slot-and-generation safeguards as
-part of object identities. They are not new request IDs. Omitting generations
-later would require establishing that every relevant object replacement changes
-the configuration version and cannot reuse an address within that version.
+RT compares the header with the full active graph/topology version once. A
+mismatch skips the complete group; never retarget it to a newer configuration or
+wait for its expected version. A match establishes object identity for the
+configuration's addresses. Ordinary safe lookup still handles a nonexistent or
+out-of-range address as an individual command failure. Rust ownership handles and
+snapshot identities may retain their internal generations; this change removes
+redundant command-level generation fields and validation, not ownership safety.
 
 The publication sequence and audio frame of an individual snapshot are not the
 configuration version and are not command correlation tokens. Commands need not
 reference a particular snapshot publication. Snapshot-based observation must
 interpret resulting state using the same configuration and target identities.
+
+### Trusted groups and individual command outcomes
+
+Trust the application to construct sensible groups. Remove whole-group semantic
+checks in the application adapter, protocol builder/codec, control endpoint and
+RT handler. Do not reject duplicate, opposing or otherwise self-inconsistent
+instructions as a group; execute instructions in their written order. Keep only
+the framing, length, opcode and bounds checks needed to decode/store records
+safely and publish complete groups. Those checks do not become a semantic scan.
+
+Command handlers decide their own current-state behavior as they execute. The
+default failure behavior is no effect, a bounded diagnostic update, and continued
+execution of the remaining commands. No handler may wait, retry, retain a command,
+or dispatch through the legacy path to satisfy a precondition.
+
+| Situation | Behavior |
+| --- | --- |
+| Group configuration does not match the active version | Skip the whole group; record configuration refusal |
+| Valid scalar command and available target | Apply the value normally |
+| Missing target, invalid scalar value or unsupported processor condition | Leave state unchanged; count command failure; continue |
+| Start/restart on an empty, recording or otherwise unsupported loop | Leave state unchanged; count command failure; continue |
+| Stop on an already stopped supported loop | Successful no-op; continue |
+| Stop requiring recording finalization or other excluded ownership work | Leave state unchanged; count command failure; continue |
+| Several commands address the same object | Attempt each in order against the state left by earlier commands |
+
+Prefer these no-op failures to new implicit conversions or recovery workflows.
+Document any command-specific fallback that differs from them. Snapshots describe
+the state actually reached, including partial success within a group; diagnostics
+remain aggregate and never become per-command acknowledgements.
 
 ### When the application needs execution confirmation
 
@@ -189,16 +267,16 @@ the commands within an accepted group. Guarantee synchronization at one RT audio
 frame, not execution at a preselected wall-clock time or simultaneous execution
 on several machines.
 
-## First milestone
+## Delivered command subset
 
-Deliver a clearly separated immediate-command transport and execution path, a
-control submission API, and a narrow UI/application adapter entry point exercising
-the dedicated path across both bridges. A singleton command is a batch of one.
-Selected operations must bypass the outer legacy request/correlation tables and
+The initial milestone delivered a separate immediate-command transport and
+execution path, a control submission API, and a narrow UI/application adapter
+entry point exercising both bridges. A singleton command is a batch of one.
+Selected operations bypass the outer legacy request/correlation tables and
 `Command::Schedule`, scheduler reservations, tickets, and terminal receipt streams
 inside RT. Discarding legacy replies behind an adapter is not this milestone.
 
-Include this subset:
+The supported subset is:
 
 - Loop gain and balance.
 - Strip input/output gain and balance, plus audio output mute.
@@ -209,11 +287,10 @@ Include this subset:
 - Mixed scalar batches and a group starting thirty distinct prepared loops at
   the same processing frame.
 
-These are candidate operations subject to the execution-confirmation rule above.
-Any exclusions must be explicit and enforced at submission, rather than silently
-falling back to the old request/reply path within an experimental batch. An
-excluded command is unsupported by the experiment and must be refused before
-publication; implementing it waits for a later design that fits the agreed model.
+This opcode subset stays subject to the execution-confirmation rule above. Do not
+add unsupported command types or silently fall back to the old request/reply path
+inside a group. Unmet runtime preconditions for a supported command use its
+individual no-op/failure behavior; they do not exclude the other group members.
 
 Keep click-suppression ramps as normal processor state. Setting their targets at
 the same boundary does not require retaining commands or scheduling future work.
@@ -229,21 +306,28 @@ session. Control serializes the handoff between the two command paths so neither
 can overtake earlier work on the other path. The coexistence milestone below
 replaces the first implementation's permanent stable-session lock.
 
-### Acceptance criteria
+## Acceptance criteria for the agreed target
 
-1. Every complete batch visible at the callback cutoff that passes RT preflight
-   is applied completely at that callback's eligible processing boundary, before
-   affected audio renders. A batch failing preflight is rejected completely.
-2. If immediate playback start is included, starting thirty loaded audio loops produces aligned playback at the same audio
-   frame, including publication racing the callback cutoff: the entire batch runs
-   together at this boundary or the next, never partly at each.
+These supersede the initial milestone's whole-group refusal criteria. The
+simplification is complete only after its unchecked stages satisfy them.
+
+1. Every complete group visible at the callback cutoff is consumed at that
+   callback's eligible processing boundary, before affected audio renders. A
+   matching configuration causes commands to be attempted once in written order;
+   a stale configuration skips the group without effects. RT performs no
+   whole-group semantic preflight and never rolls back earlier commands.
+2. Starting thirty prepared, eligible audio loops produces aligned playback at
+   the same audio frame, including publication racing the callback cutoff: the
+   group runs at this boundary or the next, never partly at each. A member with
+   unmet preconditions fails individually; valid members still run at that frame.
 3. The dedicated UI-to-control and control-to-RT paths have no application
    deadlines, request IDs, cancellation, or individual admission/execution replies.
    RT has no pending execution records for these commands.
 4. Each group fits one bounded application message. Full queues refuse complete
    groups locally or propagate bounded backpressure; neither UI drawing nor RT
-   waits. RT rejection leaves all batch targets unchanged and is visible in
-   bounded diagnostics. Reconnect never automatically replays a group.
+   waits. Header mismatch leaves the whole group without effects; individual
+   failures leave their own targets unchanged and do not suppress other commands.
+   Failures are visible in bounded diagnostics. Reconnect never replays a group.
 5. Capacity and callback work are explicitly bounded; RT remains heap-free and
    nonblocking. Snapshots describe applied state after boundary settlement.
 6. Existing push/pull snapshot delivery and unmigrated command/media workflows
@@ -253,18 +337,29 @@ replaces the first implementation's permanent stable-session lock.
    sound snapshot observations or documented exclusion of the affected command.
    No confirmation requirement reintroduces request correlation or acknowledgements
    into the experimental path.
-8. Command groups reuse snapshots' configuration versions and existing object
-   identities. Stale epochs, foreign targets, and reused-slot generation mismatches
-   reject the entire group without mutation or retargeting. No separate command
-   identity registry is introduced.
+8. Snapshots' full graph/topology version fixes the identity behind every
+   configuration-local address. Identity/address changes activate a different
+   version; preparing a candidate preserves the active mapping. A group header
+   check replaces repeated expected-generation fields/checks in commands. Safe
+   lookup handles an invalid address individually. No new identity registry,
+   version scheme or command correlation is introduced.
+9. The ring stores actual group lengths, supports many singleton groups, and
+   publishes only whole groups. RT executes directly from its readable records
+   without a separate group buffer. Concrete capacity, worst-case callback work
+   and outer message-size bounds are documented. No snapshot is required between
+   consecutive immediate groups; legacy handoff reconciliation still works.
 
 The implementer may narrow the candidate command set under that rule without
-additional approval. This does not waive atomicity, boundedness, or the protocol
-simplicity criteria. If playback start itself must be deferred, record it as
-unimplemented and the thirty-loop validation as not applicable. Do not claim that
+additional approval. This does not waive complete publication, same-callback
+execution, boundedness, or the protocol simplicity criteria. If playback start
+itself must be deferred, record it as unimplemented and the thirty-loop validation
+as not applicable. Do not claim that
 the synchronized playback case was delivered or tested.
 
-## Implementation stages
+## Completed initial implementation stages
+
+These checked stages record the original implementation, including its
+whole-group preflight. They do not mark the new acceptance criteria as delivered.
 
 - [x] **1. Define the boundary and representation.** Inventory exact command
   variants, preflight costs, conflict rules, capacities, and the cutoff's placement
@@ -316,7 +411,9 @@ When implementation is requested:
   The documented command-set deferrals above are already authorized; record them
   explicitly and do not use them to conceal an unmet acceptance criterion.
 
-Execution is authorized. The implementation uses these concrete bounds:
+The initial implementation and coexistence work were executed. Their current
+code uses the following bounds; the simplification checklist below remains
+unimplemented and this amendment makes no runtime changes:
 
 - One FIFO entry owns one inline `Copy` batch of at most 32 commands. Four entries
   bound each callback to 128 commands. Control stages at most four additional
@@ -349,6 +446,10 @@ before raising these limits.
 
 
 ## Implemented API and scope
+
+This section describes the code at commit `2a50c772`, before the agreed
+simplification. In particular, per-command generation checks and whole-group
+preflight/refusal still exist here.
 
 `shoop_rt_backend::RtBackend::immediate_group(&[ImmediateCommand])` is the explicit
 application entry point. It resolves existing application loop/track/bus identities
@@ -408,10 +509,10 @@ automatically. No controls need to be disabled merely because immediate groups
 have been used. Unsupported immediate playback states still refuse the complete
 group; their existing legacy operations remain available.
 
-## Coexistence milestone
+## Completed coexistence milestone
 
-The follow-up scope is to remove the global stable-session restriction before
-wiring ordinary UI controls to immediate groups.
+This completed follow-up removed the global stable-session restriction. Ordinary
+UI controls have not yet been migrated to immediate groups.
 
 - [x] Preserve arrival order across legacy requests and immediate groups in
   bounded control storage, including the adapter's not-yet-sent legacy messages.
@@ -437,10 +538,61 @@ configuration, target, unsupported state, invalid value). Diagnostics are resent
 on new callback frames so lossy telemetry cannot permanently hide a changed count.
 They carry no command identity and do not establish individual command history.
 
+## Simplification milestone — not implemented
+
+Replace the current fixed batch slots and whole-group refusal rules with the
+target above. Do not migrate ordinary UI controls or expand the opcode subset in
+this milestone. Keep the existing legacy coexistence path and RT snapshot
+publication cadence.
+
+- [ ] **1. Establish configuration-owned identity.** Audit every supported target
+  lifecycle, candidate preparation, activation, removal and slot reuse against the
+  full snapshot graph/topology version. Make the active mapping immutable within
+  a version, including during replacement preparation, and advance the version
+  with any changed mapping. Reuse existing typed slot indices and mappings; keep
+  internal ownership generations as needed. Verify replacement and slot reuse
+  with focused tests before removing command-level generation checks.
+- [ ] **2. Execute commands once with individual outcomes.** Remove semantic
+  whole-group scans and conflict rejection from adapter, builder/codec, control
+  and RT. Retain memory-safe framing/decoding. Use the handler behaviors specified
+  above, with no-op failure, aggregate diagnostics and continued processing by
+  default. Remove assumptions/panics that application follows successful group
+  preflight. Replace old all-or-nothing tests with valid/failing/valid groups,
+  repeated targets in written order, and unsupported recording/playback cases.
+- [ ] **3. Store actual group sizes in the FIFO.** After stage 1, remove repeated
+  expected-generation fields from commands and resolve addresses through the
+  configuration's existing mapping. Update the wire version if its layout
+  changes. Implement the larger fixed-record ring with count/version headers,
+  whole-group reservation and one publication update. Choose/document practical
+  capacity including headers, maximum callback work and message bounds; the
+  existing 32-command message cap can initially stay. RT freezes the published
+  position once, checks each header once, attempts commands in one pass and
+  releases consumed space. Preserve control backpressure, reconnect behavior and
+  the legacy handoff using FIFO progress plus snapshots. Test wrapping, full
+  admission, many singleton groups, mixed sizes and an interrupted producer whose
+  unfinished group must stay invisible to RT.
+- [ ] **4. Smoke-test and publish the connected result.** After stages 1–3, check
+  the documented singleton capacity in one callback, mixed-size groups, partial
+  success, thirty-loop alignment and cutoff races through the application API.
+  Check stale-header rejection and new-version address reuse, encoded delivery,
+  disconnect without replay, and representative legacy graph/media coexistence.
+  Confirm heap-free, nonblocking RT execution and no snapshot gate between
+  immediate groups. Run formatting, test policy and a warning-denying build of
+  affected crates. Record focused results, commit/push on the existing PR branch
+  and update its draft description. Do not run the full integration matrix, wait
+  for broad CI, or merge autonomously.
+
+Stage 1 is the prerequisite for trusting a header instead of individual expected
+generations. Stage 2 establishes command failure semantics; stage 3 connects them
+to the new storage and addressing. Stage 4 validates the combination. None of
+these stages is completed by the prior smoke-test results.
+
 
 ## Validation record
 
-Implementation and focused native smoke validation completed on 2026-11-14.
+The following is the historical validation of the initial and coexistence
+implementations, completed on 2026-11-14. It is not validation of the unchecked
+simplification milestone.
 
 - Nineteen command/carrier smoke tests pass. They cover cutoff ordering and a
   concurrent producer; a 436-byte maximum record and malformed/truncated records;
