@@ -1,7 +1,7 @@
 //! Experimental command groups. Identities and epochs are shared with snapshots.
-use crate::{BusId, LoopSlotId, SlotId, StripId};
 pub const COMMANDS: usize = 32;
-pub const FIFO_BATCHES: usize = 4;
+pub const FIFO_RECORDS: usize = 256;
+pub const FIFO_SINGLETONS: usize = FIFO_RECORDS / 2;
 pub const STAGED_BATCHES: usize = 4;
 
 /// Cumulative refusals, never a receipt for an individual group.
@@ -17,18 +17,18 @@ pub struct Diagnostics {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Command {
-    LoopGain(LoopSlotId, f32),
-    LoopBalance(LoopSlotId, f32),
-    Start(LoopSlotId),
-    Stop(LoopSlotId),
-    InputGain(StripId, f32),
-    InputBalance(StripId, f32),
-    OutputGain(StripId, f32),
-    OutputBalance(StripId, f32),
-    OutputMute(StripId, bool),
-    BusGain(BusId, f32),
-    BusBalance(BusId, f32),
-    BusMute(BusId, bool),
+    LoopGain(u32, f32),
+    LoopBalance(u32, f32),
+    Start(u32),
+    Stop(u32),
+    InputGain(u32, f32),
+    InputBalance(u32, f32),
+    OutputGain(u32, f32),
+    OutputBalance(u32, f32),
+    OutputMute(u32, bool),
+    BusGain(u32, f32),
+    BusBalance(u32, f32),
+    BusMute(u32, bool),
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Batch {
@@ -46,7 +46,7 @@ impl Batch {
             graph,
             topology,
             len: commands.len() as u8,
-            commands: [Command::Start(LoopSlotId(SlotId::new(0, 0))); COMMANDS],
+            commands: [Command::Start(0); COMMANDS],
         };
         batch.commands[..commands.len()].copy_from_slice(commands);
         Some(batch)

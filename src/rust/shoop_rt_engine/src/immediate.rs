@@ -7,14 +7,8 @@ use crate::{
 use alloc::sync::Arc;
 use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use rt_runtime::immediate::{self, Boundary, Handler};
-use shoop_loops::{
-    runtime::{Immediate, LoopPlanner},
-    LoopId,
-};
-use shoop_rt_protocol::{
-    immediate::{Batch, Command, Diagnostics, FIFO_BATCHES, STAGED_BATCHES},
-    LoopSlotId, SlotId,
-};
+use shoop_loops::runtime::{Immediate, LoopPlanner};
+use shoop_rt_protocol::immediate::{Batch, Command, Diagnostics, FIFO_RECORDS, STAGED_BATCHES};
 
 #[derive(Default)]
 struct Failures {
@@ -34,7 +28,7 @@ pub(crate) enum Incoming {
     Batch(Batch),
 }
 pub(crate) struct Control {
-    tx: immediate::Producer<Batch>,
+    tx: immediate::Producer<(u64, u64), Command>,
     pub incoming: Ring<Incoming>,
     waiting: usize,
     published: u32,
@@ -46,7 +40,7 @@ pub(crate) struct Control {
     sent: Option<(Diagnostics, u64)>,
 }
 struct Render {
-    rx: immediate::Consumer<Batch>,
+    rx: immediate::Consumer<(u64, u64), Command>,
     pool: Pool,
     failures: Arc<Failures>,
     progress: Arc<Progress>,
@@ -55,7 +49,7 @@ pub(crate) fn prepare(
     pool: Pool,
     credits: usize,
 ) -> (Control, impl Handler<EngineNode, LoopPlanner>) {
-    let (tx, rx) = immediate::channel(FIFO_BATCHES);
+    let (tx, rx) = immediate::channel(FIFO_RECORDS);
     let failures = Arc::new(Failures::default());
     let progress = Arc::new(Progress::default());
     (
@@ -97,7 +91,11 @@ impl Control {
         Some(incoming)
     }
     pub fn publish(&mut self, batch: Batch) -> bool {
-        if self.tx.push(batch).is_err() {
+        if self
+            .tx
+            .push((batch.graph, batch.topology), batch.commands())
+            .is_err()
+        {
             return false;
         }
         self.published = self.published.wrapping_add(1);
@@ -139,7 +137,7 @@ impl Control {
         }
     }
 }
-fn loop_command(command: Command) -> Option<(LoopSlotId, Immediate)> {
+fn loop_command(command: Command) -> Option<(u32, Immediate)> {
     match command {
         Command::LoopGain(id, v) => Some((id, Immediate::Gain(v))),
         Command::LoopBalance(id, v) => Some((id, Immediate::Balance(v))),
@@ -148,50 +146,37 @@ fn loop_command(command: Command) -> Option<(LoopSlotId, Immediate)> {
         _ => None,
     }
 }
-fn loop_id(id: LoopSlotId) -> Result<LoopId, u8> {
-    LoopId::from_parts(id.0.index, id.0.generation).map_err(|_| 3)
-}
 impl Render {
-    fn node(pool: &Pool, command: Command) -> Result<(rt_runtime::NodeId, SlotId, EngineOp), u8> {
+    fn node(pool: &Pool, command: Command) -> Result<(rt_runtime::NodeId, EngineOp), u8> {
         use Command::*;
-        let (id, slot, op) = match command {
-            InputGain(id, v) if (id.0.index as usize) < pool.strips() => (
-                pool.strip_input(id.0.index as usize),
-                id.0,
-                EngineOp::Gain(v),
-            ),
-            InputBalance(id, v) if (id.0.index as usize) < pool.strips() => (
-                pool.strip_input(id.0.index as usize),
-                id.0,
-                EngineOp::Balance(v),
-            ),
-            OutputGain(id, v) if (id.0.index as usize) < pool.strips() => (
-                pool.strip_output(id.0.index as usize),
-                id.0,
-                EngineOp::Gain(v),
-            ),
-            OutputBalance(id, v) if (id.0.index as usize) < pool.strips() => (
-                pool.strip_output(id.0.index as usize),
-                id.0,
-                EngineOp::Balance(v),
-            ),
-            OutputMute(id, v) if (id.0.index as usize) < pool.strips() => (
-                pool.strip_output(id.0.index as usize),
-                id.0,
-                EngineOp::Mute(v),
-            ),
-            BusGain(id, v) if (id.0.index as usize) < pool.buses() => {
-                (pool.bus(id.0.index as usize), id.0, EngineOp::Gain(v))
+        let (node, op) = match command {
+            InputGain(id, v) if (id as usize) < pool.strips() => {
+                (pool.strip_input(id as usize), EngineOp::Gain(v))
             }
-            BusBalance(id, v) if (id.0.index as usize) < pool.buses() => {
-                (pool.bus(id.0.index as usize), id.0, EngineOp::Balance(v))
+            InputBalance(id, v) if (id as usize) < pool.strips() => {
+                (pool.strip_input(id as usize), EngineOp::Balance(v))
             }
-            BusMute(id, v) if (id.0.index as usize) < pool.buses() => {
-                (pool.bus(id.0.index as usize), id.0, EngineOp::Mute(v))
+            OutputGain(id, v) if (id as usize) < pool.strips() => {
+                (pool.strip_output(id as usize), EngineOp::Gain(v))
+            }
+            OutputBalance(id, v) if (id as usize) < pool.strips() => {
+                (pool.strip_output(id as usize), EngineOp::Balance(v))
+            }
+            OutputMute(id, v) if (id as usize) < pool.strips() => {
+                (pool.strip_output(id as usize), EngineOp::Mute(v))
+            }
+            BusGain(id, v) if (id as usize) < pool.buses() => {
+                (pool.bus(id as usize), EngineOp::Gain(v))
+            }
+            BusBalance(id, v) if (id as usize) < pool.buses() => {
+                (pool.bus(id as usize), EngineOp::Balance(v))
+            }
+            BusMute(id, v) if (id as usize) < pool.buses() => {
+                (pool.bus(id as usize), EngineOp::Mute(v))
             }
             _ => return Err(3),
         };
-        Ok((id, slot, op))
+        Ok((node, op))
     }
     fn execute(
         pool: &Pool,
@@ -202,11 +187,11 @@ impl Render {
             return Err(5);
         }
         if let Some((id, op)) = loop_command(command) {
-            let target = loop_id(id)?;
-            if (id.0.index as usize) >= pool.loops()
+            let target = boundary.planner.resolver().id_at_slot(id).ok_or(3)?;
+            if (id as usize) >= pool.loops()
                 || boundary
                     .processors
-                    .get(pool.playback(id.0.index as usize))
+                    .get(pool.playback(id as usize))
                     .is_none()
             {
                 return Err(3);
@@ -214,7 +199,7 @@ impl Render {
             if matches!(op, Immediate::Playback(_))
                 && !boundary
                     .processors
-                    .get(pool.fader(id.0.index as usize))
+                    .get(pool.fader(id as usize))
                     .is_some_and(EngineNode::immediate_playback_supported)
             {
                 return Err(4);
@@ -230,15 +215,7 @@ impl Render {
                     }
                 })
         } else {
-            let (node, target, op) = Self::node(pool, command)?;
-            if boundary
-                .processors
-                .get(node)
-                .and_then(EngineNode::immediate_generation)
-                != Some(target.generation)
-            {
-                return Err(3);
-            }
+            let (node, op) = Self::node(pool, command)?;
             boundary
                 .processors
                 .get_mut(node)
@@ -253,18 +230,17 @@ impl Handler<EngineNode, LoopPlanner> for Render {
         self.rx.begin_callback();
     }
     fn apply(&mut self, mut boundary: Boundary<'_, EngineNode, LoopPlanner>) {
-        while let Some(batch) = self.rx.pop() {
-            if batch.graph != boundary.graph.0
-                || batch.topology != boundary.planner.resolver().epoch().0
-            {
+        while let Some(group) = self.rx.pop() {
+            if group.header != (boundary.graph.0, boundary.planner.resolver().epoch().0) {
                 refuse(&self.failures, 2);
             } else {
-                for &command in batch.commands() {
+                for &command in group.commands() {
                     if let Err(code) = Self::execute(&self.pool, command, &mut boundary) {
                         refuse(&self.failures, code);
                     }
                 }
             }
+            drop(group);
             self.progress
                 .frame
                 .store(boundary.frame.0, Ordering::Relaxed);

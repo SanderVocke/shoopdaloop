@@ -86,6 +86,25 @@ fn immediate_controls_and_graph_edits_share_the_application_session() {
     b.clock_mut().render(16);
     b.pump();
     assert_eq!(b.poll().unwrap().loops[&track.loops[0]].gain, 0.65);
+    let cursor = b.mutation_cursor();
+    for index in 0..shoop_rt_protocol::immediate::FIFO_SINGLETONS {
+        b.immediate_group(&[Command::LoopGain(track.loops[0], index as f32 / 1000.)])
+            .unwrap();
+    }
+    assert_eq!(b.mutation_cursor(), cursor);
+    assert_no_heap(|| b.clock_mut().render(1));
+    b.pump();
+    assert_eq!(b.poll().unwrap().loops[&track.loops[0]].gain, 0.127);
+    b.immediate_group(&[
+        Command::LoopGain(track.loops[0], 0.25),
+        Command::LoopGain(BackendLoopId::from_raw(u64::MAX), 0.9),
+        Command::LoopGain(track.loops[0], 0.5),
+    ])
+    .unwrap();
+    assert_no_heap(|| b.clock_mut().render(1));
+    b.pump();
+    assert_eq!(b.poll().unwrap().loops[&track.loops[0]].gain, 0.5);
+    assert_eq!(b.immediate_diagnostics().rt_refused, 1);
 }
 
 #[shoop_test]
@@ -206,15 +225,17 @@ fn thirty_loaded_loops_start_together_and_snapshots_observe_without_receipts() {
     b.clock_mut().render(16);
     b.pump();
     let starts: Vec<_> = track.loops.iter().copied().map(Command::Start).collect();
+    let mut first_starts = starts.clone();
+    first_starts.insert(15, Command::Start(BackendLoopId::from_raw(u64::MAX)));
     let credits = b.mutation_cursor();
-    b.immediate_group(&starts).unwrap();
+    b.immediate_group(&first_starts).unwrap();
     assert_eq!(b.mutation_cursor(), credits);
     assert_no_heap(|| b.clock_mut().render(1));
     b.pump();
     let state = b.poll().unwrap();
     assert_eq!(
         b.immediate_diagnostics().rt_refused,
-        0,
+        1,
         "{:?}",
         b.immediate_diagnostics()
     );

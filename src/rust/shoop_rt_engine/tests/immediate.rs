@@ -3,7 +3,7 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 mod support;
 use shoop_rt_protocol::{
-    immediate::{Batch, Command},
+    immediate::{Batch, Command, FIFO_SINGLETONS, STAGED_BATCHES},
     snapshot::{Header, Record, Records, HEADER},
     *,
 };
@@ -94,6 +94,40 @@ fn configuration_versions_cover_loop_strip_and_bus_address_reuse() {
         );
         previous = next;
     }
+    let remove = h
+        .host
+        .request(Request::RemoveBus {
+            bus: BusId(SlotId::new(1, 2)),
+        })
+        .unwrap();
+    let create = h
+        .host
+        .request(Request::CreateBus {
+            bus: BusId(SlotId::new(1, 3)),
+            channels: 2,
+        })
+        .unwrap();
+    let mut bytes = vec![0; h.host.endpoint().snapshot_capacity()];
+    let mut reused = false;
+    for _ in 0..256 {
+        h.run(1, 1);
+        let (_, len) = h.host.endpoint().read_snapshot(&mut bytes).unwrap();
+        let header = Header::read(&bytes[..len]).unwrap();
+        for record in Records(&bytes[HEADER..len]).map(Result::unwrap) {
+            if let Record::State(StateRecord::Bus { bus, .. }) = record {
+                if bus == BusId(SlotId::new(1, 3)) {
+                    assert_ne!((header.graph, header.topology), previous);
+                    reused = true;
+                }
+            }
+        }
+        if h.results.contains_key(&create) && h.idle() {
+            break;
+        }
+    }
+    assert!(reused);
+    assert_eq!(h.results.get(&remove), Some(&Outcome::Done));
+    assert_eq!(h.results.get(&create), Some(&Outcome::Done));
 }
 
 #[shoop_test]
@@ -101,7 +135,7 @@ fn partial_callbacks_leave_batches_queued_until_the_next_unrendered_quantum() {
     let mut d = description();
     d.quantum = 16;
     let (mut h, c) = fixture_for(&d);
-    send(&mut h, c, &[Command::LoopGain(loop_id(0, 1), 0.25)]);
+    send(&mut h, c, &[Command::LoopGain(0, 0.25)]);
     h.run(1, 1);
     assert_eq!(gain(&mut h), 1.);
     h.run(15, 1);
@@ -116,13 +150,13 @@ fn commands_run_in_order_and_failures_do_not_suppress_later_effects() {
         &mut h,
         c,
         &[
-            Command::LoopGain(l, 0.25),
-            Command::LoopGain(loop_id(99, 1), 0.9),
-            Command::LoopBalance(l, 2.),
-            Command::LoopGain(l, f32::NAN),
-            Command::Stop(l),
-            Command::Start(l),
-            Command::LoopGain(l, 0.75),
+            Command::LoopGain(l.0.index, 0.25),
+            Command::LoopGain(99, 0.9),
+            Command::LoopBalance(l.0.index, 2.),
+            Command::LoopGain(l.0.index, f32::NAN),
+            Command::Stop(l.0.index),
+            Command::Start(l.0.index),
+            Command::LoopGain(l.0.index, 0.75),
         ],
     );
     h.run(16, 16);
@@ -138,12 +172,13 @@ fn full_callback_scalar_allowance_is_heap_free() {
     let mut d = description();
     d.quantum = 16;
     let (mut h, c) = fixture_for(&d);
-    let commands = [Command::LoopGain(loop_id(0, 1), 0.5); 32];
+    let commands = [Command::LoopGain(0, 0.5); 32];
     let mut samples = Vec::new();
     for _ in 0..128 {
-        for _ in 0..4 {
+        for _ in 0..7 {
             send(&mut h, c, &commands);
         }
+        send(&mut h, c, &commands[..24]);
         let start = Instant::now();
         assert_no_heap(|| h.host.run(16, |_, _| 0.)).unwrap();
         samples.push(start.elapsed().as_nanos());
@@ -151,7 +186,7 @@ fn full_callback_scalar_allowance_is_heap_free() {
     }
     samples.sort_unstable();
     eprintln!(
-        "128 scalar commands + callback/snapshot, ns: median={}, max={}",
+        "248 scalar commands + callback/snapshot, ns: median={}, max={}",
         samples[64], samples[127]
     );
     assert_eq!(gain(&mut h), 0.5);
@@ -189,7 +224,7 @@ fn send(h: &mut Harness, config: (u64, u64), commands: &[Command]) {
 fn invalid_target_fails_individually_and_both_paths_keep_arrival_order() {
     let (mut h, c) = fixture();
     h.done(Request::ReplacementBegin { id: 123 });
-    send(&mut h, c, &[Command::LoopGain(loop_id(0, 1), 0.2)]);
+    send(&mut h, c, &[Command::LoopGain(0, 0.2)]);
     h.run(16, 16);
     assert_eq!(
         gain(&mut h),
@@ -200,10 +235,7 @@ fn invalid_target_fails_individually_and_both_paths_keep_arrival_order() {
     send(
         &mut h,
         c,
-        &[
-            Command::LoopGain(loop_id(0, 1), 0.25),
-            Command::OutputGain(strip(99, 1), 0.5),
-        ],
+        &[Command::LoopGain(0, 0.25), Command::OutputGain(99, 0.5)],
     );
     h.run(16, 16);
     assert_eq!(gain(&mut h), 0.25);
@@ -211,12 +243,12 @@ fn invalid_target_fails_individually_and_both_paths_keep_arrival_order() {
         .telemetry
         .iter()
         .any(|(_, t)| matches!(t,Telemetry::Immediate(d) if d.rt_refused == 1 && d.last_rt == 3)));
-    send(&mut h, c, &[Command::LoopGain(loop_id(0, 1), 0.25)]);
+    send(&mut h, c, &[Command::LoopGain(0, 0.25)]);
     let legacy = h.send(Request::LoopGain {
         loop_id: loop_id(0, 1),
         gain: 0.75,
     });
-    send(&mut h, c, &[Command::LoopGain(loop_id(0, 1), 0.5)]);
+    send(&mut h, c, &[Command::LoopGain(0, 0.5)]);
     h.run(16, 16);
     assert_eq!(gain(&mut h), 0.25);
     h.run(16, 16);
@@ -224,11 +256,7 @@ fn invalid_target_fails_individually_and_both_paths_keep_arrival_order() {
     assert_eq!(h.results.get(&legacy), Some(&Outcome::Done));
     h.run(16, 16);
     assert_eq!(gain(&mut h), 0.5);
-    send(
-        &mut h,
-        (c.0 + 1, c.1),
-        &[Command::LoopGain(loop_id(0, 1), 0.75)],
-    );
+    send(&mut h, (c.0 + 1, c.1), &[Command::LoopGain(0, 0.75)]);
     h.run(16, 16);
     assert_eq!(gain(&mut h), 0.5);
     use shoop_rt_transport::carrier::{Endpoint, Outbox};
@@ -267,19 +295,19 @@ fn invalid_target_fails_individually_and_both_paths_keep_arrival_order() {
 fn graph_edits_wait_for_groups_preserve_scalars_and_reject_old_configuration() {
     let (mut h, c) = fixture();
     let commands = [
-        Command::LoopGain(loop_id(0, 1), 0.25),
-        Command::LoopBalance(loop_id(0, 1), -0.5),
-        Command::OutputGain(strip(0, 1), 0.5),
-        Command::OutputMute(strip(0, 1), true),
-        Command::BusGain(BusId::MASTER, 0.75),
-        Command::BusMute(BusId::MASTER, true),
+        Command::LoopGain(0, 0.25),
+        Command::LoopBalance(0, -0.5),
+        Command::OutputGain(0, 0.5),
+        Command::OutputMute(0, true),
+        Command::BusGain(0, 0.75),
+        Command::BusMute(0, true),
     ];
     send(&mut h, c, &commands);
     let edit = h.send(Request::CreateLoop {
         loop_id: loop_id(1, 1),
         strip: strip(0, 1),
     });
-    send(&mut h, c, &[Command::LoopGain(loop_id(0, 1), 0.9)]);
+    send(&mut h, c, &[Command::LoopGain(0, 0.9)]);
     h.run(1024, 16);
     assert_eq!(h.results.get(&edit), Some(&Outcome::Done));
     assert_eq!(gain(&mut h), 0.25);
@@ -319,7 +347,7 @@ fn graph_edits_wait_for_groups_preserve_scalars_and_reject_old_configuration() {
     send(
         &mut h,
         (header.graph, header.topology),
-        &[Command::LoopGain(loop_id(0, 1), 0.5)],
+        &[Command::LoopGain(0, 0.5)],
     );
     h.run(16, 16);
     assert_eq!(gain(&mut h), 0.5);
@@ -343,27 +371,31 @@ fn recording_and_media_edits_resume_between_immediate_groups() {
     let (_, len) = h.host.endpoint().read_snapshot(&mut bytes).unwrap();
     let header = Header::read(&bytes[..len]).unwrap();
     let c = (header.graph, header.topology);
-    send(&mut h, c, &[Command::LoopGain(l, 0.25)]);
+    send(&mut h, c, &[Command::LoopGain(l.0.index, 0.25)]);
     h.done(Request::LoopTransition {
         loop_id: l,
         mode: LoopMode::Recording,
         delay: None,
     });
     h.run(8, 1);
-    send(&mut h, c, &[Command::Start(l), Command::LoopGain(l, 0.9)]);
+    send(
+        &mut h,
+        c,
+        &[Command::Start(l.0.index), Command::LoopGain(l.0.index, 0.9)],
+    );
     h.run(16, 16);
     assert_eq!(
         gain(&mut h),
         0.9,
         "the recording start fails individually while the gain still changes"
     );
-    send(&mut h, c, &[Command::LoopGain(l, 0.5)]);
+    send(&mut h, c, &[Command::LoopGain(l.0.index, 0.5)]);
     let stop = h.send(Request::LoopTransition {
         loop_id: l,
         mode: LoopMode::Stopped,
         delay: None,
     });
-    send(&mut h, c, &[Command::Start(l)]);
+    send(&mut h, c, &[Command::Start(l.0.index)]);
     h.run(128, 16);
     assert_eq!(h.results.get(&stop), Some(&Outcome::Done));
     assert_eq!(gain(&mut h), 0.5);
@@ -380,7 +412,7 @@ fn recording_and_media_edits_resume_between_immediate_groups() {
         delay: None,
     });
     h.done(Request::LoopClear { loop_id: l });
-    send(&mut h, c, &[Command::LoopGain(l, 0.75)]);
+    send(&mut h, c, &[Command::LoopGain(l.0.index, 0.75)]);
     h.run(16, 16);
     assert_eq!(gain(&mut h), 0.75);
 }
@@ -439,13 +471,10 @@ fn prepared_replacement_can_commit_after_live_groups_without_retargeting_them() 
     send(
         &mut h,
         c,
-        &[
-            Command::LoopGain(loop_id(0, 1), 0.25),
-            Command::OutputGain(strip(0, 1), 0.5),
-        ],
+        &[Command::LoopGain(0, 0.25), Command::OutputGain(0, 0.5)],
     );
     let commit = h.send(Request::ReplacementCommit { id: 7 });
-    send(&mut h, c, &[Command::LoopGain(loop_id(0, 1), 0.9)]);
+    send(&mut h, c, &[Command::LoopGain(0, 0.9)]);
     h.run(1024, 16);
     assert_eq!(h.results.get(&commit), Some(&Outcome::Done));
     assert_eq!(
@@ -466,10 +495,7 @@ fn prepared_replacement_can_commit_after_live_groups_without_retargeting_them() 
     send(
         &mut h,
         next,
-        &[
-            Command::LoopGain(loop_id(99, 1), 0.8),
-            Command::OutputMute(strip(0, 2), true),
-        ],
+        &[Command::LoopGain(99, 0.8), Command::OutputMute(0, true)],
     );
     h.run(16, 16);
     assert_eq!(gain(&mut h), 0.6);
@@ -479,7 +505,7 @@ fn prepared_replacement_can_commit_after_live_groups_without_retargeting_them() 
             strip: strip(0, 2),
             control: StripControl::OutputMute(true)
         }))));
-    send(&mut h, next, &[Command::LoopGain(loop_id(0, 2), 0.8)]);
+    send(&mut h, next, &[Command::LoopGain(0, 0.8)]);
     h.run(16, 16);
     assert_eq!(gain(&mut h), 0.8);
     h.done(Request::RemoveLoop {
@@ -497,16 +523,16 @@ fn mixed_scalars_publish_a_single_consistent_snapshot() {
         &mut h,
         c,
         &[
-            Command::LoopGain(l, 0.25),
-            Command::LoopBalance(l, -0.5),
-            Command::InputGain(s, 0.5),
-            Command::InputBalance(s, 0.25),
-            Command::OutputGain(s, 0.75),
-            Command::OutputBalance(s, -0.25),
-            Command::OutputMute(s, true),
-            Command::BusGain(b, 0.5),
-            Command::BusBalance(b, 0.25),
-            Command::BusMute(b, true),
+            Command::LoopGain(l.0.index, 0.25),
+            Command::LoopBalance(l.0.index, -0.5),
+            Command::InputGain(s.0.index, 0.5),
+            Command::InputBalance(s.0.index, 0.25),
+            Command::OutputGain(s.0.index, 0.75),
+            Command::OutputBalance(s.0.index, -0.25),
+            Command::OutputMute(s.0.index, true),
+            Command::BusGain(b.0.index, 0.5),
+            Command::BusBalance(b.0.index, 0.25),
+            Command::BusMute(b.0.index, true),
         ],
     );
     h.run(16, 16);
@@ -543,29 +569,22 @@ fn mixed_scalars_publish_a_single_consistent_snapshot() {
 #[shoop_test]
 fn bounded_staging_preserves_order_and_disconnect_does_not_replay_unsent_work() {
     let (mut h, c) = fixture();
-    for i in 0..8 {
-        send(
-            &mut h,
-            c,
-            &[Command::LoopGain(loop_id(0, 1), i as f32 / 10.)],
-        );
+    let admitted = FIFO_SINGLETONS + STAGED_BATCHES;
+    for i in 0..admitted {
+        send(&mut h, c, &[Command::LoopGain(0, i as f32 / 1000.)]);
     }
-    let batch = Batch::new(c.0, c.1, &[Command::LoopGain(loop_id(0, 1), 0.9)]).unwrap();
+    let batch = Batch::new(c.0, c.1, &[Command::LoopGain(0, 0.9)]).unwrap();
     assert_eq!(
         h.host.client.immediate(batch),
         Err(ClientError::Carrier(CarrierError::Full))
     );
     assert_eq!(h.host.client.reliable_in_flight(), 0);
     h.run(16, 16);
-    assert_eq!(gain(&mut h), 0.3);
+    assert_eq!(gain(&mut h), (FIFO_SINGLETONS - 1) as f32 / 1000.);
     h.run(16, 16);
-    assert_eq!(gain(&mut h), 0.7);
-    for i in 0..8 {
-        send(
-            &mut h,
-            c,
-            &[Command::LoopGain(loop_id(0, 1), i as f32 / 10.)],
-        );
+    assert_eq!(gain(&mut h), (admitted - 1) as f32 / 1000.);
+    for i in 0..admitted {
+        send(&mut h, c, &[Command::LoopGain(0, i as f32 / 1000.)]);
     }
     h.host.disconnect();
     h.pump();
@@ -586,8 +605,8 @@ fn bounded_staging_preserves_order_and_disconnect_does_not_replay_unsent_work() 
     assert_eq!(h.results.get(&edit), Some(&Outcome::Done));
     assert_eq!(
         gain(&mut h),
-        0.3,
-        "only the four RT-admitted groups survive disconnect"
+        (FIFO_SINGLETONS - 1) as f32 / 1000.,
+        "only RT-published groups survive disconnect"
     );
     assert_eq!(
         h.apply(Request::RemoveLoop {
@@ -668,7 +687,7 @@ fn encoded_fragmentation_and_paused_receiver_preserve_bounded_command_delivery()
         out,
     );
     let mut bytes = [0; MAX_RECORD_BYTES];
-    let batch = Batch::new(c.0, c.1, &[Command::LoopGain(loop_id(0, 1), 0.25)]).unwrap();
+    let batch = Batch::new(c.0, c.1, &[Command::LoopGain(0, 0.25)]).unwrap();
     let len = codec::encode_client(&ClientMessage::Immediate(batch), &mut bytes).unwrap();
     append(&input, &bytes[..len - 1]);
     assert_no_heap(|| server.pump(16));
@@ -679,21 +698,18 @@ fn encoded_fragmentation_and_paused_receiver_preserve_bounded_command_delivery()
     assert_no_heap(|| server.pump(16));
     assert_no_heap(|| offline.run(16, |_, _| 0.)).unwrap();
     assert_eq!(observed(server.endpoint()), 0.25);
-    for i in 0..10 {
-        let batch = Batch::new(
-            c.0,
-            c.1,
-            &[Command::LoopGain(loop_id(0, 1), i as f32 / 10.)],
-        )
-        .unwrap();
+    let sent = FIFO_SINGLETONS + STAGED_BATCHES + 2;
+    for i in 0..sent {
+        let batch = Batch::new(c.0, c.1, &[Command::LoopGain(0, i as f32 / 1000.)]).unwrap();
         let len = codec::encode_client(&ClientMessage::Immediate(batch), &mut bytes).unwrap();
         append(&input, &bytes[..len]);
     }
-    assert_no_heap(|| server.pump(16));
+    assert_no_heap(|| server.pump(256));
     let blocked = taken.get();
     assert_eq!(
-        blocked, 10,
-        "one initial, eight staged, one retained record"
+        blocked,
+        1 + FIFO_SINGLETONS + STAGED_BATCHES + 1,
+        "initial message, published groups, control staging, and one retained record"
     );
     assert_no_heap(|| server.pump(16));
     assert_eq!(taken.get(), blocked);
@@ -701,8 +717,8 @@ fn encoded_fragmentation_and_paused_receiver_preserve_bounded_command_delivery()
         assert_no_heap(|| offline.run(16, |_, _| 0.)).unwrap();
         assert_no_heap(|| server.pump(16));
     }
-    assert_eq!(observed(server.endpoint()), 0.9);
-    assert_eq!(taken.get(), 11);
+    assert_eq!(observed(server.endpoint()), (sent - 1) as f32 / 1000.);
+    assert_eq!(taken.get(), sent + 1);
     assert!(input.borrow().pending().is_empty());
     paused.set(false);
     assert_no_heap(|| server.pump(16));

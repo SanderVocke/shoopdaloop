@@ -16,8 +16,8 @@ state returns through snapshots; bounded diagnostic counters report refusals.
 Command admission and snapshot observation are separate. Transport-level delivery
 mechanisms do not become application request IDs or execution acknowledgements.
 
-This document records the completed experiment, its completed coexistence
-extension, and the agreed simplification still to implement. The remaining command
+This document records the completed experiment, coexistence extension and command
+simplification. The remaining command
 protocol stays available. Rust is the implementation target; the logical FIFO and
 publication rules should later map readily to hardware. ARM/FPGA code, register
 interfaces, and drivers are outside this work.
@@ -28,22 +28,22 @@ interfaces, and drivers are outside this work.
 | --- | --- |
 | Immediate UI/control/RT path, scalar controls and synchronized playback | Implemented and smoke-tested |
 | Coexistence with legacy graph, media and recording operations | Implemented and smoke-tested |
-| Larger FIFO storing each group's actual command count | Agreed, not implemented |
-| Configuration version guarantees stable object identities; configuration-local command addresses | Agreed, not implemented as a verified contract |
-| One-pass RT execution with individual command failures | Agreed, not implemented |
+| Larger FIFO storing each group's actual command count | Implemented and smoke-tested |
+| Configuration version guarantees stable object identities; configuration-local command addresses | Implemented and smoke-tested |
+| One-pass RT execution with individual command failures | Implemented and smoke-tested |
 | Migration of ordinary UI controls to the immediate API | Not implemented; outside the simplification milestone |
 
-The current code still has four fixed-capacity FIFO entries, each holding **any
-count from 1 through 32** commands. It therefore accepts four singleton groups per
-callback, or up to 128 commands when the entries are full. It still carries target
-generations, scans whole groups, rejects conflicting playback instructions, and
-refuses a whole group when one member fails preflight.
+The current FIFO has **256 fixed-size records**. Each group occupies one header
+plus its actual command count, from 1 through 32. One callback can therefore
+consume 128 singleton groups or up to 248 commands in larger groups. Commands
+carry configuration-local indices without expected generations. RT checks each
+header once and attempts commands in order; individual failures do not suppress
+later effects.
 
-The design principles and acceptance criteria below describe the agreed target.
-The completed milestone checklists and validation record describe the code that
-shipped, including behavior superseded by that target. Only the unchecked
-**Simplification milestone** lists the remaining implementation work. This document
-revision changes the plan; it does not implement those changes.
+The initial and coexistence checklists preserve the historical implementation
+steps. The simplification checklist and latest validation record describe the
+current implementation. Ordinary UI controls have not been migrated automatically;
+that remains outside this plan's scope.
 
 ## Design principles
 
@@ -308,8 +308,8 @@ replaces the first implementation's permanent stable-session lock.
 
 ## Acceptance criteria for the agreed target
 
-These supersede the initial milestone's whole-group refusal criteria. The
-simplification is complete only after its unchecked stages satisfy them.
+These supersede the initial milestone's whole-group refusal criteria and are
+verified by the focused simplification checks below.
 
 1. Every complete group visible at the callback cutoff is consumed at that
    callback's eligible processing boundary, before affected audio renders. A
@@ -411,20 +411,24 @@ When implementation is requested:
   The documented command-set deferrals above are already authorized; record them
   explicitly and do not use them to conceal an unmet acceptance criterion.
 
-The initial implementation and coexistence work were executed. Their current
-code uses the following bounds; the simplification checklist below remains
-unimplemented and this amendment makes no runtime changes:
+The current implementation uses these concrete bounds:
 
-- One FIFO entry owns one inline `Copy` batch of at most 32 commands. Four entries
-  bound each callback to 128 commands. Control stages at most four additional
-  batches; the record carrier retains at most one complete blocked message.
-- The largest batch record is at most 436 bytes (length prefix, message tag,
-  graph/topology epochs, count, and 32 commands of at most 13 bytes), within the
-  1,280-byte carrier limit. No command owns an allocation.
-- The callback freezes the FIFO count before legacy ingress. The first unrendered
-  quantum consumes exactly that many entries, before planner settlement and
-  snapshot capture. No tick means no dequeue. Preflight examines at most 32
-  targets plus a bounded pairwise check for duplicate playback transitions.
+- The RT ring contains 256 preallocated records. A group occupies one header plus
+  1–32 `Copy` command records. The cutoff contains at most 128 groups, or at most
+  248 commands (seven groups of 32 and one of 24). Header/command combinations
+  always fit the same 256-record bound. Control stages at most four additional
+  groups; the record carrier retains at most one complete blocked message.
+- The largest encoded group is 308 bytes (length prefix, message tag,
+  graph/topology epochs, count, and 32 commands of at most 9 bytes), within the
+  1,280-byte carrier limit. Each target is a configuration-local `u32` index;
+  the command variant supplies its type. No command owns an allocation.
+- Control reserves all records for a group and publishes them with one cursor
+  update, using safe `rtrb` chunk operations. RT freezes the published record count
+  before legacy ingress. The first unrendered quantum consumes that prefix before
+  planner settlement and snapshot capture. No tick means no dequeue. It borrows
+  records in place across wrapping and releases each complete group afterwards.
+  There is no whole-group buffer, semantic scan, duplicate-command check or
+  per-command expected-generation validation.
 - Control's ordered inbox holds up to four waiting immediate groups plus the
   prepared reliable-request credit allowance. A legacy prefix uses its existing
   queue and execution machinery. An immediate prefix waits for that work to
@@ -439,21 +443,22 @@ unimplemented and this amendment makes no runtime changes:
   existing configuration-matched snapshots. The entry point does not promise
   historical confirmation of a restart or wait for it before returning.
 
-The four-batch service allowance is an explicit experimental bound, not a proven
-hard deadline on all supported machines. Focused release timing will report the
-measured cost; deployments must validate their audio period and session size
-before raising these limits.
+The 256-record service allowance is an explicit experimental bound, not a proven
+hard deadline on all supported machines. Deployments must validate their audio
+period and session size before raising it. The wire layout is explicit; Rust ring
+record layout is not a hardware ABI.
 
 
 ## Implemented API and scope
 
-This section describes the code at commit `2a50c772`, before the agreed
-simplification. In particular, per-command generation checks and whole-group
-preflight/refusal still exist here.
-
 `shoop_rt_backend::RtBackend::immediate_group(&[ImmediateCommand])` is the explicit
 application entry point. It resolves existing application loop/track/bus identities
-through the retained mirror and uses the active snapshot configuration. Gains use
+through the retained mirror and the identities of the last validated snapshot.
+An announced configuration does not replace this observed mapping until its
+snapshot is accepted. An unknown, future or removed application object becomes an
+invalid address and fails individually on RT instead of addressing a reused slot.
+These retained identities reuse snapshot generations on the application side;
+they are not a separate object registry or command-correlation scheme. Gains use
 linear amplitude and balances use -1 through 1. It returns immediately with local
 acceptance or refusal; it does not advance the mutation cursor, reserve reliable
 request credits, or wait for execution. Ordinary `Backend` mutation methods retain
@@ -464,12 +469,13 @@ group. `ProtocolClient::immediate` sends it without a correlation. Custom carrie
 must call `Endpoint::try_deliver` to propagate `Full`; the in-process carrier,
 record server, and native process wrapper do this. Encoded records use the existing
 little-endian codec; Rust object layout is not a hardware ABI. Protocol version is
-29. `rt_runtime::immediate` contains only the generic FIFO and processing-boundary
+30. `rt_runtime::immediate` contains only the generic FIFO and processing-boundary
 hook; engine and loop semantics live in their own `immediate` modules.
 
 Playback is included. It restarts at zero or stops without creating resolver
-request records. Control checks the retained strip configuration is primitive
-and audio-only; RT checks actual prepared audio, empty MIDI content, current
+request records. The active fader configuration carries whether its loop belongs
+to an audio-only unprocessed strip. RT checks that flag and actual prepared audio,
+empty MIDI content, current
 stopped/playing mode, and absence of pending musical/program work, recording
 storage, failures, or repeat-sync behavior. MIDI-capable, processed/dry-wet,
 composite, recording and repeat-sync playback remain outside this first set.
@@ -487,8 +493,8 @@ settings, which become authoritative on activation.
 The handoff uses a transport retirement cursor and the existing snapshot audio
 frame. Only RT writes the shared retirement cursor and frame; control keeps its
 own publication cursor. These are bounded FIFO progress, not command IDs, receipts
-or a pending-command table. RT still validates and applies each dequeued group
-immediately without retaining it. The cursors survive reconnect; unsent inbox and
+or a pending-command table. RT checks the header and attempts each command once,
+recording individual failures without retaining commands. The cursors survive reconnect; unsent inbox and
 record staging do not. Previously RT-admitted work may still execute, and later
 legacy edits wait for its snapshot before proceeding.
 
@@ -502,12 +508,12 @@ observation and bounded diagnostics remain the only remote feedback.
 Already admitted delayed musical transitions keep their existing scheduling;
 control does not wait indefinitely for them before publishing scalar groups.
 Immediate playback continues to refuse pending musical/program conflicts during
-RT preflight. No future scheduling is introduced into the immediate path.
+its command handler. No future scheduling is introduced into the immediate path.
 
 This narrow entry point does not switch ordinary application controls over
 automatically. No controls need to be disabled merely because immediate groups
-have been used. Unsupported immediate playback states still refuse the complete
-group; their existing legacy operations remain available.
+have been used. Unsupported immediate playback states fail individually while
+the rest of the group continues; their legacy operations remain available.
 
 ## Completed coexistence milestone
 
@@ -530,7 +536,8 @@ legacy/immediate ordering, recording and subsequent immediate playback, media
 clearing, prepared graph replacement, stale epochs and generations, application
 adapter integration, encoded delivery and reconnect. Empty recorded MIDI streams
 are judged by data size, not duration, so ordinary recorded audio qualifies for
-immediate playback. The original command subset and callback bounds remain intact.
+immediate playback. The command subset is unchanged; the simplification below
+replaces the initial callback storage bounds.
 
 Snapshots remain the only execution observation. `immediate_diagnostics()` exposes
 cumulative control and RT refusal counts plus compact classifications (unavailable,
@@ -538,7 +545,7 @@ configuration, target, unsupported state, invalid value). Diagnostics are resent
 on new callback frames so lossy telemetry cannot permanently hide a changed count.
 They carry no command identity and do not establish individual command history.
 
-## Simplification milestone — not implemented
+## Simplification milestone
 
 Replace the current fixed batch slots and whole-group refusal rules with the
 target above. Do not migrate ordinary UI controls or expand the opcode subset in
@@ -559,7 +566,7 @@ publication cadence.
   default. Remove assumptions/panics that application follows successful group
   preflight. Replace old all-or-nothing tests with valid/failing/valid groups,
   repeated targets in written order, and unsupported recording/playback cases.
-- [ ] **3. Store actual group sizes in the FIFO.** After stage 1, remove repeated
+- [x] **3. Store actual group sizes in the FIFO.** After stage 1, remove repeated
   expected-generation fields from commands and resolve addresses through the
   configuration's existing mapping. Update the wire version if its layout
   changes. Implement the larger fixed-record ring with count/version headers,
@@ -584,8 +591,9 @@ publication cadence.
 
 Stage 1 is the prerequisite for trusting a header instead of individual expected
 generations. Stage 2 establishes command failure semantics; stage 3 connects them
-to the new storage and addressing. Stage 4 validates the combination. None of
-these stages is completed by the prior smoke-test results.
+to the new storage and addressing. Stage 4 validates the combination. The latest
+validation record below covers this implementation; earlier results remain
+historical evidence for the initial and coexistence milestones.
 
 Identity audit: loop incarnation changes require node-pair configuration and a
 new topology/graph activation; strip identity/processor binding changes require
@@ -593,13 +601,15 @@ a new graph; bus identity/processor changes also require a new graph. Whole-sess
 replacement always advances both epochs. Candidate node configuration is staged
 for the next epoch and does not replace the active mapping during preparation.
 Focused loop/strip/bus slot-reuse and prepared-replacement snapshot checks pass.
+The structural queue also prevents reusing an occupied address within the same
+activation: removal settles before a subsequent creation can activate.
 
 
 ## Validation record
 
 The following is the historical validation of the initial and coexistence
-implementations, completed on 2026-11-14. It is not validation of the unchecked
-simplification milestone.
+implementations, completed on 2026-11-14. The simplification's results are recorded
+separately below.
 
 - Nineteen command/carrier smoke tests pass. They cover cutoff ordering and a
   concurrent producer; a 436-byte maximum record and malformed/truncated records;

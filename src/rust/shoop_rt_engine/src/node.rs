@@ -1384,18 +1384,6 @@ impl EngineNode {
     pub(crate) fn immediate_playback_supported(&self) -> bool {
         matches!(self, Self::Fader(node) if node.immediate_playback)
     }
-    pub(crate) fn immediate_generation(&self) -> Option<u32> {
-        match self {
-            Self::StripInput(n) => Some(n.generation),
-            Self::StripOutput(n) => Some(
-                n.cells.strips[n.slot]
-                    .owner_generation
-                    .load(Ordering::Relaxed),
-            ),
-            Self::Bus(n) => Some(n.generation),
-            _ => None,
-        }
-    }
     pub(crate) fn apply_signal(
         &mut self,
         operation: EngineOp,

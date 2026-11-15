@@ -5,33 +5,44 @@ use rt_runtime::immediate;
 use shoop_wasm_test_support::shoop_test;
 
 #[shoop_test]
-fn cutoff_does_not_drain_later_publications_or_split_values() {
-    let (mut tx, mut rx) = immediate::channel(4);
-    for i in 0..4 {
-        tx.push([i; 32]).unwrap();
-    }
-    assert!(tx.push([9; 32]).is_err());
+fn actual_record_lengths_wrap_and_cutoff_excludes_later_groups() {
+    let (mut tx, mut rx) = immediate::channel(8);
+    tx.push(10, &[1, 2]).unwrap();
+    tx.push(20, &[3]).unwrap();
+    tx.push(30, &[4, 5]).unwrap();
+    assert!(tx.push(40, &[6, 7]).is_err());
     rx.begin_callback();
-    assert_eq!(rx.pop(), Some([0; 32]));
-    tx.push([4; 32]).unwrap();
-    for i in 1..4 {
-        assert_eq!(rx.pop(), Some([i; 32]));
+    {
+        let group = rx.pop().unwrap();
+        assert_eq!(group.header, 10);
+        assert!(group.commands().copied().eq([1, 2]));
+        assert!(
+            tx.push(40, &[6, 7]).is_err(),
+            "readable records remain owned by RT"
+        );
     }
-    assert_eq!(rx.pop(), None);
+    tx.push(40, &[6, 7]).unwrap();
+    for (header, values) in [(20, &[3][..]), (30, &[4, 5][..])] {
+        let group = rx.pop().unwrap();
+        assert_eq!(group.header, header);
+        assert!(group.commands().eq(values));
+    }
+    assert!(rx.pop().is_none());
     rx.begin_callback();
-    assert_eq!(rx.pop(), Some([4; 32]));
-    assert_eq!(rx.pop(), None);
+    let group = rx.pop().unwrap();
+    assert_eq!(group.header, 40);
+    assert!(group.commands().copied().eq([6, 7]));
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 #[shoop_test(no_wasm = "native producer thread")]
-fn racing_publications_are_whole_batches_at_one_cutoff() {
-    let (mut tx, mut rx) = immediate::channel(4);
+fn racing_publications_are_whole_groups_at_one_cutoff() {
+    let (mut tx, mut rx) = immediate::channel(67);
     let producer = std::thread::spawn(move || {
         for sequence in 0..10_000 {
-            let mut batch = [sequence; 30];
-            while let Err(value) = tx.push(batch) {
-                batch = value;
+            let commands = [sequence; 32];
+            let len = (sequence % 32 + 1) as usize;
+            while tx.push(sequence, &commands[..len]).is_err() {
                 std::thread::yield_now();
             }
         }
@@ -39,13 +50,16 @@ fn racing_publications_are_whole_batches_at_one_cutoff() {
     let mut expected = 0;
     while expected != 10_000 {
         rx.begin_callback();
-        let mut count = 0;
-        while let Some(batch) = rx.pop() {
-            assert_eq!(batch, [expected; 30]);
+        let mut records = 0;
+        while let Some(group) = rx.pop() {
+            let len = (expected % 32 + 1) as usize;
+            assert_eq!(group.header, expected);
+            assert_eq!(group.commands().count(), len);
+            assert!(group.commands().all(|command| *command == expected));
             expected += 1;
-            count += 1;
+            records += len + 1;
         }
-        assert!(count <= 4);
+        assert!(records <= 67);
     }
     producer.join().unwrap();
 }

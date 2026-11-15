@@ -289,6 +289,13 @@ impl Resolver {
             .filter(|state| state.id == id)
             .ok_or(Error::InvalidId)
     }
+    /// Resolve a slot in the active topology without an external generation.
+    pub fn id_at_slot(&self, slot: u32) -> Option<LoopId> {
+        self.states
+            .get(slot as usize)
+            .and_then(|state| state.as_ref())
+            .map(|state| state.id)
+    }
     /// Whether a new authored occurrence must enter a program at this boundary.
     /// A playing regular pass or unfinished one-pass program keeps its own phase.
     pub fn program_needs_entry_at(&self, id: LoopId, frame: Frame) -> Result<bool, Error> {

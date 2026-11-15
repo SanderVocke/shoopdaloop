@@ -16,6 +16,10 @@ pub(crate) struct Snapshots {
     total: usize,
     received: usize,
     pub configuration: Option<(u64, u64)>,
+    pub observed_configuration: Option<(u64, u64)>,
+    loop_generations: Vec<u32>,
+    strip_generations: Vec<u32>,
+    bus_generations: Vec<u32>,
     pub frame: Option<u64>,
     pub after: u64,
 }
@@ -29,6 +33,10 @@ impl Default for Snapshots {
             total: 0,
             received: 0,
             configuration: None,
+            observed_configuration: None,
+            loop_generations: Vec::new(),
+            strip_generations: Vec::new(),
+            bus_generations: Vec::new(),
             frame: None,
             after: 0,
         }
@@ -47,7 +55,19 @@ impl Snapshots {
             limits.buses as usize,
         ) {
             self.bytes.resize(capacity, 0);
+            self.loop_generations.resize(limits.loops as usize, 0);
+            self.strip_generations.resize(limits.strips as usize, 0);
+            self.bus_generations.resize(limits.buses as usize, 0);
         }
+    }
+    pub fn loop_address(&self, id: shoop_rt_protocol::LoopSlotId) -> u32 {
+        address(&self.loop_generations, id.0)
+    }
+    pub fn strip_address(&self, id: shoop_rt_protocol::StripId) -> u32 {
+        address(&self.strip_generations, id.0)
+    }
+    pub fn bus_address(&self, id: shoop_rt_protocol::BusId) -> u32 {
+        address(&self.bus_generations, id.0)
     }
     fn receive(&mut self, chunk: Chunk) -> Option<(Header, Vec<Record>)> {
         let total = chunk.total as usize;
@@ -111,6 +131,16 @@ impl Snapshots {
     }
 }
 
+fn address(generations: &[u32], slot: shoop_rt_protocol::SlotId) -> u32 {
+    if slot.generation != 0
+        && generations.get(slot.index as usize).copied() == Some(slot.generation)
+    {
+        slot.index
+    } else {
+        u32::MAX
+    }
+}
+
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     /// Push is rate-limited; pull serves explicit requests without waiting for RT.
     pub fn set_snapshot_delivery(&mut self, delivery: SnapshotDelivery) -> anyhow::Result<()> {
@@ -167,6 +197,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }) {
             return;
         }
+        self.snapshots.loop_generations.fill(0);
+        self.snapshots.strip_generations.fill(0);
+        self.snapshots.bus_generations.fill(0);
         for record in records {
             match record {
                 Record::LoopLevels {
@@ -175,6 +208,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     balance,
                     repeat_sync,
                 } => {
+                    if let Some(owner) =
+                        self.snapshots.loop_generations.get_mut(id.0.index as usize)
+                    {
+                        *owner = id.0.generation;
+                    }
                     if let Some(id) = self.mirror.slot_loops.get(&id) {
                         if let Some(entry) = self.mirror.loops.get_mut(id) {
                             entry.gain = gain;
@@ -185,6 +223,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 }
                 Record::Telemetry(record) => self.telemetry(record),
                 Record::State(StateRecord::Bus { bus, control }) => {
+                    if let Some(owner) =
+                        self.snapshots.bus_generations.get_mut(bus.0.index as usize)
+                    {
+                        *owner = bus.0.generation;
+                    }
                     use shoop_backend::BackendBusControl;
                     use shoop_rt_protocol::BusControl;
                     if let Some(entry) = self
@@ -202,11 +245,23 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         });
                     }
                 }
-                Record::State(record) => self.apply_state_record(record),
+                Record::State(record) => {
+                    if let StateRecord::StripControl { strip, .. } = record {
+                        if let Some(owner) = self
+                            .snapshots
+                            .strip_generations
+                            .get_mut(strip.0.index as usize)
+                        {
+                            *owner = strip.0.generation;
+                        }
+                    }
+                    self.apply_state_record(record);
+                }
             }
         }
         self.snapshots.accepted = chunk.sequence;
         self.snapshots.frame = Some(header.frame);
+        self.snapshots.observed_configuration = Some((header.graph, header.topology));
         if header.frame > self.snapshots.after {
             self.telemetry_fresh = true;
         }
@@ -217,6 +272,22 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
 mod tests {
     use super::*;
     use shoop_wasm_test_support::shoop_test;
+    #[shoop_test]
+    fn command_addresses_belong_to_the_observed_configuration() {
+        use shoop_rt_protocol::{LoopSlotId, SlotId};
+        let mut state = Snapshots::default();
+        state.observed_configuration = Some((1, 2));
+        state.loop_generations = alloc::vec![1];
+        state.configuration = Some((2, 3));
+        assert_eq!(state.observed_configuration, Some((1, 2)));
+        assert_eq!(state.loop_address(LoopSlotId(SlotId::new(0, 1))), 0);
+        assert_eq!(state.loop_address(LoopSlotId(SlotId::new(0, 2))), u32::MAX);
+        assert_eq!(state.loop_address(LoopSlotId(SlotId::new(1, 1))), u32::MAX);
+        state.loop_generations[0] = 2;
+        state.observed_configuration = state.configuration;
+        assert_eq!(state.loop_address(LoopSlotId(SlotId::new(0, 1))), u32::MAX);
+        assert_eq!(state.loop_address(LoopSlotId(SlotId::new(0, 2))), 0);
+    }
     fn chunk(bytes: &[u8], sequence: u32, offset: usize, len: usize) -> Chunk {
         let mut chunk = Chunk {
             sequence,

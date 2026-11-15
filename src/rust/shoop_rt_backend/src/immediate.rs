@@ -30,7 +30,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
         let (graph, topology) = self
             .snapshots
-            .configuration
+            .observed_configuration
             .ok_or_else(|| anyhow!("no confirmed snapshot configuration"))?;
         if commands.is_empty() || commands.len() > COMMANDS {
             return Err(anyhow!("immediate groups contain 1 to {COMMANDS} commands"));
@@ -39,39 +39,39 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             self.mirror
                 .loops
                 .get(&id)
-                .map(|l| l.slot)
-                .ok_or_else(|| anyhow!("unknown loop"))
+                .map(|l| self.snapshots.loop_address(l.slot))
+                .unwrap_or(u32::MAX)
         };
         let strip = |id| {
             self.mirror
                 .tracks
                 .get(&id)
-                .map(|t| t.strip)
-                .ok_or_else(|| anyhow!("unknown track"))
+                .map(|t| self.snapshots.strip_address(t.strip))
+                .unwrap_or(u32::MAX)
         };
         let bus = |id| {
             self.mirror
                 .buses
                 .get(&id)
-                .map(|b| b.slot)
-                .ok_or_else(|| anyhow!("unknown bus"))
+                .map(|b| self.snapshots.bus_address(b.slot))
+                .unwrap_or(u32::MAX)
         };
-        let mut values = [Command::BusMute(shoop_rt_protocol::BusId::MASTER, false); COMMANDS];
+        let mut values = [Command::BusMute(0, false); COMMANDS];
         for (output, command) in values.iter_mut().zip(commands) {
             use ImmediateCommand::*;
             *output = match *command {
-                LoopGain(id, v) => Command::LoopGain(loop_slot(id)?, v),
-                LoopBalance(id, v) => Command::LoopBalance(loop_slot(id)?, v),
-                Start(id) => Command::Start(loop_slot(id)?),
-                Stop(id) => Command::Stop(loop_slot(id)?),
-                InputGain(id, v) => Command::InputGain(strip(id)?, v),
-                InputBalance(id, v) => Command::InputBalance(strip(id)?, v),
-                OutputGain(id, v) => Command::OutputGain(strip(id)?, v),
-                OutputBalance(id, v) => Command::OutputBalance(strip(id)?, v),
-                OutputMute(id, v) => Command::OutputMute(strip(id)?, v),
-                BusGain(id, v) => Command::BusGain(bus(id)?, v),
-                BusBalance(id, v) => Command::BusBalance(bus(id)?, v),
-                BusMute(id, v) => Command::BusMute(bus(id)?, v),
+                LoopGain(id, v) => Command::LoopGain(loop_slot(id), v),
+                LoopBalance(id, v) => Command::LoopBalance(loop_slot(id), v),
+                Start(id) => Command::Start(loop_slot(id)),
+                Stop(id) => Command::Stop(loop_slot(id)),
+                InputGain(id, v) => Command::InputGain(strip(id), v),
+                InputBalance(id, v) => Command::InputBalance(strip(id), v),
+                OutputGain(id, v) => Command::OutputGain(strip(id), v),
+                OutputBalance(id, v) => Command::OutputBalance(strip(id), v),
+                OutputMute(id, v) => Command::OutputMute(strip(id), v),
+                BusGain(id, v) => Command::BusGain(bus(id), v),
+                BusBalance(id, v) => Command::BusBalance(bus(id), v),
+                BusMute(id, v) => Command::BusMute(bus(id), v),
             };
         }
         let batch = Batch::new(graph, topology, &values[..commands.len()])

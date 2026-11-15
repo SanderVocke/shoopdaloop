@@ -2446,60 +2446,60 @@ impl Wire for crate::immediate::Command {
         match *self {
             LoopGain(id, v) => {
                 w.u8(0)?;
-                id.put(w)?;
+                w.u32(id)?;
                 w.f32(v)
             }
             LoopBalance(id, v) => {
                 w.u8(1)?;
-                id.put(w)?;
+                w.u32(id)?;
                 w.f32(v)
             }
             Start(id) => {
                 w.u8(2)?;
-                id.put(w)
+                w.u32(id)
             }
             Stop(id) => {
                 w.u8(3)?;
-                id.put(w)
+                w.u32(id)
             }
             InputGain(id, v) => {
                 w.u8(4)?;
-                id.put(w)?;
+                w.u32(id)?;
                 w.f32(v)
             }
             InputBalance(id, v) => {
                 w.u8(5)?;
-                id.put(w)?;
+                w.u32(id)?;
                 w.f32(v)
             }
             OutputGain(id, v) => {
                 w.u8(6)?;
-                id.put(w)?;
+                w.u32(id)?;
                 w.f32(v)
             }
             OutputBalance(id, v) => {
                 w.u8(7)?;
-                id.put(w)?;
+                w.u32(id)?;
                 w.f32(v)
             }
             OutputMute(id, v) => {
                 w.u8(8)?;
-                id.put(w)?;
+                w.u32(id)?;
                 w.bool(v)
             }
             BusGain(id, v) => {
                 w.u8(9)?;
-                id.put(w)?;
+                w.u32(id)?;
                 w.f32(v)
             }
             BusBalance(id, v) => {
                 w.u8(10)?;
-                id.put(w)?;
+                w.u32(id)?;
                 w.f32(v)
             }
             BusMute(id, v) => {
                 w.u8(11)?;
-                id.put(w)?;
+                w.u32(id)?;
                 w.bool(v)
             }
         }
@@ -2507,18 +2507,18 @@ impl Wire for crate::immediate::Command {
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         use crate::immediate::Command::*;
         Ok(match r.u8()? {
-            0 => LoopGain(LoopSlotId::get(r)?, r.f32()?),
-            1 => LoopBalance(LoopSlotId::get(r)?, r.f32()?),
-            2 => Start(LoopSlotId::get(r)?),
-            3 => Stop(LoopSlotId::get(r)?),
-            4 => InputGain(StripId::get(r)?, r.f32()?),
-            5 => InputBalance(StripId::get(r)?, r.f32()?),
-            6 => OutputGain(StripId::get(r)?, r.f32()?),
-            7 => OutputBalance(StripId::get(r)?, r.f32()?),
-            8 => OutputMute(StripId::get(r)?, r.bool()?),
-            9 => BusGain(BusId::get(r)?, r.f32()?),
-            10 => BusBalance(BusId::get(r)?, r.f32()?),
-            11 => BusMute(BusId::get(r)?, r.bool()?),
+            0 => LoopGain(r.u32()?, r.f32()?),
+            1 => LoopBalance(r.u32()?, r.f32()?),
+            2 => Start(r.u32()?),
+            3 => Stop(r.u32()?),
+            4 => InputGain(r.u32()?, r.f32()?),
+            5 => InputBalance(r.u32()?, r.f32()?),
+            6 => OutputGain(r.u32()?, r.f32()?),
+            7 => OutputBalance(r.u32()?, r.f32()?),
+            8 => OutputMute(r.u32()?, r.bool()?),
+            9 => BusGain(r.u32()?, r.f32()?),
+            10 => BusBalance(r.u32()?, r.f32()?),
+            11 => BusMute(r.u32()?, r.bool()?),
             _ => return Err(CodecError::Invalid),
         })
     }
@@ -2541,7 +2541,7 @@ impl Wire for crate::immediate::Batch {
         if len == 0 || len > COMMANDS {
             return Err(CodecError::Invalid);
         }
-        let mut commands = [Command::Start(LoopSlotId(SlotId::new(0, 0))); COMMANDS];
+        let mut commands = [Command::Start(0); COMMANDS];
         for command in &mut commands[..len] {
             *command = Command::get(r)?;
         }
