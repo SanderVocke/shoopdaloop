@@ -346,11 +346,11 @@ averaging over the full 666.67 us audio period instead gives 2.304% current load
 and 0.576% projected burst load. Recording reports keep late writeback outside
 the quantum window separate through the whole-model counters.
 
-## Chunk-burst results
+## Historical chunk-burst results
 
 The measurements in this section describe the scalar job processor at
-`e73c9870`. Current results after merging gain/mix pipelining are in
-[the playback streaming checkpoint](../loop_pipeline/README.md#pipelined-playback-sample-delivery):
+`e73c9870`. Historical results after gain/mix pipelining are in
+[the archived playback checkpoint](../../docs/fpga/history/loop_pipeline/README.md#pipelined-playback-sample-delivery):
 125.16 us per playback quantum at the same assumed 100 MHz, with zero exposed
 fill wait and the same 8 KiB of physical DDR traffic.
 
@@ -358,7 +358,7 @@ The coordinated 64-loop fixture uses eight tracks of eight mono loops, Q=32,
 64 gains, 56 ordered mixes and eight outputs. Its 128 KiB of loop media exceeds
 the 16 KiB read pool. At an assumed 100 MHz with the illustrative DDR3 profile,
 64-bit packed bursts match the complete Rust transition/job/sample/media trace
-over all four quanta. Reproduce with:
+over all four quanta. The following command requires the historical checkout:
 
 ```sh
 python fpga/loop_pipeline/simulate.py --media --config 8x8 --timing \
@@ -404,13 +404,11 @@ Validation with Verilator 5.032, historical Python harness 1.9.2 and Yosys 0.52:
   profile, not the 64-loop timing profile; it includes neither a DDR controller
   nor placement/routed timing.
 
-## Simplified engine interface
+## Retained component interface
 
-Generated media/loop wrappers carry the four-bit media opcode bus, including
-internal BeginCapture command 8. `loop_pipeline_axi` exposes one run/completion
-operation plus sticky `faulted`; the preflight/retry and external-job ports have
-been removed. Failed output readback returns silence. A host aggregating quanta
-must withhold and silence the whole failed block, and coordinate reset with
-outstanding AXI traffic. AXI buffering, ordering, retirement, bounds checks and
-late writeback-fault handling are unchanged. Regenerate wrappers with
+Generated media wrappers carry the four-bit component media opcode bus, including
+BeginCapture command 8. The TP-free `media_audio_pipeline_axi` integrates execution
+and memory. The full-loop top and its ARM run/completion/fault protocol are retired.
+AXI buffering, ordering, retirement, bounds checks and late writeback-fault handling
+remain component obligations. Regenerate retained wrappers with
 `python3 fpga/axi_memory/generate_tops.py`; `--check` verifies checked-in outputs.

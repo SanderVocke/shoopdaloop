@@ -20,8 +20,8 @@ The optional media command/stream interface connects those jobs to the bounded
 external-memory store in `fpga/media_store`; its combined top and tests exercise
 recording, playback and shared ranges. BRAM here holds scratch and I/O buffers.
 
-`fpga/loop_pipeline` connects transition processing through the shared settled
-loop read port. Its production executor always runs jobs internally.
+The TP-free media audio pipeline connects SP jobs to JP and media storage.
+Logical read records, where needed, are explicit fixture inputs.
 `BeginCapture` (job opcode 7, view in payload 0) uses media command 8 to create or
 clear/reuse the recording view, then waits for completion without sample traffic.
 The media command bus is four bits. The media-enabled top executes actual sample
