@@ -24,11 +24,37 @@ same-callback responses and optional expiry-deadline capability.
 **Next, not implemented:** replace a loop's complete transition plan in one command,
 with an optional immediate action and up to two future musical actions; selectively
 clear either future entry; observe both entries through snapshots. Eligible
-quantized transitions and fixed-cycle audio recording will move to this path.
+quantized transitions, fixed-cycle audio recording, and Grab-and-continue followed
+by automatic Stop/Play at a musical boundary will move to this path.
 
 All application commands continue to use `deadline = None`, including the next
 milestone. Musical delays describe loop behavior. Assigning transport expiry
 deadlines to application commands remains separate future work.
+
+## Coverage goal and permitted tradeoffs
+
+The migration's end goal is to support **all application operations currently
+supported through legacy communication** through the new command/snapshot model.
+The milestone scopes and remaining-area list describe sequencing, not permanent
+feature exclusions. Leaving an operation on legacy preserves it during migration;
+it does not count as delivering that operation through the new model.
+
+**Communication simplicity takes priority over reproducing all legacy correctness
+bookkeeping.** If the different model introduces limitations, the implementer may
+make small relaxations to behavioral requirements, safeguards, edge-case guarantees
+or capacity limits to keep the communication layer simple. This is explicit user
+authorization to make those limited tradeoffs without asking again, including
+corresponding adjustments to detailed acceptance expectations. Prefer simple
+processor behavior and snapshot observation over more request/acknowledgement,
+cancellation or timing machinery. Keep Rust safety and resource ownership intact.
+
+Document each relaxation, its reason, the before/after behavior and any remaining
+limitation here as it is made. **After completing implementation, report those
+tradeoffs in this chat**, including their user-visible effects and any operations
+still unmigrated. Say explicitly if no relaxations were needed; a document or PR
+update alone does not satisfy that reporting requirement. This permission does
+not authorize silently dropping an operation, declaring an omitted required
+milestone feature complete, or abandoning the simple communication model.
 
 ## Design rules and configuration identity
 
@@ -245,7 +271,7 @@ route. Unsupported, mixed or oversized actions remain available through legacy.
 | Area | Status and remaining difficulty |
 | --- | --- |
 | Musical plans | Next milestone below. Today delayed transitions and automatic finishes retain legacy scheduling; seeking, repeat-sync changes and timing edits also need precise semantics. |
-| Advanced capture/Grab | Replacing, MIDI, processed/composite capture, active-recording Grab targets, clearing content and unsupported automatic Grab gestures retain legacy ownership/behavior. |
+| Advanced capture/Grab | Ordinary audio Grab with automatic musical finishing is required by the next milestone. Replacing, MIDI, processed/composite capture, active-recording Grab targets and clearing content need later migration of their ownership/behavior. |
 | Graph/processors | Creation, routing, replacement and removal need preparation, versioned activation and retirement of displaced owners. |
 | Media/persistence | Loading, exporting and saving need reliable bulk delivery, stable cuts, content revisions and resource lifetimes. Snapshots carry no media bytes. |
 | Composites/processed playback/MIDI | Nested programs, dry/wet behavior, processor restoration and MIDI note/state cleanup need feature-specific migration. |
@@ -263,14 +289,19 @@ replacement exists.
 Extend the new interface for ordinary audio-only primitive loops on direct,
 unprocessed strips: install up to two future musical transitions together, replace
 the complete plan, clear individual entries or both, and observe the complete
-plan through snapshots. Wire eligible quantized Play/Stop/Record and fixed-cycle
-recording through it. Scheduled finishing must handle ordinary recordings and
-history-backed growing takes through the existing capture machinery.
+plan through snapshots. Wire eligible quantized Play/Stop/Record, fixed-cycle
+recording, and existing ordinary audio Grab-and-continue gestures with automatic
+musical-boundary finishing through it. Include Stop at the boundary and Playing
+when the existing play-after-record setting requests it. Scheduled finishing must
+handle ordinary recordings and history-backed growing takes through the existing
+capture machinery. **Future-transition planning alone is not milestone completion:
+the Grab -> continue recording -> finish at a boundary flow must also use the new
+model end to end.**
 
-This milestone does not migrate processed/MIDI/composite modes, redesign Grab
-gestures or add transport scheduling. Existing unsupported actions keep their
-whole legacy route. The legacy engine permits eight planned transitions per loop;
-the new interface initially carries two. Preserve longer legacy plans and
+This stage does not migrate processed/MIDI/composite modes or add transport
+scheduling; these remain part of the overall coverage goal. Other unsupported
+actions keep their whole legacy route. The legacy engine permits eight planned
+transitions per loop; the new interface initially carries two. Preserve longer legacy plans and
 incremental APIs that cannot safely express full replacement; do not truncate
 them or claim their migration is complete. Deliberate replacement/clearing must
 also disarm old legacy follow-ups for that target, with reliable retirement;
@@ -306,6 +337,31 @@ within the existing 32-byte record. Define canonical absent-value encoding and
 update protocol versions; there is no new handle or request identity. Thirty
 complete two-action plans still fit one 30-command group and the current envelope.
 Use only ordinary format/safety checks; trust the app to supply sensible plans.
+
+### Grab-and-continue with automatic finishing
+
+Migrate the existing ordinary audio gesture, including its sync/target and cycle
+choices. Resolve both the history window and intended finish boundary from
+authoritative RT state at the cut, reusing the current gesture/window logic.
+Preserve Stop/Play after-mode selection and supported selection/solo behavior,
+subject to the documented small-relaxation policy above.
+
+Attach protected history, start continuation capture and install its musical
+finish as one coherent per-loop operation in the receiving callback. Extend the
+Grab value/handler as needed and use the same loop-owned plan machinery; add no
+separate transport scheduler or request lifecycle. Installation success confirms
+both capture and its finish plan. A failed Grab must not leave a finish armed
+against the previous take; preserve the previous content/state/plan and release
+temporary resources. Do not depend on a later UI snapshot to decide whether to
+arm the finish.
+
+At the intended boundary, seal the growing take and enter Stopped or Playing
+using existing capture reservations and monitoring/ownership handling. Snapshots
+show the active continuation, its planned finish and the resulting completed take.
+Replacement, selective clearing, future failure and disconnect obey the same plan
+rules below. Clearing the finish alone leaves current recording running; an
+explicit immediate Stop/Play finishes it. Keeping this entire gesture on legacy
+does not satisfy this milestone.
 
 ### Musical timing and execution
 
@@ -373,7 +429,8 @@ before admitting ordinary later new-path commands.
 
    - [ ] Extend UI/shared/backend/RT values with complete replacement and selective
      clearing, canonical encoding and synchronous result meaning; expose both
-     future entries in snapshots and bump affected versions.
+     future entries in snapshots and bump affected versions. Carry automatic
+     Grab-continuation finish intent through the new interface as well.
    - [ ] Verify absent fields, all three modes, maximum groups, stable entry
      positions, skip counting and distinction from expiry deadlines with focused
      codec/state examples.
@@ -382,7 +439,8 @@ before admitting ordinary later new-path commands.
 
    - [ ] Install/replace/clear loop-owned plans synchronously, reuse pulse and
      capture machinery, preserve repeated-action semantics and remove global
-     pending-plan restrictions without retaining transport requests.
+     pending-plan restrictions without retaining transport requests. Integrate
+     history attachment, continuation start and automatic finish installation.
    - [ ] Smoke-test exact pulse/frame execution, two-step plans, immediate-action
      failure preserving an old plan, future failure clearing its remainder,
      recording/Grab-continuation finishing, monitoring, source changes, buffer-only
@@ -390,9 +448,10 @@ before admitting ordinary later new-path commands.
 
 3. **UI/control integration and compatibility**
 
-   - [ ] Send eligible complete scheduled and fixed-cycle recording intents as
-     one command per loop; wire selective/all-entry clearing and both-entry
-     displays through direct and encoded delivery. Keep deadline fields absent.
+   - [ ] Send eligible complete scheduled/fixed-cycle recording intents and Grab
+     gestures that continue recording and finish at a boundary through the new
+     UI/Lua path; wire clearing and both-entry displays over direct/encoded delivery.
+     Keep transition plans as one command per loop and deadline fields absent.
    - [ ] Check stale-snapshot cancellation without moving the survivor, replacement
      before a fresh snapshot, legacy/new handoff without leftover follow-ups,
      selected/solo grouping and unchanged unsupported/longer-plan legacy behavior.
@@ -402,11 +461,13 @@ before admitting ordinary later new-path commands.
 
    - [ ] Exercise 30 grouped loops sharing a sync source, starting at the same
      boundary and stopping four cycles later; plan replacement and clearing,
-     scheduled recording/finishing with real samples, resource failure and
-     disconnect without replay. Verify snapshots and same-callback results.
+     scheduled recording/finishing and Grab -> continued input -> automatic
+     Stop/Play with real samples, resource failure and disconnect without replay.
+     Verify snapshots, exact history/live joins and same-callback results.
    - [ ] Run relevant smoke checks, formatting, test-attribute policy and a
      warning-denying build. Update this document and the existing draft PR;
-     commit/push completed work. No broad suite or CI completion gate.
+     commit/push completed work and report behavior relaxations/remaining limits
+     in this chat. No broad suite or CI completion gate.
 
 ### Acceptance criteria
 
@@ -425,8 +486,14 @@ before admitting ordinary later new-path commands.
 - Eligible UI/Lua scheduled and fixed-cycle recording behavior uses the new path;
   unsupported/mixed/oversized/longer plans remain functional through their complete
   legacy routes. No application deadline assignment or callback-work accounting.
+- Ordinary audio Grab-and-continue followed by automatic Stop/Play at its musical
+  boundary uses the new UI/control/RT model, with correct take finalization and no
+  stale finish after failed acquisition. Implementing future loop transitions
+  while leaving that whole gesture on legacy is incomplete.
 - Focused direct/encoded/UI smoke coverage and relevant build/format checks pass.
-  Goals and acceptance criteria require explicit user approval to change.
+  Report all small requirement relaxations and remaining limitations in this chat
+  on completion, as authorized above. Removing required operation coverage or
+  changing the core communication model requires explicit user approval.
 
 ## Execution and verification policy
 
@@ -434,7 +501,10 @@ Keep this document current and check off completed work. Commit each completed
 stage or meaningful milestone on `feat/rt-state-snapshots`, push to draft PR #997
 against `feat/backend-replacement`, and update the PR. Implementation steps may
 change with evidence; design revisions require a documented, supported reason.
-Do not change goals/acceptance criteria without explicit user approval.
+The coverage/tradeoff policy above permits small behavioral requirement and
+acceptance-detail relaxations for simplicity, with documentation and a final chat
+report. Changes to operation-coverage goals or the core model still require
+explicit user approval.
 
 Use focused smoke checks per stage and a focused end-to-end pass. Do not run broad
 integration matrices or callback-cost certification. Check relevant review feedback
