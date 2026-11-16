@@ -8,6 +8,7 @@ pub enum LoadError {
     StaleRevision,
     Exhausted,
     Geometry,
+    IncompatibleState,
 }
 impl From<CompileError> for LoadError {
     fn from(value: CompileError) -> Self {
@@ -42,6 +43,7 @@ pub struct LoopSlot {
     pub logical: Identity,
     pub physical: Identity,
     pub fresh: bool,
+    pub sync_source: Option<Identity>,
 }
 
 /// A bound image owns no mutable access to continuing allocations.
@@ -55,6 +57,7 @@ pub struct Layout {
     fresh_values: Vec<bool>,
     histories: Vec<(Identity, u32)>,
     fresh_histories: Vec<u32>,
+    changed_sources: Vec<Identity>,
     quantum: u32,
     chunk_frames: u32,
 }
@@ -78,6 +81,9 @@ impl Layout {
     }
     pub fn new_histories(&self) -> &[u32] {
         &self.fresh_histories
+    }
+    pub fn changed_sources(&self) -> &[Identity] {
+        &self.changed_sources
     }
     pub fn new_loops(&self) -> impl Iterator<Item = Identity> + '_ {
         self.loops.iter().filter(|l| l.fresh).map(|l| l.physical)
@@ -203,6 +209,7 @@ impl Allocator {
             if let Some(existing) = old.and_then(|o| o.loops.iter().find(|v| v.logical == l.id)) {
                 loops.push(LoopSlot {
                     fresh: false,
+                    sync_source: l.sync_source,
                     ..existing.clone()
                 });
             } else {
@@ -220,6 +227,7 @@ impl Allocator {
                     logical: l.id,
                     physical: Identity { slot, generation },
                     fresh: true,
+                    sync_source: l.sync_source,
                 });
             }
         }
@@ -268,6 +276,31 @@ impl Allocator {
                 )?;
             }
         }
+        if let Some(old) = old {
+            for entry in loops.iter().filter(|l| !l.fresh) {
+                let previous = old
+                    .values
+                    .iter()
+                    .filter(|v| v.key.owner == entry.logical)
+                    .map(|v| v.key);
+                let next = keys.iter().flatten().filter(|k| k.owner == entry.logical);
+                if previous.clone().any(|k| !next.clone().any(|n| *n == k))
+                    || next.clone().any(|k| !previous.clone().any(|p| p == *k))
+                {
+                    return Err(LoadError::IncompatibleState);
+                }
+            }
+        }
+        let changed_sources = loops
+            .iter()
+            .filter(|l| {
+                !l.fresh
+                    && old
+                        .and_then(|o| o.loops.iter().find(|p| p.logical == l.logical))
+                        .is_some_and(|p| p.sync_source != l.sync_source)
+            })
+            .map(|l| l.logical)
+            .collect();
         let mut values: Vec<ValueSlot> = Vec::new();
         let mut fresh_values = Vec::new();
         let mut histories = Vec::new();
@@ -318,6 +351,7 @@ impl Allocator {
             fresh_values,
             histories,
             fresh_histories,
+            changed_sources,
             quantum: program.quantum,
             chunk_frames: program.chunk_frames,
         };

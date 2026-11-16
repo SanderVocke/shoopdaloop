@@ -245,7 +245,11 @@ fn start_backend(config: &HostConfig) -> Result<StartedBackend> {
         let shoop_app_api::AudioDriverConfig::Dummy(dummy) = &config.driver else {
             anyhow::bail!("the reference test host requires dummy driver geometry");
         };
-        let started = crate::fpga_reference::start(config.pools.quantum, dummy.sample_rate)?;
+        let started = crate::fpga_reference::start_with_memory(
+            config.pools.quantum,
+            dummy.sample_rate,
+            config.pools.loop_memory_mb,
+        )?;
         let backend = RtBackend::connect(started.client, Sleep::default())?;
         return Ok(StartedBackend {
             reference_driver: Some(started.driver),

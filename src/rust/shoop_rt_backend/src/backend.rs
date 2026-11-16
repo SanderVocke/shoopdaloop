@@ -306,6 +306,9 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     fn activate_prepared_graph(&mut self) -> Result<()> {
         self.install_prepared_graph()
     }
+    fn graph_updates_are_prepared(&self) -> bool {
+        self.prepared_graph.is_some()
+    }
     fn mutations_pending_through(&self, sequence: u64) -> bool {
         self.prepared_graph
             .as_ref()

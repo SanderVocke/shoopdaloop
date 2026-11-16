@@ -4793,6 +4793,7 @@ version = "0.3.0"
 dependencies = [
  "rt_fpga_compiler",
  "rt_runtime",
+ "rtrb",
  "schemars",
  "serde",
  "serde_json",

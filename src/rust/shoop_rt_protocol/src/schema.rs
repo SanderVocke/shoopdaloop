@@ -435,6 +435,7 @@ pub struct Capabilities(pub u32);
 impl Capabilities {
     /// Single-install mono graph profile; fixed virtual input and stereo Master outputs.
     pub const PREPARED_GRAPH: Self = Self(1 << 15);
+    pub const LIVE_PROGRAMS: Self = Self(1 << 16);
     pub const INPUT_BATCH: Self = Self(1 << 12);
     pub const REPLACING: Self = Self(1 << 13);
     pub const PROFILING: Self = Self(1 << 6);

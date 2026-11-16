@@ -182,11 +182,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         if self.link != Link::Ready {
             return;
         }
-        let Some((header, records)) = self.snapshots.receive(chunk) else {
+        let Some((header, mut records)) = self.snapshots.receive(chunk) else {
             return;
         };
         // Validate record classes and identities for the known configuration first.
-        if !records.iter().all(|record| match record {
+        let known = |record: &Record| match record {
             Record::LoopPlan { id, .. }
             | Record::LoopLevels { id, .. }
             | Record::State(StateRecord::LoopTiming { loop_id: id, .. })
@@ -202,7 +202,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 self.mirror.buses.values().any(|entry| entry.slot == *bus)
             }
             _ => false,
-        }) {
+        };
+        if self.prepared_graph.is_some() {
+            records.retain(known);
+        } else if !records.iter().all(known) {
             return;
         }
         self.snapshots.loop_generations.fill(0);

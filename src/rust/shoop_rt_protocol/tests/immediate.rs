@@ -9,6 +9,34 @@ use shoop_rt_protocol::{
 use shoop_wasm_test_support::shoop_test;
 
 #[shoop_test]
+fn program_switch_descriptor_and_fenced_result_are_canonical_records() {
+    let command = Command::SwitchProgram(shoop_rt_protocol::immediate::SwitchProgram {
+        revision: 0x1234_5678_abcdef01,
+        region: 1,
+        instructions: 127,
+        sync_count: 16,
+        states: 64,
+        jobs: 85,
+        buffers: 50,
+    });
+    assert!(command.valid());
+    let batch = Batch::new(41, 41, &[command]).unwrap();
+    let mut bytes = [0; MAX_RECORD_BYTES];
+    let message = ClientMessage::Immediate(batch);
+    let n = codec::encode_client(&message, &mut bytes).unwrap();
+    assert_eq!(codec::decode_client(&bytes[..n]), Ok(message));
+    let record = CommandRecord::new(command).complete(Code::Applied);
+    let message = EngineMessage::ImmediateResponse(
+        Response::new(batch.header().complete(1024, Code::Applied), &[record]).unwrap(),
+    );
+    let n = codec::encode_engine(&message, &mut bytes).unwrap();
+    assert_eq!(codec::decode_engine(&bytes[..n]), Ok(message));
+    let mut invalid = *record.bytes();
+    invalid[24] = 1;
+    assert!(CommandRecord::from_bytes(invalid).is_none());
+}
+
+#[shoop_test]
 fn prepared_graph_records_roundtrip_and_reject_reserved_bits() {
     use shoop_rt_protocol::immediate::GraphLoop;
     let commands = [

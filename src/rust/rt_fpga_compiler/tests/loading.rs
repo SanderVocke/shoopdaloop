@@ -129,3 +129,21 @@ fn failed_admission_and_cancel_preserve_current_and_relocation_is_sparse() {
     assert!(c.loops[1].physical.generation > b.loops[1].physical.generation);
     allocator.cancel(c.revision).unwrap();
 }
+
+#[shoop_test]
+fn changing_sync_operands_keeps_addresses_and_requires_explicit_plan_clear() {
+    let mut allocator = Allocator::new(limits());
+    let first = graph(&[0, 1]);
+    let a = allocator.stage(&first).unwrap();
+    allocator.publish(a.revision).unwrap();
+    allocator.complete(a.revision).unwrap();
+    let mut next = first.clone();
+    next.loops[1].sync_source = Some(next.loops[0].id);
+    let b = allocator.stage(&next).unwrap();
+    assert_eq!(b.changed_sources(), &[next.loops[1].id]);
+    assert_eq!(b.new_values().count(), 0);
+    assert_eq!(b.new_loops().count(), 0);
+    assert_eq!(b.loop_id(next.loops[1].id), a.loop_id(next.loops[1].id));
+    let bound = b.relocate(&next).unwrap();
+    assert_eq!(bound.loops[1].sync_source, Some(bound.loops[0].id));
+}

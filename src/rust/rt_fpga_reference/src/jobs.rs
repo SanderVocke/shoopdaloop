@@ -145,6 +145,15 @@ impl JobQueue {
 
 /// Positions and lengths are in chunks; sample streams retain sample units.
 pub trait Memory {
+    fn prepare_unused_view(&mut self, _view: ViewId) -> Result<bool, Error> {
+        Ok(true)
+    }
+    fn begin_completion_fence(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
+    fn completion_fence_ready(&mut self) -> Result<bool, Error> {
+        Ok(true)
+    }
     fn supports_media(&self) -> bool {
         true
     }

@@ -84,7 +84,7 @@ impl Pipeline {
     ) -> Result<(), PipelineError> {
         if image.layout.expected != self.revision
             || image.layout.revision <= self.revision
-            || image.layout.region == self.region
+            || (self.revision != 0 && image.layout.region == self.region)
             || self.fault.is_some()
             || !self.queue.is_empty()
             || image.compiled.program.quantum != self.program.quantum
@@ -224,7 +224,7 @@ impl Pipeline {
             return Err(PipelineError::Jobs(Error::InvalidShape));
         }
         let result = (0..frames).step_by(q).try_for_each(|base| {
-            self.process_quantum(jobs, memory, inputs, outputs, base, observer)
+            self.process_quantum(jobs, memory, inputs, outputs, base, observer, base == 0)
         });
         if let Err(error) = result {
             self.fault = Some(error);
@@ -234,7 +234,7 @@ impl Pipeline {
         }
         result
     }
-    fn process_quantum(
+    pub(crate) fn process_quantum(
         &mut self,
         jobs: &mut JobProcessor,
         memory: &mut impl Memory,
@@ -242,6 +242,7 @@ impl Pipeline {
         outputs: &mut [&mut [Fixed]],
         base: usize,
         observer: &mut impl Observer,
+        publish: bool,
     ) -> Result<(), PipelineError> {
         self.emitted.clear();
         if let Some(error) = memory.fault() {
@@ -259,7 +260,7 @@ impl Pipeline {
             Error::Transition(error) => PipelineError::Transition(error),
             error => PipelineError::State(error),
         })?;
-        if base == 0 {
+        if publish {
             observer.settled(&self.state);
         }
         jobs.run_at(&mut self.queue, memory, inputs, outputs, base)
@@ -269,5 +270,9 @@ impl Pipeline {
         }
         observer.processed(jobs);
         Ok(())
+    }
+    #[cfg(feature = "rt-interface")]
+    pub(crate) fn latch_fault(&mut self, error: PipelineError) {
+        self.fault = Some(error);
     }
 }

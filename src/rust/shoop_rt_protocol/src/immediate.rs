@@ -5,6 +5,17 @@ pub const FIFO_SINGLETONS: usize = FIFO_RECORDS / 2;
 pub const STAGED_BATCHES: usize = 4;
 pub const PREPARED_GRAPH_LOOPS: u32 = 16;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SwitchProgram {
+    pub revision: u64,
+    pub region: u16,
+    pub instructions: u16,
+    pub sync_count: u16,
+    pub states: u16,
+    pub jobs: u16,
+    pub buffers: u16,
+}
+
 /// One initially empty mono loop in the restricted single-install graph profile.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GraphLoop {
@@ -98,6 +109,7 @@ pub enum Command {
     },
     ConfigureLoop(GraphLoop),
     ActivateGraph,
+    SwitchProgram(SwitchProgram),
     LoopGain(u32, f32),
     LoopBalance(u32, f32),
     Transition(u32, TransitionPlan),
@@ -265,6 +277,16 @@ impl CommandRecord {
                 0,
             ],
             ActivateGraph => [18, 0, 0, 0, 0, 0, 0, 0],
+            SwitchProgram(s) => [
+                19,
+                s.revision as u32,
+                (s.revision >> 32) as u32,
+                u32::from(s.region) | (u32::from(s.instructions) << 16),
+                u32::from(s.sync_count) | (u32::from(s.states) << 16),
+                u32::from(s.jobs) | (u32::from(s.buffers) << 16),
+                0,
+                0,
+            ],
             Transition(id, plan) => [
                 2,
                 id,
@@ -317,6 +339,7 @@ impl CommandRecord {
                     | GrabGesture(..)
                     | BeginGraph { .. }
                     | ConfigureLoop(_)
+                    | SwitchProgram(_)
                     | ActivateGraph => unreachable!(),
                 };
                 [op, id, value, 0, 0, 0, 0, 0]
@@ -350,6 +373,15 @@ impl CommandRecord {
                 repeat_sync: self.word(6) & 2 != 0,
             }),
             18 => ActivateGraph,
+            19 => SwitchProgram(crate::immediate::SwitchProgram {
+                revision: u64::from(id) | (u64::from(value) << 32),
+                region: self.word(3) as u16,
+                instructions: (self.word(3) >> 16) as u16,
+                sync_count: self.word(4) as u16,
+                states: (self.word(4) >> 16) as u16,
+                jobs: self.word(5) as u16,
+                buffers: (self.word(5) >> 16) as u16,
+            }),
             0 => LoopGain(id, f32::from_bits(value)),
             1 => LoopBalance(id, f32::from_bits(value)),
             2 => {
@@ -472,6 +504,13 @@ impl Response {
 impl Command {
     pub fn valid(self) -> bool {
         match self {
+            Self::SwitchProgram(s) => {
+                s.revision != 0
+                    && s.region <= 1
+                    && s.sync_count <= s.instructions
+                    && s.instructions != 0
+                    && s.jobs != 0
+            }
             Self::BeginGraph { quantum, loops } => {
                 matches!(quantum, 1 | 16 | 32 | 64 | 128)
                     && (1..=PREPARED_GRAPH_LOOPS).contains(&loops)

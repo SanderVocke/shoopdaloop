@@ -70,6 +70,14 @@ impl Endpoint {
     pub fn is_connected(&self) -> bool {
         self.connected
     }
+    pub fn set_configuration(&mut self, graph: u64, topology: u64) {
+        self.settings.graph = graph;
+        self.settings.topology = topology;
+        self.snapshots.configuration_sent = false;
+        self.snapshots.len = 0;
+        self.snapshots.offset = 0;
+        self.snapshots.sent_frame = None;
+    }
     pub fn read_snapshot(&self, bytes: &mut [u8]) -> Option<(u32, usize)> {
         let (sequence, len) = self.ports.snapshots.read(bytes)?;
         self.matches(Header::read(&bytes[..len])?)

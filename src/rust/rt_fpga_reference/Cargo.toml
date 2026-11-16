@@ -6,12 +6,13 @@ description = "Functional state, job and memory processor reference"
 publish = false
 
 [features]
-rt-interface = ["dep:shoop_rt_protocol", "dep:shoop_rt_transport"]
+rt-interface = ["dep:shoop_rt_protocol", "dep:shoop_rt_transport", "dep:rtrb"]
 serde = ["dep:serde"]
 schema = ["serde", "dep:schemars"]
 
 [dependencies]
 rt_fpga_compiler = { path = "../rt_fpga_compiler" }
+rtrb = { workspace = true, optional = true }
 shoop_rt_protocol = { path = "../shoop_rt_protocol", optional = true }
 shoop_rt_transport = { path = "../shoop_rt_transport", features = ["rt-interface"], optional = true }
 serde = { workspace = true, features = ["derive"], optional = true }

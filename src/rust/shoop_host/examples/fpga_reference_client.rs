@@ -1,4 +1,4 @@
-//! Temporary application-API client for a single prepared reference graph.
+//! Temporary application-API client for live prepared reference graphs.
 use anyhow::{ensure, Result};
 #[cfg(not(test))]
 use clap::Parser;
@@ -205,32 +205,10 @@ pub fn run_with(host: PathBuf, output: PathBuf) -> Result<()> {
     accepted(&mut client, &mut connection, Command::ActivatePreparedGraph)?;
     ensure!(
         matches!(
-            command(&mut client, &mut connection, Command::AddLoop { track })?,
-            Outcome::Refused { .. }
-        ),
-        "topology changed after activation"
-    );
-    ensure!(
-        matches!(
             command(&mut client, &mut connection, Command::ActivatePreparedGraph)?,
             Outcome::Refused { .. }
         ),
-        "graph activated twice"
-    );
-    ensure!(
-        matches!(
-            command(
-                &mut client,
-                &mut connection,
-                Command::SetPortConnected {
-                    port: input,
-                    host_port: source,
-                    connected: false,
-                }
-            )?,
-            Outcome::Refused { .. }
-        ),
-        "input routing changed after activation"
+        "unchanged layout was submitted twice"
     );
     immediate(
         &client,
@@ -242,6 +220,27 @@ pub fn run_with(host: PathBuf, output: PathBuf) -> Result<()> {
     )?;
     wait(&mut client, &mut connection, |c| {
         loop_view(c, sync).is_some_and(|l| l.mode == LoopMode::Recording && l.length_frames >= 256)
+    })?;
+    let capture_before = loop_view(&client, sync).unwrap().length_frames;
+    immediate(
+        &client,
+        &mut connection,
+        vec![immediate::Command::LoopGain(voice, 0.375)],
+    )?;
+    wait(&mut client, &mut connection, |c| {
+        loop_view(c, voice).is_some_and(|l| l.gain == 0.375)
+    })?;
+    let created = accepted(&mut client, &mut connection, Command::AddLoop { track })?;
+    let Outcome::LoopCreated { loop_id: added, .. } = created else {
+        anyhow::bail!("missing added loop identity");
+    };
+    accepted(&mut client, &mut connection, Command::ActivatePreparedGraph)?;
+    wait(&mut client, &mut connection, |c| {
+        loop_view(c, sync)
+            .is_some_and(|l| l.mode == LoopMode::Recording && l.length_frames > capture_before)
+            && loop_view(c, added)
+                .is_some_and(|l| l.mode == LoopMode::Stopped && l.length_frames == 0)
+            && loop_view(c, voice).is_some_and(|l| l.gain == 0.375)
     })?;
     immediate(
         &client,
@@ -290,6 +289,21 @@ pub fn run_with(host: PathBuf, output: PathBuf) -> Result<()> {
         loop_view(c, voice).is_some_and(|l| l.mode == LoopMode::Playing && l.gain == 0.5)
     })?;
     let recorded = loop_view(&client, voice).unwrap().length_frames;
+    accepted(
+        &mut client,
+        &mut connection,
+        Command::SetPortConnected {
+            port: input,
+            host_port: source.clone(),
+            connected: false,
+        },
+    )?;
+    accepted(&mut client, &mut connection, Command::ActivatePreparedGraph)?;
+    wait(&mut client, &mut connection, |c| {
+        loop_view(c, voice).is_some_and(|l| {
+            l.mode == LoopMode::Playing && l.gain == 0.5 && l.length_frames == recorded
+        })
+    })?;
     immediate(
         &client,
         &mut connection,
@@ -304,8 +318,80 @@ pub fn run_with(host: PathBuf, output: PathBuf) -> Result<()> {
             .iter()
             .all(|&id| loop_view(c, id).is_some_and(|l| l.mode == LoopMode::Stopped))
     })?;
+    accepted(
+        &mut client,
+        &mut connection,
+        Command::Track {
+            track,
+            action: TrackAction::Remove,
+        },
+    )?;
+    let replacement = accepted(
+        &mut client,
+        &mut connection,
+        Command::AddTrack(TrackSpec {
+            name: "Replacement mono".into(),
+            topology: TrackSpecTopology::Direct {
+                audio_channels: 1,
+                midi: false,
+            },
+            latency: Default::default(),
+            initial_output_bus_names: vec!["Master".into()],
+            creation_request_id: None,
+        }),
+    )?;
+    let Outcome::TrackCreated {
+        track: replacement_track,
+        loops,
+        ..
+    } = replacement
+    else {
+        anyhow::bail!("missing replacement track");
+    };
+    let replacement_voice = loops[0];
+    let replacement_input=client.snapshot().unwrap().connections.application_ports.iter().find(|p|
+        matches!(p.owner,ApplicationPortOwner::Track {track_id,..} if track_id==replacement_track) && p.role==PortRole::AudioInput).unwrap().id;
+    accepted(
+        &mut client,
+        &mut connection,
+        Command::SetPortConnected {
+            port: replacement_input,
+            host_port: source,
+            connected: true,
+        },
+    )?;
+    accepted(&mut client, &mut connection, Command::ActivatePreparedGraph)?;
+    wait(&mut client, &mut connection, |c| {
+        loop_view(c, replacement_voice)
+            .is_some_and(|l| l.mode == LoopMode::Stopped && l.length_frames == 0 && l.gain == 1.0)
+    })?;
+    immediate(
+        &client,
+        &mut connection,
+        vec![
+            immediate::Command::LoopGain(replacement_voice, 0.75),
+            immediate::Command::Transition(replacement_voice, TransitionMode::Recording.into()),
+        ],
+    )?;
+    wait(&mut client, &mut connection, |c| {
+        loop_view(c, replacement_voice).is_some_and(|l| {
+            l.mode == LoopMode::Recording && l.length_frames >= 128 && l.gain == 0.75
+        })
+    })?;
+    immediate(
+        &client,
+        &mut connection,
+        vec![immediate::Command::Transition(
+            replacement_voice,
+            TransitionMode::Stopped.into(),
+        )],
+    )?;
+    wait(&mut client, &mut connection, |c| {
+        loop_view(c, replacement_voice)
+            .is_some_and(|l| l.mode == LoopMode::Stopped && l.length_frames >= 128)
+    })?;
     let report = serde_json::json!({"result":"passed","boundary":"shoop_host application API through RtBackend", "recorded_frames": recorded,
-        "topology_edits_refused":true,"second_activation_refused":true,"immediate_controls":true});
+        "live_graph_updates":3,"recording_and_gain_preserved":true,"recycled_logical_slots":true,"unchanged_activation_refused":true,"immediate_controls":true});
     std::fs::write(
         output.join("report.json"),
         serde_json::to_vec_pretty(&report)?,

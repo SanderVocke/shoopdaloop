@@ -16,6 +16,10 @@ use shoop_rt_protocol::{
 };
 use shoop_rt_transport::rt::Execution;
 pub use shoop_rt_transport::rt::{Endpoint, Settings};
+mod loading;
+pub use loading::{
+    program_memory, PreparedProgram, ProgramControl, ProgramExecution, ProgramReady,
+};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Configuration {
@@ -26,6 +30,7 @@ pub struct Configuration {
 #[derive(Clone, Copy, Debug)]
 pub struct LoopBinding {
     pub id: LoopId,
+    pub public_id: LoopId,
     pub gain: Option<Address>,
     pub meter: Option<BufferId>,
     pub initial_gain: f32,
@@ -35,6 +40,7 @@ impl LoopBinding {
     pub fn new(id: LoopId) -> Self {
         Self {
             id,
+            public_id: id,
             gain: None,
             meter: None,
             initial_gain: 1.,
@@ -57,6 +63,10 @@ pub struct Processor {
     engine: Engine,
     ports: Execution,
     snapshot_bytes: Box<[u8]>,
+    programs: Option<ProgramExecution>,
+    next_program: Option<Box<PreparedProgram>>,
+    retired_program: Option<Box<PreparedProgram>>,
+    pending_switch: Option<loading::PendingSwitch>,
 }
 impl Processor {
     pub fn prepare(
@@ -66,7 +76,7 @@ impl Processor {
         mut bindings: Vec<LoopBinding>,
     ) -> Result<Self, Error> {
         pipeline.initialize_frame(configuration.frame)?;
-        bindings.sort_unstable_by_key(|b| b.id);
+        bindings.sort_unstable_by_key(|b| b.public_id);
         if bindings.len() != pipeline.state().loop_states().count()
             || bindings.windows(2).any(|w| w[0].id.slot == w[1].id.slot)
         {
@@ -128,10 +138,17 @@ impl Processor {
             },
             ports,
             snapshot_bytes: vec![0; bytes].into_boxed_slice(),
+            programs: None,
+            next_program: None,
+            retired_program: None,
+            pending_switch: None,
         })
     }
     pub fn pipeline(&self) -> &Pipeline {
         &self.engine.pipeline
+    }
+    pub fn handoff_pending(&self) -> bool {
+        self.pending_switch.is_some()
     }
     pub fn process(
         &mut self,
@@ -169,46 +186,139 @@ impl Processor {
             }
             return Err(PipelineError::Jobs(Error::InvalidShape));
         }
-        let frame = self.engine.pipeline.state().frame();
-        self.ports.commands.begin_callback();
-        while let Some(group) = self.ports.commands.pop() {
-            let header = group.header;
-            let configuration = self.engine.configuration;
-            let code = if (header.graph(), header.topology())
-                != (configuration.graph, configuration.topology)
-            {
-                Code::StaleConfiguration
-            } else if header.deadline().is_some_and(|limit| frame > limit) {
-                Code::DeadlineMissed
-            } else if self.engine.pipeline.fault().is_some() {
-                Code::CannotApply
-            } else {
-                Code::Applied
-            };
-            group.respond(header.complete(frame, code), |record| {
-                record.complete(if code == Code::Applied {
-                    self.engine.execute(record.command())
-                } else {
-                    code
-                })
-            });
+        for output in outputs.iter_mut() {
+            output.fill(Fixed::ZERO);
         }
-        let mut observer = Publication {
-            loops: &mut self.engine.loops,
-            configuration: self.engine.configuration,
-            bytes: &mut self.snapshot_bytes,
-            publisher: &mut self.ports.snapshots,
-        };
-        let result = self.engine.pipeline.process_observed(
-            jobs,
-            memory,
-            inputs,
-            outputs,
-            frames,
-            &mut observer,
-        );
-        if result.is_err() {
+        let result = (0..frames).step_by(quantum).try_for_each(|base| {
+            self.prepare_staging(memory)?;
+            let frame = self.engine.pipeline.state().frame();
+            let mut switched = false;
+            if base == 0 || self.programs.is_some() {
+                self.ports.commands.begin_callback();
+            }
+            while let Some(group) = self.ports.commands.pop() {
+                if self.pending_switch.is_some() {
+                    if !memory
+                        .completion_fence_ready()
+                        .map_err(PipelineError::Jobs)?
+                    {
+                        group.leave_unread();
+                        break;
+                    }
+                    let pending = self.pending_switch.take().unwrap();
+                    assert_eq!(pending.header, group.header, "pending FIFO barrier");
+                    let mut index = 0;
+                    group.respond(
+                        pending.header.complete(pending.frame, Code::Applied),
+                        |_| {
+                            let r = pending.records[index];
+                            index += 1;
+                            r
+                        },
+                    );
+                    assert_eq!(index, pending.count);
+                    assert!(
+                        self.retired_program.is_none(),
+                        "bounded reclamation storage"
+                    );
+                    self.retired_program = Some(pending.retired);
+                    continue;
+                }
+                let header = group.header;
+                let configuration = self.engine.configuration;
+                let count = group.commands().count();
+                let malformed = group.commands().enumerate().any(|(i, r)| {
+                    matches!(r.command(), Command::SwitchProgram(_)) && i + 1 != count
+                });
+                let code = if (header.graph(), header.topology())
+                    != (configuration.graph, configuration.topology)
+                {
+                    Code::StaleConfiguration
+                } else if header.deadline().is_some_and(|limit| frame > limit) {
+                    Code::DeadlineMissed
+                } else if self.engine.pipeline.fault().is_some() || malformed {
+                    Code::CannotApply
+                } else {
+                    Code::Applied
+                };
+                let mut records =
+                    [shoop_rt_protocol::immediate::CommandRecord::new(Command::BusMute(0, false));
+                        shoop_rt_protocol::immediate::COMMANDS];
+                let mut retired = None;
+                for (i, record) in group.commands().enumerate() {
+                    let applied = if code != Code::Applied {
+                        code
+                    } else if let Command::SwitchProgram(descriptor) = record.command() {
+                        if let Some(mut image) = self.next_program.take() {
+                            memory
+                                .begin_completion_fence()
+                                .map_err(PipelineError::Jobs)?;
+                            let code = self.engine.switch(&mut image, descriptor, jobs);
+                            if code == Code::Applied {
+                                retired = Some(image);
+                                switched = true;
+                            } else {
+                                self.next_program = Some(image);
+                            }
+                            code
+                        } else {
+                            Code::CannotApply
+                        }
+                    } else {
+                        self.engine.execute(record.command())
+                    };
+                    records[i] = record.complete(applied);
+                }
+                if let Some(retired) = retired {
+                    if !memory
+                        .completion_fence_ready()
+                        .map_err(PipelineError::Jobs)?
+                    {
+                        self.pending_switch = Some(loading::PendingSwitch {
+                            header,
+                            frame,
+                            records,
+                            count,
+                            retired,
+                        });
+                        group.leave_unread();
+                        break;
+                    }
+                    assert!(
+                        self.retired_program.is_none(),
+                        "bounded reclamation storage"
+                    );
+                    self.retired_program = Some(retired);
+                }
+                let mut index = 0;
+                group.respond(header.complete(frame, code), |_| {
+                    let r = records[index];
+                    index += 1;
+                    r
+                });
+            }
+            let mut observer = Publication {
+                loops: &mut self.engine.loops,
+                configuration: self.engine.configuration,
+                bytes: &mut self.snapshot_bytes,
+                publisher: &mut self.ports.snapshots,
+            };
+            self.engine.pipeline.process_quantum(
+                jobs,
+                memory,
+                inputs,
+                outputs,
+                base,
+                &mut observer,
+                base == 0 || switched,
+            )
+        });
+        if let Err(error) = result {
+            self.engine.pipeline.latch_fault(error);
             self.ports.snapshots.fail();
+            for output in outputs.iter_mut() {
+                output.fill(Fixed::ZERO);
+            }
         }
         result
     }
@@ -255,7 +365,7 @@ impl Engine {
         };
         let Ok(index) = self
             .loops
-            .binary_search_by_key(&target, |row| row.binding.id.slot)
+            .binary_search_by_key(&target, |row| row.binding.public_id.slot)
         else {
             return Code::TargetUnavailable;
         };
@@ -331,7 +441,10 @@ impl Observer for Publication<'_> {
             };
             let (pending, failures) = state.mode_plan(row.binding.id).unwrap();
             let pending = plan(pending);
-            let id = LoopSlotId(SlotId::new(value.id.slot, value.id.generation));
+            let id = LoopSlotId(SlotId::new(
+                row.binding.public_id.slot,
+                row.binding.public_id.generation,
+            ));
             let next = [pending.first, pending.second]
                 .into_iter()
                 .flatten()

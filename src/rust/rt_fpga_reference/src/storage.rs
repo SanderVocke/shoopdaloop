@@ -143,7 +143,17 @@ impl MediaStore {
     }
 
     pub fn with_chunk_limit(chunk_frames: usize, chunks: usize) -> Result<Self, Error> {
-        let mut store = Self::new(chunk_frames)?;
+        Self::with_block_chunk_limit(chunk_frames, 1, chunks)
+    }
+    pub fn with_block_chunk_limit(
+        chunk_frames: usize,
+        block_chunks: usize,
+        chunks: usize,
+    ) -> Result<Self, Error> {
+        if block_chunks == 0 || chunks % block_chunks != 0 {
+            return Err(Error::InvalidShape);
+        }
+        let mut store = Self::with_block_chunks(chunk_frames, block_chunks)?;
         store.chunk_limit = Some(chunks);
         Ok(store)
     }
@@ -761,6 +771,25 @@ fn chunk_count(frames: usize, chunk_frames: usize) -> usize {
 }
 
 impl crate::jobs::Memory for MediaStore {
+    fn prepare_unused_view(&mut self, view: ViewId) -> Result<bool, Error> {
+        if self
+            .views
+            .get(view.0)
+            .and_then(Option::as_ref)
+            .ok_or(Error::InvalidView)?
+            .blocks
+            .is_empty()
+        {
+            self.clear(view)?;
+            Ok(true)
+        } else {
+            self.reclaim_chunk(view)?;
+            Ok(false)
+        }
+    }
+    fn begin_completion_fence(&mut self) -> Result<(), Error> {
+        self.fence()
+    }
     fn begin_capture(&mut self, view: ViewId) -> Result<(), Error> {
         if view.0 > self.views.len() {
             return Err(Error::InvalidView);

@@ -201,6 +201,11 @@ impl StateProcessor {
     pub fn frame(&self) -> u64 {
         self.loops.as_ref().map_or(0, |loops| loops.frame)
     }
+    pub fn owns_loop_slot(&self, slot: usize) -> bool {
+        self.loops
+            .as_ref()
+            .is_some_and(|l| l.plan.specs.get(slot).and_then(Option::as_ref).is_some())
+    }
     pub fn loop_state(&self, id: LoopId) -> Result<&LoopSlot, TransitionError> {
         self.loops
             .as_ref()

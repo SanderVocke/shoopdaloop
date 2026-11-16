@@ -1,4 +1,4 @@
-//! Control-owned initial layout, followed by one immutable runtime installation.
+//! Control-owned graph preparation and explicit execution-program handoff.
 use crate::mirror::PortTarget;
 use crate::*;
 use shoop_backend::{BackendMutationCompletion, BackendTrackTopology, MASTER_BUS_ID};
@@ -11,6 +11,8 @@ use shoop_rt_protocol::{
 pub(crate) struct PreparedGraph {
     pub active: bool,
     pub pending: Option<u64>,
+    pub revision: u64,
+    pub dirty: bool,
 }
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     pub(crate) fn prepared_graph_welcome(&mut self) {
@@ -42,8 +44,16 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         if self
             .prepared_graph
             .as_ref()
-            .is_some_and(|g| g.active || g.pending.is_some())
+            .is_some_and(|g| g.pending.is_some())
         {
+            return Err(anyhow!("a program ownership handoff is pending"));
+        }
+        if self.prepared_graph.as_ref().is_some_and(|g| {
+            g.active
+                && !self
+                    .capabilities
+                    .contains(shoop_rt_protocol::Capabilities::LIVE_PROGRAMS)
+        }) {
             return Err(anyhow!(
                 "the prepared graph is immutable; restart the reference host to change it"
             ));
@@ -54,7 +64,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         let draft = self
             .prepared_graph
             .as_ref()
-            .is_some_and(|g| !g.active && g.pending.is_none());
+            .is_some_and(|g| g.pending.is_none());
         let mut count = 0;
         while let Some(pending) = self.requests.outgoing.pop_front() {
             let supported = draft
@@ -66,14 +76,23 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                             && !shape.midi_output
                     }
                     Request::CreateLoop { .. }
+                    | Request::RemoveStrip { .. }
                     | Request::LoopSync { .. }
                     | Request::Connect { .. }
                     | Request::Route { .. } => true,
                     Request::SetSmoothing { frames } => frames == 0,
-                    Request::LoopGain { .. } => true,
+                    Request::LoopGain { .. } => !self.prepared_graph.as_ref().unwrap().active,
                     Request::CancelBulk => true,
                     _ => false,
                 };
+            if supported
+                && !matches!(
+                    pending.request,
+                    Request::SetSmoothing { .. } | Request::CancelBulk
+                )
+            {
+                self.prepared_graph.as_mut().unwrap().dirty = true;
+            }
             self.answered(
                 pending,
                 if supported {
@@ -94,15 +113,18 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .prepared_graph
             .as_ref()
             .ok_or_else(|| anyhow!("this backend does not support prepared graph installation"))?;
-        if state.active || state.pending.is_some() || !self.requests.is_empty() {
+        if state.pending.is_some() || !self.requests.is_empty() {
             return Err(anyhow!("initial layout has not settled"));
+        }
+        if state.active && !state.dirty {
+            return Err(anyhow!("the prepared layout has not changed"));
         }
         if self.mirror.loops.is_empty()
             || self.mirror.loops.len() > PREPARED_GRAPH_LOOPS as usize
             || self.mirror.buses.len() != 1
         {
             return Err(anyhow!(
-                "prepared reference supports 1-16 empty loops and the Master bus"
+                "prepared reference supports 1-16 mono loops and the Master bus"
             ));
         }
         let mut commands = Vec::new();
@@ -122,7 +144,6 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 }
             ) || !entry.confirmed
                 || entry.program.is_some()
-                || entry.view.length != 0
                 || entry.balance != 0.0
                 || track.removing
                 || !track.confirmed
@@ -134,9 +155,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 || track.controls.input_monitoring
                 || track.automatic_enabled
             {
-                return Err(anyhow!(
-                    "prepared reference requires empty mono primitive loops"
-                ));
+                return Err(anyhow!("prepared reference requires mono primitive loops"));
             }
             let mut input = None;
             let mut output = false;
@@ -232,7 +251,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
         commands.push(Command::ActivateGraph);
         self.client
-            .immediate(Batch::new(0, 0, &commands).unwrap())
+            .immediate(Batch::new(state.revision, state.revision, &commands).unwrap())
             .map_err(|e| anyhow!("graph submission failed: {e:?}"))?;
         let sequence = self.requests.reserve_mutation();
         self.prepared_graph.as_mut().unwrap().pending = Some(sequence);
@@ -257,7 +276,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         };
         let success = response.header.code() == Code::Applied
             && response.records().iter().all(|r| r.code() == Code::Applied);
-        graph.active = success;
+        if success {
+            graph.active = true;
+            graph.revision = response.header.graph();
+            graph.dirty = false;
+        }
         self.mutation_completions.push(BackendMutationCompletion {
             sequence,
             result: if success {
