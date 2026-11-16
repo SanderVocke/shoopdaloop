@@ -45,23 +45,27 @@ module sp_engine #(
     input wire [163:0] loop_response_data,
     output wire loop_ram_read_enable,
     output wire [LOOP_MEMORY_BITS-1:0] loop_ram_read_address,
-    input wire [127:0] loop_ram_read_data,
+    input wire [63:0] loop_ram_read_data,
     output wire loop_ram_write_enable,
     output wire [LOOP_MEMORY_BITS-1:0] loop_ram_write_address,
-    output reg [127:0] loop_ram_write_data,
+    output wire [63:0] loop_ram_write_data,
     output wire sync_event_valid,
     input wire sync_event_ready,
     output wire [255:0] sync_event_data,
     output reg [63:0] sync_frame,
     output wire faulted
 );
-    typedef enum logic [5:0] {
+    typedef enum logic [6:0] {
         IDLE, ADMIT, FETCH, DECODE, READ_REQUEST, READ_CAPTURE, READ_RESULT, EMIT, NEXT,
         LOOP_REQUEST, LOOP_WAIT, LOOP_RESULT,
-        SYNC_BEGIN, SYNC_CHECK, SYNC_SOURCE_CHECK, SYNC_SCAN_BEGIN, SYNC_SCAN, SYNC_SCAN_NEXT,
-        SYNC_APPLY, SYNC_APPLY_OP, SYNC_AFTER_APPLY, SYNC_EFFECTS, SYNC_CANCEL, SYNC_CANCEL_NEXT,
-        SYNC_GROUP_DONE, SYNC_NATURAL, SYNC_SOURCE, SYNC_DELIVER, SYNC_SELF, SYNC_RENDER,
-        SYNC_ADV_POSITION, SYNC_ADV_CAPTURE, SYNC_WRITE_BEGIN, SYNC_WRITE, SYNC_EVENT
+        SYNC_BEGIN, SYNC_LOAD, SYNC_CHECK, SYNC_SOURCE_FLAGS, SYNC_SOURCE_CHECK,
+        SYNC_SCAN_BEGIN, SYNC_SCAN, SYNC_EFFECTIVE, SYNC_REMAINING, SYNC_CANDIDATE, SYNC_SCAN_NEXT,
+        SYNC_APPLY, SYNC_OP_BEGIN, SYNC_OP_CHECK, SYNC_RECORD_REV, SYNC_NEW_REV,
+        SYNC_RESET_BEGIN, SYNC_RESET_CYCLES, SYNC_SUCCESS, SYNC_AFTER_APPLY, SYNC_EFFECTS,
+        SYNC_CANCEL, SYNC_CANCEL_NEXT, SYNC_GROUP_DONE, SYNC_NATURAL, SYNC_WRAP, SYNC_WRAP_EVENT,
+        SYNC_SOURCE, SYNC_DELIVER, SYNC_SELF, SYNC_RENDER, SYNC_STAMP,
+        SYNC_ADVANCE, SYNC_ADV_POSITION, SYNC_ADV_CAPTURE, SYNC_STORE, SYNC_FINISH,
+        SYNC_WRITE, SYNC_EVENT, OWN_FLAGS, OWN_STAMP, OWN_RENDER, OWN_LENGTH
     } phase_t;
     typedef enum logic [2:0] {
         ENABLE, POSITION, LENGTH, VIEW, RAMP, SMOOTHING, LOOP_MEMORY
@@ -128,56 +132,54 @@ module sp_engine #(
     assign loop_read_valid = phase == LOOP_REQUEST && !reset;
     assign loop_read_slot = {16'b0, arg0};
 
-    localparam integer W=`SHOOP_SP_LOOP_BITS;
     localparam integer V=`SHOOP_SP_L_VALID, G=`SHOOP_SP_L_GEN, M=`SHOOP_SP_L_MODE,
         REP=`SHOOP_SP_L_REPEAT, SV=`SHOOP_SP_L_SOURCE_VALID, SS=`SHOOP_SP_L_SOURCE,
-        SG=`SHOOP_SP_L_SOURCE_GEN, PULSE=`SHOOP_SP_L_PULSE, LV=`SHOOP_SP_L_LAST_VALID,
-        BC=`SHOOP_SP_L_BEGIN_CAPTURE, PV=`SHOOP_SP_L_PROCESSED_VALID,
+        PULSE=`SHOOP_SP_L_PULSE, BC=`SHOOP_SP_L_BEGIN_CAPTURE,
+        PV=`SHOOP_SP_L_PROCESSED_VALID, NEWER=`SHOOP_SP_L_NEWER;
+    localparam [3:0] FLAGS=`SHOOP_SP_L_FLAGS, CONTROL=`SHOOP_SP_L_CONTROL,
         POS=`SHOOP_SP_L_POSITION, LEN=`SHOOP_SP_L_LENGTH, CAP=`SHOOP_SP_L_CAPTURE,
-        CYC=`SHOOP_SP_L_CYCLES, CR=`SHOOP_SP_L_CONTENT_REV, AR=`SHOOP_SP_L_CAPTURE_REV,
-        WM=`SHOOP_SP_L_WATERMARK, LP=`SHOOP_SP_L_LAST_PULSE,
-        RP=`SHOOP_SP_L_RENDER_POSITION, RL=`SHOOP_SP_L_RENDER_LENGTH,
-        PF=`SHOOP_SP_L_PROCESSED_FRAME;
-    localparam integer PR=`SHOOP_SP_P_REQUEST, SEQ=`SHOOP_SP_P_SEQUENCE,
-        EFF=`SHOOP_SP_P_EFFECTIVE, REM=`SHOOP_SP_P_REMAINING,
-        PP=`SHOOP_SP_P_POSITION, VALID=`SHOOP_SP_P_VALID, TICKS=`SHOOP_SP_P_TICKS,
+        CYC=`SHOOP_SP_L_CYCLES, CR=`SHOOP_SP_L_CONTENT_REV, WM=`SHOOP_SP_L_WATERMARK,
+        RP=`SHOOP_SP_L_RENDER_POSITION, PF=`SHOOP_SP_L_PROCESSED_FRAME;
+    localparam integer P0=`SHOOP_SP_L_PLAN0_FLAGS, P1=`SHOOP_SP_L_PLAN1_FLAGS,
+        VALID=`SHOOP_SP_P_VALID, TICKS=`SHOOP_SP_P_TICKS,
         OP=`SHOOP_SP_P_OP, RET=`SHOOP_SP_P_RETRIGGER;
     localparam [7:0] INVALID_STATE=5, INVALID_FRAME=6, EXHAUSTED=8, EMPTY_CONTENT=9;
 
-    typedef enum logic [2:0] { LOOP_ROW, SOURCE_FLAGS, SOURCE_STAMP, OWN_FLAGS, OWN_STAMP, OWN_RENDER } loop_operand_t;
-    loop_operand_t loop_operand;
-    phase_t sync_event_return, sync_natural_return;
-    reg [W-1:0] row;
+    phase_t memory_return, sync_event_return, sync_natural_return, operation_return;
+    reg [63:0] flags, control, capture_frames;
     reg [LOOP_MEMORY_BITS-1:0] loop_address;
     reg [3:0] loop_word;
     reg [1:0] sync_pass;
     reg scan_index, winner, winner_valid, cancel_index;
-    reg pulse_pending, delivered, masked, protected_valid, changed, applied_pulse, sync_fault;
+    reg pulse_pending, delivered, masked, protected_valid, protected_newer;
+    reg changed, applied_pulse, sync_fault;
     wire [31:0] target={16'b0,arg0};
     wire [31:0] generation={arg2,arg1};
-    wire [127:0] source_flags=capture_job[127:0];
-    wire [63:0] protected_sequence=operand_data[63:0];
-    wire [31:0] source_slot=row[SS+:32];
-    wire source_self=row[SV] && source_slot==target;
-    wire source_tick=row[SV] && !source_self && source_flags[PULSE];
+    wire [63:0] source_flags=capture_job[63:0];
+    wire [31:0] source_slot={16'b0,flags[SS+:16]};
+    wire source_self=flags[SV] && source_slot==target;
+    wire source_tick=flags[SV] && !source_self && source_flags[PULSE];
     wire source_playing=source_flags[M+:2]==1;
-    wire [383:0] scan_plan=scan_index ? row[1152+:384] : row[768+:384];
-    wire [383:0] winner_plan=winner ? row[1152+:384] : row[768+:384];
-    wire [383:0] cancel_plan=cancel_index ? row[1152+:384] : row[768+:384];
+    wire [4:0] scan_flags=scan_index ? control[P1+:5] : control[P0+:5];
+    wire [4:0] winner_flags=winner ? control[P1+:5] : control[P0+:5];
+    wire [4:0] cancel_flags=cancel_index ? control[P1+:5] : control[P0+:5];
+    wire winner_newer=winner==flags[NEWER];
+    wire [1:0] operation_code=ramp_state[65:64];
+    wire retrigger=ramp_state[66];
+    wire [63:0] operation_position=ramp_state[63:0];
+    wire preserve=flags[M+:2]==1 && !retrigger;
+    wire [63:0] playable_length=flags[M+:2]==2 ? capture_frames : length;
     reg [63:0] arithmetic_left, arithmetic_right;
     wire [64:0] arithmetic_sum={1'b0,arithmetic_left}+{1'b0,arithmetic_right};
     always @* begin
         arithmetic_left=position; arithmetic_right={32'b0,run_quantum};
         case (phase)
-            ADMIT, SYNC_WRITE: arithmetic_left=sync_frame;
-            SYNC_ADV_CAPTURE: arithmetic_left=row[CAP+:64];
-            SYNC_NATURAL: begin arithmetic_left=row[CYC+:64]; arithmetic_right=1; end
-            SYNC_APPLY_OP: begin arithmetic_left=row[WM+:64]; arithmetic_right=1; end
-            SYNC_SCAN: begin arithmetic_left=scan_plan[REM+:64]; arithmetic_right=64'hffffffffffffffff; end
-            READ_RESULT: begin
-                if (operand==LOOP_MEMORY) arithmetic_left=operand_data[63:0];
-                else arithmetic_left={32'b0,operand_data[127:96]};
-            end
+            ADMIT, SYNC_FINISH: arithmetic_left=sync_frame;
+            SYNC_ADV_CAPTURE: arithmetic_left=capture_frames;
+            SYNC_WRAP, SYNC_NEW_REV: begin arithmetic_left=word_value; arithmetic_right=1; end
+            SYNC_REMAINING: begin arithmetic_left=word_value; arithmetic_right=64'hffffffffffffffff; end
+            OWN_STAMP: arithmetic_left=word_value;
+            READ_RESULT: arithmetic_left={32'b0,operand_data[127:96]};
             default: begin end
         endcase
     end
@@ -187,30 +189,22 @@ module sp_engine #(
     assign loop_ram_read_enable=phase==READ_REQUEST && operand==LOOP_MEMORY && !reset;
     assign loop_ram_read_address=loop_address;
     assign loop_ram_write_enable=phase==SYNC_WRITE && !reset;
-    assign loop_ram_write_address=LOOP_MEMORY_BITS'({target,loop_word});
-    always @* begin
-        loop_ram_write_data=0;
-        case (loop_word)
-            4'd0: loop_ram_write_data=row[0+:128];
-            4'd1: loop_ram_write_data={length,position};
-            4'd2: loop_ram_write_data=row[256+:128];
-            4'd3: loop_ram_write_data=row[384+:128];
-            4'd4: loop_ram_write_data=row[512+:128];
-            4'd5: loop_ram_write_data=row[640+:128];
-            4'd6: loop_ram_write_data=row[768+:128];
-            4'd7: loop_ram_write_data=row[896+:128];
-            4'd8: loop_ram_write_data=row[1024+:128];
-            4'd9: loop_ram_write_data=row[1152+:128];
-            4'd10: loop_ram_write_data=row[1280+:128];
-            4'd11: loop_ram_write_data=row[1408+:128];
-            4'd12: loop_ram_write_data=row[1536+:128];
-            default: begin end
-        endcase
-    end
-    task automatic loop_read(input [31:0] slot, input [3:0] word_number, input loop_operand_t purpose);
+    assign loop_ram_write_address=loop_address;
+    assign loop_ram_write_data=word_value;
+
+    function automatic [3:0] plan_word(input index, input [1:0] offset);
+        plan_word=(index ? 4'd13 : 4'd10)+{2'b0,offset};
+    endfunction
+    task automatic loop_read(input [31:0] slot, input [3:0] word_number, input phase_t destination);
         begin
-            loop_address<=LOOP_MEMORY_BITS'({slot,word_number}); loop_operand<=purpose;
+            loop_address<=LOOP_MEMORY_BITS'({slot,word_number}); memory_return<=destination;
             operand<=LOOP_MEMORY; phase<=READ_REQUEST;
+        end
+    endtask
+    task automatic loop_write(input [3:0] word_number, input [63:0] value, input phase_t destination);
+        begin
+            loop_address<=LOOP_MEMORY_BITS'({target,word_number}); operand_data[63:0]<=value;
+            memory_return<=destination; phase<=SYNC_WRITE;
         end
     endtask
     task automatic sync_fail;
@@ -224,56 +218,11 @@ module sp_engine #(
         end
     endtask
     task automatic sync_resolve(input index, input [7:0] outcome, input [7:0] reason, input phase_t destination);
-        reg [383:0] unused_plan;
         begin
-            unused_plan=index ? row[1152+:384] : row[768+:384];
-            if (index) row[1152+VALID]<=0; else row[768+VALID]<=0;
-            sync_emit(3,reason,outcome,unused_plan[PR+:64],unused_plan[SEQ+:64],destination);
+            if (index) control[P1+VALID]<=0; else control[P0+VALID]<=0;
+            sync_emit(3,reason,outcome,{63'b0,index},0,destination);
         end
     endtask
-    function automatic [W+8:0] operation(input [W-1:0] before_row, input [383:0] unused_plan, input [63:0] record_revision);
-        reg [W-1:0] value;
-        reg [7:0] error;
-        reg pulse, preserve;
-        begin
-            value=before_row; error=0; pulse=0;
-            preserve=before_row[M+:2]==1 && !unused_plan[RET];
-            case (unused_plan[OP+:2])
-                0: begin
-                    if (before_row[M+:2]==2) begin value[LEN+:64]=before_row[CAP+:64]; value[CR+:64]=before_row[AR+:64]; end
-                    value[M+:2]=0; value[POS+:64]=0;
-                end
-                1: begin
-                    if (before_row[M+:2]==2) begin value[LEN+:64]=before_row[CAP+:64]; value[CR+:64]=before_row[AR+:64]; end
-                    if (value[LEN+:64]==0) error=EMPTY_CONTENT;
-                    else if (!preserve && unused_plan[PP+:64]>=value[LEN+:64]) error=INVALID_FRAME;
-                    value[M+:2]=1;
-                    if (!preserve) begin value[POS+:64]=unused_plan[PP+:64]; value[CYC+:64]=0; end
-                    pulse=!preserve;
-                end
-                2: begin
-                    if (&before_row[WM+:64]) error=EXHAUSTED;
-                    value[AR+:64]=record_revision; value[WM+:64]=value[AR+:64];
-                    value[M+:2]=2; value[CAP+:64]=0; pulse=1;
-                end
-                3: begin
-                    if (before_row[M+:2]!=1) error=INVALID_STATE;
-                    else if (unused_plan[PP+:64]>=before_row[LEN+:64]) error=INVALID_FRAME;
-                    value[POS+:64]=unused_plan[PP+:64];
-                    if (unused_plan[RET]) value[CYC+:64]=0;
-                    pulse=unused_plan[RET];
-                end
-            endcase
-            operation={error,pulse,value};
-        end
-    endfunction
-    reg [W-1:0] operation_input;
-    always @* begin
-        operation_input=row;
-        operation_input[POS+:64]=position; operation_input[LEN+:64]=length;
-    end
-    wire [W+8:0] op_result=operation(operation_input,winner_plan,arithmetic_sum[63:0]);
-    wire op_changed=operation_input[M+:2]!=op_result[M+:2] || operation_input[POS+:512]!=op_result[POS+:512];
 
     always @(posedge clk) begin
         if (reset) begin
@@ -282,10 +231,10 @@ module sp_engine #(
             pc <= 0;
             run_count <= 0;
             run_state_count <= 0;
-            row<=0; loop_address<=0; loop_word<=0; loop_operand<=LOOP_ROW; run_sync_count<=0;
-            sync_event_return<=IDLE; sync_natural_return<=IDLE; sync_pass<=0;
+            flags<=0; control<=0; capture_frames<=0; loop_address<=0; loop_word<=0; run_sync_count<=0;
+            memory_return<=IDLE; sync_event_return<=IDLE; sync_natural_return<=IDLE; operation_return<=IDLE; sync_pass<=0;
             scan_index<=0; winner<=0; winner_valid<=0; cancel_index<=0;
-            pulse_pending<=0; delivered<=0; masked<=0; protected_valid<=0;
+            pulse_pending<=0; delivered<=0; masked<=0; protected_valid<=0; protected_newer<=0;
             changed<=0; applied_pulse<=0; sync_fault<=0; sync_frame<=0;
             run_quantum <= 0; begin_capture <= 0; capture_job <= 0; chunk_shift <= 0;
             opcode <= 0;
@@ -472,37 +421,12 @@ module sp_engine #(
                     end
                 end
                 READ_CAPTURE: begin
-                    operand_data <= operand==LOOP_MEMORY ? {1'b0,loop_ram_read_data} : state_read_data;
+                    operand_data <= operand==LOOP_MEMORY ? {65'b0,loop_ram_read_data} : state_read_data;
                     phase <= READ_RESULT;
                 end
                 READ_RESULT: begin
                     if (operand==LOOP_MEMORY) begin
-                        case (loop_operand)
-                            LOOP_ROW: begin
-                                if (loop_word==1) begin position<=operand_data[63:0]; length<=operand_data[127:64]; end
-                                else for (integer i=0;i<13;i=i+1)
-                                    if (i!=1 && loop_word==4'(i)) row[128*i+:128]<=operand_data[127:0];
-                                if (loop_word==12) phase<=SYNC_CHECK;
-                                else begin loop_word<=loop_word+1'b1; loop_read(target,loop_word+1'b1,LOOP_ROW); end
-                            end
-                            SOURCE_FLAGS: begin capture_job[127:0]<=operand_data[127:0]; loop_read(source_slot,12,SOURCE_STAMP); end
-                            SOURCE_STAMP: phase<=SYNC_SOURCE_CHECK;
-                            OWN_FLAGS: begin
-                                loop_invalid<=!operand_data[V] || operand_data[G+:32]!=generation
-                                    || operand_data[M+:2]==3 || !operand_data[PV];
-                                loop_mode<=operand_data[M+:2]; begin_capture<=operand_data[BC];
-                                loop_read(target,12,OWN_STAMP);
-                            end
-                            OWN_STAMP: begin
-                                loop_invalid<=loop_invalid || arithmetic_sum[64] || arithmetic_sum[63:0]!=sync_frame;
-                                loop_read(target,5,OWN_RENDER);
-                            end
-                            OWN_RENDER: begin
-                                position<=operand_data[63:0]>>chunk_shift; length<=operand_data[127:64]>>chunk_shift;
-                                loop_at_start<=operand_data[63:0]==0; phase<=LOOP_RESULT;
-                            end
-                            default: sync_fail();
-                        endcase
+                        phase<=memory_return;
                     end else if (is_ramp != (operand == RAMP)) begin
                         error_code <= `SHOOP_SP_INVALID_STATE;
                         done <= 1;
@@ -582,32 +506,54 @@ module sp_engine #(
                 end
                 SYNC_BEGIN: begin
                     if (target>=32'(LOOP_DEPTH)) sync_fail();
-                    else if (opcode==`SHOOP_SP_PROCESS_LOOP) begin loop_word<=0; loop_read(target,0,LOOP_ROW); end
-                    else loop_read(target,0,OWN_FLAGS);
+                    else if (opcode==`SHOOP_SP_PROCESS_LOOP) begin loop_word<=0; loop_read(target,FLAGS,SYNC_LOAD); end
+                    else loop_read(target,FLAGS,OWN_FLAGS);
+                end
+                SYNC_LOAD: begin
+                    case (loop_word)
+                        FLAGS: flags<=word_value;
+                        CONTROL: control<=word_value;
+                        POS: position<=word_value;
+                        LEN: length<=word_value;
+                        CAP: capture_frames<=word_value;
+                        default: begin end
+                    endcase
+                    if (loop_word==CAP) loop_read(target,PF,SYNC_CHECK);
+                    else begin loop_word<=loop_word+1'b1; loop_read(target,loop_word+1'b1,SYNC_LOAD); end
                 end
                 SYNC_CHECK: begin
-                    pulse_pending<=0; delivered<=0; masked<=0; protected_valid<=0; row[PULSE]<=0;
-                    if (!row[V] || row[G+:32]!=generation || row[M+:2]==3 || (row[PV] && row[PF+:64]==sync_frame)) sync_fail();
-                    else if (row[SV]) begin
+                    pulse_pending<=0; delivered<=0; masked<=0; protected_valid<=0; flags[PULSE]<=0;
+                    if (!flags[V] || flags[G+:32]!=generation || flags[M+:2]==3 || (flags[PV] && word_value==sync_frame)) sync_fail();
+                    else if (flags[SV]) begin
                         if (source_slot>=32'(LOOP_DEPTH)) sync_fail();
                         else if (source_self) begin
-                            if (row[SG+:32]!=generation) sync_fail(); else phase<=SYNC_SCAN_BEGIN;
-                        end else loop_read(source_slot,0,SOURCE_FLAGS);
+                            if (control[31:0]!=generation) sync_fail(); else phase<=SYNC_SCAN_BEGIN;
+                        end else loop_read(source_slot,FLAGS,SYNC_SOURCE_FLAGS);
                     end else phase<=SYNC_SCAN_BEGIN;
                 end
+                SYNC_SOURCE_FLAGS: begin capture_job[63:0]<=word_value; loop_read(source_slot,PF,SYNC_SOURCE_CHECK); end
                 SYNC_SOURCE_CHECK: begin
-                    if (!source_flags[V] || source_flags[G+:32]!=row[SG+:32] || source_flags[M+:2]==3
-                        || !source_flags[PV] || operand_data[63:0]!=sync_frame) sync_fail();
+                    if (!source_flags[V] || source_flags[G+:32]!=control[31:0] || source_flags[M+:2]==3
+                        || !source_flags[PV] || word_value!=sync_frame) sync_fail();
                     else phase<=SYNC_SCAN_BEGIN;
                 end
                 SYNC_SCAN_BEGIN: begin sync_pass<=0; scan_index<=0; winner_valid<=0; phase<=SYNC_SCAN; end
                 SYNC_SCAN: begin
-                    if (!scan_plan[VALID] || scan_plan[EFF+:64]>sync_frame || scan_plan[TICKS]!=(sync_pass!=0)) phase<=SYNC_SCAN_NEXT;
-                    else if (sync_pass!=0 && scan_plan[REM+:64]!=0) begin
-                        if (scan_index) row[1152+REM+:64]<=arithmetic_sum[63:0]; else row[768+REM+:64]<=arithmetic_sum[63:0];
-                        phase<=SYNC_SCAN_NEXT;
-                    end else if (!winner_valid) begin winner<=scan_index; winner_valid<=1; phase<=SYNC_SCAN_NEXT; end
-                    else if (scan_plan[SEQ+:64]>winner_plan[SEQ+:64]) begin winner<=scan_index; sync_resolve(winner,1,0,SYNC_SCAN_NEXT); end
+                    if (!scan_flags[VALID] || scan_flags[TICKS]!=(sync_pass!=0)) phase<=SYNC_SCAN_NEXT;
+                    else loop_read(target,plan_word(scan_index,0),SYNC_EFFECTIVE);
+                end
+                SYNC_EFFECTIVE: begin
+                    if (word_value>sync_frame) phase<=SYNC_SCAN_NEXT;
+                    else if (sync_pass!=0) loop_read(target,plan_word(scan_index,1),SYNC_REMAINING);
+                    else phase<=SYNC_CANDIDATE;
+                end
+                SYNC_REMAINING: begin
+                    if (word_value!=0) loop_write(plan_word(scan_index,1),arithmetic_sum[63:0],SYNC_SCAN_NEXT);
+                    else phase<=SYNC_CANDIDATE;
+                end
+                SYNC_CANDIDATE: begin
+                    if (!winner_valid) begin winner<=scan_index; winner_valid<=1; phase<=SYNC_SCAN_NEXT; end
+                    else if (scan_index==flags[NEWER]) begin winner<=scan_index; sync_resolve(winner,1,0,SYNC_SCAN_NEXT); end
                     else sync_resolve(scan_index,1,0,SYNC_SCAN_NEXT);
                 end
                 SYNC_SCAN_NEXT: begin
@@ -615,30 +561,75 @@ module sp_engine #(
                 end
                 SYNC_APPLY: begin
                     if (!winner_valid) phase<=SYNC_GROUP_DONE;
-                    else if (protected_valid && winner_plan[SEQ+:64]<=protected_sequence) sync_resolve(winner,1,0,SYNC_GROUP_DONE);
-                    else begin protected_valid<=1; operand_data[63:0]<=winner_plan[SEQ+:64]; phase<=SYNC_APPLY_OP; end
-                end
-                SYNC_APPLY_OP: begin
-                    if (op_result[W+1+:8]!=0) sync_resolve(winner,3,op_result[W+1+:8],SYNC_GROUP_DONE);
+                    else if (protected_valid && (protected_newer || !winner_newer)) sync_resolve(winner,1,0,SYNC_GROUP_DONE);
                     else begin
-                        row<=op_result[W-1:0]; position<=op_result[POS+:64]; length<=op_result[LEN+:64]; changed<=op_changed;
-                        applied_pulse<=op_result[W]; ramp_state[66:0]<={winner_plan[RET],winner_plan[OP+:2],winner_plan[PP+:64]};
-                        sync_resolve(winner,0,0,SYNC_AFTER_APPLY);
+                        protected_valid<=1; protected_newer<=winner_newer;
+                        loop_read(target,plan_word(winner,2),SYNC_OP_BEGIN);
                     end
                 end
+                SYNC_OP_BEGIN: begin
+                    ramp_state[66:0]<={winner_flags[RET],winner_flags[OP+:2],word_value};
+                    phase<=SYNC_OP_CHECK;
+                end
+                SYNC_OP_CHECK: begin
+                    applied_pulse<=0;
+                    case (operation_code)
+                        0: begin
+                            changed<=flags[M+:2]!=0 || position!=0;
+                            flags[M+:2]<=0; position<=0;
+                            if (flags[M+:2]==2) begin
+                                length<=capture_frames; operation_return<=SYNC_SUCCESS; loop_read(target,WM,SYNC_RECORD_REV);
+                            end else phase<=SYNC_SUCCESS;
+                        end
+                        1: begin
+                            if (playable_length==0) sync_resolve(winner,3,EMPTY_CONTENT,SYNC_GROUP_DONE);
+                            else if (!preserve && operation_position>=playable_length) sync_resolve(winner,3,INVALID_FRAME,SYNC_GROUP_DONE);
+                            else begin
+                                changed<=flags[M+:2]!=1 || (!preserve && position!=operation_position);
+                                applied_pulse<=!preserve; flags[M+:2]<=1;
+                                if (!preserve) position<=operation_position;
+                                if (flags[M+:2]==2) begin
+                                    length<=capture_frames; operation_return<=SYNC_RESET_BEGIN; loop_read(target,WM,SYNC_RECORD_REV);
+                                end else phase<=preserve ? SYNC_SUCCESS : SYNC_RESET_BEGIN;
+                            end
+                        end
+                        2: loop_read(target,WM,SYNC_NEW_REV);
+                        3: begin
+                            if (flags[M+:2]!=1) sync_resolve(winner,3,INVALID_STATE,SYNC_GROUP_DONE);
+                            else if (operation_position>=length) sync_resolve(winner,3,INVALID_FRAME,SYNC_GROUP_DONE);
+                            else begin
+                                changed<=position!=operation_position; position<=operation_position; applied_pulse<=retrigger;
+                                phase<=retrigger ? SYNC_RESET_BEGIN : SYNC_SUCCESS;
+                            end
+                        end
+                    endcase
+                end
+                SYNC_RECORD_REV: loop_write(CR,word_value,operation_return);
+                SYNC_NEW_REV: begin
+                    if (arithmetic_sum[64]) sync_resolve(winner,3,EXHAUSTED,SYNC_GROUP_DONE);
+                    else begin
+                        changed<=1; applied_pulse<=1; flags[M+:2]<=2; capture_frames<=0;
+                        loop_write(WM,arithmetic_sum[63:0],SYNC_SUCCESS);
+                    end
+                end
+                SYNC_RESET_BEGIN: loop_read(target,CYC,SYNC_RESET_CYCLES);
+                SYNC_RESET_CYCLES: begin
+                    changed<=changed || word_value!=0; loop_write(CYC,0,SYNC_SUCCESS);
+                end
+                SYNC_SUCCESS: sync_resolve(winner,0,0,SYNC_AFTER_APPLY);
                 SYNC_AFTER_APPLY: begin
-                    if (changed) sync_emit(0,0,0,ramp_state[63:0],{61'b0,ramp_state[66:64]},SYNC_EFFECTS);
+                    if (changed) sync_emit(0,0,0,operation_position,{61'b0,ramp_state[66:64]},SYNC_EFFECTS);
                     else phase<=SYNC_EFFECTS;
                 end
                 SYNC_EFFECTS: begin
-                    if (ramp_state[65:64]==0) begin masked<=1; pulse_pending<=0; cancel_index<=0; phase<=SYNC_CANCEL; end
+                    if (operation_code==0) begin masked<=1; pulse_pending<=0; cancel_index<=0; phase<=SYNC_CANCEL; end
                     else begin
                         if (applied_pulse) begin masked<=0; if (!delivered) pulse_pending<=1; end
                         phase<=SYNC_GROUP_DONE;
                     end
                 end
                 SYNC_CANCEL: begin
-                    if (cancel_plan[VALID] && cancel_plan[SEQ+:64]<protected_sequence) sync_resolve(cancel_index,2,0,SYNC_CANCEL_NEXT);
+                    if (cancel_flags[VALID] && protected_newer && cancel_index!=flags[NEWER]) sync_resolve(cancel_index,2,0,SYNC_CANCEL_NEXT);
                     else phase<=SYNC_CANCEL_NEXT;
                 end
                 SYNC_CANCEL_NEXT: begin
@@ -649,16 +640,19 @@ module sp_engine #(
                     phase<=SYNC_NATURAL;
                 end
                 SYNC_NATURAL: begin
-                    if (row[M+:2]==1 && length!=0 && position==length
-                        && !(row[REP] && row[SV] && !source_self && source_playing && !source_tick)) begin
-                        if (arithmetic_sum[64]) sync_fail();
-                        else begin
-                            row[CYC+:64]<=arithmetic_sum[63:0]; position<=0;
-                            if (!delivered) pulse_pending<=1;
-                            sync_emit(1,0,0,0,0,sync_natural_return);
-                        end
-                    end else phase<=sync_natural_return;
+                    if (flags[M+:2]==1 && length!=0 && position==length
+                        && !(flags[REP] && flags[SV] && !source_self && source_playing && !source_tick))
+                        loop_read(target,CYC,SYNC_WRAP);
+                    else phase<=sync_natural_return;
                 end
+                SYNC_WRAP: begin
+                    if (arithmetic_sum[64]) sync_fail();
+                    else begin
+                        position<=0; if (!delivered) pulse_pending<=1;
+                        loop_write(CYC,arithmetic_sum[63:0],SYNC_WRAP_EVENT);
+                    end
+                end
+                SYNC_WRAP_EVENT: sync_emit(1,0,0,0,0,sync_natural_return);
                 SYNC_SOURCE: begin
                     if (source_tick) begin
                         if (!masked && !delivered) pulse_pending<=1;
@@ -667,7 +661,7 @@ module sp_engine #(
                 end
                 SYNC_DELIVER: begin
                     if (pulse_pending) begin
-                        row[PULSE]<=1; row[LV]<=1; row[LP+:64]<=sync_frame; delivered<=1; pulse_pending<=0;
+                        flags[PULSE]<=1; delivered<=1; pulse_pending<=0;
                         sync_emit(2,0,0,0,0,SYNC_SELF);
                     end else phase<=SYNC_RENDER;
                 end
@@ -676,28 +670,54 @@ module sp_engine #(
                     else phase<=SYNC_RENDER;
                 end
                 SYNC_RENDER: begin
-                    row[RP+:64]<=position; row[RL+:64]<=length; row[BC]<=row[M+:2]==2 && row[CAP+:64]==0;
-                    row[PF+:64]<=sync_frame; row[PV]<=1;
-                    if (row[M+:2]==1 && length!=0 && position<length) phase<=SYNC_ADV_POSITION;
-                    else if (row[M+:2]==2) phase<=SYNC_ADV_CAPTURE;
-                    else phase<=SYNC_WRITE_BEGIN;
+                    flags[BC]<=flags[M+:2]==2 && capture_frames==0; flags[PV]<=1;
+                    loop_write(RP,position,SYNC_STAMP);
+                end
+                SYNC_STAMP: loop_write(PF,sync_frame,SYNC_ADVANCE);
+                SYNC_ADVANCE: begin
+                    if (flags[M+:2]==1 && length!=0 && position<length) phase<=SYNC_ADV_POSITION;
+                    else if (flags[M+:2]==2) phase<=SYNC_ADV_CAPTURE;
+                    else begin loop_word<=0; phase<=SYNC_STORE; end
                 end
                 SYNC_ADV_POSITION: begin
                     if (arithmetic_sum[64] || arithmetic_sum[63:0]>length) sync_fail();
-                    else begin position<=arithmetic_sum[63:0]; phase<=SYNC_WRITE_BEGIN; end
+                    else begin position<=arithmetic_sum[63:0]; loop_word<=0; phase<=SYNC_STORE; end
                 end
                 SYNC_ADV_CAPTURE: begin
                     if (arithmetic_sum[64]) sync_fail();
-                    else begin row[CAP+:64]<=arithmetic_sum[63:0]; phase<=SYNC_WRITE_BEGIN; end
+                    else begin capture_frames<=arithmetic_sum[63:0]; loop_word<=0; phase<=SYNC_STORE; end
                 end
-                SYNC_WRITE_BEGIN: begin loop_word<=0; phase<=SYNC_WRITE; end
-                SYNC_WRITE: begin
-                    if (loop_word==12) begin
-                        if (32'(pc)+1'b1==run_sync_count) sync_frame<=arithmetic_sum[63:0];
-                        phase<=NEXT;
-                    end else loop_word<=loop_word+1'b1;
+                SYNC_STORE: begin
+                    loop_word<=loop_word+1'b1;
+                    case (loop_word)
+                        FLAGS: loop_write(FLAGS,flags,SYNC_STORE);
+                        CONTROL: loop_write(CONTROL,control,SYNC_STORE);
+                        POS: loop_write(POS,position,SYNC_STORE);
+                        LEN: loop_write(LEN,length,SYNC_STORE);
+                        CAP: loop_write(CAP,capture_frames,SYNC_FINISH);
+                        default: sync_fail();
+                    endcase
                 end
+                SYNC_FINISH: begin
+                    if (32'(pc)+1'b1==run_sync_count) sync_frame<=arithmetic_sum[63:0];
+                    phase<=NEXT;
+                end
+                SYNC_WRITE: phase<=memory_return;
                 SYNC_EVENT: if (sync_event_ready) phase<=sync_event_return;
+                OWN_FLAGS: begin
+                    loop_invalid<=!word_value[V] || word_value[G+:32]!=generation || word_value[M+:2]==3 || !word_value[PV];
+                    loop_mode<=word_value[M+:2]; begin_capture<=word_value[BC];
+                    loop_read(target,PF,OWN_STAMP);
+                end
+                OWN_STAMP: begin
+                    loop_invalid<=loop_invalid || arithmetic_sum[64] || arithmetic_sum[63:0]!=sync_frame;
+                    loop_read(target,RP,OWN_RENDER);
+                end
+                OWN_RENDER: begin
+                    position<=word_value>>chunk_shift; loop_at_start<=word_value==0;
+                    loop_read(target,LEN,OWN_LENGTH);
+                end
+                OWN_LENGTH: begin length<=word_value>>chunk_shift; phase<=LOOP_RESULT; end
                 NEXT: begin
                     pc <= pc + 1'b1;
                     if ((pc + 1'b1) == run_count) begin

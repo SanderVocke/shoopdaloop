@@ -1,5 +1,8 @@
 # Standalone SP: integrated loop instructions
 
+This records the initial implementation. For the compact implementation and its
+resource/cycle comparison, see [SP resource optimization](sp-sync-resource-optimization.md).
+
 Measured on 2026-11-16 using the same pinned Yosys 0.52+45 build
 (`ea2c1e7ac`, OSS CAD Suite 2025-04-15) for both source snapshots. The baseline
 is commit `39db3bb7f8ffb10350ae809a6e9ecde2dae6b6b0`, before RTL loop execution.

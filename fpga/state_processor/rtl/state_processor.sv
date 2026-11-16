@@ -63,7 +63,7 @@ module state_processor #(
     wire sync_fault;
     wire loop_ram_read, loop_ram_write;
     wire [LOOP_MEMORY_BITS-1:0] loop_ram_read_address, loop_ram_write_address;
-    wire [127:0] loop_ram_read_data, loop_ram_write_data;
+    wire [63:0] loop_ram_read_data, loop_ram_write_data;
     reg cfg_pending;
     reg cfg_response_state;
     reg cfg_response_write;
@@ -105,7 +105,7 @@ module state_processor #(
     assign cfg_response_valid = cfg_pending && !reset;
     assign cfg_response_error = cfg_error;
     assign cfg_read_data = (cfg_response_write || cfg_error) ? 129'b0
-        : cfg_response_loop ? {1'b0,loop_ram_read_data} : cfg_response_state ? state_read_data : {33'b0, program_read_data};
+        : cfg_response_loop ? {65'b0,loop_ram_read_data} : cfg_response_state ? state_read_data : {33'b0, program_read_data};
     assign job_valid = fifo_valid && !busy && !reset;
 
     always @(posedge clk) begin
@@ -171,13 +171,13 @@ module state_processor #(
         .sync_frame(sync_frame), .faulted(sync_fault)
     );
 
-    sp_ram #(.WIDTH(128), .DEPTH(LOOP_DEPTH*16), .ADDR_BITS(LOOP_MEMORY_BITS)) loop_memory (
+    sp_ram #(.WIDTH(64), .DEPTH(LOOP_DEPTH*16), .ADDR_BITS(LOOP_MEMORY_BITS)) loop_memory (
         .clk(clk), .read_enable(loop_ram_read || (cfg_loop_access && !cfg_write)),
         .read_address(busy ? loop_ram_read_address : LOOP_MEMORY_BITS'(cfg_address)),
         .read_data(loop_ram_read_data),
         .write_enable(loop_ram_write || (cfg_loop_access && cfg_write)),
         .write_address(busy ? loop_ram_write_address : LOOP_MEMORY_BITS'(cfg_address)),
-        .write_data(busy ? loop_ram_write_data : cfg_write_data[127:0])
+        .write_data(busy ? loop_ram_write_data : cfg_write_data[63:0])
     );
 
     sp_job_fifo #(.DEPTH(JOB_DEPTH), .COUNT_BITS(JOB_COUNT_BITS)) jobs (

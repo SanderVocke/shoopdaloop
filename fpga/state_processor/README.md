@@ -55,8 +55,9 @@ cancels older plans and suppresses pending pulses. A zero remaining tick count
 fires on the next eligible source pulse. Operations are stop/play/record/seek,
 matching the Rust reference's primitive-loop profile and outcome semantics.
 
-Before advancing, the instruction saves render position/length and first-capture
-status. The audio section consumes that snapshot; next-boundary position/capture
+Before advancing, the instruction saves render position and first-capture
+status. Content length is shared with the render view because advancement does
+not change it. The audio section consumes that snapshot; next-boundary position/capture
 length have already advanced. `sync_frame` advances after the final prefix
 instruction, before audio execution. No SP operation runs after JP. Managed
 execution failures latch until reset; computed-ahead state is not rolled back.
@@ -64,47 +65,76 @@ Reset clears control/frame state but retains RAM; reload loop records before
 resuming managed execution. Supported sync quantum sizes are 1/16/32/64/128.
 
 `LOOP_DEPTH` defaults to `STATE_DEPTH`, supports 1..4096 slots and is independent
-of the audio state-vector count. Loops use 128-bit RAM words at
-`16 * loop_slot + word_index`. Idle-only configuration selects this RAM using
-`cfg_loop=1` (which takes precedence over `cfg_state`); data uses bits 127:0 of
-the existing configuration bus. Bounds include all sixteen reserved words per
-slot. Initialize the thirteen defined words; `sp_loop_defs.svh` defines exact
-bit offsets. Control-side admission writes plans while idle. Both program
-sections access the same loop record; there is no separate sync controller.
+of the audio state-vector count. Each slot occupies sixteen 64-bit RAM words at
+`16 * loop_slot + word_index` (128 bytes). Idle-only configuration selects this
+RAM using `cfg_loop=1` (which takes precedence over `cfg_state`); writes use bits
+63:0 of the existing configuration bus and reads zero-extend to 129 bits.
+Initialize all sixteen words; `sp_loop_defs.svh` defines word addresses and flag
+positions. Both program sections access the same loop record.
 
-| Word | Low 64 bits | High 64 bits |
-| --- | --- | --- |
-| 0 | Identity/mode/source flags (packed across both halves) | Source identity, pulse, capture-start and stamp-valid flags |
-| 1 | Next position | Content length |
-| 2 | Capture frames | Cycle count |
-| 3 | Content revision | Capture revision |
-| 4 | Revision watermark | Last pulse frame |
-| 5 | Render position | Render length |
-| 6 / 9 | Plan request slot/generation | Plan sequence |
-| 7 / 10 | Plan effective frame | Remaining pulse skips |
-| 8 / 11 | Plan position | Valid/tick/operation/retrigger flags |
-| 12 | Processed quantum frame | Reserved |
+| Word | Value |
+| --- | --- |
+| 0 | Valid [0], generation [32:1], mode [34:33], repeat [35], source-valid [36], source slot [52:37], pulse [53], capture-start [54], processed-valid [55], newer plan index [56] |
+| 1 | Source generation [31:0], plan 0 flags [36:32], plan 1 flags [41:37] |
+| 2 | Next position |
+| 3 | Content length (also render length) |
+| 4 | Capture frames |
+| 5 | Cycle count |
+| 6 | Content revision |
+| 7 | Revision watermark (also capture revision) |
+| 8 | Render position |
+| 9 | Processed quantum frame |
+| 10 / 13 | Plan 0 / 1 effective frame |
+| 11 / 14 | Plan 0 / 1 remaining pulse skips |
+| 12 / 15 | Plan 0 / 1 position |
+
+Each five-bit plan flag group contains valid [0], tick-timing [1], operation
+[3:2], and retrigger [4]. Reserved bits are zero. All cursors, counters, revisions,
+and effective frames retain 64 bits. Capture revision always equals the revision
+watermark: recording sets both to the next watermark and other operations leave
+both alone. A recording finalized by stop/play copies that watermark into content
+revision. There is no separately stored capture revision or render length.
+
+Control admission retains request IDs and full command sequences outside SP.
+While idle it writes plan flags/data and updates the newer-plan bit according to
+the two distinct full sequence numbers; preserve the other bits in word 0. This
+rank remains fixed during execution, including after a plan resolves, so it also
+preserves priority between absolute and pulse-triggered operations. Word 1 source
+identity must be preserved when updating its plan flags. Do not reuse an admitted
+plan's binding until its resolution has been consumed. No full sequence number or
+request ID participates in the SP execution datapath.
 
 `sync_event_valid/ready/data` streams 256-bit descriptors. Backpressure stalls
 the same SP execution FSM and preserves the descriptor. Fields are kind [7:0],
 reason [15:8], outcome [23:16], reserved [31:24], loop slot [63:32], payload
-[127:64], sequence/operation flags [191:128], and frame [255:192]. Kinds are
-transition=0, wrap=1, pulse=2, resolution=3. For transitions, payload is position
-and flags are operation bits [1:0] plus retrigger [2]. For resolutions, payload
-holds request slot/generation, sequence is the command sequence, and outcome is
-applied=0/superseded=1/cancelled=2/failed=3. Failed reasons use the transition
-error codes (invalid state=5, invalid frame=6, exhausted=8, empty content=9).
-The external consumer retains completion
-journals; there is no additional event FIFO in SP. The descriptor register is
-shared with ordinary job emission.
+[127:64], operation flags [191:128], and frame [255:192]. Kinds are transition=0,
+wrap=1, pulse=2, resolution=3. For transitions, payload is position and flags are
+operation bits [1:0] plus retrigger [2]. For resolutions, payload is plan index
+0/1, flags are zero, and outcome is applied=0/superseded=1/cancelled=2/failed=3.
+Failed reasons use the transition error codes (invalid state=5, invalid frame=6,
+exhausted=8, empty content=9). Control reconstructs request IDs/sequences from the
+admitted bindings and updates last-pulse history from actual pulse events. Last
+pulse is not required to execute the graph and is not stored in loop RAM.
+
+The external consumer retains completion journals; there is no additional event
+FIFO in SP. The descriptor register is shared with ordinary job emission. The
+Rust functional model retains complete logical state; the testbench's compact
+image codec and event observer check the physical projection and reconstruct
+control metadata independently from actual RTL events.
+
+The existing SP FSM uses word reads/writes and a shared 65-bit adder. It caches
+flags, position, length and capture count, while cycle/revision/plan data are
+accessed in RAM as needed. Operation-specific change checks avoid comparing or
+multiplexing entire loop records. There is no separate sync execution controller.
 
 `audio_pipeline` exposes these ports for combined SP/JP operation. The existing
 media/AXI wrappers retain explicit-record mode (`run_sync_count=0`); exporting
 the new control ports through those wrappers is future integration work.
 
 Run `cargo test --locked -p rt_fpga_testbench --features sim --test sync` for
-960 sync quanta compared to Rust, 120 combined SP/JP quanta compared sample for
-sample, and malformed-prefix/generation/bounds/fault checks.
+1,152 sync quanta compared to Rust (including full-width sequences admitted out
+of order), 120 combined SP/JP quanta compared sample for sample, wide counter and
+overflow cases, and malformed-prefix/generation/bounds/fault checks.
 
 ## Clock and control protocol
 

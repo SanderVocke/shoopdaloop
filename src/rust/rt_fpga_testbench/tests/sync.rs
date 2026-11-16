@@ -2,13 +2,14 @@
 use rt_fpga_reference::{
     fixed::{Fixed, Ramp},
     jobs::JobQueue,
-    state::{Instruction, LoopSlot, Program, StateProcessor, Value},
+    state::{Instruction, PlannedTransition, Program, StateProcessor, Value},
     transitions::*,
 };
 use rt_fpga_testbench::{
     bits::Bits,
     clock::Edges,
     drivers::state::State,
+    loop_image::{LoopControl, access, image, operation, read_loop, write_plans, write_words},
     model::Model,
     protocol,
     random::Random,
@@ -22,11 +23,15 @@ use std::{cell::RefCell, rc::Rc};
 struct Events {
     rows: Vec<Bits>,
     random: Random,
+    stalls: bool,
 }
 impl Agent for Events {
     fn drive(&mut self, m: &mut Model<'_>, e: Edges) {
         if e.falls(0) {
-            m.set("sync_event_ready", u64::from(self.random.yes(4)));
+            m.set(
+                "sync_event_ready",
+                u64::from(!self.stalls || self.random.yes(4)),
+            );
         }
     }
     fn sample(&mut self, m: &Model<'_>, e: Edges) {
@@ -54,114 +59,6 @@ fn spec(slot: u32, length: u64, source: Option<u32>, repeat_sync: bool) -> LoopS
         repeat_sync,
         timeline: None,
     }
-}
-fn operation(op: Operation) -> (u64, u64, bool) {
-    match op {
-        Operation::Stop => (0, 0, false),
-        Operation::Play {
-            position,
-            retrigger,
-        } => (1, position, retrigger),
-        Operation::Record => (2, 0, false),
-        Operation::Seek {
-            position,
-            retrigger,
-        } => (3, position, retrigger),
-    }
-}
-fn image(slot: &LoopSlot, spec: &LoopSpec, stamp: Option<u64>) -> Bits {
-    let mut b = Bits::zero(1664);
-    let s = slot.state;
-    b.set(0, 1, 1)
-        .set(1, 32, u64::from(s.id.generation))
-        .set(
-            33,
-            2,
-            match s.mode {
-                Mode::Stopped => 0,
-                Mode::Playing => 1,
-                Mode::Recording => 2,
-            },
-        )
-        .set(35, 1, u64::from(s.repeat_sync));
-    if let Some(source) = spec.sync_source {
-        b.set(36, 1, 1).set(37, 32, u64::from(source.slot)).set(
-            69,
-            32,
-            u64::from(source.generation),
-        );
-    }
-    b.set(101, 1, u64::from(slot.pulse_this_quantum))
-        .set(102, 1, u64::from(s.last_pulse.is_some()))
-        .set(103, 1, u64::from(slot.render.begin_capture))
-        .set(104, 1, u64::from(stamp.is_some()));
-    for (at, value) in [
-        (128, s.position),
-        (192, s.content_length),
-        (256, s.capture_frames),
-        (320, s.cycles),
-        (384, s.content_revision),
-        (448, s.capture_revision),
-        (512, s.revision_watermark),
-        (576, s.last_pulse.unwrap_or(0)),
-        (640, slot.render.position),
-        (704, slot.render.content_length),
-        (1536, stamp.unwrap_or(0)),
-    ] {
-        b.set(at, 64, value);
-    }
-    for (i, plan) in slot.planned.iter().enumerate() {
-        if let Some(p) = plan {
-            let base = 768 + i * 384;
-            let (op, position, retrigger) = operation(p.command.operation);
-            b.set(base, 32, u64::from(p.request.slot))
-                .set(base + 32, 32, u64::from(p.request.generation))
-                .set(base + 64, 64, p.command.sequence)
-                .set(base + 128, 64, p.effective)
-                .set(base + 192, 64, p.remaining_ticks)
-                .set(base + 256, 64, position)
-                .set(base + 320, 1, 1)
-                .set(
-                    base + 321,
-                    1,
-                    u64::from(matches!(p.command.timing, Timing::AfterTicks { .. })),
-                )
-                .set(base + 322, 2, op)
-                .set(base + 324, 1, u64::from(retrigger));
-        }
-    }
-    b
-}
-fn access_loop(
-    program: &mut rt_fpga_testbench::drivers::state::Program,
-    s: &mut Sim<'_>,
-    address: u64,
-    value: Option<&Bits>,
-) -> Bits {
-    s.model.set("cfg_loop", 1);
-    let result = program.configure(s, false, address, value, false);
-    s.model.set("cfg_loop", 0);
-    result
-}
-fn configure_loop(d: &mut State, s: &mut Sim<'_>, address: u64, value: Option<&Bits>) -> Bits {
-    access_loop(&mut d.image, s, address, value)
-}
-fn write_words(d: &mut State, s: &mut Sim<'_>, slot: u32, row: &Bits, start: usize, end: usize) {
-    for word in start..end {
-        let mut b = Bits::zero(129);
-        b.set(0, 64, row.get(word * 128, 64))
-            .set(64, 64, row.get(word * 128 + 64, 64));
-        configure_loop(d, s, u64::from(slot) * 16 + word as u64, Some(&b));
-    }
-}
-fn read_loop(d: &mut State, s: &mut Sim<'_>, slot: u32) -> Bits {
-    let mut row = Bits::zero(1664);
-    for word in 0..13 {
-        let b = configure_loop(d, s, u64::from(slot) * 16 + word as u64, None);
-        row.set(word * 128, 64, b.get(0, 64))
-            .set(word * 128 + 64, 64, b.get(64, 64));
-    }
-    row
 }
 fn event(e: &Event) -> Bits {
     let (kind, payload, flags) = match e.kind {
@@ -215,9 +112,11 @@ fn resolution(request: RequestSnapshot) -> Bits {
 }
 fn run_rtl(d: &mut State, s: &mut Sim<'_>, prefix: usize) -> u64 {
     s.model.set("job_ready", 0);
+    let accepted = s.cycles;
     let mut after = d.start(s, &[("run_sync_count", prefix as u64)]);
     for _ in 0..1000 * (prefix + 1) + 500 {
         if after.get("done") != 0 {
+            d.run_cycles = s.cycles - accepted;
             let code = after.get("error_code");
             assert_eq!(after.get("busy"), 0);
             assert_eq!(d.tick(s).1.get("done"), 0);
@@ -289,19 +188,21 @@ fn exercise(
     d.load(s, &case);
     events.borrow_mut().rows.clear();
     let mut sp = StateProcessor::with_loops(plan, memory);
+    let mut control = LoopControl::default();
     for spec in &specs {
         write_words(
-            d,
+            &mut d.image,
             s,
             spec.id.slot,
-            &image(sp.loop_state(spec.id).unwrap(), spec, None),
+            &control.stage(sp.loop_state(spec.id).unwrap(), spec, None),
             0,
-            13,
+            16,
         );
     }
     let mut random = Random::new(seed);
-    let mut sequence = 0;
+    let mut sequence = 0_u64;
     let mut queue = JobQueue::new(32);
+    let mut cycle_samples = Vec::new();
     for quantum in 0..48 {
         let done: Vec<_> = tp
             .request_slots(&sp)
@@ -341,7 +242,11 @@ fn exercise(
                 &mut sp,
                 Command {
                     target: spec.id,
-                    sequence,
+                    sequence: if seed > 20 {
+                        sequence.reverse_bits()
+                    } else {
+                        sequence
+                    },
                     at: sp_frame(quantum, q) + random.below(3 * u64::from(q)),
                     operation: op,
                     timing,
@@ -349,13 +254,11 @@ fn exercise(
             );
         }
         for spec in &specs {
-            write_words(
-                d,
+            write_plans(
+                &mut d.image,
                 s,
                 spec.id.slot,
-                &image(sp.loop_state(spec.id).unwrap(), spec, None),
-                6,
-                12,
+                &control.stage(sp.loop_state(spec.id).unwrap(), spec, None),
             );
         }
         let pending: Vec<_> = tp
@@ -373,6 +276,7 @@ fn exercise(
             0,
             "seed {seed}, quantum {quantum}"
         );
+        cycle_samples.push(d.run_cycles);
         assert_eq!(s.model.get("sync_frame"), sp.frame());
         let jobs: Vec<_> = queue
             .iter()
@@ -381,7 +285,7 @@ fn exercise(
         assert_eq!(d.drain(s), jobs, "jobs seed {seed}, quantum {quantum}");
         while queue.pop().is_some() {}
         assert_eq!(d.image.snapshot(s), json!({"memory":sp.values()}));
-        let rows = events.borrow().rows.clone();
+        let rows = control.observe(&events.borrow().rows);
         assert_eq!(
             rows.iter()
                 .filter(|b| b.get(0, 8) != 3)
@@ -402,24 +306,13 @@ fn exercise(
         assert_eq!(actual, expected, "outcomes seed {seed}, quantum {quantum}");
         for spec in &specs {
             let slot = sp.loop_state(spec.id).unwrap();
-            let expected = image(slot, spec, Some(frame));
-            let mut actual = read_loop(d, s, spec.id.slot);
-            for (i, p) in slot.planned.iter().enumerate() {
-                if p.is_none() {
-                    let base = 768 + i * 384;
-                    assert_eq!(actual.get(base + 320, 1), 0);
-                    for part in 0..6 {
-                        actual.set(base + part * 64, 64, 0);
-                    }
-                }
-            }
-            assert_eq!(
-                actual, expected,
-                "loop {:?}, seed {seed}, quantum {quantum}",
-                spec.id
-            );
+            control.verify(&read_loop(&mut d.image, s, spec.id.slot), slot, spec, frame);
         }
     }
+    println!(
+        "SYNC_CYCLES {}",
+        json!({"seed":seed,"quantum":q,"quanta":cycle_samples.len(),"cycles":cycle_samples.iter().sum::<u64>(),"min":cycle_samples.iter().min(),"max":cycle_samples.iter().max()})
+    );
 }
 fn sp_frame(quantum: u64, q: u32) -> u64 {
     quantum * u64::from(q)
@@ -437,6 +330,7 @@ fn integrated_sp_sync_instructions_match_rust_jobs_cursors_events_and_planned_tr
     let events = Rc::new(RefCell::new(Events {
         rows: vec![],
         random: Random::new(922),
+        stalls: std::env::var_os("SHOOP_SYNC_NO_STALLS").is_none(),
     }));
     sim.agent(events.clone());
     sim.agent(protocol::ReadyValid::new(
@@ -452,6 +346,179 @@ fn integrated_sp_sync_instructions_match_rust_jobs_cursors_events_and_planned_tr
             spec(3, u64::from(q), Some(3), true),
         ];
         exercise(&mut sim, &mut driver, &events, specs, q, seed);
+    }
+}
+
+#[shoop_test]
+fn integrated_sp_preserves_full_sequence_priority_with_out_of_order_admission() {
+    let mut design = suites::state::design([64, 16, 32]);
+    design.parameters.insert("LOOP_DEPTH".into(), "160".into());
+    let compiled = design
+        .build(&rt_fpga_testbench::root().join("work/marlin-suite/sync"))
+        .unwrap();
+    let mut sim = Sim::new(compiled.session(None).unwrap(), &[("clk", 10000, 0)]);
+    let mut driver = State::new(&mut sim, [64, 16, 32], 20261116);
+    let events = Rc::new(RefCell::new(Events {
+        rows: vec![],
+        random: Random::new(142),
+        stalls: true,
+    }));
+    sim.agent(events.clone());
+    for seed in 21..=24 {
+        exercise(
+            &mut sim,
+            &mut driver,
+            &events,
+            vec![
+                spec(129, 64, None, false),
+                spec(0, 32, Some(129), true),
+                spec(3, 16, Some(3), true),
+            ],
+            16,
+            seed,
+        );
+    }
+}
+
+#[shoop_test]
+fn integrated_sp_keeps_wide_ram_counters_and_checks_overflow() {
+    let mut design = suites::state::design([64, 16, 32]);
+    design.parameters.insert("LOOP_DEPTH".into(), "160".into());
+    let compiled = design
+        .build(&rt_fpga_testbench::root().join("work/marlin-suite/sync"))
+        .unwrap();
+    let mut sim = Sim::new(compiled.session(None).unwrap(), &[("clk", 10000, 0)]);
+    let mut driver = State::new(&mut sim, [64, 16, 32], 44);
+    let events = Rc::new(RefCell::new(Events {
+        rows: vec![],
+        random: Random::new(14),
+        stalls: true,
+    }));
+    sim.agent(events.clone());
+    let spec = spec(0, 32, None, false);
+    let plan = TransitionPlan::compile(
+        PlanDescription {
+            quantum: 16,
+            loops: vec![spec],
+        },
+        TransitionLimits {
+            loop_slots: 160,
+            pending_requests: 32,
+            events: 352,
+        },
+    )
+    .unwrap();
+    let sp = StateProcessor::with_loops(plan, vec![]);
+    let case = suites::state::case(
+        vec![json!({"kind":"process_loop","loop_id":id(0)})],
+        vec![],
+        32,
+        Some(0),
+        16,
+    );
+    let high = (1_u64 << 48) + 32;
+    for scenario in 0..6 {
+        driver.load(&mut sim, &case);
+        events.borrow_mut().rows.clear();
+        let mut slot = sp.loop_state(id(0)).unwrap().clone();
+        slot.state.revision_watermark = high;
+        slot.state.capture_revision = high;
+        let operation = match scenario {
+            0 => {
+                slot.state.revision_watermark = u64::MAX;
+                slot.state.capture_revision = u64::MAX;
+                Some(Operation::Record)
+            }
+            1 => {
+                slot.state.mode = Mode::Recording;
+                slot.state.capture_frames = high;
+                Some(Operation::Play {
+                    position: high - 16,
+                    retrigger: true,
+                })
+            }
+            2 | 3 => {
+                slot.state.mode = Mode::Playing;
+                slot.state.position = 32;
+                slot.state.cycles = if scenario == 2 { high } else { u64::MAX };
+                None
+            }
+            4 => {
+                slot.state.mode = Mode::Recording;
+                slot.state.capture_frames = u64::MAX;
+                None
+            }
+            _ => Some(Operation::Record),
+        };
+        if let Some(operation) = operation {
+            slot.planned[0] = Some(PlannedTransition {
+                request: RequestId {
+                    slot: 0,
+                    generation: u32::MAX,
+                },
+                command: Command {
+                    target: id(0),
+                    sequence: u64::MAX,
+                    at: 0,
+                    timing: Timing::At,
+                    operation,
+                },
+                effective: 0,
+                remaining_ticks: 0,
+            });
+        }
+        let row = image(&slot, &spec, None);
+        write_words(&mut driver.image, &mut sim, 0, &row, 0, 16);
+        assert_eq!(
+            run_rtl(&mut driver, &mut sim, 1),
+            if matches!(scenario, 3 | 4) { 2 } else { 0 },
+            "scenario {scenario}"
+        );
+        if matches!(scenario, 3 | 4) {
+            assert_eq!(sim.model.get("run_ready"), 0);
+            continue;
+        }
+        let row = read_loop(&mut driver.image, &mut sim, 0);
+        let rows = events.borrow().rows.clone();
+        match scenario {
+            0 => {
+                assert_eq!(row.get(33, 2), 0);
+                assert_eq!(row.get(7 * 64, 64), u64::MAX);
+                assert_eq!(rows.len(), 1);
+                assert_eq!(
+                    (rows[0].get(0, 8), rows[0].get(8, 8), rows[0].get(16, 8)),
+                    (3, 8, 3)
+                );
+            }
+            1 => {
+                assert_eq!(row.get(2 * 64, 64), high);
+                assert_eq!(row.get(3 * 64, 64), high);
+                assert_eq!(row.get(6 * 64, 64), high);
+                assert_eq!(row.get(8 * 64, 64), high - 16);
+                assert_eq!(row.get(5 * 64, 64), 0);
+            }
+            2 => {
+                assert_eq!(row.get(2 * 64, 64), 16);
+                assert_eq!(row.get(5 * 64, 64), high + 1);
+                assert_eq!(
+                    rows.iter().map(|r| r.get(0, 8)).collect::<Vec<_>>(),
+                    vec![1, 2]
+                );
+            }
+            _ => {
+                assert_eq!(row.get(7 * 64, 64), high + 1);
+                assert_eq!(row.get(4 * 64, 64), 16);
+                assert_eq!(row.get(54, 1), 1);
+            }
+        }
+        // Config writes ignore the upper bus bits for compact loop words.
+        let mut word = Bits::zero(129);
+        word.set(0, 64, high).set(64, 64, u64::MAX).set(128, 1, 1);
+        access(&mut driver.image, &mut sim, 15, Some(&word));
+        let actual = access(&mut driver.image, &mut sim, 15, None);
+        assert_eq!(actual.get(0, 64), high);
+        assert_eq!(actual.get(64, 64), 0);
+        assert_eq!(actual.get(128, 1), 0);
     }
 }
 
@@ -496,12 +563,12 @@ fn integrated_sp_checks_sync_prefix_order_generations_bounds_and_latched_faults(
         sim.model.set("sync_event_ready", 1);
         for spec in &specs {
             write_words(
-                &mut driver,
+                &mut driver.image,
                 &mut sim,
                 spec.id.slot,
                 &image(sp.loop_state(spec.id).unwrap(), spec, None),
                 0,
-                13,
+                16,
             );
         }
         sim.model.set("cfg_loop", 1);
@@ -553,8 +620,9 @@ fn integrated_sync_and_audio_instructions_drive_jp_with_exact_rust_samples() {
     let events = Rc::new(RefCell::new(Events {
         rows: vec![],
         random: Random::new(41),
+        stalls: true,
     }));
-    sim.agent(events);
+    sim.agent(events.clone());
     let mut random = Random::new(20261116);
     for q in [1, 16, 32] {
         let spec = spec(0, 4 * q, None, false);
@@ -606,13 +674,9 @@ fn integrated_sync_and_audio_instructions_drive_jp_with_exact_rust_samples() {
         case["program"]["jobs_per_quantum"] = json!(8);
         driver.load(&mut sim, &case);
         let mut sp = StateProcessor::with_loops(plan, memory);
-        let row = image(sp.loop_state(id(0)).unwrap(), &spec, None);
-        for word in 0..13 {
-            let mut b = Bits::zero(129);
-            b.set(0, 64, row.get(word * 128, 64))
-                .set(64, 64, row.get(word * 128 + 64, 64));
-            access_loop(&mut driver.program, &mut sim, word as u64, Some(&b));
-        }
+        let mut control = LoopControl::default();
+        let row = control.stage(sp.loop_state(id(0)).unwrap(), &spec, None);
+        write_words(&mut driver.program, &mut sim, 0, &row, 0, 16);
         let mut jp = JobProcessor::with_history_slots(q as usize, 8, 16);
         let mut queue = JobQueue::new(32);
         for quantum in 0..40 {
@@ -655,13 +719,10 @@ fn integrated_sync_and_audio_instructions_drive_jp_with_exact_rust_samples() {
                 )
                 .unwrap();
             }
-            let row = image(sp.loop_state(id(0)).unwrap(), &spec, None);
-            for word in 6..12 {
-                let mut b = Bits::zero(129);
-                b.set(0, 64, row.get(word * 128, 64))
-                    .set(64, 64, row.get(word * 128 + 64, 64));
-                access_loop(&mut driver.program, &mut sim, word as u64, Some(&b));
-            }
+            let row = control.stage(sp.loop_state(id(0)).unwrap(), &spec, None);
+            write_plans(&mut driver.program, &mut sim, 0, &row);
+            events.borrow_mut().rows.clear();
+            let frame = sp.frame();
             let samples: Vec<_> = (0..q).map(|_| Fixed(random.signed())).collect();
             let mut output = vec![Fixed(123); q as usize];
             sp.run(&program, &mut queue).unwrap();
@@ -680,6 +741,13 @@ fn integrated_sync_and_audio_instructions_drive_jp_with_exact_rust_samples() {
             let actual = driver.quantum(&mut sim, &json!({"inputs":[samples],"writes":[]}), true);
             assert_eq!(actual, expected, "Q={q}, quantum={quantum}");
             assert_eq!(sim.model.get("sync_frame"), sp.frame());
+            control.observe(&events.borrow().rows);
+            control.verify(
+                &read_loop(&mut driver.program, &mut sim, 0),
+                sp.loop_state(id(0)).unwrap(),
+                &spec,
+                frame,
+            );
         }
     }
 }

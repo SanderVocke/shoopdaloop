@@ -5,6 +5,7 @@ pub mod clock;
 pub mod codec;
 pub mod component;
 pub mod drivers;
+pub mod loop_image;
 pub mod memory;
 pub mod model;
 pub mod protocol;
