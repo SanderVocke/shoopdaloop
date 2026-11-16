@@ -1,12 +1,14 @@
 import base64
+import subprocess
 import sys
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from run_wasm_tests import write_test_traces  # noqa: E402
+from run_wasm_tests import ROOT, invoke_package, write_test_traces  # noqa: E402
 from wasm_test_report import parse_output, write_junit  # noqa: E402
 
 
@@ -35,6 +37,39 @@ test result: ok. 2 passed; 0 failed; 0 ignored; 0 filtered out; finished in 0.01
 
 
 class ReportTests(unittest.TestCase):
+    def test_package_timeout_preserves_partial_output_and_failure_report(self):
+        for stdout, stderr, expected in [
+            (b"partial\xff output", None, "partial\ufffd output"),
+            ("partial", b" stderr", "partial stderr"),
+        ]:
+            with self.subTest(stdout=stdout, stderr=stderr), tempfile.TemporaryDirectory() as directory:
+                reports = Path(directory)
+                error = subprocess.TimeoutExpired(
+                    ["wasm-pack", "test"], 10, output=stdout, stderr=stderr
+                )
+                with patch("run_wasm_tests.ROOT", reports), patch(
+                    "run_wasm_tests.subprocess.run", side_effect=error
+                ):
+                    result = invoke_package(
+                        {"name": "pilot", "path": ROOT, "no_default_features": False},
+                        runtime="node",
+                        profile="dev",
+                        env={},
+                        reports=reports,
+                        timeout=10,
+                        filters=[],
+                        features=[],
+                        trace_policy="off",
+                        tool_versions={},
+                    )
+                self.assertEqual(result["returncode"], 124)
+                self.assertFalse(result["success"])
+                output = (reports / "pilot-node.log").read_text()
+                self.assertTrue(output.startswith(expected))
+                self.assertIn("deadline exceeded after 10 seconds", output)
+                xml = ET.parse(reports / "pilot-node.xml").getroot()
+                self.assertGreater(int(xml.attrib["failures"]), 0)
+
     def junit(self, output: str, status: int = 0, testcase_properties=None):
         with tempfile.TemporaryDirectory() as directory:
             destination = Path(directory) / "report.xml"

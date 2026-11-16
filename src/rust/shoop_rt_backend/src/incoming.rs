@@ -143,9 +143,26 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 correlation,
                 outcome,
             } => {
-                self.telemetry_fresh = false;
-                self.snapshots.after = self.status.frame;
                 if let Some(pending) = self.requests.in_flight.remove(&correlation) {
+                    self.telemetry_fresh = false;
+                    self.snapshots.after = self.status.frame;
+                    if !matches!(
+                        pending.purpose,
+                        Purpose::StripControl(..)
+                            | Purpose::AutomaticMonitoring(..)
+                            | Purpose::LoopGain(..)
+                            | Purpose::LoopBalance(..)
+                            | Purpose::BusControl(..)
+                            | Purpose::Connect { .. }
+                            | Purpose::Route { .. }
+                            | Purpose::Smoothing(..)
+                            | Purpose::Profiling
+                            | Purpose::InjectMidi(..)
+                            | Purpose::Preview
+                            | Purpose::CancelReads
+                    ) {
+                        self.snapshots.capture_after = self.status.frame;
+                    }
                     self.answered(pending, outcome);
                 }
             }

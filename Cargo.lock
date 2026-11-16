@@ -5231,6 +5231,7 @@ name = "shoop_app_protocol"
 version = "0.3.0"
 dependencies = [
  "bincode",
+ "libm",
  "profiling_protocol",
  "serde",
  "shoop_app_api",

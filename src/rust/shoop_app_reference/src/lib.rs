@@ -3260,6 +3260,10 @@ impl ApplicationModel {
         operation: ControlOperation,
     ) -> Result<(), String> {
         match operation {
+            ControlOperation::SetTransitionPlan { .. }
+            | ControlOperation::ClearPlannedTransitions { .. } => Err(
+                "Immediate transition plans are unavailable in the reference application".into(),
+            ),
             ControlOperation::Transition {
                 loops,
                 mode,

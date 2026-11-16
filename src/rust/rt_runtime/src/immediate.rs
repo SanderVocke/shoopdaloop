@@ -1,14 +1,15 @@
 //! Complete variable-length groups with a callback-entry publication cutoff.
 use crate::{Epoch, Frame, NodeId};
 use alloc::sync::Arc;
-use core::sync::atomic::{AtomicU64, Ordering};
+mod clock;
+use clock::FrameClock;
 
 #[derive(Clone)]
 /// The next unrendered processing frame in this channel's engine lifetime.
-pub struct Clock(Arc<AtomicU64>);
+pub struct Clock(Arc<FrameClock>);
 impl Clock {
     pub fn frame(&self) -> Frame {
-        Frame(self.0.load(Ordering::Acquire))
+        Frame(self.0.load())
     }
 }
 
@@ -40,7 +41,7 @@ pub struct Group<'a, H: Copy, C: Copy> {
 pub fn channel<H: Copy, C: Copy>(capacity: usize) -> (Producer<H, C>, Consumer<H, C>) {
     assert!(capacity >= 2);
     let (producer, queue) = rtrb::RingBuffer::new(capacity);
-    let clock = Clock(Arc::new(AtomicU64::new(0)));
+    let clock = Clock(Arc::new(FrameClock::new()));
     (
         Producer {
             queue: producer,
@@ -110,7 +111,7 @@ impl<H: Copy, C: Copy> Producer<H, C> {
 }
 impl<H: Copy, C: Copy> Consumer<H, C> {
     pub fn publish_frame(&mut self, frame: Frame) {
-        self.clock.0.store(frame.0, Ordering::Release);
+        self.clock.0.store(frame.0);
     }
     pub fn begin_callback(&mut self) {
         self.remaining = self.queue.slots();

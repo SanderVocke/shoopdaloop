@@ -206,7 +206,7 @@ fn confirmed_conversion_retains_public_identity_and_exact_activation_receipt() {
         .unwrap();
     step(&mut backend, 3);
     let state = backend.poll().unwrap().composites.remove(&comp).unwrap();
-    assert_eq!((state.mode, state.position), (Mode::Playing, 1));
+    assert_eq!((state.mode, state.position), (Mode::Playing, 2));
     assert_eq!(state.active_children.len(), 1);
     backend.set_composite_repeat_sync(comp, true).unwrap();
     backend.wait_idle();

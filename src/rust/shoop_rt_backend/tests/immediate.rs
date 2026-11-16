@@ -11,6 +11,37 @@ use support::*;
 static ALLOCATOR: TrackingAllocator = TrackingAllocator;
 
 #[shoop_test]
+fn immediate_playback_advances_a_silent_loop_with_an_edited_length() {
+    let mut b = stack(&description());
+    let track = b
+        .create_direct_track(DirectTrackRequest {
+            port_name_base: "silent-clock".into(),
+            audio_channels: 2,
+            midi: false,
+            initial_loops: 1,
+        })
+        .unwrap();
+    b.wait_idle();
+    let id = track.loops[0];
+    b.set_loop_length(id, 64).unwrap();
+    b.wait_idle();
+    b.immediate_group(&[Command::Transition(id, TransitionMode::Playing.into())])
+        .unwrap();
+    assert_no_heap(|| b.clock_mut().render(16));
+    b.pump();
+    let state = b.poll().unwrap();
+    assert_eq!(state.loops[&id].mode, BackendLoopMode::Playing);
+    assert_eq!(state.loops[&id].length, 64);
+    assert_eq!(b.immediate_diagnostics().rt_refused, 0);
+    b.immediate_group(&[Command::Transition(id, TransitionMode::Stopped.into())])
+        .unwrap();
+    assert_no_heap(|| b.clock_mut().render(16));
+    b.pump();
+    assert_eq!(b.poll().unwrap().loops[&id].mode, BackendLoopMode::Stopped);
+    assert_eq!(b.immediate_diagnostics().rt_refused, 0);
+}
+
+#[shoop_test]
 fn immediate_controls_and_graph_edits_share_the_application_session() {
     let mut b = stack(&description());
     let track = b

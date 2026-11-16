@@ -395,5 +395,6 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             result,
         });
         self.telemetry_fresh = false;
+        self.snapshots.capture_after = self.status.frame;
     }
 }

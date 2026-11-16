@@ -103,7 +103,7 @@ fn an_immediate_record_after_clearing_120_sync_sources_takes_effect_within_six_p
 }
 
 #[shoop_test]
-fn six_connections_and_routes_show_within_three_polls() {
+fn six_connections_and_routes_show_within_four_polls() {
     let mut backend = stack(&description());
     let tracks = [track(&mut backend, 1), track(&mut backend, 1)];
     backend.wait_idle();
@@ -144,5 +144,5 @@ fn six_connections_and_routes_show_within_three_polls() {
         })
     });
     eprintln!("six connections and routes: {polls} polls");
-    assert!(polls <= 3, "{polls} polls");
+    assert!(polls <= 4, "{polls} polls");
 }

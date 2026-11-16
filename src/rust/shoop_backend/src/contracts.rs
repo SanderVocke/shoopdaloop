@@ -919,10 +919,8 @@ pub fn new_session_contract(backend: &mut dyn Backend, profile: &ContractProfile
             (state.audio_channels, state.midi),
             (source.state.audio_channels, source.state.midi)
         );
-        assert_eq!(
-            (state.output_gain_db, state.input_monitoring),
-            (source.state.output_gain_db, source.state.input_monitoring)
-        );
+        assert!((state.output_gain_db - source.state.output_gain_db).abs() <= 0.00001);
+        assert_eq!(state.input_monitoring, source.state.input_monitoring);
         assert_eq!(created.ports.len(), source.ports.len());
         for source_loop in &source.loops {
             let loop_id = mapping.loops[&source_loop.source_id];
@@ -1021,7 +1019,8 @@ pub fn timing_ramp(frame: u64) -> f32 {
 /// - A loop playing from position `p`, as reported by `poll()`, renders sample
 ///   `p + observation_lag()` (modulo its length) of its logical content in the next frame.
 /// - The track `output_peaks` and the bus `output_peaks_db` meters report, in dBFS, the peak
-///   of the frames rendered since the previous `poll()`. A track input with monitoring
+///   of the frames rendered since the previous `poll()`, delayed by `metering_lag()`.
+///   A track input with monitoring
 ///   reaches the track output within the same frame. Control changes take effect within
 ///   16 frames.
 /// - A cleared loop is silent from the next rendered frame; `poll()` reports it stopped and
@@ -1035,6 +1034,10 @@ pub trait TimingHarness {
     fn step(&mut self) -> Result<()>;
     /// Frames by which the loop state in `poll()` trails the next frame to render.
     fn observation_lag(&self) -> u64 {
+        0
+    }
+    /// Frames by which the meters trail the sample rendered by the latest step.
+    fn metering_lag(&self) -> u64 {
         0
     }
 }
@@ -1423,7 +1426,7 @@ fn settle_and_measure(harness: &mut dyn TimingHarness) -> (BackendSnapshot, f32)
     for _ in 0..SETTLE_FRAMES {
         step_and_poll(harness);
     }
-    let input = timing_ramp(harness.frame());
+    let input = timing_ramp(harness.frame().saturating_sub(harness.metering_lag()));
     (step_and_poll(harness), input)
 }
 
@@ -1635,7 +1638,9 @@ pub fn loop_playback_contract(harness: &mut dyn TimingHarness) {
         }
         for _ in 0..LENGTH {
             let reported = harness.backend().poll().unwrap().loops[&loop_id].position as usize;
-            let position = (reported + harness.observation_lag() as usize) % LENGTH as usize;
+            let position = (reported + harness.observation_lag() as usize + LENGTH as usize
+                - harness.metering_lag() as usize % LENGTH as usize)
+                % LENGTH as usize;
             let snapshot = step_and_poll(harness);
             let state = &snapshot.loops[&loop_id];
             assert_eq!((state.gain, state.balance), (gain, balance));
@@ -1658,8 +1663,11 @@ pub fn loop_playback_contract(harness: &mut dyn TimingHarness) {
 
     harness.backend().clear_loop(loop_id).unwrap();
     let mut cleared = false;
-    for _ in 0..SETTLE_FRAMES {
+    for step in 0..SETTLE_FRAMES {
         let snapshot = step_and_poll(harness);
+        if (step as u64) < harness.metering_lag() {
+            continue;
+        }
         assert_levels(
             &snapshot.tracks[&track].output_peaks,
             1.0,

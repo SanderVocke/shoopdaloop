@@ -72,8 +72,8 @@ jobs:
       - name: Run both real DSP backends through Node Wasm
         if: matrix.label == 'both'
         run: |
-          if ! python3 scripts/run_wasm_tests.py --runtime node --package shoop_host_processors --feature builtin-fx --feature oxisynth --trace off; then
-            cat target/wasm-tests/dev/reports/node/shoop_host_processors-node.log
+          if ! python3 scripts/run_wasm_tests.py --runtime node --profile ci --package shoop_host_processors --feature builtin-fx --feature oxisynth --trace off; then
+            cat target/wasm-tests/ci/reports/node/shoop_host_processors-node.log
             exit 1
           fi
       - name: Upload hosted Wasm test reports
@@ -81,7 +81,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: hosted-processor-wasm-tests-${{ github.run_id }}
-          path: target/wasm-tests/dev/reports/node
+          path: target/wasm-tests/ci/reports/node
           if-no-files-found: warn
       - name: Run Built-in bus FX in an actual AudioWorklet
         if: matrix.label == 'both'

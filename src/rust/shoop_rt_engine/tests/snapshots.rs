@@ -122,8 +122,10 @@ fn sixty_four_stereo_loops_have_a_bounded_complete_payload() {
     let (_, header, _) = read(&mut h);
     assert_eq!((header.loops, header.strips, header.buses), (64, 8, 1));
     let mut bytes = vec![0; h.host.endpoint().snapshot_capacity()];
+    #[cfg(not(target_arch = "wasm32"))]
     let start = std::time::Instant::now();
     let (_, len) = h.host.endpoint().read_snapshot(&mut bytes).unwrap();
+    #[cfg(not(target_arch = "wasm32"))]
     eprintln!(
         "64-loop snapshot: {len} bytes; one debug read {:?}",
         start.elapsed()

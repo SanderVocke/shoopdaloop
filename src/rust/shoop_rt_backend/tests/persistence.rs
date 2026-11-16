@@ -33,6 +33,88 @@ fn fixture() -> (Stack, BackendTrackCreation, BackendSessionData) {
 }
 
 #[shoop_test]
+fn unchanged_timing_snapshots_do_not_restart_large_capture_validation() {
+    let mut config = description();
+    config.resource_pages = 8192;
+    let mut backend = stack(&config);
+    backend.clock_mut().capture = |_| 0.25;
+    let track = backend
+        .create_direct_track(DirectTrackRequest {
+            port_name_base: "large-capture".into(),
+            audio_channels: 2,
+            midi: false,
+            initial_loops: 1,
+        })
+        .unwrap();
+    backend
+        .set_port_connected(track.ports[0].id, "audio_in_1", true)
+        .unwrap();
+    backend.wait_idle();
+    backend
+        .transition_loop(track.loops[0], BackendLoopMode::Recording, None)
+        .unwrap();
+    backend.wait_idle();
+    backend.clock_mut().render(40_000);
+    backend
+        .transition_loop(track.loops[0], BackendLoopMode::Stopped, None)
+        .unwrap();
+    backend.wait_idle();
+    let mut captured = None;
+    for _ in 0..2000 {
+        backend.clock_mut().render(16);
+        if let BackendAsyncResult::Ready(image) = backend.capture_session_async().unwrap() {
+            captured = Some(image);
+            break;
+        }
+    }
+    let captured = captured.expect("unchanged snapshots must let bounded media validation finish");
+    let content = &captured.tracks[0].loops[0];
+    assert!(content.audio[0].samples.len() >= 40_000);
+    assert!(content.audio[0]
+        .samples
+        .iter()
+        .all(|sample| *sample == 0.25));
+}
+
+#[shoop_test]
+fn stopped_media_capture_progresses_while_live_midi_input_continues() {
+    let (mut backend, track, _) = fixture();
+    let id = track.loops[0];
+    backend
+        .transition_loop(id, BackendLoopMode::Recording, None)
+        .unwrap();
+    backend.wait_idle();
+    backend.clock_mut().render(64);
+    backend
+        .transition_loop(id, BackendLoopMode::Stopped, None)
+        .unwrap();
+    backend.wait_idle();
+    backend.cancel_media_reads();
+    let mut captured = None;
+    for index in 0..200 {
+        backend
+            .inject_midi_input(
+                track.track_id,
+                &[BackendMidiEvent {
+                    frame: 0,
+                    data: vec![if index % 2 == 0 { 0x90 } else { 0x80 }, 60, 100].into(),
+                }],
+            )
+            .unwrap();
+        backend.clock_mut().render(16);
+        if let BackendAsyncResult::Ready(image) = backend.capture_session_async().unwrap() {
+            captured = Some(image);
+            break;
+        }
+    }
+    let captured = captured.expect("live MIDI must not starve capture of stopped media");
+    let content = &captured.tracks[0].loops[0];
+    assert!(content.length >= 64);
+    assert!(content.midi[0].events.is_empty());
+    assert!(content.audio[0].samples.iter().all(|sample| *sample == 0.));
+}
+
+#[shoop_test]
 fn session_replacement_restores_nested_timing_slots_and_repeat_intent_with_fresh_ids() {
     let (mut backend, old, mut session) = fixture();
     let child = old.loops[0].raw();

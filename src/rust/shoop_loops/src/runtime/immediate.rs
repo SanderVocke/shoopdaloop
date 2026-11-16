@@ -24,16 +24,16 @@ impl<S: Sample> LoopPlanner<S> {
                 {
                     return Ok(());
                 }
-                let media = self.ledger.playback(target)?.ok_or(Error::InvalidState)?;
-                let view = self.ledger.view(media)?;
-                if view
-                    .midi
-                    .is_some_and(|source| source.snapshot.description.bytes != 0)
-                    || view.audio.is_none()
-                    || row.dry_wet
-                    || row.active.is_some()
-                    || row.prepared.is_some()
-                {
+                if let Some(media) = self.ledger.playback(target)? {
+                    let view = self.ledger.view(media)?;
+                    if view
+                        .midi
+                        .is_some_and(|source| source.snapshot.description.bytes != 0)
+                    {
+                        return Err(Error::InvalidState);
+                    }
+                }
+                if row.dry_wet || row.active.is_some() || row.prepared.is_some() {
                     return Err(Error::InvalidState);
                 }
                 Ok(())

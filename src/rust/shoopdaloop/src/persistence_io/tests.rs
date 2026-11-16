@@ -840,7 +840,10 @@ impl Fixture {
             ..Default::default()
         })
         .unwrap();
-        let backend = RtBackend::connect(client, Clock(render)).unwrap();
+        let mut backend = RtBackend::connect(client, Clock(render)).unwrap();
+        backend
+            .set_snapshot_delivery(shoop_rt_backend::SnapshotDelivery::Pull)
+            .unwrap();
         let mut service = Service::new(
             Box::new(backend),
             ServiceOptions {

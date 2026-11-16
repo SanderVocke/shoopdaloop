@@ -245,6 +245,15 @@ impl Service {
         target: persistence::Target,
         local: bool,
     ) -> Result<(), Refusal> {
+        // A read-only session capture chooses its cut after pending work settles.
+        let target = match target {
+            persistence::Target::Session { revision } if revision <= self.revision => {
+                persistence::Target::Session {
+                    revision: self.revision,
+                }
+            }
+            target => target,
+        };
         self.persistence_begin(authority, key, target)?;
         if self.capture_recording_busy(target) {
             return Err(Refusal::Busy);

@@ -2197,6 +2197,8 @@ c.loop_clear_all()
 c.loop_adopt_ringbuffers({0,0}, 1, 2, 3, c.constants.LoopMode_Playing)
 c.loop_compose_add_to_end({0,0}, {{1,0},{-1,0}}, true)
 c.loop_set_repeat_sync({0,0}, true)
+c.loop_transition_plan({0,0}, nil, c.constants.LoopMode_Recording, 1, c.constants.LoopMode_Playing, 2)
+c.loop_clear_planned_transitions({0,0}, 3)
 
 local tracks = {-1, 0, 1}
 eq(#c.track_get_gain(tracks), 3, 'track gain shape')
@@ -2261,7 +2263,7 @@ c.auto_open_device_specific_midi_control_output('', function() end, function() e
             .map(|name| (*name).to_owned())
             .collect::<std::collections::BTreeSet<_>>();
         assert_eq!(called, expected);
-        assert_eq!(bridge.borrow().operations.len(), 37);
+        assert_eq!(bridge.borrow().operations.len(), 39);
     }
 
     #[shoop_wasm_test_support::shoop_test]

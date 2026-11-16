@@ -31,6 +31,7 @@ thread_local! { static DRIVER: RefCell<Option<Driver>> = const { RefCell::new(No
 thread_local! {
     static CURRENT_KEY: Cell<Option<Key>> = const { Cell::new(None) };
     static RETIRED_KEY: Cell<Option<Key>> = const { Cell::new(None) };
+    static CURRENT_REQUEST: RefCell<Option<Request>> = const { RefCell::new(None) };
 }
 pub fn advance() {
     DRIVER.with_borrow_mut(|driver| {
@@ -50,6 +51,7 @@ fn drive(command: &str) -> [u32; 11] {
 }
 fn request(client: &Client, connection: &mut Connection, request: Request) {
     CURRENT_KEY.set(Some(request.key()));
+    CURRENT_REQUEST.with_borrow_mut(|current| *current = Some(request.clone()));
     connection
         .send(client.persistence(request).unwrap())
         .expect("persistence request");
@@ -68,7 +70,14 @@ fn received(client: &mut Client, connection: &mut Connection) -> Reply {
             }
             return reply;
         }
-        assert!(Instant::now() < deadline, "persistence reply timeout");
+        assert!(
+            Instant::now() < deadline,
+            "persistence reply timeout: request={:?}, state={:?}, revision={:?}, pending={:?}",
+            CURRENT_REQUEST.with_borrow(|request| request.clone()),
+            client.state(),
+            client.snapshot().map(|state| state.revision),
+            client.pending()
+        );
         pump(client, connection);
     }
 }

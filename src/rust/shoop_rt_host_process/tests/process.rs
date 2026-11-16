@@ -257,6 +257,9 @@ impl Timing {
         let clock = Clock(supervisor.testing_clock(1000, 1));
         let mut backend = RtBackend::begin(client, clock).unwrap();
         ready(&mut backend);
+        backend
+            .set_snapshot_delivery(shoop_rt_backend::SnapshotDelivery::Pull)
+            .unwrap();
         Self {
             backend,
             _supervisor: supervisor,
@@ -283,7 +286,12 @@ impl shoop_backend::contracts::TimingHarness for Timing {
         self.backend.pump();
         anyhow::ensure!(self.backend.clock_mut().0.step(1), "test clock failed");
         let deadline = Instant::now() + Duration::from_secs(5);
-        while !self.backend.clock().0.observations_ready() {
+        while !self.backend.clock().0.observations_ready()
+            || self
+                .backend
+                .snapshot_frame()
+                .is_none_or(|frame| frame < self.backend.clock().0.frame().saturating_sub(1))
+        {
             self.backend.pump();
             anyhow::ensure!(
                 Instant::now() < deadline,
@@ -294,6 +302,9 @@ impl shoop_backend::contracts::TimingHarness for Timing {
         Ok(())
     }
     fn observation_lag(&self) -> u64 {
+        1
+    }
+    fn metering_lag(&self) -> u64 {
         1
     }
 }

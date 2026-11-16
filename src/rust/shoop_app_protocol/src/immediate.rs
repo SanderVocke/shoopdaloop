@@ -96,9 +96,10 @@ pub fn group(action: &Action, state: &SessionSnapshot) -> Option<Vec<Command>> {
                     0
                 } else {
                     u32::try_from(
-                        l.length_frames.saturating_sub(
-                            (f64::from(l.position) * l.length_frames as f64).round() as u64,
-                        ) / sync,
+                        l.length_frames.saturating_sub(libm::round(
+                            f64::from(l.position) * l.length_frames as f64,
+                        ) as u64)
+                            / sync,
                     )
                     .unwrap_or(u32::MAX)
                 }
@@ -117,6 +118,18 @@ pub fn group(action: &Action, state: &SessionSnapshot) -> Option<Vec<Command>> {
             _ => return None,
         };
         if ids.iter().any(|id| !state.immediate.playback.contains(id)) {
+            return None;
+        }
+        if mode == TransitionMode::Playing
+            && delay.is_some()
+            && ids.iter().any(|id| {
+                find(*id).is_some_and(|l| {
+                    l.channel_timings
+                        .iter()
+                        .any(|channel| channel.preplay_samples > 0)
+                })
+            })
+        {
             return None;
         }
         if mode == TransitionMode::Recording

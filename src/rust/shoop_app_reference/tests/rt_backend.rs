@@ -64,7 +64,10 @@ fn start() -> CooperativeApplicationRuntime {
         ..EngineDescription::default()
     };
     let (offline, client) = OfflineRender::new(&description).expect("engine preparation");
-    let backend = RtBackend::connect(client, OfflineClock(offline)).expect("connection");
+    let mut backend = RtBackend::connect(client, OfflineClock(offline)).expect("connection");
+    backend
+        .set_snapshot_delivery(shoop_rt_backend::SnapshotDelivery::Pull)
+        .unwrap();
     CooperativeApplicationRuntime::start(Box::new(backend)).expect("application start")
 }
 
