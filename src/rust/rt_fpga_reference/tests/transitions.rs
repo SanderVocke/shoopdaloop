@@ -1,8 +1,8 @@
 use rt_fpga_reference::{
     fixed::Fixed,
-    jobs::{BufferId, JobProcessor, Memory},
+    jobs::{BufferId, JobProcessor, JobQueue, Memory},
     pipeline::{Pipeline, PipelineError},
-    state::{Address, Instruction, Program, Value},
+    state::{Address, Instruction, Program, StateProcessor, Value},
     storage::{MediaStore, ViewId},
     transitions::*,
     Error,
@@ -60,6 +60,7 @@ fn playing() -> Operation {
 }
 fn pipeline() -> (Pipeline, JobProcessor) {
     let program = Program {
+        sync_instructions: vec![],
         quantum: 16,
         chunk_frames: 16,
         jobs_per_quantum: 6,
@@ -93,43 +94,51 @@ fn pipeline() -> (Pipeline, JobProcessor) {
 }
 
 #[shoop_test]
-fn indexed_sync_chain_across_mask_words_runs_without_heap_work() {
-    let mut engine = TransitionProcessor::prepare(plan(130, 16, 32));
+fn sync_ordered_sp_chain_runs_without_heap_work() {
+    let (mut engine, mut state, program, mut queue) = control_and_state(plan(130, 16, 32));
     for slot in 0..130 {
         engine
-            .submit(Command {
-                target: id(slot),
-                ..command(u64::from(slot) + 1, playing())
-            })
+            .submit(
+                &mut state,
+                Command {
+                    target: id(slot),
+                    ..command(u64::from(slot) + 1, playing())
+                },
+            )
             .unwrap();
     }
     assert_no_heap(|| {
         for _ in 0..40 {
-            engine.process().unwrap();
+            state.run(&program, &mut queue).unwrap();
+            engine.harvest(&mut state);
         }
     });
-    assert_eq!(engine.frame(), 640);
-    assert_eq!(engine.states().count(), 130);
-    assert!(engine
-        .states()
+    assert_eq!(state.frame(), 640);
+    assert_eq!(state.loop_states().count(), 130);
+    assert!(state
+        .loop_states()
         .all(|state| state.position == 32 && state.cycles == 19));
 }
 
 #[shoop_test]
 fn cancellation_completion_collection_and_generations_survive_in_place_processing() {
-    let mut engine = TransitionProcessor::prepare(plan(1, 16, 32));
-    let first = engine.submit(command(1, playing())).unwrap();
-    assert!(engine.cancel(first).unwrap());
+    let (mut engine, mut state, program, mut queue) = control_and_state(plan(1, 16, 32));
+    let first = engine.submit(&mut state, command(1, playing())).unwrap();
+    assert!(engine.cancel(&mut state, first).unwrap());
     assert!(matches!(
         engine.take_completion(first).unwrap().unwrap().outcome,
         Outcome::Cancelled { frame: 0 }
     ));
-    let second = engine.submit(command(2, playing())).unwrap();
+    let second = engine.submit(&mut state, command(2, playing())).unwrap();
     assert_eq!(second.slot, first.slot);
     assert!(second.generation > first.generation);
-    assert_eq!(engine.cancel(first), Err(TransitionError::InvalidId));
-    engine.process().unwrap();
-    assert_eq!(engine.state(id(0)).unwrap().position, 16);
+    assert_eq!(
+        engine.cancel(&mut state, first),
+        Err(TransitionError::InvalidId)
+    );
+    state.run(&program, &mut queue).unwrap();
+    engine.harvest(&mut state);
+    assert_eq!(state.loop_state(id(0)).unwrap().state.position, 16);
     assert!(matches!(
         engine.take_completion(second).unwrap().unwrap().outcome,
         Outcome::Applied { frame: 0 }
@@ -203,7 +212,7 @@ fn exhaustion_after_a_successful_quantum_silences_the_entire_host_block_and_latc
         ),
         Err(error)
     );
-    assert_eq!(p.transitions().frame(), 16);
+    assert_eq!(p.state().frame(), 32);
     assert_eq!(a, [Fixed::ZERO; 32]);
     assert_eq!(b, [Fixed::ZERO; 32]);
     assert_eq!(jobs.buffer(BufferId(2)).unwrap(), &[Fixed(99); 16]);
@@ -240,7 +249,7 @@ fn exhaustion_after_a_successful_quantum_silences_the_entire_host_block_and_latc
             32,
         )
         .unwrap();
-    assert_eq!(reset.transitions().frame(), 32);
+    assert_eq!(reset.state().frame(), 32);
     assert_eq!(b, [Fixed(77); 32]);
 }
 
@@ -283,7 +292,7 @@ fn descriptor_exhaustion_is_fatal_and_partial_output_is_suppressed() {
     );
     assert_eq!(a, [Fixed::ZERO; 16]);
     assert_eq!(b, [Fixed::ZERO; 16]);
-    assert_eq!(p.transitions().frame(), 0);
+    assert_eq!(p.state().frame(), 16);
     assert_eq!(jobs.buffer(BufferId(2)).unwrap(), &[Fixed(42); 16]);
 }
 
@@ -311,7 +320,7 @@ fn late_memory_fault_is_reported_on_the_next_call_without_processing_more_audio(
         ),
         Err(PipelineError::Jobs(Error::MemoryFull))
     );
-    assert_eq!(p.transitions().frame(), 16);
+    assert_eq!(p.state().frame(), 16);
     assert_eq!(a, [Fixed::ZERO; 16]);
     assert_eq!(b, [Fixed::ZERO; 16]);
 }
@@ -326,7 +335,7 @@ fn malformed_block_is_rejected_without_faulting_the_engine() {
         Err(PipelineError::Jobs(Error::InvalidShape))
     );
     assert_eq!(p.fault(), None);
-    assert_eq!(p.transitions().frame(), 0);
+    assert_eq!(p.state().frame(), 0);
     let mut a = [Fixed(1); 16];
     let mut b = [Fixed(1); 16];
     p.process(
@@ -349,4 +358,23 @@ fn invalid_capture_binding_does_not_attempt_to_allocate_missing_descriptor_ids()
     assert!(media.snapshot().views.is_empty());
     Memory::begin_capture(&mut media, ViewId(0)).unwrap();
     assert_eq!(media.snapshot().views.len(), 1);
+}
+
+fn control_and_state(
+    plan: TransitionPlan,
+) -> (TransitionProcessor, StateProcessor, Program, JobQueue) {
+    let program = Program {
+        sync_instructions: plan.sync_instructions(),
+        instructions: vec![],
+        quantum: plan.image().description.quantum,
+        chunk_frames: 1,
+        jobs_per_quantum: 0,
+    };
+    let control = TransitionProcessor::prepare(&plan);
+    (
+        control,
+        StateProcessor::with_loops(plan, vec![]),
+        program,
+        JobQueue::new(0),
+    )
 }

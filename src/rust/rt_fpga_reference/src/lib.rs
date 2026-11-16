@@ -18,6 +18,7 @@ pub mod transitions;
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum Error {
+    Transition(transitions::TransitionError),
     InvalidState,
     InvalidBuffer,
     InvalidView,

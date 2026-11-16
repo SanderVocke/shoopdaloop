@@ -68,7 +68,6 @@ pub struct TransitionPlan {
     pub(crate) specs: Vec<Option<LoopSpec>>,
     pub(crate) followers: Vec<LoopId>,
     pub(crate) follower_ranges: Vec<Range<usize>>,
-    pub(crate) component_of: Vec<usize>,
 }
 impl TransitionPlan {
     pub fn compile(
@@ -162,12 +161,6 @@ impl TransitionPlan {
         if components.len() != count {
             return Err(Error::InstantaneousDependencyCycle);
         }
-        let mut component_of = vec![usize::MAX; limits.loop_slots as usize];
-        for (component, members) in components.iter().enumerate() {
-            for id in members {
-                component_of[id.slot as usize] = component;
-            }
-        }
         let mut followers = Vec::with_capacity(count);
         let mut follower_ranges = vec![0..0; limits.loop_slots as usize];
         for (source, targets) in forward.iter().enumerate() {
@@ -184,11 +177,19 @@ impl TransitionPlan {
             specs,
             followers,
             follower_ranges,
-            component_of,
         })
     }
     pub fn image(&self) -> &TransitionPlanImage {
         &self.image
+    }
+    pub fn sync_instructions(&self) -> Vec<crate::state::SyncInstruction> {
+        self.image
+            .components
+            .iter()
+            .flatten()
+            .copied()
+            .map(|loop_id| crate::state::SyncInstruction::ProcessLoop { loop_id })
+            .collect()
     }
     pub fn followers(&self, id: LoopId) -> Result<&[LoopId], Error> {
         if self

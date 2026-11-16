@@ -176,38 +176,3 @@ pub struct RequestSnapshot {
     pub remaining_ticks: Option<u64>,
     pub outcome: Option<Outcome>,
 }
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct Record {
-    pub id: RequestId,
-    pub command: Command,
-    pub effective: u64,
-    pub remaining: u64,
-    pub outcome: Option<Outcome>,
-}
-impl Record {
-    pub fn snapshot(self) -> RequestSnapshot {
-        RequestSnapshot {
-            id: self.id,
-            command: self.command,
-            effective: self.effective,
-            outcome: self.outcome,
-            remaining_ticks: if self.outcome.is_none()
-                && matches!(self.command.timing, Timing::AfterTicks { .. })
-            {
-                Some(self.remaining)
-            } else {
-                None
-            },
-        }
-    }
-    pub fn completion(self) -> Option<Completion> {
-        self.outcome.map(|outcome| Completion {
-            id: self.id,
-            sequence: self.command.sequence,
-            requested: self.command.at,
-            effective: self.effective,
-            outcome,
-        })
-    }
-}

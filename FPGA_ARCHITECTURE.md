@@ -27,9 +27,11 @@ The [Rust reference](src/rust/rt_fpga_reference/README.md) provides functional
 transition, state, job and logical-memory models, plus a combined functional
 pipeline. Transition traces are compared to the current native loop resolver;
 Marlin differential tests compare the retained SP/JP RTL's jobs, state and samples
-exactly. The Rust transition model follows native acyclic synchronization rules
-and supplies SP's explicit records. Its restoration does not restore transition
-RTL, the former ARM interface or an application backend.
+exactly for the shared audio instruction subset. In Rust, TP admits up to two
+active plans per loop into SP-owned state. A new SP sync-ordered prefix processes
+wraps, pulses, transitions and next cursors, saving render state for the audio pass.
+This prefix is not implemented in RTL. No transition RTL, former ARM interface or
+application backend is restored.
 
 See [verification commands](src/rust/rt_fpga_testbench/README.md), the
 [retirement ledger](docs/fpga/retirement-ledger.md), and the

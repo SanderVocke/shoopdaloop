@@ -149,40 +149,59 @@ fn run(case: TransitionCase, mut engine: impl Engine) -> Result<TransitionTrace,
 
 struct Model {
     processor: TransitionProcessor,
+    state: rt_fpga_reference::state::StateProcessor,
+    program: rt_fpga_reference::state::Program,
+    queue: rt_fpga_reference::jobs::JobQueue,
 }
 impl Engine for Model {
     fn frame(&self) -> u64 {
-        self.processor.frame()
+        self.state.frame()
     }
     fn states(&self) -> Vec<LoopState> {
-        self.processor.states().collect()
+        self.state.loop_states().collect()
     }
     fn requests(&self) -> Vec<Option<RequestSnapshot>> {
-        self.processor.request_slots().collect()
+        self.processor.request_slots(&self.state).collect()
     }
     fn events(&self) -> Vec<Event> {
-        self.processor.events().to_vec()
+        self.state.events().to_vec()
     }
     fn submit(&mut self, command: Command) -> Result<RequestId, TransitionError> {
-        self.processor.submit(command)
+        self.processor.submit(&mut self.state, command)
     }
     fn cancel(&mut self, id: RequestId) -> Result<bool, TransitionError> {
-        self.processor.cancel(id)
+        self.processor.cancel(&mut self.state, id)
     }
     fn collect(&mut self, id: RequestId) -> Result<Option<Completion>, TransitionError> {
         self.processor.take_completion(id)
     }
     fn process(&mut self) -> Result<(), TransitionError> {
-        self.processor.process()
+        let result = self.state.run(&self.program, &mut self.queue);
+        self.processor.harvest(&mut self.state);
+        result.map_err(|error| match error {
+            rt_fpga_reference::Error::Transition(error) => error,
+            _ => TransitionError::InvalidState,
+        })
     }
 }
 
 pub fn run_transition_case(case: TransitionCase) -> Result<TransitionTrace, TransitionError> {
     let plan = TransitionPlan::compile(case.plan.description.clone(), case.plan.limits)?;
+    let program = rt_fpga_reference::state::Program {
+        sync_instructions: plan.sync_instructions(),
+        instructions: vec![],
+        quantum: case.plan.description.quantum,
+        chunk_frames: 1,
+        jobs_per_quantum: 0,
+    };
+    let processor = TransitionProcessor::prepare(&plan);
     run(
         case,
         Model {
-            processor: TransitionProcessor::prepare(plan),
+            processor,
+            state: rt_fpga_reference::state::StateProcessor::with_loops(plan, vec![]),
+            program,
+            queue: rt_fpga_reference::jobs::JobQueue::new(0),
         },
     )
 }
@@ -386,6 +405,42 @@ impl Engine for Oracle {
             },
             transition: native_operation(command.operation),
         };
+        let target = self
+            .resolver
+            .topology()
+            .node(request.target)
+            .map_err(error)?;
+        if let Operation::Play { position, .. } | Operation::Seek { position, .. } =
+            command.operation
+        {
+            if position % self.resolver.quantum().frames() as u64 != 0 {
+                return Err(TransitionError::InvalidFrame);
+            }
+        }
+        if let native::Timing::AfterTicks { source, .. } = request.timing {
+            self.resolver.topology().node(source).map_err(error)?;
+            if target.sync_source != Some(source) {
+                return Err(TransitionError::MissingSync);
+            }
+        }
+        if self
+            .retained
+            .iter()
+            .flatten()
+            .any(|(_, old, _)| old.sequence == command.sequence)
+        {
+            return Err(TransitionError::DuplicateId);
+        }
+        // Native has a global request limit; this harness admits the two-plan-per-loop profile.
+        if self
+            .resolver
+            .pending_transitions()
+            .filter(|p| p.request.target == request.target)
+            .count()
+            >= 2
+        {
+            return Err(TransitionError::Capacity);
+        }
         let id = request_id(self.resolver.submit(request).map_err(error)?);
         let effective = self
             .resolver

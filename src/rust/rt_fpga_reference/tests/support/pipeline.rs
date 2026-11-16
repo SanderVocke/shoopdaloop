@@ -83,10 +83,10 @@ pub fn run_pipeline_case(case: PipelineCase) -> Result<PipelineTrace, PipelineEr
     p.trace_jobs(true);
     let mut results = Vec::new();
     for step in &case.steps {
-        let frame = p.transitions().frame();
+        let frame = p.state().frame();
         let automatic: Vec<_> = if step.transition.collect_completed {
             p.transitions()
-                .request_slots()
+                .request_slots(p.state())
                 .flatten()
                 .filter(|r| r.outcome.is_some())
                 .map(|r| r.id)
@@ -150,10 +150,10 @@ pub fn run_pipeline_case(case: PipelineCase) -> Result<PipelineTrace, PipelineEr
                 cancelled,
                 submitted,
                 processed,
-                states: p.transitions().states().collect(),
-                requests: p.transitions().request_slots().collect(),
-                events: p.transitions().events().to_vec(),
-                next_frame: p.transitions().frame(),
+                states: p.state().loop_states().collect(),
+                requests: p.transitions().request_slots(p.state()).collect(),
+                events: p.state().events().to_vec(),
+                next_frame: p.state().frame(),
             },
             jobs: emitted,
             state: StateSnapshot::from(p.state()),

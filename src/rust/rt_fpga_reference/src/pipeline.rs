@@ -2,7 +2,6 @@
 use crate::{
     fixed::Fixed,
     jobs::{Job, JobProcessor, JobQueue, Memory},
-    records::{LoopRecord, SettledRecords},
     state::{Address, Program, StateProcessor, Value},
     transitions::*,
     Error,
@@ -35,12 +34,11 @@ pub struct Pipeline {
     fault: Option<PipelineError>,
     trace_jobs: bool,
     emitted: Vec<Job>,
-    records: Vec<LoopRecord>,
 }
 impl Pipeline {
     pub fn prepare(
         plan: TransitionPlan,
-        program: Program,
+        mut program: Program,
         initial_state: Vec<Value>,
         capacity: usize,
     ) -> Result<Self, PipelineError> {
@@ -50,16 +48,18 @@ impl Pipeline {
         if capacity < program.jobs_per_quantum {
             return Err(PipelineError::State(Error::QueueFull));
         }
-        let record_capacity = plan.image().description.loops.len();
+        if program.sync_instructions.is_empty() {
+            program.sync_instructions = plan.sync_instructions();
+        }
+        let transitions = TransitionProcessor::prepare(&plan);
         Ok(Self {
-            transitions: TransitionProcessor::prepare(plan),
-            state: StateProcessor::new(initial_state),
+            transitions,
+            state: StateProcessor::with_loops(plan, initial_state),
             program,
             queue: JobQueue::new(capacity),
             fault: None,
             trace_jobs: false,
             emitted: Vec::with_capacity(capacity),
-            records: Vec::with_capacity(record_capacity),
         })
     }
     pub fn transitions(&self) -> &TransitionProcessor {
@@ -92,14 +92,15 @@ impl Pipeline {
     }
     pub fn submit(&mut self, command: Command) -> Result<RequestId, TransitionError> {
         self.ready()?;
-        self.transitions.submit(command)
+        self.transitions.submit(&mut self.state, command)
     }
     pub fn cancel(&mut self, id: RequestId) -> Result<bool, TransitionError> {
         self.ready()?;
-        self.transitions.cancel(id)
+        self.transitions.cancel(&mut self.state, id)
     }
     pub fn collect(&mut self, id: RequestId) -> Result<Option<Completion>, TransitionError> {
         self.ready()?;
+        self.transitions.harvest(&mut self.state);
         self.transitions.take_completion(id)
     }
     pub fn write_state(&mut self, address: Address, value: Value) -> Result<(), Error> {
@@ -167,30 +168,24 @@ impl Pipeline {
         if let Some(error) = memory.fault() {
             return Err(PipelineError::Jobs(error));
         }
-        self.transitions
-            .settle()
-            .map_err(PipelineError::Transition)?;
-        self.records.clear();
-        self.records.extend(
-            self.transitions
-                .settled_records()
-                .map_err(PipelineError::Transition)?,
-        );
-        let state_result = self.state.run_with_records_and_intents(
-            &self.program,
-            &mut self.queue,
-            SettledRecords(&self.records),
-            |intent| intent.prefetch(memory),
-        );
+        let state_result = self
+            .state
+            .run_with_intents(&self.program, &mut self.queue, |intent| {
+                intent.prefetch(memory)
+            });
+        self.transitions.harvest(&mut self.state);
         if self.trace_jobs {
             self.emitted.extend(self.queue.iter().copied());
         }
-        state_result.map_err(PipelineError::State)?;
+        state_result.map_err(|error| match error {
+            Error::Transition(error) => PipelineError::Transition(error),
+            error => PipelineError::State(error),
+        })?;
         jobs.run_at(&mut self.queue, memory, inputs, outputs, base)
             .map_err(PipelineError::Jobs)?;
         if let Some(error) = memory.fault() {
             return Err(PipelineError::Jobs(error));
         }
-        self.transitions.finish().map_err(PipelineError::Transition)
+        Ok(())
     }
 }

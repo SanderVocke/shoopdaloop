@@ -2,16 +2,17 @@
 
 This restores the functional transition/state/job and logical-memory implementation from
 `354305d4697d2e6068e28d4a2e369f08974e434d`, before its deletion in `16679ba7`.
-It covers the retained hardware, including constant, arithmetic/balance and
-restart-smoothing instructions added after that historical revision.
+The audio instructions cover the retained hardware, including constant,
+arithmetic/balance and restart-smoothing operations. The Rust-only sync prepass
+extends SP with loop execution; this section has no RTL implementation yet.
 
 The crate is `no_std` with `alloc`. It contains:
 
-- `transitions`: bounded primitive-loop scheduling, synchronization, logical state,
-  retained requests/completions and ordered events.
-- `pipeline`: transition settlement, read-only record publication, state/job/media
-  execution and successful-quantum clock advancement.
-- `state`: persistent programs, typed state, ordered job emission and read hints.
+- `transitions`: control-side command admission, cancellation and retained
+  request/completion bookkeeping, plus timing-plan compilation.
+- `pipeline`: SP/JP/media coordination, outcome collection and fault containment.
+- `state`: a sync-ordered loop prepass followed by audio-ordered state execution,
+  job emission and read hints. SP owns loop cursors, pulse flags and active plans.
 - `jobs`: sample buffers, Q8.24 processing, persistent smoothing histories and
   memory operations through an explicit `Memory` trait.
 - `fixed`: independent saturating arithmetic and sample-duration ramps.
@@ -19,20 +20,55 @@ The crate is `no_std` with `alloc`. It contains:
 - `storage`, `chunk_memory`, `resolver`: logical media ownership, slices,
   recording/readback, synchronous chunk storage and advisory read resolution.
 
-Programs are supplied explicitly. SP can consume caller-supplied records directly
-or records produced by the functional transition model. There is no graph
+Programs are supplied explicitly. SP's sync section is generated from a timing
+plan; its audio instruction list is explicit. Isolated audio fixtures can still
+supply read-only records directly with no sync section. There is no audio graph
 compiler, owning-request adapter, ARM protocol or application backend. `serde`
 and `schema` are optional fixture/data-description features, not a hardware
-transport contract. The transition model and combined functional pipeline have
-no corresponding active RTL top on this branch.
+transport contract. The sync prepass and combined functional pipeline have no
+corresponding active RTL top on this branch.
 
 ## Functional contract
 
-`TransitionPlan::compile` prepares primitive-loop timing and fixed capacities.
-`TransitionProcessor::process` settles and advances one quantum. Play, stop,
-record and seek requests support absolute timing or a delay in source-loop ticks.
-Completed/cancelled requests occupy their slots until collected; reuse increments
-the request generation. Events and state are available for trace inspection.
+`TransitionPlan::compile` prepares primitive-loop timing and fixed capacities;
+`sync_instructions()` emits source-before-dependent `ProcessLoop` instructions.
+`Program::sync_instructions` runs before `Program::instructions`. The prefix must
+visit every configured loop exactly once in compiled order, even when the audio
+program has a different order or does not use every loop.
+
+`TransitionProcessor::prepare(&plan)` prepares control-side request storage;
+`StateProcessor::with_loops(plan, memory)` prepares SP-owned loop state.
+`submit(&mut sp, command)` validates and inserts a planned transition into that
+state without executing it. Play, stop, record and seek support absolute timing
+or a delay in source-loop pulses. Each loop has exactly two active plan slots;
+a third submission is rejected with `Capacity` without replacing existing plans.
+Cancellation frees a plan slot. Resolution also frees the SP slot immediately,
+while the completed/cancelled request remains in TP until collected; collecting
+increments its request-slot generation. The native trace harness applies this
+two-plan admission profile around the native resolver's global request limit.
+
+`sp.run` performs the entire sync and audio program. The prepass applies due
+plans, resolves wraps/repeat waits, propagates pulses and executes pulse-triggered
+plans. Each SP loop slot exposes `pulse_this_quantum`, its two `planned` entries
+(including remaining pulse skips), next-boundary logical `state`, and frozen
+current-quantum `render` state. `AfterTicks(skip=0)` fires on the next eligible
+pulse; a positive skip decrements once per eligible source pulse. Starting or
+retriggering a loop can generate a pulse too. At most one pulse is delivered per
+loop per quantum. Self-sync is handled locally after that loop's pulse.
+
+Before advancing position/capture length, SP saves the render cursor and
+first-capture flag. The audio pass reads that saved state, including the position
+used by smoothing restart, while persistent cursors already describe the next
+boundary. A next position equal to content length is wrapped in the following
+quantum's sync pass, not prematurely during advancement. Pulse and priority scratch
+are reset on each loop visit. No SP operation or clock update runs after JP.
+
+SP records resolved outcomes in a prepared journal. `tp.harvest(&mut sp)` drains
+those outcomes into retained requests; it executes no loop logic. Admission and
+cancellation harvest automatically. Direct callers harvest before inspecting or
+collecting completions. SP can execute multiple quanta without TP activity;
+unharvested outcomes remain buffered within the prepared request capacity.
+`sp.frame()`, `sp.loop_state()`, `sp.loop_states()` and `sp.events()` expose execution.
 Quantum lengths are 1/16/32/64/128; loop lengths and requested positions must be
 quantum-aligned. Synchronization follows the native resolver's canonical acyclic
 dependency order. Self-sync is allowed; multi-loop cycles are rejected with
@@ -53,16 +89,15 @@ capacity to exceed the run's logical sample-buffer count. `Memory::supports_medi
 describes a media-disabled JP configuration; enabled memory resolves chunk-based
 read windows and accepts capture jobs.
 
-`Pipeline::prepare` allocates the transition engine, SP, FIFO and record scratch;
-the caller supplies JP and memory. `process` handles one quantum; `process_block`
-handles a whole number of quanta. Each quantum settles transitions, publishes
-generation-checked records (including the first-capture flag), executes SP and
-JP, then advances clocks on success. Gain, constant, arithmetic and smoothing
-use the current SP/JP implementations. A processing failure latches its stage
-and silences the entire host block; earlier state/media effects remain and the
-failed quantum does not advance clocks. Recreate the pipeline to recover. An
-invalid host block is rejected without latching a fault. Neither this coordinator
-nor the transition engine installs an application backend or hardware interface.
+`Pipeline::prepare` prepares TP admission storage, SP loop/node state and FIFO,
+and fills an omitted sync prefix from the timing plan. The caller supplies JP
+and memory. `process` handles one quantum; `process_block` handles whole quanta.
+SP settles loops and computes next cursors before emitting audio jobs; TP harvests
+outcomes and JP executes samples. A processing failure latches its stage and
+silences the entire host block. Loop clocks, plans and cursors may already have
+advanced when audio emission or JP fails. There is no rollback or retry; recreate
+the pipeline to recover. An invalid host block is rejected before execution,
+without latching a fault. No application backend or hardware interface is installed.
 
 These are functional models, not cycle simulators. The logical memory model is
 not an AXI/cache/DDR timing model and does not predict physical allocation order
@@ -80,7 +115,7 @@ cargo test --locked -p rt_fpga_reference --all-features
 cargo test --locked -p rt_fpga_testbench --features sim --test reference --test state --test audio --test smoothing
 ```
 
-`transition_traces` runs the functional TP and the current native `shoop_loops`
+`transition_traces` runs TP admission plus SP sync execution and the native `shoop_loops`
 resolver independently against identical commands. It compares each boundary's
 acceptance/refusal, cancellations, completions, retained requests, complete loop
 state, ordered events and next frame. Coverage includes 100 seeded sessions of
@@ -89,16 +124,21 @@ generation rejection, repeat waits, same-boundary propagation, sparse indices,
 large integers, self-sync and multi-loop cycle rejection. Native loop dependencies
 are test-only. With `serde`, traces also round-trip through JSON.
 
-`pipeline` restores the combined functional trace tests for recording/playback,
-retained slices and failed-state clock handling. Its successful transition traces
-must equal both standalone TP and native resolver traces. An additional session
+`pipeline` covers recording/playback, retained slices and compute-ahead failures.
+Its successful transition traces must equal both sync-only SP and native resolver
+traces. An additional session
 checks gain, constant, arithmetic, smoothing, seek, stop/restart and retake against
 independent integer sample expectations. `transitions` preserves the allocation,
 recording-view reuse, host-block silence, latched fault and recovery tests.
 These tests need no Verilator or DRAMsim3.
 
+`sync` checks autonomous SP execution with reversed audio order, same-boundary
+pulse chains, repeat waits, render/next cursor separation, delayed outcome
+harvesting, two-plan admission/reuse, retake flags and invalid sync prefixes.
+
 The Marlin tests use Verilator 5.032 and the existing native component drivers.
-They independently run the same explicit inputs through Rust and RTL and compare
+They exercise the shared audio instruction subset with caller-supplied records
+and no Rust sync prefix. They independently run the same inputs through Rust and RTL and compare
 emitted jobs, state writes, failure prefixes, remaining jobs, buffer contents and
 every output sample exactly. No audio tolerance or alignment is applied.
 

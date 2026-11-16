@@ -1,4 +1,4 @@
-//! Persistent node-level state execution. No graph or sample-store access.
+//! Sync-ordered loop evolution followed by audio-ordered state/job emission.
 
 use crate::{
     fixed::Ramp,
@@ -8,12 +8,20 @@ use crate::{
     Error,
 };
 use alloc::vec::Vec;
+pub mod sync;
+use crate::transitions::{Event, LoopId, LoopState, TransitionError, TransitionPlan};
+pub use sync::{LoopSlot, PlannedTransition, SyncInstruction};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Program {
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Vec::is_empty")
+    )]
+    pub sync_instructions: Vec<SyncInstruction>,
     pub instructions: Vec<Instruction>,
     pub quantum: u32,
     /// Samples per media chunk. Media positions and lengths use chunk units.
@@ -139,10 +147,68 @@ pub enum Instruction {
 
 pub struct StateProcessor {
     memory: Vec<Value>,
+    loops: Option<sync::LoopMemory>,
+    fault: Option<Error>,
 }
 impl StateProcessor {
     pub fn new(memory: Vec<Value>) -> Self {
-        Self { memory }
+        Self {
+            memory,
+            loops: None,
+            fault: None,
+        }
+    }
+    pub fn with_loops(plan: TransitionPlan, memory: Vec<Value>) -> Self {
+        Self {
+            memory,
+            loops: Some(sync::LoopMemory::prepare(plan)),
+            fault: None,
+        }
+    }
+    pub fn frame(&self) -> u64 {
+        self.loops.as_ref().map_or(0, |loops| loops.frame)
+    }
+    pub fn loop_state(&self, id: LoopId) -> Result<&LoopSlot, TransitionError> {
+        self.loops
+            .as_ref()
+            .ok_or(TransitionError::InvalidState)?
+            .slot(id)
+    }
+    pub fn loop_states(&self) -> impl Iterator<Item = LoopState> + '_ {
+        self.loops
+            .iter()
+            .flat_map(|loops| loops.slots.iter().flatten().map(|slot| slot.state))
+    }
+    pub fn events(&self) -> &[Event] {
+        self.loops
+            .as_ref()
+            .map_or(&[], |loops| loops.events.as_slice())
+    }
+    pub fn fault(&self) -> Option<Error> {
+        self.fault
+    }
+    pub(crate) fn loop_memory_mut(&mut self) -> Result<&mut sync::LoopMemory, TransitionError> {
+        if self.fault.is_some() {
+            return Err(TransitionError::InvalidState);
+        }
+        self.loops.as_mut().ok_or(TransitionError::InvalidState)
+    }
+    pub(crate) fn take_resolutions(&mut self) -> impl Iterator<Item = sync::Resolution> + '_ {
+        self.loops
+            .iter_mut()
+            .flat_map(|loops| loops.resolutions.drain(..))
+    }
+    fn loop_record(
+        &self,
+        external: Option<SettledRecords<'_>>,
+        id: Identity,
+    ) -> Result<crate::records::LoopRecord, Error> {
+        if let Some(records) = external {
+            return records.read(id);
+        }
+        self.loop_state(id)
+            .map(|slot| slot.render)
+            .map_err(|_| Error::InvalidState)
     }
     pub fn values(&self) -> &[Value] {
         &self.memory
@@ -197,6 +263,22 @@ impl StateProcessor {
         loops: Option<SettledRecords<'_>>,
         sink: &mut impl FnMut(crate::resolver::ReadIntent),
     ) -> Result<(), Error> {
+        if let Some(error) = self.fault {
+            return Err(error);
+        }
+        let result = self.run_program(program, queue, loops, sink);
+        if self.loops.is_some() {
+            self.fault = result.err();
+        }
+        result
+    }
+    fn run_program(
+        &mut self,
+        program: &Program,
+        queue: &mut JobQueue,
+        loops: Option<SettledRecords<'_>>,
+        sink: &mut impl FnMut(crate::resolver::ReadIntent),
+    ) -> Result<(), Error> {
         if !queue.is_empty() || queue.remaining() < program.jobs_per_quantum {
             return Err(Error::QueueFull);
         }
@@ -204,6 +286,16 @@ impl StateProcessor {
             || program.quantum == 0
             || program.quantum % program.chunk_frames != 0
         {
+            return Err(Error::InvalidState);
+        }
+        if let Some(memory) = &mut self.loops {
+            if loops.is_some() {
+                return Err(Error::InvalidState);
+            }
+            memory
+                .run(&program.sync_instructions, program.quantum)
+                .map_err(Error::Transition)?;
+        } else if !program.sync_instructions.is_empty() {
             return Err(Error::InvalidState);
         }
         let mut emit = |job| {
@@ -246,7 +338,7 @@ impl StateProcessor {
                     control,
                     source,
                 } => {
-                    let record = loops.ok_or(Error::InvalidState)?.read(loop_id)?;
+                    let record = self.loop_record(loops, loop_id)?;
                     let word = self.read(control)?.word()?;
                     emit(Job::Smoothing {
                         source,
@@ -262,10 +354,7 @@ impl StateProcessor {
                     view,
                     destination,
                 } => {
-                    let state = loops
-                        .ok_or(Error::InvalidState)?
-                        .read(loop_id)
-                        .map_err(|_| Error::InvalidState)?;
+                    let state = self.loop_record(loops, loop_id)?;
                     let position = state.position / u64::from(program.chunk_frames);
                     let length = state.content_length / u64::from(program.chunk_frames);
                     emit(if state.plays() && length != 0 && position < length {
@@ -284,10 +373,7 @@ impl StateProcessor {
                     view,
                     source,
                 } => {
-                    let state = loops
-                        .ok_or(Error::InvalidState)?
-                        .read(loop_id)
-                        .map_err(|_| Error::InvalidState)?;
+                    let state = self.loop_record(loops, loop_id)?;
                     if state.mode == Mode::Recording {
                         if state.begin_capture {
                             emit(Job::BeginCapture {

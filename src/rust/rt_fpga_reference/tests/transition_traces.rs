@@ -413,3 +413,42 @@ fn cancellations_failures_and_reused_request_generations_match_native_traces() {
         vec![Response::Rejected(TransitionError::InvalidId)]
     );
 }
+
+#[shoop_test]
+fn native_trace_profile_bounds_each_loop_to_two_plans_and_reuses_cancelled_slots() {
+    let first = step(vec![
+        command(0, 1, 64, play()),
+        command(0, 2, 96, Operation::Stop),
+        command(0, 3, 128, Operation::Record),
+        Command {
+            timing: Timing::AfterTicks {
+                source: id(1),
+                skip: 0,
+            },
+            ..command(0, 4, 128, play())
+        },
+        command(1, 5, 0, play()),
+    ]);
+    let mut second = step(vec![command(0, 3, 128, Operation::Record)]);
+    second.cancel = vec![RequestId {
+        slot: 0,
+        generation: 1,
+    }];
+    let trace = compare(case(
+        16,
+        vec![spec(0, 32, None, false), spec(1, 32, None, false)],
+        vec![first, second, step(vec![])],
+    ));
+    assert_eq!(
+        trace.results[0].submitted[2],
+        Response::Rejected(TransitionError::Capacity)
+    );
+    assert_eq!(
+        trace.results[0].submitted[3],
+        Response::Rejected(TransitionError::MissingSync)
+    );
+    assert!(matches!(
+        trace.results[1].submitted[0],
+        Response::Accepted(_)
+    ));
+}

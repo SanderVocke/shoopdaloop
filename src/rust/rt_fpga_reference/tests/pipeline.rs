@@ -23,6 +23,7 @@ fn fixture() -> PipelineCase {
     let mut media = MediaStore::new(1).unwrap();
     let view = media.create_recording().unwrap();
     let program = Program {
+        sync_instructions: vec![],
         quantum: 16,
         chunk_frames: 1,
         jobs_per_quantum: 5,
@@ -134,7 +135,7 @@ fn combined_trace_runs_all_processors_without_copied_loop_operands() {
 }
 
 #[shoop_test]
-fn combined_trace_reports_failed_state_without_advancing_clock() {
+fn combined_trace_latches_failed_audio_pass_after_computing_next_cursors() {
     let mut case = fixture();
     let rt_fpga_reference::state::Instruction::ProcessLogicalPlayback { loop_id, .. } =
         &mut case.program.instructions[0]
@@ -148,7 +149,7 @@ fn combined_trace_reports_failed_state_without_advancing_clock() {
         trace.results[0].error,
         Some(PipelineError::State(Error::InvalidState))
     );
-    assert_eq!(trace.results[0].transition.next_frame, 0);
+    assert_eq!(trace.results[0].transition.next_frame, 16);
     assert!(matches!(
         trace.results[0].transition.processed,
         traces::Response::Accepted(())

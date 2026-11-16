@@ -1,6 +1,5 @@
-//! Bounded logical-loop settlement, independent of signal execution and storage.
+//! Command admission and retained request bookkeeping for SP-owned loop plans.
 mod engine;
-mod index;
 mod plan;
 mod types;
 pub use engine::TransitionProcessor;

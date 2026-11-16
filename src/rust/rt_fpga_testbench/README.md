@@ -7,8 +7,10 @@ samples are compared exactly. Existing vector tests remain independent checks.
 
 The reference crate also has Rust-only transition and full functional pipeline
 tests: `cargo test --locked -p rt_fpga_reference --all-features`. They compare
-primitive-loop traces to the current native resolver and exercise TP -> SP -> JP
-with logical media. The RTL benches below remain TP-free.
+primitive-loop traces to the current native resolver and exercise TP admission ->
+SP sync/audio passes -> JP with logical media. The Rust sync prefix has no RTL
+implementation; the differential benches use the shared audio instructions with
+explicit records. The RTL benches below remain TP-free.
 
 `rt_fpga_testbench` preserves the Marlin/Verilator simulation framework and
 component drivers. It needs Verilator **5.032**, a C++ compiler and Rust. Simulation
