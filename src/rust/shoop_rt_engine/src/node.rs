@@ -24,6 +24,7 @@ const INJECTED: usize = 16;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct NodeConfiguration {
+    pub immediate_playback: bool,
     pub recorded_state: Option<shoop_rt_protocol::RecordedProcessorState>,
     pub processor: Option<shoop_rt_protocol::ProcessorKind>,
     pub generation: u32,
@@ -169,6 +170,8 @@ pub struct StripInput {
     return_weights: Box<[f32]>,
     monitor: Ramp,
     manual_monitoring: bool,
+    automatic_enabled: bool,
+    automatic_active: bool,
     unity: Ramp,
     gains: Gains,
     weights: Box<[f32]>,
@@ -208,6 +211,7 @@ pub struct StripOutput {
 /// A loop's playback fader, used to remove a sounding loop without a step, and
 /// its level meter.
 pub struct LoopFader {
+    immediate_playback: bool,
     processor: Option<shoop_rt_protocol::ProcessorKind>,
     delay: Box<[f32]>,
     position: usize,
@@ -223,6 +227,7 @@ pub struct LoopFader {
 /// The Master bus: the sum of routed strips; gain, balance, mute and meters,
 /// written to two connection banks.
 pub struct BusMixer {
+    generation: u32,
     preview: Option<(Cursor, u64, u64, usize)>,
     preview_bytes: Box<[u8]>,
     preview_samples: Box<[f32]>,
@@ -297,9 +302,8 @@ impl StripInput {
         cells.routing_state.store(0, Ordering::Relaxed);
         cells.latest_input_midi.store(0, Ordering::Relaxed);
         cells.input.clear();
-        cells
-            .midi_in
-            .store(false, core::sync::atomic::Ordering::Relaxed);
+        cells.input.reset_snapshot();
+        cells.mark_midi(true, false);
     }
     pub(crate) fn new(slot: usize, settings: &NodeSettings) -> Self {
         let frames = settings.frames;
@@ -327,6 +331,8 @@ impl StripInput {
             return_weights: vec![0.; frames].into_boxed_slice(),
             monitor: Ramp::at(0.),
             manual_monitoring: false,
+            automatic_enabled: false,
+            automatic_active: false,
             unity: Ramp::at(1.),
             gains: Gains::new(frames),
             weights: vec![0.; frames].into_boxed_slice(),
@@ -346,15 +352,17 @@ impl StripOutput {
         self.processor = None;
         self.wet_gate.fill(0.);
         self.outputs = (outputs as usize).min(self.channels);
+        self.cells.strips[self.slot]
+            .snapshot_output_channels
+            .store(self.outputs as u32, Ordering::Relaxed);
         self.bank = Ramp::at(0.);
         self.mute = Ramp::at(1.);
         self.presence = Ramp::at(1.);
         self.gains.reset();
         let cells = &self.cells.strips[self.slot];
         cells.output.clear();
-        cells
-            .midi_out
-            .store(false, core::sync::atomic::Ordering::Relaxed);
+        cells.output.reset_snapshot();
+        cells.mark_midi(false, false);
     }
     pub(crate) fn new(slot: usize, settings: &NodeSettings) -> Self {
         let frames = settings.frames;
@@ -382,6 +390,7 @@ impl StripOutput {
 impl LoopFader {
     pub(crate) fn new(slot: usize, settings: &NodeSettings) -> Self {
         Self {
+            immediate_playback: false,
             processor: None,
             delay: vec![0.; settings.frames * settings.channels].into_boxed_slice(),
             position: 0,
@@ -398,6 +407,7 @@ impl LoopFader {
 impl BusMixer {
     pub(crate) fn new(slot: usize, settings: &NodeSettings) -> Self {
         Self {
+            generation: if slot == 0 { 1 } else { 0 },
             preview: None,
             preview_bytes: vec![0; settings.frames * settings.channels * 4].into_boxed_slice(),
             preview_samples: vec![0.; settings.frames].into_boxed_slice(),
@@ -561,6 +571,7 @@ impl EngineNode {
                 node.mute = Ramp::at(f32::from(u8::from(!configuration.muted)));
             }
             Self::Fader(node) => {
+                node.immediate_playback = configuration.immediate_playback;
                 if let Some(state) = configuration.recorded_state {
                     let cell = &node.cells.loops[node.slot];
                     cell.recorded
@@ -571,11 +582,14 @@ impl EngineNode {
                 node.position = 0;
                 node.presence = Ramp::at(1.);
                 node.cells.loops[node.slot].peaks.clear();
+                node.cells.loops[node.slot].peaks.reset_snapshot();
             }
             Self::Bus(node) => {
+                node.generation = configuration.generation;
                 node.active_channels = configuration.outputs;
                 node.presence = Ramp::at(1.);
                 node.cells.buses[node.slot].clear();
+                node.cells.buses[node.slot].reset_snapshot();
                 node.bank = Ramp::at(f32::from(configuration.bank));
                 node.gains.gain = Ramp::at(configuration.gain);
                 node.gains.balance = Ramp::at(configuration.balance);
@@ -631,6 +645,12 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
             }
             Self::Bus(node) => node.references(block),
             _ => Ok(false),
+        }
+    }
+    fn settle(&mut self, epoch: rt_runtime::Epoch, domain: &LoopPlanner) {
+        self.apply_configuration(epoch);
+        if let Self::StripInput(node) = self {
+            node.settle_monitoring(domain);
         }
     }
     fn midi_buffer_settings(&self) -> Result<rt_runtime::processor::MidiBufferSettings, Error> {
@@ -749,13 +769,11 @@ impl StripInput {
         }
         result
     }
-    fn render_sources(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
-        let frames = block.frames;
-        let channels = self.channels;
-        let stereo = self.inputs == 2;
-        let activity = block.domain.source_activity(self.slot as u32);
-        let processed = self.processor.is_some();
-        let forced_off = processed && (activity.rerecording || activity.pre_rerecording);
+    fn settle_monitoring(&mut self, domain: &LoopPlanner) {
+        let activity = domain.source_activity(self.slot as u32);
+        self.automatic_enabled = self.cells.strips[self.slot].policy_enabled(self.generation);
+        let forced_off =
+            self.processor.is_some() && (activity.rerecording || activity.pre_rerecording);
         let cells = &self.cells.strips[self.slot];
         if forced_off {
             self.manual_monitoring = false;
@@ -768,10 +786,11 @@ impl StripInput {
             }
         }
         let automatic = !forced_off
-            && cells.policy_enabled(self.generation)
+            && self.automatic_enabled
             && cells
                 .automatic_demand
                 .load(core::sync::atomic::Ordering::Relaxed);
+        self.automatic_active = automatic;
         cells
             .automatic_monitoring
             .store(automatic, core::sync::atomic::Ordering::Relaxed);
@@ -780,6 +799,15 @@ impl StripInput {
             self.release |= target == 0. && self.monitor.target() > 0.;
             self.monitor.set(target, self.ramp);
         }
+    }
+    fn render_sources(&mut self, block: &mut ProcessBlock<'_, LoopPlanner>) -> Result<(), Error> {
+        let frames = block.frames;
+        let channels = self.channels;
+        let stereo = self.inputs == 2;
+        let activity = block.domain.source_activity(self.slot as u32);
+        let processed = self.processor.is_some();
+        let forced_off = processed && (activity.rerecording || activity.pre_rerecording);
+        self.settle_monitoring(block.domain);
         self.gains.fill(frames, &mut self.unity);
         let cells = &self.cells.strips[self.slot];
         cells.routing_state.store(
@@ -967,9 +995,7 @@ impl StripInput {
             }
         }
         if active {
-            cells
-                .midi_in
-                .store(true, core::sync::atomic::Ordering::Relaxed);
+            cells.mark_midi(true, true);
         }
         Ok(())
     }
@@ -1155,9 +1181,7 @@ impl StripOutput {
         if self.mute.target() > 0. && self.presence.target() > 0. {
             let input = block.midi_inputs.first().ok_or(Error::InvalidShape)?;
             if !input.is_empty() {
-                cells
-                    .midi_out
-                    .store(true, core::sync::atomic::Ordering::Relaxed);
+                cells.mark_midi(false, true);
             }
             block.forward_midi(0)?;
         }
@@ -1461,7 +1485,12 @@ impl BusMixer {
                     .preview_playing
                     .store(0, core::sync::atomic::Ordering::Release);
             }
-            EngineOp::Reset { outputs, .. } => {
+            EngineOp::Reset {
+                outputs,
+                generation,
+                ..
+            } => {
+                self.generation = generation;
                 self.preview = None;
                 self.active_channels = outputs;
                 self.bank = Ramp::at(0.);
@@ -1469,6 +1498,7 @@ impl BusMixer {
                 self.presence = Ramp::at(1.);
                 self.gains.reset();
                 self.cells.buses[self.slot].clear();
+                self.cells.buses[self.slot].reset_snapshot();
             }
             EngineOp::Presence(present) => {
                 self.presence.set(f32::from(u8::from(present)), self.ramp)
@@ -1487,6 +1517,9 @@ impl BusMixer {
 }
 
 impl EngineNode {
+    pub(crate) fn immediate_playback_supported(&self) -> bool {
+        matches!(self, Self::Fader(node) if node.immediate_playback)
+    }
     pub fn apply_signal(
         &mut self,
         operation: EngineOp,
@@ -1654,6 +1687,7 @@ mod tests {
         };
         let mut node = EngineNode::StripInput(StripInput::new(0, &settings));
         let configuration = NodeConfiguration {
+            immediate_playback: false,
             recorded_state: None,
             processor: None,
             send_bank: 0,
@@ -1788,6 +1822,7 @@ mod tests {
         let node = host.endpoint().pool.strip_input(0);
         let at = host.endpoint().at();
         let configuration = NodeConfiguration {
+            immediate_playback: false,
             recorded_state: None,
             processor: None,
             generation: 1,
@@ -1914,5 +1949,72 @@ impl EngineNode {
             return Err(Error::InvalidParameter);
         };
         reader.render_external(callback, budget, read)
+    }
+}
+
+impl EngineNode {
+    pub(crate) fn snapshot_records(
+        &self,
+        emit: &mut dyn FnMut(shoop_rt_protocol::snapshot::Record),
+    ) {
+        use shoop_rt_protocol::{
+            snapshot::Record, BusControl, BusId, SlotId, StateRecord, StripControl, StripId,
+            Telemetry,
+        };
+        let state = |record| Record::State(record);
+        match self {
+            Self::StripInput(node) => {
+                let id = StripId(SlotId::new(node.slot as u32, node.generation));
+                let cells = &node.cells.strips[node.slot];
+                for control in [
+                    StripControl::InputGain(node.gains.gain.target()),
+                    StripControl::InputBalance(node.gains.balance.target()),
+                    StripControl::Monitoring(node.manual_monitoring),
+                    StripControl::AutomaticMonitoring(node.automatic_enabled),
+                ] {
+                    emit(state(StateRecord::StripControl { strip: id, control }));
+                }
+                // The matching output node supplies output controls separately.
+                emit(Record::Telemetry(Telemetry::Strip {
+                    strip: id,
+                    input_peaks: cells.input.snapshot(node.inputs),
+                    output_peaks: cells
+                        .output
+                        .snapshot(cells.snapshot_output_channels.load(Ordering::Relaxed) as usize),
+                    midi_in: cells.snapshot_midi_in.swap(false, Ordering::Relaxed),
+                    midi_out: cells.snapshot_midi_out.swap(false, Ordering::Relaxed),
+                    latest_input_midi: cells.latest_midi(),
+                    automatic_monitoring: node.automatic_active,
+                }));
+            }
+            Self::StripOutput(node) => {
+                let generation = node.cells.strips[node.slot]
+                    .owner_generation
+                    .load(Ordering::Relaxed);
+                let id = StripId(SlotId::new(node.slot as u32, generation));
+                for control in [
+                    StripControl::OutputGain(node.gains.gain.target()),
+                    StripControl::OutputBalance(node.gains.balance.target()),
+                    StripControl::OutputMute(node.mute.target() == 0.),
+                ] {
+                    emit(state(StateRecord::StripControl { strip: id, control }));
+                }
+            }
+            Self::Bus(node) => {
+                let id = BusId(SlotId::new(node.slot as u32, node.generation));
+                for control in [
+                    BusControl::Gain(node.gains.gain.target()),
+                    BusControl::Balance(node.gains.balance.target()),
+                    BusControl::Mute(node.mute.target() == 0.),
+                ] {
+                    emit(state(StateRecord::Bus { bus: id, control }));
+                }
+                emit(Record::Telemetry(Telemetry::Bus {
+                    bus: id,
+                    peaks: node.cells.buses[node.slot].snapshot(node.active_channels as usize),
+                }));
+            }
+            _ => {}
+        }
     }
 }

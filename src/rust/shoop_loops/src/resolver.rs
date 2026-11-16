@@ -120,6 +120,7 @@ pub struct Resolver {
     states: Vec<Option<State>>,
     retimed: Vec<Option<Transition>>,
     retimed_pending: bool,
+    immediate_discontinuities: Vec<bool>,
     records: Vec<Option<Record>>,
     loop_generations: Vec<u32>,
     request_generations: Vec<u32>,
@@ -146,7 +147,7 @@ pub(crate) fn validate_storage(limits: Limits) -> Result<(), Error> {
                 + size_of::<u32>()
                 + size_of::<ProgramAction>()
                 + size_of::<Option<Transition>>()
-                + 4,
+                + 5,
         ),
         (
             limits.pending_requests,
@@ -223,6 +224,7 @@ impl Resolver {
             states,
             retimed: prepared(limits.loop_slots, None),
             retimed_pending: false,
+            immediate_discontinuities: prepared(limits.loop_slots, false),
             records: prepared(limits.pending_requests, None),
             loop_generations,
             request_generations: prepared(limits.pending_requests, 1),
@@ -287,11 +289,152 @@ impl Resolver {
             .filter(|state| state.id == id)
             .ok_or(Error::InvalidId)
     }
+    /// Resolve a slot in the active topology without an external generation.
+    pub fn id_at_slot(&self, slot: u32) -> Option<LoopId> {
+        self.states
+            .get(slot as usize)
+            .and_then(|state| state.as_ref())
+            .map(|state| state.id)
+    }
     /// Whether a new authored occurrence must enter a program at this boundary.
     /// A playing regular pass or unfinished one-pass program keeps its own phase.
     pub fn program_needs_entry_at(&self, id: LoopId, frame: Frame) -> Result<bool, Error> {
         let program = self.topology.program(id).ok_or(Error::InvalidId)?;
         Ok(program_needs_entry_at(program, self.state(id)?, frame))
+    }
+    /// Check the current state of one direct, unscheduled playback transition.
+    pub fn validate_immediate_playback(&self, id: LoopId) -> Result<(), Error> {
+        let state = self.state(id)?;
+        if self.quiescent
+            || self.committed
+            || self.preview.is_some()
+            || self.program_change.is_some()
+            || self.topology.node(id)?.kind != LoopKind::Primitive
+            || !matches!(state.mode, Mode::Stopped | Mode::Playing)
+            || state.content_length == 0
+        {
+            return Err(Error::InvalidState);
+        }
+        Ok(())
+    }
+    /// Apply one direct playback transition without creating a request record.
+    pub fn immediate_playback(&mut self, id: LoopId, start: bool) -> Result<(), Error> {
+        self.validate_immediate_playback(id)?;
+        let operation = if start {
+            Transition::Play {
+                position: 0,
+                retrigger: true,
+            }
+        } else {
+            Transition::Stop
+        };
+        let state = self.states[id.slot() as usize]
+            .as_mut()
+            .expect("validated state");
+        let discontinuity = transition(state, operation)?;
+        self.immediate_discontinuities[id.slot() as usize] |= discontinuity;
+        Ok(())
+    }
+
+    pub(crate) fn immediate_state(&self, id: LoopId) -> Result<State, Error> {
+        let mut state = self.state(id)?;
+        if state.composite.is_some() {
+            return Err(Error::InvalidState);
+        }
+        if state.content_length != 0
+            && state.position == state.content_length
+            && (state.mode.playback_mode()
+                || state.mode == Mode::Replacing
+                || (state.mode == Mode::Recording && state.monitor_previous))
+        {
+            let parent = self
+                .topology
+                .node(id)?
+                .sync_source
+                .filter(|source| *source != id);
+            let ready = !state.repeat_sync
+                || match parent {
+                    None => true,
+                    Some(parent) => {
+                        !self.state(parent)?.mode.playback_mode() || self.immediate_pulse(parent)?
+                    }
+                };
+            if ready {
+                state.position = 0;
+            }
+        }
+        Ok(state)
+    }
+    pub(crate) fn immediate_pulse(&self, mut id: LoopId) -> Result<bool, Error> {
+        loop {
+            let state = self.state(id)?;
+            if state.composite.is_some() {
+                return Err(Error::InvalidState);
+            }
+            let parent = self
+                .topology
+                .node(id)?
+                .sync_source
+                .filter(|source| *source != id);
+            let wraps = state.content_length != 0
+                && state.position == state.content_length
+                && (state.mode.playback_mode()
+                    || state.mode == Mode::Replacing
+                    || (state.mode == Mode::Recording && state.monitor_previous));
+            if wraps
+                && (!state.repeat_sync
+                    || match parent {
+                        None => true,
+                        Some(parent) => !self.state(parent)?.mode.playback_mode(),
+                    })
+            {
+                return Ok(true);
+            }
+            let Some(parent) = parent else {
+                return Ok(false);
+            };
+            id = parent;
+        }
+    }
+
+    pub(crate) fn immediate_capture_decision(
+        &self,
+        id: LoopId,
+        operation: Transition,
+    ) -> Result<Decision, Error> {
+        let mut state = self.state(id)?;
+        if self.quiescent
+            || self.committed
+            || self.preview.is_some()
+            || self.program_change.is_some()
+            || self.topology.node(id)?.kind != LoopKind::Primitive
+            || !matches!(state.mode, Mode::Stopped | Mode::Playing | Mode::Recording)
+        {
+            return Err(Error::InvalidState);
+        }
+        let playback_discontinuity = transition(&mut state, operation)?;
+        Ok(Decision {
+            state,
+            playback_discontinuity,
+            origin: None,
+        })
+    }
+
+    pub(crate) fn commit_immediate_capture(&mut self, decision: Decision) {
+        let slot = decision.state.id.slot() as usize;
+        self.states[slot] = Some(decision.state);
+        self.immediate_discontinuities[slot] |= decision.playback_discontinuity;
+    }
+
+    pub(crate) fn cancel_target(&mut self, id: LoopId) -> Result<(), Error> {
+        self.state(id)?;
+        for record in self.records.iter_mut().flatten() {
+            if record.request.target == id && record.terminal.is_none() {
+                record.terminal = Some(Outcome::Cancelled { frame: self.frame });
+            }
+        }
+        self.preview = None;
+        Ok(())
     }
     pub fn set_repeat_sync(&mut self, id: LoopId, enabled: bool) -> Result<(), Error> {
         if self.quiescent || self.committed {
@@ -655,8 +798,10 @@ impl Resolver {
                         Observation::CaptureAborted { target: b, .. },
                     ) => a == b,
                     (
-                        Observation::CaptureExhausted { target: a },
-                        Observation::CaptureExhausted { target: b },
+                        Observation::CaptureExhausted { target: a }
+                        | Observation::CapturePrefixExhausted { target: a },
+                        Observation::CaptureExhausted { target: b }
+                        | Observation::CapturePrefixExhausted { target: b },
                     ) => a == b,
                     (
                         Observation::CaptureUnavailable { target: a, .. },
@@ -673,7 +818,8 @@ impl Resolver {
             }
             match *observation {
                 Observation::CaptureAborted { target, .. }
-                | Observation::CaptureExhausted { target } => {
+                | Observation::CaptureExhausted { target }
+                | Observation::CapturePrefixExhausted { target } => {
                     if !self.state(target)?.writes() {
                         return Err(Error::InvalidState);
                     }
@@ -707,7 +853,9 @@ impl Resolver {
         scratch.program_actions.fill(ProgramAction::None);
         scratch.protected.fill(None);
         scratch.origins.fill(None);
-        scratch.playback_discontinuities.fill(false);
+        scratch
+            .playback_discontinuities
+            .copy_from_slice(&self.immediate_discontinuities);
         scratch.pulses.fill(false);
         scratch.delivered.fill(false);
         scratch.masked.fill(false);
@@ -924,6 +1072,7 @@ impl Resolver {
         core::mem::swap(&mut self.records, &mut self.scratch.records);
         core::mem::swap(&mut self.events, &mut self.scratch.events);
         self.dropped_events = self.dropped_events.saturating_add(self.scratch.dropped);
+        self.immediate_discontinuities.fill(false);
         self.committed = true;
         if self.retimed_pending {
             self.retimed.fill(None);
@@ -1414,7 +1563,8 @@ impl Boundary<'_> {
     fn settle(&mut self, probe: Option<LoopId>) -> Result<(), Error> {
         for observation in self.observations {
             if let Observation::CaptureAborted { target, .. }
-            | Observation::CaptureExhausted { target } = *observation
+            | Observation::CaptureExhausted { target }
+            | Observation::CapturePrefixExhausted { target } = *observation
             {
                 for record in self.scratch.records.iter_mut().flatten() {
                     if record.followup
@@ -1436,12 +1586,20 @@ impl Boundary<'_> {
                 state.monitor_previous = false;
                 self.event(target, EventKind::Refused(reason));
             }
-            if let Observation::CaptureExhausted { target } = *observation {
+            if let Observation::CaptureExhausted { target }
+            | Observation::CapturePrefixExhausted { target } = *observation
+            {
                 let slot = target.slot() as usize;
                 let state = self.scratch.states[slot]
                     .as_mut()
                     .expect("validated observation");
                 state.capture_incomplete = true;
+                if matches!(observation, Observation::CapturePrefixExhausted { .. })
+                    && state.mode == Mode::Recording
+                {
+                    state.content_length = state.capture_frames;
+                    state.content_revision = state.capture_revision;
+                }
                 if state.mode == Mode::Replacing {
                     state.content_revision = state.capture_revision;
                 }

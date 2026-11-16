@@ -552,7 +552,10 @@ impl Fixture {
         )
         .unwrap();
         let render = Rc::new(RefCell::new(render));
-        let backend = RtBackend::connect(client, Clock(render.clone())).unwrap();
+        let mut backend = RtBackend::connect(client, Clock(render.clone())).unwrap();
+        backend
+            .set_snapshot_delivery(shoop_rt_backend::SnapshotDelivery::default())
+            .unwrap();
         let mut service = Service::new(
             Box::new(backend),
             ServiceOptions {

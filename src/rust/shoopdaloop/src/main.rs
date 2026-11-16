@@ -1545,8 +1545,8 @@ impl UnifiedApp {
                 shoop_egui::HostAction::CloseUiAndHost => self.exit.open = true,
                 shoop_egui::HostAction::Reconnect => {
                     if let Some(entry) = self.runtime.remote_entry.clone() {
-                        match Runtime::attach(&self.settings.active(), entry) {
-                            Ok(runtime) => self.use_connection(runtime, context),
+                        match self.runtime.handle.reconnect(entry) {
+                            Ok(()) => self.clear_connection_state(context),
                             Err(error) => self.settings.report_action_error(error.to_string()),
                         }
                     }

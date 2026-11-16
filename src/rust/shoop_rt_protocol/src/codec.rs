@@ -1725,6 +1725,13 @@ impl Wire for crate::MemoryReport {
 impl Wire for Telemetry {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
+            Self::Immediate(d) => {
+                w.u8(7)?;
+                w.u32(d.control_refused)?;
+                w.u32(d.rt_refused)?;
+                w.u8(d.last_control)?;
+                w.u8(d.last_rt)
+            }
             Self::Memory(report) => {
                 w.u8(6)?;
                 report.put(w)
@@ -1830,6 +1837,12 @@ impl Wire for Telemetry {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            7 => Self::Immediate(crate::immediate::Diagnostics {
+                control_refused: r.u32()?,
+                rt_refused: r.u32()?,
+                last_control: r.u8()?,
+                last_rt: r.u8()?,
+            }),
             6 => Self::Memory(crate::MemoryReport::get(r)?),
             5 => Self::Composite {
                 loop_id: LoopSlotId::get(r)?,
@@ -2430,9 +2443,190 @@ impl Wire for BulkChunk {
     }
 }
 
+impl Wire for crate::immediate::Command {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        use crate::immediate::Command::*;
+        match *self {
+            Transition(..) | Grab(..) | GrabGesture(..) => {
+                let record = crate::immediate::CommandRecord::new(*self);
+                w.u8(record.bytes()[0])?;
+                w.bytes(&record.bytes()[4..28])
+            }
+            LoopGain(id, v) => {
+                w.u8(0)?;
+                w.u32(id)?;
+                w.f32(v)
+            }
+            LoopBalance(id, v) => {
+                w.u8(1)?;
+                w.u32(id)?;
+                w.f32(v)
+            }
+            ClearPlannedTransitions(id, which) => {
+                w.u8(15)?;
+                w.u32(id)?;
+                w.u32(which as u32)
+            }
+            InputGain(id, v) => {
+                w.u8(4)?;
+                w.u32(id)?;
+                w.f32(v)
+            }
+            InputBalance(id, v) => {
+                w.u8(5)?;
+                w.u32(id)?;
+                w.f32(v)
+            }
+            OutputGain(id, v) => {
+                w.u8(6)?;
+                w.u32(id)?;
+                w.f32(v)
+            }
+            OutputBalance(id, v) => {
+                w.u8(7)?;
+                w.u32(id)?;
+                w.f32(v)
+            }
+            OutputMute(id, v) => {
+                w.u8(8)?;
+                w.u32(id)?;
+                w.bool(v)
+            }
+            BusGain(id, v) => {
+                w.u8(9)?;
+                w.u32(id)?;
+                w.f32(v)
+            }
+            BusBalance(id, v) => {
+                w.u8(10)?;
+                w.u32(id)?;
+                w.f32(v)
+            }
+            BusMute(id, v) => {
+                w.u8(11)?;
+                w.u32(id)?;
+                w.bool(v)
+            }
+        }
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        use crate::immediate::Command::*;
+        Ok(match r.u8()? {
+            0 => LoopGain(r.u32()?, r.f32()?),
+            1 => LoopBalance(r.u32()?, r.f32()?),
+            15 => ClearPlannedTransitions(
+                r.u32()?,
+                match r.u32()? {
+                    1 => crate::immediate::ClearPlanned::First,
+                    2 => crate::immediate::ClearPlanned::Second,
+                    3 => crate::immediate::ClearPlanned::Both,
+                    _ => return Err(CodecError::Invalid),
+                },
+            ),
+            4 => InputGain(r.u32()?, r.f32()?),
+            5 => InputBalance(r.u32()?, r.f32()?),
+            6 => OutputGain(r.u32()?, r.f32()?),
+            7 => OutputBalance(r.u32()?, r.f32()?),
+            8 => OutputMute(r.u32()?, r.bool()?),
+            9 => BusGain(r.u32()?, r.f32()?),
+            10 => BusBalance(r.u32()?, r.f32()?),
+            11 => BusMute(r.u32()?, r.bool()?),
+            op @ (2 | 13 | 14) => {
+                let mut bytes = [0; 32];
+                bytes[0] = op;
+                bytes[4..28].copy_from_slice(r.bytes(24)?);
+                crate::immediate::CommandRecord::from_bytes(bytes)
+                    .ok_or(CodecError::Invalid)?
+                    .command()
+            }
+            _ => return Err(CodecError::Invalid),
+        })
+    }
+}
+impl Wire for crate::immediate::Batch {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.u64(self.graph)?;
+        w.u64(self.topology)?;
+        w.bool(self.deadline.is_some())?;
+        if let Some(deadline) = self.deadline {
+            w.u64(deadline)?;
+        }
+        w.u8(self.commands().len() as u8)?;
+        for command in self.commands() {
+            command.put(w)?;
+        }
+        Ok(())
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        use crate::immediate::{Batch, Command, TransitionMode, COMMANDS};
+        let graph = r.u64()?;
+        let topology = r.u64()?;
+        let deadline = if r.bool()? { Some(r.u64()?) } else { None };
+        let len = usize::from(r.u8()?);
+        if len == 0 || len > COMMANDS {
+            return Err(CodecError::Invalid);
+        }
+        let mut commands = [Command::Transition(0, TransitionMode::Playing.into()); COMMANDS];
+        for command in &mut commands[..len] {
+            *command = Command::get(r)?;
+        }
+        let mut batch = Batch::new(graph, topology, &commands[..len]).ok_or(CodecError::Invalid)?;
+        batch.deadline = deadline;
+        Ok(batch)
+    }
+}
+
+impl Wire for crate::immediate::Response {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.bytes(self.header.bytes())?;
+        w.u8(self.records().len() as u8)?;
+        for record in self.records() {
+            w.bytes(record.bytes())?;
+        }
+        Ok(())
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        use crate::immediate::{
+            Command, CommandRecord, Header, Response, TransitionMode, COMMANDS,
+        };
+        let header =
+            Header::from_bytes(r.bytes(48)?.try_into().unwrap()).ok_or(CodecError::Invalid)?;
+        let count = usize::from(r.u8()?);
+        if count == 0 || count > COMMANDS {
+            return Err(CodecError::Invalid);
+        }
+        let mut records =
+            [CommandRecord::new(Command::Transition(0, TransitionMode::Playing.into())); COMMANDS];
+        for record in &mut records[..count] {
+            *record = CommandRecord::from_bytes(r.bytes(32)?.try_into().unwrap())
+                .ok_or(CodecError::Invalid)?;
+        }
+        Response::new(header, &records[..count]).ok_or(CodecError::Invalid)
+    }
+}
+
 impl Wire for ClientMessage {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
+            Self::Immediate(batch) => {
+                w.u8(8)?;
+                batch.put(w)
+            }
+            Self::ConfigureSnapshots(mode) => {
+                w.u8(6)?;
+                match mode {
+                    crate::snapshot::SnapshotDelivery::Pull => w.u16(0),
+                    crate::snapshot::SnapshotDelivery::Push { max_hz } => w.u16(max_hz.get()),
+                }
+            }
+            Self::RequestSnapshot { after } => {
+                w.u8(7)?;
+                w.u32(*after)
+            }
+            Self::ObserveSnapshots(enabled) => {
+                w.u8(5)?;
+                w.bool(*enabled)
+            }
             Self::Hello { version } => {
                 w.u8(0)?;
                 w.u16(*version)
@@ -2455,6 +2649,16 @@ impl Wire for ClientMessage {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            8 => Self::Immediate(crate::immediate::Batch::get(r)?),
+            6 => {
+                let hz = r.u16()?;
+                Self::ConfigureSnapshots(
+                    crate::snapshot::SnapshotDelivery::push(hz)
+                        .unwrap_or(crate::snapshot::SnapshotDelivery::Pull),
+                )
+            }
+            7 => Self::RequestSnapshot { after: r.u32()? },
+            5 => Self::ObserveSnapshots(r.bool()?),
             0 => Self::Hello { version: r.u16()? },
             1 => Self::Request {
                 correlation: r.u64()?,
@@ -2471,6 +2675,34 @@ impl Wire for ClientMessage {
 impl Wire for EngineMessage {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
+            Self::ImmediateResponse(response) => {
+                w.u8(13)?;
+                response.put(w)
+            }
+            Self::SnapshotConfiguration { graph, topology } => {
+                w.u8(10)?;
+                w.u64(*graph)?;
+                w.u64(*topology)
+            }
+            Self::SnapshotReady { sequence } => {
+                w.u8(12)?;
+                w.u32(*sequence)
+            }
+            Self::Snapshot(chunk) | Self::SnapshotReply(chunk) => {
+                if usize::from(chunk.len) > chunk.bytes.len() {
+                    return Err(CodecError::Invalid);
+                }
+                w.u8(if matches!(self, Self::SnapshotReply(_)) {
+                    11
+                } else {
+                    9
+                })?;
+                w.u32(chunk.sequence)?;
+                w.u32(chunk.total)?;
+                w.u32(chunk.offset)?;
+                w.u16(chunk.len)?;
+                w.bytes(&chunk.bytes[..usize::from(chunk.len)])
+            }
             Self::Profiling(record) => {
                 if !record.valid() {
                     return Err(CodecError::Invalid);
@@ -2526,6 +2758,35 @@ impl Wire for EngineMessage {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            13 => Self::ImmediateResponse(crate::immediate::Response::get(r)?),
+            10 => Self::SnapshotConfiguration {
+                graph: r.u64()?,
+                topology: r.u64()?,
+            },
+            12 => Self::SnapshotReady { sequence: r.u32()? },
+            tag @ (9 | 11) => {
+                let sequence = r.u32()?;
+                let total = r.u32()?;
+                let offset = r.u32()?;
+                let len = r.u16()?;
+                let mut bytes = [0; crate::snapshot::CHUNK_BYTES];
+                if usize::from(len) > bytes.len() {
+                    return Err(CodecError::Invalid);
+                }
+                bytes[..usize::from(len)].copy_from_slice(r.bytes(usize::from(len))?);
+                let chunk = crate::snapshot::Chunk {
+                    sequence,
+                    total,
+                    offset,
+                    len,
+                    bytes,
+                };
+                if tag == 11 {
+                    Self::SnapshotReply(chunk)
+                } else {
+                    Self::Snapshot(chunk)
+                }
+            }
             8 => {
                 let record: profiling_protocol::Record = get_diagnostic(r)?;
                 if !record.valid() {
@@ -2629,4 +2890,83 @@ fn get_diagnostic<T: serde::de::DeserializeOwned>(r: &mut Reader<'_>) -> Result<
         return Err(CodecError::Invalid);
     }
     profiling_protocol::decode(r.bytes(len)?).map_err(|_| CodecError::Invalid)
+}
+
+impl Wire for crate::snapshot::Record {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        match self {
+            Self::Telemetry(record) => {
+                w.u8(0)?;
+                record.put(w)
+            }
+            Self::State(record) => {
+                w.u8(1)?;
+                record.put(w)
+            }
+            Self::LoopPlan { id, plan, failures } => {
+                w.u8(3)?;
+                id.put(w)?;
+                let record = crate::immediate::CommandRecord::new(
+                    crate::immediate::Command::Transition(0, *plan),
+                );
+                w.bytes(&record.bytes()[8..28])?;
+                w.u32(*failures)
+            }
+            Self::LoopLevels {
+                id,
+                gain,
+                balance,
+                repeat_sync,
+            } => {
+                w.u8(2)?;
+                id.put(w)?;
+                w.f32(*gain)?;
+                w.f32(*balance)?;
+                w.bool(*repeat_sync)
+            }
+        }
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(match r.u8()? {
+            0 => Self::Telemetry(Telemetry::get(r)?),
+            1 => Self::State(StateRecord::get(r)?),
+            3 => {
+                let id = LoopSlotId::get(r)?;
+                let mut bytes = [0; 32];
+                bytes[0] = 2;
+                bytes[8..28].copy_from_slice(r.bytes(20)?);
+                let crate::immediate::Command::Transition(_, plan) =
+                    crate::immediate::CommandRecord::from_bytes(bytes)
+                        .ok_or(CodecError::Invalid)?
+                        .command()
+                else {
+                    return Err(CodecError::Invalid);
+                };
+                if plan.now.is_some() {
+                    return Err(CodecError::Invalid);
+                }
+                Self::LoopPlan {
+                    id,
+                    plan,
+                    failures: r.u32()?,
+                }
+            }
+            2 => Self::LoopLevels {
+                id: LoopSlotId::get(r)?,
+                gain: r.f32()?,
+                balance: r.f32()?,
+                repeat_sync: r.bool()?,
+            },
+            _ => return Err(CodecError::Invalid),
+        })
+    }
+}
+pub fn encode_snapshot(
+    record: &crate::snapshot::Record,
+    buf: &mut [u8],
+) -> Result<usize, CodecError> {
+    encode(record, buf)
+}
+pub fn decode_snapshot(buf: &[u8]) -> Result<crate::snapshot::Record, CodecError> {
+    decode(buf)
 }

@@ -1453,6 +1453,8 @@ impl<S: Sample> LoopPlanner<S> {
             }
         }
         Ok(Some(Take {
+            audio_only: false,
+            publish_incomplete: false,
             started_at: self.resolver.frame(),
             windows: if row.dry_wet {
                 row.windows

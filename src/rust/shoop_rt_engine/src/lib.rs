@@ -51,6 +51,7 @@ pub mod external;
 mod family;
 mod global_midi;
 mod graph;
+mod immediate;
 mod jobs;
 mod midi_layout;
 mod model;
@@ -67,6 +68,7 @@ mod render;
 mod replacement;
 mod resync;
 mod ring;
+mod snapshots;
 mod stream;
 mod timing;
 mod topology;
@@ -688,6 +690,9 @@ fn prepare_complete_using<R>(
             EngineNode::Processor(node),
         ));
     }
+    let (snapshot_capture, snapshot_state) =
+        snapshots::prepare(cells.clone(), strips, loops, buses, description.sample_rate)?;
+    let (immediate_control, immediate_render) = immediate::prepare(pool.clone(), credits);
     let external::Consumer {
         mut control,
         execution,
@@ -700,6 +705,8 @@ fn prepare_complete_using<R>(
         nodes,
         planner,
         resources,
+        snapshot_observer: Box::new(snapshot_capture),
+        immediate_handler: Box::new(immediate_render),
         observations: external::Observations {
             cells: cells.clone(),
         },
@@ -776,6 +783,8 @@ fn prepare_complete_using<R>(
         capability_mask: capabilities,
         #[cfg(feature = "testing")]
         runtime_trace: None,
+        immediate: immediate_control,
+        snapshots: snapshot_state,
         projected_bus_processors: vec![None; description.buses as usize].into_boxed_slice(),
         processor_projection_cursor: 0,
         projected_processors: vec![None; strips].into_boxed_slice(),

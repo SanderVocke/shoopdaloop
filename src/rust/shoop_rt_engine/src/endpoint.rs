@@ -74,7 +74,6 @@ pub(crate) enum Purpose {
         id: u64,
         step: crate::input::Step,
     },
-    TimingSnapshot(LoopSlotId),
     Timing {
         slot: usize,
         correlation: Option<u64>,
@@ -165,6 +164,8 @@ pub struct ControlEndpoint {
     pub(crate) capability_mask: Capabilities,
     #[cfg(feature = "testing")]
     pub(crate) runtime_trace: Option<Vec<crate::testing::RuntimeCommand>>,
+    pub(crate) immediate: crate::immediate::Control,
+    pub(crate) snapshots: crate::snapshots::State,
     pub(crate) projected_timing: Box<[Option<(LoopSlotId, shoop_rt_protocol::TimingState)>]>,
     pub(crate) projected_recorded: Box<[Option<(LoopSlotId, u64, bool)>]>,
     pub(crate) processor_catalog: crate::ProcessorCatalog,
@@ -391,7 +392,9 @@ impl ControlEndpoint {
     /// No request, transaction or bulk read is in progress and every ramp of
     /// the last structural change has finished.
     pub fn is_idle(&self) -> bool {
-        self.queue.len() == 0
+        self.immediate.incoming.len() == 0
+            && !self.immediate.busy()
+            && self.queue.len() == 0
             && self.job.as_ref().is_none_or(Job::idle)
             && self.pending.iter().all(Option::is_none)
             && self.bulk.idle()
@@ -580,10 +583,12 @@ impl ControlEndpoint {
 
     fn reset_connection(&mut self) {
         self.connected = false;
+        self.immediate.disconnect();
         self.queue.clear();
         self.results.clear();
         self.unanswered = 0;
         self.resync = None;
+        self.snapshots.reset();
         self.processor_projection_cursor = 0;
         self.projected_bus_processors.fill(None);
         self.projected_processors.fill(None);
@@ -662,7 +667,6 @@ impl ControlEndpoint {
         self.pending[index] = if finished { None } else { Some(pending) };
         match pending.purpose {
             Purpose::Input { id, step } => self.input_result(id, step, result),
-            Purpose::TimingSnapshot(target) => self.timing_snapshot_result(target, result),
             Purpose::Timing { slot, correlation } => self.timing_result(slot, correlation, result),
             Purpose::Reply(correlation) => self.reply_result(correlation, result),
             Purpose::StripControl {
@@ -1458,32 +1462,45 @@ impl ControlEndpoint {
                 output_peak: peaks.as_slice()[1],
                 driver: self.cells.driver(),
             }));
-            for slot in 0..self.model.strips.len() {
-                let Some(strip) = self.model.strips[slot] else {
-                    continue;
-                };
-                let cells = &self.cells.strips[slot];
-                let _ = out.push(EngineMessage::Telemetry(Telemetry::Strip {
-                    strip: strip.id,
-                    input_peaks: cells.input.take(strip.shape.audio_inputs as usize),
-                    output_peaks: cells.output.take(strip.shape.audio_outputs as usize),
-                    midi_in: cells.midi_in.swap(false, Ordering::Relaxed),
-                    midi_out: cells.midi_out.swap(false, Ordering::Relaxed),
-                    latest_input_midi: (cells.owner_generation.load(Ordering::Relaxed)
-                        == strip.id.0.generation)
-                        .then(|| cells.latest_midi())
-                        .flatten(),
-                    automatic_monitoring: cells.automatic_monitoring.load(Ordering::Relaxed),
-                }));
-            }
-            for (slot, bus) in self.model.buses.iter().enumerate() {
-                if let Some(bus) = bus {
-                    let _ = out.push(EngineMessage::Telemetry(Telemetry::Bus {
-                        bus: bus.id,
-                        peaks: self.cells.buses[slot].take(bus.channels as usize),
+            if !self.snapshots.enabled {
+                for slot in 0..self.model.strips.len() {
+                    let Some(strip) = self.model.strips[slot] else {
+                        continue;
+                    };
+                    let cells = &self.cells.strips[slot];
+                    let _ = out.push(EngineMessage::Telemetry(Telemetry::Strip {
+                        strip: strip.id,
+                        input_peaks: cells.input.take(strip.shape.audio_inputs as usize),
+                        output_peaks: cells.output.take(strip.shape.audio_outputs as usize),
+                        midi_in: cells.midi_in.swap(false, Ordering::Relaxed),
+                        midi_out: cells.midi_out.swap(false, Ordering::Relaxed),
+                        latest_input_midi: (cells.owner_generation.load(Ordering::Relaxed)
+                            == strip.id.0.generation)
+                            .then(|| cells.latest_midi())
+                            .flatten(),
+                        automatic_monitoring: cells.automatic_monitoring.load(Ordering::Relaxed),
                     }));
                 }
+                for (slot, bus) in self.model.buses.iter().enumerate() {
+                    if let Some(bus) = bus {
+                        let _ = out.push(EngineMessage::Telemetry(Telemetry::Bus {
+                            bus: bus.id,
+                            peaks: self.cells.buses[slot].take(bus.channels as usize),
+                        }));
+                    }
+                }
             }
+        }
+        if self.snapshots.enabled {
+            for slot in 0..self.model.loops.len() {
+                if let Some(record) = self.composite_telemetry(slot) {
+                    let _ = out.push(EngineMessage::Telemetry(record));
+                    if let Some(record) = self.loop_telemetry(slot) {
+                        let _ = out.push(EngineMessage::Telemetry(record));
+                    }
+                }
+            }
+            return;
         }
         for slot in 0..self.model.loops.len() {
             if !(periodic || self.dirty[slot]) {
@@ -1585,8 +1602,31 @@ impl ControlEndpoint {
 }
 
 impl Endpoint for ControlEndpoint {
+    fn try_deliver(
+        &mut self,
+        message: ClientMessage,
+        out: &mut Outbox,
+    ) -> Result<(), shoop_rt_transport::carrier::CarrierError> {
+        if let ClientMessage::Immediate(batch) = message {
+            if self.immediate.full() {
+                return Err(shoop_rt_transport::carrier::CarrierError::Full);
+            }
+            self.deliver_immediate(batch);
+        } else {
+            self.deliver(message, out);
+        }
+        Ok(())
+    }
+
     fn deliver(&mut self, message: ClientMessage, out: &mut Outbox) {
         match message {
+            ClientMessage::Immediate(batch) => {
+                if self.immediate.full() {
+                    self.immediate.refuse(1);
+                } else {
+                    self.deliver_immediate(batch);
+                }
+            }
             ClientMessage::Hello { version } => {
                 if self.cells.faulted.load(Ordering::Relaxed) {
                     let _ = out.push(EngineMessage::Disconnected(DisconnectReason::Fault));
@@ -1626,7 +1666,8 @@ impl Endpoint for ControlEndpoint {
                     });
                     return;
                 }
-                if self.unanswered >= self.limits.reliable_credits as usize || self.queue.is_full()
+                if self.unanswered >= self.limits.reliable_credits as usize
+                    || self.immediate.incoming.is_full()
                 {
                     if self
                         .results
@@ -1637,8 +1678,11 @@ impl Endpoint for ControlEndpoint {
                     }
                 } else {
                     self.unanswered += 1;
-                    let _ = self.queue.push((correlation, request));
-                    self.process_queue(false);
+                    let _ = self
+                        .immediate
+                        .incoming
+                        .push(crate::immediate::Incoming::Request(correlation, request));
+                    self.advance_incoming(false);
                 }
             }
             ClientMessage::Resync => {
@@ -1649,6 +1693,9 @@ impl Endpoint for ControlEndpoint {
                 }
             }
             ClientMessage::Bulk(read) => self.deliver_bulk(read, out),
+            ClientMessage::ObserveSnapshots(enabled) => self.snapshots.observe(enabled),
+            ClientMessage::ConfigureSnapshots(delivery) => self.snapshots.configure(delivery),
+            ClientMessage::RequestSnapshot { after } => self.snapshots.request(after),
             ClientMessage::Goodbye => {
                 if self.connected {
                     self.reset_connection();
@@ -1671,14 +1718,19 @@ impl Endpoint for ControlEndpoint {
             return;
         }
         self.drain_runtime();
-        self.forced_monitoring(None);
-        self.advance_job();
-        self.process_queue(true);
-        self.advance_bulk();
-        self.advance_preview();
-        self.advance_content();
-        self.advance_input();
-        self.advance_timing();
+        self.immediate.responses(out, self.connected);
+        self.refresh_snapshot_timing();
+        self.reconcile_immediate();
+        if !self.immediate.busy() {
+            self.forced_monitoring(None);
+            self.advance_job();
+            self.process_queue(true);
+            self.advance_bulk();
+            self.advance_preview();
+            self.advance_content();
+            self.advance_input();
+        }
+        self.advance_incoming(true);
         self.flush(out);
         if self.connected {
             self.forced_monitoring(Some(out));
@@ -1687,6 +1739,11 @@ impl Endpoint for ControlEndpoint {
         self.project_recorded(out);
         self.project_timing(out);
         self.telemetry(out);
+        self.project_snapshots(out);
+        if self.connected {
+            let frame = self.next_frame().0;
+            self.immediate.project(out, frame);
+        }
         self.forward_profiling(out);
     }
 }
@@ -1694,5 +1751,55 @@ impl Endpoint for ControlEndpoint {
 impl Drop for ControlEndpoint {
     fn drop(&mut self) {
         self.cells.endpoint_alive.store(false, Ordering::Relaxed);
+    }
+}
+
+impl ControlEndpoint {
+    fn deliver_immediate(&mut self, batch: shoop_rt_protocol::immediate::Batch) {
+        if !self.connected || self.cells.faulted.load(Ordering::Relaxed) {
+            self.immediate.refuse(1);
+            return;
+        }
+        self.immediate.stage(batch);
+        self.advance_incoming(false);
+    }
+
+    fn advance_incoming(&mut self, stage: bool) {
+        use crate::immediate::Incoming;
+        while let Some(incoming) = self.immediate.incoming.front() {
+            match incoming {
+                Incoming::Request(correlation, request) => {
+                    if self.immediate.busy() || self.queue.is_full() {
+                        break;
+                    }
+                    self.immediate.pop();
+                    let _ = self.queue.push((correlation, request));
+                }
+                Incoming::Batch(batch) => {
+                    self.process_queue(stage);
+                    let settled = self.queue.len() == 0
+                        && self.job.as_ref().is_none_or(Job::idle)
+                        && self.pending.iter().flatten().all(|p| {
+                            p.completed
+                                && matches!(p.purpose, Purpose::Transition { delayed: true, .. })
+                        })
+                        && self.next_frame().0 >= self.quiet_until
+                        && self.snapshot_configuration_settled();
+                    if !settled {
+                        break;
+                    }
+                    if !self.immediate.publish(batch) {
+                        break;
+                    }
+                    self.immediate.pop();
+                }
+            }
+        }
+        self.process_queue(stage);
+    }
+
+    /// Readable independently of polling and snapshot delivery.
+    pub fn command_clock(&self) -> rt_runtime::immediate::Clock {
+        self.immediate.clock()
     }
 }

@@ -372,9 +372,42 @@ fn activation_compatible<P, S: Sample>(
     Ok(())
 }
 
+struct ImmediateProcessors<'a, P, S: Sample> {
+    slots: &'a mut [Option<Slot<P, S>>],
+    active: &'a Option<PreparedPlan>,
+}
+impl<P, S: Sample> crate::immediate::Processors<P> for ImmediateProcessors<'_, P, S> {
+    fn get(&self, id: NodeId) -> Option<&P> {
+        if !self.active.as_ref()?.contains(id) {
+            return None;
+        }
+        self.slots
+            .get(id.slot() as usize)?
+            .as_ref()
+            .filter(|s| s.id == id)?
+            .processor
+            .as_ref()
+    }
+    fn get_mut(&mut self, id: NodeId) -> Option<&mut P> {
+        if !self.active.as_ref()?.contains(id) {
+            return None;
+        }
+        self.slots
+            .get_mut(id.slot() as usize)?
+            .as_mut()
+            .filter(|s| s.id == id)?
+            .processor
+            .as_mut()
+    }
+}
+
 pub struct GraphRuntime<P, L: Planner<S> = NoPlanner, Q: ProcessorOperation = (), S: Sample = f32> {
     audio_arena: Option<crate::audio_refs::RenderArena<S>>,
     host_sequences: Box<[crate::audio_refs::AudioSequence<S>]>,
+    snapshot_observer: Option<Box<dyn crate::snapshot::Observer<P, L>>>,
+    snapshot_callback: Option<Frame>,
+    immediate: Option<Box<dyn crate::immediate::Handler<P, L, S>>>,
+    immediate_callback: Option<Frame>,
     profiling: rt_profiling::Recorder,
     quantum: crate::Quantum,
     tick_frame: Frame,
@@ -587,6 +620,10 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
                     limits.audio_inputs
                 ]
                 .into_boxed_slice(),
+                snapshot_observer: None,
+                snapshot_callback: None,
+                immediate: None,
+                immediate_callback: None,
                 profiling: rt_profiling::Recorder::default(),
                 quantum,
                 tick_frame: Frame(0),
@@ -730,6 +767,14 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
         self.resources.render_work()
     }
 
+    pub fn set_immediate_handler(&mut self, handler: Box<dyn crate::immediate::Handler<P, L, S>>) {
+        self.immediate = Some(handler);
+    }
+
+    pub fn set_snapshot_observer(&mut self, observer: Box<dyn crate::snapshot::Observer<P, L>>) {
+        self.snapshot_observer = Some(observer);
+    }
+
     pub fn set_profiling(&mut self, recorder: rt_profiling::Recorder) {
         self.profiling = recorder;
     }
@@ -791,6 +836,9 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
             self.profiling.end_callback(false);
             return Err(error);
         }
+        if let Some(handler) = &mut self.immediate {
+            handler.begin_callback(self.tick_frame);
+        }
         self.diagnostics = Diagnostics {
             frame,
             epoch: self.epoch,
@@ -809,6 +857,30 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
         self.profiling.callback_phase(rt_profiling::Phase::Commands);
         self.diagnostics.epoch = self.epoch;
         let result = self.run_ticks(&mut audio, &mut midi, self.quantum);
+        if self.immediate_callback != Some(frame) {
+            self.immediate_callback = Some(frame);
+            if let Some(handler) = &mut self.immediate {
+                handler.apply(crate::immediate::Boundary {
+                    frame: self.tick_frame,
+                    graph: self.epoch,
+                    available: result.is_ok(),
+                    resources: self.resources.planner_io(
+                        self.tick_frame,
+                        self.tick_frame
+                            .checked_add(self.quantum.frames())
+                            .unwrap_or(self.tick_frame),
+                    ),
+                    planner: &mut self.planner,
+                    processors: &mut ImmediateProcessors {
+                        slots: &mut self.slots,
+                        active: &self.active,
+                    },
+                });
+            }
+        }
+        if let Some(handler) = &mut self.immediate {
+            handler.end_callback(self.tick_frame);
+        }
         self.diagnostics.epoch = self.epoch;
         self.ingress.set_epoch(self.epoch);
         if let Err(error) = result {
@@ -1368,6 +1440,22 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
         self.profiling.begin_tick(frame.0, quantum.frames() as u32);
 
         self.deliver_actions(frame, callback_start, remaining)?;
+        if self.immediate_callback != Some(callback_start) {
+            self.immediate_callback = Some(callback_start);
+            if let Some(handler) = &mut self.immediate {
+                handler.apply(crate::immediate::Boundary {
+                    frame,
+                    graph: self.epoch,
+                    available: true,
+                    resources: self.resources.planner_io(frame, end),
+                    planner: &mut self.planner,
+                    processors: &mut ImmediateProcessors {
+                        slots: &mut self.slots,
+                        active: &self.active,
+                    },
+                });
+            }
+        }
         self.planner.begin_tick(PlanContext {
             graph_epoch: self.epoch,
             graphs: GraphAccess::new(
@@ -1386,6 +1474,32 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
         })?;
         if self.scheduler.recovery_pending() {
             return Err(Error::InvalidState);
+        }
+        if self.snapshot_callback != Some(callback_start) {
+            self.snapshot_callback = Some(callback_start);
+            if let Some(observer) = &mut self.snapshot_observer {
+                for slot in self.slots.iter_mut().flatten() {
+                    if self
+                        .active
+                        .as_ref()
+                        .is_some_and(|plan| plan.contains(slot.id))
+                    {
+                        if let Some(processor) = &mut slot.processor {
+                            processor.settle(self.epoch, &self.planner);
+                        }
+                    }
+                }
+                let mut nodes = self.slots.iter().flatten().filter_map(|slot| {
+                    self.active.as_ref().filter(|plan| plan.contains(slot.id))?;
+                    Some((slot.id, slot.processor.as_ref()?))
+                });
+                observer.capture(crate::snapshot::Capture {
+                    frame,
+                    graph_epoch: self.epoch,
+                    planner: &self.planner,
+                    nodes: &mut nodes,
+                });
+            }
         }
         self.profiling.phase(rt_profiling::Phase::StateSettled);
         self.profiling.graph_start(self.epoch.0, frame.0);

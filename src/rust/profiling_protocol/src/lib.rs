@@ -3,10 +3,11 @@
 #![forbid(unsafe_code)]
 extern crate alloc;
 
-pub mod memory;
-
 use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
+
+pub mod memory;
+pub use memory::{MemoryReport, MemoryResource, MemoryUnit, MAX_MEMORY_RESOURCES};
 
 pub const CHUNK_BYTES: usize = 1024;
 pub const MAX_REPORT_BYTES: usize = 64 * 1024 * 1024;

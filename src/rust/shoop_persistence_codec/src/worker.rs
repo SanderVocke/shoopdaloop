@@ -19,6 +19,7 @@ pub struct Summary {
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Command {
+    ScriptPart(shoop_script_resources::transfer::Part),
     BeginFamily {
         description: Description,
         handle: u64,
@@ -68,6 +69,7 @@ pub enum Command {
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Response {
+    ScriptPart(shoop_script_resources::transfer::Part),
     Ack,
     Decoded(Summary),
     Image(Description),
@@ -185,6 +187,10 @@ pub struct Worker {
     image: Option<UploadStream>,
     file: Option<(Arc<Vec<u8>>, usize)>,
     next: u64,
+    script_input: Option<shoop_script_resources::transfer::Assembly>,
+    scripts: shoop_script_resources::session::SessionScripts,
+    script_output: Option<shoop_script_resources::transfer::Source>,
+    scripts_received: bool,
 }
 impl Worker {
     fn clear(&mut self) {
@@ -192,6 +198,10 @@ impl Worker {
         self.decoded = None;
         self.image = None;
         self.file = None;
+        self.script_input = None;
+        self.scripts = Default::default();
+        self.script_output = None;
+        self.scripts_received = false;
     }
     pub fn receive(&mut self, command: Command) -> Response {
         match self.apply(command) {
@@ -242,6 +252,34 @@ impl Worker {
     }
     fn apply(&mut self, command: Command) -> Result<Response> {
         match command {
+            Command::ScriptPart(part) => {
+                ensure!(
+                    !self.scripts_received,
+                    "script transfer was already completed"
+                );
+                ensure!(
+                    matches!(
+                        self.input,
+                        Some(Input::Image {
+                            kind: IoTaskKind::SaveSession,
+                            ..
+                        })
+                    ),
+                    "script resources require a session encode job"
+                );
+                let assembly = self.script_input.get_or_insert_with(Default::default);
+                assembly.apply(part).map_err(|error| anyhow!(error))?;
+                if assembly.ready() {
+                    self.scripts_received = true;
+                    self.scripts = self
+                        .script_input
+                        .take()
+                        .unwrap()
+                        .finish()
+                        .map_err(|error| anyhow!(error))?;
+                }
+                Ok(Response::Ack)
+            }
             Command::BeginFamily {
                 description,
                 handle,
@@ -282,6 +320,12 @@ impl Worker {
                 Ok(response)
             }
             Command::NextImageBatch => {
+                if let Some(source) = &mut self.script_output {
+                    if let Some(part) = source.next_part() {
+                        return Ok(Response::ScriptPart(part));
+                    }
+                    self.script_output = None;
+                }
                 let mut parts = Vec::new();
                 for _ in 0..IMAGE_BATCH_PARTS {
                     let Some(stream) = &mut self.image else {
@@ -412,14 +456,22 @@ impl Worker {
             } => {
                 ensure!(mapping.len() <= 16, "too many destination channels");
                 let decoded = self.take_decoded(handle)?;
-                let Value::Image(image) = (Work::Prepare {
+                let image = match (Work::Prepare {
                     decoded,
                     mapping,
                     update_length,
                 })
                 .run()?
-                else {
-                    bail!("codec returned an unexpected result")
+                {
+                    Value::Image(image) => image,
+                    Value::PreparedSession { image, scripts } => {
+                        self.script_output = Some(
+                            shoop_script_resources::transfer::Source::new(scripts)
+                                .map_err(|error| anyhow!(error))?,
+                        );
+                        image
+                    }
+                    _ => bail!("codec returned an unexpected result"),
                 };
                 let stream = UploadStream::new(
                     image,
@@ -525,12 +577,20 @@ impl Worker {
                     mime,
                     bytes,
                     warning,
-                } = (Work::Encode {
-                    image,
-                    kind,
-                    wav,
-                    standard,
-                    channels,
+                } = (if kind == IoTaskKind::SaveSession {
+                    ensure!(self.script_input.is_none(), "incomplete script transfer");
+                    Work::EncodeSession {
+                        image,
+                        scripts: std::mem::take(&mut self.scripts),
+                    }
+                } else {
+                    Work::Encode {
+                        image,
+                        kind,
+                        wav,
+                        standard,
+                        channels,
+                    }
                 })
                 .run()?
                 else {
@@ -546,6 +606,12 @@ impl Worker {
                 })
             }
             Command::Next => {
+                if let Some(source) = &mut self.script_output {
+                    if let Some(part) = source.next_part() {
+                        return Ok(Response::ScriptPart(part));
+                    }
+                    self.script_output = None;
+                }
                 if let Some(stream) = &mut self.image {
                     return match stream
                         .next_request()

@@ -193,7 +193,7 @@ and asks before resampling or retiming to the prepared sample rate and quantum.
 Live length-changing imports retime retained media and sync dependents in one
 atomic family cut; other playback, recording and controls remain active. Source
 files and the prepared device format are unchanged. Unsupported
-FX/dry-wet/session-script documents and buses exceeding prepared limits refuse as a whole. Composite
+processor documents and buses exceeding prepared limits refuse as a whole. Composite
 files preserve authored event IDs, the original basis and frozen frame geometry.
 Audio mapping, channel
 selection, optional import length changes and SMF loss warnings remain explicit.
@@ -206,7 +206,18 @@ The Scripts tab manages external built-ins, examples, native user files and run-
 Lua sources. Script source export is available. Lua reads confirmed state; a write
 becomes visible on a subsequent confirmed pump. VM, timers, controller connections,
 dialogs and file/resource handling stay in the UI. See [Lua dialogs](../../../docs/lua_dialog_api.md).
-Session script ownership conversion/resource persistence remains in the parity ledger.
+Include a script in the session to save its current source and supported Markdown/PNG
+companions in the project file. Converting it to run once and back keeps those
+resources even after the originals are deleted. Loading restores included scripts
+stopped; start them explicitly in Scripts, using this client's devices and permissions.
+New Session clears included scripts while preserving machine-local and run-once records.
+
+Scripts and resources belong to the client. Saving joins them to the host's musical
+capture; loading sends only music to the host. A surviving client retains its local
+data when reconnecting to the same host, but another client receives no scripts.
+Save a project file to preserve those additions across client-process loss. An
+uncertain load outcome retains the pending additions inactive without repeating
+the backend load. See the [script persistence contract](../../../docs/native_session_recovery/p16-client-scripts.md).
 
 Source builds use a sibling `SHOOP_SRC_TREE` marker to locate built-ins. Native
 packages omit it and carry built-ins beside the executable on Linux/Windows or in

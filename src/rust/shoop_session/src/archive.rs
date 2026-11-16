@@ -167,7 +167,15 @@ fn encode_session_inner(
 ) -> Result<Vec<u8>, SessionError> {
     validate_bundle(bundle)?;
     if let Some(limits) = limits {
-        if bundle.media.len() + 1 > limits.entries || !bundle.scripts.is_empty() {
+        if bundle.media.len()
+            + bundle
+                .scripts
+                .values()
+                .map(|b| b.resources.len())
+                .sum::<usize>()
+            + 1
+            > limits.entries
+        {
             return Err(SessionError::ResourceLimit(
                 "encoded entry/script budget exceeded".into(),
             ));
@@ -180,6 +188,27 @@ fn encode_session_inner(
             }
         }
     }
+    shoop_script_resources::session::SessionScripts(
+        bundle
+            .document
+            .scripts
+            .iter()
+            .map(|script| {
+                Ok(shoop_script_resources::session::SessionScriptData {
+                    document_id: script.id,
+                    name: script.name.clone(),
+                    enabled: script.enabled,
+                    bundle: Arc::clone(
+                        bundle.scripts.get(&script.id).ok_or_else(|| {
+                            SessionError::Validation("missing script bundle".into())
+                        })?,
+                    ),
+                })
+            })
+            .collect::<Result<Vec<_>, SessionError>>()?,
+    )
+    .validate()
+    .map_err(SessionError::ResourceLimit)?;
     let mut remaining = limits.map_or(u64::MAX, |l| l.expanded_bytes);
     let mut payloads = BTreeMap::<String, Vec<u8>>::new();
     let mut records = Vec::with_capacity(bundle.media.len());
@@ -230,6 +259,11 @@ fn encode_session_inner(
                 uncompressed_bytes: resource.bytes.len() as u64,
                 sha256: resource.sha256(),
             });
+            remaining = remaining
+                .checked_sub(resource.bytes.len() as u64)
+                .ok_or_else(|| {
+                    SessionError::ResourceLimit("encoded resource expansion budget exceeded".into())
+                })?;
             payloads.insert(path, resource.bytes.to_vec());
         }
     }
@@ -376,11 +410,6 @@ fn decode_session_inner(
         )));
     }
     document_policy(&manifest.document)?;
-    if codec.is_some() && !manifest.scripts.is_empty() {
-        return Err(SessionError::Validation(
-            "session scripts/resources (P16) are not supported".into(),
-        ));
-    }
     let mut budget = codec.map(Budget::new);
     let script_bundles =
         decode_script_bundles(&mut archive, &manifest.document, manifest.scripts, limits)?;
@@ -777,6 +806,26 @@ fn decode_script_bundles(
     limits: DecodeLimits,
 ) -> Result<BTreeMap<u64, Arc<ScriptResourceBundle>>, SessionError> {
     let resource_limits = ResourceLimits::default();
+    if document.scripts.len() > shoop_script_resources::session::MAX_SESSION_SCRIPTS
+        || records.len() > shoop_script_resources::session::MAX_SESSION_RESOURCE_FILES
+    {
+        return Err(SessionError::ResourceLimit(
+            "session script count budget exceeded".into(),
+        ));
+    }
+    let mut declared = BTreeMap::<u64, (usize, u64)>::new();
+    for record in &records {
+        let entry = declared.entry(record.owner_script_id).or_default();
+        entry.0 = entry.0.saturating_add(1);
+        entry.1 = entry.1.saturating_add(record.uncompressed_bytes);
+        if entry.0 > resource_limits.max_files_per_script
+            || entry.1 > resource_limits.max_script_bytes
+        {
+            return Err(SessionError::ResourceLimit(
+                "script bundle count/byte budget exceeded".into(),
+            ));
+        }
+    }
     let script_entrypoints = document
         .scripts
         .iter()

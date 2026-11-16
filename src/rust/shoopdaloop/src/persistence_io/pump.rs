@@ -1,10 +1,36 @@
 use super::*;
 impl Provider {
-    fn reconcile_commit(&mut self, client: &Client) {
+    fn reconcile_commit(&mut self, client: &Client, scripts: &mut shoop_scripting::ScriptManager) {
         let Phase::Committed(operation) = self.phase else {
             return;
         };
-        let Some(outcome) = client.results().get(&operation) else {
+        let outcome = client.results().get(&operation).or_else(|| {
+            client
+                .snapshot()?
+                .results
+                .iter()
+                .find(|result| result.id == operation)
+                .map(|result| &result.outcome)
+        });
+        let Some(outcome) = outcome else {
+            if self.prepared_scripts.is_some()
+                && client.state() == State::Ready
+                && client
+                    .authority()
+                    .is_some_and(|authority| authority.client != operation.client)
+                && client.snapshot().is_some_and(|snapshot| {
+                    !snapshot
+                        .pending
+                        .iter()
+                        .any(|pending| pending.id == operation)
+                })
+            {
+                self.phase = Phase::Unresolved;
+                if let Some(task) = &mut self.task {
+                    task.view.status = IoTaskStatus::Failed;
+                    task.view.message = "Prior musical outcome is unknown; local scripts remain inactive. Cancel discards only the local candidate, or load/start a new project.".into();
+                }
+            }
             return;
         };
         match outcome {
@@ -12,13 +38,35 @@ impl Provider {
                 self.finish(IoTaskStatus::Failed, message.clone());
             }
             Outcome::Confirmed { revision } => {
-                if client.state() == State::Lost {
+                if self.prepared_scripts.is_some() && client.state() != State::Ready {
+                    if let Some(task) = &mut self.task {
+                        task.view.message = "Music committed; retaining local scripts until the matching session is confirmed".into();
+                    }
+                } else if client.state() == State::Lost {
                     self.finish(IoTaskStatus::Completed, "Session media committed; connection lost before the refreshed state arrived. Please reconnect to inspect the session");
                 } else if client
                     .snapshot()
                     .is_some_and(|state| state.revision >= *revision)
                 {
-                    self.finish(IoTaskStatus::Completed, "Session media committed");
+                    if self.prepared_scripts.is_some() {
+                        let expected = self.task.as_ref().unwrap().key.epoch.checked_add(1);
+                        if client.snapshot().map(|state| state.persistence_epoch) != expected {
+                            self.phase = Phase::Unresolved;
+                            if let Some(task) = &mut self.task {
+                                task.view.status = IoTaskStatus::Failed;
+                                task.view.message = "Music committed, but its session was replaced; local scripts remain retained and inactive. Cancel discards only the local candidate.".into();
+                            }
+                            return;
+                        }
+                        scripts
+                            .install_stopped_session_scripts(self.prepared_scripts.take().unwrap());
+                        self.installed_epoch =
+                            client.snapshot().map(|state| state.persistence_epoch);
+                    }
+                    self.finish(
+                        IoTaskStatus::Completed,
+                        "Session media and client additions committed",
+                    );
                 } else if let Some(task) = &mut self.task {
                     task.view.progress = 0.95;
                     task.view.message =
@@ -34,6 +82,27 @@ impl Provider {
             self.messages.clear();
             self.pending_cancel = None;
         }
+    }
+    fn stage(&mut self, client: &mut Client, image: Arc<image::Image>) -> Result<()> {
+        let state = client
+            .snapshot()
+            .ok_or_else(|| anyhow!("session is not ready"))?;
+        self.current(state)?;
+        let task = self.task.as_mut().unwrap();
+        if matches!(task.target, transfer::Target::Session { .. }) {
+            task.target = transfer::Target::Session {
+                revision: state.revision,
+            };
+        }
+        self.messages.push_back(
+            client
+                .stage_image(task.key, task.target, image)
+                .map_err(|error| anyhow!("{error:?}"))?,
+        );
+        task.view.message = "Staging validated media; current session remains active".into();
+        task.view.progress = 0.6;
+        self.phase = Phase::Staging;
+        Ok(())
     }
     fn request(&mut self, client: &Client, request: transfer::Request) -> Result<()> {
         ensure!(
@@ -119,7 +188,29 @@ impl Provider {
         }
         Ok(())
     }
+    #[cfg(test)]
     pub(super) fn pump(&mut self, client: &mut Client, delivery: &mut dyn Delivery) -> Result<()> {
+        self.pump_scripts(client, delivery, &mut shoop_scripting::ScriptManager::new())
+    }
+    pub(super) fn pump_scripts(
+        &mut self,
+        client: &mut Client,
+        delivery: &mut dyn Delivery,
+        scripts: &mut shoop_scripting::ScriptManager,
+    ) -> Result<()> {
+        if client.state() == State::Ready && matches!(self.phase, Phase::PreparingScripts) {
+            let (image, mut preparation) = self.script_preparation.take().unwrap();
+            match preparation.step(256 * 1024)? {
+                Some(prepared) => {
+                    self.prepared_scripts = Some(prepared);
+                    self.stage(client, image)?;
+                }
+                None => {
+                    self.script_preparation = Some((image, preparation));
+                    return Ok(());
+                }
+            }
+        }
         if let Some(value) = self.worker.as_mut().and_then(CodecJob::poll) {
             self.worker = None;
             if matches!(self.phase, Phase::Working) {
@@ -143,26 +234,28 @@ impl Provider {
                         )?;
                         self.captured(image)?;
                     }
+                    Value::PreparedSession {
+                        image,
+                        scripts: additions,
+                    } => {
+                        self.script_preparation =
+                            Some((image, scripts.begin_session_script_preparation(additions)?));
+                        self.phase = Phase::PreparingScripts;
+                    }
                     Value::Image(image) => {
-                        let state = client
-                            .snapshot()
-                            .ok_or_else(|| anyhow!("session is not ready"))?;
-                        self.current(state)?;
-                        let task = self.task.as_mut().unwrap();
-                        if matches!(task.target, transfer::Target::Session { .. }) {
-                            task.target = transfer::Target::Session {
-                                revision: state.revision,
-                            };
+                        if self
+                            .task
+                            .as_ref()
+                            .is_some_and(|task| task.view.kind == IoTaskKind::LoadSession)
+                        {
+                            self.script_preparation = Some((
+                                image,
+                                scripts.begin_session_script_preparation(Default::default())?,
+                            ));
+                            self.phase = Phase::PreparingScripts;
+                        } else {
+                            self.stage(client, image)?;
                         }
-                        self.messages.push_back(
-                            client
-                                .stage_image(task.key, task.target, image)
-                                .map_err(|e| anyhow!("{e:?}"))?,
-                        );
-                        task.view.message =
-                            "Staging validated media; current session remains active".into();
-                        task.view.progress = 0.6;
-                        self.phase = Phase::Staging;
                     }
                     Value::File {
                         name,
@@ -194,9 +287,18 @@ impl Provider {
                 }
             }
         }
-        self.reconcile_commit(client);
+        self.reconcile_commit(client, scripts);
         if client.state() != State::Ready {
-            if client.state() == State::Lost && !matches!(self.phase, Phase::Idle | Phase::Output) {
+            if client.state() == State::Lost
+                && matches!(self.phase, Phase::Committed(_))
+                && self.prepared_scripts.is_some()
+            {
+                if let Some(task) = &mut self.task {
+                    task.view.message = "Commit outcome unresolved; local scripts retained inactive and operation will not replay".into();
+                }
+            } else if client.state() == State::Lost
+                && !matches!(self.phase, Phase::Idle | Phase::Output)
+            {
                 self.messages.clear();
                 self.pending_cancel = None;
                 self.finish(IoTaskStatus::Failed, "Connection lost. An admitted mutation remains host-owned; reconnect to inspect its confirmed outcome. This task will not replay it.");
@@ -208,6 +310,11 @@ impl Provider {
             if self.task.as_ref().is_some_and(|t| t.key == key)
                 && matches!(self.phase, Phase::CaptureSent)
             {
+                self.current(
+                    client
+                        .snapshot()
+                        .ok_or_else(|| anyhow!("session is not ready"))?,
+                )?;
                 self.captured(image)?;
             }
         }
@@ -344,7 +451,7 @@ impl Provider {
                 Err(error) => bail!("connection lost during file transfer ({error:?}); inspect the host session for the actual outcome"),
             }
         }
-        self.reconcile_commit(client);
+        self.reconcile_commit(client, scripts);
         Ok(())
     }
 }

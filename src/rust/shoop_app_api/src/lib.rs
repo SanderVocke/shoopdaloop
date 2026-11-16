@@ -726,6 +726,45 @@ pub enum LoopMode {
     RecordingDryIntoWet,
 }
 
+/// Destination modes supported by immediate loop transitions.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum TransitionMode {
+    Stopped,
+    Playing,
+    Recording,
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct TransitionPlan {
+    pub now: Option<TransitionMode>,
+    pub first: Option<PlannedTransition>,
+    pub second: Option<PlannedTransition>,
+}
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PlannedTransition {
+    pub mode: TransitionMode,
+    pub skip: u32,
+}
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u32)]
+pub enum ClearPlanned {
+    First = 1,
+    Second = 2,
+    Both = 3,
+}
+impl From<TransitionMode> for TransitionPlan {
+    fn from(mode: TransitionMode) -> Self {
+        Self {
+            now: Some(mode),
+            first: None,
+            second: None,
+        }
+    }
+}
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum CompositeKind {
@@ -3922,6 +3961,14 @@ mod tests {
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ControlOperation {
+    SetTransitionPlan {
+        loops: Vec<LoopId>,
+        plan: TransitionPlan,
+    },
+    ClearPlannedTransitions {
+        loops: Vec<LoopId>,
+        which: ClearPlanned,
+    },
     Transition {
         loops: Vec<LoopId>,
         mode: LoopMode,
@@ -4029,7 +4076,9 @@ pub enum ControlOperation {
 impl ControlOperation {
     pub fn bounded(&self) -> bool {
         match self {
-            Self::Transition { loops, .. }
+            Self::SetTransitionPlan { loops, .. }
+            | Self::ClearPlannedTransitions { loops, .. }
+            | Self::Transition { loops, .. }
             | Self::Trigger { loops, .. }
             | Self::TriggerDefaultPlayback { loops }
             | Self::Grab { loops }

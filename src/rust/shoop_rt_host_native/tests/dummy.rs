@@ -41,7 +41,8 @@ fn automatic_mode_renders_buffers_in_real_time_until_stopped() {
     }))
     .unwrap();
     let begun = Instant::now();
-    while host.status().next_frame < 2_400 {
+    let first_frame = host.status().next_frame;
+    while host.status().next_frame - first_frame < 2_400 {
         assert!(
             begun.elapsed() < Duration::from_secs(5),
             "the driver does not render"
@@ -64,8 +65,11 @@ fn automatic_mode_renders_buffers_in_real_time_until_stopped() {
     assert_eq!(status.driver.state, DriverRunState::Running);
     assert_eq!(status.driver.buffer_frames, 48);
     assert_eq!(status.next_frame % 48, 0);
-    // Paced by the buffer period: never ahead of real time by more than its start.
-    assert!(status.next_frame as f64 <= 48_000. * elapsed + 2. * 48.);
+    let rendered = status.next_frame - first_frame;
+    assert!(
+        rendered as f64 <= 48_000. * elapsed + 2. * 48.,
+        "rendered {rendered} frames in {elapsed} seconds"
+    );
     assert_eq!(status.stats.callbacks, status.next_frame / 48);
     drop(client);
     let report = host.stop();

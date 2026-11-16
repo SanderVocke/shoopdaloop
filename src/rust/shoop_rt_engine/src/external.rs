@@ -12,6 +12,8 @@ pub struct Preparation {
     pub nodes: Vec<PreparedNode<EngineNode, LoopPlanner, EngineOp>>,
     pub planner: LoopPlanner,
     pub resources: ResourceStore,
+    pub snapshot_observer: Box<dyn rt_runtime::snapshot::Observer<EngineNode, LoopPlanner>>,
+    pub immediate_handler: Box<dyn rt_runtime::immediate::Handler<EngineNode, LoopPlanner>>,
     pub observations: Observations,
     pub loop_limits: LoopLimits,
     pub initial_media: Vec<shoop_loops::media::MediaId>,
@@ -56,6 +58,8 @@ impl Preparation {
         if self.quantum.frames() > 1 {
             runtime.prepare_host_buffering_with_midi_output(self.midi_output)?;
         }
+        runtime.set_snapshot_observer(self.snapshot_observer);
+        runtime.set_immediate_handler(self.immediate_handler);
         runtime.prepare_graph_staging(1)?;
         let latency_frames = runtime.buffering_latency();
         let render = Render::new(

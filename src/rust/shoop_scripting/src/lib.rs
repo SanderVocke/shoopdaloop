@@ -449,7 +449,10 @@ struct ScriptRecord {
     runtime: Option<LuaRuntime>,
 }
 
+static NEXT_RESOURCE_SCOPE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
 pub struct ScriptManager {
+    resource_scope: u64,
     next_id: u64,
     scripts: BTreeMap<ScriptId, ScriptRecord>,
     dialog_ids: Rc<DialogIdSource>,
@@ -460,13 +463,191 @@ pub struct ScriptManager {
     midi_initialized: bool,
 }
 
+pub struct PreparedSessionScripts {
+    records: BTreeMap<ScriptId, ScriptRecord>,
+}
+
+pub struct SessionScriptPreparation {
+    scripts: VecDeque<shoop_script_resources::session::SessionScriptData>,
+    current: Option<(
+        ScriptId,
+        shoop_script_resources::session::SessionScriptData,
+        String,
+    )>,
+    records: BTreeMap<ScriptId, ScriptRecord>,
+    next_id: u64,
+}
+impl SessionScriptPreparation {
+    pub fn step(&mut self, mut budget: usize) -> anyhow::Result<Option<PreparedSessionScripts>> {
+        while budget > 0 {
+            if self.current.is_none() {
+                let Some(script) = self.scripts.pop_front() else {
+                    return Ok(Some(PreparedSessionScripts {
+                        records: std::mem::take(&mut self.records),
+                    }));
+                };
+                let id = ScriptId::from_raw(self.next_id);
+                self.next_id += 1;
+                let mut source = String::new();
+                source.try_reserve_exact(script.bundle.entrypoint_resource().bytes.len())?;
+                self.current = Some((id, script, source));
+            }
+            let (_, script, source) = self.current.as_mut().unwrap();
+            let bytes = &script.bundle.entrypoint_resource().bytes;
+            let start = source.len();
+            let mut end = bytes.len().min(start.saturating_add(budget.max(4)));
+            while end < bytes.len() && bytes[end] & 0xc0 == 0x80 {
+                end -= 1;
+            }
+            source.push_str(std::str::from_utf8(&bytes[start..end])?);
+            budget = budget.saturating_sub(end - start);
+            if end != bytes.len() {
+                return Ok(None);
+            }
+            let (id, script, source) = self.current.take().unwrap();
+            self.records.insert(
+                id,
+                ScriptRecord {
+                    id,
+                    name: script.name,
+                    identity: None,
+                    documentation: extract_documentation(&source),
+                    source,
+                    source_path: None,
+                    resource_bundle: Some(script.bundle),
+                    resource_generation: 0,
+                    kind: ScriptKind::Session,
+                    enabled: script.enabled,
+                    lifecycle: ScriptLifecycle::Inactive,
+                    latest_error: None,
+                    session_document_id: Some(script.document_id),
+                    archived_logs: Vec::new(),
+                    runtime: None,
+                },
+            );
+            budget = budget.saturating_sub(1);
+        }
+        Ok(None)
+    }
+}
+
 impl ScriptManager {
+    fn next_session_document_id(&self) -> anyhow::Result<u64> {
+        self.scripts
+            .values()
+            .filter(|record| record.kind == ScriptKind::Session)
+            .map(|record| record.session_document_id.unwrap_or(record.id.raw()))
+            .max()
+            .unwrap_or(0)
+            .checked_add(1)
+            .ok_or_else(|| anyhow!("session script document identity exhausted"))
+    }
+    fn admit_session_bundle(
+        &self,
+        name: &str,
+        source: &str,
+        enabled: bool,
+        bundle: Arc<ScriptResourceBundle>,
+    ) -> anyhow::Result<u64> {
+        let document_id = self.next_session_document_id()?;
+        if bundle.entrypoint_resource().bytes.as_ref() != source.as_bytes() {
+            bail!("resource entrypoint differs from script source");
+        }
+        let mut scripts = self.session_data();
+        scripts
+            .0
+            .push(shoop_script_resources::session::SessionScriptData {
+                document_id,
+                name: name.to_owned(),
+                enabled,
+                bundle,
+            });
+        scripts.validate().map_err(|error| anyhow!(error))?;
+        Ok(document_id)
+    }
+
+    pub fn session_data(&self) -> shoop_script_resources::session::SessionScripts {
+        use shoop_script_resources::session::{SessionScriptData, SessionScripts};
+        SessionScripts(
+            self.scripts
+                .values()
+                .filter(|record| record.kind == ScriptKind::Session)
+                .map(|record| SessionScriptData {
+                    document_id: record.session_document_id.unwrap_or(record.id.raw()),
+                    name: record.name.clone(),
+                    enabled: record.enabled,
+                    bundle: record.resource_bundle.clone().unwrap_or_else(|| {
+                        Arc::new(
+                            ScriptResourceBundle::source_only(
+                                "main.lua",
+                                Arc::<[u8]>::from(record.source.as_bytes()),
+                            )
+                            .expect("valid session source"),
+                        )
+                    }),
+                })
+                .collect(),
+        )
+    }
+
+    /// Source syntax must have been checked by the client codec before preparation.
+    pub fn prepare_stopped_session_scripts(
+        &mut self,
+        scripts: shoop_script_resources::session::SessionScripts,
+    ) -> anyhow::Result<PreparedSessionScripts> {
+        let mut preparation = self.begin_session_script_preparation(scripts)?;
+        loop {
+            if let Some(prepared) = preparation.step(256 * 1024)? {
+                return Ok(prepared);
+            }
+        }
+    }
+    pub fn begin_session_script_preparation(
+        &mut self,
+        scripts: shoop_script_resources::session::SessionScripts,
+    ) -> anyhow::Result<SessionScriptPreparation> {
+        scripts.validate().map_err(|error| anyhow!(error))?;
+        let end = self
+            .next_id
+            .checked_add(scripts.0.len() as u64)
+            .ok_or_else(|| anyhow!("script identity capacity exhausted"))?;
+        let next_id = self.next_id;
+        self.next_id = end;
+        Ok(SessionScriptPreparation {
+            scripts: scripts.0.into(),
+            current: None,
+            records: BTreeMap::new(),
+            next_id,
+        })
+    }
+
+    pub fn install_stopped_session_scripts(&mut self, mut prepared: PreparedSessionScripts) {
+        let old: Vec<_> = self
+            .scripts
+            .values()
+            .filter(|record| record.kind == ScriptKind::Session)
+            .map(|record| record.id)
+            .collect();
+        for id in old {
+            let _ = self.stop(id);
+            self.scripts.remove(&id);
+        }
+        self.scripts.append(&mut prepared.records);
+    }
+
+    pub fn clear_session_scripts(&mut self) {
+        self.install_stopped_session_scripts(PreparedSessionScripts {
+            records: BTreeMap::new(),
+        });
+    }
+
     pub fn new() -> Self {
         Self::new_with_midi(Box::<NullMidiService>::default())
     }
 
     pub fn new_with_midi(midi: Box<dyn MidiControlService>) -> Self {
         Self {
+            resource_scope: NEXT_RESOURCE_SCOPE.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             next_id: 1,
             scripts: BTreeMap::new(),
             dialog_ids: Rc::new(DialogIdSource::default()),
@@ -621,6 +802,27 @@ impl ScriptManager {
     ) -> anyhow::Result<ScriptId> {
         let name = name.into();
         let source = source.into();
+        let resource_bundle = if kind == ScriptKind::Session {
+            Some(match resource_bundle {
+                Some(bundle) => bundle,
+                None => Arc::new(ScriptResourceBundle::source_only(
+                    "main.lua",
+                    Arc::<[u8]>::from(source.as_bytes()),
+                )?),
+            })
+        } else {
+            resource_bundle
+        };
+        let session_document_id = if kind == ScriptKind::Session {
+            Some(self.admit_session_bundle(
+                &name,
+                &source,
+                enabled,
+                Arc::clone(resource_bundle.as_ref().unwrap()),
+            )?)
+        } else {
+            None
+        };
         LuaRuntime::new()?.check_syntax(&name, &source)?;
         let id = ScriptId::from_raw(self.next_id);
         self.next_id = self.next_id.saturating_add(1);
@@ -639,7 +841,7 @@ impl ScriptManager {
                 enabled,
                 lifecycle: ScriptLifecycle::Inactive,
                 latest_error: None,
-                session_document_id: None,
+                session_document_id,
                 archived_logs: Vec::new(),
                 runtime: None,
             },
@@ -715,6 +917,11 @@ impl ScriptManager {
                 .scripts
                 .values()
                 .find(|record| record.identity.as_deref() == Some(script.identity.as_str()));
+            if existing.is_some_and(|record| {
+                matches!(record.kind, ScriptKind::Session | ScriptKind::Ephemeral)
+            }) {
+                continue;
+            }
             let changed = existing.is_none_or(|record| {
                 record.source != script.source.as_ref()
                     || record.source_path != script.source_path
@@ -740,9 +947,11 @@ impl ScriptManager {
             .scripts
             .values()
             .filter(|record| {
-                record.identity.as_deref().is_some_and(|identity| {
-                    !desired.contains_key(identity) && !preserved.contains(&identity.to_lowercase())
-                })
+                matches!(record.kind, ScriptKind::Bundled | ScriptKind::Example)
+                    && record.identity.as_deref().is_some_and(|identity| {
+                        !desired.contains_key(identity)
+                            && !preserved.contains(&identity.to_lowercase())
+                    })
             })
             .map(|record| record.id)
             .collect::<Vec<_>>();
@@ -759,6 +968,12 @@ impl ScriptManager {
                 (record.identity.as_deref() == Some(script.identity.as_str())).then_some(record.id)
             });
             if let Some(id) = existing {
+                if matches!(
+                    self.scripts[&id].kind,
+                    ScriptKind::Session | ScriptKind::Ephemeral
+                ) {
+                    continue;
+                }
                 let changed = {
                     let record = self.scripts.get(&id).unwrap();
                     record.source != script.source.as_ref()
@@ -1047,7 +1262,7 @@ impl ScriptManager {
         if let Some(runtime) = record.runtime.take() {
             runtime.disconnect_midi(self.midi.as_mut());
         }
-        let scope = format!("script-{}", record.id.raw());
+        let scope = format!("script-{}-{}", self.resource_scope, record.id.raw());
         unregister_resource_scope(&scope);
         record.resource_generation = record.resource_generation.saturating_add(1).max(1);
         record.lifecycle = ScriptLifecycle::Running;
@@ -1098,7 +1313,11 @@ impl ScriptManager {
 
     pub fn stop(&mut self, id: ScriptId) -> anyhow::Result<()> {
         let record = self.scripts.get_mut(&id).ok_or_else(|| stale_script(id))?;
-        unregister_resource_scope(&format!("script-{}", record.id.raw()));
+        unregister_resource_scope(&format!(
+            "script-{}-{}",
+            self.resource_scope,
+            record.id.raw()
+        ));
         if let Some(runtime) = record.runtime.take() {
             runtime.disconnect_midi(self.midi.as_mut());
             record.archived_logs = runtime.logs();
@@ -1152,14 +1371,13 @@ impl ScriptManager {
         {
             bail!("stale script conversion completion")
         }
+        let session_document_id = self.admit_session_bundle(
+            &record.name,
+            expected_source,
+            record.enabled,
+            Arc::clone(&bundle),
+        )?;
         self.stop(id)?;
-        let session_document_id = self
-            .scripts
-            .values()
-            .filter_map(|record| record.session_document_id)
-            .max()
-            .unwrap_or(0)
-            .saturating_add(1);
         let record = self.scripts.get_mut(&id).unwrap();
         record.resource_bundle = Some(bundle);
         record.kind = ScriptKind::Session;
@@ -1174,26 +1392,25 @@ impl ScriptManager {
         if !allowed {
             bail!("script kind can only be converted into session or from session to run-once")
         }
-        self.stop(id)?;
-        let session_document_id = if kind == ScriptKind::Session {
-            let next = self
-                .scripts
-                .values()
-                .filter_map(|record| record.session_document_id)
-                .max()
-                .unwrap_or(0)
-                .saturating_add(1);
-            Some(next)
-        } else {
-            None
-        };
-        let record = self.scripts.get_mut(&id).unwrap();
-        if kind == ScriptKind::Session && record.resource_bundle.is_none() {
-            record.resource_bundle = Some(Arc::new(ScriptResourceBundle::source_only(
-                "main.lua",
-                Arc::<[u8]>::from(record.source.as_bytes()),
-            )?));
+        if kind == ScriptKind::Session {
+            let record = self.require(id)?;
+            let bundle = match &record.resource_bundle {
+                Some(bundle) => Arc::clone(bundle),
+                None => Arc::new(ScriptResourceBundle::source_only(
+                    "main.lua",
+                    Arc::<[u8]>::from(record.source.as_bytes()),
+                )?),
+            };
+            return self.commit_session_bundle(
+                id,
+                &record.source.clone(),
+                record.resource_generation,
+                bundle,
+            );
         }
+        self.stop(id)?;
+        let session_document_id = None;
+        let record = self.scripts.get_mut(&id).unwrap();
         record.kind = kind;
         record.session_document_id = session_document_id;
         Ok(())
@@ -1240,7 +1457,11 @@ impl ScriptManager {
                     .then(|| {
                         Arc::from(
                             ResourceOrigin {
-                                scope: format!("script-{}", record.id.raw()),
+                                scope: format!(
+                                    "script-{}-{}",
+                                    self.resource_scope,
+                                    record.id.raw()
+                                ),
                                 generation: record.resource_generation,
                             }
                             .base_uri(),
@@ -3495,5 +3716,204 @@ end, function() end, 10)
         assert!(!apc_mk2.contains("SHIFT** to make the toggle permanent"));
         let example = extract_documentation(DIALOG_EXAMPLE_SCRIPT).unwrap();
         assert!(example.starts_with("# Script dialog example\n"));
+    }
+}
+
+#[cfg(test)]
+mod p16_tests {
+    use super::*;
+    use shoop_script_resources::session::{SessionScriptData, SessionScripts, MAX_SESSION_SCRIPTS};
+    use shoop_wasm_test_support::shoop_test;
+    #[shoop_test]
+    fn catalog_refresh_cannot_reclaim_or_run_converted_script_records() {
+        let mut manager = ScriptManager::new();
+        let id = manager
+            .add_catalog_script(
+                "examples/portable.lua",
+                "return 1",
+                ScriptKind::Example,
+                false,
+                None,
+                None,
+            )
+            .unwrap();
+        manager.convert_kind(id, ScriptKind::Session).unwrap();
+        let bundle = manager.conversion_source(id).unwrap().2.unwrap();
+        let changed = CatalogScriptSource {
+            identity: "examples/portable.lua".into(),
+            name: "portable.lua".into(),
+            source: Arc::from("error('refresh must not execute this source')"),
+            kind: ScriptKind::Example,
+            enabled: true,
+            source_path: None,
+            resource_bundle: None,
+        };
+        for kind in [ScriptKind::Session, ScriptKind::Ephemeral] {
+            if kind == ScriptKind::Ephemeral {
+                manager.convert_kind(id, kind).unwrap();
+            }
+            manager
+                .reconcile_catalog_scripts(std::slice::from_ref(&changed), &[])
+                .unwrap();
+            let state = &manager.states()[0];
+            assert_eq!(state.kind, kind);
+            assert_eq!(state.lifecycle, ScriptLifecycle::Inactive);
+            assert_eq!(manager.source(id).unwrap().1, "return 1");
+            assert!(Arc::ptr_eq(
+                &manager.conversion_source(id).unwrap().2.unwrap(),
+                &bundle
+            ));
+        }
+    }
+    #[shoop_test]
+    fn incremental_stopped_preparation_preserves_utf8_and_reserves_runtime_identities() {
+        let source = format!("{}return 1", "-- 😀\n".repeat(1000));
+        let data = SessionScripts(vec![SessionScriptData {
+            document_id: 77,
+            name: "unicode.lua".into(),
+            enabled: true,
+            bundle: Arc::new(
+                ScriptResourceBundle::source_only("main.lua", source.as_bytes()).unwrap(),
+            ),
+        }]);
+        let mut manager = ScriptManager::new();
+        let before = manager
+            .add("before", "return 1", ScriptKind::User, false)
+            .unwrap();
+        let mut preparation = manager.begin_session_script_preparation(data).unwrap();
+        let after = manager
+            .add("after", "return 2", ScriptKind::User, false)
+            .unwrap();
+        let mut turns = 0;
+        let prepared = loop {
+            turns += 1;
+            if let Some(prepared) = preparation.step(7).unwrap() {
+                break prepared;
+            }
+        };
+        assert!(turns > 100);
+        manager.install_stopped_session_scripts(prepared);
+        let states = manager.states();
+        assert!(states.iter().any(|script| script.id == before));
+        assert!(states.iter().any(|script| script.id == after));
+        let session = states
+            .iter()
+            .find(|script| script.kind == ScriptKind::Session)
+            .unwrap();
+        assert_ne!(session.id, after);
+        assert_eq!(manager.source(session.id).unwrap().1, source);
+        assert_eq!(session.lifecycle, ScriptLifecycle::Inactive);
+        assert!(session.enabled);
+        assert_eq!(manager.session_data().0[0].document_id, 77);
+    }
+    #[shoop_test]
+    fn session_quota_refusal_preserves_local_ownership_and_uses_document_identities() {
+        let bundle =
+            Arc::new(ScriptResourceBundle::source_only("main.lua", &b"return 1"[..]).unwrap());
+        let data = SessionScripts(
+            (1..=MAX_SESSION_SCRIPTS)
+                .map(|id| SessionScriptData {
+                    document_id: id as u64,
+                    name: format!("script-{id}"),
+                    enabled: false,
+                    bundle: Arc::clone(&bundle),
+                })
+                .collect(),
+        );
+        let mut manager = ScriptManager::new();
+        let prepared = manager.prepare_stopped_session_scripts(data).unwrap();
+        manager.install_stopped_session_scripts(prepared);
+        let id = manager
+            .add("extra", "return 1", ScriptKind::Ephemeral, false)
+            .unwrap();
+        assert!(manager.convert_kind(id, ScriptKind::Session).is_err());
+        assert_eq!(
+            manager
+                .states()
+                .iter()
+                .find(|script| script.id == id)
+                .unwrap()
+                .kind,
+            ScriptKind::Ephemeral
+        );
+        let first = manager.states()[0].id;
+        manager.remove_session_script(first).unwrap();
+        manager.convert_kind(id, ScriptKind::Session).unwrap();
+        let data = manager.session_data();
+        assert_eq!(data.0.len(), MAX_SESSION_SCRIPTS);
+        assert_eq!(
+            data.0
+                .iter()
+                .find(|script| script.name == "extra")
+                .unwrap()
+                .document_id,
+            MAX_SESSION_SCRIPTS as u64 + 1
+        );
+    }
+    #[shoop_test]
+    fn resource_providers_are_local_to_each_client_manager() {
+        use shoop_script_resources::{
+            NormalizedRelativePath, ResourceKind, ResourceLimits, ScriptResource,
+        };
+        let source = "shoop_announce_api_version(1, 0)";
+        let make = |text: &'static [u8]| {
+            Arc::new(
+                ScriptResourceBundle::new(
+                    NormalizedRelativePath::parse("main.lua").unwrap(),
+                    BTreeMap::from([
+                        (
+                            NormalizedRelativePath::parse("main.lua").unwrap(),
+                            ScriptResource::new(ResourceKind::Lua, source.as_bytes()),
+                        ),
+                        (
+                            NormalizedRelativePath::parse("help.md").unwrap(),
+                            ScriptResource::new(ResourceKind::Markdown, text),
+                        ),
+                    ]),
+                    ResourceLimits::default(),
+                )
+                .unwrap(),
+            )
+        };
+        let mut first = ScriptManager::new();
+        let mut second = ScriptManager::new();
+        let id = first
+            .add_with_resources(
+                "first",
+                source,
+                ScriptKind::Session,
+                true,
+                None,
+                Some(make(b"first")),
+            )
+            .unwrap();
+        second
+            .add_with_resources(
+                "second",
+                source,
+                ScriptKind::Session,
+                true,
+                None,
+                Some(make(b"second")),
+            )
+            .unwrap();
+        let first_uri = first.states()[0].resource_base_uri.clone().unwrap();
+        let second_uri = second.states()[0].resource_base_uri.clone().unwrap();
+        assert_ne!(first_uri, second_uri);
+        assert_eq!(
+            shoop_script_resources::read_resource_uri(&format!("{first_uri}help.md"))
+                .unwrap()
+                .unwrap()
+                .as_ref(),
+            b"first"
+        );
+        first.stop(id).unwrap();
+        assert_eq!(
+            shoop_script_resources::read_resource_uri(&format!("{second_uri}help.md"))
+                .unwrap()
+                .unwrap()
+                .as_ref(),
+            b"second"
+        );
     }
 }

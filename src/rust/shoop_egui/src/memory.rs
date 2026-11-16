@@ -121,6 +121,7 @@ mod tests {
             ),
         ] {
             let mut output = context.run_ui(Default::default(), |ui| summary(ui, report.as_ref()));
+            output.textures_delta.clear();
             assert!(output.shapes.iter().any(|shape| match &shape.shape {
                 egui::Shape::Text(text) => text.galley.text() == expected,
                 _ => false,

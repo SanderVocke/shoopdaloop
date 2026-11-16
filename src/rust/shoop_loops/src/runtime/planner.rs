@@ -39,7 +39,8 @@ impl<S: Sample> LoopPlanner<S> {
             .filter(|r| r.assigned && r.binding.target == target)
             .ok_or(Error::InvalidId)
     }
-    fn cut(&self, target: LoopId, frame: Frame) -> Result<Cut<S>, Failure> {
+    /// Borrow a render-owned state cut at a settled boundary without acquiring media leases.
+    pub fn cut(&self, target: LoopId, frame: Frame) -> Result<Cut<S>, Failure> {
         let state = self.resolver.state(target)?;
         if let Ok(row) = self.row(target) {
             let media = self
@@ -204,6 +205,8 @@ impl<S: Sample> LoopPlanner<S> {
             }
         };
         let mut take = Take {
+            audio_only: false,
+            publish_incomplete: false,
             started_at: self.resolver.frame(),
             writer: None,
             windows,
@@ -238,7 +241,7 @@ impl<S: Sample> LoopPlanner<S> {
         }
         result
     }
-    fn prepare_take(
+    pub(super) fn prepare_take(
         &mut self,
         slot: usize,
         decision: Decision,
@@ -306,6 +309,8 @@ impl<S: Sample> LoopPlanner<S> {
             channel.raw_frames = None;
         }
         self.rows[slot].as_mut().expect("row").prepared = Some(Take {
+            audio_only: false,
+            publish_incomplete: false,
             started_at: self.resolver.frame(),
             windows,
             writer: None,
@@ -345,13 +350,20 @@ impl<S: Sample> LoopPlanner<S> {
                     reason: timeline_error(error),
                 },
             )
+        } else if self.rows[slot]
+            .and_then(|row| row.active)
+            .is_some_and(|take| take.publish_incomplete)
+        {
+            crate::Observation::CapturePrefixExhausted { target }
         } else {
             crate::Observation::CaptureExhausted { target }
         };
         let duplicate = self.failures.iter().any(|old| match (*old, observation) {
             (
-                crate::Observation::CaptureExhausted { target: a },
-                crate::Observation::CaptureExhausted { target: b },
+                crate::Observation::CaptureExhausted { target: a }
+                | crate::Observation::CapturePrefixExhausted { target: a },
+                crate::Observation::CaptureExhausted { target: b }
+                | crate::Observation::CapturePrefixExhausted { target: b },
             )
             | (
                 crate::Observation::CaptureUnavailable { target: a, .. },
@@ -368,6 +380,10 @@ impl<S: Sample> LoopPlanner<S> {
         }
         self.failures.push(observation);
         self.rows[slot].as_mut().expect("row").failure = Some(error);
+        if self.musical[slot].entries.iter().any(Option::is_some) {
+            self.musical[slot].entries = [None; 2];
+            self.musical[slot].failures = self.musical[slot].failures.saturating_add(1);
+        }
         Ok(())
     }
     pub(super) fn preflight(
@@ -479,7 +495,7 @@ impl<S: Sample> LoopPlanner<S> {
                         .content_length,
                     channels: row.binding.channels as u32,
                     auxiliary_channels: row.binding.auxiliary_channels as u32,
-                    midi: row.binding.midi,
+                    midi: row.binding.midi && !take.audio_only,
                 },
                 audio: Some(media::Source {
                     snapshot,
@@ -499,7 +515,11 @@ impl<S: Sample> LoopPlanner<S> {
         } else {
             None
         };
-        let midi = if row.binding.midi { source()? } else { None };
+        let midi = if row.binding.midi && !take.audio_only {
+            source()?
+        } else {
+            None
+        };
         Ok(media::Input {
             auxiliary,
             description: media::Description {
@@ -512,13 +532,13 @@ impl<S: Sample> LoopPlanner<S> {
                 revision: take.revision,
                 frames,
                 channels: row.binding.channels as u32,
-                midi: row.binding.midi,
+                midi: row.binding.midi && !take.audio_only,
             },
             audio,
             midi,
         })
     }
-    fn freeze(
+    pub(super) fn freeze(
         &mut self,
         slot: usize,
         frame: Frame,
@@ -526,7 +546,7 @@ impl<S: Sample> LoopPlanner<S> {
     ) -> Result<media::MediaId, Error> {
         let row = self.rows[slot].ok_or(Error::InvalidId)?;
         let take = row.active.ok_or(Error::InvalidState)?;
-        let incomplete=self.failures.iter().any(|o|matches!(o,crate::Observation::CaptureExhausted { target } if *target==row.binding.target));
+        let incomplete=self.failures.iter().any(|o|matches!(o,crate::Observation::CaptureExhausted { target } | crate::Observation::CapturePrefixExhausted { target } if *target==row.binding.target));
         if let Some(id) = take.writer {
             let (frames, sources) = self
                 .shared
@@ -808,7 +828,7 @@ impl<S: Sample> LoopPlanner<S> {
             revision: take.revision,
             frames: 0,
             channels: row.binding.channels as u32,
-            midi: row.binding.midi,
+            midi: row.binding.midi && !take.audio_only,
         })?;
         if let Some((resource, _)) = take.edit {
             let mut sources = [None; 3];
@@ -842,7 +862,7 @@ impl<S: Sample> LoopPlanner<S> {
                                 frames: state.content_length,
                                 channels: row.binding.channels as u32,
                                 auxiliary_channels: row.binding.auxiliary_channels as u32,
-                                midi: row.binding.midi,
+                                midi: row.binding.midi && !take.audio_only,
                             },
                             audio: Some(media::Source {
                                 snapshot: wet,
@@ -918,7 +938,7 @@ impl<S: Sample> LoopPlanner<S> {
                             revision: take.revision,
                             frames: state.capture_frames,
                             channels: row.binding.channels as u32,
-                            midi: row.binding.midi,
+                            midi: row.binding.midi && !take.audio_only,
                         },
                         audio,
                         midi,
@@ -2007,6 +2027,7 @@ impl<S: Sample> LoopPlanner<S> {
                             return Err(error.into());
                         }
                     };
+                    self.musical[target.slot() as usize].entries = [None; 2];
                     self.pending[slot] = Some(Pending {
                         token: context.token,
                         kind: PendingKind::Transition {

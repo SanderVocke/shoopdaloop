@@ -17,6 +17,8 @@ enabled = true
 browser-feature = "wasm-test-browser"
 
 [dependencies]
+omnilua = { workspace = true }
+shoop_script_resources = { path = "../shoop_script_resources" }
 anyhow = { workspace = true, features = ["std"] }
 bincode = { workspace = true, features = ["std"] }
 serde = { workspace = true, features = ["std", "derive"] }

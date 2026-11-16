@@ -3,6 +3,9 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 extern crate alloc;
 
+pub mod session;
+pub mod transfer;
+
 #[cfg(test)]
 extern crate std;
 

@@ -803,6 +803,42 @@ impl<S: Sample> Shared<S> {
         self.track(take);
         Ok(take)
     }
+    pub(in crate::runtime) fn grab_audio_window(
+        &mut self,
+        id: HistoryId,
+        window: &crate::grab::Window,
+        q: usize,
+        frame: Frame,
+        io: &mut ResourceIo<'_, S>,
+    ) -> Result<Snapshot, Error> {
+        let status = self.status(id.source, id.graph, io)?;
+        if status.id != id || status.failure.is_some() || status.end != frame {
+            return Err(Error::InvalidOffset);
+        }
+        if window.source.start < status.start
+            || window.source.end > status.end
+            || window.source.start > window.source.end
+            || window.frames % q as u64 != 0
+            || window.go_to_frame % q as u64 != 0
+        {
+            return Err(Error::InvalidOffset);
+        }
+        let source = self
+            .source(id.source)?
+            .audio_source
+            .ok_or(Error::InvalidOffset)?;
+        let resource = io.grab_audio_window(source, window.source.clone(), window.frames)?;
+        let snapshot = io.snapshot(resource, frame);
+        io.remove(resource)?;
+        snapshot
+    }
+    pub(in crate::runtime) fn available_recorders(&self) -> usize {
+        self.live
+            .iter()
+            .filter(|slot| slot.value.is_none())
+            .count()
+            .max(1)
+    }
     pub(super) fn grab_window(
         &mut self,
         id: HistoryId,

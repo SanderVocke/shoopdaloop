@@ -111,3 +111,30 @@ fn remote_contract_waits_for_bulk_delivery_after_a_reliable_acknowledgment() {
         release_bulk: false,
     }));
 }
+
+#[shoop_test]
+fn snapshot_defaults_follow_the_carrier_and_target() {
+    use shoop_rt_protocol::snapshot::SnapshotDelivery;
+    struct IdlePort;
+    impl RecordPort for IdlePort {
+        fn post(&mut self, _: &[u8]) -> Result<(), CarrierError> {
+            Ok(())
+        }
+        fn take(&mut self, _: &mut [u8]) -> Option<usize> {
+            None
+        }
+    }
+    let (direct, _) = carriers();
+    assert_eq!(
+        direct.default_snapshot_delivery(),
+        if cfg!(target_arch = "wasm32") {
+            SnapshotDelivery::default()
+        } else {
+            SnapshotDelivery::Pull
+        }
+    );
+    assert_eq!(
+        RecordClient::new(IdlePort).default_snapshot_delivery(),
+        SnapshotDelivery::default()
+    );
+}

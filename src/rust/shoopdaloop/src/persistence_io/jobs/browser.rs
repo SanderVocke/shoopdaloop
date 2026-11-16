@@ -205,6 +205,7 @@ enum Sending {
         standard: bool,
         channels: Vec<u32>,
         declared: bool,
+        scripts: Option<shoop_script_resources::transfer::Source>,
     },
     One(Option<WorkerCommand>),
 }
@@ -249,6 +250,7 @@ impl Sending {
                 standard,
                 channels,
                 declared,
+                scripts,
             } => {
                 if let Some(progress) = validation {
                     if !progress
@@ -293,6 +295,12 @@ impl Sending {
                         channels: std::mem::take(channels),
                     }));
                 }
+                if let Some(source) = scripts {
+                    if let Some(part) = source.next_part() {
+                        return Ok(Some(WorkerCommand::ScriptPart(part)));
+                    }
+                    *scripts = None;
+                }
                 let mut parts = Vec::with_capacity(worker::IMAGE_BATCH_PARTS);
                 for _ in 0..worker::IMAGE_BATCH_PARTS {
                     let Some(request) = stream
@@ -327,6 +335,7 @@ struct BrowserJob {
     sending: Sending,
     inflight: usize,
     output: Output,
+    scripts: Option<shoop_script_resources::transfer::Assembly>,
 }
 impl BrowserJob {
     fn image_part(&mut self, request: transfer::Request) -> Result<()> {
@@ -402,6 +411,12 @@ impl BrowserJob {
                 .checked_sub(1)
                 .ok_or_else(|| anyhow!("unexpected codec response"))?;
             match worker::decode::<WorkerResponse>(&bytes)? {
+                WorkerResponse::ScriptPart(part) => {
+                    self.scripts
+                        .get_or_insert_with(Default::default)
+                        .apply(part)
+                        .map_err(|error| anyhow!(error))?;
+                }
                 WorkerResponse::Ack => {}
                 WorkerResponse::Failed(message) => bail!(message),
                 WorkerResponse::Decoded(summary) => {
@@ -488,10 +503,21 @@ impl BrowserJob {
             }
         }
         if let Output::Assembly(assembly) = &mut self.output {
-            return Ok(assembly
+            if let Some(image) = assembly
                 .step(MEDIA_BYTES_PER_POLL)
                 .map_err(|r| anyhow!("invalid codec media: {r:?}"))?
-                .map(|image| Value::Image(image.into_image())));
+            {
+                let image = image.into_image();
+                return Ok(Some(if let Some(scripts) = self.scripts.take() {
+                    Value::PreparedSession {
+                        image,
+                        scripts: scripts.finish().map_err(|error| anyhow!(error))?,
+                    }
+                } else {
+                    Value::Image(image)
+                }));
+            }
+            return Ok(None);
         }
         while self.inflight < WINDOW {
             let command = match self.output {
@@ -532,6 +558,23 @@ impl CodecExecutor {
             return Ok(CodecJob(Mode::Synchronous(Some(work))));
         }
         let sending = match work {
+            Work::EncodeSession { image, scripts } => Sending::Image {
+                family: None,
+                validation: Some(
+                    Validation::for_transfer(image)
+                        .map_err(|error| anyhow!("invalid capture: {error:?}"))?,
+                ),
+                stream: None,
+                kind: worker::kind(IoTaskKind::SaveSession)?,
+                wav: false,
+                standard: false,
+                channels: Vec::new(),
+                declared: false,
+                scripts: Some(
+                    shoop_script_resources::transfer::Source::new(scripts)
+                        .map_err(|error| anyhow!(error))?,
+                ),
+            },
             Work::GenerateClick { request, rate } => {
                 Sending::One(Some(WorkerCommand::GenerateClick { request, rate }))
             }
@@ -560,6 +603,7 @@ impl CodecExecutor {
                 standard,
                 channels,
                 declared: false,
+                scripts: None,
             },
             Work::ConvertFamily {
                 decoded: Decoded::Remote(summary),
@@ -578,6 +622,7 @@ impl CodecExecutor {
                     standard: false,
                     channels: Vec::new(),
                     declared: false,
+                    scripts: None,
                 }
             }
             Work::Prepare {
@@ -637,6 +682,7 @@ impl CodecExecutor {
             sending,
             inflight: 0,
             output: Output::None,
+            scripts: None,
         }))))
     }
 }

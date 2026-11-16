@@ -151,6 +151,8 @@ pub trait Processor<L: Planner<S> = NoPlanner, Q: ProcessorOperation = (), S: Sa
     fn midi_buffer_settings(&self) -> Result<MidiBufferSettings, Error> {
         Ok(MidiBufferSettings::default())
     }
+    /// Apply prepared state after graph activation, before snapshot capture.
+    fn settle(&mut self, _epoch: crate::Epoch, _domain: &L) {}
     fn process(&mut self, block: &mut ProcessBlock<'_, L, S>) -> Result<(), Error>;
 
     fn process_references(
@@ -181,6 +183,9 @@ impl<L: Planner<S>, Q: ProcessorOperation, P: Processor<L, Q, S> + ?Sized, S: Sa
         block: &mut crate::audio_refs::ReferenceBlock<'_, L, S>,
     ) -> Result<bool, Error> {
         (**self).process_references(block)
+    }
+    fn settle(&mut self, epoch: crate::Epoch, domain: &L) {
+        (**self).settle(epoch, domain);
     }
     fn midi_buffer_settings(&self) -> Result<MidiBufferSettings, Error> {
         (**self).midi_buffer_settings()

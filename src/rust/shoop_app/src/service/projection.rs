@@ -54,6 +54,7 @@ impl Service {
             .into();
         let connections = self.connections();
         Arc::new(SessionSnapshot {
+            immediate: self.immediate_capabilities(),
             composites: self.composite_views(),
             preview: {
                 let mut state = self.preview.clone();

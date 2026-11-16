@@ -1501,6 +1501,7 @@ impl NativeRuntime {
             )
         };
         let handle = self.session.create_loop()?;
+        let creation_sequence = handle.creation_sequence();
         handle.set_default_playback_mode(default_playback_mode.engine_mode())?;
         let mut audio = Vec::new();
         let mut audio_modes = Vec::new();
@@ -1580,6 +1581,8 @@ impl NativeRuntime {
                 .set_pending_latency(values)?;
         }
         self.wait();
+        self.session
+            .wait_for_command(creation_sequence, shoop_engine::DEFAULT_WAIT_TIMEOUT)?;
         self.apply_track_routing(track_id)?;
         Ok(id)
     }

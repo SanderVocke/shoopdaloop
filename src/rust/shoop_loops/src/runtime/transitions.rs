@@ -28,6 +28,7 @@ impl<S: Sample> LoopPlanner<S> {
         if context.frame != self.resolver.frame() {
             return Err(Error::InvalidFrame);
         }
+        self.advance_musical_plans(context.frame, &mut context.resources)?;
         self.failures.clear();
         for row in self.rows.iter().flatten() {
             if row.aborted {
