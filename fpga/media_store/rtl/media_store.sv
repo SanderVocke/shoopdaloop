@@ -296,7 +296,8 @@ module media_store #(
     reg [3:0] metadata_done;
     reg metadata_pending, metadata_prefetch, metadata_writing, metadata_gc;
     reg [31:0] hint_epoch, metadata_epoch;
-    wire cancel_lookup = phase == CHECK && (opcode == CLEAR || opcode == REMOVE);
+    wire cancel_lookup = (phase == CHECK && (opcode == CLEAR || opcode == REMOVE))
+        || (phase == ADMIT && opcode == FENCE);
     reg [1:0] metadata_slot;
     reg [7:0] metadata_error;
     reg [31:0] hint_table_data;

@@ -2,6 +2,8 @@
 
 module audio_pipeline #(
     parameter integer PROGRAM_DEPTH = 32,
+    parameter integer LIVE_LOADING = 0,
+    parameter integer PROGRAM_REGIONS = LIVE_LOADING != 0 ? 2 : 1,
     parameter integer STATE_DEPTH = 16,
     parameter integer JOB_DEPTH = 32,
     parameter integer LOOP_DEPTH = STATE_DEPTH,
@@ -25,6 +27,16 @@ module audio_pipeline #(
     output wire run_ready,
     input wire [31:0] run_instruction_count,
     input wire [31:0] run_sync_count,
+    input wire run_program_region,
+    input wire switch_valid, output wire switch_ready,
+    input wire [63:0] switch_expected, switch_revision,
+    input wire switch_region,
+    input wire [15:0] switch_instructions, switch_sync_count, switch_states, switch_jobs, switch_buffers,
+    output reg switch_response_valid, input wire switch_response_ready,
+    output reg switch_response_error,
+    output reg [63:0] switch_first_frame,
+    output reg [63:0] active_revision,
+    output wire handoff_request, input wire handoff_complete,
     input wire [31:0] run_state_count,
     input wire [31:0] run_quantum,
     input wire [31:0] run_chunk_frames,
@@ -106,6 +118,16 @@ module audio_pipeline #(
     reg [31:0] quantum, buffers, inputs, outputs;
     wire unused_pc;
     wire [31:0] state_pc;
+    reg active_region, handoff_pending;
+    reg [15:0] active_instructions, active_sync_count, active_states, active_jobs, active_buffers;
+    wire [31:0] selected_instructions = LIVE_LOADING != 0 ? {16'b0,active_instructions} : run_instruction_count;
+    wire [31:0] selected_sync_count = LIVE_LOADING != 0 ? {16'b0,active_sync_count} : run_sync_count;
+    wire [31:0] selected_states = LIVE_LOADING != 0 ? {16'b0,active_states} : run_state_count;
+    wire [31:0] selected_jobs = LIVE_LOADING != 0 ? {16'b0,active_jobs} : run_job_budget;
+    wire [31:0] selected_buffers = LIVE_LOADING != 0 ? {16'b0,active_buffers} : run_buffers;
+    wire boundary_ready = (phase == IDLE) && state_run_ready && job_run_ready && !reset && ((ENABLE_MEDIA == 0) || !media_fault);
+    assign switch_ready = LIVE_LOADING != 0 && run_valid && boundary_ready && !handoff_pending && !switch_response_valid;
+    assign handoff_request = LIVE_LOADING != 0 && handoff_pending && hint_count == 0 && queued_jobs == 0;
     wire read_intent_valid, late_hint_valid, late_hint_ready, hint_push_ready, hint_pop_valid;
     wire [`SHOOP_SP_JOB_BITS-1:0] read_intent_data, hint_pop_data;
     wire [63:0] late_hint_view, late_hint_position, late_hint_length;
@@ -119,23 +141,23 @@ module audio_pipeline #(
         hint_push_data[191:128] << chunk_shift,hint_push_data[127:64],63'b0,hint_push_in_range};
     wire hint_in_range = hint_pop_data[0];
     assign late_hint_ready = phase != JOB_WAIT || (hint_push_ready && !read_intent_valid);
-    assign media_hint_valid = ENABLE_MEDIA != 0 && hint_pop_valid && hint_in_range && busy && !reset;
+    assign media_hint_valid = ENABLE_MEDIA != 0 && hint_pop_valid && hint_in_range && !reset;
     assign media_hint_view = hint_pop_data[127:64];
     assign media_hint_position = hint_pop_data[191:128];
     assign media_hint_length = hint_pop_data[255:192];
     assign media_hint_count = quantum;
 
     sp_job_fifo #(.DEPTH(JOB_DEPTH), .COUNT_BITS($clog2(JOB_DEPTH+1))) read_intents (
-        .clk(clk), .reset(reset || (run_valid && run_ready)),
+        .clk(clk), .reset(reset),
         .push_valid(ENABLE_MEDIA != 0 && (read_intent_valid || (late_hint_valid && phase == JOB_WAIT))), .push_ready(hint_push_ready),
         .push_data(translated_hint),
-        .pop_valid(hint_pop_valid), .pop_ready((media_hint_ready || !hint_in_range) && busy && !reset),
+        .pop_valid(hint_pop_valid), .pop_ready((media_hint_ready || !hint_in_range) && !reset),
         .pop_data(hint_pop_data), .count(hint_count)
     );
     assign unused_pc = &{1'b0, state_pc};
     assign busy = phase != IDLE;
-    assign run_ready = (phase == IDLE) && state_run_ready && job_run_ready && !reset && ((ENABLE_MEDIA == 0) || !media_fault);
-    assign cfg_ready = (phase == IDLE) && state_cfg_ready;
+    assign run_ready = boundary_ready && !(LIVE_LOADING != 0 && (handoff_pending || (switch_valid && !switch_response_valid)));
+    assign cfg_ready = state_cfg_ready && (phase == IDLE || (PROGRAM_REGIONS == 2 && cfg_valid && cfg_write));
     assign audio_cfg_ready = (phase == IDLE) && job_cfg_ready;
     assign monitor_ready = job_accept || ((phase == IDLE) && drain_ready && !reset);
     assign drain_valid = (phase == IDLE) && monitor_valid && !reset;
@@ -143,13 +165,13 @@ module audio_pipeline #(
     assign jobs_done = sample_done;
 
     state_processor #(
-        .PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH), .LOOP_DEPTH(LOOP_DEPTH)
+        .PROGRAM_DEPTH(PROGRAM_DEPTH), .PROGRAM_REGIONS(PROGRAM_REGIONS), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH), .LOOP_DEPTH(LOOP_DEPTH)
     ) state_engine (
         .clk(clk), .reset(reset), .run_valid(run_valid && run_ready), .run_ready(state_run_ready),
-        .run_instruction_count(run_instruction_count), .run_sync_count(run_sync_count), .run_state_count(run_state_count),
-        .run_quantum(run_quantum), .run_chunk_frames(run_chunk_frames), .run_job_budget(run_job_budget),
+        .run_instruction_count(selected_instructions), .run_sync_count(selected_sync_count), .run_program_region(LIVE_LOADING != 0 ? active_region : run_program_region), .run_state_count(selected_states),
+        .run_quantum(run_quantum), .run_chunk_frames(run_chunk_frames), .run_job_budget(selected_jobs),
         .busy(state_busy), .done(state_done), .error_code(state_error), .instruction_pc(state_pc),
-        .cfg_valid(cfg_valid && (phase == IDLE)), .cfg_ready(state_cfg_ready),
+        .cfg_valid(cfg_valid && (phase == IDLE || (PROGRAM_REGIONS == 2 && cfg_write))), .cfg_ready(state_cfg_ready),
         .cfg_state(cfg_state), .cfg_loop(cfg_loop), .cfg_write(cfg_write), .cfg_address(cfg_address), .cfg_write_data(cfg_write_data),
         .cfg_response_valid(cfg_response_valid), .cfg_response_error(cfg_response_error), .cfg_read_data(cfg_read_data),
         .job_valid(monitor_valid), .job_ready(monitor_ready), .job_data(monitor_data), .queued_jobs(queued_jobs),
@@ -183,6 +205,32 @@ module audio_pipeline #(
 
     always @(posedge clk) begin
         if (reset) begin
+            active_revision <= 0; active_region <= 0; handoff_pending <= 0;
+            active_instructions <= 0; active_sync_count <= 0; active_states <= 0; active_jobs <= 0; active_buffers <= 0;
+            switch_first_frame <= 0; switch_response_valid <= 0; switch_response_error <= 0;
+        end else if (LIVE_LOADING != 0) begin
+            if (switch_response_valid && switch_response_ready) switch_response_valid <= 0;
+            if (switch_valid && switch_ready) begin
+                switch_first_frame <= sync_frame;
+                switch_response_error <= switch_expected != active_revision || switch_revision <= active_revision
+                    || (active_revision != 0 && switch_region == active_region);
+                if (switch_expected != active_revision || switch_revision <= active_revision
+                    || (active_revision != 0 && switch_region == active_region)) switch_response_valid <= 1;
+                else begin
+                    active_revision <= switch_revision; active_region <= switch_region;
+                    active_instructions <= switch_instructions; active_sync_count <= switch_sync_count;
+                    active_states <= switch_states; active_jobs <= switch_jobs; active_buffers <= switch_buffers;
+                    handoff_pending <= 1;
+                end
+            end
+            if (handoff_request && handoff_complete) begin
+                handoff_pending <= 0; switch_response_valid <= 1;
+            end
+        end
+    end
+
+    always @(posedge clk) begin
+        if (reset) begin
             phase <= IDLE;
             done <= 0;
             error_code <= 0;
@@ -198,7 +246,7 @@ module audio_pipeline #(
             end else case (phase)
                 IDLE: if (run_valid && run_ready) begin
                     quantum <= run_quantum; chunk_frames <= run_chunk_frames; chunk_shift <= shift_for(run_chunk_frames);
-                    buffers <= run_buffers;
+                    buffers <= selected_buffers;
                     inputs <= run_inputs;
                     outputs <= run_outputs;
                     error_code <= 0;

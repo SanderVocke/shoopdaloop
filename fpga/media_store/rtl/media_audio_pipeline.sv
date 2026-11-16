@@ -2,6 +2,8 @@
 
 module media_audio_pipeline #(
     parameter integer EXTERNAL_IO = 0,
+    parameter integer LIVE_LOADING = 0,
+    parameter integer PROGRAM_REGIONS = LIVE_LOADING != 0 ? 2 : 1,
     parameter integer PROGRAM_DEPTH = 32, parameter integer STATE_DEPTH = 16,
     parameter integer JOB_DEPTH = 32, parameter integer MAX_FRAMES = 32,
     parameter integer BUFFERS = 16, parameter integer INPUT_PORTS = 2, parameter integer OUTPUT_PORTS = 2,
@@ -33,6 +35,15 @@ module media_audio_pipeline #(
     output wire [31:0] reclaim_pages_used, output wire [31:0] reclaim_pages_available,
     output wire [63:0] reclaim_pages_freed, output wire [63:0] reclaim_capacity_failures,
 
+    input wire run_program_region, input wire [31:0] run_sync_count,
+    input wire switch_valid, output wire switch_ready,
+    input wire [63:0] switch_expected, switch_revision,
+    input wire switch_region,
+    input wire [15:0] switch_instructions, switch_sync_count, switch_states, switch_jobs, switch_buffers,
+    output wire switch_response_valid, input wire switch_response_ready,
+    output wire switch_response_error,
+    output wire [63:0] switch_first_frame, active_revision,
+    output wire [63:0] sync_frame,
     input wire run_valid, output wire run_ready,
     input wire [31:0] run_instruction_count, input wire [31:0] run_state_count,
     input wire [31:0] run_quantum,
@@ -42,7 +53,7 @@ module media_audio_pipeline #(
     output wire [7:0] error_code, output wire [1:0] error_stage,
     output wire state_busy, output wire state_done, output wire jobs_busy, output wire jobs_done,
     output wire [BUFFERS-1:0] buffer_ready,
-    input wire cfg_valid, output wire cfg_ready, input wire cfg_state, input wire cfg_write,
+    input wire cfg_valid, output wire cfg_ready, input wire cfg_state, input wire cfg_loop, input wire cfg_write,
     input wire [15:0] cfg_address, input wire [`SHOOP_SP_STATE_BITS-1:0] cfg_write_data,
     output wire cfg_response_valid, output wire cfg_response_error,
     output wire [`SHOOP_SP_STATE_BITS-1:0] cfg_read_data,
@@ -105,36 +116,51 @@ module media_audio_pipeline #(
         if (reset) completion_pending <= 0;
         else completion_pending <= (pipeline_done || completion_pending) && !done;
     end
-    assign run_ready = pipeline_ready && internal_ready && !store_cmd_valid && !store_cfg_valid;
+    assign run_ready = pipeline_ready && internal_ready && !store_cmd_valid && (LIVE_LOADING != 0 || !store_cfg_valid);
     assign cfg_ready = state_cfg_ready && !store_busy;
     assign audio_cfg_ready = sample_cfg_ready && !store_busy;
-    assign store_cmd_ready = internal_ready && !pipeline_busy;
+    assign store_cmd_ready = internal_ready && !pipeline_busy && !handoff_request && !fence_issued;
     assign job_cmd_ready = internal_ready && pipeline_busy;
-    assign store_cfg_ready = internal_cfg_ready && !pipeline_busy;
-    assign store_done = internal_done && !pipeline_busy;
+    assign store_cfg_ready = internal_cfg_ready && !pipeline_busy && !(LIVE_LOADING != 0 && run_valid);
+    assign store_done = internal_done && !pipeline_busy && !fence_issued;
     assign store_write_ready = internal_write_ready && !pipeline_busy;
     assign job_write_ready = internal_write_ready && pipeline_busy;
     assign store_read_valid = internal_read_valid && !pipeline_busy;
     assign job_read_valid = internal_read_valid && pipeline_busy;
     assign store_read_data = store_sample;
 
+    wire handoff_request;
+    reg fence_issued;
+    wire fence_valid = handoff_request && !fence_issued && !pipeline_busy;
+    always @(posedge clk) begin
+        if (reset) fence_issued <= 0;
+        else begin
+            if (fence_valid && internal_ready) fence_issued <= 1;
+            if (fence_issued && internal_done) fence_issued <= 0;
+        end
+    end
     wire unused_sync_event;
-    wire [63:0] unused_sync_frame;
     wire [255:0] unused_sync_data;
-    audio_pipeline #(.EXTERNAL_IO(EXTERNAL_IO),
+    audio_pipeline #(.EXTERNAL_IO(EXTERNAL_IO), .LIVE_LOADING(LIVE_LOADING), .PROGRAM_REGIONS(PROGRAM_REGIONS),
         .PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH),
         .MAX_FRAMES(MAX_FRAMES), .BUFFERS(BUFFERS), .INPUT_PORTS(INPUT_PORTS), .OUTPUT_PORTS(OUTPUT_PORTS),
         .CHUNK_FRAMES(CHUNK_FRAMES), .ENABLE_MEDIA(1)
     ) pipeline (
         .sample_input_read(sample_input_read), .sample_input_address(sample_input_address), .sample_input_data(sample_input_data),
         .sample_output_write(sample_output_write), .sample_output_address(sample_output_address), .sample_output_data(sample_output_data),
-        .clk(clk), .reset(reset), .run_valid(run_valid && run_ready), .run_ready(pipeline_ready),
-        .run_instruction_count(run_instruction_count), .run_sync_count(32'b0), .run_state_count(run_state_count),
+        .clk(clk), .reset(reset), .run_valid(run_valid && internal_ready && !store_cmd_valid && (LIVE_LOADING != 0 || !store_cfg_valid)), .run_ready(pipeline_ready),
+        .switch_valid(switch_valid), .switch_ready(switch_ready), .switch_expected(switch_expected), .switch_revision(switch_revision),
+        .switch_region(switch_region), .switch_instructions(switch_instructions), .switch_sync_count(switch_sync_count),
+        .switch_states(switch_states), .switch_jobs(switch_jobs), .switch_buffers(switch_buffers),
+        .switch_response_valid(switch_response_valid), .switch_response_ready(switch_response_ready),
+        .switch_response_error(switch_response_error), .switch_first_frame(switch_first_frame), .active_revision(active_revision),
+        .handoff_request(handoff_request), .handoff_complete(fence_issued && internal_done && store_error_code == 0),
+        .run_instruction_count(run_instruction_count), .run_sync_count(run_sync_count), .run_program_region(run_program_region), .run_state_count(run_state_count),
         .run_quantum(run_quantum), .run_chunk_frames(run_chunk_frames), .run_job_budget(run_job_budget), .run_buffers(run_buffers),
         .run_inputs(run_inputs), .run_outputs(run_outputs), .job_enable(job_enable),
         .busy(pipeline_busy), .done(pipeline_done), .error_code(error_code), .error_stage(error_stage),
         .state_busy(state_busy), .state_done(state_done), .jobs_busy(jobs_busy), .jobs_done(jobs_done), .buffer_ready(buffer_ready),
-        .cfg_valid(cfg_valid && !store_busy), .cfg_ready(state_cfg_ready), .cfg_state(cfg_state), .cfg_loop(1'b0), .cfg_write(cfg_write),
+        .cfg_valid(cfg_valid && !store_busy), .cfg_ready(state_cfg_ready), .cfg_state(cfg_state), .cfg_loop(cfg_loop), .cfg_write(cfg_write),
         .cfg_address(cfg_address), .cfg_write_data(cfg_write_data), .cfg_response_valid(cfg_response_valid),
         .cfg_response_error(cfg_response_error), .cfg_read_data(cfg_read_data),
         .audio_cfg_valid(audio_cfg_valid && !store_busy), .audio_cfg_ready(sample_cfg_ready),
@@ -143,7 +169,7 @@ module media_audio_pipeline #(
         .audio_cfg_response_error(audio_cfg_response_error), .audio_cfg_read_data(audio_cfg_read_data),
         .monitor_valid(monitor_valid), .monitor_ready(monitor_ready), .monitor_data(monitor_data),
         .queued_jobs(queued_jobs), .drain_valid(drain_valid), .drain_ready(drain_ready),
-        .sync_frame(unused_sync_frame), .sync_event_valid(unused_sync_event), .sync_event_ready(1'b1), .sync_event_data(unused_sync_data),
+        .sync_frame(sync_frame), .sync_event_valid(unused_sync_event), .sync_event_ready(1'b1), .sync_event_data(unused_sync_data),
         .loop_read_valid(loop_read_valid), .loop_read_ready(loop_read_ready), .loop_read_slot(loop_read_slot),
         .loop_response_valid(loop_response_valid), .loop_response_error(loop_response_error), .loop_response_data(loop_response_data),
         .media_cmd_valid(job_cmd_valid), .media_cmd_ready(job_cmd_ready), .media_cmd_opcode(job_opcode),
@@ -164,8 +190,8 @@ module media_audio_pipeline #(
         .reclaim_block(reclaim_block),.reclaim_blocks(reclaim_blocks),.reclaim_freed(reclaim_freed),
         .reclaim_cycles(reclaim_cycles),.reclaim_quiescent(reclaim_quiescent),
         .hint_valid(hint_valid), .hint_ready(hint_ready), .hint_view(hint_view), .hint_position(hint_position), .hint_length(hint_length), .hint_count(hint_count),
-        .cmd_valid(pipeline_busy ? job_cmd_valid : store_cmd_valid), .cmd_ready(internal_ready),
-        .cmd_opcode(pipeline_busy ? job_opcode : store_cmd_opcode), .cmd_view(pipeline_busy ? job_view : store_cmd_view),
+        .cmd_valid(pipeline_busy ? job_cmd_valid : (fence_valid || (!fence_issued && store_cmd_valid))), .cmd_ready(internal_ready),
+        .cmd_opcode(pipeline_busy ? job_opcode : fence_valid ? 4'd7 : store_cmd_opcode), .cmd_view(pipeline_busy ? job_view : store_cmd_view),
         .cmd_start(pipeline_busy ? job_start : store_cmd_start), .cmd_length(pipeline_busy ? job_length : store_cmd_length),
         .cmd_count(pipeline_busy ? job_count : store_cmd_count),
         .busy(store_busy), .done(internal_done), .error_code(store_error_code), .memory_meta_valid(memory_meta_valid), .memory_meta_ready(memory_meta_ready), .memory_meta_write(memory_meta_write), .memory_meta_address(memory_meta_address), .memory_meta_write_data(memory_meta_write_data), .memory_meta_count(memory_meta_count), .memory_meta_write_valid(memory_meta_write_valid), .memory_meta_write_ready(memory_meta_write_ready), .memory_meta_read_valid(memory_meta_read_valid), .memory_meta_read_ready(memory_meta_read_ready), .memory_meta_response_valid(memory_meta_response_valid), .memory_meta_response_ready(memory_meta_response_ready), .memory_meta_response_error(memory_meta_response_error), .memory_meta_read_data(memory_meta_read_data), .memory_fault(memory_fault),
@@ -173,7 +199,7 @@ module media_audio_pipeline #(
         .write_valid(pipeline_busy ? job_write_valid : store_write_valid), .write_ready(internal_write_ready),
         .write_data(pipeline_busy ? job_write_data : store_write_data),
         .read_valid(internal_read_valid), .read_ready(pipeline_busy ? job_read_ready : store_read_ready), .read_data(store_sample),
-        .cfg_valid(store_cfg_valid && !pipeline_busy), .cfg_ready(internal_cfg_ready), .cfg_write(store_cfg_write),
+        .cfg_valid(store_cfg_valid && !pipeline_busy && !(LIVE_LOADING != 0 && run_valid)), .cfg_ready(internal_cfg_ready), .cfg_write(store_cfg_write),
         .cfg_space(store_cfg_space), .cfg_address(store_cfg_address), .cfg_write_data(store_cfg_write_data),
         .cfg_response_valid(store_cfg_response_valid), .cfg_response_error(store_cfg_response_error), .cfg_read_data(store_cfg_read_data),
         .memory_valid(store_memory_valid), .memory_ready(store_memory_ready), .memory_write(store_memory_write),

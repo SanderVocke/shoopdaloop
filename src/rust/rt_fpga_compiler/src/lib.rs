@@ -339,7 +339,6 @@ impl LogicalStateProgram {
         if !matches!(self.quantum, 1 | 16 | 32 | 64 | 128)
             || self.chunk_frames == 0
             || self.quantum % self.chunk_frames != 0
-            || self.loops.is_empty()
             || self.jobs_per_quantum > r.queue_capacity
             || u64::from(r.events) < 4 * self.loops.len() as u64
             || self.sync_pass.len() != self.loops.len()

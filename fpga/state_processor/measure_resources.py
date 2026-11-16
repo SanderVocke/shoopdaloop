@@ -14,6 +14,7 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--yosys', default='yosys')
     parser.add_argument('--program-depth', type=int, default=256)
+    parser.add_argument('--program-regions', type=int, choices=(1, 2), default=1)
     parser.add_argument('--state-depth', type=int, default=256)
     parser.add_argument('--job-depth', type=int, default=256)
     parser.add_argument('--loop-depth', type=int)
@@ -25,6 +26,8 @@ def main():
         parser.error('output must be empty to preserve measurement provenance')
     parameters = dict(PROGRAM_DEPTH=args.program_depth, STATE_DEPTH=args.state_depth,
                       JOB_DEPTH=args.job_depth)
+    if args.program_regions != 1:
+        parameters['PROGRAM_REGIONS'] = args.program_regions
     if args.loop_depth is not None:
         parameters['LOOP_DEPTH'] = args.loop_depth
     if any(value < 1 for value in parameters.values()):
@@ -39,7 +42,7 @@ def main():
     def quote(path):
         return json.dumps(str(path))
     commands = [
-        'read_verilog -sv -I' + quote(source) + ' ' +
+        'read_verilog -sv -I ' + quote(source) + ' ' +
         ' '.join(quote(path) for path in sorted(source.glob('*.sv'))),
         'chparam ' + ' '.join(f'-set {name} {value}' for name, value in parameters.items()) + ' state_processor',
         'synth_xilinx -family xc7 -flatten -noiopad -noclkbuf -top state_processor',

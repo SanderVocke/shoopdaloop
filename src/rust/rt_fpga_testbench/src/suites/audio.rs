@@ -271,7 +271,7 @@ fn sample_protocol(d: &mut Audio, s: &mut Sim<'_>) {
         (0, d.capacities[5] * n),
         (1, d.capacities[6] * n),
         (2, d.capacities[4] * n),
-        (3, 0),
+        (3, d.capacities[4]),
     ] {
         d.sample_config(s, space, size, Some(i32::MAX), true);
         d.sample_config(s, space, size, None, true);

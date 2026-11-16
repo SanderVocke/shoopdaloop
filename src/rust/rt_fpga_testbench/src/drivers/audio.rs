@@ -45,6 +45,9 @@ impl Audio {
     pub fn new(sim: &mut Sim<'_>, capacities: [u64; 7], seed: u64) -> Self {
         Self::with_guards(sim, capacities, seed, &["busy"])
     }
+    pub fn loading(sim: &mut Sim<'_>, capacities: [u64; 7], seed: u64) -> Self {
+        Self::with_guards(sim, capacities, seed, &[])
+    }
     pub fn coordinated(sim: &mut Sim<'_>, capacities: [u64; 7], seed: u64) -> Self {
         Self::with_guards(sim, capacities, seed, &["state_busy", "jobs_busy"])
     }

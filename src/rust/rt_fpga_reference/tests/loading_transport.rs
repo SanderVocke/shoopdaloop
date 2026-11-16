@@ -46,6 +46,8 @@ struct DelayedMemory {
     media: MediaStore,
     delay: usize,
     pending: usize,
+    fail_begin: bool,
+    fail_poll: bool,
 }
 impl Memory for DelayedMemory {
     fn begin_capture(&mut self, view: ViewId) -> Result<(), Error> {
@@ -67,10 +69,16 @@ impl Memory for DelayedMemory {
         self.media.prepare_unused_view(view)
     }
     fn begin_completion_fence(&mut self) -> Result<(), Error> {
+        if self.fail_begin {
+            return Err(Error::InvalidState);
+        }
         self.pending = self.delay;
         self.media.begin_completion_fence()
     }
     fn completion_fence_ready(&mut self) -> Result<bool, Error> {
+        if self.fail_poll {
+            return Err(Error::InvalidState);
+        }
         if self.pending != 0 {
             self.pending -= 1;
             Ok(false)
@@ -194,21 +202,39 @@ impl Fixture {
                 media,
                 delay: 0,
                 pending: 0,
+                fail_begin: false,
+                fail_poll: false,
             },
             allocator: Allocator::new(limits()),
         }
     }
     fn step(&mut self) {
-        self.processor
-            .process(
-                &mut self.jobs,
-                &mut self.memory,
-                &[&[Fixed::from_f32(0.25); 16]],
-                &mut [&mut [Fixed::ZERO; 16], &mut [Fixed::ZERO; 16]],
-            )
-            .unwrap();
+        self.try_step().unwrap();
+    }
+    fn try_step(&mut self) -> Result<(), rt_fpga_reference::pipeline::PipelineError> {
+        self.processor.process(
+            &mut self.jobs,
+            &mut self.memory,
+            &[&[Fixed::from_f32(0.25); 16]],
+            &mut [&mut [Fixed::ZERO; 16], &mut [Fixed::ZERO; 16]],
+        )
     }
     fn stage(&mut self, ids: &[u32]) -> SwitchProgram {
+        self.stage_source(ids, None)
+    }
+    fn stage_source(&mut self, ids: &[u32], source: Option<u32>) -> SwitchProgram {
+        let descriptor = self.request_stage(ids, source);
+        for _ in 0..100 {
+            self.step();
+            if let Some(ready) = self.programs.ready() {
+                assert_eq!(ready.revision, descriptor.revision);
+                ready.result.unwrap();
+                return descriptor;
+            }
+        }
+        panic!("staging did not become ready");
+    }
+    fn request_stage(&mut self, ids: &[u32], source: Option<u32>) -> SwitchProgram {
         let logical = GraphDescription {
             quantum: 16,
             loops: ids
@@ -218,7 +244,7 @@ impl Fixture {
                         slot,
                         generation: 1,
                     },
-                    source: None,
+                    source: if slot == 1 { source } else { None },
                     input: true,
                     output: true,
                     gain: 1.0,
@@ -244,15 +270,7 @@ impl Fixture {
             PreparedProgram::new(target.build_image(&logical, layout).unwrap(), fresh).unwrap();
         let descriptor = image.descriptor();
         assert!(self.programs.stage(image).is_ok());
-        for _ in 0..100 {
-            self.step();
-            if let Some(ready) = self.programs.ready() {
-                assert_eq!(ready.revision, descriptor.revision);
-                ready.result.unwrap();
-                return descriptor;
-            }
-        }
-        panic!("staging did not become ready");
+        descriptor
     }
     fn send(&mut self, revision: u64, commands: &[Command]) {
         self.client
@@ -297,6 +315,174 @@ impl Fixture {
                 .unwrap(),
         )
     }
+}
+
+#[shoop_test]
+fn fence_faults_retain_images_and_ownership_without_rt_destruction() {
+    for fail_begin in [true, false] {
+        let mut f = Fixture::new();
+        f.install(&[0]);
+        let image = f.stage(&[0, 1]);
+        f.publish(image);
+        f.memory.fail_begin = fail_begin;
+        f.memory.fail_poll = !fail_begin;
+        assert_no_heap(|| {
+            assert_eq!(
+                f.try_step(),
+                Err(rt_fpga_reference::pipeline::PipelineError::Jobs(
+                    Error::InvalidState
+                ))
+            )
+        });
+        assert!(f.response().is_none());
+        assert_eq!(f.allocator.current().unwrap().revision, 1);
+        assert_eq!(f.allocator.cancel(image.revision), Err(LoadError::Busy));
+        assert_eq!(f.processor.handoff_pending(), !fail_begin);
+        assert_eq!(
+            f.processor.pipeline().revision(),
+            if fail_begin { 1 } else { image.revision }
+        );
+    }
+}
+
+#[shoop_test]
+fn slow_control_reclamation_backpressures_staging_without_rt_destruction_or_stalling_audio() {
+    let mut f = Fixture::new();
+    for _ in 0..3 {
+        let image = f.stage(&[0]);
+        f.publish(image);
+        f.step();
+        assert_eq!(f.response().unwrap().records()[0].code(), Code::Applied);
+        f.allocator.complete(image.revision).unwrap();
+    }
+    let next = f.request_stage(&[0], None);
+    let before = f.processor.pipeline().state().frame();
+    assert_no_heap(|| {
+        for _ in 0..4 {
+            f.step();
+        }
+    });
+    assert!(f.programs.ready().is_none());
+    assert_eq!(f.processor.pipeline().state().frame(), before + 64);
+    drop(f.programs.reclaim().unwrap());
+    assert_no_heap(|| f.step());
+    assert_eq!(f.programs.ready().unwrap().revision, next.revision);
+    f.publish(next);
+    assert_no_heap(|| f.step());
+    assert_eq!(f.response().unwrap().records()[0].code(), Code::Applied);
+}
+
+#[shoop_test]
+fn clear_plans_and_switch_share_one_boundary_when_changing_sync_source() {
+    use shoop_rt_protocol::immediate::{ClearPlanned, PlannedTransition, TransitionPlan};
+    let mut f = Fixture::new();
+    let a = f.stage_source(&[0, 1], Some(0));
+    f.publish(a);
+    f.step();
+    assert!(f.response().is_some());
+    f.allocator.complete(a.revision).unwrap();
+    f.step();
+    while f.programs.reclaim().is_some() {}
+    f.send(
+        a.revision,
+        &[Command::Transition(0, TransitionMode::Recording.into())],
+    );
+    f.step();
+    assert!(f.response().is_some());
+    f.send(
+        a.revision,
+        &[
+            Command::Transition(0, TransitionMode::Playing.into()),
+            Command::Transition(1, TransitionMode::Recording.into()),
+        ],
+    );
+    f.step();
+    assert!(f.response().is_some());
+    let b = f.stage_source(&[0, 1], Some(1));
+    assert_eq!(
+        f.allocator.pending().unwrap().changed_sources(),
+        &[Identity {
+            slot: 1,
+            generation: 1
+        }]
+    );
+    f.send(
+        a.revision,
+        &[Command::Transition(
+            1,
+            TransitionPlan {
+                now: None,
+                first: Some(PlannedTransition {
+                    mode: TransitionMode::Stopped,
+                    skip: 1,
+                }),
+                second: None,
+            },
+        )],
+    );
+    f.step();
+    assert!(f.response().is_some());
+    let physical = f
+        .allocator
+        .current()
+        .unwrap()
+        .loop_id(Identity {
+            slot: 1,
+            generation: 1,
+        })
+        .unwrap();
+    let id = rt_fpga_reference::transitions::LoopId {
+        slot: physical.slot,
+        generation: physical.generation,
+    };
+    let before = f
+        .processor
+        .pipeline()
+        .state()
+        .loop_state(id)
+        .unwrap()
+        .state
+        .capture_frames;
+    assert!(f
+        .processor
+        .pipeline()
+        .state()
+        .mode_plan(id)
+        .unwrap()
+        .0
+        .steps[0]
+        .is_some());
+    f.allocator.publish(b.revision).unwrap();
+    f.client
+        .carrier_mut()
+        .endpoint_mut()
+        .set_configuration(b.revision, b.revision);
+    f.send(
+        a.revision,
+        &[
+            Command::ClearPlannedTransitions(1, ClearPlanned::Both),
+            Command::SwitchProgram(b),
+        ],
+    );
+    assert_no_heap(|| f.step());
+    let response = f.response().unwrap();
+    assert!(response.records().iter().all(|r| r.code() == Code::Applied));
+    let slot = f.processor.pipeline().state().loop_state(id).unwrap();
+    assert!(f
+        .processor
+        .pipeline()
+        .state()
+        .mode_plan(id)
+        .unwrap()
+        .0
+        .steps
+        .iter()
+        .all(Option::is_none));
+    assert_eq!(
+        slot.state.mode,
+        rt_fpga_reference::transitions::Mode::Recording
+    );
+    assert_eq!(slot.state.capture_frames, before + 16);
 }
 
 #[shoop_test]

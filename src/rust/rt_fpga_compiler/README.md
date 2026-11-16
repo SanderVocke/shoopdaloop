@@ -24,6 +24,8 @@ and buffer slots, loop identities/sync relationships, initial values, resource
 requirements and control/meter bindings. It contains no packed instruction words
 or physical state addresses. Validation checks the prepared resource envelope,
 source-before-dependent sync order and referenced state/buffer types.
+The logical representation also permits a loop-free program, used to retain
+processing time while no loop states are owned.
 
 `StateProgramTarget` supplies limits and an associated `CompiledProgram` type.
 `compile(fixed, target)` emits, validates and builds one fixture. Call `emit` once
@@ -40,6 +42,14 @@ preparation or RTL loading. The RTL target can place state at a nonzero
 `state_base`; it relocates instruction operands and returned bindings together.
 There is no binary-compatibility requirement between the compiled results.
 
+`loading::Allocator` binds logical instances against current occupancy. Continuing
+instances retain their loop/value/history allocations and receive no initializers.
+New instances reserve unused slots; old-only slots remain pinned until the switch
+fence completes. A layout carries concrete addresses, generations, current/next
+revisions and the inactive instruction region. Both targets' `build_image` methods
+accept that layout and produce sparse fresh-state writes. Sync and scratch/history
+wiring lives in program operands. See [the loading design](../../../LOADING_DESIGN.md).
+
 The reference carrier tests now build `MonoLoops` through `RustTarget` and retain
 their independent production-native comparisons over 640 callbacks. The combined
 SP/JP RTL test builds `SyncSmoothing` through both targets and compares 120 sample
@@ -50,10 +60,13 @@ it is not reconstructed from the Rust instruction representation. Existing raw
 vectors and native-resolver tests remain independent checks.
 
 Compilation/preparation stays separate from `carrier::Endpoint` and processing
-pacing. The temporary reference host receives graph metadata as one initial
+pacing. The temporary reference host receives graph metadata as one bounded
 immediate group from `RtBackend`, builds this logical graph and hands the Rust
-configuration to its independently paced worker. The RTL target accepts the same
-graph in tests; its runtime communication frontend is still unimplemented.
+configuration to its independently paced worker for initial and live installation.
+The RTL target accepts the same graph and shares the ARM allocator. Marlin's
+program upload and switch-FIFO bridge exercise live instruction regions and the
+media completion fence; its complete runtime-command/snapshot frontend remains
+separate work.
 
 ```sh
 cargo test --locked -p rt_fpga_compiler

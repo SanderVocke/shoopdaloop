@@ -283,7 +283,7 @@ module sp_engine #(
                     if (queue_bad) begin
                         error_code <= `SHOOP_SP_QUEUE_FULL;
                         done <= 1; phase <= IDLE;
-                    end else if (shape_bad || (run_sync_count!=0 && arithmetic_sum[64])) begin
+                    end else if (shape_bad || arithmetic_sum[64]) begin
                         error_code <= `SHOOP_SP_INVALID_STATE; done <= 1; phase <= IDLE;
                     end else if (program_bad) begin
                         error_code <= `SHOOP_SP_INVALID_PROGRAM;
@@ -292,8 +292,10 @@ module sp_engine #(
                         error_code <= `SHOOP_SP_INVALID_STATE;
                         done <= 1; phase <= IDLE;
                     end else if (empty_program) begin
+                        sync_frame <= arithmetic_sum[63:0];
                         done <= 1; phase <= IDLE;
                     end else begin
+                        if (run_sync_count==0) sync_frame <= arithmetic_sum[63:0];
                         phase <= FETCH;
                     end
                 end

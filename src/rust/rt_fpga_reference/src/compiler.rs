@@ -186,7 +186,12 @@ impl StateProgramTarget for RustTarget<'_> {
                 },
             })
             .collect();
-        let slots = logical.loops.iter().map(|l| l.id.slot + 1).max().unwrap();
+        let slots = logical
+            .loops
+            .iter()
+            .map(|l| l.id.slot + 1)
+            .max()
+            .unwrap_or(1);
         let plan = TransitionPlan::compile(
             PlanDescription {
                 quantum: logical.quantum,

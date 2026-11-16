@@ -225,6 +225,14 @@ impl Processor {
                     continue;
                 }
                 let header = group.header;
+                if self.retired_program.is_some()
+                    && group
+                        .commands()
+                        .any(|r| matches!(r.command(), Command::SwitchProgram(_)))
+                {
+                    group.leave_unread();
+                    break;
+                }
                 let configuration = self.engine.configuration;
                 let count = group.commands().count();
                 let malformed = group.commands().enumerate().any(|(i, r)| {
@@ -250,9 +258,10 @@ impl Processor {
                         code
                     } else if let Command::SwitchProgram(descriptor) = record.command() {
                         if let Some(mut image) = self.next_program.take() {
-                            memory
-                                .begin_completion_fence()
-                                .map_err(PipelineError::Jobs)?;
+                            if let Err(error) = memory.begin_completion_fence() {
+                                self.next_program = Some(image);
+                                return Err(PipelineError::Jobs(error));
+                            }
                             let code = self.engine.switch(&mut image, descriptor, jobs);
                             if code == Code::Applied {
                                 retired = Some(image);
@@ -270,17 +279,17 @@ impl Processor {
                     records[i] = record.complete(applied);
                 }
                 if let Some(retired) = retired {
+                    self.pending_switch = Some(loading::PendingSwitch {
+                        header,
+                        frame,
+                        records,
+                        count,
+                        retired,
+                    });
                     if !memory
                         .completion_fence_ready()
                         .map_err(PipelineError::Jobs)?
                     {
-                        self.pending_switch = Some(loading::PendingSwitch {
-                            header,
-                            frame,
-                            records,
-                            count,
-                            retired,
-                        });
                         group.leave_unread();
                         break;
                     }
@@ -288,7 +297,7 @@ impl Processor {
                         self.retired_program.is_none(),
                         "bounded reclamation storage"
                     );
-                    self.retired_program = Some(retired);
+                    self.retired_program = Some(self.pending_switch.take().unwrap().retired);
                 }
                 let mut index = 0;
                 group.respond(header.complete(frame, code), |_| {

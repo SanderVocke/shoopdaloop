@@ -151,8 +151,9 @@ module job_processor #(
     wire cfg_accept = cfg_valid && cfg_ready;
     wire cfg_shape_in_range = (cfg_space == 0) ? cfg_address < 32'(INPUT_PORTS * MAX_FRAMES)
         : (cfg_space == 1) ? cfg_address < 32'(OUTPUT_PORTS * MAX_FRAMES)
-        : (cfg_space == 2) && (cfg_address < 32'(BUFFERS * MAX_FRAMES));
-    wire cfg_in_range = cfg_shape_in_range && ((EXTERNAL_IO == 0) || cfg_space == 2);
+        : (cfg_space == 2) ? (cfg_address < 32'(BUFFERS * MAX_FRAMES))
+        : cfg_write && cfg_address < 32'(BUFFERS);
+    wire cfg_in_range = cfg_shape_in_range && ((EXTERNAL_IO == 0) || cfg_space >= 2);
     wire [31:0] input_data, output_data, scratch_data;
     wire [31:0] local_input_data;
     assign input_data = EXTERNAL_IO != 0 ? sample_input_data : local_input_data;
@@ -219,8 +220,8 @@ module job_processor #(
             $fatal(1, "Invalid job processor capacities");
     end
     assign busy = phase != IDLE;
-    assign cfg_ready = !busy && !cfg_pending && !reset;
-    assign run_ready = !busy && !cfg_pending && !cfg_valid && !reset;
+    assign cfg_ready = !busy && !cfg_pending && !run_valid && !reset;
+    assign run_ready = !busy && !cfg_pending && !reset;
     assign job_ready = (phase == FETCH) && jobs_pending && job_enable && !reset && ((ENABLE_MEDIA == 0) || !media_fault);
     assign cfg_response_valid = cfg_pending && !reset;
     assign cfg_response_error = cfg_error;
@@ -370,6 +371,8 @@ module job_processor #(
             product <= 0;
             product_negative <= 0;
         end else begin
+            if (cfg_accept && cfg_space == 3 && cfg_write && cfg_in_range)
+                smooth_valid[BUFFER_BITS'(cfg_address)] <= 0;
             done <= 0;
             gain_read_valid <= 0; gain_sample_valid <= 0; gain_operand_valid <= 0; gain_multiply_valid <= 0; gain_product_valid <= 0;
             mix_read_valid <= 0; mix_sample_valid <= 0; stream_store_valid <= 0;

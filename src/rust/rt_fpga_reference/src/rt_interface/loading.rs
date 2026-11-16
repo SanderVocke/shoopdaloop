@@ -161,6 +161,7 @@ impl Processor {
         if let Some(image) = self.retired_program.take() {
             if let Err(rtrb::PushError::Full(image)) = ports.retired.push(image) {
                 self.retired_program = Some(image);
+                return Ok(());
             }
         }
         if let Ok(request) = ports.upload.pop() {

@@ -34,6 +34,7 @@ impl Drop for ChildGuard {
 fn error(e: shoop_app_client::Error) -> anyhow::Error {
     anyhow::anyhow!("application API: {e:?}")
 }
+#[track_caller]
 fn wait(
     client: &mut Client,
     connection: &mut Connection,
@@ -51,7 +52,8 @@ fn wait(
         }
         ensure!(
             Instant::now() < until,
-            "application observation timed out; state={:?}",
+            "application observation timed out at {}; state={:?}",
+            std::panic::Location::caller(),
             client.state()
         );
         thread::sleep(Duration::from_millis(2));
@@ -272,7 +274,7 @@ pub fn run_with(host: PathBuf, output: PathBuf) -> Result<()> {
         )],
     )?;
     wait(&mut client, &mut connection, |c| {
-        loop_view(c, voice).is_some_and(|l| l.mode == LoopMode::Recording)
+        loop_view(c, voice).is_some_and(|l| l.mode == LoopMode::Recording || l.length_frames > 0)
     })?;
     wait(&mut client, &mut connection, |c| {
         loop_view(c, voice).is_some_and(|l| l.mode == LoopMode::Stopped && l.length_frames > 0)

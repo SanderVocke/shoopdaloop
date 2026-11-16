@@ -11,6 +11,38 @@ pub struct RtlTarget<'a> {
     pub state_base: u16,
 }
 impl<'a> RtlTarget<'a> {
+    pub fn build_image(
+        &self,
+        logical: &LogicalStateProgram,
+        layout: rt_fpga_compiler::loading::Layout,
+    ) -> Result<ProgramImage, CompileError> {
+        if self.capacities.instructions > 32768 {
+            return Err(CompileError::Capacity(Resource::Instructions));
+        }
+        let compiled = self.build(&layout.relocate(logical)?)?;
+        let initializers = layout
+            .new_values()
+            .map(|(_, address)| {
+                let address = self.address(address)?;
+                Ok((address, compiled.state[usize::from(address)].clone()))
+            })
+            .collect::<Result<_, CompileError>>()?;
+        let new_loops = compiled
+            .loops
+            .iter()
+            .filter(|row| layout.new_loops().any(|id| id == row.id))
+            .map(|row| LoopImage {
+                id: row.id,
+                words: row.words,
+            })
+            .collect();
+        Ok(ProgramImage {
+            layout,
+            compiled,
+            initializers,
+            new_loops,
+        })
+    }
     pub fn new(capacities: [u64; 7], loop_slots: u32, media_views: &'a [u64]) -> Self {
         let count = |n: u64| n.min(65535) as u32;
         Self {
@@ -47,6 +79,12 @@ pub struct Binding {
 pub struct LoopImage {
     pub id: Identity,
     pub words: [u64; 16],
+}
+pub struct ProgramImage {
+    pub layout: rt_fpga_compiler::loading::Layout,
+    pub compiled: CompiledProgram,
+    pub initializers: Vec<(u16, Bits)>,
+    pub new_loops: Vec<LoopImage>,
 }
 pub struct CompiledProgram {
     pub instructions: Vec<Bits>,

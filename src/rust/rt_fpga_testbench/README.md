@@ -11,9 +11,10 @@ instructions, state/loop RAM images and physical control bindings. Its typed
 output is loaded directly by the state/audio drivers. The compiler and sync tests
 compare these programs against `compiler::RustTarget`, with deliberately different
 state addresses: 96 mono-loop SP quanta and 120 sync/smoothing SP/JP sample quanta.
-The reference's carrier tests use the same mono-loop fixture definition. General
-graph compilation and graph delivery through the runtime protocol remain future
-work; processor pacing and control endpoints remain separate from preparation.
+The reference's carrier tests use the same mono-loop fixture definition. The
+shared compiler also accepts the restricted mono graph descriptions used by the
+reference host. Processor pacing and control endpoints remain separate from
+preparation.
 
 The reference crate also has Rust-only transition and full functional pipeline
 tests: `cargo test --locked -p rt_fpga_reference --all-features`. They compare
@@ -27,10 +28,20 @@ record fixtures. There is no separate RTL transition processor.
 `rt_fpga_testbench` preserves the Marlin/Verilator simulation framework and
 component drivers. Its control integration can reuse the concrete queue-backed
 `shoop_rt_transport::rt::Endpoint`, which directly implements `carrier::Endpoint`
-for command groups and snapshots and ignores legacy requests. The RTL command/
-snapshot frontend and simulator attachment are not implemented yet; current tests
-still drive components explicitly. Carrier polling must remain independent from
-simulation clock advancement.
+for command groups and snapshots and ignores legacy requests. The program loader
+uses the same command/response FIFOs for ordered program switches.
+`RtlTarget::build_image` binds retained addresses and emits only fresh-state
+writes; `drivers::loading::Upload` issues direct memory transactions.
+`drivers::loading::Commands` bridges the switch record to the RTL boundary/fence
+handshake and retains its FIFO credit until completion. The component harness
+does not provide a Marlin application host or a complete RTL runtime-command/
+snapshot frontend. Carrier polling remains independent from simulation clocks.
+
+`--test loading` compares live Rust/RTL programs, retained ramps, smoothing
+history, plans and frames. It stages during execution, exercises cancellation,
+slot reuse, stale commands and response backpressure, and switches a media graph
+from recording into playback with delayed AXI completions. See
+[the loading notes](../../../docs/fpga/live-loading.md).
 
 The simulation framework needs Verilator **5.032**, a C++ compiler and Rust.
 Simulation is opt-in; default native and Wasm builds do not depend on Marlin.

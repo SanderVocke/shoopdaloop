@@ -16,7 +16,7 @@ pub struct SwitchProgram {
     pub buffers: u16,
 }
 
-/// One initially empty mono loop in the restricted single-install graph profile.
+/// One mono loop in the prepared graph profile; retained identities keep their state.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GraphLoop {
     pub slot: u32,

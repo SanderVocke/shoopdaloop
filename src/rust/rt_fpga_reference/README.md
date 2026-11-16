@@ -118,12 +118,23 @@ let mut client = ProtocolClient::new(InProcess::new(
 ));
 ```
 
-`Configuration` supplies immutable graph/topology epochs and the aligned initial
+`Configuration` supplies the initial graph/topology epochs and the aligned initial
 frame. Loops start stopped with the lengths configured in the graph. A
 `LoopBinding` supplies the loop identity, an optional gain-ramp address, an
 optional mono meter buffer and initial gain/timing metadata. The processing driver
 supplies JP, media and fixed-point samples to `Processor`. The control endpoint
 requires matching epochs, prepared limits and descriptive driver status.
+
+Live loading uses `loading::Allocator`, `RustTarget::build_image`, and
+`rt_interface::program_memory`. A `PreparedProgram` contains a bound program,
+fresh-slot initializers and ARM-only bindings. The processing side incrementally
+prepares unused media views, then reports readiness. Publication freezes the image;
+`SwitchProgram` is ordered with ordinary commands at a quantum boundary. Continuing
+state, recording media and DSP history stay at their existing addresses. Retired
+programs return through a bounded queue for destruction on the control thread.
+Completion waits for the memory fence and never follows merely from a snapshot
+showing the new revision. See [the implementation notes](../../../docs/fpga/live-loading.md)
+and [the loading contract](../../../LOADING_DESIGN.md).
 
 The endpoint handles `Hello`/`Goodbye`, immediate command groups and snapshot
 observation, push/pull configuration and pull requests. It intentionally ignores

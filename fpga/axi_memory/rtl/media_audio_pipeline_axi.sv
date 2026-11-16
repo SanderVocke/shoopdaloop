@@ -3,6 +3,8 @@
 
 module media_audio_pipeline_axi #(
     parameter integer EXTERNAL_IO = 0,
+    parameter integer LIVE_LOADING = 0,
+    parameter integer PROGRAM_REGIONS = LIVE_LOADING != 0 ? 2 : 1,
     parameter integer PROGRAM_DEPTH = 32, parameter integer STATE_DEPTH = 16,
     parameter integer JOB_DEPTH = 32, parameter integer MAX_FRAMES = 32,
     parameter integer BUFFERS = 16, parameter integer INPUT_PORTS = 2, parameter integer OUTPUT_PORTS = 2,
@@ -44,6 +46,15 @@ module media_audio_pipeline_axi #(
     output wire [31:0] reclaim_pages_available,
     output wire [63:0] reclaim_pages_freed,
     output wire [63:0] reclaim_capacity_failures,
+    input wire run_program_region, input wire [31:0] run_sync_count,
+    input wire switch_valid, output wire switch_ready,
+    input wire [63:0] switch_expected, switch_revision,
+    input wire switch_region,
+    input wire [15:0] switch_instructions, switch_sync_count, switch_states, switch_jobs, switch_buffers,
+    output wire switch_response_valid, input wire switch_response_ready,
+    output wire switch_response_error,
+    output wire [63:0] switch_first_frame, active_revision,
+    output wire [63:0] sync_frame,
     input wire run_valid,
     output wire run_ready,
     input wire [31:0] run_instruction_count,
@@ -66,7 +77,7 @@ module media_audio_pipeline_axi #(
     output wire [BUFFERS-1:0] buffer_ready,
     input wire cfg_valid,
     output wire cfg_ready,
-    input wire cfg_state,
+    input wire cfg_state, input wire cfg_loop,
     input wire cfg_write,
     input wire [15:0] cfg_address,
     input wire [`SHOOP_SP_STATE_BITS-1:0] cfg_write_data,
@@ -186,7 +197,7 @@ module media_audio_pipeline_axi #(
     wire [63:0] arena_bytes = 64'(SLOTS)*64'(CHUNK_FRAMES)*4;
     wire [31:0] physical_base = PHYSICAL_BASE;
     media_audio_pipeline #(
-        .EXTERNAL_IO(EXTERNAL_IO),
+        .EXTERNAL_IO(EXTERNAL_IO), .LIVE_LOADING(LIVE_LOADING), .PROGRAM_REGIONS(PROGRAM_REGIONS),
         .PROGRAM_DEPTH(PROGRAM_DEPTH),
         .STATE_DEPTH(STATE_DEPTH),
         .JOB_DEPTH(JOB_DEPTH),
