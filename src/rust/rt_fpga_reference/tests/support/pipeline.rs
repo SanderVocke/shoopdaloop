@@ -1,5 +1,5 @@
 //! Functional transition/state/job traces, independent of the RTL transport.
-use super::traces::{Collection, Response, TransitionPlanInput, TransitionResult, TransitionStep};
+use super::traces::{PlanInput, PlanWrite, Snapshot};
 use rt_fpga_reference::{
     fixed::Fixed,
     jobs::{BufferId, Job, JobProcessor},
@@ -14,7 +14,7 @@ use rt_fpga_reference::{
 #[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
 pub struct PipelineCase {
     pub name: String,
-    pub plan: TransitionPlanInput,
+    pub plan: PlanInput,
     pub program: Program,
     pub initial_state: StateSnapshot,
     pub queue_capacity: u32,
@@ -27,7 +27,7 @@ pub struct PipelineCase {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
 pub struct PipelineStep {
-    pub transition: TransitionStep,
+    pub plans: Vec<PlanWrite>,
     pub writes: Vec<StateWrite>,
     pub work: PipelineWork,
 }
@@ -49,7 +49,7 @@ pub enum PipelineWork {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
 pub struct PipelineResult {
-    pub transition: TransitionResult,
+    pub sync: Snapshot,
     pub jobs: Vec<Job>,
     pub state: StateSnapshot,
     pub error: Option<PipelineError>,
@@ -83,38 +83,11 @@ pub fn run_pipeline_case(case: PipelineCase) -> Result<PipelineTrace, PipelineEr
     p.trace_jobs(true);
     let mut results = Vec::new();
     for step in &case.steps {
-        let frame = p.state().frame();
-        let automatic: Vec<_> = if step.transition.collect_completed {
-            p.transitions()
-                .request_slots(p.state())
-                .flatten()
-                .filter(|r| r.outcome.is_some())
-                .map(|r| r.id)
-                .collect()
-        } else {
-            Vec::new()
-        };
-        let collected = automatic
-            .iter()
-            .chain(&step.transition.collect)
-            .map(|&request| Collection {
-                request,
-                result: p.collect(request).into(),
-            })
-            .collect();
-        let cancelled = step
-            .transition
-            .cancel
-            .iter()
-            .map(|&id| p.cancel(id).into())
-            .collect();
-        let submitted = step
-            .transition
-            .commands
-            .iter()
-            .map(|&c| p.submit(c).into())
-            .collect();
         if p.fault().is_none() {
+            for write in &step.plans {
+                p.write_plans(write.target, write.values(p.state()))
+                    .map_err(PipelineError::Transition)?;
+            }
             for write in &step.writes {
                 p.write_state(write.address, write.value)
                     .map_err(PipelineError::State)?;
@@ -127,10 +100,6 @@ pub fn run_pipeline_case(case: PipelineCase) -> Result<PipelineTrace, PipelineEr
             .process(&mut jobs, &mut media, &input_slices, &mut output_slices)
             .err();
         let emitted = p.emitted_jobs().to_vec();
-        let processed = match error {
-            Some(PipelineError::Transition(error)) => Response::Rejected(error),
-            _ => Response::Accepted(()),
-        };
         let audio = Some(AudioResult {
             remaining_jobs: p.queued_jobs().copied().collect(),
             buffers: (0..case.buffers)
@@ -144,17 +113,7 @@ pub fn run_pipeline_case(case: PipelineCase) -> Result<PipelineTrace, PipelineEr
             media: case.media.as_ref().map(|_| media.snapshot()),
         });
         results.push(PipelineResult {
-            transition: TransitionResult {
-                frame,
-                collected,
-                cancelled,
-                submitted,
-                processed,
-                states: p.state().loop_states().collect(),
-                requests: p.transitions().request_slots(p.state()).collect(),
-                events: p.state().events().to_vec(),
-                next_frame: p.state().frame(),
-            },
+            sync: Snapshot::from_sp(p.state()),
             jobs: emitted,
             state: StateSnapshot::from(p.state()),
             error,

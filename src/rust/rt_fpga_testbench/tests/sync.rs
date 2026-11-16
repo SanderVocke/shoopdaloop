@@ -2,14 +2,14 @@
 use rt_fpga_reference::{
     fixed::{Fixed, Ramp},
     jobs::JobQueue,
-    state::{Instruction, PlannedTransition, Program, StateProcessor, Value},
+    state::{Instruction, PlannedTransition, Program, Resolution, StateProcessor, Value},
     transitions::*,
 };
 use rt_fpga_testbench::{
     bits::Bits,
     clock::Edges,
     drivers::state::State,
-    loop_image::{LoopControl, access, image, operation, read_loop, write_plans, write_words},
+    loop_image::{LoopImage, access, image, operation, read_loop, write_plans, write_words},
     model::Model,
     protocol,
     random::Random,
@@ -92,8 +92,8 @@ fn reason(error: TransitionError) -> u64 {
         TransitionError::InstantaneousDependencyCycle => 11,
     }
 }
-fn resolution(request: RequestSnapshot) -> Bits {
-    let (outcome, why, frame) = match request.outcome.unwrap() {
+fn resolution(result: &Resolution) -> Bits {
+    let (outcome, why, frame) = match result.outcome {
         Outcome::Applied { frame } => (0, 0, frame),
         Outcome::Superseded { frame } => (1, 0, frame),
         Outcome::Cancelled { frame } => (2, 0, frame),
@@ -103,10 +103,8 @@ fn resolution(request: RequestSnapshot) -> Bits {
     b.set(0, 8, 3)
         .set(8, 8, why)
         .set(16, 8, outcome)
-        .set(32, 32, u64::from(request.command.target.slot))
-        .set(64, 32, u64::from(request.id.slot))
-        .set(96, 32, u64::from(request.id.generation))
-        .set(128, 64, request.command.sequence)
+        .set(32, 32, u64::from(result.target.slot))
+        .set(64, 64, result.plan_index as u64)
         .set(192, 64, frame);
     b
 }
@@ -144,12 +142,11 @@ fn exercise(
         },
         TransitionLimits {
             loop_slots: 160,
-            pending_requests: 32,
+
             events: 352,
         },
     )
     .unwrap();
-    let mut tp = TransitionProcessor::prepare(&plan);
     let mut memory = vec![Value::Word(0); specs.len()];
     memory.push(Value::Ramp(Ramp::new(Fixed(i32::MIN), Fixed(i32::MAX), 33)));
     memory.push(Value::Word((33 << 32) | (7 << 16) | 30));
@@ -188,13 +185,13 @@ fn exercise(
     d.load(s, &case);
     events.borrow_mut().rows.clear();
     let mut sp = StateProcessor::with_loops(plan, memory);
-    let mut control = LoopControl::default();
+    let mut image_check = LoopImage::default();
     for spec in &specs {
         write_words(
             &mut d.image,
             s,
             spec.id.slot,
-            &control.stage(sp.loop_state(spec.id).unwrap(), spec, None),
+            &image_check.stage(sp.loop_state(spec.id).unwrap(), spec, None),
             0,
             16,
         );
@@ -204,15 +201,6 @@ fn exercise(
     let mut queue = JobQueue::new(32);
     let mut cycle_samples = Vec::new();
     for quantum in 0..48 {
-        let done: Vec<_> = tp
-            .request_slots(&sp)
-            .flatten()
-            .filter(|r| r.outcome.is_some())
-            .map(|r| r.id)
-            .collect();
-        for id in done {
-            tp.take_completion(id).unwrap();
-        }
         for _ in 0..random.below(7) {
             let spec = &specs[random.below(specs.len() as u64) as usize];
             sequence += 1;
@@ -228,49 +216,37 @@ fn exercise(
                     retrigger: random.yes(2),
                 },
             };
-            let timing = if random.yes(2) {
-                spec.sync_source
-                    .map(|source| Timing::AfterTicks {
-                        source,
-                        skip: random.below(3),
-                    })
-                    .unwrap_or(Timing::At)
-            } else {
-                Timing::At
-            };
-            let _ = tp.submit(
-                &mut sp,
-                Command {
-                    target: spec.id,
-                    sequence: if seed > 20 {
-                        sequence.reverse_bits()
-                    } else {
-                        sequence
-                    },
-                    at: sp_frame(quantum, q) + random.below(3 * u64::from(q)),
-                    operation: op,
-                    timing,
+            let on_pulse = random.yes(2) && spec.sync_source.is_some();
+            let remaining_ticks = if on_pulse { random.below(3) } else { 0 };
+            let at = sp_frame(quantum, q) + random.below(3 * u64::from(q));
+            let plan = PlannedTransition {
+                sequence: if seed > 20 {
+                    sequence.reverse_bits()
+                } else {
+                    sequence
                 },
-            );
+                operation: op,
+                on_pulse,
+                effective: at.div_ceil(u64::from(q)) * u64::from(q),
+                remaining_ticks,
+            };
+            let mut plans = sp.loop_state(spec.id).unwrap().planned;
+            if let Some(index) = plans.iter().position(Option::is_none) {
+                plans[index] = Some(plan);
+                sp.write_plans(spec.id, plans).unwrap();
+            }
         }
         for spec in &specs {
             write_plans(
                 &mut d.image,
                 s,
                 spec.id.slot,
-                &control.stage(sp.loop_state(spec.id).unwrap(), spec, None),
+                &image_check.stage(sp.loop_state(spec.id).unwrap(), spec, None),
             );
         }
-        let pending: Vec<_> = tp
-            .request_slots(&sp)
-            .flatten()
-            .filter(|r| r.outcome.is_none())
-            .map(|r| r.id)
-            .collect();
         events.borrow_mut().rows.clear();
         let frame = sp.frame();
         sp.run(&program, &mut queue).unwrap();
-        tp.harvest(&mut sp);
         assert_eq!(
             run_rtl(d, s, program.sync_instructions.len()),
             0,
@@ -285,7 +261,8 @@ fn exercise(
         assert_eq!(d.drain(s), jobs, "jobs seed {seed}, quantum {quantum}");
         while queue.pop().is_some() {}
         assert_eq!(d.image.snapshot(s), json!({"memory":sp.values()}));
-        let rows = control.observe(&events.borrow().rows);
+        let rows = events.borrow().rows.clone();
+        image_check.observe(&rows);
         assert_eq!(
             rows.iter()
                 .filter(|b| b.get(0, 8) != 3)
@@ -295,18 +272,13 @@ fn exercise(
             "events seed {seed}, quantum {quantum}"
         );
         let mut actual: Vec<_> = rows.into_iter().filter(|b| b.get(0, 8) == 3).collect();
-        let mut expected: Vec<_> = tp
-            .request_slots(&sp)
-            .flatten()
-            .filter(|r| pending.contains(&r.id) && r.outcome.is_some())
-            .map(resolution)
-            .collect();
-        actual.sort_by_key(|b| (b.get(64, 32), b.get(96, 32)));
-        expected.sort_by_key(|b| (b.get(64, 32), b.get(96, 32)));
+        let mut expected: Vec<_> = sp.resolutions().iter().map(resolution).collect();
+        actual.sort_by_key(|b| (b.get(32, 32), b.get(64, 64)));
+        expected.sort_by_key(|b| (b.get(32, 32), b.get(64, 64)));
         assert_eq!(actual, expected, "outcomes seed {seed}, quantum {quantum}");
         for spec in &specs {
             let slot = sp.loop_state(spec.id).unwrap();
-            control.verify(&read_loop(&mut d.image, s, spec.id.slot), slot, spec, frame);
+            image_check.verify(&read_loop(&mut d.image, s, spec.id.slot), slot, spec, frame);
         }
     }
     println!(
@@ -350,7 +322,7 @@ fn integrated_sp_sync_instructions_match_rust_jobs_cursors_events_and_planned_tr
 }
 
 #[shoop_test]
-fn integrated_sp_preserves_full_sequence_priority_with_out_of_order_admission() {
+fn integrated_sp_preserves_full_sequence_priority_with_out_of_order_plan_writes() {
     let mut design = suites::state::design([64, 16, 32]);
     design.parameters.insert("LOOP_DEPTH".into(), "160".into());
     let compiled = design
@@ -403,7 +375,7 @@ fn integrated_sp_keeps_wide_ram_counters_and_checks_overflow() {
         },
         TransitionLimits {
             loop_slots: 160,
-            pending_requests: 32,
+
             events: 352,
         },
     )
@@ -452,17 +424,9 @@ fn integrated_sp_keeps_wide_ram_counters_and_checks_overflow() {
         };
         if let Some(operation) = operation {
             slot.planned[0] = Some(PlannedTransition {
-                request: RequestId {
-                    slot: 0,
-                    generation: u32::MAX,
-                },
-                command: Command {
-                    target: id(0),
-                    sequence: u64::MAX,
-                    at: 0,
-                    timing: Timing::At,
-                    operation,
-                },
+                sequence: u64::MAX,
+                operation,
+                on_pulse: false,
                 effective: 0,
                 remaining_ticks: 0,
             });
@@ -552,7 +516,7 @@ fn integrated_sp_checks_sync_prefix_order_generations_bounds_and_latched_faults(
             },
             TransitionLimits {
                 loop_slots: 160,
-                pending_requests: 32,
+
                 events: 352,
             },
         )
@@ -633,12 +597,11 @@ fn integrated_sync_and_audio_instructions_drive_jp_with_exact_rust_samples() {
             },
             TransitionLimits {
                 loop_slots: 1,
-                pending_requests: 4,
+
                 events: 6,
             },
         )
         .unwrap();
-        let mut tp = TransitionProcessor::prepare(&plan);
         let memory = vec![
             Value::Word((33 << 32) | (7 << 16) | 2),
             Value::Ramp(Ramp::new(Fixed(i32::MAX), Fixed(i32::MIN), 47)),
@@ -674,21 +637,12 @@ fn integrated_sync_and_audio_instructions_drive_jp_with_exact_rust_samples() {
         case["program"]["jobs_per_quantum"] = json!(8);
         driver.load(&mut sim, &case);
         let mut sp = StateProcessor::with_loops(plan, memory);
-        let mut control = LoopControl::default();
-        let row = control.stage(sp.loop_state(id(0)).unwrap(), &spec, None);
+        let mut image_check = LoopImage::default();
+        let row = image_check.stage(sp.loop_state(id(0)).unwrap(), &spec, None);
         write_words(&mut driver.program, &mut sim, 0, &row, 0, 16);
         let mut jp = JobProcessor::with_history_slots(q as usize, 8, 16);
         let mut queue = JobQueue::new(32);
         for quantum in 0..40 {
-            let completed: Vec<_> = tp
-                .request_slots(&sp)
-                .flatten()
-                .filter(|r| r.outcome.is_some())
-                .map(|r| r.id)
-                .collect();
-            for id in completed {
-                tp.take_completion(id).unwrap();
-            }
             let op = match quantum % 8 {
                 0 => Some(Operation::Play {
                     position: 0,
@@ -707,26 +661,28 @@ fn integrated_sync_and_audio_instructions_drive_jp_with_exact_rust_samples() {
                 _ => None,
             };
             if let Some(operation) = op {
-                tp.submit(
-                    &mut sp,
-                    Command {
-                        target: id(0),
-                        sequence: quantum + 1,
-                        at: 0,
-                        timing: Timing::At,
-                        operation,
-                    },
+                sp.write_plans(
+                    id(0),
+                    [
+                        Some(PlannedTransition {
+                            sequence: quantum + 1,
+                            effective: 0,
+                            remaining_ticks: 0,
+                            on_pulse: false,
+                            operation,
+                        }),
+                        None,
+                    ],
                 )
                 .unwrap();
             }
-            let row = control.stage(sp.loop_state(id(0)).unwrap(), &spec, None);
+            let row = image_check.stage(sp.loop_state(id(0)).unwrap(), &spec, None);
             write_plans(&mut driver.program, &mut sim, 0, &row);
             events.borrow_mut().rows.clear();
             let frame = sp.frame();
             let samples: Vec<_> = (0..q).map(|_| Fixed(random.signed())).collect();
             let mut output = vec![Fixed(123); q as usize];
             sp.run(&program, &mut queue).unwrap();
-            tp.harvest(&mut sp);
             let jobs: Vec<_> = queue.iter().copied().collect();
             jp.run(
                 &mut queue,
@@ -741,8 +697,8 @@ fn integrated_sync_and_audio_instructions_drive_jp_with_exact_rust_samples() {
             let actual = driver.quantum(&mut sim, &json!({"inputs":[samples],"writes":[]}), true);
             assert_eq!(actual, expected, "Q={q}, quantum={quantum}");
             assert_eq!(sim.model.get("sync_frame"), sp.frame());
-            control.observe(&events.borrow().rows);
-            control.verify(
+            image_check.observe(&events.borrow().rows);
+            image_check.verify(
                 &read_loop(&mut driver.program, &mut sim, 0),
                 sp.loop_state(id(0)).unwrap(),
                 &spec,

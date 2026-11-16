@@ -7,9 +7,10 @@ samples are compared exactly. Existing vector tests remain independent checks.
 
 The reference crate also has Rust-only transition and full functional pipeline
 tests: `cargo test --locked -p rt_fpga_reference --all-features`. They compare
-primitive-loop traces to the current native resolver and exercise TP admission ->
-SP sync/audio passes -> JP with logical media. `--test sync` compares integrated
-RTL sync/audio instruction execution against Rust (960 sync quanta and 120
+directly configured SP plans against the native resolver and exercise
+SP sync/audio passes followed by JP with logical media. The remaining Rust TP
+and its request/completion bookkeeping have been removed. `--test sync` compares integrated
+RTL sync/audio instruction execution against Rust (1,152 sync quanta and 120
 combined SP/JP audio quanta). The ordinary component benches also retain explicit
 record fixtures. There is no separate RTL transition processor.
 

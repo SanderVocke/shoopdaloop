@@ -40,15 +40,13 @@ pub struct PlanDescription {
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct TransitionLimits {
     pub loop_slots: u32,
-    pub pending_requests: u32,
     pub events: u32,
 }
 impl Default for TransitionLimits {
     fn default() -> Self {
         Self {
             loop_slots: 64,
-            pending_requests: 64,
-            events: 192,
+            events: 256,
         }
     }
 }
@@ -77,15 +75,8 @@ impl TransitionPlan {
         if !matches!(description.quantum, 1 | 16 | 32 | 64 | 128)
             || limits.loop_slots == 0
             || limits.loop_slots > 65536
-            || limits.pending_requests == 0
-            || limits.pending_requests > 65536
-            || limits.events > 196608
-            || limits.events
-                < limits
-                    .loop_slots
-                    .checked_mul(2)
-                    .and_then(|v| v.checked_add(limits.pending_requests))
-                    .ok_or(Error::Capacity)?
+            || limits.events > 262144
+            || u64::from(limits.events) < 4 * description.loops.len() as u64
         {
             return Err(Error::InvalidConfig);
         }

@@ -1,19 +1,6 @@
 //! Architectural logical-loop values. No audio-node or sample-store identities.
 
-macro_rules! identity {
-    ($name:ident) => {
-        #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-        #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-        #[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
-        #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-        pub struct $name {
-            pub slot: u32,
-            pub generation: u32,
-        }
-    };
-}
 pub use crate::records::Identity as LoopId;
-identity!(RequestId);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -64,47 +51,11 @@ pub enum Operation {
     serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)
 )]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub enum Timing {
-    At,
-    AfterTicks { source: LoopId, skip: u64 },
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct Command {
-    pub target: LoopId,
-    pub sequence: u64,
-    pub at: u64,
-    pub timing: Timing,
-    pub operation: Operation,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(
-    feature = "serde",
-    serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)
-)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum Outcome {
     Applied { frame: u64 },
     Superseded { frame: u64 },
     Cancelled { frame: u64 },
     Failed { frame: u64, reason: TransitionError },
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct Completion {
-    pub id: RequestId,
-    pub sequence: u64,
-    pub requested: u64,
-    pub effective: u64,
-    pub outcome: Outcome,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -163,16 +114,4 @@ pub struct Event {
     pub frame: u64,
     pub target: LoopId,
     pub kind: EventKind,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct RequestSnapshot {
-    pub id: RequestId,
-    pub command: Command,
-    pub effective: u64,
-    pub remaining_ticks: Option<u64>,
-    pub outcome: Option<Outcome>,
 }

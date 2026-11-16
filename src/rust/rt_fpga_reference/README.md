@@ -1,110 +1,99 @@
 # Rust functional processor reference
 
-This restores the functional transition/state/job and logical-memory implementation from
-`354305d4697d2e6068e28d4a2e369f08974e434d`, before its deletion in `16679ba7`.
-The audio instructions cover the retained hardware, including constant,
-arithmetic/balance and restart-smoothing operations. The sync prepass extends SP
-with loop execution and is also implemented as instructions in the RTL SP engine.
+Functional models of the retained state, job and memory processors, restored from
+`354305d4697d2e6068e28d4a2e369f08974e434d` and extended with SP-owned loop
+execution. The remaining transition processor has been removed so that its future
+replacement can be designed independently.
 
 The crate is `no_std` with `alloc`. It contains:
 
-- `transitions`: control-side command admission, cancellation and retained
-  request/completion bookkeeping, plus timing-plan compilation.
-- `pipeline`: SP/JP/media coordination, outcome collection and fault containment.
-- `state`: a sync-ordered loop prepass followed by audio-ordered state execution,
-  job emission and read hints. SP owns loop cursors, pulse flags and active plans.
-- `jobs`: sample buffers, Q8.24 processing, persistent smoothing histories and
-  memory operations through an explicit `Memory` trait.
-- `fixed`: independent saturating arithmetic and sample-duration ramps.
-- `records`: caller-supplied read-only records with generation checks.
+- `state`: a sync-ordered loop prefix followed by audio-ordered execution, job
+  emission and read hints. SP owns cursors, pulse flags and two planned
+  transitions per loop.
+- `transitions`: loop graph compilation and shared loop/operation/event types.
+- `pipeline`: SP/JP/media coordination and fault containment.
+- `jobs`: sample buffers, Q8.24 processing, smoothing histories and memory jobs.
+- `fixed`, `records`: independent arithmetic/ramps and explicit read-only records.
 - `storage`, `chunk_memory`, `resolver`: logical media ownership, slices,
-  recording/readback, synchronous chunk storage and advisory read resolution.
+  recording/readback, chunk storage and advisory read resolution.
 
-Programs are supplied explicitly. SP's sync section is generated from a timing
-plan; its audio instruction list is explicit. Isolated audio fixtures can still
-supply read-only records directly with no sync section. There is no audio graph
-compiler, owning-request adapter, ARM protocol or application backend. `serde`
-and `schema` are optional fixture/data-description features, not a hardware
-transport contract. Standalone SP and SP/JP RTL implement the instruction prefix;
-the media/AXI wrappers retain the explicit-record fixture interface.
+There is no TP command admission, cancellation API, retained request table,
+completion collection, ARM protocol or application backend. Native CPU request
+processing remains in the production runtime. `serde` and `schema` describe
+fixtures and values, rather than a transport contract.
 
-## Functional contract
+## SP configuration and execution
 
-`TransitionPlan::compile` prepares primitive-loop timing and fixed capacities;
-`sync_instructions()` emits source-before-dependent `ProcessLoop` instructions.
-`Program::sync_instructions` runs before `Program::instructions`. The prefix must
-visit every configured loop exactly once in compiled order, even when the audio
-program has a different order or does not use every loop.
+`TransitionPlan::compile` compiles primitive-loop topology, timing and event
+capacity; `sync_instructions()` emits source-before-dependent `ProcessLoop`
+instructions. This is a graph compiler, not an execution processor.
+`StateProcessor::with_loops(plan, memory)` initializes loop/node state.
+`Program::sync_instructions` runs before `Program::instructions`, visiting every
+configured loop exactly once in compiled order.
 
-`TransitionProcessor::prepare(&plan)` prepares control-side request storage;
-`StateProcessor::with_loops(plan, memory)` prepares SP-owned loop state.
-`submit(&mut sp, command)` validates and inserts a planned transition into that
-state without executing it. Play, stop, record and seek support absolute timing
-or a delay in source-loop pulses. Each loop has exactly two active plan slots;
-a third submission is rejected with `Capacity` without replacing existing plans.
-Cancellation frees a plan slot. Resolution also frees the SP slot immediately,
-while the completed/cancelled request remains in TP until collected; collecting
-increments its request-slot generation. The native trace harness applies this
-two-plan admission profile around the native resolver's global request limit.
+`sp.write_plans(loop_id, [plan0, plan1])` directly replaces the two physical plan
+slots. `None` clears a slot. Each `PlannedTransition` contains `operation`,
+`sequence` (priority), `effective` frame, `on_pulse` and `remaining_ticks`.
+The caller prepares these values; SP performs no request allocation, timing
+rounding or lifecycle management. The write validates identity, distinct plan
+priorities, position alignment and availability of a sync source atomically.
+A resolved slot can be reused on the next configuration boundary.
 
-`sp.run` performs the entire sync and audio program. The prepass applies due
-plans, resolves wraps/repeat waits, propagates pulses and executes pulse-triggered
-plans. Each SP loop slot exposes `pulse_this_quantum`, its two `planned` entries
-(including remaining pulse skips), next-boundary logical `state`, and frozen
-current-quantum `render` state. `AfterTicks(skip=0)` fires on the next eligible
-pulse; a positive skip decrements once per eligible source pulse. Starting or
-retriggering a loop can generate a pulse too. At most one pulse is delivered per
-loop per quantum. Self-sync is handled locally after that loop's pulse.
+`sp.run` executes the complete sync/audio program. The prefix applies due
+absolute plans, resolves wraps/repeat waits, propagates source pulses and applies
+pulse-triggered plans. A zero pulse countdown fires on the next eligible source
+pulse; a positive countdown decrements once per eligible pulse. At most one pulse
+is delivered per loop per quantum. Self-sync runs locally after that loop's pulse.
+Multi-loop dependency cycles are rejected with `InstantaneousDependencyCycle`.
 
-Before advancing position/capture length, SP saves the render cursor and
-first-capture flag. The audio pass reads that saved state, including the position
-used by smoothing restart, while persistent cursors already describe the next
-boundary. A next position equal to content length is wrapped in the following
-quantum's sync pass, not prematurely during advancement. Pulse and priority scratch
-are reset on each loop visit. No SP operation or clock update runs after JP.
+Each `LoopSlot` exposes its two plans, `pulse_this_quantum`, next-boundary logical
+`state`, and current-quantum `render` snapshot. SP saves the render cursor and
+first-capture flag before advancing persistent position/capture count. The audio
+pass uses this snapshot, including smoothing restart position. A cursor at content
+length wraps in the following quantum's sync prefix. There is no post-JP SP pass.
 
-SP records resolved outcomes in a prepared journal. `tp.harvest(&mut sp)` drains
-those outcomes into retained requests; it executes no loop logic. Admission and
-cancellation harvest automatically. Direct callers harvest before inspecting or
-collecting completions. SP can execute multiple quanta without TP activity;
-unharvested outcomes remain buffered within the prepared request capacity.
-`sp.frame()`, `sp.loop_state()`, `sp.loop_states()` and `sp.events()` expose execution.
-Quantum lengths are 1/16/32/64/128; loop lengths and requested positions must be
-quantum-aligned. Synchronization follows the native resolver's canonical acyclic
-dependency order. Self-sync is allowed; multi-loop cycles are rejected with
-`InstantaneousDependencyCycle`. The compiled image retains singleton `components`
-in dependency order. Composites, timelines, batches, program replacement and
-capture monitoring remain outside this primitive-loop model's scope.
+`sp.resolutions()` contains `(target, plan_index, outcome)` for the last quantum;
+it is cleared at the beginning of the next sync run. Outcomes are applied,
+superseded, cancelled by an applied stop, or failed. These are SP execution
+observations with the same plan-slot identity as RTL, not retained requests or
+completions. `sp.events()`, `sp.frame()`, `sp.loop_state()` and `sp.loop_states()`
+expose musical events and execution state. Event/outcome buffers are prepared
+upfront and repeated execution does not allocate.
 
-SP emits a complete quantum's ordered jobs before JP consumes them. Gain state
-advances when its job is emitted; failed later instructions retain earlier state
-writes and emitted jobs. Empty/undersized queues and invalid state are reported.
-`run_with_records` supplies logical playback/capture/smoothing inputs directly;
-the records contain no future actions or transition requests.
+Supported quanta are 1/16/32/64/128. Loop lengths and operation positions must be
+quantum-aligned. Composites, timelines, batches, program replacement and capture
+monitoring remain outside this primitive-loop model.
 
-JP validates ready/destination buffers, performs integer sample operations, and
-preserves history across quanta. `begin` resets buffer readiness; `reset` also
-invalidates smoothing history. `with_history_slots` permits physical history
-capacity to exceed the run's logical sample-buffer count. `Memory::supports_media`
-describes a media-disabled JP configuration; enabled memory resolves chunk-based
-read windows and accepts capture jobs.
+## Audio and memory
 
-`Pipeline::prepare` prepares TP admission storage, SP loop/node state and FIFO,
-and fills an omitted sync prefix from the timing plan. The caller supplies JP
-and memory. `process` handles one quantum; `process_block` handles whole quanta.
-SP settles loops and computes next cursors before emitting audio jobs; TP harvests
-outcomes and JP executes samples. A processing failure latches its stage and
-silences the entire host block. Loop clocks, plans and cursors may already have
-advanced when audio emission or JP fails. There is no rollback or retry; recreate
-the pipeline to recover. An invalid host block is rejected before execution,
-without latching a fault. No application backend or hardware interface is installed.
+SP emits ordered jobs before JP consumes them. Gain advances when its job is
+emitted; failed later instructions preserve earlier writes/jobs. Isolated audio
+fixtures can supply read-only logical records with `run_with_records` and omit
+the sync prefix. Programs contain explicit audio instructions; there is no audio
+graph compiler.
 
-These are functional models, not cycle simulators. The logical memory model is
-not an AXI/cache/DDR timing model and does not predict physical allocation order
-or delayed reclamation. Transport framing, malformed packed instructions,
-hardware pipeline fault containment and bus/reset timing remain RTL harness obligations.
-There is no claim that all possible programs, capacities or hardware faults have
-been exhaustively verified.
+JP validates buffers and performs integer sample processing. `begin` resets
+readiness; `reset` also invalidates smoothing history. `with_history_slots`
+permits history capacity beyond the logical buffer count. The `Memory` trait
+supports media-enabled and disabled configurations.
+
+`Pipeline::prepare` initializes SP and FIFO, filling an omitted sync prefix from
+the compiled graph. The caller supplies JP and memory. `write_plans` configures SP
+slots directly; `process` handles one quantum and `process_block` handles whole
+quanta. A processing failure latches its stage and silences the complete host
+block. Cursors and plans may already have advanced; recreate the pipeline to
+recover. Invalid host block shapes are rejected before execution without latching.
+
+The compact RTL loop image still uses sixteen 64-bit words. The testbench codec
+prepares its priority bit and compares slot-index outcomes directly. Its pulse
+observer checks last-pulse history from actual events. There is no request-ID or
+sequence-to-completion binding layer. Standalone SP/SP-JP implement the prefix;
+media/AXI wrappers retain explicit-record fixtures.
+
+These are functional models, not AXI/cache/DDR timing models. Physical allocation
+order and delayed reclamation can differ while logical samples and ownership
+remain equal. RTL transport, malformed packed instructions, bus timing and reset
+remain component-harness obligations.
 
 ## Verification
 
@@ -112,50 +101,27 @@ been exhaustively verified.
 cargo build --locked -p rt_fpga_reference --no-default-features
 cargo test --locked -p rt_fpga_reference --no-default-features
 cargo test --locked -p rt_fpga_reference --all-features
-cargo test --locked -p rt_fpga_testbench --features sim --test reference --test state --test audio --test smoothing
+cargo test --locked -p rt_fpga_testbench --features sim --test sync --test reference --test state --test audio --test smoothing
 ```
 
-`transition_traces` runs TP admission plus SP sync execution and the native `shoop_loops`
-resolver independently against identical commands. It compares each boundary's
-acceptance/refusal, cancellations, completions, retained requests, complete loop
-state, ordered events and next frame. Coverage includes 100 seeded sessions of
-80 quanta, all supported quantum sizes, empty content, request-slot reuse,
-generation rejection, repeat waits, same-boundary propagation, sparse indices,
-large integers, self-sync and multi-loop cycle rejection. Native loop dependencies
-are test-only. With `serde`, traces also round-trip through JSON.
+`transition_traces` configures SP plans directly and compares boundaries with the
+independent native resolver. It checks full loop state, events, active plans,
+countdowns, outcomes and frame over 100 seeded sessions of 80 quanta. Directed
+cases cover recording/repeat waits, same-boundary chains, self-sync, sparse source
+IDs, wide priorities/effective frames and cycle rejection. Native request IDs are
+used only inside that test oracle to observe native results. They are absent from
+the functional SP interface.
 
-`pipeline` covers recording/playback, retained slices and compute-ahead failures.
-Its successful transition traces must equal both sync-only SP and native resolver
-traces. An additional session
-checks gain, constant, arithmetic, smoothing, seek, stop/restart and retake against
-independent integer sample expectations. `transitions` preserves the allocation,
-recording-view reuse, host-block silence, latched fault and recovery tests.
-These tests need no Verilator or DRAMsim3.
+`sync` checks autonomous evolution, reversed audio order, render/next cursor
+separation, retake flags, plan-slot reuse, atomic configuration validation and
+latched failures. `execution` retains no-allocation chains, recording-view reuse,
+host-block silence, latched memory faults and recovery. `pipeline` compares SP/JP
+with logical media and native loop results, including gain, arithmetic, smoothing,
+seek, stop/restart, retake and retained slices. TP request/admission/cancellation
+lifecycle tests are retired.
 
-`sync` checks autonomous SP execution with reversed audio order, same-boundary
-pulse chains, repeat waits, render/next cursor separation, delayed outcome
-harvesting, two-plan admission/reuse, retake flags and invalid sync prefixes.
-
-The Marlin tests use Verilator 5.032 and the existing native component drivers.
-The `sync` test target compares integrated RTL prefix execution against this
-model over 960 quanta, including complete loop state, plans/countdowns, events,
-outcomes, jobs and render/next cursors. It also compares 120 combined SP/JP audio
-quanta exactly and checks invalid prefixes/generations/bounds/faults. Existing
-component tests still accept caller-supplied records without a sync prefix.
-They independently run the same inputs through Rust and RTL and compare
-emitted jobs, state writes, failure prefixes, remaining jobs, buffer contents and
-every output sample exactly. No audio tolerance or alignment is applied.
-
-Coverage includes all twelve current SP opcodes, generation/mode rejection,
-logical record delays, FIFO admission/exhaustion, persistent ramps, saturating
-gains/mixes, all arithmetic modes, interleaved smoothing histories, restarts,
-physical history indices beyond the logical buffer count, invalid JP targets,
-media-disabled operation refusal, and SP failures after earlier successful quanta.
-Seed 20261115 drives 80 audio
-sessions of six quanta. Additional TP-free memory sessions compare capture,
-wrapped playback, clear/retake and logical sample readback for Q=4/8/32.
-
-The five historical chunk-memory tests and fifteen independent media ownership,
-slice, snapshot and capacity tests are retained. The former compiler/backend test
-is replaced by direct state/job/media comparisons. Existing production CPU
-numeric checks and explicit RTL vectors remain separate validation sources.
+The Marlin `sync` target compares 1,152 directly configured Rust/RTL quanta and
+120 combined SP/JP quanta exactly, plus malformed programs, generations, bounds
+and wide counters/overflow. The remaining suites retain explicit record fixtures,
+independent numeric vectors, RAM/handshake monitors, memory agents and DRAMsim3.
+Chunk-memory and media ownership/slice/capacity tests remain in place.

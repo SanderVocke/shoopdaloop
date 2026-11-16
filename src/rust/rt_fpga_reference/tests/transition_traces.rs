@@ -1,8 +1,12 @@
-use rt_fpga_reference::transitions::*;
-#[path = "support/transitions.rs"]
+use rt_fpga_reference::{
+    jobs::JobQueue,
+    state::{PlannedTransition, Program, StateProcessor},
+    transitions::*,
+};
+#[path = "support/sync.rs"]
 mod traces;
 use shoop_wasm_test_support::shoop_test;
-use traces::*;
+use traces::{Oracle, PlanInput, PlanWrite, Snapshot};
 
 fn id(slot: u32) -> LoopId {
     LoopId {
@@ -20,21 +24,50 @@ fn spec(slot: u32, length: u64, source: Option<u32>, repeat: bool) -> LoopSpec {
         timeline: None,
     }
 }
-fn step(commands: Vec<Command>) -> TransitionStep {
-    TransitionStep {
-        collect_completed: true,
-        collect: vec![],
-        cancel: vec![],
-        commands,
+fn input(q: u32, loops: Vec<LoopSpec>) -> PlanInput {
+    PlanInput {
+        description: PlanDescription { quantum: q, loops },
+        limits: TransitionLimits {
+            loop_slots: 160,
+            events: 640,
+        },
     }
 }
-fn command(target: u32, sequence: u64, at: u64, operation: Operation) -> Command {
-    Command {
+fn prepare(input: &PlanInput) -> (StateProcessor, Program, JobQueue, Oracle) {
+    let plan = TransitionPlan::compile(input.description.clone(), input.limits).unwrap();
+    let program = Program {
+        sync_instructions: plan.sync_instructions(),
+        instructions: vec![],
+        quantum: input.description.quantum,
+        chunk_frames: 1,
+        jobs_per_quantum: 0,
+    };
+    (
+        StateProcessor::with_loops(plan, vec![]),
+        program,
+        JobQueue::new(0),
+        Oracle::prepare(input).unwrap(),
+    )
+}
+fn write(
+    target: u32,
+    index: usize,
+    sequence: u64,
+    effective: u64,
+    operation: Operation,
+    on_pulse: bool,
+    remaining_ticks: u64,
+) -> PlanWrite {
+    PlanWrite {
         target: id(target),
-        sequence,
-        at,
-        operation,
-        timing: Timing::At,
+        index,
+        plan: Some(PlannedTransition {
+            sequence,
+            effective,
+            operation,
+            on_pulse,
+            remaining_ticks,
+        }),
     }
 }
 fn play() -> Operation {
@@ -43,412 +76,186 @@ fn play() -> Operation {
         retrigger: true,
     }
 }
-fn case(quantum: u32, loops: Vec<LoopSpec>, steps: Vec<TransitionStep>) -> TransitionCase {
-    TransitionCase {
-        name: "primitive boundaries".into(),
-        plan: TransitionPlanInput {
-            description: PlanDescription { quantum, loops },
-            limits: TransitionLimits {
-                loop_slots: 12,
-                pending_requests: 32,
-                events: 56,
-            },
-        },
-        steps,
-    }
-}
-fn compare(case: TransitionCase) -> TransitionTrace {
-    let model = run_transition_case(case.clone()).unwrap();
-    let oracle = run_transition_oracle(case).unwrap();
-    assert_eq!(model.results.len(), oracle.results.len());
-    for (i, (actual, expected)) in model.results.iter().zip(&oracle.results).enumerate() {
-        assert_eq!(actual, expected, "case {}, step {i}", model.case.name);
-    }
+fn tick(
+    sp: &mut StateProcessor,
+    program: &Program,
+    queue: &mut JobQueue,
+    oracle: &mut Oracle,
+) -> Snapshot {
+    sp.run(program, queue).unwrap();
+    let actual = Snapshot::from_sp(sp);
+    assert_eq!(actual, oracle.tick());
     #[cfg(feature = "serde")]
     assert_eq!(
-        serde_json::from_str::<TransitionTrace>(&serde_json::to_string(&model).unwrap()).unwrap(),
-        model
+        serde_json::from_str::<Snapshot>(&serde_json::to_string(&actual).unwrap()).unwrap(),
+        actual
     );
-    model
+    actual
 }
 
 #[shoop_test]
 fn recording_repeat_wait_and_same_boundary_sync_chain() {
-    let mut first = step(vec![
-        command(0, 1, 0, play()),
-        command(1, 2, 0, Operation::Record),
-    ]);
-    first.commands.push(Command {
-        timing: Timing::AfterTicks {
-            source: id(0),
-            skip: 1,
-        },
-        ..command(1, 3, 0, play())
-    });
-    first.commands.push(Command {
-        timing: Timing::AfterTicks {
-            source: id(1),
-            skip: 1,
-        },
-        ..command(2, 4, 0, play())
-    });
-    let trace = compare(case(
+    let input = input(
         16,
         vec![
             spec(0, 64, None, false),
             spec(1, 0, Some(0), true),
             spec(2, 16, Some(1), false),
         ],
-        std::iter::once(first)
-            .chain((0..17).map(|_| step(vec![])))
-            .collect(),
-    ));
-    assert_eq!(trace.results[4].states[1].mode, Mode::Playing);
-    assert_eq!(trace.results[4].states[1].content_length, 64);
-    assert_eq!(trace.results[4].states[2].mode, Mode::Playing);
-    assert_eq!(trace.results[4].states[2].last_pulse, Some(64));
+    );
+    let (mut sp, p, mut q, mut oracle) = prepare(&input);
+    for write in [
+        write(0, 0, 1, 0, play(), false, 0),
+        write(1, 0, 2, 0, Operation::Record, false, 0),
+        write(1, 1, 3, 0, play(), true, 1),
+        write(2, 0, 4, 0, play(), true, 1),
+    ] {
+        sp.write_plans(write.target, write.values(&sp)).unwrap();
+        oracle.write(&write);
+    }
+    for quantum in 0..18 {
+        let result = tick(&mut sp, &p, &mut q, &mut oracle);
+        if quantum == 4 {
+            assert_eq!(result.states[1].mode, Mode::Playing);
+            assert_eq!(result.states[1].content_length, 64);
+            assert_eq!(result.states[2].last_pulse, Some(64));
+        }
+    }
 }
 
 #[shoop_test]
-fn repeat_holds_endpoint_until_source_pulse() {
-    let trace = compare(case(
+fn sparse_reordered_dependencies_and_self_sync_keep_deterministic_pulses() {
+    let input = input(
         16,
-        vec![spec(0, 64, None, false), spec(1, 16, Some(0), true)],
-        std::iter::once(step(vec![
-            command(0, 1, 0, play()),
-            command(1, 2, 0, play()),
-        ]))
-        .chain((0..8).map(|_| step(vec![])))
-        .collect(),
-    ));
-    assert_eq!(trace.results[1].states[1].position, 16);
-    assert_eq!(trace.results[3].states[1].position, 16);
-    assert_eq!(trace.results[4].states[1].position, 16);
-    assert_eq!(trace.results[4].states[1].cycles, 1);
+        vec![
+            spec(0, 16, Some(129), true),
+            spec(3, 32, Some(3), true),
+            spec(129, 64, None, false),
+        ],
+    );
+    let (mut sp, p, mut q, mut oracle) = prepare(&input);
+    for write in [
+        write(129, 0, 1, 0, play(), false, 0),
+        write(0, 0, 2, 0, play(), true, 0),
+        write(3, 0, 3, 0, play(), false, 0),
+        write(3, 1, 4, 0, Operation::Record, true, 1),
+    ] {
+        sp.write_plans(write.target, write.values(&sp)).unwrap();
+        oracle.write(&write);
+    }
+    for _ in 0..18 {
+        tick(&mut sp, &p, &mut q, &mut oracle);
+    }
 }
 
 #[shoop_test]
-fn acyclic_dependencies_self_sync_and_declaration_reordering_are_deterministic() {
-    let loops = vec![
-        spec(0, 16, None, true),
-        spec(1, 32, Some(0), true),
-        spec(3, 16, Some(3), true),
-        spec(7, 16, Some(1), false),
-    ];
-    let mut first = step(vec![
-        command(0, 1, 0, play()),
-        command(1, 2, 0, play()),
-        command(3, 3, 0, play()),
-    ]);
-    first.commands.push(Command {
-        timing: Timing::AfterTicks {
-            source: id(1),
-            skip: 0,
-        },
-        ..command(7, 4, 0, play())
-    });
-    let steps: Vec<_> = std::iter::once(first)
-        .chain((0..16).map(|_| step(vec![])))
-        .collect();
-    let forward = compare(case(16, loops.clone(), steps.clone()));
-    let reversed = compare(case(16, loops.into_iter().rev().collect(), steps));
-    assert_eq!(forward.results, reversed.results);
-    for result in forward.results {
-        for state in result.states {
-            assert!(
-                result
-                    .events
-                    .iter()
-                    .filter(|e| e.target == state.id && e.kind == EventKind::Pulse)
-                    .count()
-                    <= 1
+fn wide_sequences_and_effective_frames_preserve_priority_without_request_ids() {
+    let input = input(1, vec![spec(0, 4, None, false)]);
+    let (mut sp, p, mut q, mut oracle) = prepare(&input);
+    for write in [
+        write(0, 0, u64::MAX - 1, 0, play(), false, 0),
+        write(0, 1, 1, 1_u64 << 54, Operation::Record, false, 0),
+    ] {
+        sp.write_plans(write.target, write.values(&sp)).unwrap();
+        oracle.write(&write);
+    }
+    for _ in 0..12 {
+        tick(&mut sp, &p, &mut q, &mut oracle);
+    }
+}
+
+struct Random(u64);
+impl Random {
+    fn below(&mut self, limit: u64) -> u64 {
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        (self.0 >> 16) % limit
+    }
+}
+#[shoop_test]
+fn seeded_direct_plan_graphs_match_native_resolver() {
+    for seed in 0..100 {
+        let mut random = Random(seed + 1);
+        let quantum = [1, 16, 32, 64, 128][seed as usize % 5];
+        let n = 1 + random.below(12) as u32;
+        let mut labels: Vec<_> = (0..n).collect();
+        for i in (1..labels.len()).rev() {
+            labels.swap(i, random.below(i as u64 + 1) as usize);
+        }
+        let loops: Vec<_> = labels
+            .iter()
+            .enumerate()
+            .map(|(i, &slot)| {
+                let source =
+                    (random.below(4) != 0).then(|| labels[random.below(i as u64 + 1) as usize]);
+                spec(
+                    slot,
+                    random.below(5) * u64::from(quantum),
+                    source,
+                    random.below(2) != 0,
+                )
+            })
+            .collect();
+        let input = input(quantum, loops.clone());
+        let (mut sp, p, mut q, mut oracle) = prepare(&input);
+        let mut sequence = 0_u64;
+        for boundary in 0..80 {
+            for _ in 0..random.below(6) {
+                let spec = &loops[random.below(n.into()) as usize];
+                let plans = sp.loop_state(spec.id).unwrap().planned;
+                let Some(index) = plans.iter().position(Option::is_none) else {
+                    continue;
+                };
+                sequence += 1;
+                let operation = match random.below(7) {
+                    0 => Operation::Stop,
+                    1 | 2 => Operation::Record,
+                    3 | 4 => Operation::Play {
+                        position: random.below(6) * u64::from(quantum),
+                        retrigger: random.below(2) != 0,
+                    },
+                    _ => Operation::Seek {
+                        position: random.below(6) * u64::from(quantum),
+                        retrigger: random.below(2) != 0,
+                    },
+                };
+                let on_pulse = random.below(2) != 0 && spec.sync_source.is_some();
+                let write = write(
+                    spec.id.slot,
+                    index,
+                    sequence.reverse_bits(),
+                    (boundary + random.below(3)) * u64::from(quantum),
+                    operation,
+                    on_pulse,
+                    if on_pulse { random.below(3) } else { 0 },
+                );
+                sp.write_plans(write.target, write.values(&sp)).unwrap();
+                oracle.write(&write);
+            }
+            sp.run(&p, &mut q).unwrap();
+            assert_eq!(
+                Snapshot::from_sp(&sp),
+                oracle.tick(),
+                "seed {seed}, boundary {boundary}"
             );
         }
     }
 }
 
 #[shoop_test]
-fn wide_integers_roundtrip_and_timing_rounds_up() {
-    let trace = compare(case(
-        32,
-        vec![spec(0, u64::MAX - 31, None, false)],
-        vec![
-            step(vec![command(
-                0,
-                u64::MAX,
-                1,
-                Operation::Play {
-                    position: u64::MAX - 63,
-                    retrigger: true,
-                },
-            )]),
-            step(vec![]),
-            step(vec![]),
-        ],
-    ));
-    assert_eq!(trace.results[0].requests[0].unwrap().effective, 32);
-    assert_eq!(trace.results[1].states[0].position, u64::MAX - 31);
-    assert_eq!(trace.results[2].states[0].position, 32);
-}
-
-#[shoop_test]
-fn sparse_cross_word_pulses_follow_dependency_order_when_source_ids_are_larger() {
-    let first = step(vec![
-        command(129, 1, 0, play()),
-        Command {
-            timing: Timing::AfterTicks {
-                source: id(129),
-                skip: 0,
-            },
-            ..command(0, 2, 0, play())
-        },
-        Command {
-            timing: Timing::AfterTicks {
-                source: id(0),
-                skip: 0,
-            },
-            ..command(63, 3, 0, play())
-        },
-        Command {
-            timing: Timing::AfterTicks {
-                source: id(129),
-                skip: 0,
-            },
-            ..command(64, 4, 0, Operation::Record)
-        },
-        command(64, 5, 64, play()),
-    ]);
-    let mut input = case(
-        16,
-        vec![
-            spec(129, 16, None, false),
-            spec(64, 16, Some(129), false),
-            spec(0, 32, Some(129), false),
-            spec(63, 16, Some(0), true),
-        ],
-        std::iter::once(first)
-            .chain((0..12).map(|_| step(vec![])))
-            .collect(),
-    );
-    input.plan.limits = TransitionLimits {
-        loop_slots: 130,
-        pending_requests: 8,
-        events: 268,
-    };
-    let trace = compare(input);
-    let pulses: Vec<_> = trace.results[0]
-        .events
-        .iter()
-        .filter(|e| e.kind == EventKind::Pulse)
-        .map(|e| e.target)
-        .collect();
-    assert_eq!(pulses, vec![id(129), id(0), id(63), id(64)]);
-}
-
-struct Random(u64);
-impl Random {
-    fn next(&mut self) -> u64 {
-        self.0 = self
-            .0
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1442695040888963407);
-        self.0 ^ (self.0 >> 29)
-    }
-    fn below(&mut self, n: u64) -> u64 {
-        self.next() % n
-    }
-}
-
-#[shoop_test]
-fn seeded_primitive_graphs_match_native_resolver() {
-    for seed in 0..100 {
-        let mut random = Random(seed + 1);
-        let q = [1, 16, 32, 64, 128][seed as usize % 5];
-        let n = 1 + random.below(12) as u32;
-        let mut labels: Vec<_> = (0..n).collect();
-        for i in (1..labels.len()).rev() {
-            labels.swap(i, random.below(i as u64 + 1) as usize);
-        }
-        let mut loops: Vec<_> = labels
-            .iter()
-            .enumerate()
-            .map(|(i, &label)| {
-                let source =
-                    (random.below(4) != 0).then(|| labels[random.below(i as u64 + 1) as usize]);
-                spec(
-                    label,
-                    random.below(5) * u64::from(q),
-                    source,
-                    random.below(2) != 0,
-                )
-            })
-            .collect();
-        loops.sort_unstable_by_key(|spec| spec.id);
-        let mut sequence = 0;
-        let mut steps = Vec::new();
-        for quantum in 0..80 {
-            let mut commands = Vec::new();
-            for _ in 0..random.below(6) {
-                let target = random.below(n.into()) as u32;
-                sequence += 1;
-                let operation = match random.below(7) {
-                    0 => Operation::Stop,
-                    1 | 2 => Operation::Record,
-                    3 | 4 => Operation::Play {
-                        position: random.below(6) * u64::from(q),
-                        retrigger: random.below(2) != 0,
-                    },
-                    _ => Operation::Seek {
-                        position: random.below(6) * u64::from(q),
-                        retrigger: random.below(2) != 0,
-                    },
-                };
-                let timing = if random.below(2) != 0 {
-                    loops[target as usize]
-                        .sync_source
-                        .map(|source| Timing::AfterTicks {
-                            source,
-                            skip: random.below(3),
-                        })
-                        .unwrap_or(Timing::At)
-                } else {
-                    Timing::At
-                };
-                commands.push(Command {
-                    timing,
-                    ..command(
-                        target,
-                        sequence,
-                        quantum * u64::from(q) + random.below(3 * u64::from(q)),
-                        operation,
-                    )
-                });
-            }
-            let next = step(commands);
-            steps.push(next);
-        }
-        let mut input = case(q, loops, steps);
-        input.name = format!("seed {seed}");
-        compare(input);
-    }
-}
-
-#[shoop_test]
 fn multi_loop_sync_cycles_are_rejected_by_both_compilers() {
-    for loops in [
+    let input = input(
+        16,
         vec![spec(0, 16, Some(1), false), spec(1, 16, Some(0), false)],
-        vec![
-            spec(0, 16, Some(2), false),
-            spec(1, 16, Some(0), false),
-            spec(2, 16, Some(1), false),
-        ],
-    ] {
-        let input = case(16, loops, vec![]);
-        assert_eq!(
-            run_transition_case(input.clone()).unwrap_err(),
-            TransitionError::InstantaneousDependencyCycle
-        );
-        assert_eq!(
-            run_transition_oracle(input).unwrap_err(),
-            TransitionError::InstantaneousDependencyCycle
-        );
-    }
-}
-
-#[shoop_test]
-fn cancellations_failures_and_reused_request_generations_match_native_traces() {
-    let mut first = step(vec![
-        command(0, 1, 64, play()),
-        command(1, 2, 0, play()),
-        Command {
-            target: LoopId {
-                slot: 0,
-                generation: 99,
-            },
-            ..command(0, 3, 0, play())
-        },
-        Command {
-            timing: Timing::AfterTicks {
-                source: id(1),
-                skip: 0,
-            },
-            ..command(0, 4, 0, play())
-        },
-    ]);
-    first.collect_completed = false;
-    let old = RequestId {
-        slot: 0,
-        generation: 1,
-    };
-    let mut second = step(vec![command(1, 5, 0, Operation::Record)]);
-    second.collect_completed = false;
-    second.collect = vec![RequestId {
-        slot: 1,
-        generation: 1,
-    }];
-    second.cancel = vec![old];
-    let mut third = step(vec![command(1, 6, 0, play())]);
-    third.cancel = vec![old];
-    let trace = compare(case(
-        16,
-        vec![spec(0, 32, None, false), spec(1, 0, None, false)],
-        vec![first, second, third, step(vec![])],
-    ));
-    assert!(matches!(
-        trace.results[0].requests[1].unwrap().outcome,
-        Some(Outcome::Failed {
-            reason: TransitionError::EmptyContent,
-            ..
-        })
-    ));
-    assert_eq!(
-        trace.results[1].submitted,
-        vec![Response::Accepted(RequestId {
-            slot: 1,
-            generation: 2
-        })]
-    );
-    assert_eq!(
-        trace.results[2].cancelled,
-        vec![Response::Rejected(TransitionError::InvalidId)]
-    );
-}
-
-#[shoop_test]
-fn native_trace_profile_bounds_each_loop_to_two_plans_and_reuses_cancelled_slots() {
-    let first = step(vec![
-        command(0, 1, 64, play()),
-        command(0, 2, 96, Operation::Stop),
-        command(0, 3, 128, Operation::Record),
-        Command {
-            timing: Timing::AfterTicks {
-                source: id(1),
-                skip: 0,
-            },
-            ..command(0, 4, 128, play())
-        },
-        command(1, 5, 0, play()),
-    ]);
-    let mut second = step(vec![command(0, 3, 128, Operation::Record)]);
-    second.cancel = vec![RequestId {
-        slot: 0,
-        generation: 1,
-    }];
-    let trace = compare(case(
-        16,
-        vec![spec(0, 32, None, false), spec(1, 32, None, false)],
-        vec![first, second, step(vec![])],
-    ));
-    assert_eq!(
-        trace.results[0].submitted[2],
-        Response::Rejected(TransitionError::Capacity)
-    );
-    assert_eq!(
-        trace.results[0].submitted[3],
-        Response::Rejected(TransitionError::MissingSync)
     );
     assert!(matches!(
-        trace.results[1].submitted[0],
-        Response::Accepted(_)
+        TransitionPlan::compile(input.description.clone(), input.limits),
+        Err(TransitionError::InstantaneousDependencyCycle)
+    ));
+    assert!(matches!(
+        Oracle::prepare(&input),
+        Err(TransitionError::InstantaneousDependencyCycle)
     ));
 }

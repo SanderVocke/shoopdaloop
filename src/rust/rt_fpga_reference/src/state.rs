@@ -10,7 +10,7 @@ use crate::{
 use alloc::vec::Vec;
 pub mod sync;
 use crate::transitions::{Event, LoopId, LoopState, TransitionError, TransitionPlan};
-pub use sync::{LoopSlot, PlannedTransition, SyncInstruction};
+pub use sync::{LoopSlot, PlannedTransition, Resolution, SyncInstruction};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -187,16 +187,43 @@ impl StateProcessor {
     pub fn fault(&self) -> Option<Error> {
         self.fault
     }
-    pub(crate) fn loop_memory_mut(&mut self) -> Result<&mut sync::LoopMemory, TransitionError> {
+    /// Replace the two physical plan slots atomically.
+    pub fn write_plans(
+        &mut self,
+        id: LoopId,
+        plans: [Option<PlannedTransition>; 2],
+    ) -> Result<(), TransitionError> {
         if self.fault.is_some() {
             return Err(TransitionError::InvalidState);
         }
-        self.loops.as_mut().ok_or(TransitionError::InvalidState)
+        let loops = self.loops.as_mut().ok_or(TransitionError::InvalidState)?;
+        loops.slot(id)?;
+        if matches!(plans, [Some(a), Some(b)] if a.sequence == b.sequence) {
+            return Err(TransitionError::DuplicateId);
+        }
+        for plan in plans.iter().flatten() {
+            if plan.on_pulse
+                && loops.plan.specs[id.slot as usize]
+                    .unwrap()
+                    .sync_source
+                    .is_none()
+            {
+                return Err(TransitionError::MissingSync);
+            }
+            if let crate::transitions::Operation::Play { position, .. }
+            | crate::transitions::Operation::Seek { position, .. } = plan.operation
+            {
+                if position % u64::from(loops.plan.image().description.quantum) != 0 {
+                    return Err(TransitionError::InvalidFrame);
+                }
+            }
+        }
+        loops.slot_mut(id)?.planned = plans;
+        Ok(())
     }
-    pub(crate) fn take_resolutions(&mut self) -> impl Iterator<Item = sync::Resolution> + '_ {
-        self.loops
-            .iter_mut()
-            .flat_map(|loops| loops.resolutions.drain(..))
+    /// Plan-slot outcomes from the most recently executed quantum.
+    pub fn resolutions(&self) -> &[Resolution] {
+        self.loops.as_ref().map_or(&[], |loops| &loops.resolutions)
     }
     fn loop_record(
         &self,

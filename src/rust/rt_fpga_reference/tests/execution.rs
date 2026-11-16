@@ -2,7 +2,7 @@ use rt_fpga_reference::{
     fixed::Fixed,
     jobs::{BufferId, JobProcessor, JobQueue, Memory},
     pipeline::{Pipeline, PipelineError},
-    state::{Address, Instruction, Program, StateProcessor, Value},
+    state::{Address, Instruction, PlannedTransition, Program, StateProcessor, Value},
     storage::{MediaStore, ViewId},
     transitions::*,
     Error,
@@ -37,20 +37,22 @@ fn plan(loops: usize, q: u32, length: u64) -> TransitionPlan {
         },
         TransitionLimits {
             loop_slots: loops as u32,
-            pending_requests: (2 * loops) as u32,
             events: (4 * loops) as u32,
         },
     )
     .unwrap()
 }
-fn command(sequence: u64, operation: Operation) -> Command {
-    Command {
-        target: id(0),
-        sequence,
-        at: 0,
-        timing: Timing::At,
-        operation,
-    }
+fn plan_write(sequence: u64, operation: Operation) -> [Option<PlannedTransition>; 2] {
+    [
+        Some(PlannedTransition {
+            sequence,
+            operation,
+            on_pulse: false,
+            effective: 0,
+            remaining_ticks: 0,
+        }),
+        None,
+    ]
 }
 fn playing() -> Operation {
     Operation::Play {
@@ -95,22 +97,15 @@ fn pipeline() -> (Pipeline, JobProcessor) {
 
 #[shoop_test]
 fn sync_ordered_sp_chain_runs_without_heap_work() {
-    let (mut engine, mut state, program, mut queue) = control_and_state(plan(130, 16, 32));
+    let (mut state, program, mut queue) = state_and_program(plan(130, 16, 32));
     for slot in 0..130 {
-        engine
-            .submit(
-                &mut state,
-                Command {
-                    target: id(slot),
-                    ..command(u64::from(slot) + 1, playing())
-                },
-            )
+        state
+            .write_plans(id(slot), plan_write(u64::from(slot) + 1, playing()))
             .unwrap();
     }
     assert_no_heap(|| {
         for _ in 0..40 {
             state.run(&program, &mut queue).unwrap();
-            engine.harvest(&mut state);
         }
     });
     assert_eq!(state.frame(), 640);
@@ -121,37 +116,13 @@ fn sync_ordered_sp_chain_runs_without_heap_work() {
 }
 
 #[shoop_test]
-fn cancellation_completion_collection_and_generations_survive_in_place_processing() {
-    let (mut engine, mut state, program, mut queue) = control_and_state(plan(1, 16, 32));
-    let first = engine.submit(&mut state, command(1, playing())).unwrap();
-    assert!(engine.cancel(&mut state, first).unwrap());
-    assert!(matches!(
-        engine.take_completion(first).unwrap().unwrap().outcome,
-        Outcome::Cancelled { frame: 0 }
-    ));
-    let second = engine.submit(&mut state, command(2, playing())).unwrap();
-    assert_eq!(second.slot, first.slot);
-    assert!(second.generation > first.generation);
-    assert_eq!(
-        engine.cancel(&mut state, first),
-        Err(TransitionError::InvalidId)
-    );
-    state.run(&program, &mut queue).unwrap();
-    engine.harvest(&mut state);
-    assert_eq!(state.loop_state(id(0)).unwrap().state.position, 16);
-    assert!(matches!(
-        engine.take_completion(second).unwrap().unwrap().outcome,
-        Outcome::Applied { frame: 0 }
-    ));
-}
-
-#[shoop_test]
 fn recording_views_are_created_and_reused_without_host_preparation() {
     let (mut p, mut jobs) = pipeline();
     let mut media = MediaStore::with_chunk_limit(16, 4).unwrap();
     let mut a = [Fixed(1); 16];
     let mut b = [Fixed(1); 16];
-    let first = p.submit(command(1, Operation::Record)).unwrap();
+    p.write_plans(id(0), plan_write(1, Operation::Record))
+        .unwrap();
     p.process(
         &mut jobs,
         &mut media,
@@ -160,9 +131,9 @@ fn recording_views_are_created_and_reused_without_host_preparation() {
     )
     .unwrap();
     assert_eq!(media.frames(ViewId(0)).unwrap(), 16);
-    p.collect(first).unwrap();
     let retained = media.slice(ViewId(0), 0, 16).unwrap();
-    let second = p.submit(command(2, Operation::Record)).unwrap();
+    p.write_plans(id(0), plan_write(2, Operation::Record))
+        .unwrap();
     p.process(
         &mut jobs,
         &mut media,
@@ -170,9 +141,8 @@ fn recording_views_are_created_and_reused_without_host_preparation() {
         &mut [&mut a, &mut b],
     )
     .unwrap();
-    p.collect(second).unwrap();
     assert_eq!(media.snapshot().views.len(), 2);
-    p.submit(command(3, playing())).unwrap();
+    p.write_plans(id(0), plan_write(3, playing())).unwrap();
     p.process(
         &mut jobs,
         &mut media,
@@ -198,7 +168,8 @@ fn recording_views_are_created_and_reused_without_host_preparation() {
 fn exhaustion_after_a_successful_quantum_silences_the_entire_host_block_and_latches() {
     let (mut p, mut jobs) = pipeline();
     let mut media = MediaStore::with_chunk_limit(16, 1).unwrap();
-    p.submit(command(1, Operation::Record)).unwrap();
+    p.write_plans(id(0), plan_write(1, Operation::Record))
+        .unwrap();
     let mut a = [Fixed(1); 32];
     let mut b = [Fixed(1); 32];
     let error = PipelineError::Jobs(Error::MemoryFull);
@@ -219,7 +190,7 @@ fn exhaustion_after_a_successful_quantum_silences_the_entire_host_block_and_latc
     assert_eq!(p.fault(), Some(error));
     let snapshot = media.snapshot();
     assert_eq!(
-        p.submit(command(2, playing())),
+        p.write_plans(id(0), plan_write(2, playing())),
         Err(TransitionError::InvalidState)
     );
     a.fill(Fixed(1));
@@ -239,7 +210,9 @@ fn exhaustion_after_a_successful_quantum_silences_the_entire_host_block_and_latc
     assert_eq!(b, [Fixed::ZERO; 32]);
     let (mut reset, mut reset_jobs) = pipeline();
     let mut reset_media = MediaStore::new(16).unwrap();
-    reset.submit(command(1, Operation::Record)).unwrap();
+    reset
+        .write_plans(id(0), plan_write(1, Operation::Record))
+        .unwrap();
     reset
         .process_block(
             &mut reset_jobs,
@@ -278,7 +251,8 @@ impl Memory for FaultMemory {
 fn descriptor_exhaustion_is_fatal_and_partial_output_is_suppressed() {
     let (mut p, mut jobs) = pipeline();
     let mut memory = FaultMemory { late: false };
-    p.submit(command(1, Operation::Record)).unwrap();
+    p.write_plans(id(0), plan_write(1, Operation::Record))
+        .unwrap();
     let mut a = [Fixed(1); 16];
     let mut b = [Fixed(1); 16];
     assert_eq!(
@@ -360,9 +334,7 @@ fn invalid_capture_binding_does_not_attempt_to_allocate_missing_descriptor_ids()
     assert_eq!(media.snapshot().views.len(), 1);
 }
 
-fn control_and_state(
-    plan: TransitionPlan,
-) -> (TransitionProcessor, StateProcessor, Program, JobQueue) {
+fn state_and_program(plan: TransitionPlan) -> (StateProcessor, Program, JobQueue) {
     let program = Program {
         sync_instructions: plan.sync_instructions(),
         instructions: vec![],
@@ -370,9 +342,7 @@ fn control_and_state(
         chunk_frames: 1,
         jobs_per_quantum: 0,
     };
-    let control = TransitionProcessor::prepare(&plan);
     (
-        control,
         StateProcessor::with_loops(plan, vec![]),
         program,
         JobQueue::new(0),

@@ -17,11 +17,14 @@ pub enum SyncInstruction {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct PlannedTransition {
-    pub request: RequestId,
-    pub command: Command,
+    pub sequence: u64,
+    pub operation: Operation,
+    pub on_pulse: bool,
     pub effective: u64,
-    /// Zero fires on the next eligible source pulse, matching AfterTicks::skip.
+    /// Zero fires on the next eligible source pulse.
     pub remaining_ticks: u64,
 }
 
@@ -38,9 +41,12 @@ pub struct LoopSlot {
     protected: Option<u64>,
 }
 
-#[derive(Clone, Copy)]
-pub(crate) struct Resolution {
-    pub request: RequestId,
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct Resolution {
+    pub target: LoopId,
+    pub plan_index: usize,
     pub outcome: Outcome,
 }
 
@@ -69,7 +75,7 @@ impl LoopMemory {
             })
             .collect();
         let events = Vec::with_capacity(plan.image.limits.events as usize);
-        let resolutions = Vec::with_capacity(plan.image.limits.pending_requests as usize);
+        let resolutions = Vec::with_capacity(2 * plan.image.description.loops.len());
         Self {
             plan,
             slots,
@@ -113,6 +119,7 @@ impl LoopMemory {
             .checked_add(u64::from(quantum))
             .ok_or(TransitionError::Exhausted)?;
         self.events.clear();
+        self.resolutions.clear();
         for &SyncInstruction::ProcessLoop { loop_id } in instructions {
             self.process_loop(loop_id, quantum)?;
         }
@@ -194,14 +201,15 @@ impl LoopMemory {
         index: usize,
         outcome: Outcome,
     ) -> Result<(), TransitionError> {
-        if self.resolutions.len() == self.plan.image.limits.pending_requests as usize {
+        if self.resolutions.len() == self.resolutions.capacity() {
             return Err(TransitionError::Capacity);
         }
-        let plan = self.slot_mut(id)?.planned[index]
+        self.slot_mut(id)?.planned[index]
             .take()
             .ok_or(TransitionError::InvalidState)?;
         self.resolutions.push(Resolution {
-            request: plan.request,
+            target: id,
+            plan_index: index,
             outcome,
         });
         Ok(())
@@ -213,7 +221,7 @@ impl LoopMemory {
             let Some(plan) = self.slot(id)?.planned[i] else {
                 continue;
             };
-            if plan.effective > frame || (plan.command.timing == Timing::At) != absolute {
+            if plan.effective > frame || plan.on_pulse == absolute {
                 continue;
             }
             if !absolute && plan.remaining_ticks != 0 {
@@ -225,7 +233,7 @@ impl LoopMemory {
             }
             if let Some(previous) = winner {
                 let old = self.slot(id)?.planned[previous].unwrap();
-                let loser = if plan.command.sequence > old.command.sequence {
+                let loser = if plan.sequence > old.sequence {
                     previous
                 } else {
                     i
@@ -244,28 +252,27 @@ impl LoopMemory {
         if self
             .slot(id)?
             .protected
-            .is_some_and(|seq| plan.command.sequence <= seq)
+            .is_some_and(|seq| plan.sequence <= seq)
         {
             return self.terminal(id, index, Outcome::Superseded { frame });
         }
-        self.slot_mut(id)?.protected = Some(plan.command.sequence);
+        self.slot_mut(id)?.protected = Some(plan.sequence);
         let before = self.slot(id)?.state;
         let mut state = before;
-        match apply_operation(&mut state, plan.command.operation) {
+        match apply_operation(&mut state, plan.operation) {
             Err(reason) => self.terminal(id, index, Outcome::Failed { frame, reason })?,
             Ok(pulse) => {
                 self.slot_mut(id)?.state = state;
                 self.terminal(id, index, Outcome::Applied { frame })?;
                 if state != before {
-                    self.event(id, EventKind::Transition(plan.command.operation))?;
+                    self.event(id, EventKind::Transition(plan.operation))?;
                 }
-                if plan.command.operation == Operation::Stop {
+                if plan.operation == Operation::Stop {
                     let slot = self.slot_mut(id)?;
                     slot.pulse_masked = true;
                     slot.pulse_pending = false;
                     for i in 0..2 {
-                        if self.slot(id)?.planned[i]
-                            .is_some_and(|old| old.command.sequence < plan.command.sequence)
+                        if self.slot(id)?.planned[i].is_some_and(|old| old.sequence < plan.sequence)
                         {
                             self.terminal(id, i, Outcome::Cancelled { frame })?;
                         }

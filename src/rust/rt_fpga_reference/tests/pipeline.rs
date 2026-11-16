@@ -2,18 +2,18 @@ use rt_fpga_reference::{
     fixed::Fixed,
     jobs::BufferId,
     pipeline::PipelineError,
-    state::{Address, Instruction, Program, Value},
+    state::{Address, Instruction, PlannedTransition, Program, Value},
     storage::{MediaStore, ViewId},
     transitions::*,
     Error,
 };
 #[path = "support/pipeline.rs"]
 mod pipeline;
-#[path = "support/transitions.rs"]
+#[path = "support/sync.rs"]
 mod traces;
 use pipeline::*;
 use shoop_wasm_test_support::shoop_test;
-use traces::{TransitionPlanInput, TransitionStep};
+use traces::{PlanInput, PlanWrite};
 
 fn fixture() -> PipelineCase {
     let loop_id = LoopId {
@@ -50,7 +50,7 @@ fn fixture() -> PipelineCase {
     };
     PipelineCase {
         name: "record-play-shared-records".into(),
-        plan: TransitionPlanInput {
+        plan: PlanInput {
             description: PlanDescription {
                 quantum: 16,
                 loops: vec![LoopSpec {
@@ -64,7 +64,6 @@ fn fixture() -> PipelineCase {
             },
             limits: TransitionLimits {
                 loop_slots: 1,
-                pending_requests: 2,
                 events: 4,
             },
         },
@@ -79,17 +78,15 @@ fn fixture() -> PipelineCase {
         steps: (0..6)
             .map(|i| PipelineStep {
                 writes: vec![],
-                transition: TransitionStep {
-                    collect_completed: true,
-                    collect: vec![],
-                    cancel: vec![],
-
-                    commands: if i == 0 || i == 2 {
-                        vec![Command {
-                            target: loop_id,
+                plans: if i == 0 || i == 2 {
+                    vec![PlanWrite {
+                        target: loop_id,
+                        index: 0,
+                        plan: Some(PlannedTransition {
                             sequence: i + 1,
-                            at: 0,
-                            timing: Timing::At,
+                            effective: 0,
+                            remaining_ticks: 0,
+                            on_pulse: false,
                             operation: if i == 0 {
                                 Operation::Record
                             } else {
@@ -98,10 +95,10 @@ fn fixture() -> PipelineCase {
                                     retrigger: true,
                                 }
                             },
-                        }]
-                    } else {
-                        vec![]
-                    },
+                        }),
+                    }]
+                } else {
+                    vec![]
                 },
                 work: PipelineWork::Audio {
                     inputs: vec![vec![Fixed(1000 + i as i32); 16]],
@@ -112,7 +109,7 @@ fn fixture() -> PipelineCase {
 }
 
 #[shoop_test]
-fn combined_trace_runs_all_processors_without_copied_loop_operands() {
+fn combined_trace_runs_sp_and_jp_without_copied_loop_operands() {
     let case = fixture();
     let initial = case.initial_state.clone();
     let trace = run_pipeline_case(case).unwrap();
@@ -120,7 +117,7 @@ fn combined_trace_runs_all_processors_without_copied_loop_operands() {
     for (i, row) in trace.results.iter().enumerate() {
         assert_eq!(row.state, initial);
         assert_eq!(row.error, None);
-        assert_eq!(row.transition.next_frame, 16 * (i as u64 + 1));
+        assert_eq!(row.sync.frame, 16 * (i as u64 + 1));
         let sample = if i < 2 { 0 } else { 1000 + (i as i32 - 2) % 2 };
         assert_eq!(
             row.audio.as_ref().unwrap().outputs,
@@ -149,11 +146,7 @@ fn combined_trace_latches_failed_audio_pass_after_computing_next_cursors() {
         trace.results[0].error,
         Some(PipelineError::State(Error::InvalidState))
     );
-    assert_eq!(trace.results[0].transition.next_frame, 16);
-    assert!(matches!(
-        trace.results[0].transition.processed,
-        traces::Response::Accepted(())
-    ));
+    assert_eq!(trace.results[0].sync.frame, 16);
 }
 
 #[shoop_test]
@@ -181,7 +174,7 @@ fn shared_loop_pipeline_plays_a_retained_range_after_source_clear() {
         .memory
         .fill(rt_fpga_reference::state::Value::Word(slice.0 as u64));
     case.steps.truncate(2);
-    case.steps[0].transition.commands[0].operation = Operation::Play {
+    case.steps[0].plans[0].plan.as_mut().unwrap().operation = Operation::Play {
         position: 0,
         retrigger: true,
     };
@@ -194,7 +187,7 @@ fn shared_loop_pipeline_plays_a_retained_range_after_source_clear() {
     for (i, row) in trace.results.iter().enumerate() {
         assert_eq!(row.error, None);
         assert_eq!(row.state, initial);
-        assert_eq!(row.transition.next_frame, (i as u64 + 1) * 16);
+        assert_eq!(row.sync.frame, (i as u64 + 1) * 16);
         let audio = row.audio.as_ref().unwrap();
         assert_eq!(audio.outputs, vec![expected.clone()]);
         let snapshot = audio.media.as_ref().unwrap();
@@ -217,26 +210,17 @@ fn shared_loop_pipeline_plays_a_retained_range_after_source_clear() {
 }
 
 fn compare_transitions(trace: &PipelineTrace) {
-    let case = traces::TransitionCase {
-        name: trace.case.name.clone(),
-        plan: trace.case.plan.clone(),
-        steps: trace
-            .case
-            .steps
-            .iter()
-            .map(|step| step.transition.clone())
-            .collect(),
-    };
-    let model = traces::run_transition_case(case.clone()).unwrap();
-    let oracle = traces::run_transition_oracle(case).unwrap();
-    assert_eq!(model, oracle);
-    for (i, (actual, expected)) in trace.results.iter().zip(&oracle.results).enumerate() {
-        assert_eq!(&actual.transition, expected, "quantum {i}");
+    let mut oracle = traces::Oracle::prepare(&trace.case.plan).unwrap();
+    for (i, (step, result)) in trace.case.steps.iter().zip(&trace.results).enumerate() {
+        for write in &step.plans {
+            oracle.write(write);
+        }
+        assert_eq!(result.sync, oracle.tick(), "quantum {i}");
     }
 }
 
 #[shoop_test]
-fn transition_controls_drive_current_gain_arithmetic_and_smoothing_jobs() {
+fn direct_plans_drive_gain_arithmetic_and_smoothing_jobs() {
     use rt_fpga_reference::{
         fixed::Ramp,
         jobs::{ArithmeticMode, Job},
@@ -299,37 +283,36 @@ fn transition_controls_drive_current_gain_arithmetic_and_smoothing_jobs() {
     case.steps = (0..12)
         .map(|i| PipelineStep {
             writes: vec![],
-            transition: TransitionStep {
-                collect_completed: true,
-                collect: vec![],
-                cancel: vec![],
-                commands: match i {
-                    0 | 7 => Some(Operation::Record),
-                    2 | 9 => Some(Operation::Play {
-                        position: 0,
-                        retrigger: true,
-                    }),
-                    4 => Some(Operation::Seek {
-                        position: 16,
-                        retrigger: true,
-                    }),
-                    5 | 11 => Some(Operation::Stop),
-                    6 => Some(Operation::Play {
-                        position: 0,
-                        retrigger: false,
-                    }),
-                    _ => None,
-                }
-                .map(|operation| Command {
-                    target: loop_id,
+            plans: match i {
+                0 | 7 => Some(Operation::Record),
+                2 | 9 => Some(Operation::Play {
+                    position: 0,
+                    retrigger: true,
+                }),
+                4 => Some(Operation::Seek {
+                    position: 16,
+                    retrigger: true,
+                }),
+                5 | 11 => Some(Operation::Stop),
+                6 => Some(Operation::Play {
+                    position: 0,
+                    retrigger: false,
+                }),
+                _ => None,
+            }
+            .map(|operation| PlanWrite {
+                target: loop_id,
+                index: 0,
+                plan: Some(PlannedTransition {
                     sequence: i + 1,
-                    at: 0,
-                    timing: Timing::At,
+                    effective: 0,
+                    on_pulse: false,
+                    remaining_ticks: 0,
                     operation,
-                })
-                .into_iter()
-                .collect(),
-            },
+                }),
+            })
+            .into_iter()
+            .collect(),
             work: PipelineWork::Audio {
                 inputs: vec![(0..16)
                     .map(|n| Fixed((i as i32 + 1) * 100000 - n * 1000))

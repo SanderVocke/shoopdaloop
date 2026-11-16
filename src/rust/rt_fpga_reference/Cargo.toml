@@ -2,7 +2,7 @@
 name = "rt_fpga_reference"
 version.workspace = true
 edition = "2021"
-description = "Functional transition, state, job and memory processor reference"
+description = "Functional state, job and memory processor reference"
 publish = false
 
 [features]

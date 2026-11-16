@@ -1,8 +1,6 @@
-//! Command admission and retained request bookkeeping for SP-owned loop plans.
-mod engine;
+//! Loop graph compilation and transition values used by the state processor.
 mod plan;
 mod types;
-pub use engine::TransitionProcessor;
 pub use plan::{
     LoopKind, LoopSpec, PlanDescription, TransitionLimits, TransitionPlan, TransitionPlanImage,
 };

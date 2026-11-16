@@ -24,18 +24,20 @@ verified. Faults are exposed by the relevant component; there is no active
 application-level sticky-silence/reset protocol or full-loop timing guarantee.
 
 The [Rust reference](src/rust/rt_fpga_reference/README.md) provides functional
-transition, state, job and logical-memory models, plus a combined functional
+state, job and logical-memory models, plus a combined functional
 pipeline. Transition traces are compared to the current native loop resolver;
 Marlin differential tests compare the retained SP/JP RTL's jobs, state and samples
-exactly for the shared audio instruction subset. In Rust, TP admits up to two
-active plans per loop into SP-owned state. A new SP sync-ordered prefix processes
+exactly for the shared audio instruction subset. The remaining Rust TP, command
+admission and retained request/completion machinery are removed. Callers write
+the two prepared plan slots directly; SP exposes per-quantum slot outcomes.
+The SP sync-ordered prefix processes
 wraps, pulses, transitions and next cursors, saving render state for the audio pass.
 The same prefix is implemented in the existing RTL `sp_engine` FSM and datapath;
 there is no separate sync execution controller. Standalone SP and `audio_pipeline`
 expose owned-loop configuration and event ports; media/AXI wrappers retain explicit
 record mode. No separate TP RTL, former ARM interface or application backend is
-restored. See the [matched synthesis comparison](docs/fpga/sp-sync-resource-comparison.md)
-for the additional loop-storage and execution resources.
+restored. See the [resource optimization report](docs/fpga/sp-sync-resource-optimization.md)
+for the measured loop-storage and execution costs.
 
 See [verification commands](src/rust/rt_fpga_testbench/README.md), the
 [retirement ledger](docs/fpga/retirement-ledger.md), and the

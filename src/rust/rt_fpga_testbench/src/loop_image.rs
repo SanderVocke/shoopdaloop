@@ -1,8 +1,8 @@
-//! Compact SP loop RAM image and control-side request/event bookkeeping.
+//! Compact SP loop RAM image and event projection checks.
 use crate::{bits::Bits, drivers::state::Program, sim::Sim};
 use rt_fpga_reference::{
-    state::{LoopSlot, PlannedTransition},
-    transitions::{LoopSpec, Mode, Operation, Timing},
+    state::LoopSlot,
+    transitions::{LoopSpec, Mode, Operation},
 };
 use std::collections::BTreeMap;
 
@@ -47,7 +47,7 @@ pub fn image(slot: &LoopSlot, spec: &LoopSpec, stamp: Option<u64>) -> Bits {
         );
     }
     let newer = match slot.planned {
-        [Some(a), Some(b)] => b.command.sequence > a.command.sequence,
+        [Some(a), Some(b)] => b.sequence > a.sequence,
         [None, Some(_)] => true,
         _ => false,
     };
@@ -71,16 +71,12 @@ pub fn image(slot: &LoopSlot, spec: &LoopSpec, stamp: Option<u64>) -> Bits {
         if let Some(p) = plan {
             let base = (10 + i * 3) * 64;
             let flags = 96 + i * 5;
-            let (op, position, retrigger) = operation(p.command.operation);
+            let (op, position, retrigger) = operation(p.operation);
             b.set(base, 64, p.effective)
                 .set(base + 64, 64, p.remaining_ticks)
                 .set(base + 128, 64, position)
                 .set(flags, 1, 1)
-                .set(
-                    flags + 1,
-                    1,
-                    u64::from(matches!(p.command.timing, Timing::AfterTicks { .. })),
-                )
+                .set(flags + 1, 1, u64::from(p.on_pulse))
                 .set(flags + 2, 2, op)
                 .set(flags + 4, 1, u64::from(retrigger));
         }
@@ -89,49 +85,26 @@ pub fn image(slot: &LoopSlot, spec: &LoopSpec, stamp: Option<u64>) -> Bits {
 }
 
 #[derive(Default)]
-pub struct LoopControl {
-    bindings: BTreeMap<u32, [Option<PlannedTransition>; 2]>,
+pub struct LoopImage {
     last_pulse: BTreeMap<u32, Option<u64>>,
     newer: BTreeMap<u32, u64>,
 }
-impl LoopControl {
+impl LoopImage {
     pub fn stage(&mut self, slot: &LoopSlot, spec: &LoopSpec, stamp: Option<u64>) -> Bits {
         let b = image(slot, spec, stamp);
-        self.bindings.insert(spec.id.slot, slot.planned);
         self.last_pulse
             .entry(spec.id.slot)
             .or_insert(slot.state.last_pulse);
         self.newer.insert(spec.id.slot, b.get(56, 1));
         b
     }
-    /// Resolve compact plan-slot acknowledgements using the admitted control records.
-    pub fn observe(&mut self, events: &[Bits]) -> Vec<Bits> {
-        events
-            .iter()
-            .map(|b| {
-                let mut result = b.clone();
-                let slot = b.get(32, 32) as u32;
-                match b.get(0, 8) {
-                    2 => {
-                        *self.last_pulse.get_mut(&slot).unwrap() = Some(b.get(192, 64));
-                    }
-                    3 => {
-                        let index = b.get(64, 64) as usize;
-                        assert!(index < 2);
-                        assert_eq!(b.get(128, 64), 0);
-                        let plan = self.bindings.get_mut(&slot).unwrap()[index]
-                            .take()
-                            .expect("duplicate or unbound plan resolution");
-                        result
-                            .set(64, 32, u64::from(plan.request.slot))
-                            .set(96, 32, u64::from(plan.request.generation))
-                            .set(128, 64, plan.command.sequence);
-                    }
-                    _ => {}
-                }
-                result
-            })
-            .collect()
+    pub fn observe(&mut self, events: &[Bits]) {
+        for event in events {
+            if event.get(0, 8) == 2 {
+                let slot = event.get(32, 32) as u32;
+                *self.last_pulse.get_mut(&slot).unwrap() = Some(event.get(192, 64));
+            }
+        }
     }
     /// Check both physical execution state and metadata reconstructed from actual RTL events.
     pub fn verify(&self, actual: &Bits, slot: &LoopSlot, spec: &LoopSpec, stamp: u64) {
@@ -140,11 +113,6 @@ impl LoopControl {
         expected.set(56, 1, self.newer[&spec.id.slot]);
         let mut actual = actual.clone();
         for (i, expected_plan) in slot.planned.iter().enumerate() {
-            let binding = self.bindings[&spec.id.slot][i];
-            assert_eq!(
-                binding.map(|p| (p.request, p.command, p.effective)),
-                expected_plan.map(|p| (p.request, p.command, p.effective))
-            );
             if expected_plan.is_none() {
                 assert_eq!(actual.get(96 + i * 5, 1), 0);
                 actual.set(96 + i * 5, 5, 0);

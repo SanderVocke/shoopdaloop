@@ -1,8 +1,8 @@
-//! One quantum of transition settlement, node state and sample execution.
+//! One quantum of state, job and media execution.
 use crate::{
     fixed::Fixed,
     jobs::{Job, JobProcessor, JobQueue, Memory},
-    state::{Address, Program, StateProcessor, Value},
+    state::{Address, PlannedTransition, Program, StateProcessor, Value},
     transitions::*,
     Error,
 };
@@ -27,7 +27,6 @@ pub enum PipelineError {
 }
 
 pub struct Pipeline {
-    transitions: TransitionProcessor,
     state: StateProcessor,
     program: Program,
     queue: JobQueue,
@@ -51,9 +50,7 @@ impl Pipeline {
         if program.sync_instructions.is_empty() {
             program.sync_instructions = plan.sync_instructions();
         }
-        let transitions = TransitionProcessor::prepare(&plan);
         Ok(Self {
-            transitions,
             state: StateProcessor::with_loops(plan, initial_state),
             program,
             queue: JobQueue::new(capacity),
@@ -61,9 +58,6 @@ impl Pipeline {
             trace_jobs: false,
             emitted: Vec::with_capacity(capacity),
         })
-    }
-    pub fn transitions(&self) -> &TransitionProcessor {
-        &self.transitions
     }
     pub fn state(&self) -> &StateProcessor {
         &self.state
@@ -90,18 +84,13 @@ impl Pipeline {
             Ok(())
         }
     }
-    pub fn submit(&mut self, command: Command) -> Result<RequestId, TransitionError> {
+    pub fn write_plans(
+        &mut self,
+        id: LoopId,
+        plans: [Option<PlannedTransition>; 2],
+    ) -> Result<(), TransitionError> {
         self.ready()?;
-        self.transitions.submit(&mut self.state, command)
-    }
-    pub fn cancel(&mut self, id: RequestId) -> Result<bool, TransitionError> {
-        self.ready()?;
-        self.transitions.cancel(&mut self.state, id)
-    }
-    pub fn collect(&mut self, id: RequestId) -> Result<Option<Completion>, TransitionError> {
-        self.ready()?;
-        self.transitions.harvest(&mut self.state);
-        self.transitions.take_completion(id)
+        self.state.write_plans(id, plans)
     }
     pub fn write_state(&mut self, address: Address, value: Value) -> Result<(), Error> {
         if self.fault.is_some() {
@@ -173,7 +162,6 @@ impl Pipeline {
             .run_with_intents(&self.program, &mut self.queue, |intent| {
                 intent.prefetch(memory)
             });
-        self.transitions.harvest(&mut self.state);
         if self.trace_jobs {
             self.emitted.extend(self.queue.iter().copied());
         }

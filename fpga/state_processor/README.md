@@ -95,13 +95,12 @@ watermark: recording sets both to the next watermark and other operations leave
 both alone. A recording finalized by stop/play copies that watermark into content
 revision. There is no separately stored capture revision or render length.
 
-Control admission retains request IDs and full command sequences outside SP.
-While idle it writes plan flags/data and updates the newer-plan bit according to
-the two distinct full sequence numbers; preserve the other bits in word 0. This
+The caller writes prepared plans directly while idle and updates the newer-plan
+bit according to the two distinct full sequence numbers; preserve the other bits in word 0. This
 rank remains fixed during execution, including after a plan resolves, so it also
 preserves priority between absolute and pulse-triggered operations. Word 1 source
-identity must be preserved when updating its plan flags. Do not reuse an admitted
-plan's binding until its resolution has been consumed. No full sequence number or
+identity must be preserved when updating its plan flags. Consume each plan-slot
+resolution before replacing its corresponding plan. No full sequence number or
 request ID participates in the SP execution datapath.
 
 `sync_event_valid/ready/data` streams 256-bit descriptors. Backpressure stalls
@@ -112,15 +111,13 @@ wrap=1, pulse=2, resolution=3. For transitions, payload is position and flags ar
 operation bits [1:0] plus retrigger [2]. For resolutions, payload is plan index
 0/1, flags are zero, and outcome is applied=0/superseded=1/cancelled=2/failed=3.
 Failed reasons use the transition error codes (invalid state=5, invalid frame=6,
-exhausted=8, empty content=9). Control reconstructs request IDs/sequences from the
-admitted bindings and updates last-pulse history from actual pulse events. Last
-pulse is not required to execute the graph and is not stored in loop RAM.
+exhausted=8, empty content=9). A consumer can update last-pulse history from
+actual pulse events. Last pulse is not required to execute the graph and is not stored in loop RAM.
 
-The external consumer retains completion journals; there is no additional event
-FIFO in SP. The descriptor register is shared with ordinary job emission. The
+A consumer must accept or buffer events; there is no additional event FIFO in SP. The descriptor register is shared with ordinary job emission. The
 Rust functional model retains complete logical state; the testbench's compact
-image codec and event observer check the physical projection and reconstruct
-control metadata independently from actual RTL events.
+image codec and pulse observer check its physical projection and plan-slot
+outcomes directly. The Rust TP and request/completion binding layer are removed.
 
 The existing SP FSM uses word reads/writes and a shared 65-bit adder. It caches
 flags, position, length and capture count, while cycle/revision/plan data are

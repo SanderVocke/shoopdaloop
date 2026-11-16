@@ -1,6 +1,8 @@
 use rt_fpga_reference::{
     jobs::{BufferId, Job, JobQueue},
-    state::{Address, Instruction, Program, StateProcessor, SyncInstruction, Value},
+    state::{
+        Address, Instruction, PlannedTransition, Program, StateProcessor, SyncInstruction, Value,
+    },
     transitions::*,
     Error,
 };
@@ -26,7 +28,7 @@ fn fixture(
     specs: Vec<LoopSpec>,
     instructions: Vec<Instruction>,
     memory: Vec<Value>,
-) -> (TransitionProcessor, StateProcessor, Program, JobQueue) {
+) -> (StateProcessor, Program, JobQueue) {
     let plan = TransitionPlan::compile(
         PlanDescription {
             quantum: 16,
@@ -34,7 +36,6 @@ fn fixture(
         },
         TransitionLimits {
             loop_slots: 10,
-            pending_requests: 8,
             events: 28,
         },
     )
@@ -46,21 +47,25 @@ fn fixture(
         chunk_frames: 1,
         jobs_per_quantum: 8,
     };
-    let control = TransitionProcessor::prepare(&plan);
     (
-        control,
         StateProcessor::with_loops(plan, memory),
         program,
         JobQueue::new(8),
     )
 }
-fn command(target: u32, sequence: u64, at: u64, operation: Operation, timing: Timing) -> Command {
-    Command {
-        target: id(target),
+fn plan(
+    sequence: u64,
+    effective: u64,
+    operation: Operation,
+    on_pulse: bool,
+    remaining_ticks: u64,
+) -> PlannedTransition {
+    PlannedTransition {
         sequence,
-        at,
+        effective,
         operation,
-        timing,
+        on_pulse,
+        remaining_ticks,
     }
 }
 fn play() -> Operation {
@@ -72,7 +77,7 @@ fn play() -> Operation {
 
 #[shoop_test]
 fn sync_prefix_propagates_before_reverse_audio_order_and_keeps_render_cursors() {
-    let (mut control, mut sp, program, mut queue) = fixture(
+    let (mut sp, program, mut queue) = fixture(
         vec![spec(1, 16, Some(9), true), spec(9, 32, None, false)],
         vec![
             Instruction::ProcessLogicalPlayback {
@@ -95,29 +100,14 @@ fn sync_prefix_propagates_before_reverse_audio_order_and_keeps_render_cursors() 
             SyncInstruction::ProcessLoop { loop_id: id(1) }
         ]
     );
-    control
-        .submit(&mut sp, command(9, 1, 0, play(), Timing::At))
+    sp.write_plans(id(9), [Some(plan(1, 0, play(), false, 0)), None])
+        .unwrap();
+    sp.write_plans(id(1), [Some(plan(2, 0, play(), true, 0)), None])
         .unwrap();
     assert_eq!(sp.loop_state(id(9)).unwrap().state.mode, Mode::Stopped);
     assert_eq!(sp.frame(), 0);
     assert!(sp.events().is_empty());
-    control
-        .submit(
-            &mut sp,
-            command(
-                1,
-                2,
-                0,
-                play(),
-                Timing::AfterTicks {
-                    source: id(9),
-                    skip: 0,
-                },
-            ),
-        )
-        .unwrap();
     for quantum in 0..6 {
-        // No control-side execution or outcome harvesting is needed between quanta.
         sp.run(&program, &mut queue).unwrap();
         let source = sp.loop_state(id(9)).unwrap();
         let target = sp.loop_state(id(1)).unwrap();
@@ -163,81 +153,66 @@ fn sync_prefix_propagates_before_reverse_audio_order_and_keeps_render_cursors() 
             assert_eq!(pulses, vec![id(9), id(1)]);
         }
     }
-    control.harvest(&mut sp);
-    assert_eq!(
-        control
-            .request_slots(&sp)
-            .flatten()
-            .filter(|request| matches!(request.outcome, Some(Outcome::Applied { frame: 0 })))
-            .count(),
-        2
-    );
+    assert!(sp.resolutions().is_empty());
     assert_eq!(sp.frame(), 96);
 }
 
 #[shoop_test]
-fn two_active_plans_are_bounded_and_resolved_slots_can_be_reused_before_collection() {
-    let (mut control, mut sp, program, mut queue) =
-        fixture(vec![spec(0, 32, None, false)], vec![], vec![]);
-    let first = control
-        .submit(&mut sp, command(0, 1, 0, play(), Timing::At))
-        .unwrap();
-    let second = control
-        .submit(&mut sp, command(0, 2, 64, Operation::Stop, Timing::At))
-        .unwrap();
-    let before = sp.loop_state(id(0)).unwrap().clone();
-    assert_eq!(
-        control.submit(&mut sp, command(0, 3, 96, Operation::Record, Timing::At)),
-        Err(TransitionError::Capacity)
-    );
-    assert_eq!(sp.loop_state(id(0)).unwrap(), &before);
-    assert_eq!(sp.frame(), 0);
+fn direct_plan_writes_reuse_resolved_slots_and_validate_atomically() {
+    let (mut sp, program, mut queue) = fixture(vec![spec(0, 32, None, false)], vec![], vec![]);
+    sp.write_plans(
+        id(0),
+        [
+            Some(plan(1, 0, play(), false, 0)),
+            Some(plan(2, 64, Operation::Stop, false, 0)),
+        ],
+    )
+    .unwrap();
     sp.run(&program, &mut queue).unwrap();
-    let third = control
-        .submit(&mut sp, command(0, 3, 96, Operation::Record, Timing::At))
-        .unwrap();
-    assert_eq!(
-        third,
-        RequestId {
-            slot: 2,
-            generation: 1
-        }
-    );
-    assert!(matches!(
-        control.completion(first).unwrap(),
-        Some(Completion {
-            outcome: Outcome::Applied { frame: 0 },
-            ..
-        })
-    ));
-    assert_eq!(
-        sp.loop_state(id(0))
-            .unwrap()
-            .planned
-            .iter()
-            .flatten()
-            .count(),
-        2
-    );
-    control.cancel(&mut sp, second).unwrap();
-    let replacement = control
-        .submit(&mut sp, command(0, 4, 32, Operation::Stop, Timing::At))
-        .unwrap();
-    assert_eq!(replacement.slot, 3);
-    assert_eq!(
-        sp.loop_state(id(0))
-            .unwrap()
-            .planned
-            .iter()
-            .flatten()
-            .count(),
-        2
-    );
+    assert_eq!(sp.resolutions().len(), 1);
+    assert_eq!(sp.resolutions()[0].plan_index, 0);
+    assert_eq!(sp.resolutions()[0].outcome, Outcome::Applied { frame: 0 });
+    let mut plans = sp.loop_state(id(0)).unwrap().planned;
+    assert!(plans[0].is_none());
+    plans[0] = Some(plan(3, 96, Operation::Record, false, 0));
+    sp.write_plans(id(0), plans).unwrap();
+    for (bad_id, bad_plans, error) in [
+        (id(0), [plans[0], plans[0]], TransitionError::DuplicateId),
+        (
+            id(0),
+            [Some(plan(4, 0, play(), true, 0)), None],
+            TransitionError::MissingSync,
+        ),
+        (
+            id(0),
+            [
+                Some(plan(
+                    4,
+                    0,
+                    Operation::Seek {
+                        position: 1,
+                        retrigger: false,
+                    },
+                    false,
+                    0,
+                )),
+                None,
+            ],
+            TransitionError::InvalidFrame,
+        ),
+        (id(9), plans, TransitionError::InvalidId),
+    ] {
+        assert_eq!(sp.write_plans(bad_id, bad_plans), Err(error));
+        assert_eq!(sp.loop_state(id(0)).unwrap().planned, plans);
+    }
+    sp.run(&program, &mut queue).unwrap();
+    assert!(sp.resolutions().is_empty());
+    assert_eq!(sp.loop_state(id(0)).unwrap().planned, plans);
 }
 
 #[shoop_test]
 fn capture_start_is_saved_before_length_advance_and_recomputed_on_retake() {
-    let (mut control, mut sp, program, mut queue) = fixture(
+    let (mut sp, program, mut queue) = fixture(
         vec![spec(0, 0, None, false)],
         vec![Instruction::ProcessLogicalCapture {
             loop_id: id(0),
@@ -246,13 +221,11 @@ fn capture_start_is_saved_before_length_advance_and_recomputed_on_retake() {
         }],
         vec![Value::Word(0)],
     );
-    control
-        .submit(&mut sp, command(0, 1, 0, Operation::Record, Timing::At))
+    sp.write_plans(id(0), [Some(plan(1, 0, Operation::Record, false, 0)), None])
         .unwrap();
     for quantum in 0..3 {
         if quantum == 2 {
-            control
-                .submit(&mut sp, command(0, 2, 0, Operation::Record, Timing::At))
+            sp.write_plans(id(0), [Some(plan(2, 0, Operation::Record, false, 0)), None])
                 .unwrap();
         }
         sp.run(&program, &mut queue).unwrap();
@@ -273,7 +246,7 @@ fn capture_start_is_saved_before_length_advance_and_recomputed_on_retake() {
 
 #[shoop_test]
 fn malformed_sync_order_faults_without_emitting_audio_or_advancing_clocks() {
-    let (mut control, mut sp, mut program, mut queue) = fixture(
+    let (mut sp, mut program, mut queue) = fixture(
         vec![spec(0, 32, Some(9), false), spec(9, 32, None, false)],
         vec![Instruction::ProcessSilence {
             destination: BufferId(0),
@@ -293,7 +266,7 @@ fn malformed_sync_order_faults_without_emitting_audio_or_advancing_clocks() {
         Err(Error::Transition(TransitionError::InvalidConfig))
     );
     assert_eq!(
-        control.submit(&mut sp, command(9, 1, 0, play(), Timing::At)),
+        sp.write_plans(id(9), [Some(plan(1, 0, play(), false, 0)), None]),
         Err(TransitionError::InvalidState)
     );
 }
