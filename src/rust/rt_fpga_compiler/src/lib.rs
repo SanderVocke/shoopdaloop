@@ -3,9 +3,10 @@
 #![forbid(unsafe_code)]
 extern crate alloc;
 pub mod graph;
+pub mod loading;
 use alloc::{vec, vec::Vec};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Identity {
     pub slot: u32,
     pub generation: u32,

@@ -7,7 +7,7 @@ use crate::{
 };
 use alloc::vec::Vec;
 use rt_fpga_compiler::{
-    CompileError, InitialValue, LogicalStateProgram, Operation, ProgramLimits, Resource, Resources,
+    CompileError, InitialValue, LogicalStateProgram, Operation, ProgramLimits, Resources,
     StateProgramTarget,
 };
 
@@ -35,6 +35,42 @@ pub struct CompiledProgram {
     pub plan: TransitionPlan,
     pub bindings: Vec<Binding>,
     pub resources: Resources,
+}
+pub struct ProgramImage {
+    pub layout: rt_fpga_compiler::loading::Layout,
+    pub compiled: CompiledProgram,
+    pub initializers: Vec<(Address, Value)>,
+    pub new_loops: Vec<Option<crate::state::LoopSlot>>,
+}
+impl RustTarget<'_> {
+    pub fn build_image(
+        &self,
+        logical: &LogicalStateProgram,
+        layout: rt_fpga_compiler::loading::Layout,
+    ) -> Result<ProgramImage, CompileError> {
+        let bound = layout.relocate(logical)?;
+        let compiled = self.build(&bound)?;
+        let initializers = layout
+            .new_values()
+            .map(|(_, address)| (Address(address as usize), compiled.memory[address as usize]))
+            .collect();
+        let states = compiled.plan.initial_states();
+        let new_loops = layout
+            .new_loops()
+            .map(|id| {
+                Some(crate::state::LoopSlot::initial(
+                    states[id.slot as usize].unwrap(),
+                    true,
+                ))
+            })
+            .collect();
+        Ok(ProgramImage {
+            layout,
+            compiled,
+            initializers,
+            new_loops,
+        })
+    }
 }
 fn id(value: rt_fpga_compiler::Identity) -> LoopId {
     LoopId {
@@ -70,20 +106,8 @@ impl StateProgramTarget for RustTarget<'_> {
                         duration: r.duration,
                         elapsed: r.elapsed,
                     }),
-                    InitialValue::Smoothing {
-                        destination,
-                        history,
-                        duration,
-                    } => {
-                        let destination = u16::try_from(destination)
-                            .map_err(|_| CompileError::Capacity(Resource::Buffers))?;
-                        let history = u16::try_from(history)
-                            .map_err(|_| CompileError::Capacity(Resource::History))?;
-                        Value::Word(
-                            u64::from(destination)
-                                | (u64::from(history) << 16)
-                                | (u64::from(duration) << 32),
-                        )
+                    InitialValue::Smoothing { duration, .. } => {
+                        Value::Word(u64::from(duration) << 32)
                     }
                 })
             })
@@ -139,11 +163,23 @@ impl StateProgramTarget for RustTarget<'_> {
                     loop_id,
                     control,
                     source,
-                } => Instruction::ProcessSmoothing {
-                    loop_id: id(loop_id),
-                    control: Address(control as usize),
-                    source: BufferId(source as usize),
-                },
+                } => {
+                    let InitialValue::Smoothing {
+                        destination,
+                        history,
+                        ..
+                    } = logical.initial_state[control as usize]
+                    else {
+                        unreachable!()
+                    };
+                    Instruction::ProcessHistorySmoothing {
+                        loop_id: id(loop_id),
+                        control: Address(control as usize),
+                        source: BufferId(source as usize),
+                        destination: BufferId(destination as usize),
+                        history: history as usize,
+                    }
+                }
                 Operation::Output { source, port } => Instruction::ProcessOutput {
                     source: BufferId(source as usize),
                     port: port as usize,
@@ -176,11 +212,17 @@ impl StateProgramTarget for RustTarget<'_> {
         let sync_instructions: Vec<_> = logical
             .sync_pass
             .iter()
-            .map(|&v| SyncInstruction::ProcessLoop { loop_id: id(v) })
+            .map(|&v| SyncInstruction::ProcessLoop {
+                loop_id: id(v),
+                sync_source: logical
+                    .loops
+                    .iter()
+                    .find(|l| l.id == v)
+                    .unwrap()
+                    .sync_source
+                    .map(id),
+            })
             .collect();
-        if sync_instructions != plan.sync_instructions() {
-            return Err(CompileError::InvalidProgram);
-        }
         let bindings = logical
             .bindings
             .iter()

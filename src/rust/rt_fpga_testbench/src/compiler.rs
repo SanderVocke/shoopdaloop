@@ -106,15 +106,9 @@ impl StateProgramTarget for RtlTarget<'_> {
                         duration: r.duration,
                         elapsed: r.elapsed,
                     }),
-                    InitialValue::Smoothing {
-                        destination,
-                        history,
-                        duration,
-                    } => component::Value::Word(
-                        u64::from(destination)
-                            | (u64::from(history) << 16)
-                            | (u64::from(duration) << 32),
-                    ),
+                    InitialValue::Smoothing { duration, .. } => {
+                        component::Value::Word(u64::from(duration) << 32)
+                    }
                 }))
                 .resized(129),
             );
@@ -124,7 +118,21 @@ impl StateProgramTarget for RtlTarget<'_> {
             let mut bits = Bits::zero(96);
             bits.set(0, 8, 12)
                 .set(8, 16, u64::from(operand(loop_id.slot)?))
-                .set(24, 32, u64::from(loop_id.generation));
+                .set(24, 32, u64::from(loop_id.generation))
+                .set(
+                    56,
+                    16,
+                    u64::from(
+                        logical
+                            .loops
+                            .iter()
+                            .find(|l| l.id == *loop_id)
+                            .unwrap()
+                            .sync_source
+                            .map_or(u16::MAX, |s| s.slot as u16),
+                    ),
+                )
+                .set(72, 1, 1);
             instructions.push(bits);
         }
         for op in &logical.audio_pass {
@@ -176,11 +184,23 @@ impl StateProgramTarget for RtlTarget<'_> {
                     loop_id,
                     control,
                     source,
-                } => component::Instruction::ProcessSmoothing {
-                    loop_id: id(loop_id),
-                    control: self.address(control)?,
-                    source: operand(source)?,
-                },
+                } => {
+                    let InitialValue::Smoothing {
+                        destination,
+                        history,
+                        ..
+                    } = logical.initial_state[control as usize]
+                    else {
+                        unreachable!()
+                    };
+                    component::Instruction::ProcessHistorySmoothing {
+                        loop_id: id(loop_id),
+                        control: self.address(control)?,
+                        source: operand(source)?,
+                        destination: operand(destination)?,
+                        history: operand(history)?,
+                    }
+                }
                 Operation::Output { source, port } => component::Instruction::ProcessOutput {
                     source: operand(source)?,
                     port: operand(port)?,

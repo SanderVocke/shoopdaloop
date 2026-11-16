@@ -156,9 +156,11 @@ module sp_engine #(
     wire [31:0] target={16'b0,arg0};
     wire [31:0] generation={arg2,arg1};
     wire [63:0] source_flags=capture_job[63:0];
-    wire [31:0] source_slot={16'b0,flags[SS+:16]};
-    wire source_self=flags[SV] && source_slot==target;
-    wire source_tick=flags[SV] && !source_self && source_flags[PULSE];
+    wire inline_sync=opcode==`SHOOP_SP_PROCESS_LOOP && arg4[0];
+    wire source_valid=inline_sync ? arg3!=16'hffff : flags[SV];
+    wire [31:0] source_slot={16'b0,inline_sync ? arg3 : flags[SS+:16]};
+    wire source_self=source_valid && source_slot==target;
+    wire source_tick=source_valid && !source_self && source_flags[PULSE];
     wire source_playing=source_flags[M+:2]==1;
     wire [4:0] scan_flags=scan_index ? control[P1+:5] : control[P0+:5];
     wire [4:0] winner_flags=winner ? control[P1+:5] : control[P0+:5];
@@ -308,10 +310,10 @@ module sp_engine #(
                         error_code<=`SHOOP_SP_INVALID_PROGRAM; done<=1; phase<=IDLE;
                     end else case (program_read_data[7:0])
                         `SHOOP_SP_PROCESS_LOOP: begin
-                            if (program_read_data[95:56]!=0) begin error_code<=`SHOOP_SP_INVALID_PROGRAM; done<=1; phase<=IDLE; end
+                            if (program_read_data[95:56]!=0 && !(program_read_data[95:72]==24'd1)) begin error_code<=`SHOOP_SP_INVALID_PROGRAM; done<=1; phase<=IDLE; end
                             else phase<=SYNC_BEGIN;
                         end
-                        `SHOOP_SP_LOGICAL_PLAYBACK, `SHOOP_SP_LOGICAL_CAPTURE, `SHOOP_SP_PROCESS_SMOOTHING: begin
+                        `SHOOP_SP_LOGICAL_PLAYBACK, `SHOOP_SP_LOGICAL_CAPTURE, `SHOOP_SP_PROCESS_SMOOTHING, `SHOOP_SP_HISTORY_SMOOTHING: begin
                             if (run_sync_count!=0) phase<=SYNC_BEGIN;
                             else phase<=LOOP_REQUEST;
                         end
@@ -386,9 +388,9 @@ module sp_engine #(
                         error_code <= `SHOOP_SP_INVALID_STATE;
                         done <= 1;
                         phase <= IDLE;
-                    end else if (opcode == `SHOOP_SP_PROCESS_SMOOTHING) begin
+                    end else if (opcode == `SHOOP_SP_PROCESS_SMOOTHING || opcode == `SHOOP_SP_HISTORY_SMOOTHING) begin
                         playback_flags <= {loop_at_start,loop_mode==1};
-                        operand_address <= arg3; operand <= SMOOTHING; phase <= READ_REQUEST;
+                        operand_address <= opcode==`SHOOP_SP_HISTORY_SMOOTHING ? arg1 : arg3; operand <= SMOOTHING; phase <= READ_REQUEST;
                     end else if (opcode == `SHOOP_SP_LOGICAL_PLAYBACK) begin
                         if (loop_mode == 1) begin
                             operand_address <= arg3; operand <= VIEW; phase <= READ_REQUEST;
@@ -473,8 +475,10 @@ module sp_engine #(
                                 phase <= EMIT;
                             end
                             SMOOTHING: begin
-                                job_data <= pack_job(`SHOOP_SP_JOB_SMOOTHING,arg4,operand_data[15:0],
-                                    {operand_data[63:32],16'b0,operand_data[31:16]}, {62'b0,playback_flags},0);
+                                job_data <= pack_job(`SHOOP_SP_JOB_SMOOTHING,
+                                    opcode==`SHOOP_SP_HISTORY_SMOOTHING ? arg2 : arg4,
+                                    opcode==`SHOOP_SP_HISTORY_SMOOTHING ? arg3 : operand_data[15:0],
+                                    {operand_data[63:32],16'b0,opcode==`SHOOP_SP_HISTORY_SMOOTHING ? arg4 : operand_data[31:16]}, {62'b0,playback_flags},0);
                                 phase <= EMIT;
                             end
                             RAMP: begin
@@ -524,16 +528,16 @@ module sp_engine #(
                 SYNC_CHECK: begin
                     pulse_pending<=0; delivered<=0; masked<=0; protected_valid<=0; flags[PULSE]<=0;
                     if (!flags[V] || flags[G+:32]!=generation || flags[M+:2]==3 || (flags[PV] && word_value==sync_frame)) sync_fail();
-                    else if (flags[SV]) begin
+                    else if (source_valid) begin
                         if (source_slot>=32'(LOOP_DEPTH)) sync_fail();
                         else if (source_self) begin
-                            if (control[31:0]!=generation) sync_fail(); else phase<=SYNC_SCAN_BEGIN;
+                            if (!inline_sync && control[31:0]!=generation) sync_fail(); else phase<=SYNC_SCAN_BEGIN;
                         end else loop_read(source_slot,FLAGS,SYNC_SOURCE_FLAGS);
                     end else phase<=SYNC_SCAN_BEGIN;
                 end
                 SYNC_SOURCE_FLAGS: begin capture_job[63:0]<=word_value; loop_read(source_slot,PF,SYNC_SOURCE_CHECK); end
                 SYNC_SOURCE_CHECK: begin
-                    if (!source_flags[V] || source_flags[G+:32]!=control[31:0] || source_flags[M+:2]==3
+                    if (!source_flags[V] || (!inline_sync && source_flags[G+:32]!=control[31:0]) || source_flags[M+:2]==3
                         || !source_flags[PV] || word_value!=sync_frame) sync_fail();
                     else phase<=SYNC_SCAN_BEGIN;
                 end
@@ -641,7 +645,7 @@ module sp_engine #(
                 end
                 SYNC_NATURAL: begin
                     if (flags[M+:2]==1 && length!=0 && position==length
-                        && !(flags[REP] && flags[SV] && !source_self && source_playing && !source_tick))
+                        && !(flags[REP] && source_valid && !source_self && source_playing && !source_tick))
                         loop_read(target,CYC,SYNC_WRAP);
                     else phase<=sync_natural_return;
                 end
@@ -705,7 +709,7 @@ module sp_engine #(
                 SYNC_WRITE: phase<=memory_return;
                 SYNC_EVENT: if (sync_event_ready) phase<=sync_event_return;
                 OWN_FLAGS: begin
-                    loop_invalid<=!word_value[V] || word_value[G+:32]!=generation || word_value[M+:2]==3 || !word_value[PV];
+                    loop_invalid<=!word_value[V] || (opcode!=`SHOOP_SP_HISTORY_SMOOTHING && word_value[G+:32]!=generation) || word_value[M+:2]==3 || !word_value[PV];
                     loop_mode<=word_value[M+:2]; begin_capture<=word_value[BC];
                     loop_read(target,PF,OWN_STAMP);
                 end

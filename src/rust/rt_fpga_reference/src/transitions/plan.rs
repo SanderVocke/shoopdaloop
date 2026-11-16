@@ -179,7 +179,10 @@ impl TransitionPlan {
             .iter()
             .flatten()
             .copied()
-            .map(|loop_id| crate::state::SyncInstruction::ProcessLoop { loop_id })
+            .map(|loop_id| crate::state::SyncInstruction::ProcessLoop {
+                loop_id,
+                sync_source: self.specs[loop_id.slot as usize].unwrap().sync_source,
+            })
             .collect()
     }
     pub fn followers(&self, id: LoopId) -> Result<&[LoopId], Error> {

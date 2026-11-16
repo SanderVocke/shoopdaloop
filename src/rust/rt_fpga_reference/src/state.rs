@@ -99,6 +99,13 @@ pub enum Instruction {
         control: Address,
         source: BufferId,
     },
+    ProcessHistorySmoothing {
+        loop_id: Identity,
+        control: Address,
+        source: BufferId,
+        destination: BufferId,
+        history: usize,
+    },
     ProcessLogicalPlayback {
         loop_id: Identity,
         view: Address,
@@ -151,6 +158,27 @@ pub struct StateProcessor {
     fault: Option<Error>,
 }
 impl StateProcessor {
+    pub fn reserve_loading(&mut self, limits: rt_fpga_compiler::ProgramLimits) {
+        self.memory
+            .resize(limits.state_values as usize, Value::Word(0));
+        if let Some(loops) = &mut self.loops {
+            loops.slots.resize(limits.loop_slots as usize, None);
+            loops.reserve_loading(limits.loop_slots as usize);
+        }
+    }
+    pub(crate) fn switch_image(&mut self, image: &mut crate::compiler::ProgramImage) {
+        for &(address, value) in &image.initializers {
+            self.memory[address.0] = value;
+        }
+        let loops = self.loops.as_mut().expect("prepared loop pool");
+        for slot in &mut image.new_loops {
+            if let Some(slot) = slot.take() {
+                let index = slot.state.id.slot as usize;
+                loops.slots[index] = Some(slot);
+            }
+        }
+        core::mem::swap(&mut loops.plan, &mut image.compiled.plan);
+    }
     pub fn new(memory: Vec<Value>) -> Self {
         Self {
             memory,
@@ -180,9 +208,21 @@ impl StateProcessor {
             .slot(id)
     }
     pub fn loop_states(&self) -> impl Iterator<Item = LoopState> + '_ {
-        self.loops
-            .iter()
-            .flat_map(|loops| loops.slots.iter().flatten().map(|slot| slot.state))
+        self.loops.iter().flat_map(|loops| {
+            loops
+                .slots
+                .iter()
+                .flatten()
+                .filter(|slot| {
+                    loops
+                        .plan
+                        .specs
+                        .get(slot.state.id.slot as usize)
+                        .and_then(Option::as_ref)
+                        .is_some_and(|s| s.id == slot.state.id)
+                })
+                .map(|slot| slot.state)
+        })
     }
     pub fn events(&self) -> &[Event] {
         self.loops
@@ -427,6 +467,23 @@ impl StateProcessor {
                         destination: BufferId((word & 0xffff) as usize),
                         history: ((word >> 16) & 0xffff) as usize,
                         duration: (word >> 32) as u32,
+                        playing: record.plays(),
+                        restart: record.position == 0,
+                    })?;
+                }
+                Instruction::ProcessHistorySmoothing {
+                    loop_id,
+                    control,
+                    source,
+                    destination,
+                    history,
+                } => {
+                    let record = self.loop_record(loops, loop_id)?;
+                    emit(Job::Smoothing {
+                        source,
+                        destination,
+                        history,
+                        duration: (self.read(control)?.word()? >> 32) as u32,
                         playing: record.plays(),
                         restart: record.position == 0,
                     })?;

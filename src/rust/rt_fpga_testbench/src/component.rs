@@ -37,6 +37,13 @@ pub enum ArithmeticMode {
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Instruction {
+    ProcessHistorySmoothing {
+        loop_id: Identity,
+        control: u16,
+        source: u16,
+        destination: u16,
+        history: u16,
+    },
     ProcessSmoothing {
         loop_id: Identity,
         control: u16,
@@ -93,6 +100,22 @@ pub fn value_words(value: Value) -> [u32; 5] {
 }
 pub fn instruction_words(value: Instruction) -> crate::Result<[u32; 5]> {
     let (opcode, args) = match value {
+        Instruction::ProcessHistorySmoothing {
+            loop_id,
+            control,
+            source,
+            destination,
+            history,
+        } => (
+            13,
+            vec![
+                u16::try_from(loop_id.slot)?,
+                control,
+                source,
+                destination,
+                history,
+            ],
+        ),
         Instruction::ProcessInput { port, destination } => (0, vec![port, destination]),
         Instruction::ProcessGain {
             ramp,

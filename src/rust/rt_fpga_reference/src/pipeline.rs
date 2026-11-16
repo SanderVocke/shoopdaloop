@@ -34,6 +34,8 @@ pub trait Observer {
 impl Observer for () {}
 
 pub struct Pipeline {
+    revision: u64,
+    region: u8,
     state: StateProcessor,
     program: Program,
     queue: JobQueue,
@@ -42,6 +44,61 @@ pub struct Pipeline {
     emitted: Vec<Job>,
 }
 impl Pipeline {
+    pub fn from_image(
+        image: crate::compiler::ProgramImage,
+        limits: rt_fpga_compiler::ProgramLimits,
+    ) -> Result<Self, PipelineError> {
+        let revision = image.layout.revision;
+        let region = image.layout.region;
+        let compiled = image.compiled;
+        let mut pipeline = Self::prepare(
+            compiled.plan,
+            compiled.program,
+            compiled.memory,
+            limits.jobs as usize,
+        )?;
+        pipeline.reserve_loading(limits)?;
+        pipeline.revision = revision;
+        pipeline.region = region;
+        Ok(pipeline)
+    }
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+    pub fn region(&self) -> u8 {
+        self.region
+    }
+    pub fn reserve_loading(
+        &mut self,
+        limits: rt_fpga_compiler::ProgramLimits,
+    ) -> Result<(), PipelineError> {
+        self.state.reserve_loading(limits);
+        self.queue = JobQueue::new(limits.jobs as usize);
+        self.emitted = Vec::with_capacity(limits.jobs as usize);
+        Ok(())
+    }
+    /// Called at a completed quantum boundary; the caller retains the old image until its fence completes.
+    pub fn switch_image(
+        &mut self,
+        image: &mut crate::compiler::ProgramImage,
+    ) -> Result<(), PipelineError> {
+        if image.layout.expected != self.revision
+            || image.layout.revision <= self.revision
+            || image.layout.region == self.region
+            || self.fault.is_some()
+            || !self.queue.is_empty()
+            || image.compiled.program.quantum != self.program.quantum
+            || image.compiled.program.chunk_frames != self.program.chunk_frames
+            || image.compiled.program.jobs_per_quantum > self.queue.remaining()
+        {
+            return Err(PipelineError::State(Error::InvalidState));
+        }
+        self.state.switch_image(image);
+        core::mem::swap(&mut self.program, &mut image.compiled.program);
+        self.revision = image.layout.revision;
+        self.region = image.layout.region;
+        Ok(())
+    }
     pub fn prepare(
         plan: TransitionPlan,
         mut program: Program,
@@ -58,6 +115,8 @@ impl Pipeline {
             program.sync_instructions = plan.sync_instructions();
         }
         Ok(Self {
+            revision: 0,
+            region: 0,
             state: StateProcessor::with_loops(plan, initial_state),
             program,
             queue: JobQueue::new(capacity),

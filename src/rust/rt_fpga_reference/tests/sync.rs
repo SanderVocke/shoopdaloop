@@ -96,8 +96,14 @@ fn sync_prefix_propagates_before_reverse_audio_order_and_keeps_render_cursors() 
     assert_eq!(
         program.sync_instructions,
         vec![
-            SyncInstruction::ProcessLoop { loop_id: id(9) },
-            SyncInstruction::ProcessLoop { loop_id: id(1) }
+            SyncInstruction::ProcessLoop {
+                loop_id: id(9),
+                sync_source: None
+            },
+            SyncInstruction::ProcessLoop {
+                loop_id: id(1),
+                sync_source: Some(id(9))
+            }
         ]
     );
     sp.write_plans(id(9), [Some(plan(1, 0, play(), false, 0)), None])

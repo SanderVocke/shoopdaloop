@@ -13,7 +13,10 @@ use alloc::vec::Vec;
 )]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum SyncInstruction {
-    ProcessLoop { loop_id: LoopId },
+    ProcessLoop {
+        loop_id: LoopId,
+        sync_source: Option<LoopId>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -53,6 +56,21 @@ pub struct LoopSlot {
     pub(crate) mode_plan: bool,
     pub(crate) mode_failures: u32,
 }
+impl LoopSlot {
+    pub(crate) fn initial(state: LoopState, mode_plan: bool) -> Self {
+        Self {
+            render: render(state),
+            state,
+            planned: [None; 2],
+            pulse_this_quantum: false,
+            pulse_pending: false,
+            pulse_masked: false,
+            protected: None,
+            mode_plan,
+            mode_failures: 0,
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -72,6 +90,13 @@ pub(crate) struct LoopMemory {
     projected_pulses: Vec<bool>,
 }
 impl LoopMemory {
+    pub(crate) fn reserve_loading(&mut self, slots: usize) {
+        self.projected_pulses.resize(slots, false);
+        self.events
+            .reserve((4 * slots).saturating_sub(self.events.len()));
+        self.resolutions
+            .reserve((2 * slots).saturating_sub(self.resolutions.len()));
+    }
     pub fn prepare(plan: TransitionPlan) -> Self {
         let slots = plan
             .initial_states()
@@ -103,6 +128,15 @@ impl LoopMemory {
         }
     }
     pub fn slot(&self, id: LoopId) -> Result<&LoopSlot, TransitionError> {
+        if self
+            .plan
+            .specs
+            .get(id.slot as usize)
+            .and_then(Option::as_ref)
+            .is_none_or(|s| s.id != id)
+        {
+            return Err(TransitionError::InvalidId);
+        }
         self.slots
             .get(id.slot as usize)
             .and_then(Option::as_ref)
@@ -110,6 +144,15 @@ impl LoopMemory {
             .ok_or(TransitionError::InvalidId)
     }
     pub fn slot_mut(&mut self, id: LoopId) -> Result<&mut LoopSlot, TransitionError> {
+        if self
+            .plan
+            .specs
+            .get(id.slot as usize)
+            .and_then(Option::as_ref)
+            .is_none_or(|s| s.id != id)
+        {
+            return Err(TransitionError::InvalidId);
+        }
         self.slots
             .get_mut(id.slot as usize)
             .and_then(Option::as_mut)
@@ -123,14 +166,29 @@ impl LoopMemory {
     ) -> Result<(), TransitionError> {
         if quantum != self.plan.image.description.quantum
             || instructions.len() != self.plan.image.description.loops.len()
-            || instructions
-                .iter()
-                .zip(self.plan.image.components.iter().flatten())
-                .any(|(instruction, id)| {
-                    *instruction != SyncInstruction::ProcessLoop { loop_id: *id }
-                })
         {
             return Err(TransitionError::InvalidConfig);
+        }
+        for (
+            i,
+            &SyncInstruction::ProcessLoop {
+                loop_id,
+                sync_source,
+            },
+        ) in instructions.iter().enumerate()
+        {
+            self.slot(loop_id)?;
+            if instructions[..i]
+                .iter()
+                .any(|&SyncInstruction::ProcessLoop { loop_id: old, .. }| old == loop_id)
+                || sync_source.filter(|&s| s != loop_id).is_some_and(|s| {
+                    !instructions[..i]
+                        .iter()
+                        .any(|&SyncInstruction::ProcessLoop { loop_id: old, .. }| old == s)
+                })
+            {
+                return Err(TransitionError::InvalidConfig);
+            }
         }
         let next = self
             .frame
@@ -138,9 +196,13 @@ impl LoopMemory {
             .ok_or(TransitionError::Exhausted)?;
         self.events.clear();
         self.resolutions.clear();
-        self.advance_mode_plans()?;
-        for &SyncInstruction::ProcessLoop { loop_id } in instructions {
-            self.process_loop(loop_id, quantum)?;
+        self.advance_mode_plans(instructions)?;
+        for &SyncInstruction::ProcessLoop {
+            loop_id,
+            sync_source,
+        } in instructions
+        {
+            self.process_loop(loop_id, sync_source, quantum)?;
         }
         self.frame = next;
         Ok(())
@@ -263,28 +325,36 @@ impl LoopMemory {
         self.slot_mut(id)?.state = state;
         Ok(())
     }
-    fn advance_mode_plans(&mut self) -> Result<(), TransitionError> {
+    fn advance_mode_plans(
+        &mut self,
+        instructions: &[SyncInstruction],
+    ) -> Result<(), TransitionError> {
         // Every step observes the same projected pulse cut, before mode changes.
-        for index in 0..self.plan.image.components.len() {
-            let id = self.plan.image.components[index][0];
-            let spec = self.plan.specs[id.slot as usize].unwrap();
+        for &SyncInstruction::ProcessLoop {
+            loop_id: id,
+            sync_source,
+        } in instructions
+        {
             let state = self.slot(id)?.state;
-            let source = spec.sync_source.filter(|s| *s != id);
+            let source = sync_source.filter(|s| *s != id);
             let source_pulse = source.is_some_and(|s| self.projected_pulses[s.slot as usize]);
             let wraps = state.at_end()
                 && (!state.repeat_sync
                     || source.is_none_or(|s| self.slot(s).unwrap().state.mode != Mode::Playing));
             self.projected_pulses[id.slot as usize] = wraps || source_pulse;
         }
-        for slot_index in 0..self.slots.len() {
-            let Some(slot) = self.slots[slot_index].as_ref().filter(|s| s.mode_plan) else {
+        for &SyncInstruction::ProcessLoop {
+            loop_id: id,
+            sync_source,
+        } in instructions
+        {
+            let Some(slot) = self.slots[id.slot as usize]
+                .as_ref()
+                .filter(|s| s.mode_plan)
+            else {
                 continue;
             };
-            let id = slot.state.id;
-            let source = self.plan.specs[slot_index]
-                .unwrap()
-                .sync_source
-                .unwrap_or(id);
+            let source = sync_source.unwrap_or(slot.state.id);
             if !self.projected_pulses[source.slot as usize] {
                 continue;
             }
@@ -313,19 +383,21 @@ impl LoopMemory {
         }
         Ok(())
     }
-    fn process_loop(&mut self, id: LoopId, quantum: u32) -> Result<(), TransitionError> {
+    fn process_loop(
+        &mut self,
+        id: LoopId,
+        source: Option<LoopId>,
+        quantum: u32,
+    ) -> Result<(), TransitionError> {
         let slot = self.slot_mut(id)?;
         slot.pulse_this_quantum = false;
         slot.pulse_pending = false;
         slot.pulse_masked = false;
         slot.protected = None;
-        let source = self.plan.specs[id.slot as usize]
-            .ok_or(TransitionError::InvalidId)?
-            .sync_source;
         if !self.slot(id)?.mode_plan {
             self.apply_due(id, true)?;
         }
-        self.natural_boundary(id)?;
+        self.natural_boundary(id, source)?;
         if let Some(source) = source.filter(|source| *source != id) {
             if self.slot(source)?.pulse_this_quantum {
                 if !self.slot(id)?.pulse_masked {
@@ -334,7 +406,7 @@ impl LoopMemory {
                 if !self.slot(id)?.mode_plan {
                     self.apply_due(id, false)?;
                 }
-                self.natural_boundary(id)?;
+                self.natural_boundary(id, Some(source))?;
             }
         }
         if self.slot(id)?.pulse_pending {
@@ -348,7 +420,7 @@ impl LoopMemory {
                 if !self.slot(id)?.mode_plan {
                     self.apply_due(id, false)?;
                 }
-                self.natural_boundary(id)?;
+                self.natural_boundary(id, source)?;
             }
         }
         let slot = self.slot_mut(id)?;
@@ -478,17 +550,17 @@ impl LoopMemory {
         }
         Ok(())
     }
-    fn natural_boundary(&mut self, id: LoopId) -> Result<(), TransitionError> {
+    fn natural_boundary(
+        &mut self,
+        id: LoopId,
+        sync_source: Option<LoopId>,
+    ) -> Result<(), TransitionError> {
         let state = self.slot(id)?.state;
         if !state.at_end() {
             return Ok(());
         }
         if state.repeat_sync {
-            if let Some(source) = self.plan.specs[id.slot as usize]
-                .unwrap()
-                .sync_source
-                .filter(|source| *source != id)
-            {
+            if let Some(source) = sync_source.filter(|source| *source != id) {
                 let source = self.slot(source)?;
                 if source.state.mode == Mode::Playing && !source.pulse_this_quantum {
                     return Ok(());

@@ -176,6 +176,10 @@ pub struct JobProcessor {
 }
 
 impl JobProcessor {
+    pub fn initialize_history(&mut self, slot: usize) -> Result<(), Error> {
+        *self.history.get_mut(slot).ok_or(Error::InvalidState)? = History::default();
+        Ok(())
+    }
     pub fn quantum(&self) -> usize {
         self.quantum
     }
