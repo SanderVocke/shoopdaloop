@@ -4781,9 +4781,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rt_fpga_compiler"
+version = "0.3.0"
+dependencies = [
+ "shoop_wasm_test_support",
+]
+
+[[package]]
 name = "rt_fpga_reference"
 version = "0.3.0"
 dependencies = [
+ "rt_fpga_compiler",
  "rt_runtime",
  "schemars",
  "serde",
@@ -4804,6 +4812,7 @@ dependencies = [
  "marlin",
  "quick-xml",
  "rt_audio_math",
+ "rt_fpga_compiler",
  "rt_fpga_reference",
  "rt_runtime",
  "serde",

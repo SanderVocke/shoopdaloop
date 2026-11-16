@@ -54,3 +54,10 @@ pulse-plan execution. Production native comparisons validate responses and loop
 snapshot records. Graph updates and full application backend selection remain
 outside this first endpoint; the same concrete carrier endpoint can serve a
 simulator driver when the RTL command/snapshot frontend is implemented.
+
+Shared preparation now lives in `rt_fpga_compiler`: a fixed-fixture emitter creates
+logical sync/audio operations, state slots, initial values and bindings.
+`StateProgramTarget` separates that description from typed Rust programs and
+packed RTL configuration images. Existing carrier and SP/JP test configurations
+use these targets, including tests with different state addresses in Rust and RTL.
+Graph-description input and runtime graph delivery remain future work.

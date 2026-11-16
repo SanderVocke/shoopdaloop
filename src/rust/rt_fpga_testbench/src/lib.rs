@@ -3,6 +3,7 @@
 pub mod bits;
 pub mod clock;
 pub mod codec;
+pub mod compiler;
 pub mod component;
 pub mod drivers;
 pub mod loop_image;

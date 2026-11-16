@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 extern crate alloc;
 pub mod chunk_memory;
+pub mod compiler;
 pub mod fixed;
 pub mod jobs;
 pub mod pipeline;

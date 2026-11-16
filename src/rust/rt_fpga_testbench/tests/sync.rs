@@ -589,59 +589,31 @@ fn integrated_sync_and_audio_instructions_drive_jp_with_exact_rust_samples() {
     sim.agent(events.clone());
     let mut random = Random::new(20261116);
     for q in [1, 16, 32] {
-        let spec = spec(0, 4 * q, None, false);
-        let plan = TransitionPlan::compile(
-            PlanDescription {
-                quantum: q as u32,
-                loops: vec![spec],
-            },
-            TransitionLimits {
-                loop_slots: 1,
-
-                events: 6,
-            },
-        )
-        .unwrap();
-        let memory = vec![
-            Value::Word((33 << 32) | (7 << 16) | 2),
-            Value::Ramp(Ramp::new(Fixed(i32::MAX), Fixed(i32::MIN), 47)),
-        ];
-        let instructions = vec![
-            json!({"kind":"process_input","port":0,"destination":0}),
-            json!({"kind":"process_gain","ramp":1,"source":0,"destination":1}),
-            json!({"kind":"process_smoothing","loop_id":id(0),"control":0,"source":1}),
-            json!({"kind":"process_output","source":2,"port":0}),
-        ];
-        let program = Program {
-            sync_instructions: plan.sync_instructions(),
-            instructions: serde_json::from_value(json!(instructions)).unwrap(),
-            quantum: q as u32,
-            chunk_frames: 1,
-            jobs_per_quantum: 8,
-        };
-        let mut combined: Vec<_> = program
-            .sync_instructions
-            .iter()
-            .map(|i| serde_json::to_value(i).unwrap())
-            .collect();
-        combined.extend(instructions);
-        let mut case = suites::audio::case(
-            capacities,
-            q,
-            combined,
-            serde_json::from_value(json!(memory)).unwrap(),
-            8,
-            1,
-            vec![vec![0; q as usize]],
-        );
-        case["program"]["jobs_per_quantum"] = json!(8);
-        driver.load(&mut sim, &case);
-        let mut sp = StateProcessor::with_loops(plan, memory);
+        use rt_fpga_compiler::{FixedProgram, StateProgramTarget};
+        use rt_fpga_reference::compiler::RustTarget;
+        use rt_fpga_testbench::compiler::RtlTarget;
+        let logical = FixedProgram::SyncSmoothing { quantum: q as u32 }
+            .emit()
+            .unwrap();
+        let rust = RustTarget::new(&[]).build(&logical).unwrap();
+        let mut target = RtlTarget::new(capacities, 1, &[]);
+        target.state_base = 4;
+        let rtl = target.build(&logical).unwrap();
+        assert_eq!(rust.bindings[0].gain.unwrap().0, 1);
+        assert_eq!(rtl.bindings[0].gain, Some(5));
+        driver.load_compiled(&mut sim, &rtl);
+        let spec = rust.plan.image().description.loops[0];
+        let program = rust.program;
+        let mut sp = StateProcessor::with_loops(rust.plan, rust.memory);
         let mut image_check = LoopImage::default();
         let row = image_check.stage(sp.loop_state(id(0)).unwrap(), &spec, None);
-        write_words(&mut driver.program, &mut sim, 0, &row, 0, 16);
-        let mut jp = JobProcessor::with_history_slots(q as usize, 8, 16);
-        let mut queue = JobQueue::new(32);
+        assert_eq!(read_loop(&mut driver.program, &mut sim, 0), row);
+        let mut jp = JobProcessor::with_history_slots(
+            q as usize,
+            rust.resources.buffers as usize,
+            rust.resources.history_slots as usize,
+        );
+        let mut queue = JobQueue::new(rust.resources.queue_capacity as usize);
         for quantum in 0..40 {
             let op = match quantum % 8 {
                 0 => Some(Operation::Play {
@@ -693,8 +665,15 @@ fn integrated_sync_and_audio_instructions_drive_jp_with_exact_rust_samples() {
             .unwrap();
             let buffers: Vec<_> = (0..8).map(|i| jp.buffer(BufferId(i)).ok()).collect();
             let expected = json!({"jobs":jobs,"remaining_jobs":[],"state":{"memory":sp.values()},"buffers":buffers,"outputs":[output],"stage":"jobs","status":{"kind":"completed"}});
-            sim.model.set("run_sync_count", 1);
-            let actual = driver.quantum(&mut sim, &json!({"inputs":[samples],"writes":[]}), true);
+            let mut actual =
+                driver.quantum(&mut sim, &json!({"inputs":[samples],"writes":[]}), true);
+            let values = actual["state"]["memory"].as_array_mut().unwrap();
+            assert!(
+                values[..usize::from(target.state_base)]
+                    .iter()
+                    .all(|v| *v == json!({"kind":"word","value":0}))
+            );
+            values.drain(..usize::from(target.state_base));
             assert_eq!(actual, expected, "Q={q}, quantum={quantum}");
             assert_eq!(sim.model.get("sync_frame"), sp.frame());
             image_check.observe(&events.borrow().rows);

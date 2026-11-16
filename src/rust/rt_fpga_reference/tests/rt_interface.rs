@@ -1,10 +1,11 @@
 #![cfg(feature = "rt-interface")]
+use rt_fpga_compiler::{compile, FixedProgram};
 use rt_fpga_reference::{
-    fixed::{Fixed, Ramp},
-    jobs::{BufferId, JobProcessor},
+    compiler::RustTarget,
+    fixed::Fixed,
+    jobs::JobProcessor,
     pipeline::Pipeline,
     rt_interface::{Configuration, Endpoint, LoopBinding, Processor, Settings},
-    state::{Address, Instruction, Program, Value},
     storage::MediaStore,
     transitions::{self as model, LoopId},
 };
@@ -67,74 +68,34 @@ fn prepare(
     config: Configuration,
     n: usize,
 ) -> (Controller, Processor, JobProcessor, MediaStore) {
-    let plan = model::TransitionPlan::compile(
-        model::PlanDescription {
-            quantum: q,
-            loops: (0..n)
-                .map(|i| model::LoopSpec {
-                    id: id(i as u32),
-                    kind: model::LoopKind::Primitive,
-                    length: 0,
-                    sync_source: (i > 0).then(|| id(0)),
-                    repeat_sync: false,
-                    timeline: None,
-                })
-                .collect(),
-        },
-        model::TransitionLimits {
-            loop_slots: n as u32,
-            events: 4 * n as u32,
-        },
-    )
-    .unwrap();
-    let mut memory = vec![Value::Ramp(Ramp::constant(Fixed::ONE)); n];
-    let mut instructions = vec![Instruction::ProcessInput {
-        port: 0,
-        destination: BufferId(0),
-    }];
-    let mut media = MediaStore::new(1).unwrap();
-    for i in 0..n {
-        let view = media.create_recording().unwrap();
-        memory.push(Value::Word(view.0 as u64));
-        instructions.extend([
-            Instruction::ProcessLogicalPlayback {
-                loop_id: id(i as u32),
-                view: Address(n + i),
-                destination: BufferId(1 + 2 * i),
-            },
-            Instruction::ProcessGain {
-                ramp: Address(i),
-                source: BufferId(1 + 2 * i),
-                destination: BufferId(2 + 2 * i),
-            },
-            Instruction::ProcessOutput {
-                source: BufferId(2 + 2 * i),
-                port: i,
-            },
-            Instruction::ProcessLogicalCapture {
-                loop_id: id(i as u32),
-                view: Address(n + i),
-                source: BufferId(0),
-            },
-        ]);
-    }
-    let program = Program {
-        sync_instructions: plan.sync_instructions(),
-        instructions,
+    let fixed = FixedProgram::MonoLoops {
         quantum: q,
-        chunk_frames: 1,
-        jobs_per_quantum: 1 + 5 * n,
+        loops: n as u32,
     };
-    let pipeline = Pipeline::prepare(plan, program, memory, 1 + 5 * n).unwrap();
-    let (control, ports) =
-        rt::channel(256, 3, protocol::snapshot::capacity(0, n, 0).unwrap()).unwrap();
-    let bindings = (0..n)
-        .map(|i| LoopBinding {
-            gain: Some(Address(i)),
-            meter: Some(BufferId(2 + 2 * i)),
-            ..LoopBinding::new(id(i as u32))
+    let mut media = MediaStore::new(1).unwrap();
+    let views = (0..n)
+        .map(|_| media.create_recording().unwrap().0 as u64)
+        .collect::<Vec<_>>();
+    let compiled = compile(fixed, &RustTarget::new(&views)).unwrap();
+    let resources = compiled.resources;
+    let bindings = compiled
+        .bindings
+        .iter()
+        .map(|b| LoopBinding {
+            gain: b.gain,
+            meter: b.meter,
+            ..LoopBinding::new(b.id)
         })
         .collect();
+    let pipeline = Pipeline::prepare(
+        compiled.plan,
+        compiled.program,
+        compiled.memory,
+        resources.queue_capacity as usize,
+    )
+    .unwrap();
+    let (control, ports) =
+        rt::channel(256, 3, protocol::snapshot::capacity(0, n, 0).unwrap()).unwrap();
     let limits = Limits {
         composite_entries: 0,
         composite_segments: 0,
@@ -182,7 +143,11 @@ fn prepare(
     (
         Controller(client, Default::default()),
         Processor::prepare(pipeline, ports, config, bindings).unwrap(),
-        JobProcessor::new(q as usize, 1 + 2 * n),
+        JobProcessor::with_history_slots(
+            q as usize,
+            resources.buffers as usize,
+            resources.history_slots as usize,
+        ),
         media,
     )
 }

@@ -184,6 +184,42 @@ impl Program {
     ) -> Bits {
         Config::new("cfg", "cfg_state").access(sim, u64::from(state), address, value, error)
     }
+    pub fn load_compiled(
+        &mut self,
+        sim: &mut Sim<'_>,
+        compiled: &crate::compiler::CompiledProgram,
+    ) {
+        assert!(compiled.instructions.len() as u64 <= self.depths[0]);
+        assert!(compiled.state.len() as u64 <= self.depths[1]);
+        assert!(u64::from(compiled.resources.queue_capacity) <= self.depths[2]);
+        self.state_count = compiled.state.len();
+        self.program = json!({
+            "instructions": compiled.instructions.iter().map(|b| b.array::<3>()).collect::<Vec<_>>(),
+            "quantum": compiled.quantum, "chunk_frames": compiled.chunk_frames,
+            "sync_count": compiled.sync_count, "jobs_per_quantum": compiled.jobs_per_quantum,
+        });
+        for (i, value) in compiled.instructions.iter().enumerate() {
+            self.configure(sim, false, i as u64, Some(value), false);
+            let read = self.configure(sim, false, i as u64, None, false);
+            assert_eq!(read.get(0, 64), value.get(0, 64));
+            assert_eq!(read.get(64, 32), value.get(64, 32));
+        }
+        for (i, value) in compiled.state.iter().enumerate() {
+            self.configure(sim, true, i as u64, Some(value), false);
+            assert_eq!(
+                self.configure(sim, true, i as u64, None, false)
+                    .array::<5>(),
+                value.array::<5>()
+            );
+        }
+        for row in &compiled.loops {
+            let mut image = Bits::zero(1024);
+            for (word, &value) in row.words.iter().enumerate() {
+                image.set(word * 64, 64, value);
+            }
+            crate::loop_image::write_words(self, sim, row.id.slot, &image, 0, 16);
+        }
+    }
     pub fn load(&mut self, sim: &mut Sim<'_>, case: &Value) {
         assert_eq!(case["queue_capacity"].as_u64().unwrap(), self.depths[2]);
         self.program = case["program"].clone();
@@ -253,6 +289,9 @@ impl Program {
                 self.program["jobs_per_quantum"].as_u64().unwrap(),
             ),
         ]);
+        if let Some(sync_count) = self.program["sync_count"].as_u64() {
+            sim.model.set("run_sync_count", sync_count);
+        }
         sim.model.set_all(overrides);
     }
 }

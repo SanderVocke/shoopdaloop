@@ -64,6 +64,20 @@ Supported quanta are 1/16/32/64/128. Loop lengths and operation positions must b
 quantum-aligned. Composites, timelines, batches, program replacement and capture
 monitoring remain outside this primitive-loop model.
 
+## Shared fixed-program preparation
+
+[`rt_fpga_compiler`](../rt_fpga_compiler/README.md) supplies the shared logical
+program and `StateProgramTarget` trait. Its current frontend emits the existing
+`MonoLoops` and `SyncSmoothing` fixture configurations; graph input and runtime
+graph delivery are future work. `compiler::RustTarget` builds the typed SP
+program, initial state, prepared loop plan, resources and bindings. Media-view
+handles are supplied by the caller after preparing media resources.
+
+The carrier fixtures use this preparation path for their mono loop programs and
+derive their gain/meter bindings from its result. RTL targets consume the same
+logical definitions and produce their own packed instructions and physical state
+layout. Neither target requires binary compatibility with the other.
+
 ## Internal RT interface
 
 Enable `rt-interface` for a fixed mono primitive-loop graph. The public control

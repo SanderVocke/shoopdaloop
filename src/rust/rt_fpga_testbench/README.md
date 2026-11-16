@@ -5,6 +5,16 @@ by `--test reference`. The same explicit programs, records and samples run throu
 independent Rust models and real RTL; jobs, state, errors, buffers and output
 samples are compared exactly. Existing vector tests remain independent checks.
 
+The shared [`rt_fpga_compiler`](../rt_fpga_compiler/README.md) emits fixed logical
+programs behind `StateProgramTarget`. `compiler::RtlTarget` produces packed
+instructions, state/loop RAM images and physical control bindings. Its typed
+output is loaded directly by the state/audio drivers. The compiler and sync tests
+compare these programs against `compiler::RustTarget`, with deliberately different
+state addresses: 96 mono-loop SP quanta and 120 sync/smoothing SP/JP sample quanta.
+The reference's carrier tests use the same mono-loop fixture definition. General
+graph compilation and graph delivery through the runtime protocol remain future
+work; processor pacing and control endpoints remain separate from preparation.
+
 The reference crate also has Rust-only transition and full functional pipeline
 tests: `cargo test --locked -p rt_fpga_reference --all-features`. They compare
 directly configured SP plans against the native resolver and exercise

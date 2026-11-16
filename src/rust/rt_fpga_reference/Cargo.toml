@@ -11,6 +11,7 @@ serde = ["dep:serde"]
 schema = ["serde", "dep:schemars"]
 
 [dependencies]
+rt_fpga_compiler = { path = "../rt_fpga_compiler" }
 shoop_rt_protocol = { path = "../shoop_rt_protocol", optional = true }
 shoop_rt_transport = { path = "../shoop_rt_transport", features = ["rt-interface"], optional = true }
 serde = { workspace = true, features = ["derive"], optional = true }

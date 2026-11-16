@@ -91,6 +91,7 @@ impl Audio {
         for name in [
             "run_valid",
             "run_instruction_count",
+            "run_sync_count",
             "run_state_count",
             "run_quantum",
             "run_chunk_frames",
@@ -160,6 +161,24 @@ impl Audio {
         );
         self.reset(s);
         self.program.load(s, case);
+        for port in 0..self.outputs {
+            for f in 0..self.frames {
+                self.sample_config(s, 1, port * self.capacities[3] + f, Some(0), false);
+            }
+        }
+    }
+    pub fn load_compiled(&mut self, s: &mut Sim<'_>, compiled: &crate::compiler::CompiledProgram) {
+        self.frames = u64::from(compiled.quantum);
+        self.buffers = u64::from(compiled.resources.buffers);
+        self.outputs = u64::from(compiled.resources.output_ports);
+        assert!(
+            self.frames <= self.capacities[3]
+                && self.buffers <= self.capacities[4]
+                && u64::from(compiled.resources.input_ports) <= self.capacities[5]
+                && self.outputs <= self.capacities[6]
+        );
+        self.reset(s);
+        self.program.load_compiled(s, compiled);
         for port in 0..self.outputs {
             for f in 0..self.frames {
                 self.sample_config(s, 1, port * self.capacities[3] + f, Some(0), false);
