@@ -43,3 +43,11 @@ See [verification commands](src/rust/rt_fpga_testbench/README.md), the
 [retirement ledger](docs/fpga/retirement-ledger.md), and the
 [implementation plan](PLAN_FPGA_COMPONENT_RETIREMENT.md). Old timing and board
 reports describe their recorded revisions and do not certify the current scope.
+
+The optional Rust `rt-interface` endpoint now executes a fixed mono graph behind
+shared internal command/response FIFOs and complete-state publications. Native
+CPU preparation uses the same channel factory. The reference endpoint accepts
+loop gain, immediate/two-step mode plans and plan clearing; its SP owns ordered
+pulse-plan execution. Production native comparisons validate responses and loop
+snapshot records. Graph updates and the full application adapter remain outside
+this first endpoint; RTL/Marlin FIFO integration is still future work.

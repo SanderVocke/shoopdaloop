@@ -8,6 +8,8 @@ pub mod jobs;
 pub mod pipeline;
 pub mod records;
 pub mod resolver;
+#[cfg(feature = "rt-interface")]
+pub mod rt_interface;
 #[cfg(feature = "serde")]
 mod serde_index;
 pub mod state;

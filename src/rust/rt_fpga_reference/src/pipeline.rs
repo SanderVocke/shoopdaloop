@@ -2,7 +2,7 @@
 use crate::{
     fixed::Fixed,
     jobs::{Job, JobProcessor, JobQueue, Memory},
-    state::{Address, PlannedTransition, Program, StateProcessor, Value},
+    state::{Address, ModePlan, PlannedTransition, Program, StateProcessor, Value},
     transitions::*,
     Error,
 };
@@ -25,6 +25,13 @@ pub enum PipelineError {
     State(Error),
     Jobs(Error),
 }
+
+/// The first settled tick and each completed sample quantum of one callback.
+pub trait Observer {
+    fn settled(&mut self, _state: &StateProcessor) {}
+    fn processed(&mut self, _jobs: &JobProcessor) {}
+}
+impl Observer for () {}
 
 pub struct Pipeline {
     state: StateProcessor,
@@ -92,6 +99,18 @@ impl Pipeline {
         self.ready()?;
         self.state.write_plans(id, plans)
     }
+    pub fn write_mode_plan(&mut self, id: LoopId, plan: ModePlan) -> Result<(), TransitionError> {
+        self.ready()?;
+        self.state.write_mode_plan(id, plan)
+    }
+    pub fn clear_mode_plan(&mut self, id: LoopId, mask: u8) -> Result<(), TransitionError> {
+        self.ready()?;
+        self.state.clear_mode_plan(id, mask)
+    }
+    #[cfg(feature = "rt-interface")]
+    pub(crate) fn initialize_frame(&mut self, frame: u64) -> Result<(), Error> {
+        self.state.initialize_frame(frame)
+    }
     pub fn write_state(&mut self, address: Address, value: Value) -> Result<(), Error> {
         if self.fault.is_some() {
             return Err(Error::InvalidState);
@@ -116,6 +135,17 @@ impl Pipeline {
         outputs: &mut [&mut [Fixed]],
         frames: usize,
     ) -> Result<(), PipelineError> {
+        self.process_observed(jobs, memory, inputs, outputs, frames, &mut ())
+    }
+    pub fn process_observed(
+        &mut self,
+        jobs: &mut JobProcessor,
+        memory: &mut impl Memory,
+        inputs: &[&[Fixed]],
+        outputs: &mut [&mut [Fixed]],
+        frames: usize,
+        observer: &mut impl Observer,
+    ) -> Result<(), PipelineError> {
         for output in outputs.iter_mut() {
             output.fill(Fixed::ZERO);
         }
@@ -134,9 +164,9 @@ impl Pipeline {
         {
             return Err(PipelineError::Jobs(Error::InvalidShape));
         }
-        let result = (0..frames)
-            .step_by(q)
-            .try_for_each(|base| self.process_quantum(jobs, memory, inputs, outputs, base));
+        let result = (0..frames).step_by(q).try_for_each(|base| {
+            self.process_quantum(jobs, memory, inputs, outputs, base, observer)
+        });
         if let Err(error) = result {
             self.fault = Some(error);
             for output in outputs.iter_mut() {
@@ -152,6 +182,7 @@ impl Pipeline {
         inputs: &[&[Fixed]],
         outputs: &mut [&mut [Fixed]],
         base: usize,
+        observer: &mut impl Observer,
     ) -> Result<(), PipelineError> {
         self.emitted.clear();
         if let Some(error) = memory.fault() {
@@ -169,11 +200,15 @@ impl Pipeline {
             Error::Transition(error) => PipelineError::Transition(error),
             error => PipelineError::State(error),
         })?;
+        if base == 0 {
+            observer.settled(&self.state);
+        }
         jobs.run_at(&mut self.queue, memory, inputs, outputs, base)
             .map_err(PipelineError::Jobs)?;
         if let Some(error) = memory.fault() {
             return Err(PipelineError::Jobs(error));
         }
+        observer.processed(jobs);
         Ok(())
     }
 }

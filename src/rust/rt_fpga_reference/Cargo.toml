@@ -6,10 +6,13 @@ description = "Functional state, job and memory processor reference"
 publish = false
 
 [features]
+rt-interface = ["dep:shoop_rt_protocol", "dep:shoop_rt_transport"]
 serde = ["dep:serde"]
 schema = ["serde", "dep:schemars"]
 
 [dependencies]
+shoop_rt_protocol = { path = "../shoop_rt_protocol", optional = true }
+shoop_rt_transport = { path = "../shoop_rt_transport", features = ["rt-interface"], optional = true }
 serde = { workspace = true, features = ["derive"], optional = true }
 schemars = { version = "1", optional = true }
 
@@ -17,6 +20,7 @@ schemars = { version = "1", optional = true }
 workspace = true
 
 [dev-dependencies]
+shoop_rt_engine = { path = "../shoop_rt_engine", features = ["testing"] }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 shoop_loops = { path = "../shoop_loops" }
 rt_runtime = { path = "../rt_runtime" }

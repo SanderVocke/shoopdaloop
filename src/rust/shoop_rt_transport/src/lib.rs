@@ -13,6 +13,8 @@ pub mod client;
 #[cfg(feature = "contracts")]
 pub mod contracts;
 pub mod framing;
+#[cfg(feature = "rt-interface")]
+pub mod rt;
 
 pub mod in_process {
     pub use crate::carrier::InProcess;

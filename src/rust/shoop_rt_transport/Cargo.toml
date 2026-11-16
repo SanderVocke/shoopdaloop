@@ -13,10 +13,12 @@ browser-feature = "wasm-test-browser"
 
 [features]
 std = []
+rt-interface = ["dep:rt_runtime"]
 contracts = ["std"]
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
+rt_runtime = { path = "../rt_runtime", optional = true }
 shoop_transport = { path = "../shoop_transport" }
 shoop_rt_protocol = { path = "../shoop_rt_protocol" }
 

@@ -23,7 +23,7 @@ rt_profiling = { path = "../rt_profiling" }
 profiling_protocol = { path = "../profiling_protocol" }
 
 rt_buffered = { path = "../rt_buffered" }
-shoop_rt_transport = { path = "../shoop_rt_transport" }
+shoop_rt_transport = { path = "../shoop_rt_transport", features = ["rt-interface"] }
 rt_runtime = { path = "../rt_runtime" }
 shoop_loops = { path = "../shoop_loops" }
 shoop_rt_protocol = { path = "../shoop_rt_protocol" }

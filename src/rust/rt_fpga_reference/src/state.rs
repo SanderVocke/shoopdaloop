@@ -10,7 +10,7 @@ use crate::{
 use alloc::vec::Vec;
 pub mod sync;
 use crate::transitions::{Event, LoopId, LoopState, TransitionError, TransitionPlan};
-pub use sync::{LoopSlot, PlannedTransition, Resolution, SyncInstruction};
+pub use sync::{LoopSlot, ModePlan, ModeStep, PlannedTransition, Resolution, SyncInstruction};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -165,6 +165,11 @@ impl StateProcessor {
             fault: None,
         }
     }
+    pub fn quantum(&self) -> Option<u32> {
+        self.loops
+            .as_ref()
+            .map(|m| m.plan.image.description.quantum)
+    }
     pub fn frame(&self) -> u64 {
         self.loops.as_ref().map_or(0, |loops| loops.frame)
     }
@@ -218,8 +223,58 @@ impl StateProcessor {
                 }
             }
         }
-        loops.slot_mut(id)?.planned = plans;
+        let slot = loops.slot_mut(id)?;
+        slot.mode_plan = false;
+        slot.planned = plans;
         Ok(())
+    }
+    #[cfg(feature = "rt-interface")]
+    pub(crate) fn initialize_frame(&mut self, frame: u64) -> Result<(), Error> {
+        let memory = self.loops.as_mut().ok_or(Error::InvalidState)?;
+        if memory.frame != 0 || frame % u64::from(memory.plan.image.description.quantum) != 0 {
+            return Err(Error::InvalidShape);
+        }
+        memory.frame = frame;
+        Ok(())
+    }
+    pub fn write_mode_plan(&mut self, id: LoopId, plan: ModePlan) -> Result<(), TransitionError> {
+        if self.fault.is_some() {
+            return Err(TransitionError::InvalidState);
+        }
+        self.loops
+            .as_mut()
+            .ok_or(TransitionError::InvalidState)?
+            .write_mode_plan(id, plan)
+    }
+    pub fn clear_mode_plan(&mut self, id: LoopId, mask: u8) -> Result<(), TransitionError> {
+        if self.fault.is_some() {
+            return Err(TransitionError::InvalidState);
+        }
+        self.loops
+            .as_mut()
+            .ok_or(TransitionError::InvalidState)?
+            .clear_mode_plan(id, mask)
+    }
+    pub fn mode_plan(&self, id: LoopId) -> Result<(ModePlan, u32), TransitionError> {
+        self.loops
+            .as_ref()
+            .ok_or(TransitionError::InvalidState)?
+            .mode_plan(id)
+    }
+    /// Settled state for the audio pass, before persistent cursor advancement.
+    pub fn render_state(&self, id: LoopId) -> Result<LoopState, TransitionError> {
+        let slot = self.loop_state(id)?;
+        let mut state = slot.state;
+        state.position = slot.render.position;
+        if self.frame() != 0 && state.mode == crate::transitions::Mode::Recording {
+            state.capture_frames = state
+                .capture_frames
+                .checked_sub(u64::from(
+                    self.loops.as_ref().unwrap().plan.image.description.quantum,
+                ))
+                .ok_or(TransitionError::InvalidState)?;
+        }
+        Ok(state)
     }
     /// Plan-slot outcomes from the most recently executed quantum.
     pub fn resolutions(&self) -> &[Resolution] {

@@ -64,6 +64,85 @@ Supported quanta are 1/16/32/64/128. Loop lengths and operation positions must b
 quantum-aligned. Composites, timelines, batches, program replacement and capture
 monitoring remain outside this primitive-loop model.
 
+## Internal RT interface
+
+Enable `rt-interface` to use `rt_interface::Endpoint` with a prepared, fixed
+mono primitive-loop graph. The endpoint consumes the same 48-byte group headers
+and 32-byte command records as native CPU execution, and publishes the existing
+response and snapshot formats. It has no native `EngineNode`/`LoopPlanner` or
+Marlin dependency. The native engine and reference endpoint use the same channel
+construction from `shoop_rt_transport::rt`; `ControlPort` separates control-side
+operations from a particular FIFO driver.
+
+Prepare the `Pipeline`, explicit SP program, loop bindings and initial memory,
+then create a channel with enough snapshot capacity:
+
+```rust
+use shoop_rt_transport::rt::{self, ControlPort};
+use shoop_rt_protocol::{immediate::FIFO_RECORDS, snapshot};
+
+let capacity = snapshot::capacity(0, bindings.len(), 0).unwrap();
+let (mut control, execution) = rt::channel(FIFO_RECORDS, 10, capacity)?;
+let mut endpoint = rt_fpga_reference::rt_interface::Endpoint::prepare(
+    pipeline, execution, configuration, bindings,
+)?;
+```
+
+`Configuration` supplies immutable graph/topology epochs and the aligned initial
+frame. Loops start stopped with the lengths configured in the graph. A
+`LoopBinding` supplies the loop identity, an optional gain-ramp address, an
+optional mono meter buffer and initial gain/timing metadata. The caller supplies
+JP, media and fixed-point samples to `process` or `process_block`.
+
+Supported commands are `LoopGain`, `Transition` (stop/play/record, including
+`now` and two future steps), and `ClearPlannedTransitions`. Unsupported operations
+produce `Unsupported` responses. Groups validate configuration/deadline first;
+commands then execute in order and report individual outcomes. A command failure
+does not roll back earlier commands or suppress later commands. `Scheduled` means
+future steps remain installed, rather than that those steps already executed.
+
+The interface's future steps use SP-owned slots with ordered pulse semantics:
+all steps observe the same pre-transition projected source pulses, positive skips
+decrement, and due steps execute first/second in order. Self clocks fall back to
+the target loop. An invalid scheduled transition clears its future steps and
+increments the snapshot failure count. Immediate recording is idempotent while
+already recording, and scheduled playback preserves an already playing cursor.
+The earlier sequence-arbitrated plan API remains available for the existing RTL
+component fixtures; both profiles share the same two physical plan slots.
+
+One call processes an integral number of quanta. The command publication cutoff
+is taken once at callback entry. Responses use the first processing frame;
+commands published during processing wait for the following callback. Response
+space is reserved at submission and released when consumed. SP's first settled
+state is published before JP runs; later quanta in the same callback do not replace
+that snapshot. Meters accumulate across the callback for the next publication.
+Snapshots retain complete-state/latest-publication semantics under reader stalls.
+Invalid callback shapes preserve pending commands. A pipeline failure latches,
+marks publication failure, silences output and makes later groups return
+`CannotApply`; computed state and accepted commands are not rolled back.
+
+This first endpoint supports unedited mono audio windows and fixed topology.
+Balance, strip/bus controls, MIDI, grabs/history and graph/media reconfiguration
+remain unsupported. Native physical capture-resource preflight is not modeled;
+media/job failures use the reference pipeline fault contract. Arbitrary partial
+host callbacks and native host buffering are outside this endpoint. It is an
+internal FIFO endpoint, not a selectable full application backend.
+
+The `rt_interface` tests compare responses and all four loop snapshot record
+classes exactly against the production native endpoint over 640 callbacks at
+Q=1/16/32/64/128, including callbacks with multiple quanta and varied command groups.
+Other checks cover exact recording/playback/gain samples, callback cutoff,
+reserved response capacity, invalid groups/values, reader stalls, allocation-free
+scalar processing and latched faults. Run:
+
+```sh
+cargo test --locked -p rt_fpga_reference --all-features --test rt_interface
+```
+
+Only Rust implements this new command/profile integration. RTL and Marlin still
+exercise the earlier direct component interface; their FIFO endpoint and matching
+mode-plan execution are follow-up work.
+
 ## Audio and memory
 
 SP emits ordered jobs before JP consumes them. Gain advances when its job is

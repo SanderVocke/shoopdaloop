@@ -4789,6 +4789,9 @@ dependencies = [
  "serde",
  "serde_json",
  "shoop_loops",
+ "shoop_rt_engine",
+ "shoop_rt_protocol",
+ "shoop_rt_transport",
  "shoop_wasm_test_support",
 ]
 
@@ -5744,6 +5747,7 @@ name = "shoop_rt_transport"
 version = "0.3.0"
 dependencies = [
  "rt_profiling",
+ "rt_runtime",
  "shoop_rt_protocol",
  "shoop_rt_transport",
  "shoop_transport",

@@ -8,7 +8,7 @@ use rt_runtime::immediate::{self, Boundary, Handler};
 use shoop_loops::runtime::{Immediate, ImmediateGrab, LoopPlanner};
 use shoop_rt_protocol::immediate::{
     Batch, Code, Command, CommandRecord, Diagnostics, Header, Response, TransitionMode, COMMANDS,
-    FIFO_RECORDS, STAGED_BATCHES,
+    STAGED_BATCHES,
 };
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Incoming {
@@ -35,8 +35,9 @@ struct Render {
 pub(crate) fn prepare(
     pool: Pool,
     credits: usize,
+    tx: shoop_rt_transport::rt::CommandProducer,
+    rx: shoop_rt_transport::rt::CommandConsumer,
 ) -> (Control, impl Handler<EngineNode, LoopPlanner>) {
-    let (tx, rx) = immediate::paired_channel(FIFO_RECORDS);
     (
         Control {
             tx,

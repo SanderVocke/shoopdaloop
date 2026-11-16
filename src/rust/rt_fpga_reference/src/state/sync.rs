@@ -28,6 +28,17 @@ pub struct PlannedTransition {
     pub remaining_ticks: u64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ModeStep {
+    pub mode: Mode,
+    pub skip: u32,
+}
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ModePlan {
+    pub now: Option<Mode>,
+    pub steps: [Option<ModeStep>; 2],
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LoopSlot {
     /// Logical state at the next quantum boundary after the sync instruction runs.
@@ -39,6 +50,8 @@ pub struct LoopSlot {
     pulse_pending: bool,
     pulse_masked: bool,
     protected: Option<u64>,
+    pub(crate) mode_plan: bool,
+    pub(crate) mode_failures: u32,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -56,6 +69,7 @@ pub(crate) struct LoopMemory {
     pub frame: u64,
     pub events: Vec<Event>,
     pub resolutions: Vec<Resolution>,
+    projected_pulses: Vec<bool>,
 }
 impl LoopMemory {
     pub fn prepare(plan: TransitionPlan) -> Self {
@@ -71,12 +85,16 @@ impl LoopMemory {
                     pulse_pending: false,
                     pulse_masked: false,
                     protected: None,
+                    mode_plan: false,
+                    mode_failures: 0,
                 })
             })
             .collect();
         let events = Vec::with_capacity(plan.image.limits.events as usize);
         let resolutions = Vec::with_capacity(2 * plan.image.description.loops.len());
+        let projected_pulses = alloc::vec![false; plan.image.limits.loop_slots as usize];
         Self {
+            projected_pulses,
             plan,
             slots,
             frame: 0,
@@ -120,10 +138,179 @@ impl LoopMemory {
             .ok_or(TransitionError::Exhausted)?;
         self.events.clear();
         self.resolutions.clear();
+        self.advance_mode_plans()?;
         for &SyncInstruction::ProcessLoop { loop_id } in instructions {
             self.process_loop(loop_id, quantum)?;
         }
         self.frame = next;
+        Ok(())
+    }
+    pub fn mode_plan(&self, id: LoopId) -> Result<(ModePlan, u32), TransitionError> {
+        let slot = self.slot(id)?;
+        if !slot.mode_plan {
+            return Err(TransitionError::InvalidState);
+        }
+        Ok((
+            ModePlan {
+                now: None,
+                steps: slot.planned.map(|plan| {
+                    plan.map(|p| ModeStep {
+                        mode: match p.operation {
+                            Operation::Stop => Mode::Stopped,
+                            Operation::Record => Mode::Recording,
+                            _ => Mode::Playing,
+                        },
+                        skip: p.remaining_ticks as u32,
+                    })
+                }),
+            },
+            slot.mode_failures,
+        ))
+    }
+    pub fn clear_mode_plan(&mut self, id: LoopId, mask: u8) -> Result<(), TransitionError> {
+        if !(1..=3).contains(&mask) {
+            return Err(TransitionError::InvalidConfig);
+        }
+        let slot = self.slot_mut(id)?;
+        if !slot.mode_plan {
+            return Err(TransitionError::InvalidState);
+        }
+        for i in 0..2 {
+            if mask & (1 << i) != 0 {
+                slot.planned[i] = None;
+            }
+        }
+        Ok(())
+    }
+    /// Apply an immediate mode and replace the two ordered source-pulse steps.
+    pub fn write_mode_plan(
+        &mut self,
+        id: LoopId,
+        mut plan: ModePlan,
+    ) -> Result<(), TransitionError> {
+        let slot = self.slot(id)?;
+        if !slot.mode_plan && slot.planned.iter().any(Option::is_some) {
+            return Err(TransitionError::InvalidState);
+        }
+        let source = self.plan.specs[id.slot as usize]
+            .unwrap()
+            .sync_source
+            .unwrap_or(id);
+        if source == id && slot.state.mode != Mode::Playing && plan.now.is_none() {
+            if plan.steps.iter().flatten().count() == 2 {
+                return Err(TransitionError::InvalidState);
+            }
+            if let Some(step) = plan.steps.into_iter().flatten().next() {
+                plan.now = Some(step.mode);
+                plan.steps = [None; 2];
+            }
+        }
+        if plan.steps.iter().any(Option::is_some)
+            && source == id
+            && self.slot(source)?.state.mode != Mode::Playing
+            && plan.now != Some(Mode::Playing)
+        {
+            return Err(TransitionError::InvalidState);
+        }
+        if let Some(mode) = plan.now {
+            self.apply_mode(id, mode, false)?;
+        }
+        let frame = self.frame;
+        let slot = self.slot_mut(id)?;
+        slot.mode_plan = true;
+        slot.planned = plan.steps.map(|step| {
+            step.map(|step| PlannedTransition {
+                sequence: 0,
+                effective: frame,
+                on_pulse: true,
+                remaining_ticks: u64::from(step.skip),
+                operation: match step.mode {
+                    Mode::Stopped => Operation::Stop,
+                    Mode::Recording => Operation::Record,
+                    Mode::Playing => Operation::Play {
+                        position: 0,
+                        retrigger: true,
+                    },
+                },
+            })
+        });
+        Ok(())
+    }
+    fn apply_mode(
+        &mut self,
+        id: LoopId,
+        mode: Mode,
+        scheduled: bool,
+    ) -> Result<(), TransitionError> {
+        let mut state = self.slot(id)?.state;
+        if (mode == Mode::Recording && state.mode == Mode::Recording)
+            || (mode == Mode::Stopped && state.mode == Mode::Stopped)
+            || (scheduled && mode == Mode::Playing && state.mode == Mode::Playing)
+        {
+            return Ok(());
+        }
+        apply_operation(
+            &mut state,
+            match mode {
+                Mode::Stopped => Operation::Stop,
+                Mode::Recording => Operation::Record,
+                Mode::Playing => Operation::Play {
+                    position: 0,
+                    retrigger: true,
+                },
+            },
+        )?;
+        self.slot_mut(id)?.state = state;
+        Ok(())
+    }
+    fn advance_mode_plans(&mut self) -> Result<(), TransitionError> {
+        // Every step observes the same projected pulse cut, before mode changes.
+        for index in 0..self.plan.image.components.len() {
+            let id = self.plan.image.components[index][0];
+            let spec = self.plan.specs[id.slot as usize].unwrap();
+            let state = self.slot(id)?.state;
+            let source = spec.sync_source.filter(|s| *s != id);
+            let source_pulse = source.is_some_and(|s| self.projected_pulses[s.slot as usize]);
+            let wraps = state.at_end()
+                && (!state.repeat_sync
+                    || source.is_none_or(|s| self.slot(s).unwrap().state.mode != Mode::Playing));
+            self.projected_pulses[id.slot as usize] = wraps || source_pulse;
+        }
+        for slot_index in 0..self.slots.len() {
+            let Some(slot) = self.slots[slot_index].as_ref().filter(|s| s.mode_plan) else {
+                continue;
+            };
+            let id = slot.state.id;
+            let source = self.plan.specs[slot_index]
+                .unwrap()
+                .sync_source
+                .unwrap_or(id);
+            if !self.projected_pulses[source.slot as usize] {
+                continue;
+            }
+            for index in 0..2 {
+                let Some(mut plan) = self.slot(id)?.planned[index] else {
+                    continue;
+                };
+                if plan.remaining_ticks != 0 {
+                    plan.remaining_ticks -= 1;
+                    self.slot_mut(id)?.planned[index] = Some(plan);
+                    continue;
+                }
+                self.slot_mut(id)?.planned[index] = None;
+                let mode = match plan.operation {
+                    Operation::Stop => Mode::Stopped,
+                    Operation::Record => Mode::Recording,
+                    _ => Mode::Playing,
+                };
+                if self.apply_mode(id, mode, true).is_err() {
+                    let slot = self.slot_mut(id)?;
+                    slot.planned = [None; 2];
+                    slot.mode_failures = slot.mode_failures.saturating_add(1);
+                    break;
+                }
+            }
+        }
         Ok(())
     }
     fn process_loop(&mut self, id: LoopId, quantum: u32) -> Result<(), TransitionError> {
@@ -135,14 +322,18 @@ impl LoopMemory {
         let source = self.plan.specs[id.slot as usize]
             .ok_or(TransitionError::InvalidId)?
             .sync_source;
-        self.apply_due(id, true)?;
+        if !self.slot(id)?.mode_plan {
+            self.apply_due(id, true)?;
+        }
         self.natural_boundary(id)?;
         if let Some(source) = source.filter(|source| *source != id) {
             if self.slot(source)?.pulse_this_quantum {
                 if !self.slot(id)?.pulse_masked {
                     self.queue_pulse(id)?;
                 }
-                self.apply_due(id, false)?;
+                if !self.slot(id)?.mode_plan {
+                    self.apply_due(id, false)?;
+                }
                 self.natural_boundary(id)?;
             }
         }
@@ -154,7 +345,9 @@ impl LoopMemory {
             slot.state.last_pulse = Some(frame);
             self.event(id, EventKind::Pulse)?;
             if source == Some(id) {
-                self.apply_due(id, false)?;
+                if !self.slot(id)?.mode_plan {
+                    self.apply_due(id, false)?;
+                }
                 self.natural_boundary(id)?;
             }
         }

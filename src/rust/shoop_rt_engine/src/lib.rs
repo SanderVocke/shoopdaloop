@@ -690,9 +690,28 @@ fn prepare_complete_using<R>(
             EngineNode::Processor(node),
         ));
     }
-    let (snapshot_capture, snapshot_state) =
-        snapshots::prepare(cells.clone(), strips, loops, buses, description.sample_rate)?;
-    let (immediate_control, immediate_render) = immediate::prepare(pool.clone(), credits);
+    let snapshot_bytes = shoop_rt_protocol::snapshot::capacity(strips, loops, buses)
+        .ok_or(rt_runtime::Error::Capacity)?;
+    let (control_ports, execution_ports) = shoop_rt_transport::rt::channel(
+        shoop_rt_protocol::immediate::FIFO_RECORDS,
+        10,
+        snapshot_bytes,
+    )?;
+    let (snapshot_capture, snapshot_state) = snapshots::prepare(
+        cells.clone(),
+        strips,
+        loops,
+        buses,
+        description.sample_rate,
+        execution_ports.snapshots,
+        control_ports.snapshots,
+    )?;
+    let (immediate_control, immediate_render) = immediate::prepare(
+        pool.clone(),
+        credits,
+        control_ports.commands,
+        execution_ports.commands,
+    );
     let external::Consumer {
         mut control,
         execution,
