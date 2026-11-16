@@ -13,6 +13,7 @@ use anyhow::Context;
 use midir::{MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 
 pub const MIDI_QUEUE_CAPACITY: usize = 1024;
+/// Script-command envelope bound; device providers validate the basic-message policy.
 pub const MAX_MIDI_MESSAGE_BYTES: usize = 256;
 
 pub fn midi_endpoint_host_id(direction: MidiEndpointDirection, endpoint_id: &str) -> String {
@@ -218,7 +219,7 @@ impl MidiControlService for NativeMidiService {
                 &port,
                 "ShoopDaLoop control input",
                 move |_timestamp, message, _| {
-                    if message.is_empty() || message.len() > MAX_MIDI_MESSAGE_BYTES {
+                    if shoop_midi_protocol::classify(message, false).is_err() {
                         callback_dropped.fetch_add(1, Ordering::Relaxed);
                         return;
                     }
@@ -305,8 +306,8 @@ impl MidiControlService for NativeMidiService {
     }
 
     fn send(&mut self, connection: MidiConnectionId, message: &[u8]) -> anyhow::Result<()> {
-        if message.is_empty() || message.len() > MAX_MIDI_MESSAGE_BYTES {
-            return Err(anyhow!("invalid MIDI message length {}", message.len()));
+        if shoop_midi_protocol::classify(message, false).is_err() {
+            return Err(anyhow!("unsupported basic MIDI message"));
         }
         let NativeConnection::Output(connection) = self
             .connections

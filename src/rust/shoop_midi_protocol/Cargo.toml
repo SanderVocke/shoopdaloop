@@ -1,0 +1,8 @@
+[package]
+name = "shoop_midi_protocol"
+version.workspace = true
+edition = "2021"
+description = "Fixed-message basic MIDI policy shared by hosts, protocols and runtimes"
+
+[lints]
+workspace = true

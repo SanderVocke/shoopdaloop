@@ -96,7 +96,7 @@ impl<S: Sample> MidiStore<S> {
             if u64::from(offset) >= frames || (event > 0 && offset < previous) {
                 return Err(Error::InvalidFrame);
             }
-            Message::parse(data, self.config.max_packet)?;
+            ShortMessage::managed(data).map_err(Error::from)?;
             bytes = bytes.checked_add(data.len()).ok_or(Error::Capacity)?;
             previous = offset;
         }
@@ -110,7 +110,9 @@ impl<S: Sample> MidiStore<S> {
                 if u64::from(offset) >= zero {
                     break;
                 }
-                state.apply_packet(data, self.config.max_packet)?;
+                ShortMessage::managed(data)
+                    .map_err(Error::from)?
+                    .apply(&mut state)?;
             }
             state
         } else {

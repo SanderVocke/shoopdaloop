@@ -85,8 +85,8 @@ fn run(q: usize, m: usize, s: usize, partition: usize, buffered: bool) -> Journa
         (0, &[0x9f, 60, 100]),
         (15, &[0x90, 61, 0]),
         (16, &[0x8f, 60, 0]),
-        (47, &[0xf0, 1, 2, 0xf7]),
-        (47, &[0xf8]),
+        (47, &[0xb0, 7, 2]),
+        (47, &[0xff]),
     ];
     let mut result = (Vec::new(), Vec::new(), Vec::new());
     let mut frame = 0;
@@ -167,8 +167,8 @@ fn run(q: usize, m: usize, s: usize, partition: usize, buffered: bool) -> Journa
             (delay as u64, vec![0x90, 60, 100]),
             ((delay + 15) as u64, vec![0x91, 61, 0]),
             ((delay + 16) as u64, vec![0x80, 60, 0]),
-            ((delay + 47) as u64, vec![0xf0, 1, 2, 0xf7]),
-            ((delay + 47) as u64, vec![0xf8]),
+            ((delay + 47) as u64, vec![0xb1, 7, 2]),
+            ((delay + 47) as u64, vec![0xff]),
         ]
     );
     result

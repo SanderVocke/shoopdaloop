@@ -59,12 +59,26 @@ pub struct WorkletConfig {
 impl WorkletConfig {
     /// A configuration with the default lane sizes.
     pub fn new(engine: EngineDescription) -> Self {
+        let midi_out_bytes = engine
+            .midi_output_capacity()
+            .ok()
+            .and_then(|capacity| {
+                capacity
+                    .events
+                    .checked_add(rt_runtime::midi::ResetState::EVENTS)
+                    .and_then(|events| events.checked_mul(crate::lane::EVENT_HEADER_BYTES))
+                    .and_then(|headers| capacity.bytes.checked_add(headers))
+                    .and_then(|bytes| bytes.checked_add(rt_runtime::midi::ResetState::BYTES))
+                    .and_then(|bytes| bytes.checked_mul(engine.host.midi_outputs.len()))
+            })
+            .unwrap_or(MAX_LANE_BYTES)
+            .clamp(DEFAULT_MIDI_LANE_BYTES, MAX_LANE_BYTES);
         Self {
             engine,
             records_in_bytes: DEFAULT_RECORDS_IN_BYTES,
             records_out_bytes: DEFAULT_RECORDS_OUT_BYTES,
             midi_in_bytes: DEFAULT_MIDI_LANE_BYTES,
-            midi_out_bytes: DEFAULT_MIDI_LANE_BYTES,
+            midi_out_bytes,
             records_per_quantum: DEFAULT_RECORDS_PER_QUANTUM,
         }
     }

@@ -53,7 +53,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let source: &[(usize, &[u8], &[u8])] = &[
         (q - 1, &[0x9f, 60, 100], &[0x90, 60, 100]),
         (block + q - 1, &[0x8f, 60, 0], &[0x80, 60, 0]),
-        (block + q - 1, &[0xf0, 1, 2, 0xf7], &[0xf0, 1, 2, 0xf7]),
+        (block + q - 1, &[0xff], &[0xff]),
     ];
     let mut input = MidiBuffer::new(8, 128)?;
     let mut output = MidiBuffer::new(8, 128)?;

@@ -247,6 +247,7 @@ mod platform {
         midi_inputs: BTreeMap<String, u8>,
         /// Web MIDI endpoint identities of the engine's host MIDI outputs, by port index.
         midi_outputs: Vec<String>,
+        midi_resets: Vec<lane::ResetState>,
         midi_revision: Option<u64>,
         repaint: Option<eframe::egui::Context>,
         pump_wake: Option<Rc<dyn Fn()>>,
@@ -310,6 +311,7 @@ mod platform {
                 microphone: Microphone::Off,
                 midi_inputs: BTreeMap::new(),
                 midi_outputs: Vec::new(),
+                midi_resets: Vec::new(),
                 midi_revision: None,
                 repaint: None,
                 pump_wake: None,
@@ -434,7 +436,8 @@ mod platform {
         }
 
         pub fn update_presentation(&self) {
-            let inner = self.inner.borrow();
+            let mut inner = self.inner.borrow_mut();
+            service_midi_recovery(&mut inner);
             let microphone = inner.microphone;
             let running = inner.phase == Phase::Running;
             let busy = matches!(inner.phase, Phase::RequestingPermission | Phase::Starting);
@@ -832,6 +835,7 @@ mod platform {
                 .map(|(endpoint, index)| (endpoint.id.clone(), index))
                 .collect();
             state.midi_outputs = sinks.iter().map(|endpoint| endpoint.id.clone()).collect();
+            state.midi_resets = vec![Default::default(); sinks.len()];
             state.warnings = warnings;
             state.backend = Some(backend);
             let Some(graph) = state.graph.as_mut() else {
@@ -973,11 +977,12 @@ mod platform {
     }
 
     fn send_midi_out(inner: &Rc<RefCell<Inner>>, bytes: &[u8]) {
-        let state = inner.borrow();
+        let mut state = inner.borrow_mut();
         let Some(context) = state.graph.as_ref().map(|graph| &graph.context) else {
             return;
         };
         let clock = midi_clock(context);
+        service_midi_recovery(&mut state);
         for event in lane::events(bytes) {
             let Ok(event) = event else {
                 break;
@@ -985,9 +990,30 @@ mod platform {
             let Some(endpoint) = state.midi_outputs.get(usize::from(event.port)) else {
                 continue;
             };
+            if state.midi_resets[usize::from(event.port)].pending() {
+                continue;
+            }
             let time = clock.output_time_ms(event.frame).max(clock.performance_ms);
             if let Err(error) = state.hub.send_at(endpoint, event.bytes, Some(time)) {
                 tracing::debug!(error = %error, "frontend.new_engine.midi_out_failed");
+                state.hub.clear_scheduled_output(endpoint);
+                state.midi_resets[usize::from(event.port)].request();
+            }
+        }
+        service_midi_recovery(&mut state);
+    }
+
+    fn service_midi_recovery(state: &mut Inner) {
+        for (port, reset) in state.midi_resets.iter_mut().enumerate() {
+            while let Some(bytes) = reset.peek() {
+                if state
+                    .hub
+                    .send_at(&state.midi_outputs[port], &bytes, None)
+                    .is_err()
+                {
+                    break;
+                }
+                reset.acknowledge().expect("accepted Web MIDI reset");
             }
         }
     }

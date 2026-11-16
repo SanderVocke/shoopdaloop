@@ -203,7 +203,9 @@ reserves a separate 768 MiB Rust arena, and leaves the remaining 128 MiB
 unassigned. The linker rejects overflow. Neither allocator may consume the spare
 region. The 128 MiB recording pool is inside the Rust arena. C/newlib and FreeRTOS
 each have separate 16 MiB heaps; lwIP's heap is 4 MiB. Control and render tasks
-each have 256 KiB stacks. AMD's aligned GEM BD array occupies complete 1 MiB
+each have 512 KiB stacks for nested preparation/render calls and fixed MIDI state
+copies. These stacks remain inside the separate RTOS heap and its measured reserve.
+AMD's aligned GEM BD array occupies complete 1 MiB
 sections with strongly ordered attributes; packet buffers use AMD cache
 maintenance. Link-map bounds include those arrays and the extra DMA reservation.
 

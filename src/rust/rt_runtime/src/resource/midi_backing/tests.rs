@@ -70,7 +70,7 @@ fn check(
             state.apply_packet(data, 48).unwrap();
         }
         let position = store.render_io().midi_seek(index, frame).unwrap();
-        assert_eq!(position.state, state);
+        assert_eq!(position.state, state.basic_projection());
         assert!(position.replayed_events <= 8);
     }
     let mut wire = [0; 512];
@@ -110,12 +110,10 @@ fn ordinary_snapshots_byte_cursors_and_midi_seeks_pin_complete_revisions() {
         usage.reserved_pages = 0;
         usage
     };
-    let mut sysex = [1; 35];
-    sysex[0] = 0xf0;
-    sysex[34] = 0xf7;
+    let control = [0xb0, 1, 35];
     assert_no_heap(|| {
         input.push(0, 12, &[0x90, 60, 80]).unwrap();
-        input.push(3, 12, &sysex).unwrap();
+        input.push(3, 12, &control).unwrap();
         input.push(8, 12, &[0x80, 60, 0]).unwrap();
         store
             .render_io()
@@ -128,7 +126,7 @@ fn ordinary_snapshots_byte_cursors_and_midi_seeks_pin_complete_revisions() {
         let peer = store.snapshot(fork, Frame(12)).unwrap();
         let mut initial = MidiState::default();
         initial.apply_packet(&[0x90, 60, 80], 48).unwrap();
-        let originals = [(1, &sysex[..]), (6, &[0x80, 60, 0][..])];
+        let originals = [(1, &control[..]), (6, &[0x80, 60, 0][..])];
         check(&mut store, old, &originals, &initial);
         input.clear();
         input.push(0, 2, &[0xb0, 1, 99]).unwrap();
@@ -145,7 +143,7 @@ fn ordinary_snapshots_byte_cursors_and_midi_seeks_pin_complete_revisions() {
         check(
             &mut store,
             edited,
-            &[(1, &sysex), (5, &[0xb0, 1, 99])],
+            &[(1, &control), (5, &[0xb0, 1, 99])],
             &initial,
         );
         assert_eq!(store.currentness(old.id), Ok(Currentness::Stale));
@@ -170,7 +168,7 @@ fn ordinary_snapshots_byte_cursors_and_midi_seeks_pin_complete_revisions() {
         check(
             &mut store,
             edited,
-            &[(1, &sysex), (5, &[0xb0, 1, 99])],
+            &[(1, &control), (5, &[0xb0, 1, 99])],
             &initial,
         );
         assert_eq!(store.cleanup_midi_store(midi), Err(Error::Busy));
@@ -223,12 +221,10 @@ fn upload(
 #[shoop_test]
 fn indexed_uploads_longer_than_history_import_without_packet_copy_and_survive_removal() {
     let (mut store, midi, mut input) = setup();
-    let mut sysex = [1; 35];
-    sysex[0] = 0xf0;
-    sysex[34] = 0xf7;
+    let control = [0xb0, 1, 35];
     let original = [
         (4, &[0x90, 64, 77][..]),
-        (100, &sysex[..]),
+        (100, &control[..]),
         (100, &[0xb0, 7, 21][..]),
         (256, &[0x80, 64, 0][..]),
     ];
@@ -300,11 +296,9 @@ fn indexed_uploads_longer_than_history_import_without_packet_copy_and_survive_re
 }
 
 #[shoop_test]
-fn failed_import_and_superseded_pending_edit_return_all_owned_credits() {
+fn cancelled_import_and_superseded_pending_edit_return_all_owned_credits() {
     let (mut store, midi, mut input) = setup();
-    let mut packet = [1; 49];
-    packet[0] = 0xf0;
-    packet[48] = 0xf7;
+    let packet = [0xb0, 2, 49];
     assert_no_heap(|| {
         let source = upload(
             &mut store,
@@ -316,8 +310,8 @@ fn failed_import_and_superseded_pending_edit_return_all_owned_credits() {
         let baseline = store.usage();
         let import = store.prepare_midi_import(midi, old.id).unwrap();
         assert_eq!(
-            store.render_io().progress_midi_import(import, 3),
-            Err(Error::Capacity)
+            store.render_io().progress_midi_import(import, 1),
+            Ok(shared_midi::EditStatus::Building)
         );
         assert_eq!(store.finish_midi_import(import), Err(Error::Busy));
         store.cancel_midi_import(import).unwrap();

@@ -188,14 +188,12 @@ fn a_retained_midi_prefix_changes_lease_without_cleanup_restore_or_note_retrigge
 }
 
 #[shoop_test]
-fn indexed_packets_sysex_equal_times_and_trailing_silence_match_absolute_oracle() {
-    let mut sysex = vec![0xf0];
-    sysex.extend((0..255).map(|n| (n % 128) as u8));
-    sysex.push(0xf7);
+fn indexed_basic_packets_equal_times_and_trailing_silence_match_absolute_oracle() {
+    let control = vec![0xb0, 1, 37];
     let events = vec![
         (0, vec![0x90, 60, 80]),
         (0, vec![0xa0, 60, 40]),
-        (2, sysex),
+        (2, control),
         (4, vec![0x80, 60, 7]),
         (5, vec![0x90, 60, 0]),
         (8, vec![0xb0, 0, 2]),
@@ -377,7 +375,7 @@ fn stopped_input_tracking_supplies_capture_initial_state_and_exact_frozen_packet
         store.commit_capture_tick(interval).unwrap();
         let next = store.reserve_capture_tick(take, Frame(3)).unwrap();
         input.clear();
-        input.push(0, 1, &[0xf0, 1, 2, 3, 0xf7]).unwrap();
+        input.push(0, 1, &[0xb0, 1, 42]).unwrap();
         capture
             .process(&mut store.render_io(), &input, 1, Some((next, 0)))
             .unwrap();
@@ -403,7 +401,7 @@ fn stopped_input_tracking_supplies_capture_initial_state_and_exact_frozen_packet
             .held());
         let mut cursor = store.render_io().midi_cursor(index).unwrap();
         let mut packet = [0; 32];
-        for (at, expected) in [(0, &[0x80, 60, 0][..]), (1, &[0xf0, 1, 2, 3, 0xf7][..])] {
+        for (at, expected) in [(0, &[0x80, 60, 0][..]), (1, &[0xb0, 1, 42][..])] {
             let event = store.render_io().midi_next(&mut cursor).unwrap().unwrap();
             assert_eq!(event.frame(), at);
             let count = store.render_io().midi_read(event, &mut packet).unwrap();

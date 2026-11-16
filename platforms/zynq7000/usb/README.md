@@ -134,11 +134,20 @@ The USB task processes at most 16 host events, 128 incoming packets per interfac
 and 128 successful outgoing packets per iteration, rotating across output ports.
 These are transport timestamps, not a physical sample-accurate delivery promise.
 
-Per-cable SysEx assembly expires after one second. Malformed packets, oversized
+The Rust engine boundary accepts only capped basic-MIDI messages (channel messages
+and System Reset). SysEx, parameter CC6/38/96–101 and other system messages are
+refused and counted. The standalone USB decoder/packetizer below retains its
+generic transport vectors; these do not advertise engine playback support.
+Input recovery epochs explicitly invalidate the engine baseline until a fresh
+device generation binds. Synthetic USB cleanup packets are not recorded as input.
+Complete output batches preflight the fixed USB queue; refusal requests the
+persistent acknowledged recovery sequence without enqueueing an ordinary prefix.
+
+Per-cable transport SysEx assembly expires after one second. Malformed packets, oversized
 or incomplete messages, pressure and disconnect discard bounded state and request
 recovery. Realtime messages emit immediately; a complete SysEx emits at its end,
-so engine event order follows message completion. Playback packetizes each
-complete SysEx with realtime represented as separate engine events. Reserved recovery sends
+so transport event order follows message completion. The standalone packetizer
+retains complete-message USB encoding. Reserved recovery sends
 All Sound Off and All Notes Off on all sixteen channels (32 messages); ordinary
 output waits for recovery completion. Pressure counters distinguish accepted,
 completed, refused, dropped, malformed and recovery events. Messages superseded by recovery
@@ -180,7 +189,8 @@ high-speed ancestor selection, full-speed nesting and the root integrated TT.
 The complete USB suite uses actual guest IRQ/controller/TinyUSB traffic through
 engine recording, saved MIDI and playback. Cases include direct HS/FS, sixteen
 cables, two nested FS hubs, four simultaneous devices with duplicate serials,
-2048-byte SysEx with interleaved realtime, 100 hotplug cycles with bidirectional
+rejection of short/2048-byte SysEx, parameter and unsupported system messages
+(including interleaved realtime), 100 hotplug cycles with bidirectional
 traffic after every reattach, retirement and explicit selection of a different-serial
 replacement, content-mismatch canary, OUT stall and permanent
 NAK. A deployment gate attaches a device before U-Boot, then verifies discovery,

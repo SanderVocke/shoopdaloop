@@ -59,26 +59,21 @@ fn image(samples: usize) -> Arc<Image> {
         },
         payloads: vec![
             Payload::Audio(vec![0.25; samples].into()),
-            Payload::Midi(Arc::new(vec![
-                MidiEventState {
+            Payload::Midi(Arc::new(
+                core::iter::once(MidiEventState {
                     frame: 0,
                     data: Arc::from([0x90, 60, 99]),
-                },
-                MidiEventState {
+                })
+                .chain((0..256).map(|value| MidiEventState {
                     frame: 0,
-                    data: Arc::from(
-                        vec![0xf0]
-                            .into_iter()
-                            .chain(vec![1; 2048])
-                            .chain([0xf7])
-                            .collect::<Vec<_>>(),
-                    ),
-                },
-                MidiEventState {
+                    data: Arc::from([0xb0, 1, (value % 128) as u8]),
+                }))
+                .chain(core::iter::once(MidiEventState {
                     frame: 3,
                     data: Arc::from([0x80, 60, 0]),
-                },
-            ])),
+                }))
+                .collect(),
+            )),
         ],
     })
 }

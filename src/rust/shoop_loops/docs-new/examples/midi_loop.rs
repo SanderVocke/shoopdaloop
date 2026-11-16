@@ -28,7 +28,7 @@ fn main() {
         max_ports: 8,
         max_edges: 2,
         resource_slots: 16,
-        resource_pages: 32,
+        resource_pages: 64,
         page_bytes: 64,
         command_slots: 8,
         scheduled_events: 8,
@@ -36,15 +36,20 @@ fn main() {
     }
     .prepare()
     .unwrap();
-    let mut resources = ResourceStore::with_capture_groups(config, rt_runtime::Quantum::new(1).unwrap(), Some(MidiIndexConfig {
+    let mut resources = ResourceStore::with_capture_groups(
+        config,
+        rt_runtime::Quantum::new(1).unwrap(),
+        Some(MidiIndexConfig {
             versions: 4,
             checkpoints_per_version: 4,
             replay_events: 128,
-        }), CaptureGroupConfig {
+        }),
+        CaptureGroupConfig {
             groups: 2,
             members_per_group: 1,
             staging_bytes_per_group: 8192,
-        })
+        },
+    )
     .unwrap();
 
     let target = LoopId::from_parts(0, 1).unwrap();
@@ -69,8 +74,8 @@ fn main() {
     let playback = NodeId::from_parts(0, 1).unwrap();
     let capture = NodeId::from_parts(1, 1).unwrap();
     let binding = Binding {
-dry_wet: false,
-auxiliary_channels: 0,
+        dry_wet: false,
+        auxiliary_channels: 0,
         target,
         playback,
         capture,
@@ -96,12 +101,21 @@ auxiliary_channels: 0,
         ],
     };
 
-    let prepared = LoopPlanner::prepare(config, rt_runtime::Quantum::new(1).unwrap(), topology, &mut resources, Settings {
+    let prepared = LoopPlanner::prepare(
+        config,
+        rt_runtime::Quantum::new(1).unwrap(),
+        topology,
+        &mut resources,
+        Settings {
             planner: PlannerId::from_parts(0, 1).unwrap(),
             normal_requests: 4,
             media_slots: 4,
             export_slots: 0,
-        }, vec![binding], vec![], Options::default());
+        },
+        vec![binding],
+        vec![],
+        Options::default(),
+    );
     let Prepared {
         planner,
         nodes,
@@ -114,7 +128,14 @@ auxiliary_channels: 0,
         .into_iter()
         .map(|(id, node)| PreparedNode::new(id, node))
         .collect();
-    let (mut control, mut runtime) = GraphRuntime::prepare_with_initial_graph(config, nodes, planner, resources, &graph, &client.bindings_for(&graph))
+    let (mut control, mut runtime) = GraphRuntime::prepare_with_initial_graph(
+        config,
+        rt_runtime::Quantum::new(1).unwrap(),
+        nodes,
+        planner,
+        resources,
+        &graph,
+    )
     .unwrap();
     control.prepare_submissions().unwrap();
     assert_eq!(runtime.next_frame(), Frame(0));
@@ -170,7 +191,7 @@ auxiliary_channels: 0,
             },
         )
         .unwrap();
-    // Playback replays both events at frames 4-5 and wraps; the tail is the Stop cleanup.
+    // Playback replays both events at frames 4-5; the tail is the Stop cleanup.
     assert_eq!(output[0].len(), 68);
     let events = (0..output[0].len())
         .map(|i| output[0].get(i).unwrap())
@@ -225,11 +246,13 @@ auxiliary_channels: 0,
     resources.begin_callback();
     resources.reclaim();
     let usage = resources.usage();
-    assert_eq!(usage.free_pages, 32);
+    assert_eq!(usage.free_pages, 64);
     assert_eq!(usage.free_versions, 16);
     assert_eq!(usage.free_snapshots, 16);
     assert_eq!(usage.reserved_pages, 0);
     assert_eq!(planner.media_usage().references, 0);
 
-    println!("MIDI loop recorded two events, played them at frame 4, wrapped, and stopped; cleanup verified.");
+    println!(
+        "MIDI loop recorded two events, played them at frame 4, and stopped; cleanup verified."
+    );
 }

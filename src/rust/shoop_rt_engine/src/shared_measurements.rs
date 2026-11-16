@@ -19,7 +19,7 @@ fn fixed_shared_callback_measurements() {
         PathBuf::from(std::env::var("SHOOP_SHARED_REPORT_DIR").expect("report directory"));
     fs::create_dir_all(&directory).unwrap();
     let source = std::env::var("SHOOP_SHARED_SOURCE_SHA").expect("source SHA");
-    let mut summary = std::format!("source={source}\nrate=48000 max_host=128 sources=1 loops=2 channels=2 arena_pages=12288 page_bytes=256 audio_pages=1024 midi_pages=8192 candidate_slots=2 preparation_steps_per_callback=8\nTiming covers the complete guarded Render::process call, including all fixed ticks and callback-end maintenance. Input generation and control collection are outside the interval. Every sample and miss is retained. CI timings are observations, not device acceptance.\n");
+    let mut summary = std::format!("source={source}\nrate=48000 max_host=128 sources=1 loops=2 channels=2 arena_pages=12288 page_bytes=256 audio_pages=1024 midi_record_pages=2816 midi_page_bytes=512 candidate_slots=2 preparation_steps_per_callback=8\nTiming covers the complete guarded Render::process call, including all fixed ticks and callback-end maintenance. Input generation and control collection are outside the interval. Every sample and miss is retained. CI timings are observations, not device acceptance.\n");
     for q in [1, 16, 32, 64, 128] {
         for partition in [1, 7, 31, 128] {
             let mut h = Fixture::new_with_rate(q, partition, 48000);
@@ -28,7 +28,7 @@ fn fixed_shared_callback_measurements() {
             };
             assert_eq!((capacity.sources, capacity.candidates), (1, 2));
             assert_eq!(capacity.arena_payload_bytes, 12288 * 256);
-            assert_eq!(capacity.reserved_payload_bytes, (1024 + 8192) * 256);
+            assert_eq!(capacity.reserved_payload_bytes, 1024 * 256 + 2816 * 32 * 16);
             assert!(capacity.coordinator_bytes > q * 2 * 4);
             assert!(capacity.store_metadata_bytes >= capacity.midi_state_bytes);
             h.timings = Some(Vec::new());
@@ -119,9 +119,13 @@ fn fixed_shared_callback_measurements() {
             h.resource(ResourceRequest::ReleaseSnapshot { snapshot: patch.id });
             let data = h.timings.take().unwrap();
             let mut stopped = h.engine.render.into_stopped();
-            let (_, midi) = stopped.planner.shared_stores(0).unwrap();
-            let midi_work = stopped.resources.midi_store_work(midi.unwrap()).unwrap();
-            assert!(!midi_work.counter_overflow);
+            let render_work = data.iter().fold((0u128, 0u128, 0u128), |sum, row| {
+                (
+                    sum.0 + row.work.1.operations as u128,
+                    sum.1 + row.work.1.copied_bytes as u128,
+                    sum.2 + row.work.1.validation_steps as u128,
+                )
+            });
             assert!(!bytes(&mut stopped.resources, old.view.audio.unwrap().snapshot).is_empty());
             let mut times: Vec<_> = data.iter().map(|row| row.nanos).collect();
             times.sort_unstable();
@@ -135,7 +139,7 @@ fn fixed_shared_callback_measurements() {
             writeln!(summary, "Q={q} partition={partition} peak_ticks={} peak_render_operations={} peak_render_copied_bytes={} peak_render_validation_steps={} peak_background_copied_bytes={} peak_background_validation_steps={} peak_reclaimed_pages={} peak_reclaimed_versions={} min_free_pages={} max_reserved_pages={} min_free_versions={} min_free_snapshots={} max_retired_versions={} max_retired_pages={}",
                 peak(|r| r.ticks), peak(|r| r.work.1.operations), peak(|r| r.work.1.copied_bytes), peak(|r| r.work.1.validation_steps), peak(|r| r.work.0.copied_bytes), peak(|r| r.work.0.validation_steps), peak(|r| r.work.0.reclaimed_pages), peak(|r| r.work.0.reclaimed_versions), floor(|r| r.usage.free_pages), peak(|r| r.usage.reserved_pages), floor(|r| r.usage.free_versions), floor(|r| r.usage.free_snapshots), peak(|r| r.usage.retired_versions), peak(|r| r.usage.retired_pages)).unwrap();
             let midi_overflows: usize = data.iter().map(|row| row.midi_overflows).sum();
-            writeln!(summary, "Q={q} partition={partition} callbacks={} mean_ns={} p50_ns={} p95_ns={} p99_ns={} max_ns={} misses={misses} midi_overflows={midi_overflows} capacity={capacity:?} midi={midi_work:?}",
+            writeln!(summary, "Q={q} partition={partition} callbacks={} mean_ns={} p50_ns={} p95_ns={} p99_ns={} max_ns={} misses={misses} midi_overflows={midi_overflows} capacity={capacity:?} total_render_work={render_work:?}",
                 data.len(), total / times.len() as u128, times[times.len()/2], times[(times.len()-1)*95/100], times[(times.len()-1)*99/100], times[times.len()-1]).unwrap();
             let mut raw = std::string::String::from("frame,frames,phase,ticks,nanoseconds,deadline_ns,miss,render_operations,render_copied_bytes,render_validation_steps,background_copied_bytes,background_validation_steps,reclaimed_pages,reclaimed_versions,free_pages,reserved_pages,free_versions,free_snapshots,retired_versions,retired_pages,midi_overflows\n");
             for row in data {

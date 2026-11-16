@@ -16,7 +16,7 @@ pub fn codec_limits() -> CodecLimits {
             + 1
             + shoop_script_resources::session::MAX_SESSION_RESOURCE_FILES,
         midi_events: MAX_SESSION_MIDI_EVENTS,
-        packet_bytes: 1024 * 1024,
+        packet_bytes: rt_runtime::midi::MAX_MESSAGE_BYTES as u64,
         initial_packets: 16_384,
         audio_channels: 256,
     }
@@ -239,7 +239,24 @@ pub enum Work {
         channels: Vec<u32>,
     },
 }
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct MidiNormalization {
+    pub from_prefix_version: u8,
+    pub to_prefix_version: u8,
+    pub removed_null_selectors: u64,
+}
+impl MidiNormalization {
+    pub fn message(self) -> String {
+        format!("Converted legacy MIDI initial state: {} null selectors removed (prefix version {} to {}).", self.removed_null_selectors, self.from_prefix_version, self.to_prefix_version)
+    }
+}
+
 pub enum Value {
+    NormalizedImage {
+        image: Arc<image::Image>,
+        scripts: Option<shoop_script_resources::session::SessionScripts>,
+        metadata: MidiNormalization,
+    },
     PreparedSession {
         image: Arc<image::Image>,
         scripts: shoop_script_resources::session::SessionScripts,
@@ -280,7 +297,8 @@ impl Work {
                 })
             }
             Self::ConvertFamily { decoded, base } => {
-                family::convert(decoded, base, &mut cancelled).map(Value::Image)
+                let image = family::convert(decoded, base, &mut cancelled)?;
+                prepare_midi_image(image, None)
             }
             Self::GenerateClick { request, rate } => {
                 let timing = ClickTrackTimingSpec {
@@ -549,14 +567,7 @@ impl Work {
                         })
                     }
                 };
-                image
-                    .validate()
-                    .map_err(|r| anyhow!("invalid or oversized media: {r:?}"))?;
-                validate_initials(&image)?;
-                Ok(match scripts {
-                    Some(scripts) => Value::PreparedSession { image, scripts },
-                    None => Value::Image(image),
-                })
+                prepare_midi_image(image, scripts)
             }
             Self::Encode {
                 image,
@@ -744,7 +755,77 @@ impl Work {
     }
 }
 
+fn prepare_midi_image(
+    mut image: Arc<image::Image>,
+    scripts: Option<shoop_script_resources::session::SessionScripts>,
+) -> Result<Value> {
+    let value = Arc::make_mut(&mut image);
+    let channels: Vec<&mut image::MidiChannel> = match &mut value.manifest {
+        image::Manifest::FamilyUpdate { members, .. } => members
+            .iter_mut()
+            .filter_map(|member| member.content.as_mut())
+            .flat_map(|content| &mut content.midi)
+            .collect(),
+        image::Manifest::Session(session) => session
+            .tracks
+            .iter_mut()
+            .flat_map(|track| &mut track.loops)
+            .flat_map(|content| &mut content.midi)
+            .collect(),
+        image::Manifest::Loop { content, .. } => content.midi.iter_mut().collect(),
+        image::Manifest::Update { midi, .. } => {
+            midi.iter_mut().map(|update| &mut update.content).collect()
+        }
+    };
+    let mut removed = 0u64;
+    for channel in channels {
+        ensure!(
+            channel.initial.len() <= 16_384,
+            "MIDI initial state exceeds the supported limit"
+        );
+        let mut decoder =
+            rt_runtime::midi::InitialDecoder::new(rt_runtime::midi::InitialFormat::LegacyPrefixV0);
+        for packet in &channel.initial {
+            decoder.push(packet).map_err(|error| anyhow!("unsupported MIDI initial packet: {error:?}; parameter history is outside the basic MIDI policy"))?;
+        }
+        removed = removed
+            .checked_add(decoder.normalized_selectors())
+            .ok_or_else(|| anyhow!("MIDI normalization count overflow"))?;
+        channel.initial.retain(|packet| {
+            !(packet.len() == 3 && packet[0] & 0xf0 == 0xb0 && matches!(packet[1], 98..=101))
+        });
+    }
+    validate_initials(&image)?;
+    image
+        .validate()
+        .map_err(|reason| anyhow!("invalid or oversized media: {reason:?}"))?;
+    Ok(if removed != 0 {
+        Value::NormalizedImage {
+            image,
+            scripts,
+            metadata: MidiNormalization {
+                from_prefix_version: 0,
+                to_prefix_version: 1,
+                removed_null_selectors: removed,
+            },
+        }
+    } else {
+        match scripts {
+            Some(scripts) => Value::PreparedSession { image, scripts },
+            None => Value::Image(image),
+        }
+    })
+}
+
 fn validate_initials(image: &image::Image) -> Result<()> {
+    for payload in &image.payloads {
+        if let image::Payload::Midi(events) = payload {
+            for event in events.iter() {
+                rt_runtime::midi::ShortMessage::managed(&event.data)
+                    .map_err(|error| anyhow!("unsupported MIDI timeline packet: {error:?}"))?;
+            }
+        }
+    }
     let channels: Vec<&image::MidiChannel> = match &image.manifest {
         image::Manifest::FamilyUpdate { members, .. } => members
             .iter()
@@ -783,9 +864,10 @@ fn validate_initials(image: &image::Image) -> Result<()> {
                 matches!(packet.first(), Some(0x80..=0xef | 0xff)),
                 "MIDI initial/preroll vendor or system state is not supported yet (P11)"
             );
-            state
-                .apply_packet(packet, 3)
-                .map_err(|e| anyhow!("unsupported MIDI initial/preroll packet: {e:?} (P11)"))?;
+            rt_runtime::midi::ShortMessage::managed(packet)
+                .map_err(|error| anyhow!("unsupported MIDI initial/preroll packet: {error:?}"))?
+                .apply(&mut state)
+                .map_err(|error| anyhow!("unsupported MIDI state: {error:?}"))?;
             Ok(())
         };
         for packet in &channel.initial {

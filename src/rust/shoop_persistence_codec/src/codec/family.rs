@@ -476,6 +476,5 @@ pub(super) fn convert(
     result
         .validate()
         .map_err(|reason| anyhow!("invalid converted family: {reason:?}"))?;
-    validate_initials(&result)?;
     Ok(result)
 }

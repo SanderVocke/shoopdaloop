@@ -603,6 +603,7 @@ impl<O: Copy, R: Copy, Q: Copy, S: Copy> Scheduler<O, R, Q, S> {
             }
             Action::Midi { .. } => {
                 Message::parse(payload, self.midi_payload_limit)?;
+                crate::midi::ShortMessage::managed(payload).map_err(Error::from)?;
             }
             _ => {}
         }

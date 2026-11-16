@@ -180,6 +180,12 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
     }
     // Allow asynchronous native port publication to settle before the first input cut.
     std::thread::sleep(Duration::from_millis(1500));
+    // Instrumented hosts can render more slowly than wall time. Grab needs a
+    // complete sync period of actual input history, including a partial first cycle.
+    let history_start = handle.snapshot().status.processed_frames;
+    ready(&handle, |s| {
+        s.status.processed_frames.saturating_sub(history_start) >= 2 * period
+    })?;
     let state = handle.snapshot();
     let audio = state.tracks[1].clone();
     let keys = state.tracks[2].clone();

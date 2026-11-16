@@ -97,7 +97,7 @@ fn same_time_actions_order_by_node_kind_port_and_sequence() {
                     node: node(1),
                     port: 0,
                 },
-                &[0xf8],
+                &[0xff],
             )
             .unwrap();
         schedule
@@ -109,7 +109,7 @@ fn same_time_actions_order_by_node_kind_port_and_sequence() {
                     node: node(0),
                     port: 0,
                 },
-                &[0xfa],
+                &[0xff],
             )
             .unwrap();
         schedule
@@ -127,7 +127,7 @@ fn same_time_actions_order_by_node_kind_port_and_sequence() {
                     node: node(0),
                     port: 0,
                 },
-                &[0xfc],
+                &[0xff],
             )
             .unwrap();
         for sequence in [4, 3, 2, 5, 1] {
@@ -222,21 +222,15 @@ fn malformed_payloads_and_duplicate_sequences_cannot_consume_credits() {
         );
         assert_eq!(schedule.available(), 2);
         schedule
-            .admit(
-                Sequence(1),
-                Frame(0),
-                Frame(0),
-                midi,
-                &[0xf0, 0x7d, 1, 0xf7],
-            )
+            .admit(Sequence(1), Frame(0), Frame(0), midi, &[0x90, 60, 1])
             .unwrap();
         assert_eq!(
-            schedule.admit(Sequence(1), Frame(1), Frame(0), midi, &[0xf8]),
+            schedule.admit(Sequence(1), Frame(1), Frame(0), midi, &[0xff]),
             Err(Error::InvalidId)
         );
         assert_eq!(schedule.available(), 1);
         let due = schedule.due(Frame(0)).unwrap();
-        assert_eq!(due.payload, &[0xf0, 0x7d, 1, 0xf7]);
+        assert_eq!(due.payload, &[0x90, 60, 1]);
     });
 }
 

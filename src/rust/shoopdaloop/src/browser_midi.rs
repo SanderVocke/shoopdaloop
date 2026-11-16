@@ -2,9 +2,7 @@ use std::collections::{BTreeMap, VecDeque};
 
 #[cfg(target_arch = "wasm32")]
 use shoop_scripting::{MidiConnectionId, MidiControlService};
-use shoop_scripting::{
-    MidiEndpoint, MidiEndpointDirection, MidiEndpointSnapshot, MAX_MIDI_MESSAGE_BYTES,
-};
+use shoop_scripting::{MidiEndpoint, MidiEndpointDirection, MidiEndpointSnapshot};
 
 pub const TRACK_MIDI_MESSAGE_BYTES: usize = 4;
 pub const MIDI_INPUT_QUEUE_CAPACITY: usize = 1024;
@@ -44,7 +42,6 @@ struct InputSubscription {
 pub struct BrowserMidiCore {
     state: BrowserMidiState,
     error: Option<String>,
-    sysex_enabled: bool,
     revision: u64,
     endpoints: BTreeMap<String, BrowserMidiEndpoint>,
     subscriptions: BTreeMap<u64, InputSubscription>,
@@ -65,7 +62,6 @@ impl BrowserMidiCore {
                 BrowserMidiState::Unsupported
             },
             error: None,
-            sysex_enabled: false,
             revision: 0,
             endpoints: BTreeMap::new(),
             subscriptions: BTreeMap::new(),
@@ -86,23 +82,13 @@ impl BrowserMidiCore {
         self.error.as_deref()
     }
 
-    pub fn sysex_enabled(&self) -> bool {
-        self.sysex_enabled
-    }
-
     pub fn report_error(&mut self, error: String) {
         self.error = Some(error);
     }
 
-    pub fn set_state(
-        &mut self,
-        state: BrowserMidiState,
-        error: Option<String>,
-        sysex_enabled: bool,
-    ) {
+    pub fn set_state(&mut self, state: BrowserMidiState, error: Option<String>) {
         self.state = state;
         self.error = error;
-        self.sysex_enabled = sysex_enabled;
         if state != BrowserMidiState::Running {
             self.replace_endpoints(Vec::new());
         }
@@ -178,11 +164,9 @@ impl BrowserMidiCore {
 
     /// Returns whether a forwarder must deliver the message to track inputs.
     pub fn receive(&mut self, endpoint_id: &str, data: &[u8]) -> bool {
-        if data.is_empty() || data.len() > MAX_MIDI_MESSAGE_BYTES {
+        if shoop_midi_protocol::classify(data, false).is_err() {
             self.refused_control_messages = self.refused_control_messages.saturating_add(1);
-            if data.len() > TRACK_MIDI_MESSAGE_BYTES || data.is_empty() {
-                self.refused_track_messages = self.refused_track_messages.saturating_add(1);
-            }
+            self.refused_track_messages = self.refused_track_messages.saturating_add(1);
             return false;
         }
         if !self
@@ -574,10 +558,6 @@ mod platform {
             self.inner.borrow().core.error().map(str::to_owned)
         }
 
-        pub fn sysex_enabled(&self) -> bool {
-            self.inner.borrow().core.sysex_enabled()
-        }
-
         pub fn endpoint_snapshot(&self) -> MidiEndpointSnapshot {
             self.inner.borrow().core.endpoint_snapshot()
         }
@@ -613,12 +593,11 @@ mod platform {
                 self.inner.borrow_mut().core.set_state(
                     BrowserMidiState::Unsupported,
                     Some("browser window is unavailable".to_owned()),
-                    false,
                 );
                 return;
             };
             let options = MidiOptions::new();
-            options.set_sysex(true);
+            options.set_sysex(false);
             let promise = match window
                 .navigator()
                 .request_midi_access_with_options(&options)
@@ -628,16 +607,14 @@ mod platform {
                     self.inner.borrow_mut().core.set_state(
                         BrowserMidiState::Failed,
                         Some(format!("could not request Web MIDI: {error:?}")),
-                        false,
                     );
                     return;
                 }
             };
-            self.inner.borrow_mut().core.set_state(
-                BrowserMidiState::RequestingPermission,
-                None,
-                false,
-            );
+            self.inner
+                .borrow_mut()
+                .core
+                .set_state(BrowserMidiState::RequestingPermission, None);
             let inner = self.inner.clone();
             spawn_local(async move {
                 match JsFuture::from(promise).await {
@@ -650,7 +627,6 @@ mod platform {
                                         inner.borrow_mut().core.set_state(
                                             BrowserMidiState::Failed,
                                             Some(error.to_string()),
-                                            false,
                                         );
                                     }
                                 }
@@ -659,32 +635,25 @@ mod platform {
                             access.set_onstatechange(Some(handler.as_ref().unchecked_ref()));
                             {
                                 let mut state = inner.borrow_mut();
-                                state.core.set_state(
-                                    BrowserMidiState::Running,
-                                    None,
-                                    access.sysex_enabled(),
-                                );
+                                state.core.set_state(BrowserMidiState::Running, None);
                                 state.access = Some(access);
                                 state.state_handler = Some(handler);
                             }
                             if let Err(error) = HubInner::refresh(&inner) {
-                                inner.borrow_mut().core.set_state(
-                                    BrowserMidiState::Failed,
-                                    Some(error.to_string()),
-                                    false,
-                                );
+                                inner
+                                    .borrow_mut()
+                                    .core
+                                    .set_state(BrowserMidiState::Failed, Some(error.to_string()));
                             }
                         }
                         Err(_) => inner.borrow_mut().core.set_state(
                             BrowserMidiState::Failed,
                             Some("browser returned invalid Web MIDI access".to_owned()),
-                            false,
                         ),
                     },
                     Err(error) => inner.borrow_mut().core.set_state(
                         BrowserMidiState::Denied,
                         Some(format!("Web MIDI permission denied: {error:?}")),
-                        false,
                     ),
                 }
             });
@@ -721,13 +690,19 @@ mod platform {
         }
 
         /// Send at a performance time in milliseconds; a past time sends at once.
+        pub fn clear_scheduled_output(&self, endpoint_id: &str) {
+            if let Some(output) = self.inner.borrow().outputs.get(endpoint_id) {
+                output.port.clear();
+            }
+        }
+
         pub fn send_at(
             &self,
             endpoint_id: &str,
             message: &[u8],
             timestamp_ms: Option<f64>,
         ) -> anyhow::Result<()> {
-            if message.is_empty() || message.len() > MAX_MIDI_MESSAGE_BYTES {
+            if shoop_midi_protocol::classify(message, false).is_err() {
                 anyhow::bail!("invalid MIDI message length {}", message.len());
             }
             let output = self
@@ -915,7 +890,7 @@ mod platform {
                 BrowserMidiState::AwaitingGesture => {
                     button.set_hidden(false);
                     button.set_disabled(false);
-                    button.set_text_content(Some("Enable Web MIDI + SysEx"));
+                    button.set_text_content(Some("Enable Web MIDI"));
                     ""
                 }
                 BrowserMidiState::RequestingPermission => {
@@ -934,13 +909,13 @@ mod platform {
                 BrowserMidiState::Denied => {
                     button.set_hidden(false);
                     button.set_disabled(false);
-                    button.set_text_content(Some("Retry Web MIDI + SysEx"));
+                    button.set_text_content(Some("Retry Web MIDI"));
                     "Denied"
                 }
                 BrowserMidiState::Failed => {
                     button.set_hidden(false);
                     button.set_disabled(false);
-                    button.set_text_content(Some("Retry Web MIDI + SysEx"));
+                    button.set_text_content(Some("Retry Web MIDI"));
                     "Failed"
                 }
             };
@@ -951,13 +926,8 @@ mod platform {
                 status.set_text_content(Some(&permission_status));
             }
             let (dropped, refused_track, refused_control) = self.hub.diagnostics();
-            let sysex = if self.hub.sysex_enabled() {
-                "SysEx enabled"
-            } else {
-                "SysEx unavailable"
-            };
             let diagnostics = format!(
-                "{}; {sysex}; track drops: {dropped}; track refusals: {refused_track}; control refusals: {refused_control}",
+                "{}; track drops: {dropped}; track refusals: {refused_track}; control refusals: {refused_control}",
                 self.hub.error().as_deref().unwrap_or("Web MIDI ready")
             );
             button.set_title(&diagnostics);
@@ -1012,12 +982,12 @@ mod tests {
     fn lifecycle_and_hotplug_publish_revisioned_stable_endpoints() {
         let mut core = BrowserMidiCore::new(true);
         assert_eq!(core.state(), BrowserMidiState::AwaitingGesture);
-        core.set_state(BrowserMidiState::RequestingPermission, None, false);
+        core.set_state(BrowserMidiState::RequestingPermission, None);
         assert_eq!(core.state(), BrowserMidiState::RequestingPermission);
-        core.set_state(BrowserMidiState::Failed, Some("retry".to_owned()), false);
+        core.set_state(BrowserMidiState::Failed, Some("retry".to_owned()));
         assert_eq!(core.state(), BrowserMidiState::Failed);
-        core.set_state(BrowserMidiState::Running, None, true);
-        assert!(core.sysex_enabled());
+        core.set_state(BrowserMidiState::Running, None);
+        assert_eq!(core.state(), BrowserMidiState::Running);
         core.report_error("open failed".to_owned());
         assert_eq!(core.error(), Some("open failed"));
         core.replace_endpoints(vec![sink("out"), source("in")]);
@@ -1037,7 +1007,6 @@ mod tests {
         core.set_state(
             BrowserMidiState::Denied,
             Some("permission denied".to_owned()),
-            false,
         );
         assert!(core.endpoint_snapshot().endpoints.is_empty());
         assert_eq!(core.error(), Some("permission denied"));
@@ -1046,7 +1015,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn input_fans_out_to_control_subscribers_and_track_queue() {
         let mut core = BrowserMidiCore::new(true);
-        core.set_state(BrowserMidiState::Running, None, false);
+        core.set_state(BrowserMidiState::Running, None);
         let endpoint = source("in");
         let endpoint_id = endpoint.id.clone();
         core.replace_endpoints(vec![endpoint]);
@@ -1075,7 +1044,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn forwarding_replaces_the_track_queue_and_keeps_control_fan_out() {
         let mut core = BrowserMidiCore::new(true);
-        core.set_state(BrowserMidiState::Running, None, false);
+        core.set_state(BrowserMidiState::Running, None);
         let endpoint = source("in");
         let endpoint_id = endpoint.id.clone();
         core.replace_endpoints(vec![endpoint, sink("out")]);
@@ -1093,42 +1062,42 @@ mod tests {
             core.drain_subscription(subscription, usize::MAX)
                 .unwrap()
                 .len(),
-            3
+            2
         );
     }
 
     #[shoop_wasm_test_support::shoop_test]
     fn track_and_control_limits_refuse_without_truncation() {
         let mut core = BrowserMidiCore::new(true);
-        core.set_state(BrowserMidiState::Running, None, true);
+        core.set_state(BrowserMidiState::Running, None);
         let endpoint = source("in");
         let endpoint_id = endpoint.id.clone();
         core.replace_endpoints(vec![endpoint]);
         let subscription = core.subscribe_input(&endpoint_id).unwrap();
         let five_bytes = vec![0xf0, 1, 2, 3, 0xf7];
         core.receive(&endpoint_id, &five_bytes);
-        assert_eq!(
-            core.drain_subscription(subscription, 1).unwrap(),
-            vec![five_bytes]
-        );
+        assert!(core.drain_subscription(subscription, 1).unwrap().is_empty());
         assert!(core.drain_track_messages(1).is_empty());
         assert_eq!(core.refused_track_messages(), 1);
 
-        core.receive(&endpoint_id, &vec![0; MAX_MIDI_MESSAGE_BYTES + 1]);
-        assert_eq!(core.refused_control_messages(), 1);
+        core.receive(
+            &endpoint_id,
+            &vec![0; shoop_scripting::MAX_MIDI_MESSAGE_BYTES + 1],
+        );
+        assert_eq!(core.refused_control_messages(), 2);
         assert_eq!(core.refused_track_messages(), 2);
     }
 
     #[shoop_wasm_test_support::shoop_test]
     fn bounded_queues_count_drops() {
         let mut core = BrowserMidiCore::new(true);
-        core.set_state(BrowserMidiState::Running, None, false);
+        core.set_state(BrowserMidiState::Running, None);
         let endpoint = source("in");
         let endpoint_id = endpoint.id.clone();
         core.replace_endpoints(vec![endpoint]);
         let subscription = core.subscribe_input(&endpoint_id).unwrap();
         for note in 0..=MIDI_INPUT_QUEUE_CAPACITY {
-            core.receive(&endpoint_id, &[0x90, note as u8, 100]);
+            core.receive(&endpoint_id, &[0x90, (note % 128) as u8, 100]);
         }
         assert_eq!(
             core.drain_subscription(subscription, usize::MAX)
@@ -1147,7 +1116,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn subscription_capacity_is_bounded() {
         let mut core = BrowserMidiCore::new(true);
-        core.set_state(BrowserMidiState::Running, None, false);
+        core.set_state(BrowserMidiState::Running, None);
         let endpoint = source("bounded");
         let endpoint_id = endpoint.id.clone();
         core.replace_endpoints(vec![endpoint]);
@@ -1160,7 +1129,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn direction_validation_rejects_output_as_input_source() {
         let mut core = BrowserMidiCore::new(true);
-        core.set_state(BrowserMidiState::Running, None, false);
+        core.set_state(BrowserMidiState::Running, None);
         let endpoint = sink("out");
         let endpoint_id = endpoint.id.clone();
         core.replace_endpoints(vec![endpoint]);

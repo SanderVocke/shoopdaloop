@@ -95,10 +95,7 @@ impl Layout {
             add(history_pages, transaction_pages)?,
             d.history.audio_take_pages as usize,
         )?;
-        let total_pages = add(
-            add(d.resource_pages, audio_pages)?,
-            d.history.midi_pages as usize,
-        )?;
+        let total_pages = add(d.resource_pages, audio_pages)?;
         Some(mul(total_pages, d.page_bytes)?)
             .filter(|&bytes| bytes <= i32::MAX as usize)
             .ok_or(Error::Capacity)?;
@@ -129,30 +126,14 @@ impl Layout {
             add(mul(views, 2)?, mul(writers, 2)?)?,
             add(d.strips(), imports)?,
         )?;
-        let index_workspace = indexed_midi::Config::index_workspace(d.midi_events, history_events)?;
-        let nodes_with_workspace = add(records, index_workspace)?;
         let midi = indexed_midi::Config {
-            packets: indexed_midi::PacketLimits {
-                pages: d.history.midi_pages as usize,
-                bodies: records,
-                records,
-                max_packet: d.midi_bytes,
-                bases: add(add(d.loops(), writers)?, 8)?,
-            },
-            indexes: indexed_midi::IndexLimits {
-                leases,
-                versions: add(add(views, writers)?, add(d.strips(), imports)?)?,
-                category_pages: add(
-                    add(
-                        add(mul(records.div_ceil(128), 4)?, mul(views, 2)?)?,
-                        mul(d.strips(), 66)?,
-                    )?,
-                    66,
-                )?,
-                packet_nodes: mul(records, 2)?.max(nodes_with_workspace),
-                scalar_nodes: mul(nodes_with_workspace, 2)?,
-                hold_nodes: mul(records, 2)?.max(nodes_with_workspace),
-                sostenuto_nodes: nodes_with_workspace,
+            blocks: indexed_midi::BlockLimits {
+                event_credits: records,
+                record_pages: records,
+                directories: add(mul(records, 2)?, mul(writers + d.strips(), 32)?)?,
+                versions: mul(leases, 8)?,
+                media: leases,
+                import_bases: add(add(d.loops(), writers)?, 8)?,
             },
             sources: d.strips(),
             history_frames: frames,
@@ -191,10 +172,10 @@ impl Layout {
             history_frames: midi.history_frames,
             chunks: 1,
             views: midi.views,
-            pages: midi.packets.pages,
+            pages: midi.blocks.record_pages,
             max_events: midi.events_per_tick,
             max_bytes: midi.bytes_per_tick,
-            max_packet: midi.packets.max_packet,
+            max_packet: rt_runtime::midi::MAX_MESSAGE_BYTES,
             transactions: midi.writers.max(1),
             edit_steps: 64,
         };
@@ -237,7 +218,10 @@ mod tests {
         assert_eq!(capacity.ordinary_payload_bytes, 256 << 20);
         assert_eq!(capacity.history_audio_bytes, 256 << 20);
         assert_eq!(capacity.shared_audio_bytes, (128 << 20) + 8 * 4096);
-        assert_eq!(capacity.midi_payload_bytes, 16 << 20);
+        assert_eq!(
+            capacity.midi_payload_bytes,
+            default.history.midi_records as usize * 32 * 16
+        );
         assert_eq!(capacity.midi_events_per_source, 2048);
         assert_eq!(capacity.midi_bytes_per_source, 512 << 10);
         assert!(capacity.audio_metadata_bytes < 40 << 20);
@@ -248,7 +232,6 @@ mod tests {
             capacity.ordinary_payload_bytes
                 + capacity.history_audio_bytes
                 + capacity.shared_audio_bytes
-                + capacity.midi_payload_bytes
         );
         let largest = EngineDescription {
             segments: vec![Segment {

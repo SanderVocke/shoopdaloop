@@ -6,6 +6,8 @@
 
 Audio loops carry samples; a **MIDI loop** carries events. The mechanics are the same — record, play, wrap, stop — but the signal is a stream of timestamped packets instead of sample buffers. This chapter records two events (a note-on at frame 0 and a sustain-pedal CC at frame 1), plays them back from frame 4, and stops at frame 7.
 
+Messages use the basic policy: at most four inline bytes, exact channel-message lengths or System Reset. SysEx, parameter CC6/38/96–101 and other system messages are refused.
+
 The complete [MIDI example](../examples/midi_loop.rs) checks this offline:
 
 ```sh
@@ -29,7 +31,7 @@ A MIDI loop has no audio channels: `channels: 0`, `midi: true`, and the graph ro
         max_ports: 8,
         max_edges: 2,
         resource_slots: 16,
-        resource_pages: 32,
+        resource_pages: 64,
         page_bytes: 64,
         command_slots: 8,
         scheduled_events: 8,
@@ -39,6 +41,7 @@ A MIDI loop has no audio channels: `channels: 0`, `midi: true`, and the graph ro
     .unwrap();
     let mut resources = ResourceStore::with_capture_groups(
         config,
+        rt_runtime::Quantum::new(1).unwrap(),
         Some(MidiIndexConfig {
             versions: 4,
             checkpoints_per_version: 4,
@@ -53,18 +56,22 @@ A MIDI loop has no audio channels: `channels: 0`, `midi: true`, and the graph ro
     .unwrap();
 ```
 
+The 64-page pool retains existing content while reserving a complete incoming tick: `128 × 12 + 512 = 2,048` bytes, or 32 pages. The next reservation needs that space in addition to retained pages; a 32-page pool would exhaust after the first captured tick.
+
 ## 2. Bind with MIDI capacities
 
 | `Binding` field | Value here | Meaning |
 |---|---|---|
 | `channels` | `0` | No audio; the loop is MIDI-only. |
 | `midi` | `true` | The loop also owns a MIDI capture/playback resource. |
-| `midi_events` | `128` | Max events per captured take. |
-| `midi_bytes` | `512` | Max packet bytes per take. |
+| `midi_events` | `128` | Max input events per processing interval. |
+| `midi_bytes` | `512` | Max input payload bytes per processing interval. |
 | `packet_bytes` | `512` | Scratch size for one packet during render; must be at least `midi_bytes.max(3)`. |
 
 ```rust
     let binding = Binding {
+        dry_wet: false,
+        auxiliary_channels: 0,
         target,
         playback,
         capture,
@@ -116,7 +123,7 @@ Transitions are identical to audio loops. The input is a `MidiBuffer` — a list
         .unwrap();
 ```
 
-The recording is two events over frames 0–1, so its length is 2 frames. Play at frame 4 replays them at offsets 4 and 5, and wraps: positions 0 and 1 again at frames 6 and 7. Stop at frame 7 then appends MIDI cleanup (next chapter), so the block ends with:
+The recording lasts four frames, including the silence after its two events at frames 0–1. Play at frame 4 replays them at offsets 4 and 5. Stop at frame 7 appends MIDI cleanup before the first wrap, so the block ends with:
 
 ```rust
     let events = (0..output[0].len())

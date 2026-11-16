@@ -67,6 +67,6 @@ The [gain graph example](examples/gain_graph.rs) checks output samples, exact-fr
 - Graphs are acyclic: no feedback edges or automatic delay compensation.
 - Processor slots and port signatures are reserved at startup. Rewiring is live; arbitrary new slots or larger signatures are not.
 - Audio defaults to planar `f32` with interleaved little-endian resource samples. The compile-time `Sample` policy also supports raw Q8.24 buffers and resources; see [audio arithmetic](../rt_audio_math/README.md). Conversion, resampling, codecs, and playback DSP belong to the host/processors. Device and persistence formats keep their existing encoding.
-- MIDI is complete MIDI 1.0 packets, including bounded SysEx—not a raw byte-stream parser or MIDI 2.0 API.
+- MIDI uses inline messages capped at four bytes: complete basic channel messages and System Reset. SysEx, parameter CC6/38/96–101 and other system messages are refused. Live history and editing use the [fixed-record runtime](../../../docs/native_session_recovery/midi-runtime-rtl-design.md); byte uploads and the opt-in checkpoint API remain adapter utilities.
 - Native and Wasm hosts need their own adapters. The crate does not install an AudioWorklet or bridge separate Wasm memories.
 - Packaging is still workspace-managed, including version, dependency settings, and dev-only test support. The documentation is standalone; the directory is not yet a separately buildable/published package.

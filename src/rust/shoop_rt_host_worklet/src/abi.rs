@@ -179,6 +179,12 @@ pub extern "C" fn shoop_rt_worklet_commit(id: u32, len: usize) -> bool {
     })
 }
 
+/// Report loss before bytes enter the module's bounded MIDI lane.
+#[no_mangle]
+pub extern "C" fn shoop_rt_worklet_midi_input_loss() {
+    with_host((), WorkletHost::midi_input_loss);
+}
+
 /// Render one quantum of `frames` frames starting at `currentFrame` `frame`.
 /// `load` is the previous quantum's processing time as a share of its period,
 /// or negative when unknown.

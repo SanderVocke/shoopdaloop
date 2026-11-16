@@ -199,7 +199,7 @@ fn buffered_composes_with_prepared_engine_dsp_and_typed_controls() {
         (15, &[0x9f, 60, 100], &[0x90, 60, 100]),
         (31, &[0x8f, 60, 0], &[0x80, 60, 0]),
         (31, &[0x90, 61, 0], &[0x91, 61, 0]),
-        (32, &[0xf0, 1, 2, 0xf7], &[0xf0, 1, 2, 0xf7]),
+        (32, &[0xb0, 7, 2], &[0xb1, 7, 2]),
     ];
     for frame in (0..160).step_by(16) {
         let left: Vec<_> = (frame..frame + 16)

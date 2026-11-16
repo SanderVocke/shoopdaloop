@@ -15,6 +15,7 @@ workspace = true
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
+shoop_midi_protocol = { path = "../shoop_midi_protocol" }
 rt_audio_math = { path = "../rt_audio_math" }
 rt_profiling = { path = "../rt_profiling" }
 rtrb = { workspace = true }

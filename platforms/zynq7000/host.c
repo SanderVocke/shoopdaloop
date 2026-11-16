@@ -30,6 +30,9 @@ static TaskHandle_t render_task;
 static _Atomic int render_done;
 static uint32_t phase;
 static uint32_t render_stack_remaining;
+/* Fixed MIDI state copies and nested preparation/render calls need this budget.
+ * FreeRTOS stack depths count StackType_t words, not bytes. */
+#define SHOOP_ENGINE_STACK_WORDS (512 * 1024 / sizeof(StackType_t))
 #ifdef SHOOP_FIXTURE
 extern int shoop_fixture_paused(void);
 extern unsigned shoop_fixture_frames(void);
@@ -162,7 +165,7 @@ static void render(void *owner) {
 }
 void shoop_start_render(void *owner) {
     configASSERT(!render_task);
-    configASSERT(xTaskCreate(render, "render", 65536, owner, 6, &render_task) == pdPASS);
+    configASSERT(xTaskCreate(render, "render", SHOOP_ENGINE_STACK_WORDS, owner, 6, &render_task) == pdPASS);
 #ifdef SHOOP_FIXTURE
     shoop_fixture_start();
 #endif
@@ -255,7 +258,7 @@ int main(void) {
 #ifdef SHOOP_USB_MIDI
     shoop_usb_start();
 #endif
-    configASSERT(xTaskCreate(network, "control", 65536, NULL, 3, NULL) == pdPASS);
+    configASSERT(xTaskCreate(network, "control", SHOOP_ENGINE_STACK_WORDS, NULL, 3, NULL) == pdPASS);
     vTaskStartScheduler();
     vApplicationAssert("scheduler returned", 0);
     return 1;

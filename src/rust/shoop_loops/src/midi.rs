@@ -5,7 +5,7 @@ use alloc::{boxed::Box, vec};
 use rt_runtime::Sample;
 use rt_runtime::{
     buffer::MidiBuffer,
-    midi::{Message, ResetState},
+    midi::{ResetState, ShortMessage},
     midi_state::MidiState,
     resource::{CaptureTickId, Format, MidiCursor, MidiEvent, ReadIndex, RenderIo, Snapshot},
     Error,
@@ -247,7 +247,9 @@ impl MidiRenderer {
             }
             let bytes = io.midi_read(event, &mut self.packet)?;
             let packet = &self.packet[..bytes];
-            self.state.apply(Message::parse(packet, self.packet.len())?);
+            ShortMessage::managed(packet)
+                .map_err(Error::from)?
+                .apply(&mut self.state)?;
             report.packet(
                 output,
                 (offset as u64 + event.frame() - playback.position) as u32,
@@ -258,6 +260,7 @@ impl MidiRenderer {
         }
         stream.end_position = end;
         self.stream = Some(stream);
+        io.publish_midi_position(index, end, &self.state)?;
         if offset + active_frames < frames && self.active {
             report.emission(midi_restore::cleanup(&self.state, |packet| {
                 output.push((offset + active_frames) as u32, frames, packet)
@@ -282,8 +285,12 @@ pub struct MidiCapture {
     max_bytes: usize,
     state: Box<MidiState>,
     state_dirty: bool,
+    state_valid: bool,
 }
 impl MidiCapture {
+    pub(crate) fn valid(&self) -> bool {
+        self.state_valid
+    }
     /// Observe input before storing it. On a storage refusal the tracker stays
     /// advanced; resume history with an explicit discontinuity and this state.
     pub fn append_history<S: Sample>(
@@ -313,6 +320,7 @@ impl MidiCapture {
             max_bytes,
             state: prepared_state(),
             state_dirty: false,
+            state_valid: true,
         })
     }
     /// Copy at the capture-start boundary before consuming that interval's input.
@@ -322,6 +330,7 @@ impl MidiCapture {
     pub(crate) fn reset(&mut self) {
         *self.state = MidiState::default();
         self.state_dirty = true;
+        self.state_valid = true;
     }
     pub(crate) fn publish_state(&mut self, output: &mut MidiState) {
         if self.state_dirty {
@@ -344,6 +353,12 @@ impl MidiCapture {
         if frames > self.max_frames {
             return Err(Error::InvalidFrame);
         }
+        if input.input_lost() {
+            self.state_valid = false;
+        }
+        if !self.state_valid {
+            return Err(Error::InvalidState);
+        }
         let (events, bytes) = if input.is_recovery() {
             (ResetState::EVENTS, ResetState::BYTES)
         } else {
@@ -359,7 +374,9 @@ impl MidiCapture {
                 if offset as usize >= frames {
                     return Err(Error::InvalidFrame);
                 }
-                next.apply(Message::parse(packet, self.max_bytes)?);
+                ShortMessage::managed(packet)
+                    .map_err(Error::from)?
+                    .apply(&mut next)?;
             }
             *self.state = next;
             self.state_dirty = true;

@@ -135,7 +135,7 @@ fn complete_payload_replaces_all_roles_and_empty_media_with_no_spare_loop_slot()
                 },
                 BackendMidiEvent {
                     frame: 55,
-                    data: vec![0xf0, 0x7d, 1, 2, 3, 0xf7].into(),
+                    data: vec![0xb0, 11, 23].into(),
                 },
             ]
             .into();

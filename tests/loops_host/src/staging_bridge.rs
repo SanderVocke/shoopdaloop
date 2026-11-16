@@ -22,6 +22,7 @@ struct ResourceBank {
     generation: u32,
     resource: Option<ResourceId>,
     upload: Option<UploadId>,
+    upload_bytes: usize,
     snapshot: Option<Snapshot>,
     cursor: Option<Cursor>,
     source: Option<NodePairSourceId>,
@@ -64,6 +65,7 @@ impl Staging {
                 generation: 1,
                 resource: None,
                 upload: None,
+                upload_bytes: 0,
                 snapshot: None,
                 cursor: None,
                 source: None,
@@ -241,12 +243,19 @@ impl Staging {
             WRITE => {
                 let upload = upload()?;
                 let offset = offset(r.args[0])?;
+                let used = bank
+                    .upload_bytes
+                    .checked_sub(offset)
+                    .filter(|remaining| *remaining > 0)
+                    .ok_or(wire::Error::State)?
+                    .min(64);
                 let mut bytes = self.buffer.take().ok_or(wire::Error::State)?;
                 bytes.copy_from_slice(&r.data);
-                resource::Request::Write {
+                resource::Request::WritePrefix {
                     upload,
                     offset,
                     bytes,
+                    used,
                 }
             }
             FINISH => resource::Request::Finish { upload: upload()? },
@@ -340,6 +349,7 @@ impl Staging {
                 match refusal.value {
                     Command::Resource(command) => match command.into_request() {
                         resource::Request::Write { bytes, .. }
+                        | resource::Request::WritePrefix { bytes, .. }
                         | resource::Request::Read { bytes, .. } => {
                             if r.kind == WRITE {
                                 response.0[DATA..DATA + 64].copy_from_slice(&bytes);
@@ -388,9 +398,9 @@ impl Staging {
                 return Err(completion);
             };
             let payload = match command.request() {
-                resource::Request::Write { bytes, .. } | resource::Request::Read { bytes, .. } => {
-                    Some(bytes.as_ref())
-                }
+                resource::Request::Write { bytes, .. }
+                | resource::Request::WritePrefix { bytes, .. }
+                | resource::Request::Read { bytes, .. } => Some(bytes.as_ref()),
                 _ => None,
             };
             if owning(r.kind) != (payload.is_some())
@@ -407,7 +417,10 @@ impl Staging {
                     };
                     match (r.kind, reply) {
                         (CREATE, resource::Reply::Created(id)) => bank.resource = Some(id),
-                        (BEGIN, resource::Reply::Upload(id)) => bank.upload = Some(id),
+                        (BEGIN, resource::Reply::Upload(id)) => {
+                            bank.upload = Some(id);
+                            bank.upload_bytes = r.args[2] as usize;
+                        }
                         (COMMIT, resource::Reply::Revision(revision)) => {
                             bank.upload = None;
                             put64(&mut response.0, 88, revision.0);
@@ -474,9 +487,9 @@ impl Staging {
                 unreachable!()
             };
             match command.into_request() {
-                resource::Request::Read { bytes, .. } | resource::Request::Write { bytes, .. } => {
-                    self.buffer = Some(bytes)
-                }
+                resource::Request::Read { bytes, .. }
+                | resource::Request::Write { bytes, .. }
+                | resource::Request::WritePrefix { bytes, .. } => self.buffer = Some(bytes),
                 _ => {}
             }
             put32(&mut response.0, 132, self.flags(r));

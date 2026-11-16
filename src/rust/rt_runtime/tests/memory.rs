@@ -158,21 +158,13 @@ fn indexed_midi_accounting_includes_shared_packet_and_index_pools() {
         .unwrap();
         store
             .prepare_indexed_midi_store(Config {
-                packets: PacketLimits {
-                    pages: 128,
-                    bodies: 512,
-                    records: 2048,
-                    max_packet: 64,
-                    bases: 4,
-                },
-                indexes: IndexLimits {
-                    leases: 32,
-                    versions: 16,
-                    category_pages: 256,
-                    packet_nodes: 4096,
-                    scalar_nodes: 4096,
-                    hold_nodes: 1024,
-                    sostenuto_nodes: 1024,
+                blocks: BlockLimits {
+                    event_credits: 2048,
+                    record_pages: 2048,
+                    import_bases: 4,
+                    media: 32,
+                    versions: (32) * 8,
+                    directories: 4096,
                 },
                 sources: 2,
                 history_frames: 128,

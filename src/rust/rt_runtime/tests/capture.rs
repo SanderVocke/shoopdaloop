@@ -254,17 +254,17 @@ fn midi_capture_keeps_complete_messages_relative_frames_silence_duration_and_old
         .unwrap();
     let mut input = MidiBuffer::new(8, 64).unwrap();
     input.push(2, 8, &[0x90, 60, 100]).unwrap();
-    input.push(7, 8, &[0xf0, 0x7d, 1, 2, 0xf7]).unwrap();
+    input.push(7, 8, &[0xb0, 1, 42]).unwrap();
     let first = assert_no_heap(|| {
         store.begin_callback();
         store.capture_midi(capture, Frame(10), 8, &input).unwrap();
-        assert_eq!(store.work().copied_bytes, 32);
+        assert_eq!(store.work().copied_bytes, 30);
         assert_eq!(store.work().validation_steps, 2);
         store.snapshot(resource, Frame(18)).unwrap()
     });
-    let mut expected = [0; 32];
+    let mut expected = [0; 30];
     encode_midi_record(2, &[0x90, 60, 100], &mut expected[..15]).unwrap();
-    encode_midi_record(7, &[0xf0, 0x7d, 1, 2, 0xf7], &mut expected[15..]).unwrap();
+    encode_midi_record(7, &[0xb0, 1, 42], &mut expected[15..]).unwrap();
     input.clear();
     assert_no_heap(|| {
         store.begin_callback();
@@ -275,7 +275,7 @@ fn midi_capture_keeps_complete_messages_relative_frames_silence_duration_and_old
     assert_eq!(silent_tail.description.frames, 16);
     assert_eq!(first.description.frames, 8);
     assert_eq!(store.currentness(first.id), Ok(Currentness::Stale));
-    input.push(1, 8, &[0xf8]).unwrap();
+    input.push(1, 8, &[0xff]).unwrap();
     let last = assert_no_heap(|| {
         store.begin_callback();
         store.capture_midi(capture, Frame(26), 8, &input).unwrap();
@@ -287,7 +287,7 @@ fn midi_capture_keeps_complete_messages_relative_frames_silence_duration_and_old
     assert_eq!(fetch(&mut store, silent_tail), expected);
     let mut total = expected.to_vec();
     let mut record = [0; 13];
-    encode_midi_record(17, &[0xf8], &mut record).unwrap();
+    encode_midi_record(17, &[0xff], &mut record).unwrap();
     total.extend_from_slice(&record);
     assert_eq!(fetch(&mut store, last), total);
 }
@@ -359,7 +359,7 @@ fn invalid_midi_offsets_are_atomic_and_validation_exhaustion_stops_capture_visib
         .begin_capture(resource, Revision(0), Format::Midi, Frame(0))
         .unwrap();
     let mut input = MidiBuffer::new(32, 64).unwrap();
-    input.push(5, 8, &[0xf8]).unwrap();
+    input.push(5, 8, &[0xff]).unwrap();
     assert_no_heap(|| {
         store.begin_callback();
         assert_eq!(
@@ -372,7 +372,7 @@ fn invalid_midi_offsets_are_atomic_and_validation_exhaustion_stops_capture_visib
     });
     input.clear();
     for _ in 0..17 {
-        input.push(0, 8, &[0xf8]).unwrap();
+        input.push(0, 8, &[0xff]).unwrap();
     }
     assert_no_heap(|| {
         store.begin_callback();

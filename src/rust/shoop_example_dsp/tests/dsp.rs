@@ -30,7 +30,7 @@ const EVENTS: &[Event<'static>] = &[
     (5, 0, &[0x90, 64, 88]),
     (5, 1, &[0x81, 62, 0]),
     (5, 1, &[0xC0, 4]),
-    (6, 0, &[0xF0, 0x7D, 1, 2, 0xF7]),
+    (6, 0, &[0xb0, 11, 23]),
     (8, 1, &[0x91, 65, 100]),
     (10, 0, &[0x80, 60, 0]),
     (15, 1, &[0x81, 65, 0]),
@@ -133,7 +133,18 @@ fn node() -> NodeId {
     NodeId::from_parts(0, 1).unwrap()
 }
 fn setup(initial: u32, fault: Fault, events: usize) -> Fixture {
-    let Prepared { processor, meters } = prepare(config(), bank(), id(initial)).unwrap();
+    setup_packet_limit(initial, fault, events, 4)
+}
+fn setup_packet_limit(initial: u32, fault: Fault, events: usize, packet_bytes: usize) -> Fixture {
+    let Prepared { processor, meters } = prepare(
+        Config {
+            packet_bytes,
+            ..config()
+        },
+        bank(),
+        id(initial),
+    )
+    .unwrap();
     let cfg = rt_runtime::Config {
         max_frames: 8,
         audio_inputs: 4,
@@ -659,20 +670,16 @@ fn packet_event_and_output_capacity_errors_are_guarded_and_truthful() {
     let many = (0..17)
         .map(|_| (0, 0, packet.as_slice()))
         .collect::<Vec<_>>();
-    let mut sysex = [1u8; 34];
-    sysex[0] = 0xF0;
-    sysex[1] = 0x7D;
-    sysex[33] = 0xF7;
     let packet_bytes = packet.as_slice();
     let overflow = (0..2)
         .flat_map(|port| (0..8).map(move |_| (0, port, packet_bytes)))
         .collect::<Vec<_>>();
-    for (events, capacity, expected) in [
-        (many.as_slice(), 32, Error::Capacity),
-        (&[(0, 0, sysex.as_slice())][..], 32, Error::Capacity),
-        (overflow.as_slice(), 8, Error::Full),
+    for (events, capacity, packet_limit, expected) in [
+        (many.as_slice(), 32, 4, Error::Capacity),
+        (&[(0, 0, packet.as_slice())][..], 32, 2, Error::Capacity),
+        (overflow.as_slice(), 8, 4, Error::Full),
     ] {
-        let mut host = setup(0, Fault::None, capacity);
+        let mut host = setup_packet_limit(0, Fault::None, capacity, packet_limit);
         let ticket = host.select(5, id(1), 1);
         let out = host.step(8, events);
         if expected == Error::Full {

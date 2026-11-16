@@ -1,9 +1,15 @@
 # Continuous MIDI index design
 
+Historical design, superseded in production by the
+[fixed-record MIDI runtime](midi-runtime-rtl-design.md). The semantic-tree, packet
+slab and SysEx descriptions below record the earlier implementation and its
+investigation. Current hosts use fixed record pages, prepared state banks and
+advancing writers, and reject SysEx and parameter messages.
+
 Implemented design for F2/F3 of [the application plan](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/PLAN_FINISH_GRAB_REPLACE.md).
 The persistent semantic index, rolling sources, fixed/growing writers and global
-credit admission are used by normal native/AudioWorklet hosts and configured
-firmware. P04/P05 application delivery is complete; the
+credit admission were used by native/AudioWorklet hosts and configured
+firmware. P04/P05 application delivery was completed; the
 [application evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/grab-replace.md) records public routes, allocator
 guards, exact packet/state oracles and measured limits. The investigation history
 below explains the representation choices; its intermediate integration caveats

@@ -33,8 +33,7 @@ fn samples(marker: u32, frame: usize) -> [f32; 2] {
 }
 fn packet(marker: u32, frame: usize) -> ([u8; 8], usize) {
     match frame {
-        3 => ([0xf8, 0, 0, 0, 0, 0, 0, 0], 1),
-        6 => ([0xf0, 1, 2, 3, 4, 5, 6, 0xf7], 8),
+        0 => ([0xd1, 1, 0, 0, 0, 0, 0, 0], 2),
         _ => (
             [
                 0x90,
@@ -202,8 +201,8 @@ fn seeded_capture_indexes_keep_immutable_prefixes_across_partitions_reuse_and_ex
     let config = Config {
         max_frames: 32,
         resource_slots: 8,
-        resource_pages: 128,
-        page_bytes: 16,
+        resource_pages: 512,
+        page_bytes: 4,
         midi_events_per_port: 16,
         midi_bytes_per_port: 64,
         budgets: Budgets {
@@ -251,7 +250,10 @@ fn seeded_capture_indexes_keep_immutable_prefixes_across_partitions_reuse_and_ex
                 .unwrap();
             let background = assert_no_heap(|| {
                 store.begin_callback();
-                store.write_upload(upload, 0, &[0xa5; 16]).unwrap();
+                for offset in (0..16).step_by(4) {
+                    store.begin_callback();
+                    store.write_upload(upload, offset, &[0xa5; 4]).unwrap();
+                }
                 store.finish_upload(upload).unwrap();
                 store.commit(upload).unwrap();
                 store.snapshot(background_resource, Frame(0))
@@ -343,7 +345,11 @@ fn seeded_capture_indexes_keep_immutable_prefixes_across_partitions_reuse_and_ex
                     assert_no_heap(|| {
                         store.begin_callback();
                         let mut cursor = store.cursor(background.id).unwrap();
-                        assert_eq!(store.read(&mut cursor, &mut [0; 16]), Ok(16));
+                        let mut bytes = [0; 16];
+                        let mut count = 0;
+                        while count < bytes.len() {
+                            count += store.read(&mut cursor, &mut bytes[count..]).unwrap();
+                        }
                         assert_eq!(store.copy_remaining(), 0);
                     });
                     let background_work = store.work();
@@ -397,14 +403,17 @@ fn seeded_capture_indexes_keep_immutable_prefixes_across_partitions_reuse_and_ex
                         at = end;
                         if at == 1 {
                             let before = state(&store, group, resources);
-                            for resource in resources {
-                                assert_eq!(
-                                    assert_no_heap(
-                                        || store.snapshot(resource, Frame(expected.start.0 + 1))
-                                    ),
-                                    Err(Error::Budget)
-                                );
-                            }
+                            let audio = assert_no_heap(|| {
+                                store.snapshot(resources[0], Frame(expected.start.0 + 1))
+                            })
+                            .unwrap();
+                            assert_no_heap(|| store.release_snapshot(audio.id)).unwrap();
+                            assert_eq!(
+                                assert_no_heap(
+                                    || store.snapshot(resources[1], Frame(expected.start.0 + 1))
+                                ),
+                                Err(Error::Budget)
+                            );
                             assert_eq!(state(&store, group, resources), before);
                         }
                         if at == 8 {

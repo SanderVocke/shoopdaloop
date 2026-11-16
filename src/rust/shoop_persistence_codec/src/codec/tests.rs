@@ -934,7 +934,69 @@ fn importing_unrestorable_midi_initial_state_refuses_before_staging() {
     assert!(error.to_string().contains("parameter history"));
 }
 #[shoop_test]
-fn a_final_system_reset_makes_prior_parameter_history_restorable() {
+fn legacy_null_selectors_are_reported_and_only_prefix_artifacts_are_removed() {
+    let prepare = |start_state, events| {
+        (Work::Prepare {
+            decoded: Decoded::Midi(ExactMidi {
+                sample_rate: 1000,
+                length_frames: 4,
+                start_state,
+                events,
+            }),
+            mapping: Vec::new(),
+            update_length: true,
+        })
+        .run()
+    };
+    let Value::NormalizedImage {
+        image,
+        metadata,
+        scripts,
+    } = prepare(
+        vec![
+            vec![0xb0, 101, 127],
+            vec![0xb0, 100, 127],
+            vec![0xb0, 7, 91],
+        ],
+        vec![ExactMidiEvent {
+            frame: 0,
+            order: 0,
+            data: vec![0x90, 60, 100],
+        }],
+    )
+    .unwrap()
+    else {
+        panic!("normalization report")
+    };
+    assert!(scripts.is_none());
+    assert_eq!(
+        (
+            metadata.from_prefix_version,
+            metadata.to_prefix_version,
+            metadata.removed_null_selectors
+        ),
+        (0, 1, 2)
+    );
+    let image::Manifest::Update { midi, .. } = &image.manifest else {
+        panic!("MIDI update")
+    };
+    assert_eq!(midi[0].content.initial, [vec![0xb0, 7, 91]]);
+    assert!(metadata.message().contains("2 null selectors"));
+    for packet in [vec![0xb0, 100, 1], vec![0xb0, 6, 1], vec![0xf0, 1, 0xf7]] {
+        assert!(prepare(vec![vec![0xb0, 101, 127], packet], Vec::new()).is_err());
+    }
+    assert!(prepare(
+        Vec::new(),
+        vec![ExactMidiEvent {
+            frame: 0,
+            order: 0,
+            data: vec![0xb0, 101, 127]
+        }]
+    )
+    .is_err());
+}
+#[shoop_test]
+fn parameter_packets_are_refused_even_when_followed_by_system_reset() {
     let midi = ExactMidi {
         sample_rate: 1000,
         length_frames: 4,
@@ -948,7 +1010,7 @@ fn a_final_system_reset_makes_prior_parameter_history_restorable() {
             update_length: true
         })
         .run(),
-        Ok(Value::Image(_))
+        Err(_)
     ));
 }
 

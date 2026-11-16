@@ -474,8 +474,9 @@ actors, Node/Chromium bindings and actual separate-memory offline/live worklets:
    commit revision1 and retain a snapshot/cursor. Upload100–107/right×10 as
    revision2 while that snapshot remains alive. Read every old byte again, release
    the old snapshot, then read every new byte. Validate/release an audio node pair source.
-2. Upload a separate64-byte MIDI resource with note-on and a37-byte SysEx, then
-   check every packet/timestamp/byte. Raw byte uploads have no playback checkpoint
+2. Upload a separate29-byte MIDI resource with a three-byte note-on and a two-byte
+   program change, then check every packet/timestamp/byte. The fixed64-byte transport
+   buffer writes only the declared upload prefix. Raw byte uploads have no playback checkpoint
    index: `NodePairSnapshot` must return domain failure522, not a renderer fault or a
    playable source. Release/remove both resources; local generations become2.
 3. Upload a precompiled `LTP1` header and15 ordered64-byte records, validate with

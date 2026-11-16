@@ -183,10 +183,7 @@ fn indexed_positions_match_linear_event_and_independent_key_state_oracles() {
             }
         }
         if f == 20 {
-            let mut sysex = vec![1; 257];
-            sysex[0] = 0xf0;
-            sysex[256] = 0xf7;
-            records.push((f, sysex));
+            records.push((f, vec![0xd1, 37]));
         }
     }
     let snapshot = upload(&mut store, &records, 80, &initial);
@@ -232,7 +229,7 @@ fn indexed_positions_match_linear_event_and_independent_key_state_oracles() {
             if frame == 21 {
                 assert!(
                     store.render_work().copied_bytes < 200,
-                    "seek must skip the long SysEx body"
+                    "checkpoint replay must retain its bounded read work"
                 );
             }
             let channel = position.state.channel(0).unwrap();
@@ -244,7 +241,10 @@ fn indexed_positions_match_linear_event_and_independent_key_state_oracles() {
                 assert_eq!((actual.velocity(), actual.held()), expected);
             }
             assert_eq!(position.state.channel(1).unwrap().program(), program);
-            assert_eq!(position.state.channel(1).unwrap().pressure(), Some(12));
+            assert_eq!(
+                position.state.channel(1).unwrap().pressure(),
+                Some(if frame > 20 { 37 } else { 12 })
+            );
             assert_eq!(position.state.channel(2).unwrap().program(), Some(7));
             let next = store.render_io().midi_next(&mut position.cursor).unwrap();
             match (records.iter().find(|(f, _)| *f >= frame), next) {
@@ -661,15 +661,15 @@ fn preparation_bounds_and_legacy_unindexed_media_are_explicit() {
 }
 
 #[shoop_test]
-fn indexed_parameter_history_matches_prefix_state_without_full_state_copies() {
+fn indexed_basic_history_stays_empty_without_full_state_copies() {
     for span in [1, 2, 8] {
         let mut store = store(4, 32, span, 32, 2);
         let records = vec![
             (0, vec![0xb0, 7, 90]),
-            (1, vec![0xb0, 6, 1]),
-            (2, vec![0xb1, 96, 0]),
+            (1, vec![0xb0, 1, 1]),
+            (2, vec![0xb1, 7, 0]),
             (4, vec![0xff]),
-            (5, vec![0xb2, 38, 1]),
+            (5, vec![0xb2, 11, 1]),
         ];
         let snapshot = upload(&mut store, &records, 8, &MidiState::default());
         let index = assert_no_heap(|| store.read_index(snapshot.id)).unwrap();
@@ -682,7 +682,7 @@ fn indexed_parameter_history_matches_prefix_state_without_full_state_copies() {
             })
             .unwrap();
             assert_eq!(store.midi_index_work().state_copies, copies);
-            assert_eq!(history, matches!(frame, 2..=4 | 6..=8));
+            assert!(!history);
             let state = assert_no_heap(|| store.render_io().midi_seek(index, frame))
                 .unwrap()
                 .state;

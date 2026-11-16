@@ -38,9 +38,7 @@ fn emit(target: &mut Vec<Observed>, frame: u64, voice: usize, data: &[u8]) -> Re
     Ok(())
 }
 fn input() -> Events {
-    let mut sysex = vec![1; 35];
-    sysex[0] = 0xf0;
-    sysex[34] = 0xf7;
+    let control = vec![0xb0, 1, 35];
     let mut events = vec![
         (0, vec![0x90, 60, 80]),
         (3, vec![0xb0, 64, 127]),
@@ -48,7 +46,7 @@ fn input() -> Events {
         (4, vec![0xc0, 5]),
         (5, vec![0x80, 60, 0]),
         (6, vec![0xe0, 1, 64]),
-        (8, sysex),
+        (8, control),
     ];
     for channel in 0..16 {
         events.push((9, vec![0xb0 | channel, 7, 100]));
@@ -71,7 +69,7 @@ fn projected(events: &Events, initial: MidiState, before: u64) -> MidiState {
     for (_, packet) in events.iter().filter(|(at, _)| *at < before) {
         state.apply_packet(packet, 48).unwrap();
     }
-    state
+    state.basic_projection()
 }
 fn window(events: &Events, start: u64) -> (Events, MidiState) {
     (

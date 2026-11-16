@@ -679,7 +679,7 @@ async fn archive_resampling_channel_reorder_and_standard_midi_import_use_the_pub
             ExactMidiEvent {
                 frame: 96,
                 order: 1,
-                data: vec![0xf0, 0x7d, 1, 2, 3, 4, 0xf7],
+                data: vec![0xb0, 11, 23],
             },
         ],
     };

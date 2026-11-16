@@ -160,7 +160,7 @@ fn shared_midi_session_exact_and_standard_exports_round_trip_then_reload_and_edi
             &MidiState::default(),
         )
         .unwrap();
-    let mut sysex = vec![1; 35];
+    let control = vec![0xb0, 1, 35];
     let audio = resources
         .prepare_audio_store(
             resource::shared_audio::Config {
@@ -179,15 +179,13 @@ fn shared_midi_session_exact_and_standard_exports_round_trip_then_reload_and_edi
     let audio_resource = resources.grab_audio(audio, Frame(2)..Frame(10)).unwrap();
     let audio_snapshot = resources.snapshot(audio_resource, Frame(10)).unwrap();
     resources.remove(audio_resource).unwrap();
-    sysex[0] = 0xf0;
-    sysex[34] = 0xf7;
     let mut input = MidiBuffer::new(32, 256).unwrap();
     for (at, packet) in [
         (0, &[0x90, 60, 80][..]),
         (1, &[0xb0, 0, 2]),
         (1, &[0xc0, 5]),
         (2, &[0xb0, 7, 99]),
-        (3, &sysex),
+        (3, &control),
         (5, &[0x80, 60, 0]),
     ] {
         input.push(at, 10, packet).unwrap();
@@ -207,7 +205,7 @@ fn shared_midi_session_exact_and_standard_exports_round_trip_then_reload_and_edi
         },
         MidiEventState {
             frame: 1,
-            data: sysex.clone().into(),
+            data: control.clone().into(),
         },
         MidiEventState {
             frame: 3,
@@ -247,7 +245,7 @@ fn shared_midi_session_exact_and_standard_exports_round_trip_then_reload_and_edi
     input.clear();
     input.push(0, 4, &[0xff]).unwrap();
     input.push(2, 4, &[0x9f, 70, 88]).unwrap();
-    input.push(3, 4, &sysex).unwrap();
+    input.push(3, 4, &control).unwrap();
     let edit = resources
         .render_io()
         .prepare_midi_replace(editable, Revision(2), 6, 4, &input, &initial_state)

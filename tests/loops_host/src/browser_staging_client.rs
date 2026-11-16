@@ -131,12 +131,8 @@ pub(crate) fn data_payload(index: u32) -> Option<[u8; 64]> {
             put32(&mut bytes, 8, 3);
             bytes[12..15].copy_from_slice(&[0x90, 61, 90]);
             put64(&mut bytes, 15, 4);
-            put32(&mut bytes, 23, 37);
-            bytes[27] = 0xf0;
-            for i in 0..35 {
-                bytes[28 + i] = i as u8;
-            }
-            bytes[63] = 0xf7;
+            put32(&mut bytes, 23, 2);
+            bytes[27..29].copy_from_slice(&[0xc0, 42]);
         }
         _ => return None,
     }

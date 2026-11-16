@@ -49,7 +49,7 @@ impl<S: Sample> MidiStore<S> {
             if at as usize >= frames || (i > 0 && at < prior) {
                 return Err(Error::InvalidFrame);
             }
-            Message::parse(data, self.config.max_packet)?;
+            ShortMessage::managed(data).map_err(Error::from)?;
             bytes = bytes.checked_add(data.len()).ok_or(Error::Capacity)?;
             prior = at;
         }
@@ -130,9 +130,10 @@ impl<S: Sample> MidiStore<S> {
                     len: data.len(),
                 };
                 self.flush_existing(io.store, &mut root, serial, 1, &state, &mut end);
-                state
-                    .apply_packet(data, self.config.max_packet)
-                    .expect("validated packet");
+                ShortMessage::managed(data)
+                    .expect("validated packet")
+                    .apply(&mut state)
+                    .expect("managed state");
                 serial = end;
                 checkpoint = state;
                 self.work.add(0, 1, 0, 0);
@@ -152,9 +153,10 @@ impl<S: Sample> MidiStore<S> {
                 };
                 used += data.len();
                 count += 1;
-                state
-                    .apply_packet(data, self.config.max_packet)
-                    .expect("validated packet");
+                ShortMessage::managed(data)
+                    .expect("validated packet")
+                    .apply(&mut state)
+                    .expect("managed state");
                 self.work.add(1, 0, 0, 0);
             }
         }

@@ -241,7 +241,11 @@ impl Running {
                 && shared.failure().is_none()
                 && shared.stats().midi_out_failed == 0;
         }
+        let had_pump = self.pump.is_some();
         drop(self.pump);
+        if had_pump {
+            midi_reset &= shared.reset_flushed.load(Ordering::Acquire);
+        }
         drop(self.connections);
         shared.set_state(DriverRunState::Stopped);
         let stopped = match cycle {

@@ -18,8 +18,8 @@ export async function exerciseStaging(io){
     for(const [kind,args,index]of [[2,[1n,8n,64n],0],[3,[0n,0n,0n],2],[4],[5]])await rpc(kind,0,args,index);
     await audio(10);await rpc(9,0);const [,snapshot]=await rpc(6,0);assert(snapshot.getBigUint64(88,true)===2n,"new uploaded revision");await audio(100);
     await rpc(13,0);const [,ready]=await rpc(14,0);assert(ready.getBigUint64(88,true)===1n,"audio source ready");await rpc(15,0);await rpc(9,0);await rpc(10,0);
-    for(const [kind,args,index]of [[1],[2,[0n,8n,64n],1],[3,[0n,0n,0n],1],[4],[5],[6],[7]])await rpc(kind,1,args,index);
-    const [midi,mv]=await rpc(8,1);assert(mv.getUint32(128,true)===64&&mv.getUint32(84,true)===2&&mv.getBigUint64(144,true)===0n&&mv.getUint32(152,true)===3&&midi.slice(156,159).join()==="144,61,90"&&mv.getBigUint64(159,true)===4n&&mv.getUint32(167,true)===37&&midi[171]===240&&midi[207]===247,"raw uploaded MIDI packet boundaries");for(let i=0;i<35;i++)assert(midi[172+i]===i,"complete uploaded SysEx");
+    for(const [kind,args,index]of [[1],[2,[0n,8n,29n],1],[3,[0n,0n,0n],1],[4],[5],[6],[7]])await rpc(kind,1,args,index);
+    const [midi,mv]=await rpc(8,1);assert(mv.getUint32(128,true)===29&&mv.getUint32(84,true)===2&&mv.getBigUint64(144,true)===0n&&mv.getUint32(152,true)===3&&midi.slice(156,159).join()==="144,61,90"&&mv.getBigUint64(159,true)===4n&&mv.getUint32(167,true)===2&&midi.slice(171,173).join()==="192,42","raw uploaded MIDI packet boundaries");
     const refusal=await io.request(13,1,[0n,0n,0n],0,null,128),rv=data(refusal);assert(rv.getUint32(64,true)===5&&rv.getUint32(68,true)===522&&rv.getUint32(132,true)===5,"raw MIDI lacks playback checkpoints; preserve owners on domain refusal");
     await rpc(9,1);await rpc(10,1);
     await rpc(17,0);const records=io.stagingClient.record_count();for(let record=0;record<records;record++)await rpc(18,0,[BigInt(record),0n,0n],record);

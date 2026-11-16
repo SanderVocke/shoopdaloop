@@ -1,35 +1,23 @@
 //! Continuous MIDI media exposed through ordinary resource and snapshot leases.
 
-use super::{midi_packets, midi_writer as writer, *};
+use super::{midi_writer as writer, *};
 use crate::Sample;
-use crate::{
-    buffer::MidiBuffer,
-    midi_state::{indexed::store, MidiState},
-};
+use crate::{buffer::MidiBuffer, midi_state::MidiState};
 use core::mem::size_of_val;
 
+/// Fixed pools; each record page holds 32 inline 16-byte records.
 #[derive(Clone, Copy, Debug)]
-pub struct PacketLimits {
-    pub pages: usize,
-    pub bodies: usize,
-    pub records: usize,
-    pub max_packet: usize,
-    pub bases: usize,
-}
-#[derive(Clone, Copy, Debug)]
-pub struct IndexLimits {
-    pub leases: usize,
+pub struct BlockLimits {
+    pub event_credits: usize,
+    pub record_pages: usize,
+    pub directories: usize,
     pub versions: usize,
-    pub category_pages: usize,
-    pub packet_nodes: usize,
-    pub scalar_nodes: usize,
-    pub hold_nodes: usize,
-    pub sostenuto_nodes: usize,
+    pub media: usize,
+    pub import_bases: usize,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Config {
-    pub packets: PacketLimits,
-    pub indexes: IndexLimits,
+    pub blocks: BlockLimits,
     pub sources: usize,
     pub history_frames: u64,
     pub history_events: usize,
@@ -73,6 +61,25 @@ pub struct ImportId {
     store: StoreId,
     key: Key,
 }
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GrabId {
+    store: StoreId,
+    key: Key,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PatchId {
+    store: StoreId,
+    key: Key,
+}
+struct PatchJob {
+    edit: writer::Patch,
+    resource: ResourceId,
+    expected: Revision,
+    version: UploadId,
+    original: Key,
+    ready: bool,
+}
+mod patch;
 /// One nonwrapping raw-media span within a complete source tick.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct WriteSpan {
@@ -205,7 +212,7 @@ struct Job {
 struct Import {
     snapshot: SnapshotId,
     cursor: MidiCursor,
-    base: midi_packets::BaseId,
+    base: writer::ImportBase,
     media: Option<writer::Media>,
     writer: Option<Key>,
     frames: u64,
@@ -213,6 +220,7 @@ struct Import {
     density: usize,
     bytes: usize,
     order: u64,
+    last_frame: Option<u64>,
     ready: bool,
 }
 pub(super) struct Store {
@@ -222,6 +230,8 @@ pub(super) struct Store {
     sources: Arena<Source>,
     writers: Arena<Job>,
     imports: Arena<Import>,
+    grabs: Arena<writer::history::Grab>,
+    patches: Arena<PatchJob>,
     closed: bool,
     maintenance_steps: usize,
 }
@@ -234,34 +244,12 @@ pub struct Capacity {
     pub history_frames: u64,
 }
 impl Config {
-    /// Worst complete source edit: one quantum of erasure and insertion plus AVL path slack.
-    pub fn index_workspace(events_per_tick: usize, history_events: usize) -> Result<usize, Error> {
-        events_per_tick
-            .checked_mul(
-                5 * (crate::midi_state::indexed::tree::maximum_height(history_events) + 2) + 8,
-            )
-            .ok_or(Error::Capacity)
-    }
     fn core(self) -> writer::Config {
         writer::Config {
-            packets: midi_packets::Config {
-                pages: self.packets.pages,
-                bodies: self.packets.bodies,
-                records: self.packets.records,
-                max_packet: self.packets.max_packet,
-                bases: self.packets.bases,
-            },
-            indexes: store::Config {
-                leases: self.indexes.leases,
-                versions: self.indexes.versions,
-                category_pages: self.indexes.category_pages,
-                packet_nodes: self.indexes.packet_nodes,
-                scalar_nodes: self.indexes.scalar_nodes,
-                hold_nodes: self.indexes.hold_nodes,
-                sostenuto_nodes: self.indexes.sostenuto_nodes,
-            },
+            blocks: self.blocks,
             events_per_tick: self.events_per_tick,
             bytes_per_tick: self.bytes_per_tick,
+            writers: self.writers,
         }
     }
     /// Allocation-free sizing of protected capture and retained-owner pools.
@@ -284,9 +272,8 @@ impl Config {
             || self.events_per_tick > runtime.limits().midi_events_per_port
             || self.bytes_per_tick > runtime.limits().midi_bytes_per_port
             || q.frames() > runtime.limits().max_frames
-            || self.packets.pages > runtime.limits().resource_pages
-            || self.sources > self.indexes.versions
-            || self.sources > self.indexes.leases
+            || self.sources > self.blocks.media
+            || self.blocks.record_pages < self.blocks.event_credits
             || self.sources > 0
                 && (self.history_frames == 0
                     || self.history_events < self.events_per_tick
@@ -303,9 +290,7 @@ impl Config {
         )?;
         let mut bytes = size_of::<Store>()
             .checked_add(writer::Core::prepared_bytes(self.core())?)
-            .and_then(|n| {
-                n.checked_add(writer::Core::owner_credit_bytes(self.indexes.leases).ok()?)
-            })
+            .and_then(|n| n.checked_add(writer::Core::owner_credit_bytes(self.blocks.media).ok()?))
             .ok_or(Error::Capacity)?;
         for (count, size) in [
             (
@@ -320,6 +305,8 @@ impl Config {
             ),
             (self.writers, size_of::<Entry<Job>>()),
             (self.imports, size_of::<Entry<Import>>()),
+            (self.imports, size_of::<Entry<writer::history::Grab>>()),
+            (self.writers.max(1), size_of::<Entry<PatchJob>>()),
         ] {
             bytes = count
                 .checked_mul(size)
@@ -328,18 +315,32 @@ impl Config {
                 .ok_or(Error::Capacity)?;
         }
         Ok(Capacity {
-            metadata_bytes: bytes,
+            metadata_bytes: bytes
+                .checked_sub(
+                    self.blocks
+                        .record_pages
+                        .checked_mul(
+                            crate::midi_runtime::RECORDS_PER_PAGE
+                                * crate::midi::EventRecord::ENCODED_BYTES,
+                        )
+                        .ok_or(Error::Capacity)?,
+                )
+                .ok_or(Error::Capacity)?,
             reserved_payload_bytes: self
-                .packets
-                .pages
-                .checked_mul(runtime.limits().page_bytes)
+                .blocks
+                .record_pages
+                .checked_mul(
+                    crate::midi_runtime::RECORDS_PER_PAGE * crate::midi::EventRecord::ENCODED_BYTES,
+                )
                 .ok_or(Error::Capacity)?,
             state_bytes: self
-                .sources
-                .checked_mul(3)
-                .and_then(|n| n.checked_add(self.views))
-                .and_then(|n| n.checked_add(self.writers.checked_mul(2)?))
-                .and_then(|n| n.checked_add(self.imports))
+                .writers
+                .max(1)
+                .checked_mul(6)
+                .and_then(|n| {
+                    n.checked_add(self.blocks.media.checked_mul(writer::STATE_BANKS + 2)?)
+                })
+                .and_then(|n| n.checked_add(self.sources.checked_mul(2)?))
                 .and_then(|n| n.checked_mul(size_of::<MidiState>()))
                 .ok_or(Error::Capacity)?,
             history_frames: q.ceil(Frame(self.history_frames))?.0,
@@ -354,6 +355,8 @@ impl Store {
             + size_of_val(&*self.sources.entries)
             + size_of_val(&*self.writers.entries)
             + size_of_val(&*self.imports.entries)
+            + size_of_val(&*self.grabs.entries)
+            + size_of_val(&*self.patches.entries)
             + self
                 .sources
                 .entries
@@ -368,6 +371,8 @@ impl Store {
         let mut sources = Arena::prepare(config.sources)?;
         let writers = Arena::prepare(config.writers)?;
         let imports = Arena::prepare(config.imports)?;
+        let grabs = Arena::prepare(config.imports)?;
+        let patches = Arena::prepare(config.writers.max(1))?;
         let q = resources.quantum;
         let mut core = writer::Core::prepare(resources, q, config.core())?;
         core.prepare_owner_credits(config.sources, config.history_events, config.history_bytes)?;
@@ -398,6 +403,8 @@ impl Store {
             sources,
             writers,
             imports,
+            grabs,
+            patches,
             closed: false,
             maintenance_steps,
         })
@@ -524,6 +531,21 @@ impl<S: Sample> ResourceStore<S> {
         pool.sources.get(key)?;
         Ok(SourceId { store: id, key })
     }
+    /// Preparation-only adjustment for sources sharing a larger common pool.
+    pub fn configure_indexed_midi_source(
+        &mut self,
+        source: SourceId,
+        frames: u64,
+    ) -> Result<(), Error> {
+        self.with_indexed_midi(source.store, |_, pool| {
+            pool.sources
+                .get_mut(source.key)?
+                .history
+                .as_mut()
+                .ok_or(Error::InvalidState)?
+                .configure_horizon(frames)
+        })
+    }
     pub fn indexed_midi_coverage(
         &self,
         source: SourceId,
@@ -619,6 +641,75 @@ impl<S: Sample> ResourceStore<S> {
             media,
         })
     }
+    pub fn prepare_indexed_midi_grab(
+        &mut self,
+        source: SourceId,
+        range: core::ops::Range<Frame>,
+        frames: u64,
+    ) -> Result<GrabId, Error> {
+        self.with_indexed_midi(source.store, |resources, pool| {
+            if pool.closed {
+                return Err(Error::InvalidState);
+            }
+            pool.grabs.available()?;
+            let history = pool
+                .sources
+                .get(source.key)?
+                .history
+                .as_ref()
+                .ok_or(Error::InvalidState)?;
+            let grab = pool
+                .core
+                .begin_grab(&mut resources.render_io(), history, range, frames)?;
+            Ok(GrabId {
+                store: source.store,
+                key: pool.grabs.insert(grab),
+            })
+        })
+    }
+    pub fn progress_indexed_midi_grab(
+        &mut self,
+        id: GrabId,
+        steps: usize,
+    ) -> Result<Status, Error> {
+        self.with_indexed_midi(id.store, |resources, pool| {
+            let ready = pool.core.progress_grab(
+                &mut resources.render_io(),
+                pool.grabs.get_mut(id.key)?,
+                steps,
+            )?;
+            Ok(if ready {
+                Status::Ready
+            } else {
+                Status::Building
+            })
+        })
+    }
+    pub fn indexed_midi_grab_replay_bound(&mut self, id: GrabId) -> Result<usize, Error> {
+        self.with_indexed_midi(id.store, |_, pool| {
+            pool.core.grab_replay_bound(pool.grabs.get(id.key)?)
+        })
+    }
+    pub fn finish_indexed_midi_grab(&mut self, id: GrabId) -> Result<ResourceId, Error> {
+        self.indexed_midi_credit()?;
+        let media = self.with_indexed_midi(id.store, |_, pool| {
+            pool.views.available()?;
+            if !pool.core.grab_ready(pool.grabs.get(id.key)?) {
+                return Err(Error::Busy);
+            }
+            let media = pool.core.finish_grab(pool.grabs.remove(id.key)?);
+            Ok(pool.views.insert(media))
+        })?;
+        self.indexed_midi_resource(Take {
+            store: id.store,
+            media,
+        })
+    }
+    pub fn cancel_indexed_midi_grab(&mut self, id: GrabId) -> Result<(), Error> {
+        self.with_indexed_midi(id.store, |_, pool| {
+            pool.core.cancel_grab(pool.grabs.remove(id.key)?)
+        })
+    }
     pub fn fork_indexed_midi(
         &mut self,
         id: StoreId,
@@ -683,6 +774,7 @@ impl<S: Sample> ResourceStore<S> {
                     density: 0,
                     bytes: 0,
                     order: 0,
+                    last_frame: None,
                     ready: false,
                 }),
             })
@@ -701,26 +793,33 @@ impl<S: Sample> ResourceStore<S> {
                     job.ready = true;
                     break;
                 };
-                let order = job.order.checked_add(1).ok_or(Error::Exhausted)?;
+                let order = if job.last_frame == Some(event.frame()) {
+                    job.order.checked_add(1).ok_or(Error::Exhausted)?
+                } else {
+                    0
+                };
+                if order > u16::MAX as u64 {
+                    return Err(Error::Exhausted);
+                }
+                let quantum = event.frame() / resources.quantum.frames() as u64;
+                let density = if job.quantum == Some(quantum) {
+                    job.density + 1
+                } else {
+                    1
+                };
+                let bytes = if job.quantum == Some(quantum) {
+                    job.bytes
+                        .checked_add(event.byte_len())
+                        .ok_or(Error::Capacity)?
+                } else {
+                    event.byte_len()
+                };
+                if density > pool.core.config.events_per_tick
+                    || bytes > pool.core.config.bytes_per_tick
+                {
+                    return Err(Error::Capacity);
+                }
                 if let Some(writer) = job.writer {
-                    let quantum = event.frame() / resources.quantum.frames() as u64;
-                    let density = if job.quantum == Some(quantum) {
-                        job.density + 1
-                    } else {
-                        1
-                    };
-                    let bytes = if job.quantum == Some(quantum) {
-                        job.bytes
-                            .checked_add(event.byte_len())
-                            .ok_or(Error::Capacity)?
-                    } else {
-                        event.byte_len()
-                    };
-                    if density > pool.core.config.events_per_tick
-                        || bytes > pool.core.config.bytes_per_tick
-                    {
-                        return Err(Error::Capacity);
-                    }
                     let target = pool.writers.get_mut(writer)?;
                     if resources.revision(target.resource)? != target.expected {
                         return Err(Error::StaleRevision);
@@ -731,26 +830,27 @@ impl<S: Sample> ResourceStore<S> {
                         job.frames,
                         job.base,
                         event.frame(),
-                        job.order,
+                        order,
                         job.cursor.byte_position() + 12,
                         event.byte_len(),
                     )?;
-                    job.quantum = Some(quantum);
-                    job.density = density;
-                    job.bytes = bytes;
                 } else {
                     pool.core.import_reference(
                         &mut resources.render_io(),
                         job.media.as_mut().ok_or(Error::InvalidState)?,
                         job.base,
                         event.frame(),
-                        job.order,
+                        order,
                         job.cursor.byte_position() + 12,
                         event.byte_len(),
                     )?;
                 }
+                job.quantum = Some(quantum);
+                job.density = density;
+                job.bytes = bytes;
                 job.cursor = next;
                 job.order = order;
+                job.last_frame = Some(event.frame());
             }
             Ok(if job.ready {
                 Status::Ready
@@ -799,6 +899,9 @@ impl<S: Sample> ResourceStore<S> {
         snapshot: SnapshotId,
         initial: &MidiState,
     ) -> Result<(ResourceId, WriterId, ImportId), Error> {
+        let index = self.read_index(snapshot)?;
+        let frames = self.midi_lease(index)?.snapshot.description.frames;
+        let end_state = self.midi_seek_impl(index, frames)?.state.basic_projection();
         let import = self.prepare_indexed_midi_import(store, snapshot, initial)?;
         let mut resource = None;
         let mut writer = None;
@@ -822,6 +925,15 @@ impl<S: Sample> ResourceStore<S> {
                 },
             )?;
             writer = Some(id);
+            self.with_indexed_midi(store, |_, pool| {
+                let admission = pool
+                    .writers
+                    .get_mut(id.key)?
+                    .admission
+                    .as_mut()
+                    .ok_or(Error::InvalidState)?;
+                pool.core.seed_recording(admission, &end_state)
+            })?;
             self.start_indexed_midi_writer(id, frames)?;
             self.with_indexed_midi(store, |_, pool| {
                 let job = pool.imports.get_mut(import.key)?;
@@ -920,6 +1032,15 @@ impl<S: Sample> ResourceStore<S> {
                 .maintain(&mut resources.render_io(), pool.maintenance_steps)?;
             pool.writers.available()?;
             if pool
+                .patches
+                .entries
+                .iter()
+                .filter_map(|e| e.value.as_ref())
+                .any(|j| j.resource == resource)
+            {
+                return Err(Error::Busy);
+            }
+            if pool
                 .writers
                 .entries
                 .iter()
@@ -994,6 +1115,45 @@ impl<S: Sample> ResourceStore<S> {
                     job.admission = Some(admission);
                     Err(error)
                 }
+            }
+        })
+    }
+    pub fn prepare_indexed_midi_writer_position(
+        &mut self,
+        id: WriterId,
+        position: u64,
+        steps: usize,
+    ) -> Result<bool, Error> {
+        self.with_indexed_midi(id.store, |resources, pool| {
+            let job = pool.writers.get(id.key)?;
+            if resources.revision(job.resource)? != job.expected {
+                return Err(Error::StaleRevision);
+            }
+            if let Some(admission) = job.admission.as_ref() {
+                pool.core.prepare_admission_position(
+                    &mut resources.render_io(),
+                    admission,
+                    position,
+                    steps,
+                )
+            } else {
+                pool.core.prepare_writer_position(
+                    &mut resources.render_io(),
+                    job.writer.as_ref().ok_or(Error::InvalidState)?,
+                    position,
+                    steps,
+                )
+            }
+        })
+    }
+    pub fn indexed_midi_writer_replay_bound(&mut self, id: WriterId) -> Result<usize, Error> {
+        self.with_indexed_midi(id.store, |_, pool| {
+            let job = pool.writers.get(id.key)?;
+            if let Some(admission) = &job.admission {
+                pool.core.admission_replay_bound(admission)
+            } else {
+                pool.core
+                    .writer_replay_bound(job.writer.as_ref().ok_or(Error::InvalidState)?)
             }
         })
     }
@@ -1129,7 +1289,12 @@ impl<S: Sample> ResourceStore<S> {
             if pool.closed {
                 return Err(Error::InvalidState);
             }
-            if !pool.views.empty() || !pool.writers.empty() || !pool.imports.empty() {
+            if !pool.views.empty()
+                || !pool.writers.empty()
+                || !pool.imports.empty()
+                || !pool.grabs.empty()
+                || !pool.patches.empty()
+            {
                 return Err(Error::Busy);
             }
             for slot in 0..pool.sources.entries.len() {
@@ -1335,8 +1500,44 @@ impl<S: Sample> RenderIo<'_, S> {
 }
 
 impl<S: Sample> ResourceIo<'_, S> {
+    pub fn prepare_indexed_midi_grab(
+        &mut self,
+        source: SourceId,
+        range: core::ops::Range<Frame>,
+        frames: u64,
+    ) -> Result<GrabId, Error> {
+        self.store.prepare_indexed_midi_grab(source, range, frames)
+    }
+    pub fn progress_indexed_midi_grab(
+        &mut self,
+        id: GrabId,
+        steps: usize,
+    ) -> Result<Status, Error> {
+        self.store.progress_indexed_midi_grab(id, steps)
+    }
+    pub fn finish_indexed_midi_grab(&mut self, id: GrabId) -> Result<ResourceId, Error> {
+        self.store.finish_indexed_midi_grab(id)
+    }
+    pub fn indexed_midi_grab_replay_bound(&mut self, id: GrabId) -> Result<usize, Error> {
+        self.store.indexed_midi_grab_replay_bound(id)
+    }
+    pub fn cancel_indexed_midi_grab(&mut self, id: GrabId) -> Result<(), Error> {
+        self.store.cancel_indexed_midi_grab(id)
+    }
+    pub fn prepare_indexed_midi_writer_position(
+        &mut self,
+        id: WriterId,
+        position: u64,
+        steps: usize,
+    ) -> Result<bool, Error> {
+        self.store
+            .prepare_indexed_midi_writer_position(id, position, steps)
+    }
     pub fn resume_indexed_midi_window_writer(&mut self, id: WriterId) -> Result<(), Error> {
         self.store.resume_indexed_midi_window_writer(id)
+    }
+    pub fn indexed_midi_writer_replay_bound(&mut self, id: WriterId) -> Result<usize, Error> {
+        self.store.indexed_midi_writer_replay_bound(id)
     }
     pub fn prepare_indexed_midi_recording(
         &mut self,

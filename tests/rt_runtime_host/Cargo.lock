@@ -83,6 +83,7 @@ dependencies = [
  "rt_audio_math",
  "rt_profiling",
  "rtrb",
+ "shoop_midi_protocol",
 ]
 
 [[package]]
@@ -134,6 +135,10 @@ dependencies = [
  "quote",
  "syn 3.0.9",
 ]
+
+[[package]]
+name = "shoop_midi_protocol"
+version = "0.3.0"
 
 [[package]]
 name = "syn"

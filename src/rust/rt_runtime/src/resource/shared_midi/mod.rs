@@ -5,7 +5,9 @@ use super::{
     RenderIo, ResourceStore, Slot, WorkClass,
 };
 use crate::Sample;
-use crate::{buffer::MidiBuffer, midi::Message, midi_state::MidiState, Error, Frame, Revision};
+use crate::{
+    buffer::MidiBuffer, midi::ShortMessage, midi_state::MidiState, Error, Frame, Revision,
+};
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::ops::Range;
 

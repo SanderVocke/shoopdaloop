@@ -336,8 +336,23 @@ struct BrowserJob {
     inflight: usize,
     output: Output,
     scripts: Option<shoop_script_resources::transfer::Assembly>,
+    normalization: Option<shoop_persistence_codec::codec::MidiNormalization>,
 }
 impl BrowserJob {
+    fn image_description(&mut self, description: transfer::Description) -> Result<()> {
+        self.output = Output::Image(
+            transfer::Receiver::new(
+                Authority {
+                    lease: LeaseId(1),
+                    client: ClientId(1),
+                    generation: ConnectionGeneration(1),
+                },
+                description,
+            )
+            .map_err(|r| anyhow!("invalid codec image: {r:?}"))?,
+        );
+        Ok(())
+    }
     fn image_part(&mut self, request: transfer::Request) -> Result<()> {
         let Output::Image(receiver) = &mut self.output else {
             bail!("unexpected codec image data")
@@ -428,18 +443,13 @@ impl BrowserJob {
                     }
                     return Ok(Some(Value::Decoded(Decoded::Remote(summary))));
                 }
-                WorkerResponse::Image(description) => {
-                    self.output = Output::Image(
-                        transfer::Receiver::new(
-                            Authority {
-                                lease: LeaseId(1),
-                                client: ClientId(1),
-                                generation: ConnectionGeneration(1),
-                            },
-                            description,
-                        )
-                        .map_err(|r| anyhow!("invalid codec image: {r:?}"))?,
-                    );
+                WorkerResponse::Image(description) => self.image_description(description)?,
+                WorkerResponse::NormalizedImage {
+                    description,
+                    metadata,
+                } => {
+                    self.normalization = Some(metadata);
+                    self.image_description(description)?;
                 }
                 WorkerResponse::ImagePart(request) => self.image_part(request)?,
                 WorkerResponse::ImageBatch { parts, done } => {
@@ -508,13 +518,21 @@ impl BrowserJob {
                 .map_err(|r| anyhow!("invalid codec media: {r:?}"))?
             {
                 let image = image.into_image();
-                return Ok(Some(if let Some(scripts) = self.scripts.take() {
-                    Value::PreparedSession {
+                let scripts = self
+                    .scripts
+                    .take()
+                    .map(|scripts| scripts.finish().map_err(|error| anyhow!(error)))
+                    .transpose()?;
+                return Ok(Some(match self.normalization.take() {
+                    Some(metadata) => Value::NormalizedImage {
                         image,
-                        scripts: scripts.finish().map_err(|error| anyhow!(error))?,
-                    }
-                } else {
-                    Value::Image(image)
+                        scripts,
+                        metadata,
+                    },
+                    None => match scripts {
+                        Some(scripts) => Value::PreparedSession { image, scripts },
+                        None => Value::Image(image),
+                    },
                 }));
             }
             return Ok(None);
@@ -683,6 +701,7 @@ impl CodecExecutor {
             inflight: 0,
             output: Output::None,
             scripts: None,
+            normalization: None,
         }))))
     }
 }

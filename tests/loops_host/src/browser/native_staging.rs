@@ -196,7 +196,7 @@ pub fn run(threaded: bool) -> StagingReport {
     driver.rpc(REMOVE, 0, [0; 3], 0);
     for (kind, args, index) in [
         (CREATE, [0; 3], 0),
-        (BEGIN, [0, 8, 64], 1),
+        (BEGIN, [0, 8, 29], 1),
         (WRITE, [0; 3], 1),
         (FINISH, [0; 3], 0),
         (COMMIT, [0; 3], 0),
@@ -208,12 +208,9 @@ pub fn run(threaded: bool) -> StagingReport {
     let midi = driver.rpc(READ, 1, [0; 3], 0);
     assert_eq!(&midi[DATA + 12..DATA + 15], &[0x90, 61, 90]);
     assert_eq!(get64(&midi, DATA + 15), 4);
-    assert_eq!(get32(&midi, DATA + 23), 37);
-    assert_eq!(midi[DATA + 27], 0xf0);
-    assert_eq!(midi[DATA + 63], 0xf7);
-    for i in 0..35 {
-        assert_eq!(midi[DATA + 28 + i], i as u8);
-    }
+    assert_eq!(get32(&midi, 128), 29);
+    assert_eq!(get32(&midi, DATA + 23), 2);
+    assert_eq!(&midi[DATA + 27..DATA + 29], &[0xc0, 42]);
     let refused = driver.request(SOURCE, 1, [0; 3], 0);
     assert_eq!(
         (

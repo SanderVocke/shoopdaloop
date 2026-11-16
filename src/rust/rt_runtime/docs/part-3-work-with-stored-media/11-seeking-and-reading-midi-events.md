@@ -34,12 +34,12 @@ The MIDI example uploads these records with duration five:
 | Relative frame | Packet |
 |---|---|
 | 0 | Note-on 60, velocity 100 |
-| 2 | Complete 37-byte SysEx |
+| 2 | Two-byte program change 42 |
 | 2 | Note-off 60 |
 
 Each serialized record is little-endian `u64 frame`, `u32 packet_length`, then complete packet bytes. `encode_midi_record` writes into caller-provided storage; it is not Rust struct serialization. Records are nondecreasing by frame and strictly before the declared duration. Trailing silence remains part of that duration.
 
-The example uses 16-byte pages and a prepared maximum packet size of 64. The SysEx header and body cross page boundaries; upload chunks remain contiguous and page-bounded. Parser validation spends one step per uploaded byte, even if a malformed chunk is refused. Choose chunks for the remaining copy **and** validation allowance, not just the page size.
+The MIDI example uses four-byte pages. The program-change header and body cross page boundaries; upload chunks remain contiguous and page-bounded. Parser validation spends one step per uploaded byte, even if a malformed chunk is refused. Choose chunks for the remaining copy **and** validation allowance, not just the page size.
 
 ## 3. Enumerate metadata, then copy the complete packet
 
@@ -68,26 +68,26 @@ Copy the original packet into prepared scratch:
 
 Unlike one raw byte read, this required packet copy can span several pages. It copies one complete declared packet, never a partial packet sized to the current page. Its bound is the prepared packet capacity, not an arbitrary musical subdivision allowance.
 
-The example verifies SysEx before note-off at their equal frame, then EOF. EOF means no more recorded events; it does not remove the declared silence through frame five.
+The example verifies program change before note-off at their equal frame, then EOF. EOF means no more recorded events; it does not remove the declared silence through frame five.
 
 ## 4. Retry the same event after small-buffer refusal
 
-Before copying the SysEx, the example deliberately uses an eight-byte destination:
+Before copying the program change, the example deliberately uses a one-byte destination:
 
 ```rust
-                let mut too_small = [0xa5; 8];
+                let mut too_small = [0xa5; 1];
                 assert_eq!(
                     store.render_io().midi_read(event, &mut too_small),
                     Err(Error::Capacity)
                 );
-                assert_eq!(too_small, [0xa5; 8]);
+                assert_eq!(too_small, [0xa5; 1]);
 ```
 
-The destination remains unchanged. Retain `event` and retry it with sufficient scratch, as the example does. Calling `midi_next` again would skip the unread SysEx: returning the event already advanced its cursor. Copy refusal does not rewind it.
+The destination remains unchanged. Retain `event` and retry it with sufficient scratch, as the example does. Calling `midi_next` again would skip the unread program change: returning the event already advanced its cursor. Copy refusal does not rewind it.
 
 ## Keep the lease until every cursor/event is finished
 
-Replacing the active revision does not retarget old event tokens. The example replaces its resource with an empty five-frame stream, then still copies the original 37-byte SysEx through the old lease. Captured-prefix byte immutability across appends is demonstrated in [Recording and exporting](../part-3-work-with-stored-media/10-recording-and-exporting.md).
+Replacing the active revision does not retarget old event tokens. The example replaces its resource with an empty five-frame stream, then still copies the original two-byte program change through the old lease. Captured-prefix byte immutability across appends is demonstrated in [Recording and exporting](../part-3-work-with-stored-media/10-recording-and-exporting.md).
 
 A foreign store rejects the scoped event/index. Releasing the original snapshot makes its retained event and cursor return `InvalidId`. Copies of those handles do not keep the lease alive or acquire another one. Raw resource/snapshot preparation still requires same-store discipline; this stronger scoped validation is not a claim that all raw IDs detect foreign stores.
 

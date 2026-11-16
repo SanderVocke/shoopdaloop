@@ -479,7 +479,12 @@ impl<S: Sample> LoopPlanner<S> {
         {
             return Err(Error::InvalidFrame.into());
         }
-        let take = shared.grab_window(status.id, &window, self.resolver.quantum().frames(), io)?;
+        let take = shared.grab_window_immediate(
+            status.id,
+            &window,
+            self.resolver.quantum().frames(),
+            io,
+        )?;
         let mut snapshots = [None; 2];
         let result = (|| -> Result<Transition, Failure> {
             if (row.binding.channels > 0) != take.audio.is_some()

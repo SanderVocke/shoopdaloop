@@ -282,8 +282,9 @@ impl<S: Sample> AudioStore<S> {
         let mut plans = vec![Plan::default(); transaction_pages];
         let mut retired = vec![(0, 0); node_limit];
         let mut pending = vec![0; config.views + histories].into_boxed_slice();
-        for byte in &mut scratch {
-            *core::hint::black_box(byte) = 0;
+        for page in scratch.chunks_mut(4096) {
+            *core::hint::black_box(&mut page[0]) = 0;
+            *core::hint::black_box(page.last_mut().expect("nonempty page")) = 0;
         }
         for node in &mut nodes {
             *core::hint::black_box(node) = None;

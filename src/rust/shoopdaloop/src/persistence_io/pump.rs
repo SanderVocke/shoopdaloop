@@ -214,7 +214,27 @@ impl Provider {
         if let Some(value) = self.worker.as_mut().and_then(CodecJob::poll) {
             self.worker = None;
             if matches!(self.phase, Phase::Working) {
-                match value.map_err(|e| anyhow!(e))? {
+                let value = match value.map_err(|e| anyhow!(e))? {
+                    Value::NormalizedImage {
+                        image,
+                        scripts,
+                        metadata,
+                    } => {
+                        if let Some(task) = &mut self.task {
+                            if !task.output_warning.is_empty() {
+                                task.output_warning.push(' ');
+                            }
+                            task.output_warning.push_str(&metadata.message());
+                        }
+                        match scripts {
+                            Some(scripts) => Value::PreparedSession { image, scripts },
+                            None => Value::Image(image),
+                        }
+                    }
+                    value => value,
+                };
+                match value {
+                    Value::NormalizedImage { .. } => unreachable!(),
                     Value::Decoded(decoded) => self.decoded(decoded)?,
                     Value::Inspected {
                         decoded,

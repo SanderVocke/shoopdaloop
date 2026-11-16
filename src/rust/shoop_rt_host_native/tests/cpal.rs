@@ -481,22 +481,24 @@ fn midi_passes_through_the_bridges_and_full_bridges_drop_and_count() {
     );
     assert!(!rig.source.push(&[]));
     assert!(!rig.source.push(&[0xf0; 65]));
-    assert!(rig.source.push(&[0x90]));
+    assert!(!rig.source.push(&[0x90]));
     for note in 0..BRIDGE_MESSAGES + 3 {
         rig.source.push(&[0xb0, 1, (note % 128) as u8]);
     }
     let stats = rig.host().status().stats;
-    assert_eq!(stats.midi_in_dropped, 4);
+    assert_eq!(stats.midi_in_dropped, 3);
     for _ in 0..40 {
         rig.tick(16);
     }
     let stats = rig.host().status().stats;
     assert_eq!(stats.midi_in_refused, 3);
     assert_eq!(rig.host().status().phase, RenderPhase::Running);
-    assert_eq!(
-        rig.sink.wait_for(2 + BRIDGE_MESSAGES - 1).len(),
-        2 + BRIDGE_MESSAGES - 1
-    );
+    let recovered = rig.sink.wait_for(34);
+    assert_eq!(recovered.len(), 34);
+    assert!(recovered[2..]
+        .iter()
+        .all(|bytes| bytes[1] == 120 || bytes[1] == 123));
+    assert!(!rig.source.push(&[0x90, 64, 100]));
     assert_eq!(stats.midi_out_dropped, 0);
     rig.assert_no_heap_in_callbacks();
 }

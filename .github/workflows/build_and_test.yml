@@ -934,7 +934,7 @@ jobs:
           browser_smoke() {
             node --experimental-websocket browser_smoke.mjs 2>&1 | tee -a "$RUNNER_TEMP/browser-workflow.log"
           }
-          browser_smoke
+          WEB_MIDI=1 browser_smoke
           COMPOSITES=1 browser_smoke
           PREVIEW_ONLY=1 OUTPUT_ONLY=1 browser_smoke
           if [ '${{ matrix.profile }}' = release ]; then

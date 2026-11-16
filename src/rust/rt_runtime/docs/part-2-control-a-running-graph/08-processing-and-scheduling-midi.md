@@ -18,7 +18,7 @@ It checks exact bytes/timestamps with callbacks `[4]`, `[1, 3]` and `[1, 1, 1, 1
 
 ## 1. Prepare packet storage
 
-`MidiBuffer::new(events, bytes)` allocates two independent ordinary capacities. Clear and reuse it between callbacks. One large SysEx can exhaust bytes before event slots; many one-byte realtime packets can exhaust event slots first.
+`MidiBuffer::new(events, bytes)` prepares fixed inline records and independent event/payload-byte quotas. Clear and reuse it between callbacks. Complete basic channel messages and System Reset are supported, with a four-byte storage cap. SysEx, parameter CC6/38/96–101 and other system messages are refused before admission.
 
 The example also checks these packet writes:
 
@@ -26,17 +26,25 @@ The example also checks these packet writes:
         packets.push(0, 4, &[0x90, 60, 100])?;
         assert_eq!(packets.push(1, 4, &[0x80, 60]), Err(Error::InvalidEvent));
         assert_eq!(packets.len(), 1);
-        packets.push(2, 4, &[0xf0, 0x7d, 1, 0xf7])?;
-        assert_eq!(packets.byte_len(), 7);
-        assert_eq!(packets.push(3, 4, &[0xf8]), Err(Error::Full));
+        assert_eq!(
+            packets.push(2, 4, &[0xf0, 0x7d, 1, 0xf7]),
+            Err(Error::InvalidEvent)
+        );
+        assert_eq!(
+            packets.push(2, 4, &[0xb0, 6, 1]),
+            Err(Error::InvalidParameter)
+        );
+        packets.push(2, 4, &[0xc0, 42])?;
+        assert_eq!(packets.byte_len(), 5);
+        assert_eq!(packets.push(3, 4, &[0xff]), Err(Error::Full));
 ```
 
-The note-off is incomplete and changes no prior packet. The SysEx includes both `0xf0` and `0xf7`; partial SysEx is not a streamable fragment here. A host must resolve running status and separate interleaved realtime bytes before submitting complete packets. Do not allocate a Vec per packet in the callback.
+The incomplete note-off, SysEx and parameter control change no prior packet. The two-byte program change fits; a third valid event exceeds the event quota. A host resolves running status before submitting complete supported messages. Do not allocate a Vec per packet in the callback.
 
 `push(offset, frames, packet)` requires nondecreasing offsets in `[0, frames)`. `insert` maintains stable timestamp order and permits inserting earlier offsets, with descriptor-shifting work bounded by event capacity. Both preserve existing contents on refusal.
 
-Preparation writes every descriptor slot and byte, including recovery storage;
-bulk initialization does not leave lazy/uninitialized packet slots. Routing may
+Preparation initializes every fixed record, including reserved recovery storage,
+and touches every backing page before rendering. Routing may
 copy an already-validated whole source in bulk when its rebased timestamps append
 after existing packets. This preserves stable equal-time source order even when
 payload bytes were originally inserted out of timestamp order. Partial windows
