@@ -167,4 +167,8 @@ impl TimingHarness for RtTimingHarness {
     fn observation_lag(&self) -> u64 {
         1
     }
+
+    fn metering_lag(&self) -> u64 {
+        1
+    }
 }

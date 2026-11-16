@@ -279,6 +279,7 @@ impl WorkletHost {
         {
             channel[..frames].fill(0.);
         }
+        self.server.resume_after_protocol_error();
         self.server.pump(self.records_per_quantum);
         self.deliver_midi(frame, frames);
         let result = self.render(frames);

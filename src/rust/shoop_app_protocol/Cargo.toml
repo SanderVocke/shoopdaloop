@@ -23,6 +23,7 @@ shoop_app_api = { path = "../shoop_app_api", features = ["serde"] }
 shoop_transport = { path = "../shoop_transport" }
 serde = { workspace = true, features = ["derive", "rc"] }
 bincode = { workspace = true }
+libm = { workspace = true }
 
 [dev-dependencies]
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }

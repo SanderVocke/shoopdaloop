@@ -1330,20 +1330,18 @@ mod track_role_tests {
         refresh(&mut stack);
         assert_eq!(stack.mirror.loops[&id].timing, committed);
         let slot = stack.mirror.loops[&id].slot;
-        let telemetry = |content_revision, length| {
-            shoop_rt_protocol::EngineMessage::Telemetry(shoop_rt_protocol::Telemetry::Loop {
-                loop_id: slot,
-                mode: shoop_rt_protocol::LoopMode::Stopped,
-                next_mode: None,
-                next_delay: None,
-                content_revision,
-                recording_armed: false,
-                capture_incomplete: false,
-                timing_revision: committed.revision,
-                length,
-                position: 0,
-                peaks: Default::default(),
-            })
+        let telemetry = |content_revision, length| shoop_rt_protocol::Telemetry::Loop {
+            loop_id: slot,
+            mode: shoop_rt_protocol::LoopMode::Stopped,
+            next_mode: None,
+            next_delay: None,
+            content_revision,
+            recording_armed: false,
+            capture_incomplete: false,
+            timing_revision: committed.revision,
+            length,
+            position: 0,
+            peaks: Default::default(),
         };
         let next = shoop_rt_protocol::TimingState {
             content_revision: committed.content_revision + 1,
@@ -1352,11 +1350,11 @@ mod track_role_tests {
         };
         stack.apply_timing(id, next);
         assert!(!stack.canonical_content.contains_key(&id));
-        stack.handle(telemetry(committed.content_revision, committed.length));
+        stack.telemetry(telemetry(committed.content_revision, committed.length));
         assert_eq!(stack.mirror.loops[&id].timing, next);
         assert_eq!(stack.mirror.loops[&id].view.length, next.length);
 
-        stack.handle(telemetry(next.content_revision + 1, 48));
+        stack.telemetry(telemetry(next.content_revision + 1, 48));
         assert_eq!(stack.mirror.loops[&id].timing, next);
         assert_eq!(stack.mirror.loops[&id].view.length, 48);
         assert!(matches!(

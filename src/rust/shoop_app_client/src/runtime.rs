@@ -117,6 +117,7 @@ pub fn writes_audio_preferences(intent: &AppIntent) -> bool {
 
 pub struct Runtime {
     immediate_refused: Option<u64>,
+    immediate_barriers: BTreeSet<OperationId>,
     pending_audio_profiling: Option<bool>,
     client: Client,
     delivery: Box<dyn Delivery>,
@@ -165,6 +166,7 @@ impl Runtime {
         scripts.use_confirmed_control_reads();
         let mut runtime = Self {
             immediate_refused: None,
+            immediate_barriers: BTreeSet::new(),
             pending_audio_profiling: None,
             client,
             delivery,
@@ -336,6 +338,21 @@ impl Runtime {
         if self.client.state() == State::Ready {
             self.audio_driver_operations
                 .retain(|operation| self.client.operation_in_flight(*operation));
+            self.immediate_barriers.retain(|operation| {
+                match self.client.results().get(operation) {
+                    Some(
+                        Outcome::Confirmed { revision }
+                        | Outcome::AncestorsStopped { revision, .. }
+                        | Outcome::TrackCreated { revision, .. }
+                        | Outcome::LoopCreated { revision, .. },
+                    ) => self
+                        .client
+                        .snapshot()
+                        .is_none_or(|state| state.revision < *revision),
+                    Some(Outcome::Refused { .. }) => false,
+                    None => self.client.operation_in_flight(*operation),
+                }
+            });
         }
         if let Some(message) = self.client.ready_message() {
             match self.delivery.send(message) {
@@ -473,6 +490,7 @@ impl Runtime {
             if let Some(commands) = self
                 .client
                 .snapshot()
+                .filter(|_| self.immediate_barriers.is_empty())
                 .and_then(|state| immediate::group(&command, state))
             {
                 let mut message = match self.client.immediate(commands) {
@@ -518,6 +536,9 @@ impl Runtime {
             match self.delivery.send(message) {
                 Ok(()) => {
                     self.commands.pop_front();
+                    // Immediate gestures are derived from the confirmed projection.
+                    // Keep subsequent actions ordered until this command is visible.
+                    self.immediate_barriers.insert(operation);
                     if audio_driver {
                         self.audio_driver_operations.insert(operation);
                     }
@@ -602,6 +623,7 @@ impl Runtime {
     }
     fn lost(&mut self, error: Error) {
         self.immediate_refused = None;
+        self.immediate_barriers.clear();
         self.pending_audio_profiling = None;
         if !self.loss_reported {
             self.notify(format!(
@@ -640,6 +662,7 @@ impl Runtime {
         self.intents.clear();
         self.commands.clear();
         self.explicitly_started_scripts.clear();
+        self.immediate_barriers.clear();
         self.connected = true;
         self.startup = None;
         self.loss_reported = false;

@@ -276,7 +276,12 @@ fn complete(
         }
         service.tick(STEP);
     }
-    panic!("operation did not complete: {id:?}");
+    drain(service, client, connection, encoded);
+    client
+        .results()
+        .get(&id)
+        .cloned()
+        .unwrap_or_else(|| panic!("operation did not complete: {id:?}"))
 }
 fn command(
     service: &mut Service,
@@ -2246,6 +2251,47 @@ fn pump_runtime(
         service.pump_local(ConnectionId(99), port, STEP);
         runtime.tick(STEP);
     }
+}
+
+#[shoop_test]
+fn synchronized_pickup_uses_the_complete_transition_path() {
+    let mut f = fixture();
+    let (mut runtime, port) = runtime(
+        &mut f.service,
+        shoop_app_client::runtime::Startup::Fresh(Vec::new()),
+    );
+    runtime
+        .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+            name: "Pickup".into(),
+            audio_channels: 2,
+            midi: false,
+        }))
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 20);
+    let mut state = runtime.client().snapshot().unwrap().as_ref().clone();
+    let track = state.tracks[1].id;
+    let id = state.tracks[1].loops[0].id;
+    assert!(state.immediate.playback.contains(&id));
+    state.global.sync = true;
+    state.tracks[1].loops[0].channel_timings = Arc::from([LoopChannelTimingState {
+        id: ChannelId::from_raw(1),
+        is_midi: false,
+        data_length: 64,
+        start_offset: 16,
+        capture_alignment_frames: 0,
+        preplay_samples: 16,
+    }]);
+    let action = Command::Loop {
+        track,
+        loop_id: id,
+        action: LoopAction::PlayClicked,
+    };
+    assert!(immediate::group(&action, &state).is_none());
+    state.global.sync = false;
+    assert!(immediate::group(&action, &state).is_some());
+    state.global.sync = true;
+    Arc::make_mut(&mut state.tracks[1].loops[0].channel_timings)[0].preplay_samples = 0;
+    assert!(immediate::group(&action, &state).is_some());
 }
 
 #[shoop_test]
@@ -5289,6 +5335,53 @@ fn ui_immediate_grab_and_lua_continuation_include_automatic_musical_finishing() 
         .borrow()
         .iter()
         .all(|b| b.deadline.is_none()));
+    runtime
+        .dispatch(AppIntent::Global(GlobalControlAction::SetSync(true)))
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 40);
+    let period = runtime.snapshot().tracks[0].loops[0].length_frames;
+    for setting in [
+        GlobalControlAction::DeselectAll,
+        GlobalControlAction::SetSync(false),
+        GlobalControlAction::SetApplyNCycles(2),
+        GlobalControlAction::SetPlayAfterRecord(true),
+    ] {
+        runtime.dispatch(AppIntent::Global(setting)).unwrap();
+    }
+    runtime
+        .dispatch(AppIntent::Loop {
+            track_id: track,
+            loop_id: loops[1],
+            action: LoopAction::GrabClicked,
+        })
+        .unwrap();
+    runtime.tick(STEP);
+    let messages: Vec<_> = port.commands.try_iter().collect();
+    assert!(
+        messages.iter().any(|message| matches!(
+            message,
+            ClientMessage::Submit {
+                command: Command::Loop {
+                    action: LoopAction::GrabClicked,
+                    ..
+                },
+                ..
+            }
+        )),
+        "same-turn Grab must observe the preceding global settings"
+    );
+    for message in messages {
+        f.service.handle(ConnectionId(99), message).unwrap();
+    }
+    pump_runtime(&mut f.service, &mut runtime, &port, 100);
+    assert_eq!(
+        runtime.snapshot().tracks[1].loops[1].mode,
+        LoopMode::Playing
+    );
+    assert_eq!(
+        runtime.snapshot().tracks[1].loops[1].length_frames,
+        period * 2
+    );
     assert_eq!(f.waits.get(), f.initial_waits);
 }
 

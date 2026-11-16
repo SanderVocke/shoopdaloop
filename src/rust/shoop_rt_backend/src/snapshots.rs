@@ -22,6 +22,7 @@ pub(crate) struct Snapshots {
     bus_generations: Vec<u32>,
     pub frame: Option<u64>,
     pub after: u64,
+    pub capture_after: u64,
     pub plans: alloc::collections::BTreeMap<
         shoop_backend::BackendLoopId,
         (shoop_backend::TransitionPlan, u32),
@@ -43,6 +44,7 @@ impl Default for Snapshots {
             bus_generations: Vec::new(),
             frame: None,
             after: 0,
+            capture_after: 0,
             plans: Default::default(),
         }
     }

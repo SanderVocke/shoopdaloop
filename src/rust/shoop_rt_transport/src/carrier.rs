@@ -270,6 +270,16 @@ impl<E: Endpoint, P: RecordPort> RecordServer<E, P> {
     pub fn failure(&self) -> Option<CarrierError> {
         self.failure
     }
+    /// Reuse a port after its invalid bytes and protocol-error reply were drained.
+    /// Transport failures remain terminal; a new Hello must establish the next session.
+    pub fn resume_after_protocol_error(&mut self) {
+        if matches!(self.failure, Some(CarrierError::Codec(_))) {
+            self.flush();
+            if matches!(self.failure, Some(CarrierError::Codec(_))) && self.outbox.is_empty() {
+                self.failure = None;
+            }
+        }
+    }
     pub fn endpoint(&self) -> &E {
         &self.endpoint
     }
@@ -338,6 +348,10 @@ impl<E: Endpoint, P: RecordPort> RecordServer<E, P> {
         if self.failure.is_none() {
             self.endpoint.poll(&mut self.outbox);
         }
+        self.flush();
+    }
+
+    fn flush(&mut self) {
         while let Some(message) = self.outbox.pop() {
             let len = match codec::encode_engine(&message, &mut self.buf) {
                 Ok(len) => len,
