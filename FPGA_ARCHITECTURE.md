@@ -44,10 +44,13 @@ See [verification commands](src/rust/rt_fpga_testbench/README.md), the
 [implementation plan](PLAN_FPGA_COMPONENT_RETIREMENT.md). Old timing and board
 reports describe their recorded revisions and do not certify the current scope.
 
-The optional Rust `rt-interface` endpoint now executes a fixed mono graph behind
-shared internal command/response FIFOs and complete-state publications. Native
+The optional Rust `rt-interface` exposes a concrete `carrier::Endpoint` for
+command groups, responses and snapshots, with a separate driver-owned `Processor`
+executing a fixed mono graph. Legacy requests, bulk and resync are ignored;
+processing pacing is independent of message delivery and polling. Native
 CPU preparation uses the same channel factory. The reference endpoint accepts
 loop gain, immediate/two-step mode plans and plan clearing; its SP owns ordered
 pulse-plan execution. Production native comparisons validate responses and loop
-snapshot records. Graph updates and the full application adapter remain outside
-this first endpoint; RTL/Marlin FIFO integration is still future work.
+snapshot records. Graph updates and full application backend selection remain
+outside this first endpoint; the same concrete carrier endpoint can serve a
+simulator driver when the RTL command/snapshot frontend is implemented.

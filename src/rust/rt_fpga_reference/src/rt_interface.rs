@@ -1,4 +1,4 @@
-//! Fixed-graph execution behind the shared RT command and snapshot ports.
+//! Carrier endpoint and independently driven fixed-graph processor.
 use crate::{
     fixed::{Fixed, Ramp},
     jobs::{BufferId, JobProcessor, Memory},
@@ -14,7 +14,8 @@ use shoop_rt_protocol::{
     snapshot::{self, Record},
     LoopMode, LoopSlotId, Peaks, SlotId, StateRecord, Telemetry, TimingState,
 };
-use shoop_rt_transport::rt::{Execution, Frame};
+use shoop_rt_transport::rt::Execution;
+pub use shoop_rt_transport::rt::{Endpoint, Settings};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Configuration {
@@ -51,12 +52,13 @@ struct Engine {
     configuration: Configuration,
     loops: Vec<Loop>,
 }
-pub struct Endpoint {
+/// Driver-owned execution; carrier delivery and polling never run this pipeline.
+pub struct Processor {
     engine: Engine,
     ports: Execution,
     snapshot_bytes: Box<[u8]>,
 }
-impl Endpoint {
+impl Processor {
     pub fn prepare(
         mut pipeline: Pipeline,
         ports: Execution,
@@ -168,7 +170,6 @@ impl Endpoint {
             return Err(PipelineError::Jobs(Error::InvalidShape));
         }
         let frame = self.engine.pipeline.state().frame();
-        self.ports.commands.publish_frame(Frame(frame));
         self.ports.commands.begin_callback();
         while let Some(group) = self.ports.commands.pop() {
             let header = group.header;
@@ -209,9 +210,6 @@ impl Endpoint {
         if result.is_err() {
             self.ports.snapshots.fail();
         }
-        self.ports
-            .commands
-            .publish_frame(Frame(self.engine.pipeline.state().frame()));
         result
     }
 }

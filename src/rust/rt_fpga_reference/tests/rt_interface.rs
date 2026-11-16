@@ -3,7 +3,7 @@ use rt_fpga_reference::{
     fixed::{Fixed, Ramp},
     jobs::{BufferId, JobProcessor},
     pipeline::Pipeline,
-    rt_interface::{Configuration, Endpoint, LoopBinding},
+    rt_interface::{Configuration, Endpoint, LoopBinding, Processor, Settings},
     state::{Address, Instruction, Program, Value},
     storage::MediaStore,
     transitions::{self as model, LoopId},
@@ -17,13 +17,41 @@ use shoop_rt_protocol::{
     snapshot::{Header, Record, Records, HEADER},
     *,
 };
-use shoop_rt_transport::rt::{self, ControlPort};
+use shoop_rt_transport::{
+    carrier::{InProcess, Outbox},
+    client::{ClientError, ProtocolClient},
+    rt,
+};
 use shoop_wasm_test_support::{
     heap::{assert_no_heap, TrackingAllocator},
     shoop_test,
 };
 #[global_allocator]
 static ALLOCATOR: TrackingAllocator = TrackingAllocator;
+
+struct Controller(
+    ProtocolClient<InProcess<Endpoint>>,
+    std::collections::VecDeque<protocol::immediate::Response>,
+);
+impl Controller {
+    fn submit(&mut self, batch: Batch) -> Result<(), ClientError> {
+        self.0.immediate(batch)
+    }
+    fn response(&mut self) -> Option<protocol::immediate::Response> {
+        if let Some(response) = self.1.pop_front() {
+            return Some(response);
+        }
+        while let Some(message) = self.0.poll() {
+            if let EngineMessage::ImmediateResponse(response) = message {
+                return Some(response);
+            }
+        }
+        None
+    }
+    fn snapshot_error(&mut self) -> Option<rt::Error> {
+        self.0.carrier_mut().endpoint().snapshot_error()
+    }
+}
 
 fn id(slot: u32) -> LoopId {
     LoopId {
@@ -38,7 +66,7 @@ fn prepare(
     q: u32,
     config: Configuration,
     n: usize,
-) -> (rt::Control, Endpoint, JobProcessor, MediaStore) {
+) -> (Controller, Processor, JobProcessor, MediaStore) {
     let plan = model::TransitionPlan::compile(
         model::PlanDescription {
             quantum: q,
@@ -107,9 +135,53 @@ fn prepare(
             ..LoopBinding::new(id(i as u32))
         })
         .collect();
-    (
+    let limits = Limits {
+        composite_entries: 0,
+        composite_segments: 0,
+        timing_relations: 0,
+        content_chunk_bytes: 0,
+        strips: 0,
+        loops: n as u32,
+        strip_audio_channels: 1,
+        master_channels: 1,
+        buses: 0,
+        bus_channels: 0,
+        host_audio_inputs: 1,
+        host_audio_outputs: n as u16,
+        host_midi_inputs: 0,
+        host_midi_outputs: 0,
+        max_frames: 2 * q,
+        quantum: q,
+        processing_latency_frames: 0,
+        smoothing_limit_frames: 0,
+        reliable_credits: 0,
+        bulk_credits: 0,
+    };
+    let endpoint = Endpoint::new(
         control,
-        Endpoint::prepare(pipeline, ports, config, bindings).unwrap(),
+        Settings {
+            graph: config.graph,
+            topology: config.topology,
+            limits,
+            driver: DriverStatus {
+                kind: DriverKind::Simulated,
+                state: DriverRunState::Running,
+                sample_rate: 1000,
+                buffer_frames: q,
+            },
+        },
+    )
+    .unwrap();
+    let mut client = ProtocolClient::new(InProcess::new(endpoint, Outbox::new(256, 8, 0)));
+    client.connect().unwrap();
+    assert!(matches!(client.poll(), Some(EngineMessage::Welcome { .. })));
+    client.observe_snapshots(true).unwrap();
+    client
+        .configure_snapshots(protocol::snapshot::SnapshotDelivery::Pull)
+        .unwrap();
+    (
+        Controller(client, Default::default()),
+        Processor::prepare(pipeline, ports, config, bindings).unwrap(),
         JobProcessor::new(q as usize, 1 + 2 * n),
         media,
     )
@@ -208,16 +280,29 @@ fn native_snapshot(host: &mut OfflineHost) -> (Header, Vec<Record>) {
         Records(&bytes[HEADER..len]).map(Result::unwrap).collect(),
     )
 }
-fn reference_snapshot(control: &rt::Control) -> (Header, Vec<Record>) {
-    let mut bytes = vec![0; control.snapshots.capacity()];
-    let (_, len) = control.snapshot(&mut bytes).unwrap();
+fn reference_snapshot(control: &mut Controller) -> (Header, Vec<Record>) {
+    control.0.request_snapshot(0).unwrap();
+    let mut bytes = Vec::new();
+    loop {
+        match control.0.poll().expect("complete snapshot publication") {
+            EngineMessage::SnapshotReply(chunk) => {
+                assert_eq!(chunk.offset as usize, bytes.len());
+                bytes.extend_from_slice(&chunk.bytes[..chunk.len as usize]);
+            }
+            EngineMessage::SnapshotReady { .. } => break,
+            EngineMessage::SnapshotConfiguration { .. } => {}
+            EngineMessage::ImmediateResponse(response) => control.1.push_back(response),
+            message => panic!("{message:?}"),
+        }
+    }
+    assert!(!bytes.is_empty());
     (
-        Header::read(&bytes[..len]).unwrap(),
-        Records(&bytes[HEADER..len]).map(Result::unwrap).collect(),
+        Header::read(&bytes).unwrap(),
+        Records(&bytes[HEADER..]).map(Result::unwrap).collect(),
     )
 }
 fn run(
-    endpoint: &mut Endpoint,
+    endpoint: &mut Processor,
     jobs: &mut JobProcessor,
     media: &mut MediaStore,
     q: usize,
@@ -360,7 +445,7 @@ fn fifo_commands_responses_and_loop_snapshots_match_native() {
             }
             assert_eq!(actual, responses, "responses Q={q} tick={tick}");
             let (expected_header, expected) = native_snapshot(&mut native);
-            let (actual_header, actual) = reference_snapshot(&control);
+            let (actual_header, actual) = reference_snapshot(&mut control);
             assert_eq!(
                 (
                     actual_header.frame,
@@ -469,7 +554,7 @@ fn ordered_failures_configuration_deadlines_and_backpressure_preserve_state() {
             Code::Applied
         ]
     );
-    assert!(reference_snapshot(&control)
+    assert!(reference_snapshot(&mut control)
         .1
         .contains(&Record::LoopLevels {
             id: pid(0),
@@ -505,8 +590,8 @@ fn reference_fifo_drives_exact_audio_and_publishes_the_first_settled_quantum() {
         .process_block(&mut jobs, &mut media, &[&input], &mut [&mut output], 32)
         .unwrap();
     assert_eq!(output, vec![Fixed::ZERO; 32]);
-    assert_eq!(control.frame(), 32);
-    assert_eq!(reference_snapshot(&control).0.frame, 0);
+    assert_eq!(endpoint.pipeline().state().frame(), 32);
+    assert_eq!(reference_snapshot(&mut control).0.frame, 0);
     assert_eq!(
         endpoint
             .pipeline()
@@ -543,7 +628,7 @@ fn reference_fifo_drives_exact_audio_and_publishes_the_first_settled_quantum() {
             .unwrap();
         assert_eq!(output, [Fixed::from_f32(expected); 16]);
     }
-    let (_, records) = reference_snapshot(&control);
+    let (_, records) = reference_snapshot(&mut control);
     assert!(records.iter().any(
         |r| matches!(r,Record::Telemetry(Telemetry::Loop{peaks,..}) if peaks.as_slice()==[0.25])
     ));
@@ -558,7 +643,10 @@ fn reference_fifo_drives_exact_audio_and_publishes_the_first_settled_quantum() {
             )
             .unwrap();
     }
-    assert_eq!(reference_snapshot(&control).0.frame, control.frame() - 16);
+    assert_eq!(
+        reference_snapshot(&mut control).0.frame,
+        endpoint.pipeline().state().frame() - 16
+    );
 }
 
 #[shoop_test]
@@ -592,10 +680,71 @@ fn endpoint_scalar_execution_and_snapshot_publication_do_not_allocate() {
 
 struct Inject {
     media: MediaStore,
-    control: rt::Control,
+    control: Controller,
     publish: Option<Batch>,
     fail: bool,
 }
+
+#[shoop_test]
+fn carrier_polling_and_client_lifetime_do_not_drive_processing() {
+    use shoop_rt_transport::carrier::Carrier;
+    let config = Configuration {
+        graph: 1,
+        topology: 2,
+        frame: 0,
+    };
+    let (mut control, mut processor, mut jobs, mut media) = prepare(16, config, 1);
+    for message in [
+        ClientMessage::Request {
+            correlation: 1,
+            request: Request::RemoveLoop { loop_id: pid(0) },
+        },
+        ClientMessage::Resync,
+        ClientMessage::Bulk(BulkRead {
+            id: 1,
+            loop_id: pid(0),
+            selector: BulkSelector::AudioFrames,
+            offset: 0,
+        }),
+    ] {
+        control.0.carrier_mut().send(message).unwrap();
+    }
+    control
+        .submit(
+            Batch::new(
+                1,
+                2,
+                &[Command::Transition(0, TransitionMode::Recording.into())],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    for _ in 0..100 {
+        assert!(control.0.poll().is_none());
+        assert_eq!(processor.pipeline().state().frame(), 0);
+        assert_eq!(
+            processor
+                .pipeline()
+                .state()
+                .loop_state(id(0))
+                .unwrap()
+                .state
+                .mode,
+            model::Mode::Stopped
+        );
+    }
+    run(&mut processor, &mut jobs, &mut media, 16, 1);
+    assert_eq!(control.response().unwrap().header.frame(), 0);
+    assert_eq!(reference_snapshot(&mut control).0.frame, 0);
+    drop(control);
+    for _ in 0..8 {
+        run(&mut processor, &mut jobs, &mut media, 16, 1);
+    }
+    let state = processor.pipeline().state();
+    assert_eq!(state.frame(), 144);
+    assert_eq!(state.loop_state(id(0)).unwrap().state.capture_frames, 144);
+}
+
 impl rt_fpga_reference::jobs::Memory for Inject {
     fn begin_capture(
         &mut self,
@@ -659,7 +808,7 @@ fn commands_published_during_a_callback_wait_for_the_next_callback() {
             2,
         )
         .unwrap();
-    assert!(reference_snapshot(&memory.control)
+    assert!(reference_snapshot(&mut memory.control)
         .1
         .contains(&Record::LoopLevels {
             id: pid(0),
@@ -678,7 +827,7 @@ fn commands_published_during_a_callback_wait_for_the_next_callback() {
         )
         .unwrap();
     assert_eq!(memory.control.response().unwrap().header.frame(), 2);
-    assert!(reference_snapshot(&memory.control)
+    assert!(reference_snapshot(&mut memory.control)
         .1
         .contains(&Record::LoopLevels {
             id: pid(0),
@@ -724,7 +873,7 @@ fn invalid_blocks_preserve_commands_and_processing_faults_reject_future_groups()
         Err(PipelineError::Jobs(Error::InvalidShape))
     );
     assert!(memory.control.response().is_none());
-    assert_eq!(memory.control.frame(), 0);
+    assert_eq!(endpoint.pipeline().state().frame(), 0);
     assert_eq!(output, [Fixed::ZERO; 15]);
     assert_eq!(
         endpoint.process(

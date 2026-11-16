@@ -66,33 +66,59 @@ monitoring remain outside this primitive-loop model.
 
 ## Internal RT interface
 
-Enable `rt-interface` to use `rt_interface::Endpoint` with a prepared, fixed
-mono primitive-loop graph. The endpoint consumes the same 48-byte group headers
-and 32-byte command records as native CPU execution, and publishes the existing
-response and snapshot formats. It has no native `EngineNode`/`LoopPlanner` or
-Marlin dependency. The native engine and reference endpoint use the same channel
-construction from `shoop_rt_transport::rt`; `ControlPort` separates control-side
-operations from a particular FIFO driver.
+Enable `rt-interface` for a fixed mono primitive-loop graph. The public control
+endpoint is `rt_interface::Endpoint`, a re-export of the concrete queue-backed
+`shoop_rt_transport::rt::Endpoint`. It implements `carrier::Endpoint` directly
+and works with `ProtocolClient`, `InProcess` and record carriers. There is no
+additional control-port trait. The native engine uses the same in-memory channel
+constructor while retaining its existing control endpoint and execution handlers.
+
+Control and execution have separate owners. `Endpoint` delivers messages and
+polls available responses/publications; `Processor` runs the SP/JP pipeline only
+when its driver calls `process` or `process_block`. Neither polling nor client
+connection lifetime advances processing. Frame numbers in responses and snapshots
+are observations, not pacing controls. Driver/sample-rate metadata describes the
+configuration and limits push snapshot delivery; it does not schedule processing.
 
 Prepare the `Pipeline`, explicit SP program, loop bindings and initial memory,
-then create a channel with enough snapshot capacity:
+then construct the two owners:
 
 ```rust
-use shoop_rt_transport::rt::{self, ControlPort};
+use shoop_rt_transport::{carrier::{InProcess, Outbox}, client::ProtocolClient, rt};
 use shoop_rt_protocol::{immediate::FIFO_RECORDS, snapshot};
+use rt_fpga_reference::rt_interface::{Endpoint, Processor, Settings};
 
 let capacity = snapshot::capacity(0, bindings.len(), 0).unwrap();
-let (mut control, execution) = rt::channel(FIFO_RECORDS, 10, capacity)?;
-let mut endpoint = rt_fpga_reference::rt_interface::Endpoint::prepare(
+let (control, execution) = rt::channel(FIFO_RECORDS, 10, capacity)?;
+let endpoint = Endpoint::new(control, Settings {
+    graph: configuration.graph,
+    topology: configuration.topology,
+    limits,
+    driver,
+})?;
+let mut processor = Processor::prepare(
     pipeline, execution, configuration, bindings,
 )?;
+let mut client = ProtocolClient::new(InProcess::new(
+    endpoint, Outbox::new(256, 8, 0),
+));
 ```
 
 `Configuration` supplies immutable graph/topology epochs and the aligned initial
 frame. Loops start stopped with the lengths configured in the graph. A
 `LoopBinding` supplies the loop identity, an optional gain-ramp address, an
-optional mono meter buffer and initial gain/timing metadata. The caller supplies
-JP, media and fixed-point samples to `process` or `process_block`.
+optional mono meter buffer and initial gain/timing metadata. The processing driver
+supplies JP, media and fixed-point samples to `Processor`. The control endpoint
+requires matching epochs, prepared limits and descriptive driver status.
+
+The endpoint handles `Hello`/`Goodbye`, immediate command groups and snapshot
+observation, push/pull configuration and pull requests. It intentionally ignores
+legacy `Request`, `Resync` and `Bulk` messages, advertises no legacy capabilities,
+and announces zero request/bulk credits. Unsupported commands inside an immediate
+group receive individual `Unsupported` results. Command responses retain FIFO
+credits until they can enter the carrier's reliable outbox; a full outbox leaves
+the response unread. Snapshot transfers copy one complete publication before
+chunking it, so later processor publications cannot change an in-flight reply.
 
 Supported commands are `LoopGain`, `Transition` (stop/play/record, including
 `now` and two future steps), and `ClearPlannedTransitions`. Unsupported operations
@@ -125,23 +151,30 @@ This first endpoint supports unedited mono audio windows and fixed topology.
 Balance, strip/bus controls, MIDI, grabs/history and graph/media reconfiguration
 remain unsupported. Native physical capture-resource preflight is not modeled;
 media/job failures use the reference pipeline fault contract. Arbitrary partial
-host callbacks and native host buffering are outside this endpoint. It is an
-internal FIFO endpoint, not a selectable full application backend.
+host callbacks and native host buffering are outside this endpoint. The endpoint
+supports the existing carrier protocol subset, but is not yet selectable as a full
+application backend.
 
 The `rt_interface` tests compare responses and all four loop snapshot record
-classes exactly against the production native endpoint over 640 callbacks at
-Q=1/16/32/64/128, including callbacks with multiple quanta and varied command groups.
+classes through the carrier endpoint exactly against the production native
+endpoint over 640 callbacks at Q=1/16/32/64/128, including callbacks with multiple
+quanta and varied command groups.
 Other checks cover exact recording/playback/gain samples, callback cutoff,
 reserved response capacity, invalid groups/values, reader stalls, allocation-free
-scalar processing and latched faults. Run:
+scalar processing, latched faults and processing after the client is dropped.
+Transport tests additionally cover reliable response stalls, coherent multi-chunk
+push/pull snapshots, rate limits, version rejection and reconnects. Run:
 
 ```sh
 cargo test --locked -p rt_fpga_reference --all-features --test rt_interface
+cargo test --locked -p shoop_rt_transport --features rt-interface --test rt_endpoint
 ```
 
 Only Rust implements this new command/profile integration. RTL and Marlin still
-exercise the earlier direct component interface; their FIFO endpoint and matching
-mode-plan execution are follow-up work.
+exercise the earlier direct component interface; their RTL command/snapshot frontend and matching
+mode-plan execution are follow-up work. The concrete queue-backed carrier endpoint
+is reusable by a future simulator driver without coupling delivery/polling to
+simulation clock advancement.
 
 ## Audio and memory
 

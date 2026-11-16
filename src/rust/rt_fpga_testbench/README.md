@@ -15,8 +15,15 @@ combined SP/JP audio quanta). The ordinary component benches also retain explici
 record fixtures. There is no separate RTL transition processor.
 
 `rt_fpga_testbench` preserves the Marlin/Verilator simulation framework and
-component drivers. It needs Verilator **5.032**, a C++ compiler and Rust. Simulation
-is opt-in; default native and Wasm builds do not depend on Marlin.
+component drivers. Its control integration can reuse the concrete queue-backed
+`shoop_rt_transport::rt::Endpoint`, which directly implements `carrier::Endpoint`
+for command groups and snapshots and ignores legacy requests. The RTL command/
+snapshot frontend and simulator attachment are not implemented yet; current tests
+still drive components explicitly. Carrier polling must remain independent from
+simulation clock advancement.
+
+The simulation framework needs Verilator **5.032**, a C++ compiler and Rust.
+Simulation is opt-in; default native and Wasm builds do not depend on Marlin.
 
 ```sh
 bash scripts/build_verilator.sh
