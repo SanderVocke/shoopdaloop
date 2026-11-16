@@ -30,8 +30,12 @@ Marlin differential tests compare the retained SP/JP RTL's jobs, state and sampl
 exactly for the shared audio instruction subset. In Rust, TP admits up to two
 active plans per loop into SP-owned state. A new SP sync-ordered prefix processes
 wraps, pulses, transitions and next cursors, saving render state for the audio pass.
-This prefix is not implemented in RTL. No transition RTL, former ARM interface or
-application backend is restored.
+The same prefix is implemented in the existing RTL `sp_engine` FSM and datapath;
+there is no separate sync execution controller. Standalone SP and `audio_pipeline`
+expose owned-loop configuration and event ports; media/AXI wrappers retain explicit
+record mode. No separate TP RTL, former ARM interface or application backend is
+restored. See the [matched synthesis comparison](docs/fpga/sp-sync-resource-comparison.md)
+for the additional loop-storage and execution resources.
 
 See [verification commands](src/rust/rt_fpga_testbench/README.md), the
 [retirement ledger](docs/fpga/retirement-ledger.md), and the

@@ -10,30 +10,101 @@ The Python simulator entry names are aliases for this runner and accept its
 current options. The native suite guide describes profiles, replay, VCDs and
 reports. Historical measurements are marked separately.
 
-A synthesizable SystemVerilog state processor, loaded from production-plan lowering.
-It supports raw-state node instructions, explicit silence, and shared-loop playback/capture,
-a multicycle single-issue engine,
-synchronous program/state RAMs, and a finite job FIFO. It implements state execution
-only. Transitions, logical clocks, sample processing, view storage, and the host
-transport are outside this block.
+A synthesizable SystemVerilog state processor with one multicycle execution
+state machine, synchronous program/state RAMs and a finite job FIFO. A compiled
+sync-ordered prefix executes loop transitions, wraps, pulses and cursor updates;
+the following audio-ordered section emits jobs. Command admission, sample
+processing, view storage and host transport remain outside this block.
 
 The TP-free media audio pipeline connects it to sample/job execution.
-Its logical instructions read explicit read-only records while view handles
-and ramps remain in node-state RAM. The raw-state instruction ABI remains usable
-for isolated fixtures.
+Its logical audio instructions read the loop's saved render state when a sync
+prefix is present, or caller-supplied read-only records for isolated fixtures.
+View handles and ramps remain in node-state RAM.
 
 ## Modules
 
 - `rtl/state_processor.sv`: top-level configuration, memories, engine, and FIFO.
-- `rtl/sp_engine.sv`: fetch/decode, operand reads, job generation, and ramp updates.
+- `rtl/sp_engine.sv`: the single fetch/decode/execution FSM for sync and audio
+  instructions, sharing read stages, operand/cursor registers, descriptor
+  register and a 65-bit arithmetic adder.
 - `rtl/sp_ram.sv`: synchronous read/write RAM without payload reset.
 - `rtl/sp_job_fifo.sv`: synchronous RAM FIFO with a registered output head.
 - `rtl/state_processor_defs.svh`: descriptor widths, opcodes, and result codes.
+- `rtl/sp_loop_defs.svh`: loop-state and two-plan storage layout.
 
 `PROGRAM_DEPTH`, `STATE_DEPTH`, and `JOB_DEPTH` default to 256 each. Each depth
 must be in `1..65536`; non-power-of-two depths are supported. Other width
 parameters are derived implementation details and should retain their defaults.
 The FIFO count includes the prefetched output head.
+
+## Integrated loop instructions
+
+Opcode `0x0c` is `ProcessLoop`: arg0 is the loop slot and arg1/arg2 are its
+generation halves; the remaining bits are zero. `run_instruction_count` counts
+the combined sync/audio program. `run_sync_count` is the length of its prefix;
+every prefix instruction must be `ProcessLoop`, and it is forbidden afterward.
+The compiler supplies canonical source-before-dependent order. Per-loop frame
+stamps reject duplicate visits, unprocessed sources and stale render state.
+Generation and capacity checks precede RAM addressing. Self-sync is handled
+locally, with at most one delivered pulse per loop per quantum.
+
+The instruction applies due absolute plans, resolves natural wraps/repeat waits,
+propagates source pulses and applies tick-triggered plans. Each loop has two
+physical plan slots. Higher sequence numbers win among eligible plans; stop
+cancels older plans and suppresses pending pulses. A zero remaining tick count
+fires on the next eligible source pulse. Operations are stop/play/record/seek,
+matching the Rust reference's primitive-loop profile and outcome semantics.
+
+Before advancing, the instruction saves render position/length and first-capture
+status. The audio section consumes that snapshot; next-boundary position/capture
+length have already advanced. `sync_frame` advances after the final prefix
+instruction, before audio execution. No SP operation runs after JP. Managed
+execution failures latch until reset; computed-ahead state is not rolled back.
+Reset clears control/frame state but retains RAM; reload loop records before
+resuming managed execution. Supported sync quantum sizes are 1/16/32/64/128.
+
+`LOOP_DEPTH` defaults to `STATE_DEPTH`, supports 1..4096 slots and is independent
+of the audio state-vector count. Loops use 128-bit RAM words at
+`16 * loop_slot + word_index`. Idle-only configuration selects this RAM using
+`cfg_loop=1` (which takes precedence over `cfg_state`); data uses bits 127:0 of
+the existing configuration bus. Bounds include all sixteen reserved words per
+slot. Initialize the thirteen defined words; `sp_loop_defs.svh` defines exact
+bit offsets. Control-side admission writes plans while idle. Both program
+sections access the same loop record; there is no separate sync controller.
+
+| Word | Low 64 bits | High 64 bits |
+| --- | --- | --- |
+| 0 | Identity/mode/source flags (packed across both halves) | Source identity, pulse, capture-start and stamp-valid flags |
+| 1 | Next position | Content length |
+| 2 | Capture frames | Cycle count |
+| 3 | Content revision | Capture revision |
+| 4 | Revision watermark | Last pulse frame |
+| 5 | Render position | Render length |
+| 6 / 9 | Plan request slot/generation | Plan sequence |
+| 7 / 10 | Plan effective frame | Remaining pulse skips |
+| 8 / 11 | Plan position | Valid/tick/operation/retrigger flags |
+| 12 | Processed quantum frame | Reserved |
+
+`sync_event_valid/ready/data` streams 256-bit descriptors. Backpressure stalls
+the same SP execution FSM and preserves the descriptor. Fields are kind [7:0],
+reason [15:8], outcome [23:16], reserved [31:24], loop slot [63:32], payload
+[127:64], sequence/operation flags [191:128], and frame [255:192]. Kinds are
+transition=0, wrap=1, pulse=2, resolution=3. For transitions, payload is position
+and flags are operation bits [1:0] plus retrigger [2]. For resolutions, payload
+holds request slot/generation, sequence is the command sequence, and outcome is
+applied=0/superseded=1/cancelled=2/failed=3. Failed reasons use the transition
+error codes (invalid state=5, invalid frame=6, exhausted=8, empty content=9).
+The external consumer retains completion
+journals; there is no additional event FIFO in SP. The descriptor register is
+shared with ordinary job emission.
+
+`audio_pipeline` exposes these ports for combined SP/JP operation. The existing
+media/AXI wrappers retain explicit-record mode (`run_sync_count=0`); exporting
+the new control ports through those wrappers is future integration work.
+
+Run `cargo test --locked -p rt_fpga_testbench --features sim --test sync` for
+960 sync quanta compared to Rust, 120 combined SP/JP quanta compared sample for
+sample, and malformed-prefix/generation/bounds/fault checks.
 
 ## Clock and control protocol
 
@@ -169,7 +240,8 @@ the expected type. There is no position update, wrapping arithmetic, capture
 finalization, sample-memory validation, or record/play mutual-exclusion check.
 
 Gain emits the original ramp and updates state to
-`elapsed = min(elapsed + quantum, duration)`, with a 33-bit sum. This is equivalent
+`elapsed = min(elapsed + quantum, duration)`, using a 33-bit elapsed result from
+the shared adder. This is equivalent
 to Rust's saturating addition followed by clamping, even for extreme counters and
 zero duration. The other ramp fields are preserved. No multiplier or divider is
 required by the engine.
@@ -183,7 +255,7 @@ or source buffer respectively. The bounded slot/address/buffer fields remain
 16 bits. Production-plan lowering emits these
 instructions without allocating mode, position or length words in node state.
 
-The `loop_read_valid/ready/slot` port requests one record. A transferred request
+With `run_sync_count=0`, the `loop_read_valid/ready/slot` port requests one record. A transferred request
 gets one `loop_response_valid` pulse with `loop_response_error` and 164-bit data:
 valid at bit 0, generation u32 at 1, mode at 33, length u64 at 35 and position u64
 at 99, and capture-start at 163 (`capture_frames == 0`). The RAM owner admits
@@ -191,8 +263,8 @@ these requests only in its settled phase. The
 engine checks presence and generation, then reads the view operand when needed.
 Playback uses the same `plays()` predicate as Rust, including silence at a held
 repeat endpoint. Capture emits only in recording mode. On a new take it first emits BeginCapture,
-then Capture; include the extra preparation job in the static queue budget. The state processor never
-writes this port or advances the loop clock. A standalone shared-memory client
+then Capture; include the extra preparation job in the static queue budget.
+In explicit-record mode SP does not write this port or advance the loop clock. A standalone shared-memory client
 must supply responses; backpressure pauses the engine.
 
 ### Jobs: 256 bits
@@ -271,7 +343,8 @@ versions, and generic/mapped JSON netlists. It checks three depth configurations
 `256/256/256`, `7/11/5`, and `1/1/1` for program/state/jobs respectively.
 It does not run a behavioral simulator or a testbench.
 
-The default configuration's initial Yosys 0.52 ECP5 synthesis reports:
+Historical default configuration results before loop instructions, using Yosys
+0.52 ECP5 synthesis, were:
 
 | Cell | Count |
 | --- | --- |
@@ -283,14 +356,16 @@ The default configuration's initial Yosys 0.52 ECP5 synthesis reports:
 
 Lint used Verilator 5.032. Resource counts are synthesis estimates; no board
 pinout, placement, routing, timing closure, or clock-frequency claim is included.
+The current matched before/after 7-series synthesis comparison is recorded in
+[the SP resource report](../../docs/fpga/sp-sync-resource-comparison.md).
 
 ## Verification
 
-Full musical/state/media behavior is compared with the production float and
-Q8.24 runtime via [common sessions](../verification/README.md). Static lowering
-uses production signal and timing compilation. There is no software FPGA executor.
-Standalone tests preserve hardware-specific protocol, configuration, stream,
-cache, capacity, fault and reset checks without a duplicate looping backend.
+The [Rust reference](../../src/rust/rt_fpga_reference/README.md) supplies functional
+loop/state/job expectations. Sync traces are checked against the native resolver;
+Marlin tests compare RTL loop state, jobs, events, outcomes and exact samples.
+Standalone tests retain hardware protocol, configuration, stream, capacity,
+fault and reset checks.
 
 ```sh
 cargo run --locked -p rt_fpga_testbench --features sim -- state

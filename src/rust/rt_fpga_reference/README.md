@@ -3,8 +3,8 @@
 This restores the functional transition/state/job and logical-memory implementation from
 `354305d4697d2e6068e28d4a2e369f08974e434d`, before its deletion in `16679ba7`.
 The audio instructions cover the retained hardware, including constant,
-arithmetic/balance and restart-smoothing operations. The Rust-only sync prepass
-extends SP with loop execution; this section has no RTL implementation yet.
+arithmetic/balance and restart-smoothing operations. The sync prepass extends SP
+with loop execution and is also implemented as instructions in the RTL SP engine.
 
 The crate is `no_std` with `alloc`. It contains:
 
@@ -25,8 +25,8 @@ plan; its audio instruction list is explicit. Isolated audio fixtures can still
 supply read-only records directly with no sync section. There is no audio graph
 compiler, owning-request adapter, ARM protocol or application backend. `serde`
 and `schema` are optional fixture/data-description features, not a hardware
-transport contract. The sync prepass and combined functional pipeline have no
-corresponding active RTL top on this branch.
+transport contract. Standalone SP and SP/JP RTL implement the instruction prefix;
+the media/AXI wrappers retain the explicit-record fixture interface.
 
 ## Functional contract
 
@@ -137,8 +137,12 @@ pulse chains, repeat waits, render/next cursor separation, delayed outcome
 harvesting, two-plan admission/reuse, retake flags and invalid sync prefixes.
 
 The Marlin tests use Verilator 5.032 and the existing native component drivers.
-They exercise the shared audio instruction subset with caller-supplied records
-and no Rust sync prefix. They independently run the same inputs through Rust and RTL and compare
+The `sync` test target compares integrated RTL prefix execution against this
+model over 960 quanta, including complete loop state, plans/countdowns, events,
+outcomes, jobs and render/next cursors. It also compares 120 combined SP/JP audio
+quanta exactly and checks invalid prefixes/generations/bounds/faults. Existing
+component tests still accept caller-supplied records without a sync prefix.
+They independently run the same inputs through Rust and RTL and compare
 emitted jobs, state writes, failure prefixes, remaining jobs, buffer contents and
 every output sample exactly. No audio tolerance or alignment is applied.
 

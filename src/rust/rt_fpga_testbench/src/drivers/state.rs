@@ -52,6 +52,9 @@ impl State {
         for name in [
             "run_valid",
             "run_instruction_count",
+            "run_sync_count",
+            "cfg_loop",
+            "sync_event_ready",
             "run_state_count",
             "run_quantum",
             "run_chunk_frames",

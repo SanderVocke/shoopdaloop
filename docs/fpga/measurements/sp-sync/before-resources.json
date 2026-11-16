@@ -1,0 +1,23 @@
+{
+  "cells": {
+    "LUT2": 295,
+    "LUT5": 447,
+    "LUT6": 392,
+    "LUT3": 679,
+    "LUT4": 57,
+    "MUXF7": 17,
+    "MUXF8": 2,
+    "LUT1": 1,
+    "INV": 56,
+    "CARRY4": 50,
+    "FDRE": 1198,
+    "$scopeinfo": 5,
+    "RAMB36E1": 6,
+    "RAMB18E1": 3
+  },
+  "lut": 1871,
+  "ff": 1198,
+  "bram18": 3,
+  "bram36": 6,
+  "dsp": 0
+}

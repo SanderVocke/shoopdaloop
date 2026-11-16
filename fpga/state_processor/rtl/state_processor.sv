@@ -4,6 +4,7 @@ module state_processor #(
     parameter integer PROGRAM_DEPTH = 256,
     parameter integer STATE_DEPTH = 256,
     parameter integer JOB_DEPTH = 256,
+    parameter integer LOOP_DEPTH = STATE_DEPTH,
     parameter integer PROGRAM_ADDR_BITS = (PROGRAM_DEPTH > 1) ? $clog2(PROGRAM_DEPTH) : 1,
     parameter integer STATE_ADDR_BITS = (STATE_DEPTH > 1) ? $clog2(STATE_DEPTH) : 1,
     parameter integer JOB_COUNT_BITS = $clog2(JOB_DEPTH + 1)
@@ -13,6 +14,7 @@ module state_processor #(
     input  wire                                run_valid,
     output wire                                run_ready,
     input  wire [31:0]                         run_instruction_count,
+    input wire [31:0] run_sync_count,
     input  wire [31:0]                         run_state_count,
     input  wire [31:0]                         run_quantum,
     input wire [31:0] run_chunk_frames,
@@ -24,6 +26,7 @@ module state_processor #(
     input  wire                                cfg_valid,
     output wire                                cfg_ready,
     input  wire                                cfg_state,
+    input wire cfg_loop,
     input  wire                                cfg_write,
     input  wire [15:0]                         cfg_address,
     input  wire [`SHOOP_SP_STATE_BITS-1:0]       cfg_write_data,
@@ -41,25 +44,37 @@ module state_processor #(
     output wire [31:0] loop_read_slot,
     input wire loop_response_valid,
     input wire loop_response_error,
-    input wire [163:0] loop_response_data
+    input wire [163:0] loop_response_data,
+    output wire [63:0] sync_frame,
+    output wire sync_event_valid,
+    input wire sync_event_ready,
+    output wire [255:0] sync_event_data
 );
     initial begin
         if ((PROGRAM_DEPTH < 1) || (PROGRAM_DEPTH > 65536)
             || (STATE_DEPTH < 1) || (STATE_DEPTH > 65536)
-            || (JOB_DEPTH < 1) || (JOB_DEPTH > 65536))
+            || (JOB_DEPTH < 1) || (JOB_DEPTH > 65536) || LOOP_DEPTH < 1 || LOOP_DEPTH > 4096)
             $fatal(1, "Memory depths must be in 1..65536");
     end
 
+    localparam integer LOOP_MEMORY_BITS = $clog2(LOOP_DEPTH*16);
+    reg cfg_response_loop;
+    wire start = run_valid && run_ready;
+    wire sync_fault;
+    wire loop_ram_read, loop_ram_write;
+    wire [LOOP_MEMORY_BITS-1:0] loop_ram_read_address, loop_ram_write_address;
+    wire [127:0] loop_ram_read_data, loop_ram_write_data;
     reg cfg_pending;
     reg cfg_response_state;
     reg cfg_response_write;
     reg cfg_error;
     wire cfg_accept = cfg_valid && cfg_ready;
-    wire cfg_in_range = cfg_state
+    wire cfg_in_range = cfg_loop ? ({16'b0,cfg_address} < 32'(LOOP_DEPTH*16)) : cfg_state
         ? ({16'b0, cfg_address} < 32'(STATE_DEPTH))
         : ({16'b0, cfg_address} < 32'(PROGRAM_DEPTH));
-    wire cfg_program_access = cfg_accept && !cfg_state && cfg_in_range;
-    wire cfg_state_access = cfg_accept && cfg_state && cfg_in_range;
+    wire cfg_program_access = cfg_accept && !cfg_loop && !cfg_state && cfg_in_range;
+    wire cfg_state_access = cfg_accept && !cfg_loop && cfg_state && cfg_in_range;
+    wire cfg_loop_access = cfg_accept && cfg_loop && cfg_in_range;
     wire program_read_enable;
     wire [PROGRAM_ADDR_BITS-1:0] program_read_address;
     wire [`SHOOP_SP_INSTRUCTION_BITS-1:0] program_read_data;
@@ -86,23 +101,23 @@ module state_processor #(
     assign read_intent_valid = engine_job_valid && engine_job_ready && engine_job_data[7:0] == `SHOOP_SP_JOB_READ;
     assign read_intent_data = engine_job_data;
     assign cfg_ready = !busy && !cfg_pending && !reset;
-    assign run_ready = !busy && !cfg_pending && !cfg_valid && !reset;
+    assign run_ready = !busy && !cfg_pending && !cfg_valid && !reset && !sync_fault;
     assign cfg_response_valid = cfg_pending && !reset;
     assign cfg_response_error = cfg_error;
     assign cfg_read_data = (cfg_response_write || cfg_error) ? 129'b0
-        : cfg_response_state ? state_read_data : {33'b0, program_read_data};
+        : cfg_response_loop ? {1'b0,loop_ram_read_data} : cfg_response_state ? state_read_data : {33'b0, program_read_data};
     assign job_valid = fifo_valid && !busy && !reset;
 
     always @(posedge clk) begin
         if (reset) begin
-            cfg_pending <= 0;
+            cfg_pending <= 0; cfg_response_loop <= 0;
             cfg_response_state <= 0;
             cfg_response_write <= 0;
             cfg_error <= 0;
         end else begin
             cfg_pending <= cfg_accept;
             if (cfg_accept) begin
-                cfg_response_state <= cfg_state;
+                cfg_response_state <= cfg_state; cfg_response_loop <= cfg_loop;
                 cfg_response_write <= cfg_write;
                 cfg_error <= !cfg_in_range;
             end
@@ -134,11 +149,11 @@ module state_processor #(
     );
 
     sp_engine #(
-        .PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH),
+        .PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .LOOP_DEPTH(LOOP_DEPTH), .LOOP_MEMORY_BITS(LOOP_MEMORY_BITS),
         .PROGRAM_ADDR_BITS(PROGRAM_ADDR_BITS), .STATE_ADDR_BITS(STATE_ADDR_BITS)
     ) engine (
-        .clk(clk), .reset(reset), .start(run_valid && run_ready),
-        .instruction_count(run_instruction_count), .state_count(run_state_count),
+        .clk(clk), .reset(reset), .start(start),
+        .instruction_count(run_instruction_count), .sync_count(run_sync_count), .state_count(run_state_count),
         .quantum(run_quantum), .chunk_frames(run_chunk_frames), .job_budget(run_job_budget),
         .queued_jobs(queued_jobs), .queue_remaining(queue_remaining),
         .busy(busy), .done(done), .error_code(error_code), .instruction_pc(instruction_pc),
@@ -149,7 +164,20 @@ module state_processor #(
         .state_write_address(state_write_address), .state_write_data(state_write_data),
         .job_valid(engine_job_valid), .job_ready(engine_job_ready), .job_data(engine_job_data),
         .loop_read_valid(loop_read_valid), .loop_read_ready(loop_read_ready), .loop_read_slot(loop_read_slot),
-        .loop_response_valid(loop_response_valid), .loop_response_error(loop_response_error), .loop_response_data(loop_response_data)
+        .loop_response_valid(loop_response_valid), .loop_response_error(loop_response_error), .loop_response_data(loop_response_data),
+        .loop_ram_read_enable(loop_ram_read), .loop_ram_read_address(loop_ram_read_address), .loop_ram_read_data(loop_ram_read_data),
+        .loop_ram_write_enable(loop_ram_write), .loop_ram_write_address(loop_ram_write_address), .loop_ram_write_data(loop_ram_write_data),
+        .sync_event_valid(sync_event_valid), .sync_event_ready(sync_event_ready), .sync_event_data(sync_event_data),
+        .sync_frame(sync_frame), .faulted(sync_fault)
+    );
+
+    sp_ram #(.WIDTH(128), .DEPTH(LOOP_DEPTH*16), .ADDR_BITS(LOOP_MEMORY_BITS)) loop_memory (
+        .clk(clk), .read_enable(loop_ram_read || (cfg_loop_access && !cfg_write)),
+        .read_address(busy ? loop_ram_read_address : LOOP_MEMORY_BITS'(cfg_address)),
+        .read_data(loop_ram_read_data),
+        .write_enable(loop_ram_write || (cfg_loop_access && cfg_write)),
+        .write_address(busy ? loop_ram_write_address : LOOP_MEMORY_BITS'(cfg_address)),
+        .write_data(busy ? loop_ram_write_data : cfg_write_data[127:0])
     );
 
     sp_job_fifo #(.DEPTH(JOB_DEPTH), .COUNT_BITS(JOB_COUNT_BITS)) jobs (

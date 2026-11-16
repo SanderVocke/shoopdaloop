@@ -4,6 +4,7 @@ module audio_pipeline #(
     parameter integer PROGRAM_DEPTH = 32,
     parameter integer STATE_DEPTH = 16,
     parameter integer JOB_DEPTH = 32,
+    parameter integer LOOP_DEPTH = STATE_DEPTH,
     parameter integer EXTERNAL_IO = 0,
     parameter integer MAX_FRAMES = 32,
     parameter integer BUFFERS = 16,
@@ -23,6 +24,7 @@ module audio_pipeline #(
     input wire run_valid,
     output wire run_ready,
     input wire [31:0] run_instruction_count,
+    input wire [31:0] run_sync_count,
     input wire [31:0] run_state_count,
     input wire [31:0] run_quantum,
     input wire [31:0] run_chunk_frames,
@@ -43,6 +45,7 @@ module audio_pipeline #(
     input wire cfg_valid,
     output wire cfg_ready,
     input wire cfg_state,
+    input wire cfg_loop,
     input wire cfg_write,
     input wire [15:0] cfg_address,
     input wire [`SHOOP_SP_STATE_BITS-1:0] cfg_write_data,
@@ -70,6 +73,10 @@ module audio_pipeline #(
     input wire loop_response_valid,
     input wire loop_response_error,
     input wire [163:0] loop_response_data,
+    output wire [63:0] sync_frame,
+    output wire sync_event_valid,
+    input wire sync_event_ready,
+    output wire [255:0] sync_event_data,
     output wire media_cmd_valid, input wire media_cmd_ready,
     output wire [3:0] media_cmd_opcode, output wire [63:0] media_cmd_view,
     output wire [63:0] media_cmd_start, output wire [63:0] media_cmd_length,
@@ -136,17 +143,18 @@ module audio_pipeline #(
     assign jobs_done = sample_done;
 
     state_processor #(
-        .PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH)
+        .PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH), .LOOP_DEPTH(LOOP_DEPTH)
     ) state_engine (
         .clk(clk), .reset(reset), .run_valid(run_valid && run_ready), .run_ready(state_run_ready),
-        .run_instruction_count(run_instruction_count), .run_state_count(run_state_count),
+        .run_instruction_count(run_instruction_count), .run_sync_count(run_sync_count), .run_state_count(run_state_count),
         .run_quantum(run_quantum), .run_chunk_frames(run_chunk_frames), .run_job_budget(run_job_budget),
         .busy(state_busy), .done(state_done), .error_code(state_error), .instruction_pc(state_pc),
         .cfg_valid(cfg_valid && (phase == IDLE)), .cfg_ready(state_cfg_ready),
-        .cfg_state(cfg_state), .cfg_write(cfg_write), .cfg_address(cfg_address), .cfg_write_data(cfg_write_data),
+        .cfg_state(cfg_state), .cfg_loop(cfg_loop), .cfg_write(cfg_write), .cfg_address(cfg_address), .cfg_write_data(cfg_write_data),
         .cfg_response_valid(cfg_response_valid), .cfg_response_error(cfg_response_error), .cfg_read_data(cfg_read_data),
         .job_valid(monitor_valid), .job_ready(monitor_ready), .job_data(monitor_data), .queued_jobs(queued_jobs),
         .read_intent_valid(read_intent_valid), .read_intent_data(read_intent_data),
+        .sync_frame(sync_frame), .sync_event_valid(sync_event_valid), .sync_event_ready(sync_event_ready), .sync_event_data(sync_event_data),
         .loop_read_valid(loop_read_valid), .loop_read_ready(loop_read_ready), .loop_read_slot(loop_read_slot),
         .loop_response_valid(loop_response_valid), .loop_response_error(loop_response_error), .loop_response_data(loop_response_data)
     );

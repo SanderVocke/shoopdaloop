@@ -3,6 +3,20 @@ use crate::{Result, bits::Bits};
 use serde_json::{Value, json};
 
 pub fn instruction(value: &Value) -> Result<Bits> {
+    if value["kind"] == "process_loop" {
+        let mut bits = Bits::zero(96);
+        let slot = value["loop_id"]["slot"]
+            .as_u64()
+            .ok_or("missing loop slot")?;
+        let generation = value["loop_id"]["generation"]
+            .as_u64()
+            .ok_or("missing loop generation")?;
+        if slot > 65535 || generation > u32::MAX as u64 {
+            return Err("loop identity does not fit instruction".into());
+        }
+        bits.set(0, 8, 12).set(8, 16, slot).set(24, 32, generation);
+        return Ok(bits);
+    }
     if let Ok(value) = serde_json::from_value::<crate::component::Instruction>(value.clone()) {
         return crate::component::instruction_words(value).map(Bits::from);
     }

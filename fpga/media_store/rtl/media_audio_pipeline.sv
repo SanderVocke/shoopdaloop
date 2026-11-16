@@ -118,6 +118,9 @@ module media_audio_pipeline #(
     assign job_read_valid = internal_read_valid && pipeline_busy;
     assign store_read_data = store_sample;
 
+    wire unused_sync_event;
+    wire [63:0] unused_sync_frame;
+    wire [255:0] unused_sync_data;
     audio_pipeline #(.EXTERNAL_IO(EXTERNAL_IO),
         .PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH),
         .MAX_FRAMES(MAX_FRAMES), .BUFFERS(BUFFERS), .INPUT_PORTS(INPUT_PORTS), .OUTPUT_PORTS(OUTPUT_PORTS),
@@ -126,12 +129,12 @@ module media_audio_pipeline #(
         .sample_input_read(sample_input_read), .sample_input_address(sample_input_address), .sample_input_data(sample_input_data),
         .sample_output_write(sample_output_write), .sample_output_address(sample_output_address), .sample_output_data(sample_output_data),
         .clk(clk), .reset(reset), .run_valid(run_valid && run_ready), .run_ready(pipeline_ready),
-        .run_instruction_count(run_instruction_count), .run_state_count(run_state_count),
+        .run_instruction_count(run_instruction_count), .run_sync_count(32'b0), .run_state_count(run_state_count),
         .run_quantum(run_quantum), .run_chunk_frames(run_chunk_frames), .run_job_budget(run_job_budget), .run_buffers(run_buffers),
         .run_inputs(run_inputs), .run_outputs(run_outputs), .job_enable(job_enable),
         .busy(pipeline_busy), .done(pipeline_done), .error_code(error_code), .error_stage(error_stage),
         .state_busy(state_busy), .state_done(state_done), .jobs_busy(jobs_busy), .jobs_done(jobs_done), .buffer_ready(buffer_ready),
-        .cfg_valid(cfg_valid && !store_busy), .cfg_ready(state_cfg_ready), .cfg_state(cfg_state), .cfg_write(cfg_write),
+        .cfg_valid(cfg_valid && !store_busy), .cfg_ready(state_cfg_ready), .cfg_state(cfg_state), .cfg_loop(1'b0), .cfg_write(cfg_write),
         .cfg_address(cfg_address), .cfg_write_data(cfg_write_data), .cfg_response_valid(cfg_response_valid),
         .cfg_response_error(cfg_response_error), .cfg_read_data(cfg_read_data),
         .audio_cfg_valid(audio_cfg_valid && !store_busy), .audio_cfg_ready(sample_cfg_ready),
@@ -140,6 +143,7 @@ module media_audio_pipeline #(
         .audio_cfg_response_error(audio_cfg_response_error), .audio_cfg_read_data(audio_cfg_read_data),
         .monitor_valid(monitor_valid), .monitor_ready(monitor_ready), .monitor_data(monitor_data),
         .queued_jobs(queued_jobs), .drain_valid(drain_valid), .drain_ready(drain_ready),
+        .sync_frame(unused_sync_frame), .sync_event_valid(unused_sync_event), .sync_event_ready(1'b1), .sync_event_data(unused_sync_data),
         .loop_read_valid(loop_read_valid), .loop_read_ready(loop_read_ready), .loop_read_slot(loop_read_slot),
         .loop_response_valid(loop_response_valid), .loop_response_error(loop_response_error), .loop_response_data(loop_response_data),
         .media_cmd_valid(job_cmd_valid), .media_cmd_ready(job_cmd_ready), .media_cmd_opcode(job_opcode),
