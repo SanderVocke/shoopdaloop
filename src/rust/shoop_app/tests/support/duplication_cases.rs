@@ -1224,6 +1224,14 @@ fn runtime_clone_is_available_without_file_io_and_lua_can_edit_the_confirmed_cop
         .capabilities
         .supports(BackendCapability::SessionCapture));
     runtime
+        .dispatch(AppIntent::SetLoopTimeline {
+            loop_id: loops[0],
+            start_offset: None,
+            preplay_samples: None,
+            loop_length: Some(64),
+        })
+        .unwrap();
+    runtime
         .dispatch(AppIntent::Loop {
             track_id: track,
             loop_id: loops[0],
@@ -1231,6 +1239,7 @@ fn runtime_clone_is_available_without_file_io_and_lua_can_edit_the_confirmed_cop
         })
         .unwrap();
     pump_runtime(&mut f.service, &mut runtime, &port, 100);
+    assert_eq!(view(&f, loops[1]).length_frames, 64);
     assert_eq!(
         view(&f, loops[1]).length_frames,
         view(&f, loops[0]).length_frames

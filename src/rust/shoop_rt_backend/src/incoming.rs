@@ -152,6 +152,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                             | Purpose::Route { .. }
                             | Purpose::Smoothing(..)
                             | Purpose::Profiling
+                            | Purpose::InjectMidi(..)
                             | Purpose::Preview
                             | Purpose::CancelReads
                     ) {

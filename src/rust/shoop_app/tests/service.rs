@@ -3816,6 +3816,69 @@ fn accepted_media_bearing_load_survives_ui_loss_and_reconciles_without_replay() 
 }
 
 #[shoop_test]
+fn session_capture_accepts_an_older_observed_revision_and_rejects_a_future_one() {
+    let mut f = fixture();
+    let mut client = attach(&mut f.service, 1004, ConnectionId(1), false);
+    let target = persistence::Target::Session {
+        revision: client.snapshot().unwrap().revision,
+    };
+    command(
+        &mut f.service,
+        &mut client,
+        ConnectionId(1),
+        Command::ResetXruns,
+    );
+    let key = persistence::Key {
+        transfer: TransferId(1),
+        epoch: client.snapshot().unwrap().persistence_epoch,
+    };
+    f.service
+        .handle(ConnectionId(1), client.capture_image(key, target).unwrap())
+        .unwrap();
+    let image = (0..100).find_map(|_| {
+        f.service.tick(STEP);
+        drain(&mut f.service, &mut client, ConnectionId(1), false);
+        assert!(
+            client.take_persistence_reply().is_none(),
+            "read-only capture must accept an older observation"
+        );
+        client.take_captured_image()
+    });
+    assert!(
+        image.is_some(),
+        "capture must finish at the current settled cut"
+    );
+    persistence_message(
+        &mut f.service,
+        &mut client,
+        persistence::Request::Cancel { key },
+        false,
+    );
+    assert!(matches!(
+        client.take_persistence_reply(),
+        Some(persistence::Reply::Closed { .. })
+    ));
+    let target = persistence::Target::Session {
+        revision: Revision(client.snapshot().unwrap().revision.0 + 1),
+    };
+    let key = persistence::Key {
+        transfer: TransferId(2),
+        ..key
+    };
+    f.service
+        .handle(ConnectionId(1), client.capture_image(key, target).unwrap())
+        .unwrap();
+    drain(&mut f.service, &mut client, ConnectionId(1), false);
+    assert!(matches!(
+        client.take_persistence_reply(),
+        Some(persistence::Reply::Refused {
+            reason: Refusal::RevisionConflict,
+            ..
+        })
+    ));
+}
+
+#[shoop_test]
 fn capture_keeps_one_metadata_cut_while_controls_continue_and_view_cancellation_is_independent() {
     let mut f = fixture();
     let mut client = attach(&mut f.service, 1002, ConnectionId(1), false);

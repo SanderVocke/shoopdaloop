@@ -37,7 +37,8 @@ fn legacy_success_waits_for_the_state_publication_in_push_mode() {
 
 #[shoop_test]
 fn snapshots_drive_display_controls_in_both_delivery_modes() {
-    let mut backend = stack(&description());
+    let (clock, client) = parts(&description());
+    let mut backend = shoop_rt_backend::RtBackend::connect(client, clock).unwrap();
     assert_eq!(
         backend.snapshot_delivery(),
         if cfg!(target_arch = "wasm32") {
@@ -46,6 +47,9 @@ fn snapshots_drive_display_controls_in_both_delivery_modes() {
             SnapshotDelivery::Pull
         }
     );
+    backend
+        .set_snapshot_delivery(SnapshotDelivery::Pull)
+        .unwrap();
     let track = backend
         .create_direct_track(DirectTrackRequest {
             port_name_base: "snapshots".into(),

@@ -485,6 +485,17 @@ impl Runtime {
             let Some((epoch, command, creation)) = self.commands.front().cloned() else {
                 break;
             };
+            if !self.immediate_barriers.is_empty()
+                && matches!(
+                    command,
+                    Command::Loop {
+                        action: LoopAction::Duplicate | LoopAction::DuplicateTo(_),
+                        ..
+                    }
+                )
+            {
+                break;
+            }
             let resetting = matches!(command, Command::NewSession);
             let audio_driver = matches!(command, Command::AudioDriver(_));
             if let Some(commands) = self

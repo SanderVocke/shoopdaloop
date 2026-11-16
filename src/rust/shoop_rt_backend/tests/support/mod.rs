@@ -123,7 +123,11 @@ pub fn parts(description: &EngineDescription) -> (OfflineClock, OfflineClient) {
 
 pub fn stack(description: &EngineDescription) -> Stack {
     let (clock, client) = parts(description);
-    RtBackend::connect(client, clock).expect("connection")
+    let mut backend = RtBackend::connect(client, clock).expect("connection");
+    backend
+        .set_snapshot_delivery(shoop_rt_backend::SnapshotDelivery::Pull)
+        .unwrap();
+    backend
 }
 
 /// The stack at 1 kHz, one frame per step, with the timing ramp on the capture input.
@@ -137,8 +141,12 @@ impl RtTimingHarness {
         let (mut clock, client) = parts(&description());
         clock.capture = timing_ramp;
         clock.block = 1;
+        let mut backend = RtBackend::connect(client, clock).expect("connection");
+        backend
+            .set_snapshot_delivery(shoop_rt_backend::SnapshotDelivery::Pull)
+            .unwrap();
         Self {
-            backend: RtBackend::connect(client, clock).expect("connection"),
+            backend,
             profile: profile(),
         }
     }
