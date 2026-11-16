@@ -41,6 +41,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         let Some(entry) = self.mirror.loops.get_mut(&id) else {
             return;
         };
+        if state == entry.timing && state.content_revision == entry.rt_content_revision {
+            return;
+        }
         if state.revision < entry.timing.revision
             || state.content_revision < entry.rt_content_revision
         {
