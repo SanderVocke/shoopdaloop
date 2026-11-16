@@ -492,9 +492,10 @@ def invoke_package(
             output = result.stdout
         except subprocess.TimeoutExpired as error:
             returncode = 124
-            output = (error.stdout or "") + (error.stderr or "")
-            if isinstance(output, bytes):
-                output = output.decode(errors="replace")
+            output = "".join(
+                stream.decode(errors="replace") if isinstance(stream, bytes) else stream or ""
+                for stream in (error.stdout, error.stderr)
+            )
             output += f"\nWasm package deadline exceeded after {timeout} seconds\n"
     finally:
         if webdriver_config:
