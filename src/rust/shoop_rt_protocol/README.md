@@ -94,6 +94,18 @@ Shared connection state, credits, queues and typed/record delivery live in
 engine or host dependency. Every encoded carrier reuses this codec; typed local
 connections can skip encoding entirely.
 
+The experimental `PREPARED_GRAPH` capability selects an initial mono graph
+profile. A single immediate group at graph/topology zero contains `BeginGraph`,
+one `ConfigureLoop` per loop, and `ActivateGraph`, without a deadline. The complete
+group describes at most sixteen initially empty primitive loops, their slot and
+generation, sync source, optional input zero, gain, Master routing and repeat flag.
+It must be validated and prepared before activation; partial groups never install
+part of a graph. A successful installation is immutable for that host lifetime.
+Runtime commands subsequently use the installed epochs and snapshot addresses.
+Packed graph opcodes are 16, 17 and 18, with the usual 32-byte command/response
+records. This initial preparation runs on the endpoint's control side, independently
+of processing pacing. Legacy request/bulk credits remain zero for this profile.
+
 ```sh
 cargo test -p shoop_rt_protocol
 ```

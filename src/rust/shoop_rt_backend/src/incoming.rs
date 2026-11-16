@@ -50,6 +50,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     pub(crate) fn handle(&mut self, message: EngineMessage) {
         match message {
             EngineMessage::ImmediateResponse(response) => {
+                self.prepared_graph_response(&response);
                 if matches!(self.link, Link::Ready | Link::Resyncing) {
                     if let Some(handler) = &mut self.immediate_response_handler {
                         handler(&response);
@@ -123,6 +124,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 self.capabilities = capabilities;
                 self.set_limits(limits);
                 self.driver = Some(driver);
+                if capabilities.contains(shoop_rt_protocol::Capabilities::PREPARED_GRAPH) {
+                    self.prepared_graph_welcome();
+                    return;
+                }
                 match self.client.resync() {
                     Ok(()) => {
                         self.link = Link::Resyncing;
@@ -859,7 +864,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         });
     }
 
-    fn answered(&mut self, pending: Pending, outcome: Outcome) {
+    pub(crate) fn answered(&mut self, pending: Pending, outcome: Outcome) {
         if pending.purpose == Purpose::Input {
             self.input_answered(pending.request, outcome);
             return;

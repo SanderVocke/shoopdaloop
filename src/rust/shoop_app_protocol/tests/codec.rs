@@ -28,6 +28,20 @@ fn roundtrip(message: WireMessage) {
 }
 
 #[shoop_test]
+fn prepared_graph_activation_roundtrips_as_an_application_operation() {
+    roundtrip(WireMessage::Client(ClientMessage::Submit {
+        session_epoch: 1,
+        authority: AUTHORITY,
+        operation: OperationId {
+            client: AUTHORITY.client,
+            sequence: 1,
+        },
+        expected_revision: None,
+        command: Command::ActivatePreparedGraph,
+    }));
+}
+
+#[shoop_test]
 fn lifecycle_commands_and_results_roundtrip_and_reject_every_truncation() {
     let operation = OperationId {
         client: AUTHORITY.client,
@@ -292,12 +306,12 @@ fn hostile_container_lengths_and_midi_message_lengths_are_refused() {
 fn heartbeat_records_have_a_canonical_cross_platform_representation() {
     let mut bytes = [0; 1280];
     let n = codec::encode(&WireMessage::Ping(42), &mut bytes).unwrap();
-    assert_eq!(&bytes[..n], &[10, 0, b'S', b'A', b'P', b'P', 40, 0, 0, 42]);
+    assert_eq!(&bytes[..n], &[10, 0, b'S', b'A', b'P', b'P', 41, 0, 0, 42]);
     let n = codec::encode(&WireMessage::Pong(0x1122334455667788), &mut bytes).unwrap();
     assert_eq!(
         &bytes[..n],
         &[
-            18, 0, b'S', b'A', b'P', b'P', 40, 0, 1, 253, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22,
+            18, 0, b'S', b'A', b'P', b'P', 41, 0, 1, 253, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22,
             0x11
         ]
     );
@@ -313,10 +327,10 @@ fn attachment_and_greeting_carry_no_host_or_session_identifiers() {
     .unwrap();
     assert_eq!(
         &bytes[..n],
-        &[11, 0, b'S', b'A', b'P', b'P', 40, 0, 3, 2, 40]
+        &[11, 0, b'S', b'A', b'P', b'P', 41, 0, 3, 2, 41]
     );
     let n = codec::encode(&WireMessage::CarrierReady, &mut bytes).unwrap();
-    assert_eq!(&bytes[..n], &[9, 0, b'S', b'A', b'P', b'P', 40, 0, 19]);
+    assert_eq!(&bytes[..n], &[9, 0, b'S', b'A', b'P', b'P', 41, 0, 19]);
 }
 
 #[shoop_test]

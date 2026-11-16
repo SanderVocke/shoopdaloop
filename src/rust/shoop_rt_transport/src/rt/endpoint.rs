@@ -22,13 +22,14 @@ pub struct Settings {
 pub struct Endpoint {
     ports: Control,
     settings: Settings,
+    capabilities: Capabilities,
     connected: bool,
     pending: usize,
     discard: usize,
     snapshots: Snapshots,
 }
 impl Endpoint {
-    /// Legacy request/bulk credits and capabilities are always zero.
+    /// Legacy request/bulk credits are always zero.
     pub fn new(ports: Control, mut settings: Settings) -> Result<Self, Error> {
         if settings.driver.sample_rate == 0 {
             return Err(Error::InvalidConfig);
@@ -39,6 +40,7 @@ impl Endpoint {
         Ok(Self {
             ports,
             settings,
+            capabilities: Capabilities::default(),
             connected: false,
             pending: 0,
             discard: 0,
@@ -60,6 +62,13 @@ impl Endpoint {
     }
     pub fn snapshot_capacity(&self) -> usize {
         self.ports.snapshots.capacity()
+    }
+    pub fn with_capabilities(mut self, capabilities: Capabilities) -> Self {
+        self.capabilities = capabilities;
+        self
+    }
+    pub fn is_connected(&self) -> bool {
+        self.connected
     }
     pub fn read_snapshot(&self, bytes: &mut [u8]) -> Option<(u32, usize)> {
         let (sequence, len) = self.ports.snapshots.read(bytes)?;
@@ -225,7 +234,7 @@ impl CarrierEndpoint for Endpoint {
                     self.connected = true;
                     EngineMessage::Welcome {
                         version,
-                        capabilities: Capabilities::default(),
+                        capabilities: self.capabilities,
                         limits: self.settings.limits,
                         driver: self.settings.driver,
                     }

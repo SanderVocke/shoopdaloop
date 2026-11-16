@@ -4,7 +4,7 @@ This `no_std` crate contains the target-independent state-program description an
 the `StateProgramTarget` trait. It has no dependency on the Rust processor model,
 RTL codecs, Marlin, application graphs or runtime transports.
 
-For now, `FixedProgram::emit` produces prepared fixture configurations only:
+`FixedProgram::emit` retains the prepared fixture configurations:
 
 - `MonoLoops`: one or two initially empty mono loops, one input, a gain and output
   per loop, logical playback/capture, and loop 1 synchronized to loop 0.
@@ -12,8 +12,12 @@ For now, `FixedProgram::emit` produces prepared fixture configurations only:
   configuration, including its initial ramp and smoothing controls.
 
 Both support Q=1/16/32/64/128. Target capacities can impose a smaller envelope.
-There is no graph-description input, graph scheduling algorithm or runtime graph
-upload protocol. Sync/audio order and initial settings are fixed by the fixtures.
+`graph::GraphDescription::compile` also accepts one to sixteen initially empty
+mono loops. It schedules a source-before-dependent sync pass independently of the
+audio pass, rejects cycles except self sync, and emits input/silence, playback,
+gain, capture, summation and stereo Master output operations. Every buffer is
+written once per quantum, including intermediate sums. Input and output routing
+are explicit per loop. This restricted graph has no processors, MIDI or smoothing.
 
 The emitted `LogicalStateProgram` describes semantic operations, logical state
 and buffer slots, loop identities/sync relationships, initial values, resource
@@ -46,8 +50,10 @@ it is not reconstructed from the Rust instruction representation. Existing raw
 vectors and native-resolver tests remain independent checks.
 
 Compilation/preparation stays separate from `carrier::Endpoint` and processing
-pacing. Future graph communication can supply the compiler input without changing
-the execution endpoint or making message polling advance processing.
+pacing. The temporary reference host receives graph metadata as one initial
+immediate group from `RtBackend`, builds this logical graph and hands the Rust
+configuration to its independently paced worker. The RTL target accepts the same
+graph in tests; its runtime communication frontend is still unimplemented.
 
 ```sh
 cargo test --locked -p rt_fpga_compiler

@@ -1,5 +1,9 @@
 #![cfg(all(feature = "sim", not(target_arch = "wasm32")))]
 use rt_fpga_compiler::{CompileError, FixedProgram, Resource, StateProgramTarget};
+use rt_fpga_compiler::{
+    Identity,
+    graph::{GraphDescription, LoopDescription},
+};
 use rt_fpga_reference::{
     compiler::RustTarget,
     jobs::JobQueue,
@@ -26,10 +30,34 @@ fn compiled_mono_fixture_matches_rust_with_distinct_state_addresses() {
         .unwrap();
     let mut sim = Sim::new(model.session(None).unwrap(), &[("clk", 10000, 0)]);
     let mut driver = State::new(&mut sim, depths, 918);
-    for quantum in [1, 16, 128] {
-        let logical = FixedProgram::MonoLoops { quantum, loops: 2 }
-            .emit()
-            .unwrap();
+    for (quantum, graph) in [1, 16, 128]
+        .into_iter()
+        .flat_map(|q| [(q, false), (q, true)])
+    {
+        let logical = if graph {
+            GraphDescription {
+                quantum,
+                loops: (0..2)
+                    .map(|slot| LoopDescription {
+                        id: Identity {
+                            slot,
+                            generation: 1,
+                        },
+                        source: (slot == 1).then_some(0),
+                        input: slot == 1,
+                        output: true,
+                        gain: 0.5,
+                        repeat_sync: false,
+                    })
+                    .collect(),
+            }
+            .compile()
+            .unwrap()
+        } else {
+            FixedProgram::MonoLoops { quantum, loops: 2 }
+                .emit()
+                .unwrap()
+        };
         let views = [23, 41];
         let rust = RustTarget::new(&views).build(&logical).unwrap();
         let mut target = RtlTarget::new([64, 16, 32, 128, 8, 1, 2], 160, &views);

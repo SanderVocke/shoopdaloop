@@ -92,6 +92,18 @@ impl StateProgramTarget for RustTarget<'_> {
             .audio_pass
             .iter()
             .map(|op| match *op {
+                Operation::Silence { destination } => Instruction::ProcessSilence {
+                    destination: BufferId(destination as usize),
+                },
+                Operation::Mix {
+                    left,
+                    right,
+                    destination,
+                } => Instruction::ProcessMix {
+                    left: BufferId(left as usize),
+                    right: BufferId(right as usize),
+                    destination: BufferId(destination as usize),
+                },
                 Operation::Input { port, destination } => Instruction::ProcessInput {
                     port: port as usize,
                     destination: BufferId(destination as usize),

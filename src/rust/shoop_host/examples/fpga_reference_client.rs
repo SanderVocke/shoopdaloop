@@ -1,0 +1,323 @@
+//! Temporary application-API client for a single prepared reference graph.
+use anyhow::{ensure, Result};
+#[cfg(not(test))]
+use clap::Parser;
+use shoop_app_api::*;
+use shoop_app_client::{Client, State};
+use shoop_app_protocol::{immediate, ClientMessage, Command, Outcome};
+use shoop_host::{
+    connection::{self, Connection},
+    remote::Target,
+};
+use std::{
+    path::PathBuf,
+    process::{Child, Command as Process, Stdio},
+    thread,
+    time::{Duration, Instant},
+};
+
+#[cfg(not(test))]
+#[derive(Parser)]
+struct Args {
+    #[arg(long)]
+    host: PathBuf,
+    #[arg(long, default_value = "work/fpga-reference-client")]
+    output: PathBuf,
+}
+struct ChildGuard(Child);
+impl Drop for ChildGuard {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+fn error(e: shoop_app_client::Error) -> anyhow::Error {
+    anyhow::anyhow!("application API: {e:?}")
+}
+fn wait(
+    client: &mut Client,
+    connection: &mut Connection,
+    predicate: impl Fn(&Client) -> bool,
+) -> Result<()> {
+    let until = Instant::now() + Duration::from_secs(10);
+    loop {
+        connection.poll(client).map_err(error)?;
+        if let Some(ready) = client.ready_message() {
+            connection.send(ready).map_err(error)?;
+            client.ready_sent().map_err(error)?;
+        }
+        if predicate(client) {
+            return Ok(());
+        }
+        ensure!(
+            Instant::now() < until,
+            "application observation timed out; state={:?}",
+            client.state()
+        );
+        thread::sleep(Duration::from_millis(2));
+    }
+}
+fn command(client: &mut Client, connection: &mut Connection, command: Command) -> Result<Outcome> {
+    let message = client.command(command, None).map_err(error)?;
+    let ClientMessage::Submit { operation, .. } = message else {
+        unreachable!()
+    };
+    connection.send(message).map_err(error)?;
+    wait(client, connection, |c| c.results().contains_key(&operation))?;
+    let result = client.results()[&operation].clone();
+    if let Outcome::Confirmed { revision }
+    | Outcome::TrackCreated { revision, .. }
+    | Outcome::LoopCreated { revision, .. } = &result
+    {
+        wait(client, connection, |c| {
+            c.snapshot().is_some_and(|s| s.revision >= *revision)
+        })?;
+    }
+    Ok(result)
+}
+fn accepted(client: &mut Client, connection: &mut Connection, value: Command) -> Result<Outcome> {
+    let description = format!("{value:?}");
+    let result = command(client, connection, value)?;
+    ensure!(
+        !matches!(result, Outcome::Refused { .. }),
+        "application command {description} refused: {result:?}"
+    );
+    Ok(result)
+}
+fn immediate(
+    client: &Client,
+    connection: &mut Connection,
+    commands: Vec<immediate::Command>,
+) -> Result<()> {
+    connection
+        .send(client.immediate(commands).map_err(error)?)
+        .map_err(error)
+}
+fn loop_view(client: &Client, id: LoopId) -> Option<&LoopState> {
+    client
+        .snapshot()?
+        .tracks
+        .iter()
+        .flat_map(|t| &t.loops)
+        .find(|l| l.id == id)
+}
+pub fn run_with(host: PathBuf, output: PathBuf) -> Result<()> {
+    std::fs::create_dir_all(&output)?;
+    let output = output.canonicalize()?;
+    let config = serde_json::json!({ "fpga_reference": true,
+        "driver":{"Dummy":{"sample_rate":8000,"buffer_size":32}}, "loop_smoothing_ms":0,
+        "processors":{"builtin_fx":"off","oxisynth":"off","fx_instances":0,"synth_instances":0,"memory_mb":16},
+        "pools":{"quantum":32,"tracks":2,"loops":16,"channels":1,"loop_memory_mb":16}, "transport":"socket" });
+    std::fs::write(
+        output.join("config.json"),
+        serde_json::to_vec_pretty(&config)?,
+    )?;
+    let profile = output.join("profile.json");
+    if profile.exists() {
+        std::fs::remove_file(&profile)?;
+    }
+    let mut child = ChildGuard(
+        Process::new(host)
+            .arg("--config")
+            .arg(output.join("config.json"))
+            .arg("--export-profile")
+            .arg(&profile)
+            .arg("--snapshot-hz")
+            .arg("unlimited")
+            .stdout(Stdio::null())
+            .stderr(std::fs::File::create(output.join("host.log"))?)
+            .spawn()?,
+    );
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !profile.exists() {
+        ensure!(
+            child.0.try_wait()?.is_none(),
+            "reference host exited; inspect host.log"
+        );
+        ensure!(Instant::now() < deadline, "host startup timeout");
+        thread::sleep(Duration::from_millis(10));
+    }
+    let target = Target::read(&profile)?;
+    let mut client = Client::new();
+    let mut connection = connection::connect(&target, Duration::from_secs(5))?;
+    connection
+        .send(client.attach().map_err(error)?)
+        .map_err(error)?;
+    wait(&mut client, &mut connection, |c| c.state() == State::Ready)?;
+    let sync = client
+        .snapshot()
+        .unwrap()
+        .tracks
+        .iter()
+        .find(|t| t.is_sync)
+        .unwrap()
+        .loops[0]
+        .id;
+    let created = accepted(
+        &mut client,
+        &mut connection,
+        Command::AddTrack(TrackSpec {
+            name: "Prepared mono".into(),
+            topology: TrackSpecTopology::Direct {
+                audio_channels: 1,
+                midi: false,
+            },
+            latency: Default::default(),
+            initial_output_bus_names: vec!["Master".into()],
+            creation_request_id: None,
+        }),
+    )?;
+    let Outcome::TrackCreated { track, loops, .. } = created else {
+        anyhow::bail!("missing track identities");
+    };
+    let voice = loops[0];
+    let input = client
+        .snapshot()
+        .unwrap()
+        .connections
+        .application_ports
+        .iter()
+        .find(|p| {
+            matches!(p.owner, ApplicationPortOwner::Track {track_id, ..} if track_id == track)
+                && p.role == PortRole::AudioInput
+        })
+        .unwrap()
+        .id;
+    let source = client
+        .snapshot()
+        .unwrap()
+        .connections
+        .host_ports
+        .iter()
+        .find(|p| p.data_type == PortDataType::Audio && p.direction == PortDirection::Output)
+        .unwrap()
+        .id
+        .clone();
+    accepted(
+        &mut client,
+        &mut connection,
+        Command::SetPortConnected {
+            port: input,
+            host_port: source.clone(),
+            connected: true,
+        },
+    )?;
+    accepted(&mut client, &mut connection, Command::ActivatePreparedGraph)?;
+    ensure!(
+        matches!(
+            command(&mut client, &mut connection, Command::AddLoop { track })?,
+            Outcome::Refused { .. }
+        ),
+        "topology changed after activation"
+    );
+    ensure!(
+        matches!(
+            command(&mut client, &mut connection, Command::ActivatePreparedGraph)?,
+            Outcome::Refused { .. }
+        ),
+        "graph activated twice"
+    );
+    ensure!(
+        matches!(
+            command(
+                &mut client,
+                &mut connection,
+                Command::SetPortConnected {
+                    port: input,
+                    host_port: source,
+                    connected: false,
+                }
+            )?,
+            Outcome::Refused { .. }
+        ),
+        "input routing changed after activation"
+    );
+    immediate(
+        &client,
+        &mut connection,
+        vec![immediate::Command::Transition(
+            sync,
+            TransitionMode::Recording.into(),
+        )],
+    )?;
+    wait(&mut client, &mut connection, |c| {
+        loop_view(c, sync).is_some_and(|l| l.mode == LoopMode::Recording && l.length_frames >= 256)
+    })?;
+    immediate(
+        &client,
+        &mut connection,
+        vec![immediate::Command::Transition(
+            sync,
+            TransitionMode::Playing.into(),
+        )],
+    )?;
+    wait(&mut client, &mut connection, |c| {
+        loop_view(c, sync).is_some_and(|l| l.mode == LoopMode::Playing)
+    })?;
+    immediate(
+        &client,
+        &mut connection,
+        vec![immediate::Command::Transition(
+            voice,
+            TransitionPlan {
+                now: None,
+                first: Some(PlannedTransition {
+                    mode: TransitionMode::Recording,
+                    skip: 0,
+                }),
+                second: Some(PlannedTransition {
+                    mode: TransitionMode::Stopped,
+                    skip: 2,
+                }),
+            },
+        )],
+    )?;
+    wait(&mut client, &mut connection, |c| {
+        loop_view(c, voice).is_some_and(|l| l.mode == LoopMode::Recording)
+    })?;
+    wait(&mut client, &mut connection, |c| {
+        loop_view(c, voice).is_some_and(|l| l.mode == LoopMode::Stopped && l.length_frames > 0)
+    })?;
+    immediate(
+        &client,
+        &mut connection,
+        vec![
+            immediate::Command::LoopGain(voice, 0.5),
+            immediate::Command::Transition(voice, TransitionMode::Playing.into()),
+        ],
+    )?;
+    wait(&mut client, &mut connection, |c| {
+        loop_view(c, voice).is_some_and(|l| l.mode == LoopMode::Playing && l.gain == 0.5)
+    })?;
+    let recorded = loop_view(&client, voice).unwrap().length_frames;
+    immediate(
+        &client,
+        &mut connection,
+        vec![
+            immediate::Command::ClearPlannedTransitions(voice, ClearPlanned::Both),
+            immediate::Command::Transition(voice, TransitionMode::Stopped.into()),
+            immediate::Command::Transition(sync, TransitionMode::Stopped.into()),
+        ],
+    )?;
+    wait(&mut client, &mut connection, |c| {
+        [voice, sync]
+            .iter()
+            .all(|&id| loop_view(c, id).is_some_and(|l| l.mode == LoopMode::Stopped))
+    })?;
+    let report = serde_json::json!({"result":"passed","boundary":"shoop_host application API through RtBackend", "recorded_frames": recorded,
+        "topology_edits_refused":true,"second_activation_refused":true,"immediate_controls":true});
+    std::fs::write(
+        output.join("report.json"),
+        serde_json::to_vec_pretty(&report)?,
+    )?;
+    println!("{}", serde_json::to_string_pretty(&report)?);
+    Ok(())
+}
+#[cfg(not(test))]
+fn main() {
+    let args = Args::parse();
+    if let Err(error) = run_with(args.host, args.output) {
+        eprintln!("{error:#}");
+        std::process::exit(1);
+    }
+}

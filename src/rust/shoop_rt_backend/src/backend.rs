@@ -303,8 +303,15 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     fn mutation_cursor(&self) -> u64 {
         self.requests.last_sequence()
     }
+    fn activate_prepared_graph(&mut self) -> Result<()> {
+        self.install_prepared_graph()
+    }
     fn mutations_pending_through(&self, sequence: u64) -> bool {
-        !self.requests.answered_through(sequence)
+        self.prepared_graph
+            .as_ref()
+            .and_then(|g| g.pending)
+            .is_some_and(|p| p <= sequence)
+            || !self.requests.answered_through(sequence)
             || self
                 .composites
                 .jobs
@@ -332,7 +339,12 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
                     .iter()
                     .map(|job| job.cancel_waiters.len())
                     .sum::<usize>()
-                + usize::from(self.input.is_some()),
+                + usize::from(self.input.is_some())
+                + usize::from(
+                    self.prepared_graph
+                        .as_ref()
+                        .is_some_and(|g| g.pending.is_some()),
+                ),
         )
     }
 
@@ -515,6 +527,9 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         self.reset_composite(id)
     }
     fn composite_limits(&self) -> Option<shoop_backend::BackendCompositeLimits> {
+        if self.prepared_graph.is_some() {
+            return None;
+        }
         self.composite_limits_core()
     }
     fn convert_empty_loop_to_composite(&mut self, id: BackendLoopId) -> Result<BackendCompositeId> {
@@ -606,6 +621,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
 
     fn remove_track(&mut self, track_id: BackendTrackId) -> Result<()> {
         self.ready()?;
+        self.structure_mutable()?;
         self.remove_strip(track_id);
         Ok(())
     }
@@ -934,6 +950,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         source: Option<BackendLoopId>,
     ) -> Result<()> {
         self.ready()?;
+        self.structure_mutable()?;
         let slot = self.live_loop_slot(loop_id)?;
         let source_slot = source
             .map(|source| self.live_loop_slot(source))
@@ -1303,6 +1320,10 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
 
     fn create_bus(&mut self, request: BackendBusRequest) -> Result<BackendBusCreation> {
         self.ready()?;
+        self.structure_mutable()?;
+        if self.prepared_graph.is_some() {
+            return Err(anyhow!("prepared reference supports the Master bus only"));
+        }
         let request = request.normalized()?;
         if let Some(fx) = &request.fx {
             if !self.capabilities.contains(Capabilities::BUS_PROCESSORS)
@@ -1339,6 +1360,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     }
     fn remove_bus(&mut self, id: BackendBusId) -> Result<()> {
         self.ready()?;
+        self.structure_mutable()?;
         self.require_mutation_capacity(1)?;
         let bus = self
             .mirror

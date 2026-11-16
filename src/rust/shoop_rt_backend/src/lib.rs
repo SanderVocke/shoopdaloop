@@ -48,6 +48,7 @@ mod mirror;
 mod outgoing;
 mod persistence;
 mod prepared;
+mod prepared_graph;
 mod preview;
 mod processor_controls;
 mod processors;
@@ -164,6 +165,7 @@ fn profiling_connection() -> Option<u64> {
 
 /// The application backend over a protocol client. See the crate documentation.
 pub struct RtBackend<C, K> {
+    prepared_graph: Option<prepared_graph::PreparedGraph>,
     immediate_response_handler: Option<alloc::boxed::Box<immediate::ResponseHandler>>,
     snapshots: snapshots::Snapshots,
     host_port_inventory: Option<alloc::boxed::Box<dyn HostPortInventory>>,
@@ -236,6 +238,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         let mut snapshots = snapshots::Snapshots::default();
         snapshots.delivery = client.default_snapshot_delivery();
         Ok(Self {
+            prepared_graph: None,
             immediate_response_handler: None,
             snapshots,
             host_port_inventory: None,
@@ -452,6 +455,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     /// Refresh reliable configuration while preserving accepted operations and live playback.
     pub fn request_resync(&mut self) -> Result<()> {
         self.ready()?;
+        if self.prepared_graph.is_some() {
+            return Err(anyhow!(
+                "prepared graph transport does not support legacy resync"
+            ));
+        }
         self.client
             .resync()
             .map_err(|error| anyhow!("resynchronization failed: {error:?}"))?;
@@ -564,7 +572,12 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 .iter()
                 .map(|job| job.cancel_waiters.len())
                 .sum::<usize>()
-            + usize::from(self.input.is_some());
+            + usize::from(self.input.is_some())
+            + usize::from(
+                self.prepared_graph
+                    .as_ref()
+                    .is_some_and(|g| g.pending.is_some()),
+            );
         if count > MAX_TRACKED_MUTATIONS.saturating_sub(used)
             || self
                 .requests
@@ -585,6 +598,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         match self.link {
             Link::Ready => {
                 self.composites.controls.is_empty()
+                    && self
+                        .prepared_graph
+                        .as_ref()
+                        .is_none_or(|g| g.pending.is_none())
                     && self.composites.jobs.is_empty()
                     && self.requests.is_empty()
                     && self.input.is_none()
@@ -624,6 +641,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     fn send(&mut self) -> usize {
         if self.link != Link::Ready {
             return 0;
+        }
+        if self.prepared_graph.is_some() {
+            return self.send_prepared_graph_requests();
         }
         let mut sent = 0;
         let waiting = self.requests.outgoing.len();
@@ -698,6 +718,12 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
         tracing::error!(reason = %reason, "backend.rt.disconnected");
         self.link = Link::Disconnected(reason.clone());
+        if let Some(sequence) = self.prepared_graph.as_mut().and_then(|g| g.pending.take()) {
+            self.mutation_completions.push(BackendMutationCompletion {
+                sequence,
+                result: Err(reason.clone()),
+            });
+        }
         self.profiling = Default::default();
         self.status.memory = None;
         for pending in self

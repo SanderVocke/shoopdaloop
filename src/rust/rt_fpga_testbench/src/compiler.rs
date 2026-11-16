@@ -129,6 +129,18 @@ impl StateProgramTarget for RtlTarget<'_> {
         }
         for op in &logical.audio_pass {
             let instruction = match *op {
+                Operation::Silence { destination } => component::Instruction::ProcessSilence {
+                    destination: operand(destination)?,
+                },
+                Operation::Mix {
+                    left,
+                    right,
+                    destination,
+                } => component::Instruction::ProcessMix {
+                    left: operand(left)?,
+                    right: operand(right)?,
+                    destination: operand(destination)?,
+                },
                 Operation::Input { port, destination } => component::Instruction::ProcessInput {
                     port: operand(port)?,
                     destination: operand(destination)?,

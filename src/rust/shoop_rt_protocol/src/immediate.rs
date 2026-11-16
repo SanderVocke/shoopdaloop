@@ -3,6 +3,19 @@ pub const COMMANDS: usize = 32;
 pub const FIFO_RECORDS: usize = 256;
 pub const FIFO_SINGLETONS: usize = FIFO_RECORDS / 2;
 pub const STAGED_BATCHES: usize = 4;
+pub const PREPARED_GRAPH_LOOPS: u32 = 16;
+
+/// One initially empty mono loop in the restricted single-install graph profile.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct GraphLoop {
+    pub slot: u32,
+    pub generation: u32,
+    pub source: Option<u32>,
+    pub input: Option<u32>,
+    pub gain: f32,
+    pub output: bool,
+    pub repeat_sync: bool,
+}
 
 /// Cumulative refusals, never a receipt for an individual group.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -78,6 +91,13 @@ pub struct GrabGesture {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Command {
+    /// Initial graph setup is one complete group, with epoch zero and no deadline.
+    BeginGraph {
+        quantum: u32,
+        loops: u32,
+    },
+    ConfigureLoop(GraphLoop),
+    ActivateGraph,
     LoopGain(u32, f32),
     LoopBalance(u32, f32),
     Transition(u32, TransitionPlan),
@@ -233,6 +253,18 @@ impl CommandRecord {
     pub fn new(command: Command) -> Self {
         use Command::*;
         let words = match command {
+            BeginGraph { quantum, loops } => [16, 0, quantum, loops, 0, 0, 0, 0],
+            ConfigureLoop(l) => [
+                17,
+                l.slot,
+                l.generation,
+                l.source.unwrap_or(u32::MAX),
+                l.input.unwrap_or(u32::MAX),
+                l.gain.to_bits(),
+                u32::from(l.output) | (u32::from(l.repeat_sync) << 1),
+                0,
+            ],
+            ActivateGraph => [18, 0, 0, 0, 0, 0, 0, 0],
             Transition(id, plan) => [
                 2,
                 id,
@@ -281,7 +313,11 @@ impl CommandRecord {
                     BusGain(id, v) => (9, id, v.to_bits()),
                     BusBalance(id, v) => (10, id, v.to_bits()),
                     BusMute(id, v) => (11, id, u32::from(v)),
-                    Grab(..) | GrabGesture(..) => unreachable!(),
+                    Grab(..)
+                    | GrabGesture(..)
+                    | BeginGraph { .. }
+                    | ConfigureLoop(_)
+                    | ActivateGraph => unreachable!(),
                 };
                 [op, id, value, 0, 0, 0, 0, 0]
             }
@@ -300,6 +336,20 @@ impl CommandRecord {
         let id = self.word(1);
         let value = self.word(2);
         Some(match self.word(0) {
+            16 => BeginGraph {
+                quantum: value,
+                loops: self.word(3),
+            },
+            17 if self.word(6) <= 3 => ConfigureLoop(GraphLoop {
+                slot: id,
+                generation: value,
+                source: (self.word(3) != u32::MAX).then_some(self.word(3)),
+                input: (self.word(4) != u32::MAX).then_some(self.word(4)),
+                gain: f32::from_bits(self.word(5)),
+                output: self.word(6) & 1 != 0,
+                repeat_sync: self.word(6) & 2 != 0,
+            }),
+            18 => ActivateGraph,
             0 => LoopGain(id, f32::from_bits(value)),
             1 => LoopBalance(id, f32::from_bits(value)),
             2 => {
@@ -422,6 +472,18 @@ impl Response {
 impl Command {
     pub fn valid(self) -> bool {
         match self {
+            Self::BeginGraph { quantum, loops } => {
+                matches!(quantum, 1 | 16 | 32 | 64 | 128)
+                    && (1..=PREPARED_GRAPH_LOOPS).contains(&loops)
+            }
+            Self::ConfigureLoop(l) => {
+                l.slot < PREPARED_GRAPH_LOOPS
+                    && l.generation != 0
+                    && l.source.is_none_or(|s| s < PREPARED_GRAPH_LOOPS)
+                    && l.input.is_none_or(|i| i == 0)
+                    && l.gain.is_finite()
+                    && (0.0..=1.0).contains(&l.gain)
+            }
             Self::Grab(_, grab) => [
                 grab.reverse_start_cycle,
                 grab.cycles_length,

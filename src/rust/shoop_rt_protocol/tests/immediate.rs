@@ -9,6 +9,57 @@ use shoop_rt_protocol::{
 use shoop_wasm_test_support::shoop_test;
 
 #[shoop_test]
+fn prepared_graph_records_roundtrip_and_reject_reserved_bits() {
+    use shoop_rt_protocol::immediate::GraphLoop;
+    let commands = [
+        Command::BeginGraph {
+            quantum: 32,
+            loops: 1,
+        },
+        Command::ConfigureLoop(GraphLoop {
+            slot: 0,
+            generation: 4,
+            source: Some(0),
+            input: Some(0),
+            gain: 0.25,
+            output: true,
+            repeat_sync: true,
+        }),
+        Command::ActivateGraph,
+    ];
+    let message = ClientMessage::Immediate(Batch::new(0, 0, &commands).unwrap());
+    let mut bytes = [0; MAX_RECORD_BYTES];
+    let length = codec::encode_client(&message, &mut bytes).unwrap();
+    assert_eq!(codec::decode_client(&bytes[..length]), Ok(message));
+    for command in commands {
+        assert!(command.valid());
+        let record = CommandRecord::new(command);
+        assert_eq!(CommandRecord::from_bytes(*record.bytes()), Some(record));
+        let record = record.complete(Code::Applied);
+        let response = EngineMessage::ImmediateResponse(
+            Response::new(
+                shoop_rt_protocol::immediate::Header::new(0, 0, None).complete(0, Code::Applied),
+                &[record],
+            )
+            .unwrap(),
+        );
+        let length = codec::encode_engine(&response, &mut bytes).unwrap();
+        assert_eq!(codec::decode_engine(&bytes[..length]), Ok(response));
+    }
+    let mut invalid = *CommandRecord::new(commands[1]).bytes();
+    invalid[24] |= 4;
+    assert!(CommandRecord::from_bytes(invalid).is_none());
+    let mut invalid = *CommandRecord::new(Command::ActivateGraph).bytes();
+    invalid[4] = 1;
+    assert!(CommandRecord::from_bytes(invalid).is_none());
+    assert!(!Command::BeginGraph {
+        quantum: 3,
+        loops: 1
+    }
+    .valid());
+}
+
+#[shoop_test]
 fn maximum_group_is_one_small_canonical_record() {
     let commands = [Command::LoopGain(1, 0.5); COMMANDS];
     let message = ClientMessage::Immediate(Batch::new(3, 4, &commands).unwrap());

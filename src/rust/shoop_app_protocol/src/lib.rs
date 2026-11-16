@@ -28,7 +28,7 @@ use alloc::sync::Arc;
 use serde::{Deserialize, Serialize};
 use shoop_app_api::*;
 
-pub const VERSION: u16 = 40;
+pub const VERSION: u16 = 41;
 pub const CHUNK_BYTES: usize = 1024;
 pub const MAX_MEDIA_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_SNAPSHOT_BYTES: usize = 8 * 1024 * 1024;
@@ -134,6 +134,7 @@ pub enum Command {
     CommitPersistence(persistence::Key),
     SetHostGraphConnected(HostGraphRequest),
     Diagnostic(profiling_protocol::Request),
+    ActivatePreparedGraph,
 }
 
 impl Command {

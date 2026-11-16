@@ -218,6 +218,8 @@ impl Drop for Acceptor {
 }
 
 struct StartedBackend {
+    #[cfg(feature = "fpga-reference")]
+    reference_driver: Option<crate::fpga_reference::Driver>,
     host: Option<shoop_rt_host_native::NativeHost>,
     backend: Box<dyn shoop_backend::Backend>,
     warnings: Vec<String>,
@@ -234,6 +236,25 @@ fn connect_backend(
 }
 
 fn start_backend(config: &HostConfig) -> Result<StartedBackend> {
+    #[cfg(feature = "fpga-reference")]
+    if config.fpga_reference {
+        ensure!(
+            config.loop_smoothing_ms == 0 && config.master_auto_connect,
+            "prepared reference requires zero smoothing and automatic Master connections"
+        );
+        let shoop_app_api::AudioDriverConfig::Dummy(dummy) = &config.driver else {
+            anyhow::bail!("the reference test host requires dummy driver geometry");
+        };
+        let started = crate::fpga_reference::start(config.pools.quantum, dummy.sample_rate)?;
+        let backend = RtBackend::connect(started.client, Sleep::default())?;
+        return Ok(StartedBackend {
+            reference_driver: Some(started.driver),
+            host: None,
+            backend: Box::new(backend),
+            warnings: vec![],
+            settings: config.settings.clone(),
+        });
+    }
     let (host, backend, warnings, settings) = {
         let (mut native, mut warnings) = engine::native_config(
             &config.driver,
@@ -302,6 +323,8 @@ fn start_backend(config: &HostConfig) -> Result<StartedBackend> {
         )
     };
     Ok(StartedBackend {
+        #[cfg(feature = "fpga-reference")]
+        reference_driver: None,
         host,
         backend,
         warnings,
@@ -327,6 +350,8 @@ pub fn run_with_ready(
     );
     ensure!(options.name.len() <= 128, "invalid host identity or name");
     let StartedBackend {
+        #[cfg(feature = "fpga-reference")]
+            reference_driver: _reference_driver,
         mut host,
         backend,
         warnings,

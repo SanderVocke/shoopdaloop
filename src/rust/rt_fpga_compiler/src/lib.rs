@@ -1,7 +1,8 @@
-//! Fixed program emission and target lowering, independent of execution and transport.
+//! Restricted graph compilation and target lowering, independent of execution and transport.
 #![no_std]
 #![forbid(unsafe_code)]
 extern crate alloc;
+pub mod graph;
 use alloc::{vec, vec::Vec};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -35,6 +36,14 @@ pub enum InitialValue {
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Operation {
+    Silence {
+        destination: u32,
+    },
+    Mix {
+        left: u32,
+        right: u32,
+        destination: u32,
+    },
     Input {
         port: u32,
         destination: u32,
@@ -151,7 +160,7 @@ pub trait StateProgramTarget {
     fn build(&self, program: &LogicalStateProgram) -> Result<Self::CompiledProgram, CompileError>;
 }
 
-/// Prepared fixtures only; no runtime graph input or graph compilation is implemented.
+/// Fixed fixtures retained for direct target and loader tests.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FixedProgram {
     MonoLoops { quantum: u32, loops: u32 },
@@ -427,6 +436,16 @@ impl LogicalStateProgram {
         }
         for op in &self.audio_pass {
             match *op {
+                Operation::Silence { destination } => buffer(destination)?,
+                Operation::Mix {
+                    left,
+                    right,
+                    destination,
+                } => {
+                    buffer(left)?;
+                    buffer(right)?;
+                    buffer(destination)?;
+                }
                 Operation::Input { port, destination } => {
                     buffer(destination)?;
                     if port >= r.input_ports {
