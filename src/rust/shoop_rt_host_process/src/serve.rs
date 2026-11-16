@@ -66,6 +66,22 @@ struct ProcessEndpoint {
     retired: bool,
 }
 impl Endpoint for ProcessEndpoint {
+    fn try_deliver(
+        &mut self,
+        message: ClientMessage,
+        out: &mut Outbox,
+    ) -> std::result::Result<(), shoop_rt_transport::carrier::CarrierError> {
+        if matches!(message, ClientMessage::Immediate(_)) {
+            if self.retired {
+                return Err(shoop_rt_transport::carrier::CarrierError::Disconnected);
+            }
+            self.inner.try_deliver(message, out)
+        } else {
+            self.deliver(message, out);
+            Ok(())
+        }
+    }
+
     fn deliver(&mut self, message: ClientMessage, out: &mut Outbox) {
         if self.retired {
             return;

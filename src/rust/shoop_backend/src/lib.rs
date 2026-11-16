@@ -23,8 +23,9 @@ pub use legacy::*;
 pub use shoop_app_api::{
     BackendCapabilities, BackendCapability, BuiltInFxControl, BuiltInFxDriveType,
     BuiltInFxMidiCcAssignment, BuiltInFxModulationType, BuiltInFxParameter, BuiltInFxReverbType,
-    BuiltInFxStage, BuiltInFxState, OxiSynthControl, OxiSynthMidiCcAssignment, OxiSynthParameter,
-    OxiSynthState, TrackProcessorEditorState, TrackProcessorTypeId, MAX_BUSES, MAX_BUS_CHANNELS,
+    BuiltInFxStage, BuiltInFxState, ClearPlanned, OxiSynthControl, OxiSynthMidiCcAssignment,
+    OxiSynthParameter, OxiSynthState, PlannedTransition, TrackProcessorEditorState,
+    TrackProcessorTypeId, TransitionMode, TransitionPlan, MAX_BUSES, MAX_BUS_CHANNELS,
     MAX_BUS_HOST_LINKS, MAX_BUS_NAME_BYTES, MAX_MIXER_ROUTES, MAX_TOTAL_BUS_CHANNELS,
 };
 
@@ -1213,7 +1214,54 @@ pub struct BackendSnapshot {
     pub mutation_completions: Vec<BackendMutationCompletion>,
 }
 
+/// Value-only commands with local admission and snapshot-based observation.
+#[derive(Clone, Copy, Debug)]
+pub enum BackendImmediateCommand {
+    LoopGain(BackendLoopId, f32),
+    LoopBalance(BackendLoopId, f32),
+    Transition(BackendLoopId, TransitionPlan),
+    ClearPlannedTransitions(BackendLoopId, ClearPlanned),
+    Grab(BackendGrabRequest),
+    GrabGesture {
+        loop_id: BackendLoopId,
+        sync: BackendLoopId,
+        target: Option<BackendLoopId>,
+        cycles: u32,
+        play_after_record: bool,
+        synced: bool,
+    },
+    InputGainDb(BackendTrackId, f32),
+    InputBalance(BackendTrackId, f32),
+    OutputGainDb(BackendTrackId, f32),
+    OutputBalance(BackendTrackId, f32),
+    OutputMute(BackendTrackId, bool),
+    BusGainDb(BackendBusId, f32),
+    BusBalance(BackendBusId, f32),
+    BusMute(BackendBusId, bool),
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct BackendTransitionPlanState {
+    pub loop_id: BackendLoopId,
+    pub plan: TransitionPlan,
+    pub failures: u32,
+}
 pub trait Backend {
+    fn transition_plans(&self) -> Vec<BackendTransitionPlanState> {
+        Vec::new()
+    }
+    fn supports_immediate_commands(&self) -> bool {
+        false
+    }
+    fn immediate_refusals(&self) -> u64 {
+        0
+    }
+    /// False means no command was admitted because local transport is full.
+    fn submit_immediate_commands(&mut self, _commands: &[BackendImmediateCommand]) -> Result<bool> {
+        Err(anyhow!(
+            "Immediate commands are unavailable on this backend"
+        ))
+    }
     fn release_host_port_identity(&mut self, _id: &str) -> bool {
         false
     }

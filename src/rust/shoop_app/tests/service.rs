@@ -70,6 +70,8 @@ impl EngineClock for Clock {
     }
 }
 struct Fixture {
+    immediate_groups: Rc<RefCell<Vec<shoop_rt_protocol::immediate::Batch>>>,
+    legacy_controls: Rc<Cell<usize>>,
     service: Service,
     render: Rc<RefCell<OfflineRender>>,
     advance: Rc<Cell<bool>>,
@@ -152,7 +154,11 @@ fn fixture_configured(
     let refuse_copy = Rc::new(Cell::new(None));
     let content_applies = Rc::new(Cell::new(0));
     let clear_requests = Rc::new(Cell::new(0));
+    let immediate_groups = Rc::new(RefCell::new(Vec::new()));
+    let legacy_controls = Rc::new(Cell::new(0));
     let client = shoop_rt_transport::client::ProtocolClient::new(RefuseLoop {
+        immediate_groups: immediate_groups.clone(),
+        legacy_controls: legacy_controls.clone(),
         inner: client.into_carrier(),
         refuse: Rc::clone(&refuse_next_loop),
         refuse_bus: Rc::clone(&refuse_next_bus),
@@ -190,6 +196,8 @@ fn fixture_configured(
         "the app service must not synchronously wait for engine progress"
     );
     Fixture {
+        immediate_groups,
+        legacy_controls,
         service,
         render,
         advance,
@@ -1839,6 +1847,8 @@ fn shutdown_waits_for_engine_outcomes_and_host_cleanup_and_allows_failure_retry(
 }
 
 struct RefuseLoop<C> {
+    immediate_groups: Rc<RefCell<Vec<shoop_rt_protocol::immediate::Batch>>>,
+    legacy_controls: Rc<Cell<usize>>,
     inner: C,
     refuse: Rc<Cell<bool>>,
     refuse_bus: Rc<Cell<bool>>,
@@ -1857,6 +1867,19 @@ impl<C: shoop_rt_transport::carrier::Carrier> shoop_rt_transport::carrier::Carri
         &mut self,
         message: shoop_rt_protocol::ClientMessage,
     ) -> Result<(), shoop_transport::CarrierError> {
+        if matches!(
+            message,
+            shoop_rt_protocol::ClientMessage::Request {
+                request: shoop_rt_protocol::Request::LoopGain { .. }
+                    | shoop_rt_protocol::Request::LoopBalance { .. }
+                    | shoop_rt_protocol::Request::LoopTransition { .. }
+                    | shoop_rt_protocol::Request::StripControl { .. }
+                    | shoop_rt_protocol::Request::BusControl { .. },
+                ..
+            }
+        ) {
+            self.legacy_controls.set(self.legacy_controls.get() + 1);
+        }
         if matches!(
             message,
             shoop_rt_protocol::ClientMessage::Request {
@@ -2004,7 +2027,13 @@ impl<C: shoop_rt_transport::carrier::Carrier> shoop_rt_transport::carrier::Carri
                 return Ok(());
             }
         }
-        self.inner.send(message)
+        let result = self.inner.send(message);
+        if result.is_ok() {
+            if let shoop_rt_protocol::ClientMessage::Immediate(batch) = message {
+                self.immediate_groups.borrow_mut().push(batch);
+            }
+        }
+        result
     }
     fn receive(&mut self) -> Option<shoop_rt_protocol::EngineMessage> {
         self.reply.take().or_else(|| self.inner.receive())
@@ -2217,6 +2246,302 @@ fn pump_runtime(
         service.pump_local(ConnectionId(99), port, STEP);
         runtime.tick(STEP);
     }
+}
+
+#[shoop_test]
+fn ui_immediate_controls_use_snapshots_and_keep_bursts_ordered_without_results() {
+    let mut f = fixture();
+    let (mut runtime, port) = runtime(
+        &mut f.service,
+        shoop_app_client::runtime::Startup::Fresh(Vec::new()),
+    );
+    runtime
+        .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+            name: "Immediate".into(),
+            audio_channels: 2,
+            midi: false,
+        }))
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 20);
+    let track = runtime.snapshot().tracks[1].id;
+    let loop_id = runtime.snapshot().tracks[1].loops[0].id;
+    let bus = runtime.client().snapshot().unwrap().buses[0].id;
+    let results = runtime.client().results().len();
+    let legacy = f.legacy_controls.get();
+    let before = f.immediate_groups.borrow().len();
+    for action in [
+        LoopAction::GainChanged(0.25),
+        LoopAction::BalanceChanged(0.5),
+    ] {
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track,
+                loop_id,
+                action,
+            })
+            .unwrap();
+    }
+    for action in [
+        TrackAction::InputGainChanged(-3.0),
+        TrackAction::InputBalanceChanged(-0.3),
+        TrackAction::OutputGainChanged(-6.0),
+        TrackAction::OutputBalanceChanged(0.4),
+        TrackAction::OutputMuteChanged(true),
+    ] {
+        runtime
+            .dispatch(AppIntent::Track {
+                track_id: track,
+                action,
+            })
+            .unwrap();
+    }
+    for action in [
+        BusAction::GainChanged(-9.0),
+        BusAction::BalanceChanged(-0.2),
+        BusAction::MuteChanged(true),
+    ] {
+        runtime
+            .dispatch(AppIntent::Bus {
+                bus_id: bus,
+                action,
+            })
+            .unwrap();
+    }
+    runtime.tick(STEP);
+    let first = port.commands.try_recv().unwrap();
+    assert!(matches!(&first, ClientMessage::Immediate { commands, .. } if commands.len() == 1));
+    let mut bytes = [0; shoop_transport::MAX_RECORD_BYTES];
+    let used = codec::encode(&WireMessage::Client(first), &mut bytes).unwrap();
+    let WireMessage::Client(first) = codec::decode(&bytes[..used]).unwrap() else {
+        panic!()
+    };
+    f.service.handle(ConnectionId(99), first).unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 30);
+    assert_eq!(runtime.state(), shoop_app_client::State::Ready);
+    assert_eq!(runtime.client().results().len(), results);
+    assert!(runtime.client().pending().is_empty());
+    assert_eq!(f.legacy_controls.get(), legacy);
+    assert_eq!(f.immediate_groups.borrow().len() - before, 10);
+    let view = runtime.snapshot();
+    assert_eq!(view.tracks[1].loops[0].gain, 0.25);
+    assert_eq!(view.tracks[1].loops[0].balance, 0.5);
+    let controls = &view.tracks[1].controls;
+    assert!((controls.input_gain_db + 3.0).abs() < 0.001);
+    assert_eq!(controls.input_balance, -0.3);
+    assert!((controls.output_gain_db + 6.0).abs() < 0.001);
+    assert_eq!(controls.output_balance, 0.4);
+    assert!(controls.output_muted);
+    let state = runtime.client().snapshot().unwrap();
+    assert!((state.buses[0].gain_db + 9.0).abs() < 0.001);
+    assert_eq!(state.buses[0].balance, -0.2);
+    assert!(state.buses[0].muted);
+    assert_eq!(state.immediate.refused, 0);
+
+    for index in 0..QUEUE_CAPACITY {
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track,
+                loop_id,
+                action: LoopAction::GainChanged(index as f32 / QUEUE_CAPACITY as f32),
+            })
+            .unwrap();
+    }
+    runtime.tick(STEP);
+    runtime
+        .dispatch(AppIntent::Track {
+            track_id: track,
+            action: TrackAction::InputMonitoringChanged {
+                enabled: true,
+                respect_auto_mute: false,
+            },
+        })
+        .unwrap();
+    for _ in 0..100 {
+        pump_runtime(&mut f.service, &mut runtime, &port, 1);
+        assert_eq!(runtime.state(), shoop_app_client::State::Ready);
+        if runtime.snapshot().tracks[1].controls.input_monitoring {
+            break;
+        }
+    }
+    assert!(runtime.snapshot().tracks[1].controls.input_monitoring);
+    assert_eq!(runtime.snapshot().tracks[1].loops[0].gain, 255.0 / 256.0);
+    assert_eq!(
+        f.immediate_groups.borrow().len() - before,
+        10 + QUEUE_CAPACITY
+    );
+    assert_eq!(runtime.client().snapshot().unwrap().immediate.refused, 0);
+    assert!(f
+        .immediate_groups
+        .borrow()
+        .iter()
+        .all(|group| group.deadline.is_none()));
+    let message = runtime
+        .client()
+        .immediate(vec![
+            immediate::Command::LoopGain(loop_id, 0.75),
+            immediate::Command::OutputBalance(track, f32::NAN),
+            immediate::Command::LoopBalance(LoopId::from_raw(u64::MAX), 0.25),
+            immediate::Command::BusMute(bus, false),
+        ])
+        .unwrap();
+    f.service.handle(ConnectionId(99), message).unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 4);
+    assert_eq!(runtime.snapshot().tracks[1].loops[0].gain, 0.75);
+    assert_eq!(runtime.snapshot().tracks[1].controls.output_balance, 0.4);
+    assert!(!runtime.client().snapshot().unwrap().buses[0].muted);
+    assert_eq!(runtime.client().snapshot().unwrap().immediate.refused, 2);
+    assert!(runtime
+        .snapshot()
+        .notifications
+        .iter()
+        .any(|notice| notice.message.contains("immediate commands")));
+    f.advance.set(false);
+    let before_loss = f.immediate_groups.borrow().len();
+    for index in 0..QUEUE_CAPACITY {
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track,
+                loop_id,
+                action: LoopAction::GainChanged(index as f32 / QUEUE_CAPACITY as f32),
+            })
+            .unwrap();
+    }
+    runtime.tick(STEP);
+    pump_runtime(&mut f.service, &mut runtime, &port, 20);
+    let admitted = f.immediate_groups.borrow().len() - before_loss;
+    assert!(
+        admitted > 0 && admitted < QUEUE_CAPACITY,
+        "admitted {admitted}"
+    );
+    let shoop_rt_protocol::immediate::Command::LoopGain(_, last_gain) =
+        f.immediate_groups.borrow().last().unwrap().commands()[0]
+    else {
+        panic!()
+    };
+    f.service.detach(ConnectionId(99));
+    f.advance.set(true);
+    for _ in 0..20 {
+        f.service.tick(STEP);
+    }
+    assert_eq!(
+        f.immediate_groups.borrow().len(),
+        before_loss + admitted,
+        "unsent groups must not replay after UI loss"
+    );
+    assert_eq!(f.service.snapshot().tracks[1].loops[0].gain, last_gain);
+    assert_eq!(f.waits.get(), f.initial_waits);
+}
+
+#[shoop_test]
+fn ui_immediate_thirty_loop_record_finish_and_start_use_complete_groups() {
+    let mut f = fixture();
+    let connection = ConnectionId(1);
+    let mut client = attach(&mut f.service, 1, connection, true);
+    command(
+        &mut f.service,
+        &mut client,
+        connection,
+        Command::Global(GlobalControlAction::SetSync(false)),
+    );
+    let (track, mut loops) = created(command(
+        &mut f.service,
+        &mut client,
+        connection,
+        new_track("Thirty", false),
+    ));
+    while loops.len() < 30 {
+        let outcome = command(
+            &mut f.service,
+            &mut client,
+            connection,
+            Command::AddLoop { track },
+        );
+        let Outcome::LoopCreated { loop_id, .. } = outcome else {
+            panic!("{outcome:?}");
+        };
+        loops.push(loop_id);
+    }
+    let recording = Command::Control(ControlOperation::Transition {
+        loops: loops.clone(),
+        mode: LoopMode::Recording,
+        cycles_delay: None,
+        align_to_sync_at: None,
+    });
+    let group = immediate::group(&recording, &f.service.snapshot()).unwrap();
+    assert_eq!(group.len(), 30);
+    let message = client.immediate(group).unwrap();
+    f.service.handle(connection, message).unwrap();
+    f.service.tick(STEP);
+    let stop = Command::Control(ControlOperation::Transition {
+        loops: loops.clone(),
+        mode: LoopMode::Stopped,
+        cycles_delay: None,
+        align_to_sync_at: None,
+    });
+    let group = immediate::group(&stop, &f.service.snapshot()).unwrap();
+    assert_eq!(group.len(), 30);
+    let message = client.immediate(group).unwrap();
+    f.service.handle(connection, message).unwrap();
+    for _ in 0..4 {
+        f.service.tick(STEP);
+    }
+    command(
+        &mut f.service,
+        &mut client,
+        connection,
+        Command::Control(ControlOperation::SetLoopSelection {
+            loops: loops.clone(),
+            selected: true,
+            clear_others: true,
+        }),
+    );
+    f.service.detach(connection);
+    let (mut runtime, port) = runtime(
+        &mut f.service,
+        shoop_app_client::runtime::Startup::Connected(Vec::new()),
+    );
+    assert!(loops.iter().all(|id| runtime
+        .client()
+        .snapshot()
+        .unwrap()
+        .immediate
+        .playback
+        .contains(id)));
+    let legacy = f.legacy_controls.get();
+    let groups = f.immediate_groups.borrow().len();
+    runtime
+        .dispatch(AppIntent::Loop {
+            track_id: track,
+            loop_id: loops[0],
+            action: LoopAction::PlayClicked,
+        })
+        .unwrap();
+    runtime.tick(STEP);
+    let message = port.commands.try_recv().unwrap();
+    assert!(matches!(&message, ClientMessage::Immediate { commands, .. } if commands.len() == 30));
+    f.service.handle(ConnectionId(99), message).unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 4);
+    assert_eq!(f.immediate_groups.borrow().len(), groups + 1);
+    assert_eq!(
+        f.immediate_groups.borrow().last().unwrap().commands().len(),
+        30
+    );
+    assert_eq!(f.legacy_controls.get(), legacy);
+    let snapshot = runtime.snapshot();
+    let states: Vec<_> = snapshot
+        .tracks
+        .iter()
+        .flat_map(|t| &t.loops)
+        .filter(|l| loops.contains(&l.id))
+        .collect();
+    assert_eq!(states.len(), 30);
+    assert!(states.iter().all(|l| l.mode == LoopMode::Playing));
+    assert!(states
+        .iter()
+        .all(|l| l.length_frames == states[0].length_frames));
+    assert!(states.iter().all(|l| l.position == states[0].position));
+    assert!(runtime.client().pending().is_empty());
+    assert_eq!(f.waits.get(), f.initial_waits);
 }
 
 #[shoop_test]
@@ -4671,4 +4996,496 @@ fn memory_statistics_reach_typed_and_encoded_application_snapshots() {
             .flatten()
             .any(|pool| pool.name.as_str() == "Media payload"));
     }
+}
+
+#[shoop_test]
+fn ui_immediate_recording_works_before_fresh_snapshots_and_keeps_fixed_cycle_legacy() {
+    let mut f = fixture();
+    let (mut runtime, port) = runtime(
+        &mut f.service,
+        shoop_app_client::runtime::Startup::Fresh(Vec::new()),
+    );
+    runtime
+        .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+            name: "Capture".into(),
+            audio_channels: 2,
+            midi: false,
+        }))
+        .unwrap();
+    runtime
+        .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 24);
+    let track = runtime.snapshot().tracks[1].id;
+    let loop_id = runtime.snapshot().tracks[1].loops[0].id;
+    let legacy = f.legacy_controls.get();
+    let results = runtime.client().results().len();
+    for (start, finish, expected) in [
+        (
+            LoopAction::DefaultClicked,
+            LoopAction::PlayClicked,
+            LoopMode::Playing,
+        ),
+        (
+            LoopAction::RecordClicked,
+            LoopAction::StopClicked,
+            LoopMode::Stopped,
+        ),
+    ] {
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track,
+                loop_id,
+                action: start,
+            })
+            .unwrap();
+        runtime.tick(STEP);
+        let message = port.commands.try_recv().unwrap();
+        assert!(
+            matches!(&message, ClientMessage::Immediate { commands, .. } if commands == &[immediate::Command::Transition(loop_id, TransitionMode::Recording.into())])
+        );
+        let mut bytes = [0; shoop_transport::MAX_RECORD_BYTES];
+        let len = codec::encode(&WireMessage::Client(message), &mut bytes).unwrap();
+        let WireMessage::Client(message) = codec::decode(&bytes[..len]).unwrap() else {
+            panic!()
+        };
+        f.service.handle(ConnectionId(99), message).unwrap();
+        f.service.tick(STEP);
+        assert_ne!(
+            runtime.snapshot().tracks[1].loops[0].mode,
+            LoopMode::Recording,
+            "UI still has the previous snapshot"
+        );
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track,
+                loop_id,
+                action: finish,
+            })
+            .unwrap();
+        runtime.tick(STEP);
+        let message = port.commands.try_recv().unwrap();
+        assert!(matches!(&message, ClientMessage::Immediate { .. }));
+        f.service.handle(ConnectionId(99), message).unwrap();
+        pump_runtime(&mut f.service, &mut runtime, &port, 4);
+        assert_eq!(runtime.snapshot().tracks[1].loops[0].mode, expected);
+        assert!(runtime.snapshot().tracks[1].loops[0].length_frames > 0);
+        assert_eq!(runtime.client().snapshot().unwrap().immediate.refused, 0);
+    }
+    assert_eq!(f.legacy_controls.get(), legacy);
+    assert_eq!(runtime.client().results().len(), results);
+    assert!(runtime.client().pending().is_empty());
+    runtime
+        .dispatch(AppIntent::Global(GlobalControlAction::SetApplyNCycles(2)))
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 4);
+    runtime
+        .dispatch(AppIntent::Loop {
+            track_id: track,
+            loop_id,
+            action: LoopAction::RecordClicked,
+        })
+        .unwrap();
+    runtime.tick(STEP);
+    assert!(
+        matches!(
+            port.commands.try_recv().unwrap(),
+            ClientMessage::Submit { .. }
+        ),
+        "fixed-cycle recording keeps its existing complete route"
+    );
+    assert!(f
+        .immediate_groups
+        .borrow()
+        .iter()
+        .all(|b| b.deadline.is_none()));
+}
+
+#[shoop_test]
+fn ui_immediate_grab_and_lua_continuation_include_automatic_musical_finishing() {
+    let mut f = fixture();
+    let connection = ConnectionId(1);
+    let mut client = attach(&mut f.service, 1, connection, true);
+    command(
+        &mut f.service,
+        &mut client,
+        connection,
+        Command::Global(GlobalControlAction::SetSync(false)),
+    );
+    let sync = f
+        .service
+        .snapshot()
+        .tracks
+        .iter()
+        .find(|t| t.is_sync)
+        .unwrap()
+        .clone();
+    command(
+        &mut f.service,
+        &mut client,
+        connection,
+        Command::Loop {
+            track: sync.id,
+            loop_id: sync.loops[0].id,
+            action: LoopAction::RecordClicked,
+        },
+    );
+    for _ in 0..8 {
+        f.service.tick(STEP);
+    }
+    command(
+        &mut f.service,
+        &mut client,
+        connection,
+        Command::Loop {
+            track: sync.id,
+            loop_id: sync.loops[0].id,
+            action: LoopAction::PlayClicked,
+        },
+    );
+    let (track, loops) = created(command(
+        &mut f.service,
+        &mut client,
+        connection,
+        new_track("Grab", false),
+    ));
+    let id = loops[0];
+    f.service.detach(connection);
+    let (mut runtime, port) = runtime(
+        &mut f.service,
+        shoop_app_client::runtime::Startup::Connected(Vec::new()),
+    );
+    runtime
+        .dispatch(AppIntent::Global(GlobalControlAction::SetSync(true)))
+        .unwrap();
+    for _ in 0..200 {
+        pump_runtime(&mut f.service, &mut runtime, &port, 1);
+        if runtime.client().snapshot().unwrap().global.sync && runtime.client().pending().is_empty()
+        {
+            break;
+        }
+    }
+    assert!(runtime.client().pending().is_empty());
+    assert!(
+        runtime
+            .client()
+            .snapshot()
+            .unwrap()
+            .immediate
+            .grab
+            .contains(&id),
+        "capabilities {:?}; track {:?}; backend {:?}",
+        runtime.client().snapshot().unwrap().immediate,
+        runtime.snapshot().tracks[1],
+        runtime.client().snapshot().unwrap().capabilities
+    );
+    runtime
+        .dispatch(AppIntent::Global(GlobalControlAction::SetSolo(true)))
+        .unwrap();
+    for _ in 0..200 {
+        pump_runtime(&mut f.service, &mut runtime, &port, 1);
+        if runtime.client().snapshot().unwrap().global.solo && runtime.client().pending().is_empty()
+        {
+            break;
+        }
+    }
+    assert!(runtime.client().pending().is_empty());
+    let count = f.immediate_groups.borrow().len();
+    runtime
+        .dispatch(AppIntent::Loop {
+            track_id: track,
+            loop_id: id,
+            action: LoopAction::GrabClicked,
+        })
+        .unwrap();
+    runtime.tick(STEP);
+    let message = port.commands.try_recv().unwrap();
+    assert!(
+        matches!(&message, ClientMessage::Immediate { commands, .. } if matches!(commands.last(), Some(immediate::Command::Grab { loop_id, .. }) if *loop_id == id) && commands.len() == loops.len())
+    );
+    let mut bytes = [0; shoop_transport::MAX_RECORD_BYTES];
+    let len = codec::encode(&WireMessage::Client(message), &mut bytes).unwrap();
+    let WireMessage::Client(message) = codec::decode(&bytes[..len]).unwrap() else {
+        panic!()
+    };
+    f.service.handle(ConnectionId(99), message).unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 4);
+    assert_eq!(
+        runtime.snapshot().tracks[1].loops[0].mode,
+        LoopMode::Playing,
+        "{:?}",
+        runtime.client().snapshot().unwrap().immediate
+    );
+    assert_eq!(f.immediate_groups.borrow().len(), count + 1);
+    runtime
+        .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 24);
+    assert!(runtime.client().pending().is_empty());
+    let results = runtime.client().results().len();
+    runtime.dispatch(AppIntent::AddScriptSource { name: "grab-continue.lua".into(), kind: ScriptKind::User, enabled: true,
+        source: Arc::from("shoop_announce_api_version(1,0); local c = require('shoop_control'); c.loop_adopt_ringbuffers({0,0},0,1,0,c.constants.LoopMode_Recording)") }).unwrap();
+    runtime.tick(STEP);
+    let message = port.commands.try_recv().unwrap();
+    assert!(
+        matches!(&message, ClientMessage::Immediate { commands, .. } if matches!(commands.as_slice(), [immediate::Command::AdoptRingbuffers { mode: LoopMode::Recording, .. }]))
+    );
+    f.service.handle(ConnectionId(99), message).unwrap();
+    f.service.tick(STEP);
+    assert_eq!(
+        runtime.snapshot().tracks[1].loops[0].mode,
+        LoopMode::Playing,
+        "UI has not observed continued capture yet"
+    );
+    runtime
+        .dispatch(AppIntent::Loop {
+            track_id: track,
+            loop_id: id,
+            action: LoopAction::StopClicked,
+        })
+        .unwrap();
+    runtime.tick(STEP);
+    let message = port.commands.try_recv().unwrap();
+    assert!(
+        matches!(&message, ClientMessage::Immediate { commands, .. } if commands == &[immediate::Command::Transition(id, TransitionMode::Stopped.into())])
+    );
+    f.service.handle(ConnectionId(99), message).unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 4);
+    assert_eq!(
+        runtime.snapshot().tracks[1].loops[0].mode,
+        LoopMode::Stopped
+    );
+    assert!(runtime.snapshot().tracks[1].loops[0].length_frames > 0);
+    assert_eq!(runtime.client().snapshot().unwrap().immediate.refused, 0);
+    assert_eq!(runtime.client().results().len(), results);
+    assert!(runtime.client().pending().is_empty());
+    assert!(runtime.snapshot().scripting.scripts[0]
+        .latest_error
+        .is_none());
+    runtime
+        .dispatch(AppIntent::Loop {
+            track_id: track,
+            loop_id: id,
+            action: LoopAction::GrabClicked,
+        })
+        .unwrap();
+    runtime.tick(STEP);
+    let message = port.commands.try_recv().unwrap();
+    assert!(
+        matches!(&message, ClientMessage::Immediate { commands, .. } if matches!(commands.last(), Some(immediate::Command::Grab { synced: false, .. }))),
+        "continuation and its automatic finish use one new-path gesture"
+    );
+    f.service.handle(ConnectionId(99), message).unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 40);
+    assert_eq!(
+        runtime.snapshot().tracks[1].loops[0].mode,
+        LoopMode::Playing,
+        "state {:?}; sync {:?}",
+        runtime.client().snapshot().unwrap().immediate,
+        runtime.snapshot().tracks[0].loops
+    );
+    assert!(f
+        .immediate_groups
+        .borrow()
+        .iter()
+        .all(|b| b.deadline.is_none()));
+    assert_eq!(f.waits.get(), f.initial_waits);
+}
+
+#[shoop_test]
+fn ui_immediate_musical_plans_and_lua_clearing_expose_both_entries_and_fixed_cycle_finish() {
+    let mut f = fixture();
+    let connection = ConnectionId(1);
+    let mut client = attach(&mut f.service, 1, connection, true);
+    command(
+        &mut f.service,
+        &mut client,
+        connection,
+        Command::Global(GlobalControlAction::SetSync(false)),
+    );
+    let sync = f
+        .service
+        .snapshot()
+        .tracks
+        .iter()
+        .find(|t| t.is_sync)
+        .unwrap()
+        .clone();
+    command(
+        &mut f.service,
+        &mut client,
+        connection,
+        Command::Loop {
+            track: sync.id,
+            loop_id: sync.loops[0].id,
+            action: LoopAction::RecordClicked,
+        },
+    );
+    for _ in 0..8 {
+        f.service.tick(STEP);
+    }
+    command(
+        &mut f.service,
+        &mut client,
+        connection,
+        Command::Loop {
+            track: sync.id,
+            loop_id: sync.loops[0].id,
+            action: LoopAction::PlayClicked,
+        },
+    );
+    let (track, loops) = created(command(
+        &mut f.service,
+        &mut client,
+        connection,
+        new_track("Plans", false),
+    ));
+    let id = loops[0];
+    command(
+        &mut f.service,
+        &mut client,
+        connection,
+        Command::Global(GlobalControlAction::SetSync(true)),
+    );
+    f.service.detach(connection);
+    let (mut runtime, port) = runtime(
+        &mut f.service,
+        shoop_app_client::runtime::Startup::Connected(Vec::new()),
+    );
+    pump_runtime(&mut f.service, &mut runtime, &port, 24);
+    runtime.dispatch(AppIntent::AddScriptSource { name: "install-plan.lua".into(), kind: ScriptKind::User, enabled: true, source: Arc::from("shoop_announce_api_version(1,0); local c=require('shoop_control'); c.loop_transition_plan({0,0},nil,c.constants.LoopMode_Recording,100,c.constants.LoopMode_Playing,200)") }).unwrap();
+    runtime.tick(STEP);
+    let message = port.commands.try_recv().unwrap();
+    assert!(
+        matches!(&message, ClientMessage::Immediate { commands, .. } if matches!(commands.as_slice(), [immediate::Command::Transition(_, plan)] if plan.now.is_none() && plan.first.is_some() && plan.second.is_some()))
+    );
+    let mut bytes = [0; shoop_transport::MAX_RECORD_BYTES];
+    let len = codec::encode(&WireMessage::Client(message), &mut bytes).unwrap();
+    let WireMessage::Client(message) = codec::decode(&bytes[..len]).unwrap() else {
+        panic!()
+    };
+    f.service.handle(ConnectionId(99), message).unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 4);
+    let state = runtime
+        .client()
+        .snapshot()
+        .unwrap()
+        .immediate
+        .plans
+        .iter()
+        .find(|s| s.loop_id == id)
+        .unwrap();
+    assert_eq!(state.plan.first.unwrap().mode, TransitionMode::Recording);
+    assert_eq!(state.plan.second.unwrap().mode, TransitionMode::Playing);
+    runtime.dispatch(AppIntent::AddScriptSource { name: "clear-plan.lua".into(), kind: ScriptKind::User, enabled: true, source: Arc::from("shoop_announce_api_version(1,0); require('shoop_control').loop_clear_planned_transitions({0,0},1)") }).unwrap();
+    runtime.tick(STEP);
+    let message = port.commands.try_recv().unwrap();
+    assert!(
+        matches!(&message, ClientMessage::Immediate { commands, .. } if matches!(commands.as_slice(), [immediate::Command::ClearPlannedTransitions(_, ClearPlanned::First)]))
+    );
+    f.service.handle(ConnectionId(99), message).unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 4);
+    let state = runtime
+        .client()
+        .snapshot()
+        .unwrap()
+        .immediate
+        .plans
+        .iter()
+        .find(|s| s.loop_id == id)
+        .unwrap();
+    assert!(state.plan.first.is_none());
+    assert!(state.plan.second.is_some());
+    runtime
+        .dispatch(AppIntent::Loop {
+            track_id: track,
+            loop_id: id,
+            action: LoopAction::DefaultClicked,
+        })
+        .unwrap();
+    runtime.tick(STEP);
+    let message = port.commands.try_recv().unwrap();
+    assert!(
+        matches!(&message, ClientMessage::Immediate { commands, .. } if matches!(commands.as_slice(), [immediate::Command::ClearPlannedTransitions(_, ClearPlanned::Both)]))
+    );
+    f.service.handle(ConnectionId(99), message).unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 4);
+    assert!(runtime
+        .client()
+        .snapshot()
+        .unwrap()
+        .immediate
+        .plans
+        .iter()
+        .find(|s| s.loop_id == id)
+        .unwrap()
+        .plan
+        .second
+        .is_none());
+    runtime
+        .dispatch(AppIntent::Global(GlobalControlAction::SetApplyNCycles(2)))
+        .unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 4);
+    runtime
+        .dispatch(AppIntent::Loop {
+            track_id: track,
+            loop_id: id,
+            action: LoopAction::RecordClicked,
+        })
+        .unwrap();
+    runtime.tick(STEP);
+    let message = port.commands.try_recv().unwrap();
+    assert!(
+        matches!(&message, ClientMessage::Immediate { commands, .. } if matches!(commands.as_slice(), [immediate::Command::Transition(_, plan)] if plan.first.is_some_and(|s| s.mode == TransitionMode::Recording) && plan.second.is_some_and(|s| s.mode == TransitionMode::Playing && s.skip == 2)))
+    );
+    f.service.handle(ConnectionId(99), message).unwrap();
+    pump_runtime(&mut f.service, &mut runtime, &port, 40);
+    assert_eq!(
+        runtime.snapshot().tracks[1].loops[0].mode,
+        LoopMode::Playing
+    );
+    assert!(runtime.snapshot().tracks[1].loops[0].length_frames > 0);
+    assert_eq!(runtime.client().snapshot().unwrap().immediate.refused, 0);
+    assert!(runtime
+        .snapshot()
+        .scripting
+        .scripts
+        .iter()
+        .all(|s| s.latest_error.is_none()));
+}
+
+#[shoop_test]
+fn ui_immediate_sync_loop_can_start_recording_before_any_clock_is_running() {
+    let mut f = fixture();
+    let (mut runtime, port) = runtime(
+        &mut f.service,
+        shoop_app_client::runtime::Startup::Connected(Vec::new()),
+    );
+    pump_runtime(&mut f.service, &mut runtime, &port, 8);
+    assert!(runtime.client().snapshot().unwrap().global.sync);
+    let track = runtime.snapshot().tracks[0].id;
+    let id = runtime.snapshot().tracks[0].loops[0].id;
+    for action in [LoopAction::RecordClicked, LoopAction::PlayClicked] {
+        runtime
+            .dispatch(AppIntent::Loop {
+                track_id: track,
+                loop_id: id,
+                action,
+            })
+            .unwrap();
+        runtime.tick(STEP);
+        let message = port.commands.try_recv().unwrap();
+        assert!(matches!(&message, ClientMessage::Immediate { .. }));
+        f.service.handle(ConnectionId(99), message).unwrap();
+        pump_runtime(&mut f.service, &mut runtime, &port, 8);
+    }
+    assert_eq!(
+        runtime.snapshot().tracks[0].loops[0].mode,
+        LoopMode::Playing,
+        "caps {:?}; loop {:?}",
+        runtime.client().snapshot().unwrap().immediate,
+        runtime.snapshot().tracks[0].loops[0]
+    );
+    assert!(runtime.snapshot().tracks[0].loops[0].length_frames > 0);
+    assert_eq!(runtime.client().snapshot().unwrap().immediate.refused, 0);
 }

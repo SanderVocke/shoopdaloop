@@ -12,6 +12,7 @@ mod commands;
 mod composites;
 mod deployment;
 mod duplication;
+mod immediate;
 mod management;
 mod media;
 mod monitoring;
@@ -158,6 +159,9 @@ impl CommandError {
 
 /// Owns shared state and the same backend for the complete session lifetime.
 pub struct Service {
+    incoming: VecDeque<(ConnectionId, ClientMessage)>,
+    draining: bool,
+    immediate_refused: u64,
     driver_controller: Option<Box<dyn crate::AudioDriverController>>,
     driver_state: AudioDriverRuntimeState,
     driver_job: Option<audio_driver::Job>,
@@ -297,6 +301,9 @@ impl Service {
             updates: VecDeque::with_capacity(QUEUE_CAPACITY),
             snapshots_wanted: true,
             dsp_peak: 0.,
+            incoming: VecDeque::with_capacity(QUEUE_CAPACITY),
+            draining: false,
+            immediate_refused: 0,
             pending: BTreeMap::new(),
             results: VecDeque::with_capacity(MAX_RETAINED_RESULTS),
             tracks: BTreeMap::new(),
@@ -539,7 +546,32 @@ impl Service {
             )
     }
 
+    pub fn can_receive(&self) -> bool {
+        self.incoming.len() < QUEUE_CAPACITY
+    }
+
     pub fn handle(
+        &mut self,
+        connection: ConnectionId,
+        message: ClientMessage,
+    ) -> Result<(), Refusal> {
+        if !self.can_receive() {
+            return Err(Refusal::Overloaded);
+        }
+        if !self.incoming.is_empty() {
+            self.incoming.push_back((connection, message));
+            return Ok(());
+        }
+        match self.handle_now(connection, message.clone()) {
+            Err(Refusal::Overloaded) if matches!(message, ClientMessage::Immediate { .. }) => {
+                self.incoming.push_back((connection, message));
+                Ok(())
+            }
+            result => result,
+        }
+    }
+
+    fn handle_now(
         &mut self,
         connection: ConnectionId,
         message: ClientMessage,
@@ -684,6 +716,22 @@ impl Service {
                     Some(session_epoch),
                 )?;
             }
+            ClientMessage::Immediate {
+                authority,
+                session_epoch,
+                commands,
+            } => {
+                self.check(connection, authority)?;
+                match self.immediate_commands(session_epoch, &commands) {
+                    Err(Refusal::Overloaded) => return Err(Refusal::Overloaded),
+                    Err(_) => {
+                        self.immediate_refused = self.immediate_refused.saturating_add(1);
+                        self.bump();
+                        self.publish();
+                    }
+                    Ok(()) => {}
+                }
+            }
             ClientMessage::Shutdown {
                 authority,
                 operation,
@@ -708,6 +756,7 @@ impl Service {
     }
 
     pub fn detach(&mut self, connection: ConnectionId) {
+        self.incoming.retain(|(source, _)| *source != connection);
         if self
             .lease
             .as_ref()
@@ -1059,6 +1108,27 @@ impl Service {
     }
 
     pub fn tick(&mut self, elapsed: Duration) {
+        if !self.draining {
+            self.draining = true;
+            for _ in 0..MAX_COMMANDS_PER_TURN {
+                let Some((connection, message)) = self.incoming.pop_front() else {
+                    break;
+                };
+                match self.handle_now(connection, message.clone()) {
+                    Err(Refusal::Overloaded)
+                        if matches!(message, ClientMessage::Immediate { .. }) =>
+                    {
+                        self.incoming.push_front((connection, message));
+                        break;
+                    }
+                    Err(_) => {
+                        self.detach(connection);
+                    }
+                    Ok(()) => {}
+                }
+            }
+            self.draining = false;
+        }
         if self.closed {
             self.publish();
             return;
@@ -1318,6 +1388,9 @@ impl Service {
         elapsed: Duration,
     ) {
         for _ in 0..MAX_COMMANDS_PER_TURN {
+            if !self.can_receive() {
+                break;
+            }
             match port.commands.try_recv() {
                 Ok(message) => {
                     if let Err(reason) = self.handle(connection, message) {

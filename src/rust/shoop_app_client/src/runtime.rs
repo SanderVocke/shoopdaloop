@@ -116,6 +116,7 @@ pub fn writes_audio_preferences(intent: &AppIntent) -> bool {
 }
 
 pub struct Runtime {
+    immediate_refused: Option<u64>,
     pending_audio_profiling: Option<bool>,
     client: Client,
     delivery: Box<dyn Delivery>,
@@ -163,6 +164,7 @@ impl Runtime {
         let mut scripts = ScriptManager::new_with_midi(midi);
         scripts.use_confirmed_control_reads();
         let mut runtime = Self {
+            immediate_refused: None,
             pending_audio_profiling: None,
             client,
             delivery,
@@ -356,6 +358,14 @@ impl Runtime {
             return;
         }
         self.observe_project(confirmed_audio_operation);
+        let refused = self.client.snapshot().unwrap().immediate.refused;
+        if self
+            .immediate_refused
+            .is_some_and(|previous| refused > previous)
+        {
+            self.notify("Some immediate commands failed or were refused. The display shows the observed state.");
+        }
+        self.immediate_refused = Some(refused);
         self.reconcile_results();
         let epoch = self.client.snapshot().unwrap().persistence_epoch;
         for error in self.conversions.poll(&mut self.scripts, epoch) {
@@ -460,6 +470,33 @@ impl Runtime {
             };
             let resetting = matches!(command, Command::NewSession);
             let audio_driver = matches!(command, Command::AudioDriver(_));
+            if let Some(commands) = self
+                .client
+                .snapshot()
+                .and_then(|state| immediate::group(&command, state))
+            {
+                let mut message = match self.client.immediate(commands) {
+                    Ok(message) => message,
+                    Err(error) => {
+                        self.lost(error);
+                        break;
+                    }
+                };
+                if let ClientMessage::Immediate { session_epoch, .. } = &mut message {
+                    *session_epoch = epoch;
+                }
+                match self.delivery.send(message) {
+                    Ok(()) => {
+                        self.commands.pop_front();
+                    }
+                    Err(Error::Full) => break,
+                    Err(error) => {
+                        self.lost(error);
+                        break;
+                    }
+                }
+                continue;
+            }
             let mut message = match self.client.command(command, None) {
                 Ok(message) => message,
                 Err(Error::Full) => break,
@@ -564,6 +601,7 @@ impl Runtime {
         }
     }
     fn lost(&mut self, error: Error) {
+        self.immediate_refused = None;
         self.pending_audio_profiling = None;
         if !self.loss_reported {
             self.notify(format!(

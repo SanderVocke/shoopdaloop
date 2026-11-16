@@ -16,12 +16,12 @@ use shoop_backend::{
     Backend, BackendAsyncResult, BackendAudioData, BackendAudioDataChunk, BackendBusChannelId,
     BackendBusControl, BackendBusCreation, BackendBusFxControl, BackendBusId, BackendBusRequest,
     BackendCompositeConfig, BackendCompositeId, BackendConnectionSnapshot,
-    BackendDefaultPlaybackMode, BackendDriverState, BackendGrabRequest, BackendLoopContentUpdate,
-    BackendLoopId, BackendLoopMode, BackendMidiData, BackendMidiEvent, BackendMixerSnapshot,
-    BackendPortId, BackendProcessorLatencyAdjustment, BackendRecordingOffsetAdjustment,
-    BackendSessionData, BackendSessionReplacement, BackendSnapshot, BackendStatus,
-    BackendTrackControl, BackendTrackCreation, BackendTrackFxControl, BackendTrackId,
-    BackendTrackTopology, DirectTrackRequest, TrackRequest,
+    BackendDefaultPlaybackMode, BackendDriverState, BackendGrabRequest, BackendImmediateCommand,
+    BackendLoopContentUpdate, BackendLoopId, BackendLoopMode, BackendMidiData, BackendMidiEvent,
+    BackendMixerSnapshot, BackendPortId, BackendProcessorLatencyAdjustment,
+    BackendRecordingOffsetAdjustment, BackendSessionData, BackendSessionReplacement,
+    BackendSnapshot, BackendStatus, BackendTrackControl, BackendTrackCreation,
+    BackendTrackFxControl, BackendTrackId, BackendTrackTopology, DirectTrackRequest, TrackRequest,
 };
 use shoop_rt_protocol::{Capabilities, DriverKind, DriverRunState, LoopMode, MidiMessage, Request};
 use shoop_rt_transport::carrier::Carrier;
@@ -255,6 +255,29 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
 }
 
 impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
+    fn transition_plans(&self) -> Vec<shoop_backend::BackendTransitionPlanState> {
+        self.snapshots
+            .plans
+            .iter()
+            .map(
+                |(&loop_id, &(plan, failures))| shoop_backend::BackendTransitionPlanState {
+                    loop_id,
+                    plan,
+                    failures,
+                },
+            )
+            .collect()
+    }
+    fn supports_immediate_commands(&self) -> bool {
+        true
+    }
+    fn immediate_refusals(&self) -> u64 {
+        u64::from(self.status.immediate.control_refused)
+            + u64::from(self.status.immediate.rt_refused)
+    }
+    fn submit_immediate_commands(&mut self, commands: &[BackendImmediateCommand]) -> Result<bool> {
+        self.submit_ui_immediate(commands)
+    }
     fn release_host_port_identity(&mut self, id: &str) -> bool {
         if self.replacement.is_some() || self.host_identity_in_use(id) {
             return false;
@@ -1476,7 +1499,13 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             connections,
             mixer,
             mutation_failures: core::mem::take(&mut self.mutation_failures),
-            mutation_completions: core::mem::take(&mut self.mutation_completions),
+            mutation_completions: if self.telemetry_fresh || self.link != Link::Ready {
+                core::mem::take(&mut self.mutation_completions)
+            } else {
+                self.mutation_completions
+                    .extract_if(.., |completion| completion.result.is_err())
+                    .collect()
+            },
         })
     }
 

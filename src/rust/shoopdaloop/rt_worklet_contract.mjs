@@ -125,8 +125,10 @@ const preparedBytes = node.wasm.memory.buffer.byteLength;
 
 // A Hello record split across two messages.
 node.port.deliver({ kind: 'records', bytes: Uint8Array.of(5, 0, 0) });
-const engineProtocolVersion = 26;
-node.port.deliver({ kind: 'records', bytes: Uint8Array.of(engineProtocolVersion, 0).buffer });
+const protocolSource = await readFile(new URL('../shoop_rt_protocol/src/lib.rs', import.meta.url), 'utf8');
+const engineProtocolVersion = Number(protocolSource.match(/PROTOCOL_VERSION:\s*u16\s*=\s*(\d+)/)?.[1]);
+if (!Number.isInteger(engineProtocolVersion)) throw new Error('engine protocol version is missing');
+node.port.deliver({ kind: 'records', bytes: Uint8Array.of(engineProtocolVersion & 0xff, engineProtocolVersion >>> 8).buffer });
 const disabledClockCalls = clockCalls;
 const first = quantum(node, 0.5);
 if (clockCalls - disabledClockCalls !== 2) throw new Error('disabled profiling read an extra clock');
@@ -136,7 +138,7 @@ if (replies.length !== 1 || !(replies[0].bytes instanceof ArrayBuffer)) {
   throw new Error(`expected one record batch, got ${JSON.stringify(replies)}`);
 }
 const welcome = new Uint8Array(replies[0].bytes);
-if (welcome[2] !== 0 || welcome[3] !== engineProtocolVersion || welcome[4] !== 0) {
+if (welcome[2] !== 0 || (welcome[3] | (welcome[4] << 8)) !== engineProtocolVersion) {
   throw new Error(`the first engine record is not a Welcome for version ${engineProtocolVersion}`);
 }
 if (first.outputs.some(channel => channel.some(sample => sample !== 0))) {

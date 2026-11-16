@@ -471,6 +471,24 @@ impl Service {
             _ => false,
         }
     }
+    pub(super) fn persistence_immediate_busy(&self, playback: bool) -> bool {
+        if self
+            .pending
+            .values()
+            .any(|pending| matches!(pending.effect, Effect::SessionPublished))
+        {
+            return true;
+        }
+        match self.persistence_job {
+            Some(Job::Commit(Ready {
+                input: Input::Family(_),
+                ..
+            }))
+            | Some(Job::Capture { .. }) => playback,
+            Some(Job::Commit(_)) => true,
+            _ => false,
+        }
+    }
     pub(super) fn persistence_reads_busy(&self) -> bool {
         self.duplication.is_some()
             || self.driver_freezes_session()

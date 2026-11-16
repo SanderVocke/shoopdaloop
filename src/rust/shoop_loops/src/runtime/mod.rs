@@ -33,8 +33,14 @@ pub use shared::{
     CandidateId, CandidateStatus, HistoryId, HistorySettings, HistoryStatus, LiveWriterId,
     SharedCapacity, SharedSettings, SharedTake, SharedWork,
 };
+mod immediate;
+mod immediate_grab;
+mod transition_plan;
+pub use transition_plan::{PlannedTransition, TransitionPlan};
 mod node_pairs;
 mod planner;
+pub use immediate::Immediate;
+pub use immediate_grab::ImmediateGrab;
 mod processor;
 mod topology;
 use crate::topology::staging::{Progress, StageId, Status};
@@ -558,6 +564,8 @@ pub struct View<S: Sample = f32> {
 }
 #[derive(Clone, Copy)]
 struct Take {
+    audio_only: bool,
+    publish_incomplete: bool,
     started_at: Frame,
     windows: Windows,
     writer: Option<LiveWriterId>,
@@ -675,6 +683,8 @@ pub struct LoopPlanner<S: Sample = f32> {
     input_batch: input_batch::InputBatch,
     family: Vec<family::Selection>,
     replacing_targets: Box<[bool]>,
+    musical: Box<[transition_plan::MusicalState]>,
+    musical_pulses: Box<[bool]>,
 }
 
 /// Preparation choices beyond the loops themselves; the default enables none.
@@ -1064,6 +1074,8 @@ impl<S: Sample> LoopPlanner<S> {
             input_batch: input_batch::InputBatch::prepare(slots, dummy)?,
             family: family::prepare(slots, dummy),
             replacing_targets,
+            musical: vec![transition_plan::MusicalState::default(); slots].into_boxed_slice(),
+            musical_pulses: vec![false; slots].into_boxed_slice(),
         };
         Ok(Prepared {
             planner,
@@ -1159,6 +1171,23 @@ impl<S: Sample> LoopPlanner<S> {
             return Err(Error::InvalidShape);
         }
         Ok(())
+    }
+    /// Borrow the settled resolver from the render owner; this is not a shared control view.
+    pub fn display_channels(&self, id: LoopId) -> usize {
+        self.row(id).map_or(0, |row| {
+            if self
+                .resolver
+                .state(id)
+                .is_ok_and(|state| state.mode.dry_playback())
+            {
+                row.binding.auxiliary_channels
+            } else {
+                row.binding.channels
+            }
+        })
+    }
+    pub fn resolver(&self) -> &Resolver {
+        &self.resolver
     }
     pub fn observer(&self) -> &dyn BoundaryObserver {
         &*self.observer
