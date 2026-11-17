@@ -107,7 +107,7 @@ fn host_peer() {
         ..Default::default()
     };
     if root.join("fpga-reference").exists() {
-        config.fpga_reference = true;
+        config.settings.backend = shoop_egui::BackendType::RustFpga;
         config.settings.loop_smoothing_ms = 0;
         config.settings.pools.quantum = 32;
     }
@@ -624,8 +624,6 @@ fn fpga_reference_ui_operates_and_live_loads_without_explicit_activation() {
     let context = egui::Context::default();
     shoop_egui::initialize(&context);
     let initial = app.runtime.snapshot();
-    assert_eq!(initial.track_limits.audio_channels, 1);
-    assert!(!initial.track_limits.midi);
     assert!(!initial
         .capabilities
         .supports(shoop_egui::BackendCapability::BusManagement));
@@ -649,6 +647,19 @@ fn fpga_reference_ui_operates_and_live_loads_without_explicit_activation() {
     wait(&app.runtime, |s| {
         s.tracks[0].loops[0].mode == LoopMode::Playing
     });
+    app.runtime
+        .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+            name: "Unsupported stereo".into(),
+            audio_channels: 2,
+            midi: false,
+        }))
+        .unwrap();
+    wait(&app.runtime, |s| {
+        s.notifications
+            .iter()
+            .any(|n| n.message.contains("mono audio tracks"))
+    });
+    assert_eq!(app.runtime.snapshot().tracks.len(), 1);
     app.runtime
         .dispatch(AppIntent::AddTrackWithTopology(shoop_egui::TrackSpec {
             name: "FPGA UI".into(),
@@ -750,4 +761,42 @@ fn fpga_reference_ui_operates_and_live_loads_without_explicit_activation() {
         std::thread::sleep(Duration::from_millis(5));
     }
     assert!(host.0.wait().unwrap().success());
+}
+
+#[cfg(feature = "fpga-reference")]
+#[shoop_wasm_test_support::shoop_test]
+fn fpga_reference_in_process_backend_uses_public_selector() {
+    let mut builder = shoop_settings::SettingsRegistryBuilder::default();
+    shoop_egui::register_settings(&mut builder).unwrap();
+    shoop_egui::register_audio_settings(&mut builder).unwrap();
+    shoop_egui::register_audio_backend_settings(&mut builder).unwrap();
+    shoop_egui::register_script_settings(&mut builder).unwrap();
+    let registry = builder.finish();
+    let mut document = shoop_settings::SettingsDocument::empty("test");
+    document.values.insert(
+        shoop_egui::NEW_ENGINE_LOOP_MEMORY_MB.id().into(),
+        serde_json::json!(1),
+    );
+    let settings = registry.resolve(&document, 1).snapshot;
+    let args = AppArgs::try_parse_from(["shoopdaloop", "--backend", "rust-fpga"]).unwrap();
+    let mut runtime = Runtime::new(&settings, &args).unwrap();
+    wait(&runtime, |s| {
+        s.tracks.len() == 1 && s.status.processed_frames > 0
+    });
+    runtime
+        .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+        .unwrap();
+    runtime
+        .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+            name: "In-process reference".into(),
+            audio_channels: 1,
+            midi: false,
+        }))
+        .unwrap();
+    let state = wait(&runtime, |s| {
+        s.tracks.len() == 2
+            && s.tracks[1].structural_state == shoop_egui::StructuralState::Confirmed
+    });
+    loop_action(&mut runtime, &state, LoopAction::RecordClicked);
+    wait(&runtime, |s| s.tracks[1].loops[0].length_frames >= 128);
 }

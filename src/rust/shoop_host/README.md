@@ -46,13 +46,35 @@ directory is used. Saved driver preferences override configuration; explicit aud
 CLI flags override both. See the
 [audio-driver switching contract](../../../docs/native_session_recovery/audio-driver-switching.md).
 
+## Backend selection
+
+`--backend native|rust-fpga|rtl-sim` selects the execution implementation at host
+startup. `native` is the default. `rust-fpga` requires the `fpga-reference` Cargo
+feature. `rtl-sim` is reserved for Marlin integration and currently fails at
+startup with an explicit error. Backend choice is independent of audio-driver
+and UI-transport selection; unsupported backend/driver combinations fail before
+starting a device. The old `--audio-backend` and `--fpga-reference` CLI switches
+are not accepted.
+
+The same choice is stored as `backend` in host settings and is exposed by the
+application's startup preferences and Host Manager's New Host dialog. For example:
+
+```json
+{"backend":"rust-fpga"}
+```
+
+This minimal configuration uses the reference startup defaults. Explicit
+configuration values are preserved and validated. Native driver preferences are
+used for native hosts only. Host Manager retains its separate audio-driver
+selection; choose Dummy for the current reference implementation.
+
 ## Rust FPGA reference with the UI
 
 Build the host and UI, then start the reference host:
 
 ```sh
 cargo build -p shoop_host -p shoopdaloop --no-default-features --features shoop_host/fpga-reference
-target/debug/shoop_host --fpga-reference --name "Rust FPGA reference"
+target/debug/shoop_host --backend rust-fpga --name "Rust FPGA reference"
 ```
 
 Attach with Host Manager, or use the management address printed by the host:
@@ -69,9 +91,9 @@ reference media pool is 16 MiB. Custom memory
 capacity and quantum can be supplied with `--config PATH`.
 
 The supported graph is the built-in Sync track plus one mono audio track, with up
-to 16 loops total. Add Track defaults to mono and disables unsupported MIDI,
-trigger and channel-width choices. Host capacities and optional mixer controls
-are advertised in ordinary application snapshots. Extra buses, track/Master mix
+to 16 loops total. Choose Regular, Mono and no MIDI in Add Track. The UI retains
+its normal controls; unsupported reference operations are refused through the
+ordinary error path. Extra buses, track/Master mix
 controls, effects, MIDI, monitoring, media reads/import/export, loop clearing,
 copying, composites and general routing are unavailable. Use track removal and
 creation for fresh empty loops. Loop gain, record/play/stop, sync scheduling,

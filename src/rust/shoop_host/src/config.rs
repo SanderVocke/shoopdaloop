@@ -2,10 +2,8 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 pub use shoop_app_api::HostSettings;
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-#[serde(default, deny_unknown_fields)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct HostConfig {
-    pub fpga_reference: bool,
     #[serde(flatten)]
     pub settings: HostSettings,
     pub transport: AppTransport,
@@ -25,16 +23,122 @@ impl core::ops::DerefMut for HostConfig {
 }
 impl HostConfig {
     pub fn validate(&self) -> Result<()> {
-        anyhow::ensure!(
-            !self.fpga_reference || cfg!(feature = "fpga-reference"),
-            "rebuild with the fpga-reference feature"
-        );
+        match self.settings.backend {
+            shoop_app_api::BackendType::Native => {}
+            shoop_app_api::BackendType::RustFpga => {
+                anyhow::ensure!(
+                    cfg!(feature = "fpga-reference"),
+                    "rust-fpga backend is unavailable; rebuild with the fpga-reference feature"
+                );
+                anyhow::ensure!(
+                    matches!(
+                        self.settings.driver,
+                        shoop_app_api::AudioDriverConfig::Dummy(_)
+                    ),
+                    "rust-fpga currently supports the dummy audio driver only"
+                );
+                anyhow::ensure!(
+                    self.settings.loop_smoothing_ms == 0 && self.settings.master_auto_connect,
+                    "rust-fpga currently requires zero smoothing and automatic Master connections"
+                );
+            }
+            shoop_app_api::BackendType::RtlSim => {
+                anyhow::bail!("rtl-sim backend is not integrated yet")
+            }
+        }
         self.settings.validate().map_err(anyhow::Error::msg)
+    }
+}
+
+// Host configuration is JSON. Apply backend defaults here while keeping the shared
+// HostSettings serialization unchanged for the binary application protocol.
+impl<'de> Deserialize<'de> for HostConfig {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> core::result::Result<Self, D::Error> {
+        use serde::de::Error;
+        let mut value = serde_json::Value::deserialize(deserializer)?;
+        let object = value
+            .as_object_mut()
+            .ok_or_else(|| D::Error::custom("expected a host configuration object"))?;
+        let backend = object
+            .get("backend")
+            .cloned()
+            .map(serde_json::from_value)
+            .transpose()
+            .map_err(D::Error::custom)?
+            .unwrap_or_default();
+        let defaults =
+            serde_json::to_value(HostSettings::for_backend(backend)).map_err(D::Error::custom)?;
+        for (key, default) in defaults.as_object().unwrap() {
+            if key == "pools" {
+                if let Some(pools) = object
+                    .get_mut(key)
+                    .and_then(serde_json::Value::as_object_mut)
+                {
+                    for (key, value) in default.as_object().unwrap() {
+                        pools.entry(key.clone()).or_insert_with(|| value.clone());
+                    }
+                    continue;
+                }
+            }
+            object.entry(key.clone()).or_insert_with(|| default.clone());
+        }
+        #[derive(Default, Deserialize)]
+        #[serde(default, deny_unknown_fields)]
+        struct Fields {
+            #[serde(flatten)]
+            settings: HostSettings,
+            transport: AppTransport,
+            #[cfg(feature = "testing")]
+            test_signal: bool,
+        }
+        let fields: Fields = serde_json::from_value(value).map_err(D::Error::custom)?;
+        Ok(Self {
+            settings: fields.settings,
+            transport: fields.transport,
+            #[cfg(feature = "testing")]
+            test_signal: fields.test_signal,
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
+    #[shoop_wasm_test_support::shoop_test]
+    fn backend_selection_has_defaults_and_rejects_unavailable_implementations() {
+        use shoop_app_api::{BackendType, HostSettings};
+        let native: super::HostConfig = serde_json::from_str("{}").unwrap();
+        assert_eq!(native.settings, HostSettings::default());
+        let reference: super::HostConfig =
+            serde_json::from_str(r#"{"backend":"rust-fpga"}"#).unwrap();
+        assert_eq!(reference.backend, BackendType::RustFpga);
+        assert_eq!(reference.loop_smoothing_ms, 0);
+        assert_eq!(reference.pools.loop_memory_mb, 16);
+        let partial: super::HostConfig =
+            serde_json::from_str(r#"{"backend":"rust-fpga","pools":{"quantum":16}}"#).unwrap();
+        assert_eq!(partial.pools.quantum, 16);
+        assert_eq!(partial.pools.loop_memory_mb, 16);
+        assert_eq!(
+            reference.validate().is_ok(),
+            cfg!(feature = "fpga-reference")
+        );
+        let rtl: super::HostConfig = serde_json::from_str(r#"{"backend":"rtl-sim"}"#).unwrap();
+        assert!(rtl
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("not integrated"));
+        assert!(serde_json::from_str::<super::HostConfig>(r#"{"backend":"unknown"}"#).is_err());
+        assert!(serde_json::from_str::<super::HostConfig>(r#"{"fpga_reference":true}"#).is_err());
+        let roundtrip: super::HostConfig =
+            serde_json::from_slice(&serde_json::to_vec(&reference).unwrap()).unwrap();
+        assert_eq!(roundtrip.settings, reference.settings);
+        let invalid: super::HostConfig =
+            serde_json::from_str(r#"{"backend":"rust-fpga","loop_smoothing_ms":3}"#).unwrap();
+        assert!(invalid.validate().is_err());
+    }
+
     #[shoop_wasm_test_support::shoop_test]
     fn flat_native_json_uses_the_shared_host_settings_contract() {
         let config: super::HostConfig = serde_json::from_str(r#"{"driver":{"Dummy":{"sample_rate":44100,"buffer_size":128}},"pools":{"tracks":4,"loops":16,"channels":2,"loop_memory_mb":32},"transport":"socket"}"#).unwrap();

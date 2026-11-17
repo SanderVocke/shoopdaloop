@@ -1015,6 +1015,7 @@ pub fn hosted(
     let (root, mut host, entry) = launch_with_settings(
         transport,
         shoop_app_api::HostSettings {
+            backend: shoop_app_api::BackendType::Native,
             driver: AudioDriverConfig::Dummy(DummyAudioDriverConfig {
                 sample_rate: 8000,
                 buffer_size: 128,

@@ -96,8 +96,9 @@ jobs:
           sudo apt-get install --yes libasound2-dev libudev-dev libxkbcommon-dev
       - name: Exercise the reference backend through the UI runtime
         run: |
-          cargo test --locked -p shoop_egui reference_track_dialog
-          cargo test --locked -p shoopdaloop --no-default-features --features fpga-reference fpga_reference_ui_operates
+          cargo test --locked -p shoop_egui --lib
+          cargo test --locked -p shoopdaloop --no-default-features --features fpga-reference fpga_reference_
+          cargo test --locked -p shoop_host_manager --no-default-features --features fpga-reference --lib
 
   marlin:
     name: Complete native Marlin verification

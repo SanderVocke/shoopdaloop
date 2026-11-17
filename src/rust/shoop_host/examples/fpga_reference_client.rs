@@ -106,7 +106,7 @@ fn loop_view(client: &Client, id: LoopId) -> Option<&LoopState> {
 pub fn run_with(host: PathBuf, output: PathBuf) -> Result<()> {
     std::fs::create_dir_all(&output)?;
     let output = output.canonicalize()?;
-    let config = serde_json::json!({ "fpga_reference": true,
+    let config = serde_json::json!({ "backend": "rust-fpga",
         "driver":{"Dummy":{"sample_rate":8000,"buffer_size":32}}, "loop_smoothing_ms":0,
         "processors":{"builtin_fx":"off","oxisynth":"off","fx_instances":0,"synth_instances":0,"memory_mb":16},
         "pools":{"quantum":32,"tracks":2,"loops":16,"channels":1,"loop_memory_mb":16}, "transport":"socket" });
@@ -120,7 +120,8 @@ pub fn run_with(host: PathBuf, output: PathBuf) -> Result<()> {
     }
     let mut child = ChildGuard(
         Process::new(host)
-            .arg("--fpga-reference")
+            .arg("--backend")
+            .arg("rust-fpga")
             .arg("--config")
             .arg(output.join("config.json"))
             .arg("--export-profile")

@@ -2433,7 +2433,8 @@ impl Runtime {
             settings,
             args,
             |driver, pools, transport| {
-                engine_backend::start_selected_with_processors(
+                engine_backend::start_selected_backend(
+                    args.selected_backend(settings)?,
                     driver,
                     pools,
                     transport,
@@ -2457,6 +2458,8 @@ impl Runtime {
         if let Some(target) = args.host_target()? {
             return Self::attach(settings, target);
         }
+        let backend_type = args.selected_backend(settings)?;
+        let backend_defaults = shoop_app_api::HostSettings::for_backend(backend_type);
         let mut startup_warnings = Vec::new();
         let configured_driver = match args.configured_audio_driver(settings) {
             Ok(driver) => driver,
@@ -2480,25 +2483,33 @@ impl Runtime {
         let mut engine_host = Some(started.host);
         let backend = started.backend;
         let (loop_smoothing_ms, loop_smoothing_warning) =
-            match shoop_egui::loop_edge_smoothing_ms(settings) {
-                Ok(milliseconds) => (milliseconds, None),
-                Err(error) => (
-                    3,
-                    Some(format!(
-                        "Could not use loop edge smoothing setting: {error}; using 3 ms"
-                    )),
-                ),
+            if backend_type != shoop_app_api::BackendType::Native {
+                (backend_defaults.loop_smoothing_ms, None)
+            } else {
+                match shoop_egui::loop_edge_smoothing_ms(settings) {
+                    Ok(milliseconds) => (milliseconds, None),
+                    Err(error) => (
+                        3,
+                        Some(format!(
+                            "Could not use loop edge smoothing setting: {error}; using 3 ms"
+                        )),
+                    ),
+                }
             };
         let (startup_scripts, script_paths, mut warnings) = configured_startup_scripts(settings)?;
         warnings.extend(loop_smoothing_warning);
-        let master_auto_connect = match shoop_egui::master_auto_connect(settings) {
-            Ok(enabled) => enabled,
-            Err(error) => {
-                let warning = format!(
+        let master_auto_connect = if backend_type != shoop_app_api::BackendType::Native {
+            backend_defaults.master_auto_connect
+        } else {
+            match shoop_egui::master_auto_connect(settings) {
+                Ok(enabled) => enabled,
+                Err(error) => {
+                    let warning = format!(
                     "Could not use Master auto-connect setting: {error}; using automatic connection"
                 );
-                warnings.push(warning);
-                true
+                    warnings.push(warning);
+                    true
+                }
             }
         };
         let graph = engine_host
@@ -2519,6 +2530,7 @@ impl Runtime {
             .unwrap()
             .enable_audio_driver_switching(
                 shoop_app_api::HostSettings {
+                    backend: backend_type,
                     driver: configured_driver,
                     pools,
                     processors: args.configured_processors(settings)?,
@@ -2536,7 +2548,7 @@ impl Runtime {
                 startup_warnings,
             },
             graph,
-            Some(driver),
+            driver,
         )?;
         let handle = runtime.handle();
         let preview_player = native_preview::NativePreviewPlayer::new(handle.clone())?;
@@ -3240,6 +3252,7 @@ type BrowserCatalogCompletion = (
 #[cfg(target_arch = "wasm32")]
 impl Runtime {
     fn new(settings: &shoop_settings::SettingsSnapshot, args: &AppArgs) -> anyhow::Result<Self> {
+        args.selected_backend(settings)?;
         args.selected_engine_transport(settings)?;
         anyhow::ensure!(!args.worker, "Worker mode was retired. The browser session service runs on the main thread and renders in an AudioWorklet.");
         let (midi, midi_service) = browser_midi::BrowserMidiController::new()?;
@@ -3709,8 +3722,6 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
     if args.ui_only || args.remote_profile.is_some() || args.host_address.is_some() {
         return Ok(false);
     }
-    let executable = std::env::current_exe()?;
-    let companion = shoop_host::launch::companion_path(&executable)?;
     let mut builder = SettingsRegistryBuilder::default();
     register_settings_with_appearance_defaults(&mut builder, 1.0, false)?;
     register_audio_settings_with_default_driver(&mut builder, default_audio_driver_kind())?;
@@ -3722,19 +3733,7 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
         return Ok(false);
     }
     let config = shoop_host::config::HostConfig {
-        settings: shoop_host::config::HostSettings {
-            processors: args.configured_processors(&settings)?,
-            driver: args
-                .configured_audio_driver(&settings)
-                .map_err(anyhow::Error::msg)?,
-            pools: shoop_egui::new_engine_pools_from_snapshot(&settings)
-                .map_err(anyhow::Error::msg)?,
-            master_auto_connect: shoop_egui::master_auto_connect(&settings)
-                .map_err(anyhow::Error::msg)?,
-            loop_smoothing_ms: shoop_egui::loop_edge_smoothing_ms(&settings)
-                .map_err(anyhow::Error::msg)?,
-            ..Default::default()
-        },
+        settings: args.configured_host_settings(&settings)?,
         transport: if transport == shoop_egui::EngineTransportKind::Socket {
             AppTransport::Socket
         } else {
@@ -3742,6 +3741,9 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
         },
         ..Default::default()
     };
+    config.validate()?;
+    let executable = std::env::current_exe()?;
+    let companion = shoop_host::launch::companion_path(&executable)?;
     let mut options = StartOptions::new()?;
     if let Some(endpoint) = args.endpoint {
         options.endpoint = endpoint;

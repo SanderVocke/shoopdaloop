@@ -1251,9 +1251,6 @@ pub trait Backend {
     fn requires_shutdown_transitions(&self) -> bool {
         true
     }
-    fn track_limits(&self) -> shoop_app_api::TrackLimits {
-        Default::default()
-    }
     /// Commit the graph edits made by one complete application operation.
     fn commit_graph_changes(&mut self) -> Result<()> {
         Ok(())

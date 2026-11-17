@@ -76,22 +76,6 @@ impl TrackControls {
         state: &TrackControlState,
         global_controls: &GlobalControlState,
     ) -> Vec<TrackWidgetAction> {
-        let response = ui.add_enabled_ui(
-            crate::supports(ui.ctx(), crate::BackendCapability::TrackMixControls),
-            |ui| self.show_controls(ui, state, global_controls),
-        );
-        response.response.on_disabled_hover_text(
-            crate::BackendCapability::TrackMixControls.unavailable_reason(),
-        );
-        response.inner
-    }
-
-    fn show_controls(
-        &mut self,
-        ui: &mut egui::Ui,
-        state: &TrackControlState,
-        global_controls: &GlobalControlState,
-    ) -> Vec<TrackWidgetAction> {
         let mut actions = Vec::new();
 
         if state.has_output {

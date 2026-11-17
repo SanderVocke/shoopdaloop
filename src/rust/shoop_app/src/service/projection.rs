@@ -54,7 +54,6 @@ impl Service {
             .into();
         let connections = self.connections();
         Arc::new(SessionSnapshot {
-            track_limits: self.backend.track_limits(),
             immediate: self.immediate_capabilities(),
             composites: self.composite_views(),
             preview: {
@@ -115,8 +114,6 @@ impl Service {
                 BackendCapability::TrackFx,
                 BackendCapability::BusFx,
                 BackendCapability::LoopTimingEdits,
-                BackendCapability::TrackMixControls,
-                BackendCapability::BusMixControls,
             ]
             .into_iter()
             .fold(BackendCapabilities::NONE, |caps, capability| {

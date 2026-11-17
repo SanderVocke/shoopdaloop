@@ -84,22 +84,6 @@ impl Service {
         if !self.backend.supports_immediate_commands() {
             return Err(Refusal::Unsupported);
         }
-        for command in commands {
-            let capability = match command {
-                Immediate::InputGainDb(..)
-                | Immediate::InputBalance(..)
-                | Immediate::OutputGainDb(..)
-                | Immediate::OutputBalance(..)
-                | Immediate::OutputMute(..) => Some(BackendCapability::TrackMixControls),
-                Immediate::BusGainDb(..) | Immediate::BusBalance(..) | Immediate::BusMute(..) => {
-                    Some(BackendCapability::BusMixControls)
-                }
-                _ => None,
-            };
-            if capability.is_some_and(|c| !self.backend.capabilities().supports(c)) {
-                return Err(Refusal::Unsupported);
-            }
-        }
         let playback = commands.iter().any(|command| {
             matches!(
                 command,

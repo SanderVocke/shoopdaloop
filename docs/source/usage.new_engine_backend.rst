@@ -8,10 +8,16 @@ client-side Lua. The feature parity ledger tracks remaining features.
 Enabling it
 ~~~~~~~~~~~
 
-Choose the audio driver, session delivery and prepared capacities in
-**Settings → Audio** before starting a host. Existing hosts retain their
-configuration when a UI attaches. ``--audio-backend new_engine`` remains a
-compatibility option; the legacy backend is unavailable in production.
+Choose the backend, audio driver, session delivery and prepared capacities in
+**Settings → Audio** before starting a host. ``--backend native|rust-fpga|rtl-sim``
+overrides the saved backend for that launch. Native execution is the default;
+``rust-fpga`` requires the optional ``fpga-reference`` build feature and currently
+provides a limited session with simulated input and no audio output. ``rtl-sim``
+is reserved and reports that its runtime integration is not ready. The old
+``--audio-backend`` option has been removed.
+
+Existing hosts retain their configuration when a UI attaches. An attaching UI
+does not select the backend.
 
 Drivers
 ~~~~~~~
@@ -39,10 +45,10 @@ audio is enabled:
 Capacities
 ~~~~~~~~~~
 
-The new engine prepares its tracks, loops and loop memory at startup and does
-not grow them while it runs. When **Audio backend** is set to the new engine,
-**Settings → Audio** also shows these capacity settings. Changes apply after a
-restart.
+The native engine prepares its tracks, loops and loop memory at startup and does
+not grow them while it runs. **Settings → Audio** shows these capacity settings.
+Changes apply after a restart. The experimental reference backend currently has
+its own more restricted graph support; unsupported requests report an error.
 
 .. list-table::
    :header-rows: 1

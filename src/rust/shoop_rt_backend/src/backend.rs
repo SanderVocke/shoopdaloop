@@ -306,16 +306,6 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     fn requires_shutdown_transitions(&self) -> bool {
         self.prepared_graph.is_none()
     }
-    fn track_limits(&self) -> shoop_app_api::TrackLimits {
-        self.limits
-            .map_or_else(Default::default, |l| shoop_app_api::TrackLimits {
-                min_audio_channels: u32::from(self.prepared_graph.is_some()),
-                tracks: u32::from(l.strips),
-                loops: u32::from(l.loops),
-                audio_channels: u32::from(l.strip_audio_channels),
-                midi: self.prepared_graph.is_none(),
-            })
-    }
     fn commit_graph_changes(&mut self) -> Result<()> {
         if self.prepared_graph.is_none() || self.graph_update_pending() {
             return Ok(());
@@ -449,14 +439,6 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     }
     fn capabilities(&self) -> BackendCapabilities {
         BackendCapabilities::NONE
-            .with(
-                BackendCapability::TrackMixControls,
-                self.prepared_graph.is_none(),
-            )
-            .with(
-                BackendCapability::BusMixControls,
-                self.prepared_graph.is_none(),
-            )
             .with(
                 BackendCapability::LoopDuplication,
                 self.is_ready() && self.capabilities.contains(Capabilities::CONTENT_UPLOAD),
@@ -697,9 +679,6 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         control: BackendTrackControl,
     ) -> Result<()> {
         self.ready()?;
-        self.capabilities()
-            .require(BackendCapability::TrackMixControls)
-            .map_err(anyhow::Error::msg)?;
         self.queue_track_control(track_id, control)?;
         Ok(())
     }
@@ -1438,9 +1417,6 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         Ok(())
     }
     fn set_bus_control(&mut self, id: BackendBusId, control: BackendBusControl) -> Result<()> {
-        self.capabilities()
-            .require(BackendCapability::BusMixControls)
-            .map_err(anyhow::Error::msg)?;
         self.ready()?;
         self.queue_bus_control(id, control)
     }

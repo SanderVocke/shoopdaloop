@@ -237,7 +237,7 @@ fn connect_backend(
 
 fn start_backend(config: &HostConfig) -> Result<StartedBackend> {
     #[cfg(feature = "fpga-reference")]
-    if config.fpga_reference {
+    if config.settings.backend == shoop_app_api::BackendType::RustFpga {
         ensure!(
             config.loop_smoothing_ms == 0 && config.master_auto_connect,
             "prepared reference requires zero smoothing and automatic Master connections"

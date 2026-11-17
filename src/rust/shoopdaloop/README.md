@@ -12,7 +12,15 @@ For remote native UI connections, see [trusted-LAN setup and the Cortex-A adapte
 
 ## Experimental Rust FPGA reference
 
-The UI can attach to a Rust FPGA-reference host for a restricted mono looping
+`--backend native|rust-fpga|rtl-sim` selects the backend for a newly started host,
+including the default in-process mode and detached socket/shared-memory launches.
+The Audio settings' Backend preference supplies the default; an explicit CLI
+choice overrides it. Backend choice is a startup setting. An attaching UI uses
+the host's existing backend and accepts no `--backend` override. `native` remains
+the default; `rtl-sim` reports that its runtime integration is not ready.
+
+Build with `--features fpga-reference` to use `--backend rust-fpga`. The UI can
+also attach to a separately started reference host for a restricted mono looping
 session with simulated input and no physical audio output. Graph edits activate
 automatically inside the host. See the [reference host instructions](../shoop_host/README.md#rust-fpga-reference-with-the-ui)
 for builds, startup and the supported controls. This is opt-in; normal launches
