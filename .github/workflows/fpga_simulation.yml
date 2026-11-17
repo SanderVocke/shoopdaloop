@@ -89,7 +89,16 @@ jobs:
       - name: Check command transport and protocol
         run: cargo test --locked -p shoop_rt_protocol -p shoop_rt_transport --all-features
       - name: Exercise live loading through the application API
-        run: cargo test --locked -p shoop_host --no-default-features --features fpga-reference --test prepared_graph
+        run: cargo test --locked -p shoop_host --no-default-features --features fpga-reference --test prepared_graph --test reference_activation
+      - name: Install UI build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libasound2-dev libudev-dev libxkbcommon-dev
+      - name: Exercise the reference backend through the UI runtime
+        run: |
+          cargo test --locked -p shoop_egui --lib
+          cargo test --locked -p shoopdaloop --no-default-features --features fpga-reference fpga_reference_
+          cargo test --locked -p shoop_host_manager --no-default-features --features fpga-reference --lib
 
   marlin:
     name: Complete native Marlin verification

@@ -126,7 +126,7 @@ pub const CPAL_CAPTURE_RING_FRAMES: SettingKey<u32> =
 pub const CPAL_MIDI_INPUTS: SettingKey<String> = SettingKey::new("audio.cpal.midi_inputs");
 pub const CPAL_MIDI_OUTPUTS: SettingKey<String> = SettingKey::new("audio.cpal.midi_outputs");
 pub const ENGINE_TRANSPORT: SettingKey<String> = SettingKey::new("audio.session_transport");
-pub const AUDIO_BACKEND: SettingKey<String> = SettingKey::new("audio.backend");
+pub const BACKEND: SettingKey<String> = SettingKey::new("host.backend");
 pub const NEW_ENGINE_QUANTUM: SettingKey<String> = SettingKey::new("audio.new_engine.quantum");
 pub const NEW_ENGINE_BUSES: SettingKey<u32> = SettingKey::new("audio.new_engine.buses");
 pub const NEW_ENGINE_BUS_CHANNELS: SettingKey<u32> =
@@ -648,35 +648,6 @@ pub fn carla_hosting_mode_from_snapshot(
         .map_err(|error: shoop_settings::CarlaHostingModeParseError| error.to_string())
 }
 
-/// The audio backend the application starts with.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum AudioBackendKind {
-    /// The engine supports the core looping workflow.
-    #[default]
-    NewEngine,
-}
-
-impl AudioBackendKind {
-    pub const fn id(self) -> &'static str {
-        match self {
-            Self::NewEngine => "new_engine",
-        }
-    }
-}
-
-impl std::str::FromStr for AudioBackendKind {
-    type Err = String;
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        match value {
-            "new_engine" => Ok(Self::NewEngine),
-            _ => Err(format!(
-                "unknown audio backend {value:?}; expected new_engine"
-            )),
-        }
-    }
-}
-
 /// Native new-engine message delivery, selected at application startup.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum EngineTransportKind {
@@ -757,9 +728,35 @@ pub fn processor_settings_from_snapshot(
     Ok(settings)
 }
 
+pub fn backend_from_snapshot(snapshot: &SettingsSnapshot) -> Result<crate::BackendType, String> {
+    snapshot
+        .get(BACKEND)
+        .unwrap_or_else(|_| "native".into())
+        .parse()
+}
+
 pub fn register_audio_backend_settings(
     builder: &mut SettingsRegistryBuilder,
 ) -> Result<(), SettingsRegistryError> {
+    builder.register(
+        SettingDefinition::new(
+            BACKEND,
+            "native".to_owned(),
+            "Audio",
+            "Backend",
+            "Execution implementation for a newly started host.",
+        )
+        .category_order(5)
+        .setting_order(48)
+        .effect(SettingEffect::RestartRequired)
+        .editor(SettingEditor::StringChoice {
+            choices: &[
+                ("native", "Native Rust"),
+                ("rust-fpga", "Rust FPGA reference"),
+                ("rtl-sim", "RTL simulation"),
+            ],
+        }),
+    )?;
     for (key, label, order) in [
         (PROCESSOR_FX_POLICY, "Built-in FX", 58),
         (PROCESSOR_SYNTH_POLICY, "Built-in Synth", 59),
@@ -4178,17 +4175,21 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn audio_backend_settings_default_to_legacy_and_require_a_restart() {
+    fn backend_settings_default_to_native_and_require_a_restart() {
         let mut builder = SettingsRegistryBuilder::default();
         register_audio_backend_settings(&mut builder).unwrap();
         let registry = builder.finish();
         let defaults = registry.defaults(1);
-        assert!(registry.definition(AUDIO_BACKEND.id()).is_none());
+        assert_eq!(
+            backend_from_snapshot(&defaults).unwrap(),
+            crate::BackendType::Native
+        );
         assert_eq!(
             new_engine_pools_from_snapshot(&defaults).unwrap(),
             NewEnginePools::default()
         );
         for key in [
+            BACKEND.id(),
             ENGINE_TRANSPORT.id(),
             NEW_ENGINE_QUANTUM.id(),
             NEW_ENGINE_TRACKS.id(),
@@ -4250,10 +4251,10 @@ mod tests {
         draft.set(NEW_ENGINE_QUANTUM, "32".to_owned());
         draft.set(NEW_ENGINE_CHANNELS, 9);
         assert!(registry.validate_draft(&draft).is_err());
-        for kind in [AudioBackendKind::NewEngine] {
-            assert_eq!(kind.id().parse::<AudioBackendKind>().unwrap(), kind);
+        for kind in crate::BackendType::ALL {
+            assert_eq!(kind.id().parse::<crate::BackendType>().unwrap(), kind);
         }
-        assert!("engine".parse::<AudioBackendKind>().is_err());
+        assert!("engine".parse::<crate::BackendType>().is_err());
     }
 
     #[shoop_wasm_test_support::shoop_test]

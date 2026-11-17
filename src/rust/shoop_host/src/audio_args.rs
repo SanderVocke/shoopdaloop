@@ -131,9 +131,10 @@ impl AudioArgs {
                         .map_or((arg, false), |(name, _)| (name, true))
                 });
             if let Some((_, inline)) = option.filter(|(name, _)| {
-                command
-                    .get_arguments()
-                    .any(|arg| arg.get_long() == Some(*name))
+                *name == "backend"
+                    || command
+                        .get_arguments()
+                        .any(|arg| arg.get_long() == Some(*name))
             }) {
                 if !inline {
                     arguments.next();
@@ -156,6 +157,19 @@ mod tests {
     struct Cli {
         #[command(flatten)]
         audio: AudioArgs,
+    }
+
+    #[shoop_test]
+    fn backend_override_is_not_forwarded_to_an_attaching_ui() {
+        for arguments in [
+            vec!["--backend", "rust-fpga", "--session", "take.shoop"],
+            vec!["--backend=rust-fpga", "--session", "take.shoop"],
+        ] {
+            assert_eq!(
+                AudioArgs::without_overrides(arguments.into_iter().map(OsString::from)),
+                vec![OsString::from("--session"), OsString::from("take.shoop")]
+            );
+        }
     }
 
     #[cfg(feature = "jack")]

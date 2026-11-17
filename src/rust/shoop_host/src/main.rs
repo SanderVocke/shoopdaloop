@@ -27,9 +27,12 @@ fn run() -> anyhow::Result<()> {
         audio: shoop_host::audio_args::AudioArgs,
         #[arg(long)]
         config: Option<PathBuf>,
+        /// Execution backend: native, rust-fpga or rtl-sim.
+        #[arg(long, value_parser = |value: &str| value.parse::<shoop_app_api::BackendType>())]
+        backend: Option<shoop_app_api::BackendType>,
         #[arg(long)]
         driver_preferences: Option<PathBuf>,
-        #[arg(long, hide = true, conflicts_with_all = ["config", "audio_options"])]
+        #[arg(long, hide = true, conflicts_with_all = ["config", "audio_options", "backend"])]
         launch_stdin: bool,
         #[arg(long)]
         lan: bool,
@@ -113,17 +116,31 @@ fn run() -> anyhow::Result<()> {
     }
     let mut config = match startup_config {
         Some(config) => config,
-        None if args.config.is_none() => shoop_host::config::HostConfig::default(),
+        None if args.config.is_none() => shoop_host::config::HostConfig {
+            settings: shoop_app_api::HostSettings::for_backend(args.backend.unwrap_or_default()),
+            ..Default::default()
+        },
         None => {
             let mut bytes = Vec::new();
             std::fs::File::open(args.config.as_ref().unwrap())?
                 .take(65537)
                 .read_to_end(&mut bytes)?;
             anyhow::ensure!(bytes.len() <= 65536, "host configuration exceeds 64 KiB");
-            serde_json::from_slice(&bytes)?
+            let mut value: serde_json::Value = serde_json::from_slice(&bytes)?;
+            if let Some(backend) = args.backend {
+                let object = value
+                    .as_object_mut()
+                    .ok_or_else(|| anyhow::anyhow!("expected a host configuration object"))?;
+                object.insert("backend".into(), serde_json::to_value(backend)?);
+            }
+            serde_json::from_value(value)?
         }
     };
-    if let Some(path) = &options.driver_preferences {
+    if let Some(path) = options
+        .driver_preferences
+        .as_ref()
+        .filter(|_| config.settings.backend == shoop_app_api::BackendType::Native)
+    {
         if let Some(profile) = shoop_host::audio_driver::read_preferences(path)? {
             config.settings.driver = profile;
         }

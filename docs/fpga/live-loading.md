@@ -59,10 +59,20 @@ audio continues. Fence errors retain the relevant image and ownership instead of
 destroying its program storage during processing or returning a false completion.
 
 `RtBackend` maintains an editable prepared graph and a committed runtime revision.
-Structural mutations alter the prepared graph; `ActivatePreparedGraph` installs
-it. Immediate runtime commands keep using committed identities/revisions.
-Pending handoffs exclude another structural activation. The temporary application
-client exercises this through the real `shoop_host` socket/application API.
+Structural mutations alter the prepared graph. The application service commits
+one complete operation (including its default connections) automatically, and
+tracks its completion through the ownership fence. Later application commands
+wait behind a pending switch. Lower-level clients can still stage mutations and
+request explicit activation. Immediate runtime commands use committed identities
+and revisions. Failed preparation restores the last committed control-side mirror,
+retaining monotonically allocated identities and slot generations; it does not
+roll back executing processor state.
+
+The Rust-reference host can be used with the UI with simulated input and no
+physical audio device. Backend selection is a host startup setting; unsupported
+operations use the existing refusal path without additional UI capability or
+capacity reporting. See the [host instructions](../../src/rust/shoop_host/README.md#rust-fpga-reference-with-the-ui)
+for startup and the supported graph subset.
 
 ## RTL and Marlin
 

@@ -1,7 +1,7 @@
 use anyhow::{ensure, Context, Result};
 use eframe::egui;
 use shoop_app_api::{
-    AudioDriverConfig, AudioDriverKind, CpalAudioDriverConfig, DummyAudioDriverConfig,
+    AudioDriverConfig, AudioDriverKind, BackendType, CpalAudioDriverConfig, DummyAudioDriverConfig,
     HostSettings, JackAudioDriverConfig, NewEnginePools,
 };
 use shoop_host::{
@@ -81,6 +81,7 @@ pub(super) struct Dialog {
     pub error: Option<String>,
     name: String,
     driver: AudioDriverKind,
+    backend: BackendType,
     jack_client_name: String,
     device_defaults: bool,
     sample_rate: u32,
@@ -114,6 +115,7 @@ impl Default for Dialog {
             pending: false,
             error: None,
             name: "ShoopDaLoop".into(),
+            backend: BackendType::Native,
             driver: if cfg!(feature = "cpal") {
                 AudioDriverKind::Cpal
             } else if cfg!(feature = "jack") {
@@ -287,6 +289,7 @@ impl Dialog {
         };
         let config = HostConfig {
             settings: HostSettings {
+                backend: self.backend,
                 driver,
                 pools: self.pools.clone(),
                 processors: self.processors,
@@ -362,6 +365,22 @@ impl Dialog {
             .show(ui, |ui| {
                 ui.label("Name");
                 ui.text_edit_singleline(&mut self.name);
+                ui.end_row();
+                ui.label("Backend");
+                let previous_backend = self.backend;
+                egui::ComboBox::from_id_salt("new_host_backend")
+                    .selected_text(self.backend.label())
+                    .show_ui(ui, |ui| {
+                        for kind in BackendType::ALL {
+                            ui.selectable_value(&mut self.backend, kind, kind.label());
+                        }
+                    });
+                if previous_backend != self.backend {
+                    let defaults = HostSettings::for_backend(self.backend);
+                    self.smoothing = defaults.loop_smoothing_ms;
+                    self.master_auto_connect = defaults.master_auto_connect;
+                    self.pools.loop_memory_mb = defaults.pools.loop_memory_mb;
+                }
                 ui.end_row();
                 ui.label("Audio driver");
                 let previous = self.driver;
@@ -731,6 +750,30 @@ mod tests {
             ..Default::default()
         }
     }
+    #[shoop_wasm_test_support::shoop_test]
+    fn backend_selection_is_preserved_and_driver_remains_independent() {
+        let mut dialog = Dialog::default();
+        dialog.backend = BackendType::RustFpga;
+        dialog.driver = AudioDriverKind::Dummy;
+        dialog.smoothing = 0;
+        let request = dialog.request();
+        if cfg!(feature = "fpga-reference") {
+            assert_eq!(
+                request.unwrap().config.settings.backend,
+                BackendType::RustFpga
+            );
+        } else {
+            assert!(request.err().unwrap().to_string().contains("unavailable"));
+        }
+        dialog.backend = BackendType::RtlSim;
+        assert!(dialog
+            .request()
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("not integrated"));
+    }
+
     #[shoop_wasm_test_support::shoop_test]
     fn planning_a_host_uses_shared_config_without_writing_files() {
         let root = tempfile::tempdir().unwrap();

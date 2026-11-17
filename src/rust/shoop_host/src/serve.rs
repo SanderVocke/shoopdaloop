@@ -237,7 +237,7 @@ fn connect_backend(
 
 fn start_backend(config: &HostConfig) -> Result<StartedBackend> {
     #[cfg(feature = "fpga-reference")]
-    if config.fpga_reference {
+    if config.settings.backend == shoop_app_api::BackendType::RustFpga {
         ensure!(
             config.loop_smoothing_ms == 0 && config.master_auto_connect,
             "prepared reference requires zero smoothing and automatic Master connections"
@@ -255,7 +255,7 @@ fn start_backend(config: &HostConfig) -> Result<StartedBackend> {
             reference_driver: Some(started.driver),
             host: None,
             backend: Box::new(backend),
-            warnings: vec![],
+            warnings: vec!["Rust FPGA reference: simulated input, no audio device. Supports one mono audio track alongside Sync, up to 16 loops total; track and Master controls stay at defaults.".into()],
             settings: config.settings.clone(),
         });
     }
@@ -355,7 +355,7 @@ pub fn run_with_ready(
     ensure!(options.name.len() <= 128, "invalid host identity or name");
     let StartedBackend {
         #[cfg(feature = "fpga-reference")]
-            reference_driver: _reference_driver,
+        mut reference_driver,
         mut host,
         backend,
         warnings,
@@ -561,6 +561,13 @@ pub fn run_with_ready(
                 cleanup_deadline = Some(Instant::now() + Duration::from_secs(5));
             }
             let result = driver_owner.as_mut().and_then(|owner| owner.poll_stop());
+            #[cfg(feature = "fpga-reference")]
+            let result = if let Some(driver) = reference_driver.take() {
+                drop(driver);
+                Some(Ok(()))
+            } else {
+                result
+            };
             let result = result.or_else(|| {
                 cleanup_deadline
                     .is_some_and(|deadline| Instant::now() >= deadline)

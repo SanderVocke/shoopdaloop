@@ -4167,11 +4167,53 @@ impl Default for NewEnginePools {
     }
 }
 
+/// Execution implementation selected when a host starts.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
+pub enum BackendType {
+    #[default]
+    Native,
+    RustFpga,
+    RtlSim,
+}
+impl BackendType {
+    pub const ALL: [Self; 3] = [Self::Native, Self::RustFpga, Self::RtlSim];
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::Native => "native",
+            Self::RustFpga => "rust-fpga",
+            Self::RtlSim => "rtl-sim",
+        }
+    }
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Native => "Native Rust",
+            Self::RustFpga => "Rust FPGA reference",
+            Self::RtlSim => "RTL simulation",
+        }
+    }
+}
+impl core::str::FromStr for BackendType {
+    type Err = String;
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "native" => Ok(Self::Native),
+            "rust-fpga" => Ok(Self::RustFpga),
+            "rtl-sim" => Ok(Self::RtlSim),
+            _ => Err(format!(
+                "unknown backend {value:?}; expected native, rust-fpga or rtl-sim"
+            )),
+        }
+    }
+}
+
 /// Host-owned startup settings shared by native configuration and UI launch defaults.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(default, deny_unknown_fields))]
 pub struct HostSettings {
+    pub backend: BackendType,
     pub driver: AudioDriverConfig,
     pub pools: NewEnginePools,
     pub processors: ProcessorSettings,
@@ -4181,6 +4223,7 @@ pub struct HostSettings {
 impl Default for HostSettings {
     fn default() -> Self {
         Self {
+            backend: BackendType::Native,
             driver: Default::default(),
             pools: Default::default(),
             processors: ProcessorSettings::default(),
@@ -4190,6 +4233,17 @@ impl Default for HostSettings {
     }
 }
 impl HostSettings {
+    pub fn for_backend(backend: BackendType) -> Self {
+        let mut settings = Self {
+            backend,
+            ..Default::default()
+        };
+        if backend != BackendType::Native {
+            settings.loop_smoothing_ms = 0;
+            settings.pools.loop_memory_mb = 16;
+        }
+        settings
+    }
     pub fn validate(&self) -> Result<(), &'static str> {
         self.processors
             .validate()

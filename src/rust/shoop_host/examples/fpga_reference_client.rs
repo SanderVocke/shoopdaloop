@@ -106,7 +106,7 @@ fn loop_view(client: &Client, id: LoopId) -> Option<&LoopState> {
 pub fn run_with(host: PathBuf, output: PathBuf) -> Result<()> {
     std::fs::create_dir_all(&output)?;
     let output = output.canonicalize()?;
-    let config = serde_json::json!({ "fpga_reference": true,
+    let config = serde_json::json!({ "backend": "rust-fpga",
         "driver":{"Dummy":{"sample_rate":8000,"buffer_size":32}}, "loop_smoothing_ms":0,
         "processors":{"builtin_fx":"off","oxisynth":"off","fx_instances":0,"synth_instances":0,"memory_mb":16},
         "pools":{"quantum":32,"tracks":2,"loops":16,"channels":1,"loop_memory_mb":16}, "transport":"socket" });
@@ -120,6 +120,8 @@ pub fn run_with(host: PathBuf, output: PathBuf) -> Result<()> {
     }
     let mut child = ChildGuard(
         Process::new(host)
+            .arg("--backend")
+            .arg("rust-fpga")
             .arg("--config")
             .arg(output.join("config.json"))
             .arg("--export-profile")
@@ -204,7 +206,6 @@ pub fn run_with(host: PathBuf, output: PathBuf) -> Result<()> {
             connected: true,
         },
     )?;
-    accepted(&mut client, &mut connection, Command::ActivatePreparedGraph)?;
     ensure!(
         matches!(
             command(&mut client, &mut connection, Command::ActivatePreparedGraph)?,
@@ -236,7 +237,6 @@ pub fn run_with(host: PathBuf, output: PathBuf) -> Result<()> {
     let Outcome::LoopCreated { loop_id: added, .. } = created else {
         anyhow::bail!("missing added loop identity");
     };
-    accepted(&mut client, &mut connection, Command::ActivatePreparedGraph)?;
     wait(&mut client, &mut connection, |c| {
         loop_view(c, sync)
             .is_some_and(|l| l.mode == LoopMode::Recording && l.length_frames > capture_before)
@@ -300,7 +300,6 @@ pub fn run_with(host: PathBuf, output: PathBuf) -> Result<()> {
             connected: false,
         },
     )?;
-    accepted(&mut client, &mut connection, Command::ActivatePreparedGraph)?;
     wait(&mut client, &mut connection, |c| {
         loop_view(c, voice).is_some_and(|l| {
             l.mode == LoopMode::Playing && l.gain == 0.5 && l.length_frames == recorded
@@ -362,7 +361,6 @@ pub fn run_with(host: PathBuf, output: PathBuf) -> Result<()> {
             connected: true,
         },
     )?;
-    accepted(&mut client, &mut connection, Command::ActivatePreparedGraph)?;
     wait(&mut client, &mut connection, |c| {
         loop_view(c, replacement_voice)
             .is_some_and(|l| l.mode == LoopMode::Stopped && l.length_frames == 0 && l.gain == 1.0)

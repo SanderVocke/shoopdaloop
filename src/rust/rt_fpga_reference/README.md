@@ -184,8 +184,11 @@ unsupported. Native physical capture-resource preflight is not modeled;
 media/job failures use the reference pipeline fault contract. Arbitrary partial
 host callbacks and native host buffering are outside this endpoint. The endpoint
 supports the existing carrier protocol subset. The optional `shoop_host`
-`fpga-reference` feature selects a restricted application profile, exercised by
-its temporary application client; it does not provide general UI integration.
+`fpga-reference` feature selects a limited mono graph implementation with automatic
+host-managed activation. It supports the UI with simulated input and no physical
+audio output; see the [host instructions](../shoop_host/README.md#rust-fpga-reference-with-the-ui)
+for startup and supported controls. Application clients and UI-runtime tests both
+exercise live graph replacement through the outward-facing socket API.
 
 The `rt_interface` tests compare responses and all four loop snapshot record
 classes through the carrier endpoint exactly against the production native

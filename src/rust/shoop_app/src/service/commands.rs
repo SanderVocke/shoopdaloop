@@ -1295,7 +1295,9 @@ impl Service {
             self.piano(PianoAction::ReleaseAll)?;
             self.midi_panic(true)?;
         }
-        self.transition(self.ordered_loops(), BackendLoopMode::Stopped, None, None)?;
+        if self.backend.requires_shutdown_transitions() {
+            self.transition(self.ordered_loops(), BackendLoopMode::Stopped, None, None)?;
+        }
         Ok(Effect::Shutdown)
     }
 

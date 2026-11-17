@@ -28,34 +28,48 @@ pub(crate) struct NewEngine {
 
 /// Stops the native host when dropped. Drop the backend first: the engine then sees its
 /// client leave and resets MIDI before the driver stops.
-pub(crate) struct EngineHost(Option<NativeHost>, Option<shoop_host::audio_driver::Owner>);
+pub(crate) struct EngineHost {
+    native: Option<NativeHost>,
+    owner: Option<shoop_host::audio_driver::Owner>,
+    #[cfg(feature = "fpga-reference")]
+    reference: Option<shoop_host::fpga_reference::Driver>,
+}
 impl EngineHost {
     pub fn enable_audio_driver_switching(
         &mut self,
         settings: shoop_app_api::HostSettings,
         preferences: shoop_host::audio_driver::PreferenceWriter,
-    ) -> Result<Box<dyn shoop_app::AudioDriverController>> {
+    ) -> Result<Option<Box<dyn shoop_app::AudioDriverController>>> {
+        #[cfg(feature = "fpga-reference")]
+        if self.reference.is_some() {
+            return Ok(None);
+        }
         let host = self
-            .0
+            .native
             .take()
             .ok_or_else(|| anyhow!("native host is already managed"))?;
         let (owner, controller) =
             shoop_host::audio_driver::controller(host, settings, preferences)?;
-        self.1 = Some(owner);
-        Ok(controller)
+        self.owner = Some(owner);
+        Ok(Some(controller))
     }
     pub fn graph_controller(&self) -> Option<Box<dyn shoop_app::HostGraphController>> {
-        shoop_host::host_graph::controller(self.0.as_ref()?)
+        shoop_host::host_graph::controller(self.native.as_ref()?)
     }
     #[cfg(test)]
     pub fn stop(mut self) -> Vec<String> {
         self.stop_host()
     }
     fn stop_host(&mut self) -> Vec<String> {
-        if let Some(mut owner) = self.1.take() {
+        #[cfg(feature = "fpga-reference")]
+        if let Some(driver) = self.reference.take() {
+            drop(driver);
+            return Vec::new();
+        }
+        if let Some(mut owner) = self.owner.take() {
             return owner.stop().err().into_iter().collect();
         }
-        let Some(host) = self.0.take() else {
+        let Some(host) = self.native.take() else {
             return Vec::new();
         };
         let report = host.stop();
@@ -76,6 +90,54 @@ impl Drop for EngineHost {
     fn drop(&mut self) {
         self.stop_host();
     }
+}
+
+pub(crate) fn start_selected_backend(
+    backend: shoop_app_api::BackendType,
+    driver: &AudioDriverConfig,
+    pools: &NewEnginePools,
+    transport: shoop_egui::EngineTransportKind,
+    processors: shoop_app_api::ProcessorSettings,
+) -> Result<NewEngine> {
+    let config = shoop_host::config::HostConfig {
+        settings: shoop_app_api::HostSettings {
+            driver: driver.clone(),
+            pools: *pools,
+            processors,
+            ..shoop_app_api::HostSettings::for_backend(backend)
+        },
+        ..Default::default()
+    };
+    config.validate()?;
+    if backend == shoop_app_api::BackendType::Native {
+        return start_selected_with_processors(driver, pools, transport, processors);
+    }
+    anyhow::ensure!(
+        transport == shoop_egui::EngineTransportKind::InProcess,
+        "external sessions must be launched as independent host/UI roles"
+    );
+    #[cfg(feature = "fpga-reference")]
+    if backend == shoop_app_api::BackendType::RustFpga {
+        let AudioDriverConfig::Dummy(dummy) = driver else {
+            anyhow::bail!("rust-fpga currently supports the dummy audio driver only")
+        };
+        let started = shoop_host::fpga_reference::start_with_memory(
+            pools.quantum,
+            dummy.sample_rate,
+            pools.loop_memory_mb,
+        )?;
+        let backend = RtBackend::connect(started.client, Sleep::default())?;
+        return Ok(NewEngine {
+            backend: Box::new(backend),
+            host: EngineHost {
+                native: None,
+                owner: None,
+                reference: Some(started.driver),
+            },
+            warnings: vec!["Rust FPGA reference: simulated input, no audio device.".into()],
+        });
+    }
+    anyhow::bail!("backend {} is unavailable in this build", backend.id())
 }
 
 /// Starts the new engine backend on the configured driver. A device driver that fails to
@@ -150,7 +212,12 @@ fn start_with(
         buffer_size: status.buffer_frames,
         instance_name: started.host.instance_name().to_owned(),
     };
-    let host = EngineHost(Some(started.host), None);
+    let host = EngineHost {
+        native: Some(started.host),
+        owner: None,
+        #[cfg(feature = "fpga-reference")]
+        reference: None,
+    };
     let mut backend = RtBackend::connect(started.client, Sleep::default())
         .map_err(|error| anyhow!("the new engine backend did not connect: {error:#}"))?;
     backend.set_driver_profile(profile);

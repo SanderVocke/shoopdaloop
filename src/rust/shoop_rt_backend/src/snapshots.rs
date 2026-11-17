@@ -305,6 +305,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
         self.snapshots.accepted = chunk.sequence;
         self.snapshots.frame = Some(header.frame);
+        if self.prepared_graph.is_some() {
+            self.status.frame = header.frame;
+            self.status.callbacks = header.frame / u64::from(self.limits().quantum.max(1));
+        }
         self.snapshots.observed_configuration = Some((header.graph, header.topology));
         if header.frame > self.snapshots.after {
             self.telemetry_fresh = true;
