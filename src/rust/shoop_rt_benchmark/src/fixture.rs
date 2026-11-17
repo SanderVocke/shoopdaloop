@@ -8,6 +8,9 @@ pub const CHANNELS: u32 = 2;
 pub const QUANTUM: usize = 32;
 pub const SAMPLE_RATE: u32 = 48_000;
 pub const FPGA_CLOCK_HZ: u64 = 150_000_000;
+pub const FPGA_CHUNK_FRAMES: usize = 32;
+pub const FPGA_BLOCK_CHUNKS: usize = 32;
+pub const FPGA_BLOCK_FRAMES: usize = FPGA_CHUNK_FRAMES * FPGA_BLOCK_CHUNKS;
 pub const MEMORY_BYTES: usize = 16 * 1024 * 1024;
 pub const GAIN: f32 = 1. / 128.;
 
@@ -92,6 +95,8 @@ pub struct Fixture {
     pub quantum: usize,
     pub sample_rate: u32,
     pub fpga_clock_hz: u64,
+    pub fpga_chunk_frames: usize,
+    pub fpga_block_chunks: usize,
     pub memory_bytes: usize,
     pub history_seconds: u32,
     pub smoothing_frames: u32,
@@ -113,7 +118,7 @@ impl Fixture {
                 count,
             })
         };
-        let span = 8;
+        let span = FPGA_BLOCK_FRAMES / QUANTUM + 1;
         let iterations = match preset {
             Preset::Smoke => 2,
             Preset::Standard => 8,
@@ -174,7 +179,7 @@ impl Fixture {
             }
         };
         Self {
-            version: 2,
+            version: 3,
             preset,
             pattern,
             loops: LOOPS,
@@ -182,6 +187,8 @@ impl Fixture {
             quantum: QUANTUM,
             sample_rate: SAMPLE_RATE,
             fpga_clock_hz: FPGA_CLOCK_HZ,
+            fpga_chunk_frames: FPGA_CHUNK_FRAMES,
+            fpga_block_chunks: FPGA_BLOCK_CHUNKS,
             memory_bytes: MEMORY_BYTES,
             history_seconds: 1,
             smoothing_frames: 0,
@@ -220,6 +227,11 @@ mod tests {
         for pattern in [Pattern::Lifecycle, Pattern::Mixed, Pattern::Grab] {
             let f = Fixture::new(Preset::Smoke, pattern);
             assert_eq!((f.loops, f.channels, f.quantum), (64, 2, 32));
+            assert_eq!(
+                (f.version, f.fpga_chunk_frames, f.fpga_block_chunks),
+                (3, 32, 32)
+            );
+            assert!(f.record_frames > f.fpga_chunk_frames * f.fpga_block_chunks);
             assert!(f.events.windows(2).all(|v| v[0].callback < v[1].callback));
             assert!(f.events.last().unwrap().callback < f.callbacks);
             assert_eq!(

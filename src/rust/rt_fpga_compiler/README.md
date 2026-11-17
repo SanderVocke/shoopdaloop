@@ -19,6 +19,12 @@ gain, capture, summation and stereo Master output operations. Every buffer is
 written once per quantum, including intermediate sums. Input and output routing
 are explicit per loop. This restricted graph has no processors, MIDI or smoothing.
 
+`compile_with_channels` supports up to 64 mono or stereo loops with independent
+channel media. `compile_with_geometry(channels, chunk_frames)` additionally sets
+the media chunk size, which must divide the quantum. The older entry points
+retain one-frame chunks. Allocation block size belongs to the prepared media
+store and must match the target's physical geometry.
+
 The emitted `LogicalStateProgram` describes semantic operations, logical state
 and buffer slots, loop identities/sync relationships, initial values, resource
 requirements and control/meter bindings. It contains no packed instruction words

@@ -74,3 +74,22 @@ fn invalid_graphs_fail_before_target_preparation() {
         Err(CompileError::InvalidProgram)
     );
 }
+
+#[shoop_test]
+fn stereo_graph_accepts_quantum_sized_chunks_and_preserves_legacy_geometry() {
+    let description = GraphDescription {
+        quantum: 32,
+        loops: (0..64).map(|i| row(i, (i > 0).then_some(0))).collect(),
+    };
+    let mut program = description.compile_with_geometry(2, 32).unwrap();
+    assert_eq!(program.chunk_frames, 32);
+    assert_eq!(program.loops.len(), 64);
+    program.chunk_frames = 1;
+    assert_eq!(program, description.compile_with_channels(2).unwrap());
+    for chunk_frames in [0, 3, 64] {
+        assert_eq!(
+            description.compile_with_geometry(2, chunk_frames),
+            Err(CompileError::InvalidProgram)
+        );
+    }
+}

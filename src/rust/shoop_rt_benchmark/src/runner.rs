@@ -319,6 +319,7 @@ fn execute<E: Endpoint, D: Driver>(
     let mut total_wraps = 0;
     let mut replaced_takes = 0;
     let mut retired_plans = 0;
+    let mut cold_block_boundary_verified = false;
     let origin = driver.next_frame();
     let mut delayed: [std::collections::VecDeque<f32>; 2] = std::array::from_fn(|_| {
         let mut queue = std::collections::VecDeque::with_capacity(driver.latency_frames() + 1);
@@ -431,6 +432,22 @@ fn execute<E: Endpoint, D: Driver>(
                 state.mode,
                 expected[i]
             );
+            if let Some(event) =
+                event.filter(|event| (event.first..event.first + event.count).contains(&(i as u32)))
+            {
+                let length = match event.action {
+                    Action::Play => Some(frame - origin - captures[i]),
+                    Action::Grab => Some(report.fixture.record_frames as u64),
+                    _ => None,
+                };
+                if let Some(length) = length {
+                    ensure!(
+                        state.length == length,
+                        "loop {i} captured {} frames; expected {length}",
+                        state.length
+                    );
+                }
+            }
             recording += u32::from(state.mode == 2);
             playing += u32::from(state.mode == 1);
             wraps += u32::from(
@@ -470,6 +487,15 @@ fn execute<E: Endpoint, D: Driver>(
         }
         growth += u64::from(measurement.storage_bytes > last_storage);
         released += u64::from(measurement.storage_bytes < last_storage);
+        if callback == fixture::FPGA_BLOCK_FRAMES / QUANTUM
+            && !matches!(report.fixture.pattern, fixture::Pattern::Grab)
+        {
+            ensure!(
+                recording == LOOPS && measurement.storage_bytes > last_storage,
+                "cold recordings did not grow at the FPGA block boundary"
+            );
+            cold_block_boundary_verified = true;
+        }
         let observed_event = if callback_retired > 0 {
             Some("planned-transitions-due")
         } else if measurement.storage_bytes > last_storage && recording > 0 {
@@ -505,6 +531,12 @@ fn execute<E: Endpoint, D: Driver>(
         "recordings did not grow across allocation boundaries"
     );
     ensure!(total_wraps >= LOOPS, "insufficient playback wrap coverage");
+    if !matches!(report.fixture.pattern, fixture::Pattern::Grab) {
+        ensure!(
+            cold_block_boundary_verified,
+            "missing cold block-boundary coverage"
+        );
+    }
     if matches!(report.fixture.pattern, fixture::Pattern::Lifecycle) {
         ensure!(
             replaced_takes >= u64::from(LOOPS),
@@ -517,6 +549,7 @@ fn execute<E: Endpoint, D: Driver>(
     }
     report.coverage = serde_json::json!({"storage_growth_callbacks":growth,"storage_release_callbacks":released,
         "wraps":total_wraps,"replaced_takes":replaced_takes,"retired_plan_slots":retired_plans,"complete_samples":report.callbacks.len()==report.fixture.callbacks,
+        "cold_block_boundary_verified":cold_block_boundary_verified,
         "stereo_samples_checked":true,"commands_verified":report.events.iter().map(|e| e.commands).sum::<usize>()});
     Ok(())
 }

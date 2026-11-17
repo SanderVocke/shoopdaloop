@@ -48,6 +48,21 @@ def validate(run):
         raise ValueError("fixture hash differs from the retained fixture")
     if (f["loops"], f["channels"], f["quantum"], f["sample_rate"], f["fpga_clock_hz"]) != (64, 2, 32, 48_000, FPGA_CLOCK_HZ):
         raise ValueError("result does not use the standard 64-stereo/Q32/150 MHz fixture")
+    if f.get("version", 0) >= 3:
+        if (f["fpga_chunk_frames"], f["fpga_block_chunks"]) != (32, 32):
+            raise ValueError("fixture FPGA media geometry must use 32-frame chunks and 32-chunk blocks")
+        if run["backend"].startswith("fpga-"):
+            metadata = run["metadata"]
+            if (metadata.get("chunk_frames"), metadata.get("block_chunks")) != (32, 32):
+                raise ValueError("backend media geometry differs from the fixture")
+            if run["backend"] == "fpga-rtl":
+                profiles = {(int(p["CHUNK_FRAMES"]), int(p["BLOCK_CHUNKS"]))
+                    for model in metadata.get("provenance", {}).get("models", [])
+                    if "CHUNK_FRAMES" in (p := model.get("parameters", {})) and "BLOCK_CHUNKS" in p}
+                if profiles != {(32, 32)}:
+                    raise ValueError("elaborated RTL media geometry differs from the fixture")
+        if f["pattern"] != "grab" and not run["coverage"].get("cold_block_boundary_verified"):
+            raise ValueError("cold recording block-boundary growth was not verified")
     rows = run["callbacks"]
     if run["backend"] == "fpga-rtl":
         metadata = run.get("metadata", {})
@@ -89,6 +104,19 @@ def summarize(run, filename):
                 worst_callback={key: worst[key] for key in ("callback", "frame", "event")} if worst else None)
 
 
+def media_geometry(run):
+    fixture, metadata = run.get("fixture", {}), run.get("metadata", {})
+    if "fpga_chunk_frames" in fixture:
+        return fixture["fpga_chunk_frames"], fixture["fpga_block_chunks"]
+    if "chunk_frames" in metadata and "block_chunks" in metadata:
+        return metadata["chunk_frames"], metadata["block_chunks"]
+    for model in metadata.get("provenance", {}).get("models", []):
+        p = model.get("parameters", {})
+        if "CHUNK_FRAMES" in p and "BLOCK_CHUNKS" in p:
+            return int(p["CHUNK_FRAMES"]), int(p["BLOCK_CHUNKS"])
+    return None
+
+
 def render(output, manifest, runs, summary):
     import matplotlib
     matplotlib.use("Agg")
@@ -119,7 +147,8 @@ def render(output, manifest, runs, summary):
         plt.close(fig)
         for start in range(0, len(table), 15):
             fig, ax = plt.subplots(figsize=(11.7, 8.3)); ax.axis("off")
-            ax.set_title("Standard RT benchmark: 64 stereo loops, Q=callback=32" + (" — incomplete campaign" if not summary["complete"] else ""), pad=25)
+            profiles = "; ".join(f'{p["chunk_frames"]}-frame chunks × {p["block_chunks"]}-chunk blocks ({p["block_frames"]} frames/block)' for p in summary["fpga_media_geometries"])
+            ax.set_title("Standard RT benchmark: 64 stereo loops, Q=callback=32" + (" — incomplete campaign" if not summary["complete"] else "") + "\nFPGA media: " + (profiles or "not recorded"), pad=18)
             t = ax.table(cellText=table[start:start + 15], colLabels=["Backend / pattern / run", "Status", "N", "Median µs", "p95 µs", "p99 µs", "Max µs", "Max budget %", "Over budget"], loc="center", cellLoc="center", colWidths=[.22, .14, .07, .09, .09, .09, .09, .11, .10])
             t.auto_set_font_size(False); t.set_fontsize(8); t.scale(1, 2.2)
             fig.text(.06, .05, "FPGA RTL: cycles / 150. Rust reference: functional model CPU time.\n48 kHz reference budget: 666.67 µs. Observed maxima; no deadline enforcement. p95/p99 require N≥20/100.", fontsize=9)
@@ -202,7 +231,9 @@ def report(output):
             run["callbacks"] = []; run["events"] = []
         runs.append(run); rows.append(summarize(run, filename))
     complete = manifest.get("complete", True) and len(rows) == manifest.get("expected_runs", len(rows))
-    summary = dict(schema_version=1, complete=complete, fpga_clock_hz=FPGA_CLOCK_HZ, budget_us=BUDGET_US, runs=rows)
+    profiles = sorted({profile for run in runs if (profile := media_geometry(run)) is not None})
+    summary = dict(schema_version=1, complete=complete, fpga_clock_hz=FPGA_CLOCK_HZ, budget_us=BUDGET_US,
+        fpga_media_geometries=[dict(chunk_frames=c, block_chunks=b, block_frames=c*b) for c,b in profiles], runs=rows)
     (output / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     with (output / "callbacks.csv").open("w", newline="") as stream:
         diagnostics = ["reads", "writes", "reclaimed", "state_cycles", "job_cycles", "queue_peak", "axi_address_stall_cycles", "axi_write_stall_cycles", "axi_response_stall_cycles", "dram_queue_stall_cycles"]
@@ -300,6 +331,15 @@ def main():
                         except OSError as exc:
                             value = dict(backend=backend, fixture=dict(pattern=pattern), status="missing-prerequisite", error=str(exc))
                 value["repeat"] = repeat; path.write_text(json.dumps(value, indent=2) + "\n")
+                f = value.get("fixture", {})
+                if value["status"] in ("completed", "unsupported") and (f.get("version"), f.get("fpga_chunk_frames"), f.get("fpga_block_chunks")) != (3, 32, 32):
+                    path.rename(path.with_suffix(".incompatible.json"))
+                    value = dict(backend=backend, fixture=dict(pattern=pattern), repeat=repeat, status="incorrect-results",
+                        error="new campaigns require fixture revision 3 with 32-frame chunks and 32-chunk blocks; original result retained as .incompatible.json")
+                    path.write_text(json.dumps(value, indent=2) + "\n")
+                    f = value["fixture"]
+                if "fpga_chunk_frames" in f:
+                    manifest["fpga_media_geometry"] = dict(chunk_frames=f["fpga_chunk_frames"], block_chunks=f["fpga_block_chunks"])
                 manifest["files"].append(filename)
                 (output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     manifest["complete"] = True

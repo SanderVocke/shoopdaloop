@@ -36,7 +36,7 @@ pub fn graph() -> Result<rt_fpga_compiler::LogicalStateProgram> {
             })
             .collect(),
     }
-    .compile_with_channels(CHANNELS)
+    .compile_with_geometry(CHANNELS, FPGA_CHUNK_FRAMES as u32)
     .map_err(|e| anyhow!("graph preparation: {e:?}"))
 }
 
@@ -104,7 +104,9 @@ impl Driver for Reference {
         }
         Ok(Measurement {
             elapsed_ns,
-            storage_bytes: ((self.media.slot_count() - self.media.free_chunk_count()) * 4) as u64,
+            storage_bytes: ((self.media.slot_count() - self.media.free_chunk_count())
+                * FPGA_CHUNK_FRAMES
+                * 4) as u64,
             ..Default::default()
         })
     }
@@ -112,19 +114,21 @@ impl Driver for Reference {
         &self.samples[channel]
     }
     fn metadata(&self) -> serde_json::Value {
-        serde_json::json!({"driver":"stepped-dummy","numeric":"Q8.24","timing":"functional-model-host-wall-clock","chunk_frames":1,"block_chunks":128,"media_capacity_bytes":MEMORY_BYTES,"stereo_media_views":LOOPS*CHANNELS,"smoothing_frames":0,"ramp_frames":0})
+        serde_json::json!({"driver":"stepped-dummy","numeric":"Q8.24","timing":"functional-model-host-wall-clock","chunk_frames":FPGA_CHUNK_FRAMES,"block_chunks":FPGA_BLOCK_CHUNKS,"media_capacity_bytes":MEMORY_BYTES,"stereo_media_views":LOOPS*CHANNELS,"smoothing_frames":0,"ramp_frames":0})
     }
 }
 
 pub fn prepare() -> Result<(Control<rt::Endpoint>, Reference)> {
     let logical = graph()?;
-    let mut media = MediaStore::with_block_chunk_limit(1, 128, MEMORY_BYTES / 4)
-        .map_err(|e| anyhow!("media: {e:?}"))?;
+    let chunks = MEMORY_BYTES / (FPGA_CHUNK_FRAMES * 4);
+    let mut media =
+        MediaStore::with_block_chunk_limit(FPGA_CHUNK_FRAMES, FPGA_BLOCK_CHUNKS, chunks)
+            .map_err(|e| anyhow!("media: {e:?}"))?;
     media
         .create_recordings((LOOPS * CHANNELS) as usize)
         .map_err(|e| anyhow!("views: {e:?}"))?;
     media
-        .reserve_chunk_capacity(MEMORY_BYTES / 4)
+        .reserve_chunk_capacity(chunks)
         .map_err(|e| anyhow!("reserve: {e:?}"))?;
     for view in 0..LOOPS * CHANNELS {
         media

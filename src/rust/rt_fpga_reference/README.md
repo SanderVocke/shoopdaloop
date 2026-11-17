@@ -75,6 +75,9 @@ program and `StateProgramTarget` trait. Its graph frontend accepts one to sixtee
 mono primitive loops with explicit input/output routing and sync relationships.
 For prepared native/offline clients, `GraphDescription::compile_with_channels`
 supports up to 64 mono or stereo loops with independent media per channel. The
+`compile_with_geometry` variant also selects media chunk size; the shared
+benchmark uses 32-frame chunks with 32-chunk allocation blocks. Existing graph
+entry points preserve their one-frame media profile. The
 application prepared-graph protocol remains limited to sixteen mono loops.
 The `MonoLoops` and `SyncSmoothing` fixed fixtures remain available.
 `compiler::RustTarget` builds the typed SP

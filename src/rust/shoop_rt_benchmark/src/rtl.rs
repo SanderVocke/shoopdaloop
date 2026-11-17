@@ -62,8 +62,12 @@ pub fn run(fixture: Fixture, memory_model: &str, output: &Path) -> Result<Run> {
         _ => anyhow::bail!("unsupported memory model"),
     };
     let geometry = Geometry::new(
-        [u64::from(LOOPS * CHANNELS), MEMORY_BYTES as u64 / 4, 1],
-        128,
+        [
+            u64::from(LOOPS * CHANNELS),
+            (MEMORY_BYTES / (FPGA_CHUNK_FRAMES * 4)) as u64,
+            FPGA_CHUNK_FRAMES as u64,
+        ],
+        FPGA_BLOCK_CHUNKS as u64,
     );
     let logical = reference::graph()?;
     let views: Vec<_> = (0..u64::from(LOOPS * CHANNELS)).collect();
@@ -111,7 +115,7 @@ pub fn run(fixture: Fixture, memory_model: &str, output: &Path) -> Result<Run> {
         }
     }
     pipeline.audio.load_compiled(&mut sim, &compiled);
-    pipeline.store.load(&mut sim, &serde_json::json!({"chunk_frames":1,"block_chunks":128,"chunk_limit":MEMORY_BYTES/4,
+    pipeline.store.load(&mut sim, &serde_json::json!({"chunk_frames":FPGA_CHUNK_FRAMES,"block_chunks":FPGA_BLOCK_CHUNKS,"chunk_limit":MEMORY_BYTES/(FPGA_CHUNK_FRAMES*4),
         "samples":[],"free_chunks":[],"views":(0..LOOPS*CHANNELS).map(|_| serde_json::json!({"chunks":[],"frames":0})).collect::<Vec<_>>()}));
     pipeline.store.memory.borrow_mut().control.stalls = false;
     let (control, execution) =
@@ -468,7 +472,7 @@ impl Driver for Rtl<'_> {
             writes: memory.writes() - writes,
             storage_bytes: (self.sim.model.get("core.media.slot_count")
                 - self.sim.model.get("core.media.free_count"))
-                * 128
+                * FPGA_BLOCK_FRAMES as u64
                 * 4,
             reclaimed: 0,
             state_cycles: activity.state - activity_start.state,
@@ -488,6 +492,7 @@ impl Driver for Rtl<'_> {
     }
     fn metadata(&self) -> serde_json::Value {
         serde_json::json!({"driver":"stepped-dummy","numeric":"Q8.24","timing":"rtl-fabric-cycles","fabric_hz":FPGA_CLOCK_HZ,"memory_model":format!("{:?}",self.mode),"memory_seed":MEMORY_SEED,
+            "chunk_frames":FPGA_CHUNK_FRAMES,"block_chunks":FPGA_BLOCK_CHUNKS,"media_capacity_bytes":MEMORY_BYTES,
             "window":"command configuration, input upload, SP/JP/media execution, mandatory completion and queue drain; passive output/state probes do not advance clocks",
             "arm_service_time":"not modeled","waveform_clock_period_ps":6666,"simulation_optimization":3,"simulation_tracing":false,"provenance":rt_fpga_testbench::report::provenance(),"memory":self.pipeline.store.memory.borrow_mut().report(false)})
     }

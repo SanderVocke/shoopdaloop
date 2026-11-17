@@ -27,6 +27,15 @@ impl GraphDescription {
         &self,
         channels: u32,
     ) -> Result<LogicalStateProgram, CompileError> {
+        self.compile_with_geometry(channels, 1)
+    }
+
+    /// Compile mono or stereo loops with an explicit media chunk size.
+    pub fn compile_with_geometry(
+        &self,
+        channels: u32,
+        chunk_frames: u32,
+    ) -> Result<LogicalStateProgram, CompileError> {
         if self.loops.is_empty() || self.loops.len() > 64 || !(1..=2).contains(&channels) {
             return Err(CompileError::InvalidProgram);
         }
@@ -137,7 +146,7 @@ impl GraphDescription {
         }
         let program = LogicalStateProgram {
             quantum: self.quantum,
-            chunk_frames: 1,
+            chunk_frames,
             sync_pass,
             audio_pass,
             initial_state,

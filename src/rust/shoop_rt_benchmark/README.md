@@ -17,16 +17,22 @@ smoothing or ramps, no MIDI, and no plugins or physical drivers. The two channel
 use different deterministic bounded saw signals. Signal time starts at fixture
 callback zero, independently of setup's processing-frame origin.
 
-Both presets retain this layout and their recording duration of 256 frames,
-which crosses the current media allocation boundaries. Smoke runs two lifecycle
+Both FPGA adapters use 32-frame media chunks and 32-chunk blocks: 1,024 frames
+per allocation block. This profile is part of the hashed fixture, checked against
+the elaborated RTL parameters, and printed on the PDF overview.
+
+Both presets retain this layout and their recording duration of 1,056 frames,
+which crosses the FPGA block boundary. The runner requires observable storage
+growth at the first all-loop crossing and checks finalized recording lengths.
+Smoke runs two lifecycle
 iterations and one independent repetition; standard runs eight iterations and
 three independent CPU timing repetitions. Deterministic RTL replay runs once by
 default; `--repeats` overrides either backend's repetition count. Mixed turnover
-uses 256, 288, and 352-frame recordings, alternating halves. Every run retains its complete versioned fixture
+uses 1,056, 1,088, and 1,152-frame recordings, alternating halves. Every run retains its complete versioned fixture
 and hash, callback timing, event execution frames, and coverage observations.
-Fixture version 2 shortens the original 1,024-frame recording to cross the same
-128-frame allocation boundaries with greater transition-event density and less
-simulation time. Grab storms use a separate 32,768-frame clock after filling the
+Fixture version 3 replaces the previous one-frame-chunk/128-chunk-block profile;
+results from those geometries should be compared as different configurations.
+Report-only mode still labels retained older geometry correctly. Grab storms use a separate 32,768-frame clock after filling the
 history for at least twice its retention duration; adjacent full-cycle windows
 exercise ring wrap while staying within one second of retention.
 The native adapter reserves a separate 64 MiB shared-take pool so all 64 long
@@ -44,8 +50,9 @@ currently contributes one quantum.
 
 The CPU and Rust FPGA reference use the same fixture and sample checks. The
 reference's Q8.24 CPU time describes its functional model, not FPGA hardware
-speed. The graph compiler's `compile_with_channels` frontend prepares up to 64
-mono or stereo loops with independent channel media. The legacy application
+speed. The graph compiler's `compile_with_geometry` frontend prepares up to 64
+mono or stereo loops with independent channel media and explicit chunk size.
+The existing compiler entry points retain their original one-frame chunks. The legacy application
 prepared-graph profile remains restricted to 16 mono loops.
 
 RTL is opt-in (`cargo build --release -p shoop_rt_benchmark --features rtl`). It

@@ -12,6 +12,14 @@ Implementation is complete on `feat/standard-rt-benchmark`. See
 [`shoop_rt_benchmark`](src/rust/shoop_rt_benchmark/README.md) for the entry point,
 fixture contract, supported operations, and measurement boundaries.
 
+The requested geometry update uses **32-frame chunks and 32-chunk blocks** on
+both FPGA adapters. Fixture revision 3 records for 1,056 frames so that all 64
+loops cross the 1,024-frame allocation boundary together. Its complete-callback
+cycle window and 150 MHz assumption are unchanged. The PDF overview names the
+geometry, and result validation checks both adapter metadata and elaborated RTL
+parameters. The updated campaign is being validated; earlier measurements below
+are retained as historical evidence for the previous geometry.
+
 **Integration points and prerequisites identified at the baseline.**
 
 - Both `shoop_rt_engine::ControlEndpoint` and the FPGA reference endpoint implement
@@ -229,11 +237,11 @@ incomplete.
 - [x] **Report and orchestration:** implement the single entry point and PDF
   generation. Check known timing samples, conversion arithmetic, missing-backend
   reporting, and representative PDF pages.
-- [x] **End-to-end acceptance:** run the full fixture through every available
+- [ ] **End-to-end acceptance:** run the full fixture through every available
   target, regenerate its PDF from raw data, and verify that all required event
   coverage and correctness checks passed.
 
-Verification: the full standard campaign at `8d9c5bdc` completed all 21 runs:
+Previous-geometry verification: the full standard campaign at `8d9c5bdc` completed all 21 runs:
 17 completed and four explicitly unsupported FPGA grab runs. It retained 37,015
 callback measurements. Every completed run passed exact stereo sample checks,
 same-frame command verification, allocation growth, storage release and wrapping
@@ -298,6 +306,6 @@ simultaneous starts, complete raw measurements, and the PDF.
   approval.
 
 For implementation, create a benchmark feature branch based on
-`feat/backend-replacement`, push it, and open a PR. Work through CI failures until
-CI is green. Check for automated review and repeatedly address its feedback as
-appropriate until the reviewer approves. Leave merging to the user.
+`feat/backend-replacement`, push it, and open a PR. The user has taken over CI and
+review follow-up; validate locally and push updates without polling CI. Leave
+merging to the user.

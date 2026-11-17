@@ -61,11 +61,14 @@ fn common_fixture_checks_stereo_samples_and_simultaneous_transitions_on_both_rus
             reference.error.as_deref().unwrap_or("unknown error")
         );
         assert_eq!(cpu.fixture_sha256, reference.fixture_sha256);
+        assert_eq!(reference.metadata["chunk_frames"], 32);
+        assert_eq!(reference.metadata["block_chunks"], 32);
         for run in [cpu, reference] {
             assert_eq!(run.events[0].commands, 64);
             assert_eq!(run.events[0].groups, 2);
             assert!(run.events.iter().all(|event| event.same_frame));
             assert!(run.coverage["wraps"].as_u64().unwrap() >= 64);
+            assert_eq!(run.coverage["cold_block_boundary_verified"], true);
         }
     }
 }
