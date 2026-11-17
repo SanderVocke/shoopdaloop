@@ -7,10 +7,11 @@ use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use crate::HostPorts;
+use crate::{Template, MAX_HOST_PORTS};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{BufferSize, Error, ErrorKind, StreamConfig, SupportedBufferSize};
 use rtrb::{Consumer, Producer, RingBuffer};
-use shoop_rt_engine::{EngineDescription, HostPorts, MAX_HOST_PORTS};
 use shoop_rt_protocol::{DriverKind, DriverRunState};
 
 use crate::cycle::Cycle;
@@ -514,10 +515,7 @@ impl Drop for Streams {
 }
 
 /// Open the configured CPAL host, devices and midir ports and start rendering.
-pub(crate) fn start(
-    config: &CpalConfig,
-    engine: &EngineDescription,
-) -> Result<Started, StartError> {
+pub(crate) fn start(config: &CpalConfig, engine: &Template) -> Result<Started, StartError> {
     let host = select_host(config.host.as_deref())?;
     let mut warnings = Vec::new();
     let midi = crate::open_midi(
@@ -542,7 +540,7 @@ pub(crate) fn start(
 pub fn start_cpal<H>(
     host: &H,
     config: &CpalConfig,
-    engine: &EngineDescription,
+    engine: &Template,
     midi: MidiDevices,
 ) -> Result<Started, StartError>
 where
@@ -672,7 +670,7 @@ where
         sinks.push((receiver, port.sink));
     }
     let cycle = Cycle::new(render, shared.clone(), &description, receivers, senders)
-        .map_err(|error| StartError::Prepare(shoop_rt_engine::PrepareError::Runtime(error)))?;
+        .map_err(|error| StartError::Prepare(error))?;
     let pump = if sinks.is_empty() {
         None
     } else {

@@ -160,8 +160,13 @@ pub fn spawn(
             })();
             let _ = sender.send(result);
         });
+        let readiness = if config.backend == shoop_app_api::BackendType::RtlSim {
+            Duration::from_secs(300)
+        } else {
+            Duration::from_secs(12)
+        };
         let mut target = receiver
-            .recv_timeout(Duration::from_secs(12))
+            .recv_timeout(readiness)
             .context("host readiness timed out")??;
         ensure!(
             target.process == shoop_host_processes::identity(child.id())?

@@ -261,3 +261,8 @@ MIDI and the worklet ABI. They create a strip and a loop, record and play it bac
 xruns and load, timestamped MIDI in and out, bounded delivery per quantum,
 framing errors and reconnection. Every module call is heap-guarded. A separate
 test exercises the exported functions.
+
+With `fpga-reference`, the browser main side compiles bounded Rust-target images
+and the worklet loads them from its MessagePort handler outside rendering. The
+render contract, quantum adapter and ownership/fence rules match native hosting.
+See [shared drivers](../../../docs/shared_drivers.md) for startup and latency.

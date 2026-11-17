@@ -118,14 +118,7 @@ pub(crate) fn start_selected_backend(
     );
     #[cfg(feature = "fpga-reference")]
     if backend == shoop_app_api::BackendType::RustFpga {
-        let AudioDriverConfig::Dummy(dummy) = driver else {
-            anyhow::bail!("rust-fpga currently supports the dummy audio driver only")
-        };
-        let started = shoop_host::fpga_reference::start_with_memory(
-            pools.quantum,
-            dummy.sample_rate,
-            pools.loop_memory_mb,
-        )?;
+        let started = shoop_host::fpga_reference::start_selected(driver, pools, DUMMY_INPUT)?;
         let backend = RtBackend::connect(started.client, Sleep::default())?;
         return Ok(NewEngine {
             backend: Box::new(backend),
@@ -134,7 +127,21 @@ pub(crate) fn start_selected_backend(
                 owner: None,
                 reference: Some(started.driver),
             },
-            warnings: vec!["Rust FPGA reference: simulated input, no audio device.".into()],
+            warnings: vec!["Rust FPGA reference: limited mono looping profile.".into()],
+        });
+    }
+    #[cfg(feature = "rtl-sim")]
+    if backend == shoop_app_api::BackendType::RtlSim {
+        let started = shoop_host::rtl_sim::start_selected(driver, pools, DUMMY_INPUT)?;
+        let backend = RtBackend::connect(started.client, Sleep::default())?;
+        return Ok(NewEngine {
+            backend: Box::new(backend),
+            host: EngineHost {
+                native: None,
+                owner: None,
+                reference: Some(started.driver),
+            },
+            warnings: vec!["Marlin RTL simulation: limited mono looping profile.".into()],
         });
     }
     anyhow::bail!("backend {} is unavailable in this build", backend.id())
@@ -339,6 +346,7 @@ pub(crate) mod tests {
     fn dummy_settings_map_onto_the_dummy_driver() {
         let (native, warnings) = native_config(
             &AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                mode: Default::default(),
                 sample_rate: 32_000,
                 buffer_size: 64,
             }),
@@ -594,7 +602,7 @@ mod jack_acceptance {
         assert_eq!(active.configured, config);
         assert!(active.instance_name.starts_with("jack-application-"));
         assert!(engine.warnings.is_empty());
-        let host = engine.host.0.as_ref().unwrap();
+        let host = engine.host.native.as_ref().unwrap();
         assert_eq!(active.sample_rate, host.status().driver.sample_rate);
         assert_eq!(active.buffer_size, host.status().driver.buffer_frames);
     }

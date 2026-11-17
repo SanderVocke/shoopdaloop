@@ -129,6 +129,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             DriverKind::Dummy => (
                 AudioDriverKind::Dummy,
                 AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: driver.sample_rate,
                     buffer_size: driver.buffer_frames,
                 }),

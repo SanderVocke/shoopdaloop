@@ -147,6 +147,15 @@ impl Processor {
     pub fn pipeline(&self) -> &Pipeline {
         &self.engine.pipeline
     }
+    pub fn publish_initial_snapshot(&mut self) {
+        let mut publication = Publication {
+            loops: &mut self.engine.loops,
+            configuration: self.engine.configuration,
+            bytes: &mut self.snapshot_bytes,
+            publisher: &mut self.ports.snapshots,
+        };
+        publication.settled(self.engine.pipeline.state());
+    }
     pub fn handoff_pending(&self) -> bool {
         self.pending_switch.is_some()
     }
@@ -517,7 +526,9 @@ impl Observer for Publication<'_> {
             }
         }
         snapshot::Header {
-            frame: state.frame() - u64::from(state.quantum().expect("owned loop state")),
+            frame: state
+                .frame()
+                .saturating_sub(u64::from(state.quantum().unwrap_or(0))),
             graph: self.configuration.graph,
             topology: self.configuration.topology,
             records,

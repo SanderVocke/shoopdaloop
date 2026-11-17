@@ -1,22 +1,22 @@
 #![cfg(all(feature = "sim", not(target_arch = "wasm32")))]
 
-pub mod bits;
-pub mod clock;
+pub use rt_fpga_rtl::bits;
+pub use rt_fpga_rtl::clock;
 pub mod codec;
-pub mod compiler;
-pub mod component;
+pub use rt_fpga_rtl::compiler;
+pub use rt_fpga_rtl::component;
 pub mod drivers;
 pub mod loop_image;
 pub mod memory;
-pub mod model;
+pub use rt_fpga_rtl::model;
 pub mod protocol;
 pub mod random;
 pub mod reference;
-pub mod report;
-pub mod sim;
+pub use rt_fpga_rtl::report;
+pub use rt_fpga_rtl::sim;
 pub mod suites;
 pub mod timing;
-pub mod toolchain;
+pub use rt_fpga_rtl::toolchain;
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 

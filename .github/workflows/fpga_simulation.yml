@@ -15,6 +15,11 @@ on:
       - 'src/rust/rt_backend_testbench/**'
       - 'src/rust/rt_fpga_compiler/**'
       - 'src/rust/rt_fpga_testbench/**'
+      - 'src/rust/rt_fpga_rtl/**'
+      - 'src/rust/shoop_rt_host_marlin/**'
+      - 'src/rust/shoop_rt_host_reference/**'
+      - 'src/rust/shoop_audio_drivers/**'
+      - 'src/rust/shoop_rt_host_worklet/**'
       - 'src/rust/rt_fpga_reference/**'
       - 'third_party/marlin-verilator/**'
       - 'src/rust/rt_runtime/**'
@@ -42,6 +47,11 @@ on:
     paths:
       - 'fpga/**'
       - 'src/rust/rt_fpga_testbench/**'
+      - 'src/rust/rt_fpga_rtl/**'
+      - 'src/rust/shoop_rt_host_marlin/**'
+      - 'src/rust/shoop_rt_host_reference/**'
+      - 'src/rust/shoop_audio_drivers/**'
+      - 'src/rust/shoop_rt_host_worklet/**'
       - 'src/rust/rt_fpga_compiler/**'
       - 'src/rust/rt_fpga_reference/**'
       - 'src/rust/shoop_rt_backend/**'
@@ -86,6 +96,10 @@ jobs:
           cargo build --locked -p rt_fpga_reference --no-default-features
           cargo test --locked -p rt_fpga_reference --no-default-features
           cargo test --locked -p rt_fpga_reference --all-features
+      - name: Check portable rendering and reference worklet transport
+        run: |
+          cargo test --locked -p shoop_rt_host_reference
+          cargo test --locked -p shoop_rt_host_worklet --no-default-features --features fpga-reference,exports
       - name: Check command transport and protocol
         run: cargo test --locked -p shoop_rt_protocol -p shoop_rt_transport --all-features
       - name: Exercise live loading through the application API
@@ -147,6 +161,11 @@ jobs:
           set -o pipefail
           cargo test --locked -p rt_fpga_testbench --features sim -- --nocapture 2>&1 | tee work/marlin-suite/regression.log
           cargo check --locked -p rt_fpga_testbench
+      - name: Check serialized Marlin application and bridge
+        run: |
+          cargo test --locked -p rt_fpga_rtl --features sim
+          cargo test --locked -p shoop_rt_host_marlin --features sim
+          cargo test --locked -p shoop_host --no-default-features --features rtl-sim --test marlin_application --test marlin_drivers
       - name: Verify production CPU numeric checks
         run: |
           cargo test --locked -p rt_backend_testbench

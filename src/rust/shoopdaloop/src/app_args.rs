@@ -155,8 +155,8 @@ impl AppArgs {
             .map_err(anyhow::Error::msg)?;
         #[cfg(target_arch = "wasm32")]
         anyhow::ensure!(
-            backend == shoop_app_api::BackendType::Native,
-            "only the native backend is available in the browser"
+            backend == shoop_app_api::BackendType::Native || (backend == shoop_app_api::BackendType::RustFpga && cfg!(feature="fpga-reference")),
+            "browser backend unavailable: build with fpga-reference for rust-fpga; rtl-sim requires a native host"
         );
         Ok(backend)
     }
@@ -165,10 +165,6 @@ impl AppArgs {
         &self,
         settings: &shoop_settings::SettingsSnapshot,
     ) -> Result<shoop_egui::AudioDriverConfig, String> {
-        let backend = self.selected_backend(settings).map_err(|e| e.to_string())?;
-        if backend != shoop_app_api::BackendType::Native && self.audio.audio_driver.is_none() {
-            return Ok(shoop_app_api::HostSettings::for_backend(backend).driver);
-        }
         let kind = self
             .audio
             .audio_driver

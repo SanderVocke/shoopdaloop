@@ -136,11 +136,7 @@ fn run() -> anyhow::Result<()> {
             serde_json::from_value(value)?
         }
     };
-    if let Some(path) = options
-        .driver_preferences
-        .as_ref()
-        .filter(|_| config.settings.backend == shoop_app_api::BackendType::Native)
-    {
+    if let Some(path) = options.driver_preferences.as_ref() {
         if let Some(profile) = shoop_host::audio_driver::read_preferences(path)? {
             config.settings.driver = profile;
         }

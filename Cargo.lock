@@ -4784,6 +4784,7 @@ dependencies = [
 name = "rt_fpga_compiler"
 version = "0.3.0"
 dependencies = [
+ "serde",
  "shoop_wasm_test_support",
 ]
 
@@ -4805,20 +4806,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "rt_fpga_rtl"
+version = "0.3.0"
+dependencies = [
+ "marlin",
+ "quick-xml",
+ "rt_fpga_compiler",
+ "serde",
+ "serde_json",
+ "sha2",
+ "shoop_wasm_test_support",
+]
+
+[[package]]
 name = "rt_fpga_testbench"
 version = "0.3.0"
 dependencies = [
  "clap",
  "libloading 0.9.0",
- "marlin",
- "quick-xml",
  "rt_audio_math",
  "rt_fpga_compiler",
  "rt_fpga_reference",
+ "rt_fpga_rtl",
  "rt_runtime",
  "serde",
  "serde_json",
- "sha2",
  "shoop_rt_protocol",
  "shoop_rt_transport",
  "shoop_wasm_test_support",
@@ -5268,6 +5280,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_audio_drivers"
+version = "0.3.0"
+dependencies = [
+ "arrayvec",
+ "cpal 0.18.2",
+ "getrandom 0.4.3",
+ "jack",
+ "midir",
+ "rt_runtime",
+ "rtrb",
+ "shoop_jack",
+ "shoop_port_graph",
+ "shoop_rt_engine",
+ "shoop_rt_protocol",
+ "shoop_rt_transport",
+ "shoop_wasm_test_support",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tracing",
+]
+
+[[package]]
 name = "shoop_audio_protocol"
 version = "0.3.0"
 dependencies = [
@@ -5442,12 +5476,14 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",
+ "cpal 0.18.2",
  "directories",
  "getrandom 0.4.3",
  "jack",
  "nix",
  "rt_fpga_compiler",
  "rt_fpga_reference",
+ "rt_runtime",
  "serde",
  "serde_json",
  "sha2",
@@ -5456,6 +5492,7 @@ dependencies = [
  "shoop_app_client",
  "shoop_app_connection",
  "shoop_app_protocol",
+ "shoop_audio_drivers",
  "shoop_backend",
  "shoop_deployment_protocol",
  "shoop_format_conversion",
@@ -5465,7 +5502,9 @@ dependencies = [
  "shoop_port_graph",
  "shoop_rt_backend",
  "shoop_rt_engine",
+ "shoop_rt_host_marlin",
  "shoop_rt_host_native",
+ "shoop_rt_host_reference",
  "shoop_rt_protocol",
  "shoop_rt_transport",
  "shoop_transport",
@@ -5690,16 +5729,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_rt_host_marlin"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "rt_fpga_compiler",
+ "rt_fpga_reference",
+ "rt_fpga_rtl",
+ "rt_runtime",
+ "rtrb",
+ "shoop_rt_host_reference",
+ "shoop_rt_protocol",
+ "shoop_rt_transport",
+ "shoop_wasm_test_support",
+]
+
+[[package]]
 name = "shoop_rt_host_native"
 version = "0.3.0"
 dependencies = [
- "arrayvec",
  "cpal 0.18.2",
- "getrandom 0.4.3",
  "jack",
- "midir",
  "rt_runtime",
- "rtrb",
+ "shoop_audio_drivers",
  "shoop_host_processors",
  "shoop_jack",
  "shoop_port_graph",
@@ -5709,7 +5761,6 @@ dependencies = [
  "shoop_wasm_test_support",
  "tempfile",
  "thiserror 2.0.21",
- "tracing",
 ]
 
 [[package]]
@@ -5733,12 +5784,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_rt_host_reference"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "rt_fpga_compiler",
+ "rt_fpga_reference",
+ "rt_runtime",
+ "shoop_rt_protocol",
+ "shoop_rt_transport",
+ "shoop_wasm_test_support",
+]
+
+[[package]]
 name = "shoop_rt_host_worklet"
 version = "0.3.0"
 dependencies = [
+ "anyhow",
+ "rt_fpga_compiler",
+ "rt_fpga_reference",
  "rt_runtime",
+ "serde_json",
  "shoop_host_processors",
  "shoop_rt_engine",
+ "shoop_rt_host_reference",
  "shoop_rt_protocol",
  "shoop_rt_transport",
  "shoop_rt_transport_message_port",

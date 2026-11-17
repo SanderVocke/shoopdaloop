@@ -3,15 +3,16 @@
 
 use std::sync::Arc;
 
+use crate::{BufferConfig, Processor, MAX_HOST_PORTS};
 use arrayvec::ArrayVec;
 use rt_runtime::buffer::{AudioBlock, MidiBlock, MidiBuffer};
-use shoop_rt_engine::{EngineDescription, Phase, Render, MAX_HOST_PORTS};
+use rt_runtime::host::Phase;
 
 use crate::midi::{MidiInputReceiver, MidiOutputSender};
 use crate::status::Shared;
 
 pub(crate) struct Cycle {
-    render: Render,
+    render: Box<dyn Processor>,
     shared: Arc<Shared>,
     inputs: Box<[Box<[f32]>]>,
     outputs: Box<[Box<[f32]>]>,
@@ -27,9 +28,9 @@ impl Cycle {
     /// `receivers` and `senders` follow the description's MIDI ports; ports without
     /// one are silent or discarded.
     pub fn new(
-        render: Render,
+        render: Box<dyn Processor>,
         shared: Arc<Shared>,
-        description: &EngineDescription,
+        description: &BufferConfig,
         mut receivers: Vec<Option<MidiInputReceiver>>,
         mut senders: Vec<Option<MidiOutputSender>>,
     ) -> Result<Self, rt_runtime::Error> {
@@ -137,27 +138,13 @@ impl Cycle {
         for input in self.midi_inputs.iter_mut() {
             input.clear();
         }
-        if self.shared.benchmark.is_some() {
-            let work = self.render.resource_work().1;
-            let diagnostics = self.render.diagnostics();
-            let graph = self.render.audio_graph_work();
-            let pool = self.render.audio_pool_work();
-            for (target, value) in self.shared.benchmark_work.iter().zip([
-                work.copied_bytes as u64,
-                work.validation_steps as u64,
-                diagnostics.nodes_processed as u64,
-                u64::from(result.is_err()),
-                graph.forwarded,
-                graph.materialized,
-                graph.sample_reads,
-                graph.sample_writes,
-                graph.arena_peak_samples,
-                pool.index_allocated,
-                pool.index_reclaimed,
-                pool.shared_payloads,
-                pool.payload_live,
-                pool.index_live,
-            ]) {
+        if self.shared.host.recording() {
+            for (target, value) in self
+                .shared
+                .benchmark_work
+                .iter()
+                .zip(self.render.diagnostic_work())
+            {
                 target.store(value, std::sync::atomic::Ordering::Relaxed);
             }
         }
@@ -182,7 +169,7 @@ impl Cycle {
             .set_render(self.phase, self.render.next_frame().0);
     }
 
-    pub fn into_parts(self) -> (Render, Phase) {
+    pub fn into_parts(self) -> (Box<dyn Processor>, Phase) {
         (self.render, self.phase)
     }
 }

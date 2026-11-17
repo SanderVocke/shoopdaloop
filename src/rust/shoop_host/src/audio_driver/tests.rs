@@ -192,6 +192,7 @@ impl Fixture {
     }
     fn request(&mut self) -> u64 {
         let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 48_000,
             buffer_size: 64,
         });
@@ -245,6 +246,7 @@ fn detached_preflight_cannot_become_a_confirmation_for_a_replacement_owner() {
     f.control.lock().unwrap().hold = true;
     f.queue(Command::AudioDriver(DriverCommand::Request(
         AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 32_000,
             buffer_size: 128,
         }),
@@ -792,6 +794,7 @@ impl Fixture {
         assert!(matches!(
             self.run(Command::AudioDriver(DriverCommand::Request(
                 AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate,
                     buffer_size: 128
                 })
@@ -1016,6 +1019,7 @@ fn native_switch_converts_exact_media_and_preserves_processed_roles_and_session_
     assert!(matches!(
         f.run(Command::AudioDriver(DriverCommand::Request(
             AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                mode: Default::default(),
                 sample_rate: 100_000,
                 buffer_size: 128
             })

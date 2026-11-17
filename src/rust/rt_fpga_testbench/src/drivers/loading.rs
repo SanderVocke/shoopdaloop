@@ -19,45 +19,20 @@ pub struct Upload {
 }
 impl Upload {
     pub fn new(image: &ProgramImage, region_depth: u64) -> Self {
-        let mut writes = Vec::new();
-        for (i, value) in image.compiled.instructions.iter().enumerate() {
-            writes.push(Write {
-                history: false,
-                loop_state: false,
-                state: false,
-                address: u64::from(image.layout.region) * region_depth + i as u64,
-                value: value.clone(),
-            });
-        }
-        for (address, value) in &image.initializers {
-            writes.push(Write {
-                history: false,
-                loop_state: false,
-                state: true,
-                address: u64::from(*address),
-                value: value.clone(),
-            });
-        }
-        for row in &image.new_loops {
-            for (word, value) in row.words.iter().enumerate() {
-                writes.push(Write {
-                    history: false,
-                    loop_state: true,
-                    state: false,
-                    address: u64::from(row.id.slot) * 16 + word as u64,
-                    value: Bits::from_u64(*value),
-                });
-            }
-        }
-        for &address in image.layout.new_histories() {
-            writes.push(Write {
-                history: true,
-                loop_state: false,
-                state: false,
-                address: u64::from(address),
-                value: Bits::zero(32),
-            });
-        }
+        let writes = image
+            .writes(region_depth)
+            .into_iter()
+            .map(|w| {
+                use rt_fpga_rtl::compiler::Space;
+                Write {
+                    history: w.space == Space::History,
+                    loop_state: w.space == Space::Loop,
+                    state: w.space == Space::State,
+                    address: w.address,
+                    value: w.value,
+                }
+            })
+            .collect();
         Self {
             writes,
             index: 0,

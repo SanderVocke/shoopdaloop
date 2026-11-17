@@ -16757,6 +16757,7 @@ mod tests {
         runtime
             .dispatch(AppIntent::RequestAudioDriverSwitch {
                 config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: 44_100,
                     buffer_size: 256,
                 }),
@@ -19753,6 +19754,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::RequestAudioDriverSwitch {
                 config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: 1_000,
                     buffer_size: 2,
                 }),
@@ -22074,6 +22076,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .request_audio_driver_switch(
                 &mut backend,
                 AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: 44_100,
                     buffer_size: 128,
                 }),
@@ -23111,6 +23114,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::RequestAudioDriverSwitch {
                 config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: 32_000,
                     buffer_size: 128,
                 }),
@@ -23232,6 +23236,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::RequestAudioDriverSwitch {
                 config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: 24_000,
                     buffer_size: 64,
                 }),
@@ -23312,6 +23317,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::RequestAudioDriverSwitch {
                 config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: 24_000,
                     buffer_size: 64,
                 }),
@@ -23353,6 +23359,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::RequestAudioDriverSwitch {
                 config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: 32_000,
                     buffer_size: 128,
                 }),
@@ -23396,6 +23403,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::RequestAudioDriverSwitch {
                 config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: 44_100,
                     buffer_size: 256,
                 }),
@@ -23466,6 +23474,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::RequestAudioDriverSwitch {
                 config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: 32_000,
                     buffer_size: 128,
                 }),
@@ -23631,6 +23640,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::RequestAudioDriverSwitch {
                 config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: 44_100,
                     buffer_size: 128,
                 }),
@@ -23685,6 +23695,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::RequestAudioDriverSwitch {
                 config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: 44_100,
                     buffer_size: 256,
                 }),

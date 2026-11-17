@@ -8,5 +8,10 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+serde=["dep:serde"]
+[dependencies]
+serde={workspace=true,features=["derive"],optional=true}
+
 [dev-dependencies]
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }

@@ -23,12 +23,14 @@ impl<'a> RustTarget<'a> {
         }
     }
 }
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Binding {
     pub id: LoopId,
     pub gain: Option<Address>,
     pub view: Option<Address>,
     pub meter: Option<BufferId>,
 }
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CompiledProgram {
     pub program: Program,
     pub memory: Vec<Value>,
@@ -36,6 +38,7 @@ pub struct CompiledProgram {
     pub bindings: Vec<Binding>,
     pub resources: Resources,
 }
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ProgramImage {
     pub layout: rt_fpga_compiler::loading::Layout,
     pub compiled: CompiledProgram,

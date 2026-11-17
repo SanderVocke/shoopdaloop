@@ -68,8 +68,8 @@ and revisions. Failed preparation restores the last committed control-side mirro
 retaining monotonically allocated identities and slot generations; it does not
 roll back executing processor state.
 
-The Rust-reference host can be used with the UI with simulated input and no
-physical audio device. Backend selection is a host startup setting; unsupported
+The Rust-reference host can be used with the UI through shared Dummy, CPAL or
+JACK drivers. Its portable renderer has no private pacing thread. Backend selection is a host startup setting; unsupported
 operations use the existing refusal path without additional UI capability or
 capacity reporting. See the [host instructions](../../src/rust/shoop_host/README.md#rust-fpga-reference-with-the-ui)
 for startup and the supported graph subset.

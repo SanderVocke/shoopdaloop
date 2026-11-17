@@ -91,7 +91,11 @@ impl Cycle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{NativeClient, RenderPhase};
+    use crate::RenderPhase;
+    use crate::TestRender;
+    type NativeClient = shoop_rt_transport::client::ProtocolClient<
+        shoop_rt_transport::carrier::InProcess<shoop_rt_engine::ControlEndpoint>,
+    >;
     use shoop_rt_engine::{prepare, EngineDescription, HostPorts, Segment};
     use shoop_rt_protocol::*;
     use shoop_rt_transport::{carrier::InProcess, client::ProtocolClient};
@@ -185,10 +189,16 @@ mod tests {
         };
         let engine = prepare(&description, driver).unwrap();
         let outbox = engine.outbox();
-        let shared = Arc::new(Shared::new(engine.host, driver));
+        let shared = Arc::new(Shared::new(Arc::new(()), driver));
         let mut client = ProtocolClient::new(InProcess::new(engine.endpoint, outbox));
-        let mut cycle =
-            Cycle::new(engine.render, shared, &description, Vec::new(), Vec::new()).unwrap();
+        let mut cycle = Cycle::new(
+            Box::new(TestRender(engine.render)),
+            shared,
+            &crate::test_buffers(&description),
+            Vec::new(),
+            Vec::new(),
+        )
+        .unwrap();
         let mut io = Io::new();
         client.connect().unwrap();
         while client.poll().is_some() {}

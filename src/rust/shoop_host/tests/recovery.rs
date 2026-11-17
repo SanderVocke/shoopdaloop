@@ -1427,6 +1427,7 @@ fn audio_driver_switch_preserves_identities_and_persists_on_both_carriers() {
         };
         let original = client.snapshot().unwrap().clone();
         let target = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 32_000,
             buffer_size: 128,
         });
@@ -1640,6 +1641,7 @@ fn native_driver_switching_device_acceptance_on_both_carriers() {
                 client_name: "P14-return".into(),
             }),
             AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                mode: Default::default(),
                 sample_rate: 48_000,
                 buffer_size: 128,
             }),
@@ -1785,6 +1787,7 @@ fn startup_fallback_retains_the_effective_dummy_profile_for_later_switches() {
             &mut connection,
             shoop_app_protocol::Command::AudioDriver(audio_driver::Command::Request(
                 AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: 32_000,
                     buffer_size: 128
                 })

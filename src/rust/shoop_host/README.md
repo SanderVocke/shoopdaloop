@@ -50,8 +50,9 @@ CLI flags override both. See the
 
 `--backend native|rust-fpga|rtl-sim` selects the execution implementation at host
 startup. `native` is the default. `rust-fpga` requires the `fpga-reference` Cargo
-feature. `rtl-sim` is reserved for Marlin integration and currently fails at
-startup with an explicit error. Backend choice is independent of audio-driver
+feature. `rtl-sim` is available on Linux behind the `rtl-sim` Cargo feature.
+See [shared drivers](../../../docs/shared_drivers.md) for its serialized owner,
+latency and simulation deadline policy. Backend choice is independent of audio-driver
 and UI-transport selection; unsupported backend/driver combinations fail before
 starting a device. The old `--audio-backend` and `--fpga-reference` CLI switches
 are not accepted.
@@ -83,12 +84,15 @@ Attach with Host Manager, or use the management address printed by the host:
 target/debug/shoopdaloop --ui-only --host-address 127.0.0.1:PORT
 ```
 
-This mode opens no audio device. An independently paced worker supplies constant
-0.25 input samples and computes stereo output without playing it. The command
-line selects dummy driver geometry, zero smoothing and automatic Master outputs;
-saved native driver preferences do not override reference startup. The default
-reference media pool is 16 MiB. Custom memory
-capacity and quantum can be supplied with `--config PATH`.
+Choose `--audio-driver dummy` for device-free processing, `cpal` for system audio,
+or `jack` for direct JACK. The selected driver supplies timing and actual audio;
+Dummy input is silence unless a test fixture supplies a generator. Dummy pacing
+can be paced, unpaced or controlled. Saved driver preferences apply independently
+of backend selection. The reference has zero smoothing and automatic Master
+outputs. Its default standalone media pool is 16 MiB; memory capacity and quantum
+can be supplied with `--config PATH`. The quantum adapter reports one quantum of
+processing latency. JACK exposes fixed `audio_in_1`, `audio_out_1` and
+`audio_out_2` ports; CPAL uses the first input and first two outputs.
 
 The supported graph is the built-in Sync track plus one mono audio track, with up
 to 16 loops total. Choose Regular, Mono and no MIDI in Add Track. The UI retains
@@ -140,3 +144,16 @@ The application client writes diagnostics under `work/fpga-reference-client`
 `RtlTarget` accepts the same logical graph and loads through the Marlin testbench
 loader. Marlin does not yet have an application host with the runtime command and
 snapshot frontend used by this UI integration.
+
+## Dummy pacing
+
+Dummy startup accepts `--dummy-mode paced|unpaced|controlled`, independently of
+`--backend`. The same mode is stored in the Dummy driver's JSON `mode` field and
+in startup preferences/Host Manager. Omitted modes remain paced. Unpaced advances
+sample time continuously without sleeping; controlled mode waits for frame
+requests through the host driver's `DummyControl` handle. Attaching a UI does not
+change pacing and does not receive those startup overrides.
+
+Fixed-quantum renderers use a prepared adapter with one quantum of reported
+latency. Partial driver requests remain buffered; they do not cause padded engine
+quanta. Driver frames delivered and complete engine frames are distinct counters.

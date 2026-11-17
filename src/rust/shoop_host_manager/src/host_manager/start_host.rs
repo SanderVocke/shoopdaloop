@@ -82,6 +82,7 @@ pub(super) struct Dialog {
     name: String,
     driver: AudioDriverKind,
     backend: BackendType,
+    dummy_mode: shoop_app_api::DummyMode,
     jack_client_name: String,
     device_defaults: bool,
     sample_rate: u32,
@@ -116,6 +117,7 @@ impl Default for Dialog {
             error: None,
             name: "ShoopDaLoop".into(),
             backend: BackendType::Native,
+            dummy_mode: Default::default(),
             driver: if cfg!(feature = "cpal") {
                 AudioDriverKind::Cpal
             } else if cfg!(feature = "jack") {
@@ -279,6 +281,7 @@ impl Dialog {
                 })
             }
             AudioDriverKind::Dummy => AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                mode: self.dummy_mode,
                 sample_rate: self.sample_rate,
                 buffer_size: self.buffer_size,
             }),
@@ -409,6 +412,17 @@ impl Dialog {
                     self.refresh_devices();
                 }
                 ui.end_row();
+                if self.driver == AudioDriverKind::Dummy {
+                    ui.label("Dummy pacing");
+                    egui::ComboBox::from_id_salt("new_host_dummy_mode")
+                        .selected_text(self.dummy_mode.id())
+                        .show_ui(ui, |ui| {
+                            for mode in shoop_app_api::DummyMode::ALL {
+                                ui.selectable_value(&mut self.dummy_mode, mode, mode.id());
+                            }
+                        });
+                    ui.end_row();
+                }
                 if self.driver == AudioDriverKind::Jack {
                     ui.label("JACK client name");
                     ui.text_edit_singleline(&mut self.jack_client_name);
@@ -766,12 +780,10 @@ mod tests {
             assert!(request.err().unwrap().to_string().contains("unavailable"));
         }
         dialog.backend = BackendType::RtlSim;
-        assert!(dialog
-            .request()
-            .err()
-            .unwrap()
-            .to_string()
-            .contains("not integrated"));
+        assert_eq!(
+            dialog.request().is_ok(),
+            cfg!(all(feature = "rtl-sim", target_os = "linux"))
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]
@@ -788,6 +800,7 @@ mod tests {
         assert_eq!(
             request.config.driver,
             AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                mode: Default::default(),
                 sample_rate: 44100,
                 buffer_size: 128
             })

@@ -2,6 +2,7 @@
 use crate::*;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LoadError {
     Compile(CompileError),
     Busy,
@@ -23,22 +24,26 @@ impl core::fmt::Display for LoadError {
 impl core::error::Error for LoadError {}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 enum Role {
     Gain,
     View,
     Smoothing,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 struct Key {
     owner: Identity,
     role: Role,
 }
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 struct ValueSlot {
     key: Key,
     address: u32,
 }
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LoopSlot {
     pub logical: Identity,
     pub physical: Identity,
@@ -48,6 +53,7 @@ pub struct LoopSlot {
 
 /// A bound image owns no mutable access to continuing allocations.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Layout {
     pub expected: u64,
     pub revision: u64,

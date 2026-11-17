@@ -111,6 +111,12 @@ fn host_peer() {
         config.settings.loop_smoothing_ms = 0;
         config.settings.pools.quantum = 32;
     }
+    if root.join("rtl-sim").exists() {
+        config.settings.backend = shoop_egui::BackendType::RtlSim;
+        config.settings.loop_smoothing_ms = 0;
+        config.settings.pools.quantum = 32;
+        config.settings.pools.loop_memory_mb = 1;
+    }
     let mut options = StartOptions::new().unwrap();
 
     options.export_profile = Some(root.join("profile.json"));
@@ -325,7 +331,7 @@ fn remote_profile_ui_workflow(external: Option<std::path::PathBuf>) {
         Some(peer("host_peer", root.path()))
     };
     let path = external.unwrap_or_else(|| root.path().join("profile.json"));
-    let deadline = Instant::now() + Duration::from_secs(15);
+    let deadline = Instant::now() + Duration::from_secs(300);
     while !path.exists() {
         assert!(host.as_mut().unwrap().0.try_wait().unwrap().is_none());
         assert!(Instant::now() < deadline);
@@ -426,6 +432,7 @@ fn remote_profile_ui_workflow(external: Option<std::path::PathBuf>) {
     let revision = app.settings.active().revision();
     app.handle_settings_action(SettingsAction::RequestAudioDriverSwitch {
         config: shoop_egui::AudioDriverConfig::Dummy(shoop_egui::DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 32000,
             buffer_size: 256,
         }),
@@ -610,11 +617,20 @@ fn a_new_connection_cancels_old_inputs_and_cannot_consume_old_file_callbacks() {
 #[cfg(feature = "fpga-reference")]
 #[shoop_wasm_test_support::shoop_test]
 fn fpga_reference_ui_operates_and_live_loads_without_explicit_activation() {
+    prepared_ui_case("fpga-reference");
+}
+#[cfg(all(feature = "rtl-sim", target_os = "linux"))]
+#[shoop_wasm_test_support::shoop_test]
+fn marlin_ui_operates_and_live_loads_without_explicit_activation() {
+    prepared_ui_case("rtl-sim");
+}
+#[cfg(feature = "fpga-reference")]
+fn prepared_ui_case(marker: &str) {
     let root = tempfile::tempdir().unwrap();
-    std::fs::write(root.path().join("fpga-reference"), "").unwrap();
+    std::fs::write(root.path().join(marker), "").unwrap();
     let mut host = peer("host_peer", root.path());
     let path = root.path().join("profile.json");
-    let deadline = Instant::now() + Duration::from_secs(15);
+    let deadline = Instant::now() + Duration::from_secs(300);
     while !path.exists() {
         assert!(host.0.try_wait().unwrap().is_none());
         assert!(Instant::now() < deadline);

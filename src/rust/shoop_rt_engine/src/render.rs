@@ -14,21 +14,7 @@ use rt_runtime::resource::ResourceStore;
 use rt_runtime::{Error, Frame};
 use shoop_loops::runtime::LoopPlanner;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Phase {
-    Running,
-    /// The control endpoint is gone: output is silent after a MIDI reset.
-    Disconnected,
-    Faulted(Error),
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Report {
-    pub next_frame: Frame,
-    pub phase: Phase,
-    /// Packets waiting in the MIDI recovery outputs.
-    pub recovery_packets: usize,
-}
+pub use rt_runtime::host::{Phase, Report};
 
 pub struct Render {
     runtime: Box<GraphRuntime<EngineNode, LoopPlanner, EngineOp>>,
@@ -290,3 +276,19 @@ impl Stopped {
 #[cfg(test)]
 #[path = "shared_tests.rs"]
 mod shared_tests;
+
+impl rt_runtime::host::Renderer for Render {
+    fn next_frame(&self) -> Frame {
+        Render::next_frame(self)
+    }
+    fn process(
+        &mut self,
+        audio: AudioBlock<'_, '_, f32>,
+        midi: MidiBlock<'_>,
+    ) -> Result<Report, Error> {
+        Render::process(self, audio, midi)
+    }
+    fn midi_recovery(&self, port: usize) -> Option<&MidiBuffer> {
+        Render::midi_recovery(self, port)
+    }
+}

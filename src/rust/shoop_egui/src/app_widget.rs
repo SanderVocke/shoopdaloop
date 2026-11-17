@@ -110,6 +110,7 @@ pub const LOOP_EDGE_SMOOTHING_MS: SettingKey<u32> = SettingKey::new("audio.loop_
 pub const RUNTIME_PROFILING: SettingKey<bool> = SettingKey::new("developer.runtime_profiling");
 pub const MASTER_AUTO_CONNECT: SettingKey<bool> = SettingKey::new("audio.master_auto_connect");
 pub const SELECTED_AUDIO_DRIVER: SettingKey<String> = SettingKey::new("audio.selected_driver");
+pub const DUMMY_MODE: SettingKey<String> = SettingKey::new("audio.dummy.mode");
 pub const DUMMY_SAMPLE_RATE: SettingKey<u32> = SettingKey::new("audio.dummy.sample_rate");
 pub const DUMMY_BUFFER_SIZE: SettingKey<u32> = SettingKey::new("audio.dummy.buffer_size");
 pub const JACK_CLIENT_NAME: SettingKey<String> = SettingKey::new("audio.jack.client_name");
@@ -437,6 +438,25 @@ pub fn register_audio_settings_with_default_driver(
         .category_order(5)
         .setting_order(1)
         .effect(effect),
+    )?;
+    builder.register(
+        SettingDefinition::new(
+            DUMMY_MODE,
+            "paced".to_owned(),
+            "Audio",
+            "Dummy pacing",
+            "Run at sample rate, continuously, or only for requested frames.",
+        )
+        .category_order(5)
+        .setting_order(9)
+        .effect(effect)
+        .editor(SettingEditor::StringChoice {
+            choices: &[
+                ("paced", "Paced"),
+                ("unpaced", "Unpaced"),
+                ("controlled", "Controlled"),
+            ],
+        }),
     )?;
     builder.register(
         SettingDefinition::new(
@@ -940,6 +960,7 @@ fn audio_driver_config(
 ) -> Result<AudioDriverConfig, String> {
     match kind {
         AudioDriverKind::Dummy => Ok(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: string(DUMMY_MODE)?.parse()?,
             sample_rate: unsigned(DUMMY_SAMPLE_RATE)?,
             buffer_size: unsigned(DUMMY_BUFFER_SIZE)?,
         })),

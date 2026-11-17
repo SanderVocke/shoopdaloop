@@ -31,19 +31,19 @@ impl HostConfig {
                     "rust-fpga backend is unavailable; rebuild with the fpga-reference feature"
                 );
                 anyhow::ensure!(
-                    matches!(
-                        self.settings.driver,
-                        shoop_app_api::AudioDriverConfig::Dummy(_)
-                    ),
-                    "rust-fpga currently supports the dummy audio driver only"
-                );
-                anyhow::ensure!(
                     self.settings.loop_smoothing_ms == 0 && self.settings.master_auto_connect,
                     "rust-fpga currently requires zero smoothing and automatic Master connections"
                 );
             }
             shoop_app_api::BackendType::RtlSim => {
-                anyhow::bail!("rtl-sim backend is not integrated yet")
+                anyhow::ensure!(
+                    cfg!(all(feature = "rtl-sim", target_os = "linux")),
+                    "rtl-sim is unavailable; use a Linux host built with rtl-sim"
+                );
+                anyhow::ensure!(
+                    self.settings.loop_smoothing_ms == 0 && self.settings.master_auto_connect,
+                    "rtl-sim requires zero smoothing and automatic Master connections"
+                );
             }
         }
         self.settings.validate().map_err(anyhow::Error::msg)
@@ -124,11 +124,10 @@ mod tests {
             cfg!(feature = "fpga-reference")
         );
         let rtl: super::HostConfig = serde_json::from_str(r#"{"backend":"rtl-sim"}"#).unwrap();
-        assert!(rtl
-            .validate()
-            .unwrap_err()
-            .to_string()
-            .contains("not integrated"));
+        assert_eq!(
+            rtl.validate().is_ok(),
+            cfg!(all(feature = "rtl-sim", target_os = "linux"))
+        );
         assert!(serde_json::from_str::<super::HostConfig>(r#"{"backend":"unknown"}"#).is_err());
         assert!(serde_json::from_str::<super::HostConfig>(r#"{"fpga_reference":true}"#).is_err());
         let roundtrip: super::HostConfig =

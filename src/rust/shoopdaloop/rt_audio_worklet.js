@@ -88,6 +88,17 @@ class ShoopRtAudioProcessor extends AudioWorkletProcessor {
       case 'records':
         this.inbound[RECORDS_IN].push(bytesOf(data.bytes));
         break;
+      case 'image': {
+        try {
+          const bytes = bytesOf(data.bytes);
+          const pointer = this.wasm.shoop_rt_worklet_image_buffer?.(bytes.length) >>> 0;
+          if (!pointer) throw new RangeError('reference image exceeds the bounded loader capacity or backend is unavailable');
+          new Uint8Array(this.wasm.memory.buffer, pointer, bytes.length).set(bytes);
+          if (this.wasm.shoop_rt_worklet_image_commit() !== 0) throw new Error('reference image refused');
+          if (this.wasm.memory.buffer !== this.memory) this.views();
+        } catch (error) { this.fail('load', 0, String(error)); }
+        break;
+      }
       case 'midi':
         this.inbound[MIDI_IN].push(bytesOf(data.bytes));
         break;
@@ -183,6 +194,8 @@ class ShoopRtAudioProcessor extends AudioWorkletProcessor {
       }
       this.post(RECORDS_OUT, 'records');
       this.post(MIDI_OUT, 'midi');
+      const ready = this.wasm.shoop_rt_worklet_image_ready?.() || 0n;
+      if (ready) this.port.postMessage({ kind: 'image-ready', revision: ready.toString(), ok: this.wasm.shoop_rt_worklet_image_ready_ok() !== 0 });
     } catch (error) {
       return this.fail('process', 0, String(error?.stack || error));
     }

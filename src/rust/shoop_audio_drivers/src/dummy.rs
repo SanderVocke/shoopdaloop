@@ -6,7 +6,8 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use shoop_rt_engine::{EngineDescription, HostPorts};
+use crate::HostPorts;
+use crate::Template;
 use shoop_rt_protocol::{DriverKind, Name};
 
 use crate::cycle::Cycle;
@@ -19,6 +20,8 @@ const IDLE: Duration = Duration::from_micros(200);
 pub enum DummyMode {
     /// Render a buffer every buffer period, like a device.
     Automatic,
+    /// Render continuously without wall-clock pacing.
+    Unpaced,
     /// Render only frames requested through [`DummyControl`], as fast as possible.
     Controlled,
 }
@@ -191,6 +194,11 @@ impl Loop {
             let pending = self.requests.pending.load(Ordering::Acquire);
             match self.mode {
                 DummyMode::Automatic => self.step(self.buffer),
+                DummyMode::Unpaced => {
+                    self.step(self.buffer);
+                    std::thread::yield_now();
+                    continue;
+                }
                 DummyMode::Controlled if pending > 0 => {
                     let frames = pending.min(self.buffer as u64);
                     self.step(frames as usize);
@@ -230,7 +238,7 @@ mod tests {
 
     #[shoop_wasm_test_support::shoop_test(no_wasm = "native driver shutdown")]
     fn stopping_joins_the_final_reset_callback_before_reporting_confirmation() {
-        let template = EngineDescription {
+        let template = shoop_rt_engine::EngineDescription {
             segments: vec![shoop_rt_engine::Segment {
                 strips: 1,
                 loops: 1,
@@ -247,7 +255,7 @@ mod tests {
             shared,
             layout,
         } = Prepared::new(
-            &template,
+            &crate::test_template(&template),
             HostPorts::numbered(0, 0, 1),
             DriverKind::Dummy,
             48000,
@@ -300,10 +308,7 @@ mod tests {
     }
 }
 
-pub(crate) fn start(
-    config: &DummyConfig,
-    template: &EngineDescription,
-) -> Result<Started, StartError> {
+pub(crate) fn start(config: &DummyConfig, template: &Template) -> Result<Started, StartError> {
     if config.sample_rate == 0 || config.buffer_frames == 0 {
         return Err(StartError::InvalidConfig(
             "the dummy driver needs a sample rate and a buffer size",
@@ -330,7 +335,7 @@ pub(crate) fn start(
         Some(config.buffer_frames),
     )?;
     let cycle = Cycle::new(render, shared.clone(), &description, Vec::new(), Vec::new())
-        .map_err(|error| StartError::Prepare(shoop_rt_engine::PrepareError::Runtime(error)))?;
+        .map_err(|error| StartError::Prepare(error))?;
     let requests = Arc::new(Requests {
         pending: AtomicU64::new(0),
         sample_rate: config.sample_rate,

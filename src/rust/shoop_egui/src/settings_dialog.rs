@@ -2097,6 +2097,7 @@ mod tests {
         };
         let target = crate::ResolvedAudioDriverConfig {
             configured: crate::AudioDriverConfig::Dummy(crate::DummyAudioDriverConfig {
+                mode: Default::default(),
                 sample_rate: 44_100,
                 buffer_size: 128,
             }),
@@ -2270,8 +2271,8 @@ mod tests {
             dialog.setting_card_rects.len()
         };
 
-        // Loop audio and the dummy driver's rate and buffer.
-        assert_eq!(frame(&mut dialog, Vec::new()), 4);
+        // Loop audio and the dummy driver's mode, rate and buffer.
+        assert_eq!(frame(&mut dialog, Vec::new()), 5);
         let cpal = dialog
             .driver_choice_rects
             .iter()

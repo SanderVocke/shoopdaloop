@@ -8,9 +8,10 @@ use std::sync::{
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
+use crate::HostPorts;
+use crate::{Template, MAX_HOST_PORTS};
 use arrayvec::ArrayVec;
 use jack::{AudioIn, AudioOut, MidiIn, Port};
-use shoop_rt_engine::{EngineDescription, HostPorts, MAX_HOST_PORTS};
 use shoop_rt_protocol::{DriverKind, DriverRunState, Name};
 
 use crate::cycle::{Cycle, DirectIo};
@@ -200,10 +201,7 @@ fn error(error: impl std::fmt::Display) -> StartError {
     StartError::Device(error.to_string())
 }
 
-pub(crate) fn start(
-    config: &JackConfig,
-    engine: &EngineDescription,
-) -> Result<Started, StartError> {
+pub(crate) fn start(config: &JackConfig, engine: &Template) -> Result<Started, StartError> {
     config.validate()?;
     let (client, _) = jack::Client::new(&config.client_name, jack::ClientOptions::NO_START_SERVER)
         .map_err(error)?;
@@ -211,13 +209,7 @@ pub(crate) fn start(
     let sample_rate = client.sample_rate();
     let buffer_frames = client.buffer_size();
     let mut ports = HostPorts::numbered(0, 0, 0);
-    let capacities = [
-        engine.strips() * engine.strip_channels as usize,
-        engine.strips() * engine.strip_channels as usize
-            + engine.buses as usize * engine.bus_channels as usize,
-        engine.strips(),
-        engine.strips(),
-    ];
+    let capacities = engine.jack_capacities;
     for (kind, bank) in [
         &mut ports.audio_inputs,
         &mut ports.audio_outputs,
@@ -280,7 +272,26 @@ pub(crate) fn start(
     .map_err(error)?;
     worker.enable_io_bindings();
     let mut graph = graph::Graph::new();
-    let (callback_ports, io_control) = jack_ports::prepare(slot_names);
+    let (mut callback_ports, io_control) = jack_ports::prepare(slot_names);
+    if engine.jack_fixed_ports {
+        for (index, port) in callback_ports.inputs.iter_mut().enumerate() {
+            *port = Some(
+                client
+                    .register_port(&format!("audio_in_{}", index + 1), jack::AudioIn::default())
+                    .map_err(error)?,
+            );
+        }
+        for (index, port) in callback_ports.outputs.iter_mut().enumerate() {
+            *port = Some(
+                client
+                    .register_port(
+                        &format!("audio_out_{}", index + 1),
+                        jack::AudioOut::default(),
+                    )
+                    .map_err(error)?,
+            );
+        }
+    }
     let mut publications = crate::jack_publication::Publications::new(io_control);
     let active = client
         .activate_async(
@@ -476,8 +487,8 @@ mod tests {
     use shoop_wasm_test_support::shoop_test;
     #[shoop_test(no_wasm = "native JACK configuration notification")]
     fn sample_rate_change_invalidates_the_prepared_host_but_initial_notification_does_not() {
-        let engine = shoop_rt_engine::prepare(
-            &EngineDescription::default(),
+        let _engine = shoop_rt_engine::prepare(
+            &shoop_rt_engine::EngineDescription::default(),
             shoop_rt_protocol::DriverStatus {
                 kind: DriverKind::Jack,
                 state: DriverRunState::Running,
@@ -487,7 +498,7 @@ mod tests {
         )
         .unwrap();
         let shared = Arc::new(Shared::new(
-            engine.host,
+            Arc::new(()),
             shoop_rt_protocol::DriverStatus {
                 kind: DriverKind::Jack,
                 state: DriverRunState::Running,

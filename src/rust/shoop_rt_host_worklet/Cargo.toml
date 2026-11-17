@@ -16,6 +16,7 @@ workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [features]
+fpga-reference=["dep:shoop_rt_host_reference","dep:rt_fpga_reference","dep:rt_fpga_compiler","dep:serde_json","dep:anyhow"]
 builtin-fx = ["shoop_host_processors/builtin-fx"]
 oxisynth = ["shoop_host_processors/oxisynth"]
 default = ["exports", "builtin-fx", "oxisynth"]
@@ -25,6 +26,11 @@ exports = []
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
+shoop_rt_host_reference={path="../shoop_rt_host_reference",optional=true}
+rt_fpga_reference={path="../rt_fpga_reference",features=["serde","rt-interface"],optional=true}
+rt_fpga_compiler={path="../rt_fpga_compiler",optional=true}
+serde_json={workspace=true,optional=true}
+anyhow={workspace=true,features=["std"],optional=true}
 shoop_host_processors = { path = "../shoop_host_processors" }
 shoop_rt_transport_message_port = { path = "../shoop_rt_transport_message_port" }
 shoop_rt_transport = { path = "../shoop_rt_transport" }

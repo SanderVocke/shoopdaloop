@@ -4,8 +4,10 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicU8, Ordering};
 use std::time::Instant;
 
-use shoop_rt_engine::{HostStatus, Phase};
+use crate::Observer;
+use rt_runtime::host::Phase;
 use shoop_rt_protocol::{DriverKind, DriverRunState, DriverStatus};
+use std::sync::Arc;
 
 /// The render owner's phase as last reported by a callback.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -71,9 +73,8 @@ pub(crate) struct Counters {
 }
 
 pub(crate) struct Shared {
-    pub benchmark: Option<crate::benchmark::Recorder>,
     pub benchmark_work: [AtomicU64; 14],
-    pub host: HostStatus,
+    pub host: Arc<dyn Observer>,
     pub counters: Counters,
     epoch: Instant,
     kind: DriverKind,
@@ -99,9 +100,8 @@ fn state_code(state: DriverRunState) -> u8 {
 }
 
 impl Shared {
-    pub fn new(host: HostStatus, driver: DriverStatus) -> Self {
+    pub fn new(host: Arc<dyn Observer>, driver: DriverStatus) -> Self {
         Self {
-            benchmark: None,
             benchmark_work: std::array::from_fn(|_| AtomicU64::new(0)),
             host,
             counters: Counters::default(),
@@ -143,7 +143,7 @@ impl Shared {
     }
 
     fn publish(&self) {
-        self.host.set_driver(self.driver());
+        self.host.driver(self.driver());
     }
 
     /// A failed driver stays failed.
@@ -184,7 +184,7 @@ impl Shared {
 
     pub fn xrun(&self, counter: &AtomicU64) {
         counter.fetch_add(1, Ordering::Relaxed);
-        self.host.add_xruns(1);
+        self.host.xrun();
     }
 
     pub fn count(counter: &AtomicU64, amount: u64) {
@@ -192,30 +192,24 @@ impl Shared {
     }
 
     pub fn begin_profiling(&self, frame: u64, frames: usize) {
-        if let Some(control) = self.host.profiling().filter(|c| c.recording()) {
-            control.host_begin(frame, frames as u32, profiling_now());
-        }
+        self.host.begin(frame, frames, profiling_now());
     }
     pub fn profile_input(&self) {
-        if let Some(control) = self.host.profiling().filter(|c| c.recording()) {
-            control.host_input(profiling_now());
-        }
+        self.host.input(profiling_now());
     }
     pub fn set_load(&self, load: f32) {
-        if let Some(control) = self.host.profiling().filter(|c| c.recording()) {
-            let frames = self.buffer_frames.load(Ordering::Relaxed);
-            control.host_end(
-                profiling_now(),
-                u64::from(frames) * 1_000_000_000 / u64::from(self.sample_rate),
-            );
-        }
         self.load.store(load.to_bits(), Ordering::Relaxed);
-        self.host.set_load(load);
+        self.host.load(
+            load,
+            self.buffer_frames.load(Ordering::Relaxed),
+            self.sample_rate,
+            profiling_now(),
+        );
     }
 
     pub fn record_callback(&self, frame: u64, frames: usize, elapsed_ns: u64, late_ns: u64) {
-        if let Some(recorder) = &self.benchmark {
-            recorder.record([
+        if self.host.recording() {
+            self.host.record([
                 frame,
                 frames as u64,
                 elapsed_ns,
@@ -239,6 +233,9 @@ impl Shared {
     }
 
     pub fn set_render(&self, phase: Phase, next_frame: u64) {
+        if matches!(phase, Phase::Faulted(_)) {
+            self.fail(StreamFailure::Backend);
+        }
         let code = match phase {
             Phase::Running => 0,
             Phase::Disconnected => 1,
@@ -279,7 +276,7 @@ impl Shared {
     }
 }
 
-pub(crate) fn profiling_clock() -> rt_runtime::profiling::Clock {
+pub fn profiling_clock() -> rt_runtime::profiling::Clock {
     PROFILE_EPOCH.get_or_init(Instant::now);
     let mut previous = profiling_now();
     let mut resolution = u64::MAX;
@@ -300,7 +297,7 @@ pub(crate) fn profiling_clock() -> rt_runtime::profiling::Clock {
     }
 }
 static PROFILE_EPOCH: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
-fn profiling_now() -> u64 {
+pub fn profiling_now() -> u64 {
     PROFILE_EPOCH.get().map_or(0, |epoch| {
         epoch.elapsed().as_nanos().min(u64::MAX as u128) as u64
     })

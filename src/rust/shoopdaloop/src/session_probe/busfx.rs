@@ -9,6 +9,7 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
         HostSettings {
             backend: BackendType::Native,
             driver: AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                mode: Default::default(),
                 sample_rate: 8000,
                 buffer_size: 128,
             }),

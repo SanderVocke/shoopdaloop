@@ -1,81 +1,33 @@
-//! ARM-side graph binding and an independently paced persistent reference engine.
-use anyhow::{ensure, Result};
-use rt_fpga_compiler::{
-    graph::{GraphDescription, LoopDescription},
-    loading::Allocator,
-    Identity, ProgramLimits,
-};
-use rt_fpga_reference::{
-    compiler::RustTarget,
-    fixed::Fixed,
-    jobs::{BufferId, JobProcessor},
-    pipeline::Pipeline,
-    rt_interface::{program_memory, Configuration, PreparedProgram, Processor, ProgramControl},
-    state::{Instruction, Program},
-    storage::{MediaStore, ViewId},
-    transitions::{PlanDescription, TransitionLimits, TransitionPlan},
-};
-use shoop_rt_protocol::{
-    immediate::{
-        Batch, Code, Command, CommandRecord, Header, Response, SwitchProgram, PREPARED_GRAPH_LOOPS,
-    },
-    Capabilities, ClientMessage, DriverKind, DriverRunState, DriverStatus, EngineMessage, Lane,
-    Limits,
-};
+//! Reference endpoint composition with the shared native drivers.
+use anyhow::Result;
+use shoop_audio_drivers as drivers;
+pub use shoop_rt_host_reference::{program_limits, Endpoint};
 use shoop_rt_transport::{
-    carrier::{CarrierError, Endpoint as CarrierEndpoint, InProcess, Outbox},
+    carrier::{InProcess, Outbox},
     client::ProtocolClient,
-    rt,
 };
-use std::{
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-    thread,
-    time::{Duration, Instant},
-};
+use std::{any::Any, sync::Arc};
 
-pub fn program_limits() -> ProgramLimits {
-    ProgramLimits {
-        instructions: 128,
-        state_values: 64,
-        loop_slots: 2 * PREPARED_GRAPH_LOOPS,
-        jobs: 128,
-        buffers: 64,
-        history_slots: 64,
-        input_ports: 1,
-        output_ports: 2,
-        quantum: 128,
-    }
-}
 pub struct Driver {
-    stop: Arc<AtomicBool>,
-    thread: Option<thread::JoinHandle<()>>,
+    host: Option<drivers::DriverHost>,
+}
+impl Driver {
+    pub(crate) fn new(host: drivers::DriverHost) -> Self {
+        Self { host: Some(host) }
+    }
+    pub fn host(&self) -> &drivers::DriverHost {
+        self.host.as_ref().expect("running reference driver")
+    }
+    pub fn dummy(&self) -> Option<&drivers::DummyControl> {
+        self.host().dummy()
+    }
 }
 impl Drop for Driver {
     fn drop(&mut self) {
-        self.stop.store(true, Ordering::Release);
-        if let Some(t) = self.thread.take() {
-            let _ = t.join();
+        if let Some(host) = self.host.take() {
+            host.stop();
         }
     }
-}
-struct Pending {
-    batch: Batch,
-    descriptor: SwitchProgram,
-    commands: Vec<Command>,
-    ready: Option<bool>,
-    published: bool,
-}
-pub struct Endpoint {
-    control: rt::Endpoint,
-    programs: ProgramControl,
-    allocator: Allocator,
-    pending: Option<Pending>,
-    replies: Outbox,
-    held: Option<EngineMessage>,
-    quantum: u32,
 }
 pub struct Started {
     pub client: ProtocolClient<InProcess<Endpoint>>,
@@ -85,421 +37,142 @@ pub fn start(quantum: u32, sample_rate: u32) -> Result<Started> {
     start_with_memory(quantum, sample_rate, 16)
 }
 pub fn start_with_memory(quantum: u32, sample_rate: u32, memory_mb: u32) -> Result<Started> {
-    ensure!(
-        matches!(quantum, 1 | 16 | 32 | 64 | 128) && sample_rate > 0,
-        "invalid reference driver geometry"
-    );
-    let pool = program_limits();
-    let (control, execution) = rt::channel(
-        256,
-        4,
-        shoop_rt_protocol::snapshot::capacity(2, pool.loop_slots as usize, 1).unwrap(),
-    )?;
-    let limits = Limits {
-        composite_entries: 0,
-        composite_segments: 0,
-        timing_relations: 0,
-        content_chunk_bytes: 0,
-        strips: 2,
-        loops: PREPARED_GRAPH_LOOPS,
-        strip_audio_channels: 1,
-        master_channels: 2,
-        buses: 1,
-        bus_channels: 2,
-        host_audio_inputs: 1,
-        host_audio_outputs: 2,
-        host_midi_inputs: 0,
-        host_midi_outputs: 0,
-        max_frames: quantum,
+    start_driver(
+        drivers::DriverConfig::Dummy(drivers::DummyConfig {
+            sample_rate,
+            buffer_frames: quantum,
+            ..Default::default()
+        }),
         quantum,
-        processing_latency_frames: 0,
-        smoothing_limit_frames: 0,
-        reliable_credits: 0,
-        bulk_credits: 0,
-    };
-    let control = rt::Endpoint::new(
-        control,
-        rt::Settings {
-            graph: 0,
-            topology: 0,
-            limits,
-            driver: DriverStatus {
-                kind: DriverKind::Simulated,
-                state: DriverRunState::Running,
-                sample_rate,
-                buffer_frames: quantum,
-            },
-        },
-    )?
-    .with_capabilities(Capabilities::PREPARED_GRAPH.union(Capabilities::LIVE_PROGRAMS));
-    let plan = TransitionPlan::compile(
-        PlanDescription {
-            quantum,
-            loops: vec![],
-        },
-        TransitionLimits {
-            loop_slots: pool.loop_slots,
-            events: 4 * pool.loop_slots,
-        },
+        memory_mb,
     )
-    .map_err(|e| anyhow::anyhow!("{e:?}"))?;
-    let program = Program {
-        quantum,
-        chunk_frames: 1,
-        jobs_per_quantum: 3,
-        sync_instructions: vec![],
-        instructions: vec![
-            Instruction::ProcessSilence {
-                destination: BufferId(0),
-            },
-            Instruction::ProcessOutput {
-                source: BufferId(0),
-                port: 0,
-            },
-            Instruction::ProcessOutput {
-                source: BufferId(0),
-                port: 1,
-            },
-        ],
-    };
-    let pipeline = Pipeline::prepare(plan, program, vec![], pool.jobs as usize)
-        .map_err(|e| anyhow::anyhow!("{e:?}"))?;
-    let (programs, program_execution) = program_memory();
-    let mut processor = Processor::prepare(
-        pipeline,
-        execution,
-        Configuration {
-            graph: 0,
-            topology: 0,
-            frame: 0,
-        },
-        vec![],
-    )
-    .and_then(|p| p.with_program_memory(program_execution, pool))
-    .map_err(|e| anyhow::anyhow!("{e:?}"))?;
-    let chunks = (memory_mb as usize)
-        .checked_mul(1024 * 1024 / 4)
-        .ok_or_else(|| anyhow::anyhow!("reference media capacity overflow"))?;
-    let mut media =
-        MediaStore::with_block_chunk_limit(1, 128, chunks).map_err(|e| anyhow::anyhow!("{e:?}"))?;
-    media
-        .create_recordings(pool.loop_slots as usize)
-        .map_err(|e| anyhow::anyhow!("{e:?}"))?;
-    media
-        .reserve_chunk_capacity(chunks)
-        .map_err(|e| anyhow::anyhow!("{e:?}"))?;
-    for view in 0..pool.loop_slots {
-        media
-            .reserve_view_capacity(ViewId(view as usize), chunks)
-            .map_err(|e| anyhow::anyhow!("{e:?}"))?;
+}
+pub fn template(quantum: u32, memory_mb: u32, max_frames: usize) -> drivers::Template {
+    drivers::Template {
+        max_frames,
+        jack_capacities: [1, 2, 0, 0],
+        jack_fixed_ports: true,
+        factory: Arc::new(Factory { quantum, memory_mb }),
     }
-    let mut jobs = JobProcessor::with_history_slots(
-        quantum as usize,
-        pool.buffers as usize,
-        pool.history_slots as usize,
-    );
-    let stop = Arc::new(AtomicBool::new(false));
-    let stopping = stop.clone();
-    let worker = thread::Builder::new()
-        .name("fpga-reference".into())
-        .spawn(move || {
-            let mut reclaim = 0;
-            let period = Duration::from_secs_f64(f64::from(quantum) / f64::from(sample_rate));
-            let mut next = Instant::now();
-            let input = vec![Fixed::from_f32(0.25); quantum as usize];
-            let mut left = vec![Fixed::ZERO; quantum as usize];
-            let mut right = left.clone();
-            while !stopping.load(Ordering::Acquire) {
-                if let Err(error) = processor.process(
-                    &mut jobs,
-                    &mut media,
-                    &[&input],
-                    &mut [&mut left, &mut right],
-                ) {
-                    tracing::error!(?error, "reference processing failed");
-                    break;
-                }
-                if !processor.handoff_pending()
-                    && !processor.pipeline().state().owns_loop_slot(reclaim)
-                {
-                    if let Err(error) = rt_fpga_reference::jobs::Memory::prepare_unused_view(
-                        &mut media,
-                        ViewId(reclaim),
-                    ) {
-                        tracing::error!(?error, "reference reclamation failed");
-                        break;
-                    }
-                }
-                reclaim = (reclaim + 1) % pool.loop_slots as usize;
-                next += period;
-                if let Some(wait) = next.checked_duration_since(Instant::now()) {
-                    thread::sleep(wait);
-                } else {
-                    next = Instant::now();
-                }
-            }
-        })?;
-    let endpoint = Endpoint {
-        control,
-        programs,
-        allocator: Allocator::new(pool),
-        pending: None,
-        replies: Outbox::new(8, 8, 0),
-        held: None,
-        quantum,
-    };
+}
+pub fn start_driver(
+    driver: drivers::DriverConfig,
+    quantum: u32,
+    memory_mb: u32,
+) -> Result<Started> {
+    let max = driver.max_frames_hint().max(quantum as usize);
+    let started = drivers::start(&drivers::DriverSettings {
+        driver,
+        engine: template(quantum, memory_mb, max),
+    })?;
+    let endpoint = *started
+        .endpoint
+        .downcast::<Endpoint>()
+        .map_err(|_| anyhow::anyhow!("reference endpoint mismatch"))?;
     Ok(Started {
-        client: ProtocolClient::new(InProcess::new(endpoint, Outbox::new(64, 8, 0))),
-        driver: Driver {
-            stop,
-            thread: Some(worker),
-        },
+        client: ProtocolClient::new(InProcess::new(endpoint, started.outbox)),
+        driver: Driver::new(started.host),
     })
 }
-impl Endpoint {
-    fn prepare(&mut self, batch: Batch) -> Result<()> {
-        ensure!(self.control.is_connected(), "session is not connected");
-        ensure!(self.pending.is_none(), "a program is already pending");
-        let revision = self.allocator.revision();
-        ensure!(
-            batch.graph == revision && batch.topology == revision && batch.deadline.is_none(),
-            "stale graph preparation"
-        );
-        let commands = batch.commands();
-        let Some(Command::BeginGraph { quantum, loops }) = commands.first().copied() else {
-            anyhow::bail!("missing graph header");
-        };
-        ensure!(
-            quantum == self.quantum
-                && loops > 0
-                && loops <= PREPARED_GRAPH_LOOPS
-                && commands.len() == loops as usize + 2,
-            "invalid graph size"
-        );
-        ensure!(
-            commands.last() == Some(&Command::ActivateGraph),
-            "missing activation"
-        );
-        let mut description = GraphDescription {
-            quantum,
-            loops: Vec::new(),
-        };
-        for command in &commands[1..commands.len() - 1] {
-            let Command::ConfigureLoop(l) = *command else {
-                anyhow::bail!("invalid graph record");
-            };
-            ensure!(command.valid(), "invalid loop description");
-            description.loops.push(LoopDescription {
-                id: Identity {
-                    slot: l.slot,
-                    generation: l.generation,
-                },
-                source: l.source,
-                input: l.input.is_some(),
-                output: l.output,
-                gain: l.gain,
-                repeat_sync: l.repeat_sync,
-            });
-        }
-        let logical = description.compile()?;
-        let layout = self.allocator.stage(&logical)?;
-        let staged = (|| -> Result<SwitchProgram> {
-            let views = layout
-                .loops
-                .iter()
-                .map(|l| u64::from(l.physical.slot))
-                .collect::<Vec<_>>();
-            let unused = layout
-                .new_loops()
-                .map(|l| ViewId(l.slot as usize))
-                .collect();
-            let mut target = RustTarget::new(&views);
-            target.limits = program_limits();
-            let image = PreparedProgram::new(target.build_image(&logical, layout.clone())?, unused)
-                .map_err(|e| anyhow::anyhow!("{e:?}"))?;
-            let descriptor = image.descriptor();
-            self.programs
-                .stage(image)
-                .map_err(|_| anyhow::anyhow!("program memory handoff is full"))?;
-            Ok(descriptor)
-        })();
-        match staged {
-            Ok(descriptor) => {
-                let mut commands = layout
-                    .changed_sources()
-                    .iter()
-                    .map(|l| {
-                        Command::ClearPlannedTransitions(
-                            l.slot,
-                            shoop_rt_protocol::immediate::ClearPlanned::Both,
-                        )
-                    })
-                    .collect::<Vec<_>>();
-                commands.push(Command::SwitchProgram(descriptor));
-                self.pending = Some(Pending {
-                    batch,
-                    descriptor,
-                    commands,
-                    ready: None,
-                    published: false,
-                });
-                Ok(())
-            }
-            Err(error) => {
-                self.allocator.cancel(layout.revision)?;
-                Err(error)
-            }
-        }
+struct Factory {
+    quantum: u32,
+    memory_mb: u32,
+}
+struct Observer(Arc<shoop_rt_host_reference::Status>);
+impl drivers::Observer for Observer {
+    fn driver(&self, d: shoop_rt_protocol::DriverStatus) {
+        self.0.update_driver(d);
     }
-    fn response(batch: Batch, frame: u64, code: Code, committed: Option<u64>) -> EngineMessage {
-        let records = batch
-            .commands()
-            .iter()
-            .map(|&c| CommandRecord::new(c).complete(code))
-            .collect::<Vec<_>>();
-        let header = committed.map_or_else(|| batch.header(), |r| Header::new(r, r, None));
-        EngineMessage::ImmediateResponse(
-            Response::new(header.complete(frame, code), &records).unwrap(),
-        )
+    fn xrun(&self) {
+        self.0.xrun();
     }
-    fn translate(&mut self, message: EngineMessage) -> EngineMessage {
-        if let EngineMessage::ImmediateResponse(response) = &message {
-            if response
-                .records()
-                .iter()
-                .any(|r| matches!(r.command(), Command::SwitchProgram(_)))
-                && self.pending.as_ref().is_some_and(|p| p.published)
-            {
-                let pending = self.pending.take().unwrap();
-                let success = response.records().iter().any(|r| {
-                    matches!(r.command(), Command::SwitchProgram(_)) && r.code() == Code::Applied
-                });
-                if success {
-                    self.allocator
-                        .complete(pending.descriptor.revision)
-                        .expect("fenced switch completion");
-                } else {
-                    self.allocator
-                        .refused(pending.descriptor.revision)
-                        .expect("refused pending image");
-                    let old = self.allocator.revision();
-                    self.control.set_configuration(old, old);
-                }
-                return Self::response(
-                    pending.batch,
-                    response.header.frame(),
-                    if success {
-                        Code::Applied
-                    } else {
-                        Code::CannotApply
-                    },
-                    success.then_some(pending.descriptor.revision),
-                );
-            }
-        }
-        message
+    fn load(&self, load: f32, _frames: u32, _sample_rate: u32, _now: u64) {
+        self.0.load(load);
     }
-    fn flush(&mut self, out: &mut Outbox) -> bool {
-        loop {
-            let Some(message) = self.held.take().or_else(|| self.replies.pop()) else {
-                return true;
-            };
-            let message = self.translate(message);
-            if out.available(message.lane()) == 0 {
-                self.held = Some(message);
-                return false;
-            }
-            out.push(message).unwrap();
-        }
+    fn requires_reset(&self) -> bool {
+        false
     }
 }
-impl CarrierEndpoint for Endpoint {
-    fn try_deliver(
+struct Render(rt_runtime::host_adapter::QuantumAdapter<shoop_rt_host_reference::ReferenceRenderer>);
+impl rt_runtime::host::Renderer for Render {
+    fn next_frame(&self) -> rt_runtime::Frame {
+        rt_runtime::host::Renderer::next_frame(&self.0)
+    }
+    fn process(
         &mut self,
-        message: ClientMessage,
-        out: &mut Outbox,
-    ) -> std::result::Result<(), CarrierError> {
-        if let ClientMessage::Immediate(batch) = message {
-            if batch.commands().iter().any(|c| {
-                matches!(
-                    c,
-                    Command::BeginGraph { .. } | Command::ConfigureLoop(_) | Command::ActivateGraph
-                )
-            }) {
-                if out.available(Lane::Reliable) == 0 {
-                    return Err(CarrierError::Full);
-                }
-                if let Err(error) = self.prepare(batch) {
-                    tracing::warn!(%error,"reference graph preparation refused");
-                    out.push(Self::response(batch, 0, Code::CannotApply, None))?;
-                }
-                return Ok(());
-            }
-            if self.allocator.revision() == 0 {
-                return out.push(Self::response(batch, 0, Code::CannotApply, None));
-            }
-        }
-        self.control.try_deliver(message, out)
+        audio: rt_runtime::buffer::AudioBlock<'_, '_>,
+        midi: rt_runtime::buffer::MidiBlock<'_>,
+    ) -> Result<rt_runtime::host::Report, rt_runtime::Error> {
+        rt_runtime::host::Renderer::process(&mut self.0, audio, midi)
     }
-    fn deliver(&mut self, message: ClientMessage, out: &mut Outbox) {
-        let _ = self.try_deliver(message, out);
+}
+impl drivers::Processor for Render {
+    fn finish(self: Box<Self>) -> Result<Box<dyn Any + Send>, rt_runtime::Error> {
+        Ok(Box::new(()))
     }
-    fn poll(&mut self, out: &mut Outbox) {
-        while self.programs.reclaim().is_some() {}
-        if !self.flush(out) {
-            return;
-        }
-        while let Some(ready) = self.programs.ready() {
-            if let Some(p) = &mut self.pending {
-                if p.descriptor.revision == ready.revision {
-                    p.ready = Some(ready.result.is_ok());
-                }
-            }
-        }
-        if self
-            .pending
-            .as_ref()
-            .is_some_and(|p| p.ready == Some(false))
-        {
-            let pending = self.pending.take().unwrap();
-            self.allocator.cancel(pending.descriptor.revision).unwrap();
-            self.held = Some(Self::response(pending.batch, 0, Code::CannotApply, None));
-            if !self.flush(out) {
-                return;
-            }
-        }
-        if let Some(pending) = &mut self.pending {
-            if pending.ready == Some(true) && !pending.published {
-                let batch = Batch::new(
-                    self.allocator.revision(),
-                    self.allocator.revision(),
-                    &pending.commands,
-                )
-                .unwrap();
-                if self
-                    .control
-                    .try_deliver(ClientMessage::Immediate(batch), &mut self.replies)
-                    .is_ok()
-                {
-                    self.allocator.publish(pending.descriptor.revision).unwrap();
-                    pending.published = true;
-                    self.control.set_configuration(
-                        pending.descriptor.revision,
-                        pending.descriptor.revision,
-                    );
-                }
-            }
-        }
-        self.control.poll(&mut self.replies);
-        self.flush(out);
+}
+impl drivers::Factory for Factory {
+    fn prepare(&self, opened: drivers::Opened) -> Result<drivers::Parts, drivers::StartError> {
+        let prepared =
+            shoop_rt_host_reference::prepare(self.quantum, opened.driver, self.memory_mb)
+                .map_err(|e| drivers::StartError::Factory(e.into()))?;
+        Ok(drivers::Parts {
+            buffers: drivers::BufferConfig {
+                host: opened.ports,
+                max_frames: opened.driver.buffer_frames.max(self.quantum) as usize,
+                midi_events: 256,
+                midi_bytes: 65536,
+                output_midi_events: 256,
+                output_midi_bytes: 65536,
+            },
+            renderer: Box::new(Render(prepared.renderer)),
+            observer: Arc::new(Observer(prepared.status)),
+            endpoint: Box::new(prepared.endpoint),
+            outbox: Outbox::new(64, 8, 0),
+            master_connections: vec![(0, 0), (1, 1)],
+        })
     }
+}
+
+pub fn start_selected(
+    driver: &shoop_app_api::AudioDriverConfig,
+    pools: &shoop_app_api::NewEnginePools,
+    input: Option<fn(usize, u64) -> f32>,
+) -> Result<Started> {
+    use shoop_app_api::AudioDriverConfig;
+    anyhow::ensure!(
+        matches!(driver, AudioDriverConfig::Dummy(_))
+            || (cfg!(feature = "cpal") && matches!(driver, AudioDriverConfig::Cpal(_)))
+            || (cfg!(feature = "jack") && matches!(driver, AudioDriverConfig::Jack(_))),
+        "selected driver is unavailable for this native host build"
+    );
+    let (mut config, warnings) =
+        crate::engine::native_config(driver, pools, &crate::engine::inventory(driver));
+    for warning in warnings {
+        tracing::warn!(%warning,"reference driver setup");
+    }
+    match &mut config.driver {
+        drivers::DriverConfig::Dummy(dummy) => dummy.input = input,
+        #[cfg(any(feature = "cpal", feature = "jack"))]
+        _ => {}
+    }
+    start_driver(config.driver, pools.quantum, pools.loop_memory_mb)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use shoop_rt_protocol::{immediate::GraphLoop, snapshot::Header};
+    use shoop_rt_protocol::{
+        immediate::{Batch, Code, Command, Response},
+        ClientMessage, EngineMessage,
+    };
+    use shoop_rt_transport::carrier::Endpoint as _;
     use shoop_wasm_test_support::shoop_test;
+    use std::{
+        thread,
+        time::{Duration, Instant},
+    };
     fn response(client: &mut ProtocolClient<InProcess<Endpoint>>) -> Response {
         let deadline = Instant::now() + Duration::from_secs(3);
         loop {
@@ -563,11 +236,10 @@ mod tests {
         assert_eq!(next.header.code(), Code::Applied);
         assert_eq!(next.header.graph(), 2);
         let frame = |c: &mut ProtocolClient<InProcess<Endpoint>>| {
-            let mut bytes = vec![0; c.carrier_mut().endpoint().control.snapshot_capacity()];
+            let mut bytes = vec![0; c.carrier_mut().endpoint().snapshot_capacity()];
             let (_, len) = c
                 .carrier_mut()
                 .endpoint()
-                .control
                 .read_snapshot(&mut bytes)
                 .unwrap();
             Header::read(&bytes[..len]).unwrap().frame
