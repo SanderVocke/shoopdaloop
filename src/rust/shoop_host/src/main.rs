@@ -107,7 +107,7 @@ fn run() -> anyhow::Result<()> {
                 tracing_subscriber::EnvFilter::try_from_default_env()
                     .unwrap_or_else(|_| "info".into()),
             )
-            .with_writer(std::io::stderr)
+            .with_writer(|| shoop_host::logging::Stderr)
             .with_ansi(false)
             .init();
     }

@@ -266,6 +266,14 @@ The implementation and CI evidence are tracked in
 campaign. Generated campaign artifacts remain under the requested output folder;
 they are not checked into the source tree.
 
+Full-workspace CI exposed an existing detached-host shutdown failure: logging to
+the exited launcher's stderr pipe raised `BrokenPipe`, causing tracing to panic
+before shutdown results could be collected. The host now tolerates that closed
+diagnostic pipe. The recovery test reproduced the failure locally before the fix;
+afterwards it passed ten repeat runs, the serial recovery suite passed (15 tests,
+one hardware-only test ignored), and log rotation and the warnings-as-errors host
+build passed. The benchmark's stepped processing path is unaffected.
+
 Fixture revision 2 uses 256-frame recordings in the mandatory patterns, still
 crossing the current 128-frame allocation blocks, to increase transition-event
 density and reduce the substantial RTL simulation cost observed during validation.
