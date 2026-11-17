@@ -10,7 +10,10 @@ use crate::{
 use alloc::vec::Vec;
 pub mod sync;
 use crate::transitions::{Event, LoopId, LoopState, TransitionError, TransitionPlan};
-pub use sync::{LoopSlot, ModePlan, ModeStep, PlannedTransition, Resolution, SyncInstruction};
+pub use sync::{
+    apply_mode_command, LoopSlot, ModePlan, ModeStep, PlannedTransition, Resolution,
+    SyncInstruction,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

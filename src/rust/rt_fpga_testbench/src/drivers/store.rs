@@ -10,77 +10,7 @@ use crate::{
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
-#[derive(Clone, Debug)]
-pub struct Geometry {
-    pub views: u64,
-    pub slots: u64,
-    pub chunk_frames: u64,
-    pub block_chunks: u64,
-    pub table_pages: u64,
-    pub retired_tables: u64,
-    pub reclaim_blocks: u64,
-    pub reclaim_cycles: u64,
-    pub reclaim_guard: u64,
-    pub table_lines: u64,
-    pub reference_lines: u64,
-    pub stack_lines: u64,
-    pub read_buffers: u64,
-    pub write_buffers: u64,
-    pub reuse_views: bool,
-}
-impl Geometry {
-    pub fn new(c: [u64; 3], block_chunks: u64) -> Self {
-        assert!(block_chunks.is_power_of_two() && c[1] % block_chunks == 0);
-        Self {
-            views: c[0],
-            slots: c[1],
-            chunk_frames: c[2],
-            block_chunks,
-            table_pages: (c[1] / block_chunks).div_ceil(15) + 8 * c[0] + 16,
-            retired_tables: 256,
-            reclaim_blocks: 0,
-            reclaim_cycles: 5000,
-            reclaim_guard: 1024,
-            table_lines: 8,
-            reference_lines: 4,
-            stack_lines: 2,
-            read_buffers: 4,
-            write_buffers: 4,
-            reuse_views: false,
-        }
-    }
-    pub fn blocks(&self) -> u64 {
-        self.slots / self.block_chunks
-    }
-    pub fn slot_bits(&self) -> u32 {
-        (64 - (self.blocks() - 1).leading_zeros()).max(1)
-    }
-    pub fn words(&self) -> usize {
-        (self.slots * self.chunk_frames).div_ceil(16) as usize * 16
-            + 2 * self.blocks().div_ceil(16) as usize * 16
-            + self.table_pages as usize * 16
-            + self.retired_tables as usize * 16
-    }
-    pub fn parameters(&self) -> Vec<(&'static str, u64)> {
-        vec![
-            ("VIEWS", self.views),
-            ("SLOTS", self.slots),
-            ("CHUNK_FRAMES", self.chunk_frames),
-            ("BLOCK_CHUNKS", self.block_chunks),
-            ("TABLE_PAGES", self.table_pages),
-            ("RETIRED_TABLES", self.retired_tables),
-            ("RECLAIM_BLOCKS", self.reclaim_blocks),
-            ("RECLAIM_CYCLES", self.reclaim_cycles),
-            ("RECLAIM_GUARD", self.reclaim_guard),
-            ("TABLE_LINES", self.table_lines),
-            ("REF_LINES", self.reference_lines),
-            ("STACK_LINES", self.stack_lines),
-            ("READ_BUFFERS", self.read_buffers),
-            ("WRITE_BUFFERS", self.write_buffers),
-            ("REUSE_VIEWS", u64::from(self.reuse_views)),
-        ]
-    }
-}
+pub use rt_fpga_rtl::pipeline::Geometry;
 const SIGNALS: &[&str] = &[
     "busy",
     "done",

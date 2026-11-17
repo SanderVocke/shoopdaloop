@@ -256,6 +256,26 @@ fn start_backend(config: &HostConfig) -> Result<StartedBackend> {
             settings: config.settings.clone(),
         });
     }
+    #[cfg(feature = "rtl-sim")]
+    if config.settings.backend == shoop_app_api::BackendType::RtlSim {
+        ensure!(
+            config.loop_smoothing_ms == 0 && config.master_auto_connect,
+            "prepared reference requires zero smoothing and automatic Master connections"
+        );
+        #[cfg(feature = "testing")]
+        let signal: Option<fn(usize, u64) -> f32> = config.test_signal.then_some(|_, _| 0.25);
+        #[cfg(not(feature = "testing"))]
+        let signal = None;
+        let started = crate::rtl_sim::start_selected(&config.driver, &config.pools, signal)?;
+        let backend = RtBackend::connect(started.client, Sleep::default())?;
+        return Ok(StartedBackend {
+            reference_driver: Some(started.driver),
+            host: None,
+            backend: Box::new(backend),
+            warnings: vec!["Marlin RTL simulation: supports one mono audio track alongside Sync, up to 16 loops total; track and Master controls stay at defaults.".into()],
+            settings: config.settings.clone(),
+        });
+    }
     let (host, backend, warnings, settings) = {
         let (mut native, mut warnings) = engine::native_config(
             &config.driver,

@@ -435,3 +435,23 @@ speed threshold for Marlin is not required.
   affected warning-denying build, format/test policy and dependency audits passed.
 - Build cache was regenerated with debug information disabled and incremental
   compilation off to fit the execution environment; sources/results were retained.
+
+- Stage 5 extraction milestone: shared `rt_fpga_rtl` owns packed targets and optional
+  simulator support. Cache locks cover build/load rather than model lifetime, so
+  independent owners can use the same cached model. Ownership tests 2 passed;
+  existing compiler/loading tests 4 passed; shared command-helper interface/sync/
+  trace suites 7+4+5 passed. Marlin host composition remains in progress.
+- Stage 5/6 runtime milestone: the optional Marlin host creates and drops its
+  model on one owner thread, uploads unused allocations in bounded turns, reads
+  actual loop RAM for command translation, and completes switches only on the
+  RTL fence response. The shared ARM endpoint uses target-specific program loaders.
+  Physical drivers use a prepared bounded bridge; Dummy waits only on its driver
+  thread. Native host/app/Manager accept `rtl-sim`; cold host readiness allows
+  five minutes for a Verilator build, with explicit source/toolchain failures.
+- Marlin validation so far: exact reference/RTL audio and snapshot trace 1 passed;
+  zero-demand startup/pending switch/independent demand/stop 1 passed; no-allocation
+  bridge ordering, missing/stale output fault, and stopped dummy wait 3 passed.
+  A real `shoop_host` socket client through RtBackend recorded, played and made
+  three live graph updates successfully. Warning-denying optional host/runtime
+  builds, reference regression, formatting and test policy passed. Remaining
+  matrix/backpressure/browser/final checks follow in later milestones.

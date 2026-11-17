@@ -10,14 +10,14 @@ workspace = true
 
 [features]
 default = []
-sim = ["dep:rt_fpga_reference", "dep:rt_fpga_compiler", "dep:shoop_rt_protocol", "dep:shoop_rt_transport", "dep:marlin", "dep:quick-xml", "dep:serde", "dep:serde_json", "dep:clap", "dep:libloading", "dep:rt_audio_math", "dep:rt_runtime", "dep:sha2"]
+sim = ["dep:rt_fpga_rtl", "rt_fpga_rtl/sim","dep:rt_fpga_reference", "dep:rt_fpga_compiler", "dep:shoop_rt_protocol", "dep:shoop_rt_transport", "dep:serde", "dep:serde_json", "dep:clap", "dep:libloading", "dep:rt_audio_math", "dep:rt_runtime"]
 
 [dependencies]
+rt_fpga_rtl={path="../rt_fpga_rtl",optional=true}
 shoop_rt_protocol = { path = "../shoop_rt_protocol", optional = true }
 shoop_rt_transport = { path = "../shoop_rt_transport", features = ["rt-interface"], optional = true }
 rt_fpga_compiler = { path = "../rt_fpga_compiler", optional = true }
 rt_fpga_reference = { path = "../rt_fpga_reference", features = ["serde"], optional = true }
-sha2 = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive", "std"], optional = true }
 serde_json = { workspace = true, optional = true }
 clap = { workspace = true, optional = true }
@@ -25,9 +25,6 @@ libloading = { workspace = true, optional = true }
 rt_audio_math = { path = "../rt_audio_math", optional = true }
 rt_runtime = { path = "../rt_runtime", optional = true }
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-marlin = { version = "=0.21.1", features = ["verilog"], optional = true }
-quick-xml = { version = "0.41.0", optional = true }
 
 [dev-dependencies]
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }

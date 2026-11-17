@@ -414,6 +414,7 @@ impl Design {
             [],
             options,
         )?;
+        lock.unlock()?;
         Ok(Compiled {
             runtime,
             ports,
@@ -445,6 +446,14 @@ pub struct Compiled {
 }
 impl Compiled {
     pub fn session(&self, waveform: Option<&Path>) -> Result<Model<'_>> {
+        self._lock.lock()?;
+        struct Lease<'a>(&'a std::fs::File);
+        impl Drop for Lease<'_> {
+            fn drop(&mut self) {
+                let _ = self.0.unlock();
+            }
+        }
+        let _lease = Lease(&self._lock);
         let default_waveform = crate::report::waveform(
             self.wrapper
                 .parent()

@@ -9,6 +9,7 @@ browser-feature = "wasm-test-browser"
 no-default-features = true
 
 [features]
+rtl-sim = ["fpga-reference", "shoop_host/rtl-sim", "shoop_host_manager/rtl-sim"]
 fpga-reference = ["shoop_host/fpga-reference", "shoop_host_manager/fpga-reference"]
 builtin-fx = ["shoop_host/builtin-fx", "shoop_host_manager/builtin-fx", "shoop_rt_host_native/builtin-fx"]
 oxisynth = ["shoop_host/oxisynth", "shoop_host_manager/oxisynth", "shoop_rt_host_native/oxisynth"]

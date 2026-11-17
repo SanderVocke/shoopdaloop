@@ -130,6 +130,20 @@ pub(crate) fn start_selected_backend(
             warnings: vec!["Rust FPGA reference: limited mono looping profile.".into()],
         });
     }
+    #[cfg(feature = "rtl-sim")]
+    if backend == shoop_app_api::BackendType::RtlSim {
+        let started = shoop_host::rtl_sim::start_selected(driver, pools, DUMMY_INPUT)?;
+        let backend = RtBackend::connect(started.client, Sleep::default())?;
+        return Ok(NewEngine {
+            backend: Box::new(backend),
+            host: EngineHost {
+                native: None,
+                owner: None,
+                reference: Some(started.driver),
+            },
+            warnings: vec!["Marlin RTL simulation: limited mono looping profile.".into()],
+        });
+    }
     anyhow::bail!("backend {} is unavailable in this build", backend.id())
 }
 

@@ -780,12 +780,10 @@ mod tests {
             assert!(request.err().unwrap().to_string().contains("unavailable"));
         }
         dialog.backend = BackendType::RtlSim;
-        assert!(dialog
-            .request()
-            .err()
-            .unwrap()
-            .to_string()
-            .contains("not integrated"));
+        assert_eq!(
+            dialog.request().is_ok(),
+            cfg!(all(feature = "rtl-sim", target_os = "linux"))
+        );
     }
 
     #[shoop_wasm_test_support::shoop_test]

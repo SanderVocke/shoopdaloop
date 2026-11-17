@@ -12,6 +12,9 @@ pub struct Driver {
     host: Option<drivers::DriverHost>,
 }
 impl Driver {
+    pub(crate) fn new(host: drivers::DriverHost) -> Self {
+        Self { host: Some(host) }
+    }
     pub fn host(&self) -> &drivers::DriverHost {
         self.host.as_ref().expect("running reference driver")
     }
@@ -68,9 +71,7 @@ pub fn start_driver(
         .map_err(|_| anyhow::anyhow!("reference endpoint mismatch"))?;
     Ok(Started {
         client: ProtocolClient::new(InProcess::new(endpoint, started.outbox)),
-        driver: Driver {
-            host: Some(started.host),
-        },
+        driver: Driver::new(started.host),
     })
 }
 struct Factory {

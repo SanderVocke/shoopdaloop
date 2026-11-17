@@ -57,9 +57,9 @@ struct Pending {
     ready: Option<bool>,
     published: bool,
 }
-pub struct Endpoint {
+pub struct Endpoint<L = ProgramControl> {
     control: rt::Endpoint,
-    programs: ProgramControl,
+    programs: L,
     allocator: Allocator,
     pending: Option<Pending>,
     replies: Outbox,
@@ -119,6 +119,9 @@ impl Status {
             },
         }
     }
+    pub fn set_frame(&self, frame: u64) {
+        self.frame.store(frame, Ordering::Release);
+    }
     pub fn xrun(&self) {
         self.xruns.fetch_add(1, Ordering::Relaxed);
     }
@@ -138,16 +141,52 @@ impl Status {
         }
     }
 }
-pub struct Prepared {
-    pub endpoint: Endpoint,
-    pub renderer: QuantumAdapter<ReferenceRenderer>,
-    pub status: Arc<Status>,
+/// ARM-side staging. Implementations lower the same logical graph into their own target.
+pub trait ProgramLoader {
+    fn stage_program(
+        &mut self,
+        logical: &rt_fpga_compiler::LogicalStateProgram,
+        layout: rt_fpga_compiler::loading::Layout,
+    ) -> Result<SwitchProgram>;
+    fn program_ready(&mut self) -> Option<(u64, bool)>;
+    fn reclaim_programs(&mut self);
 }
-pub fn prepare(quantum: u32, driver: DriverStatus, memory_mb: u32) -> Result<Prepared> {
-    ensure!(
-        matches!(quantum, 1 | 16 | 32 | 64 | 128) && driver.sample_rate > 0,
-        "invalid reference driver geometry"
-    );
+impl ProgramLoader for ProgramControl {
+    fn stage_program(
+        &mut self,
+        logical: &rt_fpga_compiler::LogicalStateProgram,
+        layout: rt_fpga_compiler::loading::Layout,
+    ) -> Result<SwitchProgram> {
+        let views = layout
+            .loops
+            .iter()
+            .map(|l| u64::from(l.physical.slot))
+            .collect::<Vec<_>>();
+        let unused = layout
+            .new_loops()
+            .map(|l| ViewId(l.slot as usize))
+            .collect();
+        let mut target = RustTarget::new(&views);
+        target.limits = program_limits();
+        let image = PreparedProgram::new(target.build_image(logical, layout)?, unused)
+            .map_err(|e| anyhow::anyhow!("{e:?}"))?;
+        let descriptor = image.descriptor();
+        self.stage(image)
+            .map_err(|_| anyhow::anyhow!("program memory handoff is full"))?;
+        Ok(descriptor)
+    }
+    fn program_ready(&mut self) -> Option<(u64, bool)> {
+        self.ready().map(|r| (r.revision, r.result.is_ok()))
+    }
+    fn reclaim_programs(&mut self) {
+        while self.reclaim().is_some() {}
+    }
+}
+pub fn prepare_control(
+    quantum: u32,
+    driver: DriverStatus,
+    latency: u32,
+) -> Result<(rt::Endpoint, rt::Execution)> {
     let pool = program_limits();
     let (control, execution) = rt::channel(
         256,
@@ -171,7 +210,7 @@ pub fn prepare(quantum: u32, driver: DriverStatus, memory_mb: u32) -> Result<Pre
         host_midi_outputs: 0,
         max_frames: quantum,
         quantum,
-        processing_latency_frames: quantum,
+        processing_latency_frames: latency,
         smoothing_limit_frames: 0,
         reliable_credits: 0,
         bulk_credits: 0,
@@ -186,6 +225,20 @@ pub fn prepare(quantum: u32, driver: DriverStatus, memory_mb: u32) -> Result<Pre
         },
     )?
     .with_capabilities(Capabilities::PREPARED_GRAPH.union(Capabilities::LIVE_PROGRAMS));
+    Ok((control, execution))
+}
+pub struct Prepared {
+    pub endpoint: Endpoint,
+    pub renderer: QuantumAdapter<ReferenceRenderer>,
+    pub status: Arc<Status>,
+}
+pub fn prepare(quantum: u32, driver: DriverStatus, memory_mb: u32) -> Result<Prepared> {
+    ensure!(
+        matches!(quantum, 1 | 16 | 32 | 64 | 128) && driver.sample_rate > 0,
+        "invalid reference driver geometry"
+    );
+    let pool = program_limits();
+    let (control, execution) = prepare_control(quantum, driver, quantum)?;
     let plan = TransitionPlan::compile(
         PlanDescription {
             quantum,
@@ -255,18 +308,7 @@ pub fn prepare(quantum: u32, driver: DriverStatus, memory_mb: u32) -> Result<Pre
 
     processor.publish_initial_snapshot();
     let status = Arc::new(Status::new(driver));
-    let endpoint = Endpoint {
-        control,
-        programs,
-        allocator: Allocator::new(pool),
-        pending: None,
-        replies: Outbox::new(8, 8, 0),
-        held: None,
-        quantum,
-        status: status.clone(),
-        failed: false,
-        sent_frame: 0,
-    };
+    let endpoint = Endpoint::new(control, programs, quantum, status.clone());
 
     let renderer = ReferenceRenderer {
         processor,
@@ -350,7 +392,21 @@ impl Renderer for ReferenceRenderer {
         })
     }
 }
-impl Endpoint {
+impl<L: ProgramLoader> Endpoint<L> {
+    pub fn new(control: rt::Endpoint, programs: L, quantum: u32, status: Arc<Status>) -> Self {
+        Self {
+            control,
+            programs,
+            allocator: Allocator::new(program_limits()),
+            pending: None,
+            replies: Outbox::new(8, 8, 0),
+            held: None,
+            quantum,
+            status,
+            failed: false,
+            sent_frame: 0,
+        }
+    }
     pub fn prepare(&mut self, batch: Batch) -> Result<()> {
         ensure!(self.control.is_connected(), "session is not connected");
         ensure!(self.pending.is_none(), "a program is already pending");
@@ -397,26 +453,7 @@ impl Endpoint {
         }
         let logical = description.compile()?;
         let layout = self.allocator.stage(&logical)?;
-        let staged = (|| -> Result<SwitchProgram> {
-            let views = layout
-                .loops
-                .iter()
-                .map(|l| u64::from(l.physical.slot))
-                .collect::<Vec<_>>();
-            let unused = layout
-                .new_loops()
-                .map(|l| ViewId(l.slot as usize))
-                .collect();
-            let mut target = RustTarget::new(&views);
-            target.limits = program_limits();
-            let image = PreparedProgram::new(target.build_image(&logical, layout.clone())?, unused)
-                .map_err(|e| anyhow::anyhow!("{e:?}"))?;
-            let descriptor = image.descriptor();
-            self.programs
-                .stage(image)
-                .map_err(|_| anyhow::anyhow!("program memory handoff is full"))?;
-            Ok(descriptor)
-        })();
+        let staged = self.programs.stage_program(&logical, layout.clone());
         match staged {
             Ok(descriptor) => {
                 let mut commands = layout
@@ -507,7 +544,7 @@ impl Endpoint {
         }
     }
 }
-impl CarrierEndpoint for Endpoint {
+impl<L: ProgramLoader> CarrierEndpoint for Endpoint<L> {
     fn try_deliver(
         &mut self,
         message: ClientMessage,
@@ -557,14 +594,14 @@ impl CarrierEndpoint for Endpoint {
             self.sent_frame = frame;
             let _ = out.push(EngineMessage::Telemetry(self.status.telemetry()));
         }
-        while self.programs.reclaim().is_some() {}
+        self.programs.reclaim_programs();
         if !self.flush(out) {
             return;
         }
-        while let Some(ready) = self.programs.ready() {
+        while let Some((revision, success)) = self.programs.program_ready() {
             if let Some(p) = &mut self.pending {
-                if p.descriptor.revision == ready.revision {
-                    p.ready = Some(ready.result.is_ok());
+                if p.descriptor.revision == revision {
+                    p.ready = Some(success);
                 }
             }
         }
@@ -607,7 +644,7 @@ impl CarrierEndpoint for Endpoint {
     }
 }
 
-impl Endpoint {
+impl<L: ProgramLoader> Endpoint<L> {
     pub fn snapshot_capacity(&self) -> usize {
         self.control.snapshot_capacity()
     }
