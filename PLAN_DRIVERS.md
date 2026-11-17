@@ -367,12 +367,12 @@ Do not replace an unfinished renderer with native execution to make a pair pass.
 - [x] Update startup/driver documentation and CI paths/jobs for the new modules,
       modes and tests. Document supported combinations, latency, sequential Marlin
       operation and the consequences of a simulation that misses real-time demand.
-- [ ] Commit completed milestones and the final validation record; push the branch
+- [x] Commit completed milestones and the final validation record; push the branch
       and open/update a ready PR into `feat/backend-replacement` with scope,
       verification and remaining limitations. Do not wait for CI or review, poll
       for approval, or make a green CI run a completion condition. If a failure is
       already observed, address it only when attributable to this work.
-- [ ] Finish with the PR link and local results. Do not merge autonomously unless
+- [x] Finish with the PR link and local results. Do not merge autonomously unless
       the user separately authorizes that merge.
 
 
@@ -504,3 +504,13 @@ speed threshold for Marlin is not required.
   fixture correction to compile; its behavior passes on base as well as the
   focused branch recheck. The shutdown-result polling failure is reproduced on
   unmodified base host code. These findings do not trigger unrelated repairs.
+
+- Completed implementation pushed as `feat/shared-render-drivers`. Ready PR:
+  https://github.com/SanderVocke/shoopdaloop/pull/1006 into
+  `feat/backend-replacement`. No CI/review waiting and no automatic merge.
+- Final source validation includes warning-denying native/worklet/Wasm builds,
+  the full recorded workspace run plus focused follow-ups, exact model traces,
+  the real JACK server/device-mock matrix, both application transports, the UI
+  scenario and the final four-case Chromium AudioWorklet smoke. All changes
+  attributable to this implementation pass their focused checks. All plan stages
+  are complete; the existing shutdown-result polling failure is documented above.
