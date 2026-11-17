@@ -379,6 +379,7 @@ dependencies = [
 name = "shoop_rt_transport"
 version = "0.3.0"
 dependencies = [
+ "rt_runtime",
  "shoop_rt_protocol",
  "shoop_transport",
 ]
