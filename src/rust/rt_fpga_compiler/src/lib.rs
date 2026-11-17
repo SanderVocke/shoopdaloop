@@ -345,6 +345,16 @@ impl FixedProgram {
     }
 }
 impl LogicalStateProgram {
+    /// Logical identities are names, not physical state-memory addresses.
+    pub fn validate_logical(&self, limits: ProgramLimits) -> Result<(), CompileError> {
+        if self.loops.len() as u64 > u64::from(limits.loop_slots) {
+            return Err(CompileError::Capacity(Resource::Loops));
+        }
+        self.validate(ProgramLimits {
+            loop_slots: u32::MAX,
+            ..limits
+        })
+    }
     pub fn validate(&self, limits: ProgramLimits) -> Result<(), CompileError> {
         use CompileError::{Capacity, InvalidProgram};
         let r = self.resources;

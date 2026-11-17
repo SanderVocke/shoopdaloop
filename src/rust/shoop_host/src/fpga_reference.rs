@@ -212,11 +212,16 @@ mod tests {
             mut client,
             driver: _driver,
         } = start(16, 8000).unwrap();
-        assert!(client
+        let mut replies = Outbox::new(1, 0, 0);
+        client
             .carrier_mut()
             .endpoint_mut()
-            .prepare(graph(0, None))
-            .is_err());
+            .try_deliver(ClientMessage::Immediate(graph(0, None)), &mut replies)
+            .unwrap();
+        assert!(
+            matches!(replies.pop(), Some(EngineMessage::ImmediateResponse(r))
+            if r.header.code() == Code::CannotApply)
+        );
         client.connect().unwrap();
         assert!(matches!(client.poll(), Some(EngineMessage::Welcome { .. })));
         client

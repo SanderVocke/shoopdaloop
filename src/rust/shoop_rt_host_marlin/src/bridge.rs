@@ -68,6 +68,9 @@ pub struct Images {
     wake: Thread,
 }
 impl ProgramLoader for Images {
+    fn limits(&self) -> rt_fpga_compiler::ProgramLimits {
+        shoop_rt_host_reference::program_limits()
+    }
     fn stage_program(
         &mut self,
         logical: &LogicalStateProgram,
@@ -78,8 +81,12 @@ impl ProgramLoader for Images {
             .iter()
             .map(|l| u64::from(l.physical.slot))
             .collect::<Vec<_>>();
-        let image = RtlTarget::new([128, 64, 128, 128, 64, 1, 2], 32, &views)
-            .build_image(logical, layout)?;
+        let image = RtlTarget {
+            capacities: self.limits(),
+            media_views: &views,
+            state_base: 0,
+        }
+        .build_image(logical, layout)?;
         let descriptor = super::owner::descriptor(&image);
         self.uploads
             .push(image)

@@ -165,6 +165,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 limits.strip_audio_channels
             ));
         }
+        if self.prepared_graph.is_some() && self.mirror.strip_slots.free() == 0 {
+            self.mirror
+                .strip_slots
+                .resize(self.mirror.strip_slots.capacity() + 1);
+        }
         if self.mirror.strip_slots.free() == 0 {
             return Err(anyhow!(
                 "all {} prepared track slots of the engine are in use",
@@ -363,8 +368,14 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         })
     }
 
-    fn require_loop_slots(&self, count: usize) -> Result<()> {
+    fn require_loop_slots(&mut self, count: usize) -> Result<()> {
         let free = self.mirror.loop_slots.free();
+        if self.prepared_graph.is_some() && free < count {
+            self.mirror
+                .loop_slots
+                .resize(self.mirror.loop_slots.capacity() + count - free);
+            return Ok(());
+        }
         if free < count {
             return Err(anyhow!(
                 "{free} of the engine's {} prepared loop slots are free; {count} are needed",

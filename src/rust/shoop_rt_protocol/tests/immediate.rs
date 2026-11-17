@@ -294,3 +294,47 @@ fn complete_plans_clearing_and_observation_keep_the_value_envelope() {
     let len = codec::encode_snapshot(&record, &mut bytes).unwrap();
     assert_eq!(codec::decode_snapshot(&bytes[..len]).unwrap(), record);
 }
+
+#[shoop_test]
+fn graph_resource_refusals_survive_the_wire_without_a_profile_size_limit() {
+    let command = Command::BeginGraph {
+        quantum: 32,
+        loops: 1000,
+    };
+    assert!(command.valid());
+    let batch = Batch::new(4, 4, &[command]).unwrap();
+    for code in [
+        Code::InstructionCapacity,
+        Code::StateCapacity,
+        Code::LoopCapacity,
+        Code::JobCapacity,
+        Code::BufferCapacity,
+        Code::HistoryCapacity,
+        Code::InputCapacity,
+        Code::OutputCapacity,
+        Code::QuantumCapacity,
+    ] {
+        let message = EngineMessage::ImmediateResponse(
+            Response::new(
+                batch.header().complete(64, code),
+                &[CommandRecord::new(command).complete(code)],
+            )
+            .unwrap(),
+        );
+        let mut bytes = [0; MAX_RECORD_BYTES];
+        let len = codec::encode_engine(&message, &mut bytes).unwrap();
+        assert_eq!(codec::decode_engine(&bytes[..len]), Ok(message));
+    }
+    assert!(
+        Command::ConfigureLoop(shoop_rt_protocol::immediate::GraphLoop {
+            slot: 1000,
+            generation: 1,
+            source: Some(2000),
+            input: None,
+            gain: 1.,
+            output: true,
+            repeat_sync: false,
+        })
+        .valid()
+    );
+}

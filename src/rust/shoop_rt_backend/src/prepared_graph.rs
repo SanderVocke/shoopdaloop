@@ -3,7 +3,7 @@ use crate::mirror::PortTarget;
 use crate::*;
 use shoop_backend::{BackendMutationCompletion, BackendTrackTopology, MASTER_BUS_ID};
 use shoop_rt_protocol::{
-    immediate::{Batch, Code, Command, GraphLoop, PREPARED_GRAPH_LOOPS},
+    immediate::{Batch, Code, Command, GraphLoop, COMMANDS},
     Direction, HostPort, HostPortId, HostPortKind, Name, Outcome, PortKind, Refusal, Request,
 };
 
@@ -14,6 +14,7 @@ pub(crate) struct PreparedGraph {
     pub revision: u64,
     pub dirty: bool,
     pub committed: Option<Mirror>,
+    outgoing: alloc::collections::VecDeque<Batch>,
 }
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     pub(crate) fn prepared_graph_welcome(&mut self) {
@@ -121,12 +122,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         if state.active && !state.dirty {
             return Err(anyhow!("the prepared layout has not changed"));
         }
-        if self.mirror.loops.is_empty()
-            || self.mirror.loops.len() > PREPARED_GRAPH_LOOPS as usize
-            || self.mirror.buses.len() != 1
-        {
+        if self.mirror.loops.is_empty() || self.mirror.buses.len() != 1 {
             return Err(anyhow!(
-                "prepared reference supports 1-16 mono loops and the Master bus"
+                "prepared reference requires mono loops and the Master bus"
             ));
         }
         let mut commands = Vec::new();
@@ -252,12 +250,45 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             ));
         }
         commands.push(Command::ActivateGraph);
+        let revision = state.revision;
+        let mut outgoing = commands
+            .chunks(COMMANDS)
+            .map(|chunk| Batch::new(revision, revision, chunk).unwrap())
+            .collect::<alloc::collections::VecDeque<_>>();
         self.client
-            .immediate(Batch::new(state.revision, state.revision, &commands).unwrap())
+            .immediate(*outgoing.front().unwrap())
             .map_err(|e| anyhow!("graph submission failed: {e:?}"))?;
+        outgoing.pop_front();
         let sequence = self.requests.reserve_mutation();
-        self.prepared_graph.as_mut().unwrap().pending = Some(sequence);
+        let graph = self.prepared_graph.as_mut().unwrap();
+        graph.pending = Some(sequence);
+        graph.outgoing = outgoing;
         Ok(())
+    }
+    pub(crate) fn send_prepared_graph_chunks(&mut self) -> usize {
+        if self.link != Link::Ready {
+            return 0;
+        }
+        let Some(graph) = &mut self.prepared_graph else {
+            return 0;
+        };
+        let Some(batch) = graph.outgoing.front().copied() else {
+            return 0;
+        };
+        match self.client.immediate(batch) {
+            Ok(()) => {
+                graph.outgoing.pop_front();
+                1
+            }
+            Err(shoop_rt_transport::client::ClientError::Carrier(
+                shoop_rt_transport::carrier::CarrierError::Full,
+            ))
+            | Err(shoop_rt_transport::client::ClientError::Busy) => 0,
+            Err(error) => {
+                self.lose(alloc::format!("graph submission failed: {error:?}"));
+                0
+            }
+        }
     }
     pub(crate) fn prepared_graph_response(
         &mut self,
@@ -294,7 +325,14 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             result: if success {
                 Ok(())
             } else {
-                Err("prepared graph was refused".into())
+                Err(response.header.code().capacity_resource().map_or_else(
+                    || "prepared graph was refused".into(),
+                    |resource| {
+                        alloc::format!(
+                            "insufficient capacity for {resource} while staging the graph"
+                        )
+                    },
+                ))
             },
         });
     }

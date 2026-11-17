@@ -208,6 +208,14 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         } else if !records.iter().all(known) {
             return;
         }
+        if self.prepared_graph.is_some() {
+            self.snapshots
+                .loop_generations
+                .resize(self.mirror.loop_slots.capacity(), 0);
+            self.snapshots
+                .strip_generations
+                .resize(self.mirror.strip_slots.capacity(), 0);
+        }
         self.snapshots.loop_generations.fill(0);
         self.snapshots.strip_generations.fill(0);
         self.snapshots.bus_generations.fill(0);

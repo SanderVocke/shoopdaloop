@@ -7,7 +7,13 @@ Contract: [LOADING_DESIGN.md](../../LOADING_DESIGN.md).
 `rt_fpga_compiler::loading::Allocator` owns one current and one pending layout.
 It reserves loop, typed value and history allocations against the current
 occupancy, assigns physical generations, and binds instructions to those
-addresses. Retained identities must keep compatible state roles. Revisions and
+addresses. Logical identity numbers do not consume physical address space;
+logical compilation checks counts and target resource budgets, and allocation
+checks the simultaneous old/new occupancy. Application track and loop tables grow
+with the draft; they do not impose an extra graph-size profile. Graph descriptions
+may span bounded command groups, and only ActivateGraph publishes a complete
+upload. A refusal names the exhausted resource and preserves current ownership.
+Retained identities must keep compatible state roles. Revisions and
 slot generations use checked increments. Cancellation burns their identifiers;
 it cannot make an old image current again.
 
@@ -40,7 +46,8 @@ snapshot metadata move with the instance, rather than a temporary binding index.
 
 The header names the expected old revision; the small `SwitchProgram` record
 contains the next revision, instruction region and instruction/sync/state/job/
-buffer counts. RT protocol version 37 includes this record. The FPGA profile uses
+buffer counts. RT protocol version 38 includes resource-specific graph refusals.
+The FPGA profile uses
 the same monotonic value for graph and topology. Old-revision commands following
 a switch receive `StaleConfiguration`, including commands to retained loops.
 

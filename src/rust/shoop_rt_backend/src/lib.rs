@@ -520,6 +520,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             self.advance_preview();
             self.advance_persistence();
             let mut sent = self.send();
+            sent += self.send_prepared_graph_chunks();
             if !requested_snapshot
                 && self.is_ready()
                 && self.snapshots.delivery == SnapshotDelivery::Pull

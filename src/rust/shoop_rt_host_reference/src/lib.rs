@@ -3,7 +3,7 @@ use anyhow::{ensure, Result};
 use rt_fpga_compiler::{
     graph::{GraphDescription, LoopDescription},
     loading::Allocator,
-    Identity, ProgramLimits,
+    CompileError, Identity, ProgramLimits, Resource,
 };
 use rt_fpga_reference::{
     compiler::RustTarget,
@@ -22,9 +22,7 @@ use rt_runtime::{
     Error, Frame,
 };
 use shoop_rt_protocol::{
-    immediate::{
-        Batch, Code, Command, CommandRecord, Header, Response, SwitchProgram, PREPARED_GRAPH_LOOPS,
-    },
+    immediate::{Batch, Code, Command, CommandRecord, Header, Response, SwitchProgram},
     Capabilities, ClientMessage, DriverKind, DriverRunState, DriverStatus, EngineMessage, Lane,
     Limits,
 };
@@ -41,13 +39,46 @@ pub fn program_limits() -> ProgramLimits {
     ProgramLimits {
         instructions: 128,
         state_values: 64,
-        loop_slots: 2 * PREPARED_GRAPH_LOOPS,
+        loop_slots: 32,
         jobs: 128,
         buffers: 64,
         history_slots: 64,
         input_ports: 1,
         output_ports: 2,
         quantum: 128,
+    }
+}
+#[derive(Debug)]
+struct GraphRefusal(Code);
+impl std::fmt::Display for GraphRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "graph refused: {:?}", self.0)
+    }
+}
+impl std::error::Error for GraphRefusal {}
+fn refusal_code(error: &anyhow::Error) -> Code {
+    if let Some(GraphRefusal(code)) = error.downcast_ref::<GraphRefusal>() {
+        return *code;
+    }
+    let compile = error.downcast_ref::<CompileError>().copied().or_else(|| {
+        match error.downcast_ref::<rt_fpga_compiler::loading::LoadError>() {
+            Some(rt_fpga_compiler::loading::LoadError::Compile(e)) => Some(*e),
+            _ => None,
+        }
+    });
+    match compile {
+        Some(CompileError::Capacity(resource)) => match resource {
+            Resource::Instructions => Code::InstructionCapacity,
+            Resource::State => Code::StateCapacity,
+            Resource::Loops => Code::LoopCapacity,
+            Resource::Jobs => Code::JobCapacity,
+            Resource::Buffers => Code::BufferCapacity,
+            Resource::History => Code::HistoryCapacity,
+            Resource::Inputs => Code::InputCapacity,
+            Resource::Outputs => Code::OutputCapacity,
+            Resource::Quantum => Code::QuantumCapacity,
+        },
+        _ => Code::CannotApply,
     }
 }
 struct Pending {
@@ -57,11 +88,20 @@ struct Pending {
     ready: Option<bool>,
     published: bool,
 }
+struct Upload {
+    graph: u64,
+    quantum: u32,
+    expected: u32,
+    loops: Vec<LoopDescription>,
+    failure: Option<Code>,
+}
 pub struct Endpoint<L = ProgramControl> {
     control: rt::Endpoint,
     programs: L,
     allocator: Allocator,
     pending: Option<Pending>,
+    upload: Option<Upload>,
+    limits: ProgramLimits,
     replies: Outbox,
     held: Option<EngineMessage>,
     quantum: u32,
@@ -149,6 +189,7 @@ impl Status {
 }
 /// ARM-side staging. Implementations lower the same logical graph into their own target.
 pub trait ProgramLoader {
+    fn limits(&self) -> ProgramLimits;
     fn stage_program(
         &mut self,
         logical: &rt_fpga_compiler::LogicalStateProgram,
@@ -158,6 +199,9 @@ pub trait ProgramLoader {
     fn reclaim_programs(&mut self);
 }
 impl ProgramLoader for ProgramControl {
+    fn limits(&self) -> ProgramLimits {
+        program_limits()
+    }
     fn stage_program(
         &mut self,
         logical: &rt_fpga_compiler::LogicalStateProgram,
@@ -173,7 +217,7 @@ impl ProgramLoader for ProgramControl {
             .map(|l| ViewId(l.slot as usize))
             .collect();
         let mut target = RustTarget::new(&views);
-        target.limits = program_limits();
+        target.limits = self.limits();
         let image = PreparedProgram::new(target.build_image(logical, layout)?, unused)
             .map_err(|e| anyhow::anyhow!("{e:?}"))?;
         let descriptor = image.descriptor();
@@ -197,15 +241,15 @@ pub fn prepare_control(
     let (control, execution) = rt::channel(
         256,
         4,
-        shoop_rt_protocol::snapshot::capacity(2, pool.loop_slots as usize, 1).unwrap(),
+        shoop_rt_protocol::snapshot::capacity(0, pool.loop_slots as usize, 1).unwrap(),
     )?;
     let limits = Limits {
         composite_entries: 0,
         composite_segments: 0,
         timing_relations: 0,
         content_chunk_bytes: 0,
-        strips: 2,
-        loops: PREPARED_GRAPH_LOOPS,
+        strips: 0,
+        loops: pool.loop_slots,
         strip_audio_channels: 1,
         master_channels: 2,
         buses: 1,
@@ -403,11 +447,14 @@ impl<L: ProgramLoader> Endpoint<L> {
         (self.control, self.programs)
     }
     pub fn new(control: rt::Endpoint, programs: L, quantum: u32, status: Arc<Status>) -> Self {
+        let limits = programs.limits();
         Self {
             control,
             programs,
-            allocator: Allocator::new(program_limits()),
+            allocator: Allocator::new(limits),
             pending: None,
+            upload: None,
+            limits,
             replies: Outbox::new(8, 8, 0),
             held: None,
             quantum,
@@ -416,7 +463,7 @@ impl<L: ProgramLoader> Endpoint<L> {
             sent_frame: 0,
         }
     }
-    pub fn prepare(&mut self, batch: Batch) -> Result<()> {
+    fn accept_graph(&mut self, batch: Batch) -> Result<bool> {
         ensure!(self.control.is_connected(), "session is not connected");
         ensure!(self.pending.is_none(), "a program is already pending");
         let revision = self.allocator.revision();
@@ -424,43 +471,73 @@ impl<L: ProgramLoader> Endpoint<L> {
             batch.graph == revision && batch.topology == revision && batch.deadline.is_none(),
             "stale graph preparation"
         );
-        let commands = batch.commands();
-        let Some(Command::BeginGraph { quantum, loops }) = commands.first().copied() else {
-            anyhow::bail!("missing graph header");
-        };
-        ensure!(
-            quantum == self.quantum
-                && loops > 0
-                && loops <= PREPARED_GRAPH_LOOPS
-                && commands.len() == loops as usize + 2,
-            "invalid graph size"
-        );
-        ensure!(
-            commands.last() == Some(&Command::ActivateGraph),
-            "missing activation"
-        );
-        let mut description = GraphDescription {
-            quantum,
-            loops: Vec::new(),
-        };
-        for command in &commands[1..commands.len() - 1] {
-            let Command::ConfigureLoop(l) = *command else {
-                anyhow::bail!("invalid graph record");
-            };
-            ensure!(command.valid(), "invalid loop description");
-            description.loops.push(LoopDescription {
-                id: Identity {
-                    slot: l.slot,
-                    generation: l.generation,
-                },
-                source: l.source,
-                input: l.input.is_some(),
-                output: l.output,
-                gain: l.gain,
-                repeat_sync: l.repeat_sync,
-            });
+        for (index, command) in batch.commands().iter().enumerate() {
+            match *command {
+                Command::BeginGraph { quantum, loops } if index == 0 => {
+                    ensure!(quantum == self.quantum && loops > 0, "invalid graph header");
+                    self.upload = Some(Upload {
+                        graph: revision,
+                        quantum,
+                        expected: loops,
+                        loops: Vec::new(),
+                        // The physical loop pool also bounds ARM-side assembly memory.
+                        failure: (loops > self.limits.loop_slots).then_some(Code::LoopCapacity),
+                    });
+                }
+                Command::ConfigureLoop(l) => {
+                    let upload = self
+                        .upload
+                        .as_mut()
+                        .ok_or_else(|| anyhow::anyhow!("missing graph header"))?;
+                    ensure!(upload.graph == revision, "stale graph upload");
+                    if upload.failure.is_none() {
+                        if !command.valid() || upload.loops.len() >= upload.expected as usize {
+                            upload.failure = Some(Code::InvalidValue);
+                        } else {
+                            upload.loops.push(LoopDescription {
+                                id: Identity {
+                                    slot: l.slot,
+                                    generation: l.generation,
+                                },
+                                source: l.source,
+                                input: l.input.is_some(),
+                                output: l.output,
+                                gain: l.gain,
+                                repeat_sync: l.repeat_sync,
+                            });
+                        }
+                    }
+                }
+                Command::ActivateGraph if index + 1 == batch.commands().len() => {
+                    let upload = self
+                        .upload
+                        .take()
+                        .ok_or_else(|| anyhow::anyhow!("missing graph header"))?;
+                    if let Some(code) = upload.failure {
+                        anyhow::bail!(GraphRefusal(code));
+                    }
+                    ensure!(
+                        upload.graph == revision && upload.loops.len() == upload.expected as usize,
+                        "incomplete graph upload"
+                    );
+                    let logical = GraphDescription {
+                        quantum: upload.quantum,
+                        loops: upload.loops,
+                    }
+                    .compile_with_limits(self.limits)?;
+                    self.stage_graph(batch, logical)?;
+                    return Ok(true);
+                }
+                _ => anyhow::bail!("invalid graph record"),
+            }
         }
-        let logical = description.compile()?;
+        Ok(false)
+    }
+    fn stage_graph(
+        &mut self,
+        batch: Batch,
+        logical: rt_fpga_compiler::LogicalStateProgram,
+    ) -> Result<()> {
         let layout = self.allocator.stage(&logical)?;
         let staged = self.programs.stage_program(&logical, layout.clone());
         match staged {
@@ -569,15 +646,26 @@ impl<L: ProgramLoader> CarrierEndpoint for Endpoint<L> {
                 if out.available(Lane::Reliable) == 0 {
                     return Err(CarrierError::Full);
                 }
-                if let Err(error) = self.prepare(batch) {
-                    let _ = error;
-                    out.push(Self::response(batch, 0, Code::CannotApply, None))?;
+                match self.accept_graph(batch) {
+                    Ok(true) => {}
+                    Ok(false) => out.push(Self::response(batch, 0, Code::Applied, None))?,
+                    Err(error) => {
+                        let code = refusal_code(&error);
+                        self.upload = None;
+                        out.push(Self::response(batch, 0, code, None))?;
+                    }
                 }
                 return Ok(());
             }
             if self.allocator.revision() == 0 {
                 return out.push(Self::response(batch, 0, Code::CannotApply, None));
             }
+        }
+        if matches!(
+            message,
+            ClientMessage::Hello { .. } | ClientMessage::Goodbye
+        ) {
+            self.upload = None;
         }
         self.control.try_deliver(message, out)
     }
