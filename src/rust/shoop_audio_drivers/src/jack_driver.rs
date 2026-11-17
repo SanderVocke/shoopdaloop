@@ -272,7 +272,26 @@ pub(crate) fn start(config: &JackConfig, engine: &Template) -> Result<Started, S
     .map_err(error)?;
     worker.enable_io_bindings();
     let mut graph = graph::Graph::new();
-    let (callback_ports, io_control) = jack_ports::prepare(slot_names);
+    let (mut callback_ports, io_control) = jack_ports::prepare(slot_names);
+    if engine.jack_fixed_ports {
+        for (index, port) in callback_ports.inputs.iter_mut().enumerate() {
+            *port = Some(
+                client
+                    .register_port(&format!("audio_in_{}", index + 1), jack::AudioIn::default())
+                    .map_err(error)?,
+            );
+        }
+        for (index, port) in callback_ports.outputs.iter_mut().enumerate() {
+            *port = Some(
+                client
+                    .register_port(
+                        &format!("audio_out_{}", index + 1),
+                        jack::AudioOut::default(),
+                    )
+                    .map_err(error)?,
+            );
+        }
+    }
     let mut publications = crate::jack_publication::Publications::new(io_control);
     let active = client
         .activate_async(

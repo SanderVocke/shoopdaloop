@@ -165,10 +165,6 @@ impl AppArgs {
         &self,
         settings: &shoop_settings::SettingsSnapshot,
     ) -> Result<shoop_egui::AudioDriverConfig, String> {
-        let backend = self.selected_backend(settings).map_err(|e| e.to_string())?;
-        if backend != shoop_app_api::BackendType::Native && self.audio.audio_driver.is_none() {
-            return Ok(shoop_app_api::HostSettings::for_backend(backend).driver);
-        }
         let kind = self
             .audio
             .audio_driver

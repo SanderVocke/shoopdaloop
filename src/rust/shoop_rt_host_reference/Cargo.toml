@@ -1,0 +1,16 @@
+[package]
+name="shoop_rt_host_reference"
+version.workspace=true
+edition="2021"
+description="Portable FPGA reference endpoint and driver-independent renderer"
+[lints]
+workspace=true
+[dependencies]
+anyhow={workspace=true,features=["std"]}
+rt_runtime={path="../rt_runtime"}
+rt_fpga_compiler={path="../rt_fpga_compiler"}
+rt_fpga_reference={path="../rt_fpga_reference",features=["rt-interface"]}
+shoop_rt_protocol={path="../shoop_rt_protocol"}
+shoop_rt_transport={path="../shoop_rt_transport",features=["rt-interface"]}
+[dev-dependencies]
+shoop_wasm_test_support={path="../shoop_wasm_test_support"}

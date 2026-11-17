@@ -31,13 +31,6 @@ impl HostConfig {
                     "rust-fpga backend is unavailable; rebuild with the fpga-reference feature"
                 );
                 anyhow::ensure!(
-                    matches!(
-                        self.settings.driver,
-                        shoop_app_api::AudioDriverConfig::Dummy(_)
-                    ),
-                    "rust-fpga currently supports the dummy audio driver only"
-                );
-                anyhow::ensure!(
                     self.settings.loop_smoothing_ms == 0 && self.settings.master_auto_connect,
                     "rust-fpga currently requires zero smoothing and automatic Master connections"
                 );

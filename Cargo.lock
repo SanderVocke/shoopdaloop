@@ -5464,12 +5464,14 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",
+ "cpal 0.18.2",
  "directories",
  "getrandom 0.4.3",
  "jack",
  "nix",
  "rt_fpga_compiler",
  "rt_fpga_reference",
+ "rt_runtime",
  "serde",
  "serde_json",
  "sha2",
@@ -5478,6 +5480,7 @@ dependencies = [
  "shoop_app_client",
  "shoop_app_connection",
  "shoop_app_protocol",
+ "shoop_audio_drivers",
  "shoop_backend",
  "shoop_deployment_protocol",
  "shoop_format_conversion",
@@ -5488,6 +5491,7 @@ dependencies = [
  "shoop_rt_backend",
  "shoop_rt_engine",
  "shoop_rt_host_native",
+ "shoop_rt_host_reference",
  "shoop_rt_protocol",
  "shoop_rt_transport",
  "shoop_transport",
@@ -5748,6 +5752,19 @@ dependencies = [
  "shoop_wasm_test_support",
  "tempfile",
  "tracing",
+]
+
+[[package]]
+name = "shoop_rt_host_reference"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "rt_fpga_compiler",
+ "rt_fpga_reference",
+ "rt_runtime",
+ "shoop_rt_protocol",
+ "shoop_rt_transport",
+ "shoop_wasm_test_support",
 ]
 
 [[package]]

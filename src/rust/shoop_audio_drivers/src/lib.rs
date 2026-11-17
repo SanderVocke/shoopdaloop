@@ -60,6 +60,17 @@ pub enum DriverConfig {
     Jack(JackConfig),
 }
 
+impl DriverConfig {
+    pub fn max_frames_hint(&self) -> usize {
+        match self {
+            Self::Dummy(d) => d.buffer_frames as usize,
+            #[cfg(feature = "cpal")]
+            Self::Cpal(c) => c.buffer_frames.unwrap_or(1024) as usize,
+            #[cfg(feature = "jack")]
+            Self::Jack(_) => 1024,
+        }
+    }
+}
 #[derive(Clone, Debug)]
 pub struct DriverSettings {
     pub driver: DriverConfig,
@@ -183,7 +194,8 @@ impl Running {
         let shared = self.shared;
         shared.stopping.store(true, Ordering::Release);
         let deadline = Instant::now() + self.reset_wait;
-        while shared.phase() == RenderPhase::Running
+        while shared.host.requires_reset()
+            && shared.phase() == RenderPhase::Running
             && shared.driver().state != DriverRunState::Failed
             && Instant::now() < deadline
         {
@@ -191,8 +203,9 @@ impl Running {
         }
         let cycle = self.driver.stop();
         // The final callback may finish while joining the driver.
-        let mut midi_reset = shared.phase() != RenderPhase::Running;
-        if shared.driver().kind == DriverKind::Jack {
+        let mut midi_reset =
+            !shared.host.requires_reset() || shared.phase() != RenderPhase::Running;
+        if shared.host.requires_reset() && shared.driver().kind == DriverKind::Jack {
             midi_reset &= shared.reset_flushed.load(Ordering::Acquire)
                 && shared.failure().is_none()
                 && shared.stats().midi_out_failed == 0;
@@ -334,6 +347,9 @@ pub trait Processor: Renderer + Send {
     }
 }
 pub trait Observer: Send + Sync {
+    fn requires_reset(&self) -> bool {
+        true
+    }
     fn driver(&self, _driver: DriverStatus) {}
     fn xrun(&self) {}
     fn load(&self, _load: f32, _frames: u32, _sample_rate: u32, _now: u64) {}
@@ -350,6 +366,7 @@ impl Observer for () {}
 pub struct Template {
     pub max_frames: usize,
     pub jack_capacities: [usize; 4],
+    pub jack_fixed_ports: bool,
     pub factory: Arc<dyn Factory>,
 }
 impl std::fmt::Debug for Template {
@@ -587,6 +604,7 @@ fn test_template(description: &shoop_rt_engine::EngineDescription) -> Template {
     Template {
         max_frames: description.max_frames,
         jack_capacities: [0; 4],
+        jack_fixed_ports: false,
         factory: Arc::new(Fixture(description.clone())),
     }
 }

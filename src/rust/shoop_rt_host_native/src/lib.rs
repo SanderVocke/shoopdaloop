@@ -192,6 +192,7 @@ pub fn validate_processor_capacity(engine: &EngineDescription) -> Result<u64, St
 pub fn template(engine: &EngineDescription) -> drivers::Template {
     drivers::Template {
         max_frames: engine.max_frames,
+        jack_fixed_ports: false,
         jack_capacities: [
             engine.strips() * engine.strip_channels as usize,
             engine.strips() * engine.strip_channels as usize

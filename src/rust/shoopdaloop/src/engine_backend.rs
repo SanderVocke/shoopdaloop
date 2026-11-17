@@ -118,14 +118,7 @@ pub(crate) fn start_selected_backend(
     );
     #[cfg(feature = "fpga-reference")]
     if backend == shoop_app_api::BackendType::RustFpga {
-        let AudioDriverConfig::Dummy(dummy) = driver else {
-            anyhow::bail!("rust-fpga currently supports the dummy audio driver only")
-        };
-        let started = shoop_host::fpga_reference::start_with_memory(
-            pools.quantum,
-            dummy.sample_rate,
-            pools.loop_memory_mb,
-        )?;
+        let started = shoop_host::fpga_reference::start_selected(driver, pools, DUMMY_INPUT)?;
         let backend = RtBackend::connect(started.client, Sleep::default())?;
         return Ok(NewEngine {
             backend: Box::new(backend),
@@ -134,7 +127,7 @@ pub(crate) fn start_selected_backend(
                 owner: None,
                 reference: Some(started.driver),
             },
-            warnings: vec!["Rust FPGA reference: simulated input, no audio device.".into()],
+            warnings: vec!["Rust FPGA reference: limited mono looping profile.".into()],
         });
     }
     anyhow::bail!("backend {} is unavailable in this build", backend.id())

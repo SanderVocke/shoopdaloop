@@ -233,6 +233,9 @@ impl Shared {
     }
 
     pub fn set_render(&self, phase: Phase, next_frame: u64) {
+        if matches!(phase, Phase::Faulted(_)) {
+            self.fail(StreamFailure::Backend);
+        }
         let code = match phase {
             Phase::Running => 0,
             Phase::Disconnected => 1,

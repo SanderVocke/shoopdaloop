@@ -271,17 +271,17 @@ Do not replace an unfinished renderer with native execution to make a pair pass.
 
 ### Stage 4 — Rust reference on shared native drivers
 
-- [ ] Split the current reference startup into portable endpoint/render
+- [x] Split the current reference startup into portable endpoint/render
       preparation and driver composition. Remove the synthetic-input sleeping
       worker; retain persistent SP/JP/media, allocator, loader and reclaim behavior.
-- [ ] Implement the renderer and wire Dummy, CPAL and JACK to its actual media
+- [x] Implement the renderer and wire Dummy, CPAL and JACK to its actual media
       ports. Apply selected device rate/geometry rather than fixed driver values.
-- [ ] Update host, in-process/detached app and Manager factories/validation. Respect
+- [x] Update host, in-process/detached app and Manager factories/validation. Respect
       the independently chosen driver, including saved settings. Do not silently
       substitute Dummy or native execution for an explicitly selected combination.
-- [ ] Keep existing graph restrictions, normal unsupported-command refusals and
+- [x] Keep existing graph restrictions, normal unsupported-command refusals and
       automatic graph activation. Preserve current native startup defaults.
-- [ ] Verify deterministic record/play/stop, sync plans, gain and live graph
+- [x] Verify deterministic record/play/stop, sync plans, gain and live graph
       replacement using all dummy modes and mocked physical drivers. Exercise
       irregular callbacks, retained media/state, reattachment and shutdown through
       the normal application endpoint. Check reference callback allocation behavior.
@@ -419,3 +419,19 @@ speed threshold for Marlin is not required.
   The irregular block adapter test passes with heap guards, exact sample order,
   one-quantum latency and separate driver/completed-engine frame accounting.
   Warning-denying application build and final affected-library build passed.
+
+- Stage 4: `shoop_rt_host_reference` contains the portable endpoint, persistent
+  renderer and f32/fixed conversion; native composition uses the shared factory.
+  Dummy silence/generators now belong to the driver, and selected/saved driver
+  choices are respected. Initial snapshots do not run audio. Driver status/faults
+  propagate through an observer; MIDI-free renderers skip native reset waits.
+- Stage 4 validation: allocation-checked record/play/gain reference trace 1 passed;
+  host graph scenarios 1+3 passed; dummy reference modes 2 passed; CPAL/reference
+  driver suite 3 passed; reference endpoint lifetime test 1 passed; existing RT
+  interface/loading transport suites 6+7 passed; UI recovery 7 passed, 1 existing
+  ignored; native CPAL 13 and dummy 10 passed. A temporary JACK dummy server
+  enabled all 11 native JACK tests and a new real JACK reference audio test to
+  pass, closing the earlier server gap. Default host/app/Manager compilation,
+  affected warning-denying build, format/test policy and dependency audits passed.
+- Build cache was regenerated with debug information disabled and incremental
+  compilation off to fit the execution environment; sources/results were retained.

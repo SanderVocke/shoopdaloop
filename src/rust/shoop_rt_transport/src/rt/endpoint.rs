@@ -60,6 +60,9 @@ impl Endpoint {
             },
         })
     }
+    pub fn set_driver(&mut self, driver: DriverStatus) {
+        self.settings.driver = driver;
+    }
     pub fn snapshot_capacity(&self) -> usize {
         self.ports.snapshots.capacity()
     }

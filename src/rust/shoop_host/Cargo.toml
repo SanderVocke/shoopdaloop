@@ -13,7 +13,7 @@ name = "fpga_reference_client"
 required-features = ["fpga-reference"]
 
 [features]
-fpga-reference = ["dep:rt_fpga_reference", "dep:rt_fpga_compiler", "dep:shoop_rt_transport", "dep:shoop_rt_protocol"]
+fpga-reference = ["dep:shoop_rt_host_reference", "dep:shoop_audio_drivers", "dep:rt_runtime","dep:rt_fpga_reference", "dep:rt_fpga_compiler", "dep:shoop_rt_transport", "dep:shoop_rt_protocol"]
 builtin-fx = ["shoop_rt_host_native/builtin-fx"]
 oxisynth = ["shoop_rt_host_native/oxisynth"]
 default = ["cpal", "jack", "builtin-fx", "oxisynth"]
@@ -22,6 +22,9 @@ cpal = ["shoop_rt_host_native/cpal"]
 testing = []
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+shoop_rt_host_reference={path="../shoop_rt_host_reference",optional=true}
+shoop_audio_drivers={path="../shoop_audio_drivers",default-features=false,optional=true}
+rt_runtime={path="../rt_runtime",optional=true}
 rt_fpga_reference = { path = "../rt_fpga_reference", features = ["rt-interface"], optional = true }
 rt_fpga_compiler = { path = "../rt_fpga_compiler", optional = true }
 shoop_rt_transport = { path = "../shoop_rt_transport", features = ["rt-interface"], optional = true }
@@ -55,6 +58,7 @@ shoop_transport_socket = { path = "../shoop_transport_socket" }
 shoop_transport_shared_memory = { path = "../shoop_transport_shared_memory" }
 
 [dev-dependencies]
+cpal={workspace=true}
 shoop_backend = { path = "../shoop_backend", features = ["legacy"] }
 shoop_persistence_codec = { path = "../shoop_persistence_codec" }
 shoop_host = { path = ".", default-features = false, features = ["testing"] }

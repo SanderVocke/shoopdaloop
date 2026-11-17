@@ -83,12 +83,15 @@ Attach with Host Manager, or use the management address printed by the host:
 target/debug/shoopdaloop --ui-only --host-address 127.0.0.1:PORT
 ```
 
-This mode opens no audio device. An independently paced worker supplies constant
-0.25 input samples and computes stereo output without playing it. The command
-line selects dummy driver geometry, zero smoothing and automatic Master outputs;
-saved native driver preferences do not override reference startup. The default
-reference media pool is 16 MiB. Custom memory
-capacity and quantum can be supplied with `--config PATH`.
+Choose `--audio-driver dummy` for device-free processing, `cpal` for system audio,
+or `jack` for direct JACK. The selected driver supplies timing and actual audio;
+Dummy input is silence unless a test fixture supplies a generator. Dummy pacing
+can be paced, unpaced or controlled. Saved driver preferences apply independently
+of backend selection. The reference has zero smoothing and automatic Master
+outputs. Its default standalone media pool is 16 MiB; memory capacity and quantum
+can be supplied with `--config PATH`. The quantum adapter reports one quantum of
+processing latency. JACK exposes fixed `audio_in_1`, `audio_out_1` and
+`audio_out_2` ports; CPAL uses the first input and first two outputs.
 
 The supported graph is the built-in Sync track plus one mono audio track, with up
 to 16 loops total. Choose Regular, Mono and no MIDI in Add Track. The UI retains
