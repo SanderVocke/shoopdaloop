@@ -45,6 +45,7 @@ fn profiling(revision: u64) -> shoop_app_api::ProfilingView {
 
 fn snapshot(revision: u64) -> Arc<SessionSnapshot> {
     Arc::new(SessionSnapshot {
+        track_limits: Default::default(),
         immediate: Default::default(),
         composites: Vec::new(),
         sync_sources: Vec::new(),

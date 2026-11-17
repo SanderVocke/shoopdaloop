@@ -28,7 +28,7 @@ use alloc::sync::Arc;
 use serde::{Deserialize, Serialize};
 use shoop_app_api::*;
 
-pub const VERSION: u16 = 41;
+pub const VERSION: u16 = 42;
 pub const CHUNK_BYTES: usize = 1024;
 pub const MAX_MEDIA_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_SNAPSHOT_BYTES: usize = 8 * 1024 * 1024;
@@ -254,6 +254,7 @@ pub struct OperationResult {
 /// Ordinary shared state, without Lua, file workflows, editor drafts or media reads.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SessionSnapshot {
+    pub track_limits: TrackLimits,
     pub immediate: immediate::Capabilities,
     pub composites: Vec<composite::View>,
     pub preview: ClickTrackState,
@@ -280,6 +281,12 @@ pub struct SessionSnapshot {
 
 impl SessionSnapshot {
     pub fn valid(&self) -> bool {
+        if self.track_limits.min_audio_channels > self.track_limits.audio_channels
+            || self.track_limits.tracks == 0
+            || self.track_limits.loops == 0
+        {
+            return false;
+        }
         let mut bindings = alloc::collections::BTreeSet::new();
         let loops = self
             .tracks

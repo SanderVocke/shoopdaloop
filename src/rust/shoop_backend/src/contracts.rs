@@ -404,7 +404,10 @@ pub(crate) fn attempt_capability(
                 length: Some(4),
             },
         ),
-        BackendCapability::LoopDuplication | BackendCapability::ClickTrackInsertion => backend
+        BackendCapability::LoopDuplication
+        | BackendCapability::ClickTrackInsertion
+        | BackendCapability::TrackMixControls
+        | BackendCapability::BusMixControls => backend
             .capabilities()
             .require(capability)
             .map_err(anyhow::Error::msg),

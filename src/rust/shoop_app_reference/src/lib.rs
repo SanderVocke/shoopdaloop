@@ -2390,6 +2390,14 @@ impl ApplicationModel {
                 _ => Ok(()),
             },
             AppIntent::Track { action, .. } => match action {
+                TrackAction::InputGainChanged(_)
+                | TrackAction::InputBalanceChanged(_)
+                | TrackAction::OutputGainChanged(_)
+                | TrackAction::OutputBalanceChanged(_)
+                | TrackAction::OutputMuteChanged(_)
+                | TrackAction::InputMonitoringChanged { .. } => {
+                    require(Capability::TrackMixControls)
+                }
                 TrackAction::DefaultPlaybackModeChanged(DefaultPlaybackMode::DryThroughWet) => {
                     require(Capability::DryWetModes)
                 }
@@ -2403,6 +2411,9 @@ impl ApplicationModel {
                 _ => Ok(()),
             },
             AppIntent::Bus { action, .. } => match action {
+                BusAction::GainChanged(_)
+                | BusAction::BalanceChanged(_)
+                | BusAction::MuteChanged(_) => require(Capability::BusMixControls),
                 BusAction::Remove => require(Capability::BusManagement),
                 BusAction::FxActiveChanged(_)
                 | BusAction::FxVisibilityChanged(_)
@@ -2482,6 +2493,19 @@ impl ApplicationModel {
     ) -> Result<(), String> {
         let capabilities = self.capabilities;
         match operation {
+            ControlOperation::SetTrackGain { .. }
+            | ControlOperation::SetTrackBalance { .. }
+            | ControlOperation::SetTrackMuted { .. }
+            | ControlOperation::SetTrackInputGain { .. }
+            | ControlOperation::SetTrackInputBalance { .. }
+            | ControlOperation::SetTrackInputMuted { .. } => {
+                capabilities.require(BackendCapability::TrackMixControls)
+            }
+            ControlOperation::SetBusGain { .. }
+            | ControlOperation::SetBusBalance { .. }
+            | ControlOperation::SetBusMuted { .. } => {
+                capabilities.require(BackendCapability::BusMixControls)
+            }
             ControlOperation::Transition { mode, .. } | ControlOperation::Trigger { mode, .. } => {
                 require_loop_mode(capabilities, *mode)
             }
@@ -11990,6 +12014,7 @@ impl ApplicationModel {
             .flat_map(|(kind, references)| references.map(move |loop_id| (loop_id, kind)))
             .collect::<BTreeMap<_, _>>();
         AppSnapshot {
+            track_limits: Default::default(),
             diagnostics: Default::default(),
             profiling: Default::default(),
             host_graph: Arc::default(),
@@ -26471,6 +26496,20 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             action,
         };
         vec![
+            (
+                BackendCapability::TrackMixControls,
+                AppIntent::Track {
+                    track_id,
+                    action: TrackAction::OutputGainChanged(-6.0),
+                },
+            ),
+            (
+                BackendCapability::BusMixControls,
+                AppIntent::Bus {
+                    bus_id,
+                    action: BusAction::GainChanged(-6.0),
+                },
+            ),
             (
                 BackendCapability::SessionCapture,
                 AppIntent::RequestSaveSession,

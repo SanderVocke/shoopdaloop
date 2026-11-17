@@ -1644,6 +1644,9 @@ impl AppWidget {
         let touch_mode = settings_state.active.get(TOUCH_MODE).unwrap_or(false);
         crate::loop_widget::set_touch_mode(ui.ctx(), touch_mode);
         crate::set_backend_capabilities(ui.ctx(), state.capabilities);
+        ui.ctx().data_mut(|data| {
+            data.insert_temp(egui::Id::unique("host_track_limits"), state.track_limits)
+        });
 
         egui::Panel::top("global_controls")
             .frame(
@@ -2772,6 +2775,17 @@ impl AppWidget {
             return;
         }
         self.reset_unsupported_add_track_choices(crate::backend_capabilities(context));
+        self.add_track_audio_channels = self.add_track_audio_channels.clamp(
+            state.track_limits.min_audio_channels,
+            state
+                .track_limits
+                .audio_channels
+                .max(state.track_limits.min_audio_channels),
+        );
+        if !state.track_limits.midi {
+            self.add_track_midi = false;
+            self.add_track_dry_midi = false;
+        }
         let mut open = self.add_track_open;
         let mut accepted = false;
         let mut cancelled = false;
@@ -2855,6 +2869,19 @@ impl AppWidget {
                     };
                     ui.colored_label(egui::Color32::LIGHT_RED, message);
                 }
+                let initial_loops = state.tracks.iter().filter(|t| !t.is_sync)
+                    .map(|t| t.loops.len()).max().unwrap_or(8).max(8);
+                let used_loops = state.tracks.iter().map(|t| t.loops.len()).sum::<usize>();
+                let capacity_available = state.tracks.len() < state.track_limits.tracks as usize
+                    && used_loops + initial_loops <= state.track_limits.loops as usize;
+                let shape_supported = (state.track_limits.min_audio_channels..=state.track_limits.audio_channels)
+                    .contains(&configuration.audio_channels) && (state.track_limits.midi || !configuration.midi);
+                if !capacity_available {
+                    ui.label("The host has no capacity for another track.");
+                }
+                if !shape_supported {
+                    ui.label("This host does not support the selected audio/MIDI shape.");
+                }
                 let missing_capability = spec.as_ref().and_then(|spec| {
                     track_spec_missing_capability(crate::backend_capabilities(ui.ctx()), spec)
                 });
@@ -2864,7 +2891,7 @@ impl AppWidget {
                 ui.separator();
                 ui.horizontal(|ui| {
                     let add = ui.add_enabled(
-                        validation.is_ok() && missing_capability.is_none(),
+                        validation.is_ok() && missing_capability.is_none() && capacity_available && shape_supported,
                         egui::Button::new("Add").min_size(egui::vec2(64.0, 28.0)),
                     );
                     #[cfg(test)]
@@ -3403,6 +3430,20 @@ pub fn show_new_track_configuration(
     processors: &[TrackProcessorDescriptor],
     buses: &[BusOption],
 ) -> NewTrackConfigurationUi {
+    let limits = ui
+        .ctx()
+        .data(|data| data.get_temp::<crate::TrackLimits>(egui::Id::unique("host_track_limits")))
+        .unwrap_or_default();
+    configuration.audio_channels = configuration.audio_channels.clamp(
+        limits.min_audio_channels,
+        limits.audio_channels.max(limits.min_audio_channels),
+    );
+    if !limits.midi {
+        configuration.midi = false;
+    }
+    if limits.min_audio_channels > 0 && configuration.mode == AddTrackMode::Trigger {
+        configuration.mode = AddTrackMode::Regular;
+    }
     if configuration.mode == AddTrackMode::DryWet
         && configuration.processor.as_ref().is_none_or(|selected| {
             !processors
@@ -3440,7 +3481,13 @@ pub fn show_new_track_configuration(
                 ui.label("Track type:");
                 ui.horizontal(|ui| {
                     ui.selectable_value(&mut configuration.mode, AddTrackMode::Regular, "Regular");
-                    ui.selectable_value(&mut configuration.mode, AddTrackMode::Trigger, "Trigger");
+                    ui.add_enabled_ui(limits.min_audio_channels == 0, |ui| {
+                        ui.selectable_value(
+                            &mut configuration.mode,
+                            AddTrackMode::Trigger,
+                            "Trigger",
+                        );
+                    });
                     ui.add_enabled_ui(
                         crate::supports(ui.ctx(), crate::BackendCapability::DryWetTracks),
                         |ui| {
@@ -3510,7 +3557,12 @@ pub fn show_new_track_configuration(
                 let audio_enabled = configuration.mode != AddTrackMode::Trigger;
                 ui.add_enabled(audio_enabled, egui::Label::new("Audio:"));
                 ui.add_enabled_ui(audio_enabled, |ui| {
-                    show_audio_channel_count(ui, "audio", &mut configuration.audio_channels);
+                    show_audio_channel_count(
+                        ui,
+                        "audio",
+                        &mut configuration.audio_channels,
+                        limits,
+                    );
                 });
                 ui.end_row();
 
@@ -3531,7 +3583,7 @@ pub fn show_new_track_configuration(
                     ),
                 };
                 let midi = ui.add_enabled(
-                    midi_editable,
+                    midi_editable && limits.midi,
                     egui::Checkbox::new(&mut displayed_midi, "Enabled"),
                 );
                 response.midi_id = Some(midi.id);
@@ -3822,22 +3874,39 @@ fn show_output_bus_picker(
     });
 }
 
-fn show_audio_channel_count(ui: &mut egui::Ui, id: &str, channels: &mut u32) {
+fn show_audio_channel_count(
+    ui: &mut egui::Ui,
+    id: &str,
+    channels: &mut u32,
+    limits: crate::TrackLimits,
+) {
     ui.push_id(id, |ui| {
         ui.horizontal(|ui| {
-            ui.selectable_value(channels, 0, "Disabled");
-            ui.selectable_value(channels, 1, "Mono");
-            ui.selectable_value(channels, 2, "Stereo");
+            for (count, label) in [(0, "Disabled"), (1, "Mono"), (2, "Stereo")] {
+                ui.add_enabled_ui(
+                    (limits.min_audio_channels..=limits.audio_channels).contains(&count),
+                    |ui| {
+                        ui.selectable_value(channels, count, label);
+                    },
+                );
+            }
 
             let custom_selected = *channels > 2;
-            if ui.selectable_label(custom_selected, "Other").clicked() && !custom_selected {
+            if ui
+                .add_enabled(
+                    limits.audio_channels > 2,
+                    egui::Button::selectable(custom_selected, "Other"),
+                )
+                .clicked()
+                && !custom_selected
+            {
                 *channels = 3;
             }
             let mut custom_channels = (*channels).max(3);
             let custom = ui.add_enabled(
                 *channels > 2,
                 egui::DragValue::new(&mut custom_channels)
-                    .range(3..=u32::MAX)
+                    .range(3..=limits.audio_channels.max(3))
                     .speed(1),
             );
             if custom.changed() {
@@ -5939,5 +6008,48 @@ mod tests {
         assert!(settings_actions.is_empty());
         assert!(widget.pending_track_defaults.is_empty());
         assert!(widget.confirmed_track_defaults.is_empty());
+    }
+    #[shoop_wasm_test_support::shoop_test]
+    fn reference_track_dialog_uses_host_limits_and_disables_exhausted_capacity() {
+        let context = egui::Context::default();
+        crate::initialize(&context);
+        let mut widget = AppWidget::default();
+        let mut state = AppState {
+            track_limits: crate::TrackLimits {
+                tracks: 2,
+                loops: 16,
+                min_audio_channels: 1,
+                audio_channels: 1,
+                midi: false,
+            },
+            capabilities: crate::BackendCapabilities::NONE,
+            ..Default::default()
+        };
+        widget.add_track_open = true;
+        widget.add_track_name = "Reference".into();
+        widget.add_track_midi = true;
+        for _ in 0..2 {
+            frame(&context, &mut widget, &state, Vec::new());
+        }
+        assert_eq!(widget.add_track_audio_channels, 1);
+        assert!(!widget.add_track_midi);
+        let position = widget.add_track_accept_rect.unwrap().center();
+        let submitted = click(&context, &mut widget, &state, position);
+        assert!(submitted.iter().any(|a| matches!(a, AppAction::AddTrackWithTopology(spec)
+            if matches!(spec.topology, TrackSpecTopology::Direct { audio_channels: 1, midi: false }))));
+        widget.add_track_open = true;
+        state.tracks = (1..=2)
+            .map(|id| crate::TrackState {
+                id: crate::TrackId::from_raw(id),
+                ..Default::default()
+            })
+            .collect();
+        for _ in 0..2 {
+            frame(&context, &mut widget, &state, Vec::new());
+        }
+        let position = widget.add_track_accept_rect.unwrap().center();
+        assert!(!click(&context, &mut widget, &state, position)
+            .iter()
+            .any(|a| matches!(a, AppAction::AddTrackWithTopology(_))));
     }
 }

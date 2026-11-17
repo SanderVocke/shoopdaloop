@@ -13,6 +13,7 @@ pub(crate) struct PreparedGraph {
     pub pending: Option<u64>,
     pub revision: u64,
     pub dirty: bool,
+    pub committed: Option<Mirror>,
 }
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     pub(crate) fn prepared_graph_welcome(&mut self) {
@@ -39,6 +40,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 preferred: index != 0,
             })
             .collect();
+        self.prepared_graph.as_mut().unwrap().committed = Some(self.mirror.clone());
     }
     pub(crate) fn structure_mutable(&self) -> Result<()> {
         if self
@@ -280,6 +282,12 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             graph.active = true;
             graph.revision = response.header.graph();
             graph.dirty = false;
+            graph.committed = Some(self.mirror.clone());
+        } else {
+            graph.dirty = false;
+            if let Some(previous) = &graph.committed {
+                self.mirror.restore_prepared(previous.clone());
+            }
         }
         self.mutation_completions.push(BackendMutationCompletion {
             sequence,

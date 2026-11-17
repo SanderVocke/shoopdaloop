@@ -306,6 +306,8 @@ fn completed_adapter_capabilities_are_reported_and_other_operations_refuse_with_
             .with(BackendCapability::LoopTimingEdits, true)
             .with(BackendCapability::Grab, true)
             .with(BackendCapability::ReplacingMode, true)
+            .with(BackendCapability::TrackMixControls, true)
+            .with(BackendCapability::BusMixControls, true)
     );
     let refusals = [(
         BackendCapability::DryWetTracks,

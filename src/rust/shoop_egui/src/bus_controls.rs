@@ -84,6 +84,34 @@ impl BusControls {
         processor: Option<&TrackProcessorDescriptor>,
         catalog: &[TrackProcessorDescriptor],
     ) -> Vec<BusAction> {
+        let response = ui.add_enabled_ui(
+            crate::supports(ui.ctx(), BackendCapability::BusMixControls),
+            |ui| {
+                self.show_controls(
+                    ui,
+                    state,
+                    incoming_routes,
+                    outgoing_links,
+                    processor,
+                    catalog,
+                )
+            },
+        );
+        response
+            .response
+            .on_disabled_hover_text(BackendCapability::BusMixControls.unavailable_reason());
+        response.inner
+    }
+
+    fn show_controls(
+        &mut self,
+        ui: &mut egui::Ui,
+        state: &BusState,
+        incoming_routes: usize,
+        outgoing_links: usize,
+        processor: Option<&TrackProcessorDescriptor>,
+        catalog: &[TrackProcessorDescriptor],
+    ) -> Vec<BusAction> {
         #[cfg(test)]
         {
             self.test_rects = TestBusControlRects::default();

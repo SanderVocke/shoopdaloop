@@ -303,6 +303,52 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     fn mutation_cursor(&self) -> u64 {
         self.requests.last_sequence()
     }
+    fn requires_shutdown_transitions(&self) -> bool {
+        self.prepared_graph.is_none()
+    }
+    fn track_limits(&self) -> shoop_app_api::TrackLimits {
+        self.limits
+            .map_or_else(Default::default, |l| shoop_app_api::TrackLimits {
+                min_audio_channels: u32::from(self.prepared_graph.is_some()),
+                tracks: u32::from(l.strips),
+                loops: u32::from(l.loops),
+                audio_channels: u32::from(l.strip_audio_channels),
+                midi: self.prepared_graph.is_none(),
+            })
+    }
+    fn commit_graph_changes(&mut self) -> Result<()> {
+        if self.prepared_graph.is_none() || self.graph_update_pending() {
+            return Ok(());
+        }
+        self.pump();
+        if self.prepared_graph.as_ref().is_some_and(|g| g.dirty) {
+            if let Err(error) = self.install_prepared_graph() {
+                self.cancel_graph_changes();
+                return Err(error);
+            }
+        }
+        Ok(())
+    }
+    fn cancel_graph_changes(&mut self) {
+        if self.prepared_graph.is_none() || self.graph_update_pending() {
+            return;
+        }
+        self.pump();
+        let graph = self.prepared_graph.as_mut().unwrap();
+        if graph.dirty {
+            if let Some(previous) = &graph.committed {
+                self.mirror.restore_prepared(previous.clone());
+            }
+            graph.dirty = false;
+        }
+    }
+    fn graph_update_pending(&self) -> bool {
+        self.prepared_graph.as_ref().is_some_and(|g| {
+            g.pending.is_some()
+                || (g.active
+                    && self.snapshots.observed_configuration != Some((g.revision, g.revision)))
+        })
+    }
     fn activate_prepared_graph(&mut self) -> Result<()> {
         self.install_prepared_graph()
     }
@@ -381,7 +427,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         }
     }
     fn supports_audio_preview(&self) -> bool {
-        self.is_ready()
+        self.is_ready() && self.prepared_graph.is_none()
     }
     fn start_bus_audio_preview_async(
         &mut self,
@@ -403,6 +449,14 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     }
     fn capabilities(&self) -> BackendCapabilities {
         BackendCapabilities::NONE
+            .with(
+                BackendCapability::TrackMixControls,
+                self.prepared_graph.is_none(),
+            )
+            .with(
+                BackendCapability::BusMixControls,
+                self.prepared_graph.is_none(),
+            )
             .with(
                 BackendCapability::LoopDuplication,
                 self.is_ready() && self.capabilities.contains(Capabilities::CONTENT_UPLOAD),
@@ -426,7 +480,10 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
                 BackendCapability::LoopTimingEdits,
                 self.capabilities.contains(Capabilities::LOOP_TIMING),
             )
-            .with(BackendCapability::BusManagement, self.is_ready())
+            .with(
+                BackendCapability::BusManagement,
+                self.is_ready() && self.prepared_graph.is_none(),
+            )
             .with(
                 BackendCapability::BusFx,
                 self.capabilities.contains(Capabilities::BUS_PROCESSORS),
@@ -640,6 +697,9 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         control: BackendTrackControl,
     ) -> Result<()> {
         self.ready()?;
+        self.capabilities()
+            .require(BackendCapability::TrackMixControls)
+            .map_err(anyhow::Error::msg)?;
         self.queue_track_control(track_id, control)?;
         Ok(())
     }
@@ -1378,6 +1438,9 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         Ok(())
     }
     fn set_bus_control(&mut self, id: BackendBusId, control: BackendBusControl) -> Result<()> {
+        self.capabilities()
+            .require(BackendCapability::BusMixControls)
+            .map_err(anyhow::Error::msg)?;
         self.ready()?;
         self.queue_bus_control(id, control)
     }

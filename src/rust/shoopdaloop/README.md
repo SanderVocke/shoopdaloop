@@ -10,6 +10,14 @@ for upcoming parity work. Recovery is independent of disk persistence.
 
 For remote native UI connections, see [trusted-LAN setup and the Cortex-A adapter contract](../../../docs/trusted-lan-networking.md).
 
+## Experimental Rust FPGA reference
+
+The UI can attach to a Rust FPGA-reference host for a restricted mono looping
+session with simulated input and no physical audio output. Graph edits activate
+automatically inside the host. See the [reference host instructions](../shoop_host/README.md#rust-fpga-reference-with-the-ui)
+for builds, startup and the supported controls. This is opt-in; normal launches
+continue to use native execution.
+
 ## Hosted track processors
 
 Default native and browser worklet builds include `builtin-fx` and `oxisynth`.

@@ -868,6 +868,7 @@ impl Runtime {
             .client
             .snapshot()
             .map(|state| AppSnapshot {
+                track_limits: state.track_limits,
                 profiling: self.client.profiling().clone(),
                 diagnostics: self.client.diagnostics().clone(),
                 bus_limits: state.bus_limits,

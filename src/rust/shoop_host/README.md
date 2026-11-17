@@ -46,47 +46,75 @@ directory is used. Saved driver preferences override configuration; explicit aud
 CLI flags override both. See the
 [audio-driver switching contract](../../../docs/native_session_recovery/audio-driver-switching.md).
 
-## Temporary Rust FPGA-reference client
+## Rust FPGA reference with the UI
 
-Build and run the live-graph application-API exercise without the UI:
+Build the host and UI, then start the reference host:
 
 ```sh
-cargo build -p shoop_host --no-default-features --features fpga-reference --bin shoop_host --example fpga_reference_client
-cargo run -p shoop_host --no-default-features --features fpga-reference --example fpga_reference_client -- --host target/debug/shoop_host
+cargo build -p shoop_host -p shoopdaloop --no-default-features --features shoop_host/fpga-reference
+target/debug/shoop_host --fpga-reference --name "Rust FPGA reference"
 ```
 
-The client launches a reference host, attaches over its real socket API, creates a
-mono track, connects its input and submits `ActivatePreparedGraph`. `RtBackend`
-collects the desired layout on the control side. Activation sends one bounded
-immediate group containing a graph header, loop descriptions and activation.
-The endpoint compiles that description through the shared compiler and `RustTarget`
-outside the processing thread. The ARM allocator reuses continuing allocations,
-initializes only unused slots, and stages a bound program for the independently
-paced worker. An ordered `SwitchProgram` selects it at a quantum boundary. The
-operation completes after the ownership fence; processing frames remain continuous.
+Attach with Host Manager, or use the management address printed by the host:
 
-The client then uses immediate transition plans, gain and plan clearing, checking
-their results through application snapshots. It records the sync loop, records a
-second loop between source pulses, plays it, changes gain and stops both loops.
-It replaces programs during recording and playback, changes input routing, and
-replaces the user track with eight new loops, including recycled logical identities.
-It writes `config.json`, `profile.json`, `host.log` and `report.json` under
-`work/fpga-reference-client` (override with `--output`). The same client is run by
-`cargo test -p shoop_host --no-default-features --features fpga-reference --test prepared_graph`.
+```sh
+target/debug/shoopdaloop --ui-only --host-address 127.0.0.1:PORT
+```
 
-This profile supports the built-in sync track plus one mono audio track, up to
-16 primitive loops in total, acyclic sync relationships (self sync allowed),
-optional input connections and either both Master output channels or neither.
-Track/Master controls must remain at their defaults, with zero smoothing and
-automatic Master connections. The input supplies deterministic 0.25 samples;
-stereo output is computed without a physical audio device. Media import/export,
-processors, MIDI, monitoring, arbitrary routing and UI integration are outside
-this profile. One prepared update may be outstanding. Quantum, sample rate and
-physical I/O remain fixed. Unsupported legacy mutations receive
-refusals; they are never sent to the execution queues. Native execution remains
-the default. Select the reference host with `fpga_reference: true` in startup
-configuration and build with the corresponding feature.
+This mode opens no audio device. An independently paced worker supplies constant
+0.25 input samples and computes stereo output without playing it. The command
+line selects dummy driver geometry, zero smoothing and automatic Master outputs;
+saved native driver preferences do not override reference startup. The default
+reference media pool is 16 MiB. Custom memory
+capacity and quantum can be supplied with `--config PATH`.
 
-`RtlTarget` accepts the same logical graph and its packed configurations still load
-through the testbench loader. Marlin does not yet have the runtime graph/command
-frontend used by this application client.
+The supported graph is the built-in Sync track plus one mono audio track, with up
+to 16 loops total. Add Track defaults to mono and disables unsupported MIDI,
+trigger and channel-width choices. Host capacities and optional mixer controls
+are advertised in ordinary application snapshots. Extra buses, track/Master mix
+controls, effects, MIDI, monitoring, media reads/import/export, loop clearing,
+copying, composites and general routing are unavailable. Use track removal and
+creation for fresh empty loops. Loop gain, record/play/stop, sync scheduling,
+selection, names and supported live structural changes can be exercised normally.
+
+The application service automatically commits a complete graph edit, including
+its loops and default connections. `RtBackend` collects that desired graph on the
+control side, and the reference endpoint compiles it through the shared compiler
+and `RustTarget` outside the processing thread. The ARM allocator preserves
+continuing allocations and prepares unused slots only. The operation completes
+after the quantum-boundary program switch and ownership fence. Commands behind a
+pending switch wait in the existing application queue. Failed edits restore the
+last committed control-side graph without resetting running processor state.
+The UI sends its existing commands; it does not need `ActivatePreparedGraph`.
+Lower-level clients using `RtBackend` directly can still stage edits and request
+explicit activation.
+
+Input routing can be connected/disconnected; each mono output must feed both
+Master channels or neither. Sync relationships must be acyclic (self sync is
+allowed). Quantum, sample rate and simulated I/O geometry stay fixed for a host's
+lifetime. Native execution remains the default. This restricted graph support is
+an implementation limit, not a separate application-profile abstraction.
+
+## Application and UI verification
+
+The temporary application client exercises recording, scheduled transitions,
+gain, plan clearing, live program replacement and recycled logical identities:
+
+```sh
+cargo run -p shoop_host --no-default-features --features fpga-reference --example fpga_reference_client -- --host target/debug/shoop_host
+cargo test -p shoop_host --no-default-features --features fpga-reference --test prepared_graph --test reference_activation
+cargo test -p shoopdaloop --no-default-features --features fpga-reference fpga_reference_ui_operates
+```
+
+The UI test starts the actual application runtime against a socket reference
+host, renders egui offscreen, records/plays/stops, changes loop gain, adds a loop
+during playback, removes/recreates the track, reattaches, and closes both UI and
+host. Separate tests hold
+the activation acknowledgment to check command ordering and operation completion,
+and inject transport/compiler refusals to check restoration and retry.
+The application client writes diagnostics under `work/fpga-reference-client`
+(override with `--output`).
+
+`RtlTarget` accepts the same logical graph and loads through the Marlin testbench
+loader. Marlin does not yet have an application host with the runtime command and
+snapshot frontend used by this UI integration.

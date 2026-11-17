@@ -27,6 +27,9 @@ fn run() -> anyhow::Result<()> {
         audio: shoop_host::audio_args::AudioArgs,
         #[arg(long)]
         config: Option<PathBuf>,
+        /// Run the Rust FPGA reference with simulated input and no audio device.
+        #[arg(long, conflicts_with_all = ["audio_options", "launch_stdin"])]
+        fpga_reference: bool,
         #[arg(long)]
         driver_preferences: Option<PathBuf>,
         #[arg(long, hide = true, conflicts_with_all = ["config", "audio_options"])]
@@ -123,7 +126,25 @@ fn run() -> anyhow::Result<()> {
             serde_json::from_slice(&bytes)?
         }
     };
-    if let Some(path) = &options.driver_preferences {
+    if args.fpga_reference {
+        config.fpga_reference = true;
+        if !matches!(
+            config.settings.driver,
+            shoop_app_api::AudioDriverConfig::Dummy(_)
+        ) {
+            config.settings.driver = shoop_app_api::AudioDriverConfig::Dummy(Default::default());
+        }
+        if args.config.is_none() {
+            config.settings.pools.loop_memory_mb = 16;
+        }
+        config.settings.loop_smoothing_ms = 0;
+        config.settings.master_auto_connect = true;
+    }
+    if let Some(path) = options
+        .driver_preferences
+        .as_ref()
+        .filter(|_| !config.fpga_reference)
+    {
         if let Some(profile) = shoop_host::audio_driver::read_preferences(path)? {
             config.settings.driver = profile;
         }

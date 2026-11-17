@@ -11,6 +11,7 @@ const AUTHORITY: Authority = Authority {
 
 fn snapshot(revision: u64, epoch: u64) -> SessionSnapshot {
     SessionSnapshot {
+        track_limits: Default::default(),
         immediate: Default::default(),
         composites: Vec::new(),
         preview: Default::default(),

@@ -372,6 +372,7 @@ impl Service {
         if service.options.master_auto_connect {
             service.connect_master()?;
         }
+        service.backend.commit_graph_changes()?;
         service.init_through = service.backend.mutation_cursor();
         Ok(service)
     }
@@ -558,7 +559,7 @@ impl Service {
         if !self.can_receive() {
             return Err(Refusal::Overloaded);
         }
-        if !self.incoming.is_empty() {
+        if !self.incoming.is_empty() || self.waits_for_graph(&message) {
             self.incoming.push_back((connection, message));
             return Ok(());
         }
@@ -569,6 +570,16 @@ impl Service {
             }
             result => result,
         }
+    }
+
+    fn waits_for_graph(&self, message: &ClientMessage) -> bool {
+        self.backend.graph_update_pending()
+            && matches!(
+                message,
+                ClientMessage::Submit { .. }
+                    | ClientMessage::Immediate { .. }
+                    | ClientMessage::Shutdown { .. }
+            )
     }
 
     fn handle_now(
@@ -956,7 +967,14 @@ impl Service {
         let result = match command {
             Some(command) => self.execute(command),
             None => self.prepare_shutdown(),
-        };
+        }
+        .and_then(|effect| {
+            self.backend.commit_graph_changes()?;
+            Ok(effect)
+        });
+        if result.is_err() {
+            self.backend.cancel_graph_changes();
+        }
         let after = self.backend.mutation_cursor();
         if matches!(result, Ok(Effect::AudioDriver)) {
             if let Some(job) = self.driver_job.as_mut() {
@@ -1111,6 +1129,13 @@ impl Service {
         if !self.draining {
             self.draining = true;
             for _ in 0..MAX_COMMANDS_PER_TURN {
+                if self
+                    .incoming
+                    .front()
+                    .is_some_and(|(_, message)| self.waits_for_graph(message))
+                {
+                    break;
+                }
                 let Some((connection, message)) = self.incoming.pop_front() else {
                     break;
                 };

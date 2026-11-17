@@ -2136,10 +2136,12 @@ pub enum BackendCapability {
     MidiInjection,
     LoopDuplication,
     ClickTrackInsertion,
+    TrackMixControls,
+    BusMixControls,
 }
 
 impl BackendCapability {
-    pub const ALL: [Self; 18] = [
+    pub const ALL: [Self; 20] = [
         Self::SessionCapture,
         Self::SessionContentLoad,
         Self::CompositeLoops,
@@ -2158,6 +2160,8 @@ impl BackendCapability {
         Self::MidiInjection,
         Self::LoopDuplication,
         Self::ClickTrackInsertion,
+        Self::TrackMixControls,
+        Self::BusMixControls,
     ];
 
     const fn bit(self) -> u32 {
@@ -2192,6 +2196,8 @@ impl BackendCapability {
             Self::MidiInjection => "The session engine does not yet support MIDI input injection.",
             Self::LoopDuplication => "The active host does not support loop copying.",
             Self::ClickTrackInsertion => "The session engine does not yet support generated click-track insertion.",
+            Self::TrackMixControls => "Track gain, balance, mute and monitoring are unavailable on this host.",
+            Self::BusMixControls => "Bus gain, balance and mute are unavailable on this host.",
         }
     }
 }
@@ -2299,8 +2305,31 @@ pub struct DiagnosticsView {
 pub use freertos_profiling as task_profiling;
 pub use profiling_protocol as diagnostics_protocol;
 
+/// Host capacities, including the built-in sync track and loop.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct TrackLimits {
+    pub min_audio_channels: u32,
+    pub tracks: u32,
+    pub loops: u32,
+    pub audio_channels: u32,
+    pub midi: bool,
+}
+impl Default for TrackLimits {
+    fn default() -> Self {
+        Self {
+            min_audio_channels: 0,
+            tracks: 64,
+            loops: 256,
+            audio_channels: u32::MAX,
+            midi: true,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct AppSnapshot {
+    pub track_limits: TrackLimits,
     pub diagnostics: DiagnosticsView,
     pub profiling: ProfilingView,
     pub bus_limits: BusLimits,
