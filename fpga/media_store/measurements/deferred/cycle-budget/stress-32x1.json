@@ -1,0 +1,351 @@
+{
+  "loops": 32,
+  "channels_per_loop": 1,
+  "recording_frames": 1440000,
+  "sample_rate": 48000,
+  "recording_seconds": 30,
+  "chunk_frames": 32,
+  "block_chunks": 32,
+  "blocks_per_take": 1407,
+  "released_references": 45024,
+  "view_capacity": 64,
+  "physical_chunk_capacity": 1441792,
+  "allocation_block_capacity": 45056,
+  "metadata_page_capacity": 3532,
+  "scope": "media-store ownership stress; old payloads unobserved; new captures/readback checked",
+  "configuration": {
+    "retired_tables": 256,
+    "reclaim_blocks": 0,
+    "reclaim_cycles": 5000,
+    "reclaim_guard": 1024,
+    "block_chunks": 32,
+    "metadata_lines": 128,
+    "reference_lines": 4,
+    "stack_lines": 2,
+    "metadata_pages": null,
+    "model": "instant",
+    "backend": "systemverilog",
+    "purpose": "functional",
+    "fabric_hz": 100000000,
+    "physical_base": 16777216,
+    "fixed_cycles": 7,
+    "axi_data_width": 64,
+    "word_transfers": false,
+    "revision": "47d9f2277c00c21283864723783dcc49853cf665",
+    "working_tree_dirty": true
+  },
+  "model_sha256": "135820182a0a1f8aea48e85936eb86de19af90090d794e16f6eef8d83d4c2a7b",
+  "generated_top_sha256": "f64fe7f622ec5cd50a3fa00932027f0bae4e7b397f64ea8277f246e3e8bfb0ff",
+  "verilator": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1+b2)",
+  "sources": {
+    "fpga/media_store/rtl/media_reclaimer.sv": "fc911dd8671d240f5f1512dbfdd6f8e3359b6705ac020fc6a9654f091be65161",
+    "fpga/media_store/rtl/media_store.sv": "c3c0983e4874fb2fa9fa03fb801c3a52eea245ed543560a963e7bd37f6957b8d",
+    "fpga/media_store/rtl/media_prefetch_resolver.sv": "a650a2fb6f1cf379190483c5ad9af558228fa77fd2e565d7f49fb7027e89d2ba",
+    "fpga/media_store/rtl/memory_delay.sv": "426bfea9b6bd377a5efdfc2fb98cfe15995a821810d23d60b7911dfe3788bee9",
+    "fpga/media_store/rtl/media_ram.sv": "2c1f253e53ad420768598616da4a7ed5e8c246f786d9c9a56d25e64b46ee5178",
+    "fpga/media_store/rtl/media_metadata.sv": "4eef2be8fb7811c935d99271e5a2bf72db4291e65f4adefdda185f4319c3a79e",
+    "fpga/media_store/rtl/media_audio_pipeline.sv": "14e12b67ffb990ea4df3dac302cdfb872fa2c79e3a4a52b27b3454fc26023adf",
+    "fpga/media_store/rtl/metadata_cache.sv": "3d86dc29a1970f201dfd967d6856329d0ec91bbcf94ba4e5122b9b57c7d5cab4",
+    "fpga/chunk_memory/rtl/chunk_ram.sv": "b3c85ff265ced37296ee0fbda1dd231efc56b40e3ebff6454c982f6f25021464",
+    "fpga/chunk_memory/rtl/chunk_memory.sv": "40c9db16a1d82ad5da6ec251e9e875976f8d5cf286dfadbaacb1dde4dfef81a0",
+    "fpga/axi_memory/rtl/loop_pipeline_axi.sv": "a801a5cf3b9f3fa4f11ae3992f77127ad744526017527e3469917e5992b653ad",
+    "fpga/axi_memory/rtl/word_axi.sv": "7edfae1a0b97fc5cc4e30f7a64223cd8879e4d27811a98fda3ac8c7fe504a27e",
+    "fpga/axi_memory/rtl/media_store_axi.sv": "994218f9c840591aac6c0a72c17a00d5ab4c68d96a5f25f5d556fe150bec8c9d",
+    "fpga/axi_memory/rtl/axi_master.sv": "ece082912919f34927873195a83ae26536f9d4f3df050c2c84b856afcfda9c56",
+    "fpga/axi_memory/rtl/chunk_dma.sv": "1bb3a55eaf6955401fbd9b2e171a3b58dc4f4eb57dd2cd2eee4644bbe7cc25b0",
+    "fpga/axi_memory/rtl/chunk_memory_axi.sv": "56d40ffb5fd1a505f8d50935cac328cd346e34ec2d438d181f3dd45bb7ef5a21",
+    "fpga/axi_memory/rtl/media_audio_pipeline_axi.sv": "45a8c0864521f93b232e5b8517766f2e31896dae41a513787307a922c21c02f6",
+    "fpga/axi_memory/rtl/word_dma.sv": "292f48d1fa083a4f4ad5fe09c586043c5e02d4e1cc5b60ed68b14d0cb3eea772",
+    "fpga/axi_memory/rtl/chunk_axi.sv": "d5265918080e4b4f8a8430831b72db9425639a7d29c21aa62b5949fc261e0ecb",
+    "fpga/axi_memory/rtl/shared_axi.sv": "39e04665ee3d0ae82ba545250008df3ff77432d8b9c193582a8eff0df49a5cc9",
+    "fpga/axi_memory/rtl/axi_burst_mux.sv": "61ce3d023b9fb61109645eb9b6741088f14389e381ea63116fcbf670dfb79b91",
+    "fpga/axi_memory/tests/direct/media_store_axi.sv": "a121b2d4ae8ef6fa7f972f5e93fa0079be3f0b9289ffefcbc8af1a5da67572bb",
+    "fpga/axi_memory/tests/axi_direct_memory.sv": "5c919dbc97e33e3786cfcd0d5db52c3e6327a63fda557ea9c6b7cb8de13e390e"
+  },
+  "clear_cycles": [
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95
+  ],
+  "mass_clear_cycles": 3104,
+  "logical_bytes_retired": 184320000,
+  "allocated_bytes_retired": 184418304,
+  "block_id_bytes_retired": 180096,
+  "queue_record_bytes": 2048,
+  "metadata_pages_before_cleanup": 3072,
+  "recording_progress": [
+    {
+      "iteration": 0,
+      "free_blocks": 0,
+      "pending_references": 45016,
+      "freed_blocks": 8
+    },
+    {
+      "iteration": 1,
+      "free_blocks": 9,
+      "pending_references": 45007,
+      "freed_blocks": 17
+    },
+    {
+      "iteration": 2,
+      "free_blocks": 18,
+      "pending_references": 44998,
+      "freed_blocks": 26
+    },
+    {
+      "iteration": 3,
+      "free_blocks": 27,
+      "pending_references": 44989,
+      "freed_blocks": 35
+    },
+    {
+      "iteration": 4,
+      "free_blocks": 36,
+      "pending_references": 44980,
+      "freed_blocks": 44
+    },
+    {
+      "iteration": 5,
+      "free_blocks": 45,
+      "pending_references": 44971,
+      "freed_blocks": 53
+    },
+    {
+      "iteration": 6,
+      "free_blocks": 54,
+      "pending_references": 44962,
+      "freed_blocks": 62
+    },
+    {
+      "iteration": 7,
+      "free_blocks": 63,
+      "pending_references": 44953,
+      "freed_blocks": 71
+    },
+    {
+      "iteration": 8,
+      "free_blocks": 71,
+      "pending_references": 44945,
+      "freed_blocks": 79
+    },
+    {
+      "iteration": 9,
+      "free_blocks": 80,
+      "pending_references": 44936,
+      "freed_blocks": 88
+    },
+    {
+      "iteration": 10,
+      "free_blocks": 89,
+      "pending_references": 44927,
+      "freed_blocks": 97
+    },
+    {
+      "iteration": 11,
+      "free_blocks": 98,
+      "pending_references": 44918,
+      "freed_blocks": 106
+    },
+    {
+      "iteration": 12,
+      "free_blocks": 107,
+      "pending_references": 44909,
+      "freed_blocks": 115
+    },
+    {
+      "iteration": 13,
+      "free_blocks": 116,
+      "pending_references": 44900,
+      "freed_blocks": 124
+    },
+    {
+      "iteration": 14,
+      "free_blocks": 125,
+      "pending_references": 44891,
+      "freed_blocks": 133
+    },
+    {
+      "iteration": 15,
+      "free_blocks": 134,
+      "pending_references": 44882,
+      "freed_blocks": 142
+    },
+    {
+      "iteration": 16,
+      "free_blocks": 143,
+      "pending_references": 44873,
+      "freed_blocks": 151
+    },
+    {
+      "iteration": 17,
+      "free_blocks": 151,
+      "pending_references": 44865,
+      "freed_blocks": 159
+    },
+    {
+      "iteration": 18,
+      "free_blocks": 160,
+      "pending_references": 44856,
+      "freed_blocks": 168
+    },
+    {
+      "iteration": 19,
+      "free_blocks": 169,
+      "pending_references": 44847,
+      "freed_blocks": 177
+    },
+    {
+      "iteration": 20,
+      "free_blocks": 178,
+      "pending_references": 44838,
+      "freed_blocks": 186
+    },
+    {
+      "iteration": 21,
+      "free_blocks": 187,
+      "pending_references": 44829,
+      "freed_blocks": 195
+    },
+    {
+      "iteration": 22,
+      "free_blocks": 196,
+      "pending_references": 44820,
+      "freed_blocks": 204
+    },
+    {
+      "iteration": 23,
+      "free_blocks": 205,
+      "pending_references": 44811,
+      "freed_blocks": 213
+    },
+    {
+      "iteration": 24,
+      "free_blocks": 214,
+      "pending_references": 44802,
+      "freed_blocks": 222
+    },
+    {
+      "iteration": 25,
+      "free_blocks": 223,
+      "pending_references": 44793,
+      "freed_blocks": 231
+    },
+    {
+      "iteration": 26,
+      "free_blocks": 231,
+      "pending_references": 44785,
+      "freed_blocks": 239
+    },
+    {
+      "iteration": 27,
+      "free_blocks": 240,
+      "pending_references": 44776,
+      "freed_blocks": 248
+    },
+    {
+      "iteration": 28,
+      "free_blocks": 249,
+      "pending_references": 44767,
+      "freed_blocks": 257
+    },
+    {
+      "iteration": 29,
+      "free_blocks": 258,
+      "pending_references": 44758,
+      "freed_blocks": 266
+    },
+    {
+      "iteration": 30,
+      "free_blocks": 267,
+      "pending_references": 44749,
+      "freed_blocks": 275
+    },
+    {
+      "iteration": 31,
+      "free_blocks": 276,
+      "pending_references": 44740,
+      "freed_blocks": 284
+    },
+    {
+      "iteration": 32,
+      "free_blocks": 253,
+      "pending_references": 44731,
+      "freed_blocks": 293
+    },
+    {
+      "iteration": 33,
+      "free_blocks": 262,
+      "pending_references": 44722,
+      "freed_blocks": 302
+    },
+    {
+      "iteration": 34,
+      "free_blocks": 271,
+      "pending_references": 44713,
+      "freed_blocks": 311
+    },
+    {
+      "iteration": 35,
+      "free_blocks": 279,
+      "pending_references": 44705,
+      "freed_blocks": 319
+    },
+    {
+      "iteration": 36,
+      "free_blocks": 288,
+      "pending_references": 44696,
+      "freed_blocks": 328
+    },
+    {
+      "iteration": 37,
+      "free_blocks": 297,
+      "pending_references": 44687,
+      "freed_blocks": 337
+    },
+    {
+      "iteration": 38,
+      "free_blocks": 306,
+      "pending_references": 44678,
+      "freed_blocks": 346
+    },
+    {
+      "iteration": 39,
+      "free_blocks": 315,
+      "pending_references": 44669,
+      "freed_blocks": 355
+    }
+  ],
+  "maintenance_cycles": 5112309,
+  "metadata_pages_after_cleanup": 128,
+  "recovered_unique_blocks": 45048,
+  "result": "passed"
+}

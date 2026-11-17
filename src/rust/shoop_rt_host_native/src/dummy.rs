@@ -119,6 +119,7 @@ struct Loop {
     buffer: usize,
     input: Option<fn(usize, u64) -> f32>,
     wrap: Option<fn(&mut dyn FnMut())>,
+    late_ns: u64,
 }
 
 fn numbered(prefix: &str, count: u16) -> Vec<Name> {
@@ -134,6 +135,7 @@ fn period(frames: usize, sample_rate: u32) -> Duration {
 impl Loop {
     fn step(&mut self, frames: usize) {
         let input = self.input;
+        let late_ns = self.late_ns;
         let Self { cycle, shared, .. } = self;
         let mut body = || {
             let started = Instant::now();
@@ -158,8 +160,15 @@ impl Loop {
                 }
                 cycle.render(count, shared.nanos(started), true);
             }
-            let busy = started.elapsed().as_secs_f32();
-            shared.set_load(busy / period(frames, shared.sample_rate()).as_secs_f32());
+            let busy = started.elapsed();
+            shared
+                .set_load(busy.as_secs_f32() / period(frames, shared.sample_rate()).as_secs_f32());
+            shared.record_callback(
+                first,
+                frames,
+                busy.as_nanos().min(u64::MAX as u128) as u64,
+                late_ns,
+            );
         };
         match self.wrap {
             Some(wrap) => wrap(&mut body),
@@ -171,6 +180,14 @@ impl Loop {
         let period = period(self.buffer, self.shared.sample_rate());
         let mut deadline = Instant::now();
         while !self.exit.load(Ordering::Acquire) {
+            self.late_ns = if self.mode == DummyMode::Automatic {
+                Instant::now()
+                    .saturating_duration_since(deadline)
+                    .as_nanos()
+                    .min(u64::MAX as u128) as u64
+            } else {
+                0
+            };
             let pending = self.requests.pending.load(Ordering::Acquire);
             match self.mode {
                 DummyMode::Automatic => self.step(self.buffer),
@@ -255,6 +272,7 @@ mod tests {
             buffer: 128,
             input: None,
             wrap: None,
+            late_ns: 0,
         };
         let stopped = exit.clone();
         let thread = std::thread::spawn(move || {
@@ -319,6 +337,12 @@ pub(crate) fn start(
         remainder: Mutex::new(0),
     });
     let exit = Arc::new(AtomicBool::new(false));
+    let input = match std::env::var("SHOOP_AUDIO_BENCH_INPUT").as_deref() {
+        Ok("signal") => Some(benchmark_input as fn(usize, u64) -> f32),
+        Ok("silence") => None,
+        Ok(_) => return Err(StartError::InvalidConfig("invalid SHOOP_AUDIO_BENCH_INPUT")),
+        Err(_) => config.input,
+    };
     let worker = Loop {
         cycle,
         shared: shared.clone(),
@@ -326,8 +350,9 @@ pub(crate) fn start(
         exit: exit.clone(),
         mode: config.mode,
         buffer: config.buffer_frames as usize,
-        input: config.input,
+        input,
         wrap: config.wrap_cycle,
+        late_ns: 0,
     };
     shared.set_state(shoop_rt_protocol::DriverRunState::Running);
     let thread = std::thread::Builder::new()
@@ -350,4 +375,9 @@ pub(crate) fn start(
             dummy: Some(DummyControl(requests)),
         },
     ))
+}
+
+fn benchmark_input(port: usize, frame: u64) -> f32 {
+    let phase = (frame.wrapping_add(port as u64 * 313) % 997) as f32 / 997.;
+    (phase - 0.5) * 0.4 + 0.1
 }

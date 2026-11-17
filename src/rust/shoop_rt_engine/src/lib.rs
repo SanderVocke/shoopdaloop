@@ -47,6 +47,7 @@ pub use history::HistoryCapacity;
 mod description;
 pub mod dsp;
 mod endpoint;
+pub mod external;
 mod family;
 mod global_midi;
 mod graph;
@@ -58,6 +59,7 @@ mod monitoring;
 mod node;
 mod pool;
 mod preview;
+pub mod primitive;
 mod processors;
 mod profiling;
 mod queue;
@@ -83,6 +85,7 @@ pub use processors::{
     ProcessorPreset, ProcessorState,
 };
 pub use render::{Phase, Render, Report, Stopped};
+pub use rt_runtime::AudioRenderMode;
 
 use crate::cells::{Cells, Observer};
 use crate::endpoint::{Settings, Work, PLANNED};
@@ -105,9 +108,9 @@ use shoop_loops::runtime::{
 use shoop_loops::{compile, Limits as LoopLimits, LoopId, TopologyDescription};
 use shoop_rt_protocol::{Direction, DriverStatus, HostPort, HostPortId, HostPortKind, Limits};
 
-pub(crate) type EngineCommand = Command<EngineNode, LoopPlanner, EngineOp>;
-pub(crate) type EngineControl = Control<EngineNode, LoopPlanner, EngineOp>;
-pub(crate) type EngineExecution = Execution<Operation, Reply, EngineOp, ()>;
+pub type EngineCommand = Command<EngineNode, LoopPlanner, EngineOp>;
+pub type EngineControl = Control<EngineNode, LoopPlanner, EngineOp>;
+pub type EngineExecution = Execution<Operation, Reply, EngineOp, ()>;
 
 /// Topology records per append operation.
 const RECORDS_PER_APPEND: usize = 32;
@@ -365,6 +368,26 @@ pub fn prepare_with_shared_and_processors(
     )
 }
 
+/// Prepare the existing control endpoint with another execution owner.
+pub fn prepare_with_consumer<R>(
+    description: &EngineDescription,
+    driver: DriverStatus,
+    factory: impl FnOnce(external::Preparation) -> Result<external::Consumer<R>, PrepareError>,
+) -> Result<external::Prepared<R>, PrepareError> {
+    let processors = empty_processors(description)?;
+    let history = history::Layout::new(description)?;
+    let mut expanded = description.clone();
+    expanded.resource_pages = history.capacity.total_resource_pages;
+    prepare_complete_using(
+        &expanded,
+        driver,
+        history.settings(),
+        processors,
+        description.resource_pages / 4,
+        factory,
+    )
+}
+
 fn prepare_complete(
     description: &EngineDescription,
     driver: DriverStatus,
@@ -372,6 +395,29 @@ fn prepare_complete(
     processors: PreparedProcessors,
     wet_pages: usize,
 ) -> Result<Engine, PrepareError> {
+    let prepared = prepare_complete_using(
+        description,
+        driver,
+        shared_settings,
+        processors,
+        wet_pages,
+        external::Preparation::native,
+    )?;
+    Ok(Engine {
+        endpoint: prepared.endpoint,
+        render: prepared.execution,
+        host: prepared.host,
+    })
+}
+
+fn prepare_complete_using<R>(
+    description: &EngineDescription,
+    driver: DriverStatus,
+    shared_settings: shoop_loops::runtime::SharedSettings,
+    processors: PreparedProcessors,
+    wet_pages: usize,
+    factory: impl FnOnce(external::Preparation) -> Result<external::Consumer<R>, PrepareError>,
+) -> Result<external::Prepared<R>, PrepareError> {
     description.validate()?;
     let policy = description.processors;
     let effective = processors.effective;
@@ -478,6 +524,7 @@ fn prepare_complete(
                 + midi_bytes.max(rt_runtime::midi::ResetState::BYTES),
         },
     )?;
+    resources.set_audio_render_mode(description.audio_render_mode);
     let loop_limits = LoopLimits {
         loop_slots: loops.max(1),
         relations: description.timing_relations.max(loops.max(1)),
@@ -643,26 +690,51 @@ fn prepare_complete(
             EngineNode::Processor(node),
         ));
     }
-    let (mut control, mut runtime) = GraphRuntime::prepare_for_host(
+    let snapshot_bytes = shoop_rt_protocol::snapshot::capacity(strips, loops, buses)
+        .ok_or(rt_runtime::Error::Capacity)?;
+    let (control_ports, execution_ports) = shoop_rt_transport::rt::channel(
+        shoop_rt_protocol::immediate::FIFO_RECORDS,
+        10,
+        snapshot_bytes,
+    )?;
+    let (snapshot_capture, snapshot_state) = snapshots::prepare(
+        cells.clone(),
+        strips,
+        loops,
+        buses,
+        description.sample_rate,
+        execution_ports.snapshots,
+        control_ports.snapshots,
+    )?;
+    let (immediate_control, immediate_render) = immediate::prepare(
+        pool.clone(),
+        credits,
+        control_ports.commands,
+        execution_ports.commands,
+    );
+    let external::Consumer {
+        mut control,
+        execution,
+        latency_frames,
+        capabilities,
+    } = factory(external::Preparation {
         config,
-        description.max_frames,
         quantum,
+        max_frames: description.max_frames,
         nodes,
         planner,
         resources,
-    )?;
-    if let Some(recorder) = profile_recorder {
-        runtime.set_profiling(recorder);
-    }
-    if quantum.frames() > 1 {
-        runtime.prepare_host_buffering_with_midi_output(settings.midi.tick)?;
-    }
-    let (snapshot_capture, snapshot_state) =
-        snapshots::prepare(cells.clone(), strips, loops, buses, description.sample_rate)?;
-    runtime.set_snapshot_observer(Box::new(snapshot_capture));
-    let (immediate_control, immediate_render) = immediate::prepare(pool.clone(), credits);
-    runtime.set_immediate_handler(Box::new(immediate_render));
-    runtime.prepare_graph_staging(1)?;
+        snapshot_observer: Box::new(snapshot_capture),
+        immediate_handler: Box::new(immediate_render),
+        observations: external::Observations {
+            cells: cells.clone(),
+        },
+        loop_limits,
+        initial_media: client.media().iter().map(|entry| entry.media).collect(),
+        description: description.clone(),
+        recorder: profile_recorder,
+        midi_output: settings.midi.tick,
+    })?;
     control.prepare_submissions()?;
     let mut master_outputs = [model::HostMask::EMPTY; shoop_rt_protocol::MAX_STRIP_CHANNELS];
     for &(channel, host) in &description.master_connections {
@@ -687,10 +759,14 @@ fn prepare_complete(
             );
             full
         },
-        plans: [
-            Some(PreparedPlan::with_capacity(config)?),
-            Some(PreparedPlan::with_capacity(config)?),
-        ],
+        plans: {
+            let plans = [
+                PreparedPlan::with_capacity(config)?,
+                PreparedPlan::with_capacity(config)?,
+            ];
+
+            plans.map(Some)
+        },
     };
     let mut content_chunk_bytes = description
         .page_bytes
@@ -717,12 +793,15 @@ fn prepare_complete(
         host_midi_outputs: midi_out as u16,
         max_frames: description.max_frames as u32,
         quantum: quantum.frames() as u32,
-        processing_latency_frames: runtime.buffering_latency() as u32,
+        processing_latency_frames: latency_frames as u32,
         smoothing_limit_frames: description.smoothing_limit_frames,
         reliable_credits: description.reliable_credits,
         bulk_credits: description.bulk_credits,
     };
     let endpoint = ControlEndpoint {
+        capability_mask: capabilities,
+        #[cfg(feature = "testing")]
+        runtime_trace: None,
         immediate: immediate_control,
         snapshots: snapshot_state,
         projected_bus_processors: vec![None; description.buses as usize].into_boxed_slice(),
@@ -815,7 +894,7 @@ fn prepare_complete(
         retired: Ring::new(loops.max(1)),
         fades: vec![pool.bus(0); strips + loops + buses].into_boxed_slice(),
         work,
-        graph_epoch: runtime.epoch(),
+        graph_epoch: Epoch(0),
         topology_epoch: Epoch(0),
         quiet_until: 0,
         resync: None,
@@ -838,17 +917,9 @@ fn prepare_complete(
         preview: None,
         pool,
     };
-    let render = Render::new(
-        runtime,
-        cells.clone(),
-        counts,
-        description.max_frames,
-        description.resource_pages + 128,
-        description.sample_rate,
-    )?;
-    Ok(Engine {
+    Ok(external::Prepared {
         endpoint,
-        render,
+        execution,
         host: HostStatus(cells),
     })
 }

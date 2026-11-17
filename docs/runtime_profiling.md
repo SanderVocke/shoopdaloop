@@ -339,4 +339,13 @@ eight named resources, each with units, used/reserved counts and an optional
 capacity. An absent capacity means no known fixed ceiling; it does not mean
 unlimited memory. Missing resources/footprints remain unavailable rather than
 being synthesized as zero. Counts are 64-bit integers on the wire; percentages
-are derived for display. This first implementation reports Rust storage only.
+are derived for display. The Rust reporter uses these fields for its prepared resource pools.
+
+A backend that reports bounded storage resources without an aggregate byte count
+uses the **MEM** headline for storage pressure: the highest individual commitment
+percentage. The tooltip and Memory section retain the separate resource limits.
+External engine consumers can publish complete reports with
+`Observations::memory`; they replace the native Rust pool counters. The former
+FPGA application simulator and its physical allocator overlay are retired.
+Retained Marlin component benches report memory diagnostics independently;
+see the [component guide](../src/rust/rt_fpga_testbench/README.md).

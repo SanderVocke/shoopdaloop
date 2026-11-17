@@ -275,34 +275,50 @@ fn device_channels_and_midi_ports_become_host_ports_with_the_default_outputs_pre
 
 #[shoop_test(no_wasm = "the native host does not build for wasm")]
 fn captured_audio_reaches_the_output_one_prefill_later_at_absolute_frames() {
-    let mut rig = rig();
-    rig.connect();
-    let track = strip(0);
-    rig.done(Request::CreateStrip {
-        strip: track,
-        shape: shape(1, false),
-    });
-    rig.done(connect(track, PortKind::AudioIn, MIC));
-    rig.done(connect(track, PortKind::AudioOut, SPEAKERS_LEFT));
-    rig.done(monitoring(track));
-    for _ in 0..8 {
-        rig.tick(16);
+    for mode in [
+        shoop_rt_engine::AudioRenderMode::Current,
+        shoop_rt_engine::AudioRenderMode::Chunks,
+        shoop_rt_engine::AudioRenderMode::ChunksDescriptors,
+    ] {
+        let mut description = description();
+        description.audio_render_mode = mode;
+        description.audio_bench_only = true;
+        description.history.seconds = 1;
+        let mut rig = open(
+            &CpalConfig::default(),
+            &description,
+            speakers(),
+            Some(mic()),
+        )
+        .unwrap();
+        rig.connect();
+        let track = strip(0);
+        rig.done(Request::CreateStrip {
+            strip: track,
+            shape: shape(1, false),
+        });
+        rig.done(connect(track, PortKind::AudioIn, MIC));
+        rig.done(connect(track, PortKind::AudioOut, SPEAKERS_LEFT));
+        rig.done(monitoring(track));
+        for _ in 0..8 {
+            rig.tick(16);
+        }
+        let captured_from = rig.played.len() / 2;
+        rig.level = 0.25;
+        for _ in 0..12 {
+            rig.tick(16);
+        }
+        let left = rig.played(0);
+        // Without a fixed buffer the bridge starts with one largest callback of silence.
+        let delay = description.max_frames;
+        assert!(left[..captured_from + delay].iter().all(|s| *s == 0.));
+        assert!(left[captured_from + delay..].iter().all(|s| *s == 0.25));
+        assert!(rig.played(1).iter().all(|s| *s == 0.));
+        let status = rig.host().status();
+        assert_eq!(status.next_frame, left.len() as u64);
+        assert_eq!(status.stats.xruns(), 0);
+        rig.assert_no_heap_in_callbacks();
     }
-    let captured_from = rig.played.len() / 2;
-    rig.level = 0.25;
-    for _ in 0..12 {
-        rig.tick(16);
-    }
-    let left = rig.played(0);
-    // Without a fixed buffer the bridge starts with one largest callback of silence.
-    let delay = description().max_frames;
-    assert!(left[..captured_from + delay].iter().all(|s| *s == 0.));
-    assert!(left[captured_from + delay..].iter().all(|s| *s == 0.25));
-    assert!(rig.played(1).iter().all(|s| *s == 0.));
-    let status = rig.host().status();
-    assert_eq!(status.next_frame, left.len() as u64);
-    assert_eq!(status.stats.xruns(), 0);
-    rig.assert_no_heap_in_callbacks();
 }
 
 #[shoop_test(no_wasm = "the native host does not build for wasm")]

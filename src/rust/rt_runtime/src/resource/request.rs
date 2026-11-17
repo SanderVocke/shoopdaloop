@@ -117,6 +117,21 @@ impl ResourceCommand {
             reply: None,
         }
     }
+    /// Preserve the owning read envelope while another backend supplies its bytes.
+    pub fn external_read(
+        &mut self,
+        read: impl FnOnce(&mut Cursor, &mut [u8]) -> Result<(usize, bool), Error>,
+    ) -> Result<(), Error> {
+        let Request::Read { cursor, bytes } = &mut self.request else {
+            return Err(Error::InvalidParameter);
+        };
+        let (written, eof) = read(cursor, bytes)?;
+        if written > bytes.len() {
+            return Err(Error::InvalidShape);
+        }
+        self.reply = Some(Reply::Read { written, eof });
+        Ok(())
+    }
     pub fn reply(&self) -> Option<Reply> {
         self.reply
     }
@@ -282,6 +297,9 @@ impl<S: Sample> ResourceStore<S> {
     }
 }
 impl<S: Sample> ResourceIo<'_, S> {
+    pub fn audio_render_mode(&self) -> crate::AudioRenderMode {
+        self.store.audio_render_mode()
+    }
     pub fn remove(&mut self, resource: ResourceId) -> Result<(), Error> {
         self.store.remove(resource)
     }

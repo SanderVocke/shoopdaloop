@@ -253,6 +253,8 @@ impl WorkletConfig {
         }
         Ok(Self {
             engine: EngineDescription {
+                audio_render_mode: shoop_rt_engine::AudioRenderMode::Current,
+                audio_bench_only: false,
                 history,
                 processors,
                 external_dry_wet,

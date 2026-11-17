@@ -1,0 +1,20 @@
+[package]
+name = "marlin-verilator"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description.workspace = true
+repository.workspace = true
+readme.workspace = true
+license.workspace = true
+
+[dependencies]
+marlin-verilator-stable.workspace = true
+snafu.workspace = true
+camino.workspace = true
+libloading.workspace = true
+file-guard.workspace = true
+owo-colors.workspace = true
+dashmap.workspace = true
+boxcar.workspace = true

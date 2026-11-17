@@ -1,0 +1,41 @@
+{
+  "revision": "d1a672196dd40a8ead6279200e394ba580b0960d",
+  "timing_checked": false,
+  "versions": [
+    "Yosys 0.52 (git sha1 fee39a3284c90249e1d9684cf6944ffbbcbb8f90)",
+    "Verilator 5.032 2025-01-01 rev (Debian 5.032-1+b2)"
+  ],
+  "loop_axi32": {
+    "loops": 8,
+    "requests": 16,
+    "events": 32,
+    "program_depth": 64,
+    "state_depth": 32,
+    "job_depth": 64,
+    "buffers": 16,
+    "input_ports": 2,
+    "output_ports": 2,
+    "views": 32,
+    "slots": 1024,
+    "chunk_frames": 32,
+    "read_buffers": 4,
+    "write_buffers": 4,
+    "table_lines": 8,
+    "reference_lines": 4,
+    "stack_lines": 2,
+    "block_chunks": 32,
+    "allocation_blocks": 32,
+    "cells": {
+      "$specify2": 19,
+      "LUT4": 29433,
+      "PFUMX": 3349,
+      "CCU2C": 5067,
+      "$scopeinfo": 88,
+      "TRELLIS_FF": 16141,
+      "L6MUX21": 144,
+      "DP16KD": 94,
+      "TRELLIS_DPR16X4": 74,
+      "MULT18X18D": 4
+    }
+  }
+}

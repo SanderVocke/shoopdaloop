@@ -1,0 +1,10 @@
+interference,scenario,input,mode,repeat,callbacks,p50_us,p95_us,p99_us,max_us,overruns,late_p99_us,late_max_us,dropped
+none,idle,silence,current,0,64,386.96299999999997,450.037,484.407,484.407,0,86.165,86.165,0
+none,idle,silence,chunks,0,64,325.935,381.203,428.574,428.574,0,73.779,73.779,0
+none,idle,silence,chunks-descriptors,0,64,329.324,379.982,405.315,405.315,0,106.328,106.328,0
+none,play,signal,current,0,64,875.4535000000001,986.722,995.296,995.296,0,112.829,112.829,0
+none,play,signal,chunks,0,64,927.3335,1056.074,1086.444,1086.444,0,77.003,77.003,0
+none,play,signal,chunks-descriptors,0,64,912.5740000000001,1007.722,1105.852,1105.852,0,87.982,87.982,0
+none,grab,signal,current,0,64,889.148,1019.445,2273.759,2273.759,0,102.78,102.78,0
+none,grab,signal,chunks,0,64,891.046,1041.982,2359.13,2359.13,0,108.528,108.528,0
+none,grab,signal,chunks-descriptors,0,64,882.5464999999999,1075.963,2374.186,2374.186,0,88.811,88.811,0

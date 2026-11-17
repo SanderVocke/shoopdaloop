@@ -1,0 +1,36 @@
+`ifndef SHOOP_SP_LOOP_DEFS_SVH
+`define SHOOP_SP_LOOP_DEFS_SVH
+`define SHOOP_SP_LOOP_WORDS 16
+`define SHOOP_SP_LOOP_BITS 1024
+// Word addresses in a loop slot.
+`define SHOOP_SP_L_FLAGS 0
+`define SHOOP_SP_L_CONTROL 1
+`define SHOOP_SP_L_POSITION 2
+`define SHOOP_SP_L_LENGTH 3
+`define SHOOP_SP_L_CAPTURE 4
+`define SHOOP_SP_L_CYCLES 5
+`define SHOOP_SP_L_CONTENT_REV 6
+`define SHOOP_SP_L_WATERMARK 7
+`define SHOOP_SP_L_RENDER_POSITION 8
+`define SHOOP_SP_L_PROCESSED_FRAME 9
+`define SHOOP_SP_L_PLAN0 10
+`define SHOOP_SP_L_PLAN1 13
+// Flags word bit positions.
+`define SHOOP_SP_L_VALID 0
+`define SHOOP_SP_L_GEN 1
+`define SHOOP_SP_L_MODE 33
+`define SHOOP_SP_L_REPEAT 35
+`define SHOOP_SP_L_SOURCE_VALID 36
+`define SHOOP_SP_L_SOURCE 37
+`define SHOOP_SP_L_PULSE 53
+`define SHOOP_SP_L_BEGIN_CAPTURE 54
+`define SHOOP_SP_L_PROCESSED_VALID 55
+`define SHOOP_SP_L_NEWER 56
+// Control word: source generation followed by two five-bit plan flags.
+`define SHOOP_SP_L_PLAN0_FLAGS 32
+`define SHOOP_SP_L_PLAN1_FLAGS 37
+`define SHOOP_SP_P_VALID 0
+`define SHOOP_SP_P_TICKS 1
+`define SHOOP_SP_P_OP 2
+`define SHOOP_SP_P_RETRIGGER 4
+`endif

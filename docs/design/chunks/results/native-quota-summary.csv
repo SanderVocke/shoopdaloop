@@ -1,0 +1,7 @@
+interference,scenario,input,mode,repeat,callbacks,p50_us,p95_us,p99_us,max_us,overruns,late_p99_us,late_max_us,dropped
+none,record-play,signal,current,0,384,206.9735,386.04,708.515,1918.38,0,337.499,1911.416,0
+none,record-play,signal,chunks,0,384,223.6535,562.344,975.453,1753.642,0,291.19,489.915,0
+none,record-play,signal,chunks-descriptors,0,384,200.56150000000002,287.34,523.995,693.829,0,146.437,305.681,0
+none,record-play,signal,chunks,1,384,212.725,392.915,547.692,1008.728,0,416.935,1158.299,0
+none,record-play,signal,chunks-descriptors,1,384,231.001,458.348,945.811,1306.561,0,525.187,2093.464,0
+none,record-play,signal,current,1,384,194.68099999999998,291.47,468.102,1013.015,0,188.08,1198.445,0

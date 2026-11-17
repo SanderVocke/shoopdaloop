@@ -19,6 +19,9 @@ use crate::{Epoch, Error, Frame, NodeId, PreparedConfig, RenderRuntime, Sequence
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::marker::PhantomData;
 
+#[path = "executor_audio.rs"]
+mod referenced_audio;
+
 /// Capture a prepared processor's port signature outside rendering. A runtime slot
 /// can later accept another generation with the same signature, not a larger one.
 pub struct PreparedNode<P, L: Planner<S> = NoPlanner, Q: ProcessorOperation = (), S: Sample = f32> {
@@ -41,6 +44,12 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
             processor,
             marker: PhantomData,
         }
+    }
+    pub fn processor(&self) -> &P {
+        &self.processor
+    }
+    pub fn into_processor(self) -> P {
+        self.processor
     }
     pub fn spec(&self) -> NodeSpec {
         NodeSpec {
@@ -136,6 +145,45 @@ pub struct Control<P, L: Planner<S> = NoPlanner, Q: ProcessorOperation = (), S: 
     config: PreparedConfig,
 }
 impl<P, L: Planner<S>, Q: ProcessorOperation, S: Sample> Control<P, L, Q, S> {
+    /// Construct the existing owning queues and receipt scheduler for another consumer.
+    pub fn channel(
+        config: PreparedConfig,
+        quantum: crate::Quantum,
+        operation_bytes: usize,
+        planner_operations: bool,
+    ) -> Result<
+        (
+            Self,
+            Ingress<P, L, Q, S>,
+            Scheduler<L::Operation, L::Result, Q, Q::Result>,
+        ),
+        Error,
+    > {
+        if quantum.frames() > config.limits().max_frames {
+            return Err(Error::InvalidConfig);
+        }
+        let limits = config.limits();
+        let (transport, ingress) = transport::channel(TransportConfig {
+            normal_slots: limits.command_slots,
+            recovery_slots: 1,
+            telemetry_slots: 3,
+            operations_per_cycle: limits.budgets.commands,
+            recovery_per_cycle: 1,
+            publications_per_cycle: limits.budgets.publications,
+        })?;
+        let (executions, mut scheduler) =
+            schedule::typed_scheduler(config, operation_bytes, planner_operations)?;
+        scheduler.set_quantum(quantum);
+        Ok((
+            Self {
+                transport,
+                executions,
+                config,
+            },
+            ingress,
+            scheduler,
+        ))
+    }
     pub fn prepare_submissions(&mut self) -> Result<(), Error> {
         self.transport.prepare_submissions()
     }
@@ -192,9 +240,12 @@ impl<P, L: Planner<S>, Q: ProcessorOperation, S: Sample> Control<P, L, Q, S> {
         self.transport.connected()
     }
 }
-type Ingress<P, L, Q, S> = RenderEndpoint<Command<P, L, Q, S>, Retired<P>, Diagnostics>;
+pub type Ingress<P, L, Q, S> = RenderEndpoint<Command<P, L, Q, S>, Retired<P>, Diagnostics>;
 
 struct Buffers<S: Sample = f32> {
+    input_sequences: Box<[crate::audio_refs::AudioSequence<S>]>,
+    output_sequences: Box<[crate::audio_refs::AudioSequence<S>]>,
+    input_mixed: Box<[bool]>,
     input: Box<[S]>,
     output: Box<[S]>,
     midi_input: Vec<MidiBuffer>,
@@ -231,6 +282,14 @@ impl<S: Sample> Buffers<S> {
                 .collect::<Result<Vec<_>, _>>()
         };
         let mut buffers = Self {
+            input_sequences: vec![crate::audio_refs::AudioSequence::default(); ports.audio_inputs]
+                .into_boxed_slice(),
+            output_sequences: vec![
+                crate::audio_refs::AudioSequence::default();
+                ports.audio_outputs
+            ]
+            .into_boxed_slice(),
+            input_mixed: vec![false; ports.audio_inputs].into_boxed_slice(),
             input: vec![S::ZERO; ports.audio_inputs * frames].into_boxed_slice(),
             output: vec![S::ZERO; ports.audio_outputs * frames].into_boxed_slice(),
             midi_input: midi(ports.midi_inputs, true, true)?,
@@ -343,6 +402,8 @@ impl<P, S: Sample> crate::immediate::Processors<P> for ImmediateProcessors<'_, P
 }
 
 pub struct GraphRuntime<P, L: Planner<S> = NoPlanner, Q: ProcessorOperation = (), S: Sample = f32> {
+    audio_arena: Option<crate::audio_refs::RenderArena<S>>,
+    host_sequences: Box<[crate::audio_refs::AudioSequence<S>]>,
     snapshot_observer: Option<Box<dyn crate::snapshot::Observer<P, L>>>,
     snapshot_callback: Option<Frame>,
     immediate: Option<Box<dyn crate::immediate::Handler<P, L, S>>>,
@@ -426,6 +487,7 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
             return Err(Error::InvalidState);
         }
         let plan = compile(&self.catalog, graph)?;
+
         self.planner.admit_graph(&plan)?;
         self.epoch = self.epoch.checked_next()?;
         self.active = Some(plan);
@@ -507,6 +569,32 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
             return Err(Error::Capacity);
         }
         let mut slots: Vec<_> = (0..limits.max_nodes).map(|_| None).collect();
+        let audio_ports = nodes.iter().try_fold(0usize, |count, node| {
+            count
+                .checked_add(node.ports.audio_inputs + node.ports.audio_outputs)
+                .ok_or(Error::Capacity)
+        })?;
+        let audio_arena = if resources.audio_render_mode().chunked() {
+            let samples = audio_ports
+                .checked_mul(4)
+                .and_then(|ports| ports.checked_add(limits.audio_inputs))
+                .and_then(|ports| ports.checked_mul(quantum.frames()))
+                .filter(|&samples| samples <= i32::MAX as usize / 4)
+                .ok_or(Error::Capacity)?;
+            let pins = audio_ports
+                .checked_mul(2)
+                .filter(|&pins| {
+                    pins.checked_add(1)
+                        .and_then(|pins| {
+                            pins.checked_mul(size_of::<Option<crate::resource::AudioChunkRef>>())
+                        })
+                        .is_some_and(|bytes| bytes <= i32::MAX as usize)
+                })
+                .ok_or(Error::Capacity)?;
+            Some(crate::audio_refs::RenderArena::prepare(samples, pins))
+        } else {
+            None
+        };
         for node in nodes {
             let buffers = Buffers::new(config, node.ports, quantum.frames(), node.midi_settings?)?;
             slots[node.id.slot() as usize] = Some(Slot {
@@ -517,24 +605,21 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
                 buffers,
             });
         }
-        let (control, ingress) = transport::channel(TransportConfig {
-            normal_slots: limits.command_slots,
-            recovery_slots: 1,
-            telemetry_slots: 3,
-            operations_per_cycle: limits.budgets.commands,
-            recovery_per_cycle: 1,
-            publications_per_cycle: limits.budgets.publications,
-        })?;
-        let (executions, mut scheduler) =
-            schedule::typed_scheduler(config, operation_bytes, planner_authority.is_some())?;
-        scheduler.set_quantum(quantum);
+        let (control, ingress, scheduler) = Control::channel(
+            config,
+            quantum,
+            operation_bytes,
+            planner_authority.is_some(),
+        )?;
         Ok((
-            Control {
-                transport: control,
-                executions,
-                config,
-            },
+            control,
             Self {
+                audio_arena,
+                host_sequences: vec![
+                    crate::audio_refs::AudioSequence::default();
+                    limits.audio_inputs
+                ]
+                .into_boxed_slice(),
                 snapshot_observer: None,
                 snapshot_callback: None,
                 immediate: None,
@@ -599,6 +684,10 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
         (self.planner, self.resources)
     }
 
+    /// Borrow settled domain state between callbacks from the runtime owner.
+    pub fn planner(&self) -> &L {
+        &self.planner
+    }
     pub fn next_frame(&self) -> Frame {
         self.clock.next_frame()
     }
@@ -673,6 +762,7 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
     pub fn resource_work(&self) -> resource::Work {
         self.resources.work()
     }
+
     pub fn render_work(&self) -> resource::RenderWork {
         self.resources.render_work()
     }
@@ -1348,6 +1438,7 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
         let frame = audio.frame().checked_add(start)?;
         let end = frame.checked_add(quantum.frames())?;
         self.profiling.begin_tick(frame.0, quantum.frames() as u32);
+
         self.deliver_actions(frame, callback_start, remaining)?;
         if self.immediate_callback != Some(callback_start) {
             self.immediate_callback = Some(callback_start);
@@ -1418,6 +1509,7 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
             resources: self.resources.planner_io(end, end),
             receipts: self.scheduler.receipts(end),
         })?;
+
         self.profiling.phase(rt_profiling::Phase::StateAdvanced);
         self.profiling.end_tick(true);
         self.tick_frame = end;
@@ -1435,6 +1527,9 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
         callback_start: Frame,
         quantum: crate::Quantum,
     ) -> Result<(), Error> {
+        if self.audio_arena.is_some() {
+            return self.run_graph_references(audio, midi, start, callback_start, quantum);
+        }
         let Some(plan) = &self.active else {
             return Ok(());
         };

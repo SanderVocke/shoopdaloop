@@ -123,7 +123,10 @@ tags!(Refusal {
     0 => Refusal::Unsupported, 1 => Refusal::Capacity, 2 => Refusal::InvalidId, 3 => Refusal::InvalidValue,
     4 => Refusal::Busy, 5 => Refusal::Overloaded, 6 => Refusal::NotConnected, 7 => Refusal::Internal,
 });
-tags!(DriverKind { 0 => DriverKind::Dummy, 1 => DriverKind::Cpal, 2 => DriverKind::WebAudio, 3 => DriverKind::Jack });
+tags!(DriverKind {
+    0 => DriverKind::Dummy, 1 => DriverKind::Cpal, 2 => DriverKind::WebAudio, 3 => DriverKind::Jack,
+    4 => DriverKind::Simulated,
+});
 tags!(DriverRunState {
     0 => DriverRunState::Starting, 1 => DriverRunState::Running, 2 => DriverRunState::Stopped, 3 => DriverRunState::Failed,
 });
@@ -2444,7 +2447,13 @@ impl Wire for crate::immediate::Command {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         use crate::immediate::Command::*;
         match *self {
-            Transition(..) | Grab(..) | GrabGesture(..) => {
+            Transition(..)
+            | Grab(..)
+            | GrabGesture(..)
+            | BeginGraph { .. }
+            | ConfigureLoop(_)
+            | SwitchProgram(_)
+            | ActivateGraph => {
                 let record = crate::immediate::CommandRecord::new(*self);
                 w.u8(record.bytes()[0])?;
                 w.bytes(&record.bytes()[4..28])
@@ -2528,7 +2537,7 @@ impl Wire for crate::immediate::Command {
             9 => BusGain(r.u32()?, r.f32()?),
             10 => BusBalance(r.u32()?, r.f32()?),
             11 => BusMute(r.u32()?, r.bool()?),
-            op @ (2 | 13 | 14) => {
+            op @ (2 | 13 | 14 | 16 | 17 | 18 | 19) => {
                 let mut bytes = [0; 32];
                 bytes[0] = op;
                 bytes[4..28].copy_from_slice(r.bytes(24)?);

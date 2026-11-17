@@ -161,6 +161,9 @@ impl Work {
 }
 
 pub struct ControlEndpoint {
+    pub(crate) capability_mask: Capabilities,
+    #[cfg(feature = "testing")]
+    pub(crate) runtime_trace: Option<Vec<crate::testing::RuntimeCommand>>,
     pub(crate) immediate: crate::immediate::Control,
     pub(crate) snapshots: crate::snapshots::State,
     pub(crate) projected_timing: Box<[Option<(LoopSlotId, shoop_rt_protocol::TimingState)>]>,
@@ -447,7 +450,7 @@ impl ControlEndpoint {
         if !self.processor_catalog.kinds.is_empty() {
             capabilities = capabilities.union(Capabilities::TRACK_PROCESSORS);
         }
-        capabilities
+        Capabilities(capabilities.0 & self.capability_mask.0)
     }
 
     fn free_pending(&self) -> usize {
@@ -467,6 +470,10 @@ impl ControlEndpoint {
         purpose: Purpose,
         expects: bool,
     ) -> Result<Sequence, Refusal> {
+        #[cfg(feature = "testing")]
+        if let Some(trace) = &mut self.runtime_trace {
+            trace.push(crate::testing::RuntimeCommand::observe(&command));
+        }
         let Some(slot) = self.pending.iter().position(Option::is_none) else {
             self.reclaim(command);
             return Err(Refusal::Overloaded);

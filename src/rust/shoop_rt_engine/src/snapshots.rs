@@ -47,10 +47,11 @@ pub(crate) fn prepare(
     loops: usize,
     buses: usize,
     sample_rate: u32,
+    publisher: shoop_rt_transport::rt::SnapshotPublisher,
+    reader: shoop_rt_transport::rt::SnapshotReader,
 ) -> Result<(Capture, State), Error> {
     let capacity =
         shoop_rt_protocol::snapshot::capacity(strips, loops, buses).ok_or(Error::Capacity)?;
-    let (publisher, reader) = snapshot::channel(10, capacity)?;
     Ok((
         Capture {
             loop_generations: vec![0; loops].into_boxed_slice(),

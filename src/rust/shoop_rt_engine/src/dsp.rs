@@ -1,7 +1,8 @@
-//! Sample-generic controls used by the production engine.
+//! Sample-generic controls used by the production engine and hardware oracle.
 //! Controls retain their original time domain across processing blocks.
 use alloc::{boxed::Box, vec};
 use rt_audio_math::{Ramp as DomainRamp, Sample};
+use rt_runtime::audio_refs::GainEnvelope;
 
 #[derive(Clone, Copy)]
 pub struct Ramp<S: Sample = f32> {
@@ -42,6 +43,12 @@ impl<S: Sample> Ramp<S> {
         self.domain
             .advance(u32::try_from(frames).unwrap_or(u32::MAX));
         self.sync();
+    }
+    pub(crate) fn envelope(&mut self, frames: usize) -> GainEnvelope<S> {
+        debug_assert!(self.steady());
+        let envelope = GainEnvelope::constant(self.value);
+        self.advance(frames);
+        envelope
     }
 }
 
@@ -93,6 +100,14 @@ impl<S: Sample> Gains<S> {
     pub fn steady(&self) -> bool {
         self.gain.steady() && self.balance.steady()
     }
+    pub(crate) fn envelopes(&mut self, frames: usize, scale: &mut Ramp<S>) -> [GainEnvelope<S>; 3] {
+        debug_assert!(self.steady() && scale.steady());
+        let envelopes = self.levels(scale).map(GainEnvelope::constant);
+        self.gain.advance(frames);
+        self.balance.advance(frames);
+        scale.advance(frames);
+        envelopes
+    }
     fn levels(&self, scale: &Ramp<S>) -> [S; 3] {
         let gain = self.gain.current() * scale.current();
         let balance = self.balance.current();
@@ -101,6 +116,9 @@ impl<S: Sample> Gains<S> {
             gain * (S::ONE - balance.max(S::ZERO)),
             gain * (S::ONE + balance.min(S::ZERO)),
         ]
+    }
+    pub(crate) fn unity(&self) -> bool {
+        self.steady() && self.gain.value == S::ONE && self.balance.value == S::ZERO
     }
     pub fn channel(&self, channel: usize, stereo: bool) -> &[S] {
         match (stereo, channel) {
@@ -156,5 +174,89 @@ mod tests {
         assert_eq!(second, [boundary, Q824(123), Q824(123)]);
         interrupted.set(Q824(-91), 0);
         assert_eq!(interrupted.current(), Q824(-91));
+    }
+}
+
+/// Prepared production gain, also describable by the hardware adapter.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct GainOperation<S: Sample> {
+    pub target: S,
+    pub duration: u32,
+}
+impl<S: Sample> rt_runtime::processor::ProcessorOperation for GainOperation<S> {
+    type Result = ();
+}
+pub struct GainProcessor<S: Sample> {
+    channels: usize,
+    controls: Gains<S>,
+    scale: Ramp<S>,
+}
+impl<S: Sample> GainProcessor<S> {
+    pub fn new(channels: usize, frames: usize, initial: S) -> Self {
+        let mut controls = Gains::new(frames);
+        controls.gain = Ramp::at(initial);
+        Self {
+            channels,
+            controls,
+            scale: Ramp::at(S::ONE),
+        }
+    }
+    pub fn channels(&self) -> usize {
+        self.channels
+    }
+    pub fn frames(&self) -> usize {
+        self.controls.plain.len()
+    }
+    pub fn steady(&self) -> bool {
+        self.controls.gain.steady()
+    }
+    pub fn gain(&self) -> S {
+        self.controls.gain.current()
+    }
+    pub fn apply(&mut self, operation: GainOperation<S>) {
+        self.controls.gain.set(operation.target, operation.duration);
+    }
+    pub fn process<L: rt_runtime::planner::Planner<S>>(
+        &mut self,
+        block: &mut rt_runtime::processor::ProcessBlock<'_, L, S>,
+    ) -> Result<(), rt_runtime::Error> {
+        self.controls.fill(block.frames, &mut self.scale);
+        for channel in 0..self.channels {
+            let (source, target) = block
+                .audio
+                .pair(channel, channel)
+                .ok_or(rt_runtime::Error::InvalidShape)?;
+            rt_audio_math::gain_each(
+                source,
+                target,
+                &self.controls.channel(channel, false)[..block.frames],
+            );
+        }
+        Ok(())
+    }
+}
+impl<S: Sample, L: rt_runtime::planner::Planner<S>>
+    rt_runtime::processor::Processor<L, GainOperation<S>, S> for GainProcessor<S>
+{
+    fn ports(&self) -> rt_runtime::graph::PortCounts {
+        rt_runtime::graph::PortCounts {
+            audio_inputs: self.channels,
+            audio_outputs: self.channels,
+            ..Default::default()
+        }
+    }
+    fn process(
+        &mut self,
+        block: &mut rt_runtime::processor::ProcessBlock<'_, L, S>,
+    ) -> Result<(), rt_runtime::Error> {
+        self.process(block)
+    }
+    fn operation(
+        &mut self,
+        operation: GainOperation<S>,
+        _: rt_runtime::processor::OperationContext<'_, S>,
+    ) -> Result<(), rt_runtime::Error> {
+        self.apply(operation);
+        Ok(())
     }
 }

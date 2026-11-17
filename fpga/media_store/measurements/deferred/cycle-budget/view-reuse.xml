@@ -1,0 +1,7 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="20261110" />
+    <testcase name="removed_view_reuse_keeps_the_retired_root_independent" classname="test_deferred_reuse" file="/workspace/shoopdaloop/fpga/media_store/tests/test_deferred_reuse.py" lineno="22" time="3.6092607975006104" sim_time_ns="52060.001" ratio_time="14424.006443660488" />
+    <testcase name="full_view_space_slice_checks_all_pages_before_copying" classname="test_deferred_reuse" file="/workspace/shoopdaloop/fpga/media_store/tests/test_deferred_reuse.py" lineno="46" time="28.123228311538696" sim_time_ns="598930.0009999999" ratio_time="21296.630470914486" />
+  </testsuite>
+</testsuites>

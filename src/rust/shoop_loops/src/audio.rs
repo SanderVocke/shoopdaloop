@@ -133,6 +133,18 @@ impl<S: Sample> Inputs<'_, '_, S> {
     }
 }
 impl<S: Sample> AudioRenderer<S> {
+    pub fn reference_ready(&self, smoothing: Smoothing, discontinuity: bool) -> bool {
+        self.ramp_position >= self.ramp_frames && (!discontinuity || smoothing == Smoothing::None)
+    }
+    pub fn reference_last(&mut self, channel: usize, sample: S) {
+        self.last[channel] = sample;
+    }
+    pub fn reference_silence(&mut self) {
+        self.last.fill(S::ZERO);
+        self.anchor.fill(S::ZERO);
+        self.ramp_frames = self.next_ramp_frames;
+        self.ramp_position = self.ramp_frames;
+    }
     pub fn prepare(
         channels: usize,
         max_frames: usize,
@@ -455,7 +467,7 @@ impl<S: Sample> AudioRenderer<S> {
                         * playback.gain
                         * factor;
                 let weight = self.ramp_weights[frame];
-                *sample = self.anchor[channel] * (S::ONE - weight) + raw * weight;
+                *sample = self.anchor[channel].crossfade(raw, weight);
             }
             for (offset, sample) in output[ramping_frames..].iter_mut().enumerate() {
                 let frame = ramping_frames + offset;

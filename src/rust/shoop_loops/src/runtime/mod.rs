@@ -42,11 +42,13 @@ mod planner;
 pub use immediate::Immediate;
 pub use immediate_grab::ImmediateGrab;
 mod processor;
+mod state_boundary;
 mod topology;
+mod transitions;
 use crate::topology::staging::{Progress, StageId, Status};
 pub use node_pairs::{
-    NodePairInitial, NodePairSettings, NodePairSourceId, NodePairSourceStatus, NodePairStageId,
-    NodePairStatus,
+    NodePairInitial, NodePairScope, NodePairSettings, NodePairSourceId, NodePairSourceStatus,
+    NodePairStageId, NodePairStatus,
 };
 pub use processor::{CaptureNode, LoopNode, LoopNodes, PlaybackNode};
 pub use rt_runtime::graph::activation::{StageId as GraphStageId, StageStatus as GraphStageStatus};
@@ -1172,7 +1174,21 @@ impl<S: Sample> LoopPlanner<S> {
         }
         Ok(())
     }
-    /// Borrow the settled resolver from the render owner; this is not a shared control view.
+    /// Initial repeat policy before processing begins.
+    pub fn prepare_repeat_sync(&mut self, target: LoopId, enabled: bool) -> Result<(), Failure> {
+        if self.resolver.frame() != Frame(0) || self.pending.iter().any(Option::is_some) {
+            return Err(Error::InvalidState.into());
+        }
+        self.resolver.set_repeat_sync(target, enabled)?;
+        Ok(())
+    }
+    /// Settled timing and retained logical media, borrowed between callbacks.
+    pub fn resolver(&self) -> &Resolver {
+        &self.resolver
+    }
+    pub fn media_ledger(&self) -> &media::Ledger {
+        &self.ledger
+    }
     pub fn display_channels(&self, id: LoopId) -> usize {
         self.row(id).map_or(0, |row| {
             if self
@@ -1185,9 +1201,6 @@ impl<S: Sample> LoopPlanner<S> {
                 row.binding.channels
             }
         })
-    }
-    pub fn resolver(&self) -> &Resolver {
-        &self.resolver
     }
     pub fn observer(&self) -> &dyn BoundaryObserver {
         &*self.observer

@@ -1,0 +1,46 @@
+{
+  "arguments": [
+    "target/debug/fpga-testbench",
+    "smoothing",
+    "--output",
+    "work/150mhz/verify-smoothing-closed"
+  ],
+  "format_version": 1,
+  "provenance": {
+    "models": [
+      {
+        "native_memory": null,
+        "parameters": {
+          "BUFFERS": "8",
+          "INPUT_PORTS": "1",
+          "MAX_FRAMES": "32",
+          "OUTPUT_PORTS": "1"
+        },
+        "probes": [],
+        "sources_sha256": {
+          "fpga/job_processor/rtl/job_processor.sv": "f9788208549a52119be2d5b7a4fe086159e6a868cad0040f0de6e52aaa5fd0cf",
+          "fpga/job_processor/rtl/jp_divider.sv": "330878c7b8eef450b44569df49bbb7501d913fcafc2038fbd58cbaf8ac1034e1",
+          "fpga/job_processor/rtl/jp_sample_ram.sv": "ce2509eec993043129e6210ed470b1e40c9478dd0d32e589146e099daae7a854",
+          "fpga/state_processor/rtl/sp_ram.sv": "0ada36fe7fc4bb515469c32c3cb2f6b7cbefd16b35349950c93f9bc2c925ff73",
+          "fpga/state_processor/rtl/state_processor_defs.svh": "62b30dff8aaa507db132e68cc1bb8932dd4cc59c2050164ddbe8aaf2316ca5b7"
+        },
+        "top": "job_processor"
+      }
+    ],
+    "revision": "2ce4cc1b015aa1799005b65a962d3f9df354ec7f",
+    "rustc": null,
+    "simulator": "Marlin 0.21.1 / Verilator",
+    "verilator": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1+b2)",
+    "worktree": "M fpga/axi_memory/rtl/axi_master.sv\n M fpga/chunk_memory/rtl/chunk_memory.sv\n M fpga/job_processor/README.md\n M fpga/job_processor/rtl/job_processor.sv\n M fpga/media_store/README.md\n M fpga/media_store/rtl/media_metadata.sv\n M fpga/media_store/rtl/media_reclaimer.sv\n M fpga/media_store/rtl/media_store.sv\n M src/rust/rt_fpga_testbench/src/suites/media/deferred.rs\n M src/rust/rt_fpga_testbench/src/suites/media/mod.rs\n M src/rust/rt_fpga_testbench/src/suites/production.rs\n M src/rust/rt_fpga_testbench/src/suites/production_faults.rs"
+  },
+  "status": "passed",
+  "suites": [
+    {
+      "error": null,
+      "status": "passed",
+      "suite": "Smoothing",
+      "wall_seconds": 10.168360412
+    }
+  ],
+  "wall_seconds": 10.16837937
+}

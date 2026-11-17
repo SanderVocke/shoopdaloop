@@ -60,6 +60,9 @@ pub fn channel(slots: usize, capacity: usize) -> Result<(Publisher, Reader), Err
 }
 
 impl Publisher {
+    pub fn capacity(&self) -> usize {
+        self.shared.capacity
+    }
     pub fn publish(&mut self, payload: &[u8]) -> Result<u32, Error> {
         if payload.len() > self.shared.capacity {
             self.fail();

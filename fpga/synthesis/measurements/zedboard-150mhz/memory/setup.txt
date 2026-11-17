@@ -1,0 +1,9 @@
+Vivado: Vivado v2021.1 (64-bit)
+SW Build 3247384 on Thu Jun 10 19:36:07 MDT 2021
+Copyright 1986-2021 Xilinx, Inc. All Rights Reserved.
+Part: xc7z020clg484-1
+Generics: VIEWS=64 SLOTS=2048 CHUNK_FRAMES=32 BLOCK_CHUNKS=32 READ_BUFFERS=4 WRITE_BUFFERS=4 TABLE_LINES=8 REF_LINES=4 STACK_LINES=2 AXI_DATA_WIDTH=64 BURST_MEMORY=1
+Clock: 150 MHz
+Uncertainty: 0.2 ns
+Strategy: timing
+Implementation override: route placed checkpoint at nominal 0.2 ns uncertainty.

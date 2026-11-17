@@ -1,0 +1,26 @@
+{
+  "revision": "2bdd10c979d4bc6ad2ca953002b4a481be38a9e3",
+  "working_tree_dirty": true,
+  "command": [
+    "fpga/synthesis/subsystems.py",
+    "state",
+    "--threads",
+    "2",
+    "--vivado",
+    "/workspace/toolchains/vivado",
+    "--output",
+    "work/150mhz/state-baseline-user"
+  ],
+  "subsystem": "state",
+  "top": "state_processor",
+  "parameters": {
+    "PROGRAM_DEPTH": 512,
+    "STATE_DEPTH": 512,
+    "JOB_DEPTH": 512
+  },
+  "part": "xc7z020clg484-1",
+  "clock_mhz": 150,
+  "uncertainty_ns": 0.2,
+  "stage": "route",
+  "threads": 2
+}

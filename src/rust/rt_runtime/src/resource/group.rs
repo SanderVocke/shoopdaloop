@@ -63,7 +63,13 @@ struct Member {
     staging_start: usize,
     staging_bytes: usize,
     append: Option<TickReservation>,
+    audio_export: Option<shared_audio::ExportId>,
 }
+struct CaptureAudioWrite {
+    store: AudioStoreId,
+    write: shared_audio::CaptureWrite,
+}
+
 #[derive(Default)]
 pub(super) struct CapturePool {
     config: Option<CaptureGroupConfig>,
@@ -71,6 +77,7 @@ pub(super) struct CapturePool {
     free: Vec<usize>,
     members: Vec<Option<Member>>,
     staging: Vec<u8>,
+    audio_writes: Vec<Option<CaptureAudioWrite>>,
 }
 impl CapturePool {
     pub(super) fn allocated_bytes(&self) -> usize {
@@ -98,7 +105,7 @@ impl CapturePool {
             .checked_mul(config.staging_bytes_per_group)
             .ok_or(Error::Capacity)?;
         let bytes = members
-            .checked_mul(size_of::<Option<Member>>())
+            .checked_mul(size_of::<Option<Member>>() + size_of::<Option<CaptureAudioWrite>>())
             .and_then(|n| {
                 config
                     .groups
@@ -116,6 +123,7 @@ impl CapturePool {
             free: (0..config.groups).rev().collect(),
             members: vec![None; members],
             staging: vec![0; staging],
+            audio_writes: core::iter::repeat_with(|| None).take(members).collect(),
         };
         for slot in &mut pool.groups {
             *core::hint::black_box(slot) = Slot {
@@ -125,6 +133,9 @@ impl CapturePool {
         }
         for member in &mut pool.members {
             *core::hint::black_box(member) = None;
+        }
+        for write in &mut pool.audio_writes {
+            *core::hint::black_box(write) = None;
         }
         for byte in &mut pool.staging {
             *core::hint::black_box(byte) = 0;
@@ -271,6 +282,7 @@ impl<S: Sample> ResourceStore<S> {
                     staging_start,
                     staging_bytes,
                     append: None,
+                    audio_export: None,
                 },
             );
             staging_start += staging_bytes;
@@ -388,10 +400,24 @@ impl<S: Sample> ResourceStore<S> {
         if self.free_versions.len() < group.members || self.free_snapshots.len() < group.members {
             return Err(Error::Capacity);
         }
+
         if midi != 0 {
             self.midi_indexes.prepare()?;
             if self.midi_indexes.usage().free_versions < midi {
                 return Err(Error::Capacity);
+            }
+        }
+        for index in 0..group.members {
+            let member = self.capture_groups.member(id, index);
+            if let Format::Audio { channels } = member.spec.format {
+                if let Some(store) = self.chunk_capture_store(channels)? {
+                    let count = (0..=index)
+                        .filter(|&i| {
+                            self.capture_groups.member(id, i).spec.format == member.spec.format
+                        })
+                        .count();
+                    self.with_audio(store, |_, audio| audio.capture_slots(count))?;
+                }
             }
         }
         let mut midi = 0;
@@ -419,10 +445,31 @@ impl<S: Sample> ResourceStore<S> {
             } else {
                 None
             };
+            let audio = if let Format::Audio { channels } = member.spec.format {
+                if let Some(store) = self
+                    .chunk_capture_store(channels)
+                    .expect("preflighted audio store")
+                {
+                    let (audio, export) = self
+                        .with_audio(store, |_, audio| {
+                            let take = audio.empty_take()?;
+                            let export = audio.reserve_export(take, 0)?;
+                            Ok((audio_backing::Take { store, take }, export))
+                        })
+                        .expect("preflighted capture views");
+                    member.audio_export = Some(export);
+                    Some(audio)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
             let version = self.versions[take.slot as usize]
                 .value
                 .as_mut()
                 .expect("prepared version");
+            version.audio = audio;
             version.state = State::PreparedCapture;
             version.midi = owner;
             let slot = self.free_snapshots.pop().expect("preflighted final lease");
@@ -458,6 +505,14 @@ impl<S: Sample> ResourceStore<S> {
         }
         for index in 0..group.members {
             let mut member = self.capture_groups.member(id, index);
+            if let Some(export) = member.audio_export.take() {
+                let take_id = member.take.expect("prepared take");
+                let store = get(&self.versions, take_id.slot, take_id.generation)?
+                    .audio
+                    .ok_or(Error::InvalidState)?
+                    .store;
+                self.with_audio(store, |_, audio| audio.release_export(export))?;
+            }
             let take = member.take.take().expect("prepared take");
             let lease = member.lease.take().expect("reserved final lease");
             self.unreference(take).expect("prepared version reference");
@@ -493,6 +548,14 @@ impl<S: Sample> ResourceStore<S> {
         }
         for index in 0..group.members {
             let mut member = self.capture_groups.member(id, index);
+            if let Some(export) = member.audio_export.take() {
+                let take_id = member.take.expect("prepared take");
+                let store = get(&self.versions, take_id.slot, take_id.generation)?
+                    .audio
+                    .ok_or(Error::InvalidState)?
+                    .store;
+                self.with_audio(store, |_, audio| audio.release_export(export))?;
+            }
             let version_id = member.take.take().expect("validated take");
             let mut version = get(&self.versions, version_id.slot, version_id.generation)
                 .expect("validated version");
@@ -645,9 +708,25 @@ impl<S: Sample> ResourceStore<S> {
                 cut_frame: at,
                 capture: version.capture,
             };
+            let audio = if let Some(source) = version.audio {
+                let export = member.audio_export.take().expect("reserved audio export");
+                Some(
+                    self.with_audio(source.store, |_, audio| {
+                        audio.publish_reserved_export(export, source.take)?;
+                        Ok(audio_backing::Export {
+                            store: source.store,
+                            export,
+                            index: audio.export_index(export)?,
+                        })
+                    })
+                    .expect("reserved final audio export"),
+                )
+            } else {
+                None
+            };
             self.snapshots[lease.slot as usize].value = Some(Lease {
                 reservation: None,
-                audio: None,
+                audio,
                 shared_midi: None,
                 indexed_midi: None,
                 snapshot,

@@ -982,6 +982,9 @@ fn audio_driver_config(
             Ok(AudioDriverConfig::Cpal(config))
         }
         AudioDriverKind::WebAudio => Ok(AudioDriverConfig::WebAudio),
+        AudioDriverKind::Simulated => {
+            Err("a simulated clock cannot be selected as an audio driver".to_owned())
+        }
     }
 }
 

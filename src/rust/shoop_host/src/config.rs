@@ -5,6 +5,7 @@ pub use shoop_app_api::HostSettings;
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct HostConfig {
+    pub fpga_reference: bool,
     #[serde(flatten)]
     pub settings: HostSettings,
     pub transport: AppTransport,
@@ -24,6 +25,10 @@ impl core::ops::DerefMut for HostConfig {
 }
 impl HostConfig {
     pub fn validate(&self) -> Result<()> {
+        anyhow::ensure!(
+            !self.fpga_reference || cfg!(feature = "fpga-reference"),
+            "rebuild with the fpga-reference feature"
+        );
         self.settings.validate().map_err(anyhow::Error::msg)
     }
 }

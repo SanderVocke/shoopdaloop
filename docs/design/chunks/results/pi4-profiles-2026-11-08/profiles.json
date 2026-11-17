@@ -1,0 +1,1316 @@
+[
+  {
+    "mode": "chunks",
+    "scenario": "play-b256-memory",
+    "samples": 3288,
+    "lost_samples": 0,
+    "total_period_ns": 13204818432,
+    "category_percent": {
+      "Loop planning and state": 25.760340632603405,
+      "Audio storage and indexing": 18.065693430656935,
+      "MIDI buffers and history": 10.279805352798054,
+      "Reference processing": 6.690997566909975,
+      "Graph nodes, mixing and meters": 12.652068126520682,
+      "Loop capture coordination": 2.67639902676399,
+      "Runtime scheduling and dispatch": 17.3661800486618,
+      "State publication": 3.375912408759124,
+      "Host wrapper and other": 3.010948905109489,
+      "Unattributed": 0.12165450121654502
+    },
+    "unknown_leaf_percent": 7.755474452554744,
+    "unattributed_percent": 0.12165450121654502,
+    "bulk_memory_percent": 0.18248175182481752,
+    "planner_bulk_memory_percent": 0.09124087591240876,
+    "top_leaf_symbols": [
+      {
+        "symbol": "<rt_runtime::executor::GraphRuntime<shoop_rt_engine::node::EngineNode, shoop_loops::runtime::LoopPlanner, shoop_rt_engine::node::EngineOp>>::run_tick::<rt_runtime::host_buffer::BufferedAudio>",
+        "percent": 13.777372262773723
+      },
+      {
+        "symbol": "[unknown]",
+        "percent": 7.755474452554744
+      },
+      {
+        "symbol": "<shoop_loops::runtime::LoopPlanner>::settle_boundary",
+        "percent": 7.177615571776156
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::find",
+        "percent": 5.59610705596107
+      },
+      {
+        "symbol": "<rt_runtime::resource::midi_writer::Core>::maintain",
+        "percent": 3.7712895377128954
+      },
+      {
+        "symbol": "<shoop_rt_engine::node::StripInput>::render",
+        "percent": 3.710462287104623
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::settle_preview",
+        "percent": 3.710462287104623
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::set",
+        "percent": 3.1630170316301705
+      },
+      {
+        "symbol": "<shoop_rt_engine::node::EngineNode as rt_runtime::processor::Processor<shoop_loops::runtime::LoopPlanner, shoop_rt_engine::node::EngineOp>>::process_references",
+        "percent": 2.9501216545012166
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::begin_preview",
+        "percent": 2.5851581508515813
+      },
+      {
+        "symbol": "<shoop_loops::runtime::LoopPlanner as rt_runtime::planner::Planner>::finish_tick",
+        "percent": 2.372262773722628
+      },
+      {
+        "symbol": "<rt_runtime::resource::midi_writer::Core>::commit_source",
+        "percent": 2.2506082725060828
+      },
+      {
+        "symbol": "<shoop_loops::runtime::processor::PlaybackNode as rt_runtime::processor::Processor<shoop_loops::runtime::LoopPlanner>>::process_references",
+        "percent": 2.18978102189781
+      },
+      {
+        "symbol": "<rt_runtime::audio_refs::RenderArena>::read_into",
+        "percent": 1.9768856447688565
+      },
+      {
+        "symbol": "<rt_runtime::resource::ResourceStore>::visit_audio_chunk::<rt_runtime::audio_refs::visit<<rt_runtime::audio_refs::RenderArena>::peak::{closure#0}>::{closure#0}>",
+        "percent": 1.794403892944039
+      },
+      {
+        "symbol": "<shoop_rt_engine::cells::Observer as shoop_loops::runtime::BoundaryObserver>::boundary",
+        "percent": 1.5815085158150852
+      },
+      {
+        "symbol": "<rt_runtime::midi_state::indexed::store::Store<core::num::nonzero::NonZero<u32>>>::replace_records::<rt_runtime::resource::midi_packets::Packets>",
+        "percent": 1.3077858880778588
+      },
+      {
+        "symbol": "<rt_runtime::resource::ResourceStore>::visit_audio_chunk::<rt_runtime::audio_refs::visit<<rt_runtime::audio_refs::RenderArena>::accumulate::{closure#0}>::{closure#0}>",
+        "percent": 1.2165450121654502
+      },
+      {
+        "symbol": "rt_runtime::executor::referenced_audio::route_referenced::<shoop_rt_engine::node::EngineNode, rt_runtime::host_buffer::BufferedAudio>",
+        "percent": 1.2165450121654502
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::prerouting_transition",
+        "percent": 1.0644768856447688
+      },
+      {
+        "symbol": "<shoop_rt_engine::node::EngineNode>::apply_configuration",
+        "percent": 0.9124087591240876
+      },
+      {
+        "symbol": "<shoop_loops::runtime::shared::Shared>::observe",
+        "percent": 0.9124087591240876
+      },
+      {
+        "symbol": "<rt_runtime::audio_refs::RenderArena>::peak",
+        "percent": 0.851581508515815
+      },
+      {
+        "symbol": "<shoop_rt_engine::monitoring::Demand>::update",
+        "percent": 0.8211678832116789
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::release_immediate",
+        "percent": 0.7907542579075426
+      },
+      {
+        "symbol": "<rt_runtime::resource::ResourceStore>::with_indexed_midi::<(), <rt_runtime::resource::render::RenderIo>::append_indexed_midi_source::{closure#0}>",
+        "percent": 0.6690997566909975
+      },
+      {
+        "symbol": "<rt_runtime::audio_refs::RenderArena>::accumulate",
+        "percent": 0.6386861313868614
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::preview_tick",
+        "percent": 0.6386861313868614
+      },
+      {
+        "symbol": "__aarch64_ldadd8_acq_rel",
+        "percent": 0.6386861313868614
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_pages::SharedPages>::retain",
+        "percent": 0.6082725060827251
+      }
+    ],
+    "case": "play-b256-memory"
+  },
+  {
+    "mode": "chunks-descriptors",
+    "scenario": "play-b256-memory",
+    "samples": 1847,
+    "lost_samples": 0,
+    "total_period_ns": 12395972423,
+    "category_percent": {
+      "Loop planning and state": 26.475365457498647,
+      "Audio storage and indexing": 17.271250676773146,
+      "MIDI buffers and history": 10.720086626962642,
+      "Reference processing": 6.713589604764483,
+      "Graph nodes, mixing and meters": 14.347590687601516,
+      "Loop capture coordination": 2.8153762858689766,
+      "Runtime scheduling and dispatch": 14.943151055766107,
+      "State publication": 3.7357877639415267,
+      "Host wrapper and other": 2.4363833243096913,
+      "Unattributed": 0.5414185165132648
+    },
+    "unknown_leaf_percent": 7.309149972929074,
+    "unattributed_percent": 0.5414185165132648,
+    "bulk_memory_percent": 0.10828370330265295,
+    "planner_bulk_memory_percent": 0.0,
+    "top_leaf_symbols": [
+      {
+        "symbol": "<rt_runtime::executor::GraphRuntime<shoop_rt_engine::node::EngineNode, shoop_loops::runtime::LoopPlanner, shoop_rt_engine::node::EngineOp>>::run_tick::<rt_runtime::host_buffer::BufferedAudio>",
+        "percent": 11.694639956686519
+      },
+      {
+        "symbol": "<shoop_loops::runtime::LoopPlanner>::settle_boundary",
+        "percent": 8.28370330265295
+      },
+      {
+        "symbol": "[unknown]",
+        "percent": 7.309149972929074
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::find",
+        "percent": 5.360043313481321
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::settle_preview",
+        "percent": 4.439631835408771
+      },
+      {
+        "symbol": "<rt_runtime::resource::midi_writer::Core>::maintain",
+        "percent": 3.9523551705468325
+      },
+      {
+        "symbol": "<shoop_rt_engine::node::StripInput>::render",
+        "percent": 3.7357877639415267
+      },
+      {
+        "symbol": "<shoop_rt_engine::node::EngineNode as rt_runtime::processor::Processor<shoop_loops::runtime::LoopPlanner, shoop_rt_engine::node::EngineOp>>::process_references",
+        "percent": 3.519220357336221
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::set",
+        "percent": 2.5446670276123444
+      },
+      {
+        "symbol": "<shoop_loops::runtime::LoopPlanner as rt_runtime::planner::Planner>::finish_tick",
+        "percent": 2.4363833243096913
+      },
+      {
+        "symbol": "<shoop_loops::runtime::processor::PlaybackNode as rt_runtime::processor::Processor<shoop_loops::runtime::LoopPlanner>>::process_references",
+        "percent": 2.3280996210070386
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::begin_preview",
+        "percent": 1.7866811044937736
+      },
+      {
+        "symbol": "<rt_runtime::audio_refs::RenderArena>::read_into",
+        "percent": 1.7325392528424473
+      },
+      {
+        "symbol": "<rt_runtime::resource::ResourceStore>::visit_audio_chunk::<rt_runtime::audio_refs::visit<<rt_runtime::audio_refs::RenderArena>::peak::{closure#0}>::{closure#0}>",
+        "percent": 1.6242555495397943
+      },
+      {
+        "symbol": "rt_runtime::executor::referenced_audio::route_referenced::<shoop_rt_engine::node::EngineNode, rt_runtime::host_buffer::BufferedAudio>",
+        "percent": 1.5159718462371412
+      },
+      {
+        "symbol": "<rt_runtime::resource::ResourceStore>::visit_audio_chunk::<rt_runtime::audio_refs::visit<<rt_runtime::audio_refs::RenderArena>::accumulate::{closure#0}>::{closure#0}>",
+        "percent": 1.4076881429344883
+      },
+      {
+        "symbol": "<shoop_rt_engine::monitoring::Demand>::update",
+        "percent": 1.2994044396318354
+      },
+      {
+        "symbol": "<shoop_rt_engine::cells::Observer as shoop_loops::runtime::BoundaryObserver>::boundary",
+        "percent": 1.245262587980509
+      },
+      {
+        "symbol": "<shoop_loops::runtime::processor::CaptureNode as rt_runtime::processor::Processor<shoop_loops::runtime::LoopPlanner>>::process",
+        "percent": 1.1911207363291825
+      },
+      {
+        "symbol": "<rt_runtime::resource::midi_writer::Core>::commit_source",
+        "percent": 1.1911207363291825
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_pages::SharedPages>::retain",
+        "percent": 1.028695181375203
+      },
+      {
+        "symbol": "<shoop_rt_engine::node::EngineNode>::apply_configuration",
+        "percent": 1.028695181375203
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::prerouting_transition",
+        "percent": 0.9204114780725501
+      },
+      {
+        "symbol": "<rt_runtime::resource::ResourceStore>::with_indexed_midi::<(), <rt_runtime::resource::render::RenderIo>::append_indexed_midi_source::{closure#0}>",
+        "percent": 0.8662696264212236
+      },
+      {
+        "symbol": "__aarch64_ldadd8_acq_rel",
+        "percent": 0.8121277747698972
+      },
+      {
+        "symbol": "<rt_runtime::audio_refs::RenderArena>::peak",
+        "percent": 0.7579859231185706
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::release_immediate",
+        "percent": 0.7038440714672441
+      },
+      {
+        "symbol": "<rt_runtime::executor::GraphRuntime<shoop_rt_engine::node::EngineNode, shoop_loops::runtime::LoopPlanner, shoop_rt_engine::node::EngineOp>>::process",
+        "percent": 0.7038440714672441
+      },
+      {
+        "symbol": "<shoop_loops::runtime::shared::Shared>::observe",
+        "percent": 0.7038440714672441
+      },
+      {
+        "symbol": "<rt_runtime::audio_refs::RenderArena>::accumulate",
+        "percent": 0.6497022198159177
+      }
+    ],
+    "case": "play-b256-memory"
+  },
+  {
+    "mode": "current",
+    "scenario": "play-b256-memory",
+    "samples": 3313,
+    "lost_samples": 0,
+    "total_period_ns": 13305220032,
+    "category_percent": {
+      "Loop planning and state": 24.901901599758528,
+      "Audio storage and indexing": 14.307274373679444,
+      "MIDI buffers and history": 12.948988831874434,
+      "Reference processing": 0.0,
+      "Graph nodes, mixing and meters": 20.28373075762149,
+      "Loop capture coordination": 2.3543616057953516,
+      "Runtime scheduling and dispatch": 16.631451856323572,
+      "State publication": 3.0184123151222457,
+      "Host wrapper and other": 2.7467552067612435,
+      "Unattributed": 2.8071234530636886
+    },
+    "unknown_leaf_percent": 12.979172955025657,
+    "unattributed_percent": 2.8071234530636886,
+    "bulk_memory_percent": 0.18110473890733475,
+    "planner_bulk_memory_percent": 0.0,
+    "top_leaf_symbols": [
+      {
+        "symbol": "[unknown]",
+        "percent": 12.979172955025657
+      },
+      {
+        "symbol": "<rt_runtime::executor::Buffers>::clear",
+        "percent": 7.183821309990945
+      },
+      {
+        "symbol": "<shoop_loops::runtime::LoopPlanner>::settle_boundary",
+        "percent": 6.459402354361606
+      },
+      {
+        "symbol": "<rt_runtime::resource::midi_writer::Core>::maintain",
+        "percent": 4.587986718985814
+      },
+      {
+        "symbol": "<rt_runtime::executor::GraphRuntime<shoop_rt_engine::node::EngineNode, shoop_loops::runtime::LoopPlanner, shoop_rt_engine::node::EngineOp>>::run_tick::<rt_runtime::host_buffer::BufferedAudio>",
+        "percent": 4.255961364322366
+      },
+      {
+        "symbol": "<shoop_rt_engine::node::StripInput>::render",
+        "percent": 3.9843042559613644
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::settle_preview",
+        "percent": 3.501358285541805
+      },
+      {
+        "symbol": "<shoop_loops::runtime::LoopPlanner as rt_runtime::planner::Planner>::finish_tick",
+        "percent": 2.112888620585572
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::begin_preview",
+        "percent": 2.0827044974343494
+      },
+      {
+        "symbol": "<rt_runtime::resource::ResourceStore>::cursor_at_with",
+        "percent": 2.052520374283127
+      },
+      {
+        "symbol": "<shoop_rt_engine::node::StripOutput>::render",
+        "percent": 2.052520374283127
+      },
+      {
+        "symbol": "<shoop_rt_engine::node::BusMixer>::render_output",
+        "percent": 2.0223362511319047
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::set",
+        "percent": 1.6903108964684577
+      },
+      {
+        "symbol": "<shoop_loops::midi::MidiRenderer>::render_range",
+        "percent": 1.6601267733172351
+      },
+      {
+        "symbol": "<shoop_loops::audio::AudioRenderer>::render_source",
+        "percent": 1.5695744038635677
+      },
+      {
+        "symbol": "<rt_runtime::resource::midi_writer::Core>::commit_source",
+        "percent": 1.5092061575611229
+      },
+      {
+        "symbol": "<shoop_loops::runtime::processor::PlaybackNode as rt_runtime::processor::Processor<shoop_loops::runtime::LoopPlanner>>::process",
+        "percent": 1.2979172955025657
+      },
+      {
+        "symbol": "<rt_runtime::midi_state::indexed::store::Store<core::num::nonzero::NonZero<u32>>>::replace_records::<rt_runtime::resource::midi_packets::Packets>",
+        "percent": 1.2677331723513432
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::stage",
+        "percent": 1.2375490492001207
+      },
+      {
+        "symbol": "<core::ops::range::Range<u8> as core::iter::traits::iterator::Iterator>::try_fold::<(), core::iter::traits::iterator::Iterator::any::check<u8, <shoop_loops::midi::MidiRenderer>::render_range::{closure#4}>::{closure#0}, core::ops::control_flow::ControlFlow<()>>",
+        "percent": 1.1469966797464535
+      },
+      {
+        "symbol": "<shoop_rt_engine::monitoring::Demand>::update",
+        "percent": 1.1469966797464535
+      },
+      {
+        "symbol": "<shoop_rt_engine::cells::Observer as shoop_loops::runtime::BoundaryObserver>::boundary",
+        "percent": 1.056444310292786
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::find",
+        "percent": 1.0262601871415635
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::preview_tick",
+        "percent": 1.0262601871415635
+      },
+      {
+        "symbol": "<rt_runtime::resource::render::RenderIo>::snapshot",
+        "percent": 0.9960760639903411
+      },
+      {
+        "symbol": "<shoop_rt_engine::node::LoopFader>::render",
+        "percent": 0.9960760639903411
+      },
+      {
+        "symbol": "rt_runtime::executor::mix",
+        "percent": 0.9960760639903411
+      },
+      {
+        "symbol": "<shoop_rt_engine::node::EngineNode>::apply_configuration",
+        "percent": 0.9357078176878961
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::prerouting_transition",
+        "percent": 0.9055236945366737
+      },
+      {
+        "symbol": "<rt_runtime::buffer::MidiBuffer>::merge",
+        "percent": 0.8753395713854513
+      }
+    ],
+    "case": "play-b256-memory"
+  },
+  {
+    "mode": "chunks",
+    "scenario": "play-b256-none",
+    "samples": 683,
+    "lost_samples": 0,
+    "total_period_ns": 2742971712,
+    "category_percent": {
+      "Loop planning and state": 23.42606149341142,
+      "Audio storage and indexing": 17.27672035139092,
+      "MIDI buffers and history": 9.66325036603221,
+      "Reference processing": 16.251830161054173,
+      "Graph nodes, mixing and meters": 15.519765739385067,
+      "Loop capture coordination": 1.0248901903367496,
+      "Runtime scheduling and dispatch": 10.68814055636896,
+      "State publication": 2.9282576866764276,
+      "Host wrapper and other": 2.9282576866764276,
+      "Unattributed": 0.29282576866764276
+    },
+    "unknown_leaf_percent": 6.149341142020498,
+    "unattributed_percent": 0.29282576866764276,
+    "bulk_memory_percent": 0.8784773060029283,
+    "planner_bulk_memory_percent": 0.5856515373352855,
+    "top_leaf_symbols": [
+      {
+        "symbol": "<rt_runtime::executor::GraphRuntime<shoop_rt_engine::node::EngineNode, shoop_loops::runtime::LoopPlanner, shoop_rt_engine::node::EngineOp>>::run_tick::<rt_runtime::host_buffer::BufferedAudio>",
+        "percent": 8.345534407027818
+      },
+      {
+        "symbol": "[unknown]",
+        "percent": 6.149341142020498
+      },
+      {
+        "symbol": "<rt_runtime::audio_refs::RenderArena>::read_into",
+        "percent": 5.563689604685212
+      },
+      {
+        "symbol": "<shoop_rt_engine::node::StripInput>::render",
+        "percent": 5.417276720351391
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::settle_preview",
+        "percent": 5.270863836017569
+      },
+      {
+        "symbol": "<shoop_loops::runtime::LoopPlanner>::settle_boundary",
+        "percent": 5.124450951683748
+      },
+      {
+        "symbol": "<rt_runtime::resource::midi_writer::Core>::maintain",
+        "percent": 4.685212298682284
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::find",
+        "percent": 4.538799414348462
+      },
+      {
+        "symbol": "rt_runtime::executor::referenced_audio::route_referenced::<shoop_rt_engine::node::EngineNode, rt_runtime::host_buffer::BufferedAudio>",
+        "percent": 4.099560761346998
+      },
+      {
+        "symbol": "<shoop_rt_engine::node::EngineNode as rt_runtime::processor::Processor<shoop_loops::runtime::LoopPlanner, shoop_rt_engine::node::EngineOp>>::process_references",
+        "percent": 3.6603221083455346
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::prerouting_transition",
+        "percent": 3.22108345534407
+      },
+      {
+        "symbol": "<rt_runtime::audio_refs::RenderArena>::peak",
+        "percent": 3.074670571010249
+      },
+      {
+        "symbol": "<rt_runtime::resource::ResourceStore>::visit_audio_chunk::<rt_runtime::audio_refs::visit<<rt_runtime::audio_refs::RenderArena>::peak::{closure#0}>::{closure#0}>",
+        "percent": 2.9282576866764276
+      },
+      {
+        "symbol": "<rt_runtime::resource::ResourceStore>::visit_audio_chunk::<rt_runtime::audio_refs::visit<<rt_runtime::audio_refs::RenderArena>::accumulate::{closure#0}>::{closure#0}>",
+        "percent": 2.6354319180087846
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::set",
+        "percent": 2.049780380673499
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::begin_preview",
+        "percent": 1.9033674963396778
+      },
+      {
+        "symbol": "<shoop_loops::runtime::processor::PlaybackNode as rt_runtime::processor::Processor<shoop_loops::runtime::LoopPlanner>>::process_references",
+        "percent": 1.7569546120058566
+      },
+      {
+        "symbol": "<rt_runtime::audio_refs::RenderArena>::accumulate",
+        "percent": 1.7569546120058566
+      },
+      {
+        "symbol": "<shoop_rt_engine::cells::Observer as shoop_loops::runtime::BoundaryObserver>::boundary",
+        "percent": 1.4641288433382138
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::release_immediate",
+        "percent": 1.3177159590043923
+      },
+      {
+        "symbol": "<rt_runtime::midi_state::indexed::store::Store<core::num::nonzero::NonZero<u32>>>::replace_records::<rt_runtime::resource::midi_packets::Packets>",
+        "percent": 1.3177159590043923
+      },
+      {
+        "symbol": "<rt_runtime::resource::midi_writer::Core>::commit_source",
+        "percent": 1.171303074670571
+      },
+      {
+        "symbol": "<shoop_loops::runtime::processor::CaptureNode as rt_runtime::processor::Processor<shoop_loops::runtime::LoopPlanner>>::process",
+        "percent": 0.8784773060029283
+      },
+      {
+        "symbol": "<shoop_loops::runtime::LoopPlanner>::prepare_program_inputs",
+        "percent": 0.8784773060029283
+      },
+      {
+        "symbol": "<shoop_rt_engine::node::EngineNode>::apply_configuration",
+        "percent": 0.8784773060029283
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::chunk_sequence",
+        "percent": 0.7320644216691069
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::preview_tick",
+        "percent": 0.7320644216691069
+      },
+      {
+        "symbol": "memset@plt",
+        "percent": 0.7320644216691069
+      },
+      {
+        "symbol": "<shoop_rt_engine::cells::Observer as shoop_loops::runtime::BoundaryObserver>::settled",
+        "percent": 0.7320644216691069
+      },
+      {
+        "symbol": "<shoop_loops::runtime::LoopPlanner as rt_runtime::planner::Planner>::finish_tick",
+        "percent": 0.5856515373352855
+      }
+    ],
+    "case": "play-b256-none"
+  },
+  {
+    "mode": "chunks-descriptors",
+    "scenario": "play-b256-none",
+    "samples": 673,
+    "lost_samples": 0,
+    "total_period_ns": 2702811072,
+    "category_percent": {
+      "Loop planning and state": 22.13967310549777,
+      "Audio storage and indexing": 18.27637444279346,
+      "MIDI buffers and history": 8.766716196136702,
+      "Reference processing": 17.533432392273404,
+      "Graph nodes, mixing and meters": 15.750371471025261,
+      "Loop capture coordination": 1.7830609212481427,
+      "Runtime scheduling and dispatch": 9.658246656760772,
+      "State publication": 2.526002971768202,
+      "Host wrapper and other": 3.4175334323922733,
+      "Unattributed": 0.1485884101040119
+    },
+    "unknown_leaf_percent": 9.36106983655275,
+    "unattributed_percent": 0.1485884101040119,
+    "bulk_memory_percent": 0.1485884101040119,
+    "planner_bulk_memory_percent": 0.0,
+    "top_leaf_symbols": [
+      {
+        "symbol": "[unknown]",
+        "percent": 9.36106983655275
+      },
+      {
+        "symbol": "<rt_runtime::executor::GraphRuntime<shoop_rt_engine::node::EngineNode, shoop_loops::runtime::LoopPlanner, shoop_rt_engine::node::EngineOp>>::run_tick::<rt_runtime::host_buffer::BufferedAudio>",
+        "percent": 7.726597325408618
+      },
+      {
+        "symbol": "<rt_runtime::audio_refs::RenderArena>::read_into",
+        "percent": 6.537890044576523
+      },
+      {
+        "symbol": "<shoop_loops::runtime::LoopPlanner>::settle_boundary",
+        "percent": 5.49777117384844
+      },
+      {
+        "symbol": "<shoop_rt_engine::node::EngineNode as rt_runtime::processor::Processor<shoop_loops::runtime::LoopPlanner, shoop_rt_engine::node::EngineOp>>::process_references",
+        "percent": 5.49777117384844
+      },
+      {
+        "symbol": "<rt_runtime::resource::midi_writer::Core>::maintain",
+        "percent": 5.49777117384844
+      },
+      {
+        "symbol": "rt_runtime::executor::referenced_audio::route_referenced::<shoop_rt_engine::node::EngineNode, rt_runtime::host_buffer::BufferedAudio>",
+        "percent": 4.75482912332838
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::find",
+        "percent": 4.457652303120357
+      },
+      {
+        "symbol": "<rt_runtime::resource::ResourceStore>::visit_audio_chunk::<rt_runtime::audio_refs::visit<<rt_runtime::audio_refs::RenderArena>::peak::{closure#0}>::{closure#0}>",
+        "percent": 4.160475482912333
+      },
+      {
+        "symbol": "<shoop_rt_engine::node::StripInput>::render",
+        "percent": 4.160475482912333
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::prerouting_transition",
+        "percent": 3.5661218424962855
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::settle_preview",
+        "percent": 3.2689450222882614
+      },
+      {
+        "symbol": "<rt_runtime::audio_refs::RenderArena>::peak",
+        "percent": 3.1203566121842496
+      },
+      {
+        "symbol": "<rt_runtime::resource::ResourceStore>::visit_audio_chunk::<rt_runtime::audio_refs::visit<<rt_runtime::audio_refs::RenderArena>::accumulate::{closure#0}>::{closure#0}>",
+        "percent": 2.526002971768202
+      },
+      {
+        "symbol": "<shoop_loops::runtime::LoopPlanner as rt_runtime::planner::Planner>::finish_tick",
+        "percent": 1.6344725111441307
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::set",
+        "percent": 1.485884101040119
+      },
+      {
+        "symbol": "<rt_runtime::resource::midi_writer::Core>::commit_source",
+        "percent": 1.485884101040119
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::release_immediate",
+        "percent": 1.485884101040119
+      },
+      {
+        "symbol": "<shoop_rt_engine::cells::Observer as shoop_loops::runtime::BoundaryObserver>::boundary",
+        "percent": 1.337295690936107
+      },
+      {
+        "symbol": "<shoop_loops::runtime::processor::PlaybackNode as rt_runtime::processor::Processor<shoop_loops::runtime::LoopPlanner>>::process_references",
+        "percent": 1.188707280832095
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::begin_preview",
+        "percent": 1.0401188707280833
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_pages::SharedPages>::retain",
+        "percent": 0.8915304606240714
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::chunk_sequence",
+        "percent": 0.8915304606240714
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::preview_tick",
+        "percent": 0.8915304606240714
+      },
+      {
+        "symbol": "<rt_runtime::audio_refs::RenderArena>::accumulate",
+        "percent": 0.8915304606240714
+      },
+      {
+        "symbol": "<shoop_rt_engine::node::EngineNode>::apply_configuration",
+        "percent": 0.7429420505200595
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::finish",
+        "percent": 0.7429420505200595
+      },
+      {
+        "symbol": "shoop_rt_host_native::dummy::benchmark_input",
+        "percent": 0.7429420505200595
+      },
+      {
+        "symbol": "<shoop_loops::runtime::shared::Shared>::release_unused_reservations::<<shoop_loops::runtime::LoopPlanner>::prepare_program_inputs::{closure#0}>",
+        "percent": 0.5943536404160475
+      },
+      {
+        "symbol": "<rt_runtime::executor::GraphRuntime<shoop_rt_engine::node::EngineNode, shoop_loops::runtime::LoopPlanner, shoop_rt_engine::node::EngineOp>>::process",
+        "percent": 0.5943536404160475
+      }
+    ],
+    "case": "play-b256-none"
+  },
+  {
+    "mode": "current",
+    "scenario": "play-b256-none",
+    "samples": 649,
+    "lost_samples": 0,
+    "total_period_ns": 2606425536,
+    "category_percent": {
+      "Loop planning and state": 22.033898305084747,
+      "Audio storage and indexing": 15.254237288135593,
+      "MIDI buffers and history": 12.788906009244993,
+      "Reference processing": 0.0,
+      "Graph nodes, mixing and meters": 26.810477657935284,
+      "Loop capture coordination": 1.8489984591679507,
+      "Runtime scheduling and dispatch": 11.40215716486903,
+      "State publication": 2.773497688751926,
+      "Host wrapper and other": 5.855161787365177,
+      "Unattributed": 1.2326656394453004
+    },
+    "unknown_leaf_percent": 13.86748844375963,
+    "unattributed_percent": 1.2326656394453004,
+    "bulk_memory_percent": 0.7704160246533128,
+    "planner_bulk_memory_percent": 0.15408320493066255,
+    "top_leaf_symbols": [
+      {
+        "symbol": "[unknown]",
+        "percent": 13.86748844375963
+      },
+      {
+        "symbol": "<shoop_loops::runtime::LoopPlanner>::settle_boundary",
+        "percent": 6.471494607087828
+      },
+      {
+        "symbol": "<rt_runtime::resource::midi_writer::Core>::maintain",
+        "percent": 5.546995377503852
+      },
+      {
+        "symbol": "<shoop_rt_engine::node::StripInput>::render",
+        "percent": 5.084745762711864
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::settle_preview",
+        "percent": 4.006163328197227
+      },
+      {
+        "symbol": "<rt_runtime::executor::Buffers>::clear",
+        "percent": 3.852080123266564
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::stage",
+        "percent": 3.235747303543914
+      },
+      {
+        "symbol": "<rt_runtime::executor::GraphRuntime<shoop_rt_engine::node::EngineNode, shoop_loops::runtime::LoopPlanner, shoop_rt_engine::node::EngineOp>>::run_tick::<rt_runtime::host_buffer::BufferedAudio>",
+        "percent": 2.9275808936825887
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::prerouting_transition",
+        "percent": 2.773497688751926
+      },
+      {
+        "symbol": "<shoop_loops::audio::AudioRenderer>::render_source",
+        "percent": 2.4653312788906008
+      },
+      {
+        "symbol": "<shoop_rt_engine::node::EngineNode as rt_runtime::processor::Processor<shoop_loops::runtime::LoopPlanner, shoop_rt_engine::node::EngineOp>>::process",
+        "percent": 2.157164869029276
+      },
+      {
+        "symbol": "<shoop_rt_engine::node::BusMixer>::render_output",
+        "percent": 2.0030816640986133
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::release_immediate",
+        "percent": 1.8489984591679507
+      },
+      {
+        "symbol": "rt_runtime::executor::mix",
+        "percent": 1.8489984591679507
+      },
+      {
+        "symbol": "shoop_rt_host_native::dummy::benchmark_input",
+        "percent": 1.694915254237288
+      },
+      {
+        "symbol": "<rt_runtime::resource::ResourceStore>::cursor_at_with",
+        "percent": 1.694915254237288
+      },
+      {
+        "symbol": "<shoop_rt_engine::node::LoopFader>::render",
+        "percent": 1.5408320493066257
+      },
+      {
+        "symbol": "<shoop_rt_engine::node::EngineNode>::apply_configuration",
+        "percent": 1.386748844375963
+      },
+      {
+        "symbol": "<rt_runtime::resource::midi_writer::Core>::commit_source",
+        "percent": 1.386748844375963
+      },
+      {
+        "symbol": "<rt_runtime::midi_state::indexed::store::Store<core::num::nonzero::NonZero<u32>>>::replace_records::<rt_runtime::resource::midi_packets::Packets>",
+        "percent": 1.2326656394453004
+      },
+      {
+        "symbol": "<rt_runtime::buffer::AudioPorts>::input",
+        "percent": 1.2326656394453004
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::preview_tick",
+        "percent": 1.2326656394453004
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::set",
+        "percent": 1.2326656394453004
+      },
+      {
+        "symbol": "<shoop_rt_host_native::dummy::Loop>::step::{closure#0}",
+        "percent": 1.078582434514638
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::begin_preview",
+        "percent": 1.078582434514638
+      },
+      {
+        "symbol": "<rt_runtime::resource::midi_writer::Core>::account",
+        "percent": 1.078582434514638
+      },
+      {
+        "symbol": "<shoop_rt_engine::cells::Observer as shoop_loops::runtime::BoundaryObserver>::boundary",
+        "percent": 1.078582434514638
+      },
+      {
+        "symbol": "<rt_runtime::resource::ResourceStore>::read_with",
+        "percent": 1.078582434514638
+      },
+      {
+        "symbol": "rt_runtime::executor::route_offset::<shoop_rt_engine::node::EngineNode, rt_runtime::host_buffer::BufferedAudio>",
+        "percent": 1.078582434514638
+      },
+      {
+        "symbol": "<shoop_rt_engine::monitoring::Demand>::update",
+        "percent": 0.9244992295839753
+      }
+    ],
+    "case": "play-b256-none"
+  },
+  {
+    "mode": "chunks",
+    "scenario": "shared-b256-none",
+    "samples": 1116,
+    "lost_samples": 0,
+    "total_period_ns": 4481927424,
+    "category_percent": {
+      "Loop planning and state": 17.921146953405017,
+      "Audio storage and indexing": 14.96415770609319,
+      "MIDI buffers and history": 25.89605734767025,
+      "Reference processing": 11.917562724014337,
+      "Graph nodes, mixing and meters": 10.663082437275985,
+      "Loop capture coordination": 1.2544802867383513,
+      "Runtime scheduling and dispatch": 10.394265232974911,
+      "State publication": 2.6881720430107525,
+      "Host wrapper and other": 3.4946236559139785,
+      "Unattributed": 0.8064516129032258
+    },
+    "unknown_leaf_percent": 6.182795698924731,
+    "unattributed_percent": 0.8064516129032258,
+    "bulk_memory_percent": 0.44802867383512546,
+    "planner_bulk_memory_percent": 0.17921146953405018,
+    "top_leaf_symbols": [
+      {
+        "symbol": "<rt_runtime::midi_state::indexed::store::Reader<core::num::nonzero::NonZero<u32>, rt_runtime::resource::midi_packets::Packets>>::cuts",
+        "percent": 7.974910394265233
+      },
+      {
+        "symbol": "<rt_runtime::executor::GraphRuntime<shoop_rt_engine::node::EngineNode, shoop_loops::runtime::LoopPlanner, shoop_rt_engine::node::EngineOp>>::run_tick::<rt_runtime::host_buffer::BufferedAudio>",
+        "percent": 7.885304659498208
+      },
+      {
+        "symbol": "[unknown]",
+        "percent": 6.182795698924731
+      },
+      {
+        "symbol": "<rt_runtime::midi_state::indexed::store::Reader<core::num::nonzero::NonZero<u32>, rt_runtime::resource::midi_packets::Packets> as rt_runtime::midi_state::indexed::Timeline>::last",
+        "percent": 4.211469534050179
+      },
+      {
+        "symbol": "<rt_runtime::audio_refs::RenderArena>::read_into",
+        "percent": 3.942652329749104
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::prerouting_transition",
+        "percent": 3.673835125448029
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::find",
+        "percent": 3.673835125448029
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::settle_preview",
+        "percent": 3.4050179211469533
+      },
+      {
+        "symbol": "rt_runtime::executor::referenced_audio::route_referenced::<shoop_rt_engine::node::EngineNode, rt_runtime::host_buffer::BufferedAudio>",
+        "percent": 3.225806451612903
+      },
+      {
+        "symbol": "<shoop_loops::runtime::LoopPlanner>::settle_boundary",
+        "percent": 3.225806451612903
+      },
+      {
+        "symbol": "<rt_runtime::resource::midi_writer::Core>::maintain",
+        "percent": 3.1362007168458783
+      },
+      {
+        "symbol": "rt_runtime::midi_state::indexed::state::<rt_runtime::resource::midi_writer::Window<rt_runtime::midi_state::indexed::store::Reader<core::num::nonzero::NonZero<u32>, rt_runtime::resource::midi_packets::Packets>>>",
+        "percent": 3.1362007168458783
+      },
+      {
+        "symbol": "<shoop_rt_engine::node::StripInput>::render",
+        "percent": 3.046594982078853
+      },
+      {
+        "symbol": "<rt_runtime::resource::ResourceStore>::visit_audio_chunk::<rt_runtime::audio_refs::visit<<rt_runtime::audio_refs::RenderArena>::peak::{closure#0}>::{closure#0}>",
+        "percent": 3.046594982078853
+      },
+      {
+        "symbol": "<shoop_rt_engine::node::EngineNode as rt_runtime::processor::Processor<shoop_loops::runtime::LoopPlanner, shoop_rt_engine::node::EngineOp>>::process_references",
+        "percent": 2.240143369175627
+      },
+      {
+        "symbol": "<rt_runtime::audio_refs::RenderArena>::peak",
+        "percent": 2.060931899641577
+      },
+      {
+        "symbol": "<rt_runtime::resource::ResourceStore>::visit_audio_chunk::<rt_runtime::audio_refs::visit<<rt_runtime::audio_refs::RenderArena>::accumulate::{closure#0}>::{closure#0}>",
+        "percent": 1.971326164874552
+      },
+      {
+        "symbol": "<rt_runtime::midi_state::indexed::Reader<rt_runtime::resource::midi_writer::Window<rt_runtime::midi_state::indexed::store::Reader<core::num::nonzero::NonZero<u32>, rt_runtime::resource::midi_packets::Packets>>>>::held",
+        "percent": 1.881720430107527
+      },
+      {
+        "symbol": "<shoop_loops::runtime::processor::PlaybackNode as rt_runtime::processor::Processor<shoop_loops::runtime::LoopPlanner>>::process_references",
+        "percent": 1.881720430107527
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::set",
+        "percent": 1.6129032258064515
+      },
+      {
+        "symbol": "<rt_runtime::audio_refs::RenderArena>::accumulate",
+        "percent": 1.1648745519713262
+      },
+      {
+        "symbol": "<shoop_rt_engine::cells::Observer as shoop_loops::runtime::BoundaryObserver>::boundary",
+        "percent": 1.1648745519713262
+      },
+      {
+        "symbol": "<rt_runtime::resource::midi_writer::Core>::account",
+        "percent": 1.075268817204301
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::release_immediate",
+        "percent": 0.985663082437276
+      },
+      {
+        "symbol": "shoop_rt_host_native::dummy::benchmark_input",
+        "percent": 0.985663082437276
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::chunk_sequence",
+        "percent": 0.985663082437276
+      },
+      {
+        "symbol": "<rt_runtime::resource::midi_writer::Core>::commit_source",
+        "percent": 0.8960573476702509
+      },
+      {
+        "symbol": "<rt_runtime::midi_state::indexed::store::Reader<core::num::nonzero::NonZero<u32>, rt_runtime::resource::midi_packets::Packets> as rt_runtime::midi_state::indexed::Timeline>::sostenuto",
+        "percent": 0.8960573476702509
+      },
+      {
+        "symbol": "<shoop_rt_engine::monitoring::Demand>::update",
+        "percent": 0.8064516129032258
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::begin_preview",
+        "percent": 0.8064516129032258
+      }
+    ],
+    "case": "shared-b256-none"
+  },
+  {
+    "mode": "chunks-descriptors",
+    "scenario": "shared-b256-none",
+    "samples": 1128,
+    "lost_samples": 0,
+    "total_period_ns": 4530120192,
+    "category_percent": {
+      "Loop planning and state": 15.602836879432624,
+      "Audio storage and indexing": 13.209219858156029,
+      "MIDI buffers and history": 28.98936170212766,
+      "Reference processing": 12.854609929078014,
+      "Graph nodes, mixing and meters": 12.411347517730496,
+      "Loop capture coordination": 1.8617021276595744,
+      "Runtime scheduling and dispatch": 8.333333333333334,
+      "State publication": 2.6595744680851063,
+      "Host wrapper and other": 3.4574468085106385,
+      "Unattributed": 0.6205673758865248
+    },
+    "unknown_leaf_percent": 5.939716312056738,
+    "unattributed_percent": 0.6205673758865248,
+    "bulk_memory_percent": 0.08865248226950355,
+    "planner_bulk_memory_percent": 0.0,
+    "top_leaf_symbols": [
+      {
+        "symbol": "<rt_runtime::midi_state::indexed::store::Reader<core::num::nonzero::NonZero<u32>, rt_runtime::resource::midi_packets::Packets>>::cuts",
+        "percent": 8.156028368794326
+      },
+      {
+        "symbol": "[unknown]",
+        "percent": 5.939716312056738
+      },
+      {
+        "symbol": "<rt_runtime::executor::GraphRuntime<shoop_rt_engine::node::EngineNode, shoop_loops::runtime::LoopPlanner, shoop_rt_engine::node::EngineOp>>::run_tick::<rt_runtime::host_buffer::BufferedAudio>",
+        "percent": 5.76241134751773
+      },
+      {
+        "symbol": "<rt_runtime::audio_refs::RenderArena>::read_into",
+        "percent": 4.609929078014185
+      },
+      {
+        "symbol": "<rt_runtime::resource::midi_writer::Core>::maintain",
+        "percent": 4.609929078014185
+      },
+      {
+        "symbol": "<rt_runtime::midi_state::indexed::store::Reader<core::num::nonzero::NonZero<u32>, rt_runtime::resource::midi_packets::Packets> as rt_runtime::midi_state::indexed::Timeline>::last",
+        "percent": 3.9893617021276597
+      },
+      {
+        "symbol": "<shoop_loops::runtime::LoopPlanner>::settle_boundary",
+        "percent": 3.900709219858156
+      },
+      {
+        "symbol": "rt_runtime::midi_state::indexed::state::<rt_runtime::resource::midi_writer::Window<rt_runtime::midi_state::indexed::store::Reader<core::num::nonzero::NonZero<u32>, rt_runtime::resource::midi_packets::Packets>>>",
+        "percent": 3.8120567375886525
+      },
+      {
+        "symbol": "<shoop_rt_engine::node::EngineNode as rt_runtime::processor::Processor<shoop_loops::runtime::LoopPlanner, shoop_rt_engine::node::EngineOp>>::process_references",
+        "percent": 3.8120567375886525
+      },
+      {
+        "symbol": "rt_runtime::executor::referenced_audio::route_referenced::<shoop_rt_engine::node::EngineNode, rt_runtime::host_buffer::BufferedAudio>",
+        "percent": 3.723404255319149
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::settle_preview",
+        "percent": 3.280141843971631
+      },
+      {
+        "symbol": "<rt_runtime::resource::ResourceStore>::visit_audio_chunk::<rt_runtime::audio_refs::visit<<rt_runtime::audio_refs::RenderArena>::peak::{closure#0}>::{closure#0}>",
+        "percent": 3.280141843971631
+      },
+      {
+        "symbol": "<shoop_rt_engine::node::StripInput>::render",
+        "percent": 3.102836879432624
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::find",
+        "percent": 3.102836879432624
+      },
+      {
+        "symbol": "<rt_runtime::midi_state::indexed::Reader<rt_runtime::resource::midi_writer::Window<rt_runtime::midi_state::indexed::store::Reader<core::num::nonzero::NonZero<u32>, rt_runtime::resource::midi_packets::Packets>>>>::held",
+        "percent": 1.950354609929078
+      },
+      {
+        "symbol": "<shoop_loops::runtime::processor::PlaybackNode as rt_runtime::processor::Processor<shoop_loops::runtime::LoopPlanner>>::process_references",
+        "percent": 1.950354609929078
+      },
+      {
+        "symbol": "<rt_runtime::audio_refs::RenderArena>::peak",
+        "percent": 1.7730496453900708
+      },
+      {
+        "symbol": "<rt_runtime::resource::ResourceStore>::visit_audio_chunk::<rt_runtime::audio_refs::visit<<rt_runtime::audio_refs::RenderArena>::accumulate::{closure#0}>::{closure#0}>",
+        "percent": 1.6843971631205674
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::prerouting_transition",
+        "percent": 1.5957446808510638
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::set",
+        "percent": 1.3297872340425532
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::begin_preview",
+        "percent": 1.2411347517730495
+      },
+      {
+        "symbol": "<rt_runtime::resource::midi_writer::Core>::commit_source",
+        "percent": 1.1524822695035462
+      },
+      {
+        "symbol": "<shoop_rt_engine::cells::Observer as shoop_loops::runtime::BoundaryObserver>::boundary",
+        "percent": 1.1524822695035462
+      },
+      {
+        "symbol": "shoop_rt_host_native::dummy::benchmark_input",
+        "percent": 1.1524822695035462
+      },
+      {
+        "symbol": "<shoop_rt_engine::node::EngineNode>::apply_configuration",
+        "percent": 1.0638297872340425
+      },
+      {
+        "symbol": "<rt_runtime::audio_refs::RenderArena>::accumulate",
+        "percent": 0.975177304964539
+      },
+      {
+        "symbol": "<rt_runtime::midi_state::indexed::store::Reader<core::num::nonzero::NonZero<u32>, rt_runtime::resource::midi_packets::Packets> as rt_runtime::midi_state::indexed::Timeline>::sostenuto",
+        "percent": 0.975177304964539
+      },
+      {
+        "symbol": "<shoop_rt_engine::monitoring::Demand>::update",
+        "percent": 0.975177304964539
+      },
+      {
+        "symbol": "<rt_runtime::midi_state::indexed::store::Store<core::num::nonzero::NonZero<u32>>>::replace_records::<rt_runtime::resource::midi_packets::Packets>",
+        "percent": 0.8865248226950354
+      },
+      {
+        "symbol": "<rt_runtime::executor::GraphRuntime<shoop_rt_engine::node::EngineNode, shoop_loops::runtime::LoopPlanner, shoop_rt_engine::node::EngineOp>>::process",
+        "percent": 0.7978723404255319
+      }
+    ],
+    "case": "shared-b256-none"
+  },
+  {
+    "mode": "current",
+    "scenario": "shared-b256-none",
+    "samples": 1147,
+    "lost_samples": 0,
+    "total_period_ns": 4606425408,
+    "category_percent": {
+      "Loop planning and state": 19.96512641673932,
+      "Audio storage and indexing": 14.210985178727114,
+      "MIDI buffers and history": 25.980819529206627,
+      "Reference processing": 0.0,
+      "Graph nodes, mixing and meters": 22.667829119442022,
+      "Loop capture coordination": 1.2205754141238012,
+      "Runtime scheduling and dispatch": 8.979947689625108,
+      "State publication": 2.1795989537925022,
+      "Host wrapper and other": 3.748910200523104,
+      "Unattributed": 1.046207497820401
+    },
+    "unknown_leaf_percent": 10.20052310374891,
+    "unattributed_percent": 1.046207497820401,
+    "bulk_memory_percent": 0.6102877070619006,
+    "planner_bulk_memory_percent": 0.08718395815170009,
+    "top_leaf_symbols": [
+      {
+        "symbol": "[unknown]",
+        "percent": 10.20052310374891
+      },
+      {
+        "symbol": "<rt_runtime::midi_state::indexed::store::Reader<core::num::nonzero::NonZero<u32>, rt_runtime::resource::midi_packets::Packets>>::cuts",
+        "percent": 9.24149956408021
+      },
+      {
+        "symbol": "<shoop_loops::runtime::LoopPlanner>::settle_boundary",
+        "percent": 4.620749782040105
+      },
+      {
+        "symbol": "<shoop_rt_engine::node::StripInput>::render",
+        "percent": 4.533565823888405
+      },
+      {
+        "symbol": "<rt_runtime::midi_state::indexed::store::Reader<core::num::nonzero::NonZero<u32>, rt_runtime::resource::midi_packets::Packets> as rt_runtime::midi_state::indexed::Timeline>::last",
+        "percent": 3.6617262423714037
+      },
+      {
+        "symbol": "<rt_runtime::resource::midi_writer::Core>::maintain",
+        "percent": 3.4001743679163035
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::settle_preview",
+        "percent": 3.3129904097646032
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::find",
+        "percent": 3.225806451612903
+      },
+      {
+        "symbol": "<shoop_loops::audio::AudioRenderer>::render_source",
+        "percent": 2.877070619006103
+      },
+      {
+        "symbol": "rt_runtime::midi_state::indexed::state::<rt_runtime::resource::midi_writer::Window<rt_runtime::midi_state::indexed::store::Reader<core::num::nonzero::NonZero<u32>, rt_runtime::resource::midi_packets::Packets>>>",
+        "percent": 2.877070619006103
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::stage",
+        "percent": 2.877070619006103
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::prerouting_transition",
+        "percent": 2.789886660854403
+      },
+      {
+        "symbol": "<rt_runtime::executor::GraphRuntime<shoop_rt_engine::node::EngineNode, shoop_loops::runtime::LoopPlanner, shoop_rt_engine::node::EngineOp>>::run_tick::<rt_runtime::host_buffer::BufferedAudio>",
+        "percent": 2.789886660854403
+      },
+      {
+        "symbol": "<rt_runtime::executor::Buffers>::clear",
+        "percent": 2.1795989537925022
+      },
+      {
+        "symbol": "rt_runtime::executor::mix",
+        "percent": 2.1795989537925022
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::read_span",
+        "percent": 2.092414995640802
+      },
+      {
+        "symbol": "<rt_runtime::midi_state::indexed::Reader<rt_runtime::resource::midi_writer::Window<rt_runtime::midi_state::indexed::store::Reader<core::num::nonzero::NonZero<u32>, rt_runtime::resource::midi_packets::Packets>>>>::held",
+        "percent": 2.005231037489102
+      },
+      {
+        "symbol": "<shoop_rt_engine::node::LoopFader>::render",
+        "percent": 1.9180470793374018
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::begin_preview",
+        "percent": 1.4821272885789014
+      },
+      {
+        "symbol": "<rt_runtime::buffer::AudioPorts>::input",
+        "percent": 1.3077593722755012
+      },
+      {
+        "symbol": "<shoop_rt_engine::node::BusMixer>::render_output",
+        "percent": 1.2205754141238012
+      },
+      {
+        "symbol": "<shoop_rt_engine::cells::Observer as shoop_loops::runtime::BoundaryObserver>::boundary",
+        "percent": 1.1333914559721012
+      },
+      {
+        "symbol": "<shoop_rt_engine::node::StripOutput>::render",
+        "percent": 1.046207497820401
+      },
+      {
+        "symbol": "<shoop_loops::runtime::LoopPlanner as rt_runtime::planner::Planner>::finish_tick",
+        "percent": 1.046207497820401
+      },
+      {
+        "symbol": "<shoop_rt_engine::node::EngineNode as rt_runtime::processor::Processor<shoop_loops::runtime::LoopPlanner, shoop_rt_engine::node::EngineOp>>::process",
+        "percent": 0.9590235396687009
+      },
+      {
+        "symbol": "<rt_runtime::resource::midi_writer::Core>::commit_source",
+        "percent": 0.9590235396687009
+      },
+      {
+        "symbol": "<shoop_loops::runtime::processor::PlaybackNode as rt_runtime::processor::Processor<shoop_loops::runtime::LoopPlanner>>::process",
+        "percent": 0.8718395815170009
+      },
+      {
+        "symbol": "rt_runtime::executor::route_offset::<shoop_rt_engine::node::EngineNode, rt_runtime::host_buffer::BufferedAudio>",
+        "percent": 0.8718395815170009
+      },
+      {
+        "symbol": "<rt_runtime::resource::shared_audio::AudioStore>::set",
+        "percent": 0.8718395815170009
+      },
+      {
+        "symbol": "<shoop_loops::resolver::Resolver>::preview_tick",
+        "percent": 0.8718395815170009
+      }
+    ],
+    "case": "shared-b256-none"
+  }
+]

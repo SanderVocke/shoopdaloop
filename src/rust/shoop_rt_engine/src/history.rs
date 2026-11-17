@@ -116,7 +116,11 @@ impl Layout {
             views,
             pages: audio_pages,
         };
-        let audio_capacity = audio.windowed_capacity(runtime, d.strips())?;
+        let audio_capacity = if d.audio_render_mode.chunked() {
+            audio.chunk_capacity(runtime, d.strips(), d.quantum)?
+        } else {
+            audio.windowed_capacity(runtime, d.strips())?
+        };
         let records = d.history.midi_records as usize;
         let history_events = records / 2 / d.strips();
         let history_bytes = mul(d.history.midi_pages as usize, d.page_bytes)? / 2 / d.strips();

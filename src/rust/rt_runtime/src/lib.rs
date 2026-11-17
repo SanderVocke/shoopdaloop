@@ -45,13 +45,18 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 pub use rt_profiling as profiling;
 
+mod audio_mode;
+pub use audio_mode::AudioRenderMode;
+pub mod audio_refs;
+
 pub use rt_audio_math::{Sample, Q824};
+
 pub mod buffer;
 pub mod config;
 pub mod error;
 pub mod executor;
 pub mod graph;
-mod host_buffer;
+pub mod host_buffer;
 pub mod ids;
 pub mod midi;
 pub mod midi_state;

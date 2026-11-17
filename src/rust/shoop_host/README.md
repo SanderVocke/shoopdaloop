@@ -45,3 +45,48 @@ without it, `--config FILE` uses a sidecar, otherwise the host's application con
 directory is used. Saved driver preferences override configuration; explicit audio
 CLI flags override both. See the
 [audio-driver switching contract](../../../docs/native_session_recovery/audio-driver-switching.md).
+
+## Temporary Rust FPGA-reference client
+
+Build and run the live-graph application-API exercise without the UI:
+
+```sh
+cargo build -p shoop_host --no-default-features --features fpga-reference --bin shoop_host --example fpga_reference_client
+cargo run -p shoop_host --no-default-features --features fpga-reference --example fpga_reference_client -- --host target/debug/shoop_host
+```
+
+The client launches a reference host, attaches over its real socket API, creates a
+mono track, connects its input and submits `ActivatePreparedGraph`. `RtBackend`
+collects the desired layout on the control side. Activation sends one bounded
+immediate group containing a graph header, loop descriptions and activation.
+The endpoint compiles that description through the shared compiler and `RustTarget`
+outside the processing thread. The ARM allocator reuses continuing allocations,
+initializes only unused slots, and stages a bound program for the independently
+paced worker. An ordered `SwitchProgram` selects it at a quantum boundary. The
+operation completes after the ownership fence; processing frames remain continuous.
+
+The client then uses immediate transition plans, gain and plan clearing, checking
+their results through application snapshots. It records the sync loop, records a
+second loop between source pulses, plays it, changes gain and stops both loops.
+It replaces programs during recording and playback, changes input routing, and
+replaces the user track with eight new loops, including recycled logical identities.
+It writes `config.json`, `profile.json`, `host.log` and `report.json` under
+`work/fpga-reference-client` (override with `--output`). The same client is run by
+`cargo test -p shoop_host --no-default-features --features fpga-reference --test prepared_graph`.
+
+This profile supports the built-in sync track plus one mono audio track, up to
+16 primitive loops in total, acyclic sync relationships (self sync allowed),
+optional input connections and either both Master output channels or neither.
+Track/Master controls must remain at their defaults, with zero smoothing and
+automatic Master connections. The input supplies deterministic 0.25 samples;
+stereo output is computed without a physical audio device. Media import/export,
+processors, MIDI, monitoring, arbitrary routing and UI integration are outside
+this profile. One prepared update may be outstanding. Quantum, sample rate and
+physical I/O remain fixed. Unsupported legacy mutations receive
+refusals; they are never sent to the execution queues. Native execution remains
+the default. Select the reference host with `fpga_reference: true` in startup
+configuration and build with the corresponding feature.
+
+`RtlTarget` accepts the same logical graph and its packed configurations still load
+through the testbench loader. Marlin does not yet have the runtime graph/command
+frontend used by this application client.

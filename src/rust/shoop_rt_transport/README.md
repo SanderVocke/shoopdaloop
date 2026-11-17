@@ -18,7 +18,15 @@ can coordinate an independent peer without changing the protocol.
 
 Concrete mechanisms live in `shoop_rt_transport_message_port`,
 `shoop_rt_transport_socket` and `shoop_rt_transport_shared_memory`; hosting belongs
-to `shoop_rt_host_<environment>`. This crate depends only on the protocol.
+to `shoop_rt_host_<environment>`. Minimal carriers depend on shared transport and
+protocol types, without a runtime dependency.
+
+The optional `rt-interface` feature adds the internal command/response FIFO and
+snapshot channel, plus a concrete `carrier::Endpoint`. It reuses generic
+`rt_runtime` queue/publication primitives, without depending on loop semantics,
+an execution engine or a host. Native and reference execution owners use the same
+channel constructor; processing pacing remains outside the endpoint. Dependency
+checks audit minimal, RT-interface and all-feature configurations separately.
 
 ```sh
 cargo test -p shoop_rt_transport

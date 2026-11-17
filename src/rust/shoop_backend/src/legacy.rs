@@ -7931,6 +7931,9 @@ impl Backend for FakeBackend {
             AudioDriverConfig::WebAudio => {
                 return Err(anyhow!("Web Audio is selected automatically"));
             }
+            AudioDriverConfig::Simulated => {
+                return Err(anyhow!("a simulated clock is not an audio driver"));
+            }
         };
         Ok(ResolvedAudioDriverConfig {
             configured: config.clone(),

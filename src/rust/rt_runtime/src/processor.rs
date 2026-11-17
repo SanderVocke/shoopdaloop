@@ -154,6 +154,13 @@ pub trait Processor<L: Planner<S> = NoPlanner, Q: ProcessorOperation = (), S: Sa
     /// Apply prepared state after graph activation, before snapshot capture.
     fn settle(&mut self, _epoch: crate::Epoch, _domain: &L) {}
     fn process(&mut self, block: &mut ProcessBlock<'_, L, S>) -> Result<(), Error>;
+
+    fn process_references(
+        &mut self,
+        _block: &mut crate::audio_refs::ReferenceBlock<'_, L, S>,
+    ) -> Result<bool, Error> {
+        Ok(false)
+    }
     /// Typed processor operations are immediate; only planners may retain receipts.
     fn operation(
         &mut self,
@@ -171,6 +178,12 @@ pub trait Processor<L: Planner<S> = NoPlanner, Q: ProcessorOperation = (), S: Sa
 impl<L: Planner<S>, Q: ProcessorOperation, P: Processor<L, Q, S> + ?Sized, S: Sample>
     Processor<L, Q, S> for Box<P>
 {
+    fn process_references(
+        &mut self,
+        block: &mut crate::audio_refs::ReferenceBlock<'_, L, S>,
+    ) -> Result<bool, Error> {
+        (**self).process_references(block)
+    }
     fn settle(&mut self, epoch: crate::Epoch, domain: &L) {
         (**self).settle(epoch, domain);
     }

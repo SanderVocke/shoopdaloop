@@ -1,0 +1,173 @@
+{
+  "rtl_revision": "9386dffd14408df52b87179e834b1bdc383bf07c",
+  "tool": "Vivado 2021.1 SW Build 3247384",
+  "part": "xc7z020clg484-1",
+  "stage": "post_route",
+  "profile": {
+    "LOOP_DEPTH": 64,
+    "REQUEST_DEPTH": 272,
+    "EVENT_DEPTH": 400,
+    "PROGRAM_DEPTH": 257,
+    "STATE_DEPTH": 192,
+    "JOB_DEPTH": 321,
+    "BUFFERS": 185,
+    "MAX_FRAMES": 32,
+    "CHUNK_FRAMES": 32,
+    "INPUT_PORTS": 1,
+    "OUTPUT_PORTS": 8,
+    "VIEWS": 256,
+    "SLOTS": 8192,
+    "BLOCK_CHUNKS": 32,
+    "AXI_DATA_WIDTH": 64,
+    "EXTERNAL_IO": 1,
+    "INSTRUCTION_COUNT": 257,
+    "STATE_COUNT": 192,
+    "BUFFER_COUNT": 185,
+    "JOB_BUDGET": 321,
+    "BOOT_WORDS": 839,
+    "EVENT_WORDS": 264
+  },
+  "available": {
+    "luts": 53200,
+    "flip_flops": 106400,
+    "bram36_equivalent": 140,
+    "dsps": 220,
+    "slices": 13300
+  },
+  "scope": "Full routed ZedBoard deployment, including benchmark, PS7, ILA, VIO, JTAG debug hub and reset",
+  "total": {
+    "luts": 30857,
+    "flip_flops": 27104,
+    "ramb36": 63,
+    "ramb18": 10,
+    "bram36_equivalent": 68.0,
+    "dsps": 4,
+    "slices": 10877
+  },
+  "subsystems": [
+    {
+      "name": "Transition processor",
+      "hierarchy": "system_wrapper/system_i/bench/inst/bench/core/core/timing",
+      "luts": 11856,
+      "flip_flops": 7396,
+      "ramb36": 23,
+      "ramb18": 2,
+      "bram36_equivalent": 24.0,
+      "dsps": 0
+    },
+    {
+      "name": "Media store, metadata and caches",
+      "hierarchy": "system_wrapper/system_i/bench/inst/bench/core/core/audio/media",
+      "luts": 8305,
+      "flip_flops": 5966,
+      "ramb36": 5,
+      "ramb18": 5,
+      "bram36_equivalent": 7.5,
+      "dsps": 0
+    },
+    {
+      "name": "Job processor, scratch RAM and divider",
+      "hierarchy": "system_wrapper/system_i/bench/inst/bench/core/core/audio/pipeline/sample_engine",
+      "luts": 2802,
+      "flip_flops": 1442,
+      "ramb36": 8,
+      "ramb18": 0,
+      "bram36_equivalent": 8.0,
+      "dsps": 4
+    },
+    {
+      "name": "State processor, program/state RAM and job queue",
+      "hierarchy": "system_wrapper/system_i/bench/inst/bench/core/core/audio/pipeline/state_engine",
+      "luts": 1194,
+      "flip_flops": 707,
+      "ramb36": 7,
+      "ramb18": 1,
+      "bram36_equivalent": 7.5,
+      "dsps": 0
+    },
+    {
+      "name": "Shared AXI master and DMA",
+      "hierarchy": "system_wrapper/system_i/bench/inst/bench/core/memory_endpoint",
+      "luts": 1253,
+      "flip_flops": 669,
+      "ramb36": 0,
+      "ramb18": 0,
+      "bram36_equivalent": 0.0,
+      "dsps": 0
+    },
+    {
+      "name": "Other processing glue and read-intent queue",
+      "luts": 170,
+      "flip_flops": 55,
+      "ramb36": 3,
+      "ramb18": 0,
+      "bram36_equivalent": 3.0,
+      "dsps": 0
+    },
+    {
+      "name": "Autonomous benchmark harness",
+      "luts": 669,
+      "flip_flops": 2174,
+      "ramb36": 5,
+      "ramb18": 1,
+      "bram36_equivalent": 5.5,
+      "dsps": 0
+    },
+    {
+      "name": "ILA",
+      "hierarchy": "system_wrapper/system_i/ila",
+      "luts": 929,
+      "flip_flops": 1975,
+      "ramb36": 12,
+      "ramb18": 1,
+      "bram36_equivalent": 12.5,
+      "dsps": 0
+    },
+    {
+      "name": "VIO",
+      "hierarchy": "system_wrapper/system_i/vio",
+      "luts": 3190,
+      "flip_flops": 5934,
+      "ramb36": 0,
+      "ramb18": 0,
+      "bram36_equivalent": 0.0,
+      "dsps": 0
+    },
+    {
+      "name": "JTAG debug hub",
+      "hierarchy": "system_wrapper/dbg_hub",
+      "luts": 473,
+      "flip_flops": 753,
+      "ramb36": 0,
+      "ramb18": 0,
+      "bram36_equivalent": 0.0,
+      "dsps": 0
+    },
+    {
+      "name": "Board reset and glue, including shared-LUT residual",
+      "luts": 16,
+      "flip_flops": 33,
+      "ramb36": 0,
+      "ramb18": 0,
+      "bram36_equivalent": 0.0,
+      "dsps": 0
+    }
+  ],
+  "processing_core": {
+    "luts": 25580,
+    "flip_flops": 16235,
+    "ramb36": 46,
+    "ramb18": 8,
+    "bram36_equivalent": 50.0,
+    "dsps": 4
+  },
+  "benchmark": {
+    "luts": 26249,
+    "flip_flops": 18409,
+    "ramb36": 51,
+    "ramb18": 9,
+    "bram36_equivalent": 55.5,
+    "dsps": 4
+  },
+  "attribution_note": "Hierarchy LUT counts can overlap. Other processing glue and board reset/glue are residuals so rows sum to routed total."
+}

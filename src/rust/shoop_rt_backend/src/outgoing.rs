@@ -60,6 +60,20 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         initial_loops: usize,
     ) -> Result<BackendTrackCreation> {
         self.ready()?;
+        self.structure_mutable()?;
+        if self.prepared_graph.is_some()
+            && !matches!(
+                topology,
+                BackendTrackTopology::Direct {
+                    audio_channels: 1,
+                    midi: false
+                }
+            )
+        {
+            return Err(anyhow!(
+                "prepared reference supports mono audio tracks only"
+            ));
+        }
         let dry = topology.dry_audio_channels();
         let wet = topology.wet_audio_channels();
         let midi = topology.has_midi();
@@ -362,6 +376,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
 
     pub(crate) fn add_loop(&mut self, track_id: BackendTrackId) -> Result<BackendLoopId> {
         self.ready()?;
+        self.structure_mutable()?;
         let strip = self
             .mirror
             .live_track(track_id)
@@ -493,6 +508,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         connected: bool,
     ) -> Result<()> {
         self.ready()?;
+        self.structure_mutable()?;
         if !connected
             && self.mirror.host_by_name(host).is_none()
             && self.mirror.live_port(port_id).is_some()
@@ -568,6 +584,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         connected: bool,
     ) -> Result<()> {
         self.ready()?;
+        self.structure_mutable()?;
         let port = self
             .mirror
             .live_port(source_port_id)

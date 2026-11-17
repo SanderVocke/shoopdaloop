@@ -137,6 +137,30 @@ impl Cycle {
         for input in self.midi_inputs.iter_mut() {
             input.clear();
         }
+        if self.shared.benchmark.is_some() {
+            let work = self.render.resource_work().1;
+            let diagnostics = self.render.diagnostics();
+            let graph = self.render.audio_graph_work();
+            let pool = self.render.audio_pool_work();
+            for (target, value) in self.shared.benchmark_work.iter().zip([
+                work.copied_bytes as u64,
+                work.validation_steps as u64,
+                diagnostics.nodes_processed as u64,
+                u64::from(result.is_err()),
+                graph.forwarded,
+                graph.materialized,
+                graph.sample_reads,
+                graph.sample_writes,
+                graph.arena_peak_samples,
+                pool.index_allocated,
+                pool.index_reclaimed,
+                pool.shared_payloads,
+                pool.payload_live,
+                pool.index_live,
+            ]) {
+                target.store(value, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
         self.phase = match result {
             Ok(report) => report.phase,
             Err(error) => {

@@ -41,6 +41,7 @@ struct Fixture {
     output: [Vec<f32>; 2],
     midi_input: MidiBuffer,
     midi_output: MidiBuffer,
+    midi: bool,
     samples: [Vec<f32>; 2],
     packets: Vec<(u64, Vec<u8>)>,
     completions: Vec<Completion>,
@@ -278,6 +279,7 @@ impl Fixture {
             output: [vec![0.; 128], vec![0.; 128]],
             midi_input: MidiBuffer::new(512, 16384).unwrap(),
             midi_output: MidiBuffer::new(4096, 32768).unwrap(),
+            midi: !d.host.midi_inputs.is_empty(),
             samples: [Vec::new(), Vec::new()],
             packets: Vec::new(),
             completions: Vec::new(),
@@ -301,13 +303,14 @@ impl Fixture {
         );
         while h.outbox.pop().is_some() {}
         let strip = protocol::StripId(protocol::SlotId::new(0, 1));
+        let midi = !d.host.midi_inputs.is_empty();
         h.request(protocol::Request::CreateStrip {
             strip,
             shape: protocol::StripShape {
                 audio_inputs: 2,
                 audio_outputs: 2,
-                midi_input: true,
-                midi_output: true,
+                midi_input: midi,
+                midi_output: midi,
             },
         });
         for (kind, index, host) in [
@@ -318,6 +321,14 @@ impl Fixture {
             (protocol::PortKind::MidiIn, 0, 4),
             (protocol::PortKind::MidiOut, 0, 5),
         ] {
+            if !midi
+                && matches!(
+                    kind,
+                    protocol::PortKind::MidiIn | protocol::PortKind::MidiOut
+                )
+            {
+                continue;
+            }
             h.request(protocol::Request::Connect {
                 port: protocol::EnginePort::Strip(protocol::StripPort { strip, kind, index }),
                 host: protocol::HostPortId(host),
@@ -377,8 +388,16 @@ impl Fixture {
                     outputs: &mut [&mut left[..frames], &mut right[..frames]],
                 },
                 MidiBlock {
-                    inputs: core::slice::from_ref(&self.midi_input),
-                    outputs: core::slice::from_mut(&mut self.midi_output),
+                    inputs: if self.midi {
+                        core::slice::from_ref(&self.midi_input)
+                    } else {
+                        &[]
+                    },
+                    outputs: if self.midi {
+                        core::slice::from_mut(&mut self.midi_output)
+                    } else {
+                        &mut []
+                    },
                 },
             )
         });
@@ -4516,4 +4535,138 @@ fn public_gesture_uses_the_targets_pending_clock_delay_at_its_effective_cut() {
     assert_eq!(state.length, (remaining + 1) * period);
     let mut stopped = h.engine.render.into_stopped();
     recover_all(&mut stopped, capacity.total_resource_pages);
+}
+
+#[shoop_test]
+fn long_simultaneous_chunk_captures_keep_their_committed_prefixes() {
+    for mode in [
+        crate::AudioRenderMode::Chunks,
+        crate::AudioRenderMode::ChunksDescriptors,
+    ] {
+        let d = EngineDescription {
+            audio_render_mode: mode,
+            audio_bench_only: true,
+            external_dry_wet: true,
+            quantum: 32,
+            sample_rate: 48000,
+            max_frames: 128,
+            host: HostPorts::numbered(2, 2, 0),
+            segments: vec![Segment {
+                strips: 2,
+                loops: 8,
+            }],
+            resource_pages: 4096,
+            page_bytes: 4096,
+            smoothing_frames: 0,
+            ramp_frames: 0,
+            control_lead_frames: 0,
+            ..EngineDescription::default()
+        };
+        let engine = crate::prepare(
+            &d,
+            DriverStatus {
+                kind: DriverKind::Dummy,
+                state: DriverRunState::Running,
+                sample_rate: 48000,
+                buffer_frames: 128,
+            },
+        )
+        .unwrap();
+        let mut h = Fixture::from_engine(engine, 32, 128, &d);
+        for slot in 2..4 {
+            h.request(protocol::Request::CreateLoop {
+                loop_id: protocol::LoopSlotId(protocol::SlotId::new(slot, 1)),
+                strip: protocol::StripId(protocol::SlotId::new(0, 1)),
+            });
+        }
+        h.op(Operation::Transition {
+            target: target(0),
+            timing: Timing::At,
+            transition: Transition::Record {
+                monitor_previous: false,
+            },
+        });
+        h.run_to(h.now() + 320);
+        h.op(Operation::Transition {
+            target: target(0),
+            timing: Timing::At,
+            transition: Transition::Play {
+                position: 0,
+                retrigger: false,
+            },
+        });
+        let mut starts = [0; 3];
+        for slot in 1..4 {
+            starts[slot as usize - 1] = h.aligned_future(128);
+            h.op(Operation::Transition {
+                target: target(slot),
+                timing: Timing::At,
+                transition: Transition::Record {
+                    monitor_previous: false,
+                },
+            });
+        }
+        for _ in 0..80 {
+            h.run_to(h.now() + 64 * 32);
+            assert!(
+                h.engine.render.resource_work().1.copied_bytes <= 128 * 2 * 4,
+                "recorders must share the newly produced history payload"
+            );
+            for slot in 1..4 {
+                let Reply::State(cut) = h.op(Operation::State {
+                    target: target(slot),
+                }) else {
+                    panic!("state")
+                };
+                assert_eq!(cut.capture_failure, None, "{mode:?}: {cut:?}");
+                assert_eq!(cut.state.mode, shoop_loops::Mode::Recording, "{cut:?}");
+            }
+        }
+        for slot in 1..4 {
+            h.op(Operation::Transition {
+                target: target(slot),
+                timing: Timing::At,
+                transition: Transition::Play {
+                    retrigger: false,
+                    position: 0,
+                },
+            });
+            let Reply::State(cut) = h.op(Operation::State {
+                target: target(slot),
+            }) else {
+                panic!("state")
+            };
+            assert_eq!(cut.capture_failure, None, "{cut:?}");
+            assert!(cut.raw_audio_frames >= 80 * 64 * 32);
+        }
+        for slot in 1..4 {
+            let (id, export) = h.export_owned(slot);
+            let source = export.view.audio.unwrap();
+            let resource::Reply::Cursor(cursor) = h.resource(ResourceRequest::Cursor {
+                snapshot: source.snapshot.id,
+            }) else {
+                panic!("cursor")
+            };
+            let resource::Reply::Read { written, .. } = h.resource(ResourceRequest::Read {
+                cursor,
+                bytes: vec![0; 256].into_boxed_slice(),
+            }) else {
+                panic!("read")
+            };
+            assert_eq!(written, 256);
+            let (_, bytes) = h.read_buffer.take().unwrap();
+            for (frame, samples) in bytes.chunks_exact(8).enumerate() {
+                let expected = (starts[slot as usize - 1] + frame as u64 + 1) as f32;
+                assert_eq!(
+                    f32::from_le_bytes(samples[..4].try_into().unwrap()),
+                    expected
+                );
+                assert_eq!(
+                    f32::from_le_bytes(samples[4..].try_into().unwrap()),
+                    -2. * expected
+                );
+            }
+            assert_eq!(h.op(Operation::Release { export: id }), Reply::Done);
+        }
+    }
 }

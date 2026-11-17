@@ -1,0 +1,77 @@
+[
+  {
+    "workload": "original",
+    "quanta": 4,
+    "result": "passed",
+    "full_intermediate_media": true,
+    "audio_jobs_state_match_chunk_allocation": true,
+    "case_sha256": "45aff67c6d9a6b75a7c8ea3c5993e3b49fbad461e5cb9742d6a35510c422ad98",
+    "configuration": {
+      "block_chunks": 32,
+      "metadata_lines": 128,
+      "reference_lines": 4,
+      "stack_lines": 2,
+      "metadata_pages": null,
+      "model": "instant",
+      "backend": "systemverilog",
+      "purpose": "functional",
+      "fabric_hz": 100000000,
+      "physical_base": 16777216,
+      "fixed_cycles": 7,
+      "axi_data_width": 64,
+      "word_transfers": false,
+      "revision": "d1a672196dd40a8ead6279200e394ba580b0960d",
+      "working_tree_dirty": false
+    }
+  },
+  {
+    "workload": "streaming",
+    "quanta": 24,
+    "result": "passed",
+    "full_intermediate_media": true,
+    "audio_jobs_state_match_chunk_allocation": true,
+    "case_sha256": "d707341ed338806541064643bd67c9599e035faed0be6a254d76433a8ab5e75b",
+    "configuration": {
+      "block_chunks": 32,
+      "metadata_lines": 128,
+      "reference_lines": 4,
+      "stack_lines": 2,
+      "metadata_pages": null,
+      "model": "instant",
+      "backend": "systemverilog",
+      "purpose": "functional",
+      "fabric_hz": 100000000,
+      "physical_base": 16777216,
+      "fixed_cycles": 7,
+      "axi_data_width": 64,
+      "word_transfers": false,
+      "revision": "d1a672196dd40a8ead6279200e394ba580b0960d",
+      "working_tree_dirty": false
+    }
+  },
+  {
+    "workload": "mixed",
+    "quanta": 24,
+    "result": "passed",
+    "full_intermediate_media": true,
+    "audio_jobs_state_match_chunk_allocation": true,
+    "case_sha256": "0593efbd284119eaf8e86e73a81f6380489553ff2c0970f8eaf7bdc119fdfa40",
+    "configuration": {
+      "block_chunks": 32,
+      "metadata_lines": 128,
+      "reference_lines": 4,
+      "stack_lines": 2,
+      "metadata_pages": null,
+      "model": "instant",
+      "backend": "systemverilog",
+      "purpose": "functional",
+      "fabric_hz": 100000000,
+      "physical_base": 16777216,
+      "fixed_cycles": 7,
+      "axi_data_width": 64,
+      "word_transfers": false,
+      "revision": "d1a672196dd40a8ead6279200e394ba580b0960d",
+      "working_tree_dirty": false
+    }
+  }
+]

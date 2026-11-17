@@ -5,7 +5,7 @@ use crate::{
 };
 use alloc::{boxed::Box, vec, vec::Vec};
 
-pub(crate) trait AudioIo<S: Sample = f32> {
+pub trait AudioIo<S: Sample = f32> {
     fn frame(&self) -> Frame;
     fn frames(&self) -> usize;
     fn input(&self, port: usize) -> &[S];
@@ -31,7 +31,7 @@ impl<S: Sample> AudioIo<S> for AudioBlock<'_, '_, S> {
     }
 }
 
-pub(crate) struct BufferedAudio<'a, S: Sample = f32> {
+pub struct BufferedAudio<'a, S: Sample = f32> {
     frame: Frame,
     frames: usize,
     inputs: &'a [S],
@@ -60,7 +60,7 @@ impl<S: Sample> AudioIo<S> for BufferedAudio<'_, S> {
 }
 
 /// One-tick stream delay, independent of callback partitioning.
-pub(crate) struct HostBuffer<S: Sample = f32> {
+pub struct HostBuffer<S: Sample = f32> {
     q: usize,
     fill: usize,
     processed: Frame,

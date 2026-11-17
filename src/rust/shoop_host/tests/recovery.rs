@@ -322,16 +322,16 @@ fn shutdown(host: &mut Host, client: &mut Client) {
     else {
         unreachable!()
     };
+    let deadline = Instant::now() + Duration::from_secs(5);
     let mut reply = connection::management(
         &host.entry,
         ManagementRequest::Shutdown {
             authority,
             operation,
         },
-        Duration::from_secs(2),
+        deadline.saturating_duration_since(Instant::now()),
     )
     .unwrap();
-    let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         match reply {
             ManagementReply::Finished { result, .. } => {
@@ -353,7 +353,7 @@ fn shutdown(host: &mut Host, client: &mut Client) {
                 authority,
                 operation,
             },
-            Duration::from_secs(2),
+            deadline.saturating_duration_since(Instant::now()),
         )
         .unwrap();
     }
@@ -766,7 +766,7 @@ fn siblings_survive_the_launcher_exit_and_later_control_needs_no_child_handle() 
             authority,
             operation,
         },
-        Duration::from_secs(2),
+        deadline.saturating_duration_since(Instant::now()),
     )
     .unwrap();
     loop {
@@ -786,7 +786,7 @@ fn siblings_survive_the_launcher_exit_and_later_control_needs_no_child_handle() 
                 authority,
                 operation,
             },
-            Duration::from_secs(2),
+            deadline.saturating_duration_since(Instant::now()),
         )
         .unwrap();
     }
@@ -1046,16 +1046,16 @@ fn invalid_startup_is_rolled_back_and_a_ready_host_survives_ui_spawn_failure() {
     else {
         unreachable!()
     };
+    let deadline = Instant::now() + Duration::from_secs(5);
     let mut reply = connection::management(
         &entry,
         ManagementRequest::Shutdown {
             authority,
             operation,
         },
-        Duration::from_secs(2),
+        deadline.saturating_duration_since(Instant::now()),
     )
     .unwrap();
-    let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         match reply {
             ManagementReply::Finished { result, .. } => {
@@ -1073,7 +1073,7 @@ fn invalid_startup_is_rolled_back_and_a_ready_host_survives_ui_spawn_failure() {
                 authority,
                 operation,
             },
-            Duration::from_secs(2),
+            deadline.saturating_duration_since(Instant::now()),
         )
         .unwrap();
     }
@@ -1448,13 +1448,14 @@ fn audio_driver_switch_preserves_identities_and_persists_on_both_carriers() {
         assert_eq!(state.status.sample_rate, 48_000);
         let request_id = state.audio_drivers.switch.request_id;
         assert!(matches!(
-            command(
+            command_with_timeout(
                 &mut client,
                 &mut connection,
                 shoop_app_protocol::Command::AudioDriver(audio_driver::Command::Confirm {
                     request_id,
                     accept: true
-                })
+                }),
+                Duration::from_secs(30)
             ),
             Outcome::Confirmed { .. }
         ));

@@ -1,0 +1,303 @@
+{
+  "cpu": 0,
+  "quantum": 32,
+  "callback_frames": 128,
+  "voices": 4,
+  "callbacks": 1024,
+  "binaries": {
+    "before": "work/unify-baseline/float-benchmark",
+    "after": "target/release/examples/elastic_cpu_benchmark"
+  },
+  "runs": [
+    {
+      "version": "before",
+      "phase": "play",
+      "repeat": 0,
+      "median_us": 31.2865,
+      "p99_us": 177.957,
+      "max_us": 671.423,
+      "allocations": 0,
+      "reallocations": 0,
+      "deallocations": 0
+    },
+    {
+      "version": "after",
+      "phase": "play",
+      "repeat": 0,
+      "median_us": 31.9805,
+      "p99_us": 216.61,
+      "max_us": 1943.443,
+      "allocations": 0,
+      "reallocations": 0,
+      "deallocations": 0
+    },
+    {
+      "version": "after",
+      "phase": "play",
+      "repeat": 1,
+      "median_us": 31.7125,
+      "p99_us": 188.489,
+      "max_us": 1001.902,
+      "allocations": 0,
+      "reallocations": 0,
+      "deallocations": 0
+    },
+    {
+      "version": "before",
+      "phase": "play",
+      "repeat": 1,
+      "median_us": 31.3405,
+      "p99_us": 613.204,
+      "max_us": 3136.784,
+      "allocations": 0,
+      "reallocations": 0,
+      "deallocations": 0
+    },
+    {
+      "version": "before",
+      "phase": "play",
+      "repeat": 2,
+      "median_us": 31.4145,
+      "p99_us": 214.894,
+      "max_us": 716.719,
+      "allocations": 0,
+      "reallocations": 0,
+      "deallocations": 0
+    },
+    {
+      "version": "after",
+      "phase": "play",
+      "repeat": 2,
+      "median_us": 31.5665,
+      "p99_us": 204.126,
+      "max_us": 451.325,
+      "allocations": 0,
+      "reallocations": 0,
+      "deallocations": 0
+    },
+    {
+      "version": "before",
+      "phase": "record-play",
+      "repeat": 0,
+      "median_us": 33.519,
+      "p99_us": 242.424,
+      "max_us": 1107.806,
+      "allocations": 0,
+      "reallocations": 0,
+      "deallocations": 0
+    },
+    {
+      "version": "after",
+      "phase": "record-play",
+      "repeat": 0,
+      "median_us": 33.009,
+      "p99_us": 159.201,
+      "max_us": 287.168,
+      "allocations": 0,
+      "reallocations": 0,
+      "deallocations": 0
+    },
+    {
+      "version": "after",
+      "phase": "record-play",
+      "repeat": 1,
+      "median_us": 33.0745,
+      "p99_us": 169.968,
+      "max_us": 1232.469,
+      "allocations": 0,
+      "reallocations": 0,
+      "deallocations": 0
+    },
+    {
+      "version": "before",
+      "phase": "record-play",
+      "repeat": 1,
+      "median_us": 33.695,
+      "p99_us": 124.48,
+      "max_us": 935.542,
+      "allocations": 0,
+      "reallocations": 0,
+      "deallocations": 0
+    },
+    {
+      "version": "before",
+      "phase": "record-play",
+      "repeat": 2,
+      "median_us": 33.022,
+      "p99_us": 136.529,
+      "max_us": 500.645,
+      "allocations": 0,
+      "reallocations": 0,
+      "deallocations": 0
+    },
+    {
+      "version": "after",
+      "phase": "record-play",
+      "repeat": 2,
+      "median_us": 33.0195,
+      "p99_us": 586.07,
+      "max_us": 1872.865,
+      "allocations": 0,
+      "reallocations": 0,
+      "deallocations": 0
+    },
+    {
+      "version": "before",
+      "phase": "record",
+      "repeat": 0,
+      "median_us": 39.1915,
+      "p99_us": 130.454,
+      "max_us": 219.323,
+      "allocations": 0,
+      "reallocations": 0,
+      "deallocations": 0
+    },
+    {
+      "version": "after",
+      "phase": "record",
+      "repeat": 0,
+      "median_us": 36.802,
+      "p99_us": 164.202,
+      "max_us": 602.024,
+      "allocations": 0,
+      "reallocations": 0,
+      "deallocations": 0
+    },
+    {
+      "version": "after",
+      "phase": "record",
+      "repeat": 1,
+      "median_us": 37.191,
+      "p99_us": 246.238,
+      "max_us": 926.82,
+      "allocations": 0,
+      "reallocations": 0,
+      "deallocations": 0
+    },
+    {
+      "version": "before",
+      "phase": "record",
+      "repeat": 1,
+      "median_us": 39.2395,
+      "p99_us": 225.58,
+      "max_us": 504.952,
+      "allocations": 0,
+      "reallocations": 0,
+      "deallocations": 0
+    },
+    {
+      "version": "before",
+      "phase": "record",
+      "repeat": 2,
+      "median_us": 39.7305,
+      "p99_us": 215.631,
+      "max_us": 1035.396,
+      "allocations": 0,
+      "reallocations": 0,
+      "deallocations": 0
+    },
+    {
+      "version": "after",
+      "phase": "record",
+      "repeat": 2,
+      "median_us": 36.728,
+      "p99_us": 168.176,
+      "max_us": 616.151,
+      "allocations": 0,
+      "reallocations": 0,
+      "deallocations": 0
+    },
+    {
+      "version": "before",
+      "phase": "clear",
+      "repeat": 0,
+      "median_us": 25.5645,
+      "p99_us": 147.433,
+      "max_us": 511.481,
+      "allocations": 0,
+      "reallocations": 0,
+      "deallocations": 0
+    },
+    {
+      "version": "after",
+      "phase": "clear",
+      "repeat": 0,
+      "median_us": 25.7935,
+      "p99_us": 154.607,
+      "max_us": 425.224,
+      "allocations": 0,
+      "reallocations": 0,
+      "deallocations": 0
+    },
+    {
+      "version": "after",
+      "phase": "clear",
+      "repeat": 1,
+      "median_us": 26.0135,
+      "p99_us": 145.951,
+      "max_us": 705.955,
+      "allocations": 0,
+      "reallocations": 0,
+      "deallocations": 0
+    },
+    {
+      "version": "before",
+      "phase": "clear",
+      "repeat": 1,
+      "median_us": 26.098,
+      "p99_us": 164.657,
+      "max_us": 519.526,
+      "allocations": 0,
+      "reallocations": 0,
+      "deallocations": 0
+    },
+    {
+      "version": "before",
+      "phase": "clear",
+      "repeat": 2,
+      "median_us": 25.6035,
+      "p99_us": 197.08,
+      "max_us": 1624.51,
+      "allocations": 0,
+      "reallocations": 0,
+      "deallocations": 0
+    },
+    {
+      "version": "after",
+      "phase": "clear",
+      "repeat": 2,
+      "median_us": 25.87,
+      "p99_us": 159.047,
+      "max_us": 376.218,
+      "allocations": 0,
+      "reallocations": 0,
+      "deallocations": 0
+    }
+  ],
+  "summary": {
+    "play": {
+      "before": 31.3405,
+      "after": 31.7125,
+      "ratio": 1.0118696255643655
+    },
+    "record-play": {
+      "before": 33.519,
+      "after": 33.0195,
+      "ratio": 0.985098004117068
+    },
+    "record": {
+      "before": 39.2395,
+      "after": 36.802,
+      "ratio": 0.937881471476446
+    },
+    "clear": {
+      "before": 25.6035,
+      "after": 25.87,
+      "ratio": 1.0104087331810105
+    }
+  },
+  "baseline_revision": "e5c015be",
+  "implementation_parent": "62ddd33e",
+  "profile": "default production float Current; stage 3 numeric refactor",
+  "interpretation": "Paired, alternating release runs pinned to one available shared-host CPU. Report medians as measurements; shared-host tail latency is not a deadline guarantee."
+}

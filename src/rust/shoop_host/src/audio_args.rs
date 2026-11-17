@@ -103,7 +103,7 @@ impl AudioArgs {
                 AudioDriverKind::Dummy => AudioDriverConfig::Dummy(Default::default()),
                 AudioDriverKind::Jack => AudioDriverConfig::Jack(Default::default()),
                 AudioDriverKind::Cpal => AudioDriverConfig::Cpal(Default::default()),
-                AudioDriverKind::WebAudio => unreachable!(),
+                AudioDriverKind::WebAudio | AudioDriverKind::Simulated => unreachable!(),
             }
         };
         let has_jack_options = self.jack_client_name.is_some();

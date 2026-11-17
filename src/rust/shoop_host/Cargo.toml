@@ -8,7 +8,12 @@ description = "Independent native session service and RT engine composition"
 [lints]
 workspace = true
 
+[[example]]
+name = "fpga_reference_client"
+required-features = ["fpga-reference"]
+
 [features]
+fpga-reference = ["dep:rt_fpga_reference", "dep:rt_fpga_compiler", "dep:shoop_rt_transport", "dep:shoop_rt_protocol"]
 builtin-fx = ["shoop_rt_host_native/builtin-fx"]
 oxisynth = ["shoop_rt_host_native/oxisynth"]
 default = ["cpal", "jack", "builtin-fx", "oxisynth"]
@@ -17,6 +22,10 @@ cpal = ["shoop_rt_host_native/cpal"]
 testing = []
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rt_fpga_reference = { path = "../rt_fpga_reference", features = ["rt-interface"], optional = true }
+rt_fpga_compiler = { path = "../rt_fpga_compiler", optional = true }
+shoop_rt_transport = { path = "../shoop_rt_transport", features = ["rt-interface"], optional = true }
+shoop_rt_protocol = { path = "../shoop_rt_protocol", optional = true }
 directories = { workspace = true }
 shoop_format_conversion = { path = "../shoop_format_conversion" }
 shoop_port_graph = { path = "../shoop_port_graph", features = ["std"] }

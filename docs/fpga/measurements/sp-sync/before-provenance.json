@@ -1,0 +1,18 @@
+{
+  "tool": "Yosys 0.52+45 (git sha1 ea2c1e7ac, clang++ 18.1.8 -fPIC -O3)",
+  "target": "Xilinx 7-series cell mapping (xc7)",
+  "parameters": {
+    "PROGRAM_DEPTH": 256,
+    "STATE_DEPTH": 256,
+    "JOB_DEPTH": 256
+  },
+  "sources": {
+    "sp_engine.sv": "8116f4454f84837bccb6554664b751f01ec34eac414a482fc8779331fe97dd51",
+    "sp_job_fifo.sv": "a39d66df7ebeb34b113ecfe42a0ed25e338613aabd7fc88493ad3704db727c7f",
+    "sp_ram.sv": "0ada36fe7fc4bb515469c32c3cb2f6b7cbefd16b35349950c93f9bc2c925ff73",
+    "state_processor.sv": "2b4bf5e174de880481114ed5e230ddceea5bcfe6475944703409e2d972a7b7d5",
+    "state_processor_defs.svh": "62b30dff8aaa507db132e68cc1bb8932dd4cc59c2050164ddbe8aaf2316ca5b7"
+  },
+  "synthesis": "synth_xilinx -family xc7 -flatten -noiopad -noclkbuf -top state_processor",
+  "physical_implementation": false
+}

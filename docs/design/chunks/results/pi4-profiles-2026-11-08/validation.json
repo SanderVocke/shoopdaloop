@@ -1,0 +1,80 @@
+{
+  "member_hashes_verified": 345,
+  "runs_verified": 21,
+  "callbacks_verified": 208695,
+  "samples_verified": 13844,
+  "lost_samples": 0,
+  "runnable_pauses_over_40ms": 29,
+  "settings": {
+    "captured_utc": "2023-07-31T16:55:30Z",
+    "uname": "Linux rpi-bookworm-armhf 6.1.21-v8+ #1642 SMP PREEMPT Mon Apr  3 17:24:16 BST 2023 aarch64 GNU/Linux",
+    "platform": "Linux-6.1.21-v8+-aarch64-with-glibc2.36",
+    "affinity": [
+      0,
+      1,
+      2
+    ],
+    "proc_cgroup": "0::/user.slice/user-0.slice/session-143.scope",
+    "sched_rt_runtime_us": "950000",
+    "sched_rt_period_us": "1000000",
+    "perf_event_paranoid": "2",
+    "kptr_restrict": "0",
+    "isolated": "",
+    "realtime": null,
+    "cgroup_ancestors": [
+      {
+        "path": "/sys/fs/cgroup/user.slice/user-0.slice/session-143.scope",
+        "cpu.max": "max 100000",
+        "cpu.stat": "usage_usec 508396\nuser_usec 134802\nsystem_usec 373594\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0",
+        "cpu.weight": "100",
+        "cpu.rt_runtime_us": null,
+        "cpu.rt_period_us": null,
+        "cpuset.cpus": null,
+        "cpuset.cpus.effective": null
+      },
+      {
+        "path": "/sys/fs/cgroup/user.slice/user-0.slice",
+        "cpu.max": "max 100000",
+        "cpu.stat": "usage_usec 345356961\nuser_usec 269024156\nsystem_usec 76332805\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0",
+        "cpu.weight": "100",
+        "cpu.rt_runtime_us": null,
+        "cpu.rt_period_us": null,
+        "cpuset.cpus": null,
+        "cpuset.cpus.effective": null
+      },
+      {
+        "path": "/sys/fs/cgroup/user.slice",
+        "cpu.max": "max 100000",
+        "cpu.stat": "usage_usec 129402356525\nuser_usec 101208492935\nsystem_usec 28193863589\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0",
+        "cpu.weight": "100",
+        "cpu.rt_runtime_us": null,
+        "cpu.rt_period_us": null,
+        "cpuset.cpus": null,
+        "cpuset.cpus.effective": null
+      },
+      {
+        "path": "/sys/fs/cgroup",
+        "cpu.max": null,
+        "cpu.stat": "usage_usec 102787800000\nuser_usec 79469772000\nsystem_usec 23318028000\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0",
+        "cpu.weight": null,
+        "cpu.rt_runtime_us": null,
+        "cpu.rt_period_us": null,
+        "cpuset.cpus": null,
+        "cpuset.cpus.effective": "0-3"
+      }
+    ],
+    "cpu_governors": {
+      "0": "performance",
+      "1": "performance",
+      "2": "performance",
+      "3": "performance"
+    },
+    "cpu_frequency_khz": {
+      "0": "1500000",
+      "1": "1500000",
+      "2": "1500000",
+      "3": "1500000"
+    }
+  },
+  "normalization_limit": "PMU cycles/frame and refills/frame use nominal audio time; IPC and refill/instruction ratios do not depend on that denominator. One PMU capture per mode/case; profiling is separate from timing."
+}

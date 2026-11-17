@@ -1,0 +1,68 @@
+--- a/src/rust/rt_fpga_testbench/tests/sync.rs
++++ b/src/rust/rt_fpga_testbench/tests/sync.rs
+@@ -22,11 +22,12 @@
+ struct Events {
+     rows: Vec<Bits>,
+     random: Random,
++    stalls: bool,
+ }
+ impl Agent for Events {
+     fn drive(&mut self, m: &mut Model<'_>, e: Edges) {
+         if e.falls(0) {
+-            m.set("sync_event_ready", u64::from(self.random.yes(4)));
++            m.set("sync_event_ready", u64::from(!self.stalls || self.random.yes(4)));
+         }
+     }
+     fn sample(&mut self, m: &Model<'_>, e: Edges) {
+@@ -215,9 +216,11 @@
+ }
+ fn run_rtl(d: &mut State, s: &mut Sim<'_>, prefix: usize) -> u64 {
+     s.model.set("job_ready", 0);
++    let accepted = s.cycles;
+     let mut after = d.start(s, &[("run_sync_count", prefix as u64)]);
+     for _ in 0..1000 * (prefix + 1) + 500 {
+         if after.get("done") != 0 {
++            d.run_cycles = s.cycles - accepted;
+             let code = after.get("error_code");
+             assert_eq!(after.get("busy"), 0);
+             assert_eq!(d.tick(s).1.get("done"), 0);
+@@ -302,6 +305,7 @@
+     let mut random = Random::new(seed);
+     let mut sequence = 0;
+     let mut queue = JobQueue::new(32);
++    let mut cycle_samples = Vec::new();
+     for quantum in 0..48 {
+         let done: Vec<_> = tp
+             .request_slots(&sp)
+@@ -373,6 +377,7 @@
+             0,
+             "seed {seed}, quantum {quantum}"
+         );
++        cycle_samples.push(d.run_cycles);
+         assert_eq!(s.model.get("sync_frame"), sp.frame());
+         let jobs: Vec<_> = queue
+             .iter()
+@@ -420,6 +425,7 @@
+             );
+         }
+     }
++    println!("SYNC_CYCLES {}", json!({"seed":seed,"quantum":q,"quanta":cycle_samples.len(),"cycles":cycle_samples.iter().sum::<u64>(),"min":cycle_samples.iter().min(),"max":cycle_samples.iter().max()}));
+ }
+ fn sp_frame(quantum: u64, q: u32) -> u64 {
+     quantum * u64::from(q)
+@@ -437,6 +443,7 @@
+     let events = Rc::new(RefCell::new(Events {
+         rows: vec![],
+         random: Random::new(922),
++        stalls: std::env::var_os("SHOOP_SYNC_NO_STALLS").is_none(),
+     }));
+     sim.agent(events.clone());
+     sim.agent(protocol::ReadyValid::new(
+@@ -553,6 +560,7 @@
+     let events = Rc::new(RefCell::new(Events {
+         rows: vec![],
+         random: Random::new(41),
++        stalls: true,
+     }));
+     sim.agent(events);
+     let mut random = Random::new(20261116);

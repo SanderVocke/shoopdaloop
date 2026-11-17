@@ -1,0 +1,219 @@
+{
+  "sp_before": {
+    "resources": {
+      "cells": {
+        "LUT2": 568,
+        "LUT4": 722,
+        "LUT3": 684,
+        "LUT6": 1645,
+        "MUXF7": 440,
+        "LUT5": 425,
+        "MUXF8": 167,
+        "LUT1": 200,
+        "INV": 71,
+        "CARRY4": 105,
+        "FDRE": 1616,
+        "$scopeinfo": 6,
+        "RAMB36E1": 14,
+        "RAMB18E1": 3
+      },
+      "lut": 4244,
+      "ff": 1616,
+      "bram18": 3,
+      "bram36": 14,
+      "dsp": 0
+    },
+    "provenance": {
+      "tool": "Yosys 0.52+45 (git sha1 ea2c1e7ac, clang++ 18.1.8 -fPIC -O3)",
+      "target": "Xilinx 7-series cell mapping (xc7)",
+      "parameters": {
+        "PROGRAM_DEPTH": 256,
+        "STATE_DEPTH": 256,
+        "JOB_DEPTH": 256
+      },
+      "sources": {
+        "sp_engine.sv": "6475e1d5dc0b1b8e82beb836238e435244b3113ec606e3dc84df2b422cfc148b",
+        "sp_job_fifo.sv": "a39d66df7ebeb34b113ecfe42a0ed25e338613aabd7fc88493ad3704db727c7f",
+        "sp_loop_defs.svh": "6a769a52bc49a74448e625d19d43f5d731a692364c5e4befba5015e558f0a450",
+        "sp_ram.sv": "0ada36fe7fc4bb515469c32c3cb2f6b7cbefd16b35349950c93f9bc2c925ff73",
+        "state_processor.sv": "47c9d3ca0479100168ca56467c540eab06625bb8c22ac22ace4e7125c88b1201",
+        "state_processor_defs.svh": "80622de61a15d0450fa66810f466ac04e19ecccdd0a450dda527d67bb87e2430"
+      },
+      "synthesis": "synth_xilinx -family xc7 -flatten -noiopad -noclkbuf -top state_processor",
+      "physical_implementation": false
+    }
+  },
+  "sp_after": {
+    "resources": {
+      "cells": {
+        "LUT2": 674,
+        "LUT4": 645,
+        "LUT6": 1796,
+        "MUXF7": 613,
+        "LUT3": 761,
+        "MUXF8": 131,
+        "LUT5": 303,
+        "LUT1": 34,
+        "INV": 72,
+        "CARRY4": 106,
+        "FDRE": 1617,
+        "$scopeinfo": 6,
+        "RAMB36E1": 14,
+        "RAMB18E1": 3
+      },
+      "lut": 4213,
+      "ff": 1617,
+      "bram18": 3,
+      "bram36": 14,
+      "dsp": 0
+    },
+    "provenance": {
+      "tool": "Yosys 0.52+45 (git sha1 ea2c1e7ac, clang++ 18.1.8 -fPIC -O3)",
+      "target": "Xilinx 7-series cell mapping (xc7)",
+      "parameters": {
+        "PROGRAM_DEPTH": 256,
+        "STATE_DEPTH": 256,
+        "JOB_DEPTH": 256,
+        "PROGRAM_REGIONS": 2
+      },
+      "sources": {
+        "sp_engine.sv": "4d0cc1cb4e19b90904ebac0f0d25155ee2824e19560fc7c48ca0d910d0b059dc",
+        "sp_job_fifo.sv": "a39d66df7ebeb34b113ecfe42a0ed25e338613aabd7fc88493ad3704db727c7f",
+        "sp_loop_defs.svh": "6a769a52bc49a74448e625d19d43f5d731a692364c5e4befba5015e558f0a450",
+        "sp_ram.sv": "0ada36fe7fc4bb515469c32c3cb2f6b7cbefd16b35349950c93f9bc2c925ff73",
+        "state_processor.sv": "3e22c8de297e0c45f2a2430c1b9c5ad882bd90c32e68dd4c1f8c34d442e79aa1",
+        "state_processor_defs.svh": "80622de61a15d0450fa66810f466ac04e19ecccdd0a450dda527d67bb87e2430"
+      },
+      "synthesis": "synth_xilinx -family xc7 -flatten -noiopad -noclkbuf -top state_processor",
+      "physical_implementation": false
+    }
+  },
+  "pipeline_fixed": {
+    "resources": {
+      "lut": 6651,
+      "ff": 3629,
+      "bram18": 3,
+      "bram36": 1,
+      "dsp": 4,
+      "cells": {
+        "LUT2": 1091,
+        "LUT3": 1228,
+        "LUT4": 951,
+        "LUT6": 2417,
+        "MUXF7": 554,
+        "MUXF8": 191,
+        "LUT5": 758,
+        "LUT1": 206,
+        "INV": 488,
+        "CARRY4": 425,
+        "FDRE": 3629,
+        "DSP48E1": 4,
+        "$scopeinfo": 15,
+        "RAMB18E1": 3,
+        "RAM32M": 44,
+        "RAM64M": 118,
+        "RAMB36E1": 1
+      }
+    },
+    "provenance": {
+      "tool": "Yosys 0.52+45 (git sha1 ea2c1e7ac, clang++ 18.1.8 -fPIC -O3)",
+      "parameters": {
+        "PROGRAM_DEPTH": 64,
+        "PROGRAM_REGIONS": 1,
+        "LIVE_LOADING": 0,
+        "STATE_DEPTH": 32,
+        "LOOP_DEPTH": 32,
+        "JOB_DEPTH": 64,
+        "MAX_FRAMES": 16,
+        "BUFFERS": 16,
+        "INPUT_PORTS": 1,
+        "OUTPUT_PORTS": 2
+      },
+      "sources": {
+        "fpga/state_processor/rtl/sp_engine.sv": "4d0cc1cb4e19b90904ebac0f0d25155ee2824e19560fc7c48ca0d910d0b059dc",
+        "fpga/state_processor/rtl/sp_job_fifo.sv": "a39d66df7ebeb34b113ecfe42a0ed25e338613aabd7fc88493ad3704db727c7f",
+        "fpga/state_processor/rtl/sp_loop_defs.svh": "6a769a52bc49a74448e625d19d43f5d731a692364c5e4befba5015e558f0a450",
+        "fpga/state_processor/rtl/sp_ram.sv": "0ada36fe7fc4bb515469c32c3cb2f6b7cbefd16b35349950c93f9bc2c925ff73",
+        "fpga/state_processor/rtl/state_processor.sv": "3e22c8de297e0c45f2a2430c1b9c5ad882bd90c32e68dd4c1f8c34d442e79aa1",
+        "fpga/state_processor/rtl/state_processor_defs.svh": "80622de61a15d0450fa66810f466ac04e19ecccdd0a450dda527d67bb87e2430",
+        "fpga/job_processor/rtl/audio_pipeline.sv": "5dde1842519999392d9dbaff0ba9c0706f40b64a99525e095622a8f9aff0138e",
+        "fpga/job_processor/rtl/job_processor.sv": "f529e855ab2099a074cd8b67a09eb0b7e54b207c6b9c52e370e9616648997fe7",
+        "fpga/job_processor/rtl/jp_divider.sv": "330878c7b8eef450b44569df49bbb7501d913fcafc2038fbd58cbaf8ac1034e1",
+        "fpga/job_processor/rtl/jp_sample_ram.sv": "ce2509eec993043129e6210ed470b1e40c9478dd0d32e589146e099daae7a854"
+      },
+      "commands": [
+        "read_verilog -sv \"/tmp/loading-audio-final-4/source/sp_engine.sv\" \"/tmp/loading-audio-final-4/source/sp_job_fifo.sv\" \"/tmp/loading-audio-final-4/source/sp_ram.sv\" \"/tmp/loading-audio-final-4/source/state_processor.sv\" \"/tmp/loading-audio-final-4/source/audio_pipeline.sv\" \"/tmp/loading-audio-final-4/source/job_processor.sv\" \"/tmp/loading-audio-final-4/source/jp_divider.sv\" \"/tmp/loading-audio-final-4/source/jp_sample_ram.sv\"",
+        "chparam -set PROGRAM_DEPTH 64 -set PROGRAM_REGIONS 1 -set LIVE_LOADING 0 -set STATE_DEPTH 32 -set LOOP_DEPTH 32 -set JOB_DEPTH 64 -set MAX_FRAMES 16 -set BUFFERS 16 -set INPUT_PORTS 1 -set OUTPUT_PORTS 2 audio_pipeline",
+        "synth_xilinx -family xc7 -flatten -noiopad -noclkbuf -top audio_pipeline",
+        "check -assert",
+        "stat -tech xilinx",
+        "write_json \"/tmp/loading-audio-final-4/fixed/mapped.json\""
+      ],
+      "physical_implementation": false
+    }
+  },
+  "pipeline_live": {
+    "resources": {
+      "lut": 6887,
+      "ff": 3707,
+      "bram18": 6,
+      "bram36": 1,
+      "dsp": 4,
+      "cells": {
+        "LUT2": 990,
+        "LUT3": 1242,
+        "LUT4": 1025,
+        "LUT6": 2742,
+        "MUXF7": 735,
+        "LUT5": 691,
+        "MUXF8": 264,
+        "LUT1": 197,
+        "INV": 477,
+        "CARRY4": 426,
+        "FDRE": 3707,
+        "DSP48E1": 4,
+        "$scopeinfo": 15,
+        "RAMB18E1": 6,
+        "RAM32M": 44,
+        "RAM64M": 86,
+        "RAMB36E1": 1
+      }
+    },
+    "provenance": {
+      "tool": "Yosys 0.52+45 (git sha1 ea2c1e7ac, clang++ 18.1.8 -fPIC -O3)",
+      "parameters": {
+        "PROGRAM_DEPTH": 64,
+        "PROGRAM_REGIONS": 2,
+        "LIVE_LOADING": 1,
+        "STATE_DEPTH": 32,
+        "LOOP_DEPTH": 32,
+        "JOB_DEPTH": 64,
+        "MAX_FRAMES": 16,
+        "BUFFERS": 16,
+        "INPUT_PORTS": 1,
+        "OUTPUT_PORTS": 2
+      },
+      "sources": {
+        "fpga/state_processor/rtl/sp_engine.sv": "4d0cc1cb4e19b90904ebac0f0d25155ee2824e19560fc7c48ca0d910d0b059dc",
+        "fpga/state_processor/rtl/sp_job_fifo.sv": "a39d66df7ebeb34b113ecfe42a0ed25e338613aabd7fc88493ad3704db727c7f",
+        "fpga/state_processor/rtl/sp_loop_defs.svh": "6a769a52bc49a74448e625d19d43f5d731a692364c5e4befba5015e558f0a450",
+        "fpga/state_processor/rtl/sp_ram.sv": "0ada36fe7fc4bb515469c32c3cb2f6b7cbefd16b35349950c93f9bc2c925ff73",
+        "fpga/state_processor/rtl/state_processor.sv": "3e22c8de297e0c45f2a2430c1b9c5ad882bd90c32e68dd4c1f8c34d442e79aa1",
+        "fpga/state_processor/rtl/state_processor_defs.svh": "80622de61a15d0450fa66810f466ac04e19ecccdd0a450dda527d67bb87e2430",
+        "fpga/job_processor/rtl/audio_pipeline.sv": "5dde1842519999392d9dbaff0ba9c0706f40b64a99525e095622a8f9aff0138e",
+        "fpga/job_processor/rtl/job_processor.sv": "f529e855ab2099a074cd8b67a09eb0b7e54b207c6b9c52e370e9616648997fe7",
+        "fpga/job_processor/rtl/jp_divider.sv": "330878c7b8eef450b44569df49bbb7501d913fcafc2038fbd58cbaf8ac1034e1",
+        "fpga/job_processor/rtl/jp_sample_ram.sv": "ce2509eec993043129e6210ed470b1e40c9478dd0d32e589146e099daae7a854"
+      },
+      "commands": [
+        "read_verilog -sv \"/tmp/loading-audio-final-4/source/sp_engine.sv\" \"/tmp/loading-audio-final-4/source/sp_job_fifo.sv\" \"/tmp/loading-audio-final-4/source/sp_ram.sv\" \"/tmp/loading-audio-final-4/source/state_processor.sv\" \"/tmp/loading-audio-final-4/source/audio_pipeline.sv\" \"/tmp/loading-audio-final-4/source/job_processor.sv\" \"/tmp/loading-audio-final-4/source/jp_divider.sv\" \"/tmp/loading-audio-final-4/source/jp_sample_ram.sv\"",
+        "chparam -set PROGRAM_DEPTH 64 -set PROGRAM_REGIONS 2 -set LIVE_LOADING 1 -set STATE_DEPTH 32 -set LOOP_DEPTH 32 -set JOB_DEPTH 64 -set MAX_FRAMES 16 -set BUFFERS 16 -set INPUT_PORTS 1 -set OUTPUT_PORTS 2 audio_pipeline",
+        "synth_xilinx -family xc7 -flatten -noiopad -noclkbuf -top audio_pipeline",
+        "check -assert",
+        "stat -tech xilinx",
+        "write_json \"/tmp/loading-audio-final-4/live/mapped.json\""
+      ],
+      "physical_implementation": false
+    }
+  }
+}

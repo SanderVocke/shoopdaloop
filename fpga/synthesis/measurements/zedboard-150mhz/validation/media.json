@@ -1,0 +1,78 @@
+{
+  "arguments": [
+    "target/debug/fpga-testbench",
+    "media",
+    "--config",
+    "small",
+    "--memory-model",
+    "fixed",
+    "--random-cases",
+    "8",
+    "--output",
+    "work/150mhz/verify-media-dma-tag"
+  ],
+  "format_version": 1,
+  "provenance": {
+    "models": [
+      {
+        "native_memory": null,
+        "parameters": {
+          "AXI_DATA_WIDTH": "64",
+          "BLOCK_CHUNKS": "1",
+          "CHUNK_FRAMES": "4",
+          "PHYSICAL_BASE": "16777216",
+          "READ_BUFFERS": "4",
+          "RECLAIM_BLOCKS": "0",
+          "RECLAIM_CYCLES": "5000",
+          "RECLAIM_GUARD": "1024",
+          "REF_LINES": "4",
+          "RETIRED_TABLES": "256",
+          "REUSE_VIEWS": "0",
+          "SLOTS": "8",
+          "STACK_LINES": "2",
+          "TABLE_LINES": "8",
+          "TABLE_PAGES": "145",
+          "VIEWS": "16",
+          "WRITE_BUFFERS": "4"
+        },
+        "probes": [],
+        "sources_sha256": {
+          "fpga/axi_memory/rtl/axi_burst_mux.sv": "61ce3d023b9fb61109645eb9b6741088f14389e381ea63116fcbf670dfb79b91",
+          "fpga/axi_memory/rtl/axi_master.sv": "45241e8bff575cb49f84375297bf8affc8cffc0db9f749a8636b09ba39fdc9b3",
+          "fpga/axi_memory/rtl/chunk_axi.sv": "d5265918080e4b4f8a8430831b72db9425639a7d29c21aa62b5949fc261e0ecb",
+          "fpga/axi_memory/rtl/chunk_dma.sv": "632ebdfbb262c09c4a0a9a7ab7635a02b45e4b9571731bc9e2b393d1b00a503a",
+          "fpga/axi_memory/rtl/media_store_axi.sv": "994218f9c840591aac6c0a72c17a00d5ab4c68d96a5f25f5d556fe150bec8c9d",
+          "fpga/axi_memory/rtl/shared_axi.sv": "39e04665ee3d0ae82ba545250008df3ff77432d8b9c193582a8eff0df49a5cc9",
+          "fpga/axi_memory/rtl/word_axi.sv": "7edfae1a0b97fc5cc4e30f7a64223cd8879e4d27811a98fda3ac8c7fe504a27e",
+          "fpga/axi_memory/rtl/word_dma.sv": "292f48d1fa083a4f4ad5fe09c586043c5e02d4e1cc5b60ed68b14d0cb3eea772",
+          "fpga/chunk_memory/rtl/chunk_memory.sv": "99e7a88cb0b93a1a5a07dc97dde65b240b9980096c68e7bce2b3ae765c150801",
+          "fpga/chunk_memory/rtl/chunk_priority.sv": "d3fbac8752264aa70127c9b9e5df4e3c9d363a2606e3c808100eb43a93263a75",
+          "fpga/chunk_memory/rtl/chunk_ram.sv": "b3c85ff265ced37296ee0fbda1dd231efc56b40e3ebff6454c982f6f25021464",
+          "fpga/media_store/rtl/media_metadata.sv": "388a402c4cf41fc0c52885ada7fa04985e44a9b39d33151d7ce09268b62484ce",
+          "fpga/media_store/rtl/media_prefetch_resolver.sv": "fb4763a25b20688734b3636560b8808fafceadcb2d89025cd5d333773de8190e",
+          "fpga/media_store/rtl/media_ram.sv": "2c1f253e53ad420768598616da4a7ed5e8c246f786d9c9a56d25e64b46ee5178",
+          "fpga/media_store/rtl/media_reclaimer.sv": "89ce60b91ab62fd4b95e5204c922749fb39a5fc7417bb5918ffb77d42df63932",
+          "fpga/media_store/rtl/media_store.sv": "35c370e68cf4bce3d951e540feebe72166499471801a42206b0765489e475178",
+          "fpga/media_store/rtl/metadata_cache.sv": "f4961a393bdbe2fb6873bb012c95ef66356c43244e5a9dfd8a13f25ec67946f1",
+          "fpga/state_processor/rtl/state_processor_defs.svh": "62b30dff8aaa507db132e68cc1bb8932dd4cc59c2050164ddbe8aaf2316ca5b7"
+        },
+        "top": "media_store_axi"
+      }
+    ],
+    "revision": "e5bdf6058801b9ddfaea3adf328ce6d465c41f03",
+    "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+    "simulator": "Marlin 0.21.1 / Verilator",
+    "verilator": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1+b2)",
+    "worktree": ""
+  },
+  "status": "passed",
+  "suites": [
+    {
+      "error": null,
+      "status": "passed",
+      "suite": "Media",
+      "wall_seconds": 15.082042512
+    }
+  ],
+  "wall_seconds": 15.082059117
+}

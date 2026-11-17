@@ -39,8 +39,8 @@ pub(super) struct VersionIndex {
 /// It is checked against its store instance and lease generation on every seek.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ReadIndex {
-    scope: u32,
-    snapshot: SnapshotId,
+    pub(super) scope: u32,
+    pub(super) snapshot: SnapshotId,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

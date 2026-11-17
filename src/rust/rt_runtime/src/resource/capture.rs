@@ -281,7 +281,8 @@ impl<S: Sample> ResourceStore<S> {
             .ok_or_else(|| self.halt_capture(id, Error::Capacity))?;
         let mut version = self.reserve_capture(id, version, frame, frames, bytes, class)?;
         for sample in samples {
-            self.append_reserved(&mut version, &sample.to_le_bytes(), class);
+            let bytes = sample.to_le_bytes();
+            self.append_reserved(&mut version, &bytes, class);
         }
         Ok(self.publish_capture(id, version))
     }

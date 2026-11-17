@@ -7,6 +7,8 @@ pub mod config;
 pub mod connection;
 pub mod deployment;
 pub mod engine;
+#[cfg(feature = "fpga-reference")]
+pub mod fpga_reference;
 pub mod host_graph;
 pub mod launch;
 pub mod logging;

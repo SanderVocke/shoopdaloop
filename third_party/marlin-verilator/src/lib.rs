@@ -1,0 +1,1108 @@
+// Copyright (C) 2024 Ethan Uppal.
+//
+// This Source Code Form is subject to the terms of the Mozilla Public License,
+// v. 2.0. If a copy of the MPL was not distributed with this file, You can
+// obtain one at https://mozilla.org/MPL/2.0/.
+
+//! This module implements the Verilator runtime for instantiating hardware
+//! modules. The Marlin Verilator runtime supports DPI, VCD/FST tracing, and
+//! dynamic models in addition to standard models.
+//!
+//! For an example of how to use this runtime to add support for your own custom
+//! HDL, see `SpadeRuntime` (under the "language-support/spade/" directory),
+//! which just wraps [`VerilatorRuntime`].
+
+use core::convert::Into;
+use std::{
+    cell::RefCell,
+    collections::{HashMap, hash_map::Entry},
+    env,
+    ffi::{self, OsStr, OsString},
+    fmt, fs,
+    hash::{self, Hash, Hasher},
+    path::Path,
+    process::Command,
+    slice,
+    sync::{LazyLock, Mutex},
+    time::Instant,
+};
+
+use boxcar::Vec as BoxcarVec;
+use build_library::build_library;
+use camino::{Utf8Path, Utf8PathBuf};
+use dashmap::DashMap;
+use dpi::DpiFunction;
+use dynamic::DynamicVerilatedModel;
+use error::VerilatorError;
+use libloading::Library;
+use owo_colors::OwoColorize;
+use snafu::{OptionExt, ResultExt, whatever};
+
+mod build_library;
+pub mod dpi;
+pub mod dynamic;
+pub mod ffi_names;
+pub mod nocapture;
+pub mod tracing;
+
+pub use dynamic::AsDynamicVerilatedModel;
+use tracing::Waveform;
+
+use crate::{
+    dynamic::DynamicPortInfo,
+    ffi_names::DPI_INIT_CALLBACK,
+};
+
+pub mod reexports {
+    pub use camino;
+    pub use libloading;
+    pub use snafu;
+}
+
+pub use marlin_verilator_stable::{core::VerilatorVersion, error, types};
+
+const VERILATOR_ESCAPE_PREFIX: &str = "__";
+const VERILATOR_MANGLED_PREFIX: &str = "__0";
+const VERILATOR_MANGLED_DOUBLE_UNDERSCORE: &str = "___05F";
+
+pub struct MangledVerilatorName(String);
+
+impl fmt::Display for MangledVerilatorName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct MangledVerilatorNameRef<'a>(&'a str);
+
+impl<'a> MangledVerilatorNameRef<'a> {
+    pub fn as_str(&self) -> &'a str {
+        self.0
+    }
+}
+
+impl fmt::Display for MangledVerilatorNameRef<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl MangledVerilatorName {
+    pub fn as_ref(&self) -> MangledVerilatorNameRef<'_> {
+        MangledVerilatorNameRef(&self.0)
+    }
+}
+
+/// Performs Verilator's [name mangling](https://verilator.org/guide/latest/languages.html#signal-naming).
+pub fn mangle_verilator_name(
+    name: &str,
+) -> Result<MangledVerilatorName, VerilatorError> {
+    if !name.is_ascii() {
+        whatever!(
+            "Non-ascii names are not supported for name demangling. Got {name}"
+        );
+    }
+
+    // Every character _except_ double underscore can be handled as a single
+    // character, so we'll split on those, and then join them with
+    // their replacement.
+    let mangled_name = name
+        .split(VERILATOR_ESCAPE_PREFIX)
+        .map(|segment| {
+            let mut result = String::new();
+            for c in segment.chars() {
+                if c.is_ascii_alphanumeric() || c == '_' {
+                    result.push(c);
+                } else {
+                    // We already checked that everything is ASCII, so this
+                    // encoding trick will not panic
+                    let mut buffer = [0];
+                    c.encode_utf8(&mut buffer);
+                    // TODO: C++ `std::hex`: is it lowercase or uppercase? How
+                    // to tell?
+                    result.push_str(&format!("__0{:02x}", buffer[0]));
+                }
+            }
+            result
+        })
+        .collect::<Vec<_>>()
+        .join(VERILATOR_MANGLED_DOUBLE_UNDERSCORE);
+    Ok(MangledVerilatorName(mangled_name))
+}
+
+/// See [`mangle_verilator_name`] and <https://github.com/verilator/verilator/issues/8569>.
+pub fn mangle_verilator_name_hack(
+    name: &str,
+    version: VerilatorVersion,
+) -> Result<MangledVerilatorName, VerilatorError> {
+    if version >= verilator_version!(5 052) {
+        mangle_verilator_name(&mangle_verilator_name(name)?.0)
+    } else {
+        mangle_verilator_name(name)
+    }
+}
+
+/// Performs the inverse of Verilator's [name mangling](https://verilator.org/guide/latest/languages.html#signal-naming).
+pub fn demangle_verilator_name(name: MangledVerilatorNameRef) -> String {
+    name.0
+        .split(VERILATOR_MANGLED_PREFIX)
+        .enumerate()
+        .map(|(i, segment)| {
+            if i != 0 {
+                // After the prefix, we have 2 hexadecimal digits representing
+                // the char
+                let c = u8::from_str_radix(&segment[0..2], 16).unwrap();
+                let unescaped = c as char;
+                format!("{unescaped}{}", &segment[2..])
+            } else {
+                segment.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("")
+}
+
+/// Computes the length of the [`types::EData`] array that Verilator generates
+/// for a given wide port of bit width `width`.
+///
+/// See also: [`compute_approx_width_from_edata_word_count`]
+pub const fn compute_edata_word_count_from_width_not_msb(
+    width: usize,
+) -> usize {
+    width.div_ceil(types::EData::BITS as usize)
+}
+
+#[deprecated(
+    note = "Verilator 5.052 or later no longer uses this type (#7642)"
+)]
+pub const fn compute_wdata_word_count_from_width_not_msb(
+    width: usize,
+) -> usize {
+    compute_edata_word_count_from_width_not_msb(width)
+}
+
+pub use marlin_verilator_stable::core::compute_approx_width_from_edata_word_count;
+
+#[deprecated(
+    note = "Verilator 5.052 or later no longer uses this type (#7642)"
+)]
+pub const fn compute_approx_width_from_wdata_word_count(
+    word_count: usize,
+) -> usize {
+    compute_approx_width_from_edata_word_count(word_count)
+}
+
+///  `WORDS` is [`compute_wdata_word_count_from_width_not_msb`]`(HIGH + 1 -
+/// LOW)` where `HIGH` is the  most significant bit index and `LOW` is the
+/// least.
+#[derive(PartialEq, Eq, Hash, Clone, Debug)]
+pub struct WideIn<const WORDS: usize> {
+    inner: [types::EData; WORDS],
+}
+
+impl<const WORDS: usize> WideIn<WORDS> {
+    pub fn new(value: [types::EData; WORDS]) -> Self {
+        Self { inner: value }
+    }
+
+    pub fn value(&self) -> &[types::EData; WORDS] {
+        &self.inner
+    }
+
+    /// # Safety
+    ///
+    /// The returned pointer may not outlive `self`.
+    #[doc(hidden)]
+    pub fn as_ptr(&self) -> types::WDataInP {
+        self.inner.as_ptr()
+    }
+}
+
+impl<const WORDS: usize> Default for WideIn<WORDS> {
+    fn default() -> Self {
+        Self { inner: [0; WORDS] }
+    }
+}
+
+/// See [`WideIn`].
+#[derive(PartialEq, Eq, Hash, Clone, Debug)]
+pub struct WideOut<const WORDS: usize> {
+    inner: [types::EData; WORDS],
+}
+
+impl<const WORDS: usize> WideOut<WORDS> {
+    pub fn value(&self) -> &[types::EData; WORDS] {
+        &self.inner
+    }
+
+    /// # Safety
+    ///
+    /// `slice::from_raw_parts(raw, WORDS)` must be defined.
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
+    #[doc(hidden)]
+    pub fn from_ptr(raw: types::WDataOutP) -> Self {
+        let mut inner = [0; WORDS];
+        inner.copy_from_slice(unsafe { slice::from_raw_parts(raw, WORDS) });
+        Self { inner }
+    }
+}
+
+impl<const WORDS: usize> From<WideOut<WORDS>> for [types::EData; WORDS] {
+    fn from(val: WideOut<WORDS>) -> Self {
+        val.inner
+    }
+}
+
+impl<const WORDS: usize> Default for WideOut<WORDS> {
+    fn default() -> Self {
+        Self { inner: [0; WORDS] }
+    }
+}
+
+pub use marlin_verilator_stable::core::PortDirection;
+
+pub use marlin_verilator_stable::generated::AsVerilatedModel;
+
+/// Based off of the [C++ standards supported by GCC](https://gcc.gnu.org/projects/cxx-status.html) as
+/// of June 6th, 2025.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CxxStandard {
+    Cxx98,
+    Cxx11,
+    Cxx14,
+    Cxx17,
+    Cxx20,
+    Cxx23,
+    Cxx26,
+}
+
+/// Configuration for a particular [`VerilatedModel`].
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct VerilatedModelConfig {
+    /// The flag `-O<verilator_optimization>` will be passed. Enabling (> 0)
+    /// will slow compilation times.
+    pub verilator_optimization: usize,
+
+    /// A list of Verilator warnings to disable on the Verilog source code for
+    /// this model.
+    pub ignored_warnings: Vec<String>,
+
+    /// Whether this model should be compiled with tracing support.
+    pub enable_tracing: Option<Waveform>,
+
+    /// The name of the C++ compiler executable; interpreted by [`Command`] and
+    /// in some way by Verilator.
+    pub cxx_executable: String,
+
+    /// Optionally specify the C++ standard used by Verilator.
+    pub cxx_standard: Option<CxxStandard>,
+
+    /// Additional directories containing header files for Verilator to search
+    /// in.
+    pub additional_includes: Vec<Utf8PathBuf>,
+
+    /// Additional directories containing libraries for Verilator to search in.
+    pub additional_library_paths: Vec<Utf8PathBuf>,
+}
+
+impl Default for VerilatedModelConfig {
+    fn default() -> Self {
+        Self {
+            verilator_optimization: 0,
+            ignored_warnings: Default::default(),
+            enable_tracing: Default::default(),
+            cxx_executable: "c++".into(),
+            cxx_standard: Some(CxxStandard::Cxx14),
+            additional_includes: Vec::default(),
+            additional_library_paths: Vec::default(),
+        }
+    }
+}
+
+impl VerilatedModelConfig {
+    pub fn verilator_optimization(self, level: usize) -> Self {
+        Self {
+            verilator_optimization: level,
+            ..self
+        }
+    }
+
+    pub fn enable_tracing(self, waveform: Option<Waveform>) -> Self {
+        Self {
+            enable_tracing: waveform,
+            ..self
+        }
+    }
+
+    pub fn cxx_executable(self, cxx_executable: String) -> Self {
+        Self {
+            cxx_executable,
+            ..self
+        }
+    }
+
+    pub fn cxx_standard(self, cxx_standard: Option<CxxStandard>) -> Self {
+        Self {
+            cxx_standard,
+            ..self
+        }
+    }
+
+    pub fn additional_include(mut self, include: Utf8PathBuf) -> Self {
+        self.additional_includes.push(include);
+        self
+    }
+
+    pub fn additional_includes(
+        mut self,
+        includes: impl Iterator<Item = Utf8PathBuf>,
+    ) -> Self {
+        self.additional_includes.extend(includes);
+        self
+    }
+
+    pub fn additional_library_path(
+        mut self,
+        library_path: Utf8PathBuf,
+    ) -> Self {
+        self.additional_library_paths.push(library_path);
+        self
+    }
+
+    pub fn additional_library_paths(
+        mut self,
+        library_paths: impl Iterator<Item = Utf8PathBuf>,
+    ) -> Self {
+        self.additional_library_paths.extend(library_paths);
+        self
+    }
+}
+
+/// Optional configuration for creating a [`VerilatorRuntime`]. Usually, you can
+/// just use [`VerilatorRuntimeOptions::default()`].
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct VerilatorRuntimeOptions {
+    /// The name of the Verilator executable, interpreted in some way by the
+    /// OS/shell.
+    pub verilator_executable: OsString,
+
+    /// If `Some(version)`, whether unsupported Verilator versions at least
+    /// `version` should be silently ignored instead of erroring.
+    pub allow_unsupported_verilator: Option<VerilatorVersion>,
+
+    /// Whether Verilator should always be invoked instead of only when the
+    /// source files or DPI functions change.
+    pub force_verilator_rebuild: bool,
+    /// Maximum C++ build parallelism.
+    pub build_jobs: usize,
+    /// Runtime locations for statically declared model source paths.
+    pub source_path_overrides: Vec<(String, String)>,
+}
+
+impl Default for VerilatorRuntimeOptions {
+    fn default() -> Self {
+        Self {
+            verilator_executable: "verilator".into(),
+            allow_unsupported_verilator: None,
+            force_verilator_rebuild: false,
+            build_jobs: 2,
+            source_path_overrides: Vec::new(),
+        }
+    }
+}
+
+impl VerilatorRuntimeOptions {
+    pub fn verilator_executable(self, verilator_executable: OsString) -> Self {
+        Self {
+            verilator_executable,
+            ..self
+        }
+    }
+
+    pub fn allow_unsupported_verilator(
+        self,
+        version: Option<VerilatorVersion>,
+    ) -> Self {
+        Self {
+            allow_unsupported_verilator: version,
+            ..self
+        }
+    }
+
+    pub fn force_verilator_rebuild(
+        self,
+        force_verilator_rebuild: bool,
+    ) -> Self {
+        Self {
+            force_verilator_rebuild,
+            ..self
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, Hash, Clone)]
+struct LibraryArenaKey {
+    name: String,
+    source_path: String,
+    hash: u64,
+}
+
+struct ModelDeallocator {
+    model: *mut ffi::c_void,
+    deallocator: extern "C" fn(*mut ffi::c_void),
+}
+
+#[derive(Clone, Copy)]
+enum BuildTarget {
+    Linux,
+    MacOS,
+}
+
+/// Runtime for (System)Verilog code.
+pub struct VerilatorRuntime {
+    artifact_directory: Utf8PathBuf,
+    build_target: BuildTarget,
+    source_files: Vec<Utf8PathBuf>,
+    include_directories: Vec<Utf8PathBuf>,
+    dpi_functions: Vec<&'static dyn DpiFunction>,
+    options: VerilatorRuntimeOptions,
+    /// Dynamically-determined Verilator version.
+    verilator_version: VerilatorVersion,
+    /// Mapping between hardware (top, path) and arena index of Verilator
+    /// implementations.
+    library_map: RefCell<HashMap<LibraryArenaKey, usize>>,
+    /// Verilator implementations arena.
+    library_arena: BoxcarVec<Library>,
+    /// SAFETY: These are dropped when the runtime is dropped. They will not be
+    /// "borrowed mutably" because the models created for this runtime must
+    /// not outlive it and thus will be all gone before these are dropped.
+    model_deallocators: RefCell<Vec<ModelDeallocator>>,
+}
+
+impl Drop for VerilatorRuntime {
+    fn drop(&mut self) {
+        for ModelDeallocator { model, deallocator } in
+            self.model_deallocators.borrow_mut().drain(..)
+        {
+            // SAFETY: todo
+            deallocator(model);
+        }
+    }
+}
+
+/* <Forgive me father for I have sinned> */
+
+#[derive(Default)]
+struct ThreadLocalFileLock;
+
+/// The file_guard handles locking across processes, but does not guarantee
+/// locking between threads in one process. Thus, we have this lock to
+/// synchronize threads for a given artifacts directoru.
+static THREAD_LOCKS_PER_BUILD_DIR: LazyLock<
+    DashMap<Utf8PathBuf, Mutex<ThreadLocalFileLock>>,
+> = LazyLock::new(DashMap::default);
+
+/* </Forgive me father for I have sinned> */
+
+fn one_time_library_setup(
+    library: &Library,
+    dpi_functions: &[&'static dyn DpiFunction],
+) -> Result<(), VerilatorError> {
+    if !dpi_functions.is_empty() {
+        let dpi_init_callback: extern "C" fn(*const *const ffi::c_void) =
+            *unsafe { library.get(DPI_INIT_CALLBACK.as_bytes()) }
+                .whatever_context("Failed to load DPI initializer")?;
+
+        // order is important here. the function pointers will be
+        // initialized in the same order that they
+        // appear in the DPI array --- this is to match how the C
+        // initialization code was constructed in `build_library`.
+        let function_pointers = dpi_functions
+            .iter()
+            .map(|dpi_function| dpi_function.pointer())
+            .collect::<Vec<_>>();
+
+        (dpi_init_callback)(function_pointers.as_ptr_range().start);
+    }
+
+    Ok(())
+}
+
+#[macro_export]
+macro_rules! verilator_version {
+    ($major:literal $minor:literal) => {
+        $crate::VerilatorVersion {
+            major: $major,
+            #[allow(clippy::zero_prefixed_literal)]
+            minor: $minor,
+        }
+    };
+}
+
+pub const MINIMUM_SUPPORTED_VERILATOR: VerilatorVersion =
+    verilator_version!(5 025);
+
+fn retrieve_verilator_version(
+    verilator_executable: &OsStr,
+) -> Result<VerilatorVersion, VerilatorError> {
+    let output = Command::new(verilator_executable)
+        .arg("--version")
+        .output()
+        .whatever_context("Failed to retrieve Verilator --version")?;
+    let stdout = String::from_utf8(output.stdout).whatever_context(
+        "Failed to decode Verilator --version output as UTF-8",
+    )?;
+    let (major, minor_and_rest) = stdout
+        .strip_prefix("Verilator ")
+        .and_then(|rest| rest.split_once('.'))
+        .whatever_context("Unexpected Verilator --version output format")?;
+    let minor = minor_and_rest
+        .split_once(' ')
+        .map(|(minor, _)| minor)
+        .unwrap_or(minor_and_rest);
+    Ok(VerilatorVersion {
+        major: major.parse().whatever_context(
+            "Failed to parse major version from Verilator --version output",
+        )?,
+        minor: minor.parse().whatever_context(
+            "Failed to parse minor version from Verilator --version output",
+        )?,
+    })
+}
+
+fn check_verilator_version(
+    version: VerilatorVersion,
+) -> Result<(), VerilatorError> {
+    if MINIMUM_SUPPORTED_VERILATOR.major != version.major
+        || version.minor < MINIMUM_SUPPORTED_VERILATOR.minor
+    {
+        whatever!(
+            "Unsupported Verilator version {version} (see `VerilatorRuntimeOptions::allow_unsupported_verilator`)"
+        );
+    }
+    Ok(())
+}
+
+/// Uses [`env::consts::OS`], so it is cheap to call from a proc macro.
+fn detect_os() -> Result<BuildTarget, VerilatorError> {
+    match env::consts::OS {
+        "linux" => Ok(BuildTarget::Linux),
+        "macos" | "apple" => Ok(BuildTarget::MacOS),
+        _ => { whatever!("Unknown OS"); },
+    }
+}
+
+impl VerilatorRuntime {
+    /// Creates a new runtime for instantiating (System)Verilog modules as Rust
+    /// objects.
+    pub fn new(
+        artifact_directory: &Path,
+        source_files: &[&Path],
+        include_directories: &[&Path],
+        dpi_functions: impl IntoIterator<Item = &'static dyn DpiFunction>,
+        options: VerilatorRuntimeOptions,
+    ) -> Result<Self, VerilatorError> {
+        Self::new2(
+            artifact_directory,
+            source_files,
+            include_directories,
+            dpi_functions,
+            options,
+        )
+    }
+
+    /// Convenient alternative to [`Self::new`].
+    pub fn new2(
+        artifact_directory: impl AsRef<Path>,
+        source_files: &[impl AsRef<Path>],
+        include_directories: &[impl AsRef<Path>],
+        dpi_functions: impl IntoIterator<Item = &'static dyn DpiFunction>,
+        options: VerilatorRuntimeOptions,
+    ) -> Result<Self, VerilatorError> {
+        let artifact_directory = artifact_directory.as_ref();
+        let verilator_version =
+            retrieve_verilator_version(&options.verilator_executable)?;
+        if let Some(allowed_version) = options.allow_unsupported_verilator {
+            if verilator_version < allowed_version {
+                whatever!(
+                    "Unsupported Verilator version {verilator_version} ({allowed_version} was explicitly allowed)"
+                );
+            }
+        } else {
+            check_verilator_version(verilator_version)?;
+        }
+
+        for source_file in source_files {
+            if !source_file.as_ref().is_file() {
+                whatever!(
+                    "Source file {} does not exist or is not a file. Note that if it's a relative path, you must be in the correct directory",
+                    source_file.as_ref().display()
+                );
+            }
+        }
+
+        let build_target =
+            detect_os().whatever_context("Failed to detect OS")?;
+
+        Ok(Self {
+            artifact_directory: artifact_directory
+                .to_path_buf()
+                .try_into()
+                .whatever_context("Artifact directory path was not UTF-8")?,
+            build_target,
+            source_files: source_files
+                .iter()
+                .map(|path| {
+                    path.as_ref().to_path_buf().try_into().whatever_context(
+                        format!(
+                            "Source file {} was not UTF-8",
+                            path.as_ref().display()
+                        ),
+                    )
+                })
+                .collect::<Result<Vec<Utf8PathBuf>, _>>()?,
+            include_directories: include_directories
+                .iter()
+                .map(|path| {
+                    path.as_ref().to_path_buf().try_into().whatever_context(
+                        format!(
+                            "Include directory {} was not UTF-8",
+                            path.as_ref().display()
+                        ),
+                    )
+                })
+                .collect::<Result<Vec<Utf8PathBuf>, _>>()?,
+            dpi_functions: dpi_functions.into_iter().collect(),
+            options,
+            verilator_version,
+            library_map: RefCell::new(HashMap::new()),
+            library_arena: BoxcarVec::new(),
+            model_deallocators: RefCell::new(vec![]),
+        })
+    }
+
+    /// Constructs a new model. Uses lazy and incremental building for
+    /// efficiency.
+    ///
+    /// See also: [`VerilatorRuntime::create_dyn_model`]
+    pub fn create_model_simple<'ctx, M: AsVerilatedModel<'ctx>>(
+        &'ctx self,
+    ) -> Result<M, VerilatorError> {
+        self.create_model(&VerilatedModelConfig::default())
+    }
+
+    /// Constructs a new model. Uses lazy and incremental building for
+    /// efficiency.
+    ///
+    /// From Verilator's website:
+    /// > The thread used for constructing a model must be the same thread that
+    /// > calls eval() into the model; this is called the “eval thread”.
+    ///
+    /// See also: [`VerilatorRuntime::create_dyn_model`]
+    pub fn create_model<'ctx, M: AsVerilatedModel<'ctx>>(
+        &'ctx self,
+        config: &VerilatedModelConfig,
+    ) -> Result<M, VerilatorError> {
+        let library = self
+            .build_or_retrieve_library(
+                M::name(),
+                M::source_path(),
+                M::ports(),
+                config,
+            )
+            .whatever_context(
+                "Failed to build or retrieve verilator dynamic library. Try removing the build directory if it is corrupted.",
+            )?;
+
+        let model = unsafe {
+            M::init_from(
+                library,
+                self.verilator_version,
+                config.enable_tracing.is_some(),
+            )
+        }
+        .whatever_context("Failed to create model")?;
+
+        let delete_model: extern "C" fn(*mut ffi::c_void) = *unsafe {
+            library.get(ffi_names::delete_top(model.mangled_name()).as_bytes())
+        }
+        .whatever_context("Failed to get deallocator symbol")?;
+
+        self.model_deallocators.borrow_mut().push(ModelDeallocator {
+            // SAFETY: The `model` cannot outlive the runtime, and it is the
+            // model's responsibility to deallocate (because models
+            // themselves do not deallocate on `Drop`).
+            model: unsafe { model.model() },
+            deallocator: delete_model,
+        });
+
+        Ok(model)
+    }
+
+    // TODO: should this be unified with the normal create_model by having
+    // DynamicVerilatedModel implement VerilatedModel?
+
+    /// Constructs a new dynamic model. Uses lazy and incremental building for
+    /// efficiency. You must guarantee the correctness of the suppplied
+    /// information, namely, that `name` is precisely the name of the
+    /// Verilog module, `source_path` is, when canonicalized
+    /// using [`fs::canonicalize`], the relative/absolute path to the Verilog
+    /// file defining the module `name`, and `ports` is a correct subset of
+    /// the ports of the Verilog module.
+    ///
+    /// ```no_run
+    /// # use std::path::Path;
+    /// # use marlin_verilator::*;
+    /// # use marlin_verilator::dynamic::*;
+    /// # let empty: &[&Path] = &[];
+    /// # let runtime = VerilatorRuntime::new("", empty, empty, [], Default::default()).unwrap();
+    /// # || -> Result<(), VerilatorError> {
+    /// let mut main = runtime.create_dyn_model(
+    ///    "main",
+    ///    "src/main.sv",
+    ///    &[
+    ///        ("medium_input", 31, 0, PortDirection::Input),
+    ///        ("medium_output", 31, 0, PortDirection::Output),
+    ///    ],
+    ///    VerilatedModelConfig::default(),
+    /// )?;
+    /// # Ok(()) };
+    /// ````
+    ///
+    /// See also: [`VerilatorRuntime::create_model`]
+    pub fn create_dyn_model<'ctx>(
+        &'ctx self,
+        name: &str,
+        source_path: &str,
+        ports: &[(&str, usize, usize, PortDirection)],
+        config: VerilatedModelConfig,
+    ) -> Result<DynamicVerilatedModel<'ctx>, VerilatorError> {
+        let library = self
+            .build_or_retrieve_library(name, source_path, ports, &config)
+            .whatever_context(
+                "Failed to build or retrieve verilator dynamic library. Try removing the build directory if it is corrupted.",
+            )?;
+
+        let new_main: extern "C" fn() -> *mut ffi::c_void =
+            *unsafe { library.get(format!("ffi_new_V{name}").as_bytes()) }
+                .whatever_context(format!(
+                    "Failed to load constructor for module {name}"
+                ))?;
+        let delete_main =
+            *unsafe { library.get(format!("ffi_delete_V{name}").as_bytes()) }
+                .whatever_context(format!(
+                "Failed to load destructor for module {name}"
+            ))?;
+        let eval_main =
+            *unsafe { library.get(format!("ffi_V{name}_eval").as_bytes()) }
+                .whatever_context(format!(
+                    "Failed to load evalulator for module {name}"
+                ))?;
+
+        let ports = ports
+            .iter()
+            .map(|&(port, high, low, direction)| {
+                DynamicPortInfo::bind(
+                    library, name, port, high + 1 - low, direction,
+                ).map(|info| (port.to_string(), info))
+            })
+            .collect::<Result<_, _>>()
+            .whatever_context("Failed to bind dynamic model ports")?;
+
+        let main = new_main();
+        self.model_deallocators.borrow_mut().push(ModelDeallocator {
+            model: main,
+            deallocator: delete_main,
+        });
+
+        Ok(DynamicVerilatedModel {
+            ports,
+            name: name.to_string(),
+            main,
+            eval_main,
+            library,
+            opened_trace: false,
+        })
+    }
+
+    /// Invokes verilator to build a dynamic library for the Verilog module
+    /// named `name` defined in the file `source_path` and with signature
+    /// `ports`.
+    ///
+    /// If the library is already cached for the given module name/source path
+    /// pair, then it is returned immediately.
+    ///
+    /// It is required that the `ports` signature matches a subset of the ports
+    /// defined on the Verilog module exactly.
+    ///
+    /// If `self.options.force_verilator_rebuild`, then the library will always
+    /// be rebuilt. Otherwise, it is only rebuilt on (a conservative
+    /// definition) of change:
+    ///
+    /// - Edits to Verilog source code
+    /// - Edits to DPI functions
+    ///
+    /// Then, if this is the first time building the library, and there are DPI
+    /// functions, the library will be initialized with the DPI functions.
+    ///
+    /// See [`build_library::build_library`] for more information.
+    ///
+    /// # Safety
+    ///
+    /// This function is thread-safe.
+    fn build_or_retrieve_library(
+        &self,
+        name: &str,
+        source_path: &str,
+        ports: &[(&str, usize, usize, PortDirection)],
+        config: &VerilatedModelConfig,
+    ) -> Result<&Library, VerilatorError> {
+        let source_path = self.options.source_path_overrides.iter()
+            .find(|(original, _)| original == source_path)
+            .map(|(_, replacement)| replacement.as_str())
+            .unwrap_or(source_path);
+        if !self.source_files.iter().any(|source_file| {
+            match (
+                source_file.canonicalize_utf8(),
+                Utf8Path::new(source_path).canonicalize_utf8(),
+            ) {
+                (Ok(lhs), Ok(rhs)) => lhs == rhs,
+                _ => false,
+            }
+        }) {
+            whatever!(
+                "Module `{}` requires source file {}, which was not provided to the runtime",
+                name,
+                source_path
+            );
+        }
+
+        if let Some((port, _, _, _)) =
+            ports.iter().find(|(_, high, low, _)| high < low)
+        {
+            whatever!(
+                "Port {} on module {} was specified with the high bit less than the low bit",
+                port,
+                name
+            );
+        }
+
+        let mangled_name =
+            mangle_verilator_name_hack(name, self.verilator_version)
+                .whatever_context("Failed to mangle module name")?;
+
+        let mut hasher = hash::DefaultHasher::new();
+        "shoop-owned-context-v2".hash(&mut hasher);
+        ports.hash(&mut hasher);
+        config.hash(&mut hasher);
+        self.source_files.hash(&mut hasher);
+        self.include_directories.hash(&mut hasher);
+        let library_key = LibraryArenaKey {
+            name: name.to_owned(),
+            source_path: source_path.to_owned(),
+            hash: hasher.finish(),
+        };
+
+        let library_idx = match self
+            .library_map
+            .borrow_mut()
+            .entry(library_key.clone())
+        {
+            Entry::Occupied(entry) => *entry.get(),
+            Entry::Vacant(entry) => {
+                let local_directory_name = format!(
+                    "{}_{}_{}",
+                    mangled_name,
+                    source_path.replace("_", "__").replace("/", "_"),
+                    library_key.hash
+                );
+                let local_artifacts_directory =
+                    self.artifact_directory.join(&local_directory_name);
+
+                fs::create_dir_all(&local_artifacts_directory)
+                    .whatever_context(format!(
+                        "Failed to create artifacts directory {local_artifacts_directory}",
+                    ))?;
+
+                //eprintln_nocapture!(
+                //    "on thread {:?}",
+                //    std::thread::current().id()
+                //)?;
+
+                if !THREAD_LOCKS_PER_BUILD_DIR
+                    .contains_key(&local_artifacts_directory)
+                {
+                    THREAD_LOCKS_PER_BUILD_DIR.insert(
+                        local_artifacts_directory.clone(),
+                        Default::default(),
+                    );
+                }
+                let thread_mutex = THREAD_LOCKS_PER_BUILD_DIR
+                    .get(&local_artifacts_directory)
+                    .expect("We just inserted if it didn't exist");
+
+                let _thread_lock = if let Ok(_thread_lock) =
+                    thread_mutex.try_lock()
+                {
+                    //eprintln_nocapture!(
+                    //    "thread-level try lock for {:?} succeeded",
+                    //    std::thread::current().id()
+                    //)?;
+                    _thread_lock
+                } else {
+                    eprintln_nocapture!(
+                        "{} waiting for file lock on artifact directory",
+                        "    Blocking".bold().green(),
+                    )?;
+                    let Ok(_thread_lock) = thread_mutex.lock() else {
+                        whatever!(
+                            "Failed to acquire thread-local lock for artifacts directory"
+                        );
+                    };
+                    _thread_lock
+                };
+
+                // # Safety
+                // build_library is not thread-safe, so we have to lock the
+                // directory
+                let lockfile = fs::OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .create(true)
+                    .truncate(true)
+                    .open(self.artifact_directory.join(format!("{local_directory_name}.lock")))
+                    .whatever_context(
+                        "Failed to open lockfile for artifacts directory (this is not the actual lock itself, it is an I/O error)",
+                    )?;
+
+                let _file_lock = file_guard::lock(
+                    &lockfile,
+                    file_guard::Lock::Exclusive,
+                    0,
+                    1,
+                )
+                .whatever_context(
+                    "Failed to acquire file lock for artifacts directory",
+                )?;
+                //eprintln_nocapture!(
+                //    "lockfile for {:?} succeeded",
+                //    std::thread::current().id()
+                //)?;
+
+                let start = Instant::now();
+
+                let (library_path, was_rebuilt) = build_library(
+                    &self.source_files,
+                    self.build_target,
+                    &self.include_directories,
+                    &self.dpi_functions,
+                    name,
+                    mangled_name.as_ref(),
+                    ports,
+                    &local_artifacts_directory,
+                    &self.options,
+                    config,
+                    self.verilator_version,
+                    || {
+                        eprintln_nocapture!(
+                            "{} {}#{} ({})",
+                            "   Compiling".bold().green(),
+                            name,
+                            library_key.hash,
+                            source_path
+                        )
+                    },
+                )
+                .whatever_context(
+                    "Failed to build verilator dynamic library",
+                )?;
+
+                let library = unsafe { Library::new(library_path) }
+                    .whatever_context(
+                        "Failed to load verilator dynamic library",
+                    )?;
+
+                one_time_library_setup(
+                    &library,
+                    &self.dpi_functions,
+                )?;
+
+                let library_idx = self.library_arena.push(library);
+                entry.insert(library_idx);
+
+                let end = Instant::now();
+                let duration = end - start;
+
+                if was_rebuilt {
+                    eprintln_nocapture!(
+                        "{} `verilator-{}` profile [{}] target in {}.{:02}s",
+                        "    Finished".bold().green(),
+                        if config.verilator_optimization == 0 {
+                            "O0".into()
+                        } else {
+                            format!("O{}", config.verilator_optimization)
+                        },
+                        if config.verilator_optimization == 0 {
+                            "unoptimized"
+                        } else {
+                            "optimized"
+                        },
+                        duration.as_secs(),
+                        duration.subsec_millis() / 10
+                    )?;
+                }
+
+                library_idx
+            }
+        };
+
+        Ok(self
+            .library_arena
+            .get(library_idx)
+            .expect("bug: We just inserted the library"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{demangle_verilator_name, mangle_verilator_name};
+
+    #[test]
+    fn name_mangling_works() {
+        assert_eq!(
+            mangle_verilator_name("double__underscore")
+                .unwrap()
+                .as_ref()
+                .as_str(),
+            "double___05Funderscore"
+        );
+        assert_eq!(
+            mangle_verilator_name("*Symbols+")
+                .unwrap()
+                .as_ref()
+                .as_str(),
+            "__02ASymbols__02B"
+        )
+    }
+
+    #[test]
+    fn name_mangling_and_demangling_is_idempotent() {
+        assert_eq!(
+            demangle_verilator_name(
+                mangle_verilator_name("double__underscore")
+                    .unwrap()
+                    .as_ref()
+            )
+            .as_str(),
+            "double__underscore"
+        );
+        assert_eq!(
+            demangle_verilator_name(
+                mangle_verilator_name("*Symbols+").unwrap().as_ref()
+            )
+            .as_str(),
+            "*Symbols+"
+        );
+    }
+}

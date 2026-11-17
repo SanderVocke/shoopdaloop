@@ -824,6 +824,8 @@ pub enum AudioDriverKind {
     Jack,
     Cpal,
     WebAudio,
+    /// Advanced by a simulation harness; never selectable as a host driver.
+    Simulated,
 }
 
 impl AudioDriverKind {
@@ -833,6 +835,7 @@ impl AudioDriverKind {
             Self::Jack => "jack",
             Self::Cpal => "cpal",
             Self::WebAudio => "webaudio",
+            Self::Simulated => "simulated",
         }
     }
 
@@ -842,6 +845,7 @@ impl AudioDriverKind {
             Self::Jack => "JACK",
             Self::Cpal => "CPAL",
             Self::WebAudio => "Web Audio",
+            Self::Simulated => "Simulated clock (unpaced)",
         }
     }
 }
@@ -936,6 +940,8 @@ pub enum AudioDriverConfig {
     Jack(JackAudioDriverConfig),
     Cpal(CpalAudioDriverConfig),
     WebAudio,
+    /// Reported by engines that a simulation harness advances; it cannot be requested.
+    Simulated,
 }
 
 impl AudioDriverConfig {
@@ -983,7 +989,7 @@ impl AudioDriverConfig {
                     .sum::<usize>()
                         <= 768
             }
-            Self::WebAudio => false,
+            Self::WebAudio | Self::Simulated => false,
         }
     }
 
@@ -993,6 +999,7 @@ impl AudioDriverConfig {
             Self::Jack(_) => AudioDriverKind::Jack,
             Self::Cpal(_) => AudioDriverKind::Cpal,
             Self::WebAudio => AudioDriverKind::WebAudio,
+            Self::Simulated => AudioDriverKind::Simulated,
         }
     }
 }
@@ -2272,7 +2279,7 @@ pub struct AppNotification {
     pub message: String,
 }
 
-pub use profiling_protocol::{MemoryReport, MemoryResource, MemoryUnit};
+pub use profiling_protocol::memory::{MemoryReport, MemoryResource, MemoryUnit};
 pub use rt_profiling as profiling_data;
 pub use rt_profiling::View as ProfilingView;
 

@@ -104,7 +104,7 @@ impl<S: Sample> LoopPlanner<S> {
                 .ok_or(Error::Capacity)
         }
     }
-    fn cancel_ticks(&mut self, io: &mut PlannerResourceIo<'_, S>) -> Result<(), Error> {
+    pub(super) fn cancel_ticks(&mut self, io: &mut PlannerResourceIo<'_, S>) -> Result<(), Error> {
         for slot in 0..self.rows.len() {
             if let Some(row) = self.rows[slot] {
                 if let Some(interval) = row.interval {
@@ -386,7 +386,7 @@ impl<S: Sample> LoopPlanner<S> {
         }
         Ok(())
     }
-    fn preflight(
+    pub(super) fn preflight(
         &mut self,
         frame: Frame,
         end: Frame,
@@ -599,7 +599,11 @@ impl<S: Sample> LoopPlanner<S> {
         self.ledger.retire(io, take.media)?;
         Ok(take.media)
     }
-    fn settle(&mut self, frame: Frame, io: &mut PlannerResourceIo<'_, S>) -> Result<(), Error> {
+    pub(super) fn settle(
+        &mut self,
+        frame: Frame,
+        io: &mut PlannerResourceIo<'_, S>,
+    ) -> Result<(), Error> {
         for slot in 0..self.rows.len() {
             // Read only what is needed: copying whole rows every quantum is costly.
             let Some(current) = self.rows[slot].as_ref().filter(|row| row.assigned) else {
@@ -982,7 +986,7 @@ impl<S: Sample> LoopPlanner<S> {
             _ => Err(Error::InvalidEvent.into()),
         }
     }
-    fn complete(
+    pub(super) fn complete(
         &mut self,
         frame: Frame,
         io: &mut PlannerResourceIo<'_, S>,
@@ -1140,7 +1144,7 @@ impl<S: Sample> Planner<S> for LoopPlanner<S> {
             return Err(Error::InvalidFrame);
         }
         let end = context.ceiling;
-        if self.settle_boundary(context)? != end {
+        if transitions::TransitionProcessor::settle(self, context)? != end {
             return Err(Error::InvalidFrame);
         }
         Ok(())
@@ -1150,7 +1154,25 @@ impl<S: Sample> Planner<S> for LoopPlanner<S> {
         mut context: FinishContext<'_, Operation<S>, Reply<S>, S>,
     ) -> Result<(), Error> {
         let end = context.interval.end;
-        self.finish_boundary(&mut context)?;
+        state_boundary::StateProcessor::finish(self, &mut context)?;
+        transitions::TransitionProcessor::finish(self, &mut context)?;
+        if let Some(shared) = &mut self.shared {
+            shared.finish(end, self.graph_epoch, &mut context.resources)?;
+        }
+        Ok(())
+    }
+    fn finish_node_state(
+        &mut self,
+        mut context: FinishContext<'_, Operation<S>, Reply<S>, S>,
+    ) -> Result<(), Error> {
+        state_boundary::StateProcessor::finish(self, &mut context)
+    }
+    fn finish_transitions(
+        &mut self,
+        mut context: FinishContext<'_, Operation<S>, Reply<S>, S>,
+    ) -> Result<(), Error> {
+        let end = context.interval.end;
+        transitions::TransitionProcessor::finish(self, &mut context)?;
         if let Some(shared) = &mut self.shared {
             shared.finish(end, self.graph_epoch, &mut context.resources)?;
         }
@@ -2062,182 +2084,6 @@ impl<S: Sample> LoopPlanner<S> {
             }
         })();
         Ok(result.unwrap_or_else(|error| Disposition::Complete(Reply::Failed(error))))
-    }
-    fn settle_boundary(
-        &mut self,
-        mut context: PlanContext<'_, Operation<S>, Reply<S>, S>,
-    ) -> Result<Frame, Error> {
-        self.graph_epoch = context.graph_epoch;
-        self.topologies.callback(context.callback_start);
-        if context.frame != self.resolver.frame() {
-            return Err(Error::InvalidFrame);
-        }
-        self.advance_musical_plans(context.frame, &mut context.resources)?;
-        self.failures.clear();
-        for row in self.rows.iter().flatten() {
-            if row.aborted {
-                self.failures.push(crate::Observation::CaptureAborted {
-                    target: row.binding.target,
-                    reason: timeline_error(row.failure.unwrap_or(Error::InvalidState)),
-                });
-            } else if row.active.as_ref().is_some_and(|take| take.edit.is_some())
-                && row.failure.is_some()
-            {
-                self.failures.push(crate::Observation::CaptureExhausted {
-                    target: row.binding.target,
-                });
-            }
-        }
-        for pending in self.pending.iter().flatten() {
-            if let PendingKind::Program {
-                request,
-                graph_epoch,
-                graph,
-                ..
-            } = pending.kind
-            {
-                if self
-                    .resolver
-                    .completion(request)
-                    .map_err(runtime_error)?
-                    .is_none()
-                    && (graph_epoch != context.graph_epoch
-                        || graph.is_some_and(|id| {
-                            context.graphs.status(id)
-                                != Ok(GraphStageStatus::Ready {
-                                    validated_epoch: graph_epoch,
-                                })
-                        }))
-                {
-                    self.failures.push(crate::Observation::Refused {
-                        request,
-                        reason: crate::Error::InvalidState,
-                    });
-                }
-            }
-        }
-        loop {
-            self.cancel_ticks(&mut context.resources)?;
-            let interval = self
-                .resolver
-                .preview_tick(&self.failures)
-                .map_err(runtime_error)?;
-            for decision in self.resolver.decisions().map_err(runtime_error)? {
-                self.views[decision.state.id.slot() as usize].decision = *decision;
-            }
-            let selected = self
-                .resolver
-                .preview_program_change()
-                .map_err(runtime_error)?;
-            let graph = selected.and_then(|selected| {
-                self.pending
-                    .iter()
-                    .flatten()
-                    .find_map(|pending| match pending.kind {
-                        PendingKind::Program {
-                            request,
-                            graph: Some(graph),
-                            graph_epoch,
-                            ..
-                        } if selected == request => Some((request, graph, graph_epoch)),
-                        _ => None,
-                    })
-            });
-            let permit = if let Some((request, graph, epoch)) = graph {
-                match context.graphs.prepare_activation(graph, epoch) {
-                    Ok(permit) => Some(permit),
-                    Err(error) => {
-                        if self.failures.len() == self.failures.capacity() {
-                            return Err(Error::InvalidState);
-                        }
-                        self.failures.push(crate::Observation::Refused {
-                            request,
-                            reason: timeline_error(error),
-                        });
-                        continue;
-                    }
-                }
-            } else {
-                None
-            };
-            if !self.preflight(context.frame, interval.end, &mut context.resources)? {
-                continue;
-            }
-            self.settle(context.frame, &mut context.resources)?;
-            self.resolver.commit().map_err(runtime_error)?;
-            let _ = self.prepare_program_inputs(context.frame, &mut context.resources);
-            if let Some(permit) = permit {
-                self.graph_epoch = permit.commit();
-            }
-            self.complete(context.frame, &mut context.resources, &mut context.receipts)?;
-            self.observer.topology_epoch(self.resolver.epoch());
-            self.observer.settled(&self.resolver);
-            self.observer.boundary(
-                context.frame,
-                self.resolver.decisions().map_err(runtime_error)?,
-                self.resolver.events(),
-                self.resolver.dropped_events(),
-            );
-            return Ok(interval.end);
-        }
-    }
-    fn finish_boundary(
-        &mut self,
-        context: &mut FinishContext<'_, Operation<S>, Reply<S>, S>,
-    ) -> Result<(), Error> {
-        for row in self.rows.iter_mut().flatten().filter(|row| row.assigned) {
-            if let Some(interval) = row.interval {
-                if row.aborted {
-                    context.resources.capture().cancel_tick(interval)?;
-                } else {
-                    context.resources.capture().commit(interval)?;
-                }
-                row.interval = None;
-            }
-            row.reset_input = false;
-        }
-        self.resolver.finish().map_err(runtime_error)?;
-        self.collect_automatic_finishes()?;
-        for row in self.rows.iter().flatten() {
-            if let Some(take) = row.active.as_ref().filter(|take| take.writer.is_some()) {
-                let job = self
-                    .shared
-                    .as_ref()
-                    .ok_or(Error::InvalidState)?
-                    .live_job(take.writer.unwrap())?;
-                if matches!(job.kind, indexed_midi::WriteKind::Growing { .. }) {
-                    self.resolver
-                        .confirm_capture_frames(row.binding.target, take.revision, job.frames)
-                        .map_err(runtime_error)?;
-                }
-            }
-        }
-        for index in 0..self.pending.len() {
-            if let Some(pending) = self.pending[index].filter(|p| p.forwarded) {
-                if let PendingKind::InputBatch = pending.kind {
-                    self.collect_input_batch(&mut context.resources)?;
-                }
-                if let PendingKind::Transition { request, pin, .. } = pending.kind {
-                    self.resolver
-                        .take_completion(request)
-                        .map_err(runtime_error)?
-                        .ok_or(Error::InvalidState)?;
-                    if let Some(pin) = pin {
-                        self.ledger.release_pin(&mut context.resources, pin)?;
-                    }
-                }
-                if let PendingKind::Program { id, request, .. } = pending.kind {
-                    self.topologies
-                        .collect_program(id, request, &mut self.resolver)
-                        .map_err(|error| match error {
-                            Failure::Runtime(error) => error,
-                            Failure::Timeline(error) => runtime_error(error),
-                        })?;
-                }
-                self.pending[index] = None;
-            }
-        }
-        Ok(())
     }
 }
 

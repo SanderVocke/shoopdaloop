@@ -1247,6 +1247,12 @@ pub struct BackendTransitionPlanState {
     pub failures: u32,
 }
 pub trait Backend {
+    fn activate_prepared_graph(&mut self) -> Result<()> {
+        Err(anyhow!("prepared graph activation is unavailable"))
+    }
+    fn graph_updates_are_prepared(&self) -> bool {
+        false
+    }
     fn transition_plans(&self) -> Vec<BackendTransitionPlanState> {
         Vec::new()
     }

@@ -1,0 +1,12 @@
+[package]
+name = "rt_fpga_compiler"
+version.workspace = true
+edition = "2021"
+description = "Shared logical state programs and target-specific preparation"
+publish = false
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }

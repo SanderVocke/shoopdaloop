@@ -1,0 +1,355 @@
+{
+  "event_stalls": false,
+  "configuration_and_readback_cycles_included": false,
+  "samples": [
+    {
+      "version": "before",
+      "summary": {
+        "quanta": 960,
+        "cycles": 337188,
+        "mean": 351.2375,
+        "min": 336,
+        "max": 379
+      },
+      "sessions": [
+        {
+          "cycles": 16858,
+          "max": 370,
+          "min": 336,
+          "quanta": 48,
+          "quantum": 1,
+          "seed": 1
+        },
+        {
+          "cycles": 16893,
+          "max": 370,
+          "min": 336,
+          "quanta": 48,
+          "quantum": 16,
+          "seed": 2
+        },
+        {
+          "cycles": 17021,
+          "max": 377,
+          "min": 336,
+          "quanta": 48,
+          "quantum": 32,
+          "seed": 3
+        },
+        {
+          "cycles": 16913,
+          "max": 379,
+          "min": 336,
+          "quanta": 48,
+          "quantum": 64,
+          "seed": 4
+        },
+        {
+          "cycles": 16888,
+          "max": 375,
+          "min": 336,
+          "quanta": 48,
+          "quantum": 128,
+          "seed": 5
+        },
+        {
+          "cycles": 17105,
+          "max": 379,
+          "min": 336,
+          "quanta": 48,
+          "quantum": 1,
+          "seed": 6
+        },
+        {
+          "cycles": 16760,
+          "max": 367,
+          "min": 336,
+          "quanta": 48,
+          "quantum": 16,
+          "seed": 7
+        },
+        {
+          "cycles": 16896,
+          "max": 370,
+          "min": 336,
+          "quanta": 48,
+          "quantum": 32,
+          "seed": 8
+        },
+        {
+          "cycles": 17059,
+          "max": 376,
+          "min": 336,
+          "quanta": 48,
+          "quantum": 64,
+          "seed": 9
+        },
+        {
+          "cycles": 16720,
+          "max": 368,
+          "min": 336,
+          "quanta": 48,
+          "quantum": 128,
+          "seed": 10
+        },
+        {
+          "cycles": 16826,
+          "max": 371,
+          "min": 341,
+          "quanta": 48,
+          "quantum": 1,
+          "seed": 11
+        },
+        {
+          "cycles": 16779,
+          "max": 370,
+          "min": 336,
+          "quanta": 48,
+          "quantum": 16,
+          "seed": 12
+        },
+        {
+          "cycles": 16929,
+          "max": 378,
+          "min": 336,
+          "quanta": 48,
+          "quantum": 32,
+          "seed": 13
+        },
+        {
+          "cycles": 16819,
+          "max": 368,
+          "min": 336,
+          "quanta": 48,
+          "quantum": 64,
+          "seed": 14
+        },
+        {
+          "cycles": 16822,
+          "max": 370,
+          "min": 336,
+          "quanta": 48,
+          "quantum": 128,
+          "seed": 15
+        },
+        {
+          "cycles": 16961,
+          "max": 369,
+          "min": 336,
+          "quanta": 48,
+          "quantum": 1,
+          "seed": 16
+        },
+        {
+          "cycles": 16888,
+          "max": 371,
+          "min": 336,
+          "quanta": 48,
+          "quantum": 16,
+          "seed": 17
+        },
+        {
+          "cycles": 16647,
+          "max": 368,
+          "min": 336,
+          "quanta": 48,
+          "quantum": 32,
+          "seed": 18
+        },
+        {
+          "cycles": 16753,
+          "max": 369,
+          "min": 336,
+          "quanta": 48,
+          "quantum": 64,
+          "seed": 19
+        },
+        {
+          "cycles": 16651,
+          "max": 369,
+          "min": 336,
+          "quanta": 48,
+          "quantum": 128,
+          "seed": 20
+        }
+      ]
+    },
+    {
+      "version": "after",
+      "summary": {
+        "quanta": 960,
+        "cycles": 360035,
+        "mean": 375.0364583333333,
+        "min": 341,
+        "max": 445
+      },
+      "sessions": [
+        {
+          "cycles": 18030,
+          "max": 422,
+          "min": 346,
+          "quanta": 48,
+          "quantum": 1,
+          "seed": 1
+        },
+        {
+          "cycles": 18109,
+          "max": 422,
+          "min": 346,
+          "quanta": 48,
+          "quantum": 16,
+          "seed": 2
+        },
+        {
+          "cycles": 18240,
+          "max": 445,
+          "min": 353,
+          "quanta": 48,
+          "quantum": 32,
+          "seed": 3
+        },
+        {
+          "cycles": 18102,
+          "max": 443,
+          "min": 349,
+          "quanta": 48,
+          "quantum": 64,
+          "seed": 4
+        },
+        {
+          "cycles": 18010,
+          "max": 435,
+          "min": 346,
+          "quanta": 48,
+          "quantum": 128,
+          "seed": 5
+        },
+        {
+          "cycles": 18357,
+          "max": 441,
+          "min": 345,
+          "quanta": 48,
+          "quantum": 1,
+          "seed": 6
+        },
+        {
+          "cycles": 17910,
+          "max": 423,
+          "min": 341,
+          "quanta": 48,
+          "quantum": 16,
+          "seed": 7
+        },
+        {
+          "cycles": 18077,
+          "max": 434,
+          "min": 350,
+          "quanta": 48,
+          "quantum": 32,
+          "seed": 8
+        },
+        {
+          "cycles": 18206,
+          "max": 433,
+          "min": 354,
+          "quanta": 48,
+          "quantum": 64,
+          "seed": 9
+        },
+        {
+          "cycles": 17822,
+          "max": 421,
+          "min": 341,
+          "quanta": 48,
+          "quantum": 128,
+          "seed": 10
+        },
+        {
+          "cycles": 17896,
+          "max": 430,
+          "min": 346,
+          "quanta": 48,
+          "quantum": 1,
+          "seed": 11
+        },
+        {
+          "cycles": 17945,
+          "max": 421,
+          "min": 345,
+          "quanta": 48,
+          "quantum": 16,
+          "seed": 12
+        },
+        {
+          "cycles": 18014,
+          "max": 440,
+          "min": 341,
+          "quanta": 48,
+          "quantum": 32,
+          "seed": 13
+        },
+        {
+          "cycles": 17924,
+          "max": 426,
+          "min": 341,
+          "quanta": 48,
+          "quantum": 64,
+          "seed": 14
+        },
+        {
+          "cycles": 17917,
+          "max": 423,
+          "min": 351,
+          "quanta": 48,
+          "quantum": 128,
+          "seed": 15
+        },
+        {
+          "cycles": 18199,
+          "max": 433,
+          "min": 345,
+          "quanta": 48,
+          "quantum": 1,
+          "seed": 16
+        },
+        {
+          "cycles": 18139,
+          "max": 424,
+          "min": 345,
+          "quanta": 48,
+          "quantum": 16,
+          "seed": 17
+        },
+        {
+          "cycles": 17720,
+          "max": 427,
+          "min": 345,
+          "quanta": 48,
+          "quantum": 32,
+          "seed": 18
+        },
+        {
+          "cycles": 17880,
+          "max": 421,
+          "min": 345,
+          "quanta": 48,
+          "quantum": 64,
+          "seed": 19
+        },
+        {
+          "cycles": 17538,
+          "max": 417,
+          "min": 345,
+          "quanta": 48,
+          "quantum": 128,
+          "seed": 20
+        }
+      ]
+    }
+  ],
+  "baseline_commit": "beda9cdd2e07ea96ac8f284a1b4d739387b544fb",
+  "baseline_instrumentation_sha256": "09f8cc967d7827812768f8f45848bc7543db47b067cdcb26fd74990fb3220cb4",
+  "after_test_source_sha256": "bcccbf5429cc4ed07aafb62c5d5c9e2261b655e0141427f9d533983db45540bd",
+  "simulator": "Verilator 5.032",
+  "run": "SHOOP_SYNC_NO_STALLS=1 cargo test --locked -p rt_fpga_testbench --features sim --test sync integrated_sp_sync_instructions_match_rust_jobs_cursors_events_and_planned_transitions -- --nocapture"
+}

@@ -132,6 +132,11 @@ impl Service {
         &mut self,
         track: TrackId,
     ) -> Result<Effect, CommandError> {
+        if self.backend.graph_updates_are_prepared() && !self.backend.supports_composite_loops() {
+            self.backend.remove_track(self.tracks[&track].backend)?;
+            self.tracks.get_mut(&track).unwrap().view.structural_state = StructuralState::Removing;
+            return Ok(Effect::TrackRemoved(track));
+        }
         let targets = self.tracks[&track].loops.iter().copied().collect();
         self.start_composite_structure(targets, Some(track))?;
         self.tracks.get_mut(&track).unwrap().view.structural_state = StructuralState::Removing;
