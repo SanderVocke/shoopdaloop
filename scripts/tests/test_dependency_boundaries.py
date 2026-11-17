@@ -61,6 +61,16 @@ class EngineBoundaryTests(unittest.TestCase):
         self.assertEqual(boundary.violations(tree, "shoop_rt_transport"),
                          ["shoop_rt_engine", "shoop_rt_transport_socket"])
 
+    def test_rt_queue_feature_allows_runtime_without_engine_or_host_dependencies(self):
+        tree = "shoop_rt_transport v0.3.0\nrt_runtime v0.3.0\n"
+        self.assertEqual(boundary.violations(tree, "shoop_rt_transport"), ["rt_runtime"])
+        policy = "shoop_rt_transport_rt_interface"
+        self.assertEqual(boundary.violations(tree, policy), [])
+        for dependency in ("shoop_rt_engine", "shoop_loops", "shoop_host", "cpal",
+                           "wasm-bindgen", "shoop_rt_transport_socket"):
+            self.assertEqual(boundary.violations(tree + dependency + " v0.3.0\n", policy),
+                             [dependency])
+
     def test_schema_cannot_depend_on_connection_machinery(self):
         self.assertEqual(boundary.violations("shoop_rt_transport v0.3.0\n", "shoop_rt_protocol"),
                          ["shoop_rt_transport"])
@@ -136,6 +146,8 @@ class BoundaryCommandTests(unittest.TestCase):
             features = (tuple(command[command.index("--features") + 1].split(",")) if "--features" in command
                         else None if "--all-features" in command else ())
             policy = "shoop_app_client_runtime" if owner == "shoop_app_client" and features else owner
+            if owner == "shoop_rt_transport" and (features is None or "rt-interface" in features):
+                policy = "shoop_rt_transport_rt_interface"
             actual.add((owner, target, features, policy))
             self.assertIn("--locked", command)
             self.assertEqual(command[command.index("-e") + 1], "normal,build")

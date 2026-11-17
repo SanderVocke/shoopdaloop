@@ -2,8 +2,9 @@
 
 Functional models of the retained state, job and memory processors, restored from
 `354305d4697d2e6068e28d4a2e369f08974e434d` and extended with SP-owned loop
-execution. The remaining transition processor has been removed so that its future
-replacement can be designed independently.
+execution. Synchronization and cursor evolution execute in SP instructions;
+external commands enter through the optional RT interface. There is no separate
+transition processor.
 
 The crate is `no_std` with `alloc`. It contains:
 
@@ -17,10 +18,12 @@ The crate is `no_std` with `alloc`. It contains:
 - `storage`, `chunk_memory`, `resolver`: logical media ownership, slices,
   recording/readback, chunk storage and advisory read resolution.
 
-There is no TP command admission, cancellation API, retained request table,
-completion collection, ARM protocol or application backend. Native CPU request
-processing remains in the production runtime. `serde` and `schema` describe
-fixtures and values, rather than a transport contract.
+The core models have no TP command admission, retained request table or old ARM
+protocol. The optional `rt-interface` implements the current command/response and
+snapshot profile, and an optional `shoop_host` profile provides restricted
+application integration. Native CPU request processing remains in the production
+runtime. `serde` and `schema` describe fixtures and values, rather than a transport
+contract.
 
 ## SP configuration and execution
 
@@ -61,15 +64,17 @@ expose musical events and execution state. Event/outcome buffers are prepared
 upfront and repeated execution does not allocate.
 
 Supported quanta are 1/16/32/64/128. Loop lengths and operation positions must be
-quantum-aligned. Composites, timelines, batches, program replacement and capture
-monitoring remain outside this primitive-loop model.
+quantum-aligned. Composites, timelines and capture monitoring remain outside this
+primitive-loop model. Program replacement is coordinated by the loader described
+below; SP does not allocate or manage program lifetimes itself.
 
-## Shared fixed-program preparation
+## Shared program preparation
 
 [`rt_fpga_compiler`](../rt_fpga_compiler/README.md) supplies the shared logical
-program and `StateProgramTarget` trait. Its current frontend emits the existing
-`MonoLoops` and `SyncSmoothing` fixture configurations; graph input and runtime
-graph delivery are future work. `compiler::RustTarget` builds the typed SP
+program and `StateProgramTarget` trait. Its graph frontend accepts one to sixteen
+mono primitive loops with explicit input/output routing and sync relationships.
+The `MonoLoops` and `SyncSmoothing` fixed fixtures remain available.
+`compiler::RustTarget` builds the typed SP
 program, initial state, prepared loop plan, resources and bindings. Media-view
 handles are supplied by the caller after preparing media resources.
 
@@ -80,7 +85,7 @@ layout. Neither target requires binary compatibility with the other.
 
 ## Internal RT interface
 
-Enable `rt-interface` for a fixed mono primitive-loop graph. The public control
+Enable `rt-interface` for a compiled mono primitive-loop graph. The public control
 endpoint is `rt_interface::Endpoint`, a re-export of the concrete queue-backed
 `shoop_rt_transport::rt::Endpoint`. It implements `carrier::Endpoint` directly
 and works with `ProtocolClient`, `InProcess` and record carriers. There is no
@@ -172,13 +177,15 @@ Invalid callback shapes preserve pending commands. A pipeline failure latches,
 marks publication failure, silences output and makes later groups return
 `CannotApply`; computed state and accepted commands are not rolled back.
 
-This first endpoint supports unedited mono audio windows and fixed topology.
-Balance, strip/bus controls, MIDI, grabs/history and graph/media reconfiguration
-remain unsupported. Native physical capture-resource preflight is not modeled;
+This endpoint supports unedited mono audio windows. Topology changes use a staged
+program and ordered switch, rather than mutating the running graph in place.
+Balance, strip/bus controls, MIDI, grabs/history and arbitrary media edits remain
+unsupported. Native physical capture-resource preflight is not modeled;
 media/job failures use the reference pipeline fault contract. Arbitrary partial
 host callbacks and native host buffering are outside this endpoint. The endpoint
-supports the existing carrier protocol subset, but is not yet selectable as a full
-application backend.
+supports the existing carrier protocol subset. The optional `shoop_host`
+`fpga-reference` feature selects a restricted application profile, exercised by
+its temporary application client; it does not provide general UI integration.
 
 The `rt_interface` tests compare responses and all four loop snapshot record
 classes through the carrier endpoint exactly against the production native
@@ -207,7 +214,8 @@ SP emits ordered jobs before JP consumes them. Gain advances when its job is
 emitted; failed later instructions preserve earlier writes/jobs. Isolated audio
 fixtures can supply read-only logical records with `run_with_records` and omit
 the sync prefix. Programs contain explicit audio instructions; there is no audio
-graph compiler.
+graph interpreter in the execution model; the shared compiler emits these
+instructions before loading.
 
 JP validates buffers and performs integer sample processing. `begin` resets
 readiness; `reset` also invalidates smoothing history. `with_history_slots`

@@ -13,15 +13,21 @@ on:
       - 'Cargo.lock'
       - 'src/rust/rt_audio_math/**'
       - 'src/rust/rt_backend_testbench/**'
+      - 'src/rust/rt_fpga_compiler/**'
       - 'src/rust/rt_fpga_testbench/**'
       - 'src/rust/rt_fpga_reference/**'
       - 'third_party/marlin-verilator/**'
       - 'src/rust/rt_runtime/**'
       - 'src/rust/shoop_loops/**'
       - 'src/rust/shoop_rt_engine/**'
+      - 'src/rust/shoop_rt_backend/**'
+      - 'src/rust/shoop_rt_transport/**'
       - '.github/workflows/fpga_simulation.yml'
       - 'src/rust/shoop_host/**'
       - 'src/rust/shoop_host_manager/**'
+      - 'src/rust/shoop_app/**'
+      - 'src/rust/shoop_app_client/**'
+      - 'src/rust/shoop_backend/**'
       - 'src/rust/shoopdaloop/**'
       - 'src/rust/shoop_app_api/**'
       - 'src/rust/shoop_rt_protocol/**'
@@ -32,11 +38,17 @@ on:
       - 'PLAN_FPGA_RTL_BACKEND.md'
       - 'PLAN_MARLIN_TESTBENCHES.md'
   push:
-    branches: [master, proto/fpga-rust-reference]
+    branches: [master, proto/fpga-rust-reference, feat/backend-replacement]
     paths:
       - 'fpga/**'
       - 'src/rust/rt_fpga_testbench/**'
+      - 'src/rust/rt_fpga_compiler/**'
       - 'src/rust/rt_fpga_reference/**'
+      - 'src/rust/shoop_rt_backend/**'
+      - 'src/rust/shoop_rt_transport/**'
+      - 'src/rust/shoop_app/**'
+      - 'src/rust/shoop_app_client/**'
+      - 'src/rust/shoop_backend/**'
       - 'third_party/marlin-verilator/**'
       - '.github/workflows/fpga_simulation.yml'
       - 'scripts/build_verilator.sh'
@@ -52,6 +64,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  rust-reference:
+    name: Rust reference and application integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      RUSTFLAGS: -D warnings
+      CARGO_BUILD_JOBS: "2"
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: fpga-rust-reference
+      - name: Check shared compiler and functional processors
+        run: |
+          cargo test --locked -p rt_fpga_compiler
+          cargo build --locked -p rt_fpga_reference --no-default-features
+          cargo test --locked -p rt_fpga_reference --no-default-features
+          cargo test --locked -p rt_fpga_reference --all-features
+      - name: Check command transport and protocol
+        run: cargo test --locked -p shoop_rt_protocol -p shoop_rt_transport --all-features
+      - name: Exercise live loading through the application API
+        run: cargo test --locked -p shoop_host --no-default-features --features fpga-reference --test prepared_graph
+
   marlin:
     name: Complete native Marlin verification
     runs-on: ubuntu-24.04
@@ -99,11 +138,6 @@ jobs:
           set -o pipefail
           cargo test --locked -p rt_fpga_testbench --features sim -- --nocapture 2>&1 | tee work/marlin-suite/regression.log
           cargo check --locked -p rt_fpga_testbench
-      - name: Check functional processors and native resolver traces
-        run: |
-          cargo build --locked -p rt_fpga_reference --no-default-features
-          cargo test --locked -p rt_fpga_reference --no-default-features
-          cargo test --locked -p rt_fpga_reference --all-features
       - name: Verify production CPU numeric checks
         run: |
           cargo test --locked -p rt_backend_testbench

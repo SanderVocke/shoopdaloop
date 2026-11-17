@@ -46,6 +46,11 @@ from recording into playback with delayed AXI completions. See
 The simulation framework needs Verilator **5.032**, a C++ compiler and Rust.
 Simulation is opt-in; default native and Wasm builds do not depend on Marlin.
 
+CI runs the shared compiler, functional reference, command transport and the
+feature-gated `shoop_host` application client in a separate Rust job. Compiler and
+transport changes also trigger RTL verification. The Marlin job retains the full
+component matrix, and standalone synthesis checks the generated AXI wrappers.
+
 ```sh
 bash scripts/build_verilator.sh
 export PATH="$PWD/work/verilator/bin:$PATH"

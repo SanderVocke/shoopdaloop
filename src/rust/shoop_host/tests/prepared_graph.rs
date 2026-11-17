@@ -10,7 +10,11 @@ fn application_client_live_loads_and_operates_through_rt_backend() {
         env!("CARGO_BIN_EXE_shoop_host").into(),
         output.path().into(),
     )
-    .unwrap();
+    .unwrap_or_else(|error| {
+        let log = std::fs::read_to_string(output.path().join("host.log"))
+            .unwrap_or_else(|error| format!("could not read host log: {error}"));
+        panic!("{error:#}\nhost log:\n{log}");
+    });
     let report: serde_json::Value =
         serde_json::from_slice(&std::fs::read(output.path().join("report.json")).unwrap()).unwrap();
     assert_eq!(report["result"], "passed");

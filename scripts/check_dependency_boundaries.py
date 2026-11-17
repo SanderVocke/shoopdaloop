@@ -144,6 +144,10 @@ RULES = {
     ),
 }
 POLICIES = {package: policy for packages, policy in RULES.items() for package in packages.split()}
+_transport_forbidden, _transport_prefixes, _transport_allowed = POLICIES["shoop_rt_transport"]
+POLICIES["shoop_rt_transport_rt_interface"] = (
+    _transport_forbidden - {"rt_runtime"}, _transport_prefixes, _transport_allowed,
+)
 
 SCOPES = {
     "runtime": ("rt_runtime", "rt_buffered"),
@@ -200,6 +204,10 @@ def checks(package):
     if package == "shoop_dsp":
         return [(package, features, package) for features in
                 ((), ("builtin-fx",), ("oxisynth",), ("builtin-fx", "oxisynth"))]
+    if package == "shoop_rt_transport":
+        return [(package, (), package),
+                (package, ("rt-interface",), "shoop_rt_transport_rt_interface"),
+                (package, None, "shoop_rt_transport_rt_interface")]
     result = [(package, () if package in NO_DEFAULTS else None, package)]
     if package == "shoop_app_client":
         result.append((package, ("runtime",), "shoop_app_client_runtime"))

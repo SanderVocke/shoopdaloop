@@ -106,6 +106,12 @@ loading path, including explicit plan clearing.
 
 ## Tests and limits
 
+CI runs compiler, functional-reference, protocol/transport and application-client
+checks independently of the Marlin toolchain. The application check explicitly
+enables `fpga-reference`; default host builds keep that dependency optional.
+Compiler, control/backend and transport changes trigger the component workflow,
+including on pushes to `feat/backend-replacement`.
+
 The compiler, reference loader, reference FIFO and Marlin tests cover:
 
 - Retained recording, playback, cursor/frame, gain ramps, future plans and history.
