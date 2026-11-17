@@ -125,6 +125,7 @@ RULES = {
         ENGINE | set("cpal iceoryx2 js-sys midir rt_runtime shoop_loops shoop_rt_engine wasm-bindgen web-sys".split()),
         prefixes=('shoop_rt_host_', 'shoop_rt_transport_', 'shoop_transport_'),
     ),
+    "shoop_audio_drivers": rule(ENGINE | {"shoop_rt_engine", "shoop_host_processors"}, prefixes=("rt_fpga_",)),
     "shoop_rt_host_native shoop_jack shoop_rt_host_worklet shoop_rt_host_process": rule(ENGINE),
     "shoop_rt_transport_message_port shoop_rt_transport_socket shoop_rt_transport_shared_memory": rule(
         ENGINE | set("rt_runtime shoop_loops shoop_rt_engine".split()),
@@ -174,6 +175,7 @@ SCOPES = {
         'shoop_processor_protocol',
         'shoop_rt_transport',
         'shoop_rt_host_native',
+        'shoop_audio_drivers',
         'shoop_jack',
         'shoop_rt_host_worklet',
         'shoop_rt_transport_message_port',

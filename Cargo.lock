@@ -5268,6 +5268,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_audio_drivers"
+version = "0.3.0"
+dependencies = [
+ "arrayvec",
+ "cpal 0.18.2",
+ "getrandom 0.4.3",
+ "jack",
+ "midir",
+ "rt_runtime",
+ "rtrb",
+ "shoop_jack",
+ "shoop_port_graph",
+ "shoop_rt_engine",
+ "shoop_rt_protocol",
+ "shoop_rt_transport",
+ "shoop_wasm_test_support",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tracing",
+]
+
+[[package]]
 name = "shoop_audio_protocol"
 version = "0.3.0"
 dependencies = [
@@ -5693,13 +5715,10 @@ dependencies = [
 name = "shoop_rt_host_native"
 version = "0.3.0"
 dependencies = [
- "arrayvec",
  "cpal 0.18.2",
- "getrandom 0.4.3",
  "jack",
- "midir",
  "rt_runtime",
- "rtrb",
+ "shoop_audio_drivers",
  "shoop_host_processors",
  "shoop_jack",
  "shoop_port_graph",
@@ -5709,7 +5728,6 @@ dependencies = [
  "shoop_wasm_test_support",
  "tempfile",
  "thiserror 2.0.21",
- "tracing",
 ]
 
 [[package]]

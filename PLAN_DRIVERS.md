@@ -236,21 +236,21 @@ Do not replace an unfinished renderer with native execution to make a pair pass.
       existing callback splitting, MIDI reset, JACK publication and browser paths.
 - [x] Record the supported matrix, renderer preparation/status contract, frame
       accounting, queue capacities and Marlin turn ordering before changing code.
-- [ ] Verify focused native dummy/CPAL/JACK mocks, reference activation and Marlin
+- [x] Verify focused native dummy/CPAL/JACK mocks, reference activation and Marlin
       loading/audio baselines. Record external-service skips and baseline failures.
 
 ### Stage 2 — Extract the rendering boundary and native driver machinery
 
-- [ ] Add the portable rendering interface and a native implementation; separate
+- [x] Add the portable rendering interface and a native implementation; separate
       native diagnostics/cleanup from device-generic buffer handling.
-- [ ] Extract reusable Dummy/CPAL/JACK ownership, discovery, callback handling and
+- [x] Extract reusable Dummy/CPAL/JACK ownership, discovery, callback handling and
       status into `shoop_audio_drivers`; pass an engine preparation factory the
       opened device geometry instead of constructing the native engine in drivers.
-- [ ] Preserve native host/control endpoints, MIDI recovery, dynamic JACK port
+- [x] Preserve native host/control endpoints, MIDI recovery, dynamic JACK port
       publication, fallback policy and transactional live driver switching.
-- [ ] Update dependency-boundary rules without weakening separation from UI,
+- [x] Update dependency-boundary rules without weakening separation from UI,
       scripting, application semantics or legacy engines.
-- [ ] Verify native contract tests, mocked CPAL, dummy, direct JACK I/O, stop/fault
+- [x] Verify native contract tests, mocked CPAL, dummy, direct JACK I/O, stop/fault
       paths and callback no-allocation checks before connecting another backend.
 
 ### Stage 3 — Dummy pacing and quantum/sample adaptation
@@ -402,3 +402,11 @@ speed threshold for Marlin is not required.
   five non-server JACK checks pass. These are recorded infrastructure gaps.
 - The renderer contract uses portable borrowed audio/MIDI blocks; drivers own
   device timing, while backend factories own preparation and endpoint creation.
+
+- Stage 1/2 validation: Marlin loading baseline 2 passed; existing final-head
+  reference activation results retained as baseline. After extraction: shared
+  driver library 9 passed (real JACK allowed absent), native library 3 passed,
+  CPAL mocks 13 passed, dummy 9 passed. Warning-denying driver/native build,
+  formatting, test policy, dependency-policy unit tests and native boundary audit
+  passed. Native control endpoints and typed stopped cleanup remain in the facade;
+  shared drivers have no production dependency on a concrete execution engine.
