@@ -4870,6 +4870,7 @@ mod tests {
         });
         app.handle_settings_action(SettingsAction::RequestAudioDriverSwitch {
             config: AudioDriverConfig::Dummy(shoop_egui::DummyAudioDriverConfig {
+                mode: Default::default(),
                 sample_rate: 32_000,
                 buffer_size: 128,
             }),
@@ -5022,6 +5023,7 @@ mod tests {
         runtime
             .dispatch(AppIntent::RequestAudioDriverSwitch {
                 config: AudioDriverConfig::Dummy(shoop_egui::DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: 32_000,
                     buffer_size: 128,
                 }),
@@ -5052,6 +5054,7 @@ mod tests {
         runtime
             .dispatch(AppIntent::RequestAudioDriverSwitch {
                 config: AudioDriverConfig::Dummy(shoop_egui::DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: 32_000,
                     buffer_size: 128,
                 }),
@@ -5432,6 +5435,7 @@ mod tests {
         runtime
             .dispatch(AppIntent::RequestAudioDriverSwitch {
                 config: AudioDriverConfig::Dummy(shoop_egui::DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: 44_100,
                     buffer_size: 128,
                 }),

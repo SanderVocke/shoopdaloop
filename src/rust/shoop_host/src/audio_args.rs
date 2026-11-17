@@ -55,6 +55,9 @@ pub struct AudioArgs {
     /// Audio driver for this launch; does not change saved preferences.
     #[arg(long, value_enum, help_heading = "Audio")]
     pub audio_driver: Option<NativeDriver>,
+    /// Dummy pacing: paced, unpaced or controlled.
+    #[arg(long, help_heading="Audio",value_parser=|v:&str|v.parse::<shoop_app_api::DummyMode>())]
+    pub dummy_mode: Option<shoop_app_api::DummyMode>,
     /// JACK client-name hint.
     #[arg(long, requires = "audio_driver", help_heading = "JACK")]
     pub jack_client_name: Option<String>,
@@ -84,16 +87,15 @@ impl AudioArgs {
     }
 
     pub fn apply(&self, base: AudioDriverConfig) -> Result<AudioDriverConfig> {
-        let Some(driver) = self.audio_driver else {
-            return Ok(base);
-        };
-        let kind = driver.kind();
+        let kind = self
+            .audio_driver
+            .map_or_else(|| base.kind(), |driver| driver.kind());
         ensure!(
-            kind != AudioDriverKind::Jack || cfg!(feature = "jack"),
+            self.audio_driver.is_none() || kind != AudioDriverKind::Jack || cfg!(feature = "jack"),
             "JACK is unavailable in this build"
         );
         ensure!(
-            kind != AudioDriverKind::Cpal || cfg!(feature = "cpal"),
+            self.audio_driver.is_none() || kind != AudioDriverKind::Cpal || cfg!(feature = "cpal"),
             "CPAL is unavailable in this build"
         );
         let mut config = if base.kind() == kind {
@@ -114,6 +116,12 @@ impl AudioArgs {
             jack.validate().map_err(anyhow::Error::msg)?;
         } else if has_jack_options {
             bail!("JACK options require --audio-driver jack");
+        }
+        if let Some(mode) = self.dummy_mode {
+            let AudioDriverConfig::Dummy(dummy) = &mut config else {
+                bail!("--dummy-mode requires the dummy audio driver")
+            };
+            dummy.mode = mode;
         }
         Ok(config)
     }
@@ -170,6 +178,28 @@ mod tests {
                 vec![OsString::from("--session"), OsString::from("take.shoop")]
             );
         }
+    }
+
+    #[shoop_test]
+    fn dummy_pacing_override_is_validated_and_not_forwarded_to_attaching_ui() {
+        let args = Cli::try_parse_from(["host", "--dummy-mode", "unpaced"]).unwrap();
+        let config = args.audio.apply(Default::default()).unwrap();
+        assert!(matches!(
+            config,
+            AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                mode: shoop_app_api::DummyMode::Unpaced,
+                ..
+            })
+        ));
+        assert_eq!(
+            AudioArgs::without_overrides(
+                ["--dummy-mode=controlled", "--session", "x"]
+                    .into_iter()
+                    .map(OsString::from)
+            ),
+            vec![OsString::from("--session"), OsString::from("x")]
+        );
+        assert!(Cli::try_parse_from(["host", "--dummy-mode", "invalid"]).is_err());
     }
 
     #[cfg(feature = "jack")]

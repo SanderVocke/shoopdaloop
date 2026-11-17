@@ -57,6 +57,7 @@ pub mod error;
 pub mod executor;
 pub mod graph;
 pub mod host;
+pub mod host_adapter;
 pub mod host_buffer;
 pub mod ids;
 pub mod midi;

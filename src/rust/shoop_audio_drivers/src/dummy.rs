@@ -20,6 +20,8 @@ const IDLE: Duration = Duration::from_micros(200);
 pub enum DummyMode {
     /// Render a buffer every buffer period, like a device.
     Automatic,
+    /// Render continuously without wall-clock pacing.
+    Unpaced,
     /// Render only frames requested through [`DummyControl`], as fast as possible.
     Controlled,
 }
@@ -192,6 +194,11 @@ impl Loop {
             let pending = self.requests.pending.load(Ordering::Acquire);
             match self.mode {
                 DummyMode::Automatic => self.step(self.buffer),
+                DummyMode::Unpaced => {
+                    self.step(self.buffer);
+                    std::thread::yield_now();
+                    continue;
+                }
                 DummyMode::Controlled if pending > 0 => {
                     let frames = pending.min(self.buffer as u64);
                     self.step(frames as usize);

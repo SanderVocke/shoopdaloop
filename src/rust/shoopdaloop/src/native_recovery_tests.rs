@@ -426,6 +426,7 @@ fn remote_profile_ui_workflow(external: Option<std::path::PathBuf>) {
     let revision = app.settings.active().revision();
     app.handle_settings_action(SettingsAction::RequestAudioDriverSwitch {
         config: shoop_egui::AudioDriverConfig::Dummy(shoop_egui::DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 32000,
             buffer_size: 256,
         }),

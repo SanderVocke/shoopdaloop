@@ -661,6 +661,7 @@ pub fn run() {
                 backend: shoop_app_api::BackendType::Native,
                 processors: shoop_app_api::ProcessorSettings::disabled(),
                 driver: AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: crate::SAMPLE_RATE,
                     buffer_size: crate::QUANTUM as u32,
                 }),

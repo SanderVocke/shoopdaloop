@@ -850,9 +850,44 @@ impl AudioDriverKind {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
+pub enum DummyMode {
+    #[default]
+    Paced,
+    Unpaced,
+    Controlled,
+}
+impl DummyMode {
+    pub const ALL: [Self; 3] = [Self::Paced, Self::Unpaced, Self::Controlled];
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::Paced => "paced",
+            Self::Unpaced => "unpaced",
+            Self::Controlled => "controlled",
+        }
+    }
+}
+impl core::str::FromStr for DummyMode {
+    type Err = String;
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "paced" => Ok(Self::Paced),
+            "unpaced" => Ok(Self::Unpaced),
+            "controlled" => Ok(Self::Controlled),
+            _ => Err(format!(
+                "unknown dummy mode {value:?}; expected paced, unpaced or controlled"
+            )),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(default))]
 pub struct DummyAudioDriverConfig {
+    pub mode: DummyMode,
     pub sample_rate: u32,
     pub buffer_size: u32,
 }
@@ -860,6 +895,7 @@ pub struct DummyAudioDriverConfig {
 impl Default for DummyAudioDriverConfig {
     fn default() -> Self {
         Self {
+            mode: DummyMode::Paced,
             sample_rate: 48_000,
             buffer_size: 256,
         }

@@ -545,6 +545,7 @@ mod tests {
         shoop_settings::save_settings_file(&path, &encode_settings(&document).unwrap()).unwrap();
         let target =
             shoop_app_api::AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                mode: Default::default(),
                 sample_rate: 32_000,
                 buffer_size: 128,
             });
@@ -567,6 +568,7 @@ mod tests {
         );
         let retry_target =
             shoop_app_api::AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                mode: Default::default(),
                 sample_rate: 44_100,
                 buffer_size: 256,
             });

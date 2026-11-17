@@ -1688,6 +1688,7 @@ impl EngineBackend {
             EnginePortModel::Dummy => (
                 true,
                 AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: self.sample_rate,
                     buffer_size: self.buffer_size,
                 }),
@@ -14076,6 +14077,7 @@ mod tests {
     fn engine_dummy_preflight_rejects_unconfirmed_rate_changes() {
         let mut backend = EngineBackend::new_dummy(48_000, 256).unwrap();
         let target = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 44_100,
             buffer_size: 128,
         });
@@ -15877,6 +15879,7 @@ mod tests {
         assert_eq!(backend.loop_smoothing_ms(), 7);
 
         let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 48_000,
             buffer_size: 128,
         });

@@ -121,7 +121,12 @@ pub fn effective_driver_config(
     #[cfg(not(feature = "cpal"))]
     let _ = requested;
     match driver {
-        DriverConfig::Dummy(_) => AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+        DriverConfig::Dummy(config) => AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: match config.mode {
+                shoop_rt_host_native::DummyMode::Automatic => shoop_app_api::DummyMode::Paced,
+                shoop_rt_host_native::DummyMode::Unpaced => shoop_app_api::DummyMode::Unpaced,
+                shoop_rt_host_native::DummyMode::Controlled => shoop_app_api::DummyMode::Controlled,
+            },
             sample_rate,
             buffer_size,
         }),
@@ -192,6 +197,11 @@ pub fn dummy_config(config: &DummyAudioDriverConfig) -> DummyConfig {
     DummyConfig {
         sample_rate: config.sample_rate,
         buffer_frames: config.buffer_size,
+        mode: match config.mode {
+            shoop_app_api::DummyMode::Paced => shoop_rt_host_native::DummyMode::Automatic,
+            shoop_app_api::DummyMode::Unpaced => shoop_rt_host_native::DummyMode::Unpaced,
+            shoop_app_api::DummyMode::Controlled => shoop_rt_host_native::DummyMode::Controlled,
+        },
         input: DUMMY_INPUT,
         ..DummyConfig::default()
     }

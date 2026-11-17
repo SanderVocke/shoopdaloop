@@ -11,3 +11,9 @@ Preparation and typed control-owner handover happen before callbacks start.
 `Processor::finish` runs after callbacks stop, on the lifecycle owner. The native
 composition facade retains its protocol-client and stopped-engine API. Production
 build dependencies are audited to exclude concrete execution engines and UI code.
+
+Dummy offers wall-clock pacing, continuous unpaced processing and explicitly
+requested frames. The host owns the independent `DummyControl` handle. Unpaced
+work yields between callbacks and all modes check shutdown. The portable quantum
+adapter keeps partial input and adds a fixed one-quantum delay without padding
+engine time; a renderer's own sample conversion stays behind that adapter.

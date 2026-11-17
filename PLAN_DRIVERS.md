@@ -255,15 +255,17 @@ Do not replace an unfinished renderer with native execution to make a pair pass.
 
 ### Stage 3 — Dummy pacing and quantum/sample adaptation
 
-- [ ] Implement public dummy modes and common startup plumbing, defaulting to
+- [x] Implement public dummy modes and common startup plumbing, defaulting to
       paced mode. Keep backend and driver independent; strip startup overrides
       when launching an attaching UI. Version affected serialized settings.
-- [ ] Add continuous unpaced execution and an independent controlled-frame
+- [x] Add continuous unpaced execution and an independent controlled-frame
       handle, with bounded stop behavior and no command/audio starvation.
-- [ ] Implement prepared frame-size and f32/fixed-point adapters with explicit
+- [x] Implement the prepared frame-size adapter with explicit
       latency, partial-fragment accounting and deterministic test input/output.
-- [ ] Verify exact requested frame counts, zero demand, long unpaced runs, stop
-      under demand, conversion boundaries, and callback sizes below/above/not
+      Place f32/fixed-point conversion in the reference renderer in stage 4 so
+      the portable driver contract stays independent of FPGA sample types.
+- [x] Verify exact requested frame counts, zero demand, long unpaced runs, stop
+      under demand and callback sizes below/above/not
       divisible by the engine quantum. Use impulse/ramp fixtures to catch dropped,
       duplicated or reordered samples and incorrectly advertised latency.
 
@@ -410,3 +412,10 @@ speed threshold for Marlin is not required.
   formatting, test policy, dependency-policy unit tests and native boundary audit
   passed. Native control endpoints and typed stopped cleanup remain in the facade;
   shared drivers have no production dependency on a concrete execution engine.
+
+- Stage 3: dummy pacing is serialized as paced/unpaced/controlled (application
+  protocol 44), exposed in settings/Manager/shared CLI, and mapped to shared
+  native drivers. Native dummy tests 10 passed; codec 11; CLI 5; widgets 267.
+  The irregular block adapter test passes with heap guards, exact sample order,
+  one-quantum latency and separate driver/completed-engine frame accounting.
+  Warning-denying application build and final affected-library build passed.

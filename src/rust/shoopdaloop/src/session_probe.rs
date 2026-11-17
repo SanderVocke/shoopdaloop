@@ -1017,6 +1017,7 @@ pub fn hosted(
         shoop_app_api::HostSettings {
             backend: shoop_app_api::BackendType::Native,
             driver: AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                mode: Default::default(),
                 sample_rate: 8000,
                 buffer_size: 128,
             }),

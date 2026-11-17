@@ -339,6 +339,7 @@ pub(crate) mod tests {
     fn dummy_settings_map_onto_the_dummy_driver() {
         let (native, warnings) = native_config(
             &AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                mode: Default::default(),
                 sample_rate: 32_000,
                 buffer_size: 64,
             }),

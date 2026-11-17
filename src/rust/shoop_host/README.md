@@ -140,3 +140,16 @@ The application client writes diagnostics under `work/fpga-reference-client`
 `RtlTarget` accepts the same logical graph and loads through the Marlin testbench
 loader. Marlin does not yet have an application host with the runtime command and
 snapshot frontend used by this UI integration.
+
+## Dummy pacing
+
+Dummy startup accepts `--dummy-mode paced|unpaced|controlled`, independently of
+`--backend`. The same mode is stored in the Dummy driver's JSON `mode` field and
+in startup preferences/Host Manager. Omitted modes remain paced. Unpaced advances
+sample time continuously without sleeping; controlled mode waits for frame
+requests through the host driver's `DummyControl` handle. Attaching a UI does not
+change pacing and does not receive those startup overrides.
+
+Fixed-quantum renderers use a prepared adapter with one quantum of reported
+latency. Partial driver requests remain buffered; they do not cause padded engine
+quanta. Driver frames delivered and complete engine frames are distinct counters.
