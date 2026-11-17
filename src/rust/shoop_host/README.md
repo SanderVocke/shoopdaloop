@@ -94,10 +94,13 @@ can be supplied with `--config PATH`. The quantum adapter reports one quantum of
 processing latency. JACK exposes fixed `audio_in_1`, `audio_out_1` and
 `audio_out_2` ports; CPAL uses the first input and first two outputs.
 
-The supported graph is the built-in Sync track plus one mono audio track, with up
-to 16 loops total. Choose Regular, Mono and no MIDI in Add Track. The UI retains
-its normal controls; unsupported reference operations are refused through the
-ordinary error path. Extra buses, track/Master mix
+The supported graph contains the built-in Sync track and mono audio tracks.
+Choose Regular, Mono and no MIDI in Add Track. Track and loop counts are admitted
+by the compiled program's actual resource requirements and the loader's free
+physical slots, including active graph ownership during a switch. There is no
+separate fixed track/loop profile limit. Capacity refusals name the exhausted
+resource and restore the previous layout. The UI retains its normal controls;
+unsupported reference operations are refused through the ordinary error path. Extra buses, track/Master mix
 controls, effects, MIDI, monitoring, media reads/import/export, loop clearing,
 copying, composites and general routing are unavailable. Use track removal and
 creation for fresh empty loops. Loop gain, record/play/stop, sync scheduling,
