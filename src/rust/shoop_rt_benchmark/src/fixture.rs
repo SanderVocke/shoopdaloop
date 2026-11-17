@@ -96,6 +96,7 @@ pub struct Fixture {
     pub history_seconds: u32,
     pub smoothing_frames: u32,
     pub ramp_frames: u32,
+    pub record_frames: usize,
     pub signal: String,
     pub callbacks: usize,
     pub events: Vec<Event>,
@@ -112,7 +113,7 @@ impl Fixture {
                 count,
             })
         };
-        let span = 32;
+        let span = 8;
         let iterations = match preset {
             Preset::Smoke => 2,
             Preset::Standard => 8,
@@ -160,19 +161,20 @@ impl Fixture {
                 base + span
             }
             Pattern::Grab => {
+                let clock = 1024;
                 add(0, "record-clock", Action::Record, 0, 1);
-                add(span, "play-clock", Action::Play, 0, 1);
-                let start = SAMPLE_RATE as usize / QUANTUM + span;
+                add(clock, "play-clock", Action::Play, 0, 1);
+                let start = 3 * clock;
                 for i in 0..iterations {
-                    add(start + i * span, "grab-all", Action::Grab, 0, LOOPS);
+                    add(start + i * clock, "grab-all", Action::Grab, 0, LOOPS);
                 }
-                let end = start + iterations * span;
+                let end = start + iterations * clock;
                 add(end, "stop-all", Action::Stop, 0, LOOPS);
                 end + span
             }
         };
         Self {
-            version: 1,
+            version: 2,
             preset,
             pattern,
             loops: LOOPS,
@@ -184,6 +186,11 @@ impl Fixture {
             history_seconds: 1,
             smoothing_frames: 0,
             ramp_frames: 0,
+            record_frames: if pattern == Pattern::Grab {
+                32768
+            } else {
+                span * QUANTUM
+            },
             signal: "stereo-saw-v1".into(),
             callbacks,
             events,

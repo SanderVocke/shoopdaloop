@@ -12,10 +12,11 @@ use rt_fpga_testbench::{
     loop_image,
     memory::{Backend, Mode},
     model::Probe,
-    sim::Sim,
+    sim::{Agent, Sim},
     suites,
     timing::dram::Dram,
 };
+use shoop_rt_protocol as protocol;
 use shoop_rt_protocol::{
     codec,
     immediate::{Code, Command, CommandRecord, TransitionMode},
@@ -23,11 +24,31 @@ use shoop_rt_protocol::{
     Telemetry,
 };
 use shoop_rt_transport::{carrier::Outbox, rt};
-use std::{path::Path, time::Instant};
+use std::{cell::RefCell, path::Path, rc::Rc, time::Instant};
 
 const CAPACITIES: [u64; 7] = [1024, 256, 1024, 32, 512, 2, 2];
 const STATE_RAM: &str = "core.pipeline.state_engine.loop_memory.memory";
 const OUTPUT_RAM: &str = "core.pipeline.sample_engine.local_io.outputs_memory.memory";
+
+#[derive(Default, Clone, Copy)]
+struct Activity {
+    state: u64,
+    jobs: u64,
+    queue_peak: u64,
+}
+impl Agent for Activity {
+    fn sample(
+        &mut self,
+        model: &rt_fpga_testbench::model::Model<'_>,
+        edges: rt_fpga_testbench::clock::Edges,
+    ) {
+        if edges.rises(0) {
+            self.state += model.get("state_busy");
+            self.jobs += model.get("jobs_busy");
+            self.queue_peak = self.queue_peak.max(model.get("queued_jobs"));
+        }
+    }
+}
 
 fn external<T>(result: rt_fpga_testbench::Result<T>) -> Result<T> {
     result.map_err(|e| anyhow!("{e}"))
@@ -52,7 +73,7 @@ pub fn run(fixture: Fixture, memory_model: &str, output: &Path) -> Result<Run> {
     external(rt_fpga_testbench::report::configure(&directory, false))?;
     let mut design = suites::pipeline::design(CAPACITIES, &geometry, 64, mode, 1);
     for slot in 0..LOOPS {
-        for word in [0, 1, 3, 4, 5, 6, 8] {
+        for word in [0, 1, 3, 4, 5, 6, 8, 11, 14] {
             design.probes.push(Probe::observe(&format!(
                 "{STATE_RAM}[{}]",
                 slot * 16 + word
@@ -70,8 +91,10 @@ pub fn run(fixture: Fixture, memory_model: &str, output: &Path) -> Result<Run> {
             .push(Probe::observe(&format!("core.media.{name}")));
     }
     let model = external(design.build(&rt_fpga_testbench::root().join("work/rt-benchmark-model")))?;
-    let mut sim = Sim::new(external(model.session(None))?, &[("clk", 6666, 0)]);
+    let mut sim = Sim::new(external(model.benchmark_session())?, &[("clk", 6666, 0)]);
     sim.max_ps = u64::MAX;
+    let activity = Rc::new(RefCell::new(Activity::default()));
+    sim.agent(activity.clone());
     let mut pipeline = external(Pipeline::new(
         &mut sim, CAPACITIES, geometry, mode, 20261117,
     ))?;
@@ -116,6 +139,7 @@ pub fn run(fixture: Fixture, memory_model: &str, output: &Path) -> Result<Run> {
         outputs: std::array::from_fn(|_| vec![0.; QUANTUM]),
         snapshot: vec![0; snapshot::capacity(1, LOOPS as usize, 1).unwrap()],
         mode,
+        activity,
     };
     Ok(runner::run("fpga-rtl", fixture, control, driver))
 }
@@ -130,8 +154,20 @@ struct Rtl<'a> {
     outputs: [Vec<f32>; 2],
     snapshot: Vec<u8>,
     mode: Mode,
+    activity: Rc<RefCell<Activity>>,
 }
 impl Rtl<'_> {
+    fn stalls(&self) -> [u64; 4] {
+        match &self.pipeline.store.memory.borrow().backend {
+            Backend::Axi(axi) => [
+                axi.address_stalls,
+                axi.write_stalls,
+                axi.response_stalls,
+                axi.submission_stalls,
+            ],
+            _ => [0; 4],
+        }
+    }
     fn word(&self, slot: u32, word: u32) -> u64 {
         self.sim
             .model
@@ -265,12 +301,35 @@ impl Rtl<'_> {
             });
             pos += codec::encode_snapshot(&record, &mut self.snapshot[pos..])
                 .map_err(|e| anyhow!("snapshot: {e:?}"))?;
+            let flags = self.word(id, 1);
+            let step = |index: usize| -> Result<Option<protocol::immediate::PlannedTransition>> {
+                let base = 32 + index * 5;
+                if flags & (1 << base) == 0 {
+                    return Ok(None);
+                }
+                Ok(Some(protocol::immediate::PlannedTransition {
+                    mode: TransitionMode::from_raw(((flags >> (base + 2)) & 3) as u32)
+                        .ok_or_else(|| anyhow!("invalid RTL plan mode"))?,
+                    skip: self.word(id, if index == 0 { 11 } else { 14 }).try_into()?,
+                }))
+            };
+            let record = snapshot::Record::LoopPlan {
+                id: LoopSlotId(SlotId::new(id, 1)),
+                plan: protocol::immediate::TransitionPlan {
+                    now: None,
+                    first: step(0)?,
+                    second: step(1)?,
+                },
+                failures: 0,
+            };
+            pos += codec::encode_snapshot(&record, &mut self.snapshot[pos..])
+                .map_err(|e| anyhow!("snapshot: {e:?}"))?;
         }
         snapshot::Header {
             frame: self.frame,
             graph: 1,
             topology: 1,
-            records: LOOPS,
+            records: 2 * LOOPS,
             loops: LOOPS,
             strips: 1,
             buses: 1,
@@ -300,6 +359,9 @@ impl Driver for Rtl<'_> {
     }
     fn process(&mut self) -> Result<Measurement> {
         let start = Instant::now();
+        self.activity.borrow_mut().queue_peak = 0;
+        let activity_start = *self.activity.borrow();
+        let stalls_start = self.stalls();
         let cycles = self.sim.cycles;
         let reads = self.pipeline.store.memory.borrow().reads();
         let writes = self.pipeline.store.memory.borrow().writes();
@@ -379,6 +441,8 @@ impl Driver for Rtl<'_> {
         self.sim.idle(1);
         let fabric_cycles = self.sim.cycles - cycles;
         let elapsed_ns = start.elapsed().as_nanos() as u64;
+        let activity = *self.activity.borrow();
+        let stalls = self.stalls();
         for channel in 0..2 {
             for offset in 0..QUANTUM {
                 let raw = self
@@ -402,6 +466,13 @@ impl Driver for Rtl<'_> {
                 * 128
                 * 4,
             reclaimed: 0,
+            state_cycles: activity.state - activity_start.state,
+            job_cycles: activity.jobs - activity_start.jobs,
+            queue_peak: activity.queue_peak,
+            axi_address_stall_cycles: stalls[0] - stalls_start[0],
+            axi_write_stall_cycles: stalls[1] - stalls_start[1],
+            axi_response_stall_cycles: stalls[2] - stalls_start[2],
+            dram_queue_stall_cycles: stalls[3] - stalls_start[3],
         })
     }
     fn output(&self, channel: usize) -> &[f32] {
@@ -413,6 +484,6 @@ impl Driver for Rtl<'_> {
     fn metadata(&self) -> serde_json::Value {
         serde_json::json!({"driver":"stepped-dummy","numeric":"Q8.24","timing":"rtl-fabric-cycles","fabric_hz":FPGA_CLOCK_HZ,"memory_model":format!("{:?}",self.mode),
             "window":"command configuration, input upload, SP/JP/media execution, mandatory completion and queue drain; passive output/state probes do not advance clocks",
-            "arm_service_time":"not modeled","waveform_clock_period_ps":6666,"provenance":rt_fpga_testbench::report::provenance(),"memory":self.pipeline.store.memory.borrow_mut().report(false)})
+            "arm_service_time":"not modeled","waveform_clock_period_ps":6666,"simulation_optimization":3,"simulation_tracing":false,"provenance":rt_fpga_testbench::report::provenance(),"memory":self.pipeline.store.memory.borrow_mut().report(false)})
     }
 }

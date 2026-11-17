@@ -48,6 +48,12 @@ def validate(run):
     if (f["loops"], f["channels"], f["quantum"], f["sample_rate"], f["fpga_clock_hz"]) != (64, 2, 32, 48_000, FPGA_CLOCK_HZ):
         raise ValueError("result does not use the standard 64-stereo/Q32/150 MHz fixture")
     rows = run["callbacks"]
+    if run["backend"] == "fpga-rtl":
+        metadata = run.get("metadata", {})
+        if metadata.get("fabric_hz") != FPGA_CLOCK_HZ:
+            raise ValueError("RTL fabric clock differs from the report assumption")
+        if metadata.get("memory_model") == "Dramsim3" and metadata.get("memory", {}).get("native", {}).get("fabric_hz") != FPGA_CLOCK_HZ:
+            raise ValueError("DRAMsim3 fabric clock differs from the report assumption")
     if len(rows) != f["callbacks"] or not rows:
         raise ValueError("missing callback measurements")
     origin = rows[0]["frame"]
@@ -71,7 +77,8 @@ def summarize(run, filename):
     rows = run.get("callbacks", [])
     groups = {}
     for row in rows:
-        groups.setdefault(row.get("event") or "steady", []).append(elapsed_us(row))
+        group = row.get("event") or f'steady: rec={row["recording"]}, play={row["playing"]}'
+        groups.setdefault(group, []).append(elapsed_us(row))
     worst = max(rows, key=elapsed_us) if rows else None
     return dict(file=filename, backend=run["backend"], pattern=run.get("fixture", {}).get("pattern"),
                 repeat=run.get("repeat", 0), status=run["status"], error=run.get("error"),
@@ -110,7 +117,7 @@ def render(output, manifest, runs, summary):
         plt.close(fig)
         for start in range(0, len(table), 15):
             fig, ax = plt.subplots(figsize=(11.7, 8.3)); ax.axis("off")
-            ax.set_title("Standard RT benchmark: 64 stereo loops, Q=callback=32", pad=25)
+            ax.set_title("Standard RT benchmark: 64 stereo loops, Q=callback=32" + (" — incomplete campaign" if not summary["complete"] else ""), pad=25)
             t = ax.table(cellText=table[start:start + 15], colLabels=["Backend / pattern / run", "Status", "N", "Median µs", "p95 µs", "p99 µs", "Max µs"], loc="center", cellLoc="center", colWidths=[.26, .2, .08, .115, .115, .115, .115])
             t.auto_set_font_size(False); t.set_fontsize(8); t.scale(1, 2.2)
             fig.text(.06, .05, "FPGA RTL: cycles / 150. Rust reference: functional model CPU time.\n48 kHz reference budget: 666.67 µs. Observed maxima; no deadline enforcement. p95/p99 require N≥20/100.", fontsize=9)
@@ -119,6 +126,7 @@ def render(output, manifest, runs, summary):
         for run in runs:
             label = f'{run["backend"]} / {run.get("fixture", {}).get("pattern")} / repeat {run.get("repeat", 0)}'
             rows = run.get("callbacks", [])
+            timeline_events = [dict(callback=r["callback"], label=r["event"]) for r in rows if r.get("event")]
             if not rows:
                 page_text(pdf, label, [f'Status: {run["status"]}', run.get("error") or "", run.get("metadata", {})]); continue
             fig, axes = plt.subplots(3, 1, figsize=(11.7, 8.3), sharex=True)
@@ -128,17 +136,17 @@ def render(output, manifest, runs, summary):
             axes[0].set_ylabel("Processing µs"); axes[0].legend(fontsize=8)
             axes[1].plot(x, [r["control_ns"] / 1000 for r in rows], linewidth=.65); axes[1].set_ylabel("Endpoint µs")
             axes[2].plot(x, [r["measurement"]["storage_bytes"] / 1024 for r in rows], linewidth=.65); axes[2].set_ylabel("Live storage KiB"); axes[2].set_xlabel("Callback")
-            for event in run["events"]:
+            for event in timeline_events:
                 for ax in axes: ax.axvline(event["callback"], color="gray", alpha=.2)
                 axes[0].annotate(event["label"], (event["callback"], y[event["callback"]]), rotation=90, fontsize=5)
             fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
 
-            labels = list(dict.fromkeys(e["label"] for e in run["events"]))
+            labels = list(dict.fromkeys(e["label"] for e in timeline_events))
             if labels:
                 fig, axes = plt.subplots(len(labels), 1, figsize=(11.7, max(4, len(labels) * 1.3)), squeeze=False)
                 fig.suptitle(label + " — event-aligned processing")
                 for ax, name in zip(axes[:, 0], labels):
-                    for event in run["events"]:
+                    for event in timeline_events:
                         if event["label"] == name:
                             indices = range(max(0, event["callback"] - 2), min(len(rows), event["callback"] + 9))
                             ax.plot([i - event["callback"] for i in indices], [y[i] for i in indices], marker=".", linewidth=.8)
@@ -154,6 +162,18 @@ def render(output, manifest, runs, summary):
                       "Budget exceedances: " + str(s["statistics"].get("budget_exceedances")),
                       "Fixture SHA256: " + run.get("fixture_sha256", "unknown")]
             page_text(pdf, label + " — event statistics and coverage", lines)
+            if run["backend"] == "fpga-rtl":
+                diagnostics = ["Stage and stall intervals overlap. Time values assume 150 MHz.",
+                               "Metric                                Median          Maximum"]
+                for key, name in [("state_cycles", "SP active µs"), ("job_cycles", "JP active µs"),
+                    ("axi_address_stall_cycles", "AXI address stall µs"), ("axi_write_stall_cycles", "AXI write stall µs"),
+                    ("axi_response_stall_cycles", "AXI response stall µs"), ("dram_queue_stall_cycles", "DRAM queue stall µs"),
+                    ("reads", "AXI read transfers"), ("writes", "AXI write transfers"), ("queue_peak", "Job queue peak")]:
+                    values = [r["measurement"][key] for r in rows if key in r["measurement"]]
+                    if values:
+                        if key.endswith("_cycles"): values = [v / 150 for v in values]
+                        diagnostics.append(f'{name:<35} {statistics.median(values):>12.2f} {max(values):>16.2f}')
+                page_text(pdf, label + " — fabric and memory diagnostics", diagnostics)
             metadata = run.get("metadata", {})
             concise = {k: v for k, v in metadata.items() if k not in ("provenance", "memory", "finalization")}
             page_text(pdf, label + " — provenance", ["Status: " + run["status"],
@@ -173,19 +193,24 @@ def report(output):
             validate(run)
         except (KeyError, ValueError, TypeError) as error:
             run["status"] = "incorrect-results"; run["error"] = str(error)
+            run["callbacks"] = []; run["events"] = []
         runs.append(run); rows.append(summarize(run, filename))
-    summary = dict(schema_version=1, fpga_clock_hz=FPGA_CLOCK_HZ, budget_us=BUDGET_US, runs=rows)
+    complete = manifest.get("complete", True) and len(rows) == manifest.get("expected_runs", len(rows))
+    summary = dict(schema_version=1, complete=complete, fpga_clock_hz=FPGA_CLOCK_HZ, budget_us=BUDGET_US, runs=rows)
     (output / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     with (output / "callbacks.csv").open("w", newline="") as stream:
-        fields = ["backend", "pattern", "repeat", "callback", "frame", "event", "elapsed_us", "control_ns", "fabric_cycles", "storage_bytes", "recording", "playing", "wraps"]
+        diagnostics = ["reads", "writes", "reclaimed", "state_cycles", "job_cycles", "queue_peak", "axi_address_stall_cycles", "axi_write_stall_cycles", "axi_response_stall_cycles", "dram_queue_stall_cycles"]
+        fields = ["backend", "pattern", "repeat", "callback", "frame", "event", "elapsed_us", "control_ns", "fabric_cycles", "storage_bytes", "recording", "playing", "wraps", "planned_slots_retired", "takes_replaced", *diagnostics]
         writer = csv.DictWriter(stream, fieldnames=fields); writer.writeheader()
         for run in runs:
             for row in run.get("callbacks", []):
                 writer.writerow(dict(backend=run["backend"], pattern=run["fixture"]["pattern"], repeat=run.get("repeat", 0),
                     **{k: row[k] for k in ("callback", "frame", "event", "control_ns", "recording", "playing", "wraps")},
-                    elapsed_us=elapsed_us(row), fabric_cycles=row["measurement"].get("fabric_cycles"), storage_bytes=row["measurement"]["storage_bytes"]))
+                    elapsed_us=elapsed_us(row), fabric_cycles=row["measurement"].get("fabric_cycles"), storage_bytes=row["measurement"]["storage_bytes"],
+                    planned_slots_retired=row.get("planned_slots_retired"), takes_replaced=row.get("takes_replaced"),
+                    **{key: row["measurement"].get(key) for key in diagnostics}))
     render(output, manifest, runs, summary)
-    return all(row["status"] == "completed" or (row["status"] == "unsupported" and row["pattern"] == "grab") for row in rows)
+    return complete and all(row["status"] == "completed" or (row["status"] == "unsupported" and row["pattern"] == "grab") for row in rows)
 
 
 def capture(*args):
@@ -210,21 +235,26 @@ def main():
     if args.report_only:
         return 0 if report(output) else 1
     backends = args.backends.split(","); patterns = args.patterns.split(",")
-    repeats = args.repeats if args.repeats is not None else (1 if args.preset == "smoke" else 3)
-    if repeats < 1 or not backends or any(b not in BACKENDS for b in backends) or any(p not in PATTERNS for p in patterns):
+    repeats = {b: args.repeats if args.repeats is not None else (1 if args.preset == "smoke" or b == "fpga-rtl" else 3) for b in backends}
+    if any(n < 1 for n in repeats.values()) or not backends or len(set(backends)) != len(backends) or len(set(patterns)) != len(patterns) or any(b not in BACKENDS for b in backends) or any(p not in PATTERNS for p in patterns):
         parser.error("select known backends/patterns and positive repeats")
-    if (output / "manifest.json").exists():
+    if any(output.iterdir()):
         parser.error("output already contains a campaign; select a fresh directory or --report-only")
     manifest = dict(schema_version=1, created_at=datetime.now(timezone.utc).isoformat(), revision=capture("git", "rev-parse", "HEAD"),
         worktree=capture("git", "status", "--porcelain"), rustc=capture("rustc", "--version"),
         python=capture("python3", "--version"), platform=capture("uname", "-a"),
         affinity=sorted(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else None,
-        preset=args.preset, repeats=repeats, fpga_clock_hz=FPGA_CLOCK_HZ, memory_model=args.memory_model, files=[])
+        preset=args.preset, repeats=repeats, backends=backends, patterns=patterns,
+        expected_runs=sum(repeats.values()) * len(patterns), complete=False,
+        fpga_clock_hz=FPGA_CLOCK_HZ, memory_model=args.memory_model, files=[])
+    (output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     missing_rtl = None
     version = capture(os.environ.get("SHOOP_VERILATOR", "verilator"), "--version") if "fpga-rtl" in backends else None
     if "fpga-rtl" in backends and (not version or version.split()[:2] != ["Verilator", "5.032"]):
         missing_rtl = "Verilator 5.032 is required; run scripts/build_verilator.sh and select its executable"
-    binary = args.binary.resolve() if args.binary else ROOT / "target/release/shoop_rt_benchmark"
+    if "fpga-rtl" in backends and args.memory_model == "dramsim3" and not (ROOT / "work/dramsim3/build/libshoop_dram.so").is_file():
+        missing_rtl = "DRAMsim3 is required; run python3 fpga/axi_memory/build_dramsim3.py"
+    binary = args.binary.resolve() if args.binary else ROOT / "target/release" / ("shoop_rt_benchmark.exe" if os.name == "nt" else "shoop_rt_benchmark")
     build_error = None
     if not args.binary:
         command = ["cargo", "build", "--locked", "--release", "-p", "shoop_rt_benchmark"]
@@ -235,12 +265,16 @@ def main():
             except (OSError, subprocess.CalledProcessError) as error:
                 build_error = f"{error}; see build.log"
     manifest["binary_sha256"] = hashlib.sha256(binary.read_bytes()).hexdigest() if binary.is_file() else None
-    for repeat in range(repeats):
+    for repeat in range(max(repeats.values())):
         for backend in backends[::1 if repeat % 2 == 0 else -1]:
+            if repeat >= repeats[backend]:
+                continue
             for pattern in patterns:
                 filename = f"{backend}-{pattern}-{repeat}.json"; path = output / filename
                 print(f"{backend} / {pattern} / repeat {repeat}", flush=True)
                 error = build_error or (missing_rtl if backend == "fpga-rtl" else None)
+                if binary.is_file() and hashlib.sha256(binary.read_bytes()).hexdigest() != manifest["binary_sha256"]:
+                    error = "benchmark binary changed during this campaign; use a fresh output directory"
                 if error:
                     value = dict(backend=backend, fixture=dict(pattern=pattern), status="missing-prerequisite" if not build_error else "build-failure", error=error)
                 else:
@@ -250,11 +284,18 @@ def main():
                         try:
                             result = subprocess.run(command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT)
                             value = json.loads(path.read_text()) if path.exists() else dict(backend=backend, fixture=dict(pattern=pattern), status="processing-failure", error=f"exit {result.returncode}; see {path.with_suffix('.log').name}")
+                            if result.returncode and value["status"] in ("completed", "unsupported"):
+                                value["status"] = "processing-failure"; value["error"] = f"unexpected exit {result.returncode}; see {path.with_suffix('.log').name}"
+                        except json.JSONDecodeError as exc:
+                            if path.exists(): path.rename(path.with_suffix(".partial.json"))
+                            value = dict(backend=backend, fixture=dict(pattern=pattern), status="processing-failure", error=f"invalid or truncated backend output: {exc}")
                         except OSError as exc:
                             value = dict(backend=backend, fixture=dict(pattern=pattern), status="missing-prerequisite", error=str(exc))
                 value["repeat"] = repeat; path.write_text(json.dumps(value, indent=2) + "\n")
                 manifest["files"].append(filename)
                 (output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    manifest["complete"] = True
+    (output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     return 0 if report(output) else 1
 
 

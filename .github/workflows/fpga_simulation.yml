@@ -102,7 +102,7 @@ jobs:
   marlin:
     name: Complete native Marlin verification
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       RUSTFLAGS: -D warnings
       CARGO_BUILD_JOBS: "2"

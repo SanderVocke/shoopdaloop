@@ -7,6 +7,7 @@ use shoop_rt_engine::{EngineDescription, HostPorts, Segment};
 use shoop_rt_host_native::SteppedDummy;
 use shoop_rt_protocol::*;
 use std::time::Instant;
+const SHARED_TAKE_PAGES: u32 = 65536;
 
 pub struct Cpu {
     driver: SteppedDummy,
@@ -54,7 +55,7 @@ impl Driver for Cpu {
         true
     }
     fn metadata(&self) -> serde_json::Value {
-        serde_json::json!({"driver":"stepped-dummy","numeric":"f32","timing":"host-wall-clock","processing_latency_frames":self.latency_frames,"page_bytes":1024,"resource_pages":MEMORY_BYTES/1024,"smoothing_frames":0,"ramp_frames":0})
+        serde_json::json!({"driver":"stepped-dummy","numeric":"f32","timing":"host-wall-clock","processing_latency_frames":self.latency_frames,"page_bytes":1024,"resource_pages":MEMORY_BYTES/1024,"shared_take_capacity_bytes":SHARED_TAKE_PAGES as usize*1024,"smoothing_frames":0,"ramp_frames":0})
     }
 }
 
@@ -81,7 +82,7 @@ pub fn prepare() -> Result<(Control<shoop_rt_engine::ControlEndpoint>, Cpu)> {
         midi_bytes: 16,
         history: host::InputHistorySettings {
             seconds: 1,
-            audio_take_pages: 8192,
+            audio_take_pages: SHARED_TAKE_PAGES,
             midi_pages: 16,
             midi_records: 16,
             writers: 128,

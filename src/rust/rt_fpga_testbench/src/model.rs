@@ -445,6 +445,18 @@ pub struct Compiled {
 }
 impl Compiled {
     pub fn session(&self, waveform: Option<&Path>) -> Result<Model<'_>> {
+        self.session_configured(waveform, 0, true)
+    }
+    /// Optimize long campaigns without compiling waveform instrumentation.
+    pub fn benchmark_session(&self) -> Result<Model<'_>> {
+        self.session_configured(None, 3, false)
+    }
+    fn session_configured(
+        &self,
+        waveform: Option<&Path>,
+        optimization: usize,
+        tracing: bool,
+    ) -> Result<Model<'_>> {
         let default_waveform = crate::report::waveform(
             self.wrapper
                 .parent()
@@ -454,7 +466,11 @@ impl Compiled {
                 .to_str()
                 .unwrap(),
         );
-        let waveform = waveform.or(default_waveform.as_deref());
+        let waveform = if tracing {
+            waveform.or(default_waveform.as_deref())
+        } else {
+            None
+        };
         if let Some(path) = waveform {
             if let Some(parent) = path.parent() {
                 fs::create_dir_all(parent)?;
@@ -476,8 +492,10 @@ impl Compiled {
                 )
             })
             .collect();
-        // Keep trace support in cached models; a file opens only for an explicit path.
-        let config = VerilatedModelConfig::default().enable_tracing(Some(Waveform::Vcd));
+        // Trace capability is independent of whether a waveform file is opened.
+        let config = VerilatedModelConfig::default()
+            .verilator_optimization(optimization)
+            .enable_tracing(tracing.then_some(Waveform::Vcd));
         let mut model = self.runtime.create_dyn_model(
             "bench_top",
             self.wrapper.to_str().ok_or("non-UTF8 source path")?,

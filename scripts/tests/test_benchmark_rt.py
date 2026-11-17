@@ -18,6 +18,7 @@ def result():
                  control_ns=10, recording=64, playing=0, wraps=0,
                  measurement=dict(elapsed_ns=999999999, fabric_cycles=150 * (i + 1), storage_bytes=128)) for i in range(100)]
     return dict(backend="fpga-rtl", status="completed", fixture=fixture,
+                metadata=dict(fabric_hz=150_000_000, memory_model="Dramsim3", memory=dict(native=dict(fabric_hz=150_000_000))),
                 fixture_sha256=hashlib.sha256(json.dumps(fixture, separators=(",", ":")).encode()).hexdigest(),
                 callbacks=rows, events=[dict(label="record-all", callback=0, commands=64,
                 execution_frame=3200, groups=2, same_frame=True)], coverage=dict(complete_samples=True))
@@ -45,6 +46,12 @@ class BenchmarkReportTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 BENCH.validate(run)
 
+    def test_memory_model_and_report_cannot_disagree_about_fabric_clock(self):
+        run = result()
+        run["metadata"]["memory"]["native"]["fabric_hz"] = 100_000_000
+        with self.assertRaisesRegex(ValueError, "DRAMsim3 fabric clock"):
+            BENCH.validate(run)
+
     def test_report_regenerates_pdf_and_exports_without_a_backend(self):
         with tempfile.TemporaryDirectory() as name:
             output = Path(name)
@@ -54,6 +61,14 @@ class BenchmarkReportTests(unittest.TestCase):
             self.assertTrue((output / "report.pdf").read_bytes().startswith(b"%PDF"))
             self.assertEqual(len((output / "callbacks.csv").read_text().splitlines()), 101)
             self.assertEqual(json.loads((output / "summary.json").read_text())["runs"][0]["statistics"]["max_us"], 100)
+
+    def test_interrupted_campaign_cannot_pass_with_only_completed_subsets(self):
+        with tempfile.TemporaryDirectory() as name:
+            output = Path(name)
+            (output / "run.json").write_text(json.dumps(result()))
+            (output / "manifest.json").write_text(json.dumps(dict(files=["run.json"], complete=False, expected_runs=2)))
+            self.assertFalse(BENCH.report(output))
+            self.assertFalse(json.loads((output / "summary.json").read_text())["complete"])
 
 
 if __name__ == "__main__":

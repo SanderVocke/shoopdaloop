@@ -16,12 +16,21 @@ smoothing or ramps, no MIDI, and no plugins or physical drivers. The two channel
 use different deterministic bounded saw signals. Signal time starts at fixture
 callback zero, independently of setup's processing-frame origin.
 
-Both presets retain this layout and their recording duration of 1,024 frames,
+Both presets retain this layout and their recording duration of 256 frames,
 which crosses the current media allocation boundaries. Smoke runs two lifecycle
 iterations and one independent repetition; standard runs eight iterations and
-three independent repetitions. Mixed turnover uses 1,024, 1,056, and 1,120-frame
-recordings, alternating halves. Every run retains its complete versioned fixture
+three independent CPU timing repetitions. Deterministic RTL replay runs once by
+default; `--repeats` overrides either backend's repetition count. Mixed turnover
+uses 256, 288, and 352-frame recordings, alternating halves. Every run retains its complete versioned fixture
 and hash, callback timing, event execution frames, and coverage observations.
+Fixture version 2 shortens the original 1,024-frame recording to cross the same
+128-frame allocation boundaries with greater transition-event density and less
+simulation time. Grab storms use a separate 32,768-frame clock after filling the
+history for at least twice its retention duration; adjacent full-cycle windows
+exercise ring wrap while staying within one second of retention.
+The native adapter reserves a separate 64 MiB shared-take pool so all 64 long
+grabs and their replacement can be admitted together; the ordinary-media budget
+remains 16 MiB. Prepared capacities are included in backend metadata.
 
 All measured controls use the common transport `Endpoint`: complete 32-command
 groups are staged before releasing a dummy callback, and responses and snapshots
@@ -56,6 +65,8 @@ conversion both use 150 MHz. Fabric cycles convert to microseconds as cycles/150
 DRAM ticks are reported separately. RTL's window includes command configuration,
 input upload, SP/JP/media processing, required completion, and queue drain.
 Passive output/state probes advance no clocks; ARM CPU service time is unmodeled.
+SP/JP activity, job-queue peaks, AXI traffic and stall counters are observed
+without changing fabric cycles. Stage and stall intervals overlap.
 Deferred final memory drain is retained in finalization diagnostics.
 
 Reports distinguish missing prerequisites, build failures, processing failures,
@@ -68,7 +79,9 @@ and run JSON files.
 
 The PDF compares per-repeat processing distributions, annotates callback
 timelines, aligns views around transition events, and includes coverage and
-provenance. `summary.json` retains event and steady statistics, observed maxima,
+provenance. Scheduled-transition execution, storage growth and storage release
+are annotated when observed, in addition to submitted commands. Steady summaries
+separate recording/playback populations. `summary.json` retains these statistics, observed maxima,
 worst callback identities, and exceedances of the hypothetical 666.67 µs budget.
 Extreme percentiles are suppressed when the observation count is too small.
 These measurements are observed maxima under the declared fixture and memory
@@ -82,5 +95,7 @@ python3 -m unittest discover -s scripts/tests -p test_benchmark_rt.py
 ```
 
 The shared Rust smoke test checks both complete mandatory patterns, exact stereo
-samples, same-frame command execution, allocation growth and wrapping. A heap
+samples, same-frame command execution, completed-take replacement, planned-slot
+retirement, allocation growth and wrapping. The full campaign also verifies exact
+stereo samples from the long history grabs. A heap
 guard surrounds every native and functional-reference processing call.

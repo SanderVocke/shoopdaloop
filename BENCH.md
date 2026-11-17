@@ -226,7 +226,7 @@ incomplete.
 - [ ] **RTL adapter:** reuse simulation infrastructure through a production-facing
   command/snapshot bridge, with 150 MHz memory timing. Verify command execution
   frames, sample/state agreement, and inclusive cycle accounting.
-- [ ] **Report and orchestration:** implement the single entry point and PDF
+- [x] **Report and orchestration:** implement the single entry point and PDF
   generation. Check known timing samples, conversion arithmetic, missing-backend
   reporting, and representative PDF pages.
 - [ ] **End-to-end acceptance:** run the full fixture through every available
@@ -235,12 +235,23 @@ incomplete.
 
 Verification so far: both mandatory smoke patterns pass on both Rust backends,
 with exact stereo sample checks and a heap guard around each processing call.
-The CPU grab campaign also completes, and FPGA grabs are explicitly unsupported.
+The CPU grab campaign also completes with exact stereo checks, and FPGA grabs are explicitly unsupported.
 The native driver's advertised one-quantum output latency is included in sample
 validation; signal time is relative to fixture start on every backend. Reporter
 tests verify cycle conversion, incomplete/reduced-result rejection, and PDF/CSV
-regeneration from saved measurements. RTL integration and the final full campaign
-remain in progress.
+regeneration from saved measurements. Initial RTL campaigns pass both mandatory
+patterns; the final instrumented campaign and CI remain in progress. Per-callback
+diagnostics distinguish observed plan retirement and storage events from ordinary
+steady processing, and retain overlapping SP/JP and memory-stall activity.
+
+Fixture revision 2 uses 256-frame recordings in the mandatory patterns, still
+crossing the current 128-frame allocation blocks, to increase transition-event
+density and reduce the substantial RTL simulation cost observed during validation.
+The 64-stereo/Q32 acceptance criteria are unchanged. Grab storms use adjacent
+32,768-frame history windows after filling the input ring, and RTL replay defaults
+to one deterministic run while CPU timing retains three independent repetitions.
+Simulation uses an optimized model without waveform compilation; physical cycle
+counts and the 150 MHz memory timing remain unchanged.
 
 Use targeted tests and smoke runs during implementation; reserve expensive full
 RTL campaigns for completed integration milestones. Final acceptance requires the
