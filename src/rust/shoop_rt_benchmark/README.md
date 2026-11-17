@@ -4,6 +4,7 @@ Run from the repository root with the normal Rust build environment and Python
 with Matplotlib installed:
 
 ```sh
+python3 -m pip install 'matplotlib>=3.9,<4'
 python3 scripts/benchmark_rt.py --output work/rt-benchmark
 python3 scripts/benchmark_rt.py --preset smoke --backends cpu,fpga-reference --output work/rt-smoke
 python3 scripts/benchmark_rt.py --report-only --output work/rt-benchmark

@@ -4,6 +4,7 @@ import argparse
 import csv
 from datetime import datetime, timezone
 import hashlib
+import importlib.util
 import json
 import math
 import os
@@ -112,13 +113,14 @@ def render(output, manifest, runs, summary):
         for row in summary["runs"]:
             s = row["statistics"]
             table.append([f'{row["backend"]}\n{row["pattern"]} #{row["repeat"]}', row["status"], s["count"],
-                          *[number(s.get(key)) for key in ("median_us", "p95_us", "p99_us", "max_us")]])
+                          *[number(s.get(key)) for key in ("median_us", "p95_us", "p99_us", "max_us", "budget_percent")],
+                          s.get("budget_exceedances", "—")])
         # Keep comparison pages readable for long campaigns.
         plt.close(fig)
         for start in range(0, len(table), 15):
             fig, ax = plt.subplots(figsize=(11.7, 8.3)); ax.axis("off")
             ax.set_title("Standard RT benchmark: 64 stereo loops, Q=callback=32" + (" — incomplete campaign" if not summary["complete"] else ""), pad=25)
-            t = ax.table(cellText=table[start:start + 15], colLabels=["Backend / pattern / run", "Status", "N", "Median µs", "p95 µs", "p99 µs", "Max µs"], loc="center", cellLoc="center", colWidths=[.26, .2, .08, .115, .115, .115, .115])
+            t = ax.table(cellText=table[start:start + 15], colLabels=["Backend / pattern / run", "Status", "N", "Median µs", "p95 µs", "p99 µs", "Max µs", "Max budget %", "Over budget"], loc="center", cellLoc="center", colWidths=[.22, .14, .07, .09, .09, .09, .09, .11, .10])
             t.auto_set_font_size(False); t.set_fontsize(8); t.scale(1, 2.2)
             fig.text(.06, .05, "FPGA RTL: cycles / 150. Rust reference: functional model CPU time.\n48 kHz reference budget: 666.67 µs. Observed maxima; no deadline enforcement. p95/p99 require N≥20/100.", fontsize=9)
             pdf.savefig(fig); plt.close(fig)
@@ -173,6 +175,10 @@ def render(output, manifest, runs, summary):
                     if values:
                         if key.endswith("_cycles"): values = [v / 150 for v in values]
                         diagnostics.append(f'{name:<35} {statistics.median(values):>12.2f} {max(values):>16.2f}')
+                final = run.get("metadata", {}).get("finalization", {}).get("native", {})
+                diagnostics += ["", "Final memory drain DRAM ticks: " + str(final.get("final_drain_dram_ticks", "unavailable")),
+                                "Final memory idle: " + str(final.get("idle", "unavailable")),
+                                "DRAM ticks are distinct from fabric cycles and are not converted with cycles/150."]
                 page_text(pdf, label + " — fabric and memory diagnostics", diagnostics)
             metadata = run.get("metadata", {})
             concise = {k: v for k, v in metadata.items() if k not in ("provenance", "memory", "finalization")}
@@ -231,6 +237,8 @@ def main():
     parser.add_argument("--binary", type=Path)
     parser.add_argument("--memory-model", choices=("dramsim3", "fixed"), default="dramsim3")
     args = parser.parse_args()
+    if importlib.util.find_spec("matplotlib") is None:
+        parser.error("Matplotlib is required for the report; install 'matplotlib>=3.9,<4' before starting a campaign")
     output = args.output.resolve(); output.mkdir(parents=True, exist_ok=True)
     if args.report_only:
         return 0 if report(output) else 1

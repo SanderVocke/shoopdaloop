@@ -27,6 +27,7 @@ use shoop_rt_transport::{carrier::Outbox, rt};
 use std::{cell::RefCell, path::Path, rc::Rc, time::Instant};
 
 const CAPACITIES: [u64; 7] = [1024, 256, 1024, 32, 512, 2, 2];
+const MEMORY_SEED: u64 = 20261117;
 const STATE_RAM: &str = "core.pipeline.state_engine.loop_memory.memory";
 const OUTPUT_RAM: &str = "core.pipeline.sample_engine.local_io.outputs_memory.memory";
 
@@ -96,7 +97,11 @@ pub fn run(fixture: Fixture, memory_model: &str, output: &Path) -> Result<Run> {
     let activity = Rc::new(RefCell::new(Activity::default()));
     sim.agent(activity.clone());
     let mut pipeline = external(Pipeline::new(
-        &mut sim, CAPACITIES, geometry, mode, 20261117,
+        &mut sim,
+        CAPACITIES,
+        geometry,
+        mode,
+        MEMORY_SEED,
     ))?;
     if mode == Mode::Dramsim3 {
         let timing = external(Dram::default(&directory.join("dram-150mhz"), FPGA_CLOCK_HZ))?;
@@ -482,7 +487,7 @@ impl Driver for Rtl<'_> {
         Ok(self.pipeline.store.memory.borrow_mut().report(true))
     }
     fn metadata(&self) -> serde_json::Value {
-        serde_json::json!({"driver":"stepped-dummy","numeric":"Q8.24","timing":"rtl-fabric-cycles","fabric_hz":FPGA_CLOCK_HZ,"memory_model":format!("{:?}",self.mode),
+        serde_json::json!({"driver":"stepped-dummy","numeric":"Q8.24","timing":"rtl-fabric-cycles","fabric_hz":FPGA_CLOCK_HZ,"memory_model":format!("{:?}",self.mode),"memory_seed":MEMORY_SEED,
             "window":"command configuration, input upload, SP/JP/media execution, mandatory completion and queue drain; passive output/state probes do not advance clocks",
             "arm_service_time":"not modeled","waveform_clock_period_ps":6666,"simulation_optimization":3,"simulation_tracing":false,"provenance":rt_fpga_testbench::report::provenance(),"memory":self.pipeline.store.memory.borrow_mut().report(false)})
     }

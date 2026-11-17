@@ -8,11 +8,11 @@ with small adapters for backend preparation, processing, and measurement**. The
 fixture describes musical operations at exact processing frames and retains every
 callback's timing so transition spikes remain visible.
 
-Implementation is in progress on `feat/standard-rt-benchmark`. See
+Implementation is complete on `feat/standard-rt-benchmark`. See
 [`shoop_rt_benchmark`](src/rust/shoop_rt_benchmark/README.md) for the entry point,
 fixture contract, supported operations, and measurement boundaries.
 
-**Current integration points and prerequisites.**
+**Integration points and prerequisites identified at the baseline.**
 
 - Both `shoop_rt_engine::ControlEndpoint` and the FPGA reference endpoint implement
   [`shoop_rt_transport::carrier::Endpoint`](src/rust/shoop_rt_transport/src/carrier.rs).
@@ -223,26 +223,48 @@ incomplete.
 - [x] **FPGA reference support:** extend preparation and bindings to 64 stereo
   loops, audit capacities, and add unpaced dummy execution. Verify matching
   event/state behavior; leave unsupported grabs explicit.
-- [ ] **RTL adapter:** reuse simulation infrastructure through a production-facing
+- [x] **RTL adapter:** reuse simulation infrastructure through a production-facing
   command/snapshot bridge, with 150 MHz memory timing. Verify command execution
   frames, sample/state agreement, and inclusive cycle accounting.
 - [x] **Report and orchestration:** implement the single entry point and PDF
   generation. Check known timing samples, conversion arithmetic, missing-backend
   reporting, and representative PDF pages.
-- [ ] **End-to-end acceptance:** run the full fixture through every available
+- [x] **End-to-end acceptance:** run the full fixture through every available
   target, regenerate its PDF from raw data, and verify that all required event
   coverage and correctness checks passed.
 
-Verification so far: both mandatory smoke patterns pass on both Rust backends,
-with exact stereo sample checks and a heap guard around each processing call.
-The CPU grab campaign also completes with exact stereo checks, and FPGA grabs are explicitly unsupported.
-The native driver's advertised one-quantum output latency is included in sample
-validation; signal time is relative to fixture start on every backend. Reporter
-tests verify cycle conversion, incomplete/reduced-result rejection, and PDF/CSV
-regeneration from saved measurements. Initial RTL campaigns pass both mandatory
-patterns; the final instrumented campaign and CI remain in progress. Per-callback
-diagnostics distinguish observed plan retirement and storage events from ordinary
-steady processing, and retain overlapping SP/JP and memory-stall activity.
+Verification: the full standard campaign at `8d9c5bdc` completed all 21 runs:
+17 completed and four explicitly unsupported FPGA grab runs. It retained 37,015
+callback measurements. Every completed run passed exact stereo sample checks,
+same-frame command verification, allocation growth, storage release and wrapping
+coverage. Lifecycle runs additionally verified take replacement and planned-slot
+retirement. Fixture hashes matched across backends and independent repetitions.
+The 77-page PDF was regenerated from saved data with identical statistics, and
+representative overview, event and FPGA diagnostic pages were inspected.
+
+The RTL lifecycle run verified 448 take replacements and 1,024 planned-slot
+retirements. Its observed maximum was 254,777 cycles (1,698.51 microseconds);
+mixed turnover reached 248,340 cycles (1,655.60 microseconds). These exceed the
+100,000-cycle reference budget. The first 66 lifecycle callbacks matched the
+earlier smoke run's cycle counts exactly after adding passive diagnostics. Both
+patterns finished with memory idle and no deferred final DRAM drain ticks.
+
+Validation also includes 280 tests across affected Rust packages, processing heap
+guards on the Rust smoke patterns, legacy RTL compiler regression tests, five
+reporter tests, and warnings-as-errors release builds. The native driver's
+advertised one-quantum output latency is included in sample validation; signal
+time is relative to fixture start on every backend. Reporter tests cover cycle
+conversion, incomplete/reduced-result rejection, and PDF/CSV regeneration.
+Per-callback diagnostics distinguish observed plan retirement and storage events
+from ordinary steady processing, and retain overlapping SP/JP and memory-stall
+activity. Subsequent report-layout and explicit memory-seed metadata changes do
+not alter the measured processing schedule; the fixed seed is `20261117`.
+
+The implementation and CI evidence are tracked in
+[PR #1004](https://github.com/SanderVocke/shoopdaloop/pull/1004), targeting
+`feat/backend-replacement`. CI also runs and uploads the complete shared smoke
+campaign. Generated campaign artifacts remain under the requested output folder;
+they are not checked into the source tree.
 
 Fixture revision 2 uses 256-frame recordings in the mandatory patterns, still
 crossing the current 128-frame allocation blocks, to increase transition-event
