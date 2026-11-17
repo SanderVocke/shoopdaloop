@@ -3252,11 +3252,11 @@ type BrowserCatalogCompletion = (
 #[cfg(target_arch = "wasm32")]
 impl Runtime {
     fn new(settings: &shoop_settings::SettingsSnapshot, args: &AppArgs) -> anyhow::Result<Self> {
-        args.selected_backend(settings)?;
+        let backend = args.selected_backend(settings)?;
         args.selected_engine_transport(settings)?;
         anyhow::ensure!(!args.worker, "Worker mode was retired. The browser session service runs on the main thread and renders in an AudioWorklet.");
         let (midi, midi_service) = browser_midi::BrowserMidiController::new()?;
-        Self::new_engine(settings, args.offline, midi, midi_service)
+        Self::new_engine(settings, args.offline, backend, midi, midi_service)
     }
 
     /// The new engine backend: the application starts once browser audio is enabled and
@@ -3264,6 +3264,7 @@ impl Runtime {
     fn new_engine(
         settings: &shoop_settings::SettingsSnapshot,
         offline: bool,
+        backend: shoop_app_api::BackendType,
         midi: browser_midi::BrowserMidiController,
         midi_service: Box<dyn shoop_scripting::MidiControlService>,
     ) -> anyhow::Result<Self> {
@@ -3290,6 +3291,7 @@ impl Runtime {
             });
         let controller = browser_rt_audio::BrowserRtAudio::new(
             midi.hub(),
+            backend,
             pools,
             shoop_egui::processor_settings_from_snapshot(settings).map_err(anyhow::Error::msg)?,
         )?;
@@ -3303,8 +3305,16 @@ impl Runtime {
             runtime: None,
             pending_start: Some(PendingNewEngineStart {
                 midi_service,
-                master_auto_connect,
-                loop_smoothing_ms,
+                master_auto_connect: if backend == shoop_app_api::BackendType::Native {
+                    master_auto_connect
+                } else {
+                    true
+                },
+                loop_smoothing_ms: if backend == shoop_app_api::BackendType::Native {
+                    loop_smoothing_ms
+                } else {
+                    0
+                },
                 warnings,
             }),
             waiting_snapshot: Default::default(),

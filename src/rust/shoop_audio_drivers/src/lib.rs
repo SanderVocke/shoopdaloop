@@ -193,6 +193,7 @@ impl Running {
         let _span = tracing::info_span!("rt_host.native.stop").entered();
         let shared = self.shared;
         shared.stopping.store(true, Ordering::Release);
+        shared.host.stopping();
         let deadline = Instant::now() + self.reset_wait;
         while shared.host.requires_reset()
             && shared.phase() == RenderPhase::Running
@@ -347,6 +348,7 @@ pub trait Processor: Renderer + Send {
     }
 }
 pub trait Observer: Send + Sync {
+    fn stopping(&self) {}
     fn requires_reset(&self) -> bool {
         true
     }

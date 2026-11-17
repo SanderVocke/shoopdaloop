@@ -131,6 +131,7 @@ fn trace<E: Snap>(
         let rs = drain(&mut c);
         if !rs.is_empty() {
             assert_eq!(rs[0].header.code(), Code::Applied);
+            assert_eq!(rs[0].header.graph(), 1);
             break;
         }
         assert!(Instant::now() < until);
@@ -178,26 +179,102 @@ fn trace<E: Snap>(
         for response in drain(&mut c) {
             assert_eq!(response.header.code(), Code::Applied);
             for record in response.records() {
-                assert!(
-                    matches!(record.code(), Code::Applied | Code::Scheduled),
-                    "{record:?}"
-                );
+                let expected = if matches!(record.command(),Command::Transition(_,plan) if plan.first.is_some()||plan.second.is_some())
+                {
+                    Code::Scheduled
+                } else {
+                    Code::Applied
+                };
+                assert_eq!(record.code(), expected, "{record:?}");
             }
         }
     }
+    c.observe_snapshots(true).unwrap();
     c.immediate(graph(1, None)).unwrap();
     let until = Instant::now() + Duration::from_secs(10);
     loop {
         std::thread::sleep(Duration::from_millis(2));
-        let rs = drain(&mut c);
-        if !rs.is_empty() {
-            assert_eq!(rs[0].header.graph(), 2);
+        let mut published = false;
+        while let Some(message) = c.poll() {
+            if matches!(
+                message,
+                EngineMessage::SnapshotConfiguration { graph: 2, .. }
+            ) {
+                published = true;
+            }
+        }
+        if published {
             break;
         }
         assert!(Instant::now() < until);
         step(r);
     }
+    c.immediate(Batch::new(2, 2, &[now(1, TransitionMode::Stopped)]).unwrap())
+        .unwrap();
     step(r);
+    assert!(c
+        .carrier_mut()
+        .endpoint()
+        .snapshot()
+        .iter()
+        .any(|r| matches!(
+            r,
+            shoop_rt_protocol::snapshot::Record::Telemetry(shoop_rt_protocol::Telemetry::Loop {
+                mode: shoop_rt_protocol::LoopMode::Stopped,
+                ..
+            })
+        )));
+    std::thread::sleep(Duration::from_millis(2));
+    let responses = drain(&mut c);
+    assert_eq!(responses.len(), 2);
+    for response in responses {
+        assert_eq!(response.header.graph(), 2);
+        assert_eq!(response.header.code(), Code::Applied);
+        for record in response.records() {
+            assert_eq!(record.code(), Code::Applied);
+        }
+    }
+    for command in [
+        now(1, TransitionMode::Stopped),
+        Command::Transition(
+            1,
+            TransitionPlan {
+                now: None,
+                first: Some(PlannedTransition {
+                    mode: TransitionMode::Recording,
+                    skip: 0,
+                }),
+                second: None,
+            },
+        ),
+    ] {
+        c.immediate(Batch::new(2, 2, &[command]).unwrap()).unwrap();
+        let mut complete = false;
+        for _ in 0..50 {
+            step(r);
+            std::thread::sleep(Duration::from_millis(2));
+            for response in drain(&mut c) {
+                assert_eq!(response.records()[0].code(), Code::Applied);
+                complete = true;
+            }
+            if complete {
+                break;
+            }
+        }
+        assert!(complete);
+    }
+    assert!(c
+        .carrier_mut()
+        .endpoint()
+        .snapshot()
+        .iter()
+        .any(|r| matches!(
+            r,
+            shoop_rt_protocol::snapshot::Record::Telemetry(shoop_rt_protocol::Telemetry::Loop {
+                mode: shoop_rt_protocol::LoopMode::Recording,
+                ..
+            })
+        )));
     output
 }
 #[shoop_test(no_wasm = "native Verilator model")]
@@ -243,4 +320,69 @@ fn initial_snapshot_and_zero_demand_switch_and_stop_make_progress() {
         }
     }
     panic!("pending switch prevented independent render demand");
+}
+
+#[shoop_test(no_wasm = "native serialized owner and bounded queues")]
+fn command_only_turns_stale_groups_and_full_completions_do_not_need_audio_or_block_stop() {
+    use shoop_rt_protocol::{ClientMessage, Lane};
+    use shoop_rt_transport::carrier::Endpoint as _;
+    let prepared = shoop_rt_host_marlin::prepare(Q as u32, driver(), 1, Q).unwrap();
+    let mut render = prepared.renderer;
+    let mut c = ProtocolClient::new(InProcess::new(prepared.endpoint, Outbox::new(64, 8, 0)));
+    c.connect().unwrap();
+    drain(&mut c);
+    c.immediate(graph(0, Some(0))).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        std::thread::sleep(Duration::from_millis(1));
+        step(&mut render);
+        if !drain(&mut c).is_empty() {
+            break;
+        }
+        assert!(Instant::now() < deadline);
+    }
+    let frame = render.next_frame();
+    c.immediate(Batch::new(1, 1, &[Command::LoopGain(1, 0.125)]).unwrap())
+        .unwrap();
+    loop {
+        let rs = drain(&mut c);
+        if !rs.is_empty() {
+            assert_eq!(rs[0].records()[0].code(), Code::Applied);
+            break;
+        }
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert_eq!(render.next_frame(), frame);
+    c.immediate(Batch::new(0, 0, &[Command::LoopGain(1, 1.)]).unwrap())
+        .unwrap();
+    loop {
+        let rs = drain(&mut c);
+        if !rs.is_empty() {
+            assert_eq!(rs[0].header.code(), Code::StaleConfiguration);
+            break;
+        }
+        assert!(Instant::now() < deadline);
+        std::thread::yield_now();
+    }
+    let endpoint = c.carrier_mut().endpoint_mut();
+    let batch = ClientMessage::Immediate(Batch::new(1, 1, &[Command::BusMute(0, false)]).unwrap());
+    let mut no_drain = Outbox::new(0, 0, 0);
+    assert_eq!(no_drain.available(Lane::Reliable), 0);
+    let mut accepted = 0;
+    for _ in 0..1000 {
+        if endpoint.try_deliver(batch, &mut no_drain).is_err() {
+            break;
+        }
+        accepted += 1;
+    }
+    assert!(
+        accepted > 0 && accepted < 1000,
+        "bounded completion credits must refuse admission"
+    );
+    for _ in 0..10 {
+        endpoint.poll(&mut no_drain);
+    }
+    assert_eq!(render.next_frame(), frame);
+    render.into_inner().stop().unwrap();
 }

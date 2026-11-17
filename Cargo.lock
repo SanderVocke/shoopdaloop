@@ -4784,6 +4784,7 @@ dependencies = [
 name = "rt_fpga_compiler"
 version = "0.3.0"
 dependencies = [
+ "serde",
  "shoop_wasm_test_support",
 ]
 
@@ -5799,9 +5800,14 @@ dependencies = [
 name = "shoop_rt_host_worklet"
 version = "0.3.0"
 dependencies = [
+ "anyhow",
+ "rt_fpga_compiler",
+ "rt_fpga_reference",
  "rt_runtime",
+ "serde_json",
  "shoop_host_processors",
  "shoop_rt_engine",
+ "shoop_rt_host_reference",
  "shoop_rt_protocol",
  "shoop_rt_transport",
  "shoop_rt_transport_message_port",

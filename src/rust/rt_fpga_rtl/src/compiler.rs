@@ -291,3 +291,53 @@ impl StateProgramTarget for RtlTarget<'_> {
         })
     }
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Space {
+    Program,
+    State,
+    Loop,
+    History,
+}
+pub struct ConfigurationWrite {
+    pub space: Space,
+    pub address: u64,
+    pub value: Bits,
+}
+impl ProgramImage {
+    /// Contains no initializers for state retained from the current program.
+    pub fn writes(&self, region_depth: u64) -> Vec<ConfigurationWrite> {
+        let mut writes = Vec::new();
+        for (i, value) in self.compiled.instructions.iter().enumerate() {
+            writes.push(ConfigurationWrite {
+                space: Space::Program,
+                address: u64::from(self.layout.region) * region_depth + i as u64,
+                value: value.clone(),
+            });
+        }
+        for (address, value) in &self.initializers {
+            writes.push(ConfigurationWrite {
+                space: Space::State,
+                address: u64::from(*address),
+                value: value.clone(),
+            });
+        }
+        for row in &self.new_loops {
+            for (word, value) in row.words.iter().enumerate() {
+                writes.push(ConfigurationWrite {
+                    space: Space::Loop,
+                    address: u64::from(row.id.slot) * 16 + word as u64,
+                    value: Bits::from_u64(*value),
+                });
+            }
+        }
+        for &address in self.layout.new_histories() {
+            writes.push(ConfigurationWrite {
+                space: Space::History,
+                address: u64::from(address),
+                value: Bits::zero(32),
+            });
+        }
+        writes
+    }
+}

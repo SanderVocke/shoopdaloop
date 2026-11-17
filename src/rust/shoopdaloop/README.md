@@ -465,3 +465,6 @@ Periods must align to the host quantum (default 32; browser 128). The editor pre
 a valid effective end. Nonaligned API length requests refuse explicitly; offsets,
 pre-play and raw MIDI timestamps keep frame precision. See the
 [P12 evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/loop-timing.md).
+
+Backend/driver selection, FPGA reference WebAudio builds and Marlin timing are
+documented in [shared drivers](../../../docs/shared_drivers.md).

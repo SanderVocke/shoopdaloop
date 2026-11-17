@@ -13,7 +13,7 @@ GENERATED = PACKAGE / "generated"
 parser = argparse.ArgumentParser()
 parser.add_argument("--profile", choices=("debug", "release"))
 parser.add_argument("--no-default-features", action="store_true", help="omit built-in host processors unless named by --features")
-parser.add_argument("--features", default=os.environ.get("SHOOP_WORKLET_FEATURES"), help="comma-separated host processor features: builtin-fx,oxisynth")
+parser.add_argument("--features", default=os.environ.get("SHOOP_WORKLET_FEATURES"), help="comma-separated host processor features: builtin-fx,oxisynth,fpga-reference")
 parser.add_argument(
     "--output-dir",
     type=pathlib.Path,
@@ -42,7 +42,7 @@ command = [
 ]
 if args.no_default_features or args.features is not None:
     features = set(filter(None, (args.features or "").split(",")))
-    unknown = features - {"builtin-fx", "oxisynth"}
+    unknown = features - {"builtin-fx", "oxisynth", "fpga-reference"}
     if unknown:
         raise RuntimeError(f"unsupported worklet processor features: {sorted(unknown)}")
     command += ["--no-default-features", "--features", ",".join(["exports", *sorted(features)])]

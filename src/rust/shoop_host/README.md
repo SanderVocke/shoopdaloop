@@ -50,8 +50,9 @@ CLI flags override both. See the
 
 `--backend native|rust-fpga|rtl-sim` selects the execution implementation at host
 startup. `native` is the default. `rust-fpga` requires the `fpga-reference` Cargo
-feature. `rtl-sim` is reserved for Marlin integration and currently fails at
-startup with an explicit error. Backend choice is independent of audio-driver
+feature. `rtl-sim` is available on Linux behind the `rtl-sim` Cargo feature.
+See [shared drivers](../../../docs/shared_drivers.md) for its serialized owner,
+latency and simulation deadline policy. Backend choice is independent of audio-driver
 and UI-transport selection; unsupported backend/driver combinations fail before
 starting a device. The old `--audio-backend` and `--fpga-reference` CLI switches
 are not accepted.

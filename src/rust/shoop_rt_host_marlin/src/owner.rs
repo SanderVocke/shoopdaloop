@@ -8,7 +8,7 @@ use rt_fpga_reference::{
 };
 use rt_fpga_rtl::{
     bits::Bits,
-    compiler::ProgramImage,
+    compiler::{ConfigurationWrite as Write, ProgramImage, Space},
     pipeline::{design, Geometry},
     sim::Sim,
 };
@@ -40,11 +40,6 @@ pub fn descriptor(image: &ProgramImage) -> SwitchProgram {
         buffers: c.resources.buffers as u16,
     }
 }
-struct Write {
-    space: u8,
-    address: u64,
-    bits: Bits,
-}
 struct Upload {
     image: ProgramImage,
     writes: std::vec::IntoIter<Write>,
@@ -54,37 +49,7 @@ struct Upload {
 }
 impl Upload {
     fn new(image: ProgramImage) -> Self {
-        let mut writes = Vec::new();
-        for (i, bits) in image.compiled.instructions.iter().enumerate() {
-            writes.push(Write {
-                space: 0,
-                address: image.layout.region as u64 * 128 + i as u64,
-                bits: bits.clone(),
-            });
-        }
-        for (address, bits) in &image.initializers {
-            writes.push(Write {
-                space: 1,
-                address: u64::from(*address),
-                bits: bits.clone(),
-            });
-        }
-        for row in &image.new_loops {
-            for (word, bits) in row.words.iter().enumerate() {
-                writes.push(Write {
-                    space: 2,
-                    address: u64::from(row.id.slot) * 16 + word as u64,
-                    bits: Bits::from_u64(*bits),
-                });
-            }
-        }
-        for &address in image.layout.new_histories() {
-            writes.push(Write {
-                space: 3,
-                address: u64::from(address),
-                bits: Bits::zero(32),
-            });
-        }
+        let writes = image.writes(128);
         let views = image
             .layout
             .new_loops()
@@ -234,12 +199,12 @@ impl Owner<'_> {
                     }
                     break;
                 };
-                let (prefix, space) = if w.space == 3 {
+                let (prefix, space) = if w.space == Space::History {
                     ("audio_cfg", 3)
                 } else {
-                    ("cfg", u64::from(w.space))
+                    ("cfg", w.space as u64)
                 };
-                self.access(prefix, space, w.address, Some(&w.bits))?;
+                self.access(prefix, space, w.address, Some(&w.value))?;
             }
         }
         if upload.done {
@@ -360,14 +325,19 @@ impl Owner<'_> {
             unreachable!()
         };
         let mut state = decode(physical, &words, self.rows[index].last_pulse);
-        let source = if words[0] & (1 << 36) != 0 {
-            Some(LoopId {
-                slot: (words[0] >> 37) as u16 as u32,
-                generation: words[1] as u32,
-            })
-        } else {
-            None
-        };
+        let image = self.current.as_ref().unwrap();
+        let source = image
+            .layout
+            .loops
+            .iter()
+            .find(|l| l.physical == physical)
+            .and_then(|l| l.sync_source)
+            .map(|logical| image.layout.loop_id(logical))
+            .transpose()?
+            .map(|id| LoopId {
+                slot: id.slot,
+                generation: id.generation,
+            });
         let step = |s: Step| ModeStep {
             mode: mode(s.mode),
             skip: s.skip,
@@ -431,7 +401,10 @@ impl Owner<'_> {
                 return Ok(false);
             }
             let pending = self.pending.take().unwrap();
-            let failed = self.sim.model.get("switch_response_error") != 0;
+            ensure!(
+                self.sim.model.get("switch_response_error") == 0,
+                "RTL ownership fence failed"
+            );
             let group = execution
                 .commands
                 .pop()
@@ -440,11 +413,8 @@ impl Owner<'_> {
             group.respond(
                 pending.header.complete(pending.frame, Code::Applied),
                 |_| {
-                    let mut r = pending.records[i];
+                    let r = pending.records[i];
                     i += 1;
-                    if failed && matches!(r.command(), Command::SwitchProgram(_)) {
-                        r = r.complete(Code::CannotApply);
-                    }
                     r
                 },
             );
@@ -669,10 +639,25 @@ impl Owner<'_> {
         ]);
         let mut admitted = false;
         for _ in 0..2_000_000 {
+            if self.pending.is_some() && self.sim.model.get("switch_response_valid") != 0 {
+                self.sim.model.set("run_valid", 0);
+                self.command_turn(execution)?;
+                for _ in 0..128 {
+                    if !self.command_turn(execution)? {
+                        break;
+                    }
+                }
+                self.sim.model.set("run_valid", 1);
+            }
             self.sim.model.eval();
-            let ready = self.sim.model.get("run_ready") != 0;
+            let ready =
+                self.sim.model.get("run_valid") != 0 && self.sim.model.get("run_ready") != 0;
+            let revision = self.sim.model.get("active_revision");
             self.tick()?;
             self.select()?;
+            if self.sim.model.get("active_revision") != revision {
+                self.sim.model.set("run_valid", 0);
+            }
             if ready {
                 admitted = true;
                 break;

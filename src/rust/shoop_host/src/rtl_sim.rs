@@ -63,8 +63,14 @@ struct Factory {
     quantum: u32,
     memory_mb: u32,
 }
-struct Observer(Arc<shoop_rt_host_reference::Status>);
+struct Observer(
+    Arc<shoop_rt_host_reference::Status>,
+    shoop_rt_host_marlin::StopHandle,
+);
 impl drivers::Observer for Observer {
+    fn stopping(&self) {
+        self.1.request();
+    }
     fn driver(&self, d: shoop_rt_protocol::DriverStatus) {
         self.0.update_driver(d);
     }
@@ -107,6 +113,7 @@ impl drivers::Factory for Factory {
             self.max_frames,
         )
         .map_err(|e| drivers::StartError::Factory(e.into()))?;
+        let stop = prepared.renderer.inner().stop_handle();
         Ok(drivers::Parts {
             buffers: drivers::BufferConfig {
                 host: opened.ports,
@@ -117,7 +124,7 @@ impl drivers::Factory for Factory {
                 output_midi_bytes: 65536,
             },
             renderer: Box::new(Render(prepared.renderer)),
-            observer: Arc::new(Observer(prepared.status)),
+            observer: Arc::new(Observer(prepared.status, stop)),
             endpoint: Box::new(prepared.endpoint),
             outbox: Outbox::new(64, 8, 0),
             master_connections: vec![(0, 0), (1, 1)],

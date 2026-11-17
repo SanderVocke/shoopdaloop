@@ -288,25 +288,25 @@ Do not replace an unfinished renderer with native execution to make a pair pass.
 
 ### Stage 5 — Marlin renderer, command service and ownership
 
-- [ ] Extract reusable RtlTarget, model setup, memory responders, RAM access and
+- [x] Extract reusable RtlTarget, model setup, memory responders, RAM access and
       upload/switch helpers from test-only composition into the optional runtime.
       Prepare/cache the model before readiness; allow cold-build startup time and
       return actionable toolchain/source errors. Replace fixture-wide simulated
       time limits and assertion failures with per-operation budgets and explicit
       faults; healthy sessions must not expire at a fixed simulated timestamp.
-- [ ] Implement the single-owner scheduler, nonblocking endpoint handles and
+- [x] Implement the single-owner scheduler, nonblocking endpoint handles and
       sequential command/quantum turns specified above. Preserve thread affinity
       at model creation, use and destruction.
-- [ ] Implement the reference-supported runtime command groups and coherent
+- [x] Implement the reference-supported runtime command groups and coherent
       snapshots from actual RTL state/events. Preserve command ordering, codes,
       target bindings, stale-revision checks and publication/fence semantics.
-- [ ] Integrate the shared compiler/allocator and sparse loader without active-
+- [x] Integrate the shared compiler/allocator and sparse loader without active-
       state initialization. Resume pending switches/fences across service turns;
       keep driver demand independent of their completion.
-- [ ] Verify command-only service leaves audio frame/cursor/pulse counts unchanged;
+- [x] Verify command-only service leaves audio frame/cursor/pulse counts unchanged;
       command–quantum interleavings match the Rust reference. Include clear-plans
       plus switch groups, stale commands, two future plans and retained recording.
-- [ ] Verify controlled zero-demand startup, pending switch followed by external
+- [x] Verify controlled zero-demand startup, pending switch followed by external
       render demand, response/snapshot backpressure, full request/reclaim queues,
       delayed memory/fence completion and stop during each state. Drive tests with
       explicit steps and finite cycle budgets so failures diagnose a state rather
@@ -314,57 +314,57 @@ Do not replace an unfinished renderer with native execution to make a pair pass.
 
 ### Stage 6 — RTL device bridge and normal application startup
 
-- [ ] Implement the preallocated simulator bridge and its latency, priming,
+- [x] Implement the preallocated simulator bridge and its latency, priming,
       underrun/fault, frame-order and generation rules. All physical callbacks
       remain nonblocking even if simulation deliberately stops making progress.
-- [ ] Make `--backend rtl-sim` functional behind an optional Cargo feature in the
+- [x] Make `--backend rtl-sim` functional behind an optional Cargo feature in the
       host, app and Manager. Wire all three native drivers and existing in-process,
       socket and shared-memory UI transports; keep unsupported platforms explicit.
-- [ ] Keep driver discovery independent of backend availability. Lifecycle controls
+- [x] Keep driver discovery independent of backend availability. Lifecycle controls
       for unsupported reference/RTL live driver replacement refuse normally;
       existing native replacement continues to work.
-- [ ] Verify bridge ordering/latency and nonblocking behavior using mock callbacks
+- [x] Verify bridge ordering/latency and nonblocking behavior using mock callbacks
       and an intentionally delayed owner. Exercise queue saturation, owner panic,
       failure during upload/run/fence and shutdown without callback/control waits.
-- [ ] Run a small real Marlin application scenario through `shoop_host` and the
+- [x] Run a small real Marlin application scenario through `shoop_host` and the
       normal UI runtime: add supported graph, record, schedule/play/stop, alter
       graph and shut down. Compare samples, states and responses with the reference.
 
 ### Stage 7 — WebAudio through the same portable boundary
 
-- [ ] Refactor `shoop_rt_host_worklet` to prepare/render through the portable
+- [x] Refactor `shoop_rt_host_worklet` to prepare/render through the portable
       contract while retaining current message framing, MIDI lanes and callback
       lifetime. Preserve native browser audio and processor behavior.
-- [ ] Add optional Rust-reference endpoint/renderer selection to worklet startup,
+- [x] Add optional Rust-reference endpoint/renderer selection to worklet startup,
       its build script and browser startup settings. Keep compilation/loading
       preparation out of the WebAudio render callback using existing control-side
       scheduling; use the quantum adapter for worklet block sizes.
-- [ ] Account for separate browser/worklet Wasm heaps: transfer precompiled target
+- [x] Account for separate browser/worklet Wasm heaps: transfer precompiled target
       instruction/new-state writes and the switch descriptor through bounded
       internal loader records. Do not pass native pointers/Arc handles across
       heaps or parse an unbounded program image in a render callback. Preserve
       allocation ownership, upload completion and fence ordering on this path.
-- [ ] Verify native browser smoke/contract coverage and a limited reference
+- [x] Verify native browser smoke/contract coverage and a limited reference
       record/play/live-load trace. Check output-only/microphone input, rate/block
       geometry, startup errors, disconnect and fixed-point conversion. Reject
       Marlin selection clearly without native simulator dependencies in wasm.
 
 ### Stage 8 — End-to-end validation, documentation and PR
 
-- [ ] Run shared contract scenarios across the supported matrix. Use identical
+- [x] Run shared contract scenarios across the supported matrix. Use identical
       input samples, command positions and graph revisions; compare before/after
       adapter latency. For RTL/reference use exact fixed-point samples and states;
       document native numeric tolerances. Prove sequential command service is
       sufficient with the simulator owner never reentered.
-- [ ] Run the applicable complete local Rust gate once after focused checks pass,
+- [x] Run the applicable complete local Rust gate once after focused checks pass,
       plus relevant compiler/reference/Marlin suites and browser checks. Do not
       multiply long simulations across every pacing/driver/transport permutation:
       test scheduler/bridge permutations with deterministic mocks and use small
       representative actual RTL runs for the full path.
-- [ ] Run formatting, test-attribute policy, dependency audits and warning-denying
+- [x] Run formatting, test-attribute policy, dependency audits and warning-denying
       affected builds. Preserve meaningful existing coverage; document baseline
       failures or unavailable real devices rather than silently skipping new paths.
-- [ ] Update startup/driver documentation and CI paths/jobs for the new modules,
+- [x] Update startup/driver documentation and CI paths/jobs for the new modules,
       modes and tests. Document supported combinations, latency, sequential Marlin
       operation and the consequences of a simulation that misses real-time demand.
 - [ ] Commit completed milestones and the final validation record; push the branch
@@ -374,6 +374,7 @@ Do not replace an unfinished renderer with native execution to make a pair pass.
       already observed, address it only when attributable to this work.
 - [ ] Finish with the PR link and local results. Do not merge autonomously unless
       the user separately authorizes that merge.
+
 
 ## Testing budget and execution contract
 
@@ -455,3 +456,51 @@ speed threshold for Marlin is not required.
   three live graph updates successfully. Warning-denying optional host/runtime
   builds, reference regression, formatting and test policy passed. Remaining
   matrix/backpressure/browser/final checks follow in later milestones.
+
+- Stages 5/6 completed: command-only progress, stale revisions, saturated completion
+  credits, queued commands behind a switch, changed-source plans, and zero-demand
+  switching pass against the actual model. Post-fence commands are serviced before
+  admitting the first new-program quantum. A failed ownership fence faults the
+  runtime without releasing old allocations. Shared sparse write generation is
+  used by both the production loader and retained testbenches.
+- Marlin results: runtime/trace tests 3 plus bridge tests 4 passed; retained
+  target/loading tests 4 passed; shared-driver Dummy modes/partial requests and
+  mocked CPAL tests 2 passed. A real UI scenario passed, and the application
+  client passed over both socket and shared-memory transport with live reloads.
+- Stage 7 completed: native and optional reference worklets use the portable
+  render contract. Configuration version 8 identifies backend/media geometry.
+  The main heap compiles/allocates and transfers a bounded precompiled image;
+  the message handler in the worklet heap decodes/stages it outside rendering.
+  Native worklet tests 9+1+8 passed; Wasm tests 9+8+2 passed; the new serialized
+  reference record/play/reload test also checks coherent revisioned snapshots
+  and uses a render heap guard. App and reference worklet Wasm builds passed.
+- A temporary Chromium 154 AudioWorklet smoke passed native output and reference
+  record/play/live-reload with constant input, fake microphone input and 44.1 kHz.
+  Constant-source samples compare exactly within 1e-6; fake microphone samples
+  allow 1e-4 for browser capture conversion/resampling. The deterministic
+  Rust/RTL trace still compares fixed-point audio and snapshot records exactly.
+- Final broad local run: 3,421 tests, 3,419 passed, 2 failed, 11 skipped. The native
+  UI driver-switch test passed on a focused recheck. The launcher shutdown-result
+  polling test fails identically on base 819ade43 in a separate worktree/target;
+  it is an existing failure and is not changed by this work. No broad repeat is
+  planned. Warning-denying workspace and optional UI builds passed; final small
+  changes are covered by the affected builds and focused checks.
+- Production/build dependency audits pass on native Linux and Wasm, including
+  the new RTL, Marlin and portable reference crates. FPGA CI paths and targeted
+  optional runtime/worklet/application tests include the extracted modules.
+
+- Final focused additions pass: RT endpoint fault/backpressure tests 6; Marlin
+  runtime/trace/bridge tests 7, including queued post-switch commands on the first
+  new quantum, owner panic, and latched failure during driver startup. Runtime
+  block generations are unique within the process. The real JACK + mocked CPAL +
+  Dummy integration suite passes all 3 cases, with callback allocation guards.
+- The reference worklet now forwards terminal publisher failures through its
+  carrier endpoint. Healthy native/Wasm worklet and serialized-loader regressions
+  pass after this change. Loader acknowledgements retain all 64 revision bits.
+- Fresh workspace and optional native builds pass after regenerating workspace
+  artifacts; native/Wasm dependency audits and policy tests (23) pass. Formatting,
+  test-attribute policy and retained FPGA testbench coverage checks pass.
+- Baseline comparison: the old UI test needed its existing named-host-field
+  fixture correction to compile; its behavior passes on base as well as the
+  focused branch recheck. The shutdown-result polling failure is reproduced on
+  unmodified base host code. These findings do not trigger unrelated repairs.

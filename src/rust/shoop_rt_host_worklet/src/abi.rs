@@ -33,6 +33,10 @@ pub const FRAMING_ERRORS: u32 = 5;
 
 struct Worklet {
     config: Option<Box<[u8]>>,
+    #[cfg(feature = "fpga-reference")]
+    image: Option<Box<[u8]>>,
+    #[cfg(feature = "fpga-reference")]
+    image_ok: bool,
     host: Option<WorkletHost>,
 }
 
@@ -40,6 +44,10 @@ thread_local! {
     static WORKLET: RefCell<Worklet> = const {
         RefCell::new(Worklet {
             config: None,
+            #[cfg(feature="fpga-reference")]
+            image:None,
+            #[cfg(feature="fpga-reference")]
+            image_ok:false,
             host: None,
         })
     };
@@ -111,6 +119,10 @@ pub extern "C" fn shoop_rt_worklet_release() {
         let mut worklet = worklet.borrow_mut();
         worklet.host = None;
         worklet.config = None;
+        #[cfg(feature = "fpga-reference")]
+        {
+            worklet.image = None;
+        }
     });
 }
 
@@ -296,4 +308,48 @@ pub extern "C" fn shoop_rt_worklet_profiling_end(ended_ns: f64, frames: u32) {
             );
         }
     });
+}
+
+#[cfg(feature = "fpga-reference")]
+#[no_mangle]
+pub extern "C" fn shoop_rt_worklet_image_buffer(len: usize) -> *mut u8 {
+    WORKLET.with(|cell| {
+        let mut w = cell.borrow_mut();
+        if len == 0 || len > crate::reference::MAX_IMAGE_BYTES || w.host.is_none() {
+            return std::ptr::null_mut();
+        }
+        w.image.insert(vec![0; len].into_boxed_slice()).as_mut_ptr()
+    })
+}
+#[cfg(feature = "fpga-reference")]
+#[no_mangle]
+pub extern "C" fn shoop_rt_worklet_image_commit() -> u32 {
+    WORKLET.with(|cell| {
+        let mut w = cell.borrow_mut();
+        let Some(bytes) = w.image.take() else {
+            return INVALID_CONFIG;
+        };
+        match w.host.as_mut().map(|h| h.load_reference_image(&bytes)) {
+            Some(Ok(())) => 0,
+            _ => ENGINE_REFUSED,
+        }
+    })
+}
+#[cfg(feature = "fpga-reference")]
+#[no_mangle]
+pub extern "C" fn shoop_rt_worklet_image_ready() -> u64 {
+    WORKLET.with(|cell| {
+        let mut w = cell.borrow_mut();
+        let Some((revision, ok)) = w.host.as_mut().and_then(WorkletHost::reference_image_ready)
+        else {
+            return 0;
+        };
+        w.image_ok = ok;
+        revision
+    })
+}
+#[cfg(feature = "fpga-reference")]
+#[no_mangle]
+pub extern "C" fn shoop_rt_worklet_image_ready_ok() -> u32 {
+    WORKLET.with(|cell| u32::from(cell.borrow().image_ok))
 }

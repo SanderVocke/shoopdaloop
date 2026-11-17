@@ -602,7 +602,7 @@ mod jack_acceptance {
         assert_eq!(active.configured, config);
         assert!(active.instance_name.starts_with("jack-application-"));
         assert!(engine.warnings.is_empty());
-        let host = engine.host.0.as_ref().unwrap();
+        let host = engine.host.native.as_ref().unwrap();
         assert_eq!(active.sample_rate, host.status().driver.sample_rate);
         assert_eq!(active.buffer_size, host.status().driver.buffer_frames);
     }

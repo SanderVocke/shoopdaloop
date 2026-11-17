@@ -155,8 +155,8 @@ impl AppArgs {
             .map_err(anyhow::Error::msg)?;
         #[cfg(target_arch = "wasm32")]
         anyhow::ensure!(
-            backend == shoop_app_api::BackendType::Native,
-            "only the native backend is available in the browser"
+            backend == shoop_app_api::BackendType::Native || (backend == shoop_app_api::BackendType::RustFpga && cfg!(feature="fpga-reference")),
+            "browser backend unavailable: build with fpga-reference for rust-fpga; rtl-sim requires a native host"
         );
         Ok(backend)
     }

@@ -133,6 +133,20 @@ impl Endpoint {
                         COMMANDS];
                 let mut count = 0;
                 for &record in group.commands() {
+                    if let shoop_rt_protocol::immediate::Command::SwitchProgram(d) =
+                        record.command()
+                    {
+                        if record.code() == shoop_rt_protocol::immediate::Code::Applied
+                            && self.settings.graph != d.revision
+                        {
+                            self.settings.graph = d.revision;
+                            self.settings.topology = d.revision;
+                            self.snapshots.configuration_sent = false;
+                            self.snapshots.len = 0;
+                            self.snapshots.offset = 0;
+                            self.snapshots.sent_frame = None;
+                        }
+                    }
                     records[count] = record;
                     count += 1;
                 }
@@ -299,6 +313,16 @@ impl CarrierEndpoint for Endpoint {
         let _ = self.try_deliver(message, out);
     }
     fn poll(&mut self, out: &mut Outbox) {
+        if self.connected && self.ports.snapshots.error().is_some() {
+            if out
+                .push(EngineMessage::Disconnected(DisconnectReason::Fault))
+                .is_ok()
+            {
+                self.reset();
+                out.discard_push_snapshots();
+            }
+            return;
+        }
         self.responses(out);
         self.publications(out);
     }

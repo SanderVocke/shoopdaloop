@@ -4,7 +4,7 @@ mod bridge;
 #[cfg(all(feature = "sim", not(target_arch = "wasm32")))]
 mod owner;
 #[cfg(all(feature = "sim", not(target_arch = "wasm32")))]
-pub use bridge::{prepare, Bridge, Endpoint, Prepared};
+pub use bridge::{prepare, Bridge, Endpoint, Prepared, StopHandle};
 
 #[cfg(test)]
 #[global_allocator]

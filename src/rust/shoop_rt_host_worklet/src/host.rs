@@ -4,13 +4,16 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::config::{ConfigError, WorkletConfig};
+use crate::config::{Backend, ConfigError, WorkletConfig};
 use crate::lane::{self, MidiEvent};
 use rt_runtime::buffer::{AudioBlock, MidiBlock, MidiBuffer};
+use rt_runtime::host::Renderer;
 use shoop_rt_engine::{ControlEndpoint, HostStatus, PrepareError, Render, MAX_HOST_PORTS};
+use shoop_rt_protocol::ClientMessage;
 use shoop_rt_protocol::{DriverKind, DriverRunState, DriverStatus};
 use shoop_rt_transport::buffer::{Batch, Stream};
 use shoop_rt_transport::carrier::RecordServer;
+use shoop_rt_transport::carrier::{CarrierError, Endpoint as CarrierEndpoint, Outbox};
 use shoop_rt_transport_message_port::server::{RecordLanes, Records, PROFILING_CREDITS};
 
 /// Lanes the main thread posts into.
@@ -77,14 +80,111 @@ fn bump(counter: &mut u32) {
     *counter = counter.saturating_add(1);
 }
 
+enum Endpoint {
+    Native(ControlEndpoint),
+    #[cfg(feature = "fpga-reference")]
+    Reference(shoop_rt_transport::rt::Endpoint),
+}
+impl CarrierEndpoint for Endpoint {
+    fn try_deliver(&mut self, m: ClientMessage, out: &mut Outbox) -> Result<(), CarrierError> {
+        match self {
+            Self::Native(e) => e.try_deliver(m, out),
+            #[cfg(feature = "fpga-reference")]
+            Self::Reference(e) => e.try_deliver(m, out),
+        }
+    }
+    fn deliver(&mut self, m: ClientMessage, out: &mut Outbox) {
+        let _ = self.try_deliver(m, out);
+    }
+    fn poll(&mut self, out: &mut Outbox) {
+        match self {
+            Self::Native(e) => e.poll(out),
+            #[cfg(feature = "fpga-reference")]
+            Self::Reference(e) => e.poll(out),
+        }
+    }
+}
+enum RenderOwner {
+    Native(Render),
+    #[cfg(feature = "fpga-reference")]
+    Reference(rt_runtime::host_adapter::QuantumAdapter<shoop_rt_host_reference::ReferenceRenderer>),
+}
+impl Renderer for RenderOwner {
+    fn next_frame(&self) -> rt_runtime::Frame {
+        match self {
+            Self::Native(r) => r.next_frame(),
+            #[cfg(feature = "fpga-reference")]
+            Self::Reference(r) => r.next_frame(),
+        }
+    }
+    fn process(
+        &mut self,
+        a: AudioBlock<'_, '_>,
+        m: MidiBlock<'_>,
+    ) -> Result<rt_runtime::host::Report, rt_runtime::Error> {
+        match self {
+            Self::Native(r) => r.process(a, m),
+            #[cfg(feature = "fpga-reference")]
+            Self::Reference(r) => r.process(a, m),
+        }
+    }
+    fn midi_recovery(&self, p: usize) -> Option<&MidiBuffer> {
+        match self {
+            Self::Native(r) => r.midi_recovery(p),
+            #[cfg(feature = "fpga-reference")]
+            Self::Reference(r) => r.midi_recovery(p),
+        }
+    }
+}
+enum StatusOwner {
+    Native(HostStatus),
+    #[cfg(feature = "fpga-reference")]
+    Reference(std::sync::Arc<shoop_rt_host_reference::Status>),
+}
+impl StatusOwner {
+    fn set_driver(&self, d: DriverStatus) {
+        match self {
+            Self::Native(s) => s.set_driver(d),
+            #[cfg(feature = "fpga-reference")]
+            Self::Reference(s) => s.update_driver(d),
+        }
+    }
+    fn add_xruns(&self, n: u32) {
+        match self {
+            Self::Native(s) => s.add_xruns(n),
+            #[cfg(feature = "fpga-reference")]
+            Self::Reference(s) => {
+                for _ in 0..n {
+                    s.xrun();
+                }
+            }
+        }
+    }
+    fn set_load(&self, l: f32) {
+        match self {
+            Self::Native(s) => s.set_load(l),
+            #[cfg(feature = "fpga-reference")]
+            Self::Reference(s) => s.load(l),
+        }
+    }
+    fn profiling(&self) -> Option<&rt_runtime::profiling::Control> {
+        match self {
+            Self::Native(s) => s.profiling(),
+            #[cfg(feature = "fpga-reference")]
+            Self::Reference(_) => None,
+        }
+    }
+}
 /// The browser host: the engine, its record server and the buffers the
 /// processor script copies through. Preparation allocates; nothing after it
 /// does.
 pub struct WorkletHost {
-    server: RecordServer<ControlEndpoint, RecordLanes>,
+    server: RecordServer<Endpoint, RecordLanes>,
     records: RecordLanes,
-    render: Render,
-    status: HostStatus,
+    render: RenderOwner,
+    status: StatusOwner,
+    #[cfg(feature = "fpga-reference")]
+    programs: Option<rt_fpga_reference::rt_interface::ProgramControl>,
     driver: DriverStatus,
     max_frames: usize,
     audio_inputs: usize,
@@ -111,11 +211,27 @@ impl WorkletHost {
             sample_rate: description.sample_rate,
             buffer_frames: description.max_frames as u32,
         };
-        let processors =
-            shoop_host_processors::prepare(description).map_err(PrepareFailure::Processors)?;
-        let engine = shoop_rt_engine::prepare_with_processors(description, driver, processors)
-            .map_err(PrepareFailure::Engine)?;
-        let outbox = engine.outbox();
+        let (endpoint, render, status, outbox) = match config.backend {
+            Backend::Native => {
+                let processors = shoop_host_processors::prepare(description)
+                    .map_err(PrepareFailure::Processors)?;
+                let engine =
+                    shoop_rt_engine::prepare_with_processors(description, driver, processors)
+                        .map_err(PrepareFailure::Engine)?;
+                let outbox = engine.outbox();
+                (
+                    Endpoint::Native(engine.endpoint),
+                    RenderOwner::Native(engine.render),
+                    StatusOwner::Native(engine.host),
+                    outbox,
+                )
+            }
+            #[cfg(feature = "fpga-reference")]
+            Backend::RustReference => {
+                return Self::prepare_reference(config, driver);
+            }
+            _ => return Err(PrepareFailure::Config(ConfigError::BackendUnavailable)),
+        };
         let output_capacity = description
             .midi_output_capacity()
             .map_err(|error| PrepareFailure::Engine(PrepareError::Runtime(error)))?;
@@ -148,10 +264,12 @@ impl WorkletHost {
             profiling_credits: PROFILING_CREDITS,
         })));
         Ok(Self {
-            server: RecordServer::new(engine.endpoint, records.clone(), outbox),
+            server: RecordServer::new(endpoint, records.clone(), outbox),
             records,
-            render: engine.render,
-            status: engine.host,
+            render,
+            status,
+            #[cfg(feature = "fpga-reference")]
+            programs: None,
             driver,
             max_frames: frames,
             audio_inputs,
@@ -169,8 +287,78 @@ impl WorkletHost {
         })
     }
 
+    #[cfg(feature = "fpga-reference")]
+    fn prepare_reference(
+        config: &WorkletConfig,
+        driver: DriverStatus,
+    ) -> Result<Self, PrepareFailure> {
+        let prepared = shoop_rt_host_reference::prepare(
+            config.engine.quantum as u32,
+            driver,
+            config.reference_memory_mb,
+        )
+        .map_err(|_| PrepareFailure::Config(ConfigError::Range))?;
+        let (control, programs) = prepared.endpoint.into_control();
+        let frames = config.engine.max_frames;
+        let audio_inputs = config.engine.host.audio_inputs.len();
+        let audio_outputs = config.engine.host.audio_outputs.len();
+        let records = RecordLanes(Rc::new(RefCell::new(Records {
+            inbox: Stream::new(config.records_in_bytes),
+            outbox: Batch::new(config.records_out_bytes),
+            framing_errors: 0,
+            profiling_credits: PROFILING_CREDITS,
+        })));
+        Ok(Self {
+            server: RecordServer::new(
+                Endpoint::Reference(control),
+                records.clone(),
+                Outbox::new(64, 8, 0),
+            ),
+            records,
+            render: RenderOwner::Reference(prepared.renderer),
+            status: StatusOwner::Reference(prepared.status),
+            programs: Some(programs),
+            driver,
+            max_frames: frames,
+            audio_inputs,
+            audio_outputs,
+            input: vec![0.; audio_inputs * frames].into_boxed_slice(),
+            output: vec![0.; audio_outputs * frames].into_boxed_slice(),
+            midi_inputs: Box::new([]),
+            midi_outputs: Box::new([]),
+            midi_in: Stream::new(config.midi_in_bytes),
+            midi_out: Batch::new(config.midi_out_bytes),
+            records_per_quantum: config.records_per_quantum,
+            next_frame: None,
+            counters: Counters::default(),
+            fault: None,
+        })
+    }
+    /// Called by the MessagePort handler, outside rendering. The compiler ran in the main heap.
+    #[cfg(feature = "fpga-reference")]
+    pub fn load_reference_image(&mut self, bytes: &[u8]) -> Result<(), rt_runtime::Error> {
+        let programs = self
+            .programs
+            .as_mut()
+            .ok_or(rt_runtime::Error::InvalidConfig)?;
+        while programs.reclaim().is_some() {}
+        let image =
+            crate::reference::decode_image(bytes).map_err(|_| rt_runtime::Error::InvalidConfig)?;
+        programs.stage(image).map_err(|_| rt_runtime::Error::Full)
+    }
+    #[cfg(feature = "fpga-reference")]
+    pub fn reference_image_ready(&mut self) -> Option<(u64, bool)> {
+        self.programs
+            .as_mut()?
+            .ready()
+            .map(|r| (r.revision, r.result.is_ok()))
+    }
     pub fn set_profiling_clock(&mut self, clock: rt_runtime::profiling::Clock) {
-        self.render.set_profiling_clock(clock);
+        match &mut self.render {
+            RenderOwner::Native(render) => render.set_profiling_clock(clock),
+            #[cfg(feature = "fpga-reference")]
+            _ => {}
+        }
     }
     pub fn profiling(&self) -> Option<&rt_runtime::profiling::Control> {
         self.status.profiling()
@@ -296,6 +484,10 @@ impl WorkletHost {
         if self.driver.state == DriverRunState::Starting {
             self.driver.state = DriverRunState::Running;
             self.status.set_driver(self.driver);
+            #[cfg(feature = "fpga-reference")]
+            if let Endpoint::Reference(endpoint) = self.server.endpoint_mut() {
+                endpoint.set_driver(self.driver);
+            }
         }
         if self.next_frame.is_some_and(|next| next != quantum.frame) {
             bump(&mut self.counters.discontinuities);

@@ -7,11 +7,13 @@ pub mod loading;
 use alloc::{vec, vec::Vec};
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Identity {
     pub slot: u32,
     pub generation: u32,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Loop {
     pub id: Identity,
     pub length: u64,
@@ -19,6 +21,7 @@ pub struct Loop {
     pub repeat_sync: bool,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Ramp {
     pub start: i32,
     pub target: i32,
@@ -26,6 +29,7 @@ pub struct Ramp {
     pub elapsed: u32,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum InitialValue {
     MediaView(u32),
     Ramp(Ramp),
@@ -36,6 +40,7 @@ pub enum InitialValue {
     },
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Operation {
     Silence {
         destination: u32,
@@ -76,6 +81,7 @@ pub enum Operation {
 }
 /// Logical state/buffer slots. Targets return their actual locations in their artifacts.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LoopBinding {
     pub id: Identity,
     pub gain: Option<u32>,
@@ -83,6 +89,7 @@ pub struct LoopBinding {
     pub meter: Option<u32>,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Resources {
     pub queue_capacity: u32,
     pub buffers: u32,
@@ -92,6 +99,7 @@ pub struct Resources {
     pub events: u32,
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LogicalStateProgram {
     pub quantum: u32,
     pub chunk_frames: u32,
@@ -104,6 +112,7 @@ pub struct LogicalStateProgram {
     pub resources: Resources,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ProgramLimits {
     pub instructions: u32,
     pub state_values: u32,
@@ -131,6 +140,7 @@ impl Default for ProgramLimits {
     }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Resource {
     Instructions,
     State,
@@ -143,6 +153,7 @@ pub enum Resource {
     Quantum,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum CompileError {
     InvalidProgram,
     Capacity(Resource),
@@ -163,6 +174,7 @@ pub trait StateProgramTarget {
 
 /// Fixed fixtures retained for direct target and loader tests.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum FixedProgram {
     MonoLoops { quantum: u32, loops: u32 },
     SyncSmoothing { quantum: u32 },

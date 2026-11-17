@@ -107,12 +107,20 @@ pub fn run_with(host: PathBuf, output: PathBuf) -> Result<()> {
     run_backend(host, output, "rust-fpga")
 }
 pub fn run_backend(host: PathBuf, output: PathBuf, backend: &str) -> Result<()> {
+    run_configuration(host, output, backend, "socket")
+}
+pub fn run_configuration(
+    host: PathBuf,
+    output: PathBuf,
+    backend: &str,
+    transport: &str,
+) -> Result<()> {
     std::fs::create_dir_all(&output)?;
     let output = output.canonicalize()?;
     let config = serde_json::json!({ "backend": backend,
         "driver":{"Dummy":{"sample_rate":8000,"buffer_size":32}}, "loop_smoothing_ms":0,
         "processors":{"builtin_fx":"off","oxisynth":"off","fx_instances":0,"synth_instances":0,"memory_mb":16},
-        "pools":{"quantum":32,"tracks":2,"loops":16,"channels":1,"loop_memory_mb":1}, "transport":"socket" });
+        "pools":{"quantum":32,"tracks":2,"loops":16,"channels":1,"loop_memory_mb":1}, "transport":transport });
     std::fs::write(
         output.join("config.json"),
         serde_json::to_vec_pretty(&config)?,

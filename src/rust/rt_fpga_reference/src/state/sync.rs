@@ -43,6 +43,7 @@ pub struct ModePlan {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LoopSlot {
     /// Logical state at the next quantum boundary after the sync instruction runs.
     pub state: LoopState,

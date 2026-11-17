@@ -61,6 +61,7 @@ pub struct TransitionPlanImage {
     pub components: Vec<Vec<LoopId>>,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TransitionPlan {
     pub(crate) image: TransitionPlanImage,
     pub(crate) specs: Vec<Option<LoopSpec>>,

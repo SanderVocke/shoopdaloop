@@ -87,7 +87,12 @@ impl Status {
             kind: driver.kind,
             sample_rate: driver.sample_rate,
             buffer: AtomicU32::new(driver.buffer_frames),
-            state: AtomicU8::new(0),
+            state: AtomicU8::new(match driver.state {
+                DriverRunState::Starting => 0,
+                DriverRunState::Running => 1,
+                DriverRunState::Stopped => 2,
+                DriverRunState::Failed => 3,
+            }),
             frame: AtomicU64::new(0),
             callbacks: AtomicU64::new(0),
             xruns: AtomicU32::new(0),
@@ -96,15 +101,16 @@ impl Status {
     }
     pub fn update_driver(&self, driver: DriverStatus) {
         self.buffer.store(driver.buffer_frames, Ordering::Relaxed);
-        self.state.store(
-            match driver.state {
-                DriverRunState::Starting => 0,
-                DriverRunState::Running => 1,
-                DriverRunState::Stopped => 2,
-                DriverRunState::Failed => 3,
-            },
-            Ordering::Release,
-        );
+        match driver.state {
+            DriverRunState::Starting => {}
+            DriverRunState::Running => {
+                let _ = self
+                    .state
+                    .compare_exchange(0, 1, Ordering::Release, Ordering::Relaxed);
+            }
+            DriverRunState::Stopped => self.state.store(2, Ordering::Release),
+            DriverRunState::Failed => self.state.store(3, Ordering::Release),
+        }
     }
     pub fn driver(&self) -> DriverStatus {
         DriverStatus {
@@ -393,6 +399,9 @@ impl Renderer for ReferenceRenderer {
     }
 }
 impl<L: ProgramLoader> Endpoint<L> {
+    pub fn into_control(self) -> (rt::Endpoint, L) {
+        (self.control, self.programs)
+    }
     pub fn new(control: rt::Endpoint, programs: L, quantum: u32, status: Arc<Status>) -> Self {
         Self {
             control,
