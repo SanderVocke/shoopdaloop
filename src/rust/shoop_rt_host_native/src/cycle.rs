@@ -80,6 +80,9 @@ impl Cycle {
     pub fn max_frames(&self) -> usize {
         self.max_frames
     }
+    pub(crate) fn render_owner(&self) -> &Render {
+        &self.render
+    }
     pub fn next_frame(&self) -> u64 {
         self.render.next_frame().0
     }

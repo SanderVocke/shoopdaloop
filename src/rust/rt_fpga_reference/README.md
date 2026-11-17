@@ -73,6 +73,9 @@ below; SP does not allocate or manage program lifetimes itself.
 [`rt_fpga_compiler`](../rt_fpga_compiler/README.md) supplies the shared logical
 program and `StateProgramTarget` trait. Its graph frontend accepts one to sixteen
 mono primitive loops with explicit input/output routing and sync relationships.
+For prepared native/offline clients, `GraphDescription::compile_with_channels`
+supports up to 64 mono or stereo loops with independent media per channel. The
+application prepared-graph protocol remains limited to sixteen mono loops.
 The `MonoLoops` and `SyncSmoothing` fixed fixtures remain available.
 `compiler::RustTarget` builds the typed SP
 program, initial state, prepared loop plan, resources and bindings. Media-view

@@ -16,6 +16,9 @@ on:
       - 'src/rust/rt_fpga_compiler/**'
       - 'src/rust/rt_fpga_testbench/**'
       - 'src/rust/rt_fpga_reference/**'
+      - 'src/rust/shoop_rt_benchmark/**'
+      - 'scripts/benchmark_rt.py'
+      - 'scripts/tests/test_benchmark_rt.py'
       - 'third_party/marlin-verilator/**'
       - 'src/rust/rt_runtime/**'
       - 'src/rust/shoop_loops/**'
@@ -44,6 +47,9 @@ on:
       - 'src/rust/rt_fpga_testbench/**'
       - 'src/rust/rt_fpga_compiler/**'
       - 'src/rust/rt_fpga_reference/**'
+      - 'src/rust/shoop_rt_benchmark/**'
+      - 'scripts/benchmark_rt.py'
+      - 'scripts/tests/test_benchmark_rt.py'
       - 'src/rust/shoop_rt_backend/**'
       - 'src/rust/shoop_rt_transport/**'
       - 'src/rust/shoop_app/**'
@@ -90,6 +96,8 @@ jobs:
         run: cargo test --locked -p shoop_rt_protocol -p shoop_rt_transport --all-features
       - name: Exercise live loading through the application API
         run: cargo test --locked -p shoop_host --no-default-features --features fpga-reference --test prepared_graph
+      - name: Validate shared RT benchmark fixture and Rust adapters
+        run: cargo test --locked -p shoop_rt_benchmark
 
   marlin:
     name: Complete native Marlin verification
@@ -113,6 +121,7 @@ jobs:
           sudo apt-get install --yes autoconf flex bison libfl-dev zlib1g-dev g++ cmake patch python3-venv
           python3 -m venv .venv
           .venv/bin/pip install -r scripts/rt_backend_testbench/requirements.txt
+          .venv/bin/pip install 'matplotlib>=3.9,<4'
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
       - name: Cache Verilator 5.032
         id: verilator
@@ -142,6 +151,10 @@ jobs:
         run: |
           cargo test --locked -p rt_backend_testbench
           python -m unittest discover -s scripts/tests -p test_rt_backend_testbench.py
+      - name: Validate shared benchmark reporting
+        run: python -m unittest discover -s scripts/tests -p test_benchmark_rt.py
+      - name: Run shared 64-stereo RT smoke campaign
+        run: python scripts/benchmark_rt.py --preset smoke --output work/shared-rt-smoke
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -149,6 +162,7 @@ jobs:
           path: |
             work/marlin-suite/**/*.log
             work/marlin-suite/**/*.json
+            work/shared-rt-smoke/**
           if-no-files-found: warn
 
   components-synthesis:

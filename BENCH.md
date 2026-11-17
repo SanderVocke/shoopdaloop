@@ -8,8 +8,9 @@ with small adapters for backend preparation, processing, and measurement**. The
 fixture describes musical operations at exact processing frames and retains every
 callback's timing so transition spikes remain visible.
 
-This document is a proposal and implementation plan; the benchmark is not yet
-implemented.
+Implementation is in progress on `feat/standard-rt-benchmark`. See
+[`shoop_rt_benchmark`](src/rust/shoop_rt_benchmark/README.md) for the entry point,
+fixture contract, supported operations, and measurement boundaries.
 
 **Current integration points and prerequisites.**
 
@@ -213,13 +214,13 @@ incomplete.
 
 **Implementation stages, in dependency order.**
 
-- [ ] **Fixture and result contract:** define the versioned layout, patterns,
+- [x] **Fixture and result contract:** define the versioned layout, patterns,
   event coverage, measurement boundaries, and artifact schema. Verify
   deterministic replay and the expected 64-command batching.
-- [ ] **Native CPU runner:** implement endpoint-driven stimulus with controlled
+- [x] **Native CPU runner:** implement endpoint-driven stimulus with controlled
   dummy processing. Verify same-frame execution for all 64 loops, real stereo
   processing, and complete timing capture.
-- [ ] **FPGA reference support:** extend preparation and bindings to 64 stereo
+- [x] **FPGA reference support:** extend preparation and bindings to 64 stereo
   loops, audit capacities, and add unpaced dummy execution. Verify matching
   event/state behavior; leave unsupported grabs explicit.
 - [ ] **RTL adapter:** reuse simulation infrastructure through a production-facing
@@ -231,6 +232,15 @@ incomplete.
 - [ ] **End-to-end acceptance:** run the full fixture through every available
   target, regenerate its PDF from raw data, and verify that all required event
   coverage and correctness checks passed.
+
+Verification so far: both mandatory smoke patterns pass on both Rust backends,
+with exact stereo sample checks and a heap guard around each processing call.
+The CPU grab campaign also completes, and FPGA grabs are explicitly unsupported.
+The native driver's advertised one-quantum output latency is included in sample
+validation; signal time is relative to fixture start on every backend. Reporter
+tests verify cycle conversion, incomplete/reduced-result rejection, and PDF/CSV
+regeneration from saved measurements. RTL integration and the final full campaign
+remain in progress.
 
 Use targeted tests and smoke runs during implementation; reserve expensive full
 RTL campaigns for completed integration milestones. Final acceptance requires the

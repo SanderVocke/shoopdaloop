@@ -39,6 +39,7 @@ mod midi;
 #[cfg(feature = "cpal")]
 mod midir_ports;
 mod status;
+mod stepped;
 
 use std::any::Any;
 use std::sync::atomic::Ordering;
@@ -67,6 +68,7 @@ pub use midi::{
 #[cfg(feature = "cpal")]
 pub use midir_ports::{midi_ports, open_midi};
 pub use status::{RenderPhase, Stats, StreamFailure};
+pub use stepped::SteppedDummy;
 
 use crate::cycle::Cycle;
 use crate::midi::Pump;
