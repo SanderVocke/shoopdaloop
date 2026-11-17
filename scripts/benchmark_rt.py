@@ -123,100 +123,231 @@ def render(output, manifest, runs, summary):
     import matplotlib.pyplot as plt
     from matplotlib.backends.backend_pdf import PdfPages
     import textwrap
+    from collections import Counter, defaultdict
 
-    def page_text(pdf, title, lines):
+    def number(value):
+        return "—" if value is None else f"{value:,.2f}"
+
+    def acceptable(run):
+        return run["status"] == "completed" or (run["status"] == "unsupported" and run.get("fixture", {}).get("pattern") == "grab")
+
+    def status(group):
+        counts = Counter(r["status"] for r in group)
+        return ", ".join(f"{v} {k}" for k, v in sorted(counts.items()))
+
+    grouped = defaultdict(list)
+    for run in runs:
+        grouped[(run["backend"], run.get("fixture", {}).get("pattern", "unknown"))].append(run)
+    rtl = [r for r in runs if r["backend"] == "fpga-rtl" and r["status"] == "completed" and r.get("callbacks")]
+    hosts = [r for r in runs if r["backend"] != "fpga-rtl" and r["status"] == "completed" and r.get("callbacks")]
+    completed = [r for r in runs if r["status"] == "completed"]
+    all_valid = summary["complete"] and all(acceptable(r) for r in runs)
+    counts = Counter(r["status"] for r in runs)
+    profiles = summary["fpga_media_geometries"]
+    if len(profiles) == 1:
+        p = profiles[0]
+        geometry = f'FPGA media: {p["chunk_frames"]}-frame chunks × {p["block_chunks"]}-chunk blocks ({p["block_frames"]:,} frames/block)'
+    else:
+        geometry = f"FPGA media: {len(profiles)} recorded profiles; see run JSON" if profiles else "FPGA geometry not recorded"
+
+    def page(title, subtitle=""):
         fig = plt.figure(figsize=(11.7, 8.3))
-        fig.text(.06, .94, title, fontsize=18, va="top")
-        text = "\n".join(textwrap.fill(str(line), 112) for line in lines)
-        fig.text(.06, .87, text, fontsize=9, family="monospace", va="top")
-        pdf.savefig(fig); plt.close(fig)
+        fig.text(.055, .945, title, fontsize=18, weight="bold", va="top")
+        if subtitle:
+            fig.text(.055, .892, subtitle, fontsize=9.5, va="top")
+        fig.text(.055, .035, "Complete callback time · RTL cycles / 150 · 666.67 µs reference budget · observed maxima", fontsize=8, color="#555555")
+        fig.text(.945, .035, str(pdf.get_pagecount() + 1), fontsize=8, ha="right", color="#555555")
+        return fig
+
+    def table(fig, bounds, headers, rows, widths=None, size=9):
+        ax = fig.add_axes(bounds); ax.axis("off")
+        if not rows:
+            ax.text(0, .8, "No completed measurements available.", fontsize=11)
+            return
+        if widths:
+            widths = [width / sum(widths) for width in widths]
+        t = ax.table(cellText=rows, colLabels=headers, cellLoc="left", loc="upper left", bbox=[0, 0, 1, 1], colWidths=widths)
+        t.auto_set_font_size(False); t.set_fontsize(size)
+        for (row, col), cell in t.get_celld().items():
+            cell.set_edgecolor("#D0D7DE"); cell.set_linewidth(.5)
+            if row == 0:
+                cell.set_facecolor("#193B56"); cell.set_text_props(color="white", weight="bold")
+            else:
+                cell.set_facecolor("#F0F5F8" if row % 2 else "white")
+        return t
+
+    def block(fig, x, y, text, width=105, lines=12, size=9):
+        wrapped = []
+        for line in text:
+            wrapped.extend(textwrap.wrap(str(line), width=width, break_long_words=True) or [""])
+        if len(wrapped) > lines:
+            wrapped = wrapped[:lines - 1] + ["… Full details retained in JSON."]
+        fig.text(x, y, "\n".join(wrapped), fontsize=size, va="top", linespacing=1.4)
+
+    def samples(group):
+        return [row for run in group if run["status"] == "completed" for row in run.get("callbacks", [])]
+
+    def group_name(row):
+        if row.get("event"):
+            return row["event"]
+        return f'steady: {row.get("recording", 0)} record / {row.get("playing", 0)} play'
+
+    def pooled_note(group):
+        hashes = {r.get("fixture_sha256") for r in group if r["status"] == "completed"}
+        return " *" if len(hashes) > 1 else ""
 
     with PdfPages(output / "report.pdf") as pdf:
-        fig, ax = plt.subplots(figsize=(11.7, 8.3))
-        ax.axis("off")
-        ax.set_title("Standard RT benchmark: 64 stereo loops, Q=callback=32", pad=25)
-        table = []
-        def number(v):
-            return "—" if v is None else f"{v:.2f}"
-        for row in summary["runs"]:
-            s = row["statistics"]
-            table.append([f'{row["backend"]}\n{row["pattern"]} #{row["repeat"]}', row["status"], s["count"],
-                          *[number(s.get(key)) for key in ("median_us", "p95_us", "p99_us", "max_us", "budget_percent")],
-                          s.get("budget_exceedances", "—")])
-        # Keep comparison pages readable for long campaigns.
-        plt.close(fig)
-        for start in range(0, len(table), 15):
-            fig, ax = plt.subplots(figsize=(11.7, 8.3)); ax.axis("off")
-            profiles = "; ".join(f'{p["chunk_frames"]}-frame chunks × {p["block_chunks"]}-chunk blocks ({p["block_frames"]} frames/block)' for p in summary["fpga_media_geometries"])
-            ax.set_title("Standard RT benchmark: 64 stereo loops, Q=callback=32" + (" — incomplete campaign" if not summary["complete"] else "") + "\nFPGA media: " + (profiles or "not recorded"), pad=18)
-            t = ax.table(cellText=table[start:start + 15], colLabels=["Backend / pattern / run", "Status", "N", "Median µs", "p95 µs", "p99 µs", "Max µs", "Max budget %", "Over budget"], loc="center", cellLoc="center", colWidths=[.22, .14, .07, .09, .09, .09, .09, .11, .10])
-            t.auto_set_font_size(False); t.set_fontsize(8); t.scale(1, 2.2)
-            fig.text(.06, .05, "FPGA RTL: cycles / 150. Rust reference: functional model CPU time.\n48 kHz reference budget: 666.67 µs. Observed maxima; no deadline enforcement. p95/p99 require N≥20/100.", fontsize=9)
+        fig = page("FPGA RTL — performance overview", "64 stereo audio loops · Q=callback=32 · 48 kHz\n" + geometry)
+        campaign = f'{len(runs)}/{manifest.get("expected_runs", len(runs))} run slots · {counts["completed"]} completed · {counts["unsupported"]} unsupported · {sum(v for k,v in counts.items() if k not in ("completed", "unsupported"))} failed'
+        fig.text(.055, .817, ("VALIDATED CAMPAIGN" if all_valid else "INCOMPLETE / INVALID CAMPAIGN") + " — " + campaign,
+                 fontsize=10, weight="bold", color="#176B43" if all_valid else "#AE2C2C")
+        overview = []
+        for (backend, pattern), group in sorted(grouped.items()):
+            if backend != "fpga-rtl": continue
+            rows = samples(group); s = stats([elapsed_us(row) for row in rows])
+            maximum = max((r["measurement"]["fabric_cycles"] for r in rows), default=None)
+            overview.append([pattern + pooled_note(group), status(group), f'{s["count"]:,}',
+                *[number(s.get(k)) for k in ("median_us", "p95_us", "p99_us", "max_us")],
+                "—" if maximum is None else f"{maximum:,}", s.get("budget_exceedances", "—")])
+        table(fig, [.055, .605, .89, .175], ["Pattern", "Run status", "N", "Median µs", "p95 µs", "p99 µs", "Max µs", "Max cycles", "Over budget"], overview,
+              [.11, .19, .08, .10, .09, .09, .09, .14, .11], size=8.5)
+        ax = fig.add_axes([.09, .185, .82, .34])
+        if rtl:
+            for pattern in sorted({r["fixture"]["pattern"] for r in rtl}):
+                values = sorted(elapsed_us(row) for r in rtl if r["fixture"]["pattern"] == pattern for row in r["callbacks"])
+                ax.step(values, [(i + 1) * 100 / len(values) for i in range(len(values))], where="post", label=f"{pattern} (N={len(values):,})")
+            ax.axvline(BUDGET_US, color="#B9392D", linestyle="--", linewidth=1, label="Reference budget")
+            ax.set_xlabel("Complete callback time (µs)"); ax.set_ylabel("Callbacks at or below (%)")
+            ax.set_ylim(0, 101); ax.set_xlim(left=0); ax.grid(alpha=.2); ax.legend(fontsize=8, loc="lower right")
+            ax.set_title("Processing-time distribution", fontsize=11)
+        else:
+            ax.axis("off"); ax.text(0, .6, "RTL was not selected or has no completed results.\nSee validation/status details for missing or failed runs.", fontsize=12)
+        block(fig, .055, .125, ["Percentiles require N≥20/100 for p95/p99. Distributions pool completed repeats; detailed per-repeat statistics remain in summary.json.",
+            "* Multiple fixture hashes in a group: values span different fixtures; consult raw provenance before comparing." if any(pooled_note(g) for g in grouped.values()) else "No deadlines enforced. Unsupported FPGA grabs are not replaced with a cheaper operation."], lines=3, size=8.5)
+        pdf.savefig(fig); plt.close(fig)
+
+        if rtl:
+            event_groups = defaultdict(list)
+            for run in rtl:
+                for row in run["callbacks"]:
+                    event_groups[(run["fixture"]["pattern"], group_name(row))].append(elapsed_us(row))
+            selected = sorted(event_groups.items(), key=lambda item: max(item[1]), reverse=True)[:22]
+            selected.sort(key=lambda item: (item[0][0], -max(item[1])))
+            fig = page("FPGA RTL — stress events and steady processing", f"{len(selected)} highest-maximum event/steady populations of {len(event_groups)} · counts include completed repeats")
+            event_rows = []
+            for (pattern, name), values in selected:
+                s = stats(values)
+                event_rows.append([pattern, name, f'{s["count"]:,}', *[number(s.get(k)) for k in ("median_us", "p95_us", "p99_us", "max_us")], s["budget_exceedances"]])
+            table(fig, [.055, .15, .89, .69], ["Pattern", "Event / steady population", "N", "Median µs", "p95 µs", "p99 µs", "Max µs", "Over budget"], event_rows,
+                  [.12, .31, .07, .10, .10, .10, .10, .10], size=8.5)
+            block(fig, .055, .105, ["Cold starts and re-recording are separate populations. Observed storage/plan events remain distinct from steady work.",
+                "All populations and samples remain in summary.json and callbacks.csv. Small event populations have no extreme percentiles."], width=135, lines=4, size=8.5)
             pdf.savefig(fig); plt.close(fig)
 
-        for run in runs:
-            label = f'{run["backend"]} / {run.get("fixture", {}).get("pattern")} / repeat {run.get("repeat", 0)}'
-            rows = run.get("callbacks", [])
-            timeline_events = [dict(callback=r["callback"], label=r["event"]) for r in rows if r.get("event")]
-            if not rows:
-                page_text(pdf, label, [f'Status: {run["status"]}', run.get("error") or "", run.get("metadata", {})]); continue
-            fig, axes = plt.subplots(3, 1, figsize=(11.7, 8.3), sharex=True)
-            fig.suptitle(label)
-            x = [r["callback"] for r in rows]; y = [elapsed_us(r) for r in rows]
-            axes[0].plot(x, y, linewidth=.65); axes[0].axhline(BUDGET_US, color="red", linestyle="--", label="666.67 µs reference budget")
-            axes[0].set_ylabel("Processing µs"); axes[0].legend(fontsize=8)
-            axes[1].plot(x, [r["control_ns"] / 1000 for r in rows], linewidth=.65); axes[1].set_ylabel("Endpoint µs")
-            axes[2].plot(x, [r["measurement"]["storage_bytes"] / 1024 for r in rows], linewidth=.65); axes[2].set_ylabel("Live storage KiB"); axes[2].set_xlabel("Callback")
-            for event in timeline_events:
-                for ax in axes: ax.axvline(event["callback"], color="gray", alpha=.2)
-                axes[0].annotate(event["label"], (event["callback"], y[event["callback"]]), rotation=90, fontsize=5)
-            fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
-
-            labels = list(dict.fromkeys(e["label"] for e in timeline_events))
-            if labels:
-                fig, axes = plt.subplots(len(labels), 1, figsize=(11.7, max(4, len(labels) * 1.3)), squeeze=False)
-                fig.suptitle(label + " — event-aligned processing")
-                for ax, name in zip(axes[:, 0], labels):
-                    for event in timeline_events:
-                        if event["label"] == name:
-                            indices = range(max(0, event["callback"] - 2), min(len(rows), event["callback"] + 9))
-                            ax.plot([i - event["callback"] for i in indices], [y[i] for i in indices], marker=".", linewidth=.8)
-                    ax.set_ylabel("µs"); ax.set_title(name, fontsize=9); ax.axvline(0, color="gray", linestyle="--")
-                axes[-1, 0].set_xlabel("Callbacks relative to event")
-                fig.tight_layout(); pdf.savefig(fig); plt.close(fig)
-            s = summarize(run, "")
-            lines = ["Event / steady group                 N     median µs     p95 µs     p99 µs       max µs"]
-            for name, values in s["groups"].items():
-                lines.append(f'{name:<30} {values["count"]:>6} {number(values.get("median_us")):>13} {number(values.get("p95_us")):>10} {number(values.get("p99_us")):>10} {number(values.get("max_us")):>12}')
-            lines += ["", "Coverage: " + json.dumps(run.get("coverage", {})),
-                      "Worst callback: " + json.dumps(s["worst_callback"]),
-                      "Budget exceedances: " + str(s["statistics"].get("budget_exceedances")),
-                      "Fixture SHA256: " + run.get("fixture_sha256", "unknown")]
-            page_text(pdf, label + " — event statistics and coverage", lines)
-            if run["backend"] == "fpga-rtl":
-                diagnostics = ["Stage and stall intervals overlap. Time values assume 150 MHz.",
-                               "Metric                                Median          Maximum"]
-                for key, name in [("state_cycles", "SP active µs"), ("job_cycles", "JP active µs"),
-                    ("axi_address_stall_cycles", "AXI address stall µs"), ("axi_write_stall_cycles", "AXI write stall µs"),
-                    ("axi_response_stall_cycles", "AXI response stall µs"), ("dram_queue_stall_cycles", "DRAM queue stall µs"),
-                    ("reads", "AXI read transfers"), ("writes", "AXI write transfers"), ("queue_peak", "Job queue peak")]:
-                    values = [r["measurement"][key] for r in rows if key in r["measurement"]]
-                    if values:
-                        if key.endswith("_cycles"): values = [v / 150 for v in values]
-                        diagnostics.append(f'{name:<35} {statistics.median(values):>12.2f} {max(values):>16.2f}')
+            worst = {}
+            for run in rtl:
+                pattern = run["fixture"]["pattern"]; row = max(run["callbacks"], key=elapsed_us)
+                if pattern not in worst or elapsed_us(row) > elapsed_us(worst[pattern][1]): worst[pattern] = (run, row)
+            fig = page("FPGA RTL — worst callbacks and processing cost", "One worst observed callback per pattern; each first-callback comparison uses the same prepared run")
+            peak_rows = []
+            for pattern, (run, row) in sorted(worst.items()):
+                peak_rows.append([pattern, run.get("repeat", 0), row["callback"], f'{row["frame"]:,}', row.get("event") or "steady", f'{row["measurement"]["fabric_cycles"]:,}', number(elapsed_us(row))])
+            table(fig, [.055, .69, .89, .14], ["Pattern", "Repeat", "Callback", "Frame", "Trigger", "Cycles", "µs"], peak_rows,
+                  [.12, .07, .10, .11, .32, .15, .13], size=9)
+            headers = ["Metric"]
+            for pattern in sorted(worst): headers += [pattern + "\nfirst", pattern + "\nworst"]
+            metric_rows = []
+            metrics = [(None, "Complete callback µs"), ("state_cycles", "SP active µs"), ("job_cycles", "JP active µs"),
+                ("axi_response_stall_cycles", "AXI response stall µs"), ("axi_address_stall_cycles", "AXI address stall µs"),
+                ("axi_write_stall_cycles", "AXI write stall µs"), ("dram_queue_stall_cycles", "DRAM queue stall µs"),
+                ("reads", "AXI read transactions"), ("writes", "AXI write transactions"), ("queue_peak", "Job queue peak")]
+            for key, label in metrics:
+                values = [label]
+                for pattern, (run, peak) in sorted(worst.items()):
+                    for row in [run["callbacks"][0], peak]:
+                        v = elapsed_us(row) if key is None else row["measurement"].get(key)
+                        if v is not None and key and key.endswith("_cycles"): v = v / 150
+                        values.append(number(v))
+                metric_rows.append(values)
+            columns = len(headers) - 1
+            table(fig, [.055, .255, .89, .365], headers, metric_rows, [.32] + [.68 / columns] * columns, size=9)
+            notes = ["SP, JP and stall intervals may overlap; do not add them. These counters do not isolate allocator, reclamation and cache costs."]
+            for pattern, (run, row) in sorted(worst.items()):
+                index = row["callback"]
+                following = f'; next callback {elapsed_us(run["callbacks"][index + 1]):.2f} µs' if index + 1 < len(run["callbacks"]) else ""
                 final = run.get("metadata", {}).get("finalization", {}).get("native", {})
-                diagnostics += ["", "Final memory drain DRAM ticks: " + str(final.get("final_drain_dram_ticks", "unavailable")),
-                                "Final memory idle: " + str(final.get("idle", "unavailable")),
-                                "DRAM ticks are distinct from fabric cycles and are not converted with cycles/150."]
-                page_text(pdf, label + " — fabric and memory diagnostics", diagnostics)
-            metadata = run.get("metadata", {})
-            concise = {k: v for k, v in metadata.items() if k not in ("provenance", "memory", "finalization")}
-            page_text(pdf, label + " — provenance", ["Status: " + run["status"],
-                "Error: " + str(run.get("error")), "Configuration: " + json.dumps(concise),
-                "Source/toolchain: " + json.dumps({k: v for k, v in metadata.get("provenance", {}).items() if k != "models"}),
-                "Memory profile: " + json.dumps(metadata.get("memory", {}).get("native", {}).get("configuration", {})),
-                "Complete model hashes, memory statistics and final drain are retained in this run's JSON."])
-        page_text(pdf, "Campaign provenance", [f"{key}: {value}" for key, value in manifest.items() if key != "files"])
+                notes.append(f'{pattern}: peak {row.get("event") or "steady"}{following}. Final memory idle={final.get("idle", "unreported")}; drain={final.get("final_drain_dram_ticks", "unreported")} DRAM ticks.')
+            block(fig, .055, .20, notes, lines=6, size=8.5)
+            pdf.savefig(fig); plt.close(fig)
+
+        if hosts:
+            fig = page("CPU and functional reference — secondary results", "Per-repeat ranges preserve host variability without pooling away unusually slow runs")
+            host_rows = []
+            def span(values):
+                values = [v for v in values if v is not None]
+                if not values: return "—"
+                return number(min(values)) if min(values) == max(values) else f"{min(values):,.2f}–{max(values):,.2f}"
+            for (backend, pattern), group in sorted(grouped.items()):
+                if backend == "fpga-rtl": continue
+                repeats = [stats([elapsed_us(row) for row in r["callbacks"]]) for r in group if r["status"] == "completed" and r.get("callbacks")]
+                host_rows.append([backend + "\n" + pattern, status(group), f'{sum(s["count"] for s in repeats):,}',
+                    *[span([s.get(key) for s in repeats]) for key in ("median_us", "p95_us", "p99_us", "max_us")], sum(s["budget_exceedances"] for s in repeats) if repeats else "—"])
+            shown = host_rows[:12]
+            table(fig, [.055, .515, .89, .32], ["Backend / pattern", "Run status", "Total N", "Median range µs", "p95 range µs", "p99 range µs", "Max range µs", "Over budget"], shown,
+                  [.18, .16, .08, .13, .12, .12, .13, .08], size=8)
+            fig.text(.055, .455, "Endpoint service outside processing — host wall time", fontsize=12, weight="bold")
+            endpoint_rows = []
+            for backend in sorted({r["backend"] for r in hosts}):
+                values = [row["control_ns"] / 1000 for r in hosts if r["backend"] == backend for row in r["callbacks"]]
+                s = stats(values)
+                endpoint_rows.append([backend, f'{s["count"]:,}', number(s.get("median_us")), number(s.get("p99_us")), number(s.get("max_us"))])
+            table(fig, [.055, .285, .89, .12], ["Backend", "N", "Median µs", "p99 µs", "Max µs"], endpoint_rows, size=9)
+            block(fig, .055, .22, ["Each range spans individual completed repeats, not confidence bounds. Over-budget counts sum those repeats.",
+                "Native CPU values are wall-clock observations and include scheduler effects. Rust FPGA reference values measure CPU execution of the functional model; they are not FPGA hardware estimates.",
+                "Endpoint delivery/polling/snapshot work is measured separately from rendering. It is not added to fabric-cycle timing.",
+                f"Showing {len(shown)} of {len(host_rows)} backend/pattern groups; all repeat-level statistics are retained in summary.json."], lines=8, size=9)
+            pdf.savefig(fig); plt.close(fig)
+
+        fig = page("Validation, capabilities and provenance", "Raw callback/event records and full per-repeat statistics remain available independently of this compact PDF")
+        mandatory = [r for r in completed if r.get("fixture", {}).get("pattern") != "grab"]
+        def verified(field, group):
+            known = [r for r in group if field in r.get("coverage", {})]
+            passed = sum(bool(r["coverage"][field]) for r in known)
+            return f"{passed}/{len(group)} runs" + (f" ({len(group)-len(known)} unreported)" if len(known) != len(group) else "")
+        coverage_rows = [
+            ["Mandatory comparisons passed", "yes" if all_valid else "NO / incomplete"],
+            ["Completed / unsupported / failed", f'{counts["completed"]} / {counts["unsupported"]} / {sum(v for k,v in counts.items() if k not in ("completed", "unsupported"))}'],
+            ["Callback samples retained", f'{sum(len(r.get("callbacks", [])) for r in completed):,}'],
+            ["Complete sample capture", verified("complete_samples", completed)],
+            ["Exact stereo validation", verified("stereo_samples_checked", completed)],
+            ["Cold block-boundary growth", verified("cold_block_boundary_verified", mandatory)],
+            ["Take replacements observed", f'{sum(r.get("coverage", {}).get("replaced_takes", 0) for r in completed):,}'],
+            ["Planned slots retired", f'{sum(r.get("coverage", {}).get("retired_plan_slots", 0) for r in completed):,}'],
+        ]
+        table(fig, [.055, .445, .43, .39], ["Check / coverage", "Result"], coverage_rows, [.61, .39], size=8.5)
+        metadata = rtl[0].get("metadata", {}) if rtl else {}
+        native = metadata.get("memory", {}).get("native", {})
+        provenance = metadata.get("provenance", {})
+        fixtures = sorted({(r.get("fixture", {}).get("pattern", "unknown"), r.get("fixture_sha256", "unreported")) for r in completed})
+        provenance_lines = [f'Source: {manifest.get("revision", "unreported")}',
+            f'Captured: {manifest.get("created_at", "unreported")}',
+            f'Preset / repeats: {manifest.get("preset", "unreported")} / {manifest.get("repeats", "unreported")}',
+            f'Rust: {manifest.get("rustc") or provenance.get("rustc", "unreported")}',
+            f'Verilator: {provenance.get("verilator", "unreported")}',
+            f'Memory model / seed: {metadata.get("memory_model", manifest.get("memory_model", "unreported"))} / {metadata.get("memory_seed", "unreported")}',
+            'Memory configuration: ' + str(Path(native.get("configuration", {}).get("config", "unreported")).name),
+            'Binary SHA256: ' + str(manifest.get("binary_sha256", "unreported"))]
+        provenance_lines += [f'{name} fixture SHA256: {digest}' for name, digest in fixtures[:3]]
+        block(fig, .525, .833, provenance_lines, width=66, lines=22, size=8)
+        issues = Counter((r["backend"], r.get("fixture", {}).get("pattern", "unknown"), r["status"], r.get("error") or "") for r in runs if r["status"] != "completed")
+        notes = [f'{count}× {backend}/{pattern}: {state}. {error}' for (backend, pattern, state, error), count in sorted(issues.items())]
+        if not summary["complete"]: notes.insert(0, "Campaign capture is incomplete: some requested run slots are missing or the campaign was interrupted.")
+        if not notes: notes = ["All requested operations completed; no unsupported or failed runs."]
+        block(fig, .055, .355, notes, width=125, lines=8, size=8.5)
+        block(fig, .055, .125, ["Full model/library/configuration hashes and environment metadata are retained in the run JSON and manifest.",
+            "Regenerate: python3 scripts/benchmark_rt.py --report-only --output <campaign-directory>"], lines=3, size=8.5)
+        pdf.savefig(fig); plt.close(fig)
+        assert pdf.get_pagecount() <= 5, "compact benchmark report exceeded five pages"
 
 
 def report(output):

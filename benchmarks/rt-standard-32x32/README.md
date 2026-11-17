@@ -2,6 +2,11 @@
 
 [Open the PDF report](report.pdf) · [Download raw results](results.tar.gz)
 
+The report is five pages: three cover FPGA RTL statistics, stress populations
+and peak diagnostics, followed by one CPU/reference comparison and one validation
+and provenance page. Full per-repeat statistics and callback/event records remain
+in the raw bundle. This compact report uses the original measurements unchanged.
+
 Measured source: `2f3d34f4cca1999221360ed36e134355ba1f05ad`. Fixture revision 3 uses 64 stereo audio loops, Q=callback=32, 48 kHz, and 1,056-frame recordings. Both FPGA adapters use 32-frame chunks and 32-chunk blocks (1,024 frames/block), with a 16 MiB ordinary-media budget. RTL uses DRAMsim3 and a 150 MHz fabric clock.
 
 All 21 runs are accounted for: 17 completed and four explicitly unsupported FPGA grab runs. The campaign retained 46,015 callback measurements. Every completed run passed exact stereo samples, command execution-frame checks, allocation growth, storage release and wrapping; mandatory patterns also verified simultaneous growth at the first 1,024-frame boundary and finalized take lengths. Lifecycle additionally checked take replacement and planned-slot retirement.

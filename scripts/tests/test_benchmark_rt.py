@@ -3,6 +3,7 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+import re
 import tempfile
 import unittest
 from unittest import mock
@@ -70,10 +71,44 @@ class BenchmarkReportTests(unittest.TestCase):
             (output / "manifest.json").write_text(json.dumps(dict(files=["run.json"], revision="test")))
             self.assertTrue(BENCH.report(output))
             self.assertTrue((output / "report.pdf").read_bytes().startswith(b"%PDF"))
+            self.assertEqual(len(re.findall(rb"/Type\s*/Page\b", (output / "report.pdf").read_bytes())), 4)
             self.assertEqual(len((output / "callbacks.csv").read_text().splitlines()), 101)
             self.assertEqual(json.loads((output / "summary.json").read_text())["runs"][0]["statistics"]["max_us"], 100)
             self.assertEqual(json.loads((output / "summary.json").read_text())["fpga_media_geometries"],
                 [dict(chunk_frames=32, block_chunks=32, block_frames=1024)])
+
+    def test_report_stays_within_five_pages_as_repeats_grow_without_losing_exports(self):
+        with tempfile.TemporaryDirectory() as name:
+            output = Path(name)
+            files = []
+            for backend in BENCH.BACKENDS:
+                for pattern in BENCH.PATTERNS:
+                    for repeat in range(4):
+                        run = result()
+                        run.update(backend=backend, repeat=repeat)
+                        run["fixture"]["pattern"] = pattern
+                        run["fixture_sha256"] = hashlib.sha256(json.dumps(run["fixture"], separators=(",", ":")).encode()).hexdigest()
+                        if backend != "fpga-rtl":
+                            for row in run["callbacks"]:
+                                row["measurement"].update(fabric_cycles=None, elapsed_ns=1000 * (row["callback"] + 1))
+                        if backend.startswith("fpga-") and pattern == "grab":
+                            run.update(status="unsupported", error="grabs unsupported", callbacks=[], events=[])
+                        filename = f"{backend}-{pattern}-{repeat}.json"
+                        files.append(filename)
+                        (output / filename).write_text(json.dumps(run))
+            (output / "manifest.json").write_text(json.dumps(dict(files=files, expected_runs=len(files), complete=True)))
+            self.assertTrue(BENCH.report(output))
+            pdf = (output / "report.pdf").read_bytes()
+            # Matplotlib writes uncompressed page dictionaries; this excludes /Pages.
+            self.assertEqual(len(re.findall(rb"/Type\s*/Page\b", pdf)), 5)
+            summary = json.loads((output / "summary.json").read_text())
+            self.assertEqual(len(summary["runs"]), 36)
+            self.assertEqual(sum(run["status"] == "unsupported" for run in summary["runs"]), 8)
+            self.assertEqual(len((output / "callbacks.csv").read_text().splitlines()), 2801)
+            for run in summary["runs"]:
+                if run["status"] == "completed":
+                    self.assertEqual(run["statistics"]["max_us"], 100)
+                    self.assertEqual(run["groups"]["record-all"]["count"], 1)
 
     def test_interrupted_campaign_cannot_pass_with_only_completed_subsets(self):
         with tempfile.TemporaryDirectory() as name:

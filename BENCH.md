@@ -162,20 +162,25 @@ reference while continuing to process without deadlines.
 allowing it to be regenerated without rerunning the benchmarks. Python with
 Matplotlib's PDF backend should be sufficient.
 
-The report contains:
+The PDF has at most five landscape pages, prioritizing FPGA results:
 
-- A first-page backend/pattern comparison: count, median, p95, p99, maximum, budget
-  utilization, and completion/support status.
-- Callback timelines annotated with record starts, playback switches, grabs, and
-  other events.
-- Event-aligned views showing the triggering callback and following callbacks.
-  This prevents rare spikes being diluted by steady playback.
-- Separate summaries for steady processing, event callbacks, fresh allocation,
-  and reuse.
-- FPGA diagnostics where available: stage activity, memory traffic, allocation
-  counts, queue peaks, and memory-stall cycles. Overlapping stage times must not be
-  added together.
-- Run provenance and correctness results.
+1. FPGA RTL overview: completion/support status, callback counts, median, p95,
+   p99, maximum in microseconds and cycles, budget exceedances, and a cumulative
+   processing-time distribution.
+2. FPGA stress-event and steady-population statistics, selecting the populations
+   with the highest observed maxima. Cold starts and reuse remain separate.
+3. FPGA worst-callback identities and first-versus-worst diagnostics: stage
+   activity, memory transactions, queue peaks and memory-stall cycles. Include
+   the following callback's cost and final drain status. Overlapping activity
+   must not be added together.
+4. CPU/reference statistics as per-repeat ranges, with endpoint-service cost
+   separate from processing.
+5. Correctness coverage, unsupported/failed operations and essential provenance.
+
+Omit pages for unavailable completed backend results, while retaining status and
+validation information. The page count must stay bounded as repetition counts
+grow. Callback timelines and event-aligned traces stay out of the PDF; their full
+source data remains in JSON and CSV.
 
 Retain individual samples and identify the worst callback by run, pattern, frame,
 and triggering event. Show sample counts beside percentiles; avoid presenting
@@ -259,11 +264,12 @@ budget exceedances. Their median complete-callback times were 296.40 µs and
 ticks. Shared prefixes of 266 lifecycle callbacks and 199 mixed callbacks matched
 the smoke campaign's cycle counts exactly.
 
-The 77-page PDF was regenerated from saved data with identical statistics, and
-representative overview and diagnostic pages were inspected. A published raw
+The five-page PDF was regenerated from saved data with byte-identical statistics
+and CSV exports, and all five pages were inspected. Its first three pages focus
+on FPGA statistics and peak diagnostics. A published raw
 bundle retains all run JSON, manifest, CSV and summaries for independent report
 regeneration. Local validation also passed 67 tests across the compiler,
-benchmark and functional-reference packages, seven reporter tests, processing
+benchmark and functional-reference packages, eight reporter tests, processing
 heap guards, formatting/test-policy checks and warnings-as-errors release builds.
 The nine-run smoke campaign retained the same layout and geometry and passed
 both mandatory patterns on all three backends, plus exact native history grabs.

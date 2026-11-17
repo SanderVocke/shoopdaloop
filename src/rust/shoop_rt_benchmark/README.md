@@ -85,12 +85,19 @@ Fresh campaigns require a fresh output directory. Report-only mode uses no
 backend or compiler and regenerates the PDF and CSV from the retained manifest
 and run JSON files.
 
-The PDF compares per-repeat processing distributions, annotates callback
-timelines, aligns views around transition events, and includes coverage and
-provenance. Scheduled-transition execution, storage growth and storage release
-are annotated when observed, in addition to submitted commands. Steady summaries
-separate recording/playback populations. `summary.json` retains these statistics, observed maxima,
-worst callback identities, and exceedances of the hypothetical 666.67 µs budget.
+The PDF has at most five landscape pages. FPGA RTL gets the first three:
+processing statistics and a cumulative distribution, the highest-maximum event
+and steady populations, and worst-callback identities with first-versus-worst
+stage/stall diagnostics. One page compares CPU/reference per-repeat ranges;
+one retains correctness, capability status and provenance. Pages without
+completed backend results are omitted. Repetitions do not add pages.
+
+Callback timelines and event-aligned plots are omitted from the PDF. The complete
+callback/event records remain in JSON and CSV, including observed scheduled
+transitions and storage events. `summary.json` retains all per-repeat and
+event/steady statistics, observed maxima, worst callback identities and exceedances
+of the hypothetical 666.67 µs budget. Steady populations separate recording and
+playback. Endpoint-service timing remains separate from processing.
 Extreme percentiles are suppressed when the observation count is too small.
 These measurements are observed maxima under the declared fixture and memory
 model, not a proven worst-case execution bound or physical-board certification.
