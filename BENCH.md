@@ -17,8 +17,8 @@ both FPGA adapters. Fixture revision 3 records for 1,056 frames so that all 64
 loops cross the 1,024-frame allocation boundary together. Its complete-callback
 cycle window and 150 MHz assumption are unchanged. The PDF overview names the
 geometry, and result validation checks both adapter metadata and elaborated RTL
-parameters. The updated campaign is being validated; earlier measurements below
-are retained as historical evidence for the previous geometry.
+parameters. The updated campaign has passed local validation, including complete
+RTL replay and PDF regeneration from the retained results.
 
 **Integration points and prerequisites identified at the baseline.**
 
@@ -72,6 +72,7 @@ waiting for its response repeatedly would miss the intended allocation storm.
 | Loops | 64 primitive stereo audio loops |
 | Routing | One stereo strip containing all 64 loops, mixed to a stereo master |
 | Timing | Q=32; callback size=32; sample rate=48 kHz |
+| FPGA media | 32-frame chunks; 32-chunk blocks; 1,024 frames per block |
 | Input | Deterministic, bounded, nonzero stereo signal generated in memory |
 | Output | In-memory sink; occasional checks outside timing regions |
 | Processing | Dummy driver, maximum speed, no deadline enforcement |
@@ -237,42 +238,48 @@ incomplete.
 - [x] **Report and orchestration:** implement the single entry point and PDF
   generation. Check known timing samples, conversion arithmetic, missing-backend
   reporting, and representative PDF pages.
-- [ ] **End-to-end acceptance:** run the full fixture through every available
+- [x] **End-to-end acceptance:** run the full fixture through every available
   target, regenerate its PDF from raw data, and verify that all required event
   coverage and correctness checks passed.
 
-Previous-geometry verification: the full standard campaign at `8d9c5bdc` completed all 21 runs:
-17 completed and four explicitly unsupported FPGA grab runs. It retained 37,015
-callback measurements. Every completed run passed exact stereo sample checks,
-same-frame command verification, allocation growth, storage release and wrapping
-coverage. Lifecycle runs additionally verified take replacement and planned-slot
-retirement. Fixture hashes matched across backends and independent repetitions.
+Verification: the complete 32×32 standard campaign at `2f3d34f4` accounted for all
+21 runs: 17 completed and four explicitly unsupported FPGA grab runs. It retained
+46,015 callback measurements. Every completed run passed exact stereo samples,
+command-frame checks, allocation growth, storage release and wrapping. Mandatory
+patterns verified simultaneous growth at the first 1,024-frame allocation
+boundary and exact finalized take lengths. Fixture hashes matched across
+backends and independent repetitions.
+
+The RTL lifecycle run covered 1,096 callbacks, 448 take replacements and 1,024
+planned-slot retirements. Its observed maximum was 133,777 cycles (891.85 µs),
+with seven callbacks exceeding the hypothetical 100,000-cycle budget. Mixed
+turnover covered 636 callbacks and reached 90,251 cycles (601.67 µs), with no
+budget exceedances. Their median complete-callback times were 296.40 µs and
+299.75 µs respectively. Both finished with memory idle and zero final DRAM drain
+ticks. Shared prefixes of 266 lifecycle callbacks and 199 mixed callbacks matched
+the smoke campaign's cycle counts exactly.
+
 The 77-page PDF was regenerated from saved data with identical statistics, and
-representative overview, event and FPGA diagnostic pages were inspected.
+representative overview and diagnostic pages were inspected. A published raw
+bundle retains all run JSON, manifest, CSV and summaries for independent report
+regeneration. Local validation also passed 67 tests across the compiler,
+benchmark and functional-reference packages, seven reporter tests, processing
+heap guards, formatting/test-policy checks and warnings-as-errors release builds.
+The nine-run smoke campaign retained the same layout and geometry and passed
+both mandatory patterns on all three backends, plus exact native history grabs.
 
-The RTL lifecycle run verified 448 take replacements and 1,024 planned-slot
-retirements. Its observed maximum was 254,777 cycles (1,698.51 microseconds);
-mixed turnover reached 248,340 cycles (1,655.60 microseconds). These exceed the
-100,000-cycle reference budget. The first 66 lifecycle callbacks matched the
-earlier smoke run's cycle counts exactly after adding passive diagnostics. Both
-patterns finished with memory idle and no deferred final DRAM drain ticks.
-
-Validation also includes 280 tests across affected Rust packages, processing heap
-guards on the Rust smoke patterns, legacy RTL compiler regression tests, five
-reporter tests, and warnings-as-errors release builds. The native driver's
-advertised one-quantum output latency is included in sample validation; signal
-time is relative to fixture start on every backend. Reporter tests cover cycle
-conversion, incomplete/reduced-result rejection, and PDF/CSV regeneration.
-Per-callback diagnostics distinguish observed plan retirement and storage events
-from ordinary steady processing, and retain overlapping SP/JP and memory-stall
-activity. Subsequent report-layout and explicit memory-seed metadata changes do
-not alter the measured processing schedule; the fixed seed is `20261117`.
+The native driver's advertised one-quantum output latency is included in sample
+validation; signal time is relative to fixture start on every backend. Per-callback
+diagnostics distinguish observed plan retirement and storage events from ordinary
+steady processing, and retain overlapping SP/JP and memory-stall activity. The
+memory-model seed is fixed at `20261117`.
 
 The implementation and CI evidence are tracked in
 [PR #1004](https://github.com/SanderVocke/shoopdaloop/pull/1004), targeting
 `feat/backend-replacement`. CI also runs and uploads the complete shared smoke
-campaign. Generated campaign artifacts remain under the requested output folder;
-they are not checked into the source tree.
+campaign. Ordinary generated campaigns remain in the requested output folder.
+The validated 32×32 [PDF and compressed raw bundle](benchmarks/rt-standard-32x32/README.md)
+are published with this PR so the report can be downloaded and regenerated.
 
 Full-workspace CI exposed an existing detached-host shutdown failure: logging to
 the exited launcher's stderr pipe raised `BrokenPipe`, causing tracing to panic
@@ -282,14 +289,15 @@ afterwards it passed ten repeat runs, the serial recovery suite passed (15 tests
 one hardware-only test ignored), and log rotation and the warnings-as-errors host
 build passed. The benchmark's stepped processing path is unaffected.
 
-Fixture revision 2 uses 256-frame recordings in the mandatory patterns, still
-crossing the current 128-frame allocation blocks, to increase transition-event
-density and reduce the substantial RTL simulation cost observed during validation.
-The 64-stereo/Q32 acceptance criteria are unchanged. Grab storms use adjacent
-32,768-frame history windows after filling the input ring, and RTL replay defaults
-to one deterministic run while CPU timing retains three independent repetitions.
-Simulation uses an optimized model without waveform compilation; physical cycle
-counts and the 150 MHz memory timing remain unchanged.
+Fixture revision 3 supersedes revision 2's one-frame chunks, 128-chunk blocks and
+256-frame recordings. Both FPGA adapters now use 32-frame chunks and 32-chunk
+blocks, with 1,056-frame mandatory recordings; mixed turnover also uses 1,088 and
+1,152 frames. The complete-callback timing boundary, 64-stereo/Q32 layout and
+150 MHz memory timing are unchanged. Older reports remain regenerable with their
+original geometry labels, but fresh campaigns require revision 3. Grab storms
+retain adjacent 32,768-frame history windows after filling the ring. Deterministic
+RTL replay defaults to one run; CPU timing retains three independent repetitions.
+Simulation uses an optimized model without waveform compilation.
 
 Use targeted tests and smoke runs during implementation; reserve expensive full
 RTL campaigns for completed integration milestones. Final acceptance requires the

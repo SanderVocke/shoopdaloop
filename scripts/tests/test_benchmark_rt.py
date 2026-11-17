@@ -91,7 +91,13 @@ class BenchmarkReportTests(unittest.TestCase):
             def execute(command, **kwargs):
                 if command[0] != str(binary):
                     return original_run(command, **kwargs)
-                run = result(); run["fixture"]["version"] = 2
+                run = result(); run["backend"] = "fpga-reference"
+                run["fixture"]["version"] = 2
+                del run["fixture"]["fpga_chunk_frames"], run["fixture"]["fpga_block_chunks"]
+                run["fixture_sha256"] = hashlib.sha256(json.dumps(run["fixture"], separators=(",", ":")).encode()).hexdigest()
+                run["metadata"] = dict(chunk_frames=1, block_chunks=128)
+                run["coverage"] = dict(complete_samples=True)
+                BENCH.validate(run)
                 Path(command[command.index("--output") + 1]).write_text(json.dumps(run))
                 return mock.Mock(returncode=0)
             arguments = ["benchmark_rt.py", "--binary", str(binary), "--backends", "fpga-reference",
