@@ -2,8 +2,8 @@
 
 Hover over or click the backend status LED at the bottom of the application and
 choose **Profiling…**, below **Host Manager…**. The dedicated window has an
-immediate on/off switch and an overall DSP load bar showing the same reading as
-the bottom status bar. Profiling defaults to off. A switch sends its runtime
+immediate on/off switch and a 30-second overall DSP graph. The bottom status bar
+shows the current DSP percentage. Profiling defaults to off. A switch sends its runtime
 request immediately and saves the preference in the background; no Save action
 or audio restart is needed. The window reports the engine's acknowledgement. Profiling is independent
 of developer tracing. There are no recording levels or xrun arming controls.
@@ -16,7 +16,10 @@ Release performance measurements are linked below.
 
 The window offers **Graph** and **Table** tabs with shared controls. The table
 contains **Node / Avg / Worst / Stddev** in graph execution order.
-Choose **µs** or **% budget**. Percentages use one fixed quantum's time budget:
+Choose **µs** or **% budget** for overall DSP history and node timings. The DSP
+graph uses each measurement's own timing and audio period. Sources that provide
+only a percentage leave gaps in the microsecond view.
+Node percentages use one fixed quantum's time budget in the formula
 `100 × duration_ns / (quantum_frames × 1e9 / sample_rate)`. They represent a share
 of the available quantum period, rather than a share of the currently consumed
 DSP time. For example, at 48 kHz with Q=32, a 10 µs step uses 1.50% of the
