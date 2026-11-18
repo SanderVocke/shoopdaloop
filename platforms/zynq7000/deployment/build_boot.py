@@ -65,7 +65,10 @@ def main():
             parser.error("FPGA PS initialization requires a board with a PL arena")
         manifest = json.loads((args.fpga_build / "fpga-build.json").read_text())
         xsa = args.fpga_build / "zturn_v2.xsa"
-        if (manifest["contract"] != fpga_pair.contract(board)
+        geometry = args.fpga_build / "geometry.txt"
+        abi = fpga_pair.NATIVE_AUDIO_ABI if geometry.read_text().strip() == "native" else fpga_pair.RTL_ABI
+        if (manifest["contract"] != fpga_pair.contract(board, abi)
+                or fpga_pair.digest(geometry) != manifest["sha256"]["geometry.txt"]
                 or fpga_pair.digest(xsa) != manifest["sha256"]["zturn_v2.xsa"]):
             raise SystemExit("XSA and board do not match the FPGA build")
         generated = BUILD / "fpga-ps"

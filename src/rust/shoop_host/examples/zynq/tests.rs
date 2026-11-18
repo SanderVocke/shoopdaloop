@@ -113,8 +113,9 @@ fn a_finished_commit_waits_for_the_complete_snapshot_before_reusing_the_session_
                     client
                         .receive_wire(messages.pop_front().expect("publication did not complete"))
                         .unwrap();
+                    true
                 }),
-                outcome
+                Some(outcome.clone())
             );
             assert!(
                 messages.is_empty(),
@@ -157,8 +158,9 @@ fn refusals_and_shutdown_complete_without_a_new_snapshot() {
                         },
                     })
                     .unwrap();
+                true
             }),
-            outcome
+            Some(outcome)
         );
         assert_eq!(client.snapshot().unwrap().persistence_epoch, 1);
     }

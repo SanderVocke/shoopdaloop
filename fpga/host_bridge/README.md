@@ -143,3 +143,24 @@ Supply the deployment key and certificate, credential and network settings
 described in the deployment guide. The QEMU gate checks authentication of
 the signed pair through U-Boot and refusal of a changed fabric payload.
 Physical PCAP programming requires the board. [Deployment guide](../../platforms/zynq7000/deployment/README.md)
+
+## Native I²S comparison
+
+Use `bitstream native i2s` in the Vivado command and a fresh route directory.
+Build the host with `--native-i2s --deployment` in place of `--fpga --deployment`.
+For the signed SD commands, use `host-deployment-native-i2s.elf`, its manifest,
+the native route and a separate release directory. The pairing contract binds
+the native ELF to the audio-only register map. The default 66-loop pool leaves
+room for the sync loop and one live edit during the 64-loop workload.
+
+```sh
+SHOOP_ZYNQ_NATIVE_I2S=1 SHOOP_ZYNQ_NATIVE_I2S_BENCH_SECONDS=1800 \
+  cargo run --locked -p shoop_host --no-default-features --example zynq_probe -- PROFILE.json
+```
+
+Leave out `SHOOP_ZYNQ_NATIVE_I2S_BENCH_SECONDS` for the short record/play smoke.
+Capture `SHOOP_NATIVE_I2S_RESULT` on UART1. `peak_callback_ticks` and `callback_hz`
+measure the ARM callback with PCM conversion. `peak_bank_cycles` and `fabric_hz`
+measure the time from GP0 bank availability to release, including IRQ dispatch
+and PCM transfers. The client reports native deadline misses and stops the timed
+comparison at the first observed miss.

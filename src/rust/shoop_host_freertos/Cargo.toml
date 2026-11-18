@@ -10,6 +10,7 @@ workspace = true
 [features]
 fixture = []
 usb-midi = []
+native-i2s = []
 fpga = ["dep:rt_fpga_rtl", "dep:shoop_rt_host_reference"]
 
 [dependencies]

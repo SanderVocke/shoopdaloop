@@ -1,5 +1,5 @@
 if {$argc ni {3 4 5}} {
-    error "usage: vivado -mode batch -source fpga/host_bridge/zturn_v2.tcl -tclargs OUTPUT PS_PROPERTIES {generate|bitstream} ?{diagnostic|looping}? ?{generated|i2s}?"
+    error "usage: vivado -mode batch -source fpga/host_bridge/zturn_v2.tcl -tclargs OUTPUT PS_PROPERTIES {generate|bitstream} ?{diagnostic|looping|native}? ?{generated|i2s}?"
 }
 set root [file normalize [file join [file dirname [info script]] ../..]]
 set output [file normalize [lindex $argv 0]]
@@ -9,8 +9,10 @@ set geometry [expr {$argc >= 4 ? [lindex $argv 3] : "diagnostic"}]
 set audio_mode [expr {$argc == 5 ? [lindex $argv 4] : "generated"}]
 set serial_synth [expr {[info exists ::env(SHOOP_VIVADO_SERIAL_SYNTH)] && $::env(SHOOP_VIVADO_SERIAL_SYNTH) eq "1"}]
 if {$stage ni {generate bitstream}} {error "Unknown board build stage $stage"}
-if {$geometry ni {diagnostic looping}} {error "Unknown bridge geometry $geometry"}
+if {$geometry ni {diagnostic looping native}} {error "Unknown bridge geometry $geometry"}
 if {$audio_mode ni {generated i2s}} {error "Unknown audio mode $audio_mode"}
+set native_pcm [expr {$geometry eq "native"}]
+if {$native_pcm && $audio_mode ne "i2s"} {error "Native audio requires the I2S adapter"}
 set channel [open $ps_properties r]
 set preset [read $channel]
 close $channel
@@ -20,7 +22,8 @@ foreach name [dict keys $preset] {
 }
 file mkdir $output
 file copy -force $ps_properties [file join $output ps-properties.txt]
-file copy -force [file join $root fpga host_bridge registers.json] [file join $output fpga-abi.json]
+set abi [expr {$native_pcm ? "native_audio.json" : "registers.json"}]
+file copy -force [file join $root fpga host_bridge $abi] [file join $output fpga-abi.json]
 set channel [open [file join $output geometry.txt] w]
 puts $channel $geometry
 close $channel
@@ -48,16 +51,21 @@ foreach ip {processing_system7:5.5 proc_sys_reset:5.0 xlconstant:1.1 axi_interco
     if {![llength [get_ipdefs -all -quiet xilinx.com:ip:$ip]]} {error "Missing Vivado catalog IP $ip"}
 }
 set host [file join $root fpga host_bridge rtl]
-add_files [file join $host host_registers.sv]
-add_files [lsort [glob [file join $root fpga state_processor rtl *.svh]]]
-foreach directory {state_processor job_processor chunk_memory media_store axi_memory} {
-    add_files [lsort [glob [file join $root fpga $directory rtl *.sv]]]
+if {$native_pcm} {
+    add_files [list [file join $host native_audio_registers.sv] [file join $host native_audio_mmio.sv] \
+        [file join $host native_audio_bd.v]]
+} else {
+    add_files [file join $host host_registers.sv]
+    add_files [lsort [glob [file join $root fpga state_processor rtl *.svh]]]
+    foreach directory {state_processor job_processor chunk_memory media_store axi_memory} {
+        add_files [lsort [glob [file join $root fpga $directory rtl *.sv]]]
+    }
+    foreach source {host_mailbox.sv host_dispatch.sv host_pipeline_axi.sv host_pipeline_bd.v host_generated_audio.v} {
+        add_files [file join $host $source]
+    }
 }
 foreach source {audio_lane_ram.sv audio_io.sv} {
     add_files [file join $root fpga audio_io rtl $source]
-}
-foreach source {host_mailbox.sv host_dispatch.sv host_pipeline_axi.sv host_pipeline_bd.v host_generated_audio.v} {
-    add_files [file join $host $source]
 }
 if {$audio_mode eq "i2s"} {
     add_files [file join $root fpga audio_io rtl i2s_duplex.sv]
@@ -74,16 +82,21 @@ set ddr_high [get_property CONFIG.PCW_DDR_RAM_HIGHADDR $ps]
 if {$arena_base + $arena_bytes - 1 > $ddr_high} {
     error "The PS DDR window ending at $ddr_high excludes the PL arena"
 }
-set_property -dict [list CONFIG.PCW_USE_M_AXI_GP0 1 CONFIG.PCW_USE_S_AXI_HP0 1 \
+set_property -dict [list CONFIG.PCW_USE_M_AXI_GP0 1 CONFIG.PCW_USE_S_AXI_HP0 [expr {!$native_pcm}] \
     CONFIG.PCW_S_AXI_HP0_DATA_WIDTH 64 CONFIG.PCW_EN_CLK0_PORT 1 CONFIG.PCW_EN_RST0_PORT 1 \
     CONFIG.PCW_FPGA0_PERIPHERAL_FREQMHZ [expr {$clock_hz/1000000.0}] CONFIG.PCW_USE_FABRIC_INTERRUPT 1 \
     CONFIG.PCW_IRQ_F2P_INTR 1] $ps
 make_bd_intf_pins_external [get_bd_intf_pins ps/DDR] [get_bd_intf_pins ps/FIXED_IO]
 
-set core [create_bd_cell -type module -reference host_pipeline_bd core]
-set_property -dict [list CONFIG.ARENA_BASE [expr {$arena_base}] \
-    CONFIG.ARENA_BYTES [expr {$arena_bytes}] CONFIG.CORE_CLOCK_HZ [expr {$clock_hz}] \
-    CONFIG.EXTERNAL_IO 1 CONFIG.INPUT_PORTS 1] $core
+if {$native_pcm} {
+    set core [create_bd_cell -type module -reference native_audio_bd core]
+    set_property CONFIG.CORE_CLOCK_HZ [expr {$clock_hz}] $core
+} else {
+    set core [create_bd_cell -type module -reference host_pipeline_bd core]
+    set_property -dict [list CONFIG.ARENA_BASE [expr {$arena_base}] \
+        CONFIG.ARENA_BYTES [expr {$arena_bytes}] CONFIG.CORE_CLOCK_HZ [expr {$clock_hz}] \
+        CONFIG.EXTERNAL_IO 1 CONFIG.INPUT_PORTS 1] $core
+}
 if {$geometry eq "looping"} {
     # Match the production image packer and leave space for media metadata in HP0 DDR.
     set_property -dict [list CONFIG.PROGRAM_DEPTH 1024 CONFIG.STATE_DEPTH 512 CONFIG.JOB_DEPTH 1024 \
@@ -109,21 +122,19 @@ foreach {name width value} {zero 1 0 one 1 1 boot_epoch 32 1} {
     set_property -dict [list CONFIG.CONST_WIDTH $width CONFIG.CONST_VAL $value] $constant
 }
 
-connect_bd_net [get_bd_pins ps/FCLK_CLK0] [get_bd_pins ps/S_AXI_HP0_ACLK] \
+connect_bd_net [get_bd_pins ps/FCLK_CLK0] \
     [get_bd_pins ps/M_AXI_GP0_ACLK] [get_bd_pins gp0/ACLK] [get_bd_pins gp0/S00_ACLK] \
     [get_bd_pins gp0/M00_ACLK] [get_bd_pins core/clk] [get_bd_pins audio/clk] [get_bd_pins reset/slowest_sync_clk]
 connect_bd_net [get_bd_pins ps/FCLK_RESET0_N] [get_bd_pins reset/ext_reset_in]
 connect_bd_net [get_bd_pins reset/interconnect_aresetn] [get_bd_pins gp0/ARESETN]
 connect_bd_net [get_bd_pins reset/peripheral_aresetn] [get_bd_pins gp0/S00_ARESETN] [get_bd_pins gp0/M00_ARESETN]
 connect_bd_net [get_bd_pins reset/peripheral_reset] [get_bd_pins core/reset] [get_bd_pins audio/reset]
-connect_bd_net [get_bd_pins zero/dout] [get_bd_pins reset/mb_debug_sys_rst] [get_bd_pins reset/aux_reset_in] \
-    [get_bd_pins ps/S_AXI_HP0_RDISSUECAP1_EN] [get_bd_pins ps/S_AXI_HP0_WRISSUECAP1_EN]
+connect_bd_net [get_bd_pins zero/dout] [get_bd_pins reset/mb_debug_sys_rst] [get_bd_pins reset/aux_reset_in]
 connect_bd_net [get_bd_pins one/dout] [get_bd_pins reset/dcm_locked]
-connect_bd_net [get_bd_pins boot_epoch/dout] [get_bd_pins core/epoch] [get_bd_pins audio/epoch]
+connect_bd_net [get_bd_pins boot_epoch/dout] [get_bd_pins audio/epoch]
 connect_bd_net [get_bd_pins core/irq] [get_bd_pins ps/IRQ_F2P]
 connect_bd_net [get_bd_pins core/audio_enable] [get_bd_pins audio/enable]
 connect_bd_net [get_bd_pins audio/missed_deadlines] [get_bd_pins core/audio_xruns]
-connect_bd_net [get_bd_pins core/fault] [get_bd_pins audio/process_fault]
 foreach name {audio_fault quantum_valid quantum_ready quantum_done sample_input_read sample_input_address
     sample_input_data sample_output_write sample_output_address sample_output_data} {
     connect_bd_net [get_bd_pins core/$name] [get_bd_pins audio/$name]
@@ -131,7 +142,15 @@ foreach name {audio_fault quantum_valid quantum_ready quantum_done sample_input_
 
 connect_bd_intf_net [get_bd_intf_pins ps/M_AXI_GP0] [get_bd_intf_pins gp0/S00_AXI]
 connect_bd_intf_net [get_bd_intf_pins gp0/M00_AXI] [get_bd_intf_pins core/s_axi]
-connect_bd_intf_net [get_bd_intf_pins core/m_axi] [get_bd_intf_pins ps/S_AXI_HP0]
+if {$native_pcm} {
+    connect_bd_net [get_bd_pins zero/dout] [get_bd_pins audio/process_fault]
+} else {
+    connect_bd_net [get_bd_pins ps/FCLK_CLK0] [get_bd_pins ps/S_AXI_HP0_ACLK]
+    connect_bd_net [get_bd_pins zero/dout] [get_bd_pins ps/S_AXI_HP0_RDISSUECAP1_EN] [get_bd_pins ps/S_AXI_HP0_WRISSUECAP1_EN]
+    connect_bd_net [get_bd_pins boot_epoch/dout] [get_bd_pins core/epoch]
+    connect_bd_net [get_bd_pins core/fault] [get_bd_pins audio/process_fault]
+    connect_bd_intf_net [get_bd_intf_pins core/m_axi] [get_bd_intf_pins ps/S_AXI_HP0]
+}
 assign_bd_address -offset $register_base -range 4K -target_address_space [get_bd_addr_spaces ps/Data] \
     [get_bd_addr_segs core/s_axi/reg0]
 assign_bd_address

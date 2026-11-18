@@ -7,6 +7,7 @@
 #include "xuartps.h"
 #include "xil_printf.h"
 #include "xil_assert.h"
+#include "xil_io.h"
 #include "netif/xtopology.h"
 #include <sys/stat.h>
 #include <errno.h>
@@ -23,7 +24,8 @@ XEmacPs_Config XEmacPs_ConfigTable[] = {{ .DeviceId = 0, .BaseAddress = SHOOP_GE
 struct xtopology_t xtopology[] = {{ .emac_baseaddr = SHOOP_GEM_BASE, .emac_type = xemac_type_emacps, .scugic_baseaddr = 0xf8f01000, .scugic_emac_intr = SHOOP_GEM_IRQ }};
 int xtopology_n_emacs = 1;
 
-#if defined(SHOOP_FPGA_PROBE) || defined(SHOOP_FPGA)
+#if defined(SHOOP_FPGA_PROBE) || defined(SHOOP_FPGA) || defined(SHOOP_NATIVE_I2S)
+int shoop_fpga_configured(void) { return (Xil_In32(0xf800700c) & (1u << 2)) != 0; }
 uint32_t shoop_fpga_register_base(void) { return SHOOP_PL_REG_BASE; }
 uint32_t shoop_fpga_arena_base(void) { return SHOOP_PL_DDR_BASE; }
 uint32_t shoop_fpga_arena_bytes(void) { return SHOOP_PL_DDR_BYTES; }

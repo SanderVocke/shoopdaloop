@@ -452,7 +452,7 @@ pub unsafe fn render_step(owner: *mut c_void, frames: usize) -> i32 {
         AudioBlock {
             frame: dummy.render.next_frame(),
             frames,
-            inputs: &inputs,
+            inputs: &inputs[..crate::AUDIO_INPUTS],
             outputs: &mut outputs,
         },
         MidiBlock {
@@ -529,6 +529,23 @@ pub unsafe fn render_step(owner: *mut c_void, frames: usize) -> i32 {
 
 pub unsafe fn render_xruns(owner: *mut c_void, count: u32) {
     (&*owner.cast::<Dummy>()).status.add_xruns(count);
+}
+
+#[cfg(feature = "native-i2s")]
+pub unsafe fn native_pcm_step(owner: *mut c_void, input: *const i32, output: *mut i32) -> i32 {
+    let input = &*input.cast::<[i32; crate::QUANTUM]>();
+    let output = &mut *output.cast::<[[i32; crate::QUANTUM]; 2]>();
+    const SCALE: f32 = (1_u32 << 24) as f32;
+    for (slot, sample) in (&mut *owner.cast::<Dummy>()).input[0].iter_mut().zip(input) {
+        *slot = *sample as f32 / SCALE;
+    }
+    let result = render_step(owner, crate::QUANTUM);
+    for (lane, samples) in output.iter_mut().zip(&(&*owner.cast::<Dummy>()).output) {
+        for (slot, sample) in lane.iter_mut().zip(samples) {
+            *slot = (*sample * SCALE) as i32;
+        }
+    }
+    result
 }
 
 struct StoppedDummy {
@@ -722,7 +739,11 @@ pub fn run() {
                 loop_smoothing_ms: 3,
             },
             vec![
-                String::from("FreeRTOS / AMD lwIP; dummy audio"),
+                String::from(if cfg!(feature = "native-i2s") {
+                    "FreeRTOS / AMD lwIP with interrupt-paced Q32 I2S audio"
+                } else {
+                    "FreeRTOS / AMD lwIP; dummy audio"
+                }),
                 alloc::format!(
                     "Direct audio/MIDI loops; up to {} MiB session media and 65,536 MIDI events.",
                     crate::MEDIA_BYTES / (1024 * 1024),

@@ -33,6 +33,94 @@ fn reply(sim: &RefCell<Sim<'_>>, epoch: u64, tag: u64, data: [u32; HOST_PAYLOAD_
     sim.model.set("response_valid", 0);
 }
 
+#[shoop_test(no_wasm = "The native audio AXI register test uses Marlin")]
+fn native_audio_holds_banks_until_a_complete_matching_write() {
+    let root = rt_fpga_rtl::root();
+    let bridge = root.join("fpga/host_bridge");
+    let rtl = bridge.join("rtl");
+    let spec: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(bridge.join("native_audio.json")).unwrap()).unwrap();
+    let reg = |name| {
+        u32::from_str_radix(
+            spec["registers"][name]
+                .as_str()
+                .unwrap()
+                .trim_start_matches("0x"),
+            16,
+        )
+        .unwrap()
+    };
+    let q = spec["quantum"].as_u64().unwrap() as u32;
+    let compiled = Design::new(
+        "native_audio_mmio",
+        vec![
+            rtl.join("native_audio_registers.sv"),
+            rtl.join("native_audio_mmio.sv"),
+        ],
+    )
+    .build(&root.join("work/host-mailbox"))
+    .unwrap();
+    let mut model = Sim::new(compiled.session(None).unwrap(), &[("clk", 10_000, 0)]);
+    model.model.set("reset", 1);
+    model.idle(2);
+    model.model.set("reset", 0);
+    let sim = RefCell::new(model);
+    let mut axi = Axi(&sim);
+    assert_eq!(axi.read(reg("QUANTUM")), Ok(q));
+    assert_eq!(axi.read(reg("SAMPLE_RATE")), Ok(48_000));
+    assert_eq!(axi.read(reg("CLOCK_HZ")), Ok(100_000_000));
+    assert_eq!(axi.read(reg("RX_BASE")), Ok(0));
+    let start = || {
+        let mut sim = sim.borrow_mut();
+        assert_eq!(sim.model.get("quantum_ready"), 1);
+        sim.model.set("quantum_valid", 1);
+        sim.idle(1);
+        sim.model.set("quantum_valid", 0);
+        assert_eq!(sim.model.get("irq"), 1);
+    };
+    axi.write(reg("ENABLE"), 1).unwrap();
+    start();
+    assert_eq!(axi.read(reg("STATUS")), Ok(1));
+    assert_eq!(axi.read(reg("SEQUENCE")), Ok(1));
+    sim.borrow_mut().model.set("sample_input_data", 0xffed_cbaa);
+    assert_eq!(axi.read(reg("RX_BASE") + 4 * (q - 1)), Ok(0xffed_cbaa));
+    for word in 0..2 * q - 1 {
+        axi.write(reg("TX_BASE") + 4 * word, 0x1234_5678 + word)
+            .unwrap();
+    }
+    let last = reg("TX_BASE") + 4 * (2 * q - 1);
+    axi.write_word(last, 0, 7).unwrap();
+    axi.write(reg("COMPLETE"), 1).unwrap();
+    assert_eq!(axi.read(reg("STATUS")), Ok(1));
+    axi.write(last, 0x7654_3210).unwrap();
+    axi.write(reg("COMPLETE"), 0).unwrap();
+    assert_eq!(axi.read(reg("STATUS")), Ok(1));
+    axi.write(reg("COMPLETE"), 1).unwrap();
+    assert_eq!(axi.read(reg("STATUS")), Ok(0));
+    let peak = axi.read(reg("PEAK_CYCLES")).unwrap();
+    assert!(peak > 64);
+
+    start();
+    assert_eq!(axi.read(reg("SEQUENCE")), Ok(2));
+    axi.write(reg("COMPLETE"), 2).unwrap();
+    assert_eq!(axi.read(reg("STATUS")), Ok(1));
+    {
+        let mut sim = sim.borrow_mut();
+        sim.model.set_all(&[("audio_fault", 1), ("audio_xruns", 3)]);
+        sim.idle(1);
+    }
+    assert_eq!(axi.read(reg("STATUS")), Ok(2));
+    assert_eq!(axi.read(reg("XRUNS")), Ok(3));
+    assert_eq!(axi.read(reg("PEAK_CYCLES")), Ok(peak));
+    assert_eq!(axi.read(reg("RX_BASE")), Ok(0));
+    axi.write(reg("ENABLE"), 0).unwrap();
+    axi.write(reg("ENABLE"), 1).unwrap();
+    let sim = sim.borrow();
+    assert_eq!(sim.model.get("irq"), 0);
+    assert_eq!(sim.model.get("audio_enable"), 0);
+    assert_eq!(sim.model.get("quantum_ready"), 0);
+}
+
 #[shoop_test(no_wasm = "AXI register transaction test uses native Marlin")]
 fn mailbox_preserves_requests_and_latched_responses_across_bus_stalls() {
     let root = rt_fpga_rtl::root();

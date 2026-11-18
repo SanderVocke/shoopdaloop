@@ -13,6 +13,9 @@
 #include "deployment/runtime.h"
 #include "profiling.h"
 #include "diagnostics.h"
+#ifdef SHOOP_NATIVE_I2S
+#include "native_audio.h"
+#endif
 #ifdef SHOOP_USB_MIDI
 #include "usb/host.h"
 #endif
@@ -30,9 +33,13 @@ static struct netif interface;
 #endif
 static TaskHandle_t render_task;
 static _Atomic int render_done;
+#ifdef SHOOP_NATIVE_I2S
+static _Atomic int render_stopping;
+#else
 static uint32_t phase;
+#endif
 static uint32_t render_stack_remaining;
-#ifdef SHOOP_FIXTURE
+#if defined(SHOOP_FIXTURE) && !defined(SHOOP_NATIVE_I2S)
 extern int shoop_fixture_paused(void);
 extern unsigned shoop_fixture_frames(void);
 extern void shoop_fixture_irq(void);
@@ -101,6 +108,10 @@ uint64_t shoop_boot_nonce(void) {
 
 void vApplicationTickHook(void) {
     shoop_deploy_tick();
+#if defined(SHOOP_NATIVE_I2S) && defined(SHOOP_FIXTURE)
+    shoop_fixture_native_audio_tick();
+#endif
+#ifndef SHOOP_NATIVE_I2S
 #ifdef SHOOP_FIXTURE
     shoop_fixture_irq();
     if (shoop_fixture_paused()) return;
@@ -113,8 +124,9 @@ void vApplicationTickHook(void) {
         vTaskNotifyGiveFromISR(render_task, &wake);
         portYIELD_FROM_ISR(wake);
     }
+#endif
 }
-#ifndef SHOOP_FIXTURE
+#if !defined(SHOOP_FIXTURE) && !defined(SHOOP_NATIVE_I2S)
 /* Render outranks the control task, whose heartbeats keep app sessions alive.
    Under overload, cap render's share of each window and drop the excess quanta
    as xruns instead of starving control. */
@@ -127,6 +139,21 @@ static void render(void *owner) {
     uint32_t fpscr;
     __asm__ volatile("vmrs %0, fpscr" : "=r"(fpscr));
     __asm__ volatile("vmsr fpscr, %0" :: "r"(fpscr | (1u << 24) | (1u << 25)));
+#ifdef SHOOP_NATIVE_I2S
+    if (!shoop_native_audio_start()) {
+        shoop_logf("SHOOP_NATIVE_I2S_UNAVAILABLE IRQ setup failed\r\n");
+        atomic_store(&render_done, -1);
+        vTaskSuspend(NULL);
+    }
+    for (;;) {
+        int result = shoop_native_audio_wait(owner, atomic_load(&render_stopping));
+        shoop_deploy_render();
+        if (result != 0) {
+            atomic_store(&render_done, result == 1 ? 1 : -1);
+            vTaskSuspend(NULL);
+        }
+    }
+#else
 #ifndef SHOOP_FIXTURE
     const uint64_t window = shoop_timer_hz() * RENDER_WINDOW_MS / 1000;
     uint64_t window_start = shoop_timer_ticks(), busy = 0;
@@ -161,11 +188,12 @@ static void render(void *owner) {
         busy += shoop_timer_ticks() - started;
 #endif
     }
+#endif
 }
 void shoop_start_render(void *owner) {
     configASSERT(!render_task);
     configASSERT(xTaskCreate(render, "render", 65536, owner, 6, &render_task) == pdPASS);
-#ifdef SHOOP_FIXTURE
+#if defined(SHOOP_FIXTURE) && !defined(SHOOP_NATIVE_I2S)
     shoop_fixture_start();
 #endif
 }
@@ -201,7 +229,10 @@ int shoop_stop_fpga_task(void) {
 }
 #endif
 int shoop_stop_render(void) {
-#ifdef SHOOP_FIXTURE
+#ifdef SHOOP_NATIVE_I2S
+    if (!atomic_exchange(&render_stopping, 1)) shoop_render_wake();
+#endif
+#if defined(SHOOP_FIXTURE) && !defined(SHOOP_NATIVE_I2S)
     extern void shoop_fixture_stopping(void);
     shoop_fixture_stopping();
     shoop_render_wake();
@@ -224,7 +255,7 @@ int shoop_cleanup_allowed(void) {
     static unsigned failed;
     if (!failed++) { shoop_logf("SHOOP_DEPLOY_TEST_CLEANUP_REFUSED\r\n"); return 0; }
 #endif
-#ifdef SHOOP_FIXTURE
+#if defined(SHOOP_FIXTURE) && !defined(SHOOP_NATIVE_I2S)
     extern int shoop_fixture_fail_cleanup(void);
     return !shoop_fixture_fail_cleanup();
 #else

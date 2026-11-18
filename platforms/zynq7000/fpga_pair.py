@@ -17,6 +17,7 @@ import boards
 ROOT = Path(__file__).resolve().parents[2]
 PART = "xc7z020clg400-2"
 RTL_ABI = ROOT / "fpga/host_bridge/registers.json"
+NATIVE_AUDIO_ABI = ROOT / "fpga/host_bridge/native_audio.json"
 BUILD_FILES = {"zturn_v2.bit", "zturn_v2.xsa", "ps7_init.tcl", "ps-properties.txt", "fpga-abi.json", "geometry.txt"}
 
 
@@ -55,7 +56,9 @@ def pair(directory, elf, output):
     fpga = json.loads((directory / "fpga-build.json").read_text())
     firmware = json.loads(elf.with_suffix(".json").read_text())
     renderer = firmware.get("fpga_renderer", False)
-    if (firmware.get("fpga_contract") != fpga["contract"] or renderer == bool(firmware.get("fpga_probe")) or firmware.get("fixture") or
+    native_audio = firmware.get("native_i2s", False)
+    if (firmware.get("fpga_contract") != fpga["contract"] or
+            sum(map(bool, (renderer, native_audio, firmware.get("fpga_probe")))) != 1 or firmware.get("fixture") or
             firmware.get("elf_sha256") != digest(elf)):
         raise ValueError("Firmware does not match the FPGA image")
     inputs = {"firmware": (elf, firmware["elf_sha256"])}
@@ -64,9 +67,13 @@ def pair(directory, elf, output):
     if any(digest(path) != expected for path, expected in inputs.values()):
         raise ValueError("Build artifact differs from the recorded digest")
     output.parent.mkdir(parents=True, exist_ok=True)
-    if renderer and (directory / "geometry.txt").read_text().strip() != "looping":
+    geometry = (directory / "geometry.txt").read_text().strip()
+    if renderer and geometry != "looping":
         raise ValueError("FPGA renderer requires the looping geometry")
+    if native_audio != (geometry == "native"):
+        raise ValueError("Native I2S firmware requires the audio-only bitstream")
     write_json(output, {"contract": fpga["contract"], "vivado": fpga["vivado"], "renderer": renderer,
+                        "native_i2s": native_audio,
                         "deployment": bool(firmware.get("deployment")), "artifacts": {
         name: {"path": os.path.relpath(path, output.parent), "sha256": sha256}
         for name, (path, sha256) in inputs.items()
@@ -77,7 +84,9 @@ def verify(path):
     manifest = json.loads(path.read_text())
     artifacts = manifest["artifacts"]
     names = BUILD_FILES | {"firmware"}
-    if set(artifacts) not in (names, names | {"audio.txt"}) or manifest["contract"] != contract(boards.load("zturn-v2")):
+    native_audio = bool(manifest.get("native_i2s"))
+    abi = NATIVE_AUDIO_ABI if native_audio else RTL_ABI
+    if set(artifacts) not in (names, names | {"audio.txt"}) or manifest["contract"] != contract(boards.load("zturn-v2"), abi):
         raise ValueError("Unexpected artifacts or FPGA contract")
     for name, artifact in artifacts.items():
         if digest(path.parent / artifact["path"]) != artifact["sha256"]:
@@ -98,7 +107,7 @@ def jtag(manifest_path, server, xsdb, uart=None, uart_log=None):
     if uart is None:
         subprocess.run(command, check=True, timeout=120)
         return
-    marker = b"SHOOP_HOST_READY" if manifest.get("renderer") else b"SHOOP_FPGA_PROBE_READY"
+    marker = b"SHOOP_HOST_READY" if manifest.get("renderer") or manifest.get("native_i2s") else b"SHOOP_FPGA_PROBE_READY"
     capture_uart(command, uart, uart_log, marker)
 
 
@@ -130,6 +139,7 @@ def capture_uart(command, uart, uart_log, marker):
                         if any(failure in window for failure in (
                             b"FATAL", b"SHOOP_FPGA_OWNER_FAILED", b"SHOOP_FPGA_HOST_UNAVAILABLE",
                             b"SHOOP_FPGA_PROBE_UNAVAILABLE",
+                            b"SHOOP_NATIVE_I2S_UNAVAILABLE",
                         )):
                             raise RuntimeError(f"FPGA boot failed. See {uart_log}")
                         ready |= marker in window
