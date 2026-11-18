@@ -127,12 +127,12 @@ jobs:
       - name: Exercise signed SD boot and A/B deployment for the board memory map
         run: |
           python3 platforms/zynq7000/deployment/build_qemu.py --fetch
-          python3 platforms/zynq7000/tests/deployment.py --board ${{ matrix.board }} --directory work/zynq/board-deployment
+          python3 platforms/zynq7000/tests/deployment.py --board ${{ matrix.board }} --directory work/zynq/board-deployment ${{ matrix.board == 'zturn-v2' && '--recovery' || '' }}
       - name: Exercise board memory profile on the emulated processing system
         run: |
           python3 platforms/zynq7000/integration.py --board ${{ matrix.board }}
           python3 platforms/zynq7000/integration.py --board ${{ matrix.board }} --fixture --small-fixture
-      - name: Refuse an unconfigured FPGA before accessing its registers
+      - name: Verify FPGA probe startup and timeout in QEMU
         if: matrix.board == 'zturn-v2'
         run: python3 platforms/zynq7000/tests/fpga_probe.py
       - name: Save board artifacts and emulation evidence
