@@ -53,8 +53,8 @@ def create(elf, build, key_dir, output, loader_output, board=None, *, validate_f
                 firmware.get("elf_sha256") != hashlib.sha256(elf.read_bytes()).hexdigest() or
                 firmware.get("build_id") != build or not firmware.get("deployment")):
             raise ValueError("Firmware identity, digest or deployment contract differs")
-        if bool(firmware.get("fpga_renderer")) != (fpga_manifest is not None):
-            raise ValueError("An FPGA renderer bundle requires its matching FPGA pair")
+        if bool(firmware.get("fpga_renderer") or firmware.get("native_i2s")) != (fpga_manifest is not None):
+            raise ValueError("Fabric-dependent firmware requires its matching FPGA pair")
     if not re.fullmatch(r"[A-Za-z0-9_.-]{1,40}", build):
         raise ValueError("Build identity must contain 1–40 ASCII letters, digits, dots, dashes or underscores")
     if not elf.read_bytes().startswith(b"\x7fELF\x01\x01"):
@@ -72,7 +72,10 @@ def create(elf, build, key_dir, output, loader_output, board=None, *, validate_f
     if fpga_manifest is not None:
         pair = fpga_pair.verify(fpga_manifest)
         artifacts = pair["artifacts"]
-        if (not validate_firmware or not pair.get("renderer") or firmware["fpga_contract"] != pair["contract"] or
+        if (not validate_firmware or
+                not (pair.get("renderer") or pair.get("native_i2s")) or
+                bool(firmware.get("native_i2s")) != bool(pair.get("native_i2s")) or
+                firmware["fpga_contract"] != pair["contract"] or
                 artifacts["firmware"]["sha256"] != firmware["elf_sha256"]):
             raise ValueError("FPGA pair and deployment firmware differ")
         if loader.get("fpga_ps", {}).get("xsa_sha256") != artifacts["zturn_v2.xsa"]["sha256"]:

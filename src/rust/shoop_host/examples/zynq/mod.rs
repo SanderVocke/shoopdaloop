@@ -45,6 +45,14 @@ fn command(client: &mut Client, connection: &mut Connection, command: Command) -
     finish(client, connection, message)
 }
 fn finish(client: &mut Client, connection: &mut Connection, message: ClientMessage) -> Outcome {
+    finish_while(client, connection, message, |_| true).expect("operation interrupted")
+}
+fn finish_while(
+    client: &mut Client,
+    connection: &mut Connection,
+    message: ClientMessage,
+    keep_running: impl Fn(&Client) -> bool,
+) -> Option<Outcome> {
     let wait_for_snapshot = matches!(message, ClientMessage::Submit { .. });
     let operation = match message {
         ClientMessage::Submit { operation, .. } | ClientMessage::Shutdown { operation, .. } => {
@@ -54,15 +62,16 @@ fn finish(client: &mut Client, connection: &mut Connection, message: ClientMessa
     };
     connection.send(message).expect("command delivery");
     wait_for_result(client, operation, wait_for_snapshot, |client| {
-        pump(client, connection)
+        pump(client, connection);
+        keep_running(client)
     })
 }
 fn wait_for_result(
     client: &mut Client,
     operation: OperationId,
     wait_for_snapshot: bool,
-    mut progress: impl FnMut(&mut Client),
-) -> Outcome {
+    mut progress: impl FnMut(&mut Client) -> bool,
+) -> Option<Outcome> {
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
         if let Some(outcome) = client.results().get(&operation) {
@@ -79,11 +88,13 @@ fn wait_for_result(
                 Outcome::Refused { .. } => true,
             };
             if published {
-                return outcome.clone();
+                return Some(outcome.clone());
             }
         }
         assert!(Instant::now() < deadline, "command timeout");
-        progress(client);
+        if !progress(client) {
+            return None;
+        }
     }
 }
 pub fn run() {
@@ -95,6 +106,10 @@ pub fn run() {
     }
     if std::env::var_os("SHOOP_ZYNQ_FPGA").is_some() {
         fpga::run(&profile);
+        return;
+    }
+    if std::env::var_os("SHOOP_ZYNQ_NATIVE_I2S").is_some() {
+        fpga::run_native(&profile);
         return;
     }
     let (mut client, mut connection) = attach(&profile);

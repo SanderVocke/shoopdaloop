@@ -11,6 +11,7 @@ crate-type = ["staticlib"]
 [features]
 usb-midi = ["shoop_host_freertos/usb-midi"]
 fixture = ["shoop_host_freertos/fixture"]
+native-i2s = ["shoop_host_freertos/native-i2s"]
 fpga-probe = ["dep:rt_fpga_rtl"]
 fpga = ["dep:rt_fpga_rtl", "shoop_host_freertos/fpga"]
 

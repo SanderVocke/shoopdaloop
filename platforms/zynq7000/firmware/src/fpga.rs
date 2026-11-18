@@ -8,12 +8,9 @@ use core::{arch::asm, convert::Infallible, ptr};
 use rt_fpga_rtl::host::{registers::RESULT_OK, Client, Error, Request};
 use rt_fpga_rtl::host::{Contract, Mailbox, RegisterBus};
 
-#[cfg(not(feature = "fixture"))]
-const DEVCFG_INT_STATUS: usize = 0xf800700c;
-#[cfg(not(feature = "fixture"))]
-const PCFG_DONE: u32 = 1 << 2;
-
 extern "C" {
+    #[cfg(not(feature = "fixture"))]
+    fn shoop_fpga_configured() -> i32;
     #[cfg(not(feature = "fixture"))]
     fn shoop_fpga_register_base() -> u32;
     fn shoop_fpga_arena_base() -> u32;
@@ -70,9 +67,7 @@ fn contract() -> Contract {
 
 #[cfg(not(feature = "fixture"))]
 fn configured() -> bool {
-    let status =
-        unsafe { ptr::read_volatile::<u32>(ptr::with_exposed_provenance(DEVCFG_INT_STATUS)) };
-    status & PCFG_DONE != 0
+    unsafe { shoop_fpga_configured() != 0 }
 }
 
 #[cfg(all(feature = "fpga-probe", not(feature = "fixture")))]

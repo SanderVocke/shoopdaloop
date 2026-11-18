@@ -55,6 +55,13 @@ impl RegisterBus for Axi<'_, '_> {
             .set_all(&[("s_axi_arvalid", 1), ("s_axi_araddr", u64::from(offset))]);
         assert_eq!(sim.tick(&["s_axi_arready"]).0.get("s_axi_arready"), 1);
         sim.model.set("s_axi_arvalid", 0);
+        for _ in 0..8 {
+            if sim.model.get("s_axi_rvalid") != 0 {
+                break;
+            }
+            sim.idle(1);
+        }
+        assert_eq!(sim.model.get("s_axi_rvalid"), 1);
         let data = sim.model.get("s_axi_rdata") as u32;
         let code = sim.model.get("s_axi_rresp");
         sim.idle(2);
