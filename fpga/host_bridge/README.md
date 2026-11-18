@@ -14,9 +14,11 @@ synthesize the block design together with its top-level wrapper.
 Use the provisional PS settings below to reproduce routing and generate
 reports in the workspace. Use the exact MYIR V2 PS configuration for JTAG
 and verify the populated DDR and connector configuration before powering the
-physical codec. The development preset uses DDR3-1066 with six cycles of
-write latency, a 40 ns four-activate window, and a 35 ns minimum active time.
-The V2 board delays and training still need qualification. [Compiler and catalog provenance](../zedboard/CATALOG.md)
+physical codec. The development preset uses DDR3-1066 with seven cycles of
+CAS read latency and six of write latency, a 50 ns four-activate window, and
+a 37.5 ns minimum active time. The Micron datasheets specify these settings
+for the x16 geometry and compatible DDR3-1066 speed bin. The V2 board delays
+and training still need qualification. [Micron part datasheet](https://s3.amazonaws.com/snapeda/datasheet/MT41K256M16TW-107%3AP_Micron_Technology.pdf) · [Micron 1.5 V timing](https://www.micro-semiconductor.com/datasheet/56-MT41J256M16RE-15E-IT-D.pdf) · [Compiler and catalog provenance](../zedboard/CATALOG.md)
 
 ```sh
 SHOOP_VIVADO_SERIAL_SYNTH=1 vivado -mode batch \
@@ -114,14 +116,20 @@ Build the loader and deployment firmware, then pair the ELF and the looping
 bitstream. The FIT signature binds both images to the board profile. Keep
 device credentials and the deployment signing key in private files. The
 loader verifies both hashes before programming the fabric and starting ARM.
+Use a dedicated route and release directory for each candidate. Copy the ELF
+and its manifest to the release directory before pairing, so a subsequent
+firmware build can reuse the board build directory.
 
 ```sh
 python3 platforms/zynq7000/deployment/build_boot.py --board zturn-v2 --fpga-build work/zturn-v2/route
 python3 platforms/zynq7000/build.py --board zturn-v2 --app host --fpga --deployment --build-id zturn-fpga
+mkdir -p work/zturn-v2/sd
+cp work/zynq/boards/zturn-v2/build/host-deployment-fpga.elf work/zturn-v2/sd/
+cp work/zynq/boards/zturn-v2/build/host-deployment-fpga.json work/zturn-v2/sd/
 python3 platforms/zynq7000/fpga_pair.py pair work/zturn-v2/route \
-  work/zynq/boards/zturn-v2/build/host-deployment-fpga.elf work/zturn-v2/sd/pair.json
+  work/zturn-v2/sd/host-deployment-fpga.elf work/zturn-v2/sd/pair.json
 python3 platforms/zynq7000/deployment/bundle.py --board zturn-v2 \
-  --elf work/zynq/boards/zturn-v2/build/host-deployment-fpga.elf --build-id zturn-fpga \
+  --elf work/zturn-v2/sd/host-deployment-fpga.elf --build-id zturn-fpga \
   --key-dir "$SHOOP_SIGNING_KEYS" --fpga-pair work/zturn-v2/sd/pair.json \
   --output work/zturn-v2/sd/shoop.itb --loader-output work/zturn-v2/sd/loader
 python3 platforms/zynq7000/deployment/card.py --board zturn-v2 \

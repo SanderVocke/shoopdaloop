@@ -166,6 +166,14 @@ jobs:
           set -o pipefail
           cargo test --locked -p rt_fpga_testbench --features sim -- --nocapture 2>&1 | tee work/marlin-suite/regression.log
           cargo check --locked -p rt_fpga_testbench
+      - name: Verify 16 and 64 loops with the Z-turn V2 DDR3 model
+        env:
+          SHOOP_DRAMSIM3_CONFIG: ${{ github.workspace }}/fpga/axi_memory/configs/zturn-v2-ddr3-1066-x32.ini
+        run: |
+          set -o pipefail
+          cargo test --locked -p rt_fpga_testbench --features sim --test loading \
+            looping_workloads_with_thirty_two_frame_chunks_and_dram_timing -- --nocapture \
+            2>&1 | tee work/marlin-suite/zturn-v2-ddr3.log
       - name: Check serialized Marlin application and bridge
         run: |
           cargo test --locked -p rt_fpga_rtl --features sim,rt-interface

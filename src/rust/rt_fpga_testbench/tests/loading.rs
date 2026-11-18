@@ -601,6 +601,7 @@ fn looping_workloads_with_thirty_two_frame_chunks_and_dram_timing() {
     };
 
     const Q: usize = 32;
+    const QUANTUM_BUDGET_CYCLES: u64 = Q as u64 * 100_000_000 / 48_000;
     const CAPACITY: [u64; 7] = [1024, 512, 1024, Q as u64, 512, 1, 2];
     let geometry = Geometry::new([512, 8192, Q as u64], 32);
     let mut design = suites::pipeline::design(CAPACITY, &geometry, 64, Mode::Dramsim3, 1);
@@ -731,6 +732,10 @@ fn looping_workloads_with_thirty_two_frame_chunks_and_dram_timing() {
         assert!(store.memory.borrow().requests() > 0);
         println!(
             "{loops} loops, DRAMsim3 AXI64 cycles per quantum including input configuration: {cycles:?}"
+        );
+        assert!(
+            cycles.iter().all(|&cycles| cycles <= QUANTUM_BUDGET_CYCLES),
+            "{loops} loops exceeded the quantum budget of {QUANTUM_BUDGET_CYCLES} fabric cycles"
         );
     }
 }
