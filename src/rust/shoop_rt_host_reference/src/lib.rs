@@ -1,7 +1,12 @@
 //! Portable ARM-side graph binding and driver-owned persistent reference rendering.
+#![no_std]
+extern crate alloc;
+
 mod usage;
 
+use alloc::{sync::Arc, vec, vec::Vec};
 use anyhow::{ensure, Result};
+use core::sync::atomic::{AtomicU32, AtomicU64, AtomicU8, Ordering};
 use rt_fpga_compiler::{
     compile, loading::Allocator, CompileContext, CompileError, Feature, ProgramLimits, Resource,
 };
@@ -29,10 +34,6 @@ use shoop_rt_protocol::{
 use shoop_rt_transport::{
     carrier::{CarrierError, Endpoint as CarrierEndpoint, Outbox},
     rt,
-};
-use std::sync::{
-    atomic::{AtomicU32, AtomicU64, AtomicU8, Ordering},
-    Arc,
 };
 use usage::{ProgramUsage, StorageCounter, UsageTelemetry};
 
@@ -75,12 +76,12 @@ pub fn program_limits() -> ProgramLimits {
 }
 #[derive(Debug)]
 struct GraphRefusal(Code);
-impl std::fmt::Display for GraphRefusal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for GraphRefusal {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "graph refused: {:?}", self.0)
     }
 }
-impl std::error::Error for GraphRefusal {}
+impl core::error::Error for GraphRefusal {}
 fn refusal_code(error: &anyhow::Error) -> Code {
     if let Some(GraphRefusal(code)) = error.downcast_ref::<GraphRefusal>() {
         return *code;
@@ -790,7 +791,7 @@ impl<L: ProgramLoader> CarrierEndpoint for Endpoint<L> {
         &mut self,
         message: ClientMessage,
         out: &mut Outbox,
-    ) -> std::result::Result<(), CarrierError> {
+    ) -> core::result::Result<(), CarrierError> {
         if let ClientMessage::Immediate(batch) = message {
             if batch.commands().iter().any(|c| {
                 matches!(
