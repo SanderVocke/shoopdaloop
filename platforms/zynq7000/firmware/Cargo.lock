@@ -147,6 +147,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "rt_fpga_compiler"
+version = "0.3.0"
+dependencies = [
+ "libm",
+ "shoop_graph",
+]
+
+[[package]]
+name = "rt_fpga_rtl"
+version = "0.3.0"
+dependencies = [
+ "rt_fpga_compiler",
+ "serde",
+]
+
+[[package]]
 name = "rt_profiling"
 version = "0.3.0"
 dependencies = [
@@ -421,6 +437,7 @@ name = "shoop_zynq_firmware"
 version = "0.3.0"
 dependencies = [
  "linked_list_allocator",
+ "rt_fpga_rtl",
  "shoop_host_freertos",
 ]
 

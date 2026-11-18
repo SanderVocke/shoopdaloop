@@ -20,9 +20,10 @@ exec python3 [file join $root platforms zynq7000 boards.py] --board zturn-v2 --o
 set channel [open [file join $profile shoop_board.h] r]
 set board_header [read $channel]
 close $channel
-if {![regexp {SHOOP_PL_DDR_BASE (0x[0-9a-f]+)u} $board_header _ arena_base] ||
-    ![regexp {SHOOP_PL_DDR_BYTES (0x[0-9a-f]+)u} $board_header _ arena_bytes]} {
-    error "The board profile has no PL DDR arena"
+foreach {macro variable} {DDR_BASE arena_base DDR_BYTES arena_bytes REG_BASE register_base CLOCK_HZ clock_hz} {
+    if {![regexp "SHOOP_PL_$macro (0x\[0-9a-f\]+)u" $board_header _ $variable]} {
+        error "Missing PL profile setting SHOOP_PL_$macro"
+    }
 }
 
 cd $output
@@ -50,15 +51,15 @@ set ps [create_bd_cell -type ip -vlnv xilinx.com:ip:processing_system7:5.5 ps]
 set_property -dict $preset $ps
 set_property -dict [list CONFIG.PCW_USE_M_AXI_GP0 1 CONFIG.PCW_USE_S_AXI_HP0 1 \
     CONFIG.PCW_S_AXI_HP0_DATA_WIDTH 64 CONFIG.PCW_EN_CLK0_PORT 1 CONFIG.PCW_EN_RST0_PORT 1 \
-    CONFIG.PCW_FPGA0_PERIPHERAL_FREQMHZ 100 CONFIG.PCW_USE_FABRIC_INTERRUPT 1 \
+    CONFIG.PCW_FPGA0_PERIPHERAL_FREQMHZ [expr {$clock_hz/1000000.0}] CONFIG.PCW_USE_FABRIC_INTERRUPT 1 \
     CONFIG.PCW_IRQ_F2P_INTR 1] $ps
 make_bd_intf_pins_external [get_bd_intf_pins ps/DDR] [get_bd_intf_pins ps/FIXED_IO]
 
 set core [create_bd_cell -type module -reference host_pipeline_axi core]
 set_property -dict [list CONFIG.ARENA_BASE [expr {$arena_base}] \
-    CONFIG.ARENA_BYTES [expr {$arena_bytes}]] $core
+    CONFIG.ARENA_BYTES [expr {$arena_bytes}] CONFIG.CORE_CLOCK_HZ [expr {$clock_hz}]] $core
 create_bd_cell -type ip -vlnv xilinx.com:ip:proc_sys_reset:5.0 reset
-set_property CONFIG.C_EXT_RESET_HIGH 0 [get_bd_cells reset]
+set_property -dict [list CONFIG.C_EXT_RESET_HIGH 0 CONFIG.C_AUX_RESET_HIGH 1] [get_bd_cells reset]
 create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect:2.1 gp0
 set_property CONFIG.NUM_MI 1 [get_bd_cells gp0]
 foreach {name width value} {zero 1 0 one 1 1 sample_zero 32 0 boot_epoch 32 1} {
@@ -73,9 +74,10 @@ connect_bd_net [get_bd_pins ps/FCLK_RESET0_N] [get_bd_pins reset/ext_reset_in]
 connect_bd_net [get_bd_pins reset/interconnect_aresetn] [get_bd_pins gp0/ARESETN]
 connect_bd_net [get_bd_pins reset/peripheral_aresetn] [get_bd_pins gp0/S00_ARESETN] [get_bd_pins gp0/M00_ARESETN]
 connect_bd_net [get_bd_pins reset/peripheral_reset] [get_bd_pins core/reset]
-connect_bd_net [get_bd_pins zero/dout] [get_bd_pins reset/mb_debug_sys_rst] [get_bd_pins core/quantum_valid] \
+connect_bd_net [get_bd_pins zero/dout] [get_bd_pins reset/mb_debug_sys_rst] [get_bd_pins reset/aux_reset_in] \
+    [get_bd_pins core/quantum_valid] \
     [get_bd_pins ps/S_AXI_HP0_RDISSUECAP1_EN] [get_bd_pins ps/S_AXI_HP0_WRISSUECAP1_EN]
-connect_bd_net [get_bd_pins one/dout] [get_bd_pins reset/dcm_locked] [get_bd_pins reset/aux_reset_in] \
+connect_bd_net [get_bd_pins one/dout] [get_bd_pins reset/dcm_locked] \
     [get_bd_pins core/sync_event_ready]
 connect_bd_net [get_bd_pins sample_zero/dout] [get_bd_pins core/sample_input_data]
 connect_bd_net [get_bd_pins boot_epoch/dout] [get_bd_pins core/epoch]
@@ -84,7 +86,7 @@ connect_bd_net [get_bd_pins core/irq] [get_bd_pins ps/IRQ_F2P]
 connect_bd_intf_net [get_bd_intf_pins ps/M_AXI_GP0] [get_bd_intf_pins gp0/S00_AXI]
 connect_bd_intf_net [get_bd_intf_pins gp0/M00_AXI] [get_bd_intf_pins core/s_axi]
 connect_bd_intf_net [get_bd_intf_pins core/m_axi] [get_bd_intf_pins ps/S_AXI_HP0]
-assign_bd_address -offset 0x40000000 -range 4K -target_address_space [get_bd_addr_spaces ps/Data] \
+assign_bd_address -offset $register_base -range 4K -target_address_space [get_bd_addr_spaces ps/Data] \
     [get_bd_addr_segs core/s_axi/reg0]
 assign_bd_address
 validate_bd_design

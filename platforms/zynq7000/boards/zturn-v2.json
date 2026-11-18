@@ -3,6 +3,10 @@
   "name": "zturn-v2",
   "profile": "shoop-zturn-v2-1g-v1",
   "part": "xc7z020clg400-2",
+  "fpga": {
+    "register_base": 1073741824,
+    "clock_hz": 100000000
+  },
   "memory": {
     "ram_mib": 1024,
     "platform_mib": 128,

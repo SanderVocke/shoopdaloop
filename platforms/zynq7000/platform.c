@@ -23,6 +23,13 @@ XEmacPs_Config XEmacPs_ConfigTable[] = {{ .DeviceId = 0, .BaseAddress = SHOOP_GE
 struct xtopology_t xtopology[] = {{ .emac_baseaddr = SHOOP_GEM_BASE, .emac_type = xemac_type_emacps, .scugic_baseaddr = 0xf8f01000, .scugic_emac_intr = SHOOP_GEM_IRQ }};
 int xtopology_n_emacs = 1;
 
+#ifdef SHOOP_FPGA_PROBE
+uint32_t shoop_fpga_register_base(void) { return SHOOP_PL_REG_BASE; }
+uint32_t shoop_fpga_arena_base(void) { return SHOOP_PL_DDR_BASE; }
+uint32_t shoop_fpga_arena_bytes(void) { return SHOOP_PL_DDR_BYTES; }
+uint32_t shoop_fpga_clock_hz(void) { return SHOOP_PL_CLOCK_HZ; }
+#endif
+
 #ifdef SHOOP_BOARD_PHY_YT8531
 static bool mdio_read(void *context, unsigned reg, uint16_t *value) {
     return XEmacPs_PhyRead(context, SHOOP_BOARD_PHY_ADDRESS, reg, value) == XST_SUCCESS;

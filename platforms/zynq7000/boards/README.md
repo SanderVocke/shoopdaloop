@@ -69,6 +69,12 @@ The V2-specific PS initialization and physical SD boot are qualification items.
 The DTS overlay selects address 7 in U-Boot. Direct-load QEMU uses the built-in
 Marvell PHY model at the same address. [Pinned Z-turn PS baseline](https://github.com/u-boot/u-boot/blob/5508406582f6f7120dce0c4b3059819a41788db2/board/xilinx/zynq/zynq-zturn/ps7_init_gpl.c)
 
+`python3 platforms/zynq7000/tests/fpga_probe.py` cross-builds a diagnostic ELF
+and checks that it returns cleanly in QEMU before accessing an unconfigured PL.
+With a configured bitstream, the probe checks the mailbox ABI, fabric clock and
+DDR arena. The board profile generates the register aperture and fabric clock
+for both the ELF and the Vivado build.
+
 ## Choose JTAG development or SD deployment
 
 For a development loop that loads a bare-metal ELF through JTAG, start with

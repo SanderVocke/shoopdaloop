@@ -64,6 +64,12 @@ class Board:
             raise ValueError("Invalid Zynq-7000 platform/DDR window")
         if self.memory["bundle_mib"] != 32:
             raise ValueError("The deployment protocol requires a 32 MiB bundle bound")
+        fpga = self.data.get("fpga")
+        if self.pl_bytes and (not isinstance(fpga, dict) or set(fpga) != {"register_base", "clock_hz"} or
+                              any(type(value) is not int for value in fpga.values()) or
+                              not 0x40000000 <= fpga["register_base"] <= 0x7ffff000 or
+                              fpga["register_base"] % 4096 or not 1 <= fpga["clock_hz"] <= 250_000_000):
+            raise ValueError("Invalid FPGA register aperture or clock")
         if self.loader_min + self.memory["loader_mib"] * MIB > self.ram:
             raise ValueError("Firmware, PL arena, two staging buffers and loader exceed board DDR")
         fw = self.firmware
@@ -128,7 +134,9 @@ class Board:
                 values[f"GEM_{speed}_DIV{i}"] = value
         lines = ["/* Generated board contract. */", "#ifndef SHOOP_BOARD_H", "#define SHOOP_BOARD_H"]
         if self.pl_bytes:
-            values.update(PL_DDR_BASE=self.rust_end, PL_DDR_BYTES=self.pl_bytes)
+            values.update(PL_DDR_BASE=self.rust_end, PL_DDR_BYTES=self.pl_bytes,
+                          PL_REG_BASE=self.data["fpga"]["register_base"],
+                          PL_CLOCK_HZ=self.data["fpga"]["clock_hz"])
         if b.get("phy") == "yt8531":
             values.update(BOARD_PHY_YT8531=1, BOARD_PHY_ADDRESS=b["phy_address"])
         lines += [f"#define SHOOP_{key} {value:#x}u" for key, value in values.items()]

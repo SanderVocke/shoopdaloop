@@ -132,6 +132,9 @@ jobs:
         run: |
           python3 platforms/zynq7000/integration.py --board ${{ matrix.board }}
           python3 platforms/zynq7000/integration.py --board ${{ matrix.board }} --fixture --small-fixture
+      - name: Refuse an unconfigured FPGA before accessing its registers
+        if: matrix.board == 'zturn-v2'
+        run: python3 platforms/zynq7000/tests/fpga_probe.py
       - name: Save board artifacts and emulation evidence
         if: always()
         uses: actions/upload-artifact@v7

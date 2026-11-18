@@ -16,7 +16,8 @@ foreach directory {state_processor job_processor chunk_memory media_store axi_me
 foreach source {host_mailbox.sv host_dispatch.sv host_pipeline_axi.sv} {
     lappend files [file join $host $source]
 }
-read_verilog -sv -include_dirs [file join $root fpga state_processor rtl] $files
+set_property include_dirs [list [file join $root fpga state_processor rtl]] [current_fileset]
+read_verilog -sv $files
 
 set constraints [file join $output clock.xdc]
 set channel [open $constraints w]
