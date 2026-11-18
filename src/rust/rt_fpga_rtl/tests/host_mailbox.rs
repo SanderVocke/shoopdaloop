@@ -3,10 +3,11 @@
 use rt_fpga_rtl::{
     bits::Bits,
     component::{Instruction, instruction_words},
-    host::{Contract, Error, Mailbox, RegisterBus, registers::*},
+    host::{Client, Contract, Error, Mailbox, RegisterBus, Request, registers::*},
     model::Design,
     pipeline::{Geometry, design},
     sim::Sim,
+    target::{ConfigurationWrite, Space},
 };
 use shoop_wasm_test_support::shoop_test;
 use std::cell::RefCell;
@@ -342,4 +343,31 @@ fn run_compiled_programs_and_switch_at_the_same_boundary_through_axi() {
     assert_eq!(core.model.get("quantum_frame"), 12);
     assert_eq!(core.model.get("quantum_revision"), 2);
     assert!(core.model.get("quantum_cycles") > 0);
+    drop(core);
+
+    let mut client = Client::new(device);
+    let value = 0x123456789abcdef0;
+    let write = ConfigurationWrite {
+        space: Space::Loop,
+        address: 2,
+        value: Bits::from_u64(value),
+    };
+    let mut execute = |request: Request| {
+        client.start(request).unwrap();
+        assert_eq!(client.start(Request::run_quantum()), Err(Error::Full));
+        let result = (0..1000)
+            .find_map(|_| client.poll().unwrap())
+            .expect("typed operation timeout");
+        assert_eq!(result.code, RESULT_OK);
+        result.data
+    };
+    execute(Request::configuration_write(&write).unwrap());
+    let state = execute(Request::capture_snapshot(1));
+    assert_eq!(&state[..6], &[3, 12, 0, 2, 0, 1]);
+    let word = execute(Request::read_snapshot(state[0], 2, 1));
+    assert_eq!(&word[..2], &[value as u32, (value >> 32) as u32]);
+    execute(Request::input_sample(0, 0x32100000));
+    let result = execute(Request::run_quantum());
+    assert_eq!(&result[1..5], &[16, 0, 2, 0]);
+    assert_eq!(execute(Request::output_sample(0))[0], 0x32100000);
 }

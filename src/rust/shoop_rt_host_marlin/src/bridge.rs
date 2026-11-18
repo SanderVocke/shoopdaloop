@@ -1,7 +1,7 @@
 use anyhow::{ensure, Result};
 use rt_fpga_compiler::{loading::Layout, LogicalStateProgram};
 use rt_fpga_rtl::{
-    host::control::descriptor,
+    host::{control::descriptor, Upload},
     target::{ProgramImage, RtlTarget},
 };
 use rt_runtime::{
@@ -65,7 +65,7 @@ fn guarded(shared: &Shared, work: impl FnOnce() -> Result<()>) {
     }
 }
 pub struct Images {
-    uploads: rtrb::Producer<ProgramImage>,
+    uploads: rtrb::Producer<Upload>,
     ready: rtrb::Consumer<(u64, bool)>,
     retired: rtrb::Consumer<ProgramImage>,
     wake: Thread,
@@ -88,7 +88,7 @@ impl ProgramLoader for Images {
         .build_image(logical, layout)?;
         let descriptor = descriptor(&image);
         self.uploads
-            .push(image)
+            .push(Upload::new(image, self.limits().instructions))
             .map_err(|_| anyhow::anyhow!("RTL upload queue is full"))?;
         self.wake.unpark();
         Ok(descriptor)

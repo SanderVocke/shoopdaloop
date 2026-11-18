@@ -2,7 +2,11 @@
 #[cfg(feature = "rt-interface")]
 pub mod control;
 pub mod registers;
+mod request;
+mod upload;
 use registers::*;
+pub use request::{Client, Request};
+pub use upload::{Upload, UploadStep};
 
 /// Read and write naturally aligned, little-endian MMIO words in program order.
 pub trait RegisterBus {
@@ -34,6 +38,7 @@ pub enum Error<E> {
     Full,
     Fault,
     InvalidRequest,
+    UnexpectedResponse,
 }
 
 pub struct Mailbox<B> {

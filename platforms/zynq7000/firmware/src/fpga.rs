@@ -1,6 +1,6 @@
 use crate::Serial;
 use core::{arch::asm, convert::Infallible, fmt::Write, ptr};
-use rt_fpga_rtl::host::{Contract, Mailbox, RegisterBus};
+use rt_fpga_rtl::host::{registers::RESULT_OK, Client, Contract, Mailbox, RegisterBus, Request};
 
 const DEVCFG_INT_STATUS: usize = 0xf800700c;
 const PCFG_DONE: u32 = 1 << 2;
@@ -10,6 +10,7 @@ extern "C" {
     fn shoop_fpga_arena_base() -> u32;
     fn shoop_fpga_arena_bytes() -> u32;
     fn shoop_fpga_clock_hz() -> u32;
+    fn shoop_millis() -> u64;
 }
 
 struct DeviceRegisters(usize);
@@ -59,12 +60,33 @@ pub fn probe() {
             },
         )
     };
-    match Mailbox::open(DeviceRegisters(base as usize), expected) {
-        Ok(_) => {
-            let _ = writeln!(Serial, "SHOOP_FPGA_PROBE_READY {expected:?}");
-        }
+    let mailbox = match Mailbox::open(DeviceRegisters(base as usize), expected) {
+        Ok(mailbox) => mailbox,
         Err(error) => {
             let _ = writeln!(Serial, "SHOOP_FPGA_PROBE_UNAVAILABLE {error:?}");
+            return;
         }
+    };
+    let mut client = Client::new(mailbox);
+    if let Err(error) = client.start(Request::capture_snapshot(0)) {
+        let _ = writeln!(Serial, "SHOOP_FPGA_PROBE_UNAVAILABLE {error:?}");
+        return;
     }
+    let start = unsafe { shoop_millis() };
+    while unsafe { shoop_millis() }.wrapping_sub(start) < 25 {
+        match client.poll() {
+            Ok(None) => continue,
+            Ok(Some(response)) if response.code == RESULT_OK && response.data[0] != 0 => {
+                let _ = writeln!(Serial, "SHOOP_FPGA_PROBE_READY {expected:?}");
+            }
+            Ok(Some(response)) => {
+                let _ = writeln!(Serial, "SHOOP_FPGA_PROBE_UNAVAILABLE {response:?}");
+            }
+            Err(error) => {
+                let _ = writeln!(Serial, "SHOOP_FPGA_PROBE_UNAVAILABLE {error:?}");
+            }
+        }
+        return;
+    }
+    let _ = writeln!(Serial, "SHOOP_FPGA_PROBE_UNAVAILABLE snapshot timeout");
 }

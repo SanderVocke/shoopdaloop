@@ -10,9 +10,10 @@ use rt_fpga_rtl::{
     host::control::{
         apply_plan, clear_plan, descriptor, loop_plan, loop_state, protocol_mode, reference_mode,
     },
+    host::{Upload, UploadStep},
     pipeline::{design, Geometry},
     sim::Sim,
-    target::{ConfigurationWrite as Write, ProgramImage, Space},
+    target::{ProgramImage, Space},
 };
 use shoop_rt_host_reference::{program_limits, StorageUsage, MEDIA_BLOCK_CHUNKS};
 use shoop_rt_protocol::{
@@ -30,25 +31,15 @@ use std::{
 
 const TARGET_CORE_CLOCK_HZ: u32 = 150_000_000;
 
-struct Upload {
-    image: ProgramImage,
-    writes: std::vec::IntoIter<Write>,
-    views: std::vec::IntoIter<u32>,
+struct StagedUpload {
+    upload: Upload,
     done: bool,
     announced: bool,
 }
-impl Upload {
-    fn new(image: ProgramImage) -> Self {
-        let writes = image.writes(u64::from(program_limits().instructions));
-        let views = image
-            .layout
-            .new_media_views()
-            .collect::<Vec<_>>()
-            .into_iter();
+impl StagedUpload {
+    fn new(upload: Upload) -> Self {
         Self {
-            image,
-            writes: writes.into_iter(),
-            views,
+            upload,
             done: false,
             announced: false,
         }
@@ -75,7 +66,7 @@ struct Owner<'a> {
     frame: u64,
     storage_frame: u64,
     current: Option<ProgramImage>,
-    upload: Option<Upload>,
+    upload: Option<StagedUpload>,
     retired: Option<ProgramImage>,
     rows: Vec<Row>,
     pending: Option<Pending>,
@@ -192,24 +183,31 @@ impl Owner<'_> {
         }
         if !upload.done {
             for _ in 0..32 {
-                let Some(w) = upload.writes.next() else {
-                    if let Some(view) = upload.views.next() {
-                        self.clear_view(view)?;
-                    } else {
-                        upload.done = true;
+                match upload.upload.next_step() {
+                    Some(UploadStep::Configure(w)) => {
+                        let (prefix, space) = if w.space == Space::History {
+                            ("audio_cfg", 3)
+                        } else {
+                            ("cfg", w.space as u64)
+                        };
+                        self.access(prefix, space, w.address, Some(&w.value))?;
                     }
-                    break;
-                };
-                let (prefix, space) = if w.space == Space::History {
-                    ("audio_cfg", 3)
-                } else {
-                    ("cfg", w.space as u64)
-                };
-                self.access(prefix, space, w.address, Some(&w.value))?;
+                    Some(UploadStep::ClearView(view)) => {
+                        self.clear_view(view)?;
+                        break;
+                    }
+                    None => {
+                        upload.done = true;
+                        break;
+                    }
+                }
             }
         }
         if upload.done {
-            if ready.push((upload.image.layout.revision, true)).is_ok() {
+            if ready
+                .push((upload.upload.image.layout.revision, true))
+                .is_ok()
+            {
                 // A ready image stays owned here until its fenced switch.
                 upload.announced = true;
                 self.upload = Some(upload);
@@ -227,7 +225,8 @@ impl Owner<'_> {
         let upload = self
             .upload
             .take()
-            .ok_or_else(|| anyhow::anyhow!("RTL selected an unstaged program"))?;
+            .ok_or_else(|| anyhow::anyhow!("RTL selected an unstaged program"))?
+            .upload;
         ensure!(
             upload.image.layout.revision == revision,
             "RTL selected wrong program revision"
@@ -403,7 +402,7 @@ impl Owner<'_> {
                     || !self
                         .upload
                         .as_ref()
-                        .is_some_and(|u| u.announced && descriptor(&u.image) == d)
+                        .is_some_and(|u| u.announced && descriptor(&u.upload.image) == d)
                 {
                     Code::CannotApply
                 } else {
@@ -411,6 +410,7 @@ impl Owner<'_> {
                         .upload
                         .as_ref()
                         .unwrap()
+                        .upload
                         .image
                         .layout
                         .changed_sources()
@@ -683,7 +683,7 @@ pub(super) fn run(
     memory_mb: u32,
     shared: &Shared,
     mut execution: rt::Execution,
-    mut uploads: rtrb::Consumer<ProgramImage>,
+    mut uploads: rtrb::Consumer<Upload>,
     mut ready: rtrb::Producer<(u64, bool)>,
     mut retired: rtrb::Producer<ProgramImage>,
     mut requests: rtrb::Consumer<Block>,
@@ -768,8 +768,8 @@ pub(super) fn run(
             }
         }
         if owner.upload.is_none() {
-            if let Ok(image) = uploads.pop() {
-                owner.upload = Some(Upload::new(image));
+            if let Ok(upload) = uploads.pop() {
+                owner.upload = Some(StagedUpload::new(upload));
                 work = true;
             }
         }
