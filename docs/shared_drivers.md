@@ -25,6 +25,14 @@ keeps the existing host's selections. Enable `rtl-sim` on `shoop_host`,
 not include Marlin. Native live driver replacement remains supported; reference
 and simulation sessions require a restart to change drivers.
 
+On x86_64 Linux, the repository's Nix development shell provides Verilator 5.032
+on `PATH`. To run the RTL simulator with the Dummy driver from the source checkout:
+
+```sh
+nix develop --command cargo run --locked -p shoop_host --no-default-features \
+  --features rtl-sim -- --backend rtl-sim --audio-driver dummy
+```
+
 ## Dummy timing
 
 `--dummy-mode paced|unpaced|controlled` is also stored in the dummy driver's

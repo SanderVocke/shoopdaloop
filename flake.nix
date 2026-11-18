@@ -34,6 +34,36 @@
         pythonPackages.sphinx
       ]);
 
+      # The RTL simulator requires this exact Verilator version.
+      verilatorRtlSim = pkgs.stdenv.mkDerivation (finalAttrs: {
+        pname = "verilator";
+        version = "5.032";
+        src = pkgs.fetchFromGitHub {
+          owner = "verilator";
+          repo = "verilator";
+          tag = "v${finalAttrs.version}";
+          hash = "sha256-eIVXljZcloMKzxXnddN+bkJWcp+0dd0/YmzJOa7iioU=";
+        };
+
+        nativeBuildInputs = with pkgs; [
+          autoconf
+          bison
+          flex
+          perl
+          python3
+        ];
+        env.VERILATOR_SRC_VERSION = "v${finalAttrs.version}";
+        postPatch = "patchShebangs bin src";
+        preConfigure = "autoconf";
+        enableParallelBuilding = true;
+        buildFlags = [ "-C" "src" "opt" ];
+        installTargets = [ "installredirect" "installdata" ];
+        installFlags = [
+          "VL_INST_PUBLIC_SCRIPT_FILES=verilator"
+          "VL_INST_PUBLIC_BIN_FILES=verilator_bin"
+        ];
+      });
+
       buildLibraries = with pkgs; [
         alsa-lib
         zlib
@@ -79,6 +109,7 @@
           python
           protobuf
           trunk
+          verilatorRtlSim
           wasm-pack
           xvfb-run
         ];
