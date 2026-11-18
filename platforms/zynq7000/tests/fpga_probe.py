@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise FreeRTOS startup when the FPGA mailbox is absent."""
+"""Exercise absent fabric and scripted FPGA mailbox startup on FreeRTOS."""
 import argparse
 from pathlib import Path
 import subprocess
@@ -27,6 +27,17 @@ def main():
         emulator.ready("SHOOP_FPGA_PROBE_UNAVAILABLE no configured bitstream", timeout=30)
         emulator.ready("SHOOP_FPGA_PROBE_RETURNED", timeout=5)
     print("FreeRTOS refused the missing FPGA mailbox and returned without starting a session")
+    subprocess.run([*command, "--fixture"], check=True, cwd=ROOT)
+    fixture = board.build_dir(ROOT) / "host-fixture-fpga-probe.elf"
+    for nonce, name, marker in [
+        (1, "ready", "SHOOP_FPGA_PROBE_READY"),
+        (2, "timeout", "SHOOP_FPGA_PROBE_UNAVAILABLE snapshot timeout"),
+        (3, "incompatible", "SHOOP_FPGA_PROBE_UNAVAILABLE Incompatible"),
+    ]:
+        with Qemu(fixture, directory / name, [], boot_nonce=nonce, board=board) as emulator:
+            emulator.ready(marker, timeout=30)
+            emulator.ready("SHOOP_FPGA_PROBE_RETURNED", timeout=5)
+    print("FreeRTOS exercised compatible, unresponsive and incompatible FPGA mailboxes")
 
 
 if __name__ == "__main__":

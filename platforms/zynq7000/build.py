@@ -11,6 +11,7 @@ import struct
 import subprocess
 import boards
 import engine_policy
+import fpga_pair
 
 ROOT = Path(__file__).resolve().parents[2]
 PLATFORM = Path(__file__).resolve().parent
@@ -58,8 +59,7 @@ def build():
         parser.error("Deployment test faults require --deployment")
     if args.usb and args.app != "host":
         parser.error("USB MIDI requires the host app")
-    if args.fpga_probe and (args.app != "host" or not board.pl_bytes or args.deployment or args.usb or
-                            args.fixture or args.credential_file):
+    if args.fpga_probe and (args.app != "host" or not board.pl_bytes or args.deployment or args.usb or args.credential_file):
         parser.error("FPGA probe requires a development host for a board with a PL arena")
     BUILD.mkdir(parents=True, exist_ok=True)
     if args.fetch:
@@ -275,7 +275,7 @@ def build():
         "git_head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "rust_target": "armv7a-none-eabihf" if rust_library else None,
         "fixture": args.fixture, "deployment": args.deployment, "build_id": args.build_id,
-        "fpga_probe": args.fpga_probe,
+        "fpga_probe": args.fpga_probe, "fpga_contract": fpga_pair.contract(board) if args.fpga_probe else None,
         "deployment_test_fault": args.deployment_test_fault,
         "ram_bytes": board.ram, "load_regions": regions, "elf": str(elf.relative_to(ROOT))}, indent=2) + "\n")
     if args.usb:

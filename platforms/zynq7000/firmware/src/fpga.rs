@@ -1,11 +1,18 @@
 use crate::Serial;
-use core::{arch::asm, convert::Infallible, fmt::Write, ptr};
-use rt_fpga_rtl::host::{registers::RESULT_OK, Client, Contract, Mailbox, RegisterBus, Request};
+use core::fmt::{Debug, Write};
+#[cfg(not(feature = "fixture"))]
+use core::{arch::asm, convert::Infallible, ptr};
+use rt_fpga_rtl::host::{
+    registers::RESULT_OK, Client, Contract, Error, Mailbox, RegisterBus, Request,
+};
 
+#[cfg(not(feature = "fixture"))]
 const DEVCFG_INT_STATUS: usize = 0xf800700c;
+#[cfg(not(feature = "fixture"))]
 const PCFG_DONE: u32 = 1 << 2;
 
 extern "C" {
+    #[cfg(not(feature = "fixture"))]
     fn shoop_fpga_register_base() -> u32;
     fn shoop_fpga_arena_base() -> u32;
     fn shoop_fpga_arena_bytes() -> u32;
@@ -13,8 +20,10 @@ extern "C" {
     fn shoop_millis() -> u64;
 }
 
+#[cfg(not(feature = "fixture"))]
 struct DeviceRegisters(usize);
 
+#[cfg(not(feature = "fixture"))]
 impl RegisterBus for DeviceRegisters {
     type Error = Infallible;
 
@@ -40,6 +49,17 @@ impl RegisterBus for DeviceRegisters {
     }
 }
 
+fn contract() -> Contract {
+    unsafe {
+        Contract {
+            clock_hz: shoop_fpga_clock_hz(),
+            arena_base: shoop_fpga_arena_base(),
+            arena_bytes: shoop_fpga_arena_bytes(),
+        }
+    }
+}
+
+#[cfg(not(feature = "fixture"))]
 pub fn probe() {
     let configured =
         unsafe { ptr::read_volatile::<u32>(ptr::with_exposed_provenance(DEVCFG_INT_STATUS)) };
@@ -50,17 +70,17 @@ pub fn probe() {
         );
         return;
     }
-    let (base, expected) = unsafe {
-        (
-            shoop_fpga_register_base(),
-            Contract {
-                clock_hz: shoop_fpga_clock_hz(),
-                arena_base: shoop_fpga_arena_base(),
-                arena_bytes: shoop_fpga_arena_bytes(),
-            },
-        )
-    };
-    let mailbox = match Mailbox::open(DeviceRegisters(base as usize), expected) {
+    run(
+        DeviceRegisters(unsafe { shoop_fpga_register_base() } as usize),
+        contract(),
+    );
+}
+
+fn run<B: RegisterBus>(bus: B, expected: Contract)
+where
+    B::Error: Debug,
+{
+    let mailbox = match Mailbox::open(bus, expected) {
         Ok(mailbox) => mailbox,
         Err(error) => {
             let _ = writeln!(Serial, "SHOOP_FPGA_PROBE_UNAVAILABLE {error:?}");
@@ -68,25 +88,26 @@ pub fn probe() {
         }
     };
     let mut client = Client::new(mailbox);
-    if let Err(error) = client.start(Request::capture_snapshot(0)) {
-        let _ = writeln!(Serial, "SHOOP_FPGA_PROBE_UNAVAILABLE {error:?}");
-        return;
-    }
     let start = unsafe { shoop_millis() };
-    while unsafe { shoop_millis() }.wrapping_sub(start) < 25 {
-        match client.poll() {
-            Ok(None) => continue,
-            Ok(Some(response)) if response.code == RESULT_OK && response.data[0] != 0 => {
-                let _ = writeln!(Serial, "SHOOP_FPGA_PROBE_READY {expected:?}");
-            }
-            Ok(Some(response)) => {
-                let _ = writeln!(Serial, "SHOOP_FPGA_PROBE_UNAVAILABLE {response:?}");
-            }
-            Err(error) => {
-                let _ = writeln!(Serial, "SHOOP_FPGA_PROBE_UNAVAILABLE {error:?}");
-            }
+    match client.exchange(Request::capture_snapshot(0), || {
+        unsafe { shoop_millis() }.wrapping_sub(start) < 25
+    }) {
+        Ok(response) if response.code == RESULT_OK && response.data[0] != 0 => {
+            let _ = writeln!(Serial, "SHOOP_FPGA_PROBE_READY {expected:?}");
         }
-        return;
+        Ok(response) => {
+            let _ = writeln!(Serial, "SHOOP_FPGA_PROBE_UNAVAILABLE {response:?}");
+        }
+        Err(Error::Timeout) => {
+            let _ = writeln!(Serial, "SHOOP_FPGA_PROBE_UNAVAILABLE snapshot timeout");
+        }
+        Err(error) => {
+            let _ = writeln!(Serial, "SHOOP_FPGA_PROBE_UNAVAILABLE {error:?}");
+        }
     }
-    let _ = writeln!(Serial, "SHOOP_FPGA_PROBE_UNAVAILABLE snapshot timeout");
 }
+
+#[cfg(feature = "fixture")]
+mod fixture;
+#[cfg(feature = "fixture")]
+pub use fixture::probe;

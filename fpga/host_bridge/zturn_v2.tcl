@@ -16,6 +16,7 @@ foreach name [dict keys $preset] {
 }
 file mkdir $output
 file copy -force $ps_properties [file join $output ps-properties.txt]
+file copy -force [file join $root fpga host_bridge registers.json] [file join $output fpga-abi.json]
 set profile [file join $output board]
 exec python3 [file join $root platforms zynq7000 boards.py] --board zturn-v2 --output $profile
 set channel [open [file join $profile shoop_board.h] r]
@@ -148,3 +149,4 @@ if {[get_property SLACK [get_timing_paths -delay_type max -max_paths 1]] < 0 ||
 }
 file copy -force [file join $output project zturn_v2.runs impl_1 system_wrapper.bit] [file join $output zturn_v2.bit]
 write_hw_platform -fixed -include_bit -force -file [file join $output zturn_v2.xsa]
+exec python3 [file join $root platforms zynq7000 fpga_pair.py] stamp $output [version -short]
