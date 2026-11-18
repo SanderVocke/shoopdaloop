@@ -1,14 +1,18 @@
+#[path = "../../rt_fpga_compiler/tests/support/mono.rs"]
+mod mono;
+use rt_fpga_compiler::{compile, CompileContext};
+#[path = "../../rt_fpga_compiler/tests/support/programs.rs"]
+mod programs;
 use rt_fpga_compiler::{
-    graph::*, loading::Allocator, FixedProgram, Identity, LogicalStateProgram, Operation,
-    ProgramLimits,
+    loading::Allocator, Identity, LogicalStateProgram, Operation, ProgramLimits,
 };
 use rt_fpga_reference::{
-    compiler::{ProgramImage, RustTarget},
     fixed::Fixed,
     jobs::JobProcessor,
     pipeline::Pipeline,
     state::{ModePlan, ModeStep},
     storage::MediaStore,
+    target::{ProgramImage, RustTarget},
     transitions::{LoopId, Mode},
 };
 use shoop_wasm_test_support::{
@@ -30,24 +34,28 @@ fn limits() -> ProgramLimits {
     }
 }
 fn graph(ids: &[u32]) -> LogicalStateProgram {
-    MonoGraphFixture {
-        quantum: 16,
-        loops: ids
-            .iter()
-            .map(|&slot| LoopDescription {
-                id: Identity {
-                    slot,
-                    generation: 1,
-                },
-                source: (slot != 0).then_some(0),
-                input: true,
-                output: true,
-                gain: 1.0,
-                repeat_sync: false,
-            })
-            .collect(),
-    }
-    .compile()
+    compile(
+        &mono::session(
+            &(ids
+                .iter()
+                .map(|&slot| mono::MonoLoop {
+                    id: Identity {
+                        slot,
+                        generation: 1,
+                    },
+                    source: (slot != 0).then_some(0),
+                    input: true,
+                    output: true,
+                    gain: 1.0,
+                    repeat_sync: false,
+                })
+                .collect::<Vec<_>>()),
+        ),
+        CompileContext {
+            quantum: 16,
+            limits: Default::default(),
+        },
+    )
     .unwrap()
 }
 fn image(allocator: &mut Allocator, logical: &LogicalStateProgram, views: &[u64]) -> ProgramImage {
@@ -202,7 +210,7 @@ fn staging_never_reinitializes_live_recording_and_switch_keeps_plans_and_frame()
 
 #[shoop_test]
 fn smoothing_history_and_gain_ramp_survive_changed_scratch_assignments() {
-    let logical = FixedProgram::SyncSmoothing { quantum: 16 }.emit().unwrap();
+    let logical = programs::sync_smoothing(16);
     let mut modified = logical.clone();
     for op in &mut modified.audio_pass {
         match op {

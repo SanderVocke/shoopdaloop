@@ -3,7 +3,6 @@
 #![forbid(unsafe_code)]
 extern crate alloc;
 pub mod chunk_memory;
-pub mod compiler;
 pub mod fixed;
 pub mod jobs;
 pub mod pipeline;
@@ -15,6 +14,7 @@ pub mod rt_interface;
 mod serde_index;
 pub mod state;
 pub mod storage;
+pub mod target;
 pub mod transitions;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

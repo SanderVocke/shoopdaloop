@@ -1,5 +1,5 @@
 //! ARM memory writes and the ordered switch-command bridge. Pacing belongs to the driver.
-use crate::{bits::Bits, clock::Edges, compiler::ProgramImage, model::Model, sim::Agent};
+use crate::{bits::Bits, clock::Edges, model::Model, sim::Agent, target::ProgramImage};
 use shoop_rt_protocol::immediate::{Code, Command, Header, SwitchProgram};
 use shoop_rt_transport::rt;
 
@@ -23,7 +23,7 @@ impl Upload {
             .writes(region_depth)
             .into_iter()
             .map(|w| {
-                use rt_fpga_rtl::compiler::Space;
+                use rt_fpga_rtl::target::Space;
                 Write {
                     history: w.space == Space::History,
                     loop_state: w.space == Space::Loop,

@@ -184,12 +184,12 @@ fn admission<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) -> Vec<(Code
     assert_eq!(small.header.code(), Code::Applied);
     let revision = small.header.graph();
     trace.push((small.header.code(), revision));
-    // 21 routed loops require 65 audio buffers in a 64-buffer target.
+    // 22 routed loops exceed a 64-buffer target.
     let large = upload(
         &mut client,
         &mut renderer,
         revision,
-        3000..3021,
+        3000..3022,
         true,
         false,
     );
