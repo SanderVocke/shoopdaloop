@@ -104,12 +104,12 @@ jobs:
           cargo test --locked -p shoop_rt_host_worklet --no-default-features --features fpga-reference,exports
       - name: Check command transport and protocol
         run: cargo test --locked -p shoop_rt_protocol -p shoop_rt_transport --all-features
-      - name: Exercise live loading through the application API
-        run: cargo test --locked -p shoop_host --no-default-features --features fpga-reference --test prepared_graph --test reference_activation --test reference_resources
-      - name: Install UI build dependencies
+      - name: Install native application and UI dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libasound2-dev libudev-dev libxkbcommon-dev
+          sudo apt-get install --yes libasound2-dev libjack-jackd2-dev libudev-dev libxkbcommon-dev
+      - name: Exercise live loading through the application API
+        run: cargo test --locked -p shoop_host --no-default-features --features fpga-reference --test prepared_graph --test reference_activation --test reference_resources
       - name: Exercise the reference backend through the UI runtime
         run: |
           cargo test --locked -p shoop_egui --lib
