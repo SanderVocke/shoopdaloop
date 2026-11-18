@@ -9813,7 +9813,7 @@ impl ApplicationModel {
         if switch.status != AudioDriverSwitchStatus::Idle {
             self.audio_drivers.switch = switch;
         }
-        self.status.dsp_load_percent = snapshot.status.dsp_load_percent;
+        self.status.dsp = snapshot.status.dsp;
         let callback_xruns =
             if snapshot.status.callback_budget_overruns >= self.last_callback_budget_overruns {
                 snapshot

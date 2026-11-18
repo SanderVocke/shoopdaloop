@@ -393,16 +393,27 @@ fn show_inner(
     });
     ui.add_space(12.);
     let now = ui.input(|input| input.time);
-    dsp.record(now, status.dsp_load_percent);
+    let percent = status.dsp.and_then(shoop_app_api::DspMeasurement::percent);
+    if let Some(percent) = percent {
+        dsp.record(now, percent as f32);
+    }
     egui::Frame::group(ui.style())
         .inner_margin(12)
         .corner_radius(8)
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.label("Overall DSP")
-                    .on_hover_text("The largest callback load since the previous update.");
+                ui.label("Overall DSP").on_hover_text(
+                    status
+                        .dsp
+                        .map_or("Waiting for a DSP measurement", |sample| sample.label()),
+                );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.monospace(format!("{:.1}%", status.dsp_load_percent));
+                    ui.monospace(
+                        percent.map_or_else(|| "—".into(), |percent| format!("{percent:.1}%")),
+                    );
+                    if dsp.samples.is_empty() {
+                        return;
+                    }
                     ui.weak(format!(
                         "peak {:.1}% · last {:.0} s",
                         dsp.peak(),
@@ -987,7 +998,12 @@ mod tests {
                         &StatusState {
                             sample_rate: 48000,
                             quantum_frames: 32,
-                            dsp_load_percent: 23.4,
+                            dsp: Some(shoop_app_api::DspMeasurement::Callback {
+                                elapsed_ns: 156_000,
+                                frames: 32,
+                                sample_rate: 48_000,
+                                paced: true,
+                            }),
                             ..Default::default()
                         },
                         &mut capture,

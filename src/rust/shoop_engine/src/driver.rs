@@ -23,7 +23,7 @@ pub enum AudioDriverType {
 
 #[derive(Clone, Debug)]
 pub struct AudioDriverState {
-    pub dsp_load_percent: f32,
+    pub jack_load_percent: Option<f32>,
     pub xruns_since_last: u32,
     /// Cycles run against a schedule older than the topology, cumulative.
     ///

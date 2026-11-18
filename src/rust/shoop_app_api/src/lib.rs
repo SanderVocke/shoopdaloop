@@ -3,6 +3,7 @@ extern crate alloc;
 
 mod host_graph;
 pub use host_graph::*;
+pub use shoop_dsp_metrics::DspMeasurement;
 
 #[cfg(test)]
 extern crate std;
@@ -1122,7 +1123,7 @@ impl ConversionTarget {
 pub struct StatusState {
     pub memory: Option<MemoryReport>,
     pub version: String,
-    pub dsp_load_percent: f32,
+    pub dsp: Option<DspMeasurement>,
     pub xruns: u32,
     pub buffer_size: u32,
     pub sample_rate: u32,

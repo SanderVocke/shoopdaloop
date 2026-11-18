@@ -26,7 +26,8 @@ class ShoopRtAudioProcessor extends AudioWorkletProcessor {
   constructor(options) {
     super();
     this.inbound = { [RECORDS_IN]: [], [MIDI_IN]: [] };
-    this.load = -1;
+    this.previousElapsedNs = -1;
+    this.previousFrames = 0;
     this.port.onmessage = event => this.receive(event.data);
     try {
       const { wasmModule, config } = options.processorOptions;
@@ -181,7 +182,8 @@ class ShoopRtAudioProcessor extends AudioWorkletProcessor {
         frames,
         inputChannels,
         currentFrame,
-        this.load,
+        this.previousElapsedNs,
+        this.previousFrames,
       );
       if (code !== RENDERED && code !== FAULTED) {
         return this.fail('process', code, `the module refused a quantum of ${frames} frames`);
@@ -201,7 +203,8 @@ class ShoopRtAudioProcessor extends AudioWorkletProcessor {
     }
     if (timer) {
       const ended = timer.now();
-      this.load = ((ended - started) * sampleRate) / (1000 * frames);
+      this.previousElapsedNs = (ended - started) * 1e6;
+      this.previousFrames = frames;
       if (profiling) this.wasm.shoop_rt_worklet_profiling_end(ended * 1e6, frames);
     }
     return true;

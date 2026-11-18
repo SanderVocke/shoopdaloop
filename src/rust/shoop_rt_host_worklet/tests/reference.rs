@@ -107,7 +107,7 @@ impl Browser {
                 frames: Q,
                 input_channels: 1,
                 frame: self.frame,
-                load: None,
+                previous_callback: None,
             })
         })
         .unwrap();

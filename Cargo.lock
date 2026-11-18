@@ -5202,6 +5202,7 @@ dependencies = [
  "profiling_protocol",
  "rt_profiling",
  "serde",
+ "shoop_dsp_metrics",
  "shoop_latency",
  "shoop_port_graph",
  "shoop_processor_protocol",
@@ -5391,6 +5392,13 @@ dependencies = [
  "soundfont",
  "thiserror 2.0.21",
  "wasm-bindgen-test",
+]
+
+[[package]]
+name = "shoop_dsp_metrics"
+version = "0.3.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -5835,6 +5843,7 @@ dependencies = [
  "profiling_protocol",
  "rt_profiling",
  "serde",
+ "shoop_dsp_metrics",
  "shoop_graph",
  "shoop_processor_protocol",
  "shoop_transport",

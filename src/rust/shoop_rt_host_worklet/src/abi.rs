@@ -6,7 +6,9 @@
 use std::cell::RefCell;
 
 use crate::config::{WorkletConfig, MAX_CONFIG_BYTES};
-use crate::host::{Inbound, Outbound, PrepareFailure, Quantum, QuantumError, WorkletHost};
+use crate::host::{
+    CallbackTiming, Inbound, Outbound, PrepareFailure, Quantum, QuantumError, WorkletHost,
+};
 
 pub const PREPARED: u32 = 0;
 pub const ALREADY_PREPARED: u32 = 1;
@@ -192,21 +194,27 @@ pub extern "C" fn shoop_rt_worklet_commit(id: u32, len: usize) -> bool {
 }
 
 /// Render one quantum of `frames` frames starting at `currentFrame` `frame`.
-/// `load` is the previous quantum's processing time as a share of its period,
-/// or negative when unknown.
+/// The previous callback's duration is in nanoseconds, or negative when unknown.
 #[no_mangle]
 pub extern "C" fn shoop_rt_worklet_process(
     frames: u32,
     input_channels: u32,
     frame: f64,
-    load: f64,
+    previous_elapsed_ns: f64,
+    previous_frames: u32,
 ) -> u32 {
     with_host(NOT_PREPARED, |host| {
         let quantum = Quantum {
             frames: frames as usize,
             input_channels: input_channels as usize,
             frame: frame as u64,
-            load: (load >= 0.).then_some(load as f32),
+            previous_callback: (previous_elapsed_ns.is_finite()
+                && previous_elapsed_ns >= 0.
+                && previous_frames > 0)
+                .then_some(CallbackTiming {
+                    elapsed_ns: previous_elapsed_ns as u64,
+                    frames: previous_frames,
+                }),
         };
         match host.process(quantum) {
             Ok(()) => RENDERED,

@@ -354,7 +354,7 @@ pub trait Observer: Send + Sync {
     }
     fn driver(&self, _driver: DriverStatus) {}
     fn xrun(&self) {}
-    fn load(&self, _load: f32, _frames: u32, _sample_rate: u32, _now: u64) {}
+    fn callback_complete(&self, _sample: shoop_rt_protocol::DspMeasurement, _now: u64) {}
     fn begin(&self, _frame: u64, _frames: usize, _now: u64) {}
     fn input(&self, _now: u64) {}
     fn record(&self, _values: [u64; 18]) {}

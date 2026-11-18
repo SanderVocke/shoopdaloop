@@ -222,7 +222,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 frame,
                 callbacks,
                 xruns,
-                load,
+                dsp,
                 input_peak,
                 output_peak,
                 driver,
@@ -233,12 +233,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 status.xruns_reported.get_or_insert(xruns);
                 status.xruns = xruns;
                 if !status.peaks_fresh {
-                    status.load = 0.0;
                     status.input_peak = 0.0;
                     status.output_peak = 0.0;
                     status.peaks_fresh = true;
                 }
-                status.load = status.load.max(load);
+                if let Some(sample) = dsp {
+                    sample.record_peak(&mut status.dsp);
+                }
                 status.input_peak = status.input_peak.max(input_peak.abs());
                 status.output_peak = status.output_peak.max(output_peak.abs());
                 self.driver = Some(driver);

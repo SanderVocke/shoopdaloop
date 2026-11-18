@@ -137,7 +137,7 @@ pub struct Status {
     frame: AtomicU64,
     callbacks: AtomicU64,
     xruns: AtomicU32,
-    load: AtomicU32,
+    dsp: shoop_rt_protocol::dsp::Peak,
 }
 impl Status {
     pub fn new(driver: DriverStatus) -> Self {
@@ -154,7 +154,7 @@ impl Status {
             frame: AtomicU64::new(0),
             callbacks: AtomicU64::new(0),
             xruns: AtomicU32::new(0),
-            load: AtomicU32::new(0),
+            dsp: Default::default(),
         }
     }
     pub fn update_driver(&self, driver: DriverStatus) {
@@ -189,16 +189,18 @@ impl Status {
     pub fn xrun(&self) {
         self.xruns.fetch_add(1, Ordering::Relaxed);
     }
-    pub fn load(&self, load: f32) {
-        self.load.store(load.to_bits(), Ordering::Relaxed);
+    pub fn callback_complete(&self) {
         self.callbacks.fetch_add(1, Ordering::Relaxed);
+    }
+    pub fn record_dsp(&self, sample: shoop_rt_protocol::DspMeasurement) {
+        self.dsp.record(sample);
     }
     pub fn telemetry(&self) -> shoop_rt_protocol::Telemetry {
         shoop_rt_protocol::Telemetry::Engine {
             frame: self.frame.load(Ordering::Acquire),
             callbacks: self.callbacks.load(Ordering::Relaxed),
             xruns: self.xruns.load(Ordering::Relaxed),
-            load: f32::from_bits(self.load.load(Ordering::Relaxed)),
+            dsp: self.dsp.take(),
             input_peak: 0.,
             output_peak: 0.,
             driver: self.driver(),

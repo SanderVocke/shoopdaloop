@@ -82,9 +82,8 @@ impl Cycle {
                 }
             }
         }
-        self.shared.set_load(
-            started.elapsed().as_secs_f32() * self.shared.sample_rate() as f32 / frames as f32,
-        );
+        self.shared
+            .callback_complete(started.elapsed(), frames, true);
     }
 }
 

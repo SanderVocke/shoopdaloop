@@ -891,6 +891,45 @@ fn every_message_round_trips_through_bounded_records() {
 }
 
 #[shoop_test]
+fn dsp_measurements_round_trip_with_their_original_timing_basis() {
+    let rtl = DspMeasurement::FpgaQuantum {
+        cycles: 30_000,
+        clock_hz: 150_000_000,
+        frames: 64,
+        sample_rate: 48_000,
+    };
+    assert_eq!(rtl.microseconds(), Some(200.));
+    assert!((rtl.percent().unwrap() - 15.).abs() < 1e-12);
+    let jack = DspMeasurement::JackServer { percent: 125. };
+    assert_eq!(jack.percent(), Some(125.));
+    assert_eq!(jack.microseconds(), None);
+    let mut buf = [0; MAX_RECORD_BYTES];
+    for dsp in [
+        None,
+        Some(rtl),
+        Some(jack),
+        Some(DspMeasurement::Callback {
+            elapsed_ns: 750_000,
+            frames: 24,
+            sample_rate: 48_000,
+            paced: false,
+        }),
+    ] {
+        let message = EngineMessage::Telemetry(Telemetry::Engine {
+            frame: 64,
+            callbacks: 1,
+            xruns: 0,
+            dsp,
+            input_peak: 0.,
+            output_peak: 0.,
+            driver: DRIVER,
+        });
+        let len = encode_engine(&message, &mut buf).unwrap();
+        assert_eq!(decode_engine(&buf[..len]), Ok(message));
+    }
+}
+
+#[shoop_test]
 fn malformed_records_are_refused_without_panicking() {
     let mut buf = [0; MAX_RECORD_BYTES];
     for message in engine_samples() {

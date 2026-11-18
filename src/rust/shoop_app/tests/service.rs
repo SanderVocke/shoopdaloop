@@ -5060,8 +5060,15 @@ fn dsp_load_keeps_the_peak_while_snapshot_publication_is_paced() {
     let connection = ConnectionId(1);
     let _client = attach(&mut f.service, 1, connection, false);
     f.service.want_snapshots(connection, false);
-    for load in [0.75, 0.25] {
-        f.render.borrow().host.set_load(load);
+    let callback = |elapsed_ns, frames| DspMeasurement::Callback {
+        elapsed_ns,
+        frames,
+        sample_rate: 1000,
+        paced: false,
+    };
+    let peak = callback(12_000_000, 16);
+    for sample in [peak, callback(16_000_000, 64)] {
+        f.render.borrow().host.record_dsp(sample);
         f.service.tick(STEP);
     }
     assert!(f.service.take_state_update(connection).is_none());
@@ -5071,14 +5078,15 @@ fn dsp_load_keeps_the_peak_while_snapshot_publication_is_paced() {
     else {
         panic!("missing paced snapshot")
     };
-    assert_eq!(state.status.dsp_load_percent, 75.0);
-    f.render.borrow().host.set_load(0.125);
+    assert_eq!(state.status.dsp, Some(peak));
+    let next = callback(2_000_000, 16);
+    f.render.borrow().host.record_dsp(next);
     f.service.tick(STEP);
     let Some(ServiceMessage::Snapshot { state, .. }) = f.service.take_state_update(connection)
     else {
         panic!("missing next snapshot")
     };
-    assert_eq!(state.status.dsp_load_percent, 12.5);
+    assert_eq!(state.status.dsp, Some(next));
 }
 
 #[shoop_test]

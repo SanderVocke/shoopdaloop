@@ -1457,7 +1457,7 @@ impl ControlEndpoint {
                 frame,
                 callbacks: self.cells.callbacks.load(Ordering::Relaxed),
                 xruns: self.cells.xruns(),
-                load: self.cells.take_load(),
+                dsp: self.cells.dsp.take(),
                 input_peak: peaks.as_slice()[0],
                 output_peak: peaks.as_slice()[1],
                 driver: self.cells.driver(),

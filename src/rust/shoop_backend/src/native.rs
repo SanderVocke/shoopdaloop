@@ -5180,7 +5180,10 @@ impl Backend for NativeBackend {
             composite_receipts: Vec::new(),
             profiling: Default::default(),
             status: BackendStatus {
-                dsp_load_percent: driver.dsp_load_percent,
+                dsp: driver.jack_load_percent.and_then(|percent| {
+                    let sample = shoop_app_api::DspMeasurement::JackServer { percent };
+                    sample.percent().map(|_| sample)
+                }),
                 xruns: driver.xruns_since_last,
                 buffer_size: driver.buffer_size.max(driver.last_processed),
                 sample_rate: driver.sample_rate,

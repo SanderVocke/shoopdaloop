@@ -86,8 +86,9 @@ impl drivers::Observer for Observer {
     fn xrun(&self) {
         self.0.xrun();
     }
-    fn load(&self, load: f32, _frames: u32, _sample_rate: u32, _now: u64) {
-        self.0.load(load);
+    fn callback_complete(&self, sample: shoop_rt_protocol::DspMeasurement, _now: u64) {
+        self.0.record_dsp(sample);
+        self.0.callback_complete();
     }
     fn requires_reset(&self) -> bool {
         false

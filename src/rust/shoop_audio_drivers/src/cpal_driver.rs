@@ -468,8 +468,7 @@ impl Output {
         }
         data[frames * channels..].fill(0.);
         if frames > 0 {
-            let period = frames as f32 / shared.sample_rate() as f32;
-            shared.set_load(started.elapsed().as_secs_f32() / period);
+            shared.callback_complete(started.elapsed(), frames, true);
         }
     }
 }

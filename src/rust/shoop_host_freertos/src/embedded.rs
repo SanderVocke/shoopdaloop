@@ -11,7 +11,7 @@ use shoop_app_connection::{HeartbeatConfig, Management, Session};
 use shoop_app_protocol::{codec, WireMessage};
 use shoop_rt_backend::{EngineClock, RtBackend};
 use shoop_rt_engine::{prepare, HostStatus, Phase, Render};
-use shoop_rt_protocol::{DriverKind, DriverRunState, DriverStatus};
+use shoop_rt_protocol::{DriverKind, DriverRunState, DriverStatus, DspMeasurement};
 use shoop_rt_transport::{carrier::InProcess, client::ProtocolClient};
 use shoop_transport::{
     authenticated::Handshake,
@@ -490,10 +490,12 @@ pub unsafe fn render_step(owner: *mut c_void, frames: usize) -> i32 {
             }
         }
     }
-    let period_ns = (frames as u64 * 1_000_000_000 / u64::from(crate::SAMPLE_RATE)).max(1);
-    dummy
-        .status
-        .set_load(profiling_now().saturating_sub(started) as f32 / period_ns as f32);
+    dummy.status.record_dsp(DspMeasurement::Callback {
+        elapsed_ns: profiling_now().saturating_sub(started),
+        frames: frames as u32,
+        sample_rate: crate::SAMPLE_RATE,
+        paced: true,
+    });
     if report.phase == Phase::Disconnected {
         dummy.reset = (0..crate::MIDI_PORTS).all(|port| {
             let mut reset = rt_runtime::midi::ResetState::default();

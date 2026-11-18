@@ -96,6 +96,7 @@ pub const DEFAULT_NEW_TRACK_PROCESSOR_FRAMES: SettingKey<i32> =
     SettingKey::new("tracks.new.default_processor_frames");
 pub const UI_SCALE_FACTOR: SettingKey<f64> = SettingKey::new("appearance.ui_scale_factor");
 pub const TOUCH_MODE: SettingKey<bool> = SettingKey::new("appearance.touch_mode");
+const DSP_TIME: SettingKey<bool> = SettingKey::new("appearance.dsp_time");
 pub const KEYBOARD_SCRIPT_ENABLED: SettingKey<bool> =
     SettingKey::new("scripting.bundled.keyboard.enabled");
 pub const APC_MINI_SCRIPT_ENABLED: SettingKey<bool> =
@@ -380,6 +381,18 @@ pub fn register_settings_with_appearance_defaults(
         )
         .category_order(2)
         .setting_order(20)
+        .effect(SettingEffect::Immediate),
+    )?;
+    builder.register(
+        SettingDefinition::new(
+            DSP_TIME,
+            false,
+            "Appearance",
+            "Show DSP time",
+            "Show DSP in microseconds when processing time is available.",
+        )
+        .category_order(2)
+        .setting_order(30)
         .effect(SettingEffect::Immediate),
     )?;
     builder.register(
@@ -1748,7 +1761,13 @@ impl AppWidget {
                         }
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        self.show_bottom_status(ui, state, &mut actions, &mut settings_actions)
+                        self.show_bottom_status(
+                            ui,
+                            state,
+                            settings_state,
+                            &mut actions,
+                            &mut settings_actions,
+                        )
                     });
                 });
             });
@@ -3160,6 +3179,7 @@ impl AppWidget {
         &mut self,
         ui: &mut egui::Ui,
         state: &AppState,
+        settings: &SettingsViewState,
         actions: &mut Vec<AppAction>,
         settings_actions: &mut Vec<SettingsAction>,
     ) {
@@ -3189,14 +3209,7 @@ impl AppWidget {
                 ui.close();
             }
         });
-        ui.add(
-            egui::ProgressBar::new((state.status.dsp_load_percent / 100.0).clamp(0.0, 1.0))
-                .desired_width(86.0)
-                .desired_height(4.0)
-                .fill(colors::COLORED_HIGHLIGHT)
-                .corner_radius(0),
-        );
-        ui.label("DSP");
+        show_dsp(ui, state.status.dsp, settings, settings_actions);
         ui.separator();
         crate::memory::summary(ui, state.status.memory.as_ref());
         ui.separator();
@@ -3362,6 +3375,71 @@ impl BackendHealth {
             Self::Waiting => colors::WARNING,
             Self::Failed => colors::STRONG_ERROR,
         }
+    }
+}
+
+fn show_dsp(
+    ui: &mut egui::Ui,
+    sample: Option<crate::DspMeasurement>,
+    settings: &SettingsViewState,
+    actions: &mut Vec<SettingsAction>,
+) -> egui::Response {
+    let percent = sample.and_then(crate::DspMeasurement::percent);
+    let time = sample.and_then(crate::DspMeasurement::microseconds);
+    let prefer_time = settings.active.get(DSP_TIME).unwrap_or(false);
+    let value = match (percent, time) {
+        (_, Some(time)) if prefer_time || percent.is_none() => format!("{time:.1} µs"),
+        (Some(percent), _) => format!("{percent:.1}%"),
+        _ => "—".into(),
+    };
+    let mut description = sample.map_or_else(
+        || "Waiting for a DSP measurement".to_owned(),
+        |sample| sample.label().to_owned(),
+    );
+    if let Some(period) = sample.and_then(crate::DspMeasurement::audio_period_us) {
+        let basis = match sample {
+            Some(crate::DspMeasurement::Callback { paced: true, .. }) => "Callback period",
+            _ => "Real-time audio duration",
+        };
+        description.push_str(&format!("\n{basis} {period:.1} µs"));
+    }
+    if let Some(crate::DspMeasurement::FpgaQuantum {
+        cycles, clock_hz, ..
+    }) = sample
+    {
+        let clock_mhz = f64::from(clock_hz) / 1_000_000.;
+        description.push_str(&format!("\n{cycles} cycles at {clock_mhz:.0} MHz"));
+    }
+    if let Some(percent) = percent {
+        ui.add(
+            egui::ProgressBar::new((percent / 100.).clamp(0., 1.) as f32)
+                .desired_width(86.0)
+                .desired_height(4.0)
+                .fill(colors::COLORED_HIGHLIGHT)
+                .corner_radius(0),
+        )
+        .on_hover_text(&description);
+    }
+    let text = format!("DSP {value}");
+    if percent.is_some() && time.is_some() {
+        let can_save = !settings.recovery_required
+            && settings.persistence != shoop_settings::SettingsPersistenceState::Saving;
+        description.push_str(if prefer_time {
+            "\nClick to show percent"
+        } else {
+            "\nClick to show microseconds"
+        });
+        let response = ui
+            .add_enabled(can_save, egui::Button::new(text).frame(false))
+            .on_hover_text(description);
+        if response.clicked() {
+            let mut draft = SettingsDraft::from_snapshot(&settings.active);
+            draft.set(DSP_TIME, !prefer_time);
+            actions.push(SettingsAction::Save(draft));
+        }
+        response
+    } else {
+        ui.label(text).on_hover_text(description)
     }
 }
 
@@ -4055,6 +4133,81 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn dsp_status_toggles_supported_units_and_saves_the_preference() {
+        let context = egui::Context::default();
+        let mut builder = SettingsRegistryBuilder::default();
+        register_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        let mut settings = settings_state();
+        let rtl = Some(crate::DspMeasurement::FpgaQuantum {
+            cycles: 30_000,
+            clock_hz: 150_000_000,
+            frames: 64,
+            sample_rate: 48_000,
+        });
+        let render = |sample, settings: &SettingsViewState, events| {
+            let mut actions = Vec::new();
+            let mut response = None;
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    ui.horizontal(|ui| {
+                        response = Some(show_dsp(ui, sample, settings, &mut actions));
+                    });
+                },
+            );
+            let text = output.shapes.iter().find_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) if text.galley.text().starts_with("DSP ") => {
+                    Some(text.galley.text().to_owned())
+                }
+                _ => None,
+            });
+            output.textures_delta.clear();
+            (response.unwrap(), text.unwrap(), actions)
+        };
+        let (button, text, _) = render(rtl, &settings, Vec::new());
+        assert_eq!(text, "DSP 15.0%");
+        let pos = button.rect.center();
+        let click = |pos, pressed| egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        render(
+            rtl,
+            &settings,
+            vec![egui::Event::PointerMoved(pos), click(pos, true)],
+        );
+        let (_, _, actions) = render(rtl, &settings, vec![click(pos, false)]);
+        let [SettingsAction::Save(draft)] = actions.as_slice() else {
+            panic!("expected a saved unit preference");
+        };
+        let document = shoop_settings::SettingsDocument::empty("test");
+        let saved = registry
+            .document_from_draft(&document, draft, "test")
+            .unwrap();
+        settings.active = Arc::new(registry.resolve(&saved, 2).snapshot);
+        let (_, text, _) = render(rtl, &settings, Vec::new());
+        assert_eq!(text, "DSP 200.0 µs");
+        let jack = Some(crate::DspMeasurement::JackServer { percent: 125. });
+        let (label, text, _) = render(jack, &settings, Vec::new());
+        assert_eq!(text, "DSP 125.0%");
+        let pos = label.rect.center();
+        render(
+            jack,
+            &settings,
+            vec![egui::Event::PointerMoved(pos), click(pos, true)],
+        );
+        let (_, _, actions) = render(jack, &settings, vec![click(pos, false)]);
+        assert!(actions.is_empty());
+        assert_eq!(render(None, &settings, Vec::new()).1, "DSP —");
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn active_tracing_status_offers_save_action() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -4082,6 +4235,7 @@ mod tests {
                         widget.show_bottom_status(
                             ui,
                             &state,
+                            &settings_state(),
                             &mut Vec::new(),
                             &mut settings_actions,
                         )

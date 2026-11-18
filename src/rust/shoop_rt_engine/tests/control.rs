@@ -171,8 +171,19 @@ fn jack_buffer_changes_keep_controls_one_server_period_ahead() {
 fn telemetry_reports_levels_activity_and_driver_inputs() {
     let (mut harness, track, looped) = configured();
     let records = harness.telemetry.len();
-    harness.host.host.set_load(0.25);
-    harness.host.host.set_load(0.125);
+    let peak = DspMeasurement::Callback {
+        elapsed_ns: 1_000_000,
+        frames: 4,
+        sample_rate: 1000,
+        paced: true,
+    };
+    harness.host.host.record_dsp(peak);
+    harness.host.host.record_dsp(DspMeasurement::Callback {
+        elapsed_ns: 2_000_000,
+        frames: 16,
+        sample_rate: 1000,
+        paced: true,
+    });
     harness.host.host.add_xruns(3);
     harness.host.host.set_driver(DriverStatus {
         kind: DriverKind::Dummy,
@@ -201,7 +212,7 @@ fn telemetry_reports_levels_activity_and_driver_inputs() {
         frame: reported,
         callbacks,
         xruns,
-        load,
+        dsp,
         input_peak,
         output_peak,
         driver,
@@ -209,16 +220,15 @@ fn telemetry_reports_levels_activity_and_driver_inputs() {
     else {
         unreachable!()
     };
-    // Each record reports the largest load since the previous one.
-    let loads: Vec<f32> = harness.telemetry[records..]
+    let measurements: Vec<_> = harness.telemetry[records..]
         .iter()
         .filter_map(|(_, record)| match record {
-            Telemetry::Engine { load, .. } => Some(*load),
+            Telemetry::Engine { dsp, .. } => Some(*dsp),
             _ => None,
         })
         .collect();
-    assert_eq!(loads.first(), Some(&0.25));
-    assert_eq!((reported, xruns, load), (frame, 3, 0.));
+    assert_eq!(measurements.first(), Some(&Some(peak)));
+    assert_eq!((reported, xruns, dsp), (frame, 3, None));
     assert!(callbacks > 0);
     assert_eq!(input_peak, 0.5);
     assert!(output_peak > 0.);

@@ -2,11 +2,11 @@
 //! Every update is a relaxed atomic store, so callbacks may make them.
 
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicU8, Ordering};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::Observer;
 use rt_runtime::host::Phase;
-use shoop_rt_protocol::{DriverKind, DriverRunState, DriverStatus};
+use shoop_rt_protocol::{DriverKind, DriverRunState, DriverStatus, DspMeasurement};
 use std::sync::Arc;
 
 /// The render owner's phase as last reported by a callback.
@@ -197,14 +197,16 @@ impl Shared {
     pub fn profile_input(&self) {
         self.host.input(profiling_now());
     }
-    pub fn set_load(&self, load: f32) {
-        self.load.store(load.to_bits(), Ordering::Relaxed);
-        self.host.load(
-            load,
-            self.buffer_frames.load(Ordering::Relaxed),
-            self.sample_rate,
-            profiling_now(),
-        );
+    pub fn callback_complete(&self, elapsed: Duration, frames: usize, paced: bool) {
+        let sample = DspMeasurement::Callback {
+            elapsed_ns: elapsed.as_nanos().min(u128::from(u64::MAX)) as u64,
+            frames: frames as u32,
+            sample_rate: self.sample_rate,
+            paced,
+        };
+        let share = (sample.percent().unwrap_or(0.) / 100.) as f32;
+        self.load.store(share.to_bits(), Ordering::Relaxed);
+        self.host.callback_complete(sample, profiling_now());
     }
 
     pub fn record_callback(&self, frame: u64, frames: usize, elapsed_ns: u64, late_ns: u64) {

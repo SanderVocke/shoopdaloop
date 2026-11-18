@@ -195,7 +195,7 @@ pub struct Service {
     updates: VecDeque<ServiceMessage>,
     snapshots_wanted: bool,
     /// The largest DSP load observed since the previous snapshot.
-    dsp_peak: f32,
+    dsp_peak: Option<shoop_app_api::DspMeasurement>,
     pending: BTreeMap<OperationId, Pending>,
     results: VecDeque<OperationResult>,
     tracks: BTreeMap<TrackId, Track>,
@@ -300,7 +300,7 @@ impl Service {
             actors: BTreeMap::new(),
             updates: VecDeque::with_capacity(QUEUE_CAPACITY),
             snapshots_wanted: true,
-            dsp_peak: 0.,
+            dsp_peak: None,
             incoming: VecDeque::with_capacity(QUEUE_CAPACITY),
             draining: false,
             immediate_refused: 0,
@@ -838,7 +838,7 @@ impl Service {
         }
         if let Some(authority) = self.lease.as_ref().map(|lease| lease.authority) {
             let state = self.snapshot();
-            self.dsp_peak = 0.;
+            self.dsp_peak = None;
             self.emit(ServiceMessage::Snapshot { authority, state });
         }
     }
