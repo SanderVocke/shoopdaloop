@@ -67,7 +67,31 @@ pub struct Layout {
     quantum: u32,
     chunk_frames: u32,
 }
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct Allocations {
+    pub state: usize,
+    pub loops: usize,
+    pub history: usize,
+}
+
 impl Layout {
+    pub fn allocations(&self) -> Allocations {
+        Allocations {
+            state: self.values.len(),
+            loops: self.loops.len(),
+            history: self.histories.len(),
+        }
+    }
+
+    pub fn fresh_allocations(&self) -> Allocations {
+        Allocations {
+            state: self.new_values().count(),
+            loops: self.new_loops().count(),
+            history: self.new_histories().len(),
+        }
+    }
+
     pub fn loop_id(&self, logical: Identity) -> Result<Identity, CompileError> {
         self.loops
             .iter()

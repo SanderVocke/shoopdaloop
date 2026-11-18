@@ -186,6 +186,12 @@ impl MediaStore {
         self.free_chunks.len() * self.block_chunks
     }
 
+    pub fn block_usage(&self) -> Option<(u64, u64)> {
+        let used = self.references.len() - self.free_chunks.len();
+        let limit = self.chunk_limit? / self.block_chunks;
+        Some((used as u64, limit as u64))
+    }
+
     pub fn chunk_references(&self, id: ChunkId) -> Result<usize, Error> {
         self.references
             .get(id.0 / self.block_chunks)

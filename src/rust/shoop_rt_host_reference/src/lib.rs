@@ -1,4 +1,6 @@
 //! Portable ARM-side graph binding and driver-owned persistent reference rendering.
+mod usage;
+
 use anyhow::{ensure, Result};
 use rt_fpga_compiler::{
     graph::{self, LoopDescription, MonoGraphFixture},
@@ -24,7 +26,7 @@ use rt_runtime::{
 use shoop_rt_protocol::{
     immediate::{Batch, Code, Command, CommandRecord, Header, Response, SwitchProgram},
     Capabilities, ClientMessage, DriverKind, DriverRunState, DriverStatus, EngineMessage, Lane,
-    Limits,
+    Limits, MemoryReport, MemoryResource, MemoryUnit,
 };
 use shoop_rt_transport::{
     carrier::{CarrierError, Endpoint as CarrierEndpoint, Outbox},
@@ -33,6 +35,28 @@ use shoop_rt_transport::{
 use std::sync::{
     atomic::{AtomicU32, AtomicU64, AtomicU8, Ordering},
     Arc,
+};
+use usage::{ProgramUsage, StorageCounter, UsageTelemetry};
+
+pub use usage::StorageUsage;
+
+const BOOTSTRAP_INSTRUCTIONS: [Instruction; 3] = [
+    Instruction::ProcessSilence {
+        destination: BufferId(0),
+    },
+    Instruction::ProcessOutput {
+        source: BufferId(0),
+        port: 0,
+    },
+    Instruction::ProcessOutput {
+        source: BufferId(0),
+        port: 1,
+    },
+];
+const BOOTSTRAP_USAGE: ProgramUsage = ProgramUsage {
+    instructions: BOOTSTRAP_INSTRUCTIONS.len() as u32,
+    jobs: 3,
+    buffers: 1,
 };
 
 pub fn program_limits() -> ProgramLimits {
@@ -98,6 +122,7 @@ struct Pending {
     commands: Vec<Command>,
     ready: Option<bool>,
     published: bool,
+    usage: ProgramUsage,
 }
 struct ImageUpload {
     graph: u64,
@@ -126,6 +151,9 @@ pub struct Endpoint<L = ProgramControl> {
     status: Arc<Status>,
     failed: bool,
     sent_frame: u64,
+    program_usage: ProgramUsage,
+    storage: [Option<MemoryResource>; 2],
+    usage: UsageTelemetry,
 }
 
 #[derive(Debug)]
@@ -138,6 +166,7 @@ pub struct Status {
     callbacks: AtomicU64,
     xruns: AtomicU32,
     load: AtomicU32,
+    storage: StorageCounter,
 }
 impl Status {
     pub fn new(driver: DriverStatus) -> Self {
@@ -155,6 +184,7 @@ impl Status {
             callbacks: AtomicU64::new(0),
             xruns: AtomicU32::new(0),
             load: AtomicU32::new(0),
+            storage: StorageCounter::default(),
         }
     }
     pub fn update_driver(&self, driver: DriverStatus) {
@@ -185,6 +215,12 @@ impl Status {
     }
     pub fn set_frame(&self, frame: u64) {
         self.frame.store(frame, Ordering::Release);
+    }
+    pub fn publish_storage(&self, usage: StorageUsage) {
+        self.storage.publish(usage);
+    }
+    pub fn usage_interval(&self) -> u64 {
+        u64::from((self.sample_rate / 5).max(1))
     }
     pub fn xrun(&self) {
         self.xruns.fetch_add(1, Ordering::Relaxed);
@@ -321,21 +357,9 @@ pub fn prepare(quantum: u32, driver: DriverStatus, memory_mb: u32) -> Result<Pre
     let program = Program {
         quantum,
         chunk_frames: 1,
-        jobs_per_quantum: 3,
+        jobs_per_quantum: BOOTSTRAP_USAGE.jobs as usize,
         sync_instructions: vec![],
-        instructions: vec![
-            Instruction::ProcessSilence {
-                destination: BufferId(0),
-            },
-            Instruction::ProcessOutput {
-                source: BufferId(0),
-                port: 0,
-            },
-            Instruction::ProcessOutput {
-                source: BufferId(0),
-                port: 1,
-            },
-        ],
+        instructions: BOOTSTRAP_INSTRUCTIONS.into(),
     };
     let pipeline = Pipeline::prepare(plan, program, vec![], pool.jobs as usize)
         .map_err(|e| anyhow::anyhow!("{e:?}"))?;
@@ -376,7 +400,14 @@ pub fn prepare(quantum: u32, driver: DriverStatus, memory_mb: u32) -> Result<Pre
 
     processor.publish_initial_snapshot();
     let status = Arc::new(Status::new(driver));
-    let endpoint = Endpoint::new(control, programs, quantum, status.clone());
+    if let Some(audio_blocks) = media.block_usage() {
+        status.publish_storage(StorageUsage {
+            audio_blocks,
+            metadata_pages: None,
+        });
+    }
+    let endpoint =
+        Endpoint::new(control, programs, quantum, status.clone()).with_reference_bootstrap();
 
     let renderer = ReferenceRenderer {
         processor,
@@ -388,6 +419,7 @@ pub fn prepare(quantum: u32, driver: DriverStatus, memory_mb: u32) -> Result<Pre
         left: vec![Fixed::ZERO; quantum as usize],
         right: vec![Fixed::ZERO; quantum as usize],
         status: status.clone(),
+        storage_frame: 0,
     };
     Ok(Prepared {
         endpoint,
@@ -405,6 +437,7 @@ pub struct ReferenceRenderer {
     left: Vec<Fixed>,
     right: Vec<Fixed>,
     status: Arc<Status>,
+    storage_frame: u64,
 }
 impl Renderer for ReferenceRenderer {
     fn next_frame(&self) -> Frame {
@@ -452,7 +485,16 @@ impl Renderer for ReferenceRenderer {
             out.clear();
         }
         let next_frame = self.next_frame();
-        self.status.frame.store(next_frame.0, Ordering::Release);
+        if next_frame.0.saturating_sub(self.storage_frame) >= self.status.usage_interval() {
+            self.storage_frame = next_frame.0;
+            if let Some(audio_blocks) = self.media.block_usage() {
+                self.status.publish_storage(StorageUsage {
+                    audio_blocks,
+                    metadata_pages: None,
+                });
+            }
+        }
+        self.status.set_frame(next_frame.0);
         Ok(Report {
             next_frame,
             phase: Phase::Running,
@@ -461,8 +503,15 @@ impl Renderer for ReferenceRenderer {
     }
 }
 impl<L: ProgramLoader> Endpoint<L> {
-    pub fn into_control(self) -> (rt::Endpoint, L) {
-        (self.control, self.programs)
+    pub fn into_control(self) -> (StorageEndpoint, L) {
+        (
+            StorageEndpoint {
+                control: self.control,
+                status: self.status,
+                usage: UsageTelemetry::default(),
+            },
+            self.programs,
+        )
     }
     pub fn new(control: rt::Endpoint, programs: L, quantum: u32, status: Arc<Status>) -> Self {
         let limits = programs.limits();
@@ -480,7 +529,42 @@ impl<L: ProgramLoader> Endpoint<L> {
             status,
             failed: false,
             sent_frame: 0,
+            program_usage: ProgramUsage::default(),
+            storage: [None; 2],
+            usage: UsageTelemetry::default(),
         }
+    }
+    pub fn with_reference_bootstrap(mut self) -> Self {
+        self.program_usage = BOOTSTRAP_USAGE;
+        self
+    }
+    pub fn observe_worklet_storage(&mut self, report: &MemoryReport) {
+        self.storage[0] = report.resources.iter().flatten().copied().find(|resource| {
+            resource.name.as_str() == usage::AUDIO_STORAGE && resource.unit == MemoryUnit::Blocks
+        });
+    }
+    fn publish_usage(&mut self, out: &mut Outbox) {
+        if !self.control.is_connected() {
+            return;
+        }
+        let frame = self.status.frame.load(Ordering::Acquire);
+        if let Some(storage) = self.status.storage.report(frame) {
+            self.storage.copy_from_slice(&storage.resources[..2]);
+        }
+        let mut report = MemoryReport {
+            frame,
+            ..Default::default()
+        };
+        report.resources[..2].copy_from_slice(&self.storage);
+        usage::add_program_usage(
+            &mut report,
+            &self.allocator,
+            self.limits,
+            self.program_usage,
+            self.pending.as_ref().map(|pending| pending.usage),
+        );
+        self.usage
+            .publish(report, self.status.usage_interval(), out);
     }
     fn accept_graph(&mut self, batch: Batch) -> Result<bool> {
         ensure!(self.control.is_connected(), "session is not connected");
@@ -624,6 +708,11 @@ impl<L: ProgramLoader> Endpoint<L> {
                     commands,
                     ready: None,
                     published: false,
+                    usage: ProgramUsage {
+                        instructions: u32::from(descriptor.instructions),
+                        jobs: logical.resources.queue_capacity,
+                        buffers: u32::from(descriptor.buffers),
+                    },
                 });
                 Ok(())
             }
@@ -660,6 +749,7 @@ impl<L: ProgramLoader> Endpoint<L> {
                     self.allocator
                         .complete(pending.descriptor.revision)
                         .expect("fenced switch completion");
+                    self.program_usage = pending.usage;
                 } else {
                     self.allocator
                         .refused(pending.descriptor.revision)
@@ -737,6 +827,7 @@ impl<L: ProgramLoader> CarrierEndpoint for Endpoint<L> {
         ) {
             self.upload = None;
             self.image_upload = None;
+            self.usage = UsageTelemetry::default();
         }
         self.control.try_deliver(message, out)
     }
@@ -809,6 +900,51 @@ impl<L: ProgramLoader> CarrierEndpoint for Endpoint<L> {
         }
         self.control.poll(&mut self.replies);
         self.flush(out);
+        self.publish_usage(out);
+    }
+}
+
+/// Render-side endpoint for a worklet whose compiler and graph allocator run remotely.
+pub struct StorageEndpoint {
+    control: rt::Endpoint,
+    status: Arc<Status>,
+    usage: UsageTelemetry,
+}
+
+impl StorageEndpoint {
+    pub fn set_driver(&mut self, driver: DriverStatus) {
+        self.control.set_driver(driver);
+    }
+}
+
+impl CarrierEndpoint for StorageEndpoint {
+    fn try_deliver(
+        &mut self,
+        message: ClientMessage,
+        out: &mut Outbox,
+    ) -> Result<(), CarrierError> {
+        if matches!(
+            message,
+            ClientMessage::Hello { .. } | ClientMessage::Goodbye
+        ) {
+            self.usage = UsageTelemetry::default();
+        }
+        self.control.try_deliver(message, out)
+    }
+
+    fn deliver(&mut self, message: ClientMessage, out: &mut Outbox) {
+        let _ = self.try_deliver(message, out);
+    }
+
+    fn poll(&mut self, out: &mut Outbox) {
+        self.control.poll(out);
+        if self.control.is_connected() {
+            let frame = self.status.frame.load(Ordering::Acquire);
+            if let Some(report) = self.status.storage.report(frame) {
+                self.usage
+                    .publish(report, self.status.usage_interval(), out);
+            }
+        }
     }
 }
 

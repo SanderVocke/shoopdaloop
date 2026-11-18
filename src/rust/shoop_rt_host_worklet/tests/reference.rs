@@ -6,7 +6,7 @@ use shoop_rt_host_worklet::{
 };
 use shoop_rt_protocol::{
     immediate::{Batch, Code, Command, GraphLoop, TransitionMode, TransitionPlan},
-    DriverKind, DriverRunState, DriverStatus, EngineMessage,
+    DriverKind, DriverRunState, DriverStatus, EngineMessage, MemoryReport, Telemetry,
 };
 use shoop_rt_transport::{
     carrier::{CarrierError, InProcess, Outbox, RecordPort},
@@ -57,6 +57,7 @@ struct Browser {
     client: ProtocolClient<InProcess<Endpoint<Port>>>,
     frame: u64,
     published: Vec<shoop_rt_protocol::snapshot::Header>,
+    usage: Option<MemoryReport>,
 }
 impl Browser {
     fn new() -> Self {
@@ -92,6 +93,7 @@ impl Browser {
             client,
             frame: 0,
             published: Vec::new(),
+            usage: None,
         }
     }
     fn step(&mut self) -> Vec<shoop_rt_protocol::immediate::Response> {
@@ -127,6 +129,10 @@ impl Browser {
         while let Some(message) = self.client.poll() {
             match message {
                 EngineMessage::ImmediateResponse(r) => responses.push(r),
+                EngineMessage::Telemetry(Telemetry::Memory(report)) => {
+                    assert!(report.valid());
+                    self.usage = Some(report);
+                }
                 EngineMessage::Snapshot(chunk) if chunk.offset == 0 => {
                     self.published.push(
                         shoop_rt_protocol::snapshot::Header::read(
@@ -181,6 +187,19 @@ fn graph(rev: u64) -> Batch {
 #[shoop_test]
 fn separate_heap_image_loading_records_plays_and_retains_media_without_render_allocation() {
     let mut browser = Browser::new();
+    let usage = |browser: &Browser, name: &str| {
+        browser
+            .usage
+            .unwrap()
+            .resources
+            .into_iter()
+            .flatten()
+            .find(|resource| resource.name.as_str() == name)
+            .unwrap()
+    };
+    browser.step();
+    assert_eq!(usage(&browser, "Audio storage").used, 0);
+    assert_eq!(usage(&browser, "Audio storage").capacity, Some(2048));
     browser.send(graph(0));
     let transition = |mode| {
         Batch::new(
@@ -200,9 +219,11 @@ fn separate_heap_image_loading_records_plays_and_retains_media_without_render_al
     browser.send(transition(TransitionMode::Recording));
     browser.step();
     browser.send(transition(TransitionMode::Playing));
-    for _ in 0..4 {
+    for _ in 0..16 {
         browser.step();
     }
+    assert_eq!(usage(&browser, "State slots").used, 2);
+    assert!(usage(&browser, "Audio storage").used > 0);
     assert!(browser.host.audio_output().iter().all(|s| *s == 0.25));
     assert!(browser
         .published

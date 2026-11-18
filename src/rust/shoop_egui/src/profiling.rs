@@ -421,8 +421,8 @@ fn show_inner(
             }
         });
     ui.add_space(10.);
-    ui.collapsing("Memory", |ui| {
-        crate::show_memory_usage(ui, status.memory.as_ref())
+    ui.collapsing("Usage", |ui| {
+        crate::show_resource_usage(ui, status.memory.as_ref())
     });
     ui.horizontal(|ui| {
         ui.selectable_value(table, false, "Graph");
