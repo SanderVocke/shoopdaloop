@@ -211,6 +211,7 @@ fn benchmark(
         }
         if now >= next_edit {
             let id = loops[0];
+            let submitted = Instant::now();
             peer.send(
                 client
                     .immediate(vec![immediate::Command::LoopGain(id, gain)])
@@ -218,7 +219,7 @@ fn benchmark(
             )
             .expect("send gain");
             wait_visible(client, peer, |client| observed_gain(client, id, gain));
-            max_control_us = max_control_us.max(now.elapsed().as_micros());
+            max_control_us = max_control_us.max(submitted.elapsed().as_micros());
             gain = if gain == 0.25 { 0.5 } else { 0.25 };
             next_edit = now + Duration::from_secs(5);
         }
