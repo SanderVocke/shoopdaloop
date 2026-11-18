@@ -665,17 +665,22 @@ fn prepared_ui_case(marker: &str) {
     });
     app.runtime
         .dispatch(AppIntent::AddTrack(DirectTrackSpec {
-            name: "Unsupported stereo".into(),
+            name: "Stereo".into(),
             audio_channels: 2,
             midi: false,
         }))
         .unwrap();
-    wait(&app.runtime, |s| {
-        s.notifications
-            .iter()
-            .any(|n| n.message.contains("mono audio tracks"))
+    let stereo = wait(&app.runtime, |s| {
+        s.tracks.len() == 2
+            && s.tracks[1].structural_state == shoop_egui::StructuralState::Confirmed
     });
-    assert_eq!(app.runtime.snapshot().tracks.len(), 1);
+    app.runtime
+        .dispatch(AppIntent::Track {
+            track_id: stereo.tracks[1].id,
+            action: TrackAction::Remove,
+        })
+        .unwrap();
+    wait(&app.runtime, |s| s.tracks.len() == 1);
     app.runtime
         .dispatch(AppIntent::AddTrackWithTopology(shoop_egui::TrackSpec {
             name: "FPGA UI".into(),

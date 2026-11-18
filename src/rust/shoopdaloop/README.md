@@ -17,14 +17,17 @@ including the default in-process mode and detached socket/shared-memory launches
 The Audio settings' Backend preference supplies the default; an explicit CLI
 choice overrides it. Backend choice is a startup setting. An attaching UI uses
 the host's existing backend and accepts no `--backend` override. `native` remains
-the default; `rtl-sim` reports that its runtime integration is not ready.
+the default.
 
-Build with `--features fpga-reference` to use `--backend rust-fpga`. The UI can
-also attach to a separately started reference host for a restricted mono looping
-session with simulated input and no physical audio output. Graph edits activate
-automatically inside the host. See the [reference host instructions](../shoop_host/README.md#rust-fpga-reference-with-the-ui)
-for builds, startup and the supported controls. This is opt-in; normal launches
-continue to use native execution.
+Build with `--features fpga-reference` for `--backend rust-fpga`, or with
+`--features rtl-sim` for the Marlin RTL simulation backend. Both can run in process
+or in a separate host with the UI attached. Direct multichannel strips and loops
+and flexible bus routing are supported by their shared graph compiler, subject
+to FPGA resource limits. Dummy, CPAL and JACK drivers provide pacing and audio
+according to the enabled build features. Graph edits activate automatically inside
+the host. Unsupported operations report errors when requested. See the
+[reference host instructions](../shoop_host/README.md#rust-fpga-reference-with-the-ui)
+for startup and the supported controls.
 
 ## Hosted track processors
 

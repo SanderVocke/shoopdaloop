@@ -252,7 +252,7 @@ fn start_backend(config: &HostConfig) -> Result<StartedBackend> {
             reference_driver: Some(started.driver),
             host: None,
             backend: Box::new(backend),
-            warnings: vec!["Rust FPGA reference: supports one mono audio track alongside Sync, up to 16 loops total; track and Master controls stay at defaults.".into()],
+            warnings: Vec::new(),
             settings: config.settings.clone(),
         });
     }
@@ -272,7 +272,7 @@ fn start_backend(config: &HostConfig) -> Result<StartedBackend> {
             reference_driver: Some(started.driver),
             host: None,
             backend: Box::new(backend),
-            warnings: vec!["Marlin RTL simulation: supports one mono audio track alongside Sync, up to 16 loops total; track and Master controls stay at defaults.".into()],
+            warnings: Vec::new(),
             settings: config.settings.clone(),
         });
     }
