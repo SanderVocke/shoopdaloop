@@ -1,19 +1,15 @@
 use anyhow::{ensure, Result};
-use rt_fpga_compiler::{loading::Layout, LogicalStateProgram};
-use rt_fpga_rtl::{
-    host::{control::descriptor, Upload},
-    target::{ProgramImage, RtlTarget},
-};
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock},
     host::{Phase, Renderer, Report},
     host_adapter::QuantumAdapter,
     Error, Frame,
 };
-use shoop_rt_host_reference::{ProgramLoader, Status};
-use shoop_rt_protocol::{
-    immediate::SwitchProgram, ClientMessage, DriverKind, DriverRunState, DriverStatus,
+use shoop_rt_host_reference::{
+    fpga::{image_channel, ImageOwner, Images},
+    program_limits, Status,
 };
+use shoop_rt_protocol::{ClientMessage, DriverKind, DriverRunState, DriverStatus};
 use shoop_rt_transport::carrier::{CarrierError, Endpoint as Carrier, Outbox};
 use std::{
     sync::{
@@ -62,42 +58,6 @@ fn guarded(shared: &Shared, work: impl FnOnce() -> Result<()>) {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(work));
     if !matches!(result, Ok(Ok(()))) && !shared.stop.load(Ordering::Acquire) {
         shared.fail();
-    }
-}
-pub struct Images {
-    uploads: rtrb::Producer<Upload>,
-    ready: rtrb::Consumer<(u64, bool)>,
-    retired: rtrb::Consumer<ProgramImage>,
-    wake: Thread,
-}
-impl ProgramLoader for Images {
-    fn limits(&self) -> rt_fpga_compiler::ProgramLimits {
-        shoop_rt_host_reference::program_limits()
-    }
-    fn stage_program(
-        &mut self,
-        logical: &LogicalStateProgram,
-        layout: Layout,
-    ) -> Result<SwitchProgram> {
-        let views = layout.media_views(logical);
-        let image = RtlTarget {
-            capacities: self.limits(),
-            media_views: &views,
-            state_base: 0,
-        }
-        .build_image(logical, layout)?;
-        let descriptor = descriptor(&image);
-        self.uploads
-            .push(Upload::new(image, self.limits().instructions))
-            .map_err(|_| anyhow::anyhow!("RTL upload queue is full"))?;
-        self.wake.unpark();
-        Ok(descriptor)
-    }
-    fn program_ready(&mut self) -> Option<(u64, bool)> {
-        self.ready.pop().ok()
-    }
-    fn reclaim_programs(&mut self) {
-        while self.retired.pop().is_ok() {}
     }
 }
 pub struct Endpoint {
@@ -183,9 +143,14 @@ pub fn prepare(
         .and_then(|v| u32::try_from(v).ok())
         .ok_or_else(|| anyhow::anyhow!("RTL bridge capacity overflow"))?;
     let (control, execution) = shoop_rt_host_reference::prepare_control(quantum, driver, latency)?;
-    let (uploads, upload_rx) = rtrb::RingBuffer::new(2);
-    let (ready_tx, ready) = rtrb::RingBuffer::new(2);
-    let (retire_tx, retired) = rtrb::RingBuffer::new(2);
+    let (
+        images,
+        ImageOwner {
+            uploads,
+            ready,
+            retired,
+        },
+    ) = image_channel(program_limits());
     let (requests, request_rx) = rtrb::RingBuffer::new(capacity);
     let (results_tx, results) = rtrb::RingBuffer::new(capacity);
     let status = Arc::new(Status::new(driver));
@@ -201,8 +166,8 @@ pub fn prepare(
         .spawn(move || {
             guarded(&worker, || {
                 super::owner::run(
-                    quantum, memory_mb, &worker, execution, upload_rx, ready_tx, retire_tx,
-                    request_rx, results_tx, start_tx,
+                    quantum, memory_mb, &worker, execution, uploads, ready, retired, request_rx,
+                    results_tx, start_tx,
                 )
             });
         })?;
@@ -218,12 +183,6 @@ pub fn prepare(
             anyhow::bail!("RTL owner failed during preparation");
         }
     }
-    let images = Images {
-        uploads,
-        ready,
-        retired,
-        wake: wake.clone(),
-    };
     let endpoint = Endpoint {
         inner: shoop_rt_host_reference::Endpoint::new(control, images, quantum, status.clone()),
         wake: wake.clone(),

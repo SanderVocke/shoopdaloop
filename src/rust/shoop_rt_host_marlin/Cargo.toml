@@ -15,7 +15,7 @@ rt_fpga_reference={path="../rt_fpga_reference",features=["rt-interface"],optiona
 rt_runtime={path="../rt_runtime",optional=true}
 shoop_rt_protocol={path="../shoop_rt_protocol",optional=true}
 shoop_rt_transport={path="../shoop_rt_transport",features=["rt-interface"],optional=true}
-shoop_rt_host_reference={path="../shoop_rt_host_reference",optional=true}
+shoop_rt_host_reference={path="../shoop_rt_host_reference",features=["rtl"],optional=true}
 rtrb={workspace=true,optional=true}
 anyhow={workspace=true,features=["std"],optional=true}
 [dev-dependencies]

@@ -8,7 +8,8 @@ use rt_fpga_reference::{
 use rt_fpga_rtl::{
     bits::Bits,
     host::control::{
-        apply_plan, clear_plan, descriptor, loop_plan, loop_state, protocol_mode, reference_mode,
+        apply_plan, clear_plan, descriptor, gain_value, loop_plan, loop_state, protocol_mode,
+        reference_mode,
     },
     host::{Upload, UploadStep},
     pipeline::{design, Geometry},
@@ -302,10 +303,7 @@ impl Owner<'_> {
             else {
                 return Ok(Code::Unsupported);
             };
-            let mut bits = Bits::zero(129);
-            bits.set(128, 1, 1)
-                .set(0, 32, Fixed::from_f32(gain).0 as u32 as u64)
-                .set(32, 32, Fixed::from_f32(gain).0 as u32 as u64);
+            let bits = gain_value(gain);
             self.access("cfg", 1, u64::from(address), Some(&bits))?;
             self.rows[index].gain = gain;
             return Ok(Code::Applied);

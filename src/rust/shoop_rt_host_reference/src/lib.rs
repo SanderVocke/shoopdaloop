@@ -2,6 +2,8 @@
 #![no_std]
 extern crate alloc;
 
+#[cfg(feature = "rtl")]
+pub mod fpga;
 mod usage;
 
 use alloc::{sync::Arc, vec, vec::Vec};
