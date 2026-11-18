@@ -185,7 +185,7 @@ module media_audio_pipeline #(
         .clk(clk), .reset(reset), .arena_base(arena_base),
         .maintenance_tick(maintenance_tick || (MAINTENANCE_AT_RUN != 0 && run_valid && run_ready)),.reclaim_pages_used(reclaim_pages_used),.reclaim_pages_available(reclaim_pages_available),
         .reclaim_pages_freed(reclaim_pages_freed),.reclaim_capacity_failures(reclaim_capacity_failures),
-        .maintenance_enable(maintenance_enable && !(run_valid && pipeline_ready)),.reclaim_pending(reclaim_pending),.reclaim_high_water(reclaim_high_water),
+        .maintenance_enable(maintenance_enable && !(run_valid && !pipeline_busy)),.reclaim_pending(reclaim_pending),.reclaim_high_water(reclaim_high_water),
         .reclaim_references(reclaim_references),.reclaim_active(reclaim_active),.reclaim_released(reclaim_released),
         .reclaim_block(reclaim_block),.reclaim_blocks(reclaim_blocks),.reclaim_freed(reclaim_freed),
         .reclaim_cycles(reclaim_cycles),.reclaim_quiescent(reclaim_quiescent),

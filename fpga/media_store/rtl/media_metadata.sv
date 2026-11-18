@@ -12,8 +12,8 @@ module media_metadata #(
     input wire [31:0] request_view, input wire [31:0] request_index, input wire [31:0] request_data,
     output wire response_valid, input wire response_ready,
     output reg [31:0] response_data, output reg [7:0] response_error, output wire fault,
-    output reg [31:0] retired_count, output reg [31:0] retired_high_water,
-    output reg [31:0] retired_head, output reg [31:0] retired_tail,
+    output wire [31:0] retired_count, output wire [31:0] retired_high_water,
+    output wire [31:0] retired_head, output wire [31:0] retired_tail,
     output reg [63:0] retired_references,
     output wire [31:0] pages_used, output wire [31:0] pages_available, output reg [63:0] pages_freed,
     output wire memory_valid, input wire memory_ready, output wire memory_write,
@@ -23,6 +23,15 @@ module media_metadata #(
     input wire memory_response_valid, output wire memory_response_ready,
     input wire memory_response_error, input wire [31:0] memory_read_data
 );
+    // Queue occupancy includes the full queue; pointers wrap below its capacity.
+    localparam integer RETIRED_COUNT_BITS = RETIRED_TABLES > 1 ? $clog2(64'(RETIRED_TABLES)+1) : 1;
+    localparam integer RETIRED_INDEX_BITS = RETIRED_TABLES > 1 ? $clog2(RETIRED_TABLES) : 1;
+    reg [RETIRED_COUNT_BITS-1:0] retired_entries, retired_peak;
+    reg [RETIRED_INDEX_BITS-1:0] retired_head_index, retired_tail_index;
+    assign retired_count = 32'(retired_entries);
+    assign retired_high_water = 32'(retired_peak);
+    assign retired_head = 32'(retired_head_index);
+    assign retired_tail = 32'(retired_tail_index);
     localparam [63:0] SAMPLE_WORDS = ((64'(SLOTS)*64'(CHUNK_FRAMES)+15)/16)*16;
     localparam [63:0] SLOT_WORDS = ((64'(SLOTS)+15)/16)*16;
     localparam [63:0] REF_BASE = SAMPLE_WORDS*4;
@@ -38,6 +47,8 @@ module media_metadata #(
     phase_t resume;
     reg [VIEWS-1:0] root_valid, leaf_valid;
     wire [127:0] root_ram_data;
+    reg root_used_nonzero;
+    reg [63:0] memory_origin;
     reg [127:0] root_data;
     localparam integer LEVEL_BITS = LEVELS < 2 ? 1 : $clog2(LEVELS);
     reg [31:0] view, ordinal, payload, root, used, page;
@@ -79,7 +90,7 @@ module media_metadata #(
     assign response_valid = phase == RESPONSE && !reset;
     assign memory_valid = bank < 3 && bus_valid[bank];
     assign memory_write = bus_write[bank];
-    assign memory_address = arena_base+bus_address[bank*64+:64];
+    assign memory_address = memory_origin+bus_address[bank*64+:64];
     assign memory_write_data = bus_write_data[bank*32+:32];
     assign memory_count = bus_count[bank*32+:32];
     assign memory_write_valid = bank < 3 && bus_write_valid[bank];
@@ -133,13 +144,13 @@ module media_metadata #(
     initial if (TABLE_PAGES < 1 || LEVELS < 1 || LEVELS > 8 || RETIRED_TABLES < 1) $fatal(1,"Invalid metadata geometry");
     always @(posedge clk) begin
         if (reset) begin
-            phase <= IDLE; resume <= IDLE; root_valid <= 0; leaf_valid <= 0; root_data <= 0; view <= 0; ordinal <= 0; payload <= 0;
+            phase <= IDLE; resume <= IDLE; root_valid <= 0; leaf_valid <= 0; root_data <= 0; root_used_nonzero <= 0; memory_origin <= 0; view <= 0; ordinal <= 0; payload <= 0;
             root <= 0; used <= 0; page <= 0; level <= 0; high_water <= 0; free_head <= 0; free_pages <= 0;
             invalid_tree_request <= 0; invalid_read_extent <= 0; invalid_write_extent <= 0; cached_leaf_match <= 0;
             allocated <= 0; parent_is_root <= 1; cached_leaf <= 0; cached_index <= 0; parent_address <= 0; trim_count <= 0; trim_start <= 0;
             trim_used_pages <= 0; trim_requested_pages <= 0; trim_finished <= 0;
             new_count <= 0; required_nodes <= 0; existing_nodes <= 0;
-            retired_head <= 0; retired_tail <= 0; retired_count <= 0; retired_high_water <= 0;
+            retired_head_index <= RETIRED_INDEX_BITS'(0); retired_tail_index <= RETIRED_INDEX_BITS'(0); retired_entries <= RETIRED_COUNT_BITS'(0); retired_peak <= RETIRED_COUNT_BITS'(0);
             retired_references <= 0; pages_freed <= 0; gc_root <= 0; gc_used <= 0; gc_loaded <= 0;
             unallocated_pages <= 0; additional <= 0; available <= 0; capacity_grow <= 0; capacity_insufficient <= 0;
             root_exists <= 0; checked <= 0; opcode <= 0; bank <= 0;
@@ -150,6 +161,7 @@ module media_metadata #(
         end else begin
             case (phase)
                 IDLE: if (request_valid && request_ready) begin
+                    memory_origin <= arena_base;
                     if (request_opcode < 10) operations[request_opcode] <= operations[request_opcode]+1;
                     view <= request_view; ordinal <= request_index; payload <= request_data; opcode <= request_opcode;
                     new_count <= request_opcode == 1 ? request_index+1'b1 : request_index;
@@ -157,7 +169,7 @@ module media_metadata #(
                     checked <= 0; response_error <= 0; response_data <= 0; cache_invalidate <= request_opcode == 9;
                     bank <= 0; phase <= ROOT_CAPTURE;
                 end
-                ROOT_CAPTURE: begin root_data <= root_ram_data; phase <= ROOT; end
+                ROOT_CAPTURE: begin root_data <= root_ram_data; root_used_nonzero <= root_ram_data[63:32] != 0; phase <= ROOT; end
                 ROOT: begin
                     root <= root_exists ? root_data[31:0] : 0;
                     used <= root_exists ? root_data[63:32] : 0;
@@ -167,7 +179,7 @@ module media_metadata #(
                     if (opcode == 6) begin leaf_valid[VIEW_BITS'(view)] <= 0; cached_leaf <= 0; end
                     if (opcode == 10) begin
                         if (view >= 32'(VIEWS)) begin response_error <= 1; phase <= RESPONSE; end
-                        else if (!root_exists || root_data[63:32] == 0) begin
+                        else if (!root_exists || !root_used_nonzero) begin
                             root <= 0; used <= 0; cached_leaf <= 0; phase <= PUBLISH;
                         end else if (retired_count == 32'(RETIRED_TABLES)) begin response_error <= 3; phase <= RESPONSE; end
                         else phase <= DETACH_ROOT;
@@ -292,9 +304,9 @@ module media_metadata #(
                 DETACH_COMMIT: begin
                     response_data <= used;
                     retired_references <= retired_references+{32'b0,used};
-                    retired_count <= retired_count+1;
-                    if (retired_count+1 > retired_high_water) retired_high_water <= retired_count+1;
-                    retired_tail <= retired_tail+1 == 32'(RETIRED_TABLES) ? 0 : retired_tail+1;
+                    retired_entries <= RETIRED_COUNT_BITS'(retired_count+1);
+                    if (retired_count+1 > retired_high_water) retired_peak <= RETIRED_COUNT_BITS'(retired_count+1);
+                    retired_tail_index <= RETIRED_INDEX_BITS'(retired_tail+1 == 32'(RETIRED_TABLES) ? 0 : retired_tail+1);
                     root <= 0; used <= 0; cached_leaf <= 0; phase <= PUBLISH;
                 end
                 GC_ROOT: begin gc_root <= value; access_cache(0,0,QUEUE_BASE+64'(retired_head)*64+4,0,GC_COUNT); end
@@ -312,8 +324,8 @@ module media_metadata #(
                     gc_loaded <= 0; gc_root <= root; gc_used <= used;
                     retired_references <= retired_references-1;
                     if (used == 0) begin
-                        retired_count <= retired_count-1;
-                        retired_head <= retired_head+1 == 32'(RETIRED_TABLES) ? 0 : retired_head+1;
+                        retired_entries <= RETIRED_COUNT_BITS'(retired_count-1);
+                        retired_head_index <= RETIRED_INDEX_BITS'(retired_head+1 == 32'(RETIRED_TABLES) ? 0 : retired_head+1);
                     end
                     response_data <= used; phase <= RESPONSE;
                 end

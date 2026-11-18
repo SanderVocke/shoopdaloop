@@ -21,7 +21,7 @@ module sp_engine #(
     input  wire [31:0]                         job_budget,
     input  wire [31:0]                         queued_jobs,
     input  wire [31:0]                         queue_remaining,
-    output wire                                busy,
+    output reg                                 busy,
     output reg                                 done,
     output reg  [7:0]                          error_code,
     output wire [31:0]                         instruction_pc,
@@ -56,7 +56,7 @@ module sp_engine #(
     output wire faulted
 );
     typedef enum logic [6:0] {
-        IDLE, ADMIT, FETCH, DECODE, READ_REQUEST, READ_CAPTURE, READ_RESULT, EMIT, NEXT,
+        IDLE, ADMIT, ADD_LOW, ADD_HIGH, FRAME_FINISH, FETCH, DECODE, DISPATCH, READ_REQUEST, READ_CAPTURE, READ_RESULT, EMIT, NEXT,
         LOOP_REQUEST, LOOP_WAIT, LOOP_RESULT,
         SYNC_BEGIN, SYNC_LOAD, SYNC_CHECK, SYNC_SOURCE_FLAGS, SYNC_SOURCE_CHECK,
         SYNC_SCAN_BEGIN, SYNC_SCAN, SYNC_EFFECTIVE, SYNC_REMAINING, SYNC_CANDIDATE, SYNC_SCAN_NEXT,
@@ -64,7 +64,7 @@ module sp_engine #(
         SYNC_RESET_BEGIN, SYNC_RESET_CYCLES, SYNC_SUCCESS, SYNC_AFTER_APPLY, SYNC_EFFECTS,
         SYNC_CANCEL, SYNC_CANCEL_NEXT, SYNC_GROUP_DONE, SYNC_NATURAL, SYNC_WRAP, SYNC_WRAP_EVENT,
         SYNC_SOURCE, SYNC_DELIVER, SYNC_SELF, SYNC_RENDER, SYNC_STAMP,
-        SYNC_ADVANCE, SYNC_ADV_POSITION, SYNC_ADV_CAPTURE, SYNC_STORE, SYNC_FINISH,
+        SYNC_ADVANCE, SYNC_ADV_POSITION, SYNC_ADV_COMMIT, SYNC_ADV_CAPTURE, SYNC_STORE, SYNC_FINISH,
         SYNC_WRITE, SYNC_EVENT, OWN_FLAGS, OWN_STAMP, OWN_RENDER, OWN_LENGTH
     } phase_t;
     typedef enum logic [2:0] {
@@ -86,10 +86,12 @@ module sp_engine #(
     reg [31:0] run_state_count;
     reg [31:0] run_quantum;
     reg [31:0] run_sync_count;
+    reg run_has_sync, instruction_is_sync, last_sync_instruction, last_instruction;
     reg begin_capture;
     reg [1:0] playback_flags;
     reg [255:0] capture_job;
-    reg [7:0] opcode;
+    reg [7:0] opcode, instruction_reserved;
+    wire [95:0] instruction={instruction_reserved,arg4,arg3,arg2,arg1,arg0,opcode};
     reg [15:0] arg0, arg1, arg2, arg3, arg4;
     reg [15:0] operand_address;
     reg [63:0] position;
@@ -101,9 +103,12 @@ module sp_engine #(
     reg queue_bad, shape_bad, program_bad, state_bad, empty_program;
     reg loop_invalid, loop_at_start;
     reg [1:0] loop_mode;
+    reg [1:0] operand_nonzero_parts;
+    wire word_nonzero = |operand_nonzero_parts;
+    wire [63:0] read_word = operand==LOOP_MEMORY ? loop_ram_read_data : state_read_data[63:0];
     wire [63:0] word_value = operand_data[63:0];
     wire is_ramp = operand_data[128];
-    wire unused_reserved = &{1'b0, program_read_data[95:88]};
+    wire unused_reserved = &{1'b0, instruction_reserved};
     wire operand_in_range = {16'b0, operand_address} < run_state_count;
 
     function automatic [`SHOOP_SP_JOB_BITS-1:0] pack_job(
@@ -117,7 +122,6 @@ module sp_engine #(
         pack_job = {payload2, payload1, payload0, 24'b0, id1, id0, kind};
     endfunction
 
-    assign busy = phase != IDLE;
     assign instruction_pc = 32'(pc);
     assign program_read_enable = (phase == FETCH) && !reset;
     assign program_read_address = PROGRAM_ADDR_BITS'(pc);
@@ -156,10 +160,11 @@ module sp_engine #(
     wire [31:0] target={16'b0,arg0};
     wire [31:0] generation={arg2,arg1};
     wire [63:0] source_flags=capture_job[63:0];
-    wire inline_sync=opcode==`SHOOP_SP_PROCESS_LOOP && arg4[0];
-    wire source_valid=inline_sync ? arg3!=16'hffff : flags[SV];
-    wire [31:0] source_slot={16'b0,inline_sync ? arg3 : flags[SS+:16]};
-    wire source_self=source_valid && source_slot==target;
+    reg inline_sync, source_valid, source_self;
+    reg sync_flags_invalid, sync_control_matches;
+    reg [31:0] source_slot;
+    wire selected_source_valid=inline_sync ? arg3!=16'hffff : flags[SV];
+    wire [31:0] selected_source_slot={16'b0,inline_sync ? arg3 : flags[SS+:16]};
     wire source_tick=source_valid && !source_self && source_flags[PULSE];
     wire source_playing=source_flags[M+:2]==1;
     wire [4:0] scan_flags=scan_index ? control[P1+:5] : control[P0+:5];
@@ -171,21 +176,22 @@ module sp_engine #(
     wire [63:0] operation_position=ramp_state[63:0];
     wire preserve=flags[M+:2]==1 && !retrigger;
     wire [63:0] playable_length=flags[M+:2]==2 ? capture_frames : length;
+    reg [63:0] operation_length;
+    reg operation_empty, operation_in_range;
+    reg position_in_range, word_at_frame, word_after_frame, advanced_invalid;
     reg [63:0] arithmetic_left, arithmetic_right;
-    wire [64:0] arithmetic_sum={1'b0,arithmetic_left}+{1'b0,arithmetic_right};
-    always @* begin
-        arithmetic_left=position; arithmetic_right={32'b0,run_quantum};
-        case (phase)
-            ADMIT, SYNC_FINISH: arithmetic_left=sync_frame;
-            SYNC_ADV_CAPTURE: arithmetic_left=capture_frames;
-            SYNC_WRAP, SYNC_NEW_REV: begin arithmetic_left=word_value; arithmetic_right=1; end
-            SYNC_REMAINING: begin arithmetic_left=word_value; arithmetic_right=64'hffffffffffffffff; end
-            OWN_STAMP: arithmetic_left=word_value;
-            READ_RESULT: arithmetic_left={32'b0,operand_data[127:96]};
-            default: begin end
-        endcase
-    end
-    assign faulted=sync_fault || (done && error_code!=0 && run_sync_count!=0);
+    reg [32:0] arithmetic_low;
+    reg [64:0] arithmetic_sum;
+    phase_t arithmetic_return;
+    wire [32:0] arithmetic_high={1'b0,arithmetic_left[63:32]}
+        +{1'b0,arithmetic_right[63:32]}+{32'b0,arithmetic_low[32]};
+    task automatic add_words(input [63:0] left, input [63:0] right, input phase_t destination);
+        begin
+            arithmetic_left<=left; arithmetic_right<=right;
+            arithmetic_return<=destination; phase<=ADD_LOW;
+        end
+    endtask
+    assign faulted=sync_fault;
     assign sync_event_valid=phase==SYNC_EVENT && !reset;
     assign sync_event_data=job_data;
     assign loop_ram_read_enable=phase==READ_REQUEST && operand==LOOP_MEMORY && !reset;
@@ -209,8 +215,14 @@ module sp_engine #(
             memory_return<=destination; phase<=SYNC_WRITE;
         end
     endtask
+    task automatic finish_error(input [7:0] code);
+        begin
+            error_code<=code; done<=1; busy<=0; phase<=IDLE;
+            if (phase==IDLE ? sync_count!=0 : run_has_sync) sync_fault<=1;
+        end
+    endtask
     task automatic sync_fail;
-        begin error_code<=`SHOOP_SP_INVALID_STATE; sync_fault<=1; done<=1; phase<=IDLE; end
+        begin finish_error(`SHOOP_SP_INVALID_STATE); sync_fault<=1; end
     endtask
     task automatic sync_emit(input [7:0] kind, input [7:0] reason, input [7:0] outcome,
         input [63:0] payload, input [63:0] sequence_value, input phase_t destination);
@@ -229,11 +241,12 @@ module sp_engine #(
     always @(posedge clk) begin
         if (reset) begin
             phase <= IDLE;
+            busy <= 0;
             operand <= ENABLE;
             pc <= 0;
             run_count <= 0;
             run_state_count <= 0;
-            flags<=0; control<=0; capture_frames<=0; loop_address<=0; loop_word<=0; run_sync_count<=0;
+            flags<=0; control<=0; capture_frames<=0; loop_address<=0; loop_word<=0; run_sync_count<=0; run_has_sync<=0; instruction_is_sync<=0; last_sync_instruction<=0; last_instruction<=0;
             memory_return<=IDLE; sync_event_return<=IDLE; sync_natural_return<=IDLE; operation_return<=IDLE; sync_pass<=0;
             scan_index<=0; winner<=0; winner_valid<=0; cancel_index<=0;
             pulse_pending<=0; delivered<=0; masked<=0; protected_valid<=0; protected_newer<=0;
@@ -251,17 +264,21 @@ module sp_engine #(
             writeback <= 0;
             ramp_state <= 0;
             ramp_elapsed <= 0;
-            operand_data <= 0;
+            operand_data <= 0; operand_nonzero_parts <= 0;
             queue_bad <= 0; shape_bad <= 0; program_bad <= 0; state_bad <= 0; empty_program <= 0;
             loop_invalid <= 0; loop_at_start <= 0; loop_mode <= 0;
+            inline_sync<=0; source_valid<=0; source_self<=0; sync_flags_invalid<=0; sync_control_matches<=0; source_slot<=0;
+            operation_length<=0; operation_empty<=0; operation_in_range<=0;
+            position_in_range<=0; word_at_frame<=0; word_after_frame<=0; advanced_invalid<=0;
             job_data <= 0;
             done <= 0;
             error_code <= `SHOOP_SP_OK;
+            arithmetic_left<=0; arithmetic_right<=0; arithmetic_low<=0; arithmetic_sum<=0; arithmetic_return<=IDLE;
         end else begin
             done <= 0;
-            if (done && error_code!=0 && run_sync_count!=0) sync_fault<=1;
             case (phase)
                 IDLE: if (start) begin
+                    busy <= 1;
                     pc <= 0; chunk_shift <= shift_for(chunk_frames);
                     error_code <= `SHOOP_SP_OK;
                     queue_bad <= (queued_jobs != 0) || (queue_remaining < job_budget);
@@ -272,104 +289,116 @@ module sp_engine #(
                     empty_program <= instruction_count == 0;
                     run_count <= PC_BITS'(instruction_count);
                     run_state_count <= state_count;
-                    run_quantum <= quantum; run_sync_count<=sync_count;
+                    run_quantum <= quantum; run_sync_count<=sync_count; run_has_sync<=sync_count!=0;
                     if (sync_count!=0 && !(quantum==1 || quantum==16 || quantum==32 || quantum==64 || quantum==128)) shape_bad<=1;
                     if (queued_jobs != 0) begin
-                        error_code <= `SHOOP_SP_QUEUE_FULL;
-                        done <= 1;
-                    end else phase <= ADMIT;
+                        finish_error(`SHOOP_SP_QUEUE_FULL);
+                    end else add_words(sync_frame,{32'b0,quantum},ADMIT);
+                end
+                ADD_LOW: begin
+                    arithmetic_low<={1'b0,arithmetic_left[31:0]}+{1'b0,arithmetic_right[31:0]};
+                    phase<=ADD_HIGH;
+                end
+                ADD_HIGH: begin
+                    arithmetic_sum<={arithmetic_high,arithmetic_low[31:0]};
+                    phase<=arithmetic_return;
                 end
                 ADMIT: begin
                     if (queue_bad) begin
-                        error_code <= `SHOOP_SP_QUEUE_FULL;
-                        done <= 1; phase <= IDLE;
+                        finish_error(`SHOOP_SP_QUEUE_FULL);
                     end else if (shape_bad || arithmetic_sum[64]) begin
-                        error_code <= `SHOOP_SP_INVALID_STATE; done <= 1; phase <= IDLE;
+                        finish_error(`SHOOP_SP_INVALID_STATE);
                     end else if (program_bad) begin
-                        error_code <= `SHOOP_SP_INVALID_PROGRAM;
-                        done <= 1; phase <= IDLE;
+                        finish_error(`SHOOP_SP_INVALID_PROGRAM);
                     end else if (state_bad) begin
-                        error_code <= `SHOOP_SP_INVALID_STATE;
-                        done <= 1; phase <= IDLE;
+                        finish_error(`SHOOP_SP_INVALID_STATE);
                     end else if (empty_program) begin
                         sync_frame <= arithmetic_sum[63:0];
-                        done <= 1; phase <= IDLE;
+                        done <= 1; busy <= 0; phase <= IDLE;
                     end else begin
-                        if (run_sync_count==0) sync_frame <= arithmetic_sum[63:0];
+                        if (!run_has_sync) sync_frame <= arithmetic_sum[63:0];
                         phase <= FETCH;
                     end
                 end
-                FETCH: phase <= DECODE;
+                FETCH: begin
+                    instruction_is_sync <= 32'(pc)<run_sync_count;
+                    last_sync_instruction <= 32'(pc)+1'b1==run_sync_count;
+                    last_instruction <= (pc+1'b1)==run_count;
+                    phase <= DECODE;
+                end
                 DECODE: begin
                     opcode <= program_read_data[7:0];
+                    inline_sync <= program_read_data[7:0]==`SHOOP_SP_PROCESS_LOOP && program_read_data[72];
                     arg0 <= program_read_data[23:8];
                     arg1 <= program_read_data[39:24];
                     arg2 <= program_read_data[55:40];
                     arg3 <= program_read_data[71:56];
                     arg4 <= program_read_data[87:72];
+                    instruction_reserved <= program_read_data[95:88];
+                    phase <= DISPATCH;
+                end
+                DISPATCH: begin
                     writeback <= 0;
-                    if ((32'(pc)<run_sync_count)!=(program_read_data[7:0]==`SHOOP_SP_PROCESS_LOOP)) begin
-                        error_code<=`SHOOP_SP_INVALID_PROGRAM; done<=1; phase<=IDLE;
-                    end else case (program_read_data[7:0])
+                    if (instruction_is_sync!=(instruction[7:0]==`SHOOP_SP_PROCESS_LOOP)) begin
+                        finish_error(`SHOOP_SP_INVALID_PROGRAM);
+                    end else case (instruction[7:0])
                         `SHOOP_SP_PROCESS_LOOP: begin
-                            if (program_read_data[95:56]!=0 && !(program_read_data[95:72]==24'd1)) begin error_code<=`SHOOP_SP_INVALID_PROGRAM; done<=1; phase<=IDLE; end
+                            if (instruction[95:56]!=0 && !(instruction[95:72]==24'd1)) begin finish_error(`SHOOP_SP_INVALID_PROGRAM); end
                             else phase<=SYNC_BEGIN;
                         end
                         `SHOOP_SP_LOGICAL_PLAYBACK, `SHOOP_SP_LOGICAL_CAPTURE, `SHOOP_SP_PROCESS_SMOOTHING, `SHOOP_SP_HISTORY_SMOOTHING: begin
-                            if (run_sync_count!=0) phase<=SYNC_BEGIN;
+                            if (run_has_sync) phase<=SYNC_BEGIN;
                             else phase<=LOOP_REQUEST;
                         end
                         `SHOOP_SP_PROCESS_CONSTANT: begin
                             job_data <= pack_job(`SHOOP_SP_JOB_CONSTANT,
-                                program_read_data[55:40], 0, {32'b0,program_read_data[39:8]}, 0, 0);
+                                instruction[55:40], 0, {32'b0,instruction[39:8]}, 0, 0);
                             phase <= EMIT;
                         end
                         `SHOOP_SP_PROCESS_ARITHMETIC: begin
                             job_data <= pack_job(`SHOOP_SP_JOB_ARITHMETIC,
-                                program_read_data[23:8], program_read_data[39:24],
-                                {32'b0,program_read_data[71:40]}, 0, 0);
+                                instruction[23:8], instruction[39:24],
+                                {32'b0,instruction[71:40]}, 0, 0);
                             phase <= EMIT;
                         end
                         `SHOOP_SP_PROCESS_SILENCE: begin
                             job_data <= pack_job(`SHOOP_SP_JOB_SILENCE,
-                                program_read_data[23:8], 0, 0, 0, 0);
+                                instruction[23:8], 0, 0, 0, 0);
                             phase <= EMIT;
                         end
                         `SHOOP_SP_PROCESS_INPUT: begin
                             job_data <= pack_job(`SHOOP_SP_JOB_INPUT,
-                                program_read_data[23:8], program_read_data[39:24], 0, 0, 0);
+                                instruction[23:8], instruction[39:24], 0, 0, 0);
                             phase <= EMIT;
                         end
                         `SHOOP_SP_PROCESS_PLAYBACK: begin
-                            operand_address <= program_read_data[71:56];
+                            operand_address <= instruction[71:56];
                             operand <= ENABLE;
                             phase <= READ_REQUEST;
                         end
                         `SHOOP_SP_PROCESS_GAIN: begin
-                            operand_address <= program_read_data[23:8];
+                            operand_address <= instruction[23:8];
                             operand <= RAMP;
                             phase <= READ_REQUEST;
                         end
                         `SHOOP_SP_PROCESS_MIX: begin
                             job_data <= pack_job(`SHOOP_SP_JOB_MIX,
-                                program_read_data[23:8], program_read_data[39:24],
-                                {48'b0, program_read_data[55:40]}, 0, 0);
+                                instruction[23:8], instruction[39:24],
+                                {48'b0, instruction[55:40]}, 0, 0);
                             phase <= EMIT;
                         end
                         `SHOOP_SP_PROCESS_CAPTURE: begin
-                            operand_address <= program_read_data[39:24];
+                            operand_address <= instruction[39:24];
                             operand <= ENABLE;
                             phase <= READ_REQUEST;
                         end
                         `SHOOP_SP_PROCESS_OUTPUT: begin
                             job_data <= pack_job(`SHOOP_SP_JOB_OUTPUT,
-                                program_read_data[23:8], program_read_data[39:24], 0, 0, 0);
+                                instruction[23:8], instruction[39:24], 0, 0, 0);
                             phase <= EMIT;
                         end
                         default: begin
-                            error_code <= `SHOOP_SP_INVALID_PROGRAM;
-                            done <= 1;
-                            phase <= IDLE;
+                            finish_error(`SHOOP_SP_INVALID_PROGRAM);
                         end
                     endcase
                 end
@@ -386,10 +415,9 @@ module sp_engine #(
                     phase <= LOOP_RESULT;
                 end
                 LOOP_RESULT: begin
+                    position_in_range <= position < length;
                     if (loop_invalid) begin
-                        error_code <= `SHOOP_SP_INVALID_STATE;
-                        done <= 1;
-                        phase <= IDLE;
+                        finish_error(`SHOOP_SP_INVALID_STATE);
                     end else if (opcode == `SHOOP_SP_PROCESS_SMOOTHING || opcode == `SHOOP_SP_HISTORY_SMOOTHING) begin
                         playback_flags <= {loop_at_start,loop_mode==1};
                         operand_address <= opcode==`SHOOP_SP_HISTORY_SMOOTHING ? arg1 : arg3; operand <= SMOOTHING; phase <= READ_REQUEST;
@@ -407,38 +435,39 @@ module sp_engine #(
                 READ_REQUEST: begin
                     if (operand==LOOP_MEMORY) phase<=READ_CAPTURE;
                     else if ((opcode == `SHOOP_SP_PROCESS_PLAYBACK || opcode == `SHOOP_SP_LOGICAL_PLAYBACK) && operand == VIEW
-                        && (length == 0 || position >= length)) begin
+                        && !position_in_range) begin
                         if (opcode == `SHOOP_SP_LOGICAL_PLAYBACK) begin
                             job_data <= pack_job(`SHOOP_SP_JOB_SILENCE, arg4, 0, 0, 0, 0);
                             phase <= EMIT;
                         end else begin
-                            error_code <= `SHOOP_SP_INVALID_STATE;
-                            done <= 1;
-                            phase <= IDLE;
+                            finish_error(`SHOOP_SP_INVALID_STATE);
                         end
                     end else if (!operand_in_range) begin
-                        error_code <= `SHOOP_SP_INVALID_STATE;
-                        done <= 1;
-                        phase <= IDLE;
+                        finish_error(`SHOOP_SP_INVALID_STATE);
                     end else begin
                         phase <= READ_CAPTURE;
                     end
                 end
                 READ_CAPTURE: begin
                     operand_data <= operand==LOOP_MEMORY ? {65'b0,loop_ram_read_data} : state_read_data;
+                    operand_nonzero_parts <= {|read_word[63:32], |read_word[31:0]};
                     phase <= READ_RESULT;
                 end
                 READ_RESULT: begin
+                    word_at_frame<=word_value==sync_frame; word_after_frame<=word_value>sync_frame;
                     if (operand==LOOP_MEMORY) begin
-                        phase<=memory_return;
+                        case (memory_return)
+                            SYNC_WRAP, SYNC_NEW_REV: add_words(word_value,64'd1,memory_return);
+                            SYNC_REMAINING: add_words(word_value,64'hffffffffffffffff,memory_return);
+                            OWN_STAMP: add_words(word_value,{32'b0,run_quantum},memory_return);
+                            default: phase<=memory_return;
+                        endcase
                     end else if (is_ramp != (operand == RAMP)) begin
-                        error_code <= `SHOOP_SP_INVALID_STATE;
-                        done <= 1;
-                        phase <= IDLE;
+                        finish_error(`SHOOP_SP_INVALID_STATE);
                     end else begin
                         case (operand)
                             ENABLE: begin
-                                if (word_value == 0) begin
+                                if (!word_nonzero) begin
                                     if (opcode == `SHOOP_SP_PROCESS_PLAYBACK) begin
                                         job_data <= pack_job(`SHOOP_SP_JOB_SILENCE, arg4, 0, 0, 0, 0);
                                         phase <= EMIT;
@@ -459,6 +488,7 @@ module sp_engine #(
                             end
                             LENGTH: begin
                                 length <= word_value;
+                                position_in_range <= position < word_value;
                                 operand_address <= arg0;
                                 operand <= VIEW;
                                 phase <= READ_REQUEST;
@@ -487,23 +517,19 @@ module sp_engine #(
                                 job_data <= pack_job(`SHOOP_SP_JOB_GAIN, arg1, arg2,
                                     operand_data[63:0], operand_data[127:64], 0);
                                 ramp_state <= operand_data[95:0];
-                                ramp_elapsed <= arithmetic_sum[32:0];
+                                ramp_elapsed <= {1'b0,operand_data[127:96]}+{1'b0,run_quantum};
                                 writeback <= 1;
                                 phase <= EMIT;
                             end
                             default: begin
-                                error_code <= `SHOOP_SP_INVALID_STATE;
-                                done <= 1;
-                                phase <= IDLE;
+                                finish_error(`SHOOP_SP_INVALID_STATE);
                             end
                         endcase
                     end
                 end
                 EMIT: begin
                     if (queue_remaining == 0) begin
-                        error_code <= `SHOOP_SP_QUEUE_FULL;
-                        done <= 1;
-                        phase <= IDLE;
+                        finish_error(`SHOOP_SP_QUEUE_FULL);
                     end else if (job_ready) begin
                         if (job_data[7:0] == `SHOOP_SP_JOB_BEGIN_CAPTURE) begin
                             job_data <= capture_job; begin_capture <= 0;
@@ -518,29 +544,36 @@ module sp_engine #(
                 SYNC_LOAD: begin
                     case (loop_word)
                         FLAGS: flags<=word_value;
-                        CONTROL: control<=word_value;
-                        POS: position<=word_value;
+                        CONTROL: begin
+                            control<=word_value;
+                            sync_flags_invalid<=!flags[V] || flags[G+:32]!=generation || flags[M+:2]==3;
+                        end
+                        POS: begin position<=word_value; sync_control_matches<=control[31:0]==generation; end
                         LEN: length<=word_value;
                         CAP: capture_frames<=word_value;
                         default: begin end
                     endcase
-                    if (loop_word==CAP) loop_read(target,PF,SYNC_CHECK);
+                    if (loop_word==CAP) begin
+                        source_valid<=selected_source_valid; source_slot<=selected_source_slot;
+                        source_self<=selected_source_valid && selected_source_slot==target;
+                        loop_read(target,PF,SYNC_CHECK);
+                    end
                     else begin loop_word<=loop_word+1'b1; loop_read(target,loop_word+1'b1,SYNC_LOAD); end
                 end
                 SYNC_CHECK: begin
                     pulse_pending<=0; delivered<=0; masked<=0; protected_valid<=0; flags[PULSE]<=0;
-                    if (!flags[V] || flags[G+:32]!=generation || flags[M+:2]==3 || (flags[PV] && word_value==sync_frame)) sync_fail();
+                    if (sync_flags_invalid || (flags[PV] && word_at_frame)) sync_fail();
                     else if (source_valid) begin
                         if (source_slot>=32'(LOOP_DEPTH)) sync_fail();
                         else if (source_self) begin
-                            if (!inline_sync && control[31:0]!=generation) sync_fail(); else phase<=SYNC_SCAN_BEGIN;
+                            if (!inline_sync && !sync_control_matches) sync_fail(); else phase<=SYNC_SCAN_BEGIN;
                         end else loop_read(source_slot,FLAGS,SYNC_SOURCE_FLAGS);
                     end else phase<=SYNC_SCAN_BEGIN;
                 end
                 SYNC_SOURCE_FLAGS: begin capture_job[63:0]<=word_value; loop_read(source_slot,PF,SYNC_SOURCE_CHECK); end
                 SYNC_SOURCE_CHECK: begin
                     if (!source_flags[V] || (!inline_sync && source_flags[G+:32]!=control[31:0]) || source_flags[M+:2]==3
-                        || !source_flags[PV] || word_value!=sync_frame) sync_fail();
+                        || !source_flags[PV] || !word_at_frame) sync_fail();
                     else phase<=SYNC_SCAN_BEGIN;
                 end
                 SYNC_SCAN_BEGIN: begin sync_pass<=0; scan_index<=0; winner_valid<=0; phase<=SYNC_SCAN; end
@@ -549,12 +582,12 @@ module sp_engine #(
                     else loop_read(target,plan_word(scan_index,0),SYNC_EFFECTIVE);
                 end
                 SYNC_EFFECTIVE: begin
-                    if (word_value>sync_frame) phase<=SYNC_SCAN_NEXT;
+                    if (word_after_frame) phase<=SYNC_SCAN_NEXT;
                     else if (sync_pass!=0) loop_read(target,plan_word(scan_index,1),SYNC_REMAINING);
                     else phase<=SYNC_CANDIDATE;
                 end
                 SYNC_REMAINING: begin
-                    if (word_value!=0) loop_write(plan_word(scan_index,1),arithmetic_sum[63:0],SYNC_SCAN_NEXT);
+                    if (word_nonzero) loop_write(plan_word(scan_index,1),arithmetic_sum[63:0],SYNC_SCAN_NEXT);
                     else phase<=SYNC_CANDIDATE;
                 end
                 SYNC_CANDIDATE: begin
@@ -570,11 +603,13 @@ module sp_engine #(
                     else if (protected_valid && (protected_newer || !winner_newer)) sync_resolve(winner,1,0,SYNC_GROUP_DONE);
                     else begin
                         protected_valid<=1; protected_newer<=winner_newer;
+                        operation_length<=playable_length; operation_empty<=playable_length==0;
                         loop_read(target,plan_word(winner,2),SYNC_OP_BEGIN);
                     end
                 end
                 SYNC_OP_BEGIN: begin
                     ramp_state[66:0]<={winner_flags[RET],winner_flags[OP+:2],word_value};
+                    operation_in_range<=word_value<operation_length;
                     phase<=SYNC_OP_CHECK;
                 end
                 SYNC_OP_CHECK: begin
@@ -588,8 +623,8 @@ module sp_engine #(
                             end else phase<=SYNC_SUCCESS;
                         end
                         1: begin
-                            if (playable_length==0) sync_resolve(winner,3,EMPTY_CONTENT,SYNC_GROUP_DONE);
-                            else if (!preserve && operation_position>=playable_length) sync_resolve(winner,3,INVALID_FRAME,SYNC_GROUP_DONE);
+                            if (operation_empty) sync_resolve(winner,3,EMPTY_CONTENT,SYNC_GROUP_DONE);
+                            else if (!preserve && !operation_in_range) sync_resolve(winner,3,INVALID_FRAME,SYNC_GROUP_DONE);
                             else begin
                                 changed<=flags[M+:2]!=1 || (!preserve && position!=operation_position);
                                 applied_pulse<=!preserve; flags[M+:2]<=1;
@@ -602,7 +637,7 @@ module sp_engine #(
                         2: loop_read(target,WM,SYNC_NEW_REV);
                         3: begin
                             if (flags[M+:2]!=1) sync_resolve(winner,3,INVALID_STATE,SYNC_GROUP_DONE);
-                            else if (operation_position>=length) sync_resolve(winner,3,INVALID_FRAME,SYNC_GROUP_DONE);
+                            else if (!operation_in_range) sync_resolve(winner,3,INVALID_FRAME,SYNC_GROUP_DONE);
                             else begin
                                 changed<=position!=operation_position; position<=operation_position; applied_pulse<=retrigger;
                                 phase<=retrigger ? SYNC_RESET_BEGIN : SYNC_SUCCESS;
@@ -620,7 +655,7 @@ module sp_engine #(
                 end
                 SYNC_RESET_BEGIN: loop_read(target,CYC,SYNC_RESET_CYCLES);
                 SYNC_RESET_CYCLES: begin
-                    changed<=changed || word_value!=0; loop_write(CYC,0,SYNC_SUCCESS);
+                    changed<=changed || word_nonzero; loop_write(CYC,0,SYNC_SUCCESS);
                 end
                 SYNC_SUCCESS: sync_resolve(winner,0,0,SYNC_AFTER_APPLY);
                 SYNC_AFTER_APPLY: begin
@@ -676,17 +711,22 @@ module sp_engine #(
                     else phase<=SYNC_RENDER;
                 end
                 SYNC_RENDER: begin
+                    position_in_range <= position < length;
                     flags[BC]<=flags[M+:2]==2 && capture_frames==0; flags[PV]<=1;
                     loop_write(RP,position,SYNC_STAMP);
                 end
                 SYNC_STAMP: loop_write(PF,sync_frame,SYNC_ADVANCE);
                 SYNC_ADVANCE: begin
-                    if (flags[M+:2]==1 && length!=0 && position<length) phase<=SYNC_ADV_POSITION;
-                    else if (flags[M+:2]==2) phase<=SYNC_ADV_CAPTURE;
+                    if (flags[M+:2]==1 && position_in_range) add_words(position,{32'b0,run_quantum},SYNC_ADV_POSITION);
+                    else if (flags[M+:2]==2) add_words(capture_frames,{32'b0,run_quantum},SYNC_ADV_CAPTURE);
                     else begin loop_word<=0; phase<=SYNC_STORE; end
                 end
                 SYNC_ADV_POSITION: begin
-                    if (arithmetic_sum[64] || arithmetic_sum[63:0]>length) sync_fail();
+                    advanced_invalid <= arithmetic_sum[64] || arithmetic_sum[63:0]>length;
+                    phase <= SYNC_ADV_COMMIT;
+                end
+                SYNC_ADV_COMMIT: begin
+                    if (advanced_invalid) sync_fail();
                     else begin position<=arithmetic_sum[63:0]; loop_word<=0; phase<=SYNC_STORE; end
                 end
                 SYNC_ADV_CAPTURE: begin
@@ -705,9 +745,10 @@ module sp_engine #(
                     endcase
                 end
                 SYNC_FINISH: begin
-                    if (32'(pc)+1'b1==run_sync_count) sync_frame<=arithmetic_sum[63:0];
-                    phase<=NEXT;
+                    if (last_sync_instruction) add_words(sync_frame,{32'b0,run_quantum},FRAME_FINISH);
+                    else phase<=NEXT;
                 end
+                FRAME_FINISH: begin sync_frame<=arithmetic_sum[63:0]; phase<=NEXT; end
                 SYNC_WRITE: phase<=memory_return;
                 SYNC_EVENT: if (sync_event_ready) phase<=sync_event_return;
                 OWN_FLAGS: begin
@@ -720,23 +761,22 @@ module sp_engine #(
                     loop_read(target,RP,OWN_RENDER);
                 end
                 OWN_RENDER: begin
-                    position<=word_value>>chunk_shift; loop_at_start<=word_value==0;
+                    position<=word_value>>chunk_shift; loop_at_start<=!word_nonzero;
                     loop_read(target,LEN,OWN_LENGTH);
                 end
                 OWN_LENGTH: begin length<=word_value>>chunk_shift; phase<=LOOP_RESULT; end
                 NEXT: begin
                     pc <= pc + 1'b1;
-                    if ((pc + 1'b1) == run_count) begin
+                    if (last_instruction) begin
                         done <= 1;
+                        busy <= 0;
                         phase <= IDLE;
                     end else begin
                         phase <= FETCH;
                     end
                 end
                 default: begin
-                    error_code <= `SHOOP_SP_INVALID_PROGRAM;
-                    done <= 1;
-                    phase <= IDLE;
+                    finish_error(`SHOOP_SP_INVALID_PROGRAM);
                 end
             endcase
         end
