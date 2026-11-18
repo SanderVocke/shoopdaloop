@@ -88,7 +88,11 @@ graph consumes the left ADC channel and drives both DAC channels.
 
 Confirm the populated board, power and connector orientation at the bench.
 The physical adapter uses a dedicated clock-capable input and the audio-bank
-crossing. The batch build exports timing, CDC and bus-skew reports. [MYIR schematic](https://www.myirtech.com/down-load1.asp?id=1027) · [Digilent reference manual](https://media.digikey.com/pdf/Data%20Sheets/Digilent%20PDFs/Pmod_I2S2_RM_Web.pdf)
+crossing. The batch build applies the bundled-data delay and skew constraints
+and exports timing and detailed CDC reports. Set `SHOOP_VIVADO_FULL_SKEW=1` to
+request the exhaustive bus-skew report after the bitstream and XSA are written.
+Vivado 2021.1 can spend substantial time generating that report for wide
+buses between independent clocks. [MYIR schematic](https://www.myirtech.com/down-load1.asp?id=1027) · [Digilent reference manual](https://media.digikey.com/pdf/Data%20Sheets/Digilent%20PDFs/Pmod_I2S2_RM_Web.pdf)
 
 ## Signed SD image
 

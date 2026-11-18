@@ -27,18 +27,15 @@ module host_i2s_audio #(
     input wire [31:0] sample_output_data,
     output wire [31:0] missed_deadlines
 );
-    // The connector uses a clock-capable pin. Vivado inserts the input and global buffers.
-    (* async_reg = "true" *) reg [1:0] serial_reset_sync = 2'b11;
-    always @(posedge audio_ref)
-        serial_reset_sync <= {serial_reset_sync[0], reset};
-
+    // Keep the serializer, audio banks and counter on the same synchronized reset.
+    wire audio_reset;
     wire frame_prepare, frame_tick, tx_valid;
     wire [63:0] rx_samples, tx_samples;
     wire [31:0] audio_missed;
     reg [31:0] missed_gray;
     (* async_reg = "true" *) reg [31:0] missed_meta, missed_sync;
     always @(posedge audio_ref)
-        missed_gray <= serial_reset_sync[1] ? 0 : audio_missed ^ (audio_missed >> 1);
+        missed_gray <= audio_reset ? 0 : audio_missed ^ (audio_missed >> 1);
     always @(posedge clk) begin
         if (reset) begin
             missed_meta <= 0;
@@ -52,7 +49,7 @@ module host_i2s_audio #(
         assign missed_deadlines[bit_number] = ^missed_sync[31:bit_number];
     end endgenerate
     i2s_duplex serial (
-        .audio_clk(audio_ref), .reset(serial_reset_sync[1]),
+        .audio_clk(audio_ref), .reset(audio_reset),
         .adc_data(i2s_adc_data), .bit_clk(i2s_bclk), .word_clk(i2s_lrclk), .dac_data(i2s_dac_data),
         .frame_prepare(frame_prepare), .frame_tick(frame_tick), .rx_samples(rx_samples),
         .tx_samples(tx_samples), .tx_valid(tx_valid)
@@ -70,6 +67,6 @@ module host_i2s_audio #(
         .recovery_requested(audio_fault),
         .audio_frame(), .session_frame(), .process_sequence(), .process_epoch(), .recovery_reason(),
         .failure_sequence(), .processed_quanta(), .played_quanta(), .missed_deadlines(audio_missed), .discarded_quanta(),
-        .input_losses(), .rx_high_water(), .tx_high_water(), .busy()
+        .input_losses(), .rx_high_water(), .tx_high_water(), .busy(), .audio_reset(audio_reset)
     );
 endmodule

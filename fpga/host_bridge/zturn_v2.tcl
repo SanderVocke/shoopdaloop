@@ -168,6 +168,9 @@ if {$audio_mode eq "i2s"} {
     set hook [file join $root fpga host_bridge zturn_v2_i2s_cdc.tcl]
     add_files -fileset utils_1 -norecurse $hook
     set_property STEPS.OPT_DESIGN.TCL.PRE $hook [get_runs impl_1]
+    # In 2021.1 the full report can stall on independently clocked wide buses.
+    set skew_report [get_report_configs -quiet impl_1_route_report_bus_skew_0]
+    if {[llength $skew_report]} {delete_report_configs $skew_report}
 }
 launch_runs impl_1 -to_step write_bitstream -jobs 4
 wait_on_run impl_1
@@ -175,10 +178,7 @@ if {[get_property PROGRESS [get_runs impl_1]] ne "100%"} {error "Vivado implemen
 open_run impl_1
 report_timing_summary -file [file join $output timing.rpt]
 report_route_status -file [file join $output route_status.rpt]
-report_cdc -file [file join $output cdc.rpt]
-if {$audio_mode eq "i2s"} {
-    report_bus_skew -file [file join $output bus_skew.rpt]
-}
+report_cdc -details -file [file join $output cdc.rpt]
 report_utilization -hierarchical -file [file join $output utilization.rpt]
 report_drc -file [file join $output drc.rpt]
 if {[get_property SLACK [get_timing_paths -delay_type max -max_paths 1]] < 0 ||
@@ -188,3 +188,6 @@ if {[get_property SLACK [get_timing_paths -delay_type max -max_paths 1]] < 0 ||
 file copy -force [file join $output project zturn_v2.runs impl_1 system_wrapper.bit] [file join $output zturn_v2.bit]
 write_hw_platform -fixed -include_bit -force -file [file join $output zturn_v2.xsa]
 exec python3 [file join $root platforms zynq7000 fpga_pair.py] stamp $output [version -short]
+if {$audio_mode eq "i2s" && [info exists ::env(SHOOP_VIVADO_FULL_SKEW)] && $::env(SHOOP_VIVADO_FULL_SKEW) eq "1"} {
+    report_bus_skew -file [file join $output bus_skew.rpt]
+}

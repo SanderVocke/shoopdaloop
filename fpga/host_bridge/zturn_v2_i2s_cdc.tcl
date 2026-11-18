@@ -1,5 +1,5 @@
 # These names are checked after the block design and RTL have been synthesized.
-set audio_meta [get_cells -quiet -hier -regexp {.*audio/inst/(io/(rx_request|rx_ack|tx_request|tx_ack|enable|fault|audio_fault)_meta_reg(\[.*\])?|io/audio_reset_sync_reg\[0\]|serial_reset_sync_reg\[0\])}]
+set audio_meta [get_cells -quiet -hier -regexp {.*audio/inst/io/((rx_request|rx_ack|tx_request|tx_ack|enable|fault|audio_fault)_meta_reg(\[.*\])?|audio_reset_sync_reg\[0\])}]
 if {[llength $audio_meta] < 9} {error "Missing I2S first-stage CDC registers"}
 set_false_path -to [get_pins -of_objects $audio_meta -filter {REF_PIN_NAME == D}]
 

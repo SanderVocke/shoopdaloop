@@ -60,6 +60,6 @@ module host_generated_audio #(
         .recovery_requested(audio_fault), .recovery_reason(recovery_reason), .failure_sequence(failure_sequence),
         .processed_quanta(processed_quanta), .played_quanta(played_quanta), .missed_deadlines(missed_deadlines),
         .discarded_quanta(discarded_quanta), .input_losses(input_losses), .rx_high_water(rx_high_water),
-        .tx_high_water(tx_high_water), .busy(busy)
+        .tx_high_water(tx_high_water), .busy(busy), .audio_reset()
     );
 endmodule
