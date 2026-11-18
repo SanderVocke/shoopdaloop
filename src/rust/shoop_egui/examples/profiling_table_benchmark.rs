@@ -1,5 +1,5 @@
 pub use shoop_egui::{
-    colors, diagnostics_protocol, show_memory_usage, task_profiling, DiagnosticsView,
+    colors, diagnostics_protocol, show_resource_usage, task_profiling, DiagnosticsView,
     ProfilingView, StatusState,
 };
 use std::time::Instant;

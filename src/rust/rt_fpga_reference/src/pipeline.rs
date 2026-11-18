@@ -45,7 +45,7 @@ pub struct Pipeline {
 }
 impl Pipeline {
     pub fn from_image(
-        image: crate::compiler::ProgramImage,
+        image: crate::target::ProgramImage,
         limits: rt_fpga_compiler::ProgramLimits,
     ) -> Result<Self, PipelineError> {
         let revision = image.layout.revision;
@@ -80,7 +80,7 @@ impl Pipeline {
     /// Called at a completed quantum boundary; the caller retains the old image until its fence completes.
     pub fn switch_image(
         &mut self,
-        image: &mut crate::compiler::ProgramImage,
+        image: &mut crate::target::ProgramImage,
     ) -> Result<(), PipelineError> {
         if image.layout.expected != self.revision
             || image.layout.revision <= self.revision
@@ -127,6 +127,18 @@ impl Pipeline {
     }
     pub fn state(&self) -> &StateProcessor {
         &self.state
+    }
+    pub fn uses_media_view(&self, view: crate::storage::ViewId) -> bool {
+        self.program.instructions.iter().any(|instruction| {
+            let address = match instruction {
+                crate::state::Instruction::ProcessLogicalPlayback { view, .. }
+                | crate::state::Instruction::ProcessLogicalCapture { view, .. }
+                | crate::state::Instruction::ProcessLoopPlayback { view, .. }
+                | crate::state::Instruction::ProcessLoopCapture { view, .. } => *view,
+                _ => return false,
+            };
+            self.state.read(address).ok().and_then(|v| v.word().ok()) == Some(view.0 as u64)
+        })
     }
     pub fn program(&self) -> &Program {
         &self.program

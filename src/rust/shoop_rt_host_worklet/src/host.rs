@@ -87,7 +87,7 @@ fn bump(counter: &mut u32) {
 enum Endpoint {
     Native(ControlEndpoint),
     #[cfg(feature = "fpga-reference")]
-    Reference(shoop_rt_transport::rt::Endpoint),
+    Reference(shoop_rt_host_reference::StorageEndpoint),
 }
 impl CarrierEndpoint for Endpoint {
     fn try_deliver(&mut self, m: ClientMessage, out: &mut Outbox) -> Result<(), CarrierError> {

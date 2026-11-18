@@ -3211,7 +3211,7 @@ impl AppWidget {
         });
         show_dsp(ui, state.status.dsp, settings, settings_actions);
         ui.separator();
-        crate::memory::summary(ui, state.status.memory.as_ref());
+        crate::usage::summary(ui, state.status.memory.as_ref());
         ui.separator();
         let milliseconds = state
             .status

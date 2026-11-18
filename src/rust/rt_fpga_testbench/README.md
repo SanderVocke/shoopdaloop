@@ -6,10 +6,10 @@ independent Rust models and real RTL; jobs, state, errors, buffers and output
 samples are compared exactly. Existing vector tests remain independent checks.
 
 The shared [`rt_fpga_compiler`](../rt_fpga_compiler/README.md) emits fixed logical
-programs behind `StateProgramTarget`. `compiler::RtlTarget` produces packed
+programs behind `StateProgramTarget`. `target::RtlTarget` produces packed
 instructions, state/loop RAM images and physical control bindings. Its typed
 output is loaded directly by the state/audio drivers. The compiler and sync tests
-compare these programs against `compiler::RustTarget`, with deliberately different
+compare these programs against `target::RustTarget`, with deliberately different
 state addresses: 96 mono-loop SP quanta and 120 sync/smoothing SP/JP sample quanta.
 The reference's carrier tests use the same mono-loop fixture definition. The
 shared compiler also accepts the restricted mono graph descriptions used by the

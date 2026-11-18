@@ -2,7 +2,6 @@
 pub mod bits;
 #[cfg(all(feature = "sim", not(target_arch = "wasm32")))]
 pub mod clock;
-pub mod compiler;
 pub mod component;
 #[cfg(all(feature = "sim", not(target_arch = "wasm32")))]
 pub mod model;
@@ -12,6 +11,7 @@ pub mod pipeline;
 pub mod report;
 #[cfg(all(feature = "sim", not(target_arch = "wasm32")))]
 pub mod sim;
+pub mod target;
 #[cfg(all(feature = "sim", not(target_arch = "wasm32")))]
 pub mod toolchain;
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;

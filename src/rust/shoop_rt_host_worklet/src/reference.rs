@@ -2,14 +2,14 @@
 use anyhow::{ensure, Result};
 use rt_fpga_compiler::{loading::Layout, LogicalStateProgram};
 use rt_fpga_reference::{
-    compiler::{ProgramImage, RustTarget},
     rt_interface::PreparedProgram,
     storage::ViewId,
+    target::{ProgramImage, RustTarget},
 };
 use shoop_rt_host_reference::{ProgramLoader, Status};
 use shoop_rt_protocol::{
     immediate::{Batch, Response, SwitchProgram},
-    snapshot, ClientMessage, DriverRunState, DriverStatus, EngineMessage,
+    snapshot, ClientMessage, DriverRunState, DriverStatus, EngineMessage, Telemetry,
 };
 use shoop_rt_transport::{
     carrier::{CarrierError, Endpoint as Carrier, Outbox, RecordClient, RecordPort},
@@ -34,11 +34,7 @@ impl<P: ImagePort> ProgramLoader for Images<P> {
         logical: &LogicalStateProgram,
         layout: Layout,
     ) -> Result<SwitchProgram> {
-        let views = layout
-            .loops
-            .iter()
-            .map(|l| u64::from(l.physical.slot))
-            .collect::<Vec<_>>();
+        let views = layout.media_views(logical);
         let mut target = RustTarget::new(&views);
         target.limits = self.limits();
         let image = target.build_image(logical, layout)?;
@@ -49,8 +45,8 @@ impl<P: ImagePort> ProgramLoader for Images<P> {
         );
         let unused = image
             .layout
-            .new_loops()
-            .map(|id| ViewId(id.slot as usize))
+            .new_media_views()
+            .map(|view| ViewId(view as usize))
             .collect();
         let prepared = PreparedProgram::new(image, unused).map_err(|e| anyhow::anyhow!("{e:?}"))?;
         let descriptor = prepared.descriptor();
@@ -72,8 +68,8 @@ pub fn decode_image(bytes: &[u8]) -> Result<Box<PreparedProgram>> {
     let image: ProgramImage = serde_json::from_slice(bytes)?;
     let unused = image
         .layout
-        .new_loops()
-        .map(|id| ViewId(id.slot as usize))
+        .new_media_views()
+        .map(|view| ViewId(view as usize))
         .collect();
     PreparedProgram::new(image, unused).map_err(|e| anyhow::anyhow!("worklet image: {e:?}"))
 }
@@ -99,7 +95,8 @@ impl<P: ImagePort> Endpoint<P> {
             Images { port: port.clone() },
             quantum,
             status.clone(),
-        );
+        )
+        .with_reference_bootstrap();
         let mut snapshot = vec![0; snapshot::capacity(0, 32, 0).unwrap()];
         snapshot::Header {
             frame: 0,
@@ -141,6 +138,18 @@ impl<P: ImagePort> Endpoint<P> {
                 }
                 EngineMessage::ImmediateResponse(response) => {
                     self.response = Some(response);
+                }
+                EngineMessage::Telemetry(Telemetry::Engine {
+                    driver,
+                    callbacks,
+                    xruns,
+                    dsp,
+                    ..
+                }) => self
+                    .status
+                    .observe_worklet_engine(driver, callbacks, xruns, dsp),
+                EngineMessage::Telemetry(Telemetry::Memory(report)) => {
+                    self.endpoint.observe_worklet_storage(&report);
                 }
                 EngineMessage::Snapshot(chunk) | EngineMessage::SnapshotReply(chunk) => {
                     let total = chunk.total as usize;

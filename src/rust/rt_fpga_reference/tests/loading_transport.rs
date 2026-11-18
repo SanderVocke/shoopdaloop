@@ -1,24 +1,26 @@
 #![cfg(feature = "rt-interface")]
+#[path = "../../rt_fpga_compiler/tests/support/mono.rs"]
+mod mono;
+use rt_fpga_compiler::{compile, CompileContext};
 use rt_fpga_compiler::{
-    graph::*,
     loading::{Allocator, LoadError},
     Identity, ProgramLimits,
 };
 use rt_fpga_reference::{
-    compiler::RustTarget,
     fixed::Fixed,
     jobs::{BufferId, JobProcessor, Memory},
     pipeline::Pipeline,
     rt_interface::*,
     state::{Instruction, Program},
     storage::{MediaStore, ViewId},
+    target::RustTarget,
     transitions::{PlanDescription, TransitionLimits, TransitionPlan},
     Error,
 };
 use shoop_rt_protocol::{
     immediate::{Batch, Code, Command, Response, SwitchProgram, TransitionMode},
     snapshot::{Header, Record, Records, HEADER},
-    *,
+    DriverKind, DriverRunState, DriverStatus, EngineMessage, Limits,
 };
 use shoop_rt_transport::{
     carrier::{InProcess, Outbox},
@@ -235,24 +237,28 @@ impl Fixture {
         panic!("staging did not become ready");
     }
     fn request_stage(&mut self, ids: &[u32], source: Option<u32>) -> SwitchProgram {
-        let logical = MonoGraphFixture {
-            quantum: 16,
-            loops: ids
-                .iter()
-                .map(|&slot| LoopDescription {
-                    id: Identity {
-                        slot,
-                        generation: 1,
-                    },
-                    source: if slot == 1 { source } else { None },
-                    input: true,
-                    output: true,
-                    gain: 1.0,
-                    repeat_sync: false,
-                })
-                .collect(),
-        }
-        .compile()
+        let logical = compile(
+            &mono::session(
+                &(ids
+                    .iter()
+                    .map(|&slot| mono::MonoLoop {
+                        id: Identity {
+                            slot,
+                            generation: 1,
+                        },
+                        source: if slot == 1 { source } else { None },
+                        input: true,
+                        output: true,
+                        gain: 1.0,
+                        repeat_sync: false,
+                    })
+                    .collect::<Vec<_>>()),
+            ),
+            CompileContext {
+                quantum: 16,
+                limits: Default::default(),
+            },
+        )
         .unwrap();
         let layout = self.allocator.stage(&logical).unwrap();
         let views = layout

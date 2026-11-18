@@ -167,9 +167,9 @@ fn compiler_reads_the_mirror_view_directly_with_unused_midi_ports_present() {
         })
         .unwrap();
     assert_ne!(output.id.index, output.channel);
-    let program = rt_fpga_compiler::graph::compile(
+    let program = rt_fpga_compiler::compile(
         &view,
-        rt_fpga_compiler::graph::CompileContext {
+        rt_fpga_compiler::CompileContext {
             quantum: 16,
             limits: Default::default(),
         },
@@ -179,9 +179,9 @@ fn compiler_reads_the_mirror_view_directly_with_unused_midi_ports_present() {
     assert_eq!(program.resources.output_ports, 2);
     let owned = Graph::capture(&view);
     assert_eq!(
-        rt_fpga_compiler::graph::compile(
+        rt_fpga_compiler::compile(
             &owned,
-            rt_fpga_compiler::graph::CompileContext {
+            rt_fpga_compiler::CompileContext {
                 quantum: 16,
                 limits: Default::default()
             }

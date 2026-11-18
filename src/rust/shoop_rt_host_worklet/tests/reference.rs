@@ -1,12 +1,15 @@
 #![cfg(feature = "fpga-reference")]
+#[path = "../../rt_fpga_compiler/tests/support/mono.rs"]
+mod mono;
 use shoop_rt_host_worklet::{
     framing,
     reference::{Endpoint, ImagePort},
-    Inbound, Outbound, Quantum, WorkletConfig, WorkletHost,
+    CallbackTiming, Inbound, Outbound, Quantum, WorkletConfig, WorkletHost,
 };
 use shoop_rt_protocol::{
     immediate::{Batch, Code, Command, GraphLoop, TransitionMode, TransitionPlan},
-    DriverKind, DriverRunState, DriverStatus, EngineMessage,
+    DriverKind, DriverRunState, DriverStatus, DspMeasurement, EngineMessage, MemoryReport,
+    Telemetry,
 };
 use shoop_rt_transport::{
     carrier::{CarrierError, InProcess, Outbox, RecordPort},
@@ -57,6 +60,8 @@ struct Browser {
     client: ProtocolClient<InProcess<Endpoint<Port>>>,
     frame: u64,
     published: Vec<shoop_rt_protocol::snapshot::Header>,
+    usage: Option<MemoryReport>,
+    dsp: Option<DspMeasurement>,
 }
 impl Browser {
     fn new() -> Self {
@@ -92,6 +97,8 @@ impl Browser {
             client,
             frame: 0,
             published: Vec::new(),
+            usage: None,
+            dsp: None,
         }
     }
     fn step(&mut self) -> Vec<shoop_rt_protocol::immediate::Response> {
@@ -107,7 +114,10 @@ impl Browser {
                 frames: Q,
                 input_channels: 1,
                 frame: self.frame,
-                previous_callback: None,
+                previous_callback: (self.frame > 0).then_some(CallbackTiming {
+                    elapsed_ns: 4_000_000,
+                    frames: Q as u32,
+                }),
             })
         })
         .unwrap();
@@ -127,6 +137,15 @@ impl Browser {
         while let Some(message) = self.client.poll() {
             match message {
                 EngineMessage::ImmediateResponse(r) => responses.push(r),
+                EngineMessage::Telemetry(Telemetry::Memory(report)) => {
+                    assert!(report.valid());
+                    self.usage = Some(report);
+                }
+                EngineMessage::Telemetry(Telemetry::Engine {
+                    dsp: Some(sample), ..
+                }) => {
+                    self.dsp = Some(sample);
+                }
                 EngineMessage::Snapshot(chunk) if chunk.offset == 0 => {
                     self.published.push(
                         shoop_rt_protocol::snapshot::Header::read(
@@ -181,6 +200,19 @@ fn graph(rev: u64) -> Batch {
 #[shoop_test]
 fn separate_heap_image_loading_records_plays_and_retains_media_without_render_allocation() {
     let mut browser = Browser::new();
+    let usage = |browser: &Browser, name: &str| {
+        browser
+            .usage
+            .unwrap()
+            .resources
+            .into_iter()
+            .flatten()
+            .find(|resource| resource.name.as_str() == name)
+            .unwrap()
+    };
+    browser.step();
+    assert_eq!(usage(&browser, "Audio storage").used, 0);
+    assert_eq!(usage(&browser, "Audio storage").capacity, Some(2048));
     browser.send(graph(0));
     let transition = |mode| {
         Batch::new(
@@ -200,9 +232,20 @@ fn separate_heap_image_loading_records_plays_and_retains_media_without_render_al
     browser.send(transition(TransitionMode::Recording));
     browser.step();
     browser.send(transition(TransitionMode::Playing));
-    for _ in 0..4 {
+    for _ in 0..16 {
         browser.step();
     }
+    assert_eq!(usage(&browser, "State slots").used, 2);
+    assert!(usage(&browser, "Audio storage").used > 0);
+    assert_eq!(
+        browser.dsp,
+        Some(DspMeasurement::Callback {
+            elapsed_ns: 4_000_000,
+            frames: Q as u32,
+            sample_rate: 1000,
+            paced: true,
+        })
+    );
     assert!(browser.host.audio_output().iter().all(|s| *s == 0.25));
     assert!(browser
         .published
@@ -257,9 +300,9 @@ fn browser_uploads_large_graphs_in_bounded_groups_and_reports_resource_refusals(
     commands.clear();
     commands.push(Command::BeginGraph {
         quantum: Q as u32,
-        loops: 21,
+        loops: 22,
     });
-    commands.extend((200..221).map(|slot| {
+    commands.extend((200..222).map(|slot| {
         Command::ConfigureLoop(GraphLoop {
             slot,
             generation: 1,
@@ -287,13 +330,9 @@ fn browser_uploads_large_graphs_in_bounded_groups_and_reports_resource_refusals(
 
 #[shoop_test]
 fn browser_compiles_complete_graph_views_and_refuses_midi_without_losing_playback() {
-    use rt_fpga_compiler::{
-        graph::{LoopDescription, MonoGraphFixture},
-        Identity,
-    };
-    let image = MonoGraphFixture {
-        quantum: Q as u32,
-        loops: vec![LoopDescription {
+    use rt_fpga_compiler::Identity;
+    let image = mono::session(
+        &(vec![mono::MonoLoop {
             id: Identity {
                 slot: 0,
                 generation: 1,
@@ -303,9 +342,8 @@ fn browser_compiles_complete_graph_views_and_refuses_midi_without_losing_playbac
             output: true,
             gain: 1.,
             repeat_sync: false,
-        }],
-    }
-    .to_graph();
+        }]),
+    );
     let mut b = Browser::new();
     for batch in shoop_rt_protocol::graph::upload(&image, Q as u32, 0).unwrap() {
         b.send(batch);
@@ -333,7 +371,7 @@ fn browser_compiles_complete_graph_views_and_refuses_midi_without_losing_playbac
     }
     assert!(b.host.audio_output().iter().all(|s| *s == 0.25));
     let mut unsupported = image.clone();
-    unsupported.strips[0].layout = rt_fpga_compiler::graph::shoop_graph::ChannelLayout::Direct {
+    unsupported.strips[0].layout = rt_fpga_compiler::shoop_graph::ChannelLayout::Direct {
         audio: 1,
         midi: true,
     };

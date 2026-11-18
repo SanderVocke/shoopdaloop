@@ -94,17 +94,21 @@ can be supplied with `--config PATH`. The quantum adapter reports one quantum of
 processing latency. JACK exposes fixed `audio_in_1`, `audio_out_1` and
 `audio_out_2` ports; CPAL uses the first input and first two outputs.
 
-The supported graph contains the built-in Sync track and mono audio tracks.
-Choose Regular, Mono and no MIDI in Add Track. Track and loop counts are admitted
-by the compiled program's actual resource requirements and the loader's free
-physical slots, including active graph ownership during a switch. There is no
-separate fixed track/loop profile limit. Capacity refusals name the exhausted
-resource and restore the previous layout. The UI retains its normal controls;
-unsupported reference operations are refused through the ordinary error path. Extra buses, track/Master mix
-controls, effects, MIDI, monitoring, media reads/import/export, loop clearing,
-copying, composites and general routing are unavailable. Use track removal and
-creation for fresh empty loops. Loop gain, record/play/stop, sync scheduling,
-selection, names and supported live structural changes can be exercised normally.
+The graph compiler supports direct audio strips and loops with multiple channels,
+multiple buses, arbitrary acyclic channel routing, gains, stereo balance, mute,
+manual input monitoring and boundary smoothing. Track, loop and channel counts
+are admitted by actual program resources and free physical state slots, including
+active graph ownership during a switch. Capacity refusals name the exhausted
+resource and restore the previous layout. The host still has one physical input
+and two outputs; wider internal layouts can share or omit those connections.
+
+These are compilation features, not a claim that every UI action has an immediate
+runtime implementation. Loop gain, record/play/stop, sync scheduling, selection,
+names and supported structural changes work through the current endpoint. Other
+immediate controls, media reads/import/export, loop clearing and copying still
+need endpoint support. MIDI, processors, composites, dry/wet execution and
+automatic monitoring are compiler refusals. Unsupported operations use the normal
+error path. Track removal and creation can provide fresh empty loops.
 
 The application service automatically commits a complete graph edit, including
 its loops and default connections. `RtBackend` collects that desired graph on the
@@ -120,11 +124,10 @@ The UI sends its existing commands; it does not need `ActivatePreparedGraph`.
 Lower-level clients using `RtBackend` directly can still stage edits and request
 explicit activation.
 
-Input routing can be connected/disconnected; each mono output must feed both
-Master channels or neither. Sync relationships must be acyclic (self sync is
-allowed). Quantum, sample rate and simulated I/O geometry stay fixed for a host's
-lifetime. Native execution remains the default. This restricted graph support is
-an implementation limit, not a separate application-profile abstraction.
+Routing is compiled from actual connections; an output can feed either Master
+channel, another bus, multiple destinations or none. Sync relationships must be
+acyclic (self sync is allowed). Quantum, sample rate and host I/O geometry stay
+fixed for a host's lifetime. Native execution remains the default.
 
 ## Application and UI verification
 
