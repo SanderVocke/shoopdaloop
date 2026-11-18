@@ -14,7 +14,9 @@ synthesize the block design together with its top-level wrapper.
 Use the provisional PS settings below to reproduce routing and generate
 reports in the workspace. Use the exact MYIR V2 PS configuration for JTAG
 and verify the populated DDR and connector configuration before powering the
-physical codec. [Compiler and catalog provenance](../zedboard/CATALOG.md)
+physical codec. The development preset uses DDR3-1066 with six cycles of
+write latency, a 40 ns four-activate window, and a 35 ns minimum active time.
+The V2 board delays and training still need qualification. [Compiler and catalog provenance](../zedboard/CATALOG.md)
 
 ```sh
 SHOOP_VIVADO_SERIAL_SYNTH=1 vivado -mode batch \
@@ -89,10 +91,22 @@ graph consumes the left ADC channel and drives both DAC channels.
 Confirm the populated board, power and connector orientation at the bench.
 The physical adapter uses a dedicated clock-capable input and the audio-bank
 crossing. The batch build applies the bundled-data delay and skew constraints
-and exports timing and detailed CDC reports. Set `SHOOP_VIVADO_FULL_SKEW=1` to
-request the exhaustive bus-skew report after the bitstream and XSA are written.
-Vivado 2021.1 can spend substantial time generating that report for wide
-buses between independent clocks. [MYIR schematic](https://www.myirtech.com/down-load1.asp?id=1027) · [Digilent reference manual](https://media.digikey.com/pdf/Data%20Sheets/Digilent%20PDFs/Pmod_I2S2_RM_Web.pdf)
+and exports timing and detailed CDC reports. [MYIR schematic](https://www.myirtech.com/down-load1.asp?id=1027) · [Digilent reference manual](https://media.digikey.com/pdf/Data%20Sheets/Digilent%20PDFs/Pmod_I2S2_RM_Web.pdf)
+
+Run the checkpoint check after building the I²S image.
+
+```sh
+vivado -mode batch -source fpga/host_bridge/zturn_v2_i2s_check.tcl \
+  -tclargs work/zturn-v2/route
+```
+
+It writes `skew-signoff/arrival-bounds.rpt`, checks the original datapath-only
+max-delay slack, and measures the spread of capture-relative arrivals across
+both timing corners, including clock insertion and uncertainty. The script
+works on an in-memory copy of the routed checkpoint. Set
+`SHOOP_VIVADO_FULL_SKEW=1` during the build to request Vivado's exhaustive
+report after bitstream and XSA export. Vivado 2021.1 can stall when generating
+that report for wide buses between independent clocks.
 
 ## Signed SD image
 
