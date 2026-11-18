@@ -12,6 +12,7 @@ use rt_fpga_rtl::{
     sim::Sim,
     target::{ConfigurationWrite as Write, ProgramImage, Space},
 };
+use shoop_rt_host_reference::StorageUsage;
 use shoop_rt_protocol::{
     codec,
     immediate::{
@@ -83,6 +84,7 @@ struct Owner<'a> {
     shared: &'a Shared,
     quantum: u32,
     frame: u64,
+    storage_frame: u64,
     current: Option<ProgramImage>,
     upload: Option<Upload>,
     retired: Option<ProgramImage>,
@@ -159,6 +161,17 @@ impl Owner<'_> {
     fn write(&mut self, prefix: &str, space: u64, address: u64, value: u64) -> Result<()> {
         self.access(prefix, space, address, Some(&Bits::from_u64(value)))?;
         Ok(())
+    }
+    fn sample_storage(&mut self) {
+        self.storage_frame = self.frame;
+        // One configuration read latches block and page occupancy together.
+        match self.access("store_cfg", 6, 16, None) {
+            Ok(stats) => self.shared.status.publish_storage(StorageUsage {
+                audio_blocks: (stats.get(0, 32), stats.get(32, 32)),
+                metadata_pages: Some((stats.get(64, 32), stats.get(96, 32))),
+            }),
+            Err(_) => self.sim.model.set("store_cfg_valid", 0),
+        }
     }
     fn clear_view(&mut self, view: u32) -> Result<()> {
         self.sim.model.set_all(&[
@@ -692,6 +705,9 @@ impl Owner<'_> {
             }
         }
         self.publish(execution, true)?;
+        if self.frame.saturating_sub(self.storage_frame) >= self.shared.status.usage_interval() {
+            self.sample_storage();
+        }
         execution
             .commands
             .publish_frame(rt_runtime::Frame(self.frame));
@@ -797,6 +813,7 @@ pub(super) fn run(
         shared,
         quantum,
         frame: 0,
+        storage_frame: 0,
         current: None,
         upload: None,
         retired: None,
@@ -821,6 +838,7 @@ pub(super) fn run(
         for (address, value) in [(0, 64), (1, 0), (2, 0), (3, geometry.blocks())] {
             owner.write("store_cfg", 0, address, value)?;
         }
+        owner.sample_storage();
         owner.publish(&mut execution, false)?;
         Ok(())
     })();

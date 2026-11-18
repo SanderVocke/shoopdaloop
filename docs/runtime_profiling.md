@@ -307,45 +307,41 @@ it with `Service::register_profiling_provider`. Add the typed decoder and UI in 
 application client. Neither carrier implementations nor outer protocol variants
 need another report-specific case. Reports are not persisted in session files.
 
-## Backend memory
+## Backend resource usage
 
-The status bar's **MEM** reading and the profiling window's **Memory** section
-report accounted backend resource storage in binary units. Collection is always
-available, including when timing profiling is off. The Rust render owner publishes
-an allocation-free, coherent snapshot at most once per callback and approximately
-five times per second; the initial prepared footprint is available before the
-first callback. Delivery uses ordinary engine telemetry and app status snapshots,
-including remote hosts. Disconnecting clears the reading; an unavailable reading
-is shown as an em dash, independently of a measured zero.
+The status bar's **Usage** reading is the highest `(used + reserved) / capacity`
+among reported bounded resources. Hover to see the resource closest to capacity.
+The profiling window's **Usage** section shows used, reserved and free capacity
+for each resource. A reservation is capacity set aside for an owner or a staged
+program. The reading summarizes current commitments. Individual operations
+can require multiple free units at once.
 
-The Rust count includes the resource payload arena, its prepared spare capacity,
-page/version/snapshot metadata, audio and MIDI stores, state, and storage scratch.
-Vectors are accounted by allocated capacity, not populated length. Shared payload
-is counted once; playback and retained export/snapshot ownership keep its physical
-pages occupied until reclamation. Clearing a loop therefore need not reduce the
-allocated footprint. This is **accounted resource storage**, not process RSS or a
-complete backend heap census: allocator overhead, graph/control queues, host
-buffers, processors, and app/UI allocations are excluded.
+Usage is collected independently of timing profiling. The initial report is
+available once the backend connects. Media counts are sampled about five times
+per second, and program counts update on staging and fenced completion. Reports
+travel through ordinary engine telemetry and app status snapshots, including
+remote hosts. Disconnecting clears the reading. The footer shows an em dash when
+there is no known limit to compare, and a percentage for a measured zero.
 
-The pool table separates used storage from unused reservations committed to
-particular owners. Capacity is the prepared pool limit, not the machine's RAM.
-Reservations can be consumed by their owners even when no unreserved pages remain.
-The highest pool commitment is the maximum `(used + reserved) / capacity`, never
-an average. It identifies a constrained allocation pool; it is not a prediction
-of remaining recording time or a promise that every operation will succeed.
+The native engine reports its media payload, resource version and snapshot pool
+limits. **Accounted backend memory** in the details measures allocated media
+storage, prepared spare capacity, metadata and scratch. Vectors contribute their
+allocated capacity and shared payload is counted once. The figure covers the
+resource store and excludes allocator overhead, graph/control queues, host
+buffers, processors, and app/UI allocations.
+
+The Rust FPGA reference and RTL simulation report audio storage in allocation
+blocks and program limits in counts. Program instructions are compared with the
+capacity of one instruction region. During a switch, the larger requirement
+determines pressure. State, history and loop slots include fresh reservations
+alongside the committed program until the handoff completes. Job slots and audio
+buffers reflect the program's requirements. Audio blocks remain occupied until
+they are available for reuse, including partially used blocks and retained
+media. RTL simulation also reports the independently limited media metadata pages
+from its [storage statistics](../fpga/media_store/README.md#storage-statistics).
 
 The transport-neutral report carries an optional accounted byte count and up to
-eight named resources, each with units, used/reserved counts and an optional
-capacity. An absent capacity means no known fixed ceiling; it does not mean
-unlimited memory. Missing resources/footprints remain unavailable rather than
-being synthesized as zero. Counts are 64-bit integers on the wire; percentages
-are derived for display. The Rust reporter uses these fields for its prepared resource pools.
-
-A backend that reports bounded storage resources without an aggregate byte count
-uses the **MEM** headline for storage pressure: the highest individual commitment
-percentage. The tooltip and Memory section retain the separate resource limits.
+eight named resources. Counts are 64-bit integers on the wire. A row with an
+unknown ceiling can display its usage counts without contributing to the footer.
 External engine consumers can publish complete reports with
-`Observations::memory`; they replace the native Rust pool counters. The former
-FPGA application simulator and its physical allocator overlay are retired.
-Retained Marlin component benches report memory diagnostics independently;
-see the [component guide](../src/rust/rt_fpga_testbench/README.md).
+`Observations::memory`.

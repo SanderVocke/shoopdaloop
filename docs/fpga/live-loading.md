@@ -88,9 +88,11 @@ retaining monotonically allocated identities and slot generations; it does not
 roll back executing processor state.
 
 The Rust-reference host can be used with the UI through shared Dummy, CPAL or
-JACK drivers. Its portable renderer has no private pacing thread. Backend selection is a host startup setting; unsupported
-operations use the existing refusal path without additional UI capability or
-capacity reporting. See the [host instructions](../../src/rust/shoop_host/README.md#rust-fpga-reference-with-the-ui)
+JACK drivers. Its portable renderer has no private pacing thread. Backend
+selection is a host startup setting. Unsupported operations use the existing
+refusal path. The [Usage panel](../runtime_profiling.md#backend-resource-usage)
+reports the active program and storage limits. See the
+[host instructions](../../src/rust/shoop_host/README.md#rust-fpga-reference-with-the-ui)
 for startup and the supported graph subset.
 
 ## RTL and Marlin

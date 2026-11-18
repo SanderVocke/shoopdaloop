@@ -189,6 +189,40 @@ fn command_with_timeout(
 }
 
 #[shoop_test]
+fn native_resource_usage_is_forwarded_in_remote_app_snapshots() {
+    for transport in [AppTransport::Socket, AppTransport::SharedMemory] {
+        let host = host(transport);
+        let (mut client, mut connection) = attach(&host.entry, 800);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let report = loop {
+            if let Some(report) = client
+                .snapshot()
+                .and_then(|snapshot| snapshot.status.memory)
+            {
+                break report;
+            }
+            connection.poll(&mut client).unwrap();
+            assert!(
+                Instant::now() < deadline,
+                "native usage report did not arrive"
+            );
+            thread::sleep(Duration::from_millis(2));
+        };
+        assert!(report.accounted_bytes.is_some());
+        assert!(report.limiting_resource().is_some());
+        assert_eq!(
+            report
+                .resources
+                .iter()
+                .flatten()
+                .map(|row| row.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Media payload", "Resource versions", "Snapshots"]
+        );
+    }
+}
+
+#[shoop_test]
 fn bus_lifecycle_uses_both_carriers_and_socket_recovery_does_not_recreate_master() {
     for transport in [AppTransport::Socket, AppTransport::SharedMemory] {
         let mut host = host(transport);

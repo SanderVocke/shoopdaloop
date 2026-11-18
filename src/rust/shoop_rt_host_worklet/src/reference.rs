@@ -95,7 +95,8 @@ impl<P: ImagePort> Endpoint<P> {
             Images { port: port.clone() },
             quantum,
             status.clone(),
-        );
+        )
+        .with_reference_bootstrap();
         let mut snapshot = vec![0; snapshot::capacity(0, 32, 0).unwrap()];
         snapshot::Header {
             frame: 0,
@@ -137,6 +138,9 @@ impl<P: ImagePort> Endpoint<P> {
                 }
                 EngineMessage::ImmediateResponse(response) => {
                     self.response = Some(response);
+                }
+                EngineMessage::Telemetry(shoop_rt_protocol::Telemetry::Memory(report)) => {
+                    self.endpoint.observe_worklet_storage(&report);
                 }
                 EngineMessage::Snapshot(chunk) | EngineMessage::SnapshotReply(chunk) => {
                     let total = chunk.total as usize;
