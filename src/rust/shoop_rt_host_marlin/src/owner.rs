@@ -12,7 +12,7 @@ use rt_fpga_rtl::{
     sim::Sim,
     target::{ConfigurationWrite as Write, ProgramImage, Space},
 };
-use shoop_rt_host_reference::StorageUsage;
+use shoop_rt_host_reference::{program_limits, StorageUsage, MEDIA_BLOCK_CHUNKS};
 use shoop_rt_protocol::{
     codec,
     immediate::{
@@ -52,7 +52,7 @@ struct Upload {
 }
 impl Upload {
     fn new(image: ProgramImage) -> Self {
-        let writes = image.writes(128);
+        let writes = image.writes(u64::from(program_limits().instructions));
         let views = image
             .layout
             .new_media_views()
@@ -473,6 +473,24 @@ impl Owner<'_> {
                 {
                     Code::CannotApply
                 } else {
+                    let changed = self
+                        .upload
+                        .as_ref()
+                        .unwrap()
+                        .image
+                        .layout
+                        .changed_sources()
+                        .to_vec();
+                    for loop_id in changed {
+                        let code = self.execute(Command::ClearPlannedTransitions(
+                            loop_id.slot,
+                            shoop_rt_protocol::immediate::ClearPlanned::Both,
+                        ))?;
+                        ensure!(
+                            code == Code::Applied,
+                            "RTL could not clear the continuing loop plan"
+                        );
+                    }
                     self.sim.model.set_all(&[
                         ("switch_valid", 1),
                         ("switch_expected", header.graph()),
@@ -643,11 +661,11 @@ impl Owner<'_> {
         self.sim.model.set_all(&[
             ("run_valid", 1),
             ("run_instruction_count", 0),
-            ("run_state_count", 64),
+            ("run_state_count", u64::from(program_limits().state_values)),
             ("run_quantum", u64::from(self.quantum)),
             ("run_chunk_frames", 1),
-            ("run_job_budget", 128),
-            ("run_buffers", 64),
+            ("run_job_budget", u64::from(program_limits().jobs)),
+            ("run_buffers", u64::from(program_limits().buffers)),
             ("run_inputs", 1),
             ("run_outputs", 2),
         ]);
@@ -798,8 +816,12 @@ pub(super) fn run(
     started: SyncSender<std::result::Result<(), String>>,
 ) -> Result<()> {
     let slots = u64::from(memory_mb) * 1024 * 1024 / 4;
-    let geometry = Geometry::new([64, slots, 1], 128);
-    let built = design(&geometry).build(&rt_fpga_rtl::root().join("work/marlin-host"));
+    let limits = program_limits();
+    let geometry = Geometry::new(
+        [limits.state_values.into(), slots, 1],
+        MEDIA_BLOCK_CHUNKS as u64,
+    );
+    let built = design(&geometry, limits).build(&rt_fpga_rtl::root().join("work/marlin-host"));
     let compiled = match built {
         Ok(c) => c,
         Err(e) => {
@@ -829,7 +851,7 @@ pub(super) fn run(
         retired: None,
         rows: Vec::new(),
         pending: None,
-        snapshot: vec![0; snapshot::capacity(0, 32, 0).unwrap()],
+        snapshot: vec![0; snapshot::capacity(0, limits.loop_slots as usize, 0).unwrap()],
     };
     let init = (|| -> Result<()> {
         owner.sim.model.set_all(&[
@@ -842,10 +864,10 @@ pub(super) fn run(
         owner.tick()?;
         owner.sim.model.set("reset", 0);
         owner.tick()?;
-        for view in 0..64 {
+        for view in 0..geometry.views {
             owner.write("store_cfg", 1, view, 1)?;
         }
-        for (address, value) in [(0, 64), (1, 0), (2, 0), (3, geometry.blocks())] {
+        for (address, value) in [(0, geometry.views), (1, 0), (2, 0), (3, geometry.blocks())] {
             owner.write("store_cfg", 0, address, value)?;
         }
         owner.sample_storage();

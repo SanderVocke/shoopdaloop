@@ -107,13 +107,15 @@ fn admission<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) -> Vec<(Code
     client.connect().unwrap();
     while client.poll().is_some() {}
     let mut trace = Vec::new();
-    // Exact instruction/job/buffer fit, sparse logical identities, and >32 upload records.
-    let first = upload(&mut client, &mut renderer, 0, 1000..1031, false, false);
+    let limits = shoop_rt_host_reference::program_limits();
+    let loops = 64;
+    let active = 1000..1000 + loops;
+    let first = upload(&mut client, &mut renderer, 0, active.clone(), false, false);
     assert_eq!(first.header.code(), Code::Applied);
     let revision = first.header.graph();
     trace.push((first.header.code(), revision));
-    // Start every recording together: this exercises the worst-case queue requirement.
-    let commands = (1000..1031)
+    let commands = active
+        .clone()
         .map(|slot| {
             Command::Transition(
                 slot,
@@ -125,21 +127,23 @@ fn admission<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) -> Vec<(Code
             )
         })
         .collect::<Vec<_>>();
-    client
-        .immediate(Batch::new(revision, revision, &commands).unwrap())
-        .unwrap();
-    let recording = receive(&mut client, &mut renderer);
-    assert!(recording
-        .records()
-        .iter()
-        .all(|r| r.code() == Code::Applied));
+    for batch in commands.chunks(COMMANDS) {
+        client
+            .immediate(Batch::new(revision, revision, batch).unwrap())
+            .unwrap();
+        let recording = receive(&mut client, &mut renderer);
+        assert!(recording
+            .records()
+            .iter()
+            .all(|r| r.code() == Code::Applied));
+    }
     quantum(&mut renderer);
     // Fits by itself, but both loops and values of the active graph remain owned.
     let refused = upload(
         &mut client,
         &mut renderer,
         revision,
-        2000..2002,
+        2000..2000 + limits.loop_slots - loops + 1,
         false,
         false,
     );
@@ -166,16 +170,9 @@ fn admission<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) -> Vec<(Code
         receive(&mut client, &mut renderer).header.code(),
         Code::CannotApply
     );
-    // All 31 source changes and their switch still form one ordered command group.
+    // All 64 source changes take effect in the same program switch.
     // Retained state needs no extra slots after the failed admission.
-    let retained = upload(
-        &mut client,
-        &mut renderer,
-        revision,
-        1000..1031,
-        false,
-        true,
-    );
+    let retained = upload(&mut client, &mut renderer, revision, active, false, true);
     assert_eq!(retained.header.code(), Code::Applied);
     trace.push((retained.header.code(), retained.header.graph()));
     let small = upload(
@@ -189,16 +186,16 @@ fn admission<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) -> Vec<(Code
     assert_eq!(small.header.code(), Code::Applied);
     let revision = small.header.graph();
     trace.push((small.header.code(), revision));
-    // 22 routed loops exceed a 64-buffer target.
+    // Refuse a graph that cannot fit even on its own.
     let large = upload(
         &mut client,
         &mut renderer,
         revision,
-        3000..3022,
+        3000..3000 + limits.loop_slots + 1,
         true,
         false,
     );
-    assert_eq!(large.header.code(), Code::BufferCapacity);
+    assert_eq!(large.header.code(), Code::LoopCapacity);
     trace.push((large.header.code(), large.header.graph()));
     let fitting = upload(
         &mut client,
@@ -260,7 +257,10 @@ fn usage_lifecycle<E: Endpoint>(endpoint: E, mut renderer: impl Renderer, rtl: b
     let initial = latest_usage(&mut client).unwrap();
     let audio = |report: &MemoryReport| pool(report, "Audio storage").used;
     assert_eq!(audio(&initial), 0);
-    assert_eq!(pool(&initial, "Audio storage").capacity, Some(2048));
+    assert_eq!(
+        pool(&initial, "Audio storage").capacity,
+        Some(1024 * 1024 / (4 * shoop_rt_host_reference::MEDIA_BLOCK_CHUNKS as u64))
+    );
     assert_eq!(
         initial
             .resources
@@ -312,11 +312,11 @@ fn usage_lifecycle<E: Endpoint>(endpoint: E, mut renderer: impl Renderer, rtl: b
         &mut client,
         &mut renderer,
         revision,
-        2000..2022,
+        2000..2000 + shoop_rt_host_reference::program_limits().loop_slots + 1,
         true,
         false,
     );
-    assert_eq!(refusal.header.code(), Code::BufferCapacity);
+    assert_eq!(refusal.header.code(), Code::LoopCapacity);
     client.disconnect();
     assert!(latest_usage(&mut client).is_none());
     client.connect().unwrap();
@@ -362,7 +362,7 @@ fn usage_lifecycle<E: Endpoint>(endpoint: E, mut renderer: impl Renderer, rtl: b
         false,
     );
     assert_eq!(reused.header.code(), Code::Applied);
-    for _ in 0..=32 {
+    for _ in 0..=shoop_rt_host_reference::program_limits().state_values {
         if latest_usage(&mut client).is_some_and(|report| audio(&report) == 0) {
             return;
         }

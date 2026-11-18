@@ -72,7 +72,7 @@ impl WorkletConfig {
     pub fn new(engine: EngineDescription) -> Self {
         Self {
             backend: Backend::Native,
-            reference_memory_mb: 16,
+            reference_memory_mb: 256,
             engine,
             records_in_bytes: DEFAULT_RECORDS_IN_BYTES,
             records_out_bytes: DEFAULT_RECORDS_OUT_BYTES,

@@ -4196,7 +4196,7 @@ impl Default for NewEnginePools {
             quantum: 32,
             buses: 8,
             bus_channels: 8,
-            tracks: 16,
+            tracks: 32,
             loops: 128,
             channels: 2,
             loop_memory_mb: 256,
@@ -4277,7 +4277,6 @@ impl HostSettings {
         };
         if backend != BackendType::Native {
             settings.loop_smoothing_ms = 0;
-            settings.pools.loop_memory_mb = 16;
         }
         settings
     }

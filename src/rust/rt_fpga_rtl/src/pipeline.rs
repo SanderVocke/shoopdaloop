@@ -72,7 +72,7 @@ impl Geometry {
     }
 }
 
-pub fn design(g: &Geometry) -> Design {
+pub fn design(g: &Geometry, limits: rt_fpga_compiler::ProgramLimits) -> Design {
     let root = crate::root();
     let mut sources = Vec::new();
     for (directory, names) in [
@@ -102,13 +102,13 @@ pub fn design(g: &Geometry) -> Design {
     }
     let mut parameters = g.parameters();
     parameters.extend([
-        ("PROGRAM_DEPTH", 128),
-        ("STATE_DEPTH", 64),
-        ("JOB_DEPTH", 128),
-        ("MAX_FRAMES", 128),
-        ("BUFFERS", 64),
-        ("INPUT_PORTS", 1),
-        ("OUTPUT_PORTS", 2),
+        ("PROGRAM_DEPTH", limits.instructions.into()),
+        ("STATE_DEPTH", limits.state_values.into()),
+        ("JOB_DEPTH", limits.jobs.into()),
+        ("MAX_FRAMES", limits.quantum.into()),
+        ("BUFFERS", limits.buffers.into()),
+        ("INPUT_PORTS", limits.input_ports.into()),
+        ("OUTPUT_PORTS", limits.output_ports.into()),
         ("LIVE_LOADING", 1),
         ("PROGRAM_REGIONS", 2),
         ("AXI_DATA_WIDTH", 64),

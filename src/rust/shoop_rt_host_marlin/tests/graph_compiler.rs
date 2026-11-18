@@ -61,10 +61,7 @@ fn upload<E: Endpoint>(
         response(c, r);
     }
 }
-fn run<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) -> Vec<[f32; 2]> {
-    let mut c = ProtocolClient::new(InProcess::new(endpoint, Outbox::new(8, 8, 0)));
-    c.connect().unwrap();
-    while c.poll().is_some() {}
+fn stereo_graph() -> Graph {
     let mut graph = session(2);
     for s in &mut graph.strips {
         s.controls.input_monitoring = false;
@@ -87,6 +84,14 @@ fn run<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) -> Vec<[f32; 2]> {
         }
     }
     graph.ports.retain(|p| p.id != second);
+    graph
+}
+
+fn run<E: Endpoint>(endpoint: E, mut renderer: impl Renderer) -> Vec<[f32; 2]> {
+    let mut c = ProtocolClient::new(InProcess::new(endpoint, Outbox::new(8, 8, 0)));
+    c.connect().unwrap();
+    while c.poll().is_some() {}
+    let mut graph = stereo_graph();
     graph.loops[0].balance = 0.5;
     upload(&mut c, &mut renderer, &graph, 0);
     for mode in [TransitionMode::Recording, TransitionMode::Playing] {
@@ -133,4 +138,29 @@ fn complete_stereo_graphs_record_play_and_retain_media_on_both_backends() {
     let expected = run(p.endpoint, p.renderer);
     let p = shoop_rt_host_marlin::prepare(Q as u32, driver, 1, Q).unwrap();
     assert_eq!(run(p.endpoint, p.renderer), expected);
+}
+
+#[shoop_test(no_wasm = "actual Marlin simulation")]
+fn default_rtl_profile_runs_a_routed_64_loop_stereo_graph() {
+    let driver = DriverStatus {
+        kind: DriverKind::Dummy,
+        state: DriverRunState::Running,
+        sample_rate: 48000,
+        buffer_frames: Q as u32,
+    };
+    let prepared = shoop_rt_host_marlin::prepare(Q as u32, driver, 256, Q).unwrap();
+    let mut renderer = prepared.renderer;
+    let mut client = ProtocolClient::new(InProcess::new(prepared.endpoint, Outbox::new(8, 8, 0)));
+    client.connect().unwrap();
+    while client.poll().is_some() {}
+    let mut graph = stereo_graph();
+    let template = graph.loops[0].clone();
+    graph.loops = (100..164)
+        .map(|slot| rt_fpga_compiler::shoop_graph::LoopView {
+            id: id(slot),
+            ..template.clone()
+        })
+        .collect();
+    upload(&mut client, &mut renderer, &graph, 0);
+    assert_eq!(step(&mut renderer), [0., 0.]);
 }

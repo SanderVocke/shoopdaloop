@@ -65,6 +65,10 @@ struct Browser {
 }
 impl Browser {
     fn new() -> Self {
+        Self::with_memory(Some(1))
+    }
+
+    fn with_memory(memory_mb: Option<u32>) -> Self {
         let mut config = WorkletConfig::new(shoop_rt_engine::EngineDescription {
             quantum: Q,
             max_frames: Q,
@@ -73,7 +77,9 @@ impl Browser {
             ..Default::default()
         });
         config.backend = shoop_rt_host_worklet::config::Backend::RustReference;
-        config.reference_memory_mb = 1;
+        if let Some(memory_mb) = memory_mb {
+            config.reference_memory_mb = memory_mb;
+        }
         let host = WorkletHost::prepare(&config).unwrap();
         let port = Port::default();
         let endpoint = Endpoint::new(
@@ -212,7 +218,10 @@ fn separate_heap_image_loading_records_plays_and_retains_media_without_render_al
     };
     browser.step();
     assert_eq!(usage(&browser, "Audio storage").used, 0);
-    assert_eq!(usage(&browser, "Audio storage").capacity, Some(2048));
+    assert_eq!(
+        usage(&browser, "Audio storage").capacity,
+        Some(1024 * 1024 / (4 * shoop_rt_host_reference::MEDIA_BLOCK_CHUNKS as u64))
+    );
     browser.send(graph(0));
     let transition = |mode| {
         Batch::new(
@@ -277,12 +286,12 @@ fn bounded_loader_rejects_invalid_payload_and_marlin_selection() {
 
 #[shoop_test]
 fn browser_uploads_large_graphs_in_bounded_groups_and_reports_resource_refusals() {
-    let mut b = Browser::new();
+    let mut b = Browser::with_memory(None);
     let mut commands = vec![Command::BeginGraph {
         quantum: Q as u32,
-        loops: 31,
+        loops: 64,
     }];
-    commands.extend((100..131).map(|slot| {
+    commands.extend((100..164).map(|slot| {
         Command::ConfigureLoop(GraphLoop {
             slot,
             generation: 1,
@@ -297,12 +306,20 @@ fn browser_uploads_large_graphs_in_bounded_groups_and_reports_resource_refusals(
     for chunk in commands.chunks(shoop_rt_protocol::immediate::COMMANDS) {
         b.send(Batch::new(0, 0, chunk).unwrap());
     }
+    for _ in 0..32 {
+        b.step();
+    }
+    assert!(b
+        .published
+        .iter()
+        .any(|header| header.graph == 1 && header.loops == 64));
+    let too_many = shoop_rt_host_reference::program_limits().loop_slots + 1;
     commands.clear();
     commands.push(Command::BeginGraph {
         quantum: Q as u32,
-        loops: 22,
+        loops: too_many,
     });
-    commands.extend((200..222).map(|slot| {
+    commands.extend((200..200 + too_many).map(|slot| {
         Command::ConfigureLoop(GraphLoop {
             slot,
             generation: 1,
@@ -314,12 +331,20 @@ fn browser_uploads_large_graphs_in_bounded_groups_and_reports_resource_refusals(
         })
     }));
     commands.push(Command::ActivateGraph);
-    b.client
-        .immediate(Batch::new(1, 1, &commands).unwrap())
-        .unwrap();
+    let mut chunks = commands
+        .chunks(shoop_rt_protocol::immediate::COMMANDS)
+        .peekable();
+    while let Some(chunk) = chunks.next() {
+        let batch = Batch::new(1, 1, chunk).unwrap();
+        if chunks.peek().is_some() {
+            b.send(batch);
+        } else {
+            b.client.immediate(batch).unwrap();
+        }
+    }
     for _ in 0..100 {
         if let Some(response) = b.step().first() {
-            assert_eq!(response.header.code(), Code::BufferCapacity);
+            assert_eq!(response.header.code(), Code::LoopCapacity);
             // The refused replacement leaves the active graph addressable.
             b.send(Batch::new(1, 1, &[Command::LoopGain(100, 0.5)]).unwrap());
             return;

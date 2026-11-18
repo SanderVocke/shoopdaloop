@@ -34,7 +34,11 @@ pub struct Started {
     pub driver: Driver,
 }
 pub fn start(quantum: u32, sample_rate: u32) -> Result<Started> {
-    start_with_memory(quantum, sample_rate, 16)
+    start_with_memory(
+        quantum,
+        sample_rate,
+        shoop_app_api::NewEnginePools::default().loop_memory_mb,
+    )
 }
 pub fn start_with_memory(quantum: u32, sample_rate: u32, memory_mb: u32) -> Result<Started> {
     start_driver(

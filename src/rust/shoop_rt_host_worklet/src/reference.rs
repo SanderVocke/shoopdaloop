@@ -17,7 +17,7 @@ use shoop_rt_transport::{
     rt,
 };
 use std::sync::Arc;
-pub const MAX_IMAGE_BYTES: usize = 256 * 1024;
+pub const MAX_IMAGE_BYTES: usize = 1024 * 1024;
 pub trait ImagePort: RecordPort + Clone {
     fn upload(&mut self, bytes: &[u8]) -> Result<(), CarrierError>;
     fn image_ready(&mut self) -> Option<(u64, bool)>;
@@ -97,7 +97,15 @@ impl<P: ImagePort> Endpoint<P> {
             status.clone(),
         )
         .with_reference_bootstrap();
-        let mut snapshot = vec![0; snapshot::capacity(0, 32, 0).unwrap()];
+        let mut snapshot = vec![
+            0;
+            snapshot::capacity(
+                0,
+                shoop_rt_host_reference::program_limits().loop_slots as usize,
+                0
+            )
+            .unwrap()
+        ];
         snapshot::Header {
             frame: 0,
             graph: 0,

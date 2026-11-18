@@ -57,14 +57,17 @@ const BOOTSTRAP_USAGE: ProgramUsage = ProgramUsage {
     buffers: 1,
 };
 
+// Keep per-view block tables affordable at normal desktop and browser media sizes.
+pub const MEDIA_BLOCK_CHUNKS: usize = 1024;
+
 pub fn program_limits() -> ProgramLimits {
     ProgramLimits {
-        instructions: 128,
-        state_values: 64,
-        loop_slots: 32,
-        jobs: 128,
-        buffers: 64,
-        history_slots: 64,
+        instructions: 1024,
+        state_values: 512,
+        loop_slots: 128,
+        jobs: 1024,
+        buffers: 512,
+        history_slots: 512,
         input_ports: 1,
         output_ports: 2,
         quantum: 128,
@@ -117,7 +120,6 @@ fn refusal_code(error: &anyhow::Error) -> Code {
 struct Pending {
     batch: Batch,
     descriptor: SwitchProgram,
-    commands: Vec<Command>,
     ready: Option<bool>,
     published: bool,
     usage: ProgramUsage,
@@ -395,8 +397,8 @@ pub fn prepare(quantum: u32, driver: DriverStatus, memory_mb: u32) -> Result<Pre
     let chunks = (memory_mb as usize)
         .checked_mul(1024 * 1024 / 4)
         .ok_or_else(|| anyhow::anyhow!("reference media capacity overflow"))?;
-    let mut media =
-        MediaStore::with_block_chunk_limit(1, 128, chunks).map_err(|e| anyhow::anyhow!("{e:?}"))?;
+    let mut media = MediaStore::with_block_chunk_limit(1, MEDIA_BLOCK_CHUNKS, chunks)
+        .map_err(|e| anyhow::anyhow!("{e:?}"))?;
     media
         .create_recordings(pool.state_values as usize)
         .map_err(|e| anyhow::anyhow!("{e:?}"))?;
@@ -697,24 +699,13 @@ impl<L: ProgramLoader> Endpoint<L> {
         logical: rt_fpga_compiler::LogicalStateProgram,
     ) -> Result<()> {
         let layout = self.allocator.stage(&logical)?;
-        let staged = self.programs.stage_program(&logical, layout.clone());
+        let revision = layout.revision;
+        let staged = self.programs.stage_program(&logical, layout);
         match staged {
             Ok(descriptor) => {
-                let mut commands = layout
-                    .changed_sources()
-                    .iter()
-                    .map(|l| {
-                        Command::ClearPlannedTransitions(
-                            l.slot,
-                            shoop_rt_protocol::immediate::ClearPlanned::Both,
-                        )
-                    })
-                    .collect::<Vec<_>>();
-                commands.push(Command::SwitchProgram(descriptor));
                 self.pending = Some(Pending {
                     batch,
                     descriptor,
-                    commands,
                     ready: None,
                     published: false,
                     usage: ProgramUsage {
@@ -726,7 +717,7 @@ impl<L: ProgramLoader> Endpoint<L> {
                 Ok(())
             }
             Err(error) => {
-                self.allocator.cancel(layout.revision)?;
+                self.allocator.cancel(revision)?;
                 Err(error)
             }
         }
@@ -886,7 +877,7 @@ impl<L: ProgramLoader> CarrierEndpoint for Endpoint<L> {
                 let batch = Batch::new(
                     self.allocator.revision(),
                     self.allocator.revision(),
-                    &pending.commands,
+                    &[Command::SwitchProgram(pending.descriptor)],
                 )
                 .unwrap();
                 if self

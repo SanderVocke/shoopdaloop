@@ -165,20 +165,17 @@ pins continuing values and allocates fresh configuration for changed immutable
 coefficients. Media-view tables have one entry per possible state value; the
 reference, browser and Marlin loaders use the same allocation rule.
 
-The current target has 128 instructions, 64 state values, 32 loop cursors,
-64 media views, 128 queued jobs and 64 audio buffers. With this lowering, 21 mono
-loops routed to stereo Master fit; 22 need 66 buffers and are refused. With all
-loop outputs disconnected, 31 loops exactly fill instructions, jobs and buffers.
-These counts follow from the program and target dimensions. Live replacement can
-reach a state-slot limit sooner. Scratch buffers retain the processors' one-write
-contract. No instruction or processor RTL changes are required.
+Both FPGA hosts prepare 1,024 instructions per program region, 512 state values
+and media views, 128 loop cursors, 1,024 queued jobs, and 512 audio buffers and
+smoothing histories. The default media pool is 256 MiB. A conventional session
+with 64 stereo loops plus the sync loop fits, with the precise limits depending
+on routing, processing, and slots retained during live replacement.
 
 Host-driver geometry remains separate: the current prepared reference/Marlin
 application renderer exposes one capture and two playback channels. A wider
 compiled graph needs a target and driver with sufficient I/O dimensions; internal
 loop channels need not match host channels. Unsupported runtime commands continue
-to be refused or ignored through the ordinary interface. Native backend
-prepared-pool limits are unchanged.
+to be refused or ignored through the ordinary interface. The native app and host prepare 32 tracks and 128 loops by default.
 
 ## Verification
 

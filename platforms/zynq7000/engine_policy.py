@@ -3,8 +3,8 @@ import copy
 import json
 
 DEFAULT = {
-    "tracks": 8,
-    "loops": 32,
+    "tracks": 16,
+    "loops": 128,
     "input_history": {
         "seconds": 0,
         "audio_take_pages": 32768,

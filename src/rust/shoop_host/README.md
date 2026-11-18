@@ -89,7 +89,7 @@ or `jack` for direct JACK. The selected driver supplies timing and actual audio;
 Dummy input is silence unless a test fixture supplies a generator. Dummy pacing
 can be paced, unpaced or controlled. Saved driver preferences apply independently
 of backend selection. The reference has zero smoothing and automatic Master
-outputs. Its default standalone media pool is 16 MiB; memory capacity and quantum
+outputs. Its default standalone media pool is 256 MiB; memory capacity and quantum
 can be supplied with `--config PATH`. The quantum adapter reports one quantum of
 processing latency. JACK exposes fixed `audio_in_1`, `audio_out_1` and
 `audio_out_2` ports; CPAL uses the first input and first two outputs.

@@ -114,11 +114,11 @@ mod tests {
             serde_json::from_str(r#"{"backend":"rust-fpga"}"#).unwrap();
         assert_eq!(reference.backend, BackendType::RustFpga);
         assert_eq!(reference.loop_smoothing_ms, 0);
-        assert_eq!(reference.pools.loop_memory_mb, 16);
+        assert_eq!(reference.pools.loop_memory_mb, 256);
         let partial: super::HostConfig =
             serde_json::from_str(r#"{"backend":"rust-fpga","pools":{"quantum":16}}"#).unwrap();
         assert_eq!(partial.pools.quantum, 16);
-        assert_eq!(partial.pools.loop_memory_mb, 16);
+        assert_eq!(partial.pools.loop_memory_mb, 256);
         assert_eq!(
             reference.validate().is_ok(),
             cfg!(feature = "fpga-reference")

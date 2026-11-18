@@ -801,7 +801,7 @@ mod platform {
                 ))
             }
         };
-        config.reference_memory_mb = pools.loop_memory_mb;
+        config.reference_memory_mb = pools.loop_memory_mb.min(BROWSER_MAX_LOOP_MEMORY_MB);
 
         let record = config.encode().map_err(|error| {
             JsValue::from_str(&format!("invalid engine configuration: {error:?}"))

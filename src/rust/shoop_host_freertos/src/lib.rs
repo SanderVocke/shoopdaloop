@@ -31,6 +31,7 @@ pub fn engine_description() -> shoop_rt_engine::EngineDescription {
             strips: ENGINE_TRACKS,
             loops: ENGINE_LOOPS,
         }],
+        pending_transitions: (2 * ENGINE_LOOPS as usize).max(128),
         control_lead_frames: QUANTUM as u32,
         smoothing_limit_frames: 4800,
         ..Default::default()

@@ -95,7 +95,9 @@ struct Fixture {
 }
 impl Fixture {
     fn new() -> Self {
-        let started = fpga_reference::start_with_memory(16, 1000, 1).unwrap();
+        Self::with_host(fpga_reference::start_with_memory(16, 1000, 1).unwrap())
+    }
+    fn with_host(started: fpga_reference::Started) -> Self {
         let gate = Arc::new(Gate::default());
         let client = ProtocolClient::new(Gated {
             inner: started.client.into_carrier(),
@@ -154,10 +156,13 @@ impl Fixture {
         operation
     }
     fn add_track(&mut self, bus: &str) -> OperationId {
+        self.add_audio_track(bus, 1)
+    }
+    fn add_audio_track(&mut self, bus: &str, audio_channels: u32) -> OperationId {
         self.submit(Command::AddTrack(TrackSpec {
             name: "Reference".into(),
             topology: TrackSpecTopology::Direct {
-                audio_channels: 1,
+                audio_channels,
                 midi: false,
             },
             initial_output_bus_names: if bus.is_empty() {
@@ -293,12 +298,12 @@ fn partial_routing_activates_and_allows_later_edits() {
 }
 
 #[shoop_test]
-fn multiple_mono_tracks_are_admitted_by_program_resources_and_refusal_rolls_back() {
-    let mut f = Fixture::new();
+fn default_profile_admits_64_stereo_loops_and_rolls_back_capacity_refusals() {
+    let mut f = Fixture::with_host(fpga_reference::start(16, 1000).unwrap());
     let mut accepted = 0;
     let mut refused = None;
     for _ in 0..32 {
-        let operation = f.add_track("Master");
+        let operation = f.add_audio_track("Master", 2);
         f.until(|f| f.client.results().contains_key(&operation));
         if matches!(f.client.results()[&operation], Outcome::Refused { .. }) {
             refused = Some(format!("{:?}", f.client.results()[&operation]));
@@ -307,10 +312,9 @@ fn multiple_mono_tracks_are_admitted_by_program_resources_and_refusal_rolls_back
         accepted += 1;
     }
     assert!(
-        accepted >= 2,
-        "the old one-track profile must not constrain drafts: {accepted} accepted, refusal: {refused:?}"
+        refused.is_some(),
+        "the test must exhaust a program resource"
     );
-    assert!(refused.unwrap().contains("audio buffers"));
     assert_eq!(f.service.snapshot().tracks.len(), accepted + 1);
     assert!(
         f.service
@@ -319,7 +323,8 @@ fn multiple_mono_tracks_are_admitted_by_program_resources_and_refusal_rolls_back
             .iter()
             .map(|t| t.loops.len())
             .sum::<usize>()
-            > 16
+            >= 65,
+        "eight stereo tracks plus the sync loop must fit",
     );
     // A non-structural operation still works after the hardware admission refusal.
     let track = &f.service.snapshot().tracks[1];
@@ -380,11 +385,14 @@ fn application_streams_large_graphs_and_retries_a_busy_activation_tail() {
     assert_eq!(batches.iter().filter(|b| activation(b)).count(), 1);
     drop(batches);
     let state = f.service.snapshot();
-    let refused = f.submit(Command::AddLoop {
+    let added = f.submit(Command::AddLoop {
         track: state.tracks[1].id,
     });
-    f.until(|f| f.client.results().contains_key(&refused));
-    assert!(format!("{:?}", f.client.results()[&refused]).contains("state program instructions"));
+    f.until(|f| f.client.results().contains_key(&added));
+    assert!(matches!(
+        f.client.results()[&added],
+        Outcome::LoopCreated { .. }
+    ));
     assert_eq!(
         f.service
             .snapshot()
@@ -392,7 +400,7 @@ fn application_streams_large_graphs_and_retries_a_busy_activation_tail() {
             .iter()
             .map(|t| t.loops.len())
             .sum::<usize>(),
-        31
+        32
     );
 }
 
