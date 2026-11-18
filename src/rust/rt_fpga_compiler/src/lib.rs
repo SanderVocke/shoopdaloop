@@ -3,7 +3,7 @@
 #![forbid(unsafe_code)]
 extern crate alloc;
 mod graph;
-pub use graph::{compile, CompileContext, Feature};
+pub use graph::{compile, compile_with_chunk_frames, CompileContext, Feature};
 pub use shoop_graph;
 pub mod loading;
 use alloc::vec::Vec;

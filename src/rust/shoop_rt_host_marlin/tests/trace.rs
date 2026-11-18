@@ -15,7 +15,7 @@ use shoop_rt_transport::{
 };
 use shoop_wasm_test_support::shoop_test;
 use std::time::{Duration, Instant};
-const Q: usize = 16;
+const Q: usize = 32;
 fn driver() -> DriverStatus {
     DriverStatus {
         kind: DriverKind::Dummy,
@@ -138,7 +138,7 @@ fn trace<E: Snap>(
         step(r);
     }
     let mut output = Vec::new();
-    for commands in [
+    for (index, commands) in [
         vec![
             now(0, TransitionMode::Recording),
             now(1, TransitionMode::Recording),
@@ -169,7 +169,10 @@ fn trace<E: Snap>(
         vec![],
         vec![],
         vec![],
-    ] {
+    ]
+    .into_iter()
+    .enumerate()
+    {
         if !commands.is_empty() {
             c.immediate(Batch::new(1, 1, &commands).unwrap()).unwrap();
         }
@@ -186,6 +189,13 @@ fn trace<E: Snap>(
                     Code::Applied
                 };
                 assert_eq!(record.code(), expected, "{record:?}");
+            }
+        }
+        if index == 0 || index == 2 {
+            // Exercise recording and playback across an allocation block boundary.
+            for _ in 0..1024 / Q {
+                let samples = step(r);
+                output.push((samples, c.carrier_mut().endpoint().snapshot()));
             }
         }
     }

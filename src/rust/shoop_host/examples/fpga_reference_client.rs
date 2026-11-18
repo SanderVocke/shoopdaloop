@@ -120,7 +120,7 @@ pub fn run_configuration(
     let config = serde_json::json!({ "backend": backend,
         "driver":{"Dummy":{"sample_rate":8000,"buffer_size":32}}, "loop_smoothing_ms":0,
         "processors":{"builtin_fx":"off","oxisynth":"off","fx_instances":0,"synth_instances":0,"memory_mb":16},
-        "pools":{"quantum":32,"tracks":2,"loops":16,"channels":1,"loop_memory_mb":1}, "transport":transport });
+        "pools":{"tracks":2,"loops":16,"channels":1,"loop_memory_mb":1}, "transport":transport });
     std::fs::write(
         output.join("config.json"),
         serde_json::to_vec_pretty(&config)?,
@@ -143,7 +143,9 @@ pub fn run_configuration(
             .stderr(std::fs::File::create(output.join("host.log"))?)
             .spawn()?,
     );
-    let deadline = Instant::now() + Duration::from_secs(20);
+    // A cold RTL-sim start builds the Verilator model before publishing the profile.
+    let startup_timeout = if backend == "rtl-sim" { 120 } else { 20 };
+    let deadline = Instant::now() + Duration::from_secs(startup_timeout);
     while !profile.exists() {
         ensure!(
             child.0.try_wait()?.is_none(),
@@ -233,7 +235,7 @@ pub fn run_configuration(
         )],
     )?;
     wait(&mut client, &mut connection, |c| {
-        loop_view(c, sync).is_some_and(|l| l.mode == LoopMode::Recording && l.length_frames >= 256)
+        loop_view(c, sync).is_some_and(|l| l.mode == LoopMode::Recording && l.length_frames > 1024)
     })?;
     let capture_before = loop_view(&client, sync).unwrap().length_frames;
     immediate(

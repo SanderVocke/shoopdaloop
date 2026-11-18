@@ -17,7 +17,7 @@ use shoop_rt_transport::{
 use shoop_wasm_test_support::shoop_test;
 use std::time::{Duration, Instant};
 use support::*;
-const Q: usize = 16;
+const Q: usize = 32;
 fn step(r: &mut impl Renderer) -> [f32; 2] {
     let mut a = [0.; Q];
     let mut b = a;

@@ -1,6 +1,6 @@
-use super::bridge::{Block, Shared, MAX};
+use super::bridge::{Block, Shared};
 use anyhow::{ensure, Result};
-use rt_fpga_compiler::Identity;
+use rt_fpga_compiler::{Identity, ProgramLimits};
 use rt_fpga_reference::{
     fixed::Fixed,
     transitions::{LoopId, Mode},
@@ -64,6 +64,7 @@ struct Owner<'a> {
     sim: Sim<'a>,
     shared: &'a Shared,
     quantum: u32,
+    chunk_frames: u32,
     frame: u64,
     storage_frame: u64,
     current: Option<ProgramImage>,
@@ -548,7 +549,7 @@ impl Owner<'_> {
                             .access(
                                 "audio_cfg",
                                 2,
-                                u64::from(buffer) * MAX as u64 + u64::from(i),
+                                u64::from(buffer) * u64::from(self.quantum) + u64::from(i),
                                 None,
                             )?
                             .get(0, 32) as i32;
@@ -595,7 +596,7 @@ impl Owner<'_> {
             ("run_instruction_count", 0),
             ("run_state_count", u64::from(program_limits().state_values)),
             ("run_quantum", u64::from(self.quantum)),
-            ("run_chunk_frames", 1),
+            ("run_chunk_frames", u64::from(self.chunk_frames)),
             ("run_job_budget", u64::from(program_limits().jobs)),
             ("run_buffers", u64::from(program_limits().buffers)),
             ("run_inputs", 1),
@@ -650,7 +651,7 @@ impl Owner<'_> {
                     self.access(
                         "audio_cfg",
                         1,
-                        port as u64 * MAX as u64 + u64::from(i),
+                        port as u64 * u64::from(self.quantum) + u64::from(i),
                         None,
                     )?
                     .get(0, 32) as i32,
@@ -677,7 +678,8 @@ impl Owner<'_> {
 }
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run(
-    quantum: u32,
+    limits: ProgramLimits,
+    chunk_frames: u32,
     memory_mb: u32,
     shared: &Shared,
     mut execution: rt::Execution,
@@ -688,11 +690,16 @@ pub(super) fn run(
     mut results: rtrb::Producer<Block>,
     started: SyncSender<std::result::Result<(), String>>,
 ) -> Result<()> {
-    let slots = u64::from(memory_mb) * 1024 * 1024 / 4;
-    let limits = program_limits();
+    let frames = u64::from(memory_mb) * 1024 * 1024 / 4;
+    let frames_per_chunk = u64::from(chunk_frames);
+    // Keep the sample capacity and allocation block size in frames constant.
     let geometry = Geometry::new(
-        [limits.state_values.into(), slots, 1],
-        MEDIA_BLOCK_CHUNKS as u64,
+        [
+            limits.state_values.into(),
+            frames / frames_per_chunk,
+            frames_per_chunk,
+        ],
+        MEDIA_BLOCK_CHUNKS as u64 / frames_per_chunk,
     );
     let built = design(&geometry, limits).build(&rt_fpga_rtl::root().join("work/marlin-host"));
     let compiled = match built {
@@ -711,12 +718,14 @@ pub(super) fn run(
             anyhow::bail!(message);
         }
     };
-    let mut sim = Sim::new(model, &[("clk", 10_000, 0)]);
+    let clock_period_ps = 1_000_000_000_000 / u64::from(TARGET_CORE_CLOCK_HZ);
+    let mut sim = Sim::new(model, &[("clk", clock_period_ps, 0)]);
     sim.max_ps = u64::MAX;
     let mut owner = Owner {
         sim,
         shared,
-        quantum,
+        quantum: limits.quantum,
+        chunk_frames,
         frame: 0,
         storage_frame: 0,
         current: None,

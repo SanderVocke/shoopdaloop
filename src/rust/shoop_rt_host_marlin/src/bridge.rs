@@ -1,4 +1,5 @@
 use anyhow::{ensure, Result};
+use rt_fpga_compiler::ProgramLimits;
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock},
     host::{Phase, Renderer, Report},
@@ -21,6 +22,7 @@ use std::{
 };
 
 pub(super) const MAX: usize = 128;
+const DEFAULT_CHUNK_FRAMES: u32 = 32;
 static NEXT_GENERATION: AtomicU64 = AtomicU64::new(1);
 pub(super) struct Block {
     pub generation: u64,
@@ -143,6 +145,15 @@ pub fn prepare(
         .and_then(|v| u32::try_from(v).ok())
         .ok_or_else(|| anyhow::anyhow!("RTL bridge capacity overflow"))?;
     let (control, execution) = shoop_rt_host_reference::prepare_control(quantum, driver, latency)?;
+    let limits = ProgramLimits {
+        quantum,
+        ..program_limits()
+    };
+    let chunk_frames = if quantum % DEFAULT_CHUNK_FRAMES == 0 {
+        DEFAULT_CHUNK_FRAMES
+    } else {
+        1
+    };
     let (
         images,
         ImageOwner {
@@ -150,7 +161,7 @@ pub fn prepare(
             ready,
             retired,
         },
-    ) = image_channel(program_limits());
+    ) = image_channel(limits, chunk_frames);
     let (requests, request_rx) = rtrb::RingBuffer::new(capacity);
     let (results_tx, results) = rtrb::RingBuffer::new(capacity);
     let status = Arc::new(Status::new(driver));
@@ -166,8 +177,17 @@ pub fn prepare(
         .spawn(move || {
             guarded(&worker, || {
                 super::owner::run(
-                    quantum, memory_mb, &worker, execution, uploads, ready, retired, request_rx,
-                    results_tx, start_tx,
+                    limits,
+                    chunk_frames,
+                    memory_mb,
+                    &worker,
+                    execution,
+                    uploads,
+                    ready,
+                    retired,
+                    request_rx,
+                    results_tx,
+                    start_tx,
                 )
             });
         })?;

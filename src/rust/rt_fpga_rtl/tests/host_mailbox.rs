@@ -435,7 +435,9 @@ fn run_compiled_programs_and_switch_at_the_same_boundary_through_axi() {
 #[cfg(feature = "rt-interface")]
 #[shoop_test(no_wasm = "Uses Marlin and the actual FPGA AXI bridge")]
 fn recorded_take_survives_a_graph_switch_over_the_hardware_mailbox() {
-    use rt_fpga_compiler::{CompileContext, Identity, ProgramLimits, compile, loading::Allocator};
+    use rt_fpga_compiler::{
+        CompileContext, Identity, ProgramLimits, compile_with_chunk_frames, loading::Allocator,
+    };
     use rt_fpga_rtl::{
         host::{
             Upload, UploadStep,
@@ -484,7 +486,7 @@ fn recorded_take_survives_a_graph_switch_over_the_hardware_mailbox() {
         let expected_frame = if next_mode == TransitionMode::Recording {
             0
         } else {
-            48
+            3 * u64::from(layout.compiled.quantum)
         };
         assert_eq!(window.frame(), expected_frame);
         assert_eq!(
@@ -511,9 +513,9 @@ fn recorded_take_survives_a_graph_switch_over_the_hardware_mailbox() {
         history_slots: 16,
         input_ports: 1,
         output_ports: 2,
-        quantum: 16,
+        quantum: 32,
     };
-    let geometry = Geometry::new([limits.state_values.into(), 256, 1], 4);
+    let geometry = Geometry::new([limits.state_values.into(), 256, 32], 32);
     let compiled = build_pipeline(&geometry, limits);
     let mut sim = Sim::new(compiled.session(None).unwrap(), &[("clk", 10_000, 0)]);
     sim.model.set_all(&[("reset", 1), ("epoch", 1)]);
@@ -550,7 +552,7 @@ fn recorded_take_survives_a_graph_switch_over_the_hardware_mailbox() {
         quantum: limits.quantum,
         limits,
     };
-    let first = compile(&mono::session(&[looping]), context).unwrap();
+    let first = compile_with_chunk_frames(&mono::session(&[looping]), context, 32).unwrap();
     let mut allocator = Allocator::new(limits);
     let layout = allocator.stage(&first).unwrap();
     let media = layout.media_views(&first);
@@ -602,7 +604,7 @@ fn recorded_take_survives_a_graph_switch_over_the_hardware_mailbox() {
         input: false,
         ..looping
     };
-    let next = compile(&mono::session(&[looping, silent]), context).unwrap();
+    let next = compile_with_chunk_frames(&mono::session(&[looping, silent]), context, 32).unwrap();
     let layout = allocator.stage(&next).unwrap();
     assert_eq!(
         layout.loop_id(identity).unwrap(),

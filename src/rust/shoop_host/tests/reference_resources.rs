@@ -16,7 +16,7 @@ use shoop_rt_transport::{
 };
 use shoop_wasm_test_support::shoop_test;
 use std::time::{Duration, Instant};
-const Q: usize = 16;
+const Q: usize = 32;
 fn driver() -> DriverStatus {
     DriverStatus {
         kind: DriverKind::Dummy,

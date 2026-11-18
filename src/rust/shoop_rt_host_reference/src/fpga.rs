@@ -10,6 +10,7 @@ use shoop_rt_protocol::immediate::SwitchProgram;
 
 pub struct Images {
     limits: ProgramLimits,
+    chunk_frames: u32,
     uploads: rtrb::Producer<Upload>,
     ready: rtrb::Consumer<(u64, bool)>,
     retired: rtrb::Consumer<ProgramImage>,
@@ -21,13 +22,14 @@ pub struct ImageOwner {
     pub retired: rtrb::Producer<ProgramImage>,
 }
 
-pub fn image_channel(limits: ProgramLimits) -> (Images, ImageOwner) {
+pub fn image_channel(limits: ProgramLimits, chunk_frames: u32) -> (Images, ImageOwner) {
     let (uploads, upload_rx) = rtrb::RingBuffer::new(2);
     let (ready_tx, ready) = rtrb::RingBuffer::new(2);
     let (retire_tx, retired) = rtrb::RingBuffer::new(2);
     (
         Images {
             limits,
+            chunk_frames,
             uploads,
             ready,
             retired,
@@ -43,6 +45,10 @@ pub fn image_channel(limits: ProgramLimits) -> (Images, ImageOwner) {
 impl ProgramLoader for Images {
     fn limits(&self) -> ProgramLimits {
         self.limits
+    }
+
+    fn chunk_frames(&self) -> u32 {
+        self.chunk_frames
     }
 
     fn stage_program(
