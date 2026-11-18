@@ -37,10 +37,11 @@ foreach ip {processing_system7:5.5 proc_sys_reset:5.0 xlconstant:1.1 axi_interco
 }
 set host [file join $root fpga host_bridge rtl]
 add_files [file join $host host_registers.sv]
+add_files [lsort [glob [file join $root fpga state_processor rtl *.svh]]]
 foreach directory {state_processor job_processor chunk_memory media_store axi_memory} {
     add_files [lsort [glob [file join $root fpga $directory rtl *.sv]]]
 }
-foreach source {host_mailbox.sv host_dispatch.sv host_pipeline_axi.sv} {
+foreach source {host_mailbox.sv host_dispatch.sv host_pipeline_axi.sv host_pipeline_bd.v} {
     add_files [file join $host $source]
 }
 set_property include_dirs [list [file join $root fpga state_processor rtl]] [current_fileset]
@@ -49,17 +50,21 @@ update_compile_order -fileset sources_1
 create_bd_design system
 set ps [create_bd_cell -type ip -vlnv xilinx.com:ip:processing_system7:5.5 ps]
 set_property -dict $preset $ps
+set ddr_high [get_property CONFIG.PCW_DDR_RAM_HIGHADDR $ps]
+if {$arena_base + $arena_bytes - 1 > $ddr_high} {
+    error "The PS DDR window ending at $ddr_high excludes the PL arena"
+}
 set_property -dict [list CONFIG.PCW_USE_M_AXI_GP0 1 CONFIG.PCW_USE_S_AXI_HP0 1 \
     CONFIG.PCW_S_AXI_HP0_DATA_WIDTH 64 CONFIG.PCW_EN_CLK0_PORT 1 CONFIG.PCW_EN_RST0_PORT 1 \
     CONFIG.PCW_FPGA0_PERIPHERAL_FREQMHZ [expr {$clock_hz/1000000.0}] CONFIG.PCW_USE_FABRIC_INTERRUPT 1 \
     CONFIG.PCW_IRQ_F2P_INTR 1] $ps
 make_bd_intf_pins_external [get_bd_intf_pins ps/DDR] [get_bd_intf_pins ps/FIXED_IO]
 
-set core [create_bd_cell -type module -reference host_pipeline_axi core]
+set core [create_bd_cell -type module -reference host_pipeline_bd core]
 set_property -dict [list CONFIG.ARENA_BASE [expr {$arena_base}] \
     CONFIG.ARENA_BYTES [expr {$arena_bytes}] CONFIG.CORE_CLOCK_HZ [expr {$clock_hz}]] $core
 create_bd_cell -type ip -vlnv xilinx.com:ip:proc_sys_reset:5.0 reset
-set_property -dict [list CONFIG.C_EXT_RESET_HIGH 0 CONFIG.C_AUX_RESET_HIGH 1] [get_bd_cells reset]
+set_property CONFIG.C_AUX_RESET_HIGH 1 [get_bd_cells reset]
 create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect:2.1 gp0
 set_property CONFIG.NUM_MI 1 [get_bd_cells gp0]
 foreach {name width value} {zero 1 0 one 1 1 sample_zero 32 0 boot_epoch 32 1} {
@@ -90,6 +95,9 @@ assign_bd_address -offset $register_base -range 4K -target_address_space [get_bd
     [get_bd_addr_segs core/s_axi/reg0]
 assign_bd_address
 validate_bd_design
+if {[get_property CONFIG.C_EXT_RESET_HIGH [get_bd_cells reset]] != 0} {
+    error "The PS clock reset must propagate as active low"
+}
 save_bd_design
 
 set bd [get_files */system.bd]
