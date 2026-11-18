@@ -104,10 +104,35 @@ Build the app with `fpga-reference`, and pass `--features fpga-reference` to
 startup accepts the same backend setting/argument. Marlin produces a clear
 unsupported-backend error in a browser.
 
-The FPGA application subset remains Sync plus one mono audio track, up to 16
-loops, loop gain, immediate/future mode transitions and live graph replacement.
-This work adds neither arbitrary routing nor FPGA MIDI/FX processing. Unsupported
-operations continue to be refused or ignored through the normal interface.
+FPGA graph admission uses the compiled program's resource requirements rather
+than a fixed number of tracks or loops. Control-side mono track and loop identities
+grow with the draft. The compiler checks the target's instruction, state, loop,
+job, audio-buffer, history and port capacities; the ARM loader then allocates
+physical slots while keeping the active graph's state and media views pinned.
+Retained loops reuse their allocations. A graph that fits by itself can therefore
+be refused if there is insufficient space to stage it beside the active graph.
+Refusals identify the exhausted resource, preserve the active program and roll
+back the application's draft. Recording duration remains limited by the separate
+media memory pool, since future recorded audio is not known at compilation.
+
+Graph descriptions travel in bounded command groups: BeginGraph, ConfigureLoop
+records across as many groups as needed, then ActivateGraph. Intermediate replies
+acknowledge upload progress; the final activation reply confirms the ownership
+fence. A new BeginGraph replaces an incomplete upload. Upload assembly is bounded
+by the physical loop pool, and model loading remains outside rendering.
+
+The current target has 128 instructions, 64 state values, 32 loop/media slots,
+128 queued jobs and 64 audio buffers. With the current lowering, 20 loops routed
+to stereo Master fit; 21 require 65 buffers and are refused. With all loop outputs
+disconnected, 31 loops exactly fill instructions, jobs and buffers. These counts
+follow from program contents and target dimensions; they are not application
+profile limits. Live replacement can reach a state-slot limit sooner.
+
+The application subset still uses mono loops, fixed stereo Master routing, loop
+gain, immediate/future mode transitions and live graph replacement. Arbitrary
+routing, multichannel loops and FPGA MIDI/FX processing remain unsupported.
+Unsupported operations continue to be refused or ignored through the normal
+interface. Native backend prepared-pool limits are unchanged.
 
 ## Verification
 

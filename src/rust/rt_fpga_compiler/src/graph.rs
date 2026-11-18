@@ -16,10 +16,33 @@ pub struct GraphDescription {
 }
 impl GraphDescription {
     pub fn compile(&self) -> Result<LogicalStateProgram, CompileError> {
-        if self.loops.is_empty() || self.loops.len() > 16 {
+        self.compile_with_limits(ProgramLimits::default())
+    }
+    pub fn compile_with_limits(
+        &self,
+        limits: ProgramLimits,
+    ) -> Result<LogicalStateProgram, CompileError> {
+        if self.loops.is_empty() {
             return Err(CompileError::InvalidProgram);
         }
-        let n = self.loops.len() as u32;
+        let n =
+            u32::try_from(self.loops.len()).map_err(|_| CompileError::Capacity(Resource::Loops))?;
+        // These are the minimum instructions for any routing of these loops.
+        if u64::from(n) * 4 + 4 > u64::from(limits.instructions) {
+            return Err(CompileError::Capacity(Resource::Instructions));
+        }
+        let outputs = self.loops.iter().filter(|l| l.output).count() as u32;
+        let jobs = n
+            .checked_mul(4)
+            .and_then(|v| v.checked_add(outputs))
+            .and_then(|v| v.checked_add(4))
+            .ok_or(CompileError::Capacity(Resource::Jobs))?;
+        let buffers = n
+            .checked_mul(2)
+            .and_then(|v| v.checked_add(outputs))
+            .and_then(|v| v.checked_add(2))
+            .ok_or(CompileError::Capacity(Resource::Buffers))?;
+        let mut mixes = 0;
         let mut sum = 1;
         let mut loops = Vec::new();
         let mut bindings = Vec::new();
@@ -78,7 +101,8 @@ impl GraphDescription {
                 },
             ]);
             if l.output {
-                let destination = 2 + 2 * n + i as u32;
+                let destination = 2 + 2 * n + mixes;
+                mixes += 1;
                 audio_pass.push(Operation::Mix {
                     left: sum,
                     right: meter,
@@ -127,17 +151,17 @@ impl GraphDescription {
             initial_state,
             loops,
             bindings,
-            jobs_per_quantum: 5 + 5 * n,
+            jobs_per_quantum: jobs,
             resources: Resources {
-                queue_capacity: 5 + 5 * n,
-                buffers: 2 + 3 * n,
-                history_slots: 2 + 3 * n,
+                queue_capacity: jobs,
+                buffers,
+                history_slots: 0,
                 input_ports: 1,
                 output_ports: 2,
                 events: 4 * n,
             },
         };
-        program.validate(ProgramLimits::default())?;
+        program.validate_logical(limits)?;
         Ok(program)
     }
 }

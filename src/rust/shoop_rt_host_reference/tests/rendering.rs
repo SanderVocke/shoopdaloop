@@ -166,4 +166,28 @@ fn actual_input_records_and_plays_through_quantum_adapter_without_callback_alloc
         while client.poll().is_some() {}
     }
     assert_eq!(step(&mut renderer, 0.), [0.125; Q]);
+    let mut too_large = vec![Command::BeginGraph {
+        quantum: Q as u32,
+        loops: 21,
+    }];
+    too_large.extend((0..21).map(|slot| {
+        Command::ConfigureLoop(GraphLoop {
+            slot,
+            generation: 1,
+            source: None,
+            input: Some(0),
+            output: true,
+            gain: 1.,
+            repeat_sync: false,
+        })
+    }));
+    too_large.push(Command::ActivateGraph);
+    client
+        .immediate(Batch::new(1, 1, &too_large).unwrap())
+        .unwrap();
+    assert_eq!(
+        response(&mut client, &mut renderer).header.code(),
+        Code::BufferCapacity
+    );
+    assert_eq!(step(&mut renderer, 0.), [0.125; Q]);
 }

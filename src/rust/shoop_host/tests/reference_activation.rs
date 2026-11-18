@@ -151,7 +151,11 @@ impl Fixture {
                 audio_channels: 1,
                 midi: false,
             },
-            initial_output_bus_names: vec![bus.into()],
+            initial_output_bus_names: if bus.is_empty() {
+                vec![]
+            } else {
+                vec![bus.into()]
+            },
             latency: Default::default(),
             creation_request_id: None,
         }))
@@ -265,4 +269,105 @@ fn unsupported_partial_routing_restores_connections_and_does_not_poison_later_ed
         f.client.results()[&added],
         Outcome::LoopCreated { .. }
     ));
+}
+
+#[shoop_test]
+fn multiple_mono_tracks_are_admitted_by_program_resources_and_refusal_rolls_back() {
+    let mut f = Fixture::new();
+    let mut accepted = 0;
+    let mut refused = None;
+    for _ in 0..32 {
+        let operation = f.add_track("Master");
+        f.until(|f| f.client.results().contains_key(&operation));
+        if matches!(f.client.results()[&operation], Outcome::Refused { .. }) {
+            refused = Some(format!("{:?}", f.client.results()[&operation]));
+            break;
+        }
+        accepted += 1;
+    }
+    assert!(
+        accepted >= 2,
+        "the old one-track profile must not constrain drafts: {accepted} accepted, refusal: {refused:?}"
+    );
+    assert!(refused.unwrap().contains("audio buffers"));
+    assert_eq!(f.service.snapshot().tracks.len(), accepted + 1);
+    assert!(
+        f.service
+            .snapshot()
+            .tracks
+            .iter()
+            .map(|t| t.loops.len())
+            .sum::<usize>()
+            > 16
+    );
+    // A non-structural operation still works after the hardware admission refusal.
+    let track = &f.service.snapshot().tracks[1];
+    let renamed = f.submit(Command::Loop {
+        track: track.id,
+        loop_id: track.loops[0].id,
+        action: LoopAction::NameChanged("Still alive".into()),
+    });
+    f.until(|f| f.client.results().contains_key(&renamed));
+    assert_eq!(f.service.snapshot().tracks[1].loops[0].name, "Still alive");
+}
+
+#[shoop_test]
+fn application_streams_large_graphs_and_retries_a_busy_activation_tail() {
+    let mut f = Fixture::new();
+    for _ in 0..3 {
+        let added = f.add_track("");
+        f.until(|f| f.client.results().contains_key(&added));
+        assert!(matches!(
+            f.client.results()[&added],
+            Outcome::TrackCreated { .. }
+        ));
+    }
+    while f
+        .service
+        .snapshot()
+        .tracks
+        .iter()
+        .map(|t| t.loops.len())
+        .sum::<usize>()
+        < 31
+    {
+        let before = f.service.snapshot();
+        let loops = before.tracks.iter().map(|t| t.loops.len()).sum::<usize>();
+        if loops == 30 {
+            f.gate.sent.lock().unwrap().clear();
+            f.gate.refuse.store(true, Ordering::Relaxed);
+        }
+        let added = f.submit(Command::AddLoop {
+            track: before.tracks[1].id,
+        });
+        f.until(|f| f.client.results().contains_key(&added));
+        assert!(matches!(
+            f.client.results()[&added],
+            Outcome::LoopCreated { .. }
+        ));
+    }
+    let batches = f.gate.sent.lock().unwrap();
+    assert_eq!(batches.len(), 2);
+    assert_eq!(batches[0].commands().len(), 32);
+    assert!(!activation(&batches[0]));
+    assert_eq!(
+        batches[1].commands(),
+        &[shoop_rt_protocol::immediate::Command::ActivateGraph]
+    );
+    drop(batches);
+    let state = f.service.snapshot();
+    let refused = f.submit(Command::AddLoop {
+        track: state.tracks[1].id,
+    });
+    f.until(|f| f.client.results().contains_key(&refused));
+    assert!(format!("{:?}", f.client.results()[&refused]).contains("state program instructions"));
+    assert_eq!(
+        f.service
+            .snapshot()
+            .tracks
+            .iter()
+            .map(|t| t.loops.len())
+            .sum::<usize>(),
+        31
+    );
 }

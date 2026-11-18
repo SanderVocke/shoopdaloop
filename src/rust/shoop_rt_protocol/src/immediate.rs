@@ -3,7 +3,6 @@ pub const COMMANDS: usize = 32;
 pub const FIFO_RECORDS: usize = 256;
 pub const FIFO_SINGLETONS: usize = FIFO_RECORDS / 2;
 pub const STAGED_BATCHES: usize = 4;
-pub const PREPARED_GRAPH_LOOPS: u32 = 16;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SwitchProgram {
@@ -102,7 +101,8 @@ pub struct GrabGesture {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Command {
-    /// Initial graph setup is one complete group, with epoch zero and no deadline.
+    /// Begin an upload at the current revision, without a deadline. ConfigureLoop
+    /// records may span groups; ActivateGraph completes the upload and waits for the fence.
     BeginGraph {
         quantum: u32,
         loops: u32,
@@ -175,6 +175,15 @@ pub enum Code {
     CaptureUnavailable = 8,
     HistoryUnavailable = 9,
     Scheduled = 10,
+    InstructionCapacity = 11,
+    StateCapacity = 12,
+    LoopCapacity = 13,
+    JobCapacity = 14,
+    BufferCapacity = 15,
+    HistoryCapacity = 16,
+    InputCapacity = 17,
+    OutputCapacity = 18,
+    QuantumCapacity = 19,
 }
 impl Code {
     pub fn from_raw(value: u32) -> Option<Self> {
@@ -190,6 +199,29 @@ impl Code {
             8 => Self::CaptureUnavailable,
             9 => Self::HistoryUnavailable,
             10 => Self::Scheduled,
+            11 => Self::InstructionCapacity,
+            12 => Self::StateCapacity,
+            13 => Self::LoopCapacity,
+            14 => Self::JobCapacity,
+            15 => Self::BufferCapacity,
+            16 => Self::HistoryCapacity,
+            17 => Self::InputCapacity,
+            18 => Self::OutputCapacity,
+            19 => Self::QuantumCapacity,
+            _ => return None,
+        })
+    }
+    pub fn capacity_resource(self) -> Option<&'static str> {
+        Some(match self {
+            Self::InstructionCapacity => "state program instructions",
+            Self::StateCapacity => "persistent state values",
+            Self::LoopCapacity => "loop and media-view slots",
+            Self::JobCapacity => "queued jobs",
+            Self::BufferCapacity => "audio buffers",
+            Self::HistoryCapacity => "smoothing history slots",
+            Self::InputCapacity => "audio input ports",
+            Self::OutputCapacity => "audio output ports",
+            Self::QuantumCapacity => "quantum frames",
             _ => return None,
         })
     }
@@ -202,6 +234,15 @@ impl Code {
             Self::InvalidValue => Some(5),
             Self::DeadlineMissed => Some(6),
             Self::CaptureUnavailable | Self::HistoryUnavailable => Some(1),
+            Self::InstructionCapacity
+            | Self::StateCapacity
+            | Self::LoopCapacity
+            | Self::JobCapacity
+            | Self::BufferCapacity
+            | Self::HistoryCapacity
+            | Self::InputCapacity
+            | Self::OutputCapacity
+            | Self::QuantumCapacity => Some(4),
         }
     }
 }
@@ -512,13 +553,10 @@ impl Command {
                     && s.jobs != 0
             }
             Self::BeginGraph { quantum, loops } => {
-                matches!(quantum, 1 | 16 | 32 | 64 | 128)
-                    && (1..=PREPARED_GRAPH_LOOPS).contains(&loops)
+                matches!(quantum, 1 | 16 | 32 | 64 | 128) && loops != 0
             }
             Self::ConfigureLoop(l) => {
-                l.slot < PREPARED_GRAPH_LOOPS
-                    && l.generation != 0
-                    && l.source.is_none_or(|s| s < PREPARED_GRAPH_LOOPS)
+                l.generation != 0
                     && l.input.is_none_or(|i| i == 0)
                     && l.gain.is_finite()
                     && (0.0..=1.0).contains(&l.gain)

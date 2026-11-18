@@ -201,7 +201,7 @@ impl Allocator {
         if self.pending.is_some() {
             return Err(LoadError::Busy);
         }
-        program.validate(self.limits)?;
+        program.validate_logical(self.limits)?;
         if self
             .current
             .as_ref()

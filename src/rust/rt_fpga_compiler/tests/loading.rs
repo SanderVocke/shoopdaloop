@@ -147,3 +147,48 @@ fn changing_sync_operands_keeps_addresses_and_requires_explicit_plan_clear() {
     let bound = b.relocate(&next).unwrap();
     assert_eq!(bound.loops[1].sync_source, Some(bound.loops[0].id));
 }
+
+#[shoop_test]
+fn logical_ids_do_not_consume_physical_slots_and_failed_staging_keeps_ownership() {
+    for (resource, pool) in [
+        (
+            Resource::Loops,
+            ProgramLimits {
+                loop_slots: 3,
+                state_values: 8,
+                ..limits()
+            },
+        ),
+        (
+            Resource::State,
+            ProgramLimits {
+                loop_slots: 4,
+                state_values: 6,
+                ..limits()
+            },
+        ),
+    ] {
+        let mut allocator = Allocator::new(pool);
+        let first = graph(&[1000, 2000]);
+        first.validate_logical(pool).unwrap();
+        let a = allocator.stage(&first).unwrap();
+        allocator.publish(a.revision).unwrap();
+        allocator.complete(a.revision).unwrap();
+        let replacement = graph(&[3000, 4000]);
+        replacement.validate_logical(pool).unwrap();
+        assert_eq!(
+            allocator.stage(&replacement).unwrap_err(),
+            LoadError::Compile(CompileError::Capacity(resource))
+        );
+        assert!(allocator.pending().is_none());
+        assert_eq!(allocator.current().unwrap().revision, a.revision);
+        let retained = allocator.stage(&first).unwrap();
+        assert_eq!(retained.new_values().count(), 0);
+        assert_eq!(retained.new_loops().count(), 0);
+        allocator.cancel(retained.revision).unwrap();
+        let smaller = allocator.stage(&graph(&[3000])).unwrap();
+        allocator.publish(smaller.revision).unwrap();
+        allocator.complete(smaller.revision).unwrap();
+        allocator.stage(&replacement).unwrap();
+    }
+}

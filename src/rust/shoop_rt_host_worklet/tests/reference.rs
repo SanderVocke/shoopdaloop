@@ -231,3 +231,56 @@ fn bounded_loader_rejects_invalid_payload_and_marlin_selection() {
     config.backend = shoop_rt_host_worklet::config::Backend::RtlSim;
     assert!(WorkletHost::prepare(&config).is_err());
 }
+
+#[shoop_test]
+fn browser_uploads_large_graphs_in_bounded_groups_and_reports_resource_refusals() {
+    let mut b = Browser::new();
+    let mut commands = vec![Command::BeginGraph {
+        quantum: Q as u32,
+        loops: 31,
+    }];
+    commands.extend((100..131).map(|slot| {
+        Command::ConfigureLoop(GraphLoop {
+            slot,
+            generation: 1,
+            source: None,
+            input: Some(0),
+            output: false,
+            gain: 1.,
+            repeat_sync: false,
+        })
+    }));
+    commands.push(Command::ActivateGraph);
+    for chunk in commands.chunks(shoop_rt_protocol::immediate::COMMANDS) {
+        b.send(Batch::new(0, 0, chunk).unwrap());
+    }
+    commands.clear();
+    commands.push(Command::BeginGraph {
+        quantum: Q as u32,
+        loops: 21,
+    });
+    commands.extend((200..221).map(|slot| {
+        Command::ConfigureLoop(GraphLoop {
+            slot,
+            generation: 1,
+            source: None,
+            input: Some(0),
+            output: true,
+            gain: 1.,
+            repeat_sync: false,
+        })
+    }));
+    commands.push(Command::ActivateGraph);
+    b.client
+        .immediate(Batch::new(1, 1, &commands).unwrap())
+        .unwrap();
+    for _ in 0..100 {
+        if let Some(response) = b.step().first() {
+            assert_eq!(response.header.code(), Code::BufferCapacity);
+            // The refused replacement leaves the active graph addressable.
+            b.send(Batch::new(1, 1, &[Command::LoopGain(100, 0.5)]).unwrap());
+            return;
+        }
+    }
+    panic!("browser graph refusal did not finish");
+}

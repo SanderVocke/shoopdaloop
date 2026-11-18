@@ -103,7 +103,7 @@ jobs:
       - name: Check command transport and protocol
         run: cargo test --locked -p shoop_rt_protocol -p shoop_rt_transport --all-features
       - name: Exercise live loading through the application API
-        run: cargo test --locked -p shoop_host --no-default-features --features fpga-reference --test prepared_graph --test reference_activation
+        run: cargo test --locked -p shoop_host --no-default-features --features fpga-reference --test prepared_graph --test reference_activation --test reference_resources
       - name: Install UI build dependencies
         run: |
           sudo apt-get update
@@ -165,7 +165,7 @@ jobs:
         run: |
           cargo test --locked -p rt_fpga_rtl --features sim
           cargo test --locked -p shoop_rt_host_marlin --features sim
-          cargo test --locked -p shoop_host --no-default-features --features rtl-sim --test marlin_application --test marlin_drivers
+          cargo test --locked -p shoop_host --no-default-features --features rtl-sim --test marlin_application --test marlin_drivers --test reference_resources
       - name: Verify production CPU numeric checks
         run: |
           cargo test --locked -p rt_backend_testbench

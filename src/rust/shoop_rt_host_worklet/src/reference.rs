@@ -26,6 +26,9 @@ pub struct Images<P> {
     port: P,
 }
 impl<P: ImagePort> ProgramLoader for Images<P> {
+    fn limits(&self) -> rt_fpga_compiler::ProgramLimits {
+        shoop_rt_host_reference::program_limits()
+    }
     fn stage_program(
         &mut self,
         logical: &LogicalStateProgram,
@@ -37,7 +40,7 @@ impl<P: ImagePort> ProgramLoader for Images<P> {
             .map(|l| u64::from(l.physical.slot))
             .collect::<Vec<_>>();
         let mut target = RustTarget::new(&views);
-        target.limits = shoop_rt_host_reference::program_limits();
+        target.limits = self.limits();
         let image = target.build_image(logical, layout)?;
         let bytes = serde_json::to_vec(&image)?;
         ensure!(
