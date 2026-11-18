@@ -17,6 +17,7 @@ PINS = json.loads((DEPLOYMENT.parent / "pins.json").read_text())
 SOURCE = ROOT / "work/zynq/u-boot"
 BUILD = ROOT / "work/zynq/u-boot-build"
 PATCH = DEPLOYMENT.parent / "patches/uboot-network-deployment.patch"
+ZTURN_V2_PHY_PATCH = DEPLOYMENT.parent / "patches/uboot-zturn-v2-phy.patch"
 
 
 def run(arguments, **kwargs):
@@ -55,12 +56,17 @@ def main():
     if reference != expected_ps:
         raise SystemExit("Reference PS initialization differs from its recorded inputs")
     changes = subprocess.check_output(["git", "-C", SOURCE, "diff", "--name-only"], text=True).splitlines()
-    if set(changes) - {"cmd/Makefile", "net/fastboot_udp.c", "include/fastboot.h", "drivers/fastboot/fb_command.c", "drivers/net/zynq_gem.c"}:
+    allowed = {"cmd/Makefile", "net/fastboot_udp.c", "include/fastboot.h", "drivers/fastboot/fb_command.c", "drivers/net/zynq_gem.c"}
+    board_patch = ZTURN_V2_PHY_PATCH if board.name == "zturn-v2" else None
+    if board_patch:
+        allowed.add("arch/arm/dts/zynq-zturn.dts")
+    if set(changes) - allowed:
         raise SystemExit("Unrecorded U-Boot source changes")
-    applied = subprocess.run(["git", "-C", SOURCE, "apply", "--reverse", "--check", PATCH], capture_output=True)
-    if applied.returncode:
-        run(["git", "-C", SOURCE, "apply", "--check", PATCH])
-        run(["git", "-C", SOURCE, "apply", PATCH])
+    for patch in [PATCH] + ([board_patch] if board_patch else []):
+        applied = subprocess.run(["git", "-C", SOURCE, "apply", "--reverse", "--check", patch], capture_output=True)
+        if applied.returncode:
+            run(["git", "-C", SOURCE, "apply", "--check", patch])
+            run(["git", "-C", SOURCE, "apply", patch])
     copies = {"uboot.c": "cmd/shoop.c", "boot_state.c": "cmd/shoop_boot_state.c",
               "shoop_boot_state.h": "include/shoop_boot_state.h", "shoop_layout.h": "include/shoop_layout.h"}
     for source, target in copies.items():
@@ -74,6 +80,8 @@ def main():
     run([*make, "xilinx_zynq_virt_defconfig"], env=environment)
     config = [SOURCE / "scripts/config", "--file", BUILD / ".config"]
     enable = ["LMB", "NET_LEGACY", "UDP_FUNCTION_FASTBOOT", "FASTBOOT_OEM_BOARD", "USE_BOOTCOMMAND", "ENV_IS_NOWHERE", "ENV_OVERWRITE", "CMD_ELF"]
+    if board_patch:
+        enable.append("PHY_MOTORCOMM")
     disable = ["NET_LWIP", "EFI_LOADER", "TOOLS_MKEFICAPSULE", "FASTBOOT_FLASH", "FASTBOOT_OEM_RUN", "FASTBOOT_UUU_SUPPORT",
                "FASTBOOT_CMD_OEM_CONSOLE", "USB_FUNCTION_FASTBOOT", "ENV_IS_IN_FAT", "ENV_IS_IN_SPI_FLASH",
                "ENV_IS_IN_NAND", "ENV_IS_IN_MMC", "ENV_IS_IN_EXT4", "USE_PREBOOT"]
@@ -96,6 +104,8 @@ def main():
                 "source_sha256": {source: hashlib.sha256((DEPLOYMENT / source).read_bytes()).hexdigest() for source in copies},
                 "config_sha256": hashlib.sha256((BUILD / ".config").read_bytes()).hexdigest(),
                 "files": {name: hashlib.sha256((BUILD / name).read_bytes()).hexdigest() for name in ["u-boot.bin", "u-boot-nodtb.bin", "u-boot.dtb", "spl/boot.bin", "spl/u-boot-spl"]}}
+    if board_patch:
+        manifest["board_patch_sha256"] = hashlib.sha256(board_patch.read_bytes()).hexdigest()
     (BUILD / "shoop-build.json").write_text(json.dumps(manifest, indent=2) + "\n")
     print(BUILD)
 

@@ -43,7 +43,7 @@ def build():
     boards.argument(parser)
     args = parser.parse_args()
     board = boards.load(args.board)
-    policy = engine_policy.load(args.engine_config)
+    policy = engine_policy.load(args.engine_config, pool=board.firmware.get("engine_pool"))
     global BUILD
     BUILD = board.build_dir(ROOT)
     if args.usb and board.firmware["midi"] != "usb-optional":
@@ -101,6 +101,9 @@ def build():
     sources += [lwip / "src/netif/ethernet.c", port / "sys_arch.c", port / "sys_arch_raw.c"]
     sources += [port / "netif" / f for f in ("xadapter.c", "xpqueue.c", "xemacpsif.c", "xemacpsif_dma.c", "xemacpsif_hw.c", "xemacpsif_physpeed.c")]
     sources += [PLATFORM / "platform.c", PLATFORM / "profiling_identity.c", PLATFORM / (args.app + ".c")]
+    if board.bsp.get("phy") == "yt8531":
+        includes.append(PLATFORM / "boards")
+        sources.append(PLATFORM / "boards/yt8531.c")
     if args.usb:
         sources.append(PLATFORM / "boards" / (board.firmware["usb_reset"] + "_usb.c"))
         if args.fetch:
@@ -131,6 +134,8 @@ def build():
     for original, patch_name in [
         (drivers / "emacps/src/xemacps_intr.c", "emacps-read-clear.patch"),
         (kernel / "portable/GCC/ARM_CA9/portZynq7000.c", "freertos-fpu-irq.patch"),
+        *([(port / "netif/xemacpsif_physpeed.c", "lwip-yt8531.patch")]
+          if board.bsp.get("phy") == "yt8531" else []),
         *([(TINYUSB / "src/portable/ehci/ehci.c", "tinyusb-zynq-ehci.patch")] if args.usb else []),
         *([(TINYUSB / "src/class/midi/midi_host.c", "tinyusb-midi-error.patch")] if args.usb else []),
         *([(TINYUSB / "src/host/usbh.c", "tinyusb-enumeration-bounds.patch")] if args.usb else []),

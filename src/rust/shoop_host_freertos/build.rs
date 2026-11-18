@@ -18,8 +18,8 @@ fn main() {
             value.parse::<u32>().expect("engine setting must be a u32")
         })
     };
-    let tracks = setting("SHOOP_ENGINE_TRACKS", 16);
-    let loops = setting("SHOOP_ENGINE_LOOPS", 128);
+    let tracks = setting("SHOOP_ENGINE_TRACKS", 8);
+    let loops = setting("SHOOP_ENGINE_LOOPS", 64);
     assert!((1..=65535).contains(&tracks) && (1..=65535).contains(&loops));
     let seconds = setting("SHOOP_INPUT_HISTORY_SECONDS", 0);
     let audio_take_pages = setting("SHOOP_INPUT_HISTORY_AUDIO_TAKE_PAGES", 32768);

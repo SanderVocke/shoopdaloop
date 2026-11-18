@@ -235,6 +235,7 @@ dependencies = [
  "profiling_protocol",
  "rt_profiling",
  "serde",
+ "shoop_dsp_metrics",
  "shoop_latency",
  "shoop_port_graph",
  "shoop_processor_protocol",
@@ -275,6 +276,21 @@ dependencies = [
 
 [[package]]
 name = "shoop_deployment_protocol"
+version = "0.3.0"
+dependencies = [
+ "bincode",
+ "serde",
+]
+
+[[package]]
+name = "shoop_dsp_metrics"
+version = "0.3.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "shoop_graph"
 version = "0.3.0"
 dependencies = [
  "bincode",
@@ -343,6 +359,7 @@ dependencies = [
  "rt_profiling",
  "shoop_app_api",
  "shoop_backend",
+ "shoop_graph",
  "shoop_loop_plan",
  "shoop_processor_protocol",
  "shoop_rt_protocol",
@@ -371,6 +388,8 @@ version = "0.3.0"
 dependencies = [
  "profiling_protocol",
  "serde",
+ "shoop_dsp_metrics",
+ "shoop_graph",
  "shoop_processor_protocol",
  "shoop_transport",
 ]
@@ -379,6 +398,7 @@ dependencies = [
 name = "shoop_rt_transport"
 version = "0.3.0"
 dependencies = [
+ "rt_runtime",
  "shoop_rt_protocol",
  "shoop_transport",
 ]
