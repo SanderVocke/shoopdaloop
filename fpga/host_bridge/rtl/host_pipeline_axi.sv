@@ -24,6 +24,7 @@ module host_pipeline_axi #(
     parameter [31:0] ARENA_BASE = 32'h30000000,
     parameter [31:0] ARENA_BYTES = 32'h08000000,
     parameter [31:0] CORE_CLOCK_HZ = 100_000_000,
+    parameter integer CONTROL_CYCLES = CORE_CLOCK_HZ / 6000,
     parameter integer QUANTUM = 32, parameter integer WATCHDOG_CYCLES = 20_000_000
 ) (
     (* X_INTERFACE_INFO = "xilinx.com:signal:clock:1.0 clk CLK", X_INTERFACE_PARAMETER = "ASSOCIATED_BUSIF s_axi:m_axi, ASSOCIATED_RESET reset" *)
@@ -157,6 +158,7 @@ module host_pipeline_axi #(
     wire sync_event_valid;
     wire sync_event_ready;
     wire [255:0] sync_event_data;
+    wire [63:0] active_revision;
     wire event_overflow;
     wire [31:0] reclaim_pending;
     wire [31:0] reclaim_high_water;
@@ -186,7 +188,6 @@ module host_pipeline_axi #(
     wire switch_response_ready;
     wire switch_response_error;
     wire [63:0] switch_first_frame;
-    wire [63:0] active_revision;
     wire [63:0] sync_frame;
     wire run_valid;
     wire run_ready;
@@ -257,7 +258,8 @@ module host_pipeline_axi #(
     end
     host_mailbox #(.CORE_CLOCK_HZ(CORE_CLOCK_HZ), .ARENA_BASE(ARENA_BASE), .ARENA_BYTES(ARENA_BYTES)) mmio (.*);
     host_dispatch #(.QUANTUM(QUANTUM), .CHUNK_FRAMES(CHUNK_FRAMES), .INPUT_PORTS(INPUT_PORTS),
-        .OUTPUT_PORTS(OUTPUT_PORTS), .STATE_DEPTH(STATE_DEPTH), .WATCHDOG_CYCLES(WATCHDOG_CYCLES)) dispatcher (.*);
+        .OUTPUT_PORTS(OUTPUT_PORTS), .STATE_DEPTH(STATE_DEPTH), .CONTROL_CYCLES(CONTROL_CYCLES),
+        .WATCHDOG_CYCLES(WATCHDOG_CYCLES)) dispatcher (.*);
     media_audio_pipeline_axi #(
         .EXTERNAL_IO(EXTERNAL_IO),
         .LIVE_LOADING(LIVE_LOADING),

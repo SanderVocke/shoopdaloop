@@ -6,6 +6,7 @@ module host_dispatch #(
     parameter integer INPUT_PORTS = 1,
     parameter integer OUTPUT_PORTS = 2,
     parameter integer STATE_DEPTH = 16,
+    parameter integer CONTROL_CYCLES = 16666,
     parameter integer WATCHDOG_CYCLES = 20_000_000
 ) (
     input wire clk,
@@ -101,6 +102,8 @@ module host_dispatch #(
     reg [31:0] cycles;
     reg paced;
     reg audio_started;
+    reg control_held;
+    reg [31:0] control_cycles;
     localparam integer SNAPSHOT_WORDS = STATE_DEPTH*16;
     localparam integer SNAPSHOT_INDEX = $clog2(2*SNAPSHOT_WORDS);
     (* ram_style = "block" *) reg [63:0] snapshot_memory [0:2*SNAPSHOT_WORDS-1];
@@ -120,8 +123,9 @@ module host_dispatch #(
     wire executing = phase != IDLE && phase != RESPOND;
     wire unused_argument_bits = &{1'b0,args[319:304],args[287:272],args[255:240]};
 
-    wire device_fault = memory_fault || audio_fault || event_overflow;
-    assign command_ready = phase == IDLE && !fault && !device_fault && !(audio_enable && quantum_valid);
+    wire control_expired = control_held && control_cycles >= CONTROL_CYCLES-1;
+    wire device_fault = memory_fault || audio_fault || event_overflow || control_expired;
+    assign command_ready = phase == IDLE && !fault && !device_fault && !(audio_enable && quantum_valid && !control_held);
     assign quantum_ready = phase == RUN_REQUEST && paced && run_ready && !device_fault;
     assign response_valid = phase == RESPOND;
     assign cfg_valid = phase == CFG_REQUEST || phase == SNAPSHOT_REQUEST;
@@ -159,6 +163,7 @@ module host_dispatch #(
     assign run_outputs = OUTPUT_PORTS;
 
     initial if (STATE_DEPTH < 1 || STATE_DEPTH > 4096) $fatal(1,"invalid snapshot loop capacity");
+    initial if (CONTROL_CYCLES < 1) $fatal(1,"invalid control window");
 
     always @(posedge clk) begin
         if (phase == SNAPSHOT_WAIT && cfg_response_valid && !cfg_response_error)
@@ -172,6 +177,8 @@ module host_dispatch #(
             fault <= 0;
             audio_enable <= 0;
             audio_started <= 0;
+            control_held <= 0;
+            control_cycles <= 0;
             phase <= IDLE;
             args <= 0;
             cycles <= 0;
@@ -194,13 +201,17 @@ module host_dispatch #(
             quantum_done <= 0;
             fault <= 1;
             audio_enable <= 0;
+            control_held <= 0;
             response_code <= RESULT_FAULT;
             phase <= paced ? IDLE : RESPOND;
         end else begin
             quantum_done <= 0;
+            if (control_held)
+                control_cycles <= control_cycles+1;
             if (device_fault) begin
                 fault <= 1;
                 audio_enable <= 0;
+                control_held <= 0;
             end
             if (executing)
                 cycles <= cycles+1;
@@ -222,7 +233,7 @@ module host_dispatch #(
                         OP_CLEAR_VIEW: if (request[319:64] == 0) phase <= CLEAR_REQUEST;
                         OP_SWITCH_PROGRAM: if (!bad_switch_width) phase <= SWITCH_REQUEST;
                         OP_RUN_QUANTUM: if (request[319:0] == 0) begin
-                            if (audio_started) response_code <= RESULT_REJECTED;
+                            if (audio_started || control_held) response_code <= RESULT_REJECTED;
                             else phase <= RUN_REQUEST;
                         end
                         OP_CAPTURE_SNAPSHOT: if (request[319:32] == 0 && request_control <= STATE_DEPTH &&
@@ -252,9 +263,23 @@ module host_dispatch #(
                                 response_code <= RESULT_OK;
                             end else response_code <= RESULT_REJECTED;
                         end
+                        OP_BEGIN_CONTROL: if (request[319:64] == 0) begin
+                            if (!control_held && request[63:0] == active_revision) begin
+                                control_held <= 1;
+                                control_cycles <= 0;
+                                response_code <= RESULT_OK;
+                                response_data[127:0] <= {active_revision,sync_frame};
+                            end else response_code <= RESULT_REJECTED;
+                        end
+                        OP_END_CONTROL: if (request[319:0] == 0) begin
+                            if (control_held) begin
+                                control_held <= 0;
+                                response_code <= RESULT_OK;
+                            end else response_code <= RESULT_REJECTED;
+                        end
                         default: phase <= RESPOND;
                     endcase
-                end else if (quantum_valid && !fault && !device_fault) begin
+                end else if (quantum_valid && !control_held && !fault && !device_fault) begin
                     paced <= 1;
                     cycles <= 0;
                     phase <= RUN_REQUEST;

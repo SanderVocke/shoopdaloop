@@ -1,7 +1,9 @@
 //! Translate RT controls and observations to the packed loop state.
-use crate::target::ProgramImage;
+mod window;
+use crate::{bits::Bits, target::ProgramImage};
 use rt_fpga_compiler::Identity;
 use rt_fpga_reference::{
+    fixed::Fixed,
     state::{ModePlan, ModeStep, apply_mode_command},
     transitions::{LoopId, LoopState, Mode, Operation, TransitionError},
 };
@@ -11,6 +13,7 @@ use shoop_rt_protocol::{
         ClearPlanned, Code, PlannedTransition, SwitchProgram, TransitionMode, TransitionPlan,
     },
 };
+pub use window::ControlWindow;
 
 pub fn descriptor(image: &ProgramImage) -> SwitchProgram {
     let program = &image.compiled;
@@ -23,6 +26,13 @@ pub fn descriptor(image: &ProgramImage) -> SwitchProgram {
         jobs: program.jobs_per_quantum as u16,
         buffers: program.resources.buffers as u16,
     }
+}
+
+pub fn gain_value(gain: f32) -> Bits {
+    let fixed = Fixed::from_f32(gain).0 as u32 as u64;
+    let mut bits = Bits::zero(129);
+    bits.set(128, 1, 1).set(0, 32, fixed).set(32, 32, fixed);
+    bits
 }
 
 pub fn reference_mode(mode: TransitionMode) -> Mode {

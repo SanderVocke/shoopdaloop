@@ -167,7 +167,7 @@ jobs:
           cargo check --locked -p rt_fpga_testbench
       - name: Check serialized Marlin application and bridge
         run: |
-          cargo test --locked -p rt_fpga_rtl --features sim
+          cargo test --locked -p rt_fpga_rtl --features sim,rt-interface
           cargo test --locked -p shoop_rt_host_marlin --features sim
           cargo test --locked -p shoop_host --no-default-features --features rtl-sim --test marlin_application --test marlin_drivers --test reference_resources
       - name: Verify production CPU numeric checks

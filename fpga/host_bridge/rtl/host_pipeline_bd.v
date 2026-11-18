@@ -22,6 +22,7 @@ module host_pipeline_bd #(
     parameter [31:0] ARENA_BASE = 32'h30000000,
     parameter [31:0] ARENA_BYTES = 32'h08000000,
     parameter [31:0] CORE_CLOCK_HZ = 100_000_000,
+    parameter integer CONTROL_CYCLES = CORE_CLOCK_HZ / 6000,
     parameter integer QUANTUM = 32, parameter integer WATCHDOG_CYCLES = 20_000_000
 ) (
     (* X_INTERFACE_INFO = "xilinx.com:signal:clock:1.0 clk CLK", X_INTERFACE_PARAMETER = "ASSOCIATED_BUSIF s_axi:m_axi, ASSOCIATED_RESET reset" *)
@@ -175,6 +176,7 @@ module host_pipeline_bd #(
         .ARENA_BASE(ARENA_BASE),
         .ARENA_BYTES(ARENA_BYTES),
         .CORE_CLOCK_HZ(CORE_CLOCK_HZ),
+        .CONTROL_CYCLES(CONTROL_CYCLES),
         .QUANTUM(QUANTUM),
         .WATCHDOG_CYCLES(WATCHDOG_CYCLES)
     ) bridge (

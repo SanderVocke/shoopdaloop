@@ -32,6 +32,7 @@ pub struct Response {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SyncEvent {
+    pub revision: u64,
     pub data: [u32; 8],
 }
 
@@ -44,6 +45,8 @@ pub enum Error<E> {
     Fault,
     InvalidRequest,
     UnexpectedResponse,
+    Timeout,
+    Rejected(u32),
 }
 
 pub struct Mailbox<B> {
@@ -123,13 +126,15 @@ impl<B: RegisterBus> Mailbox<B> {
             return Ok(None);
         }
         let tag = self.read(REG_EVENT_TAG)?;
+        let revision = u64::from(self.read(REG_EVENT_REVISION_LOW)?)
+            | (u64::from(self.read(REG_EVENT_REVISION_HIGH)?) << 32);
         let mut data = [0; 8];
         for (index, value) in data.iter_mut().enumerate() {
             *value = self.read(REG_EVENT_DATA + 4 * index as u32)?;
         }
         self.check_epoch()?;
         self.write(REG_EVENT_POP, tag)?;
-        Ok(Some(SyncEvent { data }))
+        Ok(Some(SyncEvent { revision, data }))
     }
 
     pub fn into_bus(self) -> B {

@@ -4,13 +4,17 @@ use rt_fpga_rtl::{
     bits::Bits,
     component::{Instruction, instruction_words},
     host::{Client, Contract, Error, Mailbox, RegisterBus, Request, registers::*},
-    model::Design,
+    model::{Compiled, Design},
     pipeline::{Geometry, design},
     sim::Sim,
     target::{ConfigurationWrite, Space},
 };
 use shoop_wasm_test_support::shoop_test;
 use std::cell::RefCell;
+
+#[cfg(feature = "rt-interface")]
+#[path = "../../rt_fpga_compiler/tests/support/mono.rs"]
+mod mono;
 
 struct Axi<'a, 'model>(&'a RefCell<Sim<'model>>);
 
@@ -161,6 +165,8 @@ fn mailbox_preserves_requests_and_latched_responses_across_bus_stalls() {
         for index in 0..=128 {
             assert_eq!(core.model.get("sync_event_ready"), 1);
             core.model
+                .set("active_revision", 0x100000000 + u64::from(index / 16));
+            core.model
                 .set_bits("sync_event_data", &Bits::from(event(index)));
             core.idle(1);
         }
@@ -171,7 +177,9 @@ fn mailbox_preserves_requests_and_latched_responses_across_bus_stalls() {
     assert_eq!(Axi(&sim).read(REG_EVENT_COUNT), Ok(0x80000080));
     assert_eq!(Axi(&sim).write(REG_EVENT_POP, 2), Err(2));
     for index in 0..128 {
-        assert_eq!(device.sync_event().unwrap().unwrap().data, event(index));
+        let actual = device.sync_event().unwrap().unwrap();
+        assert_eq!(actual.data, event(index));
+        assert_eq!(actual.revision, 0x100000000 + u64::from(index / 16));
     }
     assert_eq!(device.sync_event(), Ok(None));
     assert_eq!(sim.borrow().model.get("irq"), 0);
@@ -209,6 +217,38 @@ fn mailbox_preserves_requests_and_latched_responses_across_bus_stalls() {
     device.submit(14, 20, &[]).unwrap();
 }
 
+fn build_pipeline(geometry: &Geometry, limits: rt_fpga_compiler::ProgramLimits) -> Compiled {
+    let mut design = design(geometry, limits);
+    design.top = "host_pipeline_axi".into();
+    design.probes.clear();
+    design.parameters.remove("PHYSICAL_BASE");
+    design = design.parameters(&[
+        ("ARENA_BASE", 0x01000000),
+        ("QUANTUM", u64::from(limits.quantum)),
+        ("CONTROL_CYCLES", 4096),
+    ]);
+    let root = rt_fpga_rtl::root();
+    for source in [
+        "host_registers.sv",
+        "host_mailbox.sv",
+        "host_dispatch.sv",
+        "host_pipeline_axi.sv",
+    ] {
+        design
+            .sources
+            .push(root.join("fpga/host_bridge/rtl").join(source));
+    }
+    design.build(&root.join("work/host-mailbox")).unwrap()
+}
+
+fn pipeline_contract() -> Contract {
+    Contract {
+        clock_hz: 100_000_000,
+        arena_base: 0x01000000,
+        arena_bytes: 0x08000000,
+    }
+}
+
 #[shoop_test(no_wasm = "FPGA pipeline with the real AXI register wrapper")]
 fn run_compiled_programs_and_switch_at_the_same_boundary_through_axi() {
     let geometry = Geometry::new([4, 32, 1], 2);
@@ -223,38 +263,14 @@ fn run_compiled_programs_and_switch_at_the_same_boundary_through_axi() {
         output_ports: 2,
         quantum: 4,
     };
-    let mut design = design(&geometry, limits);
-    design.top = "host_pipeline_axi".into();
-    design.probes.clear();
-    design.parameters.remove("PHYSICAL_BASE");
-    design = design.parameters(&[("ARENA_BASE", 0x01000000), ("QUANTUM", 4)]);
-    let root = rt_fpga_rtl::root();
-    for source in [
-        "host_registers.sv",
-        "host_mailbox.sv",
-        "host_dispatch.sv",
-        "host_pipeline_axi.sv",
-    ] {
-        design
-            .sources
-            .push(root.join("fpga/host_bridge/rtl").join(source));
-    }
-    let compiled = design.build(&root.join("work/host-mailbox")).unwrap();
+    let compiled = build_pipeline(&geometry, limits);
     let mut sim = Sim::new(compiled.session(None).unwrap(), &[("clk", 10_000, 0)]);
     sim.model.set_all(&[("reset", 1), ("epoch", 1)]);
     sim.idle(2);
     sim.model.set("reset", 0);
     sim.idle(2);
     let sim = RefCell::new(sim);
-    let mut device = Mailbox::open(
-        Axi(&sim),
-        Contract {
-            clock_hz: 100_000_000,
-            arena_base: 0x01000000,
-            arena_bytes: 0x08000000,
-        },
-    )
-    .unwrap();
+    let mut device = Mailbox::open(Axi(&sim), pipeline_contract()).unwrap();
     let mut tag = 0;
     let mut send = |op, args: &[u32], expected| {
         tag += 1;
@@ -395,9 +411,258 @@ fn run_compiled_programs_and_switch_at_the_same_boundary_through_axi() {
     assert_eq!(execute(Request::output_sample(0))[0], 0x32100000);
     execute(Request::enable_audio(true));
     assert_eq!(sim.borrow().model.get("audio_enable"), 1);
+    let boundary = execute(Request::begin_control(2));
+    assert_eq!(&boundary[..4], &[16, 0, 2, 0]);
+    sim.borrow_mut().model.set("quantum_valid", 1);
+    sim.borrow_mut().idle(16);
+    assert_eq!(sim.borrow().model.get("quantum_ready"), 0);
+    sim.borrow_mut().model.set("quantum_valid", 0);
+    execute(Request::end_control());
     execute(Request::enable_audio(false));
     assert_eq!(sim.borrow().model.get("audio_enable"), 0);
     client.start(Request::enable_audio(true)).unwrap();
     let result = (0..1000).find_map(|_| client.poll().unwrap()).unwrap();
     assert_eq!(result.code, RESULT_REJECTED);
+
+    client.start(Request::begin_control(2)).unwrap();
+    let result = (0..1000).find_map(|_| client.poll().unwrap()).unwrap();
+    assert_eq!(result.code, RESULT_OK);
+    sim.borrow_mut().idle(4096);
+    assert_eq!(client.poll(), Err(Error::Fault));
+    assert_eq!(sim.borrow().model.get("audio_enable"), 0);
+}
+
+#[cfg(feature = "rt-interface")]
+#[shoop_test(no_wasm = "Uses Marlin and the actual FPGA AXI bridge")]
+fn recorded_take_survives_a_graph_switch_over_the_hardware_mailbox() {
+    use rt_fpga_compiler::{CompileContext, Identity, ProgramLimits, compile, loading::Allocator};
+    use rt_fpga_rtl::{
+        host::{
+            Upload, UploadStep,
+            control::{ControlWindow, descriptor, gain_value},
+        },
+        target::{ProgramImage, RtlTarget},
+    };
+    use shoop_rt_protocol::immediate::{Code, TransitionMode, TransitionPlan};
+
+    fn send(client: &mut Client<Axi<'_, '_>>, request: Request) -> [u32; HOST_PAYLOAD_WORDS] {
+        let mut remaining = 10000;
+        let result = client
+            .exchange(request, || {
+                remaining -= 1;
+                remaining > 0
+            })
+            .expect("bridge response deadline");
+        assert_eq!(result.code, RESULT_OK, "{result:?}");
+        result.data
+    }
+
+    fn stage(client: &mut Client<Axi<'_, '_>>, upload: &mut Upload) {
+        while let Some(step) = upload.next_step() {
+            let request = match step {
+                UploadStep::Configure(write) => Request::configuration_write(write).unwrap(),
+                UploadStep::ClearView(view) => Request::clear_view(view),
+            };
+            send(client, request);
+        }
+    }
+
+    fn mode(
+        client: &mut Client<Axi<'_, '_>>,
+        layout: &ProgramImage,
+        identity: Identity,
+        next_mode: TransitionMode,
+    ) {
+        let physical = layout.layout.loop_id(identity).unwrap();
+        let revision = layout.layout.revision;
+        let mut remaining = 10000;
+        let mut window = ControlWindow::begin(client, revision, || {
+            remaining -= 1;
+            remaining > 0
+        })
+        .unwrap();
+        let expected_frame = if next_mode == TransitionMode::Recording {
+            0
+        } else {
+            48
+        };
+        assert_eq!(window.frame(), expected_frame);
+        assert_eq!(
+            window.apply_transition(
+                physical,
+                None,
+                None,
+                TransitionPlan {
+                    now: Some(next_mode),
+                    ..TransitionPlan::default()
+                }
+            ),
+            Ok(Code::Applied)
+        );
+        window.release().unwrap();
+    }
+
+    let limits = ProgramLimits {
+        instructions: 64,
+        state_values: 16,
+        loop_slots: 8,
+        jobs: 64,
+        buffers: 16,
+        history_slots: 16,
+        input_ports: 1,
+        output_ports: 2,
+        quantum: 16,
+    };
+    let geometry = Geometry::new([limits.state_values.into(), 256, 1], 4);
+    let compiled = build_pipeline(&geometry, limits);
+    let mut sim = Sim::new(compiled.session(None).unwrap(), &[("clk", 10_000, 0)]);
+    sim.model.set_all(&[("reset", 1), ("epoch", 1)]);
+    sim.idle(2);
+    sim.model.set("reset", 0);
+    sim.idle(2);
+    let sim = RefCell::new(sim);
+    let mut client = Client::new(Mailbox::open(Axi(&sim), pipeline_contract()).unwrap());
+    for view in 0..geometry.views as u32 {
+        send(&mut client, Request::store_word(1, view, 1));
+    }
+    for (address, value) in [
+        (0, geometry.views as u32),
+        (1, 0),
+        (2, 0),
+        (3, geometry.blocks() as u32),
+    ] {
+        send(&mut client, Request::store_word(0, address, value));
+    }
+
+    let identity = Identity {
+        slot: 0,
+        generation: 1,
+    };
+    let looping = mono::MonoLoop {
+        id: identity,
+        source: None,
+        input: true,
+        output: true,
+        gain: 1.0,
+        repeat_sync: false,
+    };
+    let context = CompileContext {
+        quantum: limits.quantum,
+        limits,
+    };
+    let first = compile(&mono::session(&[looping]), context).unwrap();
+    let mut allocator = Allocator::new(limits);
+    let layout = allocator.stage(&first).unwrap();
+    let media = layout.media_views(&first);
+    let mut upload = Upload::new(
+        RtlTarget {
+            capacities: limits,
+            media_views: &media,
+            state_base: 0,
+        }
+        .build_image(&first, layout)
+        .unwrap(),
+        limits.instructions,
+    );
+    stage(&mut client, &mut upload);
+    allocator.publish(1).unwrap();
+    let selected = send(
+        &mut client,
+        Request::switch_program(0, descriptor(&upload.image)),
+    );
+    assert_eq!(&selected[..4], &[0, 0, 1, 0]);
+    allocator.complete(1).unwrap();
+    mode(
+        &mut client,
+        &upload.image,
+        identity,
+        TransitionMode::Recording,
+    );
+    let take: Vec<i32> = (0..3 * limits.quantum)
+        .map(|i| ((i as i32 % 16) - 8) * 0x10000)
+        .collect();
+    for samples in take.chunks(limits.quantum as usize) {
+        for (i, &sample) in samples.iter().enumerate() {
+            send(&mut client, Request::input_sample(i as u32, sample));
+        }
+        send(&mut client, Request::run_quantum());
+    }
+    mode(
+        &mut client,
+        &upload.image,
+        identity,
+        TransitionMode::Stopped,
+    );
+
+    let silent = mono::MonoLoop {
+        id: Identity {
+            slot: 1,
+            generation: 1,
+        },
+        input: false,
+        ..looping
+    };
+    let next = compile(&mono::session(&[looping, silent]), context).unwrap();
+    let layout = allocator.stage(&next).unwrap();
+    assert_eq!(
+        layout.loop_id(identity).unwrap(),
+        upload.image.layout.loop_id(identity).unwrap()
+    );
+    let media = layout.media_views(&next);
+    let mut upload = Upload::new(
+        RtlTarget {
+            capacities: limits,
+            media_views: &media,
+            state_base: 0,
+        }
+        .build_image(&next, layout)
+        .unwrap(),
+        limits.instructions,
+    );
+    stage(&mut client, &mut upload);
+    allocator.publish(2).unwrap();
+    let selected = send(
+        &mut client,
+        Request::switch_program(1, descriptor(&upload.image)),
+    );
+    assert_eq!(&selected[..4], &[3 * limits.quantum, 0, 2, 0]);
+    allocator.complete(2).unwrap();
+    mode(
+        &mut client,
+        &upload.image,
+        identity,
+        TransitionMode::Playing,
+    );
+    let gain = upload
+        .image
+        .compiled
+        .bindings
+        .iter()
+        .find(|binding| binding.id == upload.image.layout.loop_id(identity).unwrap())
+        .unwrap()
+        .gain
+        .unwrap();
+    for (index, reference) in take.chunks(limits.quantum as usize).enumerate() {
+        if index == 1 {
+            send(&mut client, Request::begin_control(2));
+            let write = ConfigurationWrite {
+                space: Space::State,
+                address: u64::from(gain),
+                value: gain_value(0.5),
+            };
+            send(&mut client, Request::configuration_write(&write).unwrap());
+            send(&mut client, Request::end_control());
+        }
+        send(&mut client, Request::run_quantum());
+        for port in 0..2 {
+            for (i, &sample) in reference.iter().enumerate() {
+                let actual = send(
+                    &mut client,
+                    Request::output_sample(port * limits.quantum + i as u32),
+                );
+                let expected = if index == 0 { sample } else { sample / 2 };
+                assert_eq!(actual[0] as i32, expected, "port {port}, sample {i}");
+            }
+        }
+    }
 }

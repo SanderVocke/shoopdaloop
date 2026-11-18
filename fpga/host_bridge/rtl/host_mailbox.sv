@@ -39,6 +39,7 @@ module host_mailbox #(
     input wire sync_event_valid,
     output wire sync_event_ready,
     input wire [255:0] sync_event_data,
+    input wire [63:0] active_revision,
     output reg event_overflow
 );
     import host_registers::*;
@@ -61,7 +62,7 @@ module host_mailbox #(
     reg command_pending, response_pending;
     reg [31:0] saved_tag, saved_code;
     reg [32*HOST_PAYLOAD_WORDS-1:0] saved_data;
-    reg [255:0] events [0:EVENT_DEPTH-1];
+    reg [319:0] events [0:EVENT_DEPTH-1];
     reg [EVENT_INDEX_BITS-1:0] event_head, event_tail;
     reg [EVENT_INDEX_BITS:0] event_count;
     reg [31:0] event_tag;
@@ -86,7 +87,7 @@ module host_mailbox #(
 
     always @(posedge clk) begin
         if (event_push)
-            events[event_tail] <= sync_event_data;
+            events[event_tail] <= {active_revision,sync_event_data};
         if (!session_live) begin
             event_head <= 0;
             event_tail <= 0;
@@ -175,6 +176,8 @@ module host_mailbox #(
                     REG_RESPONSE_CODE: s_axi_rdata <= session_live && response_pending ? saved_code : 0;
                     REG_EVENT_COUNT: s_axi_rdata <= session_live ? {event_overflow, {(30-EVENT_INDEX_BITS){1'b0}}, event_count} : 0;
                     REG_EVENT_TAG: s_axi_rdata <= event_pending ? event_tag : 0;
+                    REG_EVENT_REVISION_LOW: s_axi_rdata <= event_pending ? events[event_head][256 +: 32] : 0;
+                    REG_EVENT_REVISION_HIGH: s_axi_rdata <= event_pending ? events[event_head][288 +: 32] : 0;
                     default: begin
                         if (s_axi_araddr >= REG_RESPONSE_DATA && s_axi_araddr < RESPONSE_END && s_axi_araddr[1:0] == 0)
                             s_axi_rdata <= session_live && response_pending ? saved_data[32*read_index +: 32] : 0;

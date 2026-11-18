@@ -64,6 +64,7 @@ def generate():
     param_names = re.findall(r"parameter\s+integer\s+(\w+)\s*=", params)
     params += ",\n    parameter [31:0] ARENA_BYTES = 32'h08000000,\n"
     params += "    parameter [31:0] CORE_CLOCK_HZ = 100_000_000,\n"
+    params += "    parameter integer CONTROL_CYCLES = CORE_CLOCK_HZ / 6000,\n"
     params += "    parameter integer QUANTUM = 32, parameter integer WATCHDOG_CYCLES = 20_000_000"
     attributes = {
         "clk": ('X_INTERFACE_INFO = "xilinx.com:signal:clock:1.0 clk CLK", '
@@ -95,7 +96,8 @@ def generate():
     text += "    end\n"
     text += "    host_mailbox #(.CORE_CLOCK_HZ(CORE_CLOCK_HZ), .ARENA_BASE(ARENA_BASE), .ARENA_BYTES(ARENA_BYTES)) mmio (.*);\n"
     text += "    host_dispatch #(.QUANTUM(QUANTUM), .CHUNK_FRAMES(CHUNK_FRAMES), .INPUT_PORTS(INPUT_PORTS),\n"
-    text += "        .OUTPUT_PORTS(OUTPUT_PORTS), .STATE_DEPTH(STATE_DEPTH), .WATCHDOG_CYCLES(WATCHDOG_CYCLES)) dispatcher (.*);\n"
+    text += "        .OUTPUT_PORTS(OUTPUT_PORTS), .STATE_DEPTH(STATE_DEPTH), .CONTROL_CYCLES(CONTROL_CYCLES),\n"
+    text += "        .WATCHDOG_CYCLES(WATCHDOG_CYCLES)) dispatcher (.*);\n"
     text += "    media_audio_pipeline_axi #(\n        "
     text += ",\n        ".join(f".{name}({name})" for name in param_names)
     text += ",\n        .PHYSICAL_BASE(ARENA_BASE), .PHYSICAL_BYTES_LIMIT({32'b0, ARENA_BYTES})) core (\n        "

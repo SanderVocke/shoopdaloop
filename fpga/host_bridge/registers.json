@@ -1,6 +1,6 @@
 {
   "id": "0x53484f50",
-  "version": 3,
+  "version": 4,
   "payload_words": 12,
   "registers": {
     "ID": "0x000",
@@ -21,7 +21,9 @@
     "EVENT_COUNT": "0x0c0",
     "EVENT_TAG": "0x0c4",
     "EVENT_DATA": "0x0c8",
-    "EVENT_POP": "0x0f8"
+    "EVENT_POP": "0x0f8",
+    "EVENT_REVISION_LOW": "0x0fc",
+    "EVENT_REVISION_HIGH": "0x100"
   },
   "status_bits": {
     "REQUEST_SPACE": 0,
@@ -37,7 +39,9 @@
     "RUN_QUANTUM": 6,
     "CAPTURE_SNAPSHOT": 7,
     "READ_SNAPSHOT": 8,
-    "ENABLE_AUDIO": 9
+    "ENABLE_AUDIO": 9,
+    "BEGIN_CONTROL": 10,
+    "END_CONTROL": 11
   },
   "response_codes": {
     "OK": 0,

@@ -62,12 +62,60 @@ impl Request {
         Self::new(OP_ENABLE_AUDIO, &[u32::from(enable)])
     }
 
+    pub fn begin_control(revision: u64) -> Self {
+        Self::new(
+            OP_BEGIN_CONTROL,
+            &[revision as u32, (revision >> 32) as u32],
+        )
+    }
+
+    pub fn end_control() -> Self {
+        Self::new(OP_END_CONTROL, &[])
+    }
+
+    pub fn clear_view(view: u32) -> Self {
+        Self::new(OP_CLEAR_VIEW, &[view])
+    }
+
+    pub fn store_word(space: u8, address: u32, value: u32) -> Self {
+        Self::new(OP_STORE_CONFIG, &[0x100 | u32::from(space), address, value])
+    }
+
+    #[cfg(feature = "rt-interface")]
+    pub fn switch_program(
+        expected: u64,
+        program: shoop_rt_protocol::immediate::SwitchProgram,
+    ) -> Self {
+        Self::new(
+            OP_SWITCH_PROGRAM,
+            &[
+                expected as u32,
+                (expected >> 32) as u32,
+                program.revision as u32,
+                (program.revision >> 32) as u32,
+                u32::from(program.region),
+                u32::from(program.instructions),
+                u32::from(program.sync_count),
+                u32::from(program.states),
+                u32::from(program.jobs),
+                u32::from(program.buffers),
+            ],
+        )
+    }
+
     pub fn capture_snapshot(loop_slots: u32) -> Self {
         Self::new(OP_CAPTURE_SNAPSHOT, &[loop_slots])
     }
 
     pub fn read_snapshot(generation: u32, word: u32, count: u32) -> Self {
         Self::new(OP_READ_SNAPSHOT, &[generation, word, count])
+    }
+
+    pub fn write_loop_word(address: u32, value: u64) -> Self {
+        Self::new(
+            OP_CORE_CONFIG,
+            &[0x102, address, value as u32, (value >> 32) as u32],
+        )
     }
 }
 
@@ -107,6 +155,23 @@ impl<B: RegisterBus> Client<B> {
         }
         self.pending = None;
         Ok(Some(response))
+    }
+
+    /// Run one request with an owner-supplied time budget. A timeout retains its tag.
+    pub fn exchange(
+        &mut self,
+        request: Request,
+        mut time_left: impl FnMut() -> bool,
+    ) -> Result<Response, Error<B::Error>> {
+        self.start(request)?;
+        loop {
+            if let Some(response) = self.poll()? {
+                return Ok(response);
+            }
+            if !time_left() {
+                return Err(Error::Timeout);
+            }
+        }
     }
 
     pub fn sync_event(&mut self) -> Result<Option<SyncEvent>, Error<B::Error>> {
