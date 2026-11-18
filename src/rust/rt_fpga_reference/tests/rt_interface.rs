@@ -822,7 +822,7 @@ fn invalid_blocks_preserve_commands_and_processing_faults_reject_future_groups()
     let mut memory = Inject {
         media,
         control,
-        publish: None,
+        publish: Some(Batch::new(1, 2, &[Command::LoopGain(0, 0.5)]).unwrap()),
         fail: true,
     };
     let mut output = [Fixed(99); 15];
@@ -848,25 +848,30 @@ fn invalid_blocks_preserve_commands_and_processing_faults_reject_future_groups()
         ),
         Err(PipelineError::Jobs(Error::MemoryFull))
     );
-    assert_eq!(
-        memory.control.response().unwrap().records()[0].code(),
-        Code::Applied
-    );
     assert!(memory.control.snapshot_error().is_some());
-    memory
-        .control
-        .submit(Batch::new(1, 2, &[Command::LoopGain(0, 0.5)]).unwrap())
-        .unwrap();
+    let fault_frame = endpoint.pipeline().state().frame();
+    memory.fail = false;
+    let mut output = [Fixed(99); 16];
     assert_eq!(
         endpoint.process(
             &mut jobs,
             &mut memory,
             &[&[Fixed::ZERO; 16]],
-            &mut [&mut [Fixed::ZERO; 16]]
+            &mut [&mut output]
         ),
         Err(PipelineError::Jobs(Error::MemoryFull))
+    );
+    assert_eq!(output, [Fixed::ZERO; 16]);
+    assert_eq!(endpoint.pipeline().state().frame(), fault_frame);
+    assert_eq!(
+        memory.control.response().unwrap().records()[0].code(),
+        Code::Applied
     );
     let response = memory.control.response().unwrap();
     assert_eq!(response.header.code(), Code::CannotApply);
     assert_eq!(response.records()[0].code(), Code::CannotApply);
+    assert_eq!(
+        memory.control.0.poll(),
+        Some(EngineMessage::Disconnected(DisconnectReason::Fault))
+    );
 }

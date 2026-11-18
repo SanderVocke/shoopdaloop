@@ -313,17 +313,19 @@ impl CarrierEndpoint for Endpoint {
         let _ = self.try_deliver(message, out);
     }
     fn poll(&mut self, out: &mut Outbox) {
-        if self.connected && self.ports.snapshots.error().is_some() {
-            if out
-                .push(EngineMessage::Disconnected(DisconnectReason::Fault))
-                .is_ok()
+        let faulted = self.ports.snapshots.error().is_some();
+        self.responses(out);
+        if faulted {
+            if self.connected
+                && out
+                    .push(EngineMessage::Disconnected(DisconnectReason::Fault))
+                    .is_ok()
             {
                 self.reset();
                 out.discard_push_snapshots();
             }
             return;
         }
-        self.responses(out);
         self.publications(out);
     }
 }
