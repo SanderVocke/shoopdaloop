@@ -149,3 +149,115 @@ fn generated_audio_uses_fractional_frame_cadence_and_preserves_samples() {
         assert_eq!(sample, expected | (expected << 32));
     }
 }
+
+#[shoop_test]
+fn board_i2s_adapter_echoes_left_input_and_reports_a_missed_deadline() {
+    use rt_fpga_testbench::{model::Design, sim::Sim};
+
+    const Q: usize = 4;
+    let root = rt_fpga_testbench::root();
+    let rtl = root.join("fpga/audio_io/rtl");
+    let compiled = Design::new(
+        "host_i2s_audio",
+        vec![
+            root.join("fpga/host_bridge/rtl/host_i2s_audio.v"),
+            rtl.join("audio_io.sv"),
+            rtl.join("audio_lane_ram.sv"),
+            rtl.join("i2s_duplex.sv"),
+        ],
+    )
+    .parameters(&[("QUANTUM", Q as u64)])
+    .build(&root.join("work/marlin-suite/audio-io"))
+    .unwrap();
+    let mut sim = Sim::new(
+        compiled.session(None).unwrap(),
+        &[("clk", 10_000, 0), ("audio_ref", 81_380, 230)],
+    );
+    sim.model.set_all(&[("reset", 1), ("epoch", 1)]);
+    sim.idle(40);
+    sim.model.set_all(&[("reset", 0), ("enable", 1)]);
+
+    let adc = [0x12_3456_u32, 0xec_ba98];
+    let mut last_bclk = 0;
+    let mut channel = 0;
+    let mut slot = 0;
+    let mut decoded = 0;
+    let mut dac_samples = Vec::new();
+    let mut step = None;
+    for cycle in 0..110_000 {
+        sim.model.set_all(&[
+            ("sample_input_read", 0),
+            ("sample_output_write", 0),
+            ("quantum_done", 0),
+            ("quantum_ready", 0),
+        ]);
+        if let Some(index) = step {
+            if index == 3 * Q {
+                sim.model.set("quantum_done", 1);
+                step = None;
+            } else {
+                let frame = index / 3;
+                if index % 3 == 0 {
+                    sim.model.set("sample_input_read", 1);
+                    sim.model.set("sample_input_address", frame as u64);
+                } else {
+                    let port = usize::from(index % 3 == 2);
+                    sim.model.set_all(&[
+                        ("sample_output_write", 1),
+                        ("sample_output_address", (port * Q + frame) as u64),
+                        ("sample_output_data", sim.model.get("sample_input_data")),
+                    ]);
+                }
+                step = Some(index + 1);
+            }
+        } else if cycle < 65_000 && sim.model.get("quantum_valid") != 0 {
+            sim.model.set("quantum_ready", 1);
+            step = Some(0);
+        }
+        sim.idle(1);
+
+        let bclk = sim.model.get("i2s_bclk");
+        if last_bclk != bclk {
+            if bclk == 0 {
+                let next_channel = sim.model.get("i2s_lrclk") as usize;
+                if next_channel != channel {
+                    channel = next_channel;
+                    slot = 0;
+                    decoded = 0;
+                } else {
+                    slot += 1;
+                }
+                let bit = if (1..=24).contains(&slot) {
+                    (adc[channel] >> (24 - slot)) & 1
+                } else {
+                    0
+                };
+                sim.model.set("i2s_adc_data", u64::from(bit));
+            } else if (1..=24).contains(&slot) {
+                decoded = (decoded << 1) | sim.model.get("i2s_dac_data") as u32;
+                if slot == 24 {
+                    dac_samples.push((cycle, decoded));
+                }
+            }
+            last_bclk = bclk;
+        }
+        if cycle < 65_000 {
+            assert_eq!(sim.model.get("audio_fault"), 0);
+            assert_eq!(sim.model.get("missed_deadlines"), 0);
+        }
+    }
+    let echoed = dac_samples
+        .iter()
+        .filter(|(cycle, _)| (35_000..65_000).contains(cycle));
+    assert!(echoed.clone().count() > 20);
+    assert!(echoed.into_iter().all(|(_, sample)| *sample == adc[0]));
+    assert!(sim.model.get("missed_deadlines") > 0);
+    assert_eq!(sim.model.get("audio_fault"), 1);
+    assert!(
+        dac_samples
+            .iter()
+            .rev()
+            .take(4)
+            .all(|(_, sample)| *sample == 0)
+    );
+}

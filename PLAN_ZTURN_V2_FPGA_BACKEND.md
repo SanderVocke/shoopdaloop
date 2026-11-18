@@ -82,6 +82,8 @@ The ABI 5 looping build with generated audio routes at 100 MHz with +0.616 ns se
 
 The ABI 6 generated-audio build routes at 100 MHz with +0.271 ns setup slack and +0.048 ns hold slack. It uses 24,127 LUTs, 90 RAMB36 blocks and 9 RAMB18 blocks. The provisional PS configuration now enables GEM0, MDIO, SD0 and UART1 at their schematic MIO positions. The I²S build uses clock-capable J11 pin 7 with an external 12.288 MHz oscillator and Pmod I2S2 in ADC slave mode. The first I²S route missed setup. Its report identified a bundled RX sequence path to the audio watchdog and a separate media-store core path. The watchdog is now included in the bundled-data timing constraint.
 
+The complete board I²S adapter passes a Marlin test with independent 12.288 MHz and 100 MHz clocks. It decodes the left ADC channel, returns the exact PCM value on both DAC lanes, reports zero xruns during normal operation, and reports a deadline miss and silences playback after the test deliberately stalls the core.
+
 ### 6. Qualify the physical board and finish the PR
 
 - [ ] As soon as the native ELF is ready and the board is reachable, verify UART, DDR and Ethernet before loading PL. At the final hardware gate, run JTAG register/DDR checks, then the nonzero generated-audio test, then codec loopback and the full session over Ethernet. If access is remote, use an authorized JTAG/UART/power setup and run the scripted checks there. If the board, codec, or access is unavailable, deliver the built images and exact commands and keep the affected acceptance items open.
