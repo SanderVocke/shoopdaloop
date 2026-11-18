@@ -1,6 +1,6 @@
 {
   "id": "0x53484f50",
-  "version": 2,
+  "version": 3,
   "payload_words": 12,
   "registers": {
     "ID": "0x000",
@@ -17,7 +17,11 @@
     "RESPONSE_TAG": "0x080",
     "RESPONSE_CODE": "0x084",
     "RESPONSE_DATA": "0x088",
-    "RESPONSE_POP": "0x0b8"
+    "RESPONSE_POP": "0x0b8",
+    "EVENT_COUNT": "0x0c0",
+    "EVENT_TAG": "0x0c4",
+    "EVENT_DATA": "0x0c8",
+    "EVENT_POP": "0x0f8"
   },
   "status_bits": {
     "REQUEST_SPACE": 0,

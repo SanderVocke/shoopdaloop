@@ -154,6 +154,28 @@ fn mailbox_preserves_requests_and_latched_responses_across_bus_stalls() {
     );
     assert_eq!(sim.borrow().model.get("irq"), 0);
 
+    let event = |index| [index, 0, 1, 0, 0, 7, 64 + index, 0];
+    {
+        let mut core = sim.borrow_mut();
+        core.model.set("sync_event_valid", 1);
+        for index in 0..=128 {
+            assert_eq!(core.model.get("sync_event_ready"), 1);
+            core.model
+                .set_bits("sync_event_data", &Bits::from(event(index)));
+            core.idle(1);
+        }
+        core.model.set("sync_event_valid", 0);
+        assert_eq!(core.model.get("irq"), 1);
+        assert_eq!(core.model.get("event_overflow"), 1);
+    }
+    assert_eq!(Axi(&sim).read(REG_EVENT_COUNT), Ok(0x80000080));
+    assert_eq!(Axi(&sim).write(REG_EVENT_POP, 2), Err(2));
+    for index in 0..128 {
+        assert_eq!(device.sync_event().unwrap().unwrap().data, event(index));
+    }
+    assert_eq!(device.sync_event(), Ok(None));
+    assert_eq!(sim.borrow().model.get("irq"), 0);
+
     device.submit(12, 19, &[20]).unwrap();
     {
         let mut core = sim.borrow_mut();
@@ -183,6 +205,7 @@ fn mailbox_preserves_requests_and_latched_responses_across_bus_stalls() {
     assert_eq!(axil.write(REG_REQUEST_PUSH, 14), Err(2));
     let mut device = Mailbox::open(axil, contract).unwrap();
     assert_eq!(device.response(), Ok(None));
+    assert_eq!(Axi(&sim).read(REG_EVENT_COUNT), Ok(0));
     device.submit(14, 20, &[]).unwrap();
 }
 
@@ -218,8 +241,7 @@ fn run_compiled_programs_and_switch_at_the_same_boundary_through_axi() {
     }
     let compiled = design.build(&root.join("work/host-mailbox")).unwrap();
     let mut sim = Sim::new(compiled.session(None).unwrap(), &[("clk", 10_000, 0)]);
-    sim.model
-        .set_all(&[("reset", 1), ("epoch", 1), ("sync_event_ready", 1)]);
+    sim.model.set_all(&[("reset", 1), ("epoch", 1)]);
     sim.idle(2);
     sim.model.set("reset", 0);
     sim.idle(2);

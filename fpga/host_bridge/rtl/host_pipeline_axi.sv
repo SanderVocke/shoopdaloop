@@ -82,9 +82,6 @@ module host_pipeline_axi #(
     output wire sample_output_write,
     output wire [31:0] sample_output_address,
     output wire [31:0] sample_output_data,
-    output wire sync_event_valid,
-    input wire sync_event_ready,
-    output wire [255:0] sync_event_data,
     (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi AWID" *)
     output wire m_axi_awid,
     (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi AWADDR", X_INTERFACE_PARAMETER = "PROTOCOL AXI3" *)
@@ -157,6 +154,10 @@ module host_pipeline_axi #(
     wire [31:0] response_tag;
     wire [31:0] response_code;
     wire [32*host_registers::HOST_PAYLOAD_WORDS-1:0] response_data;
+    wire sync_event_valid;
+    wire sync_event_ready;
+    wire [255:0] sync_event_data;
+    wire event_overflow;
     wire [31:0] reclaim_pending;
     wire [31:0] reclaim_high_water;
     wire [63:0] reclaim_references;

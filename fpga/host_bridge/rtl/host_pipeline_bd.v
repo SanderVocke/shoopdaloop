@@ -80,9 +80,6 @@ module host_pipeline_bd #(
     output wire sample_output_write,
     output wire [31:0] sample_output_address,
     output wire [31:0] sample_output_data,
-    output wire sync_event_valid,
-    input wire sync_event_ready,
-    output wire [255:0] sync_event_data,
     (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi AWID" *)
     output wire m_axi_awid,
     (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi AWADDR", X_INTERFACE_PARAMETER = "PROTOCOL AXI3" *)
@@ -217,9 +214,6 @@ module host_pipeline_bd #(
         .sample_output_write(sample_output_write),
         .sample_output_address(sample_output_address),
         .sample_output_data(sample_output_data),
-        .sync_event_valid(sync_event_valid),
-        .sync_event_ready(sync_event_ready),
-        .sync_event_data(sync_event_data),
         .m_axi_awid(m_axi_awid),
         .m_axi_awaddr(m_axi_awaddr),
         .m_axi_awlen(m_axi_awlen),

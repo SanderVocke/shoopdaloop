@@ -18,7 +18,7 @@ def generate():
     _, mailbox = header((rtl / "host_mailbox.sv").read_text())
     _, dispatch = header((rtl / "host_dispatch.sv").read_text())
     public_mailbox = {"clk", "reset", "epoch", "fault", "irq"}
-    public_core = ("m_axi_", "sample_", "sync_event_")
+    public_core = ("m_axi_", "sample_")
     mailbox_ports = {name for _, name in mailbox}
     dispatch_ports = {name for _, name in dispatch}
     core_constants = {
@@ -42,7 +42,7 @@ def generate():
                 decl = "output wire "
             public.append((decl.replace("output reg", "output wire"), name))
         else:
-            assert name in dispatch_ports, name
+            assert name in dispatch_ports or name.startswith("sync_event_"), name
             local.append((decl, name))
     public.extend((decl.replace("output reg", "output wire"), name)
                   for decl, name in dispatch if name.startswith("quantum_") or name in {"audio_enable", "audio_fault"})

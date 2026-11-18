@@ -5,6 +5,7 @@ set root [file normalize [file join [file dirname [info script]] ../..]]
 set output [file normalize [lindex $argv 0]]
 set ps_properties [file normalize [lindex $argv 1]]
 set stage [lindex $argv 2]
+set serial_synth [expr {[info exists ::env(SHOOP_VIVADO_SERIAL_SYNTH)] && $::env(SHOOP_VIVADO_SERIAL_SYNTH) eq "1"}]
 if {$stage ni {generate bitstream}} {error "Unknown board build stage $stage"}
 set channel [open $ps_properties r]
 set preset [read $channel]
@@ -87,8 +88,7 @@ connect_bd_net [get_bd_pins reset/peripheral_aresetn] [get_bd_pins gp0/S00_ARESE
 connect_bd_net [get_bd_pins reset/peripheral_reset] [get_bd_pins core/reset] [get_bd_pins audio/reset]
 connect_bd_net [get_bd_pins zero/dout] [get_bd_pins reset/mb_debug_sys_rst] [get_bd_pins reset/aux_reset_in] \
     [get_bd_pins ps/S_AXI_HP0_RDISSUECAP1_EN] [get_bd_pins ps/S_AXI_HP0_WRISSUECAP1_EN]
-connect_bd_net [get_bd_pins one/dout] [get_bd_pins reset/dcm_locked] \
-    [get_bd_pins core/sync_event_ready]
+connect_bd_net [get_bd_pins one/dout] [get_bd_pins reset/dcm_locked]
 connect_bd_net [get_bd_pins boot_epoch/dout] [get_bd_pins core/epoch] [get_bd_pins audio/epoch]
 connect_bd_net [get_bd_pins core/irq] [get_bd_pins ps/IRQ_F2P]
 connect_bd_net [get_bd_pins core/audio_enable] [get_bd_pins audio/enable]
@@ -111,6 +111,10 @@ if {[get_property CONFIG.C_EXT_RESET_HIGH [get_bd_cells reset]] != 0} {
 save_bd_design
 
 set bd [get_files */system.bd]
+if {$serial_synth} {
+    # Apply the synthesis settings in the project run instead of hidden IP runs.
+    set_property synth_checkpoint_mode None $bd
+}
 generate_target all $bd
 add_files [make_wrapper -files $bd -top]
 set_property top system_wrapper [current_fileset]
@@ -120,6 +124,15 @@ if {[llength $scripts] != 1} {error "Could not identify the generated PS initial
 file copy -force [lindex $scripts 0] [file join $output ps7_init.tcl]
 if {$stage eq "generate"} {return}
 
+if {$serial_synth} {
+    set hook [file join $output serial_synth.tcl]
+    set channel [open $hook w]
+    puts $channel {set_param synth.enableParallelHelperSpawn none}
+    puts $channel {set_param synth.maxThreads 1}
+    close $channel
+    add_files -fileset utils_1 -norecurse $hook
+    set_property STEPS.SYNTH_DESIGN.TCL.PRE $hook [get_runs synth_1]
+}
 launch_runs impl_1 -to_step write_bitstream -jobs 4
 wait_on_run impl_1
 if {[get_property PROGRESS [get_runs impl_1]] ne "100%"} {error "Vivado implementation failed"}

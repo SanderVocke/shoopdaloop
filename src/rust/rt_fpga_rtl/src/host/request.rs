@@ -1,4 +1,4 @@
-use super::{Error, Mailbox, RegisterBus, Response, registers::*};
+use super::{Error, Mailbox, RegisterBus, Response, SyncEvent, registers::*};
 use crate::target::{ConfigurationWrite, Space};
 
 /// Encoded dispatcher operations. Construction and transmission use fixed-size storage.
@@ -107,5 +107,9 @@ impl<B: RegisterBus> Client<B> {
         }
         self.pending = None;
         Ok(Some(response))
+    }
+
+    pub fn sync_event(&mut self) -> Result<Option<SyncEvent>, Error<B::Error>> {
+        self.mailbox.sync_event()
     }
 }

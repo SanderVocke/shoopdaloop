@@ -30,6 +30,11 @@ pub struct Response {
     pub data: [u32; HOST_PAYLOAD_WORDS],
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SyncEvent {
+    pub data: [u32; 8],
+}
+
 #[derive(Debug, Eq, PartialEq)]
 pub enum Error<E> {
     Bus(E),
@@ -109,6 +114,22 @@ impl<B: RegisterBus> Mailbox<B> {
         self.check_epoch()?;
         self.write(REG_RESPONSE_POP, tag)?;
         Ok(Some(Response { tag, code, data }))
+    }
+
+    /// Drain events even when the dispatcher has faulted, retaining their arrival order.
+    pub fn sync_event(&mut self) -> Result<Option<SyncEvent>, Error<B::Error>> {
+        self.check_epoch()?;
+        if self.read(REG_EVENT_COUNT)? & u32::from(u16::MAX) == 0 {
+            return Ok(None);
+        }
+        let tag = self.read(REG_EVENT_TAG)?;
+        let mut data = [0; 8];
+        for (index, value) in data.iter_mut().enumerate() {
+            *value = self.read(REG_EVENT_DATA + 4 * index as u32)?;
+        }
+        self.check_epoch()?;
+        self.write(REG_EVENT_POP, tag)?;
+        Ok(Some(SyncEvent { data }))
     }
 
     pub fn into_bus(self) -> B {

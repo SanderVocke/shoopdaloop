@@ -7,6 +7,10 @@ set stage [lindex $argv 1]
 if {$stage ni {ooc route}} {error "Unknown synthesis stage $stage"}
 file mkdir $output
 cd $output
+if {[info exists ::env(SHOOP_VIVADO_SERIAL_SYNTH)] && $::env(SHOOP_VIVADO_SERIAL_SYNTH) eq "1"} {
+    set_param synth.enableParallelHelperSpawn none
+    set_param synth.maxThreads 1
+}
 
 set host [file join $root fpga host_bridge rtl]
 set files [list [file join $host host_registers.sv]]

@@ -12,6 +12,7 @@ module host_dispatch #(
     input wire reset,
     input wire [31:0] epoch,
     input wire audio_fault,
+    input wire event_overflow,
     output reg fault,
     output reg audio_enable,
     input wire quantum_valid,
@@ -119,7 +120,7 @@ module host_dispatch #(
     wire executing = phase != IDLE && phase != RESPOND;
     wire unused_argument_bits = &{1'b0,args[319:304],args[287:272],args[255:240]};
 
-    wire device_fault = memory_fault || audio_fault;
+    wire device_fault = memory_fault || audio_fault || event_overflow;
     assign command_ready = phase == IDLE && !fault && !device_fault && !(audio_enable && quantum_valid);
     assign quantum_ready = phase == RUN_REQUEST && paced && run_ready && !device_fault;
     assign response_valid = phase == RESPOND;
