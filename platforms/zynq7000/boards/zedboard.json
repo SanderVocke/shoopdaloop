@@ -42,6 +42,7 @@
     "ps_init_sha256": "f0b9799eedb0ec8a3174ea442a15f0e643da3b4349094fdb396519d9c00c1cb3"
   },
   "firmware": {
+    "engine_pool": {"loops": 32},
     "recording_mib": 32,
     "media_mib": 16,
     "runtime_reserve_mib": 240,

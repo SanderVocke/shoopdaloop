@@ -32,7 +32,7 @@ def main():
     parser.add_argument('--directory', type=Path)
     parser.add_argument('--corrupt', action='store_true', help='Require the independent content-mismatch assertion to fail')
     args = parser.parse_args()
-    policy = engine_policy.load(args.engine_config)
+    policy = engine_policy.load(args.engine_config, usb=True)
     if args.devices * args.cables > 16 or (args.devices > 1 and not args.tiers):
         parser.error('Multiple devices require a hub, with at most 16 cables in aggregate')
     if not 1 <= args.hotplug_cycles <= 100:

@@ -1,5 +1,6 @@
 //! Lower logical programs to packed RTL instructions and configuration RAM images.
 use crate::{bits::Bits, component};
+use alloc::{vec, vec::Vec};
 use rt_fpga_compiler::{
     CompileError, Identity, InitialValue, LogicalStateProgram, Operation, ProgramLimits, Resource,
     Resources, StateProgramTarget,

@@ -3,24 +3,25 @@ use anyhow::{ensure, Result};
 use rt_fpga_compiler::{Identity, ProgramLimits};
 use rt_fpga_reference::{
     fixed::Fixed,
-    state::{apply_mode_command, ModePlan, ModeStep},
-    transitions::{LoopId, LoopState, Mode, Operation, TransitionError},
+    transitions::{LoopId, Mode},
 };
 use rt_fpga_rtl::{
     bits::Bits,
+    host::control::{
+        apply_plan, clear_plan, descriptor, gain_value, loop_plan, loop_state, protocol_mode,
+        reference_mode,
+    },
+    host::{Upload, UploadStep},
     pipeline::{design, Geometry},
     sim::Sim,
-    target::{ConfigurationWrite as Write, ProgramImage, Space},
+    target::{ProgramImage, Space},
 };
 use shoop_rt_host_reference::{program_limits, StorageUsage, MEDIA_BLOCK_CHUNKS};
 use shoop_rt_protocol::{
     codec,
-    immediate::{
-        Code, Command, CommandRecord, Header, PlannedTransition as Step, SwitchProgram,
-        TransitionMode, TransitionPlan, COMMANDS,
-    },
+    immediate::{Code, Command, CommandRecord, Header, TransitionMode, COMMANDS},
     snapshot::{self, Record},
-    DspMeasurement, LoopMode, LoopSlotId, Peaks, SlotId, StateRecord, Telemetry, TimingState,
+    DspMeasurement, LoopSlotId, Peaks, SlotId, StateRecord, Telemetry, TimingState,
 };
 use shoop_rt_transport::rt;
 use std::{
@@ -31,37 +32,15 @@ use std::{
 
 const TARGET_CORE_CLOCK_HZ: u32 = 150_000_000;
 
-pub fn descriptor(image: &ProgramImage) -> SwitchProgram {
-    let c = &image.compiled;
-    SwitchProgram {
-        revision: image.layout.revision,
-        region: image.layout.region as u16,
-        instructions: c.instructions.len() as u16,
-        sync_count: c.sync_count as u16,
-        states: c.state.len() as u16,
-        jobs: c.jobs_per_quantum as u16,
-        buffers: c.resources.buffers as u16,
-    }
-}
-struct Upload {
-    image: ProgramImage,
-    writes: std::vec::IntoIter<Write>,
-    views: std::vec::IntoIter<u32>,
+struct StagedUpload {
+    upload: Upload,
     done: bool,
     announced: bool,
 }
-impl Upload {
-    fn new(image: ProgramImage) -> Self {
-        let writes = image.writes(u64::from(program_limits().instructions));
-        let views = image
-            .layout
-            .new_media_views()
-            .collect::<Vec<_>>()
-            .into_iter();
+impl StagedUpload {
+    fn new(upload: Upload) -> Self {
         Self {
-            image,
-            writes: writes.into_iter(),
-            views,
+            upload,
             done: false,
             announced: false,
         }
@@ -89,7 +68,7 @@ struct Owner<'a> {
     frame: u64,
     storage_frame: u64,
     current: Option<ProgramImage>,
-    upload: Option<Upload>,
+    upload: Option<StagedUpload>,
     retired: Option<ProgramImage>,
     rows: Vec<Row>,
     pending: Option<Pending>,
@@ -206,24 +185,31 @@ impl Owner<'_> {
         }
         if !upload.done {
             for _ in 0..32 {
-                let Some(w) = upload.writes.next() else {
-                    if let Some(view) = upload.views.next() {
-                        self.clear_view(view)?;
-                    } else {
-                        upload.done = true;
+                match upload.upload.next_step() {
+                    Some(UploadStep::Configure(w)) => {
+                        let (prefix, space) = if w.space == Space::History {
+                            ("audio_cfg", 3)
+                        } else {
+                            ("cfg", w.space as u64)
+                        };
+                        self.access(prefix, space, w.address, Some(&w.value))?;
                     }
-                    break;
-                };
-                let (prefix, space) = if w.space == Space::History {
-                    ("audio_cfg", 3)
-                } else {
-                    ("cfg", w.space as u64)
-                };
-                self.access(prefix, space, w.address, Some(&w.value))?;
+                    Some(UploadStep::ClearView(view)) => {
+                        self.clear_view(view)?;
+                        break;
+                    }
+                    None => {
+                        upload.done = true;
+                        break;
+                    }
+                }
             }
         }
         if upload.done {
-            if ready.push((upload.image.layout.revision, true)).is_ok() {
+            if ready
+                .push((upload.upload.image.layout.revision, true))
+                .is_ok()
+            {
                 // A ready image stays owned here until its fenced switch.
                 upload.announced = true;
                 self.upload = Some(upload);
@@ -241,7 +227,8 @@ impl Owner<'_> {
         let upload = self
             .upload
             .take()
-            .ok_or_else(|| anyhow::anyhow!("RTL selected an unstaged program"))?;
+            .ok_or_else(|| anyhow::anyhow!("RTL selected an unstaged program"))?
+            .upload;
         ensure!(
             upload.image.layout.revision == revision,
             "RTL selected wrong program revision"
@@ -317,29 +304,21 @@ impl Owner<'_> {
             else {
                 return Ok(Code::Unsupported);
             };
-            let mut bits = Bits::zero(129);
-            bits.set(128, 1, 1)
-                .set(0, 32, Fixed::from_f32(gain).0 as u32 as u64)
-                .set(32, 32, Fixed::from_f32(gain).0 as u32 as u64);
+            let bits = gain_value(gain);
             self.access("cfg", 1, u64::from(address), Some(&bits))?;
             self.rows[index].gain = gain;
             return Ok(Code::Applied);
         }
         let mut words = self.loop_words(physical)?;
         if let Command::ClearPlannedTransitions(_, mask) = command {
-            if mask as u8 & 1 != 0 {
-                words[1] &= !(1 << 32);
-            }
-            if mask as u8 & 2 != 0 {
-                words[1] &= !(1 << 37);
-            }
+            clear_plan(&mut words, mask);
             self.store_loop(physical, &words)?;
             return Ok(Code::Applied);
         }
         let Command::Transition(_, plan) = command else {
             unreachable!()
         };
-        let mut state = decode(physical, &words, self.rows[index].last_pulse);
+        let state = loop_state(physical, &words, self.rows[index].last_pulse);
         let image = self.current.as_ref().unwrap();
         let source = image
             .layout
@@ -353,61 +332,13 @@ impl Owner<'_> {
                 slot: id.slot,
                 generation: id.generation,
             });
-        let step = |s: Step| ModeStep {
-            mode: mode(s.mode),
-            skip: s.skip,
-        };
-        let plans = match apply_mode_command(
-            &mut state,
-            source,
-            self.frame,
-            ModePlan {
-                now: plan.now.map(mode),
-                steps: [plan.first.map(step), plan.second.map(step)],
-            },
-        ) {
-            Ok(p) => p,
-            Err(TransitionError::Exhausted | TransitionError::Capacity) => {
-                return Ok(Code::CaptureUnavailable)
+        match apply_plan(&mut words, state, source, self.frame, plan) {
+            Ok(code) => {
+                self.store_loop(physical, &words)?;
+                Ok(code)
             }
-            Err(_) => return Ok(Code::CannotApply),
-        };
-        words[0] = (words[0] & !(3 << 33)) | ((state.mode as u64) << 33);
-        words[0] = (words[0] & !(1 << 56)) | (u64::from(plans[1].is_some()) << 56);
-        words[2] = state.position;
-        words[3] = state.content_length;
-        words[4] = state.capture_frames;
-        words[5] = state.cycles;
-        words[6] = state.content_revision;
-        words[7] = state.revision_watermark;
-        words[1] &= (1 << 32) - 1;
-        for (i, p) in plans.iter().enumerate() {
-            if let Some(p) = p {
-                let (op, pos, retrigger) = match p.operation {
-                    Operation::Stop => (0, 0, false),
-                    Operation::Play {
-                        position,
-                        retrigger,
-                    } => (1, position, retrigger),
-                    Operation::Record => (2, 0, false),
-                    Operation::Seek {
-                        position,
-                        retrigger,
-                    } => (3, position, retrigger),
-                };
-                let flags = 1 | 2 | (op << 2) | (u64::from(retrigger) << 4);
-                words[1] |= flags << (32 + 5 * i);
-                words[10 + 3 * i] = p.effective;
-                words[11 + 3 * i] = p.remaining_ticks;
-                words[12 + 3 * i] = pos;
-            }
+            Err(code) => Ok(code),
         }
-        self.store_loop(physical, &words)?;
-        Ok(if plans.iter().any(Option::is_some) {
-            Code::Scheduled
-        } else {
-            Code::Applied
-        })
     }
     fn command_turn(&mut self, execution: &mut rt::Execution) -> Result<bool> {
         execution.commands.begin_callback();
@@ -470,7 +401,7 @@ impl Owner<'_> {
                     || !self
                         .upload
                         .as_ref()
-                        .is_some_and(|u| u.announced && descriptor(&u.image) == d)
+                        .is_some_and(|u| u.announced && descriptor(&u.upload.image) == d)
                 {
                     Code::CannotApply
                 } else {
@@ -478,6 +409,7 @@ impl Owner<'_> {
                         .upload
                         .as_ref()
                         .unwrap()
+                        .upload
                         .image
                         .layout
                         .changed_sources()
@@ -535,8 +467,8 @@ impl Owner<'_> {
         for index in 0..self.rows.len() {
             let row = self.rows[index].clone();
             let words = self.loop_words(row.physical)?;
-            let state = decode(row.physical, &words, row.last_pulse);
-            let plan = read_plan(&words);
+            let state = loop_state(row.physical, &words, row.last_pulse);
+            let plan = loop_plan(&words);
             let id = LoopSlotId(SlotId::new(row.id.slot, row.id.generation));
             let next = [plan.first, plan.second]
                 .into_iter()
@@ -582,7 +514,7 @@ impl Owner<'_> {
                 Record::Telemetry(Telemetry::Loop {
                     loop_id: id,
                     mode: protocol_mode(state.mode),
-                    next_mode: next.map(|s| protocol_mode(mode(s.mode))),
+                    next_mode: next.map(|s| protocol_mode(reference_mode(s.mode))),
                     next_delay: next.map(|s| s.skip),
                     content_revision: state.content_revision,
                     recording_armed: armed,
@@ -744,65 +676,6 @@ impl Owner<'_> {
         Ok(())
     }
 }
-fn mode(m: TransitionMode) -> Mode {
-    match m {
-        TransitionMode::Stopped => Mode::Stopped,
-        TransitionMode::Playing => Mode::Playing,
-        TransitionMode::Recording => Mode::Recording,
-    }
-}
-fn protocol_mode(m: Mode) -> LoopMode {
-    match m {
-        Mode::Stopped => LoopMode::Stopped,
-        Mode::Playing => LoopMode::Playing,
-        Mode::Recording => LoopMode::Recording,
-    }
-}
-fn decode(id: Identity, w: &[u64; 16], last_pulse: Option<u64>) -> LoopState {
-    LoopState {
-        id: LoopId {
-            slot: id.slot,
-            generation: id.generation,
-        },
-        mode: match (w[0] >> 33) & 3 {
-            1 => Mode::Playing,
-            2 => Mode::Recording,
-            _ => Mode::Stopped,
-        },
-        position: w[2],
-        content_length: w[3],
-        capture_frames: w[4],
-        cycles: w[5],
-        content_revision: w[6],
-        revision_watermark: w[7],
-        capture_revision: w[7],
-        last_pulse,
-        repeat_sync: w[0] & (1 << 35) != 0,
-    }
-}
-fn read_plan(w: &[u64; 16]) -> TransitionPlan {
-    let step = |i: usize| {
-        let flags = (w[1] >> (32 + i * 5)) & 31;
-        if flags & 1 == 0 {
-            None
-        } else {
-            Some(Step {
-                mode: match (flags >> 2) & 3 {
-                    0 => TransitionMode::Stopped,
-                    2 => TransitionMode::Recording,
-                    _ => TransitionMode::Playing,
-                },
-                skip: w[11 + 3 * i].min(u64::from(u32::MAX)) as u32,
-            })
-        }
-    };
-    TransitionPlan {
-        now: None,
-        first: step(0),
-        second: step(1),
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run(
     limits: ProgramLimits,
@@ -810,7 +683,7 @@ pub(super) fn run(
     memory_mb: u32,
     shared: &Shared,
     mut execution: rt::Execution,
-    mut uploads: rtrb::Consumer<ProgramImage>,
+    mut uploads: rtrb::Consumer<Upload>,
     mut ready: rtrb::Producer<(u64, bool)>,
     mut retired: rtrb::Producer<ProgramImage>,
     mut requests: rtrb::Consumer<Block>,
@@ -902,8 +775,8 @@ pub(super) fn run(
             }
         }
         if owner.upload.is_none() {
-            if let Ok(image) = uploads.pop() {
-                owner.upload = Some(Upload::new(image));
+            if let Ok(upload) = uploads.pop() {
+                owner.upload = Some(StagedUpload::new(upload));
                 work = true;
             }
         }

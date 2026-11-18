@@ -34,7 +34,22 @@ timing, bank/row effects and refresh, but no competing CPU/DMA traffic or measur
 PS/HP bridge overhead. Power-current values are placeholders and are not used to
 claim power estimates.
 
-For a chosen board, replace the geometry, width, speed/timing bin and controller
-policy using its schematic, actual memory datasheet, PS clock settings and
-measurements. In particular, some small boards have a 32-bit DDR bus rather than
-the assumed 16-bit bus. The profile hash and placement accompany each report.
+`zturn-v2-ddr3-1066-x32.ini` replays the 1 GiB, 32-bit memory geometry in the
+MYIR Z-turn V2 Ver 1 schematic. The model uses one rank with two 4 Gbit x16
+devices and a 32-byte BL8 native burst. The generated PS7 register values give
+tRCD and tRP of seven clocks, tRAS of 21 clocks, tRC of 28 clocks, tFAW of 27
+clocks, and tRFC of 161 clocks. The model uses those delays and derives tRC by
+adding tRAS and tRP. The scheduling policy and remaining illustrative timings
+come from the x16 study. PS arbitration, ARM and GEM DMA traffic, and board
+calibration require measurements. [Z-turn V2 plan](../../../PLAN_ZTURN_V2_FPGA_BACKEND.md)
+
+Set `SHOOP_DRAMSIM3_CONFIG` to an absolute INI path to select the memory
+profile for a simulation run. The FPGA workflow runs the Q32 16-loop and 64-loop
+trace with both profiles and asserts exact stereo samples and a 66,666-cycle
+budget per quantum at 100 MHz and 48 kHz.
+
+```sh
+SHOOP_DRAMSIM3_CONFIG="$PWD/fpga/axi_memory/configs/zturn-v2-ddr3-1066-x32.ini" \
+  cargo test --locked -p rt_fpga_testbench --features sim --test loading \
+  looping_workloads_with_thirty_two_frame_chunks_and_dram_timing -- --nocapture
+```

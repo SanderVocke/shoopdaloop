@@ -1,7 +1,12 @@
+#[cfg(feature = "fpga")]
+#[path = "fpga.rs"]
+mod fpga;
 #[path = "profiling.rs"]
 mod profiling;
 use alloc::{boxed::Box, string::String, vec, vec::Vec};
 use core::{ffi::c_void, time::Duration};
+#[cfg(feature = "fpga")]
+pub use fpga::run as run_fpga;
 use rt_runtime::buffer::{AudioBlock, MidiBlock, MidiBuffer};
 use shoop_app::{ConnectionId, Service, ServiceOptions};
 use shoop_app_api::{
@@ -535,6 +540,40 @@ impl StoppedDummy {
         self.reset && self.render.cleanup().is_ok()
     }
 }
+
+struct DummyTask {
+    running: Option<*mut c_void>,
+    stopped: Option<StoppedDummy>,
+    cleaned: bool,
+}
+impl DummyTask {
+    fn cleanup(&mut self) -> Option<bool> {
+        if self.cleaned {
+            return Some(true);
+        }
+        if let Some(owner) = self.running {
+            match unsafe { shoop_stop_render() } {
+                1 => {
+                    self.stopped = Some(unsafe { retire_render(owner) });
+                    self.running = None;
+                }
+                2 => return None,
+                _ => return Some(false),
+            }
+        }
+        match unsafe { shoop_cleanup_allowed() } {
+            2 => None,
+            1 => {
+                self.cleaned = self.stopped.as_mut().is_some_and(StoppedDummy::cleanup);
+                if self.cleaned {
+                    self.stopped.take();
+                }
+                Some(self.cleaned)
+            }
+            _ => Some(false),
+        }
+    }
+}
 unsafe fn retire_render(owner: *mut c_void) -> StoppedDummy {
     let dummy = Box::from_raw(owner.cast::<Dummy>());
     if dummy.reset {
@@ -628,8 +667,11 @@ pub fn run() {
         usb_scratch: [0; 2048],
     });
     let owner = Box::into_raw(dummy).cast::<c_void>();
-    let mut render_owner = Some(owner);
-    let mut stopped_owner: Option<StoppedDummy> = None;
+    let mut render_task = DummyTask {
+        running: Some(owner),
+        stopped: None,
+        cleaned: false,
+    };
     unsafe {
         shoop_start_render(owner);
     }
@@ -688,6 +730,10 @@ pub fn run() {
             ],
         )
         .expect("settings");
+    serve(service, || render_task.cleanup());
+}
+
+fn serve(mut service: Service, mut cleanup_renderer: impl FnMut() -> Option<bool>) {
     for _ in 0..10_000 {
         if service.is_ready() {
             break;
@@ -721,7 +767,6 @@ pub fn run() {
     #[cfg(feature = "usb-midi")]
     let mut last_usb = last;
     let mut shutdown_at = None;
-    let mut render_cleaned = false;
     let mut updater_reset = false;
     let mut last_memory = last;
     assert_eq!(
@@ -788,27 +833,7 @@ pub fn run() {
         if service.shutdown_ready() {
             let update = service.updater_request();
             service.begin_host_cleanup().expect("shutdown authority");
-            let stopped = if render_owner.is_some() {
-                unsafe { shoop_stop_render() }
-            } else {
-                1
-            };
-            if stopped == 1 && render_owner.is_some() {
-                stopped_owner = Some(unsafe { retire_render(render_owner.take().unwrap()) });
-            }
-            let cleanup = if stopped != 1 {
-                stopped
-            } else if render_cleaned {
-                1
-            } else {
-                unsafe { shoop_cleanup_allowed() }
-            };
-            if cleanup != 2 {
-                render_cleaned = render_cleaned
-                    || (cleanup == 1 && stopped_owner.as_mut().is_some_and(StoppedDummy::cleanup));
-                if render_cleaned {
-                    stopped_owner.take();
-                }
+            if let Some(render_cleaned) = cleanup_renderer() {
                 let cleaned = render_cleaned
                     && update.is_none_or(|operation| unsafe {
                         shoop_deployment_request(

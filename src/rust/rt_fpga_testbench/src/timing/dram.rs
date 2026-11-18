@@ -137,9 +137,12 @@ impl Dram {
     }
     pub fn default(output: &Path, fabric_hz: u64) -> Result<Self> {
         let root = crate::root();
+        let config = std::env::var_os("SHOOP_DRAMSIM3_CONFIG")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| root.join("fpga/axi_memory/configs/zynq7010-ddr3-1066-x16.ini"));
         Self::new(
             &root.join("work/dramsim3/build/libshoop_dram.so"),
-            &root.join("fpga/axi_memory/configs/zynq7010-ddr3-1066-x16.ini"),
+            &config,
             output,
             fabric_hz,
         )

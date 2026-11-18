@@ -199,7 +199,14 @@ impl Processor {
             output.fill(Fixed::ZERO);
         }
         let result = (0..frames).step_by(quantum).try_for_each(|base| {
-            self.prepare_staging(memory)?;
+            let fault = self.engine.pipeline.fault();
+            if let Some(error) = fault {
+                if self.pending_switch.is_some() {
+                    return Err(error);
+                }
+            } else {
+                self.prepare_staging(memory)?;
+            }
             let frame = self.engine.pipeline.state().frame();
             let mut switched = false;
             if base == 0 || self.programs.is_some() {
@@ -234,7 +241,8 @@ impl Processor {
                     continue;
                 }
                 let header = group.header;
-                if self.retired_program.is_some()
+                if fault.is_none()
+                    && self.retired_program.is_some()
                     && group
                         .commands()
                         .any(|r| matches!(r.command(), Command::SwitchProgram(_)))
@@ -253,7 +261,7 @@ impl Processor {
                     Code::StaleConfiguration
                 } else if header.deadline().is_some_and(|limit| frame > limit) {
                     Code::DeadlineMissed
-                } else if self.engine.pipeline.fault().is_some() || malformed {
+                } else if fault.is_some() || malformed {
                     Code::CannotApply
                 } else {
                     Code::Applied
@@ -314,6 +322,9 @@ impl Processor {
                     index += 1;
                     r
                 });
+            }
+            if let Some(error) = fault {
+                return Err(error);
             }
             let mut observer = Publication {
                 loops: &mut self.engine.loops,

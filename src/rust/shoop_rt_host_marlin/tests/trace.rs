@@ -298,6 +298,92 @@ fn actual_rtl_matches_reference_record_play_gain_plans_and_live_loading() {
     assert_eq!(actual, expected);
     renderer.into_inner().stop().unwrap();
 }
+
+#[shoop_test(no_wasm = "64-loop native RTL and reference comparison")]
+fn sixty_four_loops_record_and_play_with_the_same_samples() {
+    use shoop_rt_protocol::immediate::COMMANDS;
+
+    fn render<E: Endpoint>(endpoint: E, renderer: &mut impl Renderer) -> Vec<[f32; Q]> {
+        let mut client = ProtocolClient::new(InProcess::new(endpoint, Outbox::new(64, 8, 0)));
+        client.connect().unwrap();
+        drain(&mut client);
+        let mut graph = vec![Command::BeginGraph {
+            quantum: Q as u32,
+            loops: 64,
+        }];
+        graph.extend((0..64).map(|slot| {
+            Command::ConfigureLoop(GraphLoop {
+                slot,
+                generation: 1,
+                source: None,
+                input: Some(0),
+                gain: 1. / 64.,
+                output: true,
+                repeat_sync: false,
+            })
+        }));
+        graph.push(Command::ActivateGraph);
+        for commands in graph.chunks(COMMANDS) {
+            client
+                .immediate(Batch::new(0, 0, commands).unwrap())
+                .unwrap();
+        }
+        let deadline = Instant::now() + Duration::from_secs(20);
+        loop {
+            step(renderer);
+            let replies = drain(&mut client);
+            for reply in &replies {
+                assert_eq!(reply.header.code(), Code::Applied);
+                assert!(reply.records().iter().all(|r| r.code() == Code::Applied));
+            }
+            if replies.iter().any(|r| {
+                r.records()
+                    .iter()
+                    .any(|r| matches!(r.command(), Command::ActivateGraph))
+            }) {
+                break;
+            }
+            assert!(Instant::now() < deadline);
+        }
+
+        let mut output = Vec::new();
+        for mode in [TransitionMode::Recording, TransitionMode::Playing] {
+            let commands: Vec<_> = (0..64).map(|slot| now(slot, mode)).collect();
+            for commands in commands.chunks(COMMANDS) {
+                client
+                    .immediate(Batch::new(1, 1, commands).unwrap())
+                    .unwrap();
+            }
+            let mut acknowledged = 0;
+            for _ in 0..8 {
+                let samples = step(renderer);
+                if mode == TransitionMode::Playing && acknowledged == 64 {
+                    output.push(samples);
+                }
+                for reply in drain(&mut client) {
+                    assert_eq!(reply.header.code(), Code::Applied);
+                    for record in reply.records() {
+                        assert_eq!(record.code(), Code::Applied);
+                        acknowledged += 1;
+                    }
+                }
+            }
+            assert_eq!(acknowledged, 64);
+        }
+        assert!(output.iter().all(|samples| samples == &[0.25; Q]));
+        output
+    }
+
+    let reference = shoop_rt_host_reference::prepare(Q as u32, driver(), 1).unwrap();
+    let mut reference_renderer = reference.renderer;
+    let expected = render(reference.endpoint, &mut reference_renderer);
+    let rtl = shoop_rt_host_marlin::prepare(Q as u32, driver(), 1, Q).unwrap();
+    let mut rtl_renderer = rtl.renderer;
+    let actual = render(rtl.endpoint, &mut rtl_renderer);
+    assert!(actual.len() >= 4 && expected.len() >= 4);
+    assert_eq!(&actual[..4], &expected[..4]);
+    rtl_renderer.into_inner().stop().unwrap();
+}
 #[shoop_test(no_wasm = "native owner thread")]
 fn initial_snapshot_and_zero_demand_switch_and_stop_make_progress() {
     let rtl = shoop_rt_host_marlin::prepare(Q as u32, driver(), 1, Q).unwrap();

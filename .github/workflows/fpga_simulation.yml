@@ -104,12 +104,12 @@ jobs:
           cargo test --locked -p shoop_rt_host_worklet --no-default-features --features fpga-reference,exports
       - name: Check command transport and protocol
         run: cargo test --locked -p shoop_rt_protocol -p shoop_rt_transport --all-features
-      - name: Exercise live loading through the application API
-        run: cargo test --locked -p shoop_host --no-default-features --features fpga-reference --test prepared_graph --test reference_activation --test reference_resources
-      - name: Install UI build dependencies
+      - name: Install native application and UI dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libasound2-dev libudev-dev libxkbcommon-dev
+          sudo apt-get install --yes libasound2-dev libjack-jackd2-dev libudev-dev libxkbcommon-dev
+      - name: Exercise live loading through the application API
+        run: cargo test --locked -p shoop_host --no-default-features --features fpga-reference --test prepared_graph --test reference_activation --test reference_resources
       - name: Exercise the reference backend through the UI runtime
         run: |
           cargo test --locked -p shoop_egui --lib
@@ -135,7 +135,8 @@ jobs:
       - name: Install simulation tools
         run: |
           sudo apt-get update
-          sudo apt-get install --yes autoconf flex bison libfl-dev zlib1g-dev g++ cmake patch python3-venv
+          sudo apt-get install --yes autoconf flex bison libfl-dev zlib1g-dev g++ cmake patch python3-venv \
+            libasound2-dev libjack-jackd2-dev
           python3 -m venv .venv
           .venv/bin/pip install -r scripts/rt_backend_testbench/requirements.txt
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
@@ -157,15 +158,25 @@ jobs:
           python scripts/check_fpga_testbench_coverage.py
           python scripts/check_shoop_test_usage.py
           python fpga/axi_memory/generate_tops.py --check
+          python fpga/host_bridge/generate_registers.py --check
+          python fpga/host_bridge/generate_top.py --check
       - name: Run retained component and execution matrices
         run: |
           mkdir -p work/marlin-suite
           set -o pipefail
           cargo test --locked -p rt_fpga_testbench --features sim -- --nocapture 2>&1 | tee work/marlin-suite/regression.log
           cargo check --locked -p rt_fpga_testbench
+      - name: Verify 16 and 64 loops with the Z-turn V2 DDR3 model
+        env:
+          SHOOP_DRAMSIM3_CONFIG: ${{ github.workspace }}/fpga/axi_memory/configs/zturn-v2-ddr3-1066-x32.ini
+        run: |
+          set -o pipefail
+          cargo test --locked -p rt_fpga_testbench --features sim --test loading \
+            looping_workloads_with_thirty_two_frame_chunks_and_dram_timing -- --nocapture \
+            2>&1 | tee work/marlin-suite/zturn-v2-ddr3.log
       - name: Check serialized Marlin application and bridge
         run: |
-          cargo test --locked -p rt_fpga_rtl --features sim
+          cargo test --locked -p rt_fpga_rtl --features sim,rt-interface
           cargo test --locked -p shoop_rt_host_marlin --features sim
           cargo test --locked -p shoop_host --no-default-features --features rtl-sim --test marlin_application --test marlin_drivers --test reference_resources
       - name: Verify production CPU numeric checks

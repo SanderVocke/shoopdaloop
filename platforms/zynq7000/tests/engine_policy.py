@@ -27,8 +27,18 @@ class Policy(unittest.TestCase):
             path = Path(directory) / "policy.json"
             path.write_text(json.dumps({"input_history": {"seconds": 30}}))
             policy = engine_policy.load(path)
-            self.assertEqual((policy["tracks"], policy["loops"]), (16, 128))
+            self.assertEqual((policy["tracks"], policy["loops"]), (8, 64))
             self.assertEqual(policy["input_history"]["midi_records"], 65536)
+            constrained = engine_policy.load(path, pool={"loops": 32})
+            self.assertEqual((constrained["tracks"], constrained["loops"]), (8, 32))
+            path.write_text(json.dumps({"loops": 40}))
+            self.assertEqual(engine_policy.load(path, pool={"loops": 32})["loops"], 40)
+
+    def test_usb_preserves_native_audio_pool_and_reserves_midi_cable_storage(self):
+        usb = engine_policy.load(usb=True)
+        self.assertEqual((usb["tracks"], usb["loops"]), (3, 20))
+        self.assertEqual(engine_policy.load()["loops"], 64)
+        self.assertEqual(usb["input_history"]["seconds"], 0)
 
     def test_invalid_settings_fail_before_build(self):
         for policy in [[], {"unknown": 1}, {"tracks": 0}, {"loops": True},

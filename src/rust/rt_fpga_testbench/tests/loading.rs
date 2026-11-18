@@ -591,3 +591,151 @@ fn live_media_graph_switch_preserves_recording_and_fences_axi_work() {
         );
     }
 }
+
+#[shoop_test(no_wasm = "The RTL pipeline uses native Verilator and DRAMsim3")]
+fn looping_workloads_with_thirty_two_frame_chunks_and_dram_timing() {
+    use rt_fpga_compiler::{Identity, compile_with_chunk_frames};
+    use rt_fpga_testbench::{
+        drivers::store::{Geometry, Store},
+        memory::Mode,
+    };
+
+    const Q: usize = 32;
+    const QUANTUM_BUDGET_CYCLES: u64 = Q as u64 * 100_000_000 / 48_000;
+    const CAPACITY: [u64; 7] = [1024, 512, 1024, Q as u64, 512, 1, 2];
+    let geometry = Geometry::new([512, 8192, Q as u64], 32);
+    let mut design = suites::pipeline::design(CAPACITY, &geometry, 64, Mode::Dramsim3, 1);
+    design.parameters.insert("LIVE_LOADING".into(), "1".into());
+    design
+        .parameters
+        .insert("PROGRAM_REGIONS".into(), "2".into());
+    let compiled = design
+        .build(&rt_fpga_testbench::root().join("work/marlin-suite/loading-ddr"))
+        .unwrap();
+
+    for loops in [16, 64] {
+        let mut sim = Sim::new(compiled.session(None).unwrap(), &[("clk", 10_000, 0)]);
+        let mut driver = Audio::loading(&mut sim, CAPACITY, 733);
+        driver.reset(&mut sim);
+        sim.model.set("sync_event_ready", 1);
+        let mut store =
+            Store::new(&mut sim, geometry.clone(), Mode::Dramsim3, 991, "store_").unwrap();
+        store.load(&mut sim, &json!({"chunk_frames":Q,"chunk_limit":8192,"block_chunks":32,"samples":[],"free_chunks":[],
+            "views":vec![json!({"chunks":[], "frames":0}); geometry.views as usize]}));
+        let graph = mono::session(
+            &(0..loops)
+                .map(|slot| mono::MonoLoop {
+                    id: Identity {
+                        slot,
+                        generation: 1,
+                    },
+                    source: None,
+                    input: true,
+                    output: true,
+                    gain: 1.0 / loops as f32,
+                    repeat_sync: false,
+                })
+                .collect::<Vec<_>>(),
+        );
+        let limits = RtlTarget::new(CAPACITY, 64, &[]).limits();
+        let logical = compile_with_chunk_frames(
+            &graph,
+            CompileContext {
+                quantum: Q as u32,
+                limits,
+            },
+            Q as u32,
+        )
+        .unwrap();
+        let mut allocator = Allocator::new(limits);
+        let layout = allocator.stage(&logical).unwrap();
+        let views = layout.media_views(&logical);
+        assert!(views.iter().all(|&view| view < geometry.views));
+        let mut rust = RustTarget::new(&views);
+        rust.limits = limits;
+        let reference_image = rust.build_image(&logical, layout.clone()).unwrap();
+        let specs = reference_image
+            .compiled
+            .plan
+            .image()
+            .description
+            .loops
+            .clone();
+        let mut reference = Pipeline::from_image(reference_image, limits).unwrap();
+        let mut image = RtlTarget::new(CAPACITY, 64, &views)
+            .build_image(&logical, layout)
+            .unwrap();
+        for (spec, row) in specs.iter().zip(&mut image.new_loops) {
+            assert_eq!(spec.id.slot, row.id.slot);
+            reference
+                .write_plans(
+                    spec.id,
+                    [
+                        Some(PlannedTransition {
+                            sequence: 1,
+                            operation: Transition::Record,
+                            on_pulse: false,
+                            effective: 0,
+                            remaining_ticks: 0,
+                        }),
+                        Some(PlannedTransition {
+                            sequence: 2,
+                            operation: Transition::Play {
+                                position: 0,
+                                retrigger: true,
+                            },
+                            on_pulse: false,
+                            effective: 128,
+                            remaining_ticks: 0,
+                        }),
+                    ],
+                )
+                .unwrap();
+            let words =
+                loop_image::image(reference.state().loop_state(spec.id).unwrap(), spec, None);
+            for (index, word) in row.words.iter_mut().enumerate() {
+                *word = words.get(64 * index, 64);
+            }
+        }
+        parameters(&mut driver, &image);
+        let transfer = Rc::new(RefCell::new(Upload::new(&image, CAPACITY[0])));
+        sim.agent(transfer.clone());
+        finish_upload(&mut sim, &transfer);
+        let (mut control, mut execution) = rt::channel(8, 2, 128).unwrap();
+        let mut bridge = Commands::default();
+        allocator.publish(1).unwrap();
+        select(
+            &mut sim,
+            &mut bridge,
+            &mut control,
+            &mut execution,
+            &image,
+            0,
+        );
+        acknowledge(&mut sim, &mut bridge, &mut control, &mut execution, 0);
+        allocator.complete(1).unwrap();
+        let mut cycles = Vec::new();
+        for index in 0..8 {
+            let input = if index < 4 { 0x300000 } else { 0 };
+            let start = sim.cycles;
+            assert_eq!(
+                driver.execute(&mut sim, &[vec![input; Q]], false).1,
+                0,
+                "{loops} loops, quantum {index}, media error {}",
+                sim.model.get("store_error_code")
+            );
+            cycles.push(sim.cycles - start);
+            if index >= 4 {
+                assert_eq!(driver.read_samples(&mut sim).1, vec![vec![0x300000; Q]; 2]);
+            }
+        }
+        assert!(store.memory.borrow().requests() > 0);
+        println!(
+            "{loops} loops, DRAMsim3 AXI64 cycles per quantum including input configuration: {cycles:?}"
+        );
+        assert!(
+            cycles.iter().all(|&cycles| cycles <= QUANTUM_BUDGET_CYCLES),
+            "{loops} loops exceeded the quantum budget of {QUANTUM_BUDGET_CYCLES} fabric cycles"
+        );
+    }
+}

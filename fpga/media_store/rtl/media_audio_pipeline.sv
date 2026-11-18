@@ -3,6 +3,7 @@
 module media_audio_pipeline #(
     parameter integer EXTERNAL_IO = 0,
     parameter integer LIVE_LOADING = 0,
+    parameter integer EXPORT_SYNC_EVENTS = 0,
     parameter integer PROGRAM_REGIONS = LIVE_LOADING != 0 ? 2 : 1,
     parameter integer PROGRAM_DEPTH = 32, parameter integer STATE_DEPTH = 16,
     parameter integer JOB_DEPTH = 32, parameter integer MAX_FRAMES = 32,
@@ -44,6 +45,8 @@ module media_audio_pipeline #(
     output wire switch_response_error,
     output wire [63:0] switch_first_frame, active_revision,
     output wire [63:0] sync_frame,
+    output wire sync_event_valid, input wire sync_event_ready,
+    output wire [255:0] sync_event_data,
     input wire run_valid, output wire run_ready,
     input wire [31:0] run_instruction_count, input wire [31:0] run_state_count,
     input wire [31:0] run_quantum,
@@ -141,6 +144,8 @@ module media_audio_pipeline #(
     end
     wire unused_sync_event;
     wire [255:0] unused_sync_data;
+    assign sync_event_valid = unused_sync_event;
+    assign sync_event_data = unused_sync_data;
     audio_pipeline #(.EXTERNAL_IO(EXTERNAL_IO), .LIVE_LOADING(LIVE_LOADING), .PROGRAM_REGIONS(PROGRAM_REGIONS),
         .PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH),
         .MAX_FRAMES(MAX_FRAMES), .BUFFERS(BUFFERS), .INPUT_PORTS(INPUT_PORTS), .OUTPUT_PORTS(OUTPUT_PORTS),
@@ -169,7 +174,8 @@ module media_audio_pipeline #(
         .audio_cfg_response_error(audio_cfg_response_error), .audio_cfg_read_data(audio_cfg_read_data),
         .monitor_valid(monitor_valid), .monitor_ready(monitor_ready), .monitor_data(monitor_data),
         .queued_jobs(queued_jobs), .drain_valid(drain_valid), .drain_ready(drain_ready),
-        .sync_frame(sync_frame), .sync_event_valid(unused_sync_event), .sync_event_ready(1'b1), .sync_event_data(unused_sync_data),
+        .sync_frame(sync_frame), .sync_event_valid(unused_sync_event),
+        .sync_event_ready(EXPORT_SYNC_EVENTS == 0 || sync_event_ready), .sync_event_data(unused_sync_data),
         .loop_read_valid(loop_read_valid), .loop_read_ready(loop_read_ready), .loop_read_slot(loop_read_slot),
         .loop_response_valid(loop_response_valid), .loop_response_error(loop_response_error), .loop_response_data(loop_response_data),
         .media_cmd_valid(job_cmd_valid), .media_cmd_ready(job_cmd_ready), .media_cmd_opcode(job_opcode),

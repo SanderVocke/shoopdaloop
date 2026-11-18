@@ -46,6 +46,28 @@ class Contracts(unittest.TestCase):
         with self.assertRaises(ValueError):
             boards.Board(data)
 
+    def test_zturn_v2_pl_reservation_precedes_update_staging(self):
+        board = boards.load("zturn-v2")
+        self.assertEqual((board.platform_end, board.rust_end, board.pl_bytes,
+                          board.stage, board.loader_min, board.ram),
+                         (0x08000000, 0x30000000, 0x08000000,
+                          0x38000000, 0x3c000000, 0x40000000))
+        self.assertIn("#define SHOOP_PL_DDR_BASE 0x30000000u", board.header())
+        self.assertIn("#define SHOOP_PL_DDR_BYTES 0x8000000u", board.header())
+        self.assertIn("#define SHOOP_BOARD_PHY_ADDRESS 0x7u", board.header())
+        self.assertIn("0x30000000", board.linker())
+        data = copy.deepcopy(board.data)
+        data["memory"]["pl_mib"] += 1
+        with self.assertRaisesRegex(ValueError, "PL arena"):
+            boards.Board(data)
+
+    def test_zturn_v2_phy_initialization(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            executable = Path(temporary) / "yt8531"
+            subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-I", PLATFORM / "boards",
+                            PLATFORM / "boards/yt8531.c", PLATFORM / "tests/yt8531.c", "-o", executable], check=True)
+            subprocess.run([executable], check=True)
+
     def test_boot_records_for_each_board(self):
         for name in boards.names():
             with self.subTest(board=name), tempfile.TemporaryDirectory() as temporary:

@@ -3,8 +3,8 @@ import copy
 import json
 
 DEFAULT = {
-    "tracks": 16,
-    "loops": 128,
+    "tracks": 8,
+    "loops": 64,
     "input_history": {
         "seconds": 0,
         "audio_take_pages": 32768,
@@ -13,10 +13,16 @@ DEFAULT = {
         "writers": 8,
     },
 }
+USB_POOL = {"tracks": 3, "loops": 20}
 
 
-def load(path=None):
+def load(path=None, *, pool=None, usb=False):
     policy = copy.deepcopy(DEFAULT)
+    if usb:
+        # The engine reserves MIDI restoration and callback storage for all 16 cables.
+        policy.update(USB_POOL)
+    if pool is not None:
+        policy.update(pool)
     if path is not None:
         values = json.loads(path.read_text())
         if not isinstance(values, dict) or set(values) - set(policy):

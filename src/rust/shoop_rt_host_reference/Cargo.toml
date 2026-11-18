@@ -5,11 +5,15 @@ edition="2021"
 description="Portable FPGA reference endpoint and driver-independent renderer"
 [lints]
 workspace=true
+[features]
+rtl = ["dep:rt_fpga_rtl", "dep:rtrb"]
 [dependencies]
 shoop_graph = { path = "../shoop_graph" }
-anyhow={workspace=true,features=["std"]}
+anyhow={workspace=true}
 rt_runtime={path="../rt_runtime"}
 rt_fpga_compiler={path="../rt_fpga_compiler"}
+rt_fpga_rtl={path="../rt_fpga_rtl",features=["rt-interface"],optional=true}
+rtrb={workspace=true,optional=true}
 rt_fpga_reference={path="../rt_fpga_reference",features=["rt-interface"]}
 shoop_rt_protocol={path="../shoop_rt_protocol"}
 shoop_rt_transport={path="../shoop_rt_transport",features=["rt-interface"]}

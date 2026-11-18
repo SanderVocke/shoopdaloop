@@ -29,7 +29,7 @@ impl DspMeasurement {
         match self {
             Self::Callback { paced: true, .. } => "Shoop callback time",
             Self::Callback { paced: false, .. } => "Unpaced Shoop callback time",
-            Self::FpgaQuantum { .. } => "Simulated FPGA processing time",
+            Self::FpgaQuantum { .. } => "FPGA processing time",
             Self::JackServer { .. } => "JACK server load",
         }
     }

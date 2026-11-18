@@ -85,7 +85,7 @@ jobs:
     timeout-minutes: 35
     strategy:
       matrix:
-        board: [qemu, zedboard]
+        board: [qemu, zedboard, zturn-v2]
     env:
       RUSTFLAGS: -D warnings
       CARGO_BUILD_JOBS: 2
@@ -127,11 +127,16 @@ jobs:
       - name: Exercise signed SD boot and A/B deployment for the board memory map
         run: |
           python3 platforms/zynq7000/deployment/build_qemu.py --fetch
-          python3 platforms/zynq7000/tests/deployment.py --board ${{ matrix.board }} --directory work/zynq/board-deployment
+          python3 platforms/zynq7000/tests/deployment.py --board ${{ matrix.board }} --directory work/zynq/board-deployment ${{ matrix.board == 'zturn-v2' && '--recovery' || '' }}
       - name: Exercise board memory profile on the emulated processing system
         run: |
           python3 platforms/zynq7000/integration.py --board ${{ matrix.board }}
           python3 platforms/zynq7000/integration.py --board ${{ matrix.board }} --fixture --small-fixture
+      - name: Verify FPGA probe startup and timeout in QEMU
+        if: matrix.board == 'zturn-v2'
+        run: |
+          python3 platforms/zynq7000/tests/fpga_probe.py
+          python3 platforms/zynq7000/tests/fpga_host.py
       - name: Save board artifacts and emulation evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -149,6 +154,7 @@ jobs:
             work/zynq/**/integration/*.log
             work/zynq/**/fixture-test/*.json
             work/zynq/**/fixture-test/*.log
+            work/zynq/**/fpga-host-test/**/*.log
             work/zynq/**/input-test/*.json
             work/zynq/**/input-test/*.log
           retention-days: 14

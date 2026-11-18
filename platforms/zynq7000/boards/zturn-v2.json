@@ -1,0 +1,51 @@
+{
+  "family": "zynq7000",
+  "name": "zturn-v2",
+  "profile": "shoop-zturn-v2-1g-v1",
+  "part": "xc7z020clg400-2",
+  "fpga": {
+    "register_base": 1073741824,
+    "clock_hz": 100000000
+  },
+  "memory": {
+    "ram_mib": 1024,
+    "platform_mib": 128,
+    "rust_mib": 640,
+    "pl_mib": 128,
+    "bundle_mib": 32,
+    "loader_mib": 64
+  },
+  "bsp": {
+    "cpu_hz": 666666666,
+    "watchdog_hz": 111111111,
+    "gem_base": 3758141440,
+    "gem_irq": 54,
+    "uart_base": 3758100480,
+    "sd_base": 3759144960,
+    "sd_hz": 50000000,
+    "sd_detect": 1,
+    "sd_wp": 0,
+    "sd_bank": 1,
+    "gem_divisors": {
+      "1000": [8, 1],
+      "100": [8, 5],
+      "10": [8, 50]
+    },
+    "phy": "yt8531",
+    "phy_address": 7
+  },
+  "boot": {
+    "device_tree": "zynq-zturn",
+    "ps_init": "board/xilinx/zynq/zynq-zturn/ps7_init_gpl.c",
+    "ps_init_sha256": "dfa7646154d7bd65e882c663e6c580c8f72c1846a809032875dad8a682870bff"
+  },
+  "firmware": {
+    "recording_mib": 128,
+    "media_mib": 32,
+    "runtime_reserve_mib": 240,
+    "audio": "dummy",
+    "midi": "dummy",
+    "usb_reset": null
+  },
+  "qualification": "Development profile; V2-specific PS initialization and physical qualification pending"
+}

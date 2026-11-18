@@ -1,4 +1,6 @@
 //! Little-endian packed RTL words, including values wider than a native integer.
+use alloc::{vec, vec::Vec};
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Bits(pub Vec<u32>);
 impl Bits {
@@ -43,7 +45,7 @@ impl Bits {
         value
     }
     pub fn array<const N: usize>(&self) -> [u32; N] {
-        std::array::from_fn(|i| self.0.get(i).copied().unwrap_or(0))
+        core::array::from_fn(|i| self.0.get(i).copied().unwrap_or(0))
     }
 }
 impl<const N: usize> From<[u32; N]> for Bits {

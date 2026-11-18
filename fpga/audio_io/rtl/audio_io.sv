@@ -46,7 +46,8 @@ module audio_io #(
     output reg [31:0] input_losses,
     output reg [31:0] rx_high_water,
     output reg [31:0] tx_high_water,
-    output reg busy
+    output reg busy,
+    output wire audio_reset
 );
     localparam integer LATENCY = Q+P;
     reg [RX_BANKS-1:0] rx_request, rx_ack;
@@ -79,10 +80,10 @@ module audio_io #(
     reg playback_started;
     reg [31:0] input_channel;
     wire reset_session = reset || session_reset;
-    (* async_reg = "true" *) reg [1:0] audio_reset_sync;
+    (* async_reg = "true" *) reg [1:0] audio_reset_sync = 2'b11;
     always @(posedge audio_clk)
         audio_reset_sync<={audio_reset_sync[0],reset_session};
-    wire audio_reset = audio_reset_sync[1];
+    assign audio_reset = audio_reset_sync[1];
     wire audio_halt = audio_fault || fault_sync;
     assign recovery_requested = core_fault;
     assign process_epoch = epoch;

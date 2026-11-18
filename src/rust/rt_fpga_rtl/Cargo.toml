@@ -8,8 +8,11 @@ workspace=true
 [features]
 default=[]
 sim=["dep:marlin","dep:quick-xml","dep:sha2","dep:serde_json"]
+rt-interface=["dep:rt_fpga_reference","dep:shoop_rt_protocol"]
 [dependencies]
 rt_fpga_compiler={path="../rt_fpga_compiler"}
+rt_fpga_reference={path="../rt_fpga_reference",optional=true}
+shoop_rt_protocol={path="../shoop_rt_protocol",optional=true}
 serde={workspace=true,features=["derive"]}
 serde_json={workspace=true,optional=true}
 sha2={workspace=true,optional=true}

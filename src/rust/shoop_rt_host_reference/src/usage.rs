@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicU64, Ordering::SeqCst};
+use core::sync::atomic::{AtomicU64, Ordering::SeqCst};
 
 use rt_fpga_compiler::{
     loading::{Allocator, Layout},

@@ -1,4 +1,5 @@
 //! Component instruction and state values for explicit simulation fixtures.
+use alloc::vec;
 use serde::{Deserialize, Serialize};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Ord, PartialOrd, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

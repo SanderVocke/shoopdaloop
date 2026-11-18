@@ -5,11 +5,14 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
+import zipfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import boards
+import fpga_pair
 
 DEPLOYMENT = Path(__file__).resolve().parent
 ROOT = DEPLOYMENT.parents[2]
@@ -17,6 +20,7 @@ PINS = json.loads((DEPLOYMENT.parent / "pins.json").read_text())
 SOURCE = ROOT / "work/zynq/u-boot"
 BUILD = ROOT / "work/zynq/u-boot-build"
 PATCH = DEPLOYMENT.parent / "patches/uboot-network-deployment.patch"
+ZTURN_V2_PHY_PATCH = DEPLOYMENT.parent / "patches/uboot-zturn-v2-phy.patch"
 
 
 def run(arguments, **kwargs):
@@ -26,6 +30,7 @@ def run(arguments, **kwargs):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fetch", action="store_true")
+    parser.add_argument("--fpga-build", type=Path, help="Use the verified PS initialization from this Vivado build")
     boards.argument(parser)
     args = parser.parse_args()
     board = boards.load(args.board)
@@ -54,13 +59,42 @@ def main():
     reference = {path: hashlib.sha256((SOURCE / path).read_bytes()).hexdigest() for path in expected_ps}
     if reference != expected_ps:
         raise SystemExit("Reference PS initialization differs from its recorded inputs")
+    fpga_ps = None
+    if args.fpga_build is not None:
+        if not board.pl_bytes:
+            parser.error("FPGA PS initialization requires a board with a PL arena")
+        manifest = json.loads((args.fpga_build / "fpga-build.json").read_text())
+        xsa = args.fpga_build / "zturn_v2.xsa"
+        if (manifest["contract"] != fpga_pair.contract(board)
+                or fpga_pair.digest(xsa) != manifest["sha256"]["zturn_v2.xsa"]):
+            raise SystemExit("XSA and board do not match the FPGA build")
+        generated = BUILD / "fpga-ps"
+        generated.mkdir(exist_ok=True)
+        files = ("ps7_init_gpl.c", "ps7_init_gpl.h")
+        original = {}
+        with zipfile.ZipFile(xsa) as archive:
+            for name in files:
+                source = archive.read(name)
+                original[name] = hashlib.sha256(source).hexdigest()
+                # Vivado 2021.1 emits non-prototype declarations that current U-Boot rejects.
+                functions = rb"(?:ps7_init|ps7_post_config|ps7_debug|ps7GetSiliconVersion|perf_reset_and_start_timer)"
+                prototype = rb"(?m)^((?:(?:int|void)[ \t]+)?" + functions + rb")[ \t]*\(\)"
+                (generated / name).write_bytes(re.sub(prototype, rb"\1(void)", source))
+        fpga_ps = {"xsa_sha256": fpga_pair.digest(xsa),
+                   "xsa_sources": original,
+                   "sources": {name: fpga_pair.digest(generated / name) for name in files}}
     changes = subprocess.check_output(["git", "-C", SOURCE, "diff", "--name-only"], text=True).splitlines()
-    if set(changes) - {"cmd/Makefile", "net/fastboot_udp.c", "include/fastboot.h", "drivers/fastboot/fb_command.c", "drivers/net/zynq_gem.c"}:
+    allowed = {"cmd/Makefile", "net/fastboot_udp.c", "include/fastboot.h", "drivers/fastboot/fb_command.c", "drivers/net/zynq_gem.c"}
+    board_patch = ZTURN_V2_PHY_PATCH if board.name == "zturn-v2" else None
+    if board_patch:
+        allowed.add("arch/arm/dts/zynq-zturn.dts")
+    if set(changes) - allowed:
         raise SystemExit("Unrecorded U-Boot source changes")
-    applied = subprocess.run(["git", "-C", SOURCE, "apply", "--reverse", "--check", PATCH], capture_output=True)
-    if applied.returncode:
-        run(["git", "-C", SOURCE, "apply", "--check", PATCH])
-        run(["git", "-C", SOURCE, "apply", PATCH])
+    for patch in [PATCH] + ([board_patch] if board_patch else []):
+        applied = subprocess.run(["git", "-C", SOURCE, "apply", "--reverse", "--check", patch], capture_output=True)
+        if applied.returncode:
+            run(["git", "-C", SOURCE, "apply", "--check", patch])
+            run(["git", "-C", SOURCE, "apply", patch])
     copies = {"uboot.c": "cmd/shoop.c", "boot_state.c": "cmd/shoop_boot_state.c",
               "shoop_boot_state.h": "include/shoop_boot_state.h", "shoop_layout.h": "include/shoop_layout.h"}
     for source, target in copies.items():
@@ -74,10 +108,14 @@ def main():
     run([*make, "xilinx_zynq_virt_defconfig"], env=environment)
     config = [SOURCE / "scripts/config", "--file", BUILD / ".config"]
     enable = ["LMB", "NET_LEGACY", "UDP_FUNCTION_FASTBOOT", "FASTBOOT_OEM_BOARD", "USE_BOOTCOMMAND", "ENV_IS_NOWHERE", "ENV_OVERWRITE", "CMD_ELF"]
+    if board_patch:
+        enable.append("PHY_MOTORCOMM")
     disable = ["NET_LWIP", "EFI_LOADER", "TOOLS_MKEFICAPSULE", "FASTBOOT_FLASH", "FASTBOOT_OEM_RUN", "FASTBOOT_UUU_SUPPORT",
                "FASTBOOT_CMD_OEM_CONSOLE", "USB_FUNCTION_FASTBOOT", "ENV_IS_IN_FAT", "ENV_IS_IN_SPI_FLASH",
                "ENV_IS_IN_NAND", "ENV_IS_IN_MMC", "ENV_IS_IN_EXT4", "USE_PREBOOT"]
     strings = {"DEFAULT_DEVICE_TREE": board.boot["device_tree"], "OF_LIST": board.boot["device_tree"], "SPL_OF_LIST": board.boot["device_tree"], "BOOTCOMMAND": "shoop boot"}
+    if fpga_ps is not None:
+        strings["XILINX_PS_INIT_FILE"] = str(generated / "ps7_init_gpl.c")
     for name in disable:
         run([*config, "--disable", name])
     for name in enable:
@@ -96,6 +134,10 @@ def main():
                 "source_sha256": {source: hashlib.sha256((DEPLOYMENT / source).read_bytes()).hexdigest() for source in copies},
                 "config_sha256": hashlib.sha256((BUILD / ".config").read_bytes()).hexdigest(),
                 "files": {name: hashlib.sha256((BUILD / name).read_bytes()).hexdigest() for name in ["u-boot.bin", "u-boot-nodtb.bin", "u-boot.dtb", "spl/boot.bin", "spl/u-boot-spl"]}}
+    if board_patch:
+        manifest["board_patch_sha256"] = hashlib.sha256(board_patch.read_bytes()).hexdigest()
+    if fpga_ps is not None:
+        manifest["fpga_ps"] = fpga_ps
     (BUILD / "shoop-build.json").write_text(json.dumps(manifest, indent=2) + "\n")
     print(BUILD)
 

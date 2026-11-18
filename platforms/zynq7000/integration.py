@@ -27,7 +27,7 @@ def main():
     boards.argument(parser)
     args = parser.parse_args()
     board = boards.load(args.board)
-    policy = engine_policy.load(args.engine_config)
+    policy = engine_policy.load(args.engine_config, pool=board.firmware.get("engine_pool"))
     if args.input and policy["input_history"]["seconds"] == 0:
         parser.error("--input requires an enabled --engine-config policy")
     fixture = args.fixture or args.input

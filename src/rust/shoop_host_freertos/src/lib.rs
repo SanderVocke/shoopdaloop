@@ -3,6 +3,8 @@ extern crate alloc;
 
 #[cfg(target_os = "none")]
 mod embedded;
+#[cfg(all(target_os = "none", feature = "fpga"))]
+pub use embedded::run_fpga;
 #[cfg(all(target_os = "none", feature = "fixture"))]
 pub use embedded::{fixture_stats, fixture_step};
 #[cfg(target_os = "none")]

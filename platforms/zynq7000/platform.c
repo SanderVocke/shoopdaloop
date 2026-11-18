@@ -11,6 +11,10 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <string.h>
+#ifdef SHOOP_BOARD_PHY_YT8531
+#include "yt8531.h"
+#include "sleep.h"
+#endif
 static char *c_heap_next;
 
 XScuGic_Config XScuGic_ConfigTable[] = {{ .DeviceId = 0, .CpuBaseAddress = 0xf8f00100, .DistBaseAddress = 0xf8f01000 }};
@@ -18,6 +22,70 @@ XScuTimer_Config XScuTimer_ConfigTable[] = {{ .DeviceId = 0, .BaseAddr = 0xf8f00
 XEmacPs_Config XEmacPs_ConfigTable[] = {{ .DeviceId = 0, .BaseAddress = SHOOP_GEM_BASE, .S1GDiv0 = SHOOP_GEM_1000_DIV0, .S1GDiv1 = SHOOP_GEM_1000_DIV1, .S100MDiv0 = SHOOP_GEM_100_DIV0, .S100MDiv1 = SHOOP_GEM_100_DIV1, .S10MDiv0 = SHOOP_GEM_10_DIV0, .S10MDiv1 = SHOOP_GEM_10_DIV1 }};
 struct xtopology_t xtopology[] = {{ .emac_baseaddr = SHOOP_GEM_BASE, .emac_type = xemac_type_emacps, .scugic_baseaddr = 0xf8f01000, .scugic_emac_intr = SHOOP_GEM_IRQ }};
 int xtopology_n_emacs = 1;
+
+#if defined(SHOOP_FPGA_PROBE) || defined(SHOOP_FPGA)
+uint32_t shoop_fpga_register_base(void) { return SHOOP_PL_REG_BASE; }
+uint32_t shoop_fpga_arena_base(void) { return SHOOP_PL_DDR_BASE; }
+uint32_t shoop_fpga_arena_bytes(void) { return SHOOP_PL_DDR_BYTES; }
+uint32_t shoop_fpga_clock_hz(void) { return SHOOP_PL_CLOCK_HZ; }
+
+extern XScuGic xInterruptController;
+static TaskHandle_t fpga_waiter;
+
+static void fpga_irq(void *context) {
+    (void)context;
+    /* The fabric holds its level until the owner drains the mailbox. */
+    XScuGic_Disable(&xInterruptController, SHOOP_PL_IRQ);
+    BaseType_t wake = pdFALSE;
+    vTaskNotifyGiveFromISR(fpga_waiter, &wake);
+    portYIELD_FROM_ISR(wake);
+}
+
+int shoop_fpga_irq_start(void) {
+    XScuGic_Disable(&xInterruptController, SHOOP_PL_IRQ);
+    fpga_waiter = xTaskGetCurrentTaskHandle();
+    XScuGic_SetPriorityTriggerType(&xInterruptController, SHOOP_PL_IRQ,
+        (configMAX_API_CALL_INTERRUPT_PRIORITY + 1) << portPRIORITY_SHIFT, 1);
+    return XScuGic_Connect(&xInterruptController, SHOOP_PL_IRQ, fpga_irq, NULL) == XST_SUCCESS;
+}
+
+int shoop_fpga_irq_wait(void) {
+    XScuGic_Enable(&xInterruptController, SHOOP_PL_IRQ);
+    return ulTaskNotifyTake(pdTRUE, 1) != 0;
+}
+
+void shoop_fpga_irq_stop(void) {
+    XScuGic_Disable(&xInterruptController, SHOOP_PL_IRQ);
+    XScuGic_Disconnect(&xInterruptController, SHOOP_PL_IRQ);
+    (void)ulTaskNotifyTake(pdTRUE, 0);
+    fpga_waiter = NULL;
+}
+
+#ifdef SHOOP_FIXTURE
+void shoop_fpga_irq_pend_fixture(void) {
+    XScuGic_DistWriteReg(&xInterruptController, XSCUGIC_PENDING_SET_OFFSET + 4u * (SHOOP_PL_IRQ / 32u),
+                        1u << (SHOOP_PL_IRQ % 32u));
+}
+#endif
+#endif
+
+#ifdef SHOOP_BOARD_PHY_YT8531
+static bool mdio_read(void *context, unsigned reg, uint16_t *value) {
+    return XEmacPs_PhyRead(context, SHOOP_BOARD_PHY_ADDRESS, reg, value) == XST_SUCCESS;
+}
+static bool mdio_write(void *context, unsigned reg, uint16_t value) {
+    return XEmacPs_PhyWrite(context, SHOOP_BOARD_PHY_ADDRESS, reg, value) == XST_SUCCESS;
+}
+static void mdio_delay(void *context, unsigned milliseconds) {
+    (void)context;
+    usleep(milliseconds * 1000u);
+}
+u32 shoop_yt8531_emacps_speed(XEmacPs *emac) {
+    const struct shoop_mdio bus = {emac, mdio_read, mdio_write, mdio_delay};
+    unsigned speed = shoop_yt8531_start(&bus);
+    return speed ? speed : XST_FAILURE;
+}
+#endif
 
 static void bsp_assert(const char *file, s32 line) { vApplicationAssert(file, (unsigned long)line); }
 void shoop_platform_init(void) {

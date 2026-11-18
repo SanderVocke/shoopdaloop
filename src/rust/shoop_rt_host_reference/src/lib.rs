@@ -1,7 +1,14 @@
 //! Portable ARM-side graph binding and driver-owned persistent reference rendering.
+#![no_std]
+extern crate alloc;
+
+#[cfg(feature = "rtl")]
+pub mod fpga;
 mod usage;
 
+use alloc::{sync::Arc, vec, vec::Vec};
 use anyhow::{ensure, Result};
+use core::sync::atomic::{AtomicU32, AtomicU64, AtomicU8, Ordering};
 use rt_fpga_compiler::{
     compile_with_chunk_frames, loading::Allocator, CompileContext, CompileError, Feature,
     ProgramLimits, Resource,
@@ -30,10 +37,6 @@ use shoop_rt_protocol::{
 use shoop_rt_transport::{
     carrier::{CarrierError, Endpoint as CarrierEndpoint, Outbox},
     rt,
-};
-use std::sync::{
-    atomic::{AtomicU32, AtomicU64, AtomicU8, Ordering},
-    Arc,
 };
 use usage::{ProgramUsage, StorageCounter, UsageTelemetry};
 
@@ -76,12 +79,12 @@ pub fn program_limits() -> ProgramLimits {
 }
 #[derive(Debug)]
 struct GraphRefusal(Code);
-impl std::fmt::Display for GraphRefusal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for GraphRefusal {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "graph refused: {:?}", self.0)
     }
 }
-impl std::error::Error for GraphRefusal {}
+impl core::error::Error for GraphRefusal {}
 fn refusal_code(error: &anyhow::Error) -> Code {
     if let Some(GraphRefusal(code)) = error.downcast_ref::<GraphRefusal>() {
         return *code;
@@ -225,6 +228,17 @@ impl Status {
     }
     pub fn xrun(&self) {
         self.xruns.fetch_add(1, Ordering::Relaxed);
+    }
+    #[cfg(feature = "rtl")]
+    pub(crate) fn observe_fpga(
+        &self,
+        quanta: u32,
+        xruns: u32,
+        dsp: shoop_rt_protocol::DspMeasurement,
+    ) {
+        self.callbacks.store(quanta.into(), Ordering::Relaxed);
+        self.xruns.store(xruns, Ordering::Relaxed);
+        self.record_dsp(dsp);
     }
     pub fn callback_complete(&self) {
         self.callbacks.fetch_add(1, Ordering::Relaxed);
@@ -796,7 +810,10 @@ impl<L: ProgramLoader> CarrierEndpoint for Endpoint<L> {
         &mut self,
         message: ClientMessage,
         out: &mut Outbox,
-    ) -> std::result::Result<(), CarrierError> {
+    ) -> core::result::Result<(), CarrierError> {
+        if self.status.driver().state == DriverRunState::Failed {
+            return Err(CarrierError::Disconnected);
+        }
         if let ClientMessage::Immediate(batch) = message {
             if batch.commands().iter().any(|c| {
                 matches!(
@@ -843,12 +860,37 @@ impl<L: ProgramLoader> CarrierEndpoint for Endpoint<L> {
     fn poll(&mut self, out: &mut Outbox) {
         self.control.set_driver(self.status.driver());
         if self.status.driver().state == DriverRunState::Failed {
-            if !self.failed && out.available(Lane::Reliable) > 0 {
-                let _ = out.push(EngineMessage::Disconnected(
-                    shoop_rt_protocol::DisconnectReason::Fault,
-                ));
-                self.failed = true;
+            if self.failed || !self.flush(out) {
+                return;
             }
+            while !self.control.drain_responses(&mut self.replies) {
+                if !self.flush(out) {
+                    return;
+                }
+            }
+            if !self.flush(out) || out.available(Lane::Reliable) == 0 {
+                return;
+            }
+            if self
+                .pending
+                .as_ref()
+                .is_some_and(|pending| !pending.published)
+            {
+                let pending = self.pending.take().unwrap();
+                let frame = self.status.frame.load(Ordering::Acquire);
+                out.push(Self::response(
+                    pending.batch,
+                    frame,
+                    Code::CannotApply,
+                    None,
+                ))
+                .expect("available failure response slot");
+            }
+            self.failed = out
+                .push(EngineMessage::Disconnected(
+                    shoop_rt_protocol::DisconnectReason::Fault,
+                ))
+                .is_ok();
             return;
         }
         let frame = self.status.frame.load(Ordering::Acquire);
