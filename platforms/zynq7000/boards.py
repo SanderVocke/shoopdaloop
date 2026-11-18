@@ -136,7 +136,7 @@ class Board:
         if self.pl_bytes:
             values.update(PL_DDR_BASE=self.rust_end, PL_DDR_BYTES=self.pl_bytes,
                           PL_REG_BASE=self.data["fpga"]["register_base"],
-                          PL_CLOCK_HZ=self.data["fpga"]["clock_hz"])
+                          PL_CLOCK_HZ=self.data["fpga"]["clock_hz"], PL_IRQ=61)
         if b.get("phy") == "yt8531":
             values.update(BOARD_PHY_YT8531=1, BOARD_PHY_ADDRESS=b["phy_address"])
         lines += [f"#define SHOOP_{key} {value:#x}u" for key, value in values.items()]

@@ -35,6 +35,8 @@ def main():
         (3, "incompatible", "SHOOP_FPGA_PROBE_UNAVAILABLE Incompatible"),
     ]:
         with Qemu(fixture, directory / name, [], boot_nonce=nonce, board=board) as emulator:
+            if nonce == 1:
+                emulator.ready("SHOOP_FPGA_FIXTURE_IRQ_PASS", timeout=30)
             emulator.ready(marker, timeout=30)
             emulator.ready("SHOOP_FPGA_PROBE_RETURNED", timeout=5)
     print("FreeRTOS exercised compatible, unresponsive and incompatible FPGA mailboxes")

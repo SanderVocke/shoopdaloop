@@ -28,6 +28,45 @@ uint32_t shoop_fpga_register_base(void) { return SHOOP_PL_REG_BASE; }
 uint32_t shoop_fpga_arena_base(void) { return SHOOP_PL_DDR_BASE; }
 uint32_t shoop_fpga_arena_bytes(void) { return SHOOP_PL_DDR_BYTES; }
 uint32_t shoop_fpga_clock_hz(void) { return SHOOP_PL_CLOCK_HZ; }
+
+extern XScuGic xInterruptController;
+static TaskHandle_t fpga_waiter;
+
+static void fpga_irq(void *context) {
+    (void)context;
+    /* The fabric holds its level until the owner drains the mailbox. */
+    XScuGic_Disable(&xInterruptController, SHOOP_PL_IRQ);
+    BaseType_t wake = pdFALSE;
+    vTaskNotifyGiveFromISR(fpga_waiter, &wake);
+    portYIELD_FROM_ISR(wake);
+}
+
+int shoop_fpga_irq_start(void) {
+    XScuGic_Disable(&xInterruptController, SHOOP_PL_IRQ);
+    fpga_waiter = xTaskGetCurrentTaskHandle();
+    XScuGic_SetPriorityTriggerType(&xInterruptController, SHOOP_PL_IRQ,
+        (configMAX_API_CALL_INTERRUPT_PRIORITY + 1) << portPRIORITY_SHIFT, 1);
+    return XScuGic_Connect(&xInterruptController, SHOOP_PL_IRQ, fpga_irq, NULL) == XST_SUCCESS;
+}
+
+int shoop_fpga_irq_wait(void) {
+    XScuGic_Enable(&xInterruptController, SHOOP_PL_IRQ);
+    return ulTaskNotifyTake(pdTRUE, 1) != 0;
+}
+
+void shoop_fpga_irq_stop(void) {
+    XScuGic_Disable(&xInterruptController, SHOOP_PL_IRQ);
+    XScuGic_Disconnect(&xInterruptController, SHOOP_PL_IRQ);
+    (void)ulTaskNotifyTake(pdTRUE, 0);
+    fpga_waiter = NULL;
+}
+
+#ifdef SHOOP_FIXTURE
+void shoop_fpga_irq_pend_fixture(void) {
+    XScuGic_DistWriteReg(&xInterruptController, XSCUGIC_PENDING_SET_OFFSET + 4u * (SHOOP_PL_IRQ / 32u),
+                        1u << (SHOOP_PL_IRQ % 32u));
+}
+#endif
 #endif
 
 #ifdef SHOOP_BOARD_PHY_YT8531

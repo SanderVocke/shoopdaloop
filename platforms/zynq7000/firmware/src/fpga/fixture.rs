@@ -1,8 +1,13 @@
-use super::{contract, run, Contract, RegisterBus};
+use super::{
+    contract, run, shoop_fpga_irq_start, shoop_fpga_irq_stop, shoop_fpga_irq_wait, Contract,
+    RegisterBus,
+};
+use core::fmt::Write;
 use rt_fpga_rtl::host::registers::*;
 
 extern "C" {
     fn shoop_boot_nonce() -> u64;
+    fn shoop_fpga_irq_pend_fixture();
 }
 
 struct Fixture {
@@ -55,14 +60,26 @@ impl RegisterBus for Fixture {
 
 pub fn probe() {
     let expected = contract();
+    let mode = unsafe { shoop_boot_nonce() };
+    if mode == 1 {
+        unsafe {
+            assert_eq!(shoop_fpga_irq_start(), 1);
+            shoop_fpga_irq_pend_fixture();
+            assert_eq!(shoop_fpga_irq_wait(), 1);
+            assert_eq!(shoop_fpga_irq_wait(), 0);
+            shoop_fpga_irq_stop();
+        }
+        let _ = writeln!(crate::Serial, "SHOOP_FPGA_FIXTURE_IRQ_PASS");
+    }
     run(
         Fixture {
             contract: expected,
-            mode: unsafe { shoop_boot_nonce() },
+            mode,
             request_epoch: 0,
             operation: 0,
             tag: 0,
         },
         expected,
+        || {},
     );
 }

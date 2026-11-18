@@ -18,6 +18,9 @@ extern "C" {
     fn shoop_fpga_arena_bytes() -> u32;
     fn shoop_fpga_clock_hz() -> u32;
     fn shoop_millis() -> u64;
+    fn shoop_fpga_irq_start() -> i32;
+    fn shoop_fpga_irq_wait() -> i32;
+    fn shoop_fpga_irq_stop();
 }
 
 #[cfg(not(feature = "fixture"))]
@@ -70,13 +73,21 @@ pub fn probe() {
         );
         return;
     }
+    if unsafe { shoop_fpga_irq_start() } != 1 {
+        let _ = writeln!(Serial, "SHOOP_FPGA_PROBE_UNAVAILABLE IRQ setup failed");
+        return;
+    }
     run(
         DeviceRegisters(unsafe { shoop_fpga_register_base() } as usize),
         contract(),
+        || {
+            unsafe { shoop_fpga_irq_wait() };
+        },
     );
+    unsafe { shoop_fpga_irq_stop() };
 }
 
-fn run<B: RegisterBus>(bus: B, expected: Contract)
+fn run<B: RegisterBus>(bus: B, expected: Contract, mut wait: impl FnMut())
 where
     B::Error: Debug,
 {
@@ -90,6 +101,7 @@ where
     let mut client = Client::new(mailbox);
     let start = unsafe { shoop_millis() };
     match client.exchange(Request::capture_snapshot(0), || {
+        wait();
         unsafe { shoop_millis() }.wrapping_sub(start) < 25
     }) {
         Ok(response) if response.code == RESULT_OK && response.data[0] != 0 => {
