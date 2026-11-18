@@ -10,6 +10,7 @@ use std::{
     time::{Duration, Instant},
 };
 mod fixture;
+mod fpga;
 mod profiling;
 mod recovery;
 #[cfg(test)]
@@ -90,6 +91,10 @@ pub fn run() {
     let profile = RemoteProfile::read(Path::new(&path)).expect("profile");
     if std::env::var_os("SHOOP_ZYNQ_RECOVERY").is_some() {
         recovery::run(&profile);
+        return;
+    }
+    if std::env::var_os("SHOOP_ZYNQ_FPGA").is_some() {
+        fpga::run(&profile);
         return;
     }
     let (mut client, mut connection) = attach(&profile);

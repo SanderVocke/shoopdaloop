@@ -94,7 +94,10 @@ def generate():
     text += '        if (LIVE_LOADING != 1 || PROGRAM_REGIONS != 2) $fatal(1,"host requires live loading");\n'
     text += '        if (QUANTUM > MAX_FRAMES || QUANTUM < 1) $fatal(1,"invalid host quantum");\n'
     text += "    end\n"
-    text += "    host_mailbox #(.CORE_CLOCK_HZ(CORE_CLOCK_HZ), .ARENA_BASE(ARENA_BASE), .ARENA_BYTES(ARENA_BYTES)) mmio (.*);\n"
+    text += "    host_mailbox #(.CORE_CLOCK_HZ(CORE_CLOCK_HZ), .ARENA_BASE(ARENA_BASE), .ARENA_BYTES(ARENA_BYTES),\n"
+    text += "        .PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH),\n"
+    text += "        .BUFFERS(BUFFERS), .VIEWS(VIEWS), .MEDIA_BLOCKS(SLOTS/BLOCK_CHUNKS),\n"
+    text += "        .CHUNK_FRAMES(CHUNK_FRAMES), .BLOCK_CHUNKS(BLOCK_CHUNKS), .QUANTUM(QUANTUM)) mmio (.*);\n"
     text += "    host_dispatch #(.QUANTUM(QUANTUM), .CHUNK_FRAMES(CHUNK_FRAMES), .INPUT_PORTS(INPUT_PORTS),\n"
     text += "        .OUTPUT_PORTS(OUTPUT_PORTS), .STATE_DEPTH(STATE_DEPTH), .CONTROL_CYCLES(CONTROL_CYCLES),\n"
     text += "        .WATCHDOG_CYCLES(WATCHDOG_CYCLES)) dispatcher (.*);\n"

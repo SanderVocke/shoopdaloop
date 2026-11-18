@@ -134,7 +134,9 @@ jobs:
           python3 platforms/zynq7000/integration.py --board ${{ matrix.board }} --fixture --small-fixture
       - name: Verify FPGA probe startup and timeout in QEMU
         if: matrix.board == 'zturn-v2'
-        run: python3 platforms/zynq7000/tests/fpga_probe.py
+        run: |
+          python3 platforms/zynq7000/tests/fpga_probe.py
+          python3 platforms/zynq7000/tests/fpga_host.py
       - name: Save board artifacts and emulation evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -152,6 +154,7 @@ jobs:
             work/zynq/**/integration/*.log
             work/zynq/**/fixture-test/*.json
             work/zynq/**/fixture-test/*.log
+            work/zynq/**/fpga-host-test/**/*.log
             work/zynq/**/input-test/*.json
             work/zynq/**/input-test/*.log
           retention-days: 14

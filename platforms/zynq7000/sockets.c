@@ -175,6 +175,11 @@ unsigned shoop_socket_count(void) {
     return count;
 }
 void shoop_network_stop(void) {
+    if (listeners[1] < 0) {
+        if (listeners[0] >= 0) lwip_close(listeners[0]);
+        listeners[0] = -1;
+        return;
+    }
     atomic_store(&stopping, 1);
     uint64_t deadline = shoop_millis() + 10000;
     while (!atomic_load(&stopped) && shoop_millis() < deadline) vTaskDelay(1);

@@ -1,7 +1,12 @@
+#[cfg(feature = "fpga")]
+#[path = "fpga.rs"]
+mod fpga;
 #[path = "profiling.rs"]
 mod profiling;
 use alloc::{boxed::Box, string::String, vec, vec::Vec};
 use core::{ffi::c_void, time::Duration};
+#[cfg(feature = "fpga")]
+pub use fpga::run as run_fpga;
 use rt_runtime::buffer::{AudioBlock, MidiBlock, MidiBuffer};
 use shoop_app::{ConnectionId, Service, ServiceOptions};
 use shoop_app_api::{

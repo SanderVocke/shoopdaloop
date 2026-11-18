@@ -8,7 +8,7 @@ use core::{
 };
 use linked_list_allocator::Heap;
 
-#[cfg(feature = "fpga-probe")]
+#[cfg(any(feature = "fpga-probe", feature = "fpga"))]
 mod fpga;
 
 extern "C" {
@@ -82,10 +82,12 @@ pub unsafe extern "C" fn shoop_rust_main() {
         assert_eq!(atomic.load(Ordering::SeqCst), 0x1_0000_0001);
         let _ = writeln!(Serial, "SHOOP_ALLOC_ATOMIC_PASS");
     }
-    #[cfg(not(feature = "fpga-probe"))]
+    #[cfg(not(any(feature = "fpga-probe", feature = "fpga")))]
     shoop_host_freertos::run();
     #[cfg(feature = "fpga-probe")]
     fpga::probe();
+    #[cfg(feature = "fpga")]
+    fpga::serve();
 }
 #[no_mangle]
 pub unsafe extern "C" fn shoop_render_step(owner: *mut c_void, frames: usize) -> i32 {

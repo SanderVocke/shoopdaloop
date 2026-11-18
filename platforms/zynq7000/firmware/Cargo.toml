@@ -12,6 +12,7 @@ crate-type = ["staticlib"]
 usb-midi = ["shoop_host_freertos/usb-midi"]
 fixture = ["shoop_host_freertos/fixture"]
 fpga-probe = ["dep:rt_fpga_rtl"]
+fpga = ["dep:rt_fpga_rtl", "shoop_host_freertos/fpga"]
 
 [dependencies]
 shoop_host_freertos = { path = "../../../src/rust/shoop_host_freertos" }

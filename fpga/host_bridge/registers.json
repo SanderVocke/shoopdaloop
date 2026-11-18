@@ -1,6 +1,6 @@
 {
   "id": "0x53484f50",
-  "version": 4,
+  "version": 5,
   "payload_words": 12,
   "registers": {
     "ID": "0x000",
@@ -10,6 +10,15 @@
     "CORE_CLOCK_HZ": "0x010",
     "ARENA_BASE": "0x014",
     "ARENA_BYTES": "0x018",
+    "PROGRAM_DEPTH": "0x01c",
+    "STATE_DEPTH": "0x020",
+    "JOB_DEPTH": "0x024",
+    "BUFFERS": "0x028",
+    "VIEWS": "0x02c",
+    "MEDIA_BLOCKS": "0x030",
+    "CHUNK_FRAMES": "0x034",
+    "BLOCK_CHUNKS": "0x038",
+    "QUANTUM": "0x03c",
     "REQUEST_EPOCH": "0x040",
     "REQUEST_OP": "0x044",
     "REQUEST_DATA": "0x048",

@@ -1,10 +1,12 @@
 use crate::Serial;
-use core::fmt::{Debug, Write};
+#[cfg(feature = "fpga-probe")]
+use core::fmt::Debug;
+use core::fmt::Write;
 #[cfg(not(feature = "fixture"))]
 use core::{arch::asm, convert::Infallible, ptr};
-use rt_fpga_rtl::host::{
-    registers::RESULT_OK, Client, Contract, Error, Mailbox, RegisterBus, Request,
-};
+#[cfg(feature = "fpga-probe")]
+use rt_fpga_rtl::host::{registers::RESULT_OK, Client, Error, Request};
+use rt_fpga_rtl::host::{Contract, Mailbox, RegisterBus};
 
 #[cfg(not(feature = "fixture"))]
 const DEVCFG_INT_STATUS: usize = 0xf800700c;
@@ -17,9 +19,13 @@ extern "C" {
     fn shoop_fpga_arena_base() -> u32;
     fn shoop_fpga_arena_bytes() -> u32;
     fn shoop_fpga_clock_hz() -> u32;
+    #[cfg(feature = "fpga-probe")]
     fn shoop_millis() -> u64;
+    #[cfg(feature = "fpga-probe")]
     fn shoop_fpga_irq_start() -> i32;
+    #[cfg(feature = "fpga-probe")]
     fn shoop_fpga_irq_wait() -> i32;
+    #[cfg(feature = "fpga-probe")]
     fn shoop_fpga_irq_stop();
 }
 
@@ -63,10 +69,15 @@ fn contract() -> Contract {
 }
 
 #[cfg(not(feature = "fixture"))]
-pub fn probe() {
-    let configured =
+fn configured() -> bool {
+    let status =
         unsafe { ptr::read_volatile::<u32>(ptr::with_exposed_provenance(DEVCFG_INT_STATUS)) };
-    if configured & PCFG_DONE == 0 {
+    status & PCFG_DONE != 0
+}
+
+#[cfg(all(feature = "fpga-probe", not(feature = "fixture")))]
+pub fn probe() {
+    if !configured() {
         let _ = writeln!(
             Serial,
             "SHOOP_FPGA_PROBE_UNAVAILABLE no configured bitstream"
@@ -87,6 +98,7 @@ pub fn probe() {
     unsafe { shoop_fpga_irq_stop() };
 }
 
+#[cfg(feature = "fpga-probe")]
 fn run<B: RegisterBus>(bus: B, expected: Contract, mut wait: impl FnMut())
 where
     B::Error: Debug,
@@ -121,5 +133,28 @@ where
 
 #[cfg(feature = "fixture")]
 mod fixture;
-#[cfg(feature = "fixture")]
+#[cfg(all(feature = "fixture", feature = "fpga-probe"))]
 pub use fixture::probe;
+
+#[cfg(feature = "fpga")]
+pub fn serve() {
+    #[cfg(not(feature = "fixture"))]
+    let bus = {
+        if !configured() {
+            let _ = writeln!(
+                Serial,
+                "SHOOP_FPGA_HOST_UNAVAILABLE no configured bitstream"
+            );
+            return;
+        }
+        DeviceRegisters(unsafe { shoop_fpga_register_base() } as usize)
+    };
+    #[cfg(feature = "fixture")]
+    let bus = fixture::bus();
+    match Mailbox::open(bus, contract()) {
+        Ok(mailbox) => shoop_host_freertos::run_fpga(mailbox),
+        Err(error) => {
+            let _ = writeln!(Serial, "SHOOP_FPGA_HOST_UNAVAILABLE {error:?}");
+        }
+    }
+}

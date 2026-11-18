@@ -24,6 +24,19 @@ pub struct Contract {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Geometry {
+    pub instructions: u32,
+    pub states: u32,
+    pub jobs: u32,
+    pub buffers: u32,
+    pub views: u32,
+    pub blocks: u32,
+    pub chunk_frames: u32,
+    pub block_chunks: u32,
+    pub quantum: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Response {
     pub tag: u32,
     pub code: u32,
@@ -139,6 +152,23 @@ impl<B: RegisterBus> Mailbox<B> {
 
     pub fn into_bus(self) -> B {
         self.bus
+    }
+
+    pub fn geometry(&mut self) -> Result<Geometry, Error<B::Error>> {
+        self.check_epoch()?;
+        let geometry = Geometry {
+            instructions: self.read(REG_PROGRAM_DEPTH)?,
+            states: self.read(REG_STATE_DEPTH)?,
+            jobs: self.read(REG_JOB_DEPTH)?,
+            buffers: self.read(REG_BUFFERS)?,
+            views: self.read(REG_VIEWS)?,
+            blocks: self.read(REG_MEDIA_BLOCKS)?,
+            chunk_frames: self.read(REG_CHUNK_FRAMES)?,
+            block_chunks: self.read(REG_BLOCK_CHUNKS)?,
+            quantum: self.read(REG_QUANTUM)?,
+        };
+        self.check_epoch()?;
+        Ok(geometry)
     }
 
     fn check_epoch(&mut self) -> Result<(), Error<B::Error>> {

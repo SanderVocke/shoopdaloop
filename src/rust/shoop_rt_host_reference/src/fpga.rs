@@ -1,4 +1,7 @@
 //! Transfers prepared images between a control endpoint and the exclusive RTL device owner.
+mod owner;
+pub use owner::{prepare, Owner};
+
 use crate::ProgramLoader;
 use anyhow::Result;
 use rt_fpga_compiler::{loading::Layout, LogicalStateProgram, ProgramLimits};

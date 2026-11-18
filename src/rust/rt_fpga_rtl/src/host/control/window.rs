@@ -1,8 +1,9 @@
-use super::{apply_plan, loop_state};
+use super::{apply_plan, clear_plan, gain_value, loop_state};
 use crate::host::{Client, Error, RegisterBus, Request, registers::*};
+use crate::target::{ConfigurationWrite, Space};
 use rt_fpga_compiler::Identity;
 use rt_fpga_reference::transitions::LoopId;
-use shoop_rt_protocol::immediate::{Code, TransitionPlan};
+use shoop_rt_protocol::immediate::{ClearPlanned, Code, TransitionPlan};
 
 /// A checked boundary for modifying active state. The PL faults if the owner does not release it.
 pub struct ControlWindow<'a, B, F> {
@@ -47,6 +48,46 @@ impl<'a, B: RegisterBus, F: FnMut() -> bool> ControlWindow<'a, B, F> {
         last_pulse: Option<u64>,
         plan: TransitionPlan,
     ) -> Result<Code, Error<B::Error>> {
+        let (base, original) = self.read_loop(id)?;
+        let Some(original) = original else {
+            return Ok(Code::TargetUnavailable);
+        };
+        let mut updated = original;
+        let state = loop_state(id, &original, last_pulse);
+        let code = match apply_plan(&mut updated, state, source, self.frame, plan) {
+            Ok(code) => code,
+            Err(code) => return Ok(code),
+        };
+        self.update_loop(base, original, updated)?;
+        Ok(code)
+    }
+
+    pub fn clear_transitions(
+        &mut self,
+        id: Identity,
+        mask: ClearPlanned,
+    ) -> Result<Code, Error<B::Error>> {
+        let (base, original) = self.read_loop(id)?;
+        let Some(original) = original else {
+            return Ok(Code::TargetUnavailable);
+        };
+        let mut updated = original;
+        clear_plan(&mut updated, mask);
+        self.update_loop(base, original, updated)?;
+        Ok(Code::Applied)
+    }
+
+    pub fn set_gain(&mut self, address: u32, gain: f32) -> Result<(), Error<B::Error>> {
+        let write = ConfigurationWrite {
+            space: Space::State,
+            address: u64::from(address),
+            value: gain_value(gain),
+        };
+        self.send(Request::configuration_write(&write).ok_or(Error::InvalidRequest)?)?;
+        Ok(())
+    }
+
+    fn read_loop(&mut self, id: Identity) -> Result<(u32, Option<[u64; 16]>), Error<B::Error>> {
         let Some(base) = id.slot.checked_mul(16).filter(|&base| base <= 65520) else {
             return Err(Error::InvalidRequest);
         };
@@ -56,8 +97,8 @@ impl<'a, B: RegisterBus, F: FnMut() -> bool> ControlWindow<'a, B, F> {
         {
             return Err(Error::UnexpectedResponse);
         }
-        let mut original = [0; 16];
-        for (index, words) in original.chunks_mut(HOST_PAYLOAD_WORDS / 2).enumerate() {
+        let mut row = [0; 16];
+        for (index, words) in row.chunks_mut(HOST_PAYLOAD_WORDS / 2).enumerate() {
             let address = base + (index * (HOST_PAYLOAD_WORDS / 2)) as u32;
             let data = self.send(Request::read_snapshot(
                 snapshot[0],
@@ -68,21 +109,22 @@ impl<'a, B: RegisterBus, F: FnMut() -> bool> ControlWindow<'a, B, F> {
                 *word = join(parts[0], parts[1]);
             }
         }
-        if original[0] & 1 == 0 || (original[0] >> 1) as u32 != id.generation {
-            return Ok(Code::TargetUnavailable);
-        }
-        let mut updated = original;
-        let state = loop_state(id, &original, last_pulse);
-        let code = match apply_plan(&mut updated, state, source, self.frame, plan) {
-            Ok(code) => code,
-            Err(code) => return Ok(code),
-        };
+        let current = row[0] & 1 != 0 && (row[0] >> 1) as u32 == id.generation;
+        Ok((base, current.then_some(row)))
+    }
+
+    fn update_loop(
+        &mut self,
+        base: u32,
+        original: [u64; 16],
+        updated: [u64; 16],
+    ) -> Result<(), Error<B::Error>> {
         for (index, (before, after)) in original.into_iter().zip(updated).enumerate() {
             if before != after {
                 self.send(Request::write_loop_word(base + index as u32, after))?;
             }
         }
-        Ok(code)
+        Ok(())
     }
 
     fn send(&mut self, request: Request) -> Result<[u32; HOST_PAYLOAD_WORDS], Error<B::Error>> {

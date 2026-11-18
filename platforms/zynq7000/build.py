@@ -36,7 +36,9 @@ def build():
     parser.add_argument("--app", choices=["echo", "host"], default="echo")
     parser.add_argument("--credential-file", type=Path)
     parser.add_argument("--fixture", action="store_true")
-    parser.add_argument("--fpga-probe", action="store_true", help="Build the FPGA mailbox bring-up probe")
+    fpga = parser.add_mutually_exclusive_group()
+    fpga.add_argument("--fpga-probe", action="store_true", help="Build the FPGA mailbox bring-up probe")
+    fpga.add_argument("--fpga", action="store_true", help="Serve sessions with the FPGA looping renderer")
     parser.add_argument("--usb", action="store_true", help="Use the TinyUSB USB0 MIDI host")
     parser.add_argument("--deployment", action="store_true")
     parser.add_argument("--build-id", default="direct-dev")
@@ -61,6 +63,8 @@ def build():
         parser.error("USB MIDI requires the host app")
     if args.fpga_probe and (args.app != "host" or not board.pl_bytes or args.deployment or args.usb or args.credential_file):
         parser.error("FPGA probe requires a development host for a board with a PL arena")
+    if args.fpga and (args.app != "host" or not board.pl_bytes or args.usb or args.engine_config):
+        parser.error("FPGA renderer requires a host for a board with a PL arena and uses hardware pool capacities")
     BUILD.mkdir(parents=True, exist_ok=True)
     if args.fetch:
         SOURCE.parent.mkdir(parents=True, exist_ok=True)
@@ -172,6 +176,8 @@ def build():
         features = (["fixture"] if args.fixture else []) + (["usb-midi"] if args.usb else [])
         if args.fpga_probe:
             features.append("fpga-probe")
+        if args.fpga:
+            features.append("fpga")
         if features:
             cargo += ["--features", ",".join(features)]
         rust_target = (PLATFORM / "firmware/target" if board.name == boards.DEFAULT else BUILD.parent / "firmware-target")
@@ -192,6 +198,8 @@ def build():
         flags += ["-DSHOOP_FIXTURE"]
     if args.fpga_probe:
         flags += ["-DSHOOP_FPGA_PROBE"]
+    if args.fpga:
+        flags += ["-DSHOOP_FPGA"]
     if args.usb:
         flags += ["-DSHOOP_USB_MIDI"]
     if args.deployment:
@@ -215,7 +223,7 @@ def build():
         raise SystemExit("\n".join(errors))
     objects = [obj for obj, _ in results]
     elf = BUILD / (args.app + ("-usb" if args.usb else "") + ("-fixture" if args.fixture else "") + ("-deployment" if args.deployment else "") +
-                   ("-fpga-probe" if args.fpga_probe else "") +
+                   ("-fpga-probe" if args.fpga_probe else "-fpga" if args.fpga else "") +
                    ("-test" if args.deployment_test_fault else "") + ".elf")
     # Rust's compiler_builtins defines weak, generic memory routines. Pull newlib's optimized
     # strong ones from libc before the Rust library so they win for both C and Rust callers.
@@ -234,6 +242,8 @@ def build():
         raise SystemExit("Fixture hooks leaked into production firmware")
     if (b"SHOOP_FPGA_PROBE_" in image) != args.fpga_probe:
         raise SystemExit("FPGA probe does not match the selected variant")
+    if (b"SHOOP_FPGA_HOST_UNAVAILABLE" in image) != args.fpga:
+        raise SystemExit("FPGA host does not match the selected variant")
     if (args.deployment or args.fpga_probe) and "shoop_credential" in symbols:
         raise SystemExit("Generic firmware contains a compiled credential")
     if not args.deployment_test_fault and b"SHOOP_DEPLOY_TEST_" in image:
@@ -267,7 +277,7 @@ def build():
             source_hash.update(name + b"\0" + hashlib.sha256(path.read_bytes()).digest())
     elf.with_suffix(".json").write_text(json.dumps({**board.manifest(), "embeddedsw": REVISION,
         "tinyusb": PINS["tinyusb"] if args.usb else None, "usb_midi": args.usb,
-        "engine_policy": policy,
+        "engine_policy": policy if not args.fpga else None,
         "compiler": subprocess.check_output([cc, "--version"], text=True).splitlines()[0],
         "sources": len(sources), "patch_sha256": patches,
         "elf_sha256": hashlib.sha256(image).hexdigest(),
@@ -275,7 +285,8 @@ def build():
         "git_head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "rust_target": "armv7a-none-eabihf" if rust_library else None,
         "fixture": args.fixture, "deployment": args.deployment, "build_id": args.build_id,
-        "fpga_probe": args.fpga_probe, "fpga_contract": fpga_pair.contract(board) if args.fpga_probe else None,
+        "fpga_probe": args.fpga_probe, "fpga_renderer": args.fpga,
+        "fpga_contract": fpga_pair.contract(board) if args.fpga_probe or args.fpga else None,
         "deployment_test_fault": args.deployment_test_fault,
         "ram_bytes": board.ram, "load_regions": regions, "elf": str(elf.relative_to(ROOT))}, indent=2) + "\n")
     if args.usb:

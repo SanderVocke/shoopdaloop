@@ -1,7 +1,10 @@
 module host_mailbox #(
     parameter logic [31:0] CORE_CLOCK_HZ = 100_000_000,
     parameter logic [31:0] ARENA_BASE = 32'h30000000,
-    parameter logic [31:0] ARENA_BYTES = 32'h08000000
+    parameter logic [31:0] ARENA_BYTES = 32'h08000000,
+    parameter integer PROGRAM_DEPTH = 0, STATE_DEPTH = 0, JOB_DEPTH = 0,
+    parameter integer BUFFERS = 0, VIEWS = 0, MEDIA_BLOCKS = 0,
+    parameter integer CHUNK_FRAMES = 0, BLOCK_CHUNKS = 0, QUANTUM = 0
 ) (
     input wire clk,
     input wire reset,
@@ -172,6 +175,15 @@ module host_mailbox #(
                     REG_CORE_CLOCK_HZ: s_axi_rdata <= CORE_CLOCK_HZ;
                     REG_ARENA_BASE: s_axi_rdata <= ARENA_BASE;
                     REG_ARENA_BYTES: s_axi_rdata <= ARENA_BYTES;
+                    REG_PROGRAM_DEPTH: s_axi_rdata <= PROGRAM_DEPTH;
+                    REG_STATE_DEPTH: s_axi_rdata <= STATE_DEPTH;
+                    REG_JOB_DEPTH: s_axi_rdata <= JOB_DEPTH;
+                    REG_BUFFERS: s_axi_rdata <= BUFFERS;
+                    REG_VIEWS: s_axi_rdata <= VIEWS;
+                    REG_MEDIA_BLOCKS: s_axi_rdata <= MEDIA_BLOCKS;
+                    REG_CHUNK_FRAMES: s_axi_rdata <= CHUNK_FRAMES;
+                    REG_BLOCK_CHUNKS: s_axi_rdata <= BLOCK_CHUNKS;
+                    REG_QUANTUM: s_axi_rdata <= QUANTUM;
                     REG_RESPONSE_TAG: s_axi_rdata <= session_live && response_pending ? saved_tag : 0;
                     REG_RESPONSE_CODE: s_axi_rdata <= session_live && response_pending ? saved_code : 0;
                     REG_EVENT_COUNT: s_axi_rdata <= session_live ? {event_overflow, {(30-EVENT_INDEX_BITS){1'b0}}, event_count} : 0;

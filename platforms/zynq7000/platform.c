@@ -23,7 +23,7 @@ XEmacPs_Config XEmacPs_ConfigTable[] = {{ .DeviceId = 0, .BaseAddress = SHOOP_GE
 struct xtopology_t xtopology[] = {{ .emac_baseaddr = SHOOP_GEM_BASE, .emac_type = xemac_type_emacps, .scugic_baseaddr = 0xf8f01000, .scugic_emac_intr = SHOOP_GEM_IRQ }};
 int xtopology_n_emacs = 1;
 
-#ifdef SHOOP_FPGA_PROBE
+#if defined(SHOOP_FPGA_PROBE) || defined(SHOOP_FPGA)
 uint32_t shoop_fpga_register_base(void) { return SHOOP_PL_REG_BASE; }
 uint32_t shoop_fpga_arena_base(void) { return SHOOP_PL_DDR_BASE; }
 uint32_t shoop_fpga_arena_bytes(void) { return SHOOP_PL_DDR_BYTES; }

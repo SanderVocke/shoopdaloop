@@ -155,11 +155,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "rt_fpga_reference"
+version = "0.3.0"
+dependencies = [
+ "rt_fpga_compiler",
+ "rtrb",
+ "shoop_rt_protocol",
+ "shoop_rt_transport",
+]
+
+[[package]]
 name = "rt_fpga_rtl"
 version = "0.3.0"
 dependencies = [
  "rt_fpga_compiler",
+ "rt_fpga_reference",
  "serde",
+ "shoop_rt_protocol",
 ]
 
 [[package]]
@@ -319,6 +331,7 @@ version = "0.3.0"
 dependencies = [
  "freertos_profiling",
  "profiling_protocol",
+ "rt_fpga_rtl",
  "rt_runtime",
  "shoop_app",
  "shoop_app_api",
@@ -327,6 +340,7 @@ dependencies = [
  "shoop_deployment_protocol",
  "shoop_rt_backend",
  "shoop_rt_engine",
+ "shoop_rt_host_reference",
  "shoop_rt_protocol",
  "shoop_rt_transport",
  "shoop_transport",
@@ -394,6 +408,21 @@ dependencies = [
  "rt_runtime",
  "shoop_loops",
  "shoop_processor_protocol",
+ "shoop_rt_protocol",
+ "shoop_rt_transport",
+]
+
+[[package]]
+name = "shoop_rt_host_reference"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "rt_fpga_compiler",
+ "rt_fpga_reference",
+ "rt_fpga_rtl",
+ "rt_runtime",
+ "rtrb",
+ "shoop_graph",
  "shoop_rt_protocol",
  "shoop_rt_transport",
 ]

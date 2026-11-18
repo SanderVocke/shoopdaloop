@@ -170,6 +170,36 @@ void shoop_start_render(void *owner) {
 #endif
 }
 void shoop_render_wake(void) { if (render_task) xTaskNotifyGive(render_task); }
+#ifdef SHOOP_FPGA
+static TaskHandle_t fpga_task;
+static int (*fpga_entry)(void *);
+static _Atomic int fpga_done, fpga_stop;
+static void fpga_owner(void *owner) {
+    atomic_store(&fpga_done, fpga_entry(owner) == 1 ? 1 : -1);
+    vTaskSuspend(NULL);
+}
+int shoop_start_fpga_task(int (*entry)(void *), void *owner) {
+    configASSERT(!fpga_task);
+    fpga_entry = entry;
+    return xTaskCreate(fpga_owner, "fpga-owner", 32768, owner, 5, &fpga_task) == pdPASS;
+}
+int shoop_fpga_stop_requested(void) { return atomic_load(&fpga_stop); }
+void shoop_fpga_task_progress(void) { shoop_deploy_render(); }
+int shoop_stop_fpga_task(void) {
+    configASSERT(fpga_task);
+    static uint64_t deadline;
+    if (!deadline) {
+        deadline = shoop_millis() + 5000;
+        atomic_store(&fpga_stop, 1);
+        xTaskNotifyGive(fpga_task);
+    }
+    int done = atomic_load(&fpga_done);
+    if (!done) return shoop_millis() < deadline ? 2 : 0;
+    vTaskDelete(fpga_task); fpga_task = NULL;
+    if (done == 1) shoop_deploy_render_stopped();
+    return done;
+}
+#endif
 int shoop_stop_render(void) {
 #ifdef SHOOP_FIXTURE
     extern void shoop_fixture_stopping(void);

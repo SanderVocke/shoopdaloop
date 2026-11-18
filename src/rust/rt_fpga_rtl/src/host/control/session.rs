@@ -39,6 +39,14 @@ impl<B: RegisterBus> ProgramSession<B> {
         self.active.as_ref().map(|upload| &upload.image)
     }
 
+    pub fn staged(&self) -> Option<&ProgramImage> {
+        self.staged.as_ref().map(|upload| &upload.image)
+    }
+
+    pub fn active_and_client(&mut self) -> (Option<&ProgramImage>, &mut Client<B>) {
+        (self.active.as_ref().map(|u| &u.image), &mut self.client)
+    }
+
     pub fn stage(&mut self, upload: Upload) -> Result<(), Upload> {
         let current = self.active().map_or(0, |image| image.layout.revision);
         if self.staged.is_some() || self.failed || upload.image.layout.expected != current {
