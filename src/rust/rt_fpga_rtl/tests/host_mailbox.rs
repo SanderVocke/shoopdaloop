@@ -248,6 +248,7 @@ fn run_compiled_programs_and_switch_at_the_same_boundary_through_axi() {
         response.data
     };
     send(0, &[], RESULT_INVALID);
+    send(OP_ENABLE_AUDIO, &[1], RESULT_REJECTED);
     for view in 0..geometry.views as u32 {
         send(OP_STORE_CONFIG, &[0x101, view, 1], RESULT_OK);
     }
@@ -370,4 +371,11 @@ fn run_compiled_programs_and_switch_at_the_same_boundary_through_axi() {
     let result = execute(Request::run_quantum());
     assert_eq!(&result[1..5], &[16, 0, 2, 0]);
     assert_eq!(execute(Request::output_sample(0))[0], 0x32100000);
+    execute(Request::enable_audio(true));
+    assert_eq!(sim.borrow().model.get("audio_enable"), 1);
+    execute(Request::enable_audio(false));
+    assert_eq!(sim.borrow().model.get("audio_enable"), 0);
+    client.start(Request::enable_audio(true)).unwrap();
+    let result = (0..1000).find_map(|_| client.poll().unwrap()).unwrap();
+    assert_eq!(result.code, RESULT_REJECTED);
 }

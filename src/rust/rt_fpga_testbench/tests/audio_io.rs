@@ -73,3 +73,79 @@ fn i2s_master_exchanges_stereo_pcm_with_one_bit_delay() {
         }
     }
 }
+
+#[shoop_test]
+fn generated_audio_uses_fractional_frame_cadence_and_preserves_samples() {
+    use rt_fpga_testbench::{model::Design, sim::Sim};
+
+    const Q: usize = 4;
+    const CLOCK: u64 = 1_004_000;
+    let root = rt_fpga_testbench::root();
+    let rtl = root.join("fpga/audio_io/rtl");
+    let compiled = Design::new(
+        "host_generated_audio",
+        vec![
+            root.join("fpga/host_bridge/rtl/host_generated_audio.v"),
+            rtl.join("audio_io.sv"),
+            rtl.join("audio_lane_ram.sv"),
+        ],
+    )
+    .parameters(&[("QUANTUM", Q as u64), ("CORE_CLOCK_HZ", CLOCK)])
+    .build(&root.join("work/marlin-suite/audio-io"))
+    .unwrap();
+    let mut sim = Sim::new(compiled.session(None).unwrap(), &[("clk", 10_000, 0)]);
+    sim.model.set_all(&[("reset", 1), ("epoch", 1)]);
+    sim.idle(4);
+    sim.model.set_all(&[("reset", 0), ("enable", 1)]);
+
+    let mut step = None;
+    let mut samples = Vec::new();
+    let mut ticks = Vec::new();
+    for cycle in 1..=6000 {
+        sim.model.set_all(&[
+            ("sample_input_read", 0),
+            ("sample_output_write", 0),
+            ("quantum_done", 0),
+            ("quantum_ready", 0),
+        ]);
+        if let Some(s) = step {
+            if s == 3 * Q {
+                sim.model.set("quantum_done", 1);
+                step = None;
+            } else {
+                let index = s / 3;
+                if s % 3 == 0 {
+                    sim.model.set("sample_input_read", 1);
+                    sim.model.set("sample_input_address", index as u64);
+                } else {
+                    let address = index + if s % 3 == 1 { 0 } else { Q };
+                    let sample = sim.model.get("sample_input_data");
+                    sim.model.set_all(&[
+                        ("sample_output_write", 1),
+                        ("sample_output_address", address as u64),
+                        ("sample_output_data", sample),
+                    ]);
+                }
+                step = Some(s + 1);
+            }
+        } else if sim.model.get("quantum_valid") != 0 {
+            sim.model.set("quantum_ready", 1);
+            step = Some(0);
+        }
+        sim.idle(1);
+        assert_eq!(sim.model.get("audio_fault"), 0);
+        if sim.model.get("tx_valid") != 0 {
+            samples.push(sim.model.get("tx_samples"));
+            ticks.push(cycle);
+        }
+    }
+    assert_eq!(sim.model.get("missed_deadlines"), 0);
+    assert!(sim.model.get("processed_quanta") > 60);
+    assert_eq!(ticks.len() as u64, 6000 * 48_000 / CLOCK);
+    assert!(ticks.windows(2).all(|w| matches!(w[1] - w[0], 20 | 21)));
+    assert!(samples[..2 * Q].iter().all(|&v| v == 0));
+    for (index, &sample) in samples[2 * Q..].iter().enumerate() {
+        let expected = (index as u64) << 8;
+        assert_eq!(sample, expected | (expected << 32));
+    }
+}

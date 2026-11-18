@@ -45,7 +45,7 @@ def generate():
             assert name in dispatch_ports, name
             local.append((decl, name))
     public.extend((decl.replace("output reg", "output wire"), name)
-                  for decl, name in dispatch if name.startswith("quantum_"))
+                  for decl, name in dispatch if name.startswith("quantum_") or name in {"audio_enable", "audio_fault"})
     for decl, name in ports:
         if name.startswith(public_core):
             public.append((decl, name))

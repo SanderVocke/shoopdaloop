@@ -11,7 +11,9 @@ module host_dispatch #(
     input wire clk,
     input wire reset,
     input wire [31:0] epoch,
+    input wire audio_fault,
     output reg fault,
+    output reg audio_enable,
     input wire quantum_valid,
     output wire quantum_ready,
     output reg quantum_done,
@@ -97,6 +99,7 @@ module host_dispatch #(
     reg [319:0] args;
     reg [31:0] cycles;
     reg paced;
+    reg audio_started;
     localparam integer SNAPSHOT_WORDS = STATE_DEPTH*16;
     localparam integer SNAPSHOT_INDEX = $clog2(2*SNAPSHOT_WORDS);
     (* ram_style = "block" *) reg [63:0] snapshot_memory [0:2*SNAPSHOT_WORDS-1];
@@ -116,8 +119,9 @@ module host_dispatch #(
     wire executing = phase != IDLE && phase != RESPOND;
     wire unused_argument_bits = &{1'b0,args[319:304],args[287:272],args[255:240]};
 
-    assign command_ready = phase == IDLE && !fault && !memory_fault;
-    assign quantum_ready = phase == RUN_REQUEST && paced && run_ready && !memory_fault;
+    wire device_fault = memory_fault || audio_fault;
+    assign command_ready = phase == IDLE && !fault && !device_fault && !(audio_enable && quantum_valid);
+    assign quantum_ready = phase == RUN_REQUEST && paced && run_ready && !device_fault;
     assign response_valid = phase == RESPOND;
     assign cfg_valid = phase == CFG_REQUEST || phase == SNAPSHOT_REQUEST;
     assign cfg_state = phase == CFG_REQUEST && space[1:0] == 1;
@@ -165,6 +169,8 @@ module host_dispatch #(
     always @(posedge clk) begin
         if (reset) begin
             fault <= 0;
+            audio_enable <= 0;
+            audio_started <= 0;
             phase <= IDLE;
             args <= 0;
             cycles <= 0;
@@ -183,15 +189,18 @@ module host_dispatch #(
             response_tag <= 0;
             response_code <= RESULT_OK;
             response_data <= 0;
-        end else if (executing && (memory_fault || cycles >= WATCHDOG_CYCLES)) begin
+        end else if (executing && (device_fault || cycles >= WATCHDOG_CYCLES)) begin
             quantum_done <= 0;
             fault <= 1;
+            audio_enable <= 0;
             response_code <= RESULT_FAULT;
             phase <= paced ? IDLE : RESPOND;
         end else begin
             quantum_done <= 0;
-            if (memory_fault)
+            if (device_fault) begin
                 fault <= 1;
+                audio_enable <= 0;
+            end
             if (executing)
                 cycles <= cycles+1;
             case (phase)
@@ -211,7 +220,10 @@ module host_dispatch #(
                         OP_STORE_CONFIG: if ((request_control & ~32'h107) == 0 && request[319:224] == 0) phase <= STORE_CFG_REQUEST;
                         OP_CLEAR_VIEW: if (request[319:64] == 0) phase <= CLEAR_REQUEST;
                         OP_SWITCH_PROGRAM: if (!bad_switch_width) phase <= SWITCH_REQUEST;
-                        OP_RUN_QUANTUM: if (request[319:0] == 0) phase <= RUN_REQUEST;
+                        OP_RUN_QUANTUM: if (request[319:0] == 0) begin
+                            if (audio_started) response_code <= RESULT_REJECTED;
+                            else phase <= RUN_REQUEST;
+                        end
                         OP_CAPTURE_SNAPSHOT: if (request[319:32] == 0 && request_control <= STATE_DEPTH &&
                             snapshot_generation != 32'hffffffff) begin
                             snapshot_pos <= 0;
@@ -232,9 +244,16 @@ module host_dispatch #(
                             snapshot_reply_word <= 0;
                             phase <= SNAPSHOT_READ;
                         end
+                        OP_ENABLE_AUDIO: if (request[319:1] == 0) begin
+                            if (!request[0] || audio_enable || (!audio_started && active_revision != 0)) begin
+                                audio_enable <= request[0];
+                                audio_started <= audio_started || request[0];
+                                response_code <= RESULT_OK;
+                            end else response_code <= RESULT_REJECTED;
+                        end
                         default: phase <= RESPOND;
                     endcase
-                end else if (quantum_valid && !fault && !memory_fault) begin
+                end else if (quantum_valid && !fault && !device_fault) begin
                     paced <= 1;
                     cycles <= 0;
                     phase <= RUN_REQUEST;
@@ -297,6 +316,7 @@ module host_dispatch #(
                 RUN_REQUEST: if (run_valid && run_ready) phase <= RUN_WAIT;
                 RUN_WAIT: if (done) begin
                     fault <= error_code != 0;
+                    if (error_code != 0) audio_enable <= 0;
                     if (paced) begin
                         quantum_done <= error_code == 0;
                         quantum_cycles <= cycles;

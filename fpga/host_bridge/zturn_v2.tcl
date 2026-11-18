@@ -41,7 +41,10 @@ add_files [lsort [glob [file join $root fpga state_processor rtl *.svh]]]
 foreach directory {state_processor job_processor chunk_memory media_store axi_memory} {
     add_files [lsort [glob [file join $root fpga $directory rtl *.sv]]]
 }
-foreach source {host_mailbox.sv host_dispatch.sv host_pipeline_axi.sv host_pipeline_bd.v} {
+foreach source {audio_lane_ram.sv audio_io.sv} {
+    add_files [file join $root fpga audio_io rtl $source]
+}
+foreach source {host_mailbox.sv host_dispatch.sv host_pipeline_axi.sv host_pipeline_bd.v host_generated_audio.v} {
     add_files [file join $host $source]
 }
 set_property include_dirs [list [file join $root fpga state_processor rtl]] [current_fileset]
@@ -62,31 +65,38 @@ make_bd_intf_pins_external [get_bd_intf_pins ps/DDR] [get_bd_intf_pins ps/FIXED_
 
 set core [create_bd_cell -type module -reference host_pipeline_bd core]
 set_property -dict [list CONFIG.ARENA_BASE [expr {$arena_base}] \
-    CONFIG.ARENA_BYTES [expr {$arena_bytes}] CONFIG.CORE_CLOCK_HZ [expr {$clock_hz}]] $core
+    CONFIG.ARENA_BYTES [expr {$arena_bytes}] CONFIG.CORE_CLOCK_HZ [expr {$clock_hz}] \
+    CONFIG.EXTERNAL_IO 1 CONFIG.INPUT_PORTS 1] $core
+set audio [create_bd_cell -type module -reference host_generated_audio audio]
+set_property CONFIG.CORE_CLOCK_HZ [expr {$clock_hz}] $audio
 create_bd_cell -type ip -vlnv xilinx.com:ip:proc_sys_reset:5.0 reset
 set_property CONFIG.C_AUX_RESET_HIGH 1 [get_bd_cells reset]
 create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect:2.1 gp0
 set_property CONFIG.NUM_MI 1 [get_bd_cells gp0]
-foreach {name width value} {zero 1 0 one 1 1 sample_zero 32 0 boot_epoch 32 1} {
+foreach {name width value} {zero 1 0 one 1 1 boot_epoch 32 1} {
     set constant [create_bd_cell -type ip -vlnv xilinx.com:ip:xlconstant:1.1 $name]
     set_property -dict [list CONFIG.CONST_WIDTH $width CONFIG.CONST_VAL $value] $constant
 }
 
 connect_bd_net [get_bd_pins ps/FCLK_CLK0] [get_bd_pins ps/S_AXI_HP0_ACLK] \
     [get_bd_pins ps/M_AXI_GP0_ACLK] [get_bd_pins gp0/ACLK] [get_bd_pins gp0/S00_ACLK] \
-    [get_bd_pins gp0/M00_ACLK] [get_bd_pins core/clk] [get_bd_pins reset/slowest_sync_clk]
+    [get_bd_pins gp0/M00_ACLK] [get_bd_pins core/clk] [get_bd_pins audio/clk] [get_bd_pins reset/slowest_sync_clk]
 connect_bd_net [get_bd_pins ps/FCLK_RESET0_N] [get_bd_pins reset/ext_reset_in]
 connect_bd_net [get_bd_pins reset/interconnect_aresetn] [get_bd_pins gp0/ARESETN]
 connect_bd_net [get_bd_pins reset/peripheral_aresetn] [get_bd_pins gp0/S00_ARESETN] [get_bd_pins gp0/M00_ARESETN]
-connect_bd_net [get_bd_pins reset/peripheral_reset] [get_bd_pins core/reset]
+connect_bd_net [get_bd_pins reset/peripheral_reset] [get_bd_pins core/reset] [get_bd_pins audio/reset]
 connect_bd_net [get_bd_pins zero/dout] [get_bd_pins reset/mb_debug_sys_rst] [get_bd_pins reset/aux_reset_in] \
-    [get_bd_pins core/quantum_valid] \
     [get_bd_pins ps/S_AXI_HP0_RDISSUECAP1_EN] [get_bd_pins ps/S_AXI_HP0_WRISSUECAP1_EN]
 connect_bd_net [get_bd_pins one/dout] [get_bd_pins reset/dcm_locked] \
     [get_bd_pins core/sync_event_ready]
-connect_bd_net [get_bd_pins sample_zero/dout] [get_bd_pins core/sample_input_data]
-connect_bd_net [get_bd_pins boot_epoch/dout] [get_bd_pins core/epoch]
+connect_bd_net [get_bd_pins boot_epoch/dout] [get_bd_pins core/epoch] [get_bd_pins audio/epoch]
 connect_bd_net [get_bd_pins core/irq] [get_bd_pins ps/IRQ_F2P]
+connect_bd_net [get_bd_pins core/audio_enable] [get_bd_pins audio/enable]
+connect_bd_net [get_bd_pins core/fault] [get_bd_pins audio/process_fault]
+foreach name {audio_fault quantum_valid quantum_ready quantum_done sample_input_read sample_input_address
+    sample_input_data sample_output_write sample_output_address sample_output_data} {
+    connect_bd_net [get_bd_pins core/$name] [get_bd_pins audio/$name]
+}
 
 connect_bd_intf_net [get_bd_intf_pins ps/M_AXI_GP0] [get_bd_intf_pins gp0/S00_AXI]
 connect_bd_intf_net [get_bd_intf_pins gp0/M00_AXI] [get_bd_intf_pins core/s_axi]

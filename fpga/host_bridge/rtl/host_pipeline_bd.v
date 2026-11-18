@@ -66,6 +66,8 @@ module host_pipeline_bd #(
     output wire fault,
     (* X_INTERFACE_INFO = "xilinx.com:signal:interrupt:1.0 irq INTERRUPT", X_INTERFACE_PARAMETER = "SENSITIVITY LEVEL_HIGH" *)
     output wire irq,
+    input wire audio_fault,
+    output wire audio_enable,
     input wire quantum_valid,
     output wire quantum_ready,
     output wire quantum_done,
@@ -201,6 +203,8 @@ module host_pipeline_bd #(
         .epoch(epoch),
         .fault(fault),
         .irq(irq),
+        .audio_fault(audio_fault),
+        .audio_enable(audio_enable),
         .quantum_valid(quantum_valid),
         .quantum_ready(quantum_ready),
         .quantum_done(quantum_done),

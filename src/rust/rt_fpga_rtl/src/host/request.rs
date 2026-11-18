@@ -58,6 +58,10 @@ impl Request {
         Self::new(OP_RUN_QUANTUM, &[])
     }
 
+    pub fn enable_audio(enable: bool) -> Self {
+        Self::new(OP_ENABLE_AUDIO, &[u32::from(enable)])
+    }
+
     pub fn capture_snapshot(loop_slots: u32) -> Self {
         Self::new(OP_CAPTURE_SNAPSHOT, &[loop_slots])
     }

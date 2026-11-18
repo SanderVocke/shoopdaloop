@@ -68,6 +68,8 @@ module host_pipeline_axi #(
     output wire fault,
     (* X_INTERFACE_INFO = "xilinx.com:signal:interrupt:1.0 irq INTERRUPT", X_INTERFACE_PARAMETER = "SENSITIVITY LEVEL_HIGH" *)
     output wire irq,
+    input wire audio_fault,
+    output wire audio_enable,
     input wire quantum_valid,
     output wire quantum_ready,
     output wire quantum_done,

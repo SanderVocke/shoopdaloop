@@ -1,6 +1,6 @@
 {
   "id": "0x53484f50",
-  "version": 1,
+  "version": 2,
   "payload_words": 12,
   "registers": {
     "ID": "0x000",
@@ -32,7 +32,8 @@
     "SWITCH_PROGRAM": 5,
     "RUN_QUANTUM": 6,
     "CAPTURE_SNAPSHOT": 7,
-    "READ_SNAPSHOT": 8
+    "READ_SNAPSHOT": 8,
+    "ENABLE_AUDIO": 9
   },
   "response_codes": {
     "OK": 0,
