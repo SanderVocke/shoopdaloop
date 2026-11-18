@@ -10,8 +10,8 @@ use crate::message::{ClientMessage, DisconnectReason, EngineMessage};
 use crate::schema::*;
 use crate::timing::*;
 use crate::{
-    ProcessorKind, BULK_CHUNK_BYTES, BULK_CHUNK_SAMPLES, MAX_MIDI_BYTES, MAX_NAME_BYTES,
-    MAX_RECORD_BYTES, MAX_STRIP_CHANNELS,
+    DspMeasurement, ProcessorKind, BULK_CHUNK_BYTES, BULK_CHUNK_SAMPLES, MAX_MIDI_BYTES,
+    MAX_NAME_BYTES, MAX_RECORD_BYTES, MAX_STRIP_CHANNELS,
 };
 
 pub use shoop_transport::CodecError;
@@ -1722,6 +1722,60 @@ impl Wire for crate::MemoryReport {
     }
 }
 
+impl Wire for DspMeasurement {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        match *self {
+            Self::Callback {
+                elapsed_ns,
+                frames,
+                sample_rate,
+                paced,
+            } => {
+                w.u8(0)?;
+                w.u64(elapsed_ns)?;
+                w.u32(frames)?;
+                w.u32(sample_rate)?;
+                w.bool(paced)
+            }
+            Self::FpgaQuantum {
+                cycles,
+                clock_hz,
+                frames,
+                sample_rate,
+            } => {
+                w.u8(1)?;
+                w.u64(cycles)?;
+                w.u32(clock_hz)?;
+                w.u32(frames)?;
+                w.u32(sample_rate)
+            }
+            Self::JackServer { percent } => {
+                w.u8(2)?;
+                w.f32(percent)
+            }
+        }
+    }
+
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(match r.u8()? {
+            0 => Self::Callback {
+                elapsed_ns: r.u64()?,
+                frames: r.u32()?,
+                sample_rate: r.u32()?,
+                paced: r.bool()?,
+            },
+            1 => Self::FpgaQuantum {
+                cycles: r.u64()?,
+                clock_hz: r.u32()?,
+                frames: r.u32()?,
+                sample_rate: r.u32()?,
+            },
+            2 => Self::JackServer { percent: r.f32()? },
+            _ => return Err(CodecError::Invalid),
+        })
+    }
+}
+
 impl Wire for Telemetry {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
@@ -1770,7 +1824,7 @@ impl Wire for Telemetry {
                 frame,
                 callbacks,
                 xruns,
-                load,
+                dsp,
                 input_peak,
                 output_peak,
                 driver,
@@ -1779,7 +1833,7 @@ impl Wire for Telemetry {
                 w.u64(*frame)?;
                 w.u64(*callbacks)?;
                 w.u32(*xruns)?;
-                w.f32(*load)?;
+                dsp.put(w)?;
                 w.f32(*input_peak)?;
                 w.f32(*output_peak)?;
                 driver.put(w)
@@ -1864,7 +1918,7 @@ impl Wire for Telemetry {
                 frame: r.u64()?,
                 callbacks: r.u64()?,
                 xruns: r.u32()?,
-                load: r.f32()?,
+                dsp: Option::get(r)?,
                 input_peak: r.f32()?,
                 output_peak: r.f32()?,
                 driver: DriverStatus::get(r)?,

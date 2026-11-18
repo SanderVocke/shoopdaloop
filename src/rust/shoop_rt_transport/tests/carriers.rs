@@ -38,7 +38,7 @@ fn telemetry_keeps_the_latest_records_while_reliable_and_bulk_lanes_refuse() {
             frame,
             callbacks: frame,
             xruns: 0,
-            load: 0.,
+            dsp: None,
             input_peak: 0.,
             output_peak: 0.,
             driver: DRIVER,

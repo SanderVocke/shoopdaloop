@@ -1280,8 +1280,15 @@ fn show_overview(ui: &mut egui::Ui, report: &HostReport) {
         );
         metric(
             &mut columns[2],
-            "DSP LOAD",
-            format!("{:.1}%", report.effective.dsp_load_percent),
+            report
+                .effective
+                .dsp
+                .map_or("DSP LOAD", |sample| sample.label()),
+            report
+                .effective
+                .dsp
+                .and_then(|sample| sample.percent())
+                .map_or_else(|| "—".into(), |percent| format!("{percent:.1}%")),
         );
         metric(&mut columns[3], "XRUNS", report.effective.xruns.to_string());
     });

@@ -4,11 +4,12 @@ mod mono;
 use shoop_rt_host_worklet::{
     framing,
     reference::{Endpoint, ImagePort},
-    Inbound, Outbound, Quantum, WorkletConfig, WorkletHost,
+    CallbackTiming, Inbound, Outbound, Quantum, WorkletConfig, WorkletHost,
 };
 use shoop_rt_protocol::{
     immediate::{Batch, Code, Command, GraphLoop, TransitionMode, TransitionPlan},
-    DriverKind, DriverRunState, DriverStatus, EngineMessage, MemoryReport, Telemetry,
+    DriverKind, DriverRunState, DriverStatus, DspMeasurement, EngineMessage, MemoryReport,
+    Telemetry,
 };
 use shoop_rt_transport::{
     carrier::{CarrierError, InProcess, Outbox, RecordPort},
@@ -60,6 +61,7 @@ struct Browser {
     frame: u64,
     published: Vec<shoop_rt_protocol::snapshot::Header>,
     usage: Option<MemoryReport>,
+    dsp: Option<DspMeasurement>,
 }
 impl Browser {
     fn new() -> Self {
@@ -96,6 +98,7 @@ impl Browser {
             frame: 0,
             published: Vec::new(),
             usage: None,
+            dsp: None,
         }
     }
     fn step(&mut self) -> Vec<shoop_rt_protocol::immediate::Response> {
@@ -111,7 +114,10 @@ impl Browser {
                 frames: Q,
                 input_channels: 1,
                 frame: self.frame,
-                load: None,
+                previous_callback: (self.frame > 0).then_some(CallbackTiming {
+                    elapsed_ns: 4_000_000,
+                    frames: Q as u32,
+                }),
             })
         })
         .unwrap();
@@ -134,6 +140,11 @@ impl Browser {
                 EngineMessage::Telemetry(Telemetry::Memory(report)) => {
                     assert!(report.valid());
                     self.usage = Some(report);
+                }
+                EngineMessage::Telemetry(Telemetry::Engine {
+                    dsp: Some(sample), ..
+                }) => {
+                    self.dsp = Some(sample);
                 }
                 EngineMessage::Snapshot(chunk) if chunk.offset == 0 => {
                     self.published.push(
@@ -226,6 +237,15 @@ fn separate_heap_image_loading_records_plays_and_retains_media_without_render_al
     }
     assert_eq!(usage(&browser, "State slots").used, 2);
     assert!(usage(&browser, "Audio storage").used > 0);
+    assert_eq!(
+        browser.dsp,
+        Some(DspMeasurement::Callback {
+            elapsed_ns: 4_000_000,
+            frames: Q as u32,
+            sample_rate: 1000,
+            paced: true,
+        })
+    );
     assert!(browser.host.audio_output().iter().all(|s| *s == 0.25));
     assert!(browser
         .published

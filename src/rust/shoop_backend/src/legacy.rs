@@ -6630,7 +6630,7 @@ impl Backend for EngineBackend {
             profiling: Default::default(),
             status: BackendStatus {
                 memory: None,
-                dsp_load_percent: 0.0,
+                dsp: None,
                 xruns: self.xruns,
                 buffer_size: if self.port_model == EnginePortModel::Physical {
                     self.last_quantum

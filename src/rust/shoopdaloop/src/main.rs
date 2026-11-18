@@ -5688,12 +5688,15 @@ mod tests {
         thread::sleep(Duration::from_millis(1000));
         let after = runtime.snapshot().status.clone();
         eprintln!(
-            "CPAL device: {} frames and {} xruns in one second, load {:.1}%",
+            "CPAL device: {} frames and {} xruns in one second, load {}",
             after
                 .processed_frames
                 .saturating_sub(before.processed_frames),
             after.xruns,
-            after.dsp_load_percent
+            after.dsp.and_then(|sample| sample.percent()).map_or_else(
+                || "unavailable".to_owned(),
+                |percent| format!("{percent:.1}%")
+            )
         );
         assert!(after.processed_frames > before.processed_frames);
 

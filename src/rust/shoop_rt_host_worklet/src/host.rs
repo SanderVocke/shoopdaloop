@@ -10,7 +10,7 @@ use rt_runtime::buffer::{AudioBlock, MidiBlock, MidiBuffer};
 use rt_runtime::host::Renderer;
 use shoop_rt_engine::{ControlEndpoint, HostStatus, PrepareError, Render, MAX_HOST_PORTS};
 use shoop_rt_protocol::ClientMessage;
-use shoop_rt_protocol::{DriverKind, DriverRunState, DriverStatus};
+use shoop_rt_protocol::{DriverKind, DriverRunState, DriverStatus, DspMeasurement};
 use shoop_rt_transport::buffer::{Batch, Stream};
 use shoop_rt_transport::carrier::RecordServer;
 use shoop_rt_transport::carrier::{CarrierError, Endpoint as CarrierEndpoint, Outbox};
@@ -38,9 +38,13 @@ pub struct Quantum {
     pub input_channels: usize,
     /// `currentFrame` at the quantum's start.
     pub frame: u64,
-    /// The previous quantum's processing time as a share of its period, where the
-    /// script can measure it.
-    pub load: Option<f32>,
+    pub previous_callback: Option<CallbackTiming>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CallbackTiming {
+    pub elapsed_ns: u64,
+    pub frames: u32,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -160,11 +164,14 @@ impl StatusOwner {
             }
         }
     }
-    fn set_load(&self, l: f32) {
+    fn record_dsp(&self, sample: DspMeasurement) {
         match self {
-            Self::Native(s) => s.set_load(l),
+            Self::Native(s) => s.record_dsp(sample),
             #[cfg(feature = "fpga-reference")]
-            Self::Reference(s) => s.load(l),
+            Self::Reference(s) => {
+                s.record_dsp(sample);
+                s.callback_complete();
+            }
         }
     }
     fn profiling(&self) -> Option<&rt_runtime::profiling::Control> {
@@ -494,9 +501,15 @@ impl WorkletHost {
             self.status.add_xruns(1);
         }
         self.next_frame = Some(quantum.frame.saturating_add(quantum.frames as u64));
-        if let Some(load) = quantum.load.filter(|load| load.is_finite() && *load >= 0.) {
-            self.status.set_load(load);
-            if load > 1. {
+        if let Some(timing) = quantum.previous_callback {
+            let sample = DspMeasurement::Callback {
+                elapsed_ns: timing.elapsed_ns,
+                frames: timing.frames,
+                sample_rate: self.driver.sample_rate,
+                paced: true,
+            };
+            self.status.record_dsp(sample);
+            if sample.percent().is_some_and(|percent| percent > 100.) {
                 bump(&mut self.counters.overruns);
                 self.status.add_xruns(1);
             }

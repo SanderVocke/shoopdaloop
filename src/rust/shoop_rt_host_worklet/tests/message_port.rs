@@ -9,7 +9,8 @@ use std::collections::{BTreeMap, VecDeque};
 use shoop_rt_engine::{EngineDescription, HostPorts, Segment};
 use shoop_rt_host_worklet::lane::{self, MidiEvent, MAX_EVENT_BYTES};
 use shoop_rt_host_worklet::{
-    framing, Counters, Inbound, Outbound, Quantum, QuantumError, WorkletConfig, WorkletHost,
+    framing, CallbackTiming, Counters, Inbound, Outbound, Quantum, QuantumError, WorkletConfig,
+    WorkletHost,
 };
 use shoop_rt_protocol::*;
 use shoop_rt_transport::carrier::{CarrierError, RecordClient, RecordPort};
@@ -120,7 +121,7 @@ struct Processor {
     pending: [VecDeque<Vec<u8>>; 2],
     /// `currentFrame` of the next quantum.
     frame: u64,
-    load: Option<f32>,
+    previous_callback: Option<CallbackTiming>,
 }
 
 impl Processor {
@@ -167,7 +168,7 @@ impl Processor {
             frames,
             input_channels: channels,
             frame: self.frame,
-            load: self.load,
+            previous_callback: self.previous_callback,
         };
         let result = assert_no_heap(|| self.host.process(quantum));
         self.frame += frames as u64;
@@ -213,7 +214,7 @@ impl Browser {
                 host,
                 pending: Default::default(),
                 frame: START,
-                load: None,
+                previous_callback: None,
             },
             to_worklet: VecDeque::new(),
             to_main: VecDeque::new(),
@@ -354,17 +355,14 @@ impl Browser {
         unreachable!()
     }
 
-    fn last_engine(&self) -> (u32, f32, DriverStatus) {
+    fn last_engine(&self) -> (u32, Option<DspMeasurement>, DriverStatus) {
         self.telemetry
             .iter()
             .rev()
             .find_map(|record| match *record {
                 Telemetry::Engine {
-                    xruns,
-                    load,
-                    driver,
-                    ..
-                } => Some((xruns, load, driver)),
+                    xruns, dsp, driver, ..
+                } => Some((xruns, dsp, driver)),
                 _ => None,
             })
             .unwrap()
@@ -495,18 +493,28 @@ fn fixed_quanta_cross_the_worklet_configuration_and_message_port() {
 #[shoop_test]
 fn reports_driver_state_load_and_xruns_in_telemetry() {
     let mut browser = Browser::connected(&WorkletConfig::new(description()));
-    browser.processor.load = Some(0.25);
+    browser.processor.previous_callback = Some(CallbackTiming {
+        elapsed_ns: 2_000_000,
+        frames: 8,
+    });
     browser.run(QUANTUM);
-    let (xruns, load, driver) = browser.last_engine();
-    assert_eq!((xruns, load), (0, 0.25));
+    let (xruns, dsp, driver) = browser.last_engine();
+    let dsp = dsp.unwrap();
+    assert_eq!(
+        (xruns, dsp.percent(), dsp.microseconds()),
+        (0, Some(25.), Some(2000.))
+    );
     assert_eq!(driver.state, DriverRunState::Running);
     assert_eq!(driver.buffer_frames, QUANTUM as u32);
 
     browser.processor.frame += 5;
     browser.run(QUANTUM);
-    browser.processor.load = Some(1.5);
+    browser.processor.previous_callback = Some(CallbackTiming {
+        elapsed_ns: 24_000_000,
+        frames: 16,
+    });
     browser.run(QUANTUM);
-    browser.processor.load = None;
+    browser.processor.previous_callback = None;
     browser.run(QUANTUM);
     assert_eq!(browser.last_engine().0, 2);
     let counters = browser.counters();
@@ -642,7 +650,7 @@ fn refuses_invalid_quanta_without_rendering() {
             frames,
             input_channels,
             frame: START,
-            load: None,
+            previous_callback: None,
         };
         assert_eq!(host.process(quantum), Err(QuantumError::Invalid));
     }

@@ -1,6 +1,7 @@
 #![cfg(all(feature = "rtl-sim", target_os = "linux"))]
 use shoop_host::rtl_sim;
 use shoop_rt_host_native::{DriverConfig, DummyConfig, DummyMode};
+use shoop_rt_protocol::{DspMeasurement, EngineMessage, Telemetry};
 use shoop_wasm_test_support::shoop_test;
 use std::time::{Duration, Instant};
 #[shoop_test(no_wasm = "native simulator shared Dummy driver")]
@@ -10,7 +11,7 @@ fn all_dummy_modes_and_partial_controlled_requests_use_the_rtl_owner() {
         DummyMode::Unpaced,
         DummyMode::Controlled,
     ] {
-        let started = rtl_sim::start_driver(
+        let mut started = rtl_sim::start_driver(
             DriverConfig::Dummy(DummyConfig {
                 mode,
                 sample_rate: 1000,
@@ -21,6 +22,7 @@ fn all_dummy_modes_and_partial_controlled_requests_use_the_rtl_owner() {
             1,
         )
         .unwrap();
+        started.client.connect().unwrap();
         let deadline = Instant::now() + Duration::from_secs(5);
         if mode == DummyMode::Controlled {
             let demand = started.driver.dummy().unwrap();
@@ -35,7 +37,31 @@ fn all_dummy_modes_and_partial_controlled_requests_use_the_rtl_owner() {
                 std::thread::yield_now();
             }
         }
-        drop(started);
+        loop {
+            if let Some(EngineMessage::Telemetry(Telemetry::Engine {
+                dsp: Some(sample), ..
+            })) = started.client.poll()
+            {
+                let DspMeasurement::FpgaQuantum {
+                    cycles,
+                    clock_hz,
+                    frames,
+                    sample_rate,
+                } = sample
+                else {
+                    panic!("expected RTL quantum timing, got {sample:?}");
+                };
+                assert!(cycles > 0);
+                assert_eq!((clock_hz, frames, sample_rate), (150_000_000, 16, 1000));
+                assert_eq!(sample.microseconds(), Some(cycles as f64 / 150.));
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "missing RTL measurement in {mode:?}"
+            );
+            std::thread::yield_now();
+        }
     }
 }
 #[cfg(feature = "cpal")]

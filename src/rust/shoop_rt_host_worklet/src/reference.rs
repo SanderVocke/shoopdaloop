@@ -9,7 +9,7 @@ use rt_fpga_reference::{
 use shoop_rt_host_reference::{ProgramLoader, Status};
 use shoop_rt_protocol::{
     immediate::{Batch, Response, SwitchProgram},
-    snapshot, ClientMessage, DriverRunState, DriverStatus, EngineMessage,
+    snapshot, ClientMessage, DriverRunState, DriverStatus, EngineMessage, Telemetry,
 };
 use shoop_rt_transport::{
     carrier::{CarrierError, Endpoint as Carrier, Outbox, RecordClient, RecordPort},
@@ -139,7 +139,16 @@ impl<P: ImagePort> Endpoint<P> {
                 EngineMessage::ImmediateResponse(response) => {
                     self.response = Some(response);
                 }
-                EngineMessage::Telemetry(shoop_rt_protocol::Telemetry::Memory(report)) => {
+                EngineMessage::Telemetry(Telemetry::Engine {
+                    driver,
+                    callbacks,
+                    xruns,
+                    dsp,
+                    ..
+                }) => self
+                    .status
+                    .observe_worklet_engine(driver, callbacks, xruns, dsp),
+                EngineMessage::Telemetry(Telemetry::Memory(report)) => {
                     self.endpoint.observe_worklet_storage(&report);
                 }
                 EngineMessage::Snapshot(chunk) | EngineMessage::SnapshotReply(chunk) => {

@@ -55,7 +55,7 @@ fn prepare(record: &[u8]) -> u32 {
 #[shoop_test]
 fn prepares_renders_and_releases_one_host() {
     shoop_rt_worklet_release();
-    assert_eq!(shoop_rt_worklet_process(16, 0, 0., -1.), NOT_PREPARED);
+    assert_eq!(shoop_rt_worklet_process(16, 0, 0., -1., 0), NOT_PREPARED);
     assert_eq!(shoop_rt_worklet_prepare(), MISSING_CONFIG);
     assert!(shoop_rt_worklet_config_buffer(0).is_null());
     assert_eq!(prepare(&[1, 0, 0, 0]), INVALID_CONFIG);
@@ -93,8 +93,8 @@ fn prepares_renders_and_releases_one_host() {
     let hello = [5, 0, 0, PROTOCOL_VERSION as u8, 0];
     write(shoop_rt_worklet_buffer_ptr(RECORDS_IN), &hello[..3]);
     assert!(shoop_rt_worklet_commit(RECORDS_IN, 3));
-    assert_eq!(shoop_rt_worklet_process(17, 2, 0., -1.), INVALID_QUANTUM);
-    assert_eq!(shoop_rt_worklet_process(16, 2, 0., -1.), RENDERED);
+    assert_eq!(shoop_rt_worklet_process(17, 2, 0., -1., 0), INVALID_QUANTUM);
+    assert_eq!(shoop_rt_worklet_process(16, 2, 0., -1., 0), RENDERED);
     assert_eq!(shoop_rt_worklet_buffer_len(RECORDS_OUT), 0);
     assert_eq!(shoop_rt_worklet_buffer_len(RECORDS_IN), 3);
     let at = shoop_rt_worklet_buffer_len(RECORDS_IN);
@@ -103,7 +103,10 @@ fn prepares_renders_and_releases_one_host() {
         &hello[3..],
     );
     assert!(shoop_rt_worklet_commit(RECORDS_IN, 2));
-    assert_eq!(shoop_rt_worklet_process(16, 2, 16., 0.5), RENDERED);
+    assert_eq!(
+        shoop_rt_worklet_process(16, 2, 16., 8_000_000., 16),
+        RENDERED
+    );
     assert_eq!(shoop_rt_worklet_buffer_len(RECORDS_IN), 0);
     let len = shoop_rt_worklet_buffer_len(RECORDS_OUT);
     let first = read(shoop_rt_worklet_buffer_ptr(RECORDS_OUT), len);
@@ -113,10 +116,13 @@ fn prepares_renders_and_releases_one_host() {
         Ok(EngineMessage::Welcome { .. })
     ));
 
-    assert_eq!(shoop_rt_worklet_process(16, 0, 100., 2.), RENDERED);
+    assert_eq!(
+        shoop_rt_worklet_process(16, 0, 100., 32_000_000., 16),
+        RENDERED
+    );
     assert_eq!(shoop_rt_worklet_counter(DISCONTINUITIES), 1);
     assert_eq!(shoop_rt_worklet_counter(OVERRUNS), 1);
     shoop_rt_worklet_release();
-    assert_eq!(shoop_rt_worklet_process(16, 0, 116., -1.), NOT_PREPARED);
+    assert_eq!(shoop_rt_worklet_process(16, 0, 116., -1., 0), NOT_PREPARED);
     assert_eq!(shoop_rt_worklet_counter(DISCONTINUITIES), 0);
 }

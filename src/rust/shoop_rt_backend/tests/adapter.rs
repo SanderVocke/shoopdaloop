@@ -1011,15 +1011,26 @@ fn public_grab_and_replacing_have_one_owned_mutation_and_preserve_old_exports() 
 
 #[shoop_test]
 fn dsp_load_keeps_the_peak_across_telemetry_until_the_next_poll() {
+    use shoop_rt_protocol::DspMeasurement;
+
     let mut backend = stack(&description());
-    backend.poll().unwrap();
-    for load in [0.75, 0.25] {
-        backend.clock_mut().offline.host.set_load(load);
+    assert_eq!(backend.poll().unwrap().status.dsp, None);
+    let callback = |elapsed_ns, frames| DspMeasurement::Callback {
+        elapsed_ns,
+        frames,
+        sample_rate: 1000,
+        paced: true,
+    };
+    let peak = callback(12_000_000, 16);
+    for sample in [peak, callback(16_000_000, 64)] {
+        backend.clock_mut().offline.host.record_dsp(sample);
         backend.clock_mut().render(16);
         backend.pump();
     }
-    assert_eq!(backend.poll().unwrap().status.dsp_load_percent, 75.0);
-    backend.clock_mut().offline.host.set_load(0.125);
+    assert_eq!(backend.poll().unwrap().status.dsp, Some(peak));
+    assert_eq!(backend.poll().unwrap().status.dsp, None);
+    let next = callback(2_000_000, 16);
+    backend.clock_mut().offline.host.record_dsp(next);
     backend.clock_mut().render(16);
-    assert_eq!(backend.poll().unwrap().status.dsp_load_percent, 12.5);
+    assert_eq!(backend.poll().unwrap().status.dsp, Some(next));
 }

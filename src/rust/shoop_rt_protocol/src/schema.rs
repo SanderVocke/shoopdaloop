@@ -517,8 +517,8 @@ pub enum Telemetry {
         /// Callbacks rendered since preparation.
         callbacks: u64,
         xruns: u32,
-        /// Callback time as a share of the callback period.
-        load: f32,
+        /// Peak DSP measurement since the previous record.
+        dsp: Option<crate::DspMeasurement>,
         /// Largest absolute sample on any host audio input and output since the
         /// previous engine record.
         input_peak: f32,

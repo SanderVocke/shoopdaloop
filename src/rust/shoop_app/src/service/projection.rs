@@ -770,14 +770,38 @@ impl Service {
                 port.view.name = descriptor.name.clone();
             }
         }
+        let previous = &self.observed;
+        let same_dsp_source = observed.status.driver_state == previous.status.driver_state
+            && observed.status.sample_rate == previous.status.sample_rate
+            && observed.status.processed_frames >= previous.status.processed_frames
+            && observed
+                .audio_drivers
+                .active
+                .as_ref()
+                .map(|driver| driver.configured.kind())
+                == previous
+                    .audio_drivers
+                    .active
+                    .as_ref()
+                    .map(|driver| driver.configured.kind());
         if self.driver_controller.is_some() && observed.audio_drivers.active.is_some() {
             self.driver_state.active = observed.audio_drivers.active.clone();
         }
         self.xruns = self.xruns.saturating_add(observed.status.xruns);
-        self.dsp_peak = self.dsp_peak.max(observed.status.dsp_load_percent);
+        if !same_dsp_source {
+            self.dsp_peak = None;
+        }
+        if let Some(sample) = observed.status.dsp {
+            sample.record_peak(&mut self.dsp_peak);
+        }
+        let previous_dsp = if same_dsp_source {
+            previous.status.dsp
+        } else {
+            None
+        };
         self.observed = observed;
         self.observed.status.xruns = self.xruns;
-        self.observed.status.dsp_load_percent = self.dsp_peak;
+        self.observed.status.dsp = self.dsp_peak.or(previous_dsp);
     }
 
     pub(super) fn settle_effect(&mut self, effect: &Effect, success: bool) {
@@ -918,7 +942,7 @@ pub(super) fn status(state: &BackendStatus) -> StatusState {
     StatusState {
         memory: state.memory,
         version: env!("CARGO_PKG_VERSION").to_owned(),
-        dsp_load_percent: state.dsp_load_percent,
+        dsp: state.dsp,
         xruns: state.xruns,
         sample_rate: state.sample_rate,
         quantum_frames: state.quantum_frames,

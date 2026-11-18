@@ -386,14 +386,21 @@ impl drivers::Observer for NativeObserver {
             c.host_input(now);
         }
     }
-    fn load(&self, load: f32, frames: u32, sample_rate: u32, now: u64) {
+    fn callback_complete(&self, sample: shoop_rt_protocol::DspMeasurement, now: u64) {
         if let Some(c) = self.host.profiling().filter(|c| c.recording()) {
-            c.host_end(
-                now,
-                u64::from(frames) * 1_000_000_000 / u64::from(sample_rate),
-            );
+            if let shoop_rt_protocol::DspMeasurement::Callback {
+                frames,
+                sample_rate,
+                ..
+            } = sample
+            {
+                c.host_end(
+                    now,
+                    u64::from(frames) * 1_000_000_000 / u64::from(sample_rate),
+                );
+            }
         }
-        self.host.set_load(load);
+        self.host.record_dsp(sample);
     }
     fn record(&self, v: [u64; 18]) {
         if let Some(b) = &self.benchmark {

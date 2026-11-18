@@ -45,7 +45,12 @@ fn main() {
                         &StatusState {
                             sample_rate: 48000,
                             quantum_frames: 32,
-                            dsp_load_percent: 23.4,
+                            dsp: Some(shoop_app_api::DspMeasurement::Callback {
+                                elapsed_ns: 156_000,
+                                frames: 32,
+                                sample_rate: 48_000,
+                                paced: true,
+                            }),
                             ..Default::default()
                         },
                         true,

@@ -9,7 +9,7 @@ browser-feature = "wasm-test-browser"
 
 [features]
 default = []
-serde = ["dep:serde", "shoop_port_graph/serde", "shoop_processor_protocol/serde"]
+serde = ["dep:serde", "shoop_dsp_metrics/serde", "shoop_port_graph/serde", "shoop_processor_protocol/serde"]
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
@@ -19,6 +19,7 @@ profiling_protocol = { path = "../profiling_protocol" }
 rt_profiling = { path = "../rt_profiling" }
 shoop_processor_protocol = { path = "../shoop_processor_protocol", features = ["alloc"] }
 shoop_port_graph = { path = "../shoop_port_graph" }
+shoop_dsp_metrics = { path = "../shoop_dsp_metrics" }
 serde = { workspace = true, features = ["derive", "rc"], optional = true }
 shoop_latency = { path = "../shoop_latency" }
 shoop_script_resources = { path = "../shoop_script_resources", default-features = false }

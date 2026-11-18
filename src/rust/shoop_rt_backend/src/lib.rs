@@ -101,7 +101,7 @@ struct Status {
     memory: Option<shoop_rt_protocol::MemoryReport>,
     frame: u64,
     callbacks: u64,
-    load: f32,
+    dsp: Option<shoop_rt_protocol::DspMeasurement>,
     /// The engine's xrun count when last reported, from the first engine record
     /// of this connection on.
     xruns_reported: Option<u32>,

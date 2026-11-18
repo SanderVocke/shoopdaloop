@@ -163,7 +163,7 @@ pub struct Status {
     frame: AtomicU64,
     callbacks: AtomicU64,
     xruns: AtomicU32,
-    load: AtomicU32,
+    dsp: shoop_rt_protocol::dsp::Peak,
     storage: StorageCounter,
 }
 impl Status {
@@ -181,7 +181,7 @@ impl Status {
             frame: AtomicU64::new(0),
             callbacks: AtomicU64::new(0),
             xruns: AtomicU32::new(0),
-            load: AtomicU32::new(0),
+            dsp: Default::default(),
             storage: StorageCounter::default(),
         }
     }
@@ -223,16 +223,38 @@ impl Status {
     pub fn xrun(&self) {
         self.xruns.fetch_add(1, Ordering::Relaxed);
     }
-    pub fn load(&self, load: f32) {
-        self.load.store(load.to_bits(), Ordering::Relaxed);
+    pub fn callback_complete(&self) {
         self.callbacks.fetch_add(1, Ordering::Relaxed);
+    }
+    pub fn record_dsp(&self, sample: shoop_rt_protocol::DspMeasurement) {
+        self.dsp.record(sample);
+    }
+    pub fn observe_worklet_engine(
+        &self,
+        driver: DriverStatus,
+        callbacks: u64,
+        xruns: u32,
+        dsp: Option<shoop_rt_protocol::DspMeasurement>,
+    ) {
+        self.update_driver(driver);
+        self.callbacks.store(callbacks, Ordering::Relaxed);
+        self.xruns.store(xruns, Ordering::Relaxed);
+        if let Some(sample) = dsp {
+            self.record_dsp(sample);
+        }
+    }
+    fn publish_engine(&self, frame: u64, sent_frame: &mut u64, out: &mut Outbox) {
+        if frame.saturating_sub(*sent_frame) >= u64::from((self.sample_rate / 30).max(1)) {
+            *sent_frame = frame;
+            let _ = out.push(EngineMessage::Telemetry(self.telemetry()));
+        }
     }
     pub fn telemetry(&self) -> shoop_rt_protocol::Telemetry {
         shoop_rt_protocol::Telemetry::Engine {
             frame: self.frame.load(Ordering::Acquire),
             callbacks: self.callbacks.load(Ordering::Relaxed),
             xruns: self.xruns.load(Ordering::Relaxed),
-            load: f32::from_bits(self.load.load(Ordering::Relaxed)),
+            dsp: self.dsp.take(),
             input_peak: 0.,
             output_peak: 0.,
             driver: self.driver(),
@@ -501,6 +523,7 @@ impl<L: ProgramLoader> Endpoint<L> {
             StorageEndpoint {
                 control: self.control,
                 status: self.status,
+                sent_frame: self.sent_frame,
                 usage: UsageTelemetry::default(),
             },
             self.programs,
@@ -832,12 +855,8 @@ impl<L: ProgramLoader> CarrierEndpoint for Endpoint<L> {
             return;
         }
         let frame = self.status.frame.load(Ordering::Acquire);
-        if self.control.is_connected()
-            && frame.saturating_sub(self.sent_frame)
-                >= u64::from(self.status.sample_rate / 30).max(1)
-        {
-            self.sent_frame = frame;
-            let _ = out.push(EngineMessage::Telemetry(self.status.telemetry()));
+        if self.control.is_connected() {
+            self.status.publish_engine(frame, &mut self.sent_frame, out);
         }
         self.programs.reclaim_programs();
         if !self.flush(out) {
@@ -894,6 +913,7 @@ impl<L: ProgramLoader> CarrierEndpoint for Endpoint<L> {
 pub struct StorageEndpoint {
     control: rt::Endpoint,
     status: Arc<Status>,
+    sent_frame: u64,
     usage: UsageTelemetry,
 }
 
@@ -926,6 +946,7 @@ impl CarrierEndpoint for StorageEndpoint {
         self.control.poll(out);
         if self.control.is_connected() {
             let frame = self.status.frame.load(Ordering::Acquire);
+            self.status.publish_engine(frame, &mut self.sent_frame, out);
             if let Some(report) = self.status.storage.report(frame) {
                 self.usage
                     .publish(report, self.status.usage_interval(), out);

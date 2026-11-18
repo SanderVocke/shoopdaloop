@@ -20,7 +20,7 @@ use shoop_rt_protocol::{
         TransitionMode, TransitionPlan, COMMANDS,
     },
     snapshot::{self, Record},
-    LoopMode, LoopSlotId, Peaks, SlotId, StateRecord, Telemetry, TimingState,
+    DspMeasurement, LoopMode, LoopSlotId, Peaks, SlotId, StateRecord, Telemetry, TimingState,
 };
 use shoop_rt_transport::rt;
 use std::{
@@ -28,6 +28,8 @@ use std::{
     thread,
     time::Duration,
 };
+
+const TARGET_CORE_CLOCK_HZ: u32 = 150_000_000;
 
 pub fn descriptor(image: &ProgramImage) -> SwitchProgram {
     let c = &image.compiled;
@@ -649,7 +651,7 @@ impl Owner<'_> {
             ("run_inputs", 1),
             ("run_outputs", 2),
         ]);
-        let mut admitted = false;
+        let mut accepted_at = None;
         for _ in 0..2_000_000 {
             if self.pending.is_some() && self.sim.model.get("switch_response_valid") != 0 {
                 self.sim.model.set("run_valid", 0);
@@ -671,13 +673,15 @@ impl Owner<'_> {
                 self.sim.model.set("run_valid", 0);
             }
             if ready {
-                admitted = true;
+                accepted_at = Some(self.sim.cycles);
                 break;
             }
         }
-        ensure!(admitted, "RTL quantum admission timed out");
+        let accepted_at =
+            accepted_at.ok_or_else(|| anyhow::anyhow!("RTL quantum admission timed out"))?;
         self.sim.model.set("run_valid", 0);
         self.wait("done", 20_000_000)?;
+        let cycles = self.sim.cycles - accepted_at;
         ensure!(
             self.sim.model.get("error_code") == 0,
             "RTL quantum failed: stage {}, code {}",
@@ -711,6 +715,12 @@ impl Owner<'_> {
         execution
             .commands
             .publish_frame(rt_runtime::Frame(self.frame));
+        self.shared.status.record_dsp(DspMeasurement::FpgaQuantum {
+            cycles,
+            clock_hz: TARGET_CORE_CLOCK_HZ,
+            frames: self.quantum,
+            sample_rate: self.shared.status.driver().sample_rate,
+        });
         self.shared.status.set_frame(self.frame);
         Ok(())
     }

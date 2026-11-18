@@ -139,6 +139,7 @@ impl Loop {
     fn step(&mut self, frames: usize) {
         let input = self.input;
         let late_ns = self.late_ns;
+        let paced = self.mode == DummyMode::Automatic;
         let Self { cycle, shared, .. } = self;
         let mut body = || {
             let started = Instant::now();
@@ -164,8 +165,7 @@ impl Loop {
                 cycle.render(count, shared.nanos(started), true);
             }
             let busy = started.elapsed();
-            shared
-                .set_load(busy.as_secs_f32() / period(frames, shared.sample_rate()).as_secs_f32());
+            shared.callback_complete(busy, frames, paced);
             shared.record_callback(
                 first,
                 frames,
