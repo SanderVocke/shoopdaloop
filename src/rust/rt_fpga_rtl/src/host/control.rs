@@ -1,4 +1,5 @@
 //! Translate RT controls and observations to the packed loop state.
+mod session;
 mod window;
 use crate::{bits::Bits, target::ProgramImage};
 use rt_fpga_compiler::Identity;
@@ -7,6 +8,7 @@ use rt_fpga_reference::{
     state::{ModePlan, ModeStep, apply_mode_command},
     transitions::{LoopId, LoopState, Mode, Operation, TransitionError},
 };
+pub use session::{ActiveProgram, ProgramSession};
 use shoop_rt_protocol::{
     LoopMode,
     immediate::{

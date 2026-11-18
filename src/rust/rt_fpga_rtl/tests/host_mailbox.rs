@@ -440,54 +440,50 @@ fn recorded_take_survives_a_graph_switch_over_the_hardware_mailbox() {
     };
     use rt_fpga_rtl::{
         host::{
-            Upload, UploadStep,
-            control::{ControlWindow, descriptor, gain_value},
+            Upload,
+            control::{ActiveProgram, ControlWindow, ProgramSession, gain_value},
         },
-        target::{ProgramImage, RtlTarget},
+        target::RtlTarget,
     };
-    use shoop_rt_protocol::immediate::{Code, TransitionMode, TransitionPlan};
+    use shoop_rt_protocol::immediate::{Code, SwitchProgram, TransitionMode, TransitionPlan};
+
+    fn timeout() -> impl FnMut() -> bool {
+        let mut remaining = 10000;
+        move || {
+            remaining -= 1;
+            remaining > 0
+        }
+    }
 
     fn send(client: &mut Client<Axi<'_, '_>>, request: Request) -> [u32; HOST_PAYLOAD_WORDS] {
-        let mut remaining = 10000;
         let result = client
-            .exchange(request, || {
-                remaining -= 1;
-                remaining > 0
-            })
+            .exchange(request, timeout())
             .expect("bridge response deadline");
         assert_eq!(result.code, RESULT_OK, "{result:?}");
         result.data
     }
 
-    fn stage(client: &mut Client<Axi<'_, '_>>, upload: &mut Upload) {
-        while let Some(step) = upload.next_step() {
-            let request = match step {
-                UploadStep::Configure(write) => Request::configuration_write(write).unwrap(),
-                UploadStep::ClearView(view) => Request::clear_view(view),
-            };
-            send(client, request);
-        }
+    fn stage(session: &mut ProgramSession<Axi<'_, '_>>, upload: Upload) -> SwitchProgram {
+        assert!(session.stage(upload).is_ok());
+        (0..1000)
+            .find_map(|_| session.upload_step(timeout()).unwrap())
+            .expect("image upload deadline")
     }
 
     fn mode(
-        client: &mut Client<Axi<'_, '_>>,
-        layout: &ProgramImage,
+        session: &mut ProgramSession<Axi<'_, '_>>,
         identity: Identity,
         next_mode: TransitionMode,
     ) {
-        let physical = layout.layout.loop_id(identity).unwrap();
-        let revision = layout.layout.revision;
-        let mut remaining = 10000;
-        let mut window = ControlWindow::begin(client, revision, || {
-            remaining -= 1;
-            remaining > 0
-        })
-        .unwrap();
+        let active = session.active().unwrap();
+        let physical = active.layout.loop_id(identity).unwrap();
+        let revision = active.layout.revision;
         let expected_frame = if next_mode == TransitionMode::Recording {
             0
         } else {
-            3 * u64::from(layout.compiled.quantum)
+            3 * u64::from(active.compiled.quantum)
         };
+        let mut window = ControlWindow::begin(session.client(), revision, timeout()).unwrap();
         assert_eq!(window.frame(), expected_frame);
         assert_eq!(
             window.apply_transition(
@@ -556,7 +552,7 @@ fn recorded_take_survives_a_graph_switch_over_the_hardware_mailbox() {
     let mut allocator = Allocator::new(limits);
     let layout = allocator.stage(&first).unwrap();
     let media = layout.media_views(&first);
-    let mut upload = Upload::new(
+    let upload = Upload::new(
         RtlTarget {
             capacities: limits,
             media_views: &media,
@@ -566,35 +562,30 @@ fn recorded_take_survives_a_graph_switch_over_the_hardware_mailbox() {
         .unwrap(),
         limits.instructions,
     );
-    stage(&mut client, &mut upload);
+    let mut session = ProgramSession::new(client);
+    let requested = stage(&mut session, upload);
     allocator.publish(1).unwrap();
-    let selected = send(
-        &mut client,
-        Request::switch_program(0, descriptor(&upload.image)),
+    let (selected, retired) = session.activate(requested, timeout()).unwrap();
+    assert_eq!(
+        selected,
+        ActiveProgram {
+            frame: 0,
+            revision: 1
+        }
     );
-    assert_eq!(&selected[..4], &[0, 0, 1, 0]);
+    assert!(retired.is_none());
     allocator.complete(1).unwrap();
-    mode(
-        &mut client,
-        &upload.image,
-        identity,
-        TransitionMode::Recording,
-    );
+    mode(&mut session, identity, TransitionMode::Recording);
     let take: Vec<i32> = (0..3 * limits.quantum)
         .map(|i| ((i as i32 % 16) - 8) * 0x10000)
         .collect();
     for samples in take.chunks(limits.quantum as usize) {
         for (i, &sample) in samples.iter().enumerate() {
-            send(&mut client, Request::input_sample(i as u32, sample));
+            send(session.client(), Request::input_sample(i as u32, sample));
         }
-        send(&mut client, Request::run_quantum());
+        send(session.client(), Request::run_quantum());
     }
-    mode(
-        &mut client,
-        &upload.image,
-        identity,
-        TransitionMode::Stopped,
-    );
+    mode(&mut session, identity, TransitionMode::Stopped);
 
     let silent = mono::MonoLoop {
         id: Identity {
@@ -608,10 +599,10 @@ fn recorded_take_survives_a_graph_switch_over_the_hardware_mailbox() {
     let layout = allocator.stage(&next).unwrap();
     assert_eq!(
         layout.loop_id(identity).unwrap(),
-        upload.image.layout.loop_id(identity).unwrap()
+        session.active().unwrap().layout.loop_id(identity).unwrap()
     );
     let media = layout.media_views(&next);
-    let mut upload = Upload::new(
+    let upload = Upload::new(
         RtlTarget {
             capacities: limits,
             media_views: &media,
@@ -621,45 +612,48 @@ fn recorded_take_survives_a_graph_switch_over_the_hardware_mailbox() {
         .unwrap(),
         limits.instructions,
     );
-    stage(&mut client, &mut upload);
+    let requested = stage(&mut session, upload);
+    assert_eq!(session.active().unwrap().layout.revision, 1);
     allocator.publish(2).unwrap();
-    let selected = send(
-        &mut client,
-        Request::switch_program(1, descriptor(&upload.image)),
+    let (selected, retired) = session.activate(requested, timeout()).unwrap();
+    assert_eq!(
+        selected,
+        ActiveProgram {
+            frame: 3 * u64::from(limits.quantum),
+            revision: 2
+        }
     );
-    assert_eq!(&selected[..4], &[3 * limits.quantum, 0, 2, 0]);
+    assert_eq!(retired.unwrap().image.layout.revision, 1);
     allocator.complete(2).unwrap();
-    mode(
-        &mut client,
-        &upload.image,
-        identity,
-        TransitionMode::Playing,
-    );
-    let gain = upload
-        .image
+    mode(&mut session, identity, TransitionMode::Playing);
+    let active = session.active().unwrap();
+    let gain = active
         .compiled
         .bindings
         .iter()
-        .find(|binding| binding.id == upload.image.layout.loop_id(identity).unwrap())
+        .find(|binding| binding.id == active.layout.loop_id(identity).unwrap())
         .unwrap()
         .gain
         .unwrap();
     for (index, reference) in take.chunks(limits.quantum as usize).enumerate() {
         if index == 1 {
-            send(&mut client, Request::begin_control(2));
+            send(session.client(), Request::begin_control(2));
             let write = ConfigurationWrite {
                 space: Space::State,
                 address: u64::from(gain),
                 value: gain_value(0.5),
             };
-            send(&mut client, Request::configuration_write(&write).unwrap());
-            send(&mut client, Request::end_control());
+            send(
+                session.client(),
+                Request::configuration_write(&write).unwrap(),
+            );
+            send(session.client(), Request::end_control());
         }
-        send(&mut client, Request::run_quantum());
+        send(session.client(), Request::run_quantum());
         for port in 0..2 {
             for (i, &sample) in reference.iter().enumerate() {
                 let actual = send(
-                    &mut client,
+                    session.client(),
                     Request::output_sample(port * limits.quantum + i as u32),
                 );
                 let expected = if index == 0 { sample } else { sample / 2 };
