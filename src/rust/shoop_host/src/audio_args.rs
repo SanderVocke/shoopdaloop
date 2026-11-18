@@ -1,8 +1,15 @@
 //! Native audio startup overrides shared by the application and standalone host.
 
 use anyhow::{bail, ensure, Result};
-use shoop_app_api::{AudioDriverConfig, AudioDriverKind};
+use shoop_app_api::{AudioDriverConfig, AudioDriverKind, NewEnginePools};
 use std::ffi::OsString;
+
+fn parse_quantum(value: &str) -> Result<u32, String> {
+    match value.parse::<u32>() {
+        Ok(quantum @ (1 | 16 | 32 | 64 | 128)) => Ok(quantum),
+        _ => Err("processing quantum must be 1, 16, 32, 64 or 128 frames".into()),
+    }
+}
 
 #[derive(Clone, Copy, Debug, clap::ValueEnum)]
 pub enum NativeDriver {
@@ -55,14 +62,25 @@ pub struct AudioArgs {
     /// Audio driver for this launch; does not change saved preferences.
     #[arg(long = "driver", value_enum, help_heading = "Backend")]
     pub audio_driver: Option<NativeDriver>,
+    /// Processing quantum for this launch (1, 16, 32, 64 or 128 frames).
+    #[arg(long, help_heading = "Backend", value_name = "FRAMES", value_parser = parse_quantum)]
+    pub quantum: Option<u32>,
     /// Dummy pacing: paced, unpaced or controlled.
     #[arg(long, help_heading="Dummy Driver",value_parser=|v:&str|v.parse::<shoop_app_api::DummyMode>())]
     pub dummy_mode: Option<shoop_app_api::DummyMode>,
+    /// Dummy driver buffer in audio frames for this launch.
+    #[arg(long, help_heading = "Dummy Driver", value_name = "FRAMES", value_parser = clap::value_parser!(u32).range(1..=16_384))]
+    pub dummy_buffer_size: Option<u32>,
     /// JACK client-name hint.
     #[arg(long, requires = "audio_driver", help_heading = "JACK Driver")]
     pub jack_client_name: Option<String>,
 }
 impl AudioArgs {
+    pub fn apply_pools(&self, mut pools: NewEnginePools) -> NewEnginePools {
+        pools.quantum = self.quantum.unwrap_or(pools.quantum);
+        pools
+    }
+
     pub fn apply_processors(
         &self,
         mut base: shoop_app_api::ProcessorSettings,
@@ -123,6 +141,12 @@ impl AudioArgs {
             };
             dummy.mode = mode;
         }
+        if let Some(buffer_size) = self.dummy_buffer_size {
+            let AudioDriverConfig::Dummy(dummy) = &mut config else {
+                bail!("--dummy-buffer-size requires the dummy audio driver")
+            };
+            dummy.buffer_size = buffer_size;
+        }
         Ok(config)
     }
 
@@ -181,6 +205,34 @@ mod tests {
     }
 
     #[shoop_test]
+    fn quantum_override_is_validated_and_not_forwarded_to_attaching_ui() {
+        let pools = NewEnginePools {
+            quantum: 64,
+            ..Default::default()
+        };
+        assert_eq!(AudioArgs::default().apply_pools(pools), pools);
+        for quantum in [1, 16, 32, 64, 128] {
+            let args = Cli::try_parse_from(["host", "--quantum", &quantum.to_string()]).unwrap();
+            assert_eq!(
+                args.audio.apply_pools(pools),
+                NewEnginePools { quantum, ..pools }
+            );
+        }
+        for quantum in ["0", "17", "256"] {
+            assert!(Cli::try_parse_from(["host", "--quantum", quantum]).is_err());
+        }
+        for arguments in [
+            vec!["--quantum", "16", "--session", "take.shoop"],
+            vec!["--quantum=16", "--session", "take.shoop"],
+        ] {
+            assert_eq!(
+                AudioArgs::without_overrides(arguments.into_iter().map(OsString::from)),
+                vec![OsString::from("--session"), OsString::from("take.shoop")]
+            );
+        }
+    }
+
+    #[shoop_test]
     fn dummy_pacing_override_is_validated_and_not_forwarded_to_attaching_ui() {
         let args = Cli::try_parse_from(["host", "--dummy-mode", "unpaced"]).unwrap();
         let config = args.audio.apply(Default::default()).unwrap();
@@ -200,6 +252,31 @@ mod tests {
             vec![OsString::from("--session"), OsString::from("x")]
         );
         assert!(Cli::try_parse_from(["host", "--dummy-mode", "invalid"]).is_err());
+    }
+
+    #[shoop_test]
+    fn dummy_buffer_override_is_validated_and_not_forwarded_to_attaching_ui() {
+        let args = Cli::try_parse_from(["host", "--dummy-buffer-size", "64"]).unwrap();
+        let AudioDriverConfig::Dummy(dummy) = args.audio.apply(Default::default()).unwrap() else {
+            panic!("dummy driver expected");
+        };
+        assert_eq!(dummy.buffer_size, 64);
+        assert!(args
+            .audio
+            .apply(AudioDriverConfig::Cpal(Default::default()))
+            .is_err());
+        for size in ["0", "16385"] {
+            assert!(Cli::try_parse_from(["host", "--dummy-buffer-size", size]).is_err());
+        }
+        for arguments in [
+            vec!["--dummy-buffer-size", "64", "--session", "take.shoop"],
+            vec!["--dummy-buffer-size=64", "--session", "take.shoop"],
+        ] {
+            assert_eq!(
+                AudioArgs::without_overrides(arguments.into_iter().map(OsString::from)),
+                vec![OsString::from("--session"), OsString::from("take.shoop")]
+            );
+        }
     }
 
     #[cfg(feature = "jack")]

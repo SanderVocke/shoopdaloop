@@ -2463,7 +2463,11 @@ impl Runtime {
         let mut startup_warnings = Vec::new();
         let configured_driver = match args.configured_audio_driver(settings) {
             Ok(driver) => driver,
-            Err(error) if args.audio.audio_driver.is_some() => anyhow::bail!(error),
+            Err(error)
+                if args.audio.audio_driver.is_some() || args.audio.dummy_buffer_size.is_some() =>
+            {
+                anyhow::bail!(error)
+            }
             Err(error) => {
                 startup_warnings.push(format!(
                     "Could not use preferred audio settings: {error}; using dummy / offline"
@@ -2477,6 +2481,7 @@ impl Runtime {
             ));
             shoop_egui::NewEnginePools::default()
         });
+        let pools = args.audio.apply_pools(pools);
         let transport = args.selected_engine_transport(settings)?;
         let started = start_engine(&configured_driver, &pools, transport)?;
         startup_warnings.extend(started.warnings);
@@ -3755,6 +3760,7 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
     let executable = std::env::current_exe()?;
     let companion = shoop_host::launch::companion_path(&executable)?;
     let mut options = StartOptions::new()?;
+    options.use_configured_driver = args.audio.dummy_buffer_size.is_some();
     if let Some(endpoint) = args.endpoint {
         options.endpoint = endpoint;
     }

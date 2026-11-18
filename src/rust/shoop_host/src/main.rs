@@ -136,12 +136,15 @@ fn run() -> anyhow::Result<()> {
             serde_json::from_value(value)?
         }
     };
-    if let Some(path) = options.driver_preferences.as_ref() {
-        if let Some(profile) = shoop_host::audio_driver::read_preferences(path)? {
-            config.settings.driver = profile;
+    if !options.use_configured_driver {
+        if let Some(path) = options.driver_preferences.as_ref() {
+            if let Some(profile) = shoop_host::audio_driver::read_preferences(path)? {
+                config.settings.driver = profile;
+            }
         }
     }
     config.settings.driver = args.audio.apply(config.settings.driver)?;
+    config.settings.pools = args.audio.apply_pools(config.settings.pools);
     config.settings.processors = args.audio.apply_processors(config.settings.processors)?;
     config.validate()?;
     tracing::info!(
