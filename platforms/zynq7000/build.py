@@ -47,7 +47,7 @@ def build():
     boards.argument(parser)
     args = parser.parse_args()
     board = boards.load(args.board)
-    policy = engine_policy.load(args.engine_config, pool=board.firmware.get("engine_pool"))
+    policy = engine_policy.load(args.engine_config, pool=board.firmware.get("engine_pool"), usb=args.usb)
     global BUILD
     BUILD = board.build_dir(ROOT)
     if args.usb and board.firmware["midi"] != "usb-optional":

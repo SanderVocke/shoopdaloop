@@ -34,6 +34,12 @@ class Policy(unittest.TestCase):
             path.write_text(json.dumps({"loops": 40}))
             self.assertEqual(engine_policy.load(path, pool={"loops": 32})["loops"], 40)
 
+    def test_usb_preserves_native_audio_pool_and_reserves_midi_cable_storage(self):
+        usb = engine_policy.load(usb=True)
+        self.assertEqual((usb["tracks"], usb["loops"]), (3, 20))
+        self.assertEqual(engine_policy.load()["loops"], 64)
+        self.assertEqual(usb["input_history"]["seconds"], 0)
+
     def test_invalid_settings_fail_before_build(self):
         for policy in [[], {"unknown": 1}, {"tracks": 0}, {"loops": True},
                        {"input_history": []}, {"input_history": {"unknown": 1}},

@@ -13,10 +13,14 @@ DEFAULT = {
         "writers": 8,
     },
 }
+USB_POOL = {"tracks": 3, "loops": 20}
 
 
-def load(path=None, *, pool=None):
+def load(path=None, *, pool=None, usb=False):
     policy = copy.deepcopy(DEFAULT)
+    if usb:
+        # The engine reserves MIDI restoration and callback storage for all 16 cables.
+        policy.update(USB_POOL)
     if pool is not None:
         policy.update(pool)
     if path is not None:
