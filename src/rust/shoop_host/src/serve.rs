@@ -36,6 +36,8 @@ pub struct StartOptions {
     pub log_file: Option<PathBuf>,
     #[serde(default)]
     pub driver_preferences: Option<PathBuf>,
+    #[serde(default)]
+    pub use_configured_driver: bool,
 
     pub name: String,
 }
@@ -51,6 +53,7 @@ impl StartOptions {
             network: Default::default(),
             log_file: None,
             driver_preferences: None,
+            use_configured_driver: false,
 
             name: "ShoopDaLoop".into(),
         })

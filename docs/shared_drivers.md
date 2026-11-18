@@ -30,10 +30,17 @@ on `PATH`. To run the RTL simulator with the Dummy driver from the source checko
 
 ```sh
 nix develop --command cargo run --locked -p shoop_host --no-default-features \
-  --features rtl-sim -- --backend rtl-sim --audio-driver dummy
+  --features rtl-sim -- --backend rtl-sim --driver dummy --dummy-buffer-size 64 --quantum 16
 ```
 
 ## Dummy timing
+
+`--dummy-buffer-size <frames>` overrides the dummy driver buffer for one launch.
+It defaults to 256 frames and is also configurable in Audio settings. The
+processing quantum is set independently at host startup. Use
+`--quantum <frames>` to override it for one launch. The CLI accepts 1, 16, 32,
+64 or 128 frames. Set the default through **Processing quantum** in Audio
+settings or `pools.quantum` in the standalone host's JSON configuration.
 
 `--dummy-mode paced|unpaced|controlled` is also stored in the dummy driver's
 settings. Paced is the default. Unpaced runs as quickly as computation allows,

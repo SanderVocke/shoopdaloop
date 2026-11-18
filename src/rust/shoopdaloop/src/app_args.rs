@@ -191,8 +191,9 @@ impl AppArgs {
         config.driver = self
             .configured_audio_driver(settings)
             .map_err(anyhow::Error::msg)?;
-        config.pools =
-            shoop_egui::new_engine_pools_from_snapshot(settings).map_err(anyhow::Error::msg)?;
+        config.pools = self.audio.apply_pools(
+            shoop_egui::new_engine_pools_from_snapshot(settings).map_err(anyhow::Error::msg)?,
+        );
         config.processors = self.configured_processors(settings)?;
         if backend == shoop_app_api::BackendType::Native {
             config.loop_smoothing_ms =
@@ -333,6 +334,7 @@ mod native_tests {
         let registry = builder.finish();
         let mut draft = shoop_settings::SettingsDraft::from_snapshot(&registry.defaults(1));
         draft.set(shoop_egui::BACKEND, "rust-fpga".into());
+        draft.set(shoop_egui::NEW_ENGINE_QUANTUM, "16".into());
         let document = registry
             .document_from_draft(
                 &shoop_settings::SettingsDocument::empty("test"),
@@ -344,11 +346,28 @@ mod native_tests {
         let args = AppArgs::default();
         let config = args.configured_host_settings(&settings).unwrap();
         assert_eq!(config.backend, BackendType::RustFpga);
+        assert_eq!(config.pools.quantum, 16);
         assert_eq!(config.loop_smoothing_ms, 0);
         assert!(matches!(
             config.driver,
             shoop_app_api::AudioDriverConfig::Dummy(_)
         ));
+        let args = AppArgs::try_parse_from([
+            "shoopdaloop",
+            "--dummy-buffer-size",
+            "64",
+            "--quantum",
+            "32",
+        ])
+        .unwrap();
+        let config = args.configured_host_settings(&settings).unwrap();
+        let shoop_app_api::AudioDriverConfig::Dummy(driver) = config.driver else {
+            panic!("dummy driver expected");
+        };
+        assert_eq!(driver.buffer_size, 64);
+        assert_eq!(config.pools.quantum, 32);
+        assert_eq!(settings.get(shoop_egui::NEW_ENGINE_QUANTUM).unwrap(), "16");
+        assert_eq!(settings.get(shoop_egui::DUMMY_BUFFER_SIZE).unwrap(), 256);
         let args = AppArgs::try_parse_from(["shoopdaloop", "--backend", "native"]).unwrap();
         assert_eq!(
             args.selected_backend(&settings).unwrap(),
