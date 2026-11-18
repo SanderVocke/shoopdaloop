@@ -1,17 +1,15 @@
 #[path = "../../rt_fpga_compiler/tests/support/mod.rs"]
 mod support;
 use rt_fpga_compiler::{
-    graph::{compile, CompileContext},
-    loading::Allocator,
-    ProgramLimits, StateProgramTarget,
+    compile, loading::Allocator, CompileContext, ProgramLimits, StateProgramTarget,
 };
 use rt_fpga_reference::{
-    compiler::RustTarget,
     fixed::{Fixed, Ramp},
     jobs::JobProcessor,
     pipeline::Pipeline,
     state::{ModePlan, Value},
     storage::MediaStore,
+    target::RustTarget,
     transitions::{LoopId, Mode},
 };
 use shoop_wasm_test_support::shoop_test;

@@ -1,8 +1,11 @@
-use rt_fpga_compiler::{graph::*, CompileError, Identity, ProgramLimits, Resource};
+#[path = "support/mono.rs"]
+mod mono;
+use rt_fpga_compiler::{compile, CompileContext};
+use rt_fpga_compiler::{CompileError, Identity, ProgramLimits, Resource};
 use shoop_wasm_test_support::shoop_test;
 
-fn row(slot: u32, source: Option<u32>) -> LoopDescription {
-    LoopDescription {
+fn row(slot: u32, source: Option<u32>) -> mono::MonoLoop {
+    mono::MonoLoop {
         id: Identity {
             slot,
             generation: 3,
@@ -18,40 +21,47 @@ fn row(slot: u32, source: Option<u32>) -> LoopDescription {
 #[shoop_test]
 fn graph_orders_sync_independently_of_audio_without_a_profile_loop_limit() {
     for quantum in [1, 16, 32, 64, 128] {
-        let description = MonoGraphFixture {
-            quantum,
-            loops: (0..64)
+        let description = mono::session(
+            &((0..64)
                 .rev()
                 .map(|i| row(i, (i > 0).then(|| i - 1)))
-                .collect(),
-        };
-        let program = description.compile().unwrap();
+                .collect::<Vec<_>>()),
+        );
+        let program = compile(
+            &description,
+            CompileContext {
+                quantum,
+                limits: Default::default(),
+            },
+        )
+        .unwrap();
         assert_eq!(
             program.sync_pass.iter().map(|i| i.slot).collect::<Vec<_>>(),
             (0..64).collect::<Vec<_>>()
         );
         assert_eq!(program.loops[0].id.slot, 0);
     }
-    MonoGraphFixture {
-        quantum: 16,
-        loops: vec![row(0, Some(0))],
-    }
-    .compile()
+    compile(
+        &mono::session(&(vec![row(0, Some(0))])),
+        CompileContext {
+            quantum: 16,
+            limits: Default::default(),
+        },
+    )
     .unwrap();
 }
 
 #[shoop_test]
 fn invalid_graphs_fail_before_target_preparation() {
     for loops in [
-        vec![],
         vec![row(0, Some(1))],
         vec![row(0, Some(1)), row(1, Some(0))],
         vec![row(0, None), row(0, None)],
-        vec![LoopDescription {
+        vec![mono::MonoLoop {
             gain: f32::NAN,
             ..row(0, None)
         }],
-        vec![LoopDescription {
+        vec![mono::MonoLoop {
             id: Identity {
                 slot: 0,
                 generation: 0,
@@ -60,27 +70,39 @@ fn invalid_graphs_fail_before_target_preparation() {
         }],
     ] {
         assert_eq!(
-            MonoGraphFixture { quantum: 16, loops }.compile(),
+            compile(
+                &mono::session(&(loops)),
+                CompileContext {
+                    quantum: 16,
+                    limits: Default::default()
+                }
+            ),
             Err(CompileError::InvalidProgram)
         );
     }
     assert_eq!(
-        MonoGraphFixture {
-            quantum: 3,
-            loops: vec![row(0, None)]
-        }
-        .compile(),
+        compile(
+            &mono::session(&(vec![row(0, None)])),
+            CompileContext {
+                quantum: 3,
+                limits: Default::default()
+            }
+        ),
         Err(CompileError::InvalidProgram)
     );
 }
 
 #[shoop_test]
 fn compiler_checks_each_target_resource_and_accepts_the_exact_fit() {
-    let graph = MonoGraphFixture {
-        quantum: 32,
-        loops: (0..40).map(|i| row(i + 1000, None)).collect(),
-    };
-    let program = graph.compile().unwrap();
+    let graph = mono::session(&((0..40).map(|i| row(i + 1000, None)).collect::<Vec<_>>()));
+    let program = compile(
+        &graph,
+        CompileContext {
+            quantum: 32,
+            limits: Default::default(),
+        },
+    )
+    .unwrap();
     let exact = ProgramLimits {
         instructions: (program.sync_pass.len() + program.audio_pass.len()) as u32,
         state_values: program.initial_state.len() as u32,
@@ -92,7 +114,14 @@ fn compiler_checks_each_target_resource_and_accepts_the_exact_fit() {
         output_ports: 2,
         quantum: 32,
     };
-    graph.compile_with_limits(exact).unwrap();
+    compile(
+        &graph,
+        CompileContext {
+            quantum: 32,
+            limits: exact,
+        },
+    )
+    .unwrap();
     for (resource, limits) in [
         (
             Resource::Instructions,
@@ -152,7 +181,13 @@ fn compiler_checks_each_target_resource_and_accepts_the_exact_fit() {
         ),
     ] {
         assert_eq!(
-            graph.compile_with_limits(limits),
+            compile(
+                &graph,
+                CompileContext {
+                    quantum: 32,
+                    limits: limits
+                }
+            ),
             Err(CompileError::Capacity(resource))
         );
     }
@@ -163,20 +198,24 @@ fn compiler_checks_each_target_resource_and_accepts_the_exact_fit() {
 
 #[shoop_test]
 fn full_graph_views_report_unsupported_features_without_flattening_them_away() {
-    use rt_fpga_compiler::graph::{compile, CompileContext, Feature};
+    use rt_fpga_compiler::Feature;
     use shoop_graph::*;
-    let fixture = MonoGraphFixture {
-        quantum: 16,
-        loops: vec![row(123, None)],
-    };
-    let initial = fixture.to_graph();
+    let fixture = mono::session(&(vec![row(123, None)]));
+    let initial = fixture.clone();
     let context = CompileContext {
         quantum: 16,
         limits: ProgramLimits::default(),
     };
     assert_eq!(
         compile(&initial, context).unwrap(),
-        fixture.compile().unwrap()
+        compile(
+            &fixture,
+            CompileContext {
+                quantum: 16,
+                limits: Default::default()
+            }
+        )
+        .unwrap()
     );
     let owner = Owner::Strip(initial.strips[0].id);
     let cases = [

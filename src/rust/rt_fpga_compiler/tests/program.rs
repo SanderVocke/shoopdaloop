@@ -1,15 +1,16 @@
+#[path = "support/programs.rs"]
+mod programs;
 use rt_fpga_compiler::*;
 use shoop_wasm_test_support::shoop_test;
 
 #[shoop_test]
-fn fixed_profiles_enforce_prepared_resource_limits() {
+fn raw_state_programs_enforce_prepared_resource_limits() {
     for quantum in [1, 16, 32, 64, 128] {
-        for fixed in [
-            FixedProgram::MonoLoops { quantum, loops: 1 },
-            FixedProgram::MonoLoops { quantum, loops: 2 },
-            FixedProgram::SyncSmoothing { quantum },
+        for program in [
+            programs::mono_loops(quantum, 1),
+            programs::mono_loops(quantum, 2),
+            programs::sync_smoothing(quantum),
         ] {
-            let program = fixed.emit().unwrap();
             let exact = ProgramLimits {
                 instructions: (program.sync_pass.len() + program.audio_pass.len()) as u32,
                 state_values: program.initial_state.len() as u32,
@@ -55,29 +56,12 @@ fn fixed_profiles_enforce_prepared_resource_limits() {
 }
 
 #[shoop_test]
-fn malformed_fixture_parameters_and_logical_references_are_rejected() {
-    for fixed in [
-        FixedProgram::MonoLoops {
-            quantum: 3,
-            loops: 1,
-        },
-        FixedProgram::MonoLoops {
-            quantum: 16,
-            loops: 0,
-        },
-        FixedProgram::MonoLoops {
-            quantum: 16,
-            loops: 3,
-        },
-    ] {
-        assert_eq!(fixed.emit(), Err(CompileError::InvalidProgram));
-    }
-    let program = FixedProgram::MonoLoops {
-        quantum: 16,
-        loops: 2,
-    }
-    .emit()
-    .unwrap();
+fn malformed_program_parameters_and_references_are_rejected() {
+    assert_eq!(
+        programs::mono_loops(3, 1).validate(ProgramLimits::default()),
+        Err(CompileError::InvalidProgram)
+    );
+    let program = programs::mono_loops(16, 2);
     for mutation in 0..5 {
         let mut invalid = program.clone();
         match mutation {

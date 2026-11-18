@@ -8,9 +8,9 @@ use rt_fpga_reference::{
 };
 use rt_fpga_rtl::{
     bits::Bits,
-    compiler::{ConfigurationWrite as Write, ProgramImage, Space},
     pipeline::{design, Geometry},
     sim::Sim,
+    target::{ConfigurationWrite as Write, ProgramImage, Space},
 };
 use shoop_rt_protocol::{
     codec,

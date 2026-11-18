@@ -1,7 +1,7 @@
 #![cfg(all(feature = "sim", not(target_arch = "wasm32")))]
 #[path = "../../rt_fpga_compiler/tests/support/mod.rs"]
 mod support;
-use rt_fpga_compiler::graph::shoop_graph::{Graph, Owner, PortRole};
+use rt_fpga_compiler::shoop_graph::{Graph, Owner, PortRole};
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock},
     host::Renderer,

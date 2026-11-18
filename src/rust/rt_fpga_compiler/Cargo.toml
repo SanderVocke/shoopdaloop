@@ -16,4 +16,5 @@ shoop_graph = { path = "../shoop_graph" }
 serde={workspace=true,features=["derive"],optional=true}
 
 [dev-dependencies]
+shoop_rt_protocol = { path = "../shoop_rt_protocol" }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }

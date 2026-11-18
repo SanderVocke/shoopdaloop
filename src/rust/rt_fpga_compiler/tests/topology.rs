@@ -1,8 +1,5 @@
 mod support;
-use rt_fpga_compiler::{
-    graph::{compile, shoop_graph::*, CompileContext},
-    *,
-};
+use rt_fpga_compiler::{compile, shoop_graph::*, CompileContext, *};
 use shoop_wasm_test_support::shoop_test;
 use support::*;
 

@@ -6,7 +6,7 @@ mirror, Rust processor model, RTL codecs, Marlin or runtime transports.
 
 ## Graph compilation
 
-`graph::compile(view, CompileContext { quantum, limits })` captures one consistent
+`rt_fpga_compiler::compile(view, CompileContext { quantum, limits })` captures one consistent
 view. Logical IDs are names, not allocation addresses. Collection iteration order
 does not select the execution order or change the generated program.
 
@@ -58,9 +58,9 @@ requires a new loop identity; the loader refuses an incompatible carry-over.
 
 `loading::Allocator` retains one current and one pending layout. New allocations
 use unused slots; old-only slots stay pinned until the switch fence completes.
-Cancellation cannot make an old revision current again. Legacy fixed programs
-can still infer their loop-owned bindings. New graph programs carry explicit
-bindings. Sync and scratch/history wiring lives in instruction operands.
+Cancellation cannot make an old revision current again. Every logical program
+supplies explicit state ownership bindings. Sync and scratch/history wiring lives
+in instruction operands.
 
 `Layout::media_views` maps each logical media index to its allocated state address.
 The reference, worklet and Marlin loaders prepare only fresh media views. Their
@@ -75,18 +75,23 @@ logical program goes to both existing targets:
 
 | Target | Implementation | Result |
 | --- | --- | --- |
-| Rust | `rt_fpga_reference::compiler::RustTarget` | Typed instructions, state values, loop plan and bindings |
-| RTL | `rt_fpga_rtl::compiler::RtlTarget` | Packed instructions, state words, loop RAM images and bindings |
+| Rust | `rt_fpga_reference::target::RustTarget` | Typed instructions, state values, loop plan and bindings |
+| RTL | `rt_fpga_rtl::target::RtlTarget` | Packed instructions, state words, loop RAM images and bindings |
 
 Targets resolve logical media indices using their supplied `media_views`. Both
 `build_image` methods accept the ARM layout and emit fresh-state initializers.
 The RTL target also supports a nonzero state base. The instruction set, packed
 formats, processor RTL and switch/fence protocol are unchanged.
 
-`FixedProgram::emit` retains the direct `MonoLoops` and `SyncSmoothing` component
-fixtures. `graph::MonoGraphFixture` constructs a full view and uses the general
-compiler; it is not a separate lowering path. Supported quanta remain
+There is one compiler entry point: `rt_fpga_compiler::compile` takes a `GraphView`
+and a `CompileContext`. The Rust and RTL target modules encode its shared program;
+they are not independent graph compilers. Supported quanta remain
 1/16/32/64/128, subject to target capacities.
+
+Raw instructions for processor, numeric and relocation checks live only in test
+support. These vectors do not accept graph descriptions or provide compilation
+APIs. Compact protocol loop records expand to a full `shoop_graph::Graph` before
+entering the same compiler as complete graph uploads.
 
 ## Verification
 
@@ -103,8 +108,8 @@ native resolver and application tests remain in place.
 ```sh
 cargo test --locked -p rt_fpga_compiler
 cargo test --locked -p rt_fpga_reference --all-features
-cargo test --locked -p shoop_rt_backend --test compiler_native
-cargo test --locked -p rt_fpga_testbench --features sim --test graph_compiler --test compiler --test loading
+cargo test --locked -p shoop_rt_backend --test targets_native
+cargo test --locked -p rt_fpga_testbench --features sim --test graph_compiler --test targets --test loading
 cargo test --locked -p shoop_rt_host_marlin --features sim
 ```
 

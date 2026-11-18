@@ -1,27 +1,29 @@
 #![cfg(all(feature = "sim", not(target_arch = "wasm32")))]
-use rt_fpga_compiler::{CompileError, FixedProgram, Resource, StateProgramTarget};
-use rt_fpga_compiler::{
-    Identity,
-    graph::{LoopDescription, MonoGraphFixture},
-};
+#[path = "../../rt_fpga_compiler/tests/support/mono.rs"]
+mod mono;
+use rt_fpga_compiler::{CompileContext, compile};
+#[path = "../../rt_fpga_compiler/tests/support/programs.rs"]
+mod programs;
+use rt_fpga_compiler::Identity;
+use rt_fpga_compiler::{CompileError, Resource, StateProgramTarget};
 use rt_fpga_reference::{
-    compiler::RustTarget,
     jobs::JobQueue,
     state::{PlannedTransition, StateProcessor},
+    target::RustTarget,
     transitions::Operation,
 };
 use rt_fpga_testbench::{
-    compiler::RtlTarget,
     drivers::state::State,
     loop_image::{image, write_plans},
     sim::Sim,
     suites,
+    target::RtlTarget,
 };
 use serde_json::json;
 use shoop_wasm_test_support::shoop_test;
 
 #[shoop_test]
-fn compiled_mono_fixture_matches_rust_with_distinct_state_addresses() {
+fn targets_match_raw_and_compiled_programs_at_distinct_state_addresses() {
     let depths = [64, 16, 32];
     let mut design = suites::state::design(depths);
     design.parameters.insert("LOOP_DEPTH".into(), "160".into());
@@ -35,28 +37,30 @@ fn compiled_mono_fixture_matches_rust_with_distinct_state_addresses() {
         .flat_map(|q| [(q, false), (q, true)])
     {
         let logical = if graph {
-            MonoGraphFixture {
-                quantum,
-                loops: (0..2)
-                    .map(|slot| LoopDescription {
-                        id: Identity {
-                            slot,
-                            generation: 1,
-                        },
-                        source: (slot == 1).then_some(0),
-                        input: slot == 1,
-                        output: true,
-                        gain: 0.5,
-                        repeat_sync: false,
-                    })
-                    .collect(),
-            }
-            .compile()
+            compile(
+                &mono::session(
+                    &((0..2)
+                        .map(|slot| mono::MonoLoop {
+                            id: Identity {
+                                slot,
+                                generation: 1,
+                            },
+                            source: (slot == 1).then_some(0),
+                            input: slot == 1,
+                            output: true,
+                            gain: 0.5,
+                            repeat_sync: false,
+                        })
+                        .collect::<Vec<_>>()),
+                ),
+                CompileContext {
+                    quantum,
+                    limits: Default::default(),
+                },
+            )
             .unwrap()
         } else {
-            FixedProgram::MonoLoops { quantum, loops: 2 }
-                .emit()
-                .unwrap()
+            programs::mono_loops(quantum, 2)
         };
         let views = [23, 41];
         let rust = RustTarget::new(&views).build(&logical).unwrap();
@@ -136,12 +140,7 @@ fn compiled_mono_fixture_matches_rust_with_distinct_state_addresses() {
 
 #[shoop_test]
 fn targets_reject_missing_media_and_physical_capacity_before_loading() {
-    let logical = FixedProgram::MonoLoops {
-        quantum: 16,
-        loops: 2,
-    }
-    .emit()
-    .unwrap();
+    let logical = programs::mono_loops(16, 2);
     assert_eq!(
         RustTarget::new(&[]).build(&logical).err(),
         Some(CompileError::MissingView(0))

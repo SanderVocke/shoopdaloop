@@ -1,3 +1,5 @@
+#[path = "../../rt_fpga_compiler/tests/support/mono.rs"]
+mod mono;
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock},
     host::Renderer,
@@ -194,10 +196,7 @@ fn actual_input_records_and_plays_through_quantum_adapter_without_callback_alloc
 
 #[shoop_test]
 fn semantic_graph_uploads_refuse_unsupported_shapes_and_recover_after_interruption() {
-    use rt_fpga_compiler::{
-        graph::{LoopDescription, MonoGraphFixture},
-        Identity,
-    };
+    use rt_fpga_compiler::Identity;
     let prepared = shoop_rt_host_reference::prepare(
         Q as u32,
         DriverStatus {
@@ -216,10 +215,9 @@ fn semantic_graph_uploads_refuse_unsupported_shapes_and_recover_after_interrupti
     ));
     client.connect().unwrap();
     while client.poll().is_some() {}
-    let graph = MonoGraphFixture {
-        quantum: Q as u32,
-        loops: (100..108)
-            .map(|slot| LoopDescription {
+    let graph = mono::session(
+        &((100..108)
+            .map(|slot| mono::MonoLoop {
                 id: Identity {
                     slot,
                     generation: 7,
@@ -230,9 +228,8 @@ fn semantic_graph_uploads_refuse_unsupported_shapes_and_recover_after_interrupti
                 gain: 1.,
                 repeat_sync: false,
             })
-            .collect(),
-    }
-    .to_graph();
+            .collect::<Vec<_>>()),
+    );
     // A header never reserves executable state; activation requires the complete image.
     send(
         &mut client,

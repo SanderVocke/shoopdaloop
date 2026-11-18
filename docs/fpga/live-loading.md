@@ -158,7 +158,7 @@ Run the focused gates with:
 ```sh
 cargo test -p rt_fpga_compiler -p rt_fpga_reference --all-features
 cargo test -p shoop_rt_protocol -p shoop_rt_transport --all-features
-cargo test -p rt_fpga_testbench --features sim --test loading --test compiler --test sync
+cargo test -p rt_fpga_testbench --features sim --test loading --test targets --test sync
 cargo test -p shoop_host --no-default-features --features fpga-reference --test prepared_graph
 ```
 
@@ -214,7 +214,7 @@ without restarting time. The loader does not introduce another processing clock.
 
 - Compiler/reference suites, including no-heap recording switches and six FIFO
   loading scenarios, pass.
-- All sixteen selected RTL compiler, state, audio, smoothing, sync, reference and
+- All sixteen selected RTL target, state, audio, smoothing, sync, reference and
   live-loading tests pass. The retained pipeline matrix also passes with instant,
   fixed-latency, DRAMsim3 and legacy memory.
 - Protocol/transport: 36 tests pass. Native RT backend/engine: 294 pass; loop

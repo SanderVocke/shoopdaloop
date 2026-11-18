@@ -1,25 +1,32 @@
-use rt_fpga_compiler::{graph::*, loading::*, *};
+#[path = "support/mono.rs"]
+mod mono;
+use rt_fpga_compiler::{compile, CompileContext};
+use rt_fpga_compiler::{loading::*, *};
 use shoop_wasm_test_support::shoop_test;
 
 fn graph(ids: &[u32]) -> LogicalStateProgram {
-    MonoGraphFixture {
-        quantum: 16,
-        loops: ids
-            .iter()
-            .map(|&slot| LoopDescription {
-                id: Identity {
-                    slot,
-                    generation: 1,
-                },
-                source: None,
-                input: true,
-                output: true,
-                gain: 1.0,
-                repeat_sync: false,
-            })
-            .collect(),
-    }
-    .compile()
+    compile(
+        &mono::session(
+            &(ids
+                .iter()
+                .map(|&slot| mono::MonoLoop {
+                    id: Identity {
+                        slot,
+                        generation: 1,
+                    },
+                    source: None,
+                    input: true,
+                    output: true,
+                    gain: 1.0,
+                    repeat_sync: false,
+                })
+                .collect::<Vec<_>>()),
+        ),
+        CompileContext {
+            quantum: 16,
+            limits: Default::default(),
+        },
+    )
     .unwrap()
 }
 fn limits() -> ProgramLimits {
@@ -197,4 +204,18 @@ fn logical_ids_do_not_consume_physical_slots_and_failed_staging_keeps_ownership(
         allocator.complete(smaller.revision).unwrap();
         allocator.stage(&replacement).unwrap();
     }
+}
+
+#[shoop_test]
+fn staging_requires_explicit_state_ownership_without_inference() {
+    let mut allocator = Allocator::new(limits());
+    let mut invalid = graph(&[0]);
+    invalid.state_bindings.clear();
+    assert_eq!(
+        allocator.stage(&invalid).unwrap_err(),
+        LoadError::Compile(CompileError::InvalidProgram)
+    );
+    assert!(allocator.pending().is_none());
+    let valid = allocator.stage(&graph(&[0])).unwrap();
+    assert_eq!(valid.loops[0].physical.generation, 1);
 }

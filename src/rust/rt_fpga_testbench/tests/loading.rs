@@ -1,11 +1,15 @@
 #![cfg(all(feature = "sim", not(target_arch = "wasm32")))]
-use rt_fpga_compiler::{FixedProgram, Operation, StateProgramTarget, loading::Allocator};
+#[path = "../../rt_fpga_compiler/tests/support/mono.rs"]
+mod mono;
+use rt_fpga_compiler::{CompileContext, compile};
+#[path = "../../rt_fpga_compiler/tests/support/programs.rs"]
+mod programs;
+use rt_fpga_compiler::{Operation, StateProgramTarget, loading::Allocator};
 use rt_fpga_reference::{
-    compiler::RustTarget, fixed::Fixed, jobs::JobProcessor, pipeline::Pipeline,
-    state::PlannedTransition, storage::MediaStore, transitions::Operation as Transition,
+    fixed::Fixed, jobs::JobProcessor, pipeline::Pipeline, state::PlannedTransition,
+    storage::MediaStore, target::RustTarget, transitions::Operation as Transition,
 };
 use rt_fpga_testbench::{
-    compiler::{ProgramImage, RtlTarget},
     drivers::{
         audio::Audio,
         loading::{Commands, Upload, descriptor},
@@ -13,6 +17,7 @@ use rt_fpga_testbench::{
     loop_image,
     sim::Sim,
     suites,
+    target::{ProgramImage, RtlTarget},
 };
 use serde_json::json;
 use shoop_rt_protocol::immediate::{Code, Command, CommandRecord, Header};
@@ -149,7 +154,7 @@ fn live_regions_preserve_ramps_history_plans_and_frames_with_concurrent_uploads(
     let mut limits = target.limits();
     limits.state_values -= 3;
     let mut allocator = Allocator::new(limits);
-    let logical = FixedProgram::SyncSmoothing { quantum: 16 }.emit().unwrap();
+    let logical = programs::sync_smoothing(16);
     let a = allocator.stage(&logical).unwrap();
     let mut rust = RustTarget::new(&[]);
     rust.limits = limits;
@@ -318,6 +323,11 @@ fn live_regions_preserve_ramps_history_plans_and_frames_with_concurrent_uploads(
         replacement.loops[0].sync_source = Some(replacement.loops[0].id);
         replacement.sync_pass[0].generation = generation;
         replacement.bindings[0].id.generation = generation;
+        for binding in &mut replacement.state_bindings {
+            if let rt_fpga_compiler::shoop_graph::Owner::Loop(id) = &mut binding.key.owner {
+                id.generation = generation;
+            }
+        }
         for op in &mut replacement.audio_pass {
             if let Operation::Smoothing { loop_id, .. } = op {
                 loop_id.generation = generation;
@@ -360,6 +370,7 @@ fn live_regions_preserve_ramps_history_plans_and_frames_with_concurrent_uploads(
     empty.loops.clear();
     empty.sync_pass.clear();
     empty.initial_state.clear();
+    empty.state_bindings.clear();
     empty.bindings.clear();
     empty.audio_pass = vec![
         Operation::Silence { destination: 0 },
@@ -409,10 +420,7 @@ fn live_regions_preserve_ramps_history_plans_and_frames_with_concurrent_uploads(
 
 #[shoop_test]
 fn live_media_graph_switch_preserves_recording_and_fences_axi_work() {
-    use rt_fpga_compiler::{
-        Identity,
-        graph::{LoopDescription, MonoGraphFixture},
-    };
+    use rt_fpga_compiler::Identity;
     use rt_fpga_testbench::{
         drivers::store::{Geometry, Store},
         memory::Mode,
@@ -433,21 +441,25 @@ fn live_media_graph_switch_preserves_recording_and_fences_axi_work() {
         let mut store = Store::new(&mut s, geometry, mode, 991, "store_").unwrap();
         store.load(&mut s,&json!({"chunk_frames":16,"chunk_limit":128,"block_chunks":1,"samples":[],"free_chunks":[],
             "views":[{"chunks":[],"frames":0}]}));
-        let mut logical = MonoGraphFixture {
-            quantum: 16,
-            loops: vec![LoopDescription {
-                id: Identity {
-                    slot: 0,
-                    generation: 1,
-                },
-                source: None,
-                input: true,
-                output: true,
-                gain: 0.5,
-                repeat_sync: false,
-            }],
-        }
-        .compile()
+        let mut logical = compile(
+            &mono::session(
+                &(vec![mono::MonoLoop {
+                    id: Identity {
+                        slot: 0,
+                        generation: 1,
+                    },
+                    source: None,
+                    input: true,
+                    output: true,
+                    gain: 0.5,
+                    repeat_sync: false,
+                }]),
+            ),
+            CompileContext {
+                quantum: 16,
+                limits: Default::default(),
+            },
+        )
         .unwrap();
         logical.chunk_frames = 16;
         let mut target = RtlTarget::new(CAP, 32, &[0]);

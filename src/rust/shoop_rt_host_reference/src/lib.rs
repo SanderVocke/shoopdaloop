@@ -1,18 +1,16 @@
 //! Portable ARM-side graph binding and driver-owned persistent reference rendering.
 use anyhow::{ensure, Result};
 use rt_fpga_compiler::{
-    graph::{self, LoopDescription, MonoGraphFixture},
-    loading::Allocator,
-    CompileError, Identity, ProgramLimits, Resource,
+    compile, loading::Allocator, CompileContext, CompileError, Feature, ProgramLimits, Resource,
 };
 use rt_fpga_reference::{
-    compiler::RustTarget,
     fixed::Fixed,
     jobs::{BufferId, JobProcessor},
     pipeline::Pipeline,
     rt_interface::{program_memory, Configuration, PreparedProgram, Processor, ProgramControl},
     state::{Instruction, Program},
     storage::{MediaStore, ViewId},
+    target::RustTarget,
     transitions::{PlanDescription, TransitionLimits, TransitionPlan},
 };
 use rt_runtime::{
@@ -68,15 +66,15 @@ fn refusal_code(error: &anyhow::Error) -> Code {
     });
     match compile {
         Some(CompileError::Unsupported { feature, .. }) => match feature {
-            graph::Feature::Midi => Code::GraphMidiUnsupported,
-            graph::Feature::Channels => Code::GraphChannelsUnsupported,
-            graph::Feature::Processor => Code::GraphProcessorUnsupported,
-            graph::Feature::Composite => Code::GraphCompositeUnsupported,
-            graph::Feature::StripControls => Code::GraphStripControlsUnsupported,
-            graph::Feature::LoopControls => Code::GraphLoopControlsUnsupported,
-            graph::Feature::BusControls => Code::GraphBusControlsUnsupported,
-            graph::Feature::Buses => Code::GraphBusesUnsupported,
-            graph::Feature::Routing => Code::GraphRoutingUnsupported,
+            Feature::Midi => Code::GraphMidiUnsupported,
+            Feature::Channels => Code::GraphChannelsUnsupported,
+            Feature::Processor => Code::GraphProcessorUnsupported,
+            Feature::Composite => Code::GraphCompositeUnsupported,
+            Feature::StripControls => Code::GraphStripControlsUnsupported,
+            Feature::LoopControls => Code::GraphLoopControlsUnsupported,
+            Feature::BusControls => Code::GraphBusControlsUnsupported,
+            Feature::Buses => Code::GraphBusesUnsupported,
+            Feature::Routing => Code::GraphRoutingUnsupported,
         },
         Some(CompileError::Capacity(resource)) => match resource {
             Resource::Instructions => Code::InstructionCapacity,
@@ -109,7 +107,7 @@ struct Upload {
     graph: u64,
     quantum: u32,
     expected: u32,
-    loops: Vec<LoopDescription>,
+    loops: Vec<shoop_rt_protocol::immediate::GraphLoop>,
     failure: Option<Code>,
 }
 pub struct Endpoint<L = ProgramControl> {
@@ -538,17 +536,7 @@ impl<L: ProgramLoader> Endpoint<L> {
                         if !command.valid() || upload.loops.len() >= upload.expected as usize {
                             upload.failure = Some(Code::InvalidValue);
                         } else {
-                            upload.loops.push(LoopDescription {
-                                id: Identity {
-                                    slot: l.slot,
-                                    generation: l.generation,
-                                },
-                                source: l.source,
-                                input: l.input.is_some(),
-                                output: l.output,
-                                gain: l.gain,
-                                repeat_sync: l.repeat_sync,
-                            });
+                            upload.loops.push(l);
                         }
                     }
                 }
@@ -559,9 +547,9 @@ impl<L: ProgramLoader> Endpoint<L> {
                             "incomplete graph image"
                         );
                         let graph = shoop_graph::Graph::decode(&upload.bytes)?;
-                        let logical = graph::compile(
+                        let logical = compile(
                             &graph,
-                            graph::CompileContext {
+                            CompileContext {
                                 quantum: upload.quantum,
                                 limits: self.limits,
                             },
@@ -580,11 +568,14 @@ impl<L: ProgramLoader> Endpoint<L> {
                         upload.graph == revision && upload.loops.len() == upload.expected as usize,
                         "incomplete graph upload"
                     );
-                    let logical = MonoGraphFixture {
-                        quantum: upload.quantum,
-                        loops: upload.loops,
-                    }
-                    .compile_with_limits(self.limits)?;
+                    let graph = shoop_rt_protocol::graph::from_loops(&upload.loops);
+                    let logical = compile(
+                        &graph,
+                        CompileContext {
+                            quantum: upload.quantum,
+                            limits: self.limits,
+                        },
+                    )?;
                     self.stage_graph(batch, logical)?;
                     return Ok(true);
                 }

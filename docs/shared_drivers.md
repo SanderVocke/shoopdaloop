@@ -142,7 +142,7 @@ within target dimensions. There is no fixed Master topology. MIDI, processors,
 composites and automatic monitoring still need execution support and are refused
 explicitly. Unsupported graph edits restore the previous application layout and
 do not alter the active program. The compact BeginGraph/ConfigureLoop records
-remain component fixtures using the same compiler.
+expand to a full graph using the protocol adapter and enter the same compiler.
 
 Persistent values are keyed by owning object, purpose and channel. Each media
 channel has its own view, while all channels of a loop use one cursor. The loader

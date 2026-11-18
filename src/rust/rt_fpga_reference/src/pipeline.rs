@@ -45,7 +45,7 @@ pub struct Pipeline {
 }
 impl Pipeline {
     pub fn from_image(
-        image: crate::compiler::ProgramImage,
+        image: crate::target::ProgramImage,
         limits: rt_fpga_compiler::ProgramLimits,
     ) -> Result<Self, PipelineError> {
         let revision = image.layout.revision;
@@ -80,7 +80,7 @@ impl Pipeline {
     /// Called at a completed quantum boundary; the caller retains the old image until its fence completes.
     pub fn switch_image(
         &mut self,
-        image: &mut crate::compiler::ProgramImage,
+        image: &mut crate::target::ProgramImage,
     ) -> Result<(), PipelineError> {
         if image.layout.expected != self.revision
             || image.layout.revision <= self.revision

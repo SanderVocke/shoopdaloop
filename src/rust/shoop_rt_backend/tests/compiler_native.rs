@@ -1,10 +1,7 @@
 mod support;
-use rt_fpga_compiler::{
-    graph::{compile, CompileContext},
-    StateProgramTarget,
-};
+use rt_fpga_compiler::{compile, CompileContext, StateProgramTarget};
 use rt_fpga_reference::{
-    compiler::RustTarget, fixed::Fixed, jobs::JobProcessor, pipeline::Pipeline, storage::MediaStore,
+    fixed::Fixed, jobs::JobProcessor, pipeline::Pipeline, storage::MediaStore, target::RustTarget,
 };
 use shoop_backend::{
     Backend, BackendBusControl, BackendBusRequest, BackendPortRole, BackendTrackControl,

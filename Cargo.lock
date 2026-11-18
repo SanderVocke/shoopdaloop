@@ -4787,6 +4787,7 @@ dependencies = [
  "libm",
  "serde",
  "shoop_graph",
+ "shoop_rt_protocol",
  "shoop_wasm_test_support",
 ]
 

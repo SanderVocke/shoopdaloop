@@ -2,9 +2,9 @@
 use anyhow::{ensure, Result};
 use rt_fpga_compiler::{loading::Layout, LogicalStateProgram};
 use rt_fpga_reference::{
-    compiler::{ProgramImage, RustTarget},
     rt_interface::PreparedProgram,
     storage::ViewId,
+    target::{ProgramImage, RustTarget},
 };
 use shoop_rt_host_reference::{ProgramLoader, Status};
 use shoop_rt_protocol::{

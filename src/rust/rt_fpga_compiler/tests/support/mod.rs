@@ -1,4 +1,4 @@
-use rt_fpga_compiler::graph::shoop_graph::*;
+use rt_fpga_compiler::shoop_graph::*;
 
 pub fn id(slot: u32) -> Id {
     Id {

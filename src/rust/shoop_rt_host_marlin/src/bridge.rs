@@ -1,6 +1,6 @@
 use anyhow::{ensure, Result};
 use rt_fpga_compiler::{loading::Layout, LogicalStateProgram};
-use rt_fpga_rtl::compiler::{ProgramImage, RtlTarget};
+use rt_fpga_rtl::target::{ProgramImage, RtlTarget};
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock},
     host::{Phase, Renderer, Report},

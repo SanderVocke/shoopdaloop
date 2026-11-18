@@ -3,8 +3,8 @@
 pub use rt_fpga_rtl::bits;
 pub use rt_fpga_rtl::clock;
 pub mod codec;
-pub use rt_fpga_rtl::compiler;
 pub use rt_fpga_rtl::component;
+pub use rt_fpga_rtl::target;
 pub mod drivers;
 pub mod loop_image;
 pub mod memory;

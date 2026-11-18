@@ -1,25 +1,22 @@
 #![cfg(all(feature = "sim", not(target_arch = "wasm32")))]
 #[path = "../../rt_fpga_compiler/tests/support/mod.rs"]
 mod support;
-use rt_fpga_compiler::{
-    StateProgramTarget,
-    graph::{CompileContext, compile},
-};
+use rt_fpga_compiler::{CompileContext, StateProgramTarget, compile};
 use rt_fpga_reference::{
-    compiler::RustTarget,
     fixed::Fixed,
     jobs::{JobProcessor, JobQueue},
     pipeline::Pipeline,
     state::{PlannedTransition, StateProcessor},
     storage::MediaStore,
+    target::RustTarget,
     transitions::Operation,
 };
 use rt_fpga_testbench::{
-    compiler::RtlTarget,
     drivers::{audio::Audio, state::State},
     loop_image::{image, write_plans},
     sim::Sim,
     suites,
+    target::RtlTarget,
 };
 use shoop_wasm_test_support::shoop_test;
 use support::*;

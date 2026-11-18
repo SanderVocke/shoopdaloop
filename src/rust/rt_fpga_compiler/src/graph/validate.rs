@@ -1,5 +1,6 @@
 use super::*;
 use alloc::collections::BTreeSet;
+use shoop_graph::{ChannelLayout, PortRole, SignalType};
 
 pub(super) fn channels(layout: ChannelLayout) -> Result<u32, CompileError> {
     match layout {

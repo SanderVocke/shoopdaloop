@@ -1,12 +1,14 @@
 #![cfg(feature = "rt-interface")]
-use rt_fpga_compiler::{compile, FixedProgram};
+#[path = "../../rt_fpga_compiler/tests/support/programs.rs"]
+mod programs;
+use rt_fpga_compiler::StateProgramTarget;
 use rt_fpga_reference::{
-    compiler::RustTarget,
     fixed::Fixed,
     jobs::JobProcessor,
     pipeline::Pipeline,
     rt_interface::{Configuration, Endpoint, LoopBinding, Processor, Settings},
     storage::MediaStore,
+    target::RustTarget,
     transitions::{self as model, LoopId},
 };
 use shoop_rt_engine::{testing::OfflineHost, EngineDescription, HostPorts, Segment};
@@ -68,15 +70,12 @@ fn prepare(
     config: Configuration,
     n: usize,
 ) -> (Controller, Processor, JobProcessor, MediaStore) {
-    let fixed = FixedProgram::MonoLoops {
-        quantum: q,
-        loops: n as u32,
-    };
+    let logical = programs::mono_loops(q, n as u32);
     let mut media = MediaStore::new(1).unwrap();
     let views = (0..n)
         .map(|_| media.create_recording().unwrap().0 as u64)
         .collect::<Vec<_>>();
-    let compiled = compile(fixed, &RustTarget::new(&views)).unwrap();
+    let compiled = RustTarget::new(&views).build(&logical).unwrap();
     let resources = compiled.resources;
     let bindings = compiled
         .bindings

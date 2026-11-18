@@ -1,5 +1,6 @@
 //! ARM-owned reservations and address binding for two executable regions.
 use crate::*;
+use alloc::vec;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -263,53 +264,8 @@ impl Allocator {
             *entry = Some(key);
             Ok(())
         };
-        if !program.state_bindings.is_empty() {
-            for binding in &program.state_bindings {
-                assign(binding.address, binding.key)?;
-            }
-        } else {
-            for b in &program.bindings {
-                if let Some(v) = b.gain {
-                    assign(
-                        v,
-                        StateKey {
-                            owner: shoop_graph::Owner::Loop(b.id),
-                            channel: 0,
-                            role: StateRole::Gain,
-                        },
-                    )?;
-                }
-                if let Some(v) = b.view {
-                    assign(
-                        v,
-                        StateKey {
-                            owner: shoop_graph::Owner::Loop(b.id),
-                            channel: 0,
-                            role: StateRole::View,
-                        },
-                    )?;
-                }
-            }
-            for op in &program.audio_pass {
-                if let Operation::Smoothing {
-                    loop_id, control, ..
-                } = *op
-                {
-                    assign(
-                        control,
-                        StateKey {
-                            owner: shoop_graph::Owner::Loop(loop_id),
-                            channel: 0,
-                            role: StateRole::Smoothing(
-                                match program.initial_state[control as usize] {
-                                    InitialValue::Smoothing { duration, .. } => duration,
-                                    _ => return Err(CompileError::InvalidProgram.into()),
-                                },
-                            ),
-                        },
-                    )?;
-                }
-            }
+        for binding in &program.state_bindings {
+            assign(binding.address, binding.key)?;
         }
         if let Some(old) = old {
             for entry in loops.iter().filter(|l| !l.fresh) {

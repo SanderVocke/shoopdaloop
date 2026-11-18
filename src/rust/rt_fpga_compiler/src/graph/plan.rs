@@ -1,5 +1,7 @@
 use super::*;
 use alloc::collections::{BTreeMap, BTreeSet};
+use alloc::vec;
+use shoop_graph::{PortId, PortRole, SignalType};
 use validate::channels;
 
 type Node = usize;
@@ -525,7 +527,7 @@ fn balance(value: f32, channel: u32, count: u32) -> f32 {
         1.0 + value.min(0.0)
     }
 }
-pub(super) fn compile(
+pub(super) fn lower(
     graph: &Graph,
     context: CompileContext,
 ) -> Result<LogicalStateProgram, CompileError> {

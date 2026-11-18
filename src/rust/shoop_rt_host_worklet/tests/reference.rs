@@ -1,4 +1,6 @@
 #![cfg(feature = "fpga-reference")]
+#[path = "../../rt_fpga_compiler/tests/support/mono.rs"]
+mod mono;
 use shoop_rt_host_worklet::{
     framing,
     reference::{Endpoint, ImagePort},
@@ -287,13 +289,9 @@ fn browser_uploads_large_graphs_in_bounded_groups_and_reports_resource_refusals(
 
 #[shoop_test]
 fn browser_compiles_complete_graph_views_and_refuses_midi_without_losing_playback() {
-    use rt_fpga_compiler::{
-        graph::{LoopDescription, MonoGraphFixture},
-        Identity,
-    };
-    let image = MonoGraphFixture {
-        quantum: Q as u32,
-        loops: vec![LoopDescription {
+    use rt_fpga_compiler::Identity;
+    let image = mono::session(
+        &(vec![mono::MonoLoop {
             id: Identity {
                 slot: 0,
                 generation: 1,
@@ -303,9 +301,8 @@ fn browser_compiles_complete_graph_views_and_refuses_midi_without_losing_playbac
             output: true,
             gain: 1.,
             repeat_sync: false,
-        }],
-    }
-    .to_graph();
+        }]),
+    );
     let mut b = Browser::new();
     for batch in shoop_rt_protocol::graph::upload(&image, Q as u32, 0).unwrap() {
         b.send(batch);
@@ -333,7 +330,7 @@ fn browser_compiles_complete_graph_views_and_refuses_midi_without_losing_playbac
     }
     assert!(b.host.audio_output().iter().all(|s| *s == 0.25));
     let mut unsupported = image.clone();
-    unsupported.strips[0].layout = rt_fpga_compiler::graph::shoop_graph::ChannelLayout::Direct {
+    unsupported.strips[0].layout = rt_fpga_compiler::shoop_graph::ChannelLayout::Direct {
         audio: 1,
         midi: true,
     };
