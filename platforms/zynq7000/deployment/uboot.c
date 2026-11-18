@@ -3,6 +3,7 @@
 #include <cpu_func.h>
 #include <env.h>
 #include <fastboot.h>
+#include <fpga.h>
 #include <hang.h>
 #include <image.h>
 #include <mmc.h>
@@ -99,6 +100,8 @@ static int open_card(void) {
 struct image {
     const uint8_t *elf;
     uint32_t elf_size;
+    const uint8_t *fpga;
+    uint32_t fpga_size;
     char build[64];
     uint8_t hash[32];
 };
@@ -128,6 +131,15 @@ static int validate_elf(const uint8_t *bytes, uint32_t size) {
     }
     return executable_entry ? 0 : SHOOP_INVALID;
 }
+static const uint8_t *verified_data(const void *fit, uint32_t size, int node, uint32_t *count) {
+    int length;
+    const uint8_t *data = fdt_getprop(fit, node, "data", &length);
+    if (!data || length <= 0 || (uintptr_t)data < (uintptr_t)fit ||
+        (uintptr_t)data - (uintptr_t)fit > size || (uint32_t)length > size - ((uintptr_t)data - (uintptr_t)fit) ||
+        !fit_image_verify_with_data(fit, node, gd_fdt_blob(), data, length)) return NULL;
+    *count = length;
+    return data;
+}
 static int verify_bundle(const void *fit, uint32_t size, struct image *out) {
     int length;
     if (size < sizeof(struct fdt_header) || size > SHOOP_BUNDLE_MAX || fdt_check_full(fit, size) ||
@@ -145,11 +157,22 @@ static int verify_bundle(const void *fit, uint32_t size, struct image *out) {
     const char *build = fdt_getprop(fit, config, "shoop,build", &length);
     if (!build || length < 2 || length > 41 || build[length - 1] || strnlen(build, length) != length - 1) return SHOOP_INVALID;
     memset(out, 0, sizeof *out); memcpy(out->build, build, length);
-    const uint8_t *data = fdt_getprop(fit, image, "data", &length);
-    if (!data || length <= 0 || (uintptr_t)data < (uintptr_t)fit ||
-        (uintptr_t)data - (uintptr_t)fit > size || (uint32_t)length > size - ((uintptr_t)data - (uintptr_t)fit) ||
-        !fit_image_verify_with_data(fit, image, gd_fdt_blob(), data, length) || validate_elf(data, length)) return SHOOP_INVALID;
-    out->elf = data; out->elf_size = length;
+    out->elf = verified_data(fit, size, image, &out->elf_size);
+    if (!out->elf || validate_elf(out->elf, out->elf_size)) return SHOOP_INVALID;
+    const char *fabric = fdt_getprop(fit, config, "fpga", &length);
+    if (fabric) {
+#ifdef SHOOP_PL_DDR_BYTES
+        int node = fdt_path_offset(fit, "/images/fabric");
+        if (length != sizeof "fabric" || memcmp(fabric, "fabric", sizeof "fabric") || node < 0 ||
+            !fit_image_check_type(fit, node, IH_TYPE_FPGA) || !fit_image_check_comp(fit, node, IH_COMP_NONE))
+            return SHOOP_INVALID;
+        out->fpga = verified_data(fit, size, node, &out->fpga_size);
+        if (!out->fpga || out->fpga_size < 128 || out->fpga_size % 4)
+            return SHOOP_INVALID;
+#else
+        return SHOOP_INVALID;
+#endif
+    }
     sha256_csum_wd(fit, size, out->hash, CHUNKSZ_SHA256);
     return 0;
 }
@@ -260,6 +283,19 @@ static int launch(const struct image *image, uint32_t slot, const struct shoop_s
     struct shoop_handoff handoff = { .magic = SHOOP_HANDOFF_MAGIC, .version = SHOOP_VERSION,
         .slot = slot, .trial = slot < 2 && slot == state->pending, .config = configuration };
     if (shoop_nonce_reserve(&io, &handoff.nonce)) return SHOOP_IO;
+#ifdef SHOOP_PL_DDR_BYTES
+    if (image->fpga) {
+        /* PCAP DMA may byte-swap in place. Preserve the verified FIT and ELF. */
+        void *scratch = (void *)(SHOOP_STAGE_ADDRESS + SHOOP_BUNDLE_MAX);
+        memcpy(scratch, image->fpga, image->fpga_size);
+        printf("SHOOP_FPGA_PROGRAM bytes=%u\n", image->fpga_size);
+        if (fpga_load(0, scratch, image->fpga_size, BIT_FULL, 0)) {
+            puts("SHOOP_FPGA_PROGRAM_REFUSED\n");
+            return SHOOP_IO;
+        }
+        puts("SHOOP_FPGA_PROGRAMMED\n");
+    }
+#endif
     memcpy(handoff.bundle_hash, image->hash, 32); memcpy(handoff.build, image->build, 64);
     memcpy(handoff.operation_client, state->operation_client, 16); handoff.operation_sequence = state->operation_sequence;
     handoff.crc = shoop_crc32(&handoff, 508);

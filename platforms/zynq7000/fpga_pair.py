@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Record and verify a matched Z-turn V2 FPGA diagnostic image."""
+"""Record and verify a matched Z-turn V2 FPGA and firmware build."""
 import argparse
 import hashlib
 import json
@@ -13,6 +13,7 @@ import boards
 ROOT = Path(__file__).resolve().parents[2]
 PART = "xc7z020clg400-2"
 RTL_ABI = ROOT / "fpga/host_bridge/registers.json"
+BUILD_FILES = {"zturn_v2.bit", "zturn_v2.xsa", "ps7_init.tcl", "ps-properties.txt", "fpga-abi.json", "geometry.txt"}
 
 
 def digest(path):
@@ -39,26 +40,29 @@ def stamp(directory, tool):
     generated = json.loads((directory / "board/board.json").read_text())
     if generated != board.data:
         raise ValueError("Vivado build uses a different board profile")
-    files = ["zturn_v2.bit", "zturn_v2.xsa", "ps7_init.tcl", "ps-properties.txt", "fpga-abi.json", "geometry.txt"]
+    files = BUILD_FILES | ({"audio.txt"} if (directory / "audio.txt").exists() else set())
     write_json(directory / "fpga-build.json", {
         "contract": contract(board, directory / "fpga-abi.json"), "vivado": tool,
-        "sha256": {name: digest(directory / name) for name in files},
+        "sha256": {name: digest(directory / name) for name in sorted(files)},
     })
 
 
 def pair(directory, elf, output):
     fpga = json.loads((directory / "fpga-build.json").read_text())
     firmware = json.loads(elf.with_suffix(".json").read_text())
-    if (firmware.get("fpga_contract") != fpga["contract"] or not firmware.get("fpga_probe") or firmware.get("fixture") or
+    renderer = firmware.get("fpga_renderer", False)
+    if (firmware.get("fpga_contract") != fpga["contract"] or renderer == bool(firmware.get("fpga_probe")) or firmware.get("fixture") or
             firmware.get("elf_sha256") != digest(elf)):
-        raise ValueError("Firmware does not match the FPGA diagnostic image")
+        raise ValueError("Firmware does not match the FPGA image")
     inputs = {"firmware": (elf, firmware["elf_sha256"])}
     for name, sha256 in fpga["sha256"].items():
         inputs[name] = (directory / name, sha256)
     if any(digest(path) != expected for path, expected in inputs.values()):
         raise ValueError("Build artifact differs from the recorded digest")
     output.parent.mkdir(parents=True, exist_ok=True)
-    write_json(output, {"contract": fpga["contract"], "vivado": fpga["vivado"], "artifacts": {
+    if renderer and (directory / "geometry.txt").read_text().strip() != "looping":
+        raise ValueError("FPGA renderer requires the looping geometry")
+    write_json(output, {"contract": fpga["contract"], "vivado": fpga["vivado"], "renderer": renderer, "artifacts": {
         name: {"path": os.path.relpath(path, output.parent), "sha256": sha256}
         for name, (path, sha256) in inputs.items()
     }})
@@ -67,8 +71,8 @@ def pair(directory, elf, output):
 def verify(path):
     manifest = json.loads(path.read_text())
     artifacts = manifest["artifacts"]
-    names = {"firmware", "zturn_v2.bit", "zturn_v2.xsa", "ps7_init.tcl", "ps-properties.txt", "fpga-abi.json", "geometry.txt"}
-    if set(artifacts) != names or manifest["contract"] != contract(boards.load("zturn-v2")):
+    names = BUILD_FILES | {"firmware"}
+    if set(artifacts) not in (names, names | {"audio.txt"}) or manifest["contract"] != contract(boards.load("zturn-v2")):
         raise ValueError("Unexpected artifacts or FPGA contract")
     for name, artifact in artifacts.items():
         if digest(path.parent / artifact["path"]) != artifact["sha256"]:
@@ -99,7 +103,7 @@ def main():
     pair_parser.add_argument("output", type=Path)
     verify_parser = commands.add_parser("verify")
     verify_parser.add_argument("manifest", type=Path)
-    jtag_parser = commands.add_parser("jtag", help="Verify a pair, then program and start its probe through XSDB")
+    jtag_parser = commands.add_parser("jtag", help="Verify a pair, then program and start the firmware through XSDB")
     jtag_parser.add_argument("manifest", type=Path)
     jtag_parser.add_argument("--server", required=True)
     jtag_parser.add_argument("--xsdb", default="xsdb")
@@ -110,7 +114,7 @@ def main():
         pair(args.directory, args.elf, args.output)
     elif args.op == "verify":
         verify(args.manifest)
-        print("Verified FPGA diagnostic pairing")
+        print("Verified FPGA pairing")
     else:
         jtag(args.manifest, args.server, args.xsdb)
 

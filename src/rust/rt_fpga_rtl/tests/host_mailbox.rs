@@ -4,79 +4,21 @@ use rt_fpga_rtl::{
     bits::Bits,
     component::{Instruction, instruction_words},
     host::{Client, Contract, Error, Mailbox, RegisterBus, Request, registers::*},
-    model::{Compiled, Design},
-    pipeline::{Geometry, design},
+    model::Design,
+    pipeline::Geometry,
     sim::Sim,
     target::{ConfigurationWrite, Space},
 };
 use shoop_wasm_test_support::shoop_test;
 use std::cell::RefCell;
 
+#[path = "support/host_axi.rs"]
+mod host_axi;
+use host_axi::{Axi, build_pipeline, pipeline_contract};
+
 #[cfg(feature = "rt-interface")]
 #[path = "../../rt_fpga_compiler/tests/support/mono.rs"]
 mod mono;
-
-struct Axi<'a, 'model>(&'a RefCell<Sim<'model>>);
-
-impl Axi<'_, '_> {
-    fn write_word(&self, offset: u32, value: u32, strobes: u64) -> Result<(), u64> {
-        let mut sim = self.0.borrow_mut();
-        sim.model.set_all(&[
-            ("s_axi_awaddr", u64::from(offset)),
-            ("s_axi_wdata", u64::from(value)),
-            ("s_axi_wstrb", strobes),
-        ]);
-        let mut channels = [
-            ("s_axi_awvalid", "s_axi_awready"),
-            ("s_axi_wvalid", "s_axi_wready"),
-        ];
-        if offset & 4 != 0 {
-            channels.reverse();
-        }
-        for (valid, ready) in channels {
-            sim.model.set(valid, 1);
-            assert_eq!(sim.tick(&[ready]).0.get(ready), 1);
-            sim.model.set(valid, 0);
-        }
-        sim.idle(1);
-        assert_eq!(sim.model.get("s_axi_bvalid"), 1);
-        assert_eq!(sim.model.get("s_axi_awready"), 0);
-        assert_eq!(sim.model.get("s_axi_wready"), 0);
-        let code = sim.model.get("s_axi_bresp");
-        sim.idle(2);
-        assert_eq!(sim.model.get("s_axi_bresp"), code);
-        assert_eq!(sim.model.get("s_axi_bvalid"), 1);
-        sim.model.set("s_axi_bready", 1);
-        sim.idle(1);
-        sim.model.set("s_axi_bready", 0);
-        if code == 0 { Ok(()) } else { Err(code) }
-    }
-}
-
-impl RegisterBus for Axi<'_, '_> {
-    type Error = u64;
-
-    fn read(&mut self, offset: u32) -> Result<u32, u64> {
-        let mut sim = self.0.borrow_mut();
-        sim.model
-            .set_all(&[("s_axi_arvalid", 1), ("s_axi_araddr", u64::from(offset))]);
-        assert_eq!(sim.tick(&["s_axi_arready"]).0.get("s_axi_arready"), 1);
-        sim.model.set("s_axi_arvalid", 0);
-        let data = sim.model.get("s_axi_rdata") as u32;
-        let code = sim.model.get("s_axi_rresp");
-        sim.idle(2);
-        assert_eq!(sim.model.get("s_axi_rdata"), u64::from(data));
-        assert_eq!(sim.model.get("s_axi_rvalid"), 1);
-        sim.model.set("s_axi_rready", 1);
-        sim.idle(1);
-        sim.model.set("s_axi_rready", 0);
-        if code == 0 { Ok(data) } else { Err(code) }
-    }
-
-    fn write(&mut self, offset: u32, value: u32) -> Result<(), u64> {
-        self.write_word(offset, value, 0xf)
-    }
-}
 
 fn reply(sim: &RefCell<Sim<'_>>, epoch: u64, tag: u64, data: [u32; HOST_PAYLOAD_WORDS]) {
     let mut sim = sim.borrow_mut();
@@ -217,38 +159,6 @@ fn mailbox_preserves_requests_and_latched_responses_across_bus_stalls() {
     device.submit(14, 20, &[]).unwrap();
 }
 
-fn build_pipeline(geometry: &Geometry, limits: rt_fpga_compiler::ProgramLimits) -> Compiled {
-    let mut design = design(geometry, limits);
-    design.top = "host_pipeline_axi".into();
-    design.probes.clear();
-    design.parameters.remove("PHYSICAL_BASE");
-    design = design.parameters(&[
-        ("ARENA_BASE", 0x01000000),
-        ("QUANTUM", u64::from(limits.quantum)),
-        ("CONTROL_CYCLES", 4096),
-    ]);
-    let root = rt_fpga_rtl::root();
-    for source in [
-        "host_registers.sv",
-        "host_mailbox.sv",
-        "host_dispatch.sv",
-        "host_pipeline_axi.sv",
-    ] {
-        design
-            .sources
-            .push(root.join("fpga/host_bridge/rtl").join(source));
-    }
-    design.build(&root.join("work/host-mailbox")).unwrap()
-}
-
-fn pipeline_contract() -> Contract {
-    Contract {
-        clock_hz: 100_000_000,
-        arena_base: 0x01000000,
-        arena_bytes: 0x08000000,
-    }
-}
-
 #[shoop_test(no_wasm = "FPGA pipeline with the real AXI register wrapper")]
 fn run_compiled_programs_and_switch_at_the_same_boundary_through_axi() {
     let geometry = Geometry::new([4, 32, 1], 2);
@@ -263,7 +173,7 @@ fn run_compiled_programs_and_switch_at_the_same_boundary_through_axi() {
         output_ports: 2,
         quantum: 4,
     };
-    let compiled = build_pipeline(&geometry, limits);
+    let compiled = build_pipeline(&geometry, limits, 4096);
     let mut sim = Sim::new(compiled.session(None).unwrap(), &[("clk", 10_000, 0)]);
     sim.model.set_all(&[("reset", 1), ("epoch", 1)]);
     sim.idle(2);
@@ -512,7 +422,7 @@ fn recorded_take_survives_a_graph_switch_over_the_hardware_mailbox() {
         quantum: 32,
     };
     let geometry = Geometry::new([limits.state_values.into(), 256, 32], 32);
-    let compiled = build_pipeline(&geometry, limits);
+    let compiled = build_pipeline(&geometry, limits, 4096);
     let mut sim = Sim::new(compiled.session(None).unwrap(), &[("clk", 10_000, 0)]);
     sim.model.set_all(&[("reset", 1), ("epoch", 1)]);
     sim.idle(2);

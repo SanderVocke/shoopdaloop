@@ -45,3 +45,48 @@ python3 platforms/zynq7000/fpga_pair.py jtag work/zturn-v2/diagnostic-pair.json 
 
 Expect `SHOOP_FPGA_PROBE_READY` and `SHOOP_FPGA_PROBE_RETURNED` on UART. The
 QEMU startup test exercises the bounded refusal path without a configured PL.
+
+## Production FPGA firmware
+
+Build `--fpga` with the looping geometry to run the authenticated FreeRTOS
+service with the fabric renderer. A direct-load image takes the same
+32-byte development credential as the native host. The QEMU test creates its
+own credential and exercises network control and shutdown against scripted
+registers. Marlin exercises the same owner through the actual AXI mailbox.
+
+```sh
+python3 platforms/zynq7000/tests/fpga_host.py
+cargo test --locked -p shoop_rt_host_marlin --features sim --test mailbox_endpoint
+```
+
+Use `SHOOP_ZYNQ_FPGA=1 cargo run --locked -p shoop_host --no-default-features
+--example zynq_probe -- PROFILE.json` to run the authenticated FPGA smoke
+against the TCP endpoints in the profile. This test shuts down the host.
+
+## Signed SD image
+
+Build the loader and deployment firmware, then pair the ELF and the looping
+bitstream. The FIT signature binds both images to the board profile. Keep
+device credentials and the deployment signing key in private files. The
+loader verifies both hashes before programming the fabric and starting ARM.
+
+```sh
+python3 platforms/zynq7000/deployment/build_boot.py --board zturn-v2
+python3 platforms/zynq7000/build.py --board zturn-v2 --app host --fpga --deployment --build-id zturn-fpga-v5
+python3 platforms/zynq7000/fpga_pair.py pair work/zturn-v2/route \
+  work/zynq/boards/zturn-v2/build/host-deployment-fpga.elf work/zturn-v2/sd/pair.json
+python3 platforms/zynq7000/deployment/bundle.py --board zturn-v2 \
+  --elf work/zynq/boards/zturn-v2/build/host-deployment-fpga.elf --build-id zturn-fpga-v5 \
+  --key-dir "$SHOOP_SIGNING_KEYS" --fpga-pair work/zturn-v2/sd/pair.json \
+  --output work/zturn-v2/sd/shoop.itb --loader-output work/zturn-v2/sd/loader
+python3 platforms/zynq7000/deployment/card.py --board zturn-v2 \
+  --build-id zturn-fpga-v5 --boot-files work/zturn-v2/sd/loader \
+  --bundle work/zturn-v2/sd/shoop.itb --credential-file "$SHOOP_DEVICE_CREDENTIAL" \
+  --output work/zturn-v2/sd/card.img
+python3 platforms/zynq7000/tests/fpga_sd.py work/zturn-v2/sd
+```
+
+Supply the deployment key and certificate, credential and network settings
+described in the deployment guide. The QEMU gate checks authentication of
+the signed pair through U-Boot and refusal of a changed fabric payload.
+Physical PCAP programming requires the board. [Deployment guide](../../platforms/zynq7000/deployment/README.md)
