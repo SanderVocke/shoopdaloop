@@ -347,6 +347,7 @@ impl<'a> Plan<'a> {
     fn emit(
         mut self,
         context: CompileContext,
+        chunk_frames: u32,
         sync_pass: Vec<Identity>,
     ) -> Result<LogicalStateProgram, CompileError> {
         let resolved = (0..self.steps.len())
@@ -476,7 +477,7 @@ impl<'a> Plan<'a> {
         }
         let program = LogicalStateProgram {
             quantum: context.quantum,
-            chunk_frames: 1,
+            chunk_frames,
             sync_pass,
             audio_pass,
             initial_state: self.state,
@@ -530,6 +531,7 @@ fn balance(value: f32, channel: u32, count: u32) -> f32 {
 pub(super) fn lower(
     graph: &Graph,
     context: CompileContext,
+    chunk_frames: u32,
 ) -> Result<LogicalStateProgram, CompileError> {
     let mut sync_pass = Vec::new();
     while sync_pass.len() < graph.loops.len() {
@@ -546,5 +548,5 @@ pub(super) fn lower(
     }
     let mut plan = Plan::new(graph);
     plan.build()?;
-    plan.emit(context, sync_pass)
+    plan.emit(context, chunk_frames, sync_pass)
 }

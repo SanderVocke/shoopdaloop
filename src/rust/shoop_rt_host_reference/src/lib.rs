@@ -3,7 +3,8 @@ mod usage;
 
 use anyhow::{ensure, Result};
 use rt_fpga_compiler::{
-    compile, loading::Allocator, CompileContext, CompileError, Feature, ProgramLimits, Resource,
+    compile_with_chunk_frames, loading::Allocator, CompileContext, CompileError, Feature,
+    ProgramLimits, Resource,
 };
 use rt_fpga_reference::{
     fixed::Fixed,
@@ -266,6 +267,9 @@ impl Status {
 /// ARM-side staging. Implementations lower the same logical graph into their own target.
 pub trait ProgramLoader {
     fn limits(&self) -> ProgramLimits;
+    fn chunk_frames(&self) -> u32 {
+        1
+    }
     fn stage_program(
         &mut self,
         logical: &rt_fpga_compiler::LogicalStateProgram,
@@ -656,12 +660,13 @@ impl<L: ProgramLoader> Endpoint<L> {
                             "incomplete graph image"
                         );
                         let graph = shoop_graph::Graph::decode(&upload.bytes)?;
-                        let logical = compile(
+                        let logical = compile_with_chunk_frames(
                             &graph,
                             CompileContext {
                                 quantum: upload.quantum,
                                 limits: self.limits,
                             },
+                            self.programs.chunk_frames(),
                         )?;
                         self.stage_graph(batch, logical)?;
                         return Ok(true);
@@ -678,12 +683,13 @@ impl<L: ProgramLoader> Endpoint<L> {
                         "incomplete graph upload"
                     );
                     let graph = shoop_rt_protocol::graph::from_loops(&upload.loops);
-                    let logical = compile(
+                    let logical = compile_with_chunk_frames(
                         &graph,
                         CompileContext {
                             quantum: upload.quantum,
                             limits: self.limits,
                         },
+                        self.programs.chunk_frames(),
                     )?;
                     self.stage_graph(batch, logical)?;
                     return Ok(true);

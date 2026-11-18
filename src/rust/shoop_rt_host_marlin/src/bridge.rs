@@ -1,5 +1,5 @@
 use anyhow::{ensure, Result};
-use rt_fpga_compiler::{loading::Layout, LogicalStateProgram};
+use rt_fpga_compiler::{loading::Layout, LogicalStateProgram, ProgramLimits};
 use rt_fpga_rtl::target::{ProgramImage, RtlTarget};
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock},
@@ -22,6 +22,7 @@ use std::{
 };
 
 pub(super) const MAX: usize = 128;
+const DEFAULT_CHUNK_FRAMES: u32 = 32;
 static NEXT_GENERATION: AtomicU64 = AtomicU64::new(1);
 pub(super) struct Block {
     pub generation: u64,
@@ -62,14 +63,19 @@ fn guarded(shared: &Shared, work: impl FnOnce() -> Result<()>) {
     }
 }
 pub struct Images {
+    limits: ProgramLimits,
+    chunk_frames: u32,
     uploads: rtrb::Producer<ProgramImage>,
     ready: rtrb::Consumer<(u64, bool)>,
     retired: rtrb::Consumer<ProgramImage>,
     wake: Thread,
 }
 impl ProgramLoader for Images {
-    fn limits(&self) -> rt_fpga_compiler::ProgramLimits {
-        shoop_rt_host_reference::program_limits()
+    fn limits(&self) -> ProgramLimits {
+        self.limits
+    }
+    fn chunk_frames(&self) -> u32 {
+        self.chunk_frames
     }
     fn stage_program(
         &mut self,
@@ -193,13 +199,31 @@ pub fn prepare(
     });
     let worker = shared.clone();
     let (start_tx, start_rx) = mpsc::sync_channel(1);
+    let limits = ProgramLimits {
+        quantum,
+        ..shoop_rt_host_reference::program_limits()
+    };
+    let chunk_frames = if quantum % DEFAULT_CHUNK_FRAMES == 0 {
+        DEFAULT_CHUNK_FRAMES
+    } else {
+        1
+    };
     let join = thread::Builder::new()
         .name("shoop-marlin".into())
         .spawn(move || {
             guarded(&worker, || {
                 super::owner::run(
-                    quantum, memory_mb, &worker, execution, upload_rx, ready_tx, retire_tx,
-                    request_rx, results_tx, start_tx,
+                    limits,
+                    chunk_frames,
+                    memory_mb,
+                    &worker,
+                    execution,
+                    upload_rx,
+                    ready_tx,
+                    retire_tx,
+                    request_rx,
+                    results_tx,
+                    start_tx,
                 )
             });
         })?;
@@ -216,6 +240,8 @@ pub fn prepare(
         }
     }
     let images = Images {
+        limits,
+        chunk_frames,
         uploads,
         ready,
         retired,

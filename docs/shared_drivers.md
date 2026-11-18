@@ -42,6 +42,11 @@ processing quantum is set independently at host startup. Use
 64 or 128 frames. Set the default through **Processing quantum** in Audio
 settings or `pools.quantum` in the standalone host's JSON configuration.
 
+RTL simulation defaults to a 32-frame processing quantum and 32-frame media
+chunks. The 64- and 128-frame quantum overrides also use 32-frame chunks. The
+1- and 16-frame overrides use one-frame chunks. Each allocation block holds
+1,024 frames at every supported quantum.
+
 `--dummy-mode paced|unpaced|controlled` is also stored in the dummy driver's
 settings. Paced is the default. Unpaced runs as quickly as computation allows,
 without changing the sample rate or loop timing. Controlled mode waits for the

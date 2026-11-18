@@ -29,6 +29,17 @@ pub fn compile(
     graph: &impl GraphView,
     context: CompileContext,
 ) -> Result<LogicalStateProgram, CompileError> {
+    compile_with_chunk_frames(graph, context, 1)
+}
+
+pub fn compile_with_chunk_frames(
+    graph: &impl GraphView,
+    context: CompileContext,
+    chunk_frames: u32,
+) -> Result<LogicalStateProgram, CompileError> {
+    if !chunk_frames.is_power_of_two() || context.quantum % chunk_frames != 0 {
+        return Err(CompileError::InvalidProgram);
+    }
     let mut graph = Graph::capture(graph);
     validate::graph(&graph, context)?;
     graph.strips.sort_by_key(|s| s.id);
@@ -36,5 +47,5 @@ pub fn compile(
     graph.buses.sort_by_key(|b| b.id);
     graph.ports.sort_by_key(|p| p.id);
     graph.connections.sort_by_key(|e| (e.destination, e.source));
-    plan::lower(&graph, context)
+    plan::lower(&graph, context, chunk_frames)
 }
