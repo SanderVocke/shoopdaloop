@@ -28,34 +28,34 @@ fn run() -> anyhow::Result<()> {
         #[arg(long)]
         config: Option<PathBuf>,
         /// Execution backend: native, rust-fpga or rtl-sim.
-        #[arg(long, value_parser = |value: &str| value.parse::<shoop_app_api::BackendType>())]
+        #[arg(help_heading = "Backend", long, value_parser = |value: &str| value.parse::<shoop_app_api::BackendType>())]
         backend: Option<shoop_app_api::BackendType>,
-        #[arg(long)]
+        #[arg(help_heading = "Backend", long)]
         driver_preferences: Option<PathBuf>,
-        #[arg(long, hide = true, conflicts_with_all = ["config", "audio_options", "backend"])]
+        #[arg(help_heading = "Remote Host", long, hide = true, conflicts_with_all = ["config", "audio_options", "backend"])]
         launch_stdin: bool,
-        #[arg(long)]
+        #[arg(help_heading = "Remote Host", long)]
         lan: bool,
-        #[arg(long, default_value = "127.0.0.1:0")]
+        #[arg(help_heading = "Remote Host", long, default_value = "127.0.0.1:0")]
         management_endpoint: std::net::SocketAddr,
-        #[arg(long)]
+        #[arg(help_heading = "Remote Host", long)]
         advertise_data: Option<String>,
-        #[arg(long)]
+        #[arg(help_heading = "Remote Host", long)]
         advertise_management: Option<String>,
-        #[arg(long)]
+        #[arg(help_heading = "Remote Host", long)]
         export_profile: Option<PathBuf>,
-        #[arg(long, default_value_t = 1000)]
+        #[arg(help_heading = "Remote Host", long, default_value_t = 1000)]
         heartbeat_interval_ms: u64,
-        #[arg(long, default_value_t = 5000)]
+        #[arg(help_heading = "Remote Host", long, default_value_t = 5000)]
         heartbeat_timeout_ms: u64,
         /// Session snapshots per second on each data connection, 1-60, or 0 or `unlimited`.
-        #[arg(long, default_value = "30", value_parser = parse_snapshot_hz)]
+        #[arg(help_heading = "Remote Host", long, default_value = "30", value_parser = parse_snapshot_hz)]
         snapshot_hz: u32,
-        #[arg(long, default_value = "127.0.0.1:0")]
+        #[arg(help_heading = "Remote Host", long, default_value = "127.0.0.1:0")]
         endpoint: std::net::SocketAddr,
         #[arg(long)]
         log_file: Option<PathBuf>,
-        #[arg(long, default_value = "ShoopDaLoop")]
+        #[arg(help_heading = "Remote Host", long, default_value = "ShoopDaLoop")]
         name: String,
     }
     let args = Args::parse();

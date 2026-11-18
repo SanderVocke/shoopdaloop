@@ -84,7 +84,7 @@ Attach with Host Manager, or use the management address printed by the host:
 target/debug/shoopdaloop --ui-only --host-address 127.0.0.1:PORT
 ```
 
-Choose `--audio-driver dummy` for device-free processing, `cpal` for system audio,
+Choose `--driver dummy` for device-free processing, `cpal` for system audio,
 or `jack` for direct JACK. The selected driver supplies timing and actual audio;
 Dummy input is silence unless a test fixture supplies a generator. Dummy pacing
 can be paced, unpaced or controlled. Saved driver preferences apply independently

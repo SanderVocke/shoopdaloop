@@ -53,13 +53,13 @@ pub struct AudioArgs {
     pub processor_memory_mb: Option<u32>,
 
     /// Audio driver for this launch; does not change saved preferences.
-    #[arg(long, value_enum, help_heading = "Audio")]
+    #[arg(long = "driver", value_enum, help_heading = "Backend")]
     pub audio_driver: Option<NativeDriver>,
     /// Dummy pacing: paced, unpaced or controlled.
-    #[arg(long, help_heading="Audio",value_parser=|v:&str|v.parse::<shoop_app_api::DummyMode>())]
+    #[arg(long, help_heading="Dummy Driver",value_parser=|v:&str|v.parse::<shoop_app_api::DummyMode>())]
     pub dummy_mode: Option<shoop_app_api::DummyMode>,
     /// JACK client-name hint.
-    #[arg(long, requires = "audio_driver", help_heading = "JACK")]
+    #[arg(long, requires = "audio_driver", help_heading = "JACK Driver")]
     pub jack_client_name: Option<String>,
 }
 impl AudioArgs {
@@ -115,7 +115,7 @@ impl AudioArgs {
             }
             jack.validate().map_err(anyhow::Error::msg)?;
         } else if has_jack_options {
-            bail!("JACK options require --audio-driver jack");
+            bail!("JACK options require --driver jack");
         }
         if let Some(mode) = self.dummy_mode {
             let AudioDriverConfig::Dummy(dummy) = &mut config else {
@@ -205,13 +205,7 @@ mod tests {
     #[cfg(feature = "jack")]
     #[shoop_test]
     fn jack_cli_only_configures_the_client_name() {
-        let cli = Cli::parse_from([
-            "host",
-            "--audio-driver",
-            "jack",
-            "--jack-client-name",
-            "Studio",
-        ]);
+        let cli = Cli::parse_from(["host", "--driver", "jack", "--jack-client-name", "Studio"]);
         let AudioDriverConfig::Jack(jack) = cli.audio.apply(Default::default()).unwrap() else {
             panic!("direct JACK expected");
         };
@@ -223,46 +217,32 @@ mod tests {
             "--jack-midi-outputs",
             "--jack-connect",
         ] {
-            assert!(
-                Cli::try_parse_from(["host", "--audio-driver", "jack", option, "obsolete"])
-                    .is_err()
-            );
+            assert!(Cli::try_parse_from(["host", "--driver", "jack", option, "obsolete"]).is_err());
         }
-        assert!(Cli::parse_from([
-            "host",
-            "--audio-driver",
-            "jack",
-            "--jack-client-name",
-            "bad:name"
-        ])
-        .audio
-        .apply(Default::default())
-        .is_err());
+        assert!(
+            Cli::parse_from(["host", "--driver", "jack", "--jack-client-name", "bad:name"])
+                .audio
+                .apply(Default::default())
+                .is_err()
+        );
     }
 
     #[shoop_test]
     fn explicit_selection_rejects_wrong_driver_options_and_missing_build_features() {
         assert!(Cli::try_parse_from(["host", "--jack-client-name", "Studio"]).is_err());
-        let wrong = Cli::parse_from([
-            "host",
-            "--audio-driver",
-            "dummy",
-            "--jack-client-name",
-            "Studio",
-        ]);
+        let wrong = Cli::parse_from(["host", "--driver", "dummy", "--jack-client-name", "Studio"]);
         assert!(wrong.audio.apply(Default::default()).is_err());
         for (name, available) in [
             ("jack", cfg!(feature = "jack")),
             ("cpal", cfg!(feature = "cpal")),
             ("dummy", true),
         ] {
-            let cli = Cli::parse_from(["host", "--audio-driver", name]);
+            let cli = Cli::parse_from(["host", "--driver", name]);
             assert_eq!(cli.audio.apply(Default::default()).is_ok(), available);
         }
-        assert!(Cli::try_parse_from(["host", "--audio-driver", "webaudio"]).is_err());
+        assert!(Cli::try_parse_from(["host", "--driver", "webaudio"]).is_err());
         assert!(
-            Cli::try_parse_from(["host", "--audio-driver", "jack", "--sample-rate", "48000"])
-                .is_err()
+            Cli::try_parse_from(["host", "--driver", "jack", "--sample-rate", "48000"]).is_err()
         );
         let base = AudioDriverConfig::Jack(Default::default());
         assert_eq!(AudioArgs::default().apply(base.clone()).unwrap(), base);
@@ -316,7 +296,7 @@ mod tests {
     fn ui_child_arguments_exclude_all_audio_startup_overrides() {
         let original = [
             "--session-transport=socket",
-            "--audio-driver=jack",
+            "--driver=jack",
             "--jack-client-name",
             "Studio",
             "--session",

@@ -158,11 +158,11 @@ supplies sample rate and buffer size. No profile files are required.
 Both native launch executables accept the same audio overrides:
 
 ```sh
-shoop_host --audio-driver jack --jack-client-name Studio
-shoopdaloop --audio-driver jack --session-transport socket
+shoop_host --driver jack --jack-client-name Studio
+shoopdaloop --driver jack --session-transport socket
 ```
 
-`--audio-driver` accepts `dummy`, `cpal`, or `jack`. `--jack-client-name` overrides
+`--driver` accepts `dummy`, `cpal`, or `jack`. `--jack-client-name` overrides
 the chosen JACK profile for this launch only. For `shoop_host --config FILE`, flags
 override the JSON driver configuration. Explicitly selecting a driver omitted from
 the build fails with a diagnostic. Audio overrides cannot be used when attaching to

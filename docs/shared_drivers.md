@@ -18,7 +18,7 @@ checkout when running a host outside the build tree. A cold model build happens
 before driver callbacks start; detached-host readiness permits up to five minutes.
 Missing sources, unsupported builds and toolchain failures produce startup errors.
 
-Select `--backend native|rust-fpga|rtl-sim` independently of `--audio-driver`.
+Select `--backend native|rust-fpga|rtl-sim` independently of `--driver`.
 The host, in-process app and Host Manager use the same composition. Attaching a UI
 keeps the existing host's selections. Enable `rtl-sim` on `shoop_host`,
 `shoopdaloop` or the Manager to include the optional simulator. Default builds do
