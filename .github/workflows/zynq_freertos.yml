@@ -85,7 +85,7 @@ jobs:
     timeout-minutes: 35
     strategy:
       matrix:
-        board: [qemu, zedboard]
+        board: [qemu, zedboard, zturn-v2]
     env:
       RUSTFLAGS: -D warnings
       CARGO_BUILD_JOBS: 2

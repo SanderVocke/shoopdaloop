@@ -1,6 +1,9 @@
 use anyhow::{ensure, Result};
 use rt_fpga_compiler::{loading::Layout, LogicalStateProgram};
-use rt_fpga_rtl::target::{ProgramImage, RtlTarget};
+use rt_fpga_rtl::{
+    host::control::descriptor,
+    target::{ProgramImage, RtlTarget},
+};
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock},
     host::{Phase, Renderer, Report},
@@ -83,7 +86,7 @@ impl ProgramLoader for Images {
             state_base: 0,
         }
         .build_image(logical, layout)?;
-        let descriptor = super::owner::descriptor(&image);
+        let descriptor = descriptor(&image);
         self.uploads
             .push(image)
             .map_err(|_| anyhow::anyhow!("RTL upload queue is full"))?;

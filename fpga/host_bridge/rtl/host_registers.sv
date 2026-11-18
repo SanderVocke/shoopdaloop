@@ -27,6 +27,8 @@ package host_registers;
     localparam logic [31:0] OP_CLEAR_VIEW = 32'd4;
     localparam logic [31:0] OP_SWITCH_PROGRAM = 32'd5;
     localparam logic [31:0] OP_RUN_QUANTUM = 32'd6;
+    localparam logic [31:0] OP_CAPTURE_SNAPSHOT = 32'd7;
+    localparam logic [31:0] OP_READ_SNAPSHOT = 32'd8;
     localparam logic [31:0] RESULT_OK = 32'd0;
     localparam logic [31:0] RESULT_INVALID = 32'd1;
     localparam logic [31:0] RESULT_REJECTED = 32'd2;

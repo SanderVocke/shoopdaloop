@@ -1,4 +1,6 @@
 //! ARM-side access to the versioned FPGA host mailbox.
+#[cfg(feature = "rt-interface")]
+pub mod control;
 pub mod registers;
 use registers::*;
 

@@ -5,12 +5,19 @@ module host_dispatch #(
     parameter integer CHUNK_FRAMES = 1,
     parameter integer INPUT_PORTS = 1,
     parameter integer OUTPUT_PORTS = 2,
+    parameter integer STATE_DEPTH = 16,
     parameter integer WATCHDOG_CYCLES = 20_000_000
 ) (
     input wire clk,
     input wire reset,
     input wire [31:0] epoch,
     output reg fault,
+    input wire quantum_valid,
+    output wire quantum_ready,
+    output reg quantum_done,
+    output reg [31:0] quantum_cycles,
+    output reg [63:0] quantum_frame,
+    output reg [63:0] quantum_revision,
     input wire command_valid,
     output wire command_ready,
     input wire [31:0] command_tag,
@@ -83,12 +90,20 @@ module host_dispatch #(
     input wire memory_fault
 );
     import host_registers::*;
-    typedef enum logic [3:0] {IDLE, CFG_REQUEST, CFG_WAIT, AUDIO_REQUEST, AUDIO_WAIT,
+    typedef enum logic [4:0] {IDLE, CFG_REQUEST, CFG_WAIT, AUDIO_REQUEST, AUDIO_WAIT,
         STORE_CFG_REQUEST, STORE_CFG_WAIT, CLEAR_REQUEST, CLEAR_WAIT, SWITCH_REQUEST, SWITCH_WAIT,
-        RUN_REQUEST, RUN_WAIT, RESPOND} phase_t;
+        RUN_REQUEST, RUN_WAIT, SNAPSHOT_REQUEST, SNAPSHOT_WAIT, SNAPSHOT_READ, SNAPSHOT_COPY, RESPOND} phase_t;
     phase_t phase;
     reg [319:0] args;
     reg [31:0] cycles;
+    reg paced;
+    localparam integer SNAPSHOT_WORDS = STATE_DEPTH*16;
+    localparam integer SNAPSHOT_INDEX = $clog2(2*SNAPSHOT_WORDS);
+    (* ram_style = "block" *) reg [63:0] snapshot_memory [0:2*SNAPSHOT_WORDS-1];
+    reg [63:0] snapshot_read_data;
+    reg [31:0] snapshot_generation, snapshot_size, snapshot_pos, snapshot_limit;
+    reg snapshot_bank;
+    reg [2:0] snapshot_reply_word;
 
     wire [2:0] space = args[2:0];
     wire [31:0] address = args[32 +: 32];
@@ -102,12 +117,13 @@ module host_dispatch #(
     wire unused_argument_bits = &{1'b0,args[319:304],args[287:272],args[255:240]};
 
     assign command_ready = phase == IDLE && !fault && !memory_fault;
+    assign quantum_ready = phase == RUN_REQUEST && paced && run_ready && !memory_fault;
     assign response_valid = phase == RESPOND;
-    assign cfg_valid = phase == CFG_REQUEST;
-    assign cfg_state = space[1:0] == 1;
-    assign cfg_loop = space[1:0] == 2;
-    assign cfg_write = writing;
-    assign cfg_address = address[15:0];
+    assign cfg_valid = phase == CFG_REQUEST || phase == SNAPSHOT_REQUEST;
+    assign cfg_state = phase == CFG_REQUEST && space[1:0] == 1;
+    assign cfg_loop = phase == SNAPSHOT_REQUEST || space[1:0] == 2;
+    assign cfg_write = phase == CFG_REQUEST && writing;
+    assign cfg_address = phase == SNAPSHOT_REQUEST ? snapshot_pos[15:0] : address[15:0];
     assign cfg_write_data = args[64 +: `SHOOP_SP_STATE_BITS];
     assign audio_cfg_valid = phase == AUDIO_REQUEST;
     assign audio_cfg_space = space[1:0];
@@ -131,11 +147,20 @@ module host_dispatch #(
     assign switch_jobs = args[256 +: 16];
     assign switch_buffers = args[288 +: 16];
     assign switch_response_ready = phase == SWITCH_WAIT;
-    assign run_valid = phase == RUN_REQUEST || phase == SWITCH_REQUEST;
+    assign run_valid = (phase == RUN_REQUEST && (!paced || quantum_valid)) || phase == SWITCH_REQUEST;
     assign run_quantum = QUANTUM;
     assign run_chunk_frames = CHUNK_FRAMES;
     assign run_inputs = INPUT_PORTS;
     assign run_outputs = OUTPUT_PORTS;
+
+    initial if (STATE_DEPTH < 1 || STATE_DEPTH > 4096) $fatal(1,"invalid snapshot loop capacity");
+
+    always @(posedge clk) begin
+        if (phase == SNAPSHOT_WAIT && cfg_response_valid && !cfg_response_error)
+            snapshot_memory[SNAPSHOT_INDEX'((snapshot_bank ? 0 : SNAPSHOT_WORDS) + snapshot_pos)] <= cfg_read_data[63:0];
+        if (phase == SNAPSHOT_READ)
+            snapshot_read_data <= snapshot_memory[SNAPSHOT_INDEX'((snapshot_bank ? SNAPSHOT_WORDS : 0) + snapshot_pos)];
+    end
 
     always @(posedge clk) begin
         if (reset) begin
@@ -143,15 +168,28 @@ module host_dispatch #(
             phase <= IDLE;
             args <= 0;
             cycles <= 0;
+            paced <= 0;
+            quantum_done <= 0;
+            quantum_cycles <= 0;
+            quantum_frame <= 0;
+            quantum_revision <= 0;
+            snapshot_generation <= 0;
+            snapshot_size <= 0;
+            snapshot_pos <= 0;
+            snapshot_limit <= 0;
+            snapshot_bank <= 0;
+            snapshot_reply_word <= 0;
             response_epoch <= 0;
             response_tag <= 0;
             response_code <= RESULT_OK;
             response_data <= 0;
         end else if (executing && (memory_fault || cycles >= WATCHDOG_CYCLES)) begin
+            quantum_done <= 0;
             fault <= 1;
             response_code <= RESULT_FAULT;
-            phase <= RESPOND;
+            phase <= paced ? IDLE : RESPOND;
         end else begin
+            quantum_done <= 0;
             if (memory_fault)
                 fault <= 1;
             if (executing)
@@ -164,6 +202,7 @@ module host_dispatch #(
                     response_code <= RESULT_INVALID;
                     response_data <= 0;
                     cycles <= 0;
+                    paced <= 0;
                     phase <= RESPOND;
                     if (!request_extra) case (command_op)
                         OP_CORE_CONFIG: if ((request_control & ~32'h103) == 0 && request_control[1:0] != 3 &&
@@ -173,8 +212,32 @@ module host_dispatch #(
                         OP_CLEAR_VIEW: if (request[319:64] == 0) phase <= CLEAR_REQUEST;
                         OP_SWITCH_PROGRAM: if (!bad_switch_width) phase <= SWITCH_REQUEST;
                         OP_RUN_QUANTUM: if (request[319:0] == 0) phase <= RUN_REQUEST;
+                        OP_CAPTURE_SNAPSHOT: if (request[319:32] == 0 && request_control <= STATE_DEPTH &&
+                            snapshot_generation != 32'hffffffff) begin
+                            snapshot_pos <= 0;
+                            snapshot_limit <= request_control << 4;
+                            if (request_control == 0) begin
+                                snapshot_generation <= snapshot_generation+1;
+                                snapshot_size <= 0;
+                                response_code <= RESULT_OK;
+                                response_data[159:0] <= {active_revision, sync_frame, snapshot_generation+32'd1};
+                            end else phase <= SNAPSHOT_REQUEST;
+                        end
+                        OP_READ_SNAPSHOT: if (request[319:96] == 0 && request_control == snapshot_generation &&
+                            request[63:32] < snapshot_size && request[95:64] > 0 &&
+                            request[95:64] <= HOST_PAYLOAD_WORDS/2 &&
+                            request[95:64] <= snapshot_size-request[63:32]) begin
+                            snapshot_pos <= request[63:32];
+                            snapshot_limit <= request[63:32]+request[95:64];
+                            snapshot_reply_word <= 0;
+                            phase <= SNAPSHOT_READ;
+                        end
                         default: phase <= RESPOND;
                     endcase
+                end else if (quantum_valid && !fault && !memory_fault) begin
+                    paced <= 1;
+                    cycles <= 0;
+                    phase <= RUN_REQUEST;
                 end
                 CFG_REQUEST: if (cfg_ready) phase <= CFG_WAIT;
                 CFG_WAIT: if (cfg_response_valid) begin
@@ -206,12 +269,45 @@ module host_dispatch #(
                     response_data[127:0] <= {active_revision, switch_first_frame};
                     phase <= RESPOND;
                 end
-                RUN_REQUEST: if (run_ready) phase <= RUN_WAIT;
+                SNAPSHOT_REQUEST: if (cfg_ready) phase <= SNAPSHOT_WAIT;
+                SNAPSHOT_WAIT: if (cfg_response_valid) begin
+                    if (cfg_response_error) begin
+                        response_code <= RESULT_REJECTED;
+                        phase <= RESPOND;
+                    end else if (snapshot_pos+1 == snapshot_limit) begin
+                        snapshot_generation <= snapshot_generation+1;
+                        snapshot_size <= snapshot_limit;
+                        snapshot_bank <= !snapshot_bank;
+                        response_code <= RESULT_OK;
+                        response_data[191:0] <= {snapshot_limit >> 4, active_revision, sync_frame, snapshot_generation+32'd1};
+                        phase <= RESPOND;
+                    end else begin
+                        snapshot_pos <= snapshot_pos+1;
+                        phase <= SNAPSHOT_REQUEST;
+                    end
+                end
+                SNAPSHOT_READ: phase <= SNAPSHOT_COPY;
+                SNAPSHOT_COPY: begin
+                    response_data[64*snapshot_reply_word +: 64] <= snapshot_read_data;
+                    snapshot_reply_word <= snapshot_reply_word+1;
+                    snapshot_pos <= snapshot_pos+1;
+                    response_code <= RESULT_OK;
+                    phase <= snapshot_pos+1 == snapshot_limit ? RESPOND : SNAPSHOT_READ;
+                end
+                RUN_REQUEST: if (run_valid && run_ready) phase <= RUN_WAIT;
                 RUN_WAIT: if (done) begin
                     fault <= error_code != 0;
-                    response_code <= error_code == 0 ? RESULT_OK : RESULT_FAULT;
-                    response_data[169:0] <= {error_stage, error_code, active_revision, sync_frame, cycles};
-                    phase <= RESPOND;
+                    if (paced) begin
+                        quantum_done <= error_code == 0;
+                        quantum_cycles <= cycles;
+                        quantum_frame <= sync_frame;
+                        quantum_revision <= active_revision;
+                        phase <= IDLE;
+                    end else begin
+                        response_code <= error_code == 0 ? RESULT_OK : RESULT_FAULT;
+                        response_data[169:0] <= {error_stage, error_code, active_revision, sync_frame, cycles};
+                        phase <= RESPOND;
+                    end
                 end
                 RESPOND: if (response_ready) phase <= IDLE;
                 default: phase <= IDLE;

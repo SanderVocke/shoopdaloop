@@ -26,28 +26,54 @@ module host_pipeline_axi #(
     parameter [31:0] CORE_CLOCK_HZ = 100_000_000,
     parameter integer QUANTUM = 32, parameter integer WATCHDOG_CYCLES = 20_000_000
 ) (
+    (* X_INTERFACE_INFO = "xilinx.com:signal:clock:1.0 clk CLK", X_INTERFACE_PARAMETER = "ASSOCIATED_BUSIF s_axi:m_axi, ASSOCIATED_RESET reset" *)
     input wire clk,
+    (* X_INTERFACE_INFO = "xilinx.com:signal:reset:1.0 reset RST", X_INTERFACE_PARAMETER = "POLARITY ACTIVE_HIGH" *)
     input wire reset,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 s_axi AWADDR", X_INTERFACE_PARAMETER = "PROTOCOL AXI4LITE" *)
     input wire [11:0] s_axi_awaddr,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 s_axi AWVALID" *)
     input wire s_axi_awvalid,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 s_axi AWREADY" *)
     output wire s_axi_awready,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 s_axi WDATA" *)
     input wire [31:0] s_axi_wdata,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 s_axi WSTRB" *)
     input wire [3:0] s_axi_wstrb,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 s_axi WVALID" *)
     input wire s_axi_wvalid,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 s_axi WREADY" *)
     output wire s_axi_wready,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 s_axi BRESP" *)
     output wire [1:0] s_axi_bresp,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 s_axi BVALID" *)
     output wire s_axi_bvalid,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 s_axi BREADY" *)
     input wire s_axi_bready,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 s_axi ARADDR" *)
     input wire [11:0] s_axi_araddr,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 s_axi ARVALID" *)
     input wire s_axi_arvalid,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 s_axi ARREADY" *)
     output wire s_axi_arready,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 s_axi RDATA" *)
     output wire [31:0] s_axi_rdata,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 s_axi RRESP" *)
     output wire [1:0] s_axi_rresp,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 s_axi RVALID" *)
     output wire s_axi_rvalid,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 s_axi RREADY" *)
     input wire s_axi_rready,
     input wire [31:0] epoch,
     output wire fault,
+    (* X_INTERFACE_INFO = "xilinx.com:signal:interrupt:1.0 irq INTERRUPT", X_INTERFACE_PARAMETER = "SENSITIVITY LEVEL_HIGH" *)
     output wire irq,
+    input wire quantum_valid,
+    output wire quantum_ready,
+    output wire quantum_done,
+    output wire [31:0] quantum_cycles,
+    output wire [63:0] quantum_frame,
+    output wire [63:0] quantum_revision,
     output wire sample_input_read,
     output wire [31:0] sample_input_address,
     input wire [31:0] sample_input_data,
@@ -57,35 +83,65 @@ module host_pipeline_axi #(
     output wire sync_event_valid,
     input wire sync_event_ready,
     output wire [255:0] sync_event_data,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi AWID" *)
     output wire m_axi_awid,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi AWADDR", X_INTERFACE_PARAMETER = "PROTOCOL AXI3" *)
     output wire [31:0] m_axi_awaddr,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi AWLEN" *)
     output wire [3:0] m_axi_awlen,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi AWSIZE" *)
     output wire [2:0] m_axi_awsize,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi AWBURST" *)
     output wire [1:0] m_axi_awburst,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi AWVALID" *)
     output wire m_axi_awvalid,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi AWREADY" *)
     input wire m_axi_awready,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi WDATA" *)
     output wire [AXI_DATA_WIDTH-1:0] m_axi_wdata,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi WSTRB" *)
     output wire [AXI_DATA_WIDTH/8-1:0] m_axi_wstrb,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi WID" *)
     output wire m_axi_wid,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi WLAST" *)
     output wire m_axi_wlast,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi WVALID" *)
     output wire m_axi_wvalid,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi WREADY" *)
     input wire m_axi_wready,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi BID" *)
     input wire m_axi_bid,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi BRESP" *)
     input wire [1:0] m_axi_bresp,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi BVALID" *)
     input wire m_axi_bvalid,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi BREADY" *)
     output wire m_axi_bready,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi ARID" *)
     output wire m_axi_arid,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi ARADDR" *)
     output wire [31:0] m_axi_araddr,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi ARLEN" *)
     output wire [3:0] m_axi_arlen,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi ARSIZE" *)
     output wire [2:0] m_axi_arsize,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi ARBURST" *)
     output wire [1:0] m_axi_arburst,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi ARVALID" *)
     output wire m_axi_arvalid,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi ARREADY" *)
     input wire m_axi_arready,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi RID" *)
     input wire m_axi_rid,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi RDATA" *)
     input wire [AXI_DATA_WIDTH-1:0] m_axi_rdata,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi RRESP" *)
     input wire [1:0] m_axi_rresp,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi RLAST" *)
     input wire m_axi_rlast,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi RVALID" *)
     input wire m_axi_rvalid,
+    (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi RREADY" *)
     output wire m_axi_rready
 );
     wire command_valid;
@@ -198,7 +254,7 @@ module host_pipeline_axi #(
     end
     host_mailbox #(.CORE_CLOCK_HZ(CORE_CLOCK_HZ), .ARENA_BASE(ARENA_BASE), .ARENA_BYTES(ARENA_BYTES)) mmio (.*);
     host_dispatch #(.QUANTUM(QUANTUM), .CHUNK_FRAMES(CHUNK_FRAMES), .INPUT_PORTS(INPUT_PORTS),
-        .OUTPUT_PORTS(OUTPUT_PORTS), .WATCHDOG_CYCLES(WATCHDOG_CYCLES)) dispatcher (.*);
+        .OUTPUT_PORTS(OUTPUT_PORTS), .STATE_DEPTH(STATE_DEPTH), .WATCHDOG_CYCLES(WATCHDOG_CYCLES)) dispatcher (.*);
     media_audio_pipeline_axi #(
         .EXTERNAL_IO(EXTERNAL_IO),
         .LIVE_LOADING(LIVE_LOADING),

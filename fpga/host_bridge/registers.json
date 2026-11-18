@@ -30,7 +30,9 @@
     "STORE_CONFIG": 3,
     "CLEAR_VIEW": 4,
     "SWITCH_PROGRAM": 5,
-    "RUN_QUANTUM": 6
+    "RUN_QUANTUM": 6,
+    "CAPTURE_SNAPSHOT": 7,
+    "READ_SNAPSHOT": 8
   },
   "response_codes": {
     "OK": 0,

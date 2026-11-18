@@ -4815,9 +4815,11 @@ dependencies = [
  "marlin",
  "quick-xml",
  "rt_fpga_compiler",
+ "rt_fpga_reference",
  "serde",
  "serde_json",
  "sha2",
+ "shoop_rt_protocol",
  "shoop_wasm_test_support",
 ]
 

@@ -312,4 +312,34 @@ fn run_compiled_programs_and_switch_at_the_same_boundary_through_axi() {
     assert_eq!(&switched[..4], &[4, 0, 2, 0]);
     let result = send(OP_RUN_QUANTUM, &[], RESULT_OK);
     assert_eq!(&result[1..5], &[8, 0, 2, 0]);
+
+    send(
+        OP_CORE_CONFIG,
+        &[0x102, 2, 0x789abcde, 0x12345678],
+        RESULT_OK,
+    );
+    let snapshot = send(OP_CAPTURE_SNAPSHOT, &[1], RESULT_OK);
+    assert_eq!(&snapshot[..6], &[1, 8, 0, 2, 0, 1]);
+    send(OP_CORE_CONFIG, &[0x102, 2, 7], RESULT_OK);
+    let saved = send(OP_READ_SNAPSHOT, &[snapshot[0], 2, 1], RESULT_OK);
+    assert_eq!(&saved[..2], &[0x789abcde, 0x12345678]);
+    let next = send(OP_CAPTURE_SNAPSHOT, &[1], RESULT_OK);
+    assert_eq!(&next[..6], &[2, 8, 0, 2, 0, 1]);
+    send(OP_READ_SNAPSHOT, &[snapshot[0], 2, 1], RESULT_INVALID);
+    let saved = send(OP_READ_SNAPSHOT, &[next[0], 0, 6], RESULT_OK);
+    assert_eq!(&saved[4..6], &[7, 0]);
+
+    let mut core = sim.borrow_mut();
+    core.model.set("quantum_valid", 1);
+    core.until(32, "accept hardware-paced quantum", |model| {
+        model.get("quantum_ready") != 0
+    });
+    core.idle(1);
+    core.model.set("quantum_valid", 0);
+    core.until(1000, "complete hardware-paced quantum", |model| {
+        model.get("quantum_done") != 0
+    });
+    assert_eq!(core.model.get("quantum_frame"), 12);
+    assert_eq!(core.model.get("quantum_revision"), 2);
+    assert!(core.model.get("quantum_cycles") > 0);
 }

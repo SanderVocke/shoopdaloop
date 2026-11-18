@@ -9,7 +9,7 @@ workspace=true
 default=[]
 sim=["dep:rt_fpga_rtl","rt_fpga_rtl/sim","dep:rt_fpga_compiler","dep:rt_fpga_reference","dep:rt_runtime","dep:shoop_rt_protocol","dep:shoop_rt_transport","dep:shoop_rt_host_reference","dep:rtrb","dep:anyhow"]
 [target.'cfg(not(target_arch="wasm32"))'.dependencies]
-rt_fpga_rtl={path="../rt_fpga_rtl",optional=true}
+rt_fpga_rtl={path="../rt_fpga_rtl",features=["rt-interface"],optional=true}
 rt_fpga_compiler={path="../rt_fpga_compiler",optional=true}
 rt_fpga_reference={path="../rt_fpga_reference",features=["rt-interface"],optional=true}
 rt_runtime={path="../rt_runtime",optional=true}
