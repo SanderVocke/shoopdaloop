@@ -149,9 +149,9 @@ and inject transport/compiler refusals to check restoration and retry.
 The application client writes diagnostics under `work/fpga-reference-client`
 (override with `--output`).
 
-`RtlTarget` accepts the same logical graph and loads through the Marlin testbench
-loader. Marlin does not yet have an application host with the runtime command and
-snapshot frontend used by this UI integration.
+`RtlTarget` accepts the same logical graph and loads through the Marlin loader.
+The `rtl-sim` application host uses the same command, response and snapshot
+interfaces. Its UI and application tests exercise live loading through that host.
 
 ## Dummy pacing
 

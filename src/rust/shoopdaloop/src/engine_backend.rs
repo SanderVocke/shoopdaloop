@@ -127,7 +127,7 @@ pub(crate) fn start_selected_backend(
                 owner: None,
                 reference: Some(started.driver),
             },
-            warnings: vec!["Rust FPGA reference: limited mono looping profile.".into()],
+            warnings: Vec::new(),
         });
     }
     #[cfg(feature = "rtl-sim")]
@@ -141,7 +141,7 @@ pub(crate) fn start_selected_backend(
                 owner: None,
                 reference: Some(started.driver),
             },
-            warnings: vec!["Marlin RTL simulation: limited mono looping profile.".into()],
+            warnings: Vec::new(),
         });
     }
     anyhow::bail!("backend {} is unavailable in this build", backend.id())
