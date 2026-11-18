@@ -169,7 +169,7 @@ impl StateProcessor {
             loops.reserve_loading(limits.loop_slots as usize);
         }
     }
-    pub(crate) fn switch_image(&mut self, image: &mut crate::compiler::ProgramImage) {
+    pub(crate) fn switch_image(&mut self, image: &mut crate::target::ProgramImage) {
         for &(address, value) in &image.initializers {
             self.memory[address.0] = value;
         }

@@ -170,7 +170,7 @@ impl Audio {
             }
         }
     }
-    pub fn load_compiled(&mut self, s: &mut Sim<'_>, compiled: &crate::compiler::CompiledProgram) {
+    pub fn load_compiled(&mut self, s: &mut Sim<'_>, compiled: &crate::target::CompiledProgram) {
         self.frames = u64::from(compiled.quantum);
         self.buffers = u64::from(compiled.resources.buffers);
         self.outputs = u64::from(compiled.resources.output_ports);

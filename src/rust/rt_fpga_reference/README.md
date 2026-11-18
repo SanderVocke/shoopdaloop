@@ -74,7 +74,7 @@ below; SP does not allocate or manage program lifetimes itself.
 program and `StateProgramTarget` trait. Its graph frontend accepts one to sixteen
 mono primitive loops with explicit input/output routing and sync relationships.
 The `MonoLoops` and `SyncSmoothing` fixed fixtures remain available.
-`compiler::RustTarget` builds the typed SP
+`target::RustTarget` builds the typed SP
 program, initial state, prepared loop plan, resources and bindings. Media-view
 handles are supplied by the caller after preparing media resources.
 

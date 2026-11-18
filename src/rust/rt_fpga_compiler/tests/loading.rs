@@ -1,25 +1,32 @@
-use rt_fpga_compiler::{graph::*, loading::*, *};
+#[path = "support/mono.rs"]
+mod mono;
+use rt_fpga_compiler::{compile, CompileContext};
+use rt_fpga_compiler::{loading::*, *};
 use shoop_wasm_test_support::shoop_test;
 
 fn graph(ids: &[u32]) -> LogicalStateProgram {
-    MonoGraphFixture {
-        quantum: 16,
-        loops: ids
-            .iter()
-            .map(|&slot| LoopDescription {
-                id: Identity {
-                    slot,
-                    generation: 1,
-                },
-                source: None,
-                input: true,
-                output: true,
-                gain: 1.0,
-                repeat_sync: false,
-            })
-            .collect(),
-    }
-    .compile()
+    compile(
+        &mono::session(
+            &(ids
+                .iter()
+                .map(|&slot| mono::MonoLoop {
+                    id: Identity {
+                        slot,
+                        generation: 1,
+                    },
+                    source: None,
+                    input: true,
+                    output: true,
+                    gain: 1.0,
+                    repeat_sync: false,
+                })
+                .collect::<Vec<_>>()),
+        ),
+        CompileContext {
+            quantum: 16,
+            limits: Default::default(),
+        },
+    )
     .unwrap()
 }
 fn limits() -> ProgramLimits {
@@ -44,7 +51,10 @@ fn carry_over_has_no_initializers_and_old_slots_are_pinned_until_handoff() {
         generation: 1,
     };
     assert_eq!(a.loop_id(one), b.loop_id(one));
-    assert_eq!(b.state_address(0), a.state_address(1));
+    assert_eq!(
+        b.state_address(0),
+        a.state_address(graph(&[0, 1]).bindings[1].gain.unwrap())
+    );
     assert_eq!(b.new_values().count(), 2);
     assert_eq!(b.new_loops().count(), 1);
     assert_ne!(
@@ -121,7 +131,10 @@ fn failed_admission_and_cancel_preserve_current_and_relocation_is_sparse() {
             ..limits()
         })
         .unwrap();
-    assert_eq!(bound.bindings[0].gain, Some(a.state_address(1)));
+    assert_eq!(
+        bound.bindings[0].gain,
+        Some(a.state_address(graph(&[0, 1]).bindings[1].gain.unwrap()))
+    );
     allocator.cancel(b.revision).unwrap();
     assert_eq!(allocator.revision(), a.revision);
     let c = allocator.stage(&graph(&[1, 2])).unwrap();
@@ -191,4 +204,18 @@ fn logical_ids_do_not_consume_physical_slots_and_failed_staging_keeps_ownership(
         allocator.complete(smaller.revision).unwrap();
         allocator.stage(&replacement).unwrap();
     }
+}
+
+#[shoop_test]
+fn staging_requires_explicit_state_ownership_without_inference() {
+    let mut allocator = Allocator::new(limits());
+    let mut invalid = graph(&[0]);
+    invalid.state_bindings.clear();
+    assert_eq!(
+        allocator.stage(&invalid).unwrap_err(),
+        LoadError::Compile(CompileError::InvalidProgram)
+    );
+    assert!(allocator.pending().is_none());
+    let valid = allocator.stage(&graph(&[0])).unwrap();
+    assert_eq!(valid.loops[0].physical.generation, 1);
 }

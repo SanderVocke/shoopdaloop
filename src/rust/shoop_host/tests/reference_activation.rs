@@ -258,7 +258,7 @@ fn refused_installation_restores_the_previous_graph_and_allows_retry() {
     }
 }
 #[shoop_test]
-fn unsupported_partial_routing_restores_connections_and_does_not_poison_later_edits() {
+fn partial_routing_activates_and_allows_later_edits() {
     let mut f = Fixture::new();
     let added = f.add_track("Master");
     f.until(|f| f.client.results().contains_key(&added));
@@ -267,18 +267,21 @@ fn unsupported_partial_routing_restores_connections_and_does_not_poison_later_ed
         matches!(p.owner, ApplicationPortOwner::Track { track_id, .. } if track_id == state.tracks[1].id)
         && p.role == PortRole::AudioOutput).unwrap().id;
     let channel = state.buses[0].channels[0].id;
-    let before = state.connections.mixer_links.clone();
-    let failed = f.submit(Command::SetMixerRoute {
+    let before = state.connections.mixer_links.len();
+    let changed = f.submit(Command::SetMixerRoute {
         source: output,
         destination: channel,
         connected: false,
     });
-    f.until(|f| f.client.results().contains_key(&failed));
-    assert!(matches!(
-        f.client.results()[&failed],
+    f.until(|f| f.client.results().contains_key(&changed));
+    assert!(!matches!(
+        f.client.results()[&changed],
         Outcome::Refused { .. }
     ));
-    assert_eq!(f.service.snapshot().connections.mixer_links, before);
+    assert_eq!(
+        f.service.snapshot().connections.mixer_links.len(),
+        before - 1
+    );
     let added = f.submit(Command::AddLoop {
         track: state.tracks[1].id,
     });
@@ -394,9 +397,25 @@ fn application_streams_large_graphs_and_retries_a_busy_activation_tail() {
 }
 
 #[shoop_test]
-fn unsupported_stereo_and_midi_reach_the_compiler_and_restore_the_ui_layout() {
+fn stereo_activates_and_midi_refusal_restores_the_ui_layout() {
     let mut f = Fixture::new();
-    for (audio_channels, midi, reason) in [(2, false, "channel layout"), (1, true, "MIDI")] {
+    let accepted = f.submit(Command::AddTrack(TrackSpec {
+        name: "stereo".into(),
+        topology: TrackSpecTopology::Direct {
+            audio_channels: 2,
+            midi: false,
+        },
+        initial_output_bus_names: vec!["Master".into()],
+        latency: Default::default(),
+        creation_request_id: None,
+    }));
+    f.until(|f| f.client.results().contains_key(&accepted));
+    assert!(
+        matches!(f.client.results()[&accepted], Outcome::TrackCreated { .. }),
+        "{:?}",
+        f.client.results()[&accepted]
+    );
+    for (audio_channels, midi, reason) in [(1, true, "MIDI")] {
         f.gate.sent.lock().unwrap().clear();
         let failed = f.submit(Command::AddTrack(TrackSpec {
             name: "unsupported".into(),
@@ -415,12 +434,14 @@ fn unsupported_stereo_and_midi_reach_the_compiler_and_restore_the_ui_layout() {
         ));
         assert!(format!("{:?}", f.client.results()[&failed]).contains(reason));
         assert!(f.gate.sent.lock().unwrap().iter().any(activation));
-        assert_eq!(f.service.snapshot().tracks.len(), 1);
+        assert_eq!(f.service.snapshot().tracks.len(), 2);
     }
-    let accepted = f.add_track("Master");
+    let track = f.service.snapshot().tracks[1].id;
+    let accepted = f.submit(Command::AddLoop { track });
     f.until(|f| f.client.results().contains_key(&accepted));
-    assert!(matches!(
-        f.client.results()[&accepted],
-        Outcome::TrackCreated { .. }
-    ));
+    assert!(
+        matches!(f.client.results()[&accepted], Outcome::LoopCreated { .. }),
+        "{:?}",
+        f.client.results()[&accepted]
+    );
 }

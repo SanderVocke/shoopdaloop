@@ -1,6 +1,6 @@
 use anyhow::{ensure, Result};
 use rt_fpga_compiler::{loading::Layout, LogicalStateProgram};
-use rt_fpga_rtl::compiler::{ProgramImage, RtlTarget};
+use rt_fpga_rtl::target::{ProgramImage, RtlTarget};
 use rt_runtime::{
     buffer::{AudioBlock, MidiBlock},
     host::{Phase, Renderer, Report},
@@ -76,11 +76,7 @@ impl ProgramLoader for Images {
         logical: &LogicalStateProgram,
         layout: Layout,
     ) -> Result<SwitchProgram> {
-        let views = layout
-            .loops
-            .iter()
-            .map(|l| u64::from(l.physical.slot))
-            .collect::<Vec<_>>();
+        let views = layout.media_views(logical);
         let image = RtlTarget {
             capacities: self.limits(),
             media_views: &views,

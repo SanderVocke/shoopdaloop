@@ -184,11 +184,7 @@ impl Program {
     ) -> Bits {
         Config::new("cfg", "cfg_state").access(sim, u64::from(state), address, value, error)
     }
-    pub fn load_compiled(
-        &mut self,
-        sim: &mut Sim<'_>,
-        compiled: &crate::compiler::CompiledProgram,
-    ) {
+    pub fn load_compiled(&mut self, sim: &mut Sim<'_>, compiled: &crate::target::CompiledProgram) {
         assert!(compiled.instructions.len() as u64 <= self.depths[0]);
         assert!(compiled.state.len() as u64 <= self.depths[1]);
         assert!(u64::from(compiled.resources.queue_capacity) <= self.depths[2]);

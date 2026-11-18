@@ -133,26 +133,37 @@ Intermediate replies acknowledge upload progress; only the activation reply
 confirms the ownership fence. A new header or connection resets an incomplete
 upload.
 
-The shared compiler consumes `GraphView` directly. Its present lowering retains
-the mono/Master subset, and reports unsupported MIDI, channels, processors,
-composites, controls, buses or routing explicitly. Adapter-side shape filtering
-no longer reduces these descriptions before compilation. Unsupported graph edits
-restore the previous application layout and do not alter the active program.
-The compact BeginGraph/ConfigureLoop records remain for component fixtures; their
-`MonoGraphFixture` adapter also calls the same full-view compiler.
+The shared compiler consumes `GraphView` directly. It expands actual channel
+connections into a dependency graph, schedules the sync and processing passes
+independently, removes unused computations and emits the shared program. Direct
+multichannel strips and loops, multiple buses, fan-in/fan-out, cross-channel
+routing, gain/balance/mute, manual monitoring and boundary smoothing are supported
+within target dimensions. There is no fixed Master topology. MIDI, processors,
+composites and automatic monitoring still need execution support and are refused
+explicitly. Unsupported graph edits restore the previous application layout and
+do not alter the active program. The compact BeginGraph/ConfigureLoop records
+expand to a full graph using the protocol adapter and enter the same compiler.
 
-The current target has 128 instructions, 64 state values, 32 loop/media slots,
-128 queued jobs and 64 audio buffers. With the current lowering, 20 loops routed
-to stereo Master fit; 21 require 65 buffers and are refused. With all loop outputs
-disconnected, 31 loops exactly fill instructions, jobs and buffers. These counts
-follow from program contents and target dimensions; they are not application
-profile limits. Live replacement can reach a state-slot limit sooner.
+Persistent values are keyed by owning object, purpose and channel. Each media
+channel has its own view, while all channels of a loop use one cursor. The loader
+pins continuing values and allocates fresh configuration for changed immutable
+coefficients. Media-view tables have one entry per possible state value; the
+reference, browser and Marlin loaders use the same allocation rule.
 
-The application subset still uses mono loops, fixed stereo Master routing, loop
-gain, immediate/future mode transitions and live graph replacement. Arbitrary
-routing, multichannel loops and FPGA MIDI/FX processing remain unsupported.
-Unsupported operations continue to be refused or ignored through the normal
-interface. Native backend prepared-pool limits are unchanged.
+The current target has 128 instructions, 64 state values, 32 loop cursors,
+64 media views, 128 queued jobs and 64 audio buffers. With this lowering, 21 mono
+loops routed to stereo Master fit; 22 need 66 buffers and are refused. With all
+loop outputs disconnected, 31 loops exactly fill instructions, jobs and buffers.
+These counts follow from the program and target dimensions. Live replacement can
+reach a state-slot limit sooner. Scratch buffers retain the processors' one-write
+contract. No instruction or processor RTL changes are required.
+
+Host-driver geometry remains separate: the current prepared reference/Marlin
+application renderer exposes one capture and two playback channels. A wider
+compiled graph needs a target and driver with sufficient I/O dimensions; internal
+loop channels need not match host channels. Unsupported runtime commands continue
+to be refused or ignored through the ordinary interface. Native backend
+prepared-pool limits are unchanged.
 
 ## Verification
 

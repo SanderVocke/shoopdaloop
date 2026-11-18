@@ -1,5 +1,5 @@
 use super::*;
-use crate::{compiler::ProgramImage, storage::ViewId};
+use crate::{storage::ViewId, target::ProgramImage};
 use rt_fpga_compiler::ProgramLimits;
 use shoop_rt_protocol::immediate::{CommandRecord, Header, SwitchProgram, COMMANDS};
 
