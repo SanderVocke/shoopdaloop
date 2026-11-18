@@ -1,0 +1,41 @@
+{
+  "id": "0x53484f50",
+  "version": 1,
+  "payload_words": 12,
+  "registers": {
+    "ID": "0x000",
+    "VERSION": "0x004",
+    "STATUS": "0x008",
+    "EPOCH": "0x00c",
+    "CORE_CLOCK_HZ": "0x010",
+    "ARENA_BASE": "0x014",
+    "ARENA_BYTES": "0x018",
+    "REQUEST_EPOCH": "0x040",
+    "REQUEST_OP": "0x044",
+    "REQUEST_DATA": "0x048",
+    "REQUEST_PUSH": "0x078",
+    "RESPONSE_TAG": "0x080",
+    "RESPONSE_CODE": "0x084",
+    "RESPONSE_DATA": "0x088",
+    "RESPONSE_POP": "0x0b8"
+  },
+  "status_bits": {
+    "REQUEST_SPACE": 0,
+    "RESPONSE_PENDING": 1,
+    "FAULT": 2
+  },
+  "operations": {
+    "CORE_CONFIG": 1,
+    "AUDIO_CONFIG": 2,
+    "STORE_CONFIG": 3,
+    "CLEAR_VIEW": 4,
+    "SWITCH_PROGRAM": 5,
+    "RUN_QUANTUM": 6
+  },
+  "response_codes": {
+    "OK": 0,
+    "INVALID": 1,
+    "REJECTED": 2,
+    "FAULT": 3
+  }
+}

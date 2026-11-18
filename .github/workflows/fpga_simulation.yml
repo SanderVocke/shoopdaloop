@@ -157,6 +157,8 @@ jobs:
           python scripts/check_fpga_testbench_coverage.py
           python scripts/check_shoop_test_usage.py
           python fpga/axi_memory/generate_tops.py --check
+          python fpga/host_bridge/generate_registers.py --check
+          python fpga/host_bridge/generate_top.py --check
       - name: Run retained component and execution matrices
         run: |
           mkdir -p work/marlin-suite

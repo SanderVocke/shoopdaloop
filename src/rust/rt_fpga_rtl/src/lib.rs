@@ -6,6 +6,7 @@ pub mod bits;
 #[cfg(all(feature = "sim", not(target_arch = "wasm32")))]
 pub mod clock;
 pub mod component;
+pub mod host;
 #[cfg(all(feature = "sim", not(target_arch = "wasm32")))]
 pub mod model;
 #[cfg(all(feature = "sim", not(target_arch = "wasm32")))]
