@@ -32,7 +32,8 @@ access remains available for explicit test fixtures and is not hardware isolatio
 ## Rust real-time path
 
 The reference host keeps its state processor, job processor, media pool and frame
-clock alive across graph changes. Graph descriptions stop at the ARM endpoint:
+clock alive across graph changes. Complete `GraphView` snapshots, including unsupported shapes and MIDI information,
+stop at the ARM endpoint:
 compilation and allocation run there, outside processing. Typed bound artifacts
 cross a bounded program-memory handoff. Unused media views are prepared
 incrementally. The execution side reports readiness before ARM publishes a switch
@@ -46,7 +47,7 @@ snapshot metadata move with the instance, rather than a temporary binding index.
 
 The header names the expected old revision; the small `SwitchProgram` record
 contains the next revision, instruction region and instruction/sync/state/job/
-buffer counts. RT protocol version 38 includes resource-specific graph refusals.
+buffer counts. RT protocol version 39 includes complete semantic graph uploads and resource/feature-specific graph refusals.
 The FPGA profile uses
 the same monotonic value for graph and topology. Old-revision commands following
 a switch receive `StaleConfiguration`, including commands to retained loops.

@@ -9,7 +9,7 @@ use shoop_wasm_test_support::shoop_test;
 fn compiled_graph_records_routes_and_sums_exact_samples() {
     for quantum in [1, 16, 128] {
         for count in [1, 2, 16] {
-            let description = GraphDescription {
+            let description = MonoGraphFixture {
                 quantum,
                 loops: (0..count)
                     .map(|i| LoopDescription {

@@ -17,6 +17,7 @@ std = ["anyhow/std", "tracing/std"]
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
+shoop_graph = { path = "../shoop_graph" }
 rt_profiling = { path = "../rt_profiling" }
 
 profiling_protocol = { path = "../profiling_protocol" }
@@ -32,6 +33,7 @@ shoop_processor_protocol = { path = "../shoop_processor_protocol", features = ["
 tracing = { workspace = true }
 
 [dev-dependencies]
+rt_fpga_compiler = { path = "../rt_fpga_compiler" }
 shoop_host_processors = { path = "../shoop_host_processors", features = ["builtin-fx", "oxisynth"] }
 shoop_backend = { path = "../shoop_backend", features = ["contracts"] }
 shoop_rt_engine = { path = "../shoop_rt_engine", features = ["testing"] }

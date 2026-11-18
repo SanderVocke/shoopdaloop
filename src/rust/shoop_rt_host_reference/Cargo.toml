@@ -6,6 +6,7 @@ description="Portable FPGA reference endpoint and driver-independent renderer"
 [lints]
 workspace=true
 [dependencies]
+shoop_graph = { path = "../shoop_graph" }
 anyhow={workspace=true,features=["std"]}
 rt_runtime={path="../rt_runtime"}
 rt_fpga_compiler={path="../rt_fpga_compiler"}

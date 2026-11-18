@@ -2,7 +2,7 @@ use rt_fpga_compiler::{graph::*, loading::*, *};
 use shoop_wasm_test_support::shoop_test;
 
 fn graph(ids: &[u32]) -> LogicalStateProgram {
-    GraphDescription {
+    MonoGraphFixture {
         quantum: 16,
         loops: ids
             .iter()

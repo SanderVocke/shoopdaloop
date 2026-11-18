@@ -92,7 +92,7 @@ jobs:
           shared-key: fpga-rust-reference
       - name: Check shared compiler and functional processors
         run: |
-          cargo test --locked -p rt_fpga_compiler
+          cargo test --locked -p shoop_graph -p rt_fpga_compiler
           cargo build --locked -p rt_fpga_reference --no-default-features
           cargo test --locked -p rt_fpga_reference --no-default-features
           cargo test --locked -p rt_fpga_reference --all-features

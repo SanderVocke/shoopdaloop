@@ -191,3 +191,93 @@ fn actual_input_records_and_plays_through_quantum_adapter_without_callback_alloc
     );
     assert_eq!(step(&mut renderer, 0.), [0.125; Q]);
 }
+
+#[shoop_test]
+fn semantic_graph_uploads_refuse_unsupported_shapes_and_recover_after_interruption() {
+    use rt_fpga_compiler::{
+        graph::{LoopDescription, MonoGraphFixture},
+        Identity,
+    };
+    let prepared = shoop_rt_host_reference::prepare(
+        Q as u32,
+        DriverStatus {
+            kind: DriverKind::Dummy,
+            state: DriverRunState::Running,
+            sample_rate: 48000,
+            buffer_frames: Q as u32,
+        },
+        1,
+    )
+    .unwrap();
+    let mut renderer = prepared.renderer;
+    let mut client = ProtocolClient::new(InProcess::new(
+        prepared.endpoint,
+        shoop_rt_transport::carrier::Outbox::new(4, 4, 0),
+    ));
+    client.connect().unwrap();
+    while client.poll().is_some() {}
+    let graph = MonoGraphFixture {
+        quantum: Q as u32,
+        loops: (100..108)
+            .map(|slot| LoopDescription {
+                id: Identity {
+                    slot,
+                    generation: 7,
+                },
+                source: None,
+                input: true,
+                output: true,
+                gain: 1.,
+                repeat_sync: false,
+            })
+            .collect(),
+    }
+    .to_graph();
+    // A header never reserves executable state; activation requires the complete image.
+    send(
+        &mut client,
+        &mut renderer,
+        &[Command::BeginGraphImage {
+            quantum: Q as u32,
+            bytes: 100,
+        }],
+        0,
+    );
+    client
+        .immediate(Batch::new(0, 0, &[Command::ActivateGraph]).unwrap())
+        .unwrap();
+    assert_eq!(
+        response(&mut client, &mut renderer).header.code(),
+        Code::CannotApply
+    );
+    for (revision, midi, expected) in [
+        (0, false, Code::Applied),
+        (1, true, Code::GraphMidiUnsupported),
+        (1, false, Code::Applied),
+    ] {
+        let mut image = graph.clone();
+        if midi {
+            image.strips[0].layout = shoop_graph::ChannelLayout::Direct {
+                audio: 1,
+                midi: true,
+            };
+        }
+        let batches = shoop_rt_protocol::graph::upload(&image, Q as u32, revision).unwrap();
+        assert!(batches.len() > 1);
+        for batch in batches {
+            let terminal = batch.commands().contains(&Command::ActivateGraph);
+            client.immediate(batch).unwrap();
+            let result = response(&mut client, &mut renderer);
+            assert_eq!(
+                result.header.code(),
+                if terminal { expected } else { Code::Applied }
+            );
+        }
+    }
+    send(
+        &mut client,
+        &mut renderer,
+        &[Command::LoopGain(100, 0.25)],
+        2,
+    );
+}

@@ -4785,6 +4785,7 @@ name = "rt_fpga_compiler"
 version = "0.3.0"
 dependencies = [
  "serde",
+ "shoop_graph",
  "shoop_wasm_test_support",
 ]
 
@@ -5471,6 +5472,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_graph"
+version = "0.3.0"
+dependencies = [
+ "bincode",
+ "serde",
+ "shoop_wasm_test_support",
+]
+
+[[package]]
 name = "shoop_host"
 version = "0.3.0"
 dependencies = [
@@ -5692,9 +5702,11 @@ dependencies = [
  "anyhow",
  "libm",
  "profiling_protocol",
+ "rt_fpga_compiler",
  "rt_profiling",
  "shoop_app_api",
  "shoop_backend",
+ "shoop_graph",
  "shoop_host_processors",
  "shoop_loop_plan",
  "shoop_processor_protocol",
@@ -5791,6 +5803,7 @@ dependencies = [
  "rt_fpga_compiler",
  "rt_fpga_reference",
  "rt_runtime",
+ "shoop_graph",
  "shoop_rt_protocol",
  "shoop_rt_transport",
  "shoop_wasm_test_support",
@@ -5822,6 +5835,7 @@ dependencies = [
  "profiling_protocol",
  "rt_profiling",
  "serde",
+ "shoop_graph",
  "shoop_processor_protocol",
  "shoop_transport",
  "shoop_wasm_test_support",

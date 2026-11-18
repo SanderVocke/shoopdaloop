@@ -411,7 +411,7 @@ fn live_regions_preserve_ramps_history_plans_and_frames_with_concurrent_uploads(
 fn live_media_graph_switch_preserves_recording_and_fences_axi_work() {
     use rt_fpga_compiler::{
         Identity,
-        graph::{GraphDescription, LoopDescription},
+        graph::{LoopDescription, MonoGraphFixture},
     };
     use rt_fpga_testbench::{
         drivers::store::{Geometry, Store},
@@ -433,7 +433,7 @@ fn live_media_graph_switch_preserves_recording_and_fences_axi_work() {
         let mut store = Store::new(&mut s, geometry, mode, 991, "store_").unwrap();
         store.load(&mut s,&json!({"chunk_frames":16,"chunk_limit":128,"block_chunks":1,"samples":[],"free_chunks":[],
             "views":[{"chunks":[],"frames":0}]}));
-        let mut logical = GraphDescription {
+        let mut logical = MonoGraphFixture {
             quantum: 16,
             loops: vec![LoopDescription {
                 id: Identity {

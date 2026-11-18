@@ -235,7 +235,7 @@ impl Fixture {
         panic!("staging did not become ready");
     }
     fn request_stage(&mut self, ids: &[u32], source: Option<u32>) -> SwitchProgram {
-        let logical = GraphDescription {
+        let logical = MonoGraphFixture {
             quantum: 16,
             loops: ids
                 .iter()
