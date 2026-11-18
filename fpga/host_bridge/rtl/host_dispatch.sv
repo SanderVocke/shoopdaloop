@@ -14,6 +14,7 @@ module host_dispatch #(
     input wire [31:0] epoch,
     input wire audio_fault,
     input wire event_overflow,
+    input wire host_abort,
     output reg fault,
     output reg audio_enable,
     input wire quantum_valid,
@@ -63,6 +64,7 @@ module host_dispatch #(
     input wire [159:0] store_cfg_read_data,
     output wire store_cmd_valid,
     input wire store_cmd_ready,
+    output wire [3:0] store_cmd_opcode,
     output wire [63:0] store_cmd_view,
     input wire store_done,
     input wire [7:0] store_error_code,
@@ -103,12 +105,13 @@ module host_dispatch #(
     reg paced;
     reg audio_started;
     reg control_held;
+    reg draining;
     reg [31:0] control_cycles;
     localparam integer SNAPSHOT_WORDS = STATE_DEPTH*16;
     localparam integer SNAPSHOT_INDEX = $clog2(2*SNAPSHOT_WORDS);
     (* ram_style = "block" *) reg [63:0] snapshot_memory [0:2*SNAPSHOT_WORDS-1];
     reg [63:0] snapshot_read_data;
-    reg [31:0] snapshot_generation, snapshot_size, snapshot_pos, snapshot_limit;
+    reg [31:0] snapshot_generation, snapshot_size, snapshot_pos, snapshot_limit, snapshot_base;
     reg snapshot_bank;
     reg [2:0] snapshot_reply_word;
 
@@ -124,7 +127,7 @@ module host_dispatch #(
     wire unused_argument_bits = &{1'b0,args[319:304],args[287:272],args[255:240]};
 
     wire control_expired = control_held && control_cycles >= CONTROL_CYCLES-1;
-    wire device_fault = memory_fault || audio_fault || event_overflow || control_expired;
+    wire device_fault = memory_fault || audio_fault || event_overflow || control_expired || host_abort;
     assign command_ready = phase == IDLE && !fault && !device_fault && !(audio_enable && quantum_valid && !control_held);
     assign quantum_ready = phase == RUN_REQUEST && paced && run_ready && !device_fault;
     assign response_valid = phase == RESPOND;
@@ -132,7 +135,7 @@ module host_dispatch #(
     assign cfg_state = phase == CFG_REQUEST && space[1:0] == 1;
     assign cfg_loop = phase == SNAPSHOT_REQUEST || space[1:0] == 2;
     assign cfg_write = phase == CFG_REQUEST && writing;
-    assign cfg_address = phase == SNAPSHOT_REQUEST ? snapshot_pos[15:0] : address[15:0];
+    assign cfg_address = phase == SNAPSHOT_REQUEST ? snapshot_base[15:0]+snapshot_pos[15:0] : address[15:0];
     assign cfg_write_data = args[64 +: `SHOOP_SP_STATE_BITS];
     assign audio_cfg_valid = phase == AUDIO_REQUEST;
     assign audio_cfg_space = space[1:0];
@@ -145,6 +148,7 @@ module host_dispatch #(
     assign store_cfg_address = address;
     assign store_cfg_write_data = args[64 +: 160];
     assign store_cmd_valid = phase == CLEAR_REQUEST;
+    assign store_cmd_opcode = draining ? 4'd7 : 4'd2;
     assign store_cmd_view = args[63:0];
     assign switch_valid = phase == SWITCH_REQUEST;
     assign switch_expected = args[0 +: 64];
@@ -178,6 +182,7 @@ module host_dispatch #(
             audio_enable <= 0;
             audio_started <= 0;
             control_held <= 0;
+            draining <= 0;
             control_cycles <= 0;
             phase <= IDLE;
             args <= 0;
@@ -191,6 +196,7 @@ module host_dispatch #(
             snapshot_size <= 0;
             snapshot_pos <= 0;
             snapshot_limit <= 0;
+            snapshot_base <= 0;
             snapshot_bank <= 0;
             snapshot_reply_word <= 0;
             response_epoch <= 0;
@@ -230,16 +236,21 @@ module host_dispatch #(
                             request[63:48] == 0 && request[319:193] == 0) phase <= CFG_REQUEST;
                         OP_AUDIO_CONFIG: if ((request_control & ~32'h103) == 0 && request[319:96] == 0) phase <= AUDIO_REQUEST;
                         OP_STORE_CONFIG: if ((request_control & ~32'h107) == 0 && request[319:224] == 0) phase <= STORE_CFG_REQUEST;
-                        OP_CLEAR_VIEW: if (request[319:64] == 0) phase <= CLEAR_REQUEST;
+                        OP_CLEAR_VIEW: if (request[319:64] == 0) begin
+                            draining <= 0;
+                            phase <= CLEAR_REQUEST;
+                        end
                         OP_SWITCH_PROGRAM: if (!bad_switch_width) phase <= SWITCH_REQUEST;
                         OP_RUN_QUANTUM: if (request[319:0] == 0) begin
                             if (audio_started || control_held) response_code <= RESULT_REJECTED;
                             else phase <= RUN_REQUEST;
                         end
-                        OP_CAPTURE_SNAPSHOT: if (request[319:32] == 0 && request_control <= STATE_DEPTH &&
+                        OP_CAPTURE_SNAPSHOT: if (request[319:64] == 0 && request[63:32] <= STATE_DEPTH &&
+                            request_control <= STATE_DEPTH-request[63:32] &&
                             snapshot_generation != 32'hffffffff) begin
                             snapshot_pos <= 0;
                             snapshot_limit <= request_control << 4;
+                            snapshot_base <= request[63:32] << 4;
                             if (request_control == 0) begin
                                 snapshot_generation <= snapshot_generation+1;
                                 snapshot_size <= 0;
@@ -276,6 +287,11 @@ module host_dispatch #(
                                 control_held <= 0;
                                 response_code <= RESULT_OK;
                             end else response_code <= RESULT_REJECTED;
+                        end
+                        OP_DRAIN_STOP: if (request[319:0] == 0 && !control_held) begin
+                            audio_enable <= 0;
+                            draining <= 1;
+                            phase <= CLEAR_REQUEST;
                         end
                         default: phase <= RESPOND;
                     endcase

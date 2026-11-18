@@ -11,6 +11,27 @@ pub struct ActiveProgram {
     pub frame: u64,
 }
 
+/// Produced only after a matched switch completion has returned from the fabric.
+pub struct FencedSwitch {
+    requested: SwitchProgram,
+    selected: ActiveProgram,
+}
+impl FencedSwitch {
+    pub(super) fn new(requested: SwitchProgram, words: [u32; HOST_PAYLOAD_WORDS]) -> Self {
+        let join = |low, high| u64::from(low) | u64::from(high) << 32;
+        Self {
+            requested,
+            selected: ActiveProgram {
+                frame: join(words[0], words[1]),
+                revision: join(words[2], words[3]),
+            },
+        }
+    }
+    pub(super) fn frame(&self) -> u64 {
+        self.selected.frame
+    }
+}
+
 /// Owns the staged image and retains its predecessor until the fabric memory fence returns.
 pub struct ProgramSession<B> {
     client: Client<B>,
@@ -104,18 +125,25 @@ impl<B: RegisterBus> ProgramSession<B> {
             )),
             time_left,
         )?;
-        let frame = u64::from(response[0]) | u64::from(response[1]) << 32;
-        let revision = u64::from(response[2]) | u64::from(response[3]) << 32;
-        if revision != requested.revision {
+        self.accept_fence(FencedSwitch::new(requested, response))
+    }
+
+    pub fn accept_fence(
+        &mut self,
+        fence: FencedSwitch,
+    ) -> Result<(ActiveProgram, Option<Upload>), Error<B::Error>> {
+        if self.failed
+            || fence.selected.revision != fence.requested.revision
+            || !self
+                .staged()
+                .is_some_and(|image| self.uploaded && descriptor(image) == fence.requested)
+        {
             self.failed = true;
             return Err(Error::UnexpectedResponse);
         }
         let staged = self.staged.take().unwrap();
         self.uploaded = false;
-        Ok((
-            ActiveProgram { revision, frame },
-            self.active.replace(staged),
-        ))
+        Ok((fence.selected, self.active.replace(staged)))
     }
 
     fn exchange(

@@ -229,6 +229,17 @@ impl Status {
     pub fn xrun(&self) {
         self.xruns.fetch_add(1, Ordering::Relaxed);
     }
+    #[cfg(feature = "rtl")]
+    pub(crate) fn observe_fpga(
+        &self,
+        quanta: u32,
+        xruns: u32,
+        dsp: shoop_rt_protocol::DspMeasurement,
+    ) {
+        self.callbacks.store(quanta.into(), Ordering::Relaxed);
+        self.xruns.store(xruns, Ordering::Relaxed);
+        self.record_dsp(dsp);
+    }
     pub fn callback_complete(&self) {
         self.callbacks.fetch_add(1, Ordering::Relaxed);
     }
@@ -800,6 +811,9 @@ impl<L: ProgramLoader> CarrierEndpoint for Endpoint<L> {
         message: ClientMessage,
         out: &mut Outbox,
     ) -> core::result::Result<(), CarrierError> {
+        if self.status.driver().state == DriverRunState::Failed {
+            return Err(CarrierError::Disconnected);
+        }
         if let ClientMessage::Immediate(batch) = message {
             if batch.commands().iter().any(|c| {
                 matches!(
@@ -846,12 +860,37 @@ impl<L: ProgramLoader> CarrierEndpoint for Endpoint<L> {
     fn poll(&mut self, out: &mut Outbox) {
         self.control.set_driver(self.status.driver());
         if self.status.driver().state == DriverRunState::Failed {
-            if !self.failed && out.available(Lane::Reliable) > 0 {
-                let _ = out.push(EngineMessage::Disconnected(
-                    shoop_rt_protocol::DisconnectReason::Fault,
-                ));
-                self.failed = true;
+            if self.failed || !self.flush(out) {
+                return;
             }
+            while !self.control.drain_responses(&mut self.replies) {
+                if !self.flush(out) {
+                    return;
+                }
+            }
+            if !self.flush(out) || out.available(Lane::Reliable) == 0 {
+                return;
+            }
+            if self
+                .pending
+                .as_ref()
+                .is_some_and(|pending| !pending.published)
+            {
+                let pending = self.pending.take().unwrap();
+                let frame = self.status.frame.load(Ordering::Acquire);
+                out.push(Self::response(
+                    pending.batch,
+                    frame,
+                    Code::CannotApply,
+                    None,
+                ))
+                .expect("available failure response slot");
+            }
+            self.failed = out
+                .push(EngineMessage::Disconnected(
+                    shoop_rt_protocol::DisconnectReason::Fault,
+                ))
+                .is_ok();
             return;
         }
         let frame = self.status.frame.load(Ordering::Acquire);

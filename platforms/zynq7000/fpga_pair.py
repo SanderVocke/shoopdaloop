@@ -6,7 +6,11 @@ import json
 import os
 from pathlib import Path
 import secrets
+import select
 import subprocess
+import termios
+import time
+import tty
 
 import boards
 
@@ -62,7 +66,8 @@ def pair(directory, elf, output):
     output.parent.mkdir(parents=True, exist_ok=True)
     if renderer and (directory / "geometry.txt").read_text().strip() != "looping":
         raise ValueError("FPGA renderer requires the looping geometry")
-    write_json(output, {"contract": fpga["contract"], "vivado": fpga["vivado"], "renderer": renderer, "artifacts": {
+    write_json(output, {"contract": fpga["contract"], "vivado": fpga["vivado"], "renderer": renderer,
+                        "deployment": bool(firmware.get("deployment")), "artifacts": {
         name: {"path": os.path.relpath(path, output.parent), "sha256": sha256}
         for name, (path, sha256) in inputs.items()
     }})
@@ -80,15 +85,61 @@ def verify(path):
     return manifest
 
 
-def jtag(manifest_path, server, xsdb):
+def jtag(manifest_path, server, xsdb, uart=None, uart_log=None):
     manifest = verify(manifest_path)
+    if manifest.get("deployment"):
+        raise ValueError("JTAG startup requires the direct-load ELF")
     artifacts = manifest["artifacts"]
     files = [(manifest_path.parent / artifacts[name]["path"]).resolve()
              for name in ["ps7_init.tcl", "zturn_v2.bit", "firmware"]]
     nonce = secrets.randbits(64) or 1
     script = Path(__file__).with_name("fpga_probe.tcl")
-    subprocess.run([xsdb, script, server, *files, str(nonce & 0xffffffff), str(nonce >> 32)],
-                   check=True, timeout=120)
+    command = [xsdb, script, server, *files, str(nonce & 0xffffffff), str(nonce >> 32)]
+    if uart is None:
+        subprocess.run(command, check=True, timeout=120)
+        return
+    marker = b"SHOOP_HOST_READY" if manifest.get("renderer") else b"SHOOP_FPGA_PROBE_READY"
+    capture_uart(command, uart, uart_log, marker)
+
+
+def capture_uart(command, uart, uart_log, marker):
+    uart_log.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(uart, os.O_RDONLY | os.O_NOCTTY | os.O_NONBLOCK)
+    try:
+        tty.setraw(descriptor)
+        attributes = termios.tcgetattr(descriptor)
+        attributes[4:6] = [termios.B115200, termios.B115200]
+        termios.tcsetattr(descriptor, termios.TCSANOW, attributes)
+        termios.tcflush(descriptor, termios.TCIFLUSH)
+        with uart_log.open("wb") as log, subprocess.Popen(command) as process:
+            deadline = time.monotonic() + 120
+            tail = b""
+            ready = False
+            try:
+                while time.monotonic() < deadline:
+                    status = process.poll()
+                    if status not in (None, 0):
+                        raise subprocess.CalledProcessError(status, command)
+                    if status == 0 and ready:
+                        return
+                    if select.select([descriptor], [], [], 0.1)[0]:
+                        data = os.read(descriptor, 8192)
+                        log.write(data)
+                        log.flush()
+                        window = tail + data
+                        if any(failure in window for failure in (
+                            b"FATAL", b"SHOOP_FPGA_OWNER_FAILED", b"SHOOP_FPGA_HOST_UNAVAILABLE",
+                            b"SHOOP_FPGA_PROBE_UNAVAILABLE",
+                        )):
+                            raise RuntimeError(f"FPGA boot failed. See {uart_log}")
+                        ready |= marker in window
+                        tail = window[-64:]
+                raise TimeoutError(f"FPGA boot did not reach {marker.decode()}. See {uart_log}")
+            finally:
+                if process.poll() is None:
+                    process.kill()
+    finally:
+        os.close(descriptor)
 
 
 def main():
@@ -107,6 +158,8 @@ def main():
     jtag_parser.add_argument("manifest", type=Path)
     jtag_parser.add_argument("--server", required=True)
     jtag_parser.add_argument("--xsdb", default="xsdb")
+    jtag_parser.add_argument("--uart", type=Path)
+    jtag_parser.add_argument("--uart-log", type=Path)
     args = parser.parse_args()
     if args.op == "stamp":
         stamp(args.directory, args.tool)
@@ -116,7 +169,9 @@ def main():
         verify(args.manifest)
         print("Verified FPGA pairing")
     else:
-        jtag(args.manifest, args.server, args.xsdb)
+        if (args.uart is None) != (args.uart_log is None):
+            parser.error("--uart and --uart-log are used together")
+        jtag(args.manifest, args.server, args.xsdb, args.uart, args.uart_log)
 
 
 if __name__ == "__main__":

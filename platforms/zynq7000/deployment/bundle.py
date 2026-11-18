@@ -75,6 +75,8 @@ def create(elf, build, key_dir, output, loader_output, board=None, *, validate_f
         if (not validate_firmware or not pair.get("renderer") or firmware["fpga_contract"] != pair["contract"] or
                 artifacts["firmware"]["sha256"] != firmware["elf_sha256"]):
             raise ValueError("FPGA pair and deployment firmware differ")
+        if loader.get("fpga_ps", {}).get("xsa_sha256") != artifacts["zturn_v2.xsa"]["sha256"]:
+            raise ValueError("Build the SD loader with the same XSA as the FPGA pairing")
         raw = output.with_suffix(".fpga.bin")
         bit = fpga_manifest.parent / artifacts["zturn_v2.bit"]["path"]
         payload = bitstream_data(bit.read_bytes())

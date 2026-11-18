@@ -8,7 +8,7 @@ use rt_fpga_reference::{
     state::{ModePlan, ModeStep, apply_mode_command},
     transitions::{LoopId, LoopState, Mode, Operation, TransitionError},
 };
-pub use session::{ActiveProgram, ProgramSession};
+pub use session::{ActiveProgram, FencedSwitch, ProgramSession};
 use shoop_rt_protocol::{
     LoopMode,
     immediate::{

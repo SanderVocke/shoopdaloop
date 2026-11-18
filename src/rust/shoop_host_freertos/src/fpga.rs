@@ -73,11 +73,11 @@ where
                 }
             }
         }
-        task.owner.stop(budget(25))
+        task.owner.stop(budget(250))
     })();
     unsafe { shoop_fpga_irq_stop() };
     if let Err(error) = result {
-        task.owner.fail(budget(25));
+        task.owner.fail();
         task.startup.store(2, Ordering::Release);
         let _ = writeln!(TerminalLog, "SHOOP_FPGA_OWNER_FAILED {error}");
         return -1;
@@ -85,9 +85,9 @@ where
     1
 }
 
-fn reap<B>(handle: &mut Option<*mut Task<B>>) -> Option<bool> {
+fn reap<B>(handle: &mut Option<*mut Task<B>>, cleaned: &mut bool) -> Option<bool> {
     let Some(raw) = *handle else {
-        return Some(true);
+        return Some(*cleaned);
     };
     match unsafe { shoop_stop_fpga_task() } {
         2 => None,
@@ -96,7 +96,8 @@ fn reap<B>(handle: &mut Option<*mut Task<B>>) -> Option<bool> {
                 drop(unsafe { Box::from_raw(raw) });
                 *handle = None;
             }
-            Some(result == 1)
+            *cleaned = result == 1;
+            Some(*cleaned)
         }
     }
 }
@@ -129,6 +130,7 @@ where
         return;
     }
     let mut handle = Some(raw);
+    let mut cleaned = false;
     let started = unsafe { shoop_millis() };
     while startup.load(Ordering::Acquire) == 0
         && unsafe { shoop_millis() }.wrapping_sub(started) < 1000
@@ -137,7 +139,7 @@ where
     }
     if startup.load(Ordering::Acquire) != 1 {
         let _ = writeln!(TerminalLog, "SHOOP_FPGA_HOST_UNAVAILABLE owner startup");
-        while reap(&mut handle).is_none() {
+        while reap(&mut handle, &mut cleaned).is_none() {
             unsafe { shoop_delay(1) };
         }
         return;
@@ -182,8 +184,8 @@ where
                 master_auto_connect: true,
                 loop_smoothing_ms: 0,
             },
-            vec!["FreeRTOS / AMD lwIP; Zynq programmable logic with generated audio".into()],
+            vec!["Zynq FPGA renderer at 48 kHz with FreeRTOS and AMD lwIP".into()],
         )
         .expect("FPGA host settings");
-    serve(service, || reap(&mut handle));
+    serve(service, || reap(&mut handle, &mut cleaned));
 }

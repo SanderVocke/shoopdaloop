@@ -1,9 +1,9 @@
-use super::{apply_plan, clear_plan, gain_value, loop_state};
+use super::{apply_plan, clear_plan, gain_value, loop_state, session::FencedSwitch};
 use crate::host::{Client, Error, RegisterBus, Request, registers::*};
 use crate::target::{ConfigurationWrite, Space};
 use rt_fpga_compiler::Identity;
 use rt_fpga_reference::transitions::LoopId;
-use shoop_rt_protocol::immediate::{ClearPlanned, Code, TransitionPlan};
+use shoop_rt_protocol::immediate::{ClearPlanned, Code, SwitchProgram, TransitionPlan};
 
 /// A checked boundary for modifying active state. The PL faults if the owner does not release it.
 pub struct ControlWindow<'a, B, F> {
@@ -39,6 +39,18 @@ impl<'a, B: RegisterBus, F: FnMut() -> bool> ControlWindow<'a, B, F> {
 
     pub fn release(mut self) -> Result<(), Error<B::Error>> {
         self.send(Request::end_control()).map(|_| ())
+    }
+
+    pub fn switch_program(
+        &mut self,
+        program: SwitchProgram,
+    ) -> Result<FencedSwitch, Error<B::Error>> {
+        let words = self.send(Request::switch_program(self.revision, program))?;
+        let fence = FencedSwitch::new(program, words);
+        if fence.frame() != self.frame {
+            return Err(Error::UnexpectedResponse);
+        }
+        Ok(fence)
     }
 
     pub fn apply_transition(
@@ -91,7 +103,7 @@ impl<'a, B: RegisterBus, F: FnMut() -> bool> ControlWindow<'a, B, F> {
         let Some(base) = id.slot.checked_mul(16).filter(|&base| base <= 65520) else {
             return Err(Error::InvalidRequest);
         };
-        let snapshot = self.send(Request::capture_snapshot(id.slot + 1))?;
+        let snapshot = self.send(Request::capture_loop(id.slot))?;
         if join(snapshot[1], snapshot[2]) != self.frame
             || join(snapshot[3], snapshot[4]) != self.revision
         {
@@ -99,7 +111,7 @@ impl<'a, B: RegisterBus, F: FnMut() -> bool> ControlWindow<'a, B, F> {
         }
         let mut row = [0; 16];
         for (index, words) in row.chunks_mut(HOST_PAYLOAD_WORDS / 2).enumerate() {
-            let address = base + (index * (HOST_PAYLOAD_WORDS / 2)) as u32;
+            let address = (index * (HOST_PAYLOAD_WORDS / 2)) as u32;
             let data = self.send(Request::read_snapshot(
                 snapshot[0],
                 address,

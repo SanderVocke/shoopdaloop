@@ -17,7 +17,7 @@ def generate():
     core, ports = header((AXI / "rtl/media_audio_pipeline_axi.sv").read_text())
     _, mailbox = header((rtl / "host_mailbox.sv").read_text())
     _, dispatch = header((rtl / "host_dispatch.sv").read_text())
-    public_mailbox = {"clk", "reset", "epoch", "fault", "irq"}
+    public_mailbox = {"clk", "reset", "epoch", "fault", "irq", "audio_xruns"}
     public_core = ("m_axi_", "sample_")
     mailbox_ports = {name for _, name in mailbox}
     dispatch_ports = {name for _, name in dispatch}
@@ -29,7 +29,7 @@ def generate():
         "job_enable": "1'b1", "drain_ready": "1'b0",
         "loop_read_ready": "1'b0", "loop_response_valid": "1'b0", "loop_response_error": "1'b0",
         "loop_response_data": "164'b0",
-        "store_cmd_opcode": "4'd2", "store_cmd_start": "64'b0", "store_cmd_length": "64'b0",
+        "store_cmd_start": "64'b0", "store_cmd_length": "64'b0",
         "store_cmd_count": "32'b0", "store_write_valid": "1'b0", "store_write_data": "32'b0",
         "store_read_ready": "1'b0",
     }
@@ -41,7 +41,7 @@ def generate():
             if name == "fault":
                 decl = "output wire "
             public.append((decl.replace("output reg", "output wire"), name))
-        else:
+        elif not name.startswith("quantum_"):
             assert name in dispatch_ports or name.startswith("sync_event_"), name
             local.append((decl, name))
     public.extend((decl.replace("output reg", "output wire"), name)

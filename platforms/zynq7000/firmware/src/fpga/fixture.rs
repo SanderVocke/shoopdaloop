@@ -28,6 +28,7 @@ struct Dispatcher {
     revision: u64,
     frame: u64,
     generation: u32,
+    snapshot_base: usize,
     audio: bool,
     held: bool,
     rows: [u64; 16 * 128],
@@ -57,6 +58,12 @@ impl RegisterBus for Fixture {
             REG_MEDIA_BLOCKS => 31 * 1024,
             #[cfg(feature = "fpga")]
             REG_QUANTUM | REG_CHUNK_FRAMES | REG_BLOCK_CHUNKS => 32,
+            #[cfg(feature = "fpga")]
+            REG_COMPLETED_QUANTA => (self.dispatcher.frame / 32) as u32,
+            #[cfg(feature = "fpga")]
+            REG_PEAK_QUANTUM_CYCLES => 500,
+            #[cfg(feature = "fpga")]
+            REG_AUDIO_XRUNS => 0,
             #[cfg(feature = "fpga")]
             REG_RESPONSE_CODE => self.dispatcher.code,
             #[cfg(feature = "fpga")]
@@ -94,6 +101,8 @@ impl RegisterBus for Fixture {
             }
             REG_RESPONSE_POP if self.tag == value => self.tag = 0,
             #[cfg(feature = "fpga")]
+            REG_ABORT if value == 1 => self.dispatcher.audio = false,
+            #[cfg(feature = "fpga")]
             word if (REG_REQUEST_DATA..REG_REQUEST_PUSH).contains(&word) => {
                 self.dispatcher.request[((word - REG_REQUEST_DATA) / 4) as usize] = value;
             }
@@ -114,17 +123,21 @@ impl Dispatcher {
             u64::from(self.request[offset]) | u64::from(self.request[offset + 1]) << 32
         };
         match operation {
+            OP_STORE_CONFIG if self.request[..2] == [6, 16] => {
+                self.response[1] = 31 * 1024;
+            }
             OP_STORE_CONFIG | OP_CLEAR_VIEW | OP_AUDIO_CONFIG => (),
             OP_CAPTURE_SNAPSHOT => {
                 if self.audio && !self.held {
                     self.frame += 32;
                 }
                 self.generation += 1;
+                self.snapshot_base = self.request[1] as usize * 16;
                 self.response[0] = self.generation;
                 self.response[1..5].copy_from_slice(&frame_revision(self.frame, self.revision));
             }
             OP_READ_SNAPSHOT if self.request[0] == self.generation => {
-                let start = self.request[1] as usize;
+                let start = self.snapshot_base + self.request[1] as usize;
                 let count = self.request[2] as usize;
                 for (index, dest) in self.response.chunks_exact_mut(2).take(count).enumerate() {
                     let word = self.rows[start + index];
@@ -145,6 +158,7 @@ impl Dispatcher {
                 self.response[..4].copy_from_slice(&frame_revision(self.frame, self.revision));
             }
             OP_ENABLE_AUDIO => self.audio = self.request[0] == 1,
+            OP_DRAIN_STOP if !self.held => self.audio = false,
             _ => self.code = RESULT_REJECTED,
         }
     }
@@ -175,6 +189,7 @@ pub(super) fn bus() -> Fixture {
             frame: 0,
             revision: 0,
             generation: 0,
+            snapshot_base: 0,
             audio: false,
             held: false,
             rows: [0; 16 * 128],

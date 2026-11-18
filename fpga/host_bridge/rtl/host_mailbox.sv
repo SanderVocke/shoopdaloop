@@ -27,6 +27,10 @@ module host_mailbox #(
     input wire s_axi_rready,
     input wire [31:0] epoch,
     input wire fault,
+    input wire quantum_done,
+    input wire [31:0] quantum_cycles,
+    input wire [31:0] audio_xruns,
+    output reg host_abort,
     output wire irq,
     output wire command_valid,
     input wire command_ready,
@@ -69,6 +73,7 @@ module host_mailbox #(
     reg [EVENT_INDEX_BITS-1:0] event_head, event_tail;
     reg [EVENT_INDEX_BITS:0] event_count;
     reg [31:0] event_tag;
+    reg [31:0] completed_quanta, peak_quantum_cycles;
 
     wire session_live = epoch != 0 && epoch == live_epoch && !reset;
     wire request_space = session_live && !fault && !command_pending;
@@ -76,6 +81,8 @@ module host_mailbox #(
     wire [WORD_INDEX_BITS-1:0] read_index = WORD_INDEX_BITS'((s_axi_araddr-REG_RESPONSE_DATA) >> 2);
     wire [2:0] event_index = 3'((s_axi_araddr-REG_EVENT_DATA) >> 2);
     wire event_pending = session_live && event_count != 0;
+    wire abort_write = aw_pending && w_pending && write_strobes == 4'hf && write_address == REG_ABORT
+        && session_live && write_data == epoch;
     wire event_pop = aw_pending && w_pending && write_strobes == 4'hf && write_address == REG_EVENT_POP
         && event_pending && write_data == event_tag;
     wire event_push = sync_event_valid && sync_event_ready && (event_count < (EVENT_INDEX_BITS+1)'(EVENT_DEPTH) || event_pop);
@@ -87,6 +94,23 @@ module host_mailbox #(
     assign response_ready = session_live && !response_pending;
     assign irq = session_live && (response_pending || event_pending || fault);
     assign sync_event_ready = session_live;
+
+    always @(posedge clk) begin
+        if (!session_live) begin
+            completed_quanta <= 0;
+            peak_quantum_cycles <= 0;
+            host_abort <= 0;
+        end else begin
+            if (abort_write)
+                host_abort <= 1;
+            if (quantum_done) begin
+                if (completed_quanta != 32'hffffffff)
+                    completed_quanta <= completed_quanta + 1'b1;
+                if (quantum_cycles > peak_quantum_cycles)
+                    peak_quantum_cycles <= quantum_cycles;
+            end
+        end
+    end
 
     always @(posedge clk) begin
         if (event_push)
@@ -153,7 +177,7 @@ module host_mailbox #(
                         s_axi_bresp <= OKAY;
                     if (write_address == REG_RESPONSE_POP && response_pending && write_data == saved_tag)
                         s_axi_bresp <= OKAY;
-                    if (event_pop)
+                    if (event_pop || abort_write)
                         s_axi_bresp <= OKAY;
                 end
             end
@@ -190,6 +214,9 @@ module host_mailbox #(
                     REG_EVENT_TAG: s_axi_rdata <= event_pending ? event_tag : 0;
                     REG_EVENT_REVISION_LOW: s_axi_rdata <= event_pending ? events[event_head][256 +: 32] : 0;
                     REG_EVENT_REVISION_HIGH: s_axi_rdata <= event_pending ? events[event_head][288 +: 32] : 0;
+                    REG_COMPLETED_QUANTA: s_axi_rdata <= completed_quanta;
+                    REG_PEAK_QUANTUM_CYCLES: s_axi_rdata <= peak_quantum_cycles;
+                    REG_AUDIO_XRUNS: s_axi_rdata <= audio_xruns;
                     default: begin
                         if (s_axi_araddr >= REG_RESPONSE_DATA && s_axi_araddr < RESPONSE_END && s_axi_araddr[1:0] == 0)
                             s_axi_rdata <= session_live && response_pending ? saved_data[32*read_index +: 32] : 0;

@@ -1,4 +1,4 @@
-use super::{Error, Mailbox, RegisterBus, Response, SyncEvent, registers::*};
+use super::{Error, Mailbox, Metrics, RegisterBus, Response, SyncEvent, registers::*};
 use crate::target::{ConfigurationWrite, Space};
 
 /// Encoded dispatcher operations. Construction and transmission use fixed-size storage.
@@ -73,12 +73,20 @@ impl Request {
         Self::new(OP_END_CONTROL, &[])
     }
 
+    pub fn drain_stop() -> Self {
+        Self::new(OP_DRAIN_STOP, &[])
+    }
+
     pub fn clear_view(view: u32) -> Self {
         Self::new(OP_CLEAR_VIEW, &[view])
     }
 
     pub fn store_word(space: u8, address: u32, value: u32) -> Self {
         Self::new(OP_STORE_CONFIG, &[0x100 | u32::from(space), address, value])
+    }
+
+    pub fn storage_usage() -> Self {
+        Self::new(OP_STORE_CONFIG, &[6, 16])
     }
 
     #[cfg(feature = "rt-interface")]
@@ -105,6 +113,10 @@ impl Request {
 
     pub fn capture_snapshot(loop_slots: u32) -> Self {
         Self::new(OP_CAPTURE_SNAPSHOT, &[loop_slots])
+    }
+
+    pub fn capture_loop(slot: u32) -> Self {
+        Self::new(OP_CAPTURE_SNAPSHOT, &[1, slot])
     }
 
     pub fn read_snapshot(generation: u32, word: u32, count: u32) -> Self {
@@ -176,5 +188,13 @@ impl<B: RegisterBus> Client<B> {
 
     pub fn sync_event(&mut self) -> Result<Option<SyncEvent>, Error<B::Error>> {
         self.mailbox.sync_event()
+    }
+
+    pub fn metrics(&mut self) -> Result<Metrics, Error<B::Error>> {
+        self.mailbox.metrics()
+    }
+
+    pub fn abort(&mut self) -> Result<(), Error<B::Error>> {
+        self.mailbox.abort()
     }
 }

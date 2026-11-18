@@ -67,6 +67,7 @@ module host_pipeline_axi #(
     input wire s_axi_rready,
     input wire [31:0] epoch,
     output wire fault,
+    input wire [31:0] audio_xruns,
     (* X_INTERFACE_INFO = "xilinx.com:signal:interrupt:1.0 irq INTERRUPT", X_INTERFACE_PARAMETER = "SENSITIVITY LEVEL_HIGH" *)
     output wire irq,
     input wire audio_fault,
@@ -144,6 +145,7 @@ module host_pipeline_axi #(
     (* X_INTERFACE_INFO = "xilinx.com:interface:aximm:1.0 m_axi RREADY" *)
     output wire m_axi_rready
 );
+    wire host_abort;
     wire command_valid;
     wire command_ready;
     wire [31:0] command_tag;
@@ -232,6 +234,7 @@ module host_pipeline_axi #(
     wire [31:0] loop_read_slot;
     wire store_cmd_valid;
     wire store_cmd_ready;
+    wire [3:0] store_cmd_opcode;
     wire [63:0] store_cmd_view;
     wire store_busy;
     wire store_done;
@@ -310,7 +313,6 @@ module host_pipeline_axi #(
         .loop_response_valid(1'b0),
         .loop_response_error(1'b0),
         .loop_response_data(164'b0),
-        .store_cmd_opcode(4'd2),
         .store_cmd_start(64'b0),
         .store_cmd_length(64'b0),
         .store_cmd_count(32'b0),

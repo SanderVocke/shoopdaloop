@@ -37,6 +37,14 @@ pub struct Geometry {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Metrics {
+    pub clock_hz: u32,
+    pub completed_quanta: u32,
+    pub peak_quantum_cycles: u32,
+    pub audio_xruns: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Response {
     pub tag: u32,
     pub code: u32,
@@ -65,11 +73,16 @@ pub enum Error<E> {
 pub struct Mailbox<B> {
     bus: B,
     epoch: u32,
+    clock_hz: u32,
 }
 
 impl<B: RegisterBus> Mailbox<B> {
     pub fn open(bus: B, expected: Contract) -> Result<Self, Error<B::Error>> {
-        let mut device = Self { bus, epoch: 0 };
+        let mut device = Self {
+            bus,
+            epoch: 0,
+            clock_hz: expected.clock_hz,
+        };
         if device.read(REG_ID)? != HOST_ID
             || device.read(REG_VERSION)? != HOST_VERSION
             || device.read(REG_CORE_CLOCK_HZ)? != expected.clock_hz
@@ -169,6 +182,23 @@ impl<B: RegisterBus> Mailbox<B> {
         };
         self.check_epoch()?;
         Ok(geometry)
+    }
+
+    pub fn metrics(&mut self) -> Result<Metrics, Error<B::Error>> {
+        self.check_epoch()?;
+        let metrics = Metrics {
+            clock_hz: self.clock_hz,
+            completed_quanta: self.read(REG_COMPLETED_QUANTA)?,
+            peak_quantum_cycles: self.read(REG_PEAK_QUANTUM_CYCLES)?,
+            audio_xruns: self.read(REG_AUDIO_XRUNS)?,
+        };
+        self.check_epoch()?;
+        Ok(metrics)
+    }
+
+    pub fn abort(&mut self) -> Result<(), Error<B::Error>> {
+        self.check_epoch()?;
+        self.write(REG_ABORT, self.epoch)
     }
 
     fn check_epoch(&mut self) -> Result<(), Error<B::Error>> {

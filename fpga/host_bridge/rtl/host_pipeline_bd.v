@@ -65,6 +65,7 @@ module host_pipeline_bd #(
     input wire s_axi_rready,
     input wire [31:0] epoch,
     output wire fault,
+    input wire [31:0] audio_xruns,
     (* X_INTERFACE_INFO = "xilinx.com:signal:interrupt:1.0 irq INTERRUPT", X_INTERFACE_PARAMETER = "SENSITIVITY LEVEL_HIGH" *)
     output wire irq,
     input wire audio_fault,
@@ -201,6 +202,7 @@ module host_pipeline_bd #(
         .s_axi_rready(s_axi_rready),
         .epoch(epoch),
         .fault(fault),
+        .audio_xruns(audio_xruns),
         .irq(irq),
         .audio_fault(audio_fault),
         .audio_enable(audio_enable),

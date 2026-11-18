@@ -25,7 +25,8 @@ use shoop_rt_protocol::{
         ClearPlanned, Code, Command, CommandRecord, SwitchProgram, TransitionMode, COMMANDS,
     },
     snapshot::{self, Record},
-    DriverRunState, DriverStatus, LoopSlotId, Peaks, SlotId, StateRecord, Telemetry, TimingState,
+    DriverRunState, DriverStatus, DspMeasurement, LoopSlotId, Peaks, SlotId, StateRecord,
+    Telemetry, TimingState,
 };
 use shoop_rt_transport::rt;
 
@@ -55,6 +56,7 @@ pub struct Owner<B> {
     audio_enabled: bool,
     frame: u64,
     published: u64,
+    storage_frame: u64,
 }
 
 pub fn prepare<B: RegisterBus>(
@@ -83,7 +85,7 @@ where
             && geometry.blocks != 0,
         "unsupported looping hardware geometry: {geometry:?}"
     );
-    let (control, execution) = prepare_control(limits.quantum, driver, limits.quantum)?;
+    let (control, execution) = prepare_control(limits.quantum, driver, 2 * limits.quantum)?;
     let (images, owner) = image_channel(limits, geometry.chunk_frames);
     let status = Arc::new(Status::new(driver));
     let endpoint = Endpoint::new(control, images, limits.quantum, status.clone());
@@ -107,6 +109,7 @@ where
             audio_enabled: false,
             frame: 0,
             published: 0,
+            storage_frame: 0,
         },
     ))
 }
@@ -175,7 +178,7 @@ where
     pub fn stop(&mut self, mut within_budget: impl FnMut() -> bool) -> Result<()> {
         device_result(request(
             self.session.client(),
-            Request::enable_audio(false),
+            Request::drain_stop(),
             &mut within_budget,
         ))?;
         self.audio_enabled = false;
@@ -186,8 +189,14 @@ where
         Ok(())
     }
 
-    pub fn fail(&mut self, mut within_budget: impl FnMut() -> bool) {
-        let _ = self.stop(&mut within_budget);
+    pub fn fail(&mut self) {
+        let _ = self.session.client().abort();
+        self.execution.commands.begin_callback();
+        while let Some(group) = self.execution.commands.pop() {
+            let header = group.header.complete(self.frame, Code::CannotApply);
+            group.respond(header, |command| command.complete(Code::CannotApply));
+        }
+        // A failing guest retains the PL's assigned DDR region until full hardware reset.
         self.status.update_driver(DriverStatus {
             state: DriverRunState::Failed,
             ..self.driver
@@ -213,7 +222,30 @@ where
         if updated
             || self.frame.saturating_sub(self.published) >= u64::from(self.driver.sample_rate / 30)
         {
+            let metrics = device_result(self.session.client().metrics())?;
+            self.status.observe_fpga(
+                metrics.completed_quanta,
+                metrics.audio_xruns,
+                DspMeasurement::FpgaQuantum {
+                    cycles: metrics.peak_quantum_cycles.into(),
+                    clock_hz: metrics.clock_hz,
+                    frames: self.geometry.quantum,
+                    sample_rate: self.driver.sample_rate,
+                },
+            );
             self.publish(&mut within_budget)?;
+        }
+        if self.frame.saturating_sub(self.storage_frame) >= self.status.usage_interval() {
+            let storage = device_result(request(
+                self.session.client(),
+                Request::storage_usage(),
+                &mut within_budget,
+            ))?;
+            self.status.publish_storage(StorageUsage {
+                audio_blocks: (storage[0].into(), storage[1].into()),
+                metadata_pages: Some((storage[2].into(), storage[3].into())),
+            });
+            self.storage_frame = self.frame;
         }
         Ok(())
     }
@@ -398,10 +430,12 @@ where
             };
             *record = record.complete(code);
         }
+        let fence = switching
+            .map(|next| device_result(window.switch_program(next)))
+            .transpose()?;
         device_result(window.release())?;
-        if let Some(next) = switching {
-            let (selected, retired) =
-                device_result(self.session.activate(next, &mut *within_budget))?;
+        if let Some(fence) = fence {
+            let (selected, retired) = device_result(self.session.accept_fence(fence))?;
             self.retired = retired.map(|upload| upload.image);
             self.select_rows();
             self.ready = None;

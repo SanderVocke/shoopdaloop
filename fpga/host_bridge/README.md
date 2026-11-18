@@ -40,7 +40,8 @@ fabric, checks DDR, then boots the probe on CPU0 with fresh boot identity.
 
 ```sh
 python3 platforms/zynq7000/fpga_pair.py jtag work/zturn-v2/diagnostic-pair.json \
-  --server TCP:127.0.0.1:3121
+  --server TCP:127.0.0.1:3121 --uart /dev/ttyUSB0 \
+  --uart-log work/zturn-v2/diagnostic-uart.log
 ```
 
 Expect `SHOOP_FPGA_PROBE_READY` and `SHOOP_FPGA_PROBE_RETURNED` on UART. The
@@ -62,6 +63,32 @@ cargo test --locked -p shoop_rt_host_marlin --features sim --test mailbox_endpoi
 Use `SHOOP_ZYNQ_FPGA=1 cargo run --locked -p shoop_host --no-default-features
 --example zynq_probe -- PROFILE.json` to run the authenticated FPGA smoke
 against the TCP endpoints in the profile. This test shuts down the host.
+Set `SHOOP_ZYNQ_FPGA_BENCH_SECONDS=1800` to include a 64-loop recording and
+playback run. It changes the graph while playback continues, sends repeated
+authenticated management requests over Ethernet and reports completion time,
+xruns, control latency and FreeRTOS task CPU use.
+
+## Provisional Pmod I²S2 adapter
+
+Append `looping i2s` after `bitstream` when building with Vivado. The
+schematic marked Ver 1 ties J11 bank 13 to 3.3 V. Use the Pmod in ADC slave
+mode with JP1 at SLV. Supply 3.3 V and a common ground. One external
+12.288 MHz oscillator drives the FPGA audio reference and both Pmod MCLK
+inputs. The FPGA generates 3.072 MHz SCLK and 48 kHz LRCLK. The current
+graph consumes the left ADC channel and drives both DAC channels.
+
+| Signal | MYIR J11 | FPGA ball | Pmod J1 |
+| --- | --- | --- | --- |
+| 12.288 MHz reference | 7 | U7 | 1 and 7 |
+| SCLK | 11 | T9 | 3 and 9 |
+| LRCLK | 13 | U10 | 2 and 8 |
+| DAC data | 17 | Y7 | 4 |
+| ADC data | 19 | Y6 | 10 |
+| Common ground | 2 | — | 5 and 11 |
+
+Confirm the populated board, power and connector orientation at the bench.
+The physical adapter uses a dedicated clock-capable input and the audio-bank
+crossing. The batch build exports timing, CDC and bus-skew reports. [MYIR schematic](https://www.myirtech.com/down-load1.asp?id=1027) · [Digilent reference manual](https://media.digikey.com/pdf/Data%20Sheets/Digilent%20PDFs/Pmod_I2S2_RM_Web.pdf)
 
 ## Signed SD image
 
@@ -71,16 +98,16 @@ device credentials and the deployment signing key in private files. The
 loader verifies both hashes before programming the fabric and starting ARM.
 
 ```sh
-python3 platforms/zynq7000/deployment/build_boot.py --board zturn-v2
-python3 platforms/zynq7000/build.py --board zturn-v2 --app host --fpga --deployment --build-id zturn-fpga-v5
+python3 platforms/zynq7000/deployment/build_boot.py --board zturn-v2 --fpga-build work/zturn-v2/route
+python3 platforms/zynq7000/build.py --board zturn-v2 --app host --fpga --deployment --build-id zturn-fpga
 python3 platforms/zynq7000/fpga_pair.py pair work/zturn-v2/route \
   work/zynq/boards/zturn-v2/build/host-deployment-fpga.elf work/zturn-v2/sd/pair.json
 python3 platforms/zynq7000/deployment/bundle.py --board zturn-v2 \
-  --elf work/zynq/boards/zturn-v2/build/host-deployment-fpga.elf --build-id zturn-fpga-v5 \
+  --elf work/zynq/boards/zturn-v2/build/host-deployment-fpga.elf --build-id zturn-fpga \
   --key-dir "$SHOOP_SIGNING_KEYS" --fpga-pair work/zturn-v2/sd/pair.json \
   --output work/zturn-v2/sd/shoop.itb --loader-output work/zturn-v2/sd/loader
 python3 platforms/zynq7000/deployment/card.py --board zturn-v2 \
-  --build-id zturn-fpga-v5 --boot-files work/zturn-v2/sd/loader \
+  --build-id zturn-fpga --boot-files work/zturn-v2/sd/loader \
   --bundle work/zturn-v2/sd/shoop.itb --credential-file "$SHOOP_DEVICE_CREDENTIAL" \
   --output work/zturn-v2/sd/card.img
 python3 platforms/zynq7000/tests/fpga_sd.py work/zturn-v2/sd

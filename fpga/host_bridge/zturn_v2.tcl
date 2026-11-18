@@ -1,14 +1,16 @@
-if {$argc ni {3 4}} {
-    error "usage: vivado -mode batch -source fpga/host_bridge/zturn_v2.tcl -tclargs OUTPUT PS_PROPERTIES {generate|bitstream} ?{diagnostic|looping}?"
+if {$argc ni {3 4 5}} {
+    error "usage: vivado -mode batch -source fpga/host_bridge/zturn_v2.tcl -tclargs OUTPUT PS_PROPERTIES {generate|bitstream} ?{diagnostic|looping}? ?{generated|i2s}?"
 }
 set root [file normalize [file join [file dirname [info script]] ../..]]
 set output [file normalize [lindex $argv 0]]
 set ps_properties [file normalize [lindex $argv 1]]
 set stage [lindex $argv 2]
-set geometry [expr {$argc == 4 ? [lindex $argv 3] : "diagnostic"}]
+set geometry [expr {$argc >= 4 ? [lindex $argv 3] : "diagnostic"}]
+set audio_mode [expr {$argc == 5 ? [lindex $argv 4] : "generated"}]
 set serial_synth [expr {[info exists ::env(SHOOP_VIVADO_SERIAL_SYNTH)] && $::env(SHOOP_VIVADO_SERIAL_SYNTH) eq "1"}]
 if {$stage ni {generate bitstream}} {error "Unknown board build stage $stage"}
 if {$geometry ni {diagnostic looping}} {error "Unknown bridge geometry $geometry"}
+if {$audio_mode ni {generated i2s}} {error "Unknown audio mode $audio_mode"}
 set channel [open $ps_properties r]
 set preset [read $channel]
 close $channel
@@ -21,6 +23,9 @@ file copy -force $ps_properties [file join $output ps-properties.txt]
 file copy -force [file join $root fpga host_bridge registers.json] [file join $output fpga-abi.json]
 set channel [open [file join $output geometry.txt] w]
 puts $channel $geometry
+close $channel
+set channel [open [file join $output audio.txt] w]
+puts $channel $audio_mode
 close $channel
 set profile [file join $output board]
 exec python3 [file join $root platforms zynq7000 boards.py] --board zturn-v2 --output $profile
@@ -54,6 +59,11 @@ foreach source {audio_lane_ram.sv audio_io.sv} {
 foreach source {host_mailbox.sv host_dispatch.sv host_pipeline_axi.sv host_pipeline_bd.v host_generated_audio.v} {
     add_files [file join $host $source]
 }
+if {$audio_mode eq "i2s"} {
+    add_files [file join $root fpga audio_io rtl i2s_duplex.sv]
+    add_files [file join $host host_i2s_audio.v]
+    add_files -fileset constrs_1 [file join $root fpga host_bridge zturn_v2_i2s.xdc]
+}
 set_property include_dirs [list [file join $root fpga state_processor rtl]] [current_fileset]
 update_compile_order -fileset sources_1
 
@@ -80,8 +90,16 @@ if {$geometry eq "looping"} {
         CONFIG.BUFFERS 512 CONFIG.VIEWS 512 CONFIG.CHUNK_FRAMES 32 CONFIG.BLOCK_CHUNKS 32 \
         CONFIG.SLOTS [expr {31*1024*1024/32}]] $core
 }
-set audio [create_bd_cell -type module -reference host_generated_audio audio]
+set audio_module [expr {$audio_mode eq "i2s" ? "host_i2s_audio" : "host_generated_audio"}]
+set audio [create_bd_cell -type module -reference $audio_module audio]
 set_property CONFIG.CORE_CLOCK_HZ [expr {$clock_hz}] $audio
+if {$audio_mode eq "i2s"} {
+    foreach {name direction type} {audio_ref I clk i2s_adc_data I data i2s_bclk O data i2s_lrclk O data i2s_dac_data O data} {
+        set port [create_bd_port -dir $direction -type $type $name]
+        if {$type eq "clk"} {set_property CONFIG.FREQ_HZ 12288000 $port}
+        connect_bd_net $port [get_bd_pins audio/$name]
+    }
+}
 create_bd_cell -type ip -vlnv xilinx.com:ip:proc_sys_reset:5.0 reset
 set_property CONFIG.C_AUX_RESET_HIGH 1 [get_bd_cells reset]
 create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect:2.1 gp0
@@ -104,6 +122,7 @@ connect_bd_net [get_bd_pins one/dout] [get_bd_pins reset/dcm_locked]
 connect_bd_net [get_bd_pins boot_epoch/dout] [get_bd_pins core/epoch] [get_bd_pins audio/epoch]
 connect_bd_net [get_bd_pins core/irq] [get_bd_pins ps/IRQ_F2P]
 connect_bd_net [get_bd_pins core/audio_enable] [get_bd_pins audio/enable]
+connect_bd_net [get_bd_pins audio/missed_deadlines] [get_bd_pins core/audio_xruns]
 connect_bd_net [get_bd_pins core/fault] [get_bd_pins audio/process_fault]
 foreach name {audio_fault quantum_valid quantum_ready quantum_done sample_input_read sample_input_address
     sample_input_data sample_output_write sample_output_address sample_output_data} {
@@ -145,6 +164,11 @@ if {$serial_synth} {
     add_files -fileset utils_1 -norecurse $hook
     set_property STEPS.SYNTH_DESIGN.TCL.PRE $hook [get_runs synth_1]
 }
+if {$audio_mode eq "i2s"} {
+    set hook [file join $root fpga host_bridge zturn_v2_i2s_cdc.tcl]
+    add_files -fileset utils_1 -norecurse $hook
+    set_property STEPS.OPT_DESIGN.TCL.PRE $hook [get_runs impl_1]
+}
 launch_runs impl_1 -to_step write_bitstream -jobs 4
 wait_on_run impl_1
 if {[get_property PROGRESS [get_runs impl_1]] ne "100%"} {error "Vivado implementation failed"}
@@ -152,6 +176,9 @@ open_run impl_1
 report_timing_summary -file [file join $output timing.rpt]
 report_route_status -file [file join $output route_status.rpt]
 report_cdc -file [file join $output cdc.rpt]
+if {$audio_mode eq "i2s"} {
+    report_bus_skew -file [file join $output bus_skew.rpt]
+}
 report_utilization -hierarchical -file [file join $output utilization.rpt]
 report_drc -file [file join $output drc.rpt]
 if {[get_property SLACK [get_timing_paths -delay_type max -max_paths 1]] < 0 ||
