@@ -20,13 +20,14 @@ pub struct AppArgs {
     #[arg(long)]
     pub log_file: Option<std::path::PathBuf>,
     #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long)]
+    #[arg(help_heading = "Remote Host", long)]
     pub endpoint: Option<std::net::SocketAddr>,
     #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long)]
+    #[arg(help_heading = "Remote Host", long)]
     pub export_profile: Option<std::path::PathBuf>,
     #[cfg(not(target_arch = "wasm32"))]
     #[arg(
+        help_heading = "Remote Host",
         long = "host-profile",
         visible_alias = "remote-profile",
         group = "host_target",
@@ -35,10 +36,11 @@ pub struct AppArgs {
     pub remote_profile: Option<std::path::PathBuf>,
     #[cfg(not(target_arch = "wasm32"))]
     /// Connect to a host's data or management address (HOST:PORT).
-    #[arg(long, group = "host_target", conflicts_with_all = ["audio_options", "backend"])]
+    #[arg(help_heading = "Remote Host", long, group = "host_target", conflicts_with_all = ["audio_options", "backend"])]
     pub host_address: Option<String>,
     #[cfg(not(target_arch = "wasm32"))]
     #[arg(
+        help_heading = "Remote Host",
         long,
         hide = true,
         group = "host_target",
@@ -47,11 +49,16 @@ pub struct AppArgs {
     )]
     pub host_stdin: bool,
     #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long, requires = "host_target")]
+    #[arg(help_heading = "Remote Host", long, requires = "host_target")]
     pub ui_only: bool,
     #[cfg(not(target_arch = "wasm32"))]
     /// Shut down the selected ownerless host using current management authority.
-    #[arg(long, requires = "host_target", conflicts_with = "ui_only")]
+    #[arg(
+        help_heading = "Remote Host",
+        long,
+        requires = "host_target",
+        conflicts_with = "ui_only"
+    )]
     pub shutdown_host: bool,
     /// Open a .shoop session from a filesystem path or URL on startup.
     #[arg(long)]
@@ -69,10 +76,10 @@ pub struct AppArgs {
     pub tracing_smoke_test: bool,
     /// Execution backend for a newly started host: native, rust-fpga or rtl-sim.
     #[cfg_attr(not(target_arch = "wasm32"), arg(conflicts_with = "host_target"))]
-    #[arg(long, value_parser = |value: &str| value.parse::<shoop_app_api::BackendType>())]
+    #[arg(help_heading = "Backend", long, value_parser = |value: &str| value.parse::<shoop_app_api::BackendType>())]
     pub backend: Option<shoop_app_api::BackendType>,
     /// Session delivery: in_process, socket (recoverable) or shared_memory (restart required).
-    #[arg(long = "session-transport", visible_alias = "engine-transport", value_parser = |value: &str| value.parse::<shoop_egui::EngineTransportKind>())]
+    #[arg(help_heading = "Remote Host", long = "session-transport", visible_alias = "engine-transport", value_parser = |value: &str| value.parse::<shoop_egui::EngineTransportKind>())]
     pub engine_transport: Option<shoop_egui::EngineTransportKind>,
     #[cfg(not(target_arch = "wasm32"))]
     /// Validate packaged external built-in scripts and exit.
@@ -470,7 +477,7 @@ mod native_tests {
                 "shoopdaloop",
                 "--session-transport",
                 transport,
-                "--audio-driver",
+                "--driver",
                 "jack",
                 "--jack-client-name",
                 "Live",
@@ -494,7 +501,7 @@ mod native_tests {
         for target in ["--host-address", "--host-profile", "--remote-profile"] {
             assert!(AppArgs::try_parse_from([
                 "shoopdaloop",
-                "--audio-driver",
+                "--driver",
                 "jack",
                 target,
                 "existing-host",
@@ -503,7 +510,7 @@ mod native_tests {
         }
         let original = [
             "--session-transport=socket",
-            "--audio-driver=jack",
+            "--driver=jack",
             "--jack-client-name",
             "Live",
         ];

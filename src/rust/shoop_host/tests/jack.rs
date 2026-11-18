@@ -76,7 +76,7 @@ fn standalone_cli_publishes_session_ports_without_a_fixed_bank() {
     let mut child = ChildOwner(
         std::process::Command::new(env!("CARGO_BIN_EXE_shoop_host"))
             .args([
-                "--audio-driver",
+                "--driver",
                 "jack",
                 "--jack-client-name",
                 "CLI-Studio",
