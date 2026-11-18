@@ -17,6 +17,17 @@ Retained identities must keep compatible state roles. Revisions and
 slot generations use checked increments. Cancellation burns their identifiers;
 it cannot make an old image current again.
 
+Graph compilation supplies stable value bindings by owner (strip, loop or bus),
+purpose and channel. Continuing loop media channel sets must match; incompatible
+channel changes require a new loop identity. Smoothing histories are independent
+per channel. Immutable coefficient identities include their value, so changing a
+gain, balance or mute stages fresh configuration without writing active RAM.
+Unchanged coefficients and runtime loop gain values remain owned and untouched.
+Media views use the independently allocated view-state addresses, not loop cursor
+slots. Reference, browser and Marlin media tables match the state-value capacity.
+Only fresh views are prepared; background reclamation inspects actual active
+media operands before clearing an unused view.
+
 `RustTarget::build_image` and `RtlTarget::build_image` lower the same logical
 program using that layout. Only new allocations receive initializers. Carried
 RAM values are never copied from compiler defaults or snapshots. Sync source,

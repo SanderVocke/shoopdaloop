@@ -128,6 +128,18 @@ impl Pipeline {
     pub fn state(&self) -> &StateProcessor {
         &self.state
     }
+    pub fn uses_media_view(&self, view: crate::storage::ViewId) -> bool {
+        self.program.instructions.iter().any(|instruction| {
+            let address = match instruction {
+                crate::state::Instruction::ProcessLogicalPlayback { view, .. }
+                | crate::state::Instruction::ProcessLogicalCapture { view, .. }
+                | crate::state::Instruction::ProcessLoopPlayback { view, .. }
+                | crate::state::Instruction::ProcessLoopCapture { view, .. } => *view,
+                _ => return false,
+            };
+            self.state.read(address).ok().and_then(|v| v.word().ok()) == Some(view.0 as u64)
+        })
+    }
     pub fn program(&self) -> &Program {
         &self.program
     }

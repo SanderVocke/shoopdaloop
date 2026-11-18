@@ -6,7 +6,8 @@ job and media processors. It accepts f32 input/output blocks, converts complete
 quanta to/from FPGA fixed-point samples, and never sleeps or opens a device.
 
 A prepared quantum adapter adds one quantum of latency and retains partial input.
-The first physical input supplies the supported mono graph; its stereo result
+The fixed driver exposes one physical input and two outputs. The compiler can
+route these through multichannel internal loops, strips and buses; the result
 feeds the first two outputs and extra device outputs are silent. A missing input
 is silence. MIDI remains unsupported by this execution profile.
 

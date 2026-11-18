@@ -1,4 +1,4 @@
-//! Restricted graph compilation and target lowering, independent of execution and transport.
+//! Graph compilation and target lowering, independent of execution and transport.
 #![no_std]
 #![forbid(unsafe_code)]
 extern crate alloc;
@@ -74,6 +74,29 @@ pub enum Operation {
         port: u32,
     },
 }
+/// Stable ownership of persistent values, independent of instruction and allocation order.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct StateKey {
+    pub owner: shoop_graph::Owner,
+    pub role: StateRole,
+    pub channel: u32,
+}
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum StateRole {
+    Gain,
+    View,
+    Smoothing(u32),
+    /// Immutable coefficients receive a new slot when their value changes.
+    Coefficient(i32),
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct StateBinding {
+    pub key: StateKey,
+    pub address: u32,
+}
 /// Logical state/buffer slots. Targets return their actual locations in their artifacts.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -101,6 +124,7 @@ pub struct LogicalStateProgram {
     pub sync_pass: Vec<Identity>,
     pub audio_pass: Vec<Operation>,
     pub initial_state: Vec<InitialValue>,
+    pub state_bindings: Vec<StateBinding>,
     pub loops: Vec<Loop>,
     pub bindings: Vec<LoopBinding>,
     pub jobs_per_quantum: u32,
@@ -256,6 +280,7 @@ impl FixedProgram {
                     sync_pass: (0..count).map(id).collect(),
                     audio_pass,
                     initial_state,
+                    state_bindings: vec![],
                     loops: (0..count)
                         .map(|i| Loop {
                             id: id(i),
@@ -302,6 +327,7 @@ impl FixedProgram {
                         },
                         Operation::Output { source: 2, port: 0 },
                     ],
+                    state_bindings: vec![],
                     initial_state: vec![
                         InitialValue::Smoothing {
                             destination: 2,
@@ -348,6 +374,10 @@ impl LogicalStateProgram {
     pub fn validate_logical(&self, limits: ProgramLimits) -> Result<(), CompileError> {
         if self.loops.len() as u64 > u64::from(limits.loop_slots) {
             return Err(CompileError::Capacity(Resource::Loops));
+        }
+        if !self.state_bindings.is_empty() && self.state_bindings.len() != self.initial_state.len()
+        {
+            return Err(CompileError::InvalidProgram);
         }
         self.validate(ProgramLimits {
             loop_slots: u32::MAX,
@@ -522,6 +552,31 @@ impl LogicalStateProgram {
                     if port >= r.output_ports {
                         return Err(InvalidProgram);
                     }
+                }
+            }
+        }
+        if !self.state_bindings.is_empty() {
+            if self.state_bindings.len() > self.initial_state.len() {
+                return Err(InvalidProgram);
+            }
+            for (i, binding) in self.state_bindings.iter().enumerate() {
+                if self.state_bindings[..i]
+                    .iter()
+                    .any(|b| b.key == binding.key || b.address == binding.address)
+                {
+                    return Err(InvalidProgram);
+                }
+                let value = state(binding.address)?;
+                if !matches!(
+                    (binding.key.role, value),
+                    (StateRole::View, InitialValue::MediaView(_))
+                        | (
+                            StateRole::Gain | StateRole::Coefficient(_),
+                            InitialValue::Ramp(_)
+                        )
+                        | (StateRole::Smoothing(_), InitialValue::Smoothing { .. })
+                ) {
+                    return Err(InvalidProgram);
                 }
             }
         }

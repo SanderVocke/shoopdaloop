@@ -257,9 +257,9 @@ fn browser_uploads_large_graphs_in_bounded_groups_and_reports_resource_refusals(
     commands.clear();
     commands.push(Command::BeginGraph {
         quantum: Q as u32,
-        loops: 21,
+        loops: 22,
     });
-    commands.extend((200..221).map(|slot| {
+    commands.extend((200..222).map(|slot| {
         Command::ConfigureLoop(GraphLoop {
             slot,
             generation: 1,

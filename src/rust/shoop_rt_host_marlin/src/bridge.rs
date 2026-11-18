@@ -76,11 +76,7 @@ impl ProgramLoader for Images {
         logical: &LogicalStateProgram,
         layout: Layout,
     ) -> Result<SwitchProgram> {
-        let views = layout
-            .loops
-            .iter()
-            .map(|l| u64::from(l.physical.slot))
-            .collect::<Vec<_>>();
+        let views = layout.media_views(logical);
         let image = RtlTarget {
             capacities: self.limits(),
             media_views: &views,

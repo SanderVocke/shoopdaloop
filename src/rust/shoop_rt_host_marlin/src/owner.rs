@@ -52,8 +52,7 @@ impl Upload {
         let writes = image.writes(128);
         let views = image
             .layout
-            .new_loops()
-            .map(|id| id.slot)
+            .new_media_views()
             .collect::<Vec<_>>()
             .into_iter();
         Self {
@@ -773,7 +772,7 @@ pub(super) fn run(
     started: SyncSender<std::result::Result<(), String>>,
 ) -> Result<()> {
     let slots = u64::from(memory_mb) * 1024 * 1024 / 4;
-    let geometry = Geometry::new([32, slots, 1], 128);
+    let geometry = Geometry::new([64, slots, 1], 128);
     let built = design(&geometry).build(&rt_fpga_rtl::root().join("work/marlin-host"));
     let compiled = match built {
         Ok(c) => c,
@@ -816,10 +815,10 @@ pub(super) fn run(
         owner.tick()?;
         owner.sim.model.set("reset", 0);
         owner.tick()?;
-        for view in 0..32 {
+        for view in 0..64 {
             owner.write("store_cfg", 1, view, 1)?;
         }
-        for (address, value) in [(0, 32), (1, 0), (2, 0), (3, geometry.blocks())] {
+        for (address, value) in [(0, 64), (1, 0), (2, 0), (3, geometry.blocks())] {
             owner.write("store_cfg", 0, address, value)?;
         }
         owner.publish(&mut execution, false)?;

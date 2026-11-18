@@ -4784,6 +4784,7 @@ dependencies = [
 name = "rt_fpga_compiler"
 version = "0.3.0"
 dependencies = [
+ "libm",
  "serde",
  "shoop_graph",
  "shoop_wasm_test_support",
@@ -5703,6 +5704,7 @@ dependencies = [
  "libm",
  "profiling_protocol",
  "rt_fpga_compiler",
+ "rt_fpga_reference",
  "rt_profiling",
  "shoop_app_api",
  "shoop_backend",

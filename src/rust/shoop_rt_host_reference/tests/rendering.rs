@@ -168,9 +168,9 @@ fn actual_input_records_and_plays_through_quantum_adapter_without_callback_alloc
     assert_eq!(step(&mut renderer, 0.), [0.125; Q]);
     let mut too_large = vec![Command::BeginGraph {
         quantum: Q as u32,
-        loops: 21,
+        loops: 22,
     }];
-    too_large.extend((0..21).map(|slot| {
+    too_large.extend((0..22).map(|slot| {
         Command::ConfigureLoop(GraphLoop {
             slot,
             generation: 1,

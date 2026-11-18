@@ -34,11 +34,7 @@ impl<P: ImagePort> ProgramLoader for Images<P> {
         logical: &LogicalStateProgram,
         layout: Layout,
     ) -> Result<SwitchProgram> {
-        let views = layout
-            .loops
-            .iter()
-            .map(|l| u64::from(l.physical.slot))
-            .collect::<Vec<_>>();
+        let views = layout.media_views(logical);
         let mut target = RustTarget::new(&views);
         target.limits = self.limits();
         let image = target.build_image(logical, layout)?;
@@ -49,8 +45,8 @@ impl<P: ImagePort> ProgramLoader for Images<P> {
         );
         let unused = image
             .layout
-            .new_loops()
-            .map(|id| ViewId(id.slot as usize))
+            .new_media_views()
+            .map(|view| ViewId(view as usize))
             .collect();
         let prepared = PreparedProgram::new(image, unused).map_err(|e| anyhow::anyhow!("{e:?}"))?;
         let descriptor = prepared.descriptor();
@@ -72,8 +68,8 @@ pub fn decode_image(bytes: &[u8]) -> Result<Box<PreparedProgram>> {
     let image: ProgramImage = serde_json::from_slice(bytes)?;
     let unused = image
         .layout
-        .new_loops()
-        .map(|id| ViewId(id.slot as usize))
+        .new_media_views()
+        .map(|view| ViewId(view as usize))
         .collect();
     PreparedProgram::new(image, unused).map_err(|e| anyhow::anyhow!("worklet image: {e:?}"))
 }

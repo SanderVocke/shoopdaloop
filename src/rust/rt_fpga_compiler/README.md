@@ -1,75 +1,111 @@
-# Shared state-program preparation
+# Shared graph compiler and state-program preparation
 
-This `no_std` crate contains the target-independent state-program description and
-the `StateProgramTarget` trait. It has no dependency on the Rust processor model,
-RTL codecs, Marlin, application graphs or runtime transports.
+This `no_std` crate compiles `shoop_graph::GraphView` into a
+`LogicalStateProgram`. It depends on the shared graph vocabulary, not the control
+mirror, Rust processor model, RTL codecs, Marlin or runtime transports.
 
-`FixedProgram::emit` retains the prepared fixture configurations:
+## Graph compilation
 
-- `MonoLoops`: one or two initially empty mono loops, one input, a gain and output
-  per loop, logical playback/capture, and loop 1 synchronized to loop 0.
-- `SyncSmoothing`: the existing single-loop sync/input/gain/smoothing/output
-  configuration, including its initial ramp and smoothing controls.
+`graph::compile(view, CompileContext { quantum, limits })` captures one consistent
+view. Logical IDs are names, not allocation addresses. Collection iteration order
+does not select the execution order or change the generated program.
 
-Both support Q=1/16/32/64/128. Target capacities can impose a smaller envelope.
-`graph::GraphDescription::compile` also accepts one to sixteen initially empty
-mono loops. It schedules a source-before-dependent sync pass independently of the
-audio pass, rejects cycles except self sync, and emits input/silence, playback,
-gain, capture, summation and stereo Master output operations. Every buffer is
-written once per quantum, including intermediate sums. Input and output routing
-are explicit per loop. This restricted graph has no processors, MIDI or smoothing.
+The compiler has three stages:
 
-The emitted `LogicalStateProgram` describes semantic operations, logical state
-and buffer slots, loop identities/sync relationships, initial values, resource
-requirements and control/meter bindings. It contains no packed instruction words
-or physical state addresses. Validation checks the prepared resource envelope,
-source-before-dependent sync order and referenced state/buffer types.
-The logical representation also permits a loop-free program, used to retain
-processing time while no loop states are owned.
+1. Validate identities, channel positions, connection directions, controls and
+   references. Unsupported execution features retain an explicit feature error.
+2. Expand channel connections into processing dependencies: input summation,
+   strip input controls, per-channel playback and capture, loop gain/balance and
+   smoothing, strip output summation/controls, buses and host output summation.
+   Schedule loop synchronization separately, source before dependent; self sync is
+   permitted. Playback reads existing media, so capture is a sink rather than a
+   same-quantum playback dependency.
+3. Resolve port aliases, remove unused computations and schedule dependencies
+   deterministically. Identical computations share results. Assign scratch
+   buffers and count emitted instructions, worst-case jobs, persistent values,
+   histories, loop instances and host channels against target limits.
 
-`StateProgramTarget` supplies limits and an associated `CompiledProgram` type.
-`compile(fixed, target)` emits, validates and builds one fixture. Call `emit` once
-and pass the same logical program to multiple targets when comparing executions.
+Each computed scratch buffer is written once per quantum, as required by both
+job processors. There is no scratch reuse or in-place overwrite. A loop's first
+channel meter remains readable after all jobs complete. An empty graph still
+emits a silence instruction so it is an executable program.
 
-| Target | Implementation | Compiled result |
+Supported graphs have direct audio strips and loops, any channel count that fits
+resources, multiple loops per strip, multiple buses, channel-specific fan-in,
+fan-out and cross-channel connections. Gains, stereo balance, mute, manual input
+monitoring and loop boundary smoothing use existing processor operations. Stereo
+balance applies only to two-channel groups, matching the native engine. Explicit
+loop input/output ports are also accepted; otherwise loops capture their strip's
+processed input and contribute playback to its output. Unconnected inputs are
+silence. No particular bus is required and Master is not hardwired.
+
+MIDI use, dry/wet or hosted processors, composite execution and automatic
+monitoring remain explicit refusals. Those need additional execution semantics;
+they are not flattened away or treated as supported passthroughs. Unused host
+MIDI ports do not prevent an audio graph from compiling. Audio dependencies that
+cannot be scheduled within a quantum and cyclic sync chains are invalid.
+
+## State identity and loading
+
+Generated state bindings identify an owning strip, loop or bus, a purpose and a
+channel. Loop gain is one shared constant control; each media channel and
+smoothing history has its own identity. Immutable gain coefficients include their
+value in their identity. Changing a strip or bus control therefore allocates new
+configuration state without overwriting an active value. Unchanged loop gains,
+media and histories retain their physical slots, even when unrelated objects or
+scratch assignments change. Changing a continuing loop's media channel set
+requires a new loop identity; the loader refuses an incompatible carry-over.
+
+`loading::Allocator` retains one current and one pending layout. New allocations
+use unused slots; old-only slots stay pinned until the switch fence completes.
+Cancellation cannot make an old revision current again. Legacy fixed programs
+can still infer their loop-owned bindings. New graph programs carry explicit
+bindings. Sync and scratch/history wiring lives in instruction operands.
+
+`Layout::media_views` maps each logical media index to its allocated state address.
+The reference, worklet and Marlin loaders prepare only fresh media views. Their
+media-view tables are dimensioned to the state-value pool, independently of the
+number of loop cursors. This permits several media channels to share one loop
+cursor. The frame clock, state pools and media survive graph switches.
+
+## Target lowering
+
+`StateProgramTarget` supplies limits and an associated compiled result. The same
+logical program goes to both existing targets:
+
+| Target | Implementation | Result |
 | --- | --- | --- |
-| Rust | `rt_fpga_reference::compiler::RustTarget` | Typed SP program, initial values, prepared loop plan, resources and bindings using Rust addresses/buffer IDs |
-| RTL | `rt_fpga_testbench::compiler::RtlTarget` | Packed 96-bit instructions, 129-bit state values, sixteen-word loop images, resources and physical bindings |
+| Rust | `rt_fpga_reference::compiler::RustTarget` | Typed instructions, state values, loop plan and bindings |
+| RTL | `rt_fpga_rtl::compiler::RtlTarget` | Packed instructions, state words, loop RAM images and bindings |
 
-Media-view values are resolved against externally prepared `media_views` passed
-to each target. Missing views and insufficient capacities fail before processor
-preparation or RTL loading. The RTL target can place state at a nonzero
-`state_base`; it relocates instruction operands and returned bindings together.
-There is no binary-compatibility requirement between the compiled results.
+Targets resolve logical media indices using their supplied `media_views`. Both
+`build_image` methods accept the ARM layout and emit fresh-state initializers.
+The RTL target also supports a nonzero state base. The instruction set, packed
+formats, processor RTL and switch/fence protocol are unchanged.
 
-`loading::Allocator` binds logical instances against current occupancy. Continuing
-instances retain their loop/value/history allocations and receive no initializers.
-New instances reserve unused slots; old-only slots remain pinned until the switch
-fence completes. A layout carries concrete addresses, generations, current/next
-revisions and the inactive instruction region. Both targets' `build_image` methods
-accept that layout and produce sparse fresh-state writes. Sync and scratch/history
-wiring lives in program operands. See [the loading design](../../../LOADING_DESIGN.md).
+`FixedProgram::emit` retains the direct `MonoLoops` and `SyncSmoothing` component
+fixtures. `graph::MonoGraphFixture` constructs a full view and uses the general
+compiler; it is not a separate lowering path. Supported quanta remain
+1/16/32/64/128, subject to target capacities.
 
-The reference carrier tests now build `MonoLoops` through `RustTarget` and retain
-their independent production-native comparisons over 640 callbacks. The combined
-SP/JP RTL test builds `SyncSmoothing` through both targets and compares 120 sample
-quanta. A separate RTL test builds `MonoLoops` through both targets and compares
-96 SP quanta. These RTL tests deliberately use different state addresses from
-the reference. Packed target output is loaded directly into configuration RAM;
-it is not reconstructed from the Rust instruction representation. Existing raw
-vectors and native-resolver tests remain independent checks.
+## Verification
 
-Compilation/preparation stays separate from `carrier::Endpoint` and processing
-pacing. The temporary reference host receives graph metadata as one bounded
-immediate group from `RtBackend`, builds this logical graph and hands the Rust
-configuration to its independently paced worker for initial and live installation.
-The RTL target accepts the same graph and shares the ARM allocator. Marlin's
-program upload and switch-FIFO bridge exercise live instruction regions and the
-media completion fence; its complete runtime-command/snapshot frontend remains
-separate work.
+Graph tests cover multichannel layouts, independent sync scheduling, arbitrary
+routing, deterministic output, single-write scratch and exact resource limits.
+Reference tests execute recording/playback and live replacement while preserving
+all channels. An independent native comparison compiles the actual control
+mirror and compares monitoring, gain, balance and multiple-bus routing samples.
+RTL tests compare multichannel job streams, smoothing and actual audio samples.
+A complete stereo upload/record/play/reload scenario runs through both the Rust
+reference and Marlin carrier/renderer pair. Existing raw processor, loading,
+native resolver and application tests remain in place.
 
 ```sh
 cargo test --locked -p rt_fpga_compiler
-cargo test --locked -p rt_fpga_reference --all-features --test rt_interface
-cargo test --locked -p rt_fpga_testbench --features sim --test compiler --test sync
+cargo test --locked -p rt_fpga_reference --all-features
+cargo test --locked -p shoop_rt_backend --test compiler_native
+cargo test --locked -p rt_fpga_testbench --features sim --test graph_compiler --test compiler --test loading
+cargo test --locked -p shoop_rt_host_marlin --features sim
 ```
+
+See [the loading design](../../../LOADING_DESIGN.md) for the ownership contract.

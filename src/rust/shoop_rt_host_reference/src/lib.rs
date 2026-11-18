@@ -225,14 +225,10 @@ impl ProgramLoader for ProgramControl {
         logical: &rt_fpga_compiler::LogicalStateProgram,
         layout: rt_fpga_compiler::loading::Layout,
     ) -> Result<SwitchProgram> {
-        let views = layout
-            .loops
-            .iter()
-            .map(|l| u64::from(l.physical.slot))
-            .collect::<Vec<_>>();
+        let views = layout.media_views(logical);
         let unused = layout
-            .new_loops()
-            .map(|l| ViewId(l.slot as usize))
+            .new_media_views()
+            .map(|v| ViewId(v as usize))
             .collect();
         let mut target = RustTarget::new(&views);
         target.limits = self.limits();
@@ -358,12 +354,12 @@ pub fn prepare(quantum: u32, driver: DriverStatus, memory_mb: u32) -> Result<Pre
     let mut media =
         MediaStore::with_block_chunk_limit(1, 128, chunks).map_err(|e| anyhow::anyhow!("{e:?}"))?;
     media
-        .create_recordings(pool.loop_slots as usize)
+        .create_recordings(pool.state_values as usize)
         .map_err(|e| anyhow::anyhow!("{e:?}"))?;
     media
         .reserve_chunk_capacity(chunks)
         .map_err(|e| anyhow::anyhow!("{e:?}"))?;
-    for view in 0..pool.loop_slots {
+    for view in 0..pool.state_values {
         media
             .reserve_view_capacity(ViewId(view as usize), chunks)
             .map_err(|e| anyhow::anyhow!("{e:?}"))?;
@@ -383,7 +379,7 @@ pub fn prepare(quantum: u32, driver: DriverStatus, memory_mb: u32) -> Result<Pre
         jobs,
         media,
         reclaim: 0,
-        slots: pool.loop_slots as usize,
+        slots: pool.state_values as usize,
         input: vec![Fixed::ZERO; quantum as usize],
         left: vec![Fixed::ZERO; quantum as usize],
         right: vec![Fixed::ZERO; quantum as usize],
@@ -429,8 +425,7 @@ impl Renderer for ReferenceRenderer {
             && !self
                 .processor
                 .pipeline()
-                .state()
-                .owns_loop_slot(self.reclaim)
+                .uses_media_view(ViewId(self.reclaim))
         {
             rt_fpga_reference::jobs::Memory::prepare_unused_view(
                 &mut self.media,

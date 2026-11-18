@@ -23,23 +23,10 @@ impl core::fmt::Display for LoadError {
 }
 impl core::error::Error for LoadError {}
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-enum Role {
-    Gain,
-    View,
-    Smoothing,
-}
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-struct Key {
-    owner: Identity,
-    role: Role,
-}
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 struct ValueSlot {
-    key: Key,
+    key: StateKey,
     address: u32,
 }
 #[derive(Clone, Debug)]
@@ -61,7 +48,7 @@ pub struct Layout {
     pub loops: Vec<LoopSlot>,
     values: Vec<ValueSlot>,
     fresh_values: Vec<bool>,
-    histories: Vec<(Identity, u32)>,
+    histories: Vec<(StateKey, u32)>,
     fresh_histories: Vec<u32>,
     changed_sources: Vec<Identity>,
     quantum: u32,
@@ -84,6 +71,31 @@ impl Layout {
             .enumerate()
             .filter(|(i, _)| self.fresh_values[*i])
             .map(|(i, v)| (i, v.address))
+    }
+    pub fn media_views(&self, program: &LogicalStateProgram) -> Vec<u64> {
+        let count = program
+            .initial_state
+            .iter()
+            .filter_map(|v| match v {
+                InitialValue::MediaView(index) => Some(*index as usize + 1),
+                _ => None,
+            })
+            .max()
+            .unwrap_or(0);
+        let mut views = vec![0; count];
+        for (address, value) in program.initial_state.iter().enumerate() {
+            if let InitialValue::MediaView(index) = *value {
+                views[index as usize] = u64::from(self.state_address(address as u32));
+            }
+        }
+        views
+    }
+    pub fn new_media_views(&self) -> impl Iterator<Item = u32> + '_ {
+        self.values
+            .iter()
+            .enumerate()
+            .filter(|(i, v)| self.fresh_values[*i] && v.key.role == StateRole::View)
+            .map(|(_, v)| v.address)
     }
     pub fn new_histories(&self) -> &[u32] {
         &self.fresh_histories
@@ -123,13 +135,16 @@ impl Layout {
                     history: self
                         .histories
                         .iter()
-                        .find(|(owner, _)| *owner == self.values[i].key.owner)
+                        .find(|(owner, _)| *owner == self.values[i].key)
                         .ok_or(CompileError::InvalidProgram)?
                         .1,
                 },
                 value => value,
             };
             bound.initial_state[address(i as u32) as usize] = value;
+        }
+        for binding in &mut bound.state_bindings {
+            binding.address = address(binding.address);
         }
         for l in &mut bound.loops {
             l.id = id(l.id)?;
@@ -238,7 +253,7 @@ impl Allocator {
             }
         }
         let mut keys = vec![None; program.initial_state.len()];
-        let mut assign = |index: u32, key: Key| -> Result<(), CompileError> {
+        let mut assign = |index: u32, key: StateKey| -> Result<(), CompileError> {
             let entry = keys
                 .get_mut(index as usize)
                 .ok_or(CompileError::InvalidProgram)?;
@@ -248,38 +263,52 @@ impl Allocator {
             *entry = Some(key);
             Ok(())
         };
-        for b in &program.bindings {
-            if let Some(v) = b.gain {
-                assign(
-                    v,
-                    Key {
-                        owner: b.id,
-                        role: Role::Gain,
-                    },
-                )?;
+        if !program.state_bindings.is_empty() {
+            for binding in &program.state_bindings {
+                assign(binding.address, binding.key)?;
             }
-            if let Some(v) = b.view {
-                assign(
-                    v,
-                    Key {
-                        owner: b.id,
-                        role: Role::View,
-                    },
-                )?;
+        } else {
+            for b in &program.bindings {
+                if let Some(v) = b.gain {
+                    assign(
+                        v,
+                        StateKey {
+                            owner: shoop_graph::Owner::Loop(b.id),
+                            channel: 0,
+                            role: StateRole::Gain,
+                        },
+                    )?;
+                }
+                if let Some(v) = b.view {
+                    assign(
+                        v,
+                        StateKey {
+                            owner: shoop_graph::Owner::Loop(b.id),
+                            channel: 0,
+                            role: StateRole::View,
+                        },
+                    )?;
+                }
             }
-        }
-        for op in &program.audio_pass {
-            if let Operation::Smoothing {
-                loop_id, control, ..
-            } = *op
-            {
-                assign(
-                    control,
-                    Key {
-                        owner: loop_id,
-                        role: Role::Smoothing,
-                    },
-                )?;
+            for op in &program.audio_pass {
+                if let Operation::Smoothing {
+                    loop_id, control, ..
+                } = *op
+                {
+                    assign(
+                        control,
+                        StateKey {
+                            owner: shoop_graph::Owner::Loop(loop_id),
+                            channel: 0,
+                            role: StateRole::Smoothing(
+                                match program.initial_state[control as usize] {
+                                    InitialValue::Smoothing { duration, .. } => duration,
+                                    _ => return Err(CompileError::InvalidProgram.into()),
+                                },
+                            ),
+                        },
+                    )?;
+                }
             }
         }
         if let Some(old) = old {
@@ -287,9 +316,14 @@ impl Allocator {
                 let previous = old
                     .values
                     .iter()
-                    .filter(|v| v.key.owner == entry.logical)
+                    .filter(|v| {
+                        v.key.owner == shoop_graph::Owner::Loop(entry.logical)
+                            && v.key.role == StateRole::View
+                    })
                     .map(|v| v.key);
-                let next = keys.iter().flatten().filter(|k| k.owner == entry.logical);
+                let next = keys.iter().flatten().filter(|k| {
+                    k.owner == shoop_graph::Owner::Loop(entry.logical) && k.role == StateRole::View
+                });
                 if previous.clone().any(|k| !next.clone().any(|n| *n == k))
                     || next.clone().any(|k| !previous.clone().any(|p| p == *k))
                 {
@@ -329,9 +363,9 @@ impl Allocator {
             };
             values.push(ValueSlot { key, address });
             fresh_values.push(existing.is_none());
-            if key.role == Role::Smoothing {
+            if matches!(key.role, StateRole::Smoothing(_)) {
                 let previous =
-                    old.and_then(|l| l.histories.iter().find(|(owner, _)| *owner == key.owner));
+                    old.and_then(|l| l.histories.iter().find(|(owner, _)| *owner == key));
                 let history = if let Some((_, h)) = previous {
                     *h
                 } else {
@@ -344,7 +378,7 @@ impl Allocator {
                     fresh_histories.push(h);
                     h
                 };
-                histories.push((key.owner, history));
+                histories.push((key, history));
             }
         }
         self.serial = self.serial.checked_add(1).ok_or(LoadError::Exhausted)?;
