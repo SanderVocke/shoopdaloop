@@ -2,7 +2,7 @@
 use rt_fpga_compiler::{CompileError, FixedProgram, Resource, StateProgramTarget};
 use rt_fpga_compiler::{
     Identity,
-    graph::{GraphDescription, LoopDescription},
+    graph::{LoopDescription, MonoGraphFixture},
 };
 use rt_fpga_reference::{
     compiler::RustTarget,
@@ -35,7 +35,7 @@ fn compiled_mono_fixture_matches_rust_with_distinct_state_addresses() {
         .flat_map(|q| [(q, false), (q, true)])
     {
         let logical = if graph {
-            GraphDescription {
+            MonoGraphFixture {
                 quantum,
                 loops: (0..2)
                     .map(|slot| LoopDescription {

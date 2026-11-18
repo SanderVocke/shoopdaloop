@@ -284,3 +284,84 @@ fn browser_uploads_large_graphs_in_bounded_groups_and_reports_resource_refusals(
     }
     panic!("browser graph refusal did not finish");
 }
+
+#[shoop_test]
+fn browser_compiles_complete_graph_views_and_refuses_midi_without_losing_playback() {
+    use rt_fpga_compiler::{
+        graph::{LoopDescription, MonoGraphFixture},
+        Identity,
+    };
+    let image = MonoGraphFixture {
+        quantum: Q as u32,
+        loops: vec![LoopDescription {
+            id: Identity {
+                slot: 0,
+                generation: 1,
+            },
+            source: None,
+            input: true,
+            output: true,
+            gain: 1.,
+            repeat_sync: false,
+        }],
+    }
+    .to_graph();
+    let mut b = Browser::new();
+    for batch in shoop_rt_protocol::graph::upload(&image, Q as u32, 0).unwrap() {
+        b.send(batch);
+    }
+    let transition = |mode| {
+        Batch::new(
+            1,
+            1,
+            &[Command::Transition(
+                0,
+                TransitionPlan {
+                    now: Some(mode),
+                    first: None,
+                    second: None,
+                },
+            )],
+        )
+        .unwrap()
+    };
+    b.send(transition(TransitionMode::Recording));
+    b.step();
+    b.send(transition(TransitionMode::Playing));
+    for _ in 0..4 {
+        b.step();
+    }
+    assert!(b.host.audio_output().iter().all(|s| *s == 0.25));
+    let mut unsupported = image.clone();
+    unsupported.strips[0].layout = rt_fpga_compiler::graph::shoop_graph::ChannelLayout::Direct {
+        audio: 1,
+        midi: true,
+    };
+    for batch in shoop_rt_protocol::graph::upload(&unsupported, Q as u32, 1).unwrap() {
+        let terminal = batch.commands().contains(&Command::ActivateGraph);
+        b.client.immediate(batch).unwrap();
+        let mut done = false;
+        for _ in 0..100 {
+            if let Some(response) = b.step().first() {
+                assert_eq!(
+                    response.header.code(),
+                    if terminal {
+                        Code::GraphMidiUnsupported
+                    } else {
+                        Code::Applied
+                    }
+                );
+                done = true;
+                break;
+            }
+        }
+        assert!(done);
+    }
+    for _ in 0..4 {
+        b.step();
+    }
+    assert!(b.host.audio_output().iter().all(|s| *s == 0.25));
+    for batch in shoop_rt_protocol::graph::upload(&image, Q as u32, 1).unwrap() {
+        b.send(batch);
+    }
+}

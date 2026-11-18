@@ -11,6 +11,7 @@ workspace = true
 [features]
 serde=["dep:serde"]
 [dependencies]
+shoop_graph = { path = "../shoop_graph" }
 serde={workspace=true,features=["derive"],optional=true}
 
 [dev-dependencies]

@@ -23,6 +23,7 @@ struct Gate {
     waiting: AtomicBool,
     refuse: AtomicBool,
     cycle: AtomicBool,
+    tail_busy: AtomicBool,
     sent: Mutex<Vec<Batch>>,
 }
 struct Gated {
@@ -38,18 +39,26 @@ fn activation(batch: &Batch) -> bool {
 impl Carrier for Gated {
     fn send(&mut self, message: RtMessage) -> Result<(), CarrierError> {
         if let RtMessage::Immediate(batch) = &message {
-            if activation(batch) && self.gate.refuse.swap(false, Ordering::Relaxed) {
+            let header = batch.commands().iter().any(|c| {
+                matches!(
+                    c,
+                    shoop_rt_protocol::immediate::Command::BeginGraphImage { .. }
+                )
+            });
+            if header && self.gate.refuse.swap(false, Ordering::Relaxed) {
                 return Err(CarrierError::Full);
             }
-            if activation(batch) && self.gate.cycle.swap(false, Ordering::Relaxed) {
+            if activation(batch) && self.gate.tail_busy.swap(false, Ordering::Relaxed) {
+                return Err(CarrierError::Full);
+            }
+            if header && self.gate.cycle.swap(false, Ordering::Relaxed) {
                 let mut commands = batch.commands().to_vec();
-                let mut index = 0;
                 for command in &mut commands {
-                    if let shoop_rt_protocol::immediate::Command::ConfigureLoop(l) = command {
-                        if index < 2 {
-                            l.source = Some(1 - index);
-                        }
-                        index += 1;
+                    if let shoop_rt_protocol::immediate::Command::BeginGraphImage {
+                        quantum, ..
+                    } = command
+                    {
+                        *quantum = 3;
                     }
                 }
                 return self.inner.send(RtMessage::Immediate(
@@ -191,7 +200,16 @@ fn activation_is_one_operation_and_orders_following_commands_after_the_fence() {
         f.pump();
     }
     assert!(!f.client.results().contains_key(&rename));
-    assert_eq!(f.gate.sent.lock().unwrap().len(), 1);
+    assert_eq!(
+        f.gate
+            .sent
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|b| activation(b))
+            .count(),
+        1
+    );
     f.gate.hold.store(false, Ordering::Relaxed);
     f.until(|f| {
         f.client.results().contains_key(&added)
@@ -335,7 +353,7 @@ fn application_streams_large_graphs_and_retries_a_busy_activation_tail() {
         let loops = before.tracks.iter().map(|t| t.loops.len()).sum::<usize>();
         if loops == 30 {
             f.gate.sent.lock().unwrap().clear();
-            f.gate.refuse.store(true, Ordering::Relaxed);
+            f.gate.tail_busy.store(true, Ordering::Relaxed);
         }
         let added = f.submit(Command::AddLoop {
             track: before.tracks[1].id,
@@ -347,13 +365,16 @@ fn application_streams_large_graphs_and_retries_a_busy_activation_tail() {
         ));
     }
     let batches = f.gate.sent.lock().unwrap();
-    assert_eq!(batches.len(), 2);
-    assert_eq!(batches[0].commands().len(), 32);
-    assert!(!activation(&batches[0]));
-    assert_eq!(
-        batches[1].commands(),
-        &[shoop_rt_protocol::immediate::Command::ActivateGraph]
-    );
+    assert!(batches.len() > 2);
+    assert!(batches
+        .iter()
+        .all(|b| b.commands().len() <= shoop_rt_protocol::immediate::COMMANDS));
+    assert!(matches!(
+        batches[0].commands()[0],
+        shoop_rt_protocol::immediate::Command::BeginGraphImage { .. }
+    ));
+    assert!(activation(batches.last().unwrap()));
+    assert_eq!(batches.iter().filter(|b| activation(b)).count(), 1);
     drop(batches);
     let state = f.service.snapshot();
     let refused = f.submit(Command::AddLoop {
@@ -370,4 +391,36 @@ fn application_streams_large_graphs_and_retries_a_busy_activation_tail() {
             .sum::<usize>(),
         31
     );
+}
+
+#[shoop_test]
+fn unsupported_stereo_and_midi_reach_the_compiler_and_restore_the_ui_layout() {
+    let mut f = Fixture::new();
+    for (audio_channels, midi, reason) in [(2, false, "channel layout"), (1, true, "MIDI")] {
+        f.gate.sent.lock().unwrap().clear();
+        let failed = f.submit(Command::AddTrack(TrackSpec {
+            name: "unsupported".into(),
+            topology: TrackSpecTopology::Direct {
+                audio_channels,
+                midi,
+            },
+            initial_output_bus_names: vec![],
+            latency: Default::default(),
+            creation_request_id: None,
+        }));
+        f.until(|f| f.client.results().contains_key(&failed));
+        assert!(matches!(
+            f.client.results()[&failed],
+            Outcome::Refused { .. }
+        ));
+        assert!(format!("{:?}", f.client.results()[&failed]).contains(reason));
+        assert!(f.gate.sent.lock().unwrap().iter().any(activation));
+        assert_eq!(f.service.snapshot().tracks.len(), 1);
+    }
+    let accepted = f.add_track("Master");
+    f.until(|f| f.client.results().contains_key(&accepted));
+    assert!(matches!(
+        f.client.results()[&accepted],
+        Outcome::TrackCreated { .. }
+    ));
 }

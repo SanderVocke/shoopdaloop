@@ -1,0 +1,12 @@
+[package]
+name = "shoop_graph"
+version.workspace = true
+edition = "2021"
+description = "Read-only application graph views and owned graph transfers"
+[lints]
+workspace = true
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+bincode.workspace = true
+[dev-dependencies]
+shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }

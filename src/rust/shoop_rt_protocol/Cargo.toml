@@ -22,6 +22,7 @@ shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 wasm-bindgen-test = "=0.3.77"
 
 [dependencies]
+shoop_graph = { path = "../shoop_graph" }
 serde.workspace = true
 profiling_protocol = { path = "../profiling_protocol" }
 

@@ -61,25 +61,15 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     ) -> Result<BackendTrackCreation> {
         self.ready()?;
         self.structure_mutable()?;
-        if self.prepared_graph.is_some()
-            && !matches!(
-                topology,
-                BackendTrackTopology::Direct {
-                    audio_channels: 1,
-                    midi: false
-                }
-            )
-        {
-            return Err(anyhow!(
-                "prepared reference supports mono audio tracks only"
-            ));
-        }
         let dry = topology.dry_audio_channels();
         let wet = topology.wet_audio_channels();
         let midi = topology.has_midi();
         let kind = match &topology {
             BackendTrackTopology::Direct { .. } => None,
             BackendTrackTopology::DryWetExternal { .. } => {
+                Some(shoop_rt_protocol::ProcessorKind::External)
+            }
+            BackendTrackTopology::DryWetProcessor { .. } if self.prepared_graph.is_some() => {
                 Some(shoop_rt_protocol::ProcessorKind::External)
             }
             BackendTrackTopology::DryWetProcessor { processor_type, .. } => {
@@ -157,12 +147,15 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 .ok_or_else(|| anyhow!("too many initial loops"))?,
         )?;
         let limits = self.limits();
-        if dry > u32::from(limits.strip_audio_channels)
-            || wet > u32::from(limits.strip_audio_channels)
-        {
+        let channels = if self.prepared_graph.is_some() {
+            shoop_rt_protocol::MAX_STRIP_CHANNELS as u32
+        } else {
+            u32::from(limits.strip_audio_channels)
+        };
+        if dry > channels || wet > channels {
             return Err(anyhow!(
                 "tracks of this engine have at most {} audio channels",
-                limits.strip_audio_channels
+                channels
             ));
         }
         if self.prepared_graph.is_some() && self.mirror.strip_slots.free() == 0 {

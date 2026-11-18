@@ -1,7 +1,7 @@
 //! Portable ARM-side graph binding and driver-owned persistent reference rendering.
 use anyhow::{ensure, Result};
 use rt_fpga_compiler::{
-    graph::{GraphDescription, LoopDescription},
+    graph::{self, LoopDescription, MonoGraphFixture},
     loading::Allocator,
     CompileError, Identity, ProgramLimits, Resource,
 };
@@ -67,6 +67,17 @@ fn refusal_code(error: &anyhow::Error) -> Code {
         }
     });
     match compile {
+        Some(CompileError::Unsupported { feature, .. }) => match feature {
+            graph::Feature::Midi => Code::GraphMidiUnsupported,
+            graph::Feature::Channels => Code::GraphChannelsUnsupported,
+            graph::Feature::Processor => Code::GraphProcessorUnsupported,
+            graph::Feature::Composite => Code::GraphCompositeUnsupported,
+            graph::Feature::StripControls => Code::GraphStripControlsUnsupported,
+            graph::Feature::LoopControls => Code::GraphLoopControlsUnsupported,
+            graph::Feature::BusControls => Code::GraphBusControlsUnsupported,
+            graph::Feature::Buses => Code::GraphBusesUnsupported,
+            graph::Feature::Routing => Code::GraphRoutingUnsupported,
+        },
         Some(CompileError::Capacity(resource)) => match resource {
             Resource::Instructions => Code::InstructionCapacity,
             Resource::State => Code::StateCapacity,
@@ -88,6 +99,12 @@ struct Pending {
     ready: Option<bool>,
     published: bool,
 }
+struct ImageUpload {
+    graph: u64,
+    quantum: u32,
+    expected: usize,
+    bytes: Vec<u8>,
+}
 struct Upload {
     graph: u64,
     quantum: u32,
@@ -101,6 +118,7 @@ pub struct Endpoint<L = ProgramControl> {
     allocator: Allocator,
     pending: Option<Pending>,
     upload: Option<Upload>,
+    image_upload: Option<ImageUpload>,
     limits: ProgramLimits,
     replies: Outbox,
     held: Option<EngineMessage>,
@@ -454,6 +472,7 @@ impl<L: ProgramLoader> Endpoint<L> {
             allocator: Allocator::new(limits),
             pending: None,
             upload: None,
+            image_upload: None,
             limits,
             replies: Outbox::new(8, 8, 0),
             held: None,
@@ -473,7 +492,37 @@ impl<L: ProgramLoader> Endpoint<L> {
         );
         for (index, command) in batch.commands().iter().enumerate() {
             match *command {
+                Command::BeginGraphImage { quantum, bytes } if index == 0 => {
+                    self.upload = None;
+                    self.image_upload = None;
+                    ensure!(
+                        quantum == self.quantum
+                            && bytes > 0
+                            && bytes as usize <= shoop_graph::MAX_TRANSFER_BYTES,
+                        "invalid graph transfer header"
+                    );
+                    self.image_upload = Some(ImageUpload {
+                        graph: revision,
+                        quantum,
+                        expected: bytes as usize,
+                        bytes: Vec::new(),
+                    });
+                }
+                Command::GraphImageData { len, bytes } => {
+                    let upload = self
+                        .image_upload
+                        .as_mut()
+                        .ok_or_else(|| anyhow::anyhow!("missing graph image header"))?;
+                    ensure!(
+                        command.valid()
+                            && upload.graph == revision
+                            && upload.bytes.len() + len as usize <= upload.expected,
+                        "invalid graph transfer data"
+                    );
+                    upload.bytes.extend_from_slice(&bytes[..len as usize]);
+                }
                 Command::BeginGraph { quantum, loops } if index == 0 => {
+                    self.image_upload = None;
                     ensure!(quantum == self.quantum && loops > 0, "invalid graph header");
                     self.upload = Some(Upload {
                         graph: revision,
@@ -509,6 +558,22 @@ impl<L: ProgramLoader> Endpoint<L> {
                     }
                 }
                 Command::ActivateGraph if index + 1 == batch.commands().len() => {
+                    if let Some(upload) = self.image_upload.take() {
+                        ensure!(
+                            upload.graph == revision && upload.bytes.len() == upload.expected,
+                            "incomplete graph image"
+                        );
+                        let graph = shoop_graph::Graph::decode(&upload.bytes)?;
+                        let logical = graph::compile(
+                            &graph,
+                            graph::CompileContext {
+                                quantum: upload.quantum,
+                                limits: self.limits,
+                            },
+                        )?;
+                        self.stage_graph(batch, logical)?;
+                        return Ok(true);
+                    }
                     let upload = self
                         .upload
                         .take()
@@ -520,7 +585,7 @@ impl<L: ProgramLoader> Endpoint<L> {
                         upload.graph == revision && upload.loops.len() == upload.expected as usize,
                         "incomplete graph upload"
                     );
-                    let logical = GraphDescription {
+                    let logical = MonoGraphFixture {
                         quantum: upload.quantum,
                         loops: upload.loops,
                     }
@@ -640,7 +705,11 @@ impl<L: ProgramLoader> CarrierEndpoint for Endpoint<L> {
             if batch.commands().iter().any(|c| {
                 matches!(
                     c,
-                    Command::BeginGraph { .. } | Command::ConfigureLoop(_) | Command::ActivateGraph
+                    Command::BeginGraph { .. }
+                        | Command::ConfigureLoop(_)
+                        | Command::BeginGraphImage { .. }
+                        | Command::GraphImageData { .. }
+                        | Command::ActivateGraph
                 )
             }) {
                 if out.available(Lane::Reliable) == 0 {
@@ -652,6 +721,7 @@ impl<L: ProgramLoader> CarrierEndpoint for Endpoint<L> {
                     Err(error) => {
                         let code = refusal_code(&error);
                         self.upload = None;
+                        self.image_upload = None;
                         out.push(Self::response(batch, 0, code, None))?;
                     }
                 }
@@ -666,6 +736,7 @@ impl<L: ProgramLoader> CarrierEndpoint for Endpoint<L> {
             ClientMessage::Hello { .. } | ClientMessage::Goodbye
         ) {
             self.upload = None;
+            self.image_upload = None;
         }
         self.control.try_deliver(message, out)
     }

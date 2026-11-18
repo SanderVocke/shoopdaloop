@@ -115,11 +115,31 @@ Refusals identify the exhausted resource, preserve the active program and roll
 back the application's draft. Recording duration remains limited by the separate
 media memory pool, since future recorded audio is not known at compilation.
 
-Graph descriptions travel in bounded command groups: BeginGraph, ConfigureLoop
-records across as many groups as needed, then ActivateGraph. Intermediate replies
-acknowledge upload progress; the final activation reply confirms the ownership
-fence. A new BeginGraph replaces an incomplete upload. Upload assembly is bounded
-by the physical loop pool, and model loading remains outside rendering.
+The shared `shoop_graph::GraphView` exposes strips, loops, buses, ports and
+connections. It describes audio and MIDI, multichannel layouts, direct and dry/wet
+tracks, processor identifiers/parameters, composite plans and controls. `Mirror`
+implements this read-only interface without maintaining another graph model;
+`RtBackend::graph_view()` exposes it for compilers and diagnostics. Logical port
+identities are separate from their channel positions. Cursors, meters and transport
+bookkeeping are excluded.
+
+The carrier handoff captures an immutable owned snapshot of that view. Graph
+snapshots travel in bounded command groups: BeginGraphImage declares quantum and
+byte length, GraphImageData carries canonical 20-byte chunks, and ActivateGraph
+completes the image. RT protocol version 39 covers the format. The transfer is
+bounded at 1 MiB, independently of target memory budgets. Decoding and compilation
+happen on the ARM side; no semantic graph or graph unpacker is sent to the FPGA.
+Intermediate replies acknowledge upload progress; only the activation reply
+confirms the ownership fence. A new header or connection resets an incomplete
+upload.
+
+The shared compiler consumes `GraphView` directly. Its present lowering retains
+the mono/Master subset, and reports unsupported MIDI, channels, processors,
+composites, controls, buses or routing explicitly. Adapter-side shape filtering
+no longer reduces these descriptions before compilation. Unsupported graph edits
+restore the previous application layout and do not alter the active program.
+The compact BeginGraph/ConfigureLoop records remain for component fixtures; their
+`MonoGraphFixture` adapter also calls the same full-view compiler.
 
 The current target has 128 instructions, 64 state values, 32 loop/media slots,
 128 queued jobs and 64 audio buffers. With the current lowering, 20 loops routed

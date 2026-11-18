@@ -15,7 +15,7 @@ pub struct SwitchProgram {
     pub buffers: u16,
 }
 
-/// One mono loop in the prepared graph profile; retained identities keep their state.
+/// Compact mono-loop fixture record for component benches.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GraphLoop {
     pub slot: u32,
@@ -101,13 +101,22 @@ pub struct GrabGesture {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Command {
-    /// Begin an upload at the current revision, without a deadline. ConfigureLoop
-    /// records may span groups; ActivateGraph completes the upload and waits for the fence.
+    /// Legacy component-fixture upload. Applications use BeginGraphImage.
+    /// ActivateGraph completes either form and waits for the ownership fence.
     BeginGraph {
         quantum: u32,
         loops: u32,
     },
     ConfigureLoop(GraphLoop),
+    /// Complete semantic graph transfer, consumed by the ARM-side compiler endpoint.
+    BeginGraphImage {
+        quantum: u32,
+        bytes: u32,
+    },
+    GraphImageData {
+        len: u8,
+        bytes: [u8; 20],
+    },
     ActivateGraph,
     SwitchProgram(SwitchProgram),
     LoopGain(u32, f32),
@@ -184,6 +193,15 @@ pub enum Code {
     InputCapacity = 17,
     OutputCapacity = 18,
     QuantumCapacity = 19,
+    GraphMidiUnsupported = 20,
+    GraphChannelsUnsupported = 21,
+    GraphProcessorUnsupported = 22,
+    GraphCompositeUnsupported = 23,
+    GraphStripControlsUnsupported = 24,
+    GraphLoopControlsUnsupported = 25,
+    GraphBusControlsUnsupported = 26,
+    GraphBusesUnsupported = 27,
+    GraphRoutingUnsupported = 28,
 }
 impl Code {
     pub fn from_raw(value: u32) -> Option<Self> {
@@ -208,6 +226,15 @@ impl Code {
             17 => Self::InputCapacity,
             18 => Self::OutputCapacity,
             19 => Self::QuantumCapacity,
+            20 => Self::GraphMidiUnsupported,
+            21 => Self::GraphChannelsUnsupported,
+            22 => Self::GraphProcessorUnsupported,
+            23 => Self::GraphCompositeUnsupported,
+            24 => Self::GraphStripControlsUnsupported,
+            25 => Self::GraphLoopControlsUnsupported,
+            26 => Self::GraphBusControlsUnsupported,
+            27 => Self::GraphBusesUnsupported,
+            28 => Self::GraphRoutingUnsupported,
             _ => return None,
         })
     }
@@ -225,6 +252,20 @@ impl Code {
             _ => return None,
         })
     }
+    pub fn unsupported_graph_feature(self) -> Option<&'static str> {
+        Some(match self {
+            Self::GraphMidiUnsupported => "MIDI",
+            Self::GraphChannelsUnsupported => "channel layout",
+            Self::GraphProcessorUnsupported => "processor",
+            Self::GraphCompositeUnsupported => "composite loop",
+            Self::GraphStripControlsUnsupported => "strip controls",
+            Self::GraphLoopControlsUnsupported => "loop controls",
+            Self::GraphBusControlsUnsupported => "bus controls",
+            Self::GraphBusesUnsupported => "bus layout",
+            Self::GraphRoutingUnsupported => "routing",
+            _ => return None,
+        })
+    }
     pub fn diagnostic(self) -> Option<u8> {
         match self {
             Self::Unprocessed | Self::Applied | Self::Scheduled => None,
@@ -234,6 +275,15 @@ impl Code {
             Self::InvalidValue => Some(5),
             Self::DeadlineMissed => Some(6),
             Self::CaptureUnavailable | Self::HistoryUnavailable => Some(1),
+            Self::GraphMidiUnsupported
+            | Self::GraphChannelsUnsupported
+            | Self::GraphProcessorUnsupported
+            | Self::GraphCompositeUnsupported
+            | Self::GraphStripControlsUnsupported
+            | Self::GraphLoopControlsUnsupported
+            | Self::GraphBusControlsUnsupported
+            | Self::GraphBusesUnsupported
+            | Self::GraphRoutingUnsupported => Some(4),
             Self::InstructionCapacity
             | Self::StateCapacity
             | Self::LoopCapacity
@@ -306,6 +356,14 @@ impl CommandRecord {
     pub fn new(command: Command) -> Self {
         use Command::*;
         let words = match command {
+            BeginGraphImage { quantum, bytes } => [20, 0, quantum, bytes, 0, 0, 0, 0],
+            GraphImageData { len, bytes } => {
+                let mut words = [21, u32::from(len), 0, 0, 0, 0, 0, 0];
+                for (word, bytes) in words[2..7].iter_mut().zip(bytes.chunks_exact(4)) {
+                    *word = u32::from_le_bytes(bytes.try_into().unwrap());
+                }
+                words
+            }
             BeginGraph { quantum, loops } => [16, 0, quantum, loops, 0, 0, 0, 0],
             ConfigureLoop(l) => [
                 17,
@@ -380,6 +438,8 @@ impl CommandRecord {
                     | GrabGesture(..)
                     | BeginGraph { .. }
                     | ConfigureLoop(_)
+                    | BeginGraphImage { .. }
+                    | GraphImageData { .. }
                     | SwitchProgram(_)
                     | ActivateGraph => unreachable!(),
                 };
@@ -400,6 +460,14 @@ impl CommandRecord {
         let id = self.word(1);
         let value = self.word(2);
         Some(match self.word(0) {
+            20 => BeginGraphImage {
+                quantum: value,
+                bytes: self.word(3),
+            },
+            21 if id <= 20 => GraphImageData {
+                len: id as u8,
+                bytes: self.0[8..28].try_into().unwrap(),
+            },
             16 => BeginGraph {
                 quantum: value,
                 loops: self.word(3),
@@ -545,6 +613,12 @@ impl Response {
 impl Command {
     pub fn valid(self) -> bool {
         match self {
+            Self::BeginGraphImage { quantum, bytes } => {
+                matches!(quantum, 1 | 16 | 32 | 64 | 128) && bytes != 0
+            }
+            Self::GraphImageData { len, bytes } => {
+                (1..=20).contains(&len) && bytes[len as usize..].iter().all(|b| *b == 0)
+            }
             Self::SwitchProgram(s) => {
                 s.revision != 0
                     && s.region <= 1

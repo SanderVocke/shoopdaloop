@@ -6,12 +6,7 @@ pub mod graph;
 pub mod loading;
 use alloc::{vec, vec::Vec};
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Identity {
-    pub slot: u32,
-    pub generation: u32,
-}
+pub use shoop_graph::Id as Identity;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Loop {
@@ -158,6 +153,10 @@ pub enum CompileError {
     InvalidProgram,
     Capacity(Resource),
     MissingView(u32),
+    Unsupported {
+        object: shoop_graph::Owner,
+        feature: graph::Feature,
+    },
 }
 impl core::fmt::Display for CompileError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {

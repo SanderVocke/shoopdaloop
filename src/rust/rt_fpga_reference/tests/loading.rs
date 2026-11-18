@@ -30,7 +30,7 @@ fn limits() -> ProgramLimits {
     }
 }
 fn graph(ids: &[u32]) -> LogicalStateProgram {
-    GraphDescription {
+    MonoGraphFixture {
         quantum: 16,
         loops: ids
             .iter()

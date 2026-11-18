@@ -1326,7 +1326,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         let sample_rate = self.driver.map_or(0, |driver| driver.sample_rate);
         let frames = u64::from(milliseconds) * u64::from(sample_rate) / 1000;
         let limit = self.limits().smoothing_limit_frames;
-        if frames > u64::from(limit) {
+        if self.prepared_graph.is_none() && frames > u64::from(limit) {
             return Err(anyhow!(
                 "loop boundary smoothing is limited to {} ms on this engine",
                 u64::from(limit) * 1000 / u64::from(sample_rate.max(1))
@@ -1336,7 +1336,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             Request::SetSmoothing {
                 frames: u32::try_from(frames).unwrap_or(u32::MAX),
             },
-            Purpose::Smoothing(milliseconds),
+            Purpose::Smoothing(milliseconds, u32::try_from(frames).unwrap_or(u32::MAX)),
         );
         Ok(())
     }
@@ -1364,26 +1364,36 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     fn create_bus(&mut self, request: BackendBusRequest) -> Result<BackendBusCreation> {
         self.ready()?;
         self.structure_mutable()?;
-        if self.prepared_graph.is_some() {
-            return Err(anyhow!("prepared reference supports the Master bus only"));
-        }
         let request = request.normalized()?;
         if let Some(fx) = &request.fx {
-            if !self.capabilities.contains(Capabilities::BUS_PROCESSORS)
-                || fx.processor_type != shoop_app_api::TrackProcessorTypeId::BUILTIN_FX
+            if self.prepared_graph.is_none()
+                && (!self.capabilities.contains(Capabilities::BUS_PROCESSORS)
+                    || fx.processor_type != shoop_app_api::TrackProcessorTypeId::BUILTIN_FX)
             {
                 return Err(unavailable(BackendCapability::BusFx));
             }
             fx.clone().normalized(request.channel_count as usize)?;
         }
-        if request.channel_count > u32::from(self.limits().bus_channels) {
+        if self.prepared_graph.is_none()
+            && request.channel_count > u32::from(self.limits().bus_channels)
+        {
             return Err(anyhow!("bus exceeds prepared channel limit"));
         }
         self.require_mutation_capacity(1)?;
+        if self.prepared_graph.is_some() && self.mirror.bus_slots.free() == 0 {
+            self.mirror
+                .bus_slots
+                .resize(self.mirror.bus_slots.capacity() + 1);
+        }
         let creation = self
             .mirror
             .create_bus(request.name, request.channel_count as u8)
             .ok_or_else(|| anyhow!("prepared bus capacity exhausted"))?;
+        self.mirror
+            .buses
+            .get_mut(&creation.bus_id)
+            .unwrap()
+            .processor_type = request.fx.as_ref().map(|fx| fx.processor_type.clone());
         let slot = self.mirror.buses[&creation.bus_id].slot;
         self.requests.push(
             if request.fx.is_some() {

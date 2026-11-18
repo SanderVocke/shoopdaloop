@@ -247,6 +247,7 @@ pub(crate) struct Port {
 
 #[derive(Clone)]
 pub(crate) struct Bus {
+    pub processor_type: Option<String>,
     pub processor_slot: Option<shoop_rt_protocol::ProcessorSlot>,
     pub processor_snapshot: Option<shoop_rt_protocol::processors::Snapshot>,
     pub processor_visible: bool,
@@ -351,6 +352,7 @@ impl Slots {
 
 #[derive(Clone)]
 pub(crate) struct Mirror {
+    pub loop_smoothing_frames: u32,
     pub tracks: BTreeMap<BackendTrackId, Track>,
     pub loops: BTreeMap<BackendLoopId, Loop>,
     pub ports: BTreeMap<BackendPortId, Port>,
@@ -464,6 +466,7 @@ impl Mirror {
             );
         }
         Self {
+            loop_smoothing_frames: 0,
             tracks: BTreeMap::new(),
             loops: BTreeMap::new(),
             ports,
@@ -475,6 +478,7 @@ impl Mirror {
             buses: [(
                 MASTER_BUS_ID,
                 Bus {
+                    processor_type: None,
                     processor_slot: None,
                     processor_snapshot: None,
                     processor_visible: false,
@@ -861,6 +865,7 @@ impl Mirror {
         self.buses.insert(
             id,
             Bus {
+                processor_type: None,
                 processor_slot: None,
                 processor_snapshot: None,
                 processor_visible: false,

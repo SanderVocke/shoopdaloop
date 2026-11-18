@@ -108,8 +108,10 @@ selection, names and supported live structural changes can be exercised normally
 
 The application service automatically commits a complete graph edit, including
 its loops and default connections. `RtBackend` collects that desired graph on the
-control side, and the reference endpoint compiles it through the shared compiler
-and `RustTarget` outside the processing thread. The ARM allocator preserves
+control side through the shared `GraphView` interface, including MIDI and
+unsupported layouts. The complete description reaches the ARM endpoint, where
+the shared compiler validates its supported subset and lowers through `RustTarget`
+outside the processing thread. Unsupported shapes receive a compiler refusal. The ARM allocator preserves
 continuing allocations and prepares unused slots only. The operation completes
 after the quantum-boundary program switch and ownership fence. Commands behind a
 pending switch wait in the existing application queue. Failed edits restore the

@@ -1326,7 +1326,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 None,
                 format!("could not change profiling: {}", refusal_text(refusal)),
             ),
-            (Purpose::Smoothing(milliseconds), Some(refusal)) => self.failure(
+            (Purpose::Smoothing(_, frames), None) => {
+                self.mirror.loop_smoothing_frames = frames;
+            }
+            (Purpose::Smoothing(milliseconds, _), Some(refusal)) => self.failure(
                 BackendMutationKind::LoopControl,
                 None,
                 None,
@@ -1338,7 +1341,6 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             (
                 Purpose::InjectMidi(_)
                 | Purpose::Profiling
-                | Purpose::Smoothing(_)
                 | Purpose::Preview
                 | Purpose::Persistence
                 | Purpose::CancelReads
