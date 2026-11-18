@@ -39,7 +39,7 @@ def stamp(directory, tool):
     generated = json.loads((directory / "board/board.json").read_text())
     if generated != board.data:
         raise ValueError("Vivado build uses a different board profile")
-    files = ["zturn_v2.bit", "zturn_v2.xsa", "ps7_init.tcl", "ps-properties.txt", "fpga-abi.json"]
+    files = ["zturn_v2.bit", "zturn_v2.xsa", "ps7_init.tcl", "ps-properties.txt", "fpga-abi.json", "geometry.txt"]
     write_json(directory / "fpga-build.json", {
         "contract": contract(board, directory / "fpga-abi.json"), "vivado": tool,
         "sha256": {name: digest(directory / name) for name in files},
@@ -67,7 +67,7 @@ def pair(directory, elf, output):
 def verify(path):
     manifest = json.loads(path.read_text())
     artifacts = manifest["artifacts"]
-    names = {"firmware", "zturn_v2.bit", "zturn_v2.xsa", "ps7_init.tcl", "ps-properties.txt", "fpga-abi.json"}
+    names = {"firmware", "zturn_v2.bit", "zturn_v2.xsa", "ps7_init.tcl", "ps-properties.txt", "fpga-abi.json", "geometry.txt"}
     if set(artifacts) != names or manifest["contract"] != contract(boards.load("zturn-v2")):
         raise ValueError("Unexpected artifacts or FPGA contract")
     for name, artifact in artifacts.items():

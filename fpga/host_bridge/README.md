@@ -29,6 +29,9 @@ python3 platforms/zynq7000/fpga_pair.py verify work/zturn-v2/diagnostic-pair.jso
 The paired manifest records the board and mailbox contract and hashes the ELF,
 bitstream, XSA and PS files. The signed SD deployment has its own manifest.
 The diagnostic ELF checks the fabric aperture and requests an empty snapshot.
+Pass `looping` after `bitstream` to try the resource bounds used by the
+production image packer. This geometry uses 32 samples per media chunk and
+reserves the upper portion of the PL arena for metadata.
 
 With a hardware-qualified pair, start the hardware server and capture UART1 at
 115200 baud. Use the JTAG command with the address of the server attached to

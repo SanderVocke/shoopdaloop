@@ -1,12 +1,14 @@
-if {$argc != 3} {
-    error "usage: vivado -mode batch -source fpga/host_bridge/zturn_v2.tcl -tclargs OUTPUT PS_PROPERTIES {generate|bitstream}"
+if {$argc ni {3 4}} {
+    error "usage: vivado -mode batch -source fpga/host_bridge/zturn_v2.tcl -tclargs OUTPUT PS_PROPERTIES {generate|bitstream} ?{diagnostic|looping}?"
 }
 set root [file normalize [file join [file dirname [info script]] ../..]]
 set output [file normalize [lindex $argv 0]]
 set ps_properties [file normalize [lindex $argv 1]]
 set stage [lindex $argv 2]
+set geometry [expr {$argc == 4 ? [lindex $argv 3] : "diagnostic"}]
 set serial_synth [expr {[info exists ::env(SHOOP_VIVADO_SERIAL_SYNTH)] && $::env(SHOOP_VIVADO_SERIAL_SYNTH) eq "1"}]
 if {$stage ni {generate bitstream}} {error "Unknown board build stage $stage"}
+if {$geometry ni {diagnostic looping}} {error "Unknown bridge geometry $geometry"}
 set channel [open $ps_properties r]
 set preset [read $channel]
 close $channel
@@ -17,6 +19,9 @@ foreach name [dict keys $preset] {
 file mkdir $output
 file copy -force $ps_properties [file join $output ps-properties.txt]
 file copy -force [file join $root fpga host_bridge registers.json] [file join $output fpga-abi.json]
+set channel [open [file join $output geometry.txt] w]
+puts $channel $geometry
+close $channel
 set profile [file join $output board]
 exec python3 [file join $root platforms zynq7000 boards.py] --board zturn-v2 --output $profile
 set channel [open [file join $profile shoop_board.h] r]
@@ -69,6 +74,12 @@ set core [create_bd_cell -type module -reference host_pipeline_bd core]
 set_property -dict [list CONFIG.ARENA_BASE [expr {$arena_base}] \
     CONFIG.ARENA_BYTES [expr {$arena_bytes}] CONFIG.CORE_CLOCK_HZ [expr {$clock_hz}] \
     CONFIG.EXTERNAL_IO 1 CONFIG.INPUT_PORTS 1] $core
+if {$geometry eq "looping"} {
+    # Match the production image packer and leave space for media metadata in HP0 DDR.
+    set_property -dict [list CONFIG.PROGRAM_DEPTH 1024 CONFIG.STATE_DEPTH 512 CONFIG.JOB_DEPTH 1024 \
+        CONFIG.BUFFERS 512 CONFIG.VIEWS 512 CONFIG.CHUNK_FRAMES 32 CONFIG.BLOCK_CHUNKS 32 \
+        CONFIG.SLOTS [expr {31*1024*1024/32}]] $core
+}
 set audio [create_bd_cell -type module -reference host_generated_audio audio]
 set_property CONFIG.CORE_CLOCK_HZ [expr {$clock_hz}] $audio
 create_bd_cell -type ip -vlnv xilinx.com:ip:proc_sys_reset:5.0 reset
