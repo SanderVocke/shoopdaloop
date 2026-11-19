@@ -1299,3 +1299,126 @@ fn midi_forwarding_uses_prepared_merge_capacity_and_clears_each_tick() {
     assert!(outputs[0].is_empty());
     assert_eq!(runtime.diagnostics().midi_overflows, 0);
 }
+
+#[shoop_test]
+fn reusable_midi_input_preserves_fan_in_and_isolates_nodes_without_heap_work() {
+    use rt_runtime::{
+        buffer::MidiCapacity, processor::MidiBufferSettings, resource::ResourceStore,
+        AudioRenderMode, Quantum,
+    };
+    struct CopyMidi;
+    impl Processor for CopyMidi {
+        fn ports(&self) -> PortCounts {
+            PortCounts {
+                midi_inputs: 1,
+                midi_outputs: 1,
+                ..Default::default()
+            }
+        }
+
+        fn midi_buffer_settings(&self) -> Result<MidiBufferSettings, Error> {
+            let capacity = MidiCapacity {
+                events: 4,
+                bytes: 12,
+            };
+            Ok(MidiBufferSettings {
+                input: Some(capacity),
+                output: Some(capacity),
+                reusable_input: Some(0),
+                ..Default::default()
+            })
+        }
+
+        fn process(&mut self, block: &mut ProcessBlock<'_>) -> Result<(), Error> {
+            let input = &block.midi_inputs[0];
+            for index in 0..input.len() {
+                let (offset, bytes) = input.get(index).ok_or(Error::InvalidEvent)?;
+                block.midi_outputs[0].push(offset, block.frames, bytes)?;
+            }
+            Ok(())
+        }
+    }
+    let config = Config {
+        max_frames: 1,
+        midi_inputs: 2,
+        midi_outputs: 2,
+        midi_events_per_port: 2,
+        midi_bytes_per_port: 6,
+        audio_inputs: 0,
+        audio_outputs: 0,
+        ..Config::default()
+    }
+    .prepare()
+    .unwrap();
+    for mode in [AudioRenderMode::Current, AudioRenderMode::Chunks] {
+        let quantum = Quantum::new(1).unwrap();
+        let mut resources = ResourceStore::new(config, quantum).unwrap();
+        resources.set_audio_render_mode(mode);
+        let (_, mut runtime) = GraphRuntime::prepare_with_resources(
+            config,
+            quantum,
+            vec![
+                PreparedNode::new(id(0), CopyMidi),
+                PreparedNode::new(id(1), CopyMidi),
+            ],
+            resources,
+        )
+        .unwrap();
+        runtime
+            .prepare_initial_graph(&GraphDescription {
+                nodes: vec![id(0), id(1)],
+                connections: vec![
+                    midi(None, 0, Some(id(0)), 0),
+                    midi(None, 1, Some(id(0)), 0),
+                    midi(None, 1, Some(id(1)), 0),
+                    midi(Some(id(0)), 0, None, 0),
+                    midi(Some(id(1)), 0, None, 1),
+                ],
+            })
+            .unwrap();
+        let mut inputs = [
+            MidiBuffer::new(2, 6).unwrap(),
+            MidiBuffer::new(2, 6).unwrap(),
+        ];
+        let mut outputs = [
+            MidiBuffer::new(4, 12).unwrap(),
+            MidiBuffer::new(4, 12).unwrap(),
+        ];
+        for (port, input) in inputs.iter_mut().enumerate() {
+            for key in 0..2 {
+                input
+                    .push(0, 1, &[0x90, (port * 2 + key) as u8, 100])
+                    .unwrap();
+            }
+        }
+        for count in [2, 0] {
+            assert_no_heap(|| {
+                runtime.process(
+                    AudioBlock {
+                        frame: runtime.next_frame(),
+                        frames: 1,
+                        inputs: &[],
+                        outputs: &mut [],
+                    },
+                    MidiBlock {
+                        inputs: &inputs,
+                        outputs: &mut outputs,
+                    },
+                )
+            })
+            .unwrap();
+            assert_eq!(outputs[0].len(), 2 + count, "{mode:?}");
+            assert_eq!(outputs[1].len(), count, "{mode:?}");
+            for (port, output) in outputs.iter().enumerate() {
+                for index in 0..output.len() {
+                    assert_eq!(
+                        output.get(index),
+                        Some((0, &[0x90, (2 * port + index) as u8, 100][..]))
+                    );
+                }
+            }
+            inputs[1].clear();
+        }
+        assert_eq!(runtime.diagnostics().midi_overflows, 0);
+    }
+}

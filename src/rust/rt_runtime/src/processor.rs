@@ -29,6 +29,9 @@ pub struct MidiBufferSettings {
     pub output: Option<MidiCapacity>,
     /// Forwarded MIDI outputs borrow this input after processing.
     pub forward_input: Option<usize>,
+    /// This input uses a prepared buffer shared with other nodes of the same
+    /// capacity. Its contents are available only while this node processes.
+    pub reusable_input: Option<usize>,
 }
 impl MidiBufferSettings {
     pub fn capacity(self, input: bool, port: usize, default: MidiCapacity) -> MidiCapacity {
@@ -41,11 +44,27 @@ impl MidiBufferSettings {
                 |entry| entry.capacity,
             )
     }
+    pub(crate) fn owned_capacity(
+        self,
+        input: bool,
+        port: usize,
+        default: MidiCapacity,
+    ) -> MidiCapacity {
+        if input && self.reusable_input == Some(port) {
+            MidiCapacity::default()
+        } else {
+            self.capacity(input, port, default)
+        }
+    }
+    /// Bytes owned by this node. Graph preparation charges the reusable arena once.
     pub fn prepared_bytes(self, ports: PortCounts, default: MidiCapacity) -> Result<usize, Error> {
         if self
             .forward_input
             .is_some_and(|input| input >= ports.midi_inputs)
             || self.forward_input.is_some() && self.output.is_some()
+            || self.reusable_input.is_some_and(|input| {
+                input >= ports.midi_inputs || self.forward_input == Some(input)
+            })
         {
             return Err(Error::InvalidConfig);
         }
@@ -76,7 +95,7 @@ impl MidiBufferSettings {
         for (input, count) in [(true, ports.midi_inputs), (false, ports.midi_outputs)] {
             for port in 0..count {
                 bytes = bytes
-                    .checked_add(self.capacity(input, port, default).prepared_bytes()?)
+                    .checked_add(self.owned_capacity(input, port, default).prepared_bytes()?)
                     .ok_or(Error::Capacity)?;
             }
         }
