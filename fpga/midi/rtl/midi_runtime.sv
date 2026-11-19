@@ -120,6 +120,8 @@ module midi_runtime #(
     reg [31:0] context_read_data;
     wire own_context=own_address>=arena_base+CONTEXT_OFFSET && own_address<arena_base+INPUT_OFFSET;
     wire [CONTEXT_ADDRESS_BITS-1:0] context_index=CONTEXT_ADDRESS_BITS'((own_address-(arena_base+CONTEXT_OFFSET))>>2);
+    localparam [15:0] STORE_START=16'd6, STORE_WAIT=16'd7,
+        STATE_START=16'd8, STATE_WAIT=16'd9;
     wire select_store=pc==STORE_START || pc==STORE_WAIT;
     wire select_state=pc==STATE_START || pc==STATE_WAIT;
     assign memory_valid=select_store ? store_memory_valid : select_state ? state_memory_valid :
@@ -203,10 +205,6 @@ module midi_runtime #(
         READ_WAIT=16'd3,
         WRITE_REQUEST=16'd4,
         WRITE_WAIT=16'd5,
-        STORE_START=16'd6,
-        STORE_WAIT=16'd7,
-        STATE_START=16'd8,
-        STATE_WAIT=16'd9,
         CONTEXT_READ=16'd10,
         CONTEXT_READ_NEXT=16'd11,
         CONTEXT_WRITE=16'd12,
