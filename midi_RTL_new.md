@@ -126,13 +126,13 @@ refusal tests. No new production behavior is enabled in this stage.
 
 ### 2. Add the message and musical-state component
 
-- [ ] Port the selected validator and state rules into `rt_fpga_reference::midi`,
+- [x] Port the selected validator and state rules into `rt_fpga_reference::midi`,
   preserving known/unknown values and the distinction between pending and loaded
   instrument banks. Keep repeated events in the stream even when state retains
   only the latest velocity for a key.
-- [ ] Add resumable update, cleanup, restoration, and recovery operations with
+- [x] Add resumable update, cleanup, restoration, and recovery operations with
   explicit progress and output acceptance. Preserve source attribution/revisions.
-- [ ] Add independent examples for pedal-held notes, sostenuto capture/release,
+- [x] Add independent examples for pedal-held notes, sostenuto capture/release,
   resets, bank/program ordering, channel isolation, and repeated notes. Check
   supported cases against the existing MIDI state implementation.
 
