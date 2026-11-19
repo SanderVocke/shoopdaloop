@@ -155,6 +155,13 @@ fn companion_installs_real_carla_track_and_bus_banks() {
             );
             thread::sleep(Duration::from_millis(2));
         }
+        let refusal = backend.capture_session().unwrap_err();
+        assert!(
+            refusal
+                .to_string()
+                .contains("cannot save Carla plugin state"),
+            "{refusal:#}"
+        );
         let loop_id = track.loops[0];
         let audio = |mode, sample| BackendAudioContent {
             mode,
@@ -209,6 +216,25 @@ fn companion_installs_real_carla_track_and_bus_banks() {
             assert!(Instant::now() < deadline, "{track:?}");
             thread::sleep(Duration::from_millis(2));
         }
+        backend
+            .transition_loop(loop_id, BackendLoopMode::Stopped, None)
+            .unwrap();
+        let deadline = Instant::now() + TIMEOUT;
+        let captured = loop {
+            if let BackendAsyncResult::Ready(captured) =
+                backend.capture_loop_content_async(loop_id).unwrap()
+            {
+                break captured;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "Carla loop media capture stalled"
+            );
+            thread::sleep(Duration::from_millis(2));
+        };
+        assert_eq!(captured.length, 1024);
+        assert_eq!(captured.audio[0].mode, BackendChannelMode::Dry);
+        assert_eq!(captured.audio[0].samples.as_slice(), &[0.25; 1024]);
         drop(backend);
         let report = supervisor.stop();
         assert!(

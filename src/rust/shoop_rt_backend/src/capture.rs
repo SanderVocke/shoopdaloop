@@ -126,6 +126,18 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         {
             return Ok(self.capture_pending(0, self.mirror.loops.len()));
         }
+        if only.is_none()
+            && (self.mirror.tracks.values().any(|track| {
+                crate::processor_controls::track_kind(track).is_some_and(|kind| kind.is_carla())
+            }) || self.mirror.buses.values().any(|bus| {
+                bus.processor_type
+                    .as_deref()
+                    .and_then(crate::processor_controls::processor_kind)
+                    .is_some_and(|kind| kind.is_carla())
+            }))
+        {
+            bail!("This host cannot save Carla plugin state in a session yet");
+        }
         if self.mirror.loops.iter().any(|(id, entry)| {
             only.is_none_or(|target| target == *id)
                 && (entry.view.recording_armed
@@ -547,11 +559,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     gain_db: bus.gain_db,
                     balance: bus.balance,
                     muted: bus.muted,
-                    processor_type: bus.processor_slot.map(|_| {
-                        alloc::string::String::from(shoop_app_api::TrackProcessorTypeId::BUILTIN_FX)
-                    }),
+                    processor_type: bus.processor_type.clone(),
                     processor_state: bus
                         .processor_snapshot
+                        .filter(|_| {
+                            bus.processor_type.as_deref()
+                                == Some(shoop_app_api::TrackProcessorTypeId::BUILTIN_FX)
+                        })
                         .map(|snapshot| {
                             crate::processor_controls::snapshot_state(
                                 shoop_rt_protocol::ProcessorKind::BuiltInFx,
