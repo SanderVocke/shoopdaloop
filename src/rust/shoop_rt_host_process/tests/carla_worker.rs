@@ -50,9 +50,9 @@ fn runtime_available() -> bool {
 #[shoop_test]
 fn companion_installs_real_carla_track_and_bus_banks() {
     use shoop_backend::{
-        Backend, BackendAsyncResult, BackendAudioContent, BackendBusFxRequest, BackendBusRequest,
-        BackendChannelMode, BackendLoopContent, BackendLoopMode, BackendTrackTopology,
-        TrackRequest,
+        Backend, BackendAsyncResult, BackendAudioContent, BackendBusFxControl, BackendBusFxRequest,
+        BackendBusRequest, BackendChannelMode, BackendLoopContent, BackendLoopMode,
+        BackendTrackFxControl, BackendTrackTopology, TrackRequest,
     };
     use shoop_rt_engine::EngineDescription;
     use shoop_rt_host_native::{DriverConfig, DummyConfig, NativeConfig};
@@ -154,6 +154,29 @@ fn companion_installs_real_carla_track_and_bus_banks() {
                 "track FX={fx:?} bus FX={bus_fx:?}"
             );
             thread::sleep(Duration::from_millis(2));
+        }
+        if hosting == CarlaHosting::Subprocess {
+            backend
+                .set_track_fx_control(track.track_id, BackendTrackFxControl::ClearLogs)
+                .unwrap();
+            backend
+                .set_bus_fx_control(bus.bus_id, BackendBusFxControl::ClearLogs)
+                .unwrap();
+            let through = backend.mutation_cursor();
+            let deadline = Instant::now() + TIMEOUT;
+            while backend.mutations_pending_through(through) {
+                let state = backend.poll().unwrap();
+                assert!(
+                    state.mutation_failures.is_empty(),
+                    "{:?}",
+                    state.mutation_failures
+                );
+                assert!(
+                    Instant::now() < deadline,
+                    "Carla log controls did not finish"
+                );
+                thread::sleep(Duration::from_millis(2));
+            }
         }
         let refusal = backend.capture_session().unwrap_err();
         assert!(
@@ -647,6 +670,9 @@ fn isolated_service_uses_the_prepared_render_endpoint() {
         String::from_utf8(xml).unwrap().contains("audiogain_s")
     };
     assert!(has_gain(&service.save_state().unwrap()));
+    let monitor = service.monitor();
+    let control = service.control();
+    let (owner, health) = monitor.owned_health();
     assert!(!assert_no_heap(|| endpoint.reset_step(0)).unwrap());
     let deadline = Instant::now() + TIMEOUT;
     let mut step = 1;
@@ -659,5 +685,25 @@ fn isolated_service_uses_the_prepared_render_endpoint() {
         step += 1;
     }
     assert!(!has_gain(&service.save_state().unwrap()));
+    let (new_owner, new_health) = monitor.owned_health();
+    assert_ne!(new_owner, owner);
+    let stale = control.clear_logs(owner, health.generation).unwrap();
+    let current = control
+        .clear_logs(new_owner, new_health.generation)
+        .unwrap();
+    let deadline = Instant::now() + TIMEOUT;
+    for (ticket, accepted) in [(stale, false), (current, true)] {
+        loop {
+            if let Some(outcome) = ticket.poll() {
+                assert_eq!(outcome.is_ok(), accepted, "{outcome:?}");
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "Carla log control was not processed"
+            );
+            thread::sleep(Duration::from_millis(1));
+        }
+    }
     service.stop(TIMEOUT).unwrap();
 }

@@ -4,12 +4,12 @@ use rt_runtime::{graph::PortCounts, Error, Quantum};
 use shoop_carla::{
     buffered::Worker,
     native::{carla_runtime_availability, CarlaMainThreadUiDispatcher},
-    service::{ChainControl, ChainMonitor, ChainService, RecoveryTicket},
+    service::{ChainControl, ChainMonitor, ChainService, ControlTicket},
 };
 use shoop_plugin_protocol::{CarlaChainType, CarlaProcessorLifecycle, ChainId, WorkerExitKind};
 use shoop_rt_engine::{
-    EngineDescription, HostedProcessor, HostedProcessorControls, HostedProcessorObservation,
-    HostedRecovery, PreparedProcessor, PreparedProcessors,
+    EngineDescription, HostedControlTicket, HostedProcessor, HostedProcessorControls,
+    HostedProcessorObservation, PreparedProcessor, PreparedProcessors,
 };
 use shoop_rt_protocol::{
     processors::{
@@ -214,19 +214,33 @@ impl HostedProcessorControls for Controls {
         index: u16,
         owner: u64,
         generation: u64,
-    ) -> Result<Box<dyn HostedRecovery>, Refusal> {
+    ) -> Result<Box<dyn HostedControlTicket>, Refusal> {
         let chain = self.chain(index).ok_or(Refusal::Unsupported)?;
         let ticket = chain
             .control
             .recover(owner, generation, true)
             .map_err(|_| Refusal::Internal)?;
-        Ok(Box::new(Recovery(ticket)))
+        Ok(Box::new(PendingControl(ticket)))
+    }
+
+    fn clear_logs(
+        &self,
+        index: u16,
+        owner: u64,
+        generation: u64,
+    ) -> Result<Box<dyn HostedControlTicket>, Refusal> {
+        let chain = self.chain(index).ok_or(Refusal::Unsupported)?;
+        let ticket = chain
+            .control
+            .clear_logs(owner, generation)
+            .map_err(|_| Refusal::Internal)?;
+        Ok(Box::new(PendingControl(ticket)))
     }
 }
 
-struct Recovery(RecoveryTicket);
+struct PendingControl(ControlTicket);
 
-impl HostedRecovery for Recovery {
+impl HostedControlTicket for PendingControl {
     fn poll(&mut self) -> Option<Result<(), Refusal>> {
         self.0
             .poll()

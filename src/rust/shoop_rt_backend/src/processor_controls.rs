@@ -382,6 +382,24 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         })
     }
 
+    fn external_clear_logs_request(
+        target: ProcessorTarget,
+        slot: Option<ProcessorSlot>,
+        snapshot: Option<shoop_rt_protocol::processors::Snapshot>,
+    ) -> Result<Request> {
+        let slot = slot.ok_or_else(|| anyhow!("processor ownership is not confirmed"))?;
+        let worker_generation = snapshot
+            .and_then(|snapshot| snapshot.hosted)
+            .map(|status| status.generation)
+            .filter(|generation| *generation != 0)
+            .ok_or_else(|| anyhow!("Carla worker generation is not confirmed"))?;
+        Ok(Request::ProcessorClearLogs {
+            target,
+            slot,
+            worker_generation,
+        })
+    }
+
     fn processor_update(
         &self,
         kind: Kind,
@@ -515,6 +533,16 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 .and_then(processor_kind)
                 .ok_or_else(|| anyhow!("unknown bus processor"))?;
             if kind.is_carla() {
+                if matches!(&control, BusControl::ClearLogs) {
+                    let request = Self::external_clear_logs_request(
+                        ProcessorTarget::Bus(slot),
+                        bus.processor_slot,
+                        bus.processor_snapshot,
+                    )?;
+                    self.requests
+                        .push(request, Purpose::BusFxControl(id, control));
+                    return Ok(());
+                }
                 let visible = match control {
                     BusControl::SetVisible(visible) => Some(Some(visible)),
                     BusControl::ToggleOrRecover => Some(None),
@@ -570,6 +598,17 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         let kind = track_kind(track).ok_or_else(|| anyhow!("track has no hosted processor"))?;
         let strip = track.strip;
         if kind.is_carla() {
+            if matches!(&control, BackendTrackFxControl::ClearLogs) {
+                self.require_mutation_capacity(1)?;
+                let request = Self::external_clear_logs_request(
+                    ProcessorTarget::Strip(strip),
+                    track.processor_slot,
+                    track.processor_snapshot,
+                )?;
+                self.requests
+                    .push(request, Purpose::ProcessorControl(id, control));
+                return Ok(());
+            }
             let visible = match control {
                 BackendTrackFxControl::SetVisible(visible) => Some(Some(visible)),
                 BackendTrackFxControl::ToggleOrRecover => Some(None),

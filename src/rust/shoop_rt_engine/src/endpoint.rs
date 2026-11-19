@@ -170,7 +170,13 @@ pub trait HostedProcessorControls: Send {
         index: u16,
         owner: u64,
         generation: u64,
-    ) -> Result<Box<dyn HostedRecovery>, Refusal>;
+    ) -> Result<Box<dyn HostedControlTicket>, Refusal>;
+    fn clear_logs(
+        &self,
+        index: u16,
+        owner: u64,
+        generation: u64,
+    ) -> Result<Box<dyn HostedControlTicket>, Refusal>;
 }
 
 pub struct HostedProcessorObservation {
@@ -178,15 +184,15 @@ pub struct HostedProcessorObservation {
     pub status: shoop_rt_protocol::processors::HostedStatus,
 }
 
-pub trait HostedRecovery: Send {
+pub trait HostedControlTicket: Send {
     fn poll(&mut self) -> Option<Result<(), Refusal>>;
 }
 
-pub(crate) struct PendingHostedRecovery {
+pub(crate) struct PendingHostedControl {
     target: shoop_rt_protocol::ProcessorTarget,
     slot: shoop_rt_protocol::ProcessorSlot,
     correlation: Option<u64>,
-    ticket: Box<dyn HostedRecovery>,
+    ticket: Box<dyn HostedControlTicket>,
 }
 
 pub struct ControlEndpoint {
@@ -199,7 +205,7 @@ pub struct ControlEndpoint {
     pub(crate) projected_recorded: Box<[Option<(LoopSlotId, u64, bool)>]>,
     pub(crate) processor_catalog: crate::ProcessorCatalog,
     pub(crate) hosted_processors: Option<Box<dyn HostedProcessorControls>>,
-    pub(crate) hosted_recoveries: Box<[Option<PendingHostedRecovery>]>,
+    pub(crate) hosted_controls: Box<[Option<PendingHostedControl>]>,
     pub(crate) processor_cells: Box<[Arc<crate::processors::ProcessorCells>]>,
     pub(crate) projected_bus_processors: Box<
         [Option<(
@@ -386,7 +392,7 @@ impl ControlEndpoint {
         &mut self,
         controls: Box<dyn HostedProcessorControls>,
     ) {
-        self.hosted_recoveries = core::iter::repeat_with(|| None)
+        self.hosted_controls = core::iter::repeat_with(|| None)
             .take(self.processor_cells.len())
             .collect();
         self.hosted_processors = Some(controls);
@@ -405,17 +411,15 @@ impl ControlEndpoint {
         .ok_or(Refusal::Unsupported)
     }
 
-    fn processor_editor(
-        &mut self,
-        correlation: u64,
+    fn confirmed_hosted_processor(
+        &self,
         target: shoop_rt_protocol::ProcessorTarget,
         slot: shoop_rt_protocol::ProcessorSlot,
-        visible: Option<bool>,
-    ) -> Result<Option<Outcome>, Refusal> {
-        use shoop_rt_protocol::processors::{HostedLifecycle, Phase};
+    ) -> Result<&dyn HostedProcessorControls, Refusal> {
+        use shoop_rt_protocol::processors::Phase;
         let controls = self
             .hosted_processors
-            .as_ref()
+            .as_deref()
             .ok_or(Refusal::Unsupported)?;
         let owner = self.hosted_processor_owner(target)?;
         if owner.slot != Some(slot) {
@@ -430,10 +434,21 @@ impl ControlEndpoint {
         {
             return Err(Refusal::InvalidId);
         }
-        let index = slot.index as usize;
-        if self.hosted_recoveries[index].is_some() {
+        if self.hosted_controls[slot.index as usize].is_some() {
             return Err(Refusal::Busy);
         }
+        Ok(controls)
+    }
+
+    fn processor_editor(
+        &mut self,
+        correlation: u64,
+        target: shoop_rt_protocol::ProcessorTarget,
+        slot: shoop_rt_protocol::ProcessorSlot,
+        visible: Option<bool>,
+    ) -> Result<Option<Outcome>, Refusal> {
+        use shoop_rt_protocol::processors::HostedLifecycle;
+        let controls = self.confirmed_hosted_processor(target, slot)?;
         let HostedProcessorObservation { owner, status } =
             controls.status(slot.index).ok_or(Refusal::Unsupported)?;
         if visible.is_none()
@@ -444,7 +459,7 @@ impl ControlEndpoint {
             )
         {
             let ticket = controls.recover(slot.index, owner, status.generation)?;
-            self.hosted_recoveries[index] = Some(PendingHostedRecovery {
+            self.hosted_controls[slot.index as usize] = Some(PendingHostedControl {
                 target,
                 slot,
                 correlation: Some(correlation),
@@ -457,15 +472,41 @@ impl ControlEndpoint {
         Ok(Some(Outcome::Done))
     }
 
-    fn advance_hosted_recoveries(&mut self) {
-        for index in 0..self.hosted_recoveries.len() {
-            let Some(result) = self.hosted_recoveries[index]
+    fn processor_clear_logs(
+        &mut self,
+        correlation: u64,
+        target: shoop_rt_protocol::ProcessorTarget,
+        slot: shoop_rt_protocol::ProcessorSlot,
+        worker_generation: u64,
+    ) -> Result<Option<Outcome>, Refusal> {
+        if worker_generation == 0 {
+            return Err(Refusal::Unsupported);
+        }
+        let controls = self.confirmed_hosted_processor(target, slot)?;
+        let HostedProcessorObservation { owner, status } =
+            controls.status(slot.index).ok_or(Refusal::Unsupported)?;
+        if status.generation != worker_generation {
+            return Err(Refusal::InvalidId);
+        }
+        let ticket = controls.clear_logs(slot.index, owner, worker_generation)?;
+        self.hosted_controls[slot.index as usize] = Some(PendingHostedControl {
+            target,
+            slot,
+            correlation: Some(correlation),
+            ticket,
+        });
+        Ok(None)
+    }
+
+    fn advance_hosted_controls(&mut self) {
+        for index in 0..self.hosted_controls.len() {
+            let Some(result) = self.hosted_controls[index]
                 .as_mut()
                 .and_then(|pending| pending.ticket.poll())
             else {
                 continue;
             };
-            let pending = self.hosted_recoveries[index].take().unwrap();
+            let pending = self.hosted_controls[index].take().unwrap();
             if let Some(correlation) = pending.correlation {
                 let outcome = if self
                     .hosted_processor_owner(pending.target)
@@ -526,7 +567,7 @@ impl ControlEndpoint {
             && self.queue.len() == 0
             && self.job.as_ref().is_none_or(Job::idle)
             && self.pending.iter().all(Option::is_none)
-            && self.hosted_recoveries.iter().all(Option::is_none)
+            && self.hosted_controls.iter().all(Option::is_none)
             && self.bulk.idle()
             && self.uploads.idle()
             && self.next_frame().0 >= self.quiet_until
@@ -738,7 +779,7 @@ impl ControlEndpoint {
         self.projected_timing.fill(None);
         self.limits_changed = false;
         self.protocol_error = false;
-        for pending in self.hosted_recoveries.iter_mut().flatten() {
+        for pending in self.hosted_controls.iter_mut().flatten() {
             pending.correlation = None;
         }
         for pending in self.pending.iter_mut().flatten() {
@@ -1226,6 +1267,14 @@ impl ControlEndpoint {
                 slot,
                 visible,
             } => match self.processor_editor(correlation, target, slot, visible) {
+                Err(Refusal::Busy) => return Err(()),
+                result => result,
+            },
+            Request::ProcessorClearLogs {
+                target,
+                slot,
+                worker_generation,
+            } => match self.processor_clear_logs(correlation, target, slot, worker_generation) {
                 Err(Refusal::Busy) => return Err(()),
                 result => result,
             },
@@ -1872,7 +1921,7 @@ impl Endpoint for ControlEndpoint {
             return;
         }
         self.drain_runtime();
-        self.advance_hosted_recoveries();
+        self.advance_hosted_controls();
         self.immediate.responses(out, self.connected);
         self.refresh_snapshot_timing();
         self.reconcile_immediate();

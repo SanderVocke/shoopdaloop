@@ -929,18 +929,19 @@ impl Wire for Request {
                 visible,
             } => {
                 w.u8(74)?;
-                match target {
-                    ProcessorTarget::Strip(strip) => {
-                        w.u8(0)?;
-                        strip.put(w)?;
-                    }
-                    ProcessorTarget::Bus(bus) => {
-                        w.u8(1)?;
-                        bus.put(w)?;
-                    }
-                }
+                target.put(w)?;
                 slot.put(w)?;
                 visible.put(w)
+            }
+            Self::ProcessorClearLogs {
+                target,
+                slot,
+                worker_generation,
+            } => {
+                w.u8(75)?;
+                target.put(w)?;
+                slot.put(w)?;
+                w.u64(worker_generation)
             }
             Self::StripDefaultPlayback {
                 strip,
@@ -1355,13 +1356,14 @@ impl Wire for Request {
                 control: crate::processors::Control::get(r)?,
             },
             74 => Self::ProcessorEditor {
-                target: match r.u8()? {
-                    0 => ProcessorTarget::Strip(StripId::get(r)?),
-                    1 => ProcessorTarget::Bus(BusId::get(r)?),
-                    _ => return Err(CodecError::Invalid),
-                },
+                target: ProcessorTarget::get(r)?,
                 slot: ProcessorSlot::get(r)?,
                 visible: Option::get(r)?,
+            },
+            75 => Self::ProcessorClearLogs {
+                target: ProcessorTarget::get(r)?,
+                slot: ProcessorSlot::get(r)?,
+                worker_generation: r.u64()?,
             },
             36 => Self::StripDefaultPlayback {
                 strip: StripId::get(r)?,
@@ -2167,6 +2169,29 @@ impl Wire for ProcessorLimits {
         })
     }
 }
+impl Wire for ProcessorTarget {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        match self {
+            Self::Strip(strip) => {
+                w.u8(0)?;
+                strip.put(w)
+            }
+            Self::Bus(bus) => {
+                w.u8(1)?;
+                bus.put(w)
+            }
+        }
+    }
+
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        match r.u8()? {
+            0 => Ok(Self::Strip(StripId::get(r)?)),
+            1 => Ok(Self::Bus(BusId::get(r)?)),
+            _ => Err(CodecError::Invalid),
+        }
+    }
+}
+
 impl Wire for ProcessorSlot {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         if self.index >= 128 || self.generation == 0 {

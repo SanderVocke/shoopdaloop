@@ -79,7 +79,7 @@ pub mod testing;
 pub use cells::HostStatus;
 pub use description::{EngineDescription, HostPorts, Segment, MAX_HOST_PORTS};
 pub use endpoint::{
-    ControlEndpoint, HostedProcessorControls, HostedProcessorObservation, HostedRecovery,
+    ControlEndpoint, HostedControlTicket, HostedProcessorControls, HostedProcessorObservation,
 };
 pub use node::{EngineNode, EngineOp, NodeConfiguration};
 pub use processors::{
@@ -844,7 +844,7 @@ fn prepare_complete_using<R>(
         projected_recorded: vec![None; loops].into_boxed_slice(),
         processor_catalog,
         hosted_processors: None,
-        hosted_recoveries: Box::new([]),
+        hosted_controls: Box::new([]),
         processor_cells,
         profiling: profile_reader,
         profile_named: vec![false; pool.nodes()].into_boxed_slice(),

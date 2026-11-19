@@ -32,11 +32,16 @@ enum Operation {
     Active(bool),
     Save,
     Restore(String),
-    Recover {
+    Owned {
         owner: u64,
         generation: u64,
-        show_editor: bool,
+        action: OwnedOperation,
     },
+}
+
+enum OwnedOperation {
+    Recover { show_editor: bool },
+    ClearLogs,
 }
 
 enum Reply {
@@ -91,9 +96,9 @@ impl ReplyTicket {
     }
 }
 
-pub struct RecoveryTicket(ReplyTicket);
+pub struct ControlTicket(ReplyTicket);
 
-impl RecoveryTicket {
+impl ControlTicket {
     pub fn poll(&self) -> Option<Result<()>> {
         match self.0.response.try_recv() {
             Ok(result) => Some(result.map(|_| ())),
@@ -108,22 +113,41 @@ pub struct ChainControl {
 }
 
 impl ChainControl {
-    pub fn recover(
+    fn submit_owned(
         &self,
         owner: u64,
         generation: u64,
-        show_editor: bool,
-    ) -> Result<RecoveryTicket> {
+        action: OwnedOperation,
+        timeout: Duration,
+    ) -> Result<ControlTicket> {
         let commands = self.commands.upgrade().context("Carla service stopped")?;
         let ticket = commands.submit(
-            Operation::Recover {
+            Operation::Owned {
                 owner,
                 generation,
-                show_editor,
+                action,
             },
-            RECOVERY_TIMEOUT,
+            timeout,
         )?;
-        Ok(RecoveryTicket(ticket))
+        Ok(ControlTicket(ticket))
+    }
+
+    pub fn recover(&self, owner: u64, generation: u64, show_editor: bool) -> Result<ControlTicket> {
+        self.submit_owned(
+            owner,
+            generation,
+            OwnedOperation::Recover { show_editor },
+            RECOVERY_TIMEOUT,
+        )
+    }
+
+    pub fn clear_logs(&self, owner: u64, generation: u64) -> Result<ControlTicket> {
+        self.submit_owned(
+            owner,
+            generation,
+            OwnedOperation::ClearLogs,
+            CONTROL_TIMEOUT,
+        )
     }
 }
 
@@ -404,10 +428,10 @@ fn run(
                             .processor()
                             .restore_state(&state)
                             .map(|()| Reply::Done),
-                        Operation::Recover {
+                        Operation::Owned {
                             owner,
                             generation,
-                            show_editor,
+                            action,
                         } => {
                             let retiring = worker.owner_reset_requested();
                             let processor = worker.processor();
@@ -415,21 +439,30 @@ fn run(
                                 || owner != monitor.0.read().unwrap().owner
                                 || generation != processor.generation()
                             {
-                                Err(anyhow!("Carla recovery owner changed"))
-                            } else if processor.is_ready() {
-                                Err(anyhow!("Carla worker is already running"))
+                                Err(anyhow!("Carla processor owner changed"))
                             } else {
-                                monitor.0.write().unwrap().health.lifecycle =
-                                    CarlaProcessorLifecycle::Restarting;
-                                let result = processor.recover(show_editor);
-                                // Jobs queued during recovery belong to the old worker.
-                                worker
-                                    .discard_submitted_batches()
-                                    .map_err(|error| {
-                                        anyhow!("retiring Carla submissions: {error:?}")
-                                    })
-                                    .and(result)
-                                    .map(|()| Reply::Done)
+                                match action {
+                                    OwnedOperation::ClearLogs => {
+                                        processor.clear_logs();
+                                        Ok(Reply::Done)
+                                    }
+                                    OwnedOperation::Recover { .. } if processor.is_ready() => {
+                                        Err(anyhow!("Carla worker is already running"))
+                                    }
+                                    OwnedOperation::Recover { show_editor } => {
+                                        monitor.0.write().unwrap().health.lifecycle =
+                                            CarlaProcessorLifecycle::Restarting;
+                                        let result = processor.recover(show_editor);
+                                        // Jobs queued during recovery belong to the old worker.
+                                        worker
+                                            .discard_submitted_batches()
+                                            .map_err(|error| {
+                                                anyhow!("retiring Carla submissions: {error:?}")
+                                            })
+                                            .and(result)
+                                            .map(|()| Reply::Done)
+                                    }
+                                }
                             }
                         }
                     }

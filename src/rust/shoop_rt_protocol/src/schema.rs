@@ -196,6 +196,11 @@ pub enum Request {
         /// None toggles the confirmed visibility.
         visible: Option<bool>,
     },
+    ProcessorClearLogs {
+        target: ProcessorTarget,
+        slot: ProcessorSlot,
+        worker_generation: u64,
+    },
     CreateProcessedStrip {
         strip: StripId,
         shape: StripShape,

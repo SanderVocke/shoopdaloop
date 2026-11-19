@@ -255,6 +255,10 @@ impl ControlEndpoint {
                 target: shoop_rt_protocol::ProcessorTarget::Strip(id),
                 ..
             }
+            | Request::ProcessorClearLogs {
+                target: shoop_rt_protocol::ProcessorTarget::Strip(id),
+                ..
+            }
             | Request::InjectMidi { strip: id, .. } => strip(id.0.index, HARD),
             Request::LoopTransition { loop_id, delay, .. } => {
                 let owner = self
@@ -276,6 +280,10 @@ impl ControlEndpoint {
             Request::BusProcessorControl { bus: id, .. }
             | Request::BusControl { bus: id, .. }
             | Request::ProcessorEditor {
+                target: shoop_rt_protocol::ProcessorTarget::Bus(id),
+                ..
+            }
+            | Request::ProcessorClearLogs {
                 target: shoop_rt_protocol::ProcessorTarget::Bus(id),
                 ..
             } => bus(id, HARD),
@@ -380,6 +388,10 @@ impl ControlEndpoint {
                 target: shoop_rt_protocol::ProcessorTarget::Strip(id),
                 ..
             }
+            | Request::ProcessorClearLogs {
+                target: shoop_rt_protocol::ProcessorTarget::Strip(id),
+                ..
+            }
             | Request::InjectMidi { strip: id, .. }
             | Request::CreateStrip { strip: id, .. }
             | Request::CreateProcessedStrip { strip: id, .. }
@@ -405,6 +417,10 @@ impl ControlEndpoint {
             | Request::SetBusProcessorKind { bus, .. }
             | Request::BusProcessorControl { bus, .. }
             | Request::ProcessorEditor {
+                target: shoop_rt_protocol::ProcessorTarget::Bus(bus),
+                ..
+            }
+            | Request::ProcessorClearLogs {
                 target: shoop_rt_protocol::ProcessorTarget::Bus(bus),
                 ..
             }

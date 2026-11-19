@@ -294,6 +294,19 @@ fn carla_editor_controls_follow_the_confirmed_track_and_bus() {
                 assert!(Instant::now() < deadline, "worker loss was not projected");
                 thread::sleep(Duration::from_millis(10));
             }
+            for clear in [
+                Command::Track {
+                    track,
+                    action: TrackAction::FxClearLogs,
+                },
+                Command::Bus {
+                    bus,
+                    action: BusAction::FxClearLogs,
+                },
+            ] {
+                let outcome = command(&mut client, &mut connection, clear);
+                assert!(matches!(outcome, Outcome::Confirmed { .. }), "{outcome:?}");
+            }
             let outcome = command(
                 &mut client,
                 &mut connection,
