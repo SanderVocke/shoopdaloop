@@ -137,3 +137,8 @@ state under delayed memory and output pressure. Cases cover all quantum sizes,
 playback, resource exhaustion, retirement, refusal recovery and AXI32/64 faults.
 There is no wall-clock performance gate. Simulation/synthesis establish
 functionality and synthesizability; routed-board deadlines require later work.
+
+The [Vivado 2021.1 study](../../docs/fpga/midi-vivado-7020.md) compares the audio
+components before and after adding MIDI, sized for 64 stereo loops with MIDI,
+30-second audio storage, and 32-frame chunks/quanta on a Zynq-7020. It reports
+resource use and clock timing separately from quantum execution deadlines.

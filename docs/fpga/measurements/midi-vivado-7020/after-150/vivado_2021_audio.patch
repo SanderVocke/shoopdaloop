@@ -1,0 +1,25 @@
+diff --git a/fpga/media_store/rtl/media_store.sv b/fpga/media_store/rtl/media_store.sv
+index 3f7064dc..8ddc045b 100644
+--- a/fpga/media_store/rtl/media_store.sv
++++ b/fpga/media_store/rtl/media_store.sv
+@@ -97,7 +97,19 @@ module media_store #(
+     reg [31:0] allocation_view;
+     reg [31:0] view_count, slot_count, free_count, slot_limit;
+     reg [VIEWS-1:0] valid_views;
+-    wire [31:0] views_used = REUSE_VIEWS != 0 ? 32'($countones(valid_views)) : view_count;
++    wire [31:0] views_used;
++    generate if (REUSE_VIEWS != 0) begin : count_views
++        localparam integer LEAVES = 2**$clog2(VIEWS), BITS = $clog2(VIEWS+1);
++        for (genvar i=1; i<2*LEAVES; i=i+1) begin : tree
++            wire [BITS-1:0] count;
++            if (i<LEAVES) assign count = tree[2*i].count+tree[2*i+1].count;
++            else if (i-LEAVES<VIEWS) assign count = BITS'(valid_views[i-LEAVES]);
++            else assign count = 0;
++        end
++        assign views_used = 32'(tree[1].count);
++    end else begin : count_issued_views
++        assign views_used = view_count;
++    end endgenerate
+     reg cfg_pending, cfg_result_valid, faulted, cfg_was_write;
+     reg cfg_request_valid, cfg_request_write, cfg_request_in_range;
+     reg [3:0] cfg_request_upper_nonzero;

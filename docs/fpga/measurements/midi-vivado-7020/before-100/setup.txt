@@ -1,0 +1,7 @@
+Vivado: Vivado v2021.1 (64-bit)
+SW Build 3247384 on Thu Jun 10 19:36:07 MDT 2021
+Copyright 1986-2021 Xilinx, Inc. All Rights Reserved.
+Part: xc7z020clg484-1
+Threads: 2
+Uncertainty: 0.2 ns
+Flow: OOC, rebuilt hierarchy, default placement/routing, post-place phys_opt

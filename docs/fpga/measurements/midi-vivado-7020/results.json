@@ -1,0 +1,756 @@
+[
+  {
+    "version": "before",
+    "mhz": 100,
+    "provenance": {
+      "revision": "147c2457f46ec921f5dad5c99b5f673eda13ef99",
+      "version": "before",
+      "clock_mhz": 100,
+      "part": "xc7z020clg484-1",
+      "uncertainty_ns": 0.2,
+      "sample_rate": 48000,
+      "loops": 64,
+      "audio_channels_per_loop": 2,
+      "storage_seconds": 30,
+      "chunk_frames": 32,
+      "quantum_frames": 32,
+      "audio": {
+        "EXTERNAL_IO": 1,
+        "LIVE_LOADING": 1,
+        "EXPORT_SYNC_EVENTS": 1,
+        "PROGRAM_DEPTH": 1024,
+        "STATE_DEPTH": 256,
+        "JOB_DEPTH": 1024,
+        "MAX_FRAMES": 32,
+        "BUFFERS": 512,
+        "INPUT_PORTS": 2,
+        "OUTPUT_PORTS": 2,
+        "REUSE_VIEWS": 1,
+        "VIEWS": 512,
+        "SLOTS": 5763072,
+        "CHUNK_FRAMES": 32,
+        "BLOCK_CHUNKS": 32,
+        "RETIRED_TABLES": 256,
+        "TABLE_LINES": 128,
+        "REF_LINES": 4,
+        "STACK_LINES": 2,
+        "READ_BUFFERS": 4,
+        "WRITE_BUFFERS": 4,
+        "BURST_MEMORY": 1,
+        "AXI_DATA_WIDTH": 64,
+        "PHYSICAL_BASE": 16777216,
+        "PHYSICAL_BYTES_LIMIT": 1073741824
+      },
+      "midi": null,
+      "libraries": [
+        "state_processor",
+        "job_processor",
+        "chunk_memory",
+        "media_store",
+        "axi_memory"
+      ],
+      "build": "out-of-context registered component composition",
+      "memory": "two independent AXI3 HP interfaces into external shared DDR; PS7 excluded",
+      "threads": 2,
+      "strategy": "default placement and routing; post-place phys_opt",
+      "compatibility_patches": [
+        {
+          "file": "compatibility.patch",
+          "sha256": "82097283a6e6446b7d261caefa7004f03d87401fe47e7828feadd60fe94d295e",
+          "reason": "Equivalent balanced bit count for Vivado 2021.1"
+        }
+      ]
+    },
+    "outcome": "stage=route\nstatus=0\nmessage=0\n",
+    "stages": {
+      "synth": {
+        "total": {
+          "luts": 41815,
+          "registers": 23843,
+          "bram36_equivalent": 55,
+          "dsps": 4,
+          "ramb36": 51,
+          "ramb18": 8
+        },
+        "audio": {
+          "luts": 41743,
+          "registers": 18683,
+          "bram36_equivalent": 55,
+          "dsps": 4,
+          "ramb36": 51,
+          "ramb18": 8
+        },
+        "timing": {
+          "wns_ns": -8.799,
+          "whs_ns": 0.002
+        },
+        "summary": {
+          "wns_ns": -8.799,
+          "tns_ns": -350.628,
+          "setup_failing": 72.0,
+          "setup_total": 56460.0,
+          "whs_ns": 0.002,
+          "ths_ns": 0.0,
+          "hold_failing": 0.0,
+          "hold_total": 56460.0
+        }
+      },
+      "opt": {
+        "total": {
+          "luts": 27993,
+          "registers": 23253,
+          "bram36_equivalent": 55,
+          "dsps": 4,
+          "ramb36": 51,
+          "ramb18": 8
+        },
+        "audio": {
+          "luts": 27921,
+          "registers": 18093,
+          "bram36_equivalent": 55,
+          "dsps": 4,
+          "ramb36": 51,
+          "ramb18": 8
+        },
+        "timing": {
+          "wns_ns": -5.32,
+          "whs_ns": 0.002
+        },
+        "summary": {
+          "wns_ns": -5.32,
+          "tns_ns": -308.095,
+          "setup_failing": 72.0,
+          "setup_total": 54821.0,
+          "whs_ns": 0.002,
+          "ths_ns": 0.0,
+          "hold_failing": 0.0,
+          "hold_total": 54821.0
+        }
+      },
+      "place": {
+        "total": {
+          "luts": 27625,
+          "registers": 23332,
+          "bram36_equivalent": 55,
+          "dsps": 4,
+          "ramb36": 51,
+          "ramb18": 8
+        },
+        "audio": {
+          "luts": 27479,
+          "registers": 18098,
+          "bram36_equivalent": 55,
+          "dsps": 4,
+          "ramb36": 51,
+          "ramb18": 8
+        },
+        "timing": {
+          "wns_ns": -4.126,
+          "whs_ns": -0.434
+        },
+        "summary": {
+          "wns_ns": -4.126,
+          "tns_ns": -4177.969,
+          "setup_failing": 4685.0,
+          "setup_total": 54905.0,
+          "whs_ns": -0.434,
+          "ths_ns": -81.341,
+          "hold_failing": 1241.0,
+          "hold_total": 54905.0
+        }
+      },
+      "route": {
+        "total": {
+          "luts": 27625,
+          "registers": 23332,
+          "bram36_equivalent": 55,
+          "dsps": 4,
+          "ramb36": 51,
+          "ramb18": 8
+        },
+        "audio": {
+          "luts": 27479,
+          "registers": 18098,
+          "bram36_equivalent": 55,
+          "dsps": 4,
+          "ramb36": 51,
+          "ramb18": 8
+        },
+        "timing": {
+          "wns_ns": -4.578,
+          "whs_ns": 0.046
+        },
+        "summary": {
+          "wns_ns": -4.578,
+          "tns_ns": -2169.937,
+          "setup_failing": 4540.0,
+          "setup_total": 54905.0,
+          "whs_ns": 0.046,
+          "ths_ns": 0.0,
+          "hold_failing": 0.0,
+          "hold_total": 54905.0
+        }
+      }
+    },
+    "timing_estimates": {}
+  },
+  {
+    "version": "before",
+    "mhz": 150,
+    "provenance": {
+      "revision": "147c2457f46ec921f5dad5c99b5f673eda13ef99",
+      "version": "before",
+      "clock_mhz": 150,
+      "part": "xc7z020clg484-1",
+      "uncertainty_ns": 0.2,
+      "sample_rate": 48000,
+      "loops": 64,
+      "audio_channels_per_loop": 2,
+      "storage_seconds": 30,
+      "chunk_frames": 32,
+      "quantum_frames": 32,
+      "audio": {
+        "EXTERNAL_IO": 1,
+        "LIVE_LOADING": 1,
+        "EXPORT_SYNC_EVENTS": 1,
+        "PROGRAM_DEPTH": 1024,
+        "STATE_DEPTH": 256,
+        "JOB_DEPTH": 1024,
+        "MAX_FRAMES": 32,
+        "BUFFERS": 512,
+        "INPUT_PORTS": 2,
+        "OUTPUT_PORTS": 2,
+        "REUSE_VIEWS": 1,
+        "VIEWS": 512,
+        "SLOTS": 5763072,
+        "CHUNK_FRAMES": 32,
+        "BLOCK_CHUNKS": 32,
+        "RETIRED_TABLES": 256,
+        "TABLE_LINES": 128,
+        "REF_LINES": 4,
+        "STACK_LINES": 2,
+        "READ_BUFFERS": 4,
+        "WRITE_BUFFERS": 4,
+        "BURST_MEMORY": 1,
+        "AXI_DATA_WIDTH": 64,
+        "PHYSICAL_BASE": 16777216,
+        "PHYSICAL_BYTES_LIMIT": 1073741824
+      },
+      "midi": null,
+      "libraries": [
+        "state_processor",
+        "job_processor",
+        "chunk_memory",
+        "media_store",
+        "axi_memory"
+      ],
+      "build": "out-of-context registered component composition",
+      "memory": "two independent AXI3 HP interfaces into external shared DDR; PS7 excluded",
+      "threads": 2,
+      "strategy": "default placement and routing; post-place phys_opt",
+      "compatibility_patches": [
+        {
+          "file": "compatibility.patch",
+          "sha256": "82097283a6e6446b7d261caefa7004f03d87401fe47e7828feadd60fe94d295e",
+          "reason": "Equivalent balanced bit count for Vivado 2021.1"
+        }
+      ]
+    },
+    "outcome": "stage=route\nstatus=0\nmessage=0\n",
+    "stages": {
+      "synth": {
+        "total": {
+          "luts": 41815,
+          "registers": 23843,
+          "bram36_equivalent": 55,
+          "dsps": 4,
+          "ramb36": 51,
+          "ramb18": 8
+        },
+        "audio": {
+          "luts": 41743,
+          "registers": 18683,
+          "bram36_equivalent": 55,
+          "dsps": 4,
+          "ramb36": 51,
+          "ramb18": 8
+        },
+        "timing": {
+          "wns_ns": -12.132,
+          "whs_ns": 0.002
+        },
+        "summary": {
+          "wns_ns": -12.132,
+          "tns_ns": -7962.022,
+          "setup_failing": 5518.0,
+          "setup_total": 56460.0,
+          "whs_ns": 0.002,
+          "ths_ns": 0.0,
+          "hold_failing": 0.0,
+          "hold_total": 56460.0
+        }
+      },
+      "opt": {
+        "total": {
+          "luts": 27993,
+          "registers": 23253,
+          "bram36_equivalent": 55,
+          "dsps": 4,
+          "ramb36": 51,
+          "ramb18": 8
+        },
+        "audio": {
+          "luts": 27921,
+          "registers": 18093,
+          "bram36_equivalent": 55,
+          "dsps": 4,
+          "ramb36": 51,
+          "ramb18": 8
+        },
+        "timing": {
+          "wns_ns": -8.653,
+          "whs_ns": 0.002
+        },
+        "summary": {
+          "wns_ns": -8.653,
+          "tns_ns": -7902.488,
+          "setup_failing": 5471.0,
+          "setup_total": 54821.0,
+          "whs_ns": 0.002,
+          "ths_ns": 0.0,
+          "hold_failing": 0.0,
+          "hold_total": 54821.0
+        }
+      },
+      "place": {
+        "total": {
+          "luts": 28289,
+          "registers": 23442,
+          "bram36_equivalent": 55,
+          "dsps": 4,
+          "ramb36": 51,
+          "ramb18": 8
+        },
+        "audio": {
+          "luts": 28143,
+          "registers": 18207,
+          "bram36_equivalent": 55,
+          "dsps": 4,
+          "ramb36": 51,
+          "ramb18": 8
+        },
+        "timing": {
+          "wns_ns": -7.509,
+          "whs_ns": -0.311
+        },
+        "summary": {
+          "wns_ns": -7.509,
+          "tns_ns": -32516.383,
+          "setup_failing": 13581.0,
+          "setup_total": 55237.0,
+          "whs_ns": -0.311,
+          "ths_ns": -102.79,
+          "hold_failing": 1570.0,
+          "hold_total": 55237.0
+        }
+      },
+      "route": {
+        "total": {
+          "luts": 28289,
+          "registers": 23442,
+          "bram36_equivalent": 55,
+          "dsps": 4,
+          "ramb36": 51,
+          "ramb18": 8
+        },
+        "audio": {
+          "luts": 28143,
+          "registers": 18207,
+          "bram36_equivalent": 55,
+          "dsps": 4,
+          "ramb36": 51,
+          "ramb18": 8
+        },
+        "timing": {
+          "wns_ns": -7.77,
+          "whs_ns": 0.042
+        },
+        "summary": {
+          "wns_ns": -7.77,
+          "tns_ns": -52110.145,
+          "setup_failing": 22143.0,
+          "setup_total": 55237.0,
+          "whs_ns": 0.042,
+          "ths_ns": 0.0,
+          "hold_failing": 0.0,
+          "hold_total": 55237.0
+        }
+      }
+    },
+    "timing_estimates": {}
+  },
+  {
+    "version": "after",
+    "mhz": 100,
+    "provenance": {
+      "revision": "f24cc89b57e2c82d4d342e43ff686a6d389eff90",
+      "version": "after",
+      "clock_mhz": 100,
+      "part": "xc7z020clg484-1",
+      "uncertainty_ns": 0.2,
+      "sample_rate": 48000,
+      "loops": 64,
+      "audio_channels_per_loop": 2,
+      "storage_seconds": 30,
+      "chunk_frames": 32,
+      "quantum_frames": 32,
+      "audio": {
+        "EXTERNAL_IO": 1,
+        "LIVE_LOADING": 1,
+        "EXPORT_SYNC_EVENTS": 1,
+        "PROGRAM_DEPTH": 1024,
+        "STATE_DEPTH": 256,
+        "JOB_DEPTH": 1024,
+        "MAX_FRAMES": 32,
+        "BUFFERS": 512,
+        "INPUT_PORTS": 2,
+        "OUTPUT_PORTS": 2,
+        "REUSE_VIEWS": 1,
+        "VIEWS": 512,
+        "SLOTS": 5763072,
+        "CHUNK_FRAMES": 32,
+        "BLOCK_CHUNKS": 32,
+        "RETIRED_TABLES": 256,
+        "TABLE_LINES": 128,
+        "REF_LINES": 4,
+        "STACK_LINES": 2,
+        "READ_BUFFERS": 4,
+        "WRITE_BUFFERS": 4,
+        "BURST_MEMORY": 1,
+        "AXI_DATA_WIDTH": 64,
+        "PHYSICAL_BASE": 16777216,
+        "PHYSICAL_BYTES_LIMIT": 1073741824
+      },
+      "midi": {
+        "DATA_WIDTH": 64,
+        "LOOPS": 64,
+        "INPUTS": 1,
+        "DESTINATIONS": 8,
+        "BLOCK_EVENTS": 256,
+        "BLOCKS": 2432,
+        "MAX_EVENTS": 8192,
+        "VIEWS": 256,
+        "SNAPSHOTS": 384,
+        "RETIREMENTS": 128,
+        "INPUT_EVENTS": 256,
+        "MAINTENANCE": 64
+      },
+      "libraries": [
+        "state_processor",
+        "job_processor",
+        "chunk_memory",
+        "media_store",
+        "axi_memory",
+        "midi"
+      ],
+      "build": "out-of-context registered component composition",
+      "memory": "two independent AXI3 HP interfaces into external shared DDR; PS7 excluded",
+      "threads": 2,
+      "strategy": "default placement and routing; post-place phys_opt",
+      "compatibility_patches": [
+        {
+          "file": "vivado_2021_audio.patch",
+          "sha256": "82097283a6e6446b7d261caefa7004f03d87401fe47e7828feadd60fe94d295e",
+          "reason": "Syntax compatibility with Vivado 2021.1"
+        },
+        {
+          "file": "vivado_2021_midi.patch",
+          "sha256": "e466ef6f671e01d92bd50729b6d349dcc616df326a2c05fc75715c5c6e7adca3",
+          "reason": "Syntax compatibility with Vivado 2021.1"
+        }
+      ]
+    },
+    "outcome": "stage=place\nstatus=1\nmessage=ERROR: [Common 17-69] Command failed: Placer could not place all instances\n\n",
+    "stages": {
+      "synth": {
+        "total": {
+          "luts": 67958,
+          "registers": 37754,
+          "bram36_equivalent": 57,
+          "dsps": 4,
+          "ramb36": 53,
+          "ramb18": 8
+        },
+        "audio": {
+          "luts": 41790,
+          "registers": 18687,
+          "bram36_equivalent": 55,
+          "dsps": 4,
+          "ramb36": 51,
+          "ramb18": 8
+        },
+        "midi": {
+          "luts": 26068,
+          "registers": 12461,
+          "bram36_equivalent": 2,
+          "dsps": 0,
+          "ramb36": 2,
+          "ramb18": 0
+        },
+        "timing": {
+          "wns_ns": -8.799,
+          "whs_ns": 0.002
+        },
+        "summary": {
+          "wns_ns": -8.799,
+          "tns_ns": -822.596,
+          "setup_failing": 503.0,
+          "setup_total": 91733.0,
+          "whs_ns": 0.002,
+          "ths_ns": 0.0,
+          "hold_failing": 0.0,
+          "hold_total": 91733.0
+        }
+      },
+      "opt": {
+        "total": {
+          "luts": 52121,
+          "registers": 36768,
+          "bram36_equivalent": 57,
+          "dsps": 4,
+          "ramb36": 53,
+          "ramb18": 8
+        },
+        "audio": {
+          "luts": 27968,
+          "registers": 18097,
+          "bram36_equivalent": 55,
+          "dsps": 4,
+          "ramb36": 51,
+          "ramb18": 8
+        },
+        "midi": {
+          "luts": 24053,
+          "registers": 12065,
+          "bram36_equivalent": 2,
+          "dsps": 0,
+          "ramb36": 2,
+          "ramb18": 0
+        },
+        "timing": {
+          "wns_ns": -5.32,
+          "whs_ns": 0.002
+        },
+        "summary": {
+          "wns_ns": -5.32,
+          "tns_ns": -753.644,
+          "setup_failing": 482.0,
+          "setup_total": 88958.0,
+          "whs_ns": 0.002,
+          "ths_ns": 0.0,
+          "hold_failing": 0.0,
+          "hold_total": 88958.0
+        }
+      }
+    },
+    "timing_estimates": {
+      "audio": {
+        "wns_ns": -5.32,
+        "whs_ns": 0.002
+      },
+      "midi": {
+        "wns_ns": -5.247,
+        "whs_ns": 0.033
+      }
+    },
+    "placement_failure": {
+      "control_sets": 3364,
+      "packed_luts": 54303,
+      "primitive_luts": 60896,
+      "available_slices": 6930,
+      "unplaced_required_slices": 9540
+    }
+  },
+  {
+    "version": "after",
+    "mhz": 150,
+    "provenance": {
+      "revision": "f24cc89b57e2c82d4d342e43ff686a6d389eff90",
+      "version": "after",
+      "clock_mhz": 150,
+      "part": "xc7z020clg484-1",
+      "uncertainty_ns": 0.2,
+      "sample_rate": 48000,
+      "loops": 64,
+      "audio_channels_per_loop": 2,
+      "storage_seconds": 30,
+      "chunk_frames": 32,
+      "quantum_frames": 32,
+      "audio": {
+        "EXTERNAL_IO": 1,
+        "LIVE_LOADING": 1,
+        "EXPORT_SYNC_EVENTS": 1,
+        "PROGRAM_DEPTH": 1024,
+        "STATE_DEPTH": 256,
+        "JOB_DEPTH": 1024,
+        "MAX_FRAMES": 32,
+        "BUFFERS": 512,
+        "INPUT_PORTS": 2,
+        "OUTPUT_PORTS": 2,
+        "REUSE_VIEWS": 1,
+        "VIEWS": 512,
+        "SLOTS": 5763072,
+        "CHUNK_FRAMES": 32,
+        "BLOCK_CHUNKS": 32,
+        "RETIRED_TABLES": 256,
+        "TABLE_LINES": 128,
+        "REF_LINES": 4,
+        "STACK_LINES": 2,
+        "READ_BUFFERS": 4,
+        "WRITE_BUFFERS": 4,
+        "BURST_MEMORY": 1,
+        "AXI_DATA_WIDTH": 64,
+        "PHYSICAL_BASE": 16777216,
+        "PHYSICAL_BYTES_LIMIT": 1073741824
+      },
+      "midi": {
+        "DATA_WIDTH": 64,
+        "LOOPS": 64,
+        "INPUTS": 1,
+        "DESTINATIONS": 8,
+        "BLOCK_EVENTS": 256,
+        "BLOCKS": 2432,
+        "MAX_EVENTS": 8192,
+        "VIEWS": 256,
+        "SNAPSHOTS": 384,
+        "RETIREMENTS": 128,
+        "INPUT_EVENTS": 256,
+        "MAINTENANCE": 64
+      },
+      "libraries": [
+        "state_processor",
+        "job_processor",
+        "chunk_memory",
+        "media_store",
+        "axi_memory",
+        "midi"
+      ],
+      "build": "out-of-context registered component composition",
+      "memory": "two independent AXI3 HP interfaces into external shared DDR; PS7 excluded",
+      "threads": 2,
+      "strategy": "default placement and routing; post-place phys_opt",
+      "compatibility_patches": [
+        {
+          "file": "vivado_2021_audio.patch",
+          "sha256": "82097283a6e6446b7d261caefa7004f03d87401fe47e7828feadd60fe94d295e",
+          "reason": "Syntax compatibility with Vivado 2021.1"
+        },
+        {
+          "file": "vivado_2021_midi.patch",
+          "sha256": "e466ef6f671e01d92bd50729b6d349dcc616df326a2c05fc75715c5c6e7adca3",
+          "reason": "Syntax compatibility with Vivado 2021.1"
+        }
+      ]
+    },
+    "outcome": "stage=place\nstatus=1\nmessage=ERROR: [Common 17-69] Command failed: Placer could not place all instances\n\n",
+    "stages": {
+      "synth": {
+        "total": {
+          "luts": 68137,
+          "registers": 37754,
+          "bram36_equivalent": 57,
+          "dsps": 4,
+          "ramb36": 53,
+          "ramb18": 8
+        },
+        "audio": {
+          "luts": 41790,
+          "registers": 18687,
+          "bram36_equivalent": 55,
+          "dsps": 4,
+          "ramb36": 51,
+          "ramb18": 8
+        },
+        "midi": {
+          "luts": 26247,
+          "registers": 12461,
+          "bram36_equivalent": 2,
+          "dsps": 0,
+          "ramb36": 2,
+          "ramb18": 0
+        },
+        "timing": {
+          "wns_ns": -12.132,
+          "whs_ns": 0.002
+        },
+        "summary": {
+          "wns_ns": -12.132,
+          "tns_ns": -16186.402,
+          "setup_failing": 10457.0,
+          "setup_total": 91733.0,
+          "whs_ns": 0.002,
+          "ths_ns": 0.0,
+          "hold_failing": 0.0,
+          "hold_total": 91733.0
+        }
+      },
+      "opt": {
+        "total": {
+          "luts": 52318,
+          "registers": 36768,
+          "bram36_equivalent": 57,
+          "dsps": 4,
+          "ramb36": 53,
+          "ramb18": 8
+        },
+        "audio": {
+          "luts": 27968,
+          "registers": 18097,
+          "bram36_equivalent": 55,
+          "dsps": 4,
+          "ramb36": 51,
+          "ramb18": 8
+        },
+        "midi": {
+          "luts": 24250,
+          "registers": 12065,
+          "bram36_equivalent": 2,
+          "dsps": 0,
+          "ramb36": 2,
+          "ramb18": 0
+        },
+        "timing": {
+          "wns_ns": -8.653,
+          "whs_ns": 0.002
+        },
+        "summary": {
+          "wns_ns": -8.653,
+          "tns_ns": -15697.793,
+          "setup_failing": 10183.0,
+          "setup_total": 88958.0,
+          "whs_ns": 0.002,
+          "ths_ns": 0.0,
+          "hold_failing": 0.0,
+          "hold_total": 88958.0
+        }
+      }
+    },
+    "timing_estimates": {
+      "audio": {
+        "wns_ns": -8.653,
+        "whs_ns": 0.002
+      },
+      "midi": {
+        "wns_ns": -8.58,
+        "whs_ns": 0.033
+      }
+    },
+    "placement_failure": {
+      "control_sets": 3370,
+      "packed_luts": 55080,
+      "primitive_luts": 60935,
+      "available_slices": 6930,
+      "unplaced_required_slices": 9608
+    }
+  }
+]
