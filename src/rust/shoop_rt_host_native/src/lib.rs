@@ -291,6 +291,7 @@ fn describe(
         host: ports.clone(),
         master_connections: master_connections.clone(),
         control_lead_frames: template.control_lead_frames.max(buffer_frames),
+        midi_output_limit_bytes: opened.midi_output_limit_bytes,
         ..template.clone()
     };
     if let Ok(value) = std::env::var("SHOOP_AUDIO_RENDER") {
@@ -508,11 +509,46 @@ mod tests {
                 buffer_frames: 128,
             },
             output_count: 2,
+            midi_output_limit_bytes: None,
         };
         let prepared = describe(&template, opened(DriverKind::Jack)).unwrap();
         assert_eq!(prepared.max_frames, 64);
         assert_eq!(prepared.control_lead_frames, 128);
         assert!(describe(&template, opened(DriverKind::Dummy)).is_err());
+    }
+    #[shoop_test(no_wasm = "native JACK preparation policy")]
+    fn jack_device_output_capacity_keeps_the_default_track_and_loop_pools() {
+        let template = EngineDescription {
+            max_frames: 128,
+            segments: vec![shoop_rt_engine::Segment {
+                strips: 32,
+                loops: 128,
+            }],
+            ..Default::default()
+        };
+        let opened = drivers::Opened {
+            ports: drivers::HostPorts::numbered(0, 0, 32),
+            driver: DriverStatus {
+                kind: DriverKind::Jack,
+                state: shoop_rt_protocol::DriverRunState::Starting,
+                sample_rate: 48000,
+                buffer_frames: 128,
+            },
+            output_count: 0,
+            midi_output_limit_bytes: Some(32768),
+        };
+        let prepared = describe(&template, opened).unwrap();
+        assert_eq!(prepared.max_frames, 128);
+        assert_eq!((prepared.strips(), prepared.loops()), (32, 128));
+        assert_eq!(prepared.host.midi_outputs.len(), 32);
+        assert_eq!(prepared.midi_bytes, template.midi_bytes);
+        assert_eq!(
+            prepared.midi_output_capacity().unwrap(),
+            rt_runtime::buffer::MidiCapacity {
+                events: 32768,
+                bytes: 32768,
+            }
+        );
     }
     #[shoop_test(no_wasm = "native host ownership")]
     fn the_host_handle_can_move_between_threads() {

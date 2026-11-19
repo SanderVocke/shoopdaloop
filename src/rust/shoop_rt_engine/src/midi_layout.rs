@@ -28,6 +28,14 @@ impl Layout {
         let send = loops.checked_add(monitor)?.checked_add(global)?;
         let mixer = loops.checked_add(monitor)?;
         let tick = loops.checked_add(monitor.checked_mul(d.strips())?)?;
+        // Each physical event occupies at least one byte of the device buffer.
+        let output_capacity = |capacity: MidiCapacity| match d.midi_output_limit_bytes {
+            Some(bytes) => MidiCapacity {
+                events: capacity.events.min(bytes),
+                bytes: capacity.bytes.min(bytes),
+            },
+            None => capacity,
+        };
         let ticks = if d.quantum == 0 {
             return Err(Error::InvalidConfig);
         } else {
@@ -39,8 +47,9 @@ impl Layout {
         let callback = if d.host.midi_outputs.is_empty() {
             MidiCapacity::default()
         } else {
-            tick.checked_mul(ticks)?
+            output_capacity(tick.checked_mul(ticks)?)
         };
+        let tick = output_capacity(tick);
         // Refuse unsupported portable allocations before preparing the engine.
         let default = input.prepared_bytes()?;
         let total = playback

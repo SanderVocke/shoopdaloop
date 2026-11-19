@@ -383,6 +383,7 @@ pub struct Opened {
     pub ports: HostPorts,
     pub driver: DriverStatus,
     pub output_count: usize,
+    pub midi_output_limit_bytes: Option<usize>,
 }
 pub trait Factory: Send + Sync {
     fn prepare(&self, opened: Opened) -> Result<Parts, StartError>;
@@ -433,7 +434,7 @@ impl Prepared {
         buffer: Option<u32>,
     ) -> Result<Self, StartError> {
         let outputs = ports.audio_outputs.len();
-        Self::with_output_count(template, ports, kind, rate, buffer, outputs)
+        Self::with_output_count(template, ports, kind, rate, buffer, outputs, None)
     }
     pub fn with_output_count(
         template: &Template,
@@ -442,6 +443,7 @@ impl Prepared {
         sample_rate: u32,
         buffer: Option<u32>,
         output_count: usize,
+        midi_output_limit_bytes: Option<usize>,
     ) -> Result<Self, StartError> {
         let driver = DriverStatus {
             kind,
@@ -453,6 +455,7 @@ impl Prepared {
             ports: ports.clone(),
             driver,
             output_count,
+            midi_output_limit_bytes,
         })?;
         let shared = Arc::new(Shared::new(parts.observer, driver));
         Ok(Self {
