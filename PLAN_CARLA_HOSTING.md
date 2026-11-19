@@ -138,6 +138,8 @@ Verification gate for A1, A3, and A7. Use channel-isolated impulses on channels 
 
 The large reference-browser graph test exceeded its snapshot delivery window when the wire encoded all 32 timing windows on every loop. The wire now sends the prefix through the last nondefault audio window. All four reference worklet integration tests pass locally, including the 64-loop publication. Full-width nondefault audio and MIDI windows fit the per-loop wire budget. Native JACK and Windows debug CI also reported crashes after the wider layout. A local JACK2 trace reproduced the crash in the render-thread loop command dispatcher. [Browser test](https://github.com/SanderVocke/shoopdaloop/actions/runs/44604424119/job/135844376972) · [JACK result](https://github.com/SanderVocke/shoopdaloop/actions/runs/44604424108/job/135844421811) · [Windows result](https://github.com/SanderVocke/shoopdaloop/actions/runs/44604424108/job/135844421893)
 
+The debug loop command dispatcher reserved roughly 403 KiB in one callback stack frame. Its graph, timeline, playback-window and media paths now run in separate frames. The formerly crashing Native JACK application test passed all four connections under JACK2 Dummy at 48 kHz and 128 frames. The engine unit suite passed 69 tests with one manual test ignored. The Windows startup stack failure remains open. [Loop command dispatcher](src/rust/shoop_loops/src/runtime/planner.rs) · [JACK application acceptance](src/rust/shoop_host/tests/jack.rs)
+
 ## Stage 7 Qualify packages and complete delivery
 
 Depends on Stages 1–6.

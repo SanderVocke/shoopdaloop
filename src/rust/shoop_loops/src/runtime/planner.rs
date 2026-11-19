@@ -1453,769 +1453,788 @@ impl<S: Sample> LoopPlanner<S> {
                 .map(Disposition::Complete);
             return Ok(result.unwrap_or_else(|error| Disposition::Complete(Reply::Failed(error))));
         }
-        let result = (|| -> Result<Disposition<Reply<S>>, Failure> {
-            if !context.payload.is_empty()
-                && !matches!(
-                    operation,
-                    Operation::InputBatch { .. }
-                        | Operation::TopologyBegin { .. }
-                        | Operation::TopologyAppend { .. }
-                        | Operation::SelectFamily { .. }
-                )
-            {
-                return Err(Error::InvalidShape.into());
-            }
-            let topology_status = match operation {
-                Operation::SelectFamily {
-                    root,
-                    topology_epoch,
-                } => {
-                    self.select_family(
-                        root,
-                        topology_epoch,
-                        context.payload,
-                        &mut context.resources,
-                    )?;
-                    return Ok(Disposition::Complete(Reply::Done));
-                }
-                Operation::NodePairSourceWindows {
-                    id,
-                    frames,
-                    windows,
-                } => {
-                    if frames % self.resolver.quantum().frames() as u64 != 0 {
-                        return Err(Error::InvalidFrame.into());
-                    }
-                    let source = self.node_pairs.source(id)?;
-                    if source.snapshot.description.format == Format::Midi {
-                        validate_midi_window(
-                            &mut context.resources,
-                            source.index,
-                            windows.midi,
-                            source.snapshot.description.frames,
-                        )?;
-                    }
-                    self.node_pairs.set_windows(id, frames, windows)?;
-                    return Ok(Disposition::Complete(Reply::Done));
-                }
-                Operation::NodePairSourceCursor { id } => {
-                    let source = self.node_pairs.source(id)?;
-                    return Ok(Disposition::Complete(Reply::Cursor(
-                        context.resources.cursor(source.snapshot.id)?,
-                    )));
-                }
-                Operation::NodePairSnapshot { resource } => {
-                    let (id, snapshot) = self.node_pairs.snapshot(
-                        resource,
-                        context.frame,
-                        &mut context.resources,
-                    )?;
-                    return Ok(Disposition::Complete(Reply::NodePairSource {
-                        id,
-                        snapshot,
-                        status: self.node_pairs.source_status(id)?,
-                    }));
-                }
-                Operation::NodePairSourceStatus { id } => {
-                    return Ok(Disposition::Complete(Reply::NodePairSourceStatus {
-                        id,
-                        status: self.node_pairs.source_status(id)?,
-                    }))
-                }
-                Operation::NodePairSourceValidate { id } => {
-                    return Ok(Disposition::Complete(Reply::NodePairSourceStatus {
-                        id,
-                        status: self
-                            .node_pairs
-                            .validate_source(id, &mut context.resources)?,
-                    }))
-                }
-                Operation::NodePairSourceRelease { id } => {
-                    self.node_pairs.release_source(id, &mut context.resources)?;
-                    return Ok(Disposition::Complete(Reply::NodePairSourceReleased { id }));
-                }
-                Operation::NodePairBegin { slot, changes } => {
-                    let id = self.node_pairs.begin(slot, changes)?;
-                    return Ok(Disposition::Complete(Reply::NodePairStatus {
-                        id,
-                        status: self.node_pairs.status(id)?,
-                    }));
-                }
-                Operation::NodePairAppend {
-                    id,
-                    previous,
-                    initial,
-                } => {
-                    self.append_node_pair(id, previous, initial, &mut context.resources)?;
-                    return Ok(Disposition::Complete(Reply::NodePairStatus {
-                        id,
-                        status: self.node_pairs.status(id)?,
-                    }));
-                }
-                Operation::NodePairStatus { id } => {
-                    return Ok(Disposition::Complete(Reply::NodePairStatus {
-                        id,
-                        status: self.node_pairs.status(id)?,
-                    }))
-                }
-                Operation::NodePairCancel { id } => {
-                    self.node_pairs.cancel(id, &mut context.resources)?;
-                    return Ok(Disposition::Complete(Reply::NodePairStatus {
-                        id,
-                        status: self.node_pairs.status(id)?,
-                    }));
-                }
-                Operation::NodePairRecycle { id } => {
-                    self.node_pairs.recycle(id)?;
-                    return Ok(Disposition::Complete(Reply::NodePairStatus {
-                        id,
-                        status: self.node_pairs.status(id)?,
-                    }));
-                }
-                Operation::ConfigurationActivate {
-                    node_pairs,
-                    topology,
-                    graph,
-                    graph_epoch,
-                    topology_epoch,
-                }
-                | Operation::ConfigurationReplace {
-                    node_pairs,
-                    topology,
-                    graph,
-                    graph_epoch,
-                    topology_epoch,
-                }
-                | Operation::ConvertEmpty {
-                    node_pairs,
-                    topology,
-                    graph,
-                    graph_epoch,
-                    topology_epoch,
-                    ..
-                } => {
-                    if let Operation::ConvertEmpty { previous, .. } = operation {
-                        let state = self.resolver.state(previous)?;
-                        if state.composite.is_some()
-                            || state.mode != Mode::Stopped
-                            || state.content_length != 0
-                        {
-                            return Err(crate::Error::InvalidState.into());
-                        }
-                    }
-                    let (graph_epoch, topology_epoch) = self.activate_configuration(
-                        node_pairs,
-                        topology,
-                        graph,
-                        graph_epoch,
-                        topology_epoch,
-                        matches!(operation, Operation::ConfigurationReplace { .. }),
-                        &mut context.graphs,
-                        &mut context.resources,
-                    )?;
-                    return Ok(Disposition::Complete(Reply::ConfigurationActivated {
-                        node_pairs,
-                        topology,
-                        graph,
-                        graph_epoch,
-                        topology_epoch,
-                    }));
-                }
-                Operation::GraphStatus { id } => {
-                    return Ok(Disposition::Complete(Reply::GraphStatus {
-                        id,
-                        status: context.graphs.status(id)?,
-                    }));
-                }
-                Operation::GraphActivate {
-                    id,
-                    graph_epoch,
-                    topology_epoch,
-                } => {
-                    let (graph_epoch, topology_epoch) = self.activate_graph(
-                        id,
-                        None,
-                        graph_epoch,
-                        topology_epoch,
-                        &mut context.graphs,
-                    )?;
-                    return Ok(Disposition::Complete(Reply::GraphActivated {
-                        id,
-                        graph_epoch,
-                        topology_epoch,
-                    }));
-                }
-                Operation::TopologyGraphActivate {
-                    id,
-                    graph,
-                    graph_epoch,
-                    topology_epoch,
-                } => {
-                    let (graph_epoch, topology_epoch) = self.activate_graph(
-                        graph,
-                        Some(id),
-                        graph_epoch,
-                        topology_epoch,
-                        &mut context.graphs,
-                    )?;
-                    return Ok(Disposition::Complete(Reply::TopologyGraphActivated {
-                        id,
-                        graph,
-                        graph_epoch,
-                        topology_epoch,
-                    }));
-                }
-                Operation::TopologyBegin { slot } => {
-                    Some(self.topologies.begin(slot, context.payload)?)
-                }
-                Operation::TopologyAppend { id, first_record } => {
-                    self.topologies.append(id, first_record, context.payload)?;
-                    Some(id)
-                }
-                Operation::TopologyStatus { id } => Some(id),
-                Operation::TopologyValidate { id } => {
-                    let mut progress = self.topologies.validate(id)?;
-                    if progress.ready {
-                        progress.ready = self
-                            .prepare_program_inputs(context.frame, &mut context.resources)?
-                            && self.prepare_candidate_inputs(
-                                id,
-                                context.frame,
-                                &mut context.resources,
-                            )?;
-                    }
-                    return Ok(Disposition::Complete(Reply::TopologyProgress {
-                        id,
-                        progress,
-                    }));
-                }
-                Operation::TopologyCancel { id } => {
-                    self.topologies.cancel(id, &mut self.resolver)?;
-                    Some(id)
-                }
-                Operation::TopologyRecycle { id } => {
-                    self.topologies.recycle(id)?;
-                    Some(id)
-                }
-                Operation::TopologyActivate {
-                    id,
-                    graph_epoch,
-                    topology_epoch,
-                } => {
-                    if graph_epoch != context.graph_epoch {
-                        return Err(Error::InvalidState.into());
-                    }
-                    let topology_epoch =
-                        self.topologies
-                            .activate(id, topology_epoch, &mut self.resolver)?;
-                    return Ok(Disposition::Complete(Reply::TopologyActivated {
-                        id,
-                        graph_epoch,
-                        topology_epoch,
-                    }));
-                }
-                _ => None,
-            };
-            if let Some(id) = topology_status {
-                let mut status = self.topologies.status(id)?;
-                if status == crate::topology::staging::Status::Ready
-                    && !(self.prepare_program_inputs(context.frame, &mut context.resources)?
-                        && self.prepare_candidate_inputs(
-                            id,
-                            context.frame,
-                            &mut context.resources,
-                        )?)
-                {
-                    status = crate::topology::staging::Status::Validating;
-                }
-                return Ok(Disposition::Complete(Reply::TopologyStatus { id, status }));
-            }
-            match operation {
-                Operation::ProgramActivate {
-                    id,
-                    target,
-                    graph_epoch,
-                    topology_epoch,
-                }
-                | Operation::ProgramGraphActivate {
-                    id,
-                    target,
-                    graph_epoch,
-                    topology_epoch,
-                    ..
-                } => {
-                    if graph_epoch != context.graph_epoch {
-                        return Err(Error::InvalidState.into());
-                    }
-                    let graph = if let Operation::ProgramGraphActivate { graph, .. } = operation {
-                        let permit = context.graphs.prepare_activation(graph, graph_epoch)?;
-                        self.validate_graph(permit.candidate())?;
-                        Some(graph)
-                    } else {
-                        None
-                    };
-                    let slot = self.pending_slot(context.recovery)?;
-                    let request = self.topologies.stage_program(
-                        id,
-                        target,
-                        topology_epoch,
-                        context.token.sequence(),
-                        context.requested_frame,
-                        &mut self.resolver,
-                    )?;
-                    if graph.is_some() {
-                        self.resolver.defer_program_until_restart(request);
-                    }
-                    self.pending[slot] = Some(Pending {
-                        token: context.token,
-                        kind: PendingKind::Program {
-                            id,
-                            request,
-                            graph_epoch,
-                            graph,
-                        },
-                        forwarded: false,
-                    });
-                    Ok(Disposition::Pending)
-                }
-                Operation::Cancel { sequence } => {
-                    if let Some(pending) = self
-                        .pending
-                        .iter()
-                        .flatten()
-                        .find(|p| p.token.sequence() == sequence)
-                        .copied()
-                    {
-                        if let PendingKind::Transition { request, .. }
-                        | PendingKind::Program { request, .. } = pending.kind
-                        {
-                            self.resolver.cancel(request)?;
-                        } else if let PendingKind::InputBatch = pending.kind {
-                            let request = self
-                                .input_batch_first_request()
-                                .ok_or(Error::InvalidState)?;
-                            self.resolver.cancel(request)?;
-                        } else {
-                            return Err(Error::InvalidState.into());
-                        }
-                        Ok(Disposition::Complete(Reply::Cancelled {
-                            sequence,
-                            delivered: true,
-                        }))
-                    } else {
-                        context.receipts.cancel_queued(
-                            sequence,
-                            Reply::Cancelled {
-                                sequence,
-                                delivered: false,
-                            },
-                        )?;
-                        Ok(Disposition::Complete(Reply::Cancelled {
-                            sequence,
-                            delivered: false,
-                        }))
-                    }
-                }
-                Operation::EditWindows {
+        if !context.payload.is_empty()
+            && !matches!(
+                operation,
+                Operation::TopologyBegin { .. }
+                    | Operation::TopologyAppend { .. }
+                    | Operation::SelectFamily { .. }
+            )
+        {
+            return Ok(Disposition::Complete(Reply::Failed(
+                Error::InvalidShape.into(),
+            )));
+        }
+        // Keep the large command families in separate stack frames. Debug builds
+        // must also run on the callback threads supplied by native audio drivers.
+        let result = match operation {
+            Operation::SelectFamily { .. }
+            | Operation::NodePairSourceWindows { .. }
+            | Operation::NodePairSourceCursor { .. }
+            | Operation::NodePairSnapshot { .. }
+            | Operation::NodePairSourceStatus { .. }
+            | Operation::NodePairSourceValidate { .. }
+            | Operation::NodePairSourceRelease { .. }
+            | Operation::NodePairBegin { .. }
+            | Operation::NodePairAppend { .. }
+            | Operation::NodePairStatus { .. }
+            | Operation::NodePairCancel { .. }
+            | Operation::NodePairRecycle { .. }
+            | Operation::ConfigurationActivate { .. }
+            | Operation::ConfigurationReplace { .. }
+            | Operation::ConvertEmpty { .. }
+            | Operation::GraphStatus { .. }
+            | Operation::GraphActivate { .. }
+            | Operation::TopologyGraphActivate { .. }
+            | Operation::TopologyBegin { .. }
+            | Operation::TopologyAppend { .. }
+            | Operation::TopologyValidate { .. }
+            | Operation::TopologyStatus { .. }
+            | Operation::TopologyCancel { .. }
+            | Operation::TopologyRecycle { .. }
+            | Operation::TopologyActivate { .. } => self.graph_operation(operation, &mut context),
+            Operation::ProgramActivate { .. }
+            | Operation::ProgramGraphActivate { .. }
+            | Operation::Cancel { .. }
+            | Operation::Clear { .. }
+            | Operation::State { .. }
+            | Operation::Export { .. }
+            | Operation::Transition { .. }
+            | Operation::Select { .. } => self.timeline_operation(operation, &mut context),
+            Operation::EditWindows {
+                target,
+                expected_revision,
+                expected_content,
+                edit,
+            } => self
+                .edit_windows(
                     target,
                     expected_revision,
                     expected_content,
                     edit,
-                } => {
-                    let row = self.row(target)?;
-                    if row.timing_revision != expected_revision {
-                        return Err(Error::StaleRevision.into());
-                    }
-                    let windows = row.windows.edited(
-                        edit,
-                        row.audio_widths.iter().sum(),
-                        row.binding.midi,
-                    )?;
-                    let state = self.resolver.state(target)?;
-                    if state.content_revision != expected_content {
-                        return Err(Error::StaleRevision.into());
-                    }
-                    let media = self
-                        .ledger
-                        .playback(target)?
-                        .map(|id| self.ledger.view(id))
-                        .transpose()?;
-                    let audio_frames = media
-                        .and_then(|m| m.audio)
-                        .map_or(0, |s| s.snapshot.description.frames);
-                    let midi_frames = media
-                        .and_then(|m| m.midi)
-                        .map_or(0, |s| s.snapshot.description.frames);
-                    windows.validate_alignment(
-                        row.audio_widths.iter().sum(),
-                        row.binding.midi,
-                        audio_frames,
-                        midi_frames,
-                        edit.length.unwrap_or(state.content_length),
-                    )?;
-                    if row
-                        .active
-                        .into_iter()
-                        .chain(row.prepared)
-                        .any(|take| take.edit.is_some())
-                    {
-                        for window in
-                            &windows.audio[row.audio_widths[1]..row.audio_widths.iter().sum()]
-                        {
-                            if i128::from(window.start_offset)
-                                + i128::from(edit.length.unwrap_or(state.content_length))
-                                > i128::from(window.raw_frames.unwrap_or(audio_frames))
-                            {
-                                return Err(Error::InvalidShape.into());
-                            }
-                        }
-                    }
-                    if let Some(source) = media.and_then(|view| view.midi) {
-                        validate_midi_window(
-                            &mut context.resources,
-                            source.index,
-                            windows.midi,
-                            midi_frames,
-                        )?;
-                    }
-                    let revision = row.timing_revision.checked_add(1).ok_or(Error::Exhausted)?;
-                    let active_windows = row
-                        .active
-                        .map(|take| {
-                            take.windows.edited(
-                                edit,
-                                row.audio_widths.iter().sum(),
-                                row.binding.midi,
-                            )
-                        })
-                        .transpose()?;
-                    let prepared_windows = row
-                        .prepared
-                        .map(|take| {
-                            take.windows.edited(
-                                edit,
-                                row.audio_widths.iter().sum(),
-                                row.binding.midi,
-                            )
-                        })
-                        .transpose()?;
-                    if let Some(length) = edit.length {
-                        self.resolver.edit_length(target, length)?;
-                    }
-                    let row = self.rows[target.slot() as usize]
-                        .as_mut()
-                        .expect("validated row");
-                    row.windows = windows;
-                    if let (Some(take), Some(windows)) = (&mut row.active, active_windows) {
-                        take.windows = windows;
-                    }
-                    if let (Some(take), Some(windows)) = (&mut row.prepared, prepared_windows) {
-                        take.windows = windows;
-                    }
-                    row.timing_revision = revision;
-                    self.resolver.publish_timing_revision(target, revision);
-                    if let Some(length) = edit.length {
-                        row.length_override = Some((state.content_revision, length));
-                    }
-                    Ok(Disposition::Complete(Reply::Timing(
-                        self.cut(target, context.frame)?,
-                    )))
-                }
-                Operation::Gain { target, value } => {
-                    self.row(target)?;
-                    if !value.is_finite() {
-                        return Err(Error::InvalidParameter.into());
-                    }
-                    self.rows[target.slot() as usize]
-                        .as_mut()
-                        .expect("row")
-                        .binding
-                        .gain = value;
-                    Ok(Disposition::Complete(Reply::Done))
-                }
-                Operation::RepeatSync { target, enabled } => {
-                    self.resolver.set_repeat_sync(target, enabled)?;
-                    Ok(Disposition::Complete(Reply::Done))
-                }
-                Operation::Balance { target, value } => {
-                    self.row(target)?;
-                    if !(-S::ONE..=S::ONE).contains(&value) {
-                        return Err(Error::InvalidParameter.into());
-                    }
-                    self.rows[target.slot() as usize]
-                        .as_mut()
-                        .expect("row")
-                        .balance = value;
-                    Ok(Disposition::Complete(Reply::Done))
-                }
-                Operation::Smoothing { target, smoothing } => {
-                    self.row(target)?;
-                    self.rows[target.slot() as usize]
-                        .as_mut()
-                        .expect("row")
-                        .binding
-                        .smoothing = smoothing;
-                    Ok(Disposition::Complete(Reply::Done))
-                }
-                Operation::Clear { target } => {
-                    let row = self.row(target)?;
-                    let slot = self.pending_slot(context.recovery)?;
-                    let revision = self
-                        .resolver
-                        .state(target)?
-                        .revision_watermark
-                        .checked_next()
-                        .map_err(|_| crate::Error::Exhausted)?;
-                    let media = self
-                        .ledger
-                        .adopt(
-                            &mut context.resources,
-                            media::Input {
-                                auxiliary: None,
-                                description: media::Description {
-                                    auxiliary_channels: if row.dry_wet {
-                                        row.binding.auxiliary_channels as u32
-                                    } else {
-                                        0
-                                    },
-                                    owner: target,
-                                    revision,
-                                    frames: 0,
-                                    channels: row.binding.channels as u32,
-                                    midi: row.binding.midi,
-                                },
-                                audio: None,
-                                midi: None,
-                            },
-                        )
-                        .map_err(|e| e.error)?;
-                    let pin = self.ledger.pin(media);
-                    // The pending pin, then the playback reference, own the empty media.
-                    self.ledger.retire(&mut context.resources, media)?;
-                    let pin = pin?;
-                    let request = match self.resolver.submit(crate::Request {
-                        target,
-                        sequence: context.token.sequence(),
-                        at: context.requested_frame,
-                        timing: Timing::At,
-                        transition: Transition::Replace {
-                            length: 0,
-                            revision,
-                            preserve_position: false,
-                        },
-                    }) {
-                        Ok(request) => request,
-                        Err(error) => {
-                            self.ledger.release_pin(&mut context.resources, pin)?;
-                            return Err(error.into());
-                        }
-                    };
-                    self.pending[slot] = Some(Pending {
-                        token: context.token,
-                        kind: PendingKind::Transition {
-                            request,
-                            pin: Some(pin),
-                            clear: true,
-                        },
-                        forwarded: false,
-                    });
-                    Ok(Disposition::Pending)
-                }
-                Operation::Release { export } => {
-                    self.ledger.release_export(&mut context.resources, export)?;
-                    Ok(Disposition::Complete(Reply::Done))
-                }
-                Operation::Retire { media } => {
-                    self.ledger.view(media)?;
-                    self.ledger.retire(&mut context.resources, media)?;
-                    Ok(Disposition::Complete(Reply::Done))
-                }
-                Operation::Adopt {
-                    target,
-                    frames,
-                    auxiliary,
-                    audio,
-                    midi,
-                } => {
-                    if frames % self.resolver.quantum().frames() as u64 != 0 {
-                        return Err(Error::InvalidFrame.into());
-                    }
-                    let row = self.row(target)?;
-                    let state = self.resolver.state(target)?;
-                    if state.writes() || state.capture_pending() {
-                        return Err(Error::Busy.into());
-                    }
-                    let revision = state
-                        .revision_watermark
-                        .checked_next()
-                        .map_err(|_| Error::Exhausted)?;
-                    let description = media::Description {
-                        auxiliary_channels: if row.dry_wet {
-                            row.binding.auxiliary_channels as u32
-                        } else {
-                            0
-                        },
-                        owner: target,
-                        revision,
-                        frames,
-                        channels: row.binding.channels as u32,
-                        midi: row.binding.midi,
-                    };
-                    let media = self.node_pairs.adopt(
-                        description,
-                        audio,
-                        auxiliary,
-                        midi,
-                        row.binding.packet_bytes,
-                        &mut self.ledger,
-                        &mut context.resources,
-                    )?;
-                    Ok(Disposition::Complete(Reply::Adopted { media, revision }))
-                }
-                Operation::MidiInitial { export, channel } => Ok(Disposition::Complete(
-                    self.midi_initial(&mut context.resources, export, channel)?,
-                )),
-                Operation::AudioRoleCursors { export } => {
-                    let view = self.ledger.exported(export)?.view;
-                    let dry = view.auxiliary.ok_or(Error::InvalidShape)?;
-                    let wet = view.audio.ok_or(Error::InvalidShape)?;
-                    Ok(Disposition::Complete(Reply::AudioRoleCursors([
-                        context.resources.cursor(dry.snapshot.id)?,
-                        context.resources.cursor(wet.snapshot.id)?,
-                    ])))
-                }
-                Operation::Cursor { export, midi } => {
-                    let view = self.ledger.exported(export)?.view;
-                    let source =
-                        if midi { view.midi } else { view.audio }.ok_or(Error::InvalidShape)?;
-                    Ok(Disposition::Complete(Reply::Cursor(
-                        context.resources.cursor(source.snapshot.id)?,
-                    )))
-                }
-                Operation::State { .. } | Operation::Export { .. } => {
-                    let slot = self.pending_slot(context.recovery)?;
-                    self.pending[slot] = Some(Pending {
-                        token: context.token,
-                        kind: PendingKind::Query(operation),
-                        forwarded: false,
-                    });
-                    Ok(Disposition::Pending)
-                }
-                Operation::Transition { target, timing, .. }
-                | Operation::Select { target, timing, .. } => {
-                    let slot = self.pending_slot(context.recovery)?;
-                    let (transition, pin) = match operation {
-                        Operation::Select {
-                            media,
-                            preserve_position,
-                            ..
-                        } => {
-                            let view = self.ledger.view(media)?;
-                            Self::validate_media_shape(self.row(target)?, view)?;
-                            if view.description.owner != target {
-                                return Err(Error::InvalidId.into());
-                            }
-                            (
-                                Transition::Replace {
-                                    length: view.description.frames,
-                                    revision: view.description.revision,
-                                    preserve_position,
-                                },
-                                Some(self.ledger.pin(media)?),
-                            )
-                        }
-                        Operation::Transition { transition, .. } => {
-                            if matches!(
-                                transition,
-                                Transition::PlayDry { .. } | Transition::Rerecord
-                            ) && !self.row(target)?.dry_wet
-                            {
-                                return Err(Error::InvalidState.into());
-                            }
-                            if matches!(
-                                transition,
-                                Transition::Program
-                                    | Transition::Replace { .. }
-                                    | Transition::Adopt { .. }
-                            ) {
-                                return Err(Error::InvalidEvent.into());
-                            }
-                            (transition, None)
-                        }
-                        _ => unreachable!(),
-                    };
-                    let request = match self.resolver.submit(crate::Request {
-                        target,
-                        sequence: context.token.sequence(),
-                        at: context.requested_frame,
-                        timing,
-                        transition,
-                    }) {
-                        Ok(request) => request,
-                        Err(error) => {
-                            if let Some(pin) = pin {
-                                self.ledger.release_pin(&mut context.resources, pin)?;
-                            }
-                            return Err(error.into());
-                        }
-                    };
-                    self.musical[target.slot() as usize].entries = [None; 2];
-                    self.pending[slot] = Some(Pending {
-                        token: context.token,
-                        kind: PendingKind::Transition {
-                            request,
-                            pin,
-                            clear: false,
-                        },
-                        forwarded: false,
-                    });
-                    Ok(Disposition::Pending)
-                }
-                Operation::InputBatch { .. } => unreachable!("input operation handled"),
-                Operation::NodePairSourceWindows { .. }
-                | Operation::HistoryStatus { .. }
-                | Operation::HistoryGrab { .. }
-                | Operation::HistoryWindow { .. }
-                | Operation::WriterBegin { .. }
-                | Operation::WriterPrepareRecording { .. }
-                | Operation::WriterPrepareReplacing { .. }
-                | Operation::WriterStatus { .. }
-                | Operation::WriterCancel { .. }
-                | Operation::CandidateBegin { .. }
-                | Operation::CandidateAudio { .. }
-                | Operation::CandidateMidi { .. }
-                | Operation::CandidateStatus { .. }
-                | Operation::CandidateCancel { .. }
-                | Operation::CandidatePublish { .. }
-                | Operation::SharedWork
-                | Operation::SharedCapacity
-                | Operation::NodePairSourceCursor { .. }
-                | Operation::NodePairSnapshot { .. }
-                | Operation::NodePairSourceStatus { .. }
-                | Operation::NodePairSourceValidate { .. }
-                | Operation::NodePairSourceRelease { .. }
-                | Operation::NodePairBegin { .. }
-                | Operation::NodePairAppend { .. }
-                | Operation::NodePairStatus { .. }
-                | Operation::NodePairCancel { .. }
-                | Operation::NodePairRecycle { .. }
-                | Operation::ConfigurationActivate { .. }
-                | Operation::ConvertEmpty { .. }
-                | Operation::SelectFamily { .. }
-                | Operation::ConfigurationReplace { .. }
-                | Operation::GraphStatus { .. }
-                | Operation::GraphActivate { .. }
-                | Operation::TopologyGraphActivate { .. }
-                | Operation::TopologyBegin { .. }
-                | Operation::TopologyAppend { .. }
-                | Operation::TopologyValidate { .. }
-                | Operation::TopologyStatus { .. }
-                | Operation::TopologyCancel { .. }
-                | Operation::TopologyRecycle { .. }
-                | Operation::TopologyActivate { .. } => unreachable!("topology operation handled"),
-            }
-        })();
+                    &mut context,
+                )
+                .map(|cut| Disposition::Complete(Reply::Timing(cut))),
+            _ => self.media_operation(operation, &mut context),
+        };
         Ok(result.unwrap_or_else(|error| Disposition::Complete(Reply::Failed(error))))
+    }
+
+    #[inline(never)]
+    fn graph_operation(
+        &mut self,
+        operation: Operation<S>,
+        context: &mut OperationContext<'_, Operation<S>, Reply<S>, S>,
+    ) -> Result<Disposition<Reply<S>>, Failure> {
+        let id = match operation {
+            Operation::SelectFamily {
+                root,
+                topology_epoch,
+            } => {
+                self.select_family(
+                    root,
+                    topology_epoch,
+                    context.payload,
+                    &mut context.resources,
+                )?;
+                return Ok(Disposition::Complete(Reply::Done));
+            }
+            Operation::NodePairSourceWindows {
+                id,
+                frames,
+                windows,
+            } => {
+                if frames % self.resolver.quantum().frames() as u64 != 0 {
+                    return Err(Error::InvalidFrame.into());
+                }
+                let source = self.node_pairs.source(id)?;
+                if source.snapshot.description.format == Format::Midi {
+                    validate_midi_window(
+                        &mut context.resources,
+                        source.index,
+                        windows.midi,
+                        source.snapshot.description.frames,
+                    )?;
+                }
+                self.node_pairs.set_windows(id, frames, windows)?;
+                return Ok(Disposition::Complete(Reply::Done));
+            }
+            Operation::NodePairSourceCursor { id } => {
+                let source = self.node_pairs.source(id)?;
+                return Ok(Disposition::Complete(Reply::Cursor(
+                    context.resources.cursor(source.snapshot.id)?,
+                )));
+            }
+            Operation::NodePairSnapshot { resource } => {
+                let (id, snapshot) =
+                    self.node_pairs
+                        .snapshot(resource, context.frame, &mut context.resources)?;
+                return Ok(Disposition::Complete(Reply::NodePairSource {
+                    id,
+                    snapshot,
+                    status: self.node_pairs.source_status(id)?,
+                }));
+            }
+            Operation::NodePairSourceStatus { id } => {
+                return Ok(Disposition::Complete(Reply::NodePairSourceStatus {
+                    id,
+                    status: self.node_pairs.source_status(id)?,
+                }))
+            }
+            Operation::NodePairSourceValidate { id } => {
+                return Ok(Disposition::Complete(Reply::NodePairSourceStatus {
+                    id,
+                    status: self
+                        .node_pairs
+                        .validate_source(id, &mut context.resources)?,
+                }))
+            }
+            Operation::NodePairSourceRelease { id } => {
+                self.node_pairs.release_source(id, &mut context.resources)?;
+                return Ok(Disposition::Complete(Reply::NodePairSourceReleased { id }));
+            }
+            Operation::NodePairBegin { slot, changes } => {
+                let id = self.node_pairs.begin(slot, changes)?;
+                return Ok(Disposition::Complete(Reply::NodePairStatus {
+                    id,
+                    status: self.node_pairs.status(id)?,
+                }));
+            }
+            Operation::NodePairAppend {
+                id,
+                previous,
+                initial,
+            } => {
+                self.append_node_pair(id, previous, initial, &mut context.resources)?;
+                return Ok(Disposition::Complete(Reply::NodePairStatus {
+                    id,
+                    status: self.node_pairs.status(id)?,
+                }));
+            }
+            Operation::NodePairStatus { id } => {
+                return Ok(Disposition::Complete(Reply::NodePairStatus {
+                    id,
+                    status: self.node_pairs.status(id)?,
+                }))
+            }
+            Operation::NodePairCancel { id } => {
+                self.node_pairs.cancel(id, &mut context.resources)?;
+                return Ok(Disposition::Complete(Reply::NodePairStatus {
+                    id,
+                    status: self.node_pairs.status(id)?,
+                }));
+            }
+            Operation::NodePairRecycle { id } => {
+                self.node_pairs.recycle(id)?;
+                return Ok(Disposition::Complete(Reply::NodePairStatus {
+                    id,
+                    status: self.node_pairs.status(id)?,
+                }));
+            }
+            Operation::ConfigurationActivate {
+                node_pairs,
+                topology,
+                graph,
+                graph_epoch,
+                topology_epoch,
+            }
+            | Operation::ConfigurationReplace {
+                node_pairs,
+                topology,
+                graph,
+                graph_epoch,
+                topology_epoch,
+            }
+            | Operation::ConvertEmpty {
+                node_pairs,
+                topology,
+                graph,
+                graph_epoch,
+                topology_epoch,
+                ..
+            } => {
+                if let Operation::ConvertEmpty { previous, .. } = operation {
+                    let state = self.resolver.state(previous)?;
+                    if state.composite.is_some()
+                        || state.mode != Mode::Stopped
+                        || state.content_length != 0
+                    {
+                        return Err(crate::Error::InvalidState.into());
+                    }
+                }
+                let (graph_epoch, topology_epoch) = self.activate_configuration(
+                    node_pairs,
+                    topology,
+                    graph,
+                    graph_epoch,
+                    topology_epoch,
+                    matches!(operation, Operation::ConfigurationReplace { .. }),
+                    &mut context.graphs,
+                    &mut context.resources,
+                )?;
+                return Ok(Disposition::Complete(Reply::ConfigurationActivated {
+                    node_pairs,
+                    topology,
+                    graph,
+                    graph_epoch,
+                    topology_epoch,
+                }));
+            }
+            Operation::GraphStatus { id } => {
+                return Ok(Disposition::Complete(Reply::GraphStatus {
+                    id,
+                    status: context.graphs.status(id)?,
+                }));
+            }
+            Operation::GraphActivate {
+                id,
+                graph_epoch,
+                topology_epoch,
+            } => {
+                let (graph_epoch, topology_epoch) = self.activate_graph(
+                    id,
+                    None,
+                    graph_epoch,
+                    topology_epoch,
+                    &mut context.graphs,
+                )?;
+                return Ok(Disposition::Complete(Reply::GraphActivated {
+                    id,
+                    graph_epoch,
+                    topology_epoch,
+                }));
+            }
+            Operation::TopologyGraphActivate {
+                id,
+                graph,
+                graph_epoch,
+                topology_epoch,
+            } => {
+                let (graph_epoch, topology_epoch) = self.activate_graph(
+                    graph,
+                    Some(id),
+                    graph_epoch,
+                    topology_epoch,
+                    &mut context.graphs,
+                )?;
+                return Ok(Disposition::Complete(Reply::TopologyGraphActivated {
+                    id,
+                    graph,
+                    graph_epoch,
+                    topology_epoch,
+                }));
+            }
+            Operation::TopologyBegin { slot } => self.topologies.begin(slot, context.payload)?,
+            Operation::TopologyAppend { id, first_record } => {
+                self.topologies.append(id, first_record, context.payload)?;
+                id
+            }
+            Operation::TopologyStatus { id } => id,
+            Operation::TopologyValidate { id } => {
+                let mut progress = self.topologies.validate(id)?;
+                if progress.ready {
+                    progress.ready = self
+                        .prepare_program_inputs(context.frame, &mut context.resources)?
+                        && self.prepare_candidate_inputs(
+                            id,
+                            context.frame,
+                            &mut context.resources,
+                        )?;
+                }
+                return Ok(Disposition::Complete(Reply::TopologyProgress {
+                    id,
+                    progress,
+                }));
+            }
+            Operation::TopologyCancel { id } => {
+                self.topologies.cancel(id, &mut self.resolver)?;
+                id
+            }
+            Operation::TopologyRecycle { id } => {
+                self.topologies.recycle(id)?;
+                id
+            }
+            Operation::TopologyActivate {
+                id,
+                graph_epoch,
+                topology_epoch,
+            } => {
+                if graph_epoch != context.graph_epoch {
+                    return Err(Error::InvalidState.into());
+                }
+                let topology_epoch =
+                    self.topologies
+                        .activate(id, topology_epoch, &mut self.resolver)?;
+                return Ok(Disposition::Complete(Reply::TopologyActivated {
+                    id,
+                    graph_epoch,
+                    topology_epoch,
+                }));
+            }
+            _ => unreachable!("operation dispatched to a different handler"),
+        };
+        let mut status = self.topologies.status(id)?;
+        if status == crate::topology::staging::Status::Ready
+            && !(self.prepare_program_inputs(context.frame, &mut context.resources)?
+                && self.prepare_candidate_inputs(id, context.frame, &mut context.resources)?)
+        {
+            status = crate::topology::staging::Status::Validating;
+        }
+        Ok(Disposition::Complete(Reply::TopologyStatus { id, status }))
+    }
+
+    #[inline(never)]
+    fn timeline_operation(
+        &mut self,
+        operation: Operation<S>,
+        context: &mut OperationContext<'_, Operation<S>, Reply<S>, S>,
+    ) -> Result<Disposition<Reply<S>>, Failure> {
+        match operation {
+            Operation::ProgramActivate {
+                id,
+                target,
+                graph_epoch,
+                topology_epoch,
+            }
+            | Operation::ProgramGraphActivate {
+                id,
+                target,
+                graph_epoch,
+                topology_epoch,
+                ..
+            } => {
+                if graph_epoch != context.graph_epoch {
+                    return Err(Error::InvalidState.into());
+                }
+                let graph = if let Operation::ProgramGraphActivate { graph, .. } = operation {
+                    let permit = context.graphs.prepare_activation(graph, graph_epoch)?;
+                    self.validate_graph(permit.candidate())?;
+                    Some(graph)
+                } else {
+                    None
+                };
+                let slot = self.pending_slot(context.recovery)?;
+                let request = self.topologies.stage_program(
+                    id,
+                    target,
+                    topology_epoch,
+                    context.token.sequence(),
+                    context.requested_frame,
+                    &mut self.resolver,
+                )?;
+                if graph.is_some() {
+                    self.resolver.defer_program_until_restart(request);
+                }
+                self.pending[slot] = Some(Pending {
+                    token: context.token,
+                    kind: PendingKind::Program {
+                        id,
+                        request,
+                        graph_epoch,
+                        graph,
+                    },
+                    forwarded: false,
+                });
+                Ok(Disposition::Pending)
+            }
+            Operation::Cancel { sequence } => {
+                if let Some(pending) = self
+                    .pending
+                    .iter()
+                    .flatten()
+                    .find(|p| p.token.sequence() == sequence)
+                    .copied()
+                {
+                    if let PendingKind::Transition { request, .. }
+                    | PendingKind::Program { request, .. } = pending.kind
+                    {
+                        self.resolver.cancel(request)?;
+                    } else if let PendingKind::InputBatch = pending.kind {
+                        let request = self
+                            .input_batch_first_request()
+                            .ok_or(Error::InvalidState)?;
+                        self.resolver.cancel(request)?;
+                    } else {
+                        return Err(Error::InvalidState.into());
+                    }
+                    Ok(Disposition::Complete(Reply::Cancelled {
+                        sequence,
+                        delivered: true,
+                    }))
+                } else {
+                    context.receipts.cancel_queued(
+                        sequence,
+                        Reply::Cancelled {
+                            sequence,
+                            delivered: false,
+                        },
+                    )?;
+                    Ok(Disposition::Complete(Reply::Cancelled {
+                        sequence,
+                        delivered: false,
+                    }))
+                }
+            }
+            Operation::Clear { target } => {
+                let row = self.row(target)?;
+                let slot = self.pending_slot(context.recovery)?;
+                let revision = self
+                    .resolver
+                    .state(target)?
+                    .revision_watermark
+                    .checked_next()
+                    .map_err(|_| crate::Error::Exhausted)?;
+                let media = self
+                    .ledger
+                    .adopt(
+                        &mut context.resources,
+                        media::Input {
+                            auxiliary: None,
+                            description: media::Description {
+                                auxiliary_channels: if row.dry_wet {
+                                    row.binding.auxiliary_channels as u32
+                                } else {
+                                    0
+                                },
+                                owner: target,
+                                revision,
+                                frames: 0,
+                                channels: row.binding.channels as u32,
+                                midi: row.binding.midi,
+                            },
+                            audio: None,
+                            midi: None,
+                        },
+                    )
+                    .map_err(|e| e.error)?;
+                let pin = self.ledger.pin(media);
+                // The pending pin, then the playback reference, own the empty media.
+                self.ledger.retire(&mut context.resources, media)?;
+                let pin = pin?;
+                let request = match self.resolver.submit(crate::Request {
+                    target,
+                    sequence: context.token.sequence(),
+                    at: context.requested_frame,
+                    timing: Timing::At,
+                    transition: Transition::Replace {
+                        length: 0,
+                        revision,
+                        preserve_position: false,
+                    },
+                }) {
+                    Ok(request) => request,
+                    Err(error) => {
+                        self.ledger.release_pin(&mut context.resources, pin)?;
+                        return Err(error.into());
+                    }
+                };
+                self.pending[slot] = Some(Pending {
+                    token: context.token,
+                    kind: PendingKind::Transition {
+                        request,
+                        pin: Some(pin),
+                        clear: true,
+                    },
+                    forwarded: false,
+                });
+                Ok(Disposition::Pending)
+            }
+            Operation::State { .. } | Operation::Export { .. } => {
+                let slot = self.pending_slot(context.recovery)?;
+                self.pending[slot] = Some(Pending {
+                    token: context.token,
+                    kind: PendingKind::Query(operation),
+                    forwarded: false,
+                });
+                Ok(Disposition::Pending)
+            }
+            Operation::Transition { target, timing, .. }
+            | Operation::Select { target, timing, .. } => {
+                let slot = self.pending_slot(context.recovery)?;
+                let (transition, pin) = match operation {
+                    Operation::Select {
+                        media,
+                        preserve_position,
+                        ..
+                    } => {
+                        let view = self.ledger.view(media)?;
+                        Self::validate_media_shape(self.row(target)?, view)?;
+                        if view.description.owner != target {
+                            return Err(Error::InvalidId.into());
+                        }
+                        (
+                            Transition::Replace {
+                                length: view.description.frames,
+                                revision: view.description.revision,
+                                preserve_position,
+                            },
+                            Some(self.ledger.pin(media)?),
+                        )
+                    }
+                    Operation::Transition { transition, .. } => {
+                        if matches!(
+                            transition,
+                            Transition::PlayDry { .. } | Transition::Rerecord
+                        ) && !self.row(target)?.dry_wet
+                        {
+                            return Err(Error::InvalidState.into());
+                        }
+                        if matches!(
+                            transition,
+                            Transition::Program
+                                | Transition::Replace { .. }
+                                | Transition::Adopt { .. }
+                        ) {
+                            return Err(Error::InvalidEvent.into());
+                        }
+                        (transition, None)
+                    }
+                    _ => unreachable!(),
+                };
+                let request = match self.resolver.submit(crate::Request {
+                    target,
+                    sequence: context.token.sequence(),
+                    at: context.requested_frame,
+                    timing,
+                    transition,
+                }) {
+                    Ok(request) => request,
+                    Err(error) => {
+                        if let Some(pin) = pin {
+                            self.ledger.release_pin(&mut context.resources, pin)?;
+                        }
+                        return Err(error.into());
+                    }
+                };
+                self.musical[target.slot() as usize].entries = [None; 2];
+                self.pending[slot] = Some(Pending {
+                    token: context.token,
+                    kind: PendingKind::Transition {
+                        request,
+                        pin,
+                        clear: false,
+                    },
+                    forwarded: false,
+                });
+                Ok(Disposition::Pending)
+            }
+            _ => unreachable!("operation dispatched to a different handler"),
+        }
+    }
+
+    #[inline(never)]
+    fn edit_windows(
+        &mut self,
+        target: LoopId,
+        expected_revision: u64,
+        expected_content: Revision,
+        edit: crate::windows::Edit,
+        context: &mut OperationContext<'_, Operation<S>, Reply<S>, S>,
+    ) -> Result<Cut<S>, Failure> {
+        let row = self.row(target)?;
+        if row.timing_revision != expected_revision {
+            return Err(Error::StaleRevision.into());
+        }
+        let windows = row
+            .windows
+            .edited(edit, row.audio_widths.iter().sum(), row.binding.midi)?;
+        let state = self.resolver.state(target)?;
+        if state.content_revision != expected_content {
+            return Err(Error::StaleRevision.into());
+        }
+        let media = self
+            .ledger
+            .playback(target)?
+            .map(|id| self.ledger.view(id))
+            .transpose()?;
+        let audio_frames = media
+            .and_then(|m| m.audio)
+            .map_or(0, |s| s.snapshot.description.frames);
+        let midi_frames = media
+            .and_then(|m| m.midi)
+            .map_or(0, |s| s.snapshot.description.frames);
+        windows.validate_alignment(
+            row.audio_widths.iter().sum(),
+            row.binding.midi,
+            audio_frames,
+            midi_frames,
+            edit.length.unwrap_or(state.content_length),
+        )?;
+        if row
+            .active
+            .into_iter()
+            .chain(row.prepared)
+            .any(|take| take.edit.is_some())
+        {
+            for window in &windows.audio[row.audio_widths[1]..row.audio_widths.iter().sum()] {
+                if i128::from(window.start_offset)
+                    + i128::from(edit.length.unwrap_or(state.content_length))
+                    > i128::from(window.raw_frames.unwrap_or(audio_frames))
+                {
+                    return Err(Error::InvalidShape.into());
+                }
+            }
+        }
+        if let Some(source) = media.and_then(|view| view.midi) {
+            validate_midi_window(
+                &mut context.resources,
+                source.index,
+                windows.midi,
+                midi_frames,
+            )?;
+        }
+        let revision = row.timing_revision.checked_add(1).ok_or(Error::Exhausted)?;
+        let active_windows = row
+            .active
+            .map(|take| {
+                take.windows
+                    .edited(edit, row.audio_widths.iter().sum(), row.binding.midi)
+            })
+            .transpose()?;
+        let prepared_windows = row
+            .prepared
+            .map(|take| {
+                take.windows
+                    .edited(edit, row.audio_widths.iter().sum(), row.binding.midi)
+            })
+            .transpose()?;
+        if let Some(length) = edit.length {
+            self.resolver.edit_length(target, length)?;
+        }
+        let row = self.rows[target.slot() as usize]
+            .as_mut()
+            .expect("validated row");
+        row.windows = windows;
+        if let (Some(take), Some(windows)) = (&mut row.active, active_windows) {
+            take.windows = windows;
+        }
+        if let (Some(take), Some(windows)) = (&mut row.prepared, prepared_windows) {
+            take.windows = windows;
+        }
+        row.timing_revision = revision;
+        self.resolver.publish_timing_revision(target, revision);
+        if let Some(length) = edit.length {
+            row.length_override = Some((state.content_revision, length));
+        }
+        self.cut(target, context.frame)
+    }
+
+    #[inline(never)]
+    fn media_operation(
+        &mut self,
+        operation: Operation<S>,
+        context: &mut OperationContext<'_, Operation<S>, Reply<S>, S>,
+    ) -> Result<Disposition<Reply<S>>, Failure> {
+        match operation {
+            Operation::Gain { target, value } => {
+                self.row(target)?;
+                if !value.is_finite() {
+                    return Err(Error::InvalidParameter.into());
+                }
+                self.rows[target.slot() as usize]
+                    .as_mut()
+                    .expect("row")
+                    .binding
+                    .gain = value;
+                Ok(Disposition::Complete(Reply::Done))
+            }
+            Operation::RepeatSync { target, enabled } => {
+                self.resolver.set_repeat_sync(target, enabled)?;
+                Ok(Disposition::Complete(Reply::Done))
+            }
+            Operation::Balance { target, value } => {
+                self.row(target)?;
+                if !(-S::ONE..=S::ONE).contains(&value) {
+                    return Err(Error::InvalidParameter.into());
+                }
+                self.rows[target.slot() as usize]
+                    .as_mut()
+                    .expect("row")
+                    .balance = value;
+                Ok(Disposition::Complete(Reply::Done))
+            }
+            Operation::Smoothing { target, smoothing } => {
+                self.row(target)?;
+                self.rows[target.slot() as usize]
+                    .as_mut()
+                    .expect("row")
+                    .binding
+                    .smoothing = smoothing;
+                Ok(Disposition::Complete(Reply::Done))
+            }
+            Operation::Release { export } => {
+                self.ledger.release_export(&mut context.resources, export)?;
+                Ok(Disposition::Complete(Reply::Done))
+            }
+            Operation::Retire { media } => {
+                self.ledger.view(media)?;
+                self.ledger.retire(&mut context.resources, media)?;
+                Ok(Disposition::Complete(Reply::Done))
+            }
+            Operation::Adopt {
+                target,
+                frames,
+                auxiliary,
+                audio,
+                midi,
+            } => {
+                if frames % self.resolver.quantum().frames() as u64 != 0 {
+                    return Err(Error::InvalidFrame.into());
+                }
+                let row = self.row(target)?;
+                let state = self.resolver.state(target)?;
+                if state.writes() || state.capture_pending() {
+                    return Err(Error::Busy.into());
+                }
+                let revision = state
+                    .revision_watermark
+                    .checked_next()
+                    .map_err(|_| Error::Exhausted)?;
+                let description = media::Description {
+                    auxiliary_channels: if row.dry_wet {
+                        row.binding.auxiliary_channels as u32
+                    } else {
+                        0
+                    },
+                    owner: target,
+                    revision,
+                    frames,
+                    channels: row.binding.channels as u32,
+                    midi: row.binding.midi,
+                };
+                let media = self.node_pairs.adopt(
+                    description,
+                    audio,
+                    auxiliary,
+                    midi,
+                    row.binding.packet_bytes,
+                    &mut self.ledger,
+                    &mut context.resources,
+                )?;
+                Ok(Disposition::Complete(Reply::Adopted { media, revision }))
+            }
+            Operation::MidiInitial { export, channel } => Ok(Disposition::Complete(
+                self.midi_initial(&mut context.resources, export, channel)?,
+            )),
+            Operation::AudioRoleCursors { export } => {
+                let view = self.ledger.exported(export)?.view;
+                let dry = view.auxiliary.ok_or(Error::InvalidShape)?;
+                let wet = view.audio.ok_or(Error::InvalidShape)?;
+                Ok(Disposition::Complete(Reply::AudioRoleCursors([
+                    context.resources.cursor(dry.snapshot.id)?,
+                    context.resources.cursor(wet.snapshot.id)?,
+                ])))
+            }
+            Operation::Cursor { export, midi } => {
+                let view = self.ledger.exported(export)?.view;
+                let source =
+                    if midi { view.midi } else { view.audio }.ok_or(Error::InvalidShape)?;
+                Ok(Disposition::Complete(Reply::Cursor(
+                    context.resources.cursor(source.snapshot.id)?,
+                )))
+            }
+            _ => unreachable!("operation dispatched to a different handler"),
+        }
     }
 }
 
