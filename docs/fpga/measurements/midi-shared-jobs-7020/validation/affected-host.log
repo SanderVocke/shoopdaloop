@@ -1,0 +1,177 @@
+   Compiling serde_core v1.0.229
+   Compiling anyhow v1.0.104
+   Compiling serde v1.0.229
+   Compiling bincode v2.0.1
+   Compiling shoop_graph v0.3.0 (/workspace/work/current-backend/src/rust/shoop_graph)
+   Compiling profiling_protocol v0.3.0 (/workspace/work/current-backend/src/rust/profiling_protocol)
+   Compiling rt_profiling v0.3.0 (/workspace/work/current-backend/src/rust/rt_profiling)
+   Compiling shoop_rt_protocol v0.3.0 (/workspace/work/current-backend/src/rust/shoop_rt_protocol)
+   Compiling rt_fpga_compiler v0.3.0 (/workspace/work/current-backend/src/rust/rt_fpga_compiler)
+   Compiling rt_fpga_rtl v0.3.0 (/workspace/work/current-backend/src/rust/rt_fpga_rtl)
+   Compiling rt_runtime v0.3.0 (/workspace/work/current-backend/src/rust/rt_runtime)
+   Compiling shoop_rt_transport v0.3.0 (/workspace/work/current-backend/src/rust/shoop_rt_transport)
+   Compiling rt_fpga_reference v0.3.0 (/workspace/work/current-backend/src/rust/rt_fpga_reference)
+   Compiling shoop_rt_host_reference v0.3.0 (/workspace/work/current-backend/src/rust/shoop_rt_host_reference)
+    Finished `test` profile [unoptimized] target(s) in 14.10s
+     Running unittests src/lib.rs (target/debug/build/rt_fpga_rtl/d22c1bac5cf3db5f/out/rt_fpga_rtl-d22c1bac5cf3db5f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/host_mailbox.rs (target/debug/build/rt_fpga_rtl/3fb740961a23b5bd/out/host_mailbox-3fb740961a23b5bd)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/owners.rs (target/debug/build/rt_fpga_rtl/876809a4c4f74e76/out/owners-876809a4c4f74e76)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/build/shoop_rt_host_reference/6265f7400ebc8ed9/out/shoop_rt_host_reference-6265f7400ebc8ed9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/rendering.rs (target/debug/build/shoop_rt_host_reference/5573c5989558411c/out/rendering-5573c5989558411c)
+
+running 2 tests
+test semantic_graph_uploads_refuse_unsupported_shapes_and_recover_after_interruption ... ok
+test actual_input_records_and_plays_through_quantum_adapter_without_callback_allocations ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (target/debug/build/shoop_rt_protocol/c544611f7e7ca916/out/shoop_rt_protocol-c544611f7e7ca916)
+
+running 1 test
+test snapshot::tests::selection_configuration_and_full_chunks_roundtrip ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/host.rs (target/debug/build/shoop_rt_protocol/040f361719ea6ccf/out/host-040f361719ea6ccf)
+
+running 3 tests
+test driver_identities_append_tags_without_changing_existing_drivers ... ok
+test host_text_and_record_bounds_are_checked ... ok
+test bounded_host_messages_round_trip_and_do_not_decode_as_engine_messages ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/immediate.rs (target/debug/build/shoop_rt_protocol/22a5c07b377a1c1b/out/immediate-22a5c07b377a1c1b)
+
+running 11 tests
+test maximum_group_is_one_small_canonical_record ... ok
+test groups_preserve_commands_without_semantic_preflight ... ok
+test graph_resource_refusals_survive_the_wire_without_a_profile_size_limit ... ok
+test full_graph_transfer_records_and_detailed_refusals_have_canonical_wire_forms ... ok
+test deadlines_and_fixed_result_records_roundtrip_without_semantic_preflight ... ok
+test prepared_graph_records_roundtrip_and_reject_reserved_bits ... ok
+test program_switch_descriptor_and_fenced_result_are_canonical_records ... ok
+test recording_and_capture_failure_use_the_existing_result_layout ... ok
+test complete_plans_clearing_and_observation_keep_the_value_envelope ... ok
+test transitions_share_one_opcode_and_reject_unknown_modes ... ok
+test maximum_grab_groups_and_responses_fit_one_transport_record ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/memory.rs (target/debug/build/shoop_rt_protocol/8adbe336b3eb592a/out/memory-8adbe336b3eb592a)
+
+running 2 tests
+test pressure_uses_the_fullest_pool_and_unknown_limits_do_not_mean_zero ... ok
+test bounded_and_unbounded_memory_reports_round_trip_without_losing_precision ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/profiling.rs (target/debug/build/shoop_rt_protocol/4f6d4dcc13cf8307/out/profiling-4f6d4dcc13cf8307)
+
+running 2 tests
+test unknown_diagnostic_schema_is_opaque_to_engine_codec ... ok
+test profiling_records_round_trip_and_reject_malformed_lengths ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/protocol.rs (target/debug/build/shoop_rt_protocol/93673932d4d07fe8/out/protocol-93673932d4d07fe8)
+
+running 7 tests
+test dsp_measurements_round_trip_with_their_original_timing_basis ... ok
+test input_progress_capacity_and_terminal_phases_round_trip_with_exact_frames ... ok
+test capability_flags_do_not_alias_other_features ... ok
+test processor_catalog_wire_refuses_capacity_and_resource_inconsistency ... ok
+test timing_batches_reject_oversized_and_noncanonical_wire_records ... ok
+test malformed_records_are_refused_without_panicking ... ok
+test every_message_round_trips_through_bounded_records ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/build/shoop_rt_transport/33c62fceeb2115de/out/shoop_rt_transport-33c62fceeb2115de)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/carriers.rs (target/debug/build/shoop_rt_transport/bc92c48216c90fae/out/carriers-bc92c48216c90fae)
+
+running 5 tests
+test telemetry_keeps_the_latest_records_while_reliable_and_bulk_lanes_refuse ... ok
+test a_version_mismatch_is_rejected_on_both_carriers ... ok
+test snapshot_defaults_follow_the_carrier_and_target ... ok
+test lifecycle_credits_resync_bulk_and_limits_behave_alike_on_both_carriers ... ok
+test remote_contract_waits_for_bulk_delivery_after_a_reliable_acknowledgment ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/failure.rs (target/debug/build/shoop_rt_transport/56e706c28f2b737a/out/failure-56e706c28f2b737a)
+
+running 2 tests
+test failed_record_server_can_return_its_endpoint_without_dropping_it ... ok
+test idle_is_distinct_from_eof_and_eof_is_delivered_once_without_a_send ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/profiling.rs (target/debug/build/shoop_rt_transport/b992458dabb68a02/out/profiling-b992458dabb68a02)
+
+running 1 test
+test profiling_saturation_preserves_other_admission_and_reliable_priority ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/rt_endpoint.rs (target/debug/build/shoop_rt_transport/577d9fd0af20d081/out/rt_endpoint-577d9fd0af20d081)
+
+running 6 tests
+test carrier_client_uses_queues_and_ignores_legacy_messages_without_running_execution ... ok
+test publisher_failure_disconnects_without_audio_and_survives_full_reply_space ... ok
+test reconnect_discards_pending_old_responses_without_cancelling_execution ... ok
+test reliable_outbox_backpressure_preserves_responses_and_fifo_credits ... ok
+test pull_snapshot_chunks_remain_coherent_across_overwrites_and_reliable_stalls ... ok
+test push_snapshot_rate_uses_observed_frames_without_advancing_processing ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+   Doc-tests rt_fpga_rtl
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests shoop_rt_host_reference
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests shoop_rt_protocol
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests shoop_rt_transport
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

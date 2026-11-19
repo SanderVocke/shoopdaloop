@@ -26,7 +26,9 @@ are separate questions.
 
 The final all-feature Rust reference/compiler run and all **18 MIDI RTL tests**
 passed. The connected dual-AXI RTL top passes Verilator lint without diagnostics.
-Generated AXI, host and MIDI tops match their generators.
+Generated AXI, host and MIDI tops match their generators. The nine retained
+audio/core/graph/loading/target RTL tests also passed, including the timed DDR
+workload and live program switching. The Rust all-feature run passed 131 tests.
 
 ## Local commands
 

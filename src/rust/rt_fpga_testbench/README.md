@@ -75,6 +75,11 @@ cargo run --locked -p rt_fpga_testbench --features sim -- pipeline --config smal
 cargo run --locked -p rt_fpga_testbench --features sim -- deferred --memory-model dramsim3
 ```
 
+The `midi` test target includes compiled mixed SP/JP programs, exact audio and
+MIDI output/job/state comparisons at all supported quanta, publication fences,
+partial output and fatal recovery. It also retains DDR service scenarios and
+AXI32/64 checks. See the [coverage and limits](../../../docs/fpga/midi-shared-jobs-validation.md).
+
 `pipeline` is the TP-free SP -> JP -> media/cache execution harness. Explicit
 instructions, initial state and samples exercise exact output, recording/readback,
 retained ranges, persistent state, prefetch, partial faults and reset across runs.

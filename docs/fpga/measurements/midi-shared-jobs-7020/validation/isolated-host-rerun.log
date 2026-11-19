@@ -1,0 +1,77 @@
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+   Compiling shoop_tracing v0.3.0 (/workspace/work/current-backend/src/rust/shoop_tracing)
+   Compiling shoop_settings v0.3.0 (/workspace/work/current-backend/src/rust/shoop_settings)
+   Compiling shoop_plugin_protocol v0.3.0 (/workspace/work/current-backend/src/rust/shoop_plugin_protocol)
+   Compiling shoop_rt_engine v0.3.0 (/workspace/work/current-backend/src/rust/shoop_rt_engine)
+   Compiling shoop_audio_drivers v0.3.0 (/workspace/work/current-backend/src/rust/shoop_audio_drivers)
+   Compiling shoop_session v0.3.0 (/workspace/work/current-backend/src/rust/shoop_session)
+   Compiling shoop_dsp v0.3.0 (/workspace/work/current-backend/src/rust/shoop_dsp)
+   Compiling shoop_wasm_test_support v0.3.0 (/workspace/work/current-backend/src/rust/shoop_wasm_test_support)
+   Compiling shoop_common v0.3.0 (/workspace/work/current-backend/src/rust/shoop_common)
+   Compiling shoopdaloop v0.3.0 (/workspace/work/current-backend/src/rust/shoopdaloop)
+   Compiling shoop_egui v0.3.0 (/workspace/work/current-backend/src/rust/shoop_egui)
+   Compiling shoop_engine v0.3.0 (/workspace/work/current-backend/src/rust/shoop_engine)
+   Compiling shoop_host_processors v0.3.0 (/workspace/work/current-backend/src/rust/shoop_host_processors)
+   Compiling shoop_rt_host_native v0.3.0 (/workspace/work/current-backend/src/rust/shoop_rt_host_native)
+   Compiling shoop_rt_host_process v0.3.0 (/workspace/work/current-backend/src/rust/shoop_rt_host_process)
+   Compiling shoop_rt_host_worklet v0.3.0 (/workspace/work/current-backend/src/rust/shoop_rt_host_worklet)
+   Compiling shoop_persistence_codec v0.3.0 (/workspace/work/current-backend/src/rust/shoop_persistence_codec)
+   Compiling shoop_backend v0.3.0 (/workspace/work/current-backend/src/rust/shoop_backend)
+   Compiling shoop_rt_backend v0.3.0 (/workspace/work/current-backend/src/rust/shoop_rt_backend)
+   Compiling shoop_app v0.3.0 (/workspace/work/current-backend/src/rust/shoop_app)
+   Compiling shoop_app_connection v0.3.0 (/workspace/work/current-backend/src/rust/shoop_app_connection)
+   Compiling shoop_host v0.3.0 (/workspace/work/current-backend/src/rust/shoop_host)
+   Compiling shoop_host_manager v0.3.0 (/workspace/work/current-backend/src/rust/shoop_host_manager)
+    Finished `test` profile [unoptimized] target(s) in 2m 47s
+warning: could not find build script output file at /workspace/work/current-backend/target/debug/build/shoopdaloop/6378fcf11933e283/output
+warning: could not find build script output file at /workspace/work/current-backend/target/debug/build/shoopdaloop/6378fcf11933e283/output
+────────────
+ Nextest run ID 8e5ad5a0-bc41-4a63-a5db-5372ab848847 with nextest profile: ci
+    Starting 4 tests across 46 binaries (1343 tests skipped)
+        FAIL [  12.291s] (1/4) shoop_host::recovery siblings_survive_the_launcher_exit_and_later_control_needs_no_child_handle
+  stdout ───
+
+    running 1 test
+    test siblings_survive_the_launcher_exit_and_later_control_needs_no_child_handle ... FAILED
+
+    failures:
+
+    failures:
+        siblings_survive_the_launcher_exit_and_later_control_needs_no_child_handle
+
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 18 filtered out; finished in 12.24s
+
+  stderr ───
+
+    thread 'siblings_survive_the_launcher_exit_and_later_control_needs_no_child_handle' (201649) panicked at src/rust/shoop_host/tests/recovery.rs:765:5:
+    assertion failed: launcher.wait().unwrap().success()
+    note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+        PASS [  16.624s] (2/4) shoop_rt_host_process::process both_carriers_drive_mock_cpal_and_midi_callbacks_without_heap_operations
+        PASS [  10.482s] (3/4) shoop_rt_host_process::process device_fault_remains_terminal_and_uses_the_existing_shutdown_policy
+warning: could not find build script output file at /workspace/work/current-backend/target/debug/build/shoopdaloop/6378fcf11933e283/output
+        PASS [  13.682s] (4/4) shoopdaloop::bin/shoopdaloop native_recovery_tests::real_ui_process_loss_repeated_attachment_media_and_both_exit_actions
+────────────
+     Summary [  53.135s] 4 tests run: 3 passed, 1 failed, 1343 skipped
+        FAIL [  12.291s] (1/4) shoop_host::recovery siblings_survive_the_launcher_exit_and_later_control_needs_no_child_handle
+  stdout ───
+
+    running 1 test
+    test siblings_survive_the_launcher_exit_and_later_control_needs_no_child_handle ... FAILED
+
+    failures:
+
+    failures:
+        siblings_survive_the_launcher_exit_and_later_control_needs_no_child_handle
+
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 18 filtered out; finished in 12.24s
+
+  stderr ───
+
+    thread 'siblings_survive_the_launcher_exit_and_later_control_needs_no_child_handle' (201649) panicked at src/rust/shoop_host/tests/recovery.rs:765:5:
+    assertion failed: launcher.wait().unwrap().success()
+    note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+error: test run failed
