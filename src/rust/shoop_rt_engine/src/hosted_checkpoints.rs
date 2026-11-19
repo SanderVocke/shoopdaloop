@@ -1,9 +1,10 @@
 //! Immutable state snapshots served on the control endpoint.
 
-use alloc::{boxed::Box, string::String};
+use alloc::{boxed::Box, collections::VecDeque, string::String};
 use shoop_rt_protocol::{
     EngineMessage, Lane, Outcome, ProcessorCheckpointCommand, ProcessorCheckpointPage,
     ProcessorSlot, ProcessorTarget, Refusal, BULK_CHUNK_BYTES, MAX_PROCESSOR_CHECKPOINT_BYTES,
+    PROCESSOR_CHECKPOINT_READ_WINDOW,
 };
 use shoop_rt_transport::carrier::Outbox;
 
@@ -25,29 +26,31 @@ struct Snapshot {
     state: String,
 }
 
+#[derive(Clone, Copy)]
 struct PendingPage {
     correlation: u64,
     owner: HostedOwner,
-    page: ProcessorCheckpointPage,
+    snapshot: u64,
+    offset: u32,
 }
 
 #[derive(Default)]
 pub(crate) struct Store {
     capture: Option<Capture>,
     snapshot: Option<Snapshot>,
-    page: Option<Box<PendingPage>>,
+    pages: VecDeque<PendingPage>,
     latest_id: u64,
 }
 
 impl Store {
     pub fn idle(&self) -> bool {
-        self.capture.is_none() && self.page.is_none()
+        self.capture.is_none() && self.pages.is_empty()
     }
 
     pub fn disconnect(&mut self) {
         self.capture = None;
         self.snapshot = None;
-        self.page = None;
+        self.pages.clear();
     }
 
     fn get(&self, owner: HostedOwner, id: u64) -> Result<&Snapshot, Refusal> {
@@ -110,33 +113,30 @@ impl ControlEndpoint {
                 Ok(None)
             }
             ProcessorCheckpointCommand::Read { snapshot, offset } => {
-                if self.hosted_checkpoints.page.is_some() {
+                if self.hosted_checkpoints.pages.len() == PROCESSOR_CHECKPOINT_READ_WINDOW {
                     return Err(Refusal::Busy);
                 }
                 let stored = self.hosted_checkpoints.get(owner, snapshot)?;
-                let tail = stored
-                    .state
-                    .as_bytes()
-                    .get(offset as usize..)
-                    .filter(|tail| !tail.is_empty())
-                    .ok_or(Refusal::InvalidValue)?;
-                let len = tail.len().min(BULK_CHUNK_BYTES);
-                let mut bytes = [0; BULK_CHUNK_BYTES];
-                bytes[..len].copy_from_slice(&tail[..len]);
-                self.hosted_checkpoints.page = Some(Box::new(PendingPage {
+                if offset as usize >= stored.state.len() {
+                    return Err(Refusal::InvalidValue);
+                }
+                self.hosted_checkpoints.pages.push_back(PendingPage {
                     correlation,
                     owner,
-                    page: ProcessorCheckpointPage {
-                        snapshot,
-                        offset,
-                        total: stored.state.len() as u32,
-                        len: len as u16,
-                        bytes,
-                    },
-                }));
+                    snapshot,
+                    offset,
+                });
                 Ok(None)
             }
             ProcessorCheckpointCommand::Close { snapshot } => {
+                if self
+                    .hosted_checkpoints
+                    .pages
+                    .iter()
+                    .any(|page| page.snapshot == snapshot)
+                {
+                    return Err(Refusal::Busy);
+                }
                 self.hosted_checkpoints.get(owner, snapshot)?;
                 self.hosted_checkpoints.snapshot = None;
                 Ok(Some(Outcome::Done))
@@ -167,33 +167,42 @@ impl ControlEndpoint {
     }
 
     pub(crate) fn flush_hosted_checkpoint_page(&mut self, out: &mut Outbox) {
-        if out.available(Lane::Reliable) == 0 {
-            return;
-        }
-        let Some(pending) = self.hosted_checkpoints.page.take() else {
-            return;
-        };
-        let correlation = pending.correlation;
-        let message = if self.current_hosted_owner(pending.owner)
-            && self
+        while out.available(Lane::Reliable) != 0 {
+            let Some(pending) = self.hosted_checkpoints.pages.front().copied() else {
+                return;
+            };
+            let correlation = pending.correlation;
+            let snapshot = self
                 .hosted_checkpoints
-                .get(pending.owner, pending.page.snapshot)
-                .is_ok()
-        {
-            EngineMessage::ProcessorCheckpointPage {
-                correlation,
-                page: pending.page,
+                .get(pending.owner, pending.snapshot)
+                .ok()
+                .filter(|_| self.current_hosted_owner(pending.owner));
+            let message = if let Some(snapshot) = snapshot {
+                let tail = &snapshot.state.as_bytes()[pending.offset as usize..];
+                let len = tail.len().min(BULK_CHUNK_BYTES);
+                let mut bytes = [0; BULK_CHUNK_BYTES];
+                bytes[..len].copy_from_slice(&tail[..len]);
+                EngineMessage::ProcessorCheckpointPage {
+                    correlation,
+                    page: ProcessorCheckpointPage {
+                        snapshot: snapshot.id,
+                        offset: pending.offset,
+                        total: snapshot.state.len() as u32,
+                        len: len as u16,
+                        bytes,
+                    },
+                }
+            } else {
+                EngineMessage::Result {
+                    correlation,
+                    outcome: Outcome::Refused(Refusal::InvalidId),
+                }
+            };
+            if out.push(message).is_err() {
+                return;
             }
-        } else {
-            EngineMessage::Result {
-                correlation,
-                outcome: Outcome::Refused(Refusal::InvalidId),
-            }
-        };
-        if out.push(message).is_ok() {
+            self.hosted_checkpoints.pages.pop_front();
             self.unanswered = self.unanswered.saturating_sub(1);
-        } else {
-            self.hosted_checkpoints.page = Some(pending);
         }
     }
 }

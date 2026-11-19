@@ -424,6 +424,7 @@ pub enum Outcome {
 pub const PROCESSOR_LOG_GENERATIONS: usize = 9;
 pub const PROCESSOR_LOG_STREAM_BYTES: usize = 64 * 1024;
 pub use shoop_processor_protocol::MAX_OPAQUE_STATE_ENVELOPE_BYTES as MAX_PROCESSOR_CHECKPOINT_BYTES;
+pub const PROCESSOR_CHECKPOINT_READ_WINDOW: usize = 32;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProcessorCheckpointCommand {

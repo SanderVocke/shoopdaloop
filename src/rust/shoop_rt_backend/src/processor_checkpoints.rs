@@ -7,7 +7,7 @@ use alloc::{
 use anyhow::{anyhow, bail, ensure, Result};
 use shoop_rt_protocol::{
     Capabilities, Outcome, ProcessorCheckpointCommand as Command, ProcessorCheckpointPage, Request,
-    BULK_CHUNK_BYTES, MAX_PROCESSOR_CHECKPOINT_BYTES,
+    BULK_CHUNK_BYTES, MAX_PROCESSOR_CHECKPOINT_BYTES, PROCESSOR_CHECKPOINT_READ_WINDOW,
 };
 use shoop_rt_transport::carrier::Carrier;
 
@@ -60,10 +60,22 @@ struct Read {
     limit: u64,
     bytes: Vec<u8>,
     discard: bool,
+    sent: u32,
+    pending: usize,
+    closing: bool,
 }
 
 impl Read {
-    fn accept(&mut self, command: Command, reply: Reply) -> Result<Option<Command>> {
+    fn accept(&mut self, command: Command, reply: Reply) -> Result<bool> {
+        if matches!(command, Command::Read { .. }) {
+            self.pending = self
+                .pending
+                .checked_sub(1)
+                .ok_or_else(|| anyhow!("unexpected Carla checkpoint page"))?;
+            if self.discard {
+                return Ok(false);
+            }
+        }
         match (command, reply) {
             (Command::Open, Reply::Outcome(Outcome::ProcessorCheckpoint { snapshot, bytes })) => {
                 // Keep the lease ID even if the host's reply exceeds our budget so it can be closed.
@@ -92,12 +104,10 @@ impl Read {
                         && usize::from(page.len) == left.min(BULK_CHUNK_BYTES),
                     "invalid Carla checkpoint page"
                 );
-                if !self.discard {
-                    self.bytes
-                        .extend_from_slice(&page.bytes[..usize::from(page.len)]);
-                }
+                self.bytes
+                    .extend_from_slice(&page.bytes[..usize::from(page.len)]);
             }
-            (Command::Close { .. }, Reply::Outcome(Outcome::Done)) => return Ok(None),
+            (Command::Close { .. }, Reply::Outcome(Outcome::Done)) => return Ok(true),
             (_, Reply::Outcome(Outcome::Refused(reason))) => {
                 bail!(
                     "Carla checkpoint: {}",
@@ -106,18 +116,33 @@ impl Read {
             }
             _ => bail!("unexpected Carla checkpoint response"),
         }
-        Ok(Some(
-            if self.discard || self.bytes.len() == self.total as usize {
-                Command::Close {
-                    snapshot: self.snapshot,
-                }
-            } else {
-                Command::Read {
-                    snapshot: self.snapshot,
-                    offset: self.bytes.len() as u32,
-                }
-            },
-        ))
+        Ok(false)
+    }
+
+    fn next(&mut self, window: usize) -> Option<Request> {
+        if self.snapshot == 0 || self.closing {
+            return None;
+        }
+        let command = if self.discard || self.bytes.len() == self.total as usize {
+            if self.pending != 0 {
+                return None;
+            }
+            self.closing = true;
+            Command::Close {
+                snapshot: self.snapshot,
+            }
+        } else if self.sent < self.total && self.pending < window {
+            let offset = self.sent;
+            self.sent = self.total.min(self.sent + BULK_CHUNK_BYTES as u32);
+            self.pending += 1;
+            Command::Read {
+                snapshot: self.snapshot,
+                offset,
+            }
+        } else {
+            return None;
+        };
+        Some(self.owner.checkpoint_command(command))
     }
 }
 
@@ -198,6 +223,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 limit: remaining,
                 bytes: Vec::new(),
                 discard: false,
+                sent: 0,
+                pending: 0,
+                closing: false,
             });
             self.requests.push_internal(
                 owner.checkpoint_command(Command::Open),
@@ -217,6 +245,25 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         ))
     }
 
+    pub(crate) fn advance_processor_checkpoints(&mut self) {
+        let window = self
+            .limits
+            .map_or(1, |limits| usize::from(limits.reliable_credits))
+            .min(PROCESSOR_CHECKPOINT_READ_WINDOW);
+        while self.require_mutation_capacity(1).is_ok() {
+            let Some(request) = self
+                .processor_checkpoints
+                .reading
+                .as_mut()
+                .and_then(|read| read.next(window))
+            else {
+                return;
+            };
+            self.requests
+                .push_internal(request, Purpose::ProcessorCheckpoint);
+        }
+    }
+
     pub(crate) fn processor_checkpoint_answered(&mut self, request: Request, reply: Reply) {
         let Request::ProcessorCheckpoint { command, .. } = request else {
             return;
@@ -234,14 +281,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             read.discard = true;
         }
         match read.accept(command, reply) {
-            Ok(Some(next)) => {
-                self.requests.push_internal(
-                    read.owner.checkpoint_command(next),
-                    Purpose::ProcessorCheckpoint,
-                );
+            Ok(false) => {
                 self.processor_checkpoints.reading = Some(read);
             }
-            Ok(None) if !read.discard => match String::from_utf8(read.bytes) {
+            Ok(true) if !read.discard => match String::from_utf8(read.bytes) {
                 Ok(state) => {
                     self.processor_checkpoints
                         .ready
@@ -249,19 +292,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 }
                 Err(error) => self.processor_checkpoints.failure = Some(error.to_string()),
             },
-            Ok(None) => {}
+            Ok(true) => {}
             Err(error) => {
                 if !read.discard {
                     self.processor_checkpoints.failure = Some(error.to_string());
                 }
                 if read.snapshot != 0 && !matches!(command, Command::Close { .. }) {
                     read.discard = true;
-                    self.requests.push_internal(
-                        read.owner.checkpoint_command(Command::Close {
-                            snapshot: read.snapshot,
-                        }),
-                        Purpose::ProcessorCheckpoint,
-                    );
                     self.processor_checkpoints.reading = Some(read);
                 }
             }

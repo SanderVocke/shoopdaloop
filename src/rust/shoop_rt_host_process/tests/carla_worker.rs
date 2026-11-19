@@ -1065,6 +1065,31 @@ fn native_companion_serves_and_releases_a_confirmed_carla_checkpoint() {
         assert!(std::str::from_utf8(&xml)
             .unwrap()
             .contains("<CARLA-PROJECT"));
+        let requests = (0..8)
+            .map(|offset| {
+                let correlation = client
+                    .request(checkpoint(Command::Read { snapshot, offset }))
+                    .unwrap();
+                (offset, correlation)
+            })
+            .collect::<Vec<_>>();
+        for (offset, expected) in requests {
+            let (correlation, page) = receive(&mut client, |message| match message {
+                EngineMessage::ProcessorCheckpointPage { correlation, page } => {
+                    Some((correlation, page))
+                }
+                EngineMessage::Result {
+                    correlation,
+                    outcome,
+                } => panic!("checkpoint burst request {correlation}: {outcome:?}"),
+                _ => None,
+            });
+            assert_eq!(correlation, expected);
+            assert_eq!(page.offset, offset);
+            let offset = offset as usize;
+            let count = usize::from(page.len);
+            assert_eq!(&page.bytes[..count], &state[offset..offset + count]);
+        }
         assert_eq!(
             result(&mut client, checkpoint(Command::Close { snapshot })),
             Outcome::Done

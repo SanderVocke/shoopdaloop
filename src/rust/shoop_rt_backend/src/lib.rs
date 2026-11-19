@@ -527,6 +527,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             self.advance_composites();
             self.advance_preview();
             self.advance_persistence();
+            self.advance_processor_checkpoints();
             let mut sent = self.send();
             sent += self.send_prepared_graph_chunks();
             if !requested_snapshot
