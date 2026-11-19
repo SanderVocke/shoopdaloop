@@ -35,8 +35,8 @@ Bus catalogs advertise Built-in FX under the [bus contract](bus-fx.md). Bus and 
 ## Carla development builds
 
 An independent Native session host built with `shoop_host/carla` can advertise
-Rack and stereo Patchbay for tracks and buses when it discovers the Carla
-runtime. The independent session host uses its own executable to launch
+Rack on tracks and stereo Patchbay on tracks and buses when it discovers the
+Carla runtime. The independent session host uses its own executable to launch
 isolated Carla workers. The separate RT engine companion uses
 `shoop_rt_host_process/carla-worker` for the same capability. The catalogue
 reports whether each type is available and how many instances the host prepared.
