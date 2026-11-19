@@ -77,7 +77,9 @@ controls are skipped, and stable bits are not rewritten.
 Ordinary matching controls are not resent. A changed program can require bank
 selection before loading the program and restoration of pending bank selectors
 afterwards. Changed notes/pedals can require rebuilding that channel's note/pedal
-relationship; pressure-only differences do not retrigger matching notes. Historical
+relationship. With pedals up, only differing keys change; matching notes continue,
+and changing a sounding key's velocity releases its old note before retriggering.
+Pressure-only differences do not retrigger matching notes. Historical
 reset markers do not cause synthetic resets. Original reset packets still play.
 The older `Emission` full-projection helpers remain available for component tests;
 they are not the session playback restoration path.

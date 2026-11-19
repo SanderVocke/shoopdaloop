@@ -313,22 +313,22 @@ audio and MIDI output comparisons against a run without background transfers.
 
 ### 7. End-to-end validation, documentation, and delivery
 
-- [ ] Run a 128-loop session fixture with the required 30-second/100-CC-per-second
+- [x] Run a 128-loop session fixture with the required 30-second/100-CC-per-second
   recordings, continuing history, duplication, export/import, multi-loop grabs,
   playback/repeat/stop, replacement, and eventual full reclamation. Also fill
   sequences to 8,192 events and exercise dense admitted boundaries.
-- [ ] Stress distinct targets, shared comparisons, maximum configured comparison
+- [x] Stress distinct targets, shared comparisons, maximum configured comparison
   fanout, cold legal grab ranges, expensive state changes, backpressure, and
   resource exhaustion. Verify no leaks, stale reads, late replay, hidden heap work,
   or disturbance of audio/capture from background transfers.
-- [ ] Extend the profiling example to report complete engine memory and maximum
+- [x] Extend the profiling example to report complete engine memory and maximum
   per-quantum work/timing. Separate steady processing, preparation, logical grab,
   restoration output, transfers, and retirement. Record hardware/toolchain/profile
   and timing distribution; software work units are not FPGA cycle counts.
-- [ ] Update component/API docs and this plan with capacities, actual bounds,
+- [x] Update component/API docs and this plan with capacities, actual bounds,
   ownership diagrams, message/route limits, commands, results, and remaining
   hardware/frontend integration boundaries.
-- [ ] Run formatting, test-policy checks, all-feature reference/compiler tests,
+- [x] Run formatting, test-policy checks, all-feature reference/compiler tests,
   warning-denying workspace build, and the documented complete native suite once
   the integrated implementation is stable. Investigate relevant local regressions
   and report reproduced baseline failures explicitly.
@@ -429,3 +429,23 @@ dropping an established context's note-off. Regression tests cover both cases.
 The warning-denying workspace build, formatting, test-policy checker, and capability
 parity checker pass. Full native-suite validation and the final timing distribution
 are in progress; no CI or review status is being consulted.
+
+Stage 7 validation: the final complete reference/compiler run passes 124 tests.
+Warning-denying workspace build, formatting, test-policy, and capability-parity
+checks pass. The complete native run reports 3,482 passed, 13 failed, and 11
+skipped; its failure-name set exactly matches the first milestone's recorded
+local baseline. The final reference-only note-continuation refinement was followed
+by the complete focused suite and build; unrelated native production code was not
+changed.
+
+Both 3,000- and 8,192-event-per-loop release sessions pass exact trace, transfer,
+history, and reclamation checks with 34,457,072 prepared bytes in the 128-input
+stress profile. A 101-trial cold-grab profile replaces 128 full 8,192-event views,
+replays 31 distinct controls, and measures 21.6 µs median / 54.2 µs p99 / 93.5 µs
+maximum foreground time in the final run. Shared-host scheduling outliers and
+the 8,192-event quantum p99 occasionally exceeding Q=32 are explicitly recorded
+in `docs/fpga/midi-reference-storage.md`; no hard OS/FPGA deadline is claimed.
+
+PR #1016 remains open, so delivery is stacked against `feat/fpga-reference-midi`,
+as planned. No CI or review feedback was queried. Final push and PR publication
+remain to be checked off once their concrete result is available.

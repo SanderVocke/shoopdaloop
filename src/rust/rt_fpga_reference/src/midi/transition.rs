@@ -102,15 +102,21 @@ impl StateTransition {
                     .iter()
                     .any(|&cc| diff.contains(base + 128 + cc));
             let mut cursor = base;
+            let mut notes_changed = false;
             while let Some(cell) = diff.next(cursor).filter(|cell| *cell < base + 128) {
                 self.steps = self.steps.saturating_add(1);
                 let key = (cell - base) as u8;
                 let a = t.note(key).unwrap();
                 let b = c.note(key).unwrap();
-                self.rebase |= (a.velocity(), a.held(), a.sostenuto())
+                notes_changed |= (a.velocity(), a.held(), a.sostenuto())
                     != (b.velocity(), b.held(), b.sostenuto());
                 cursor = cell + 1;
             }
+            self.rebase |= notes_changed
+                && [64, 66, 69].iter().any(|&cc| {
+                    t.controller(cc).is_some_and(|v| v >= 64)
+                        || c.controller(cc).is_some_and(|v| v >= 64)
+                });
             self.phase = if self.stop { 9 } else { 1 };
             self.cursor = 0;
             return None;
@@ -235,6 +241,34 @@ impl StateTransition {
                 }
             }
             14 | 16 | 17 | 18 => {
+                if phase == 16 && !self.rebase {
+                    if let Some(cell) = diff
+                        .next(base + usize::from(self.cursor))
+                        .filter(|cell| *cell < base + 128)
+                    {
+                        let key = (cell - base) as u8;
+                        let a = t.note(key).unwrap();
+                        let b = c.note(key).unwrap();
+                        let changed = (a.velocity(), a.held(), a.sostenuto())
+                            != (b.velocity(), b.held(), b.sostenuto());
+                        if changed && a.velocity() != 0 && b.velocity() != 0 {
+                            return packet(&[0x80 | ch, key, 0]);
+                        }
+                        self.cursor = u16::from(key) + 1;
+                        if changed {
+                            if a.velocity() != 0 {
+                                return packet(&[0x90 | ch, key, a.velocity()]);
+                            }
+                            if b.velocity() != 0 || b.held() {
+                                return packet(&[0x80 | ch, key, 0]);
+                            }
+                        }
+                        return None;
+                    }
+                    self.phase = 17;
+                    self.cursor = 0;
+                    return None;
+                }
                 if !self.rebase && phase != 18 {
                     self.phase += 1;
                     self.cursor = 0;

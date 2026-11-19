@@ -110,9 +110,9 @@ the CC timings below do not establish its deadline on every configured topology.
 
 ### Local checks
 
-Baseline: 99 focused reference/compiler tests passed. The latest all-feature run
-passes 122; an extra cold-grab test passes separately, bringing current coverage
-to 123. All thirteen original pipeline scenarios were migrated to the new runtime.
+Baseline: 99 focused reference/compiler tests passed. The final all-feature run
+passes **124**. This includes the cold-grab, channel-handoff, established-owner
+note-off, and matching-note continuation regressions. All thirteen original pipeline scenarios were migrated to the new runtime.
 Tests include full-comparison oracles after 700 mixed updates; independent pedal,
 bank/program and exact event traces; one-message cleanup/refusal; sync waits;
 fatal audio faults; generation/capacity failures; import grants/cancellation;
@@ -124,8 +124,9 @@ without advancing the SP frame. Source/target lifetimes survive collector progre
 
 Warning-denying workspace build, formatting, test-policy, and capability-parity
 checks pass. Rust 1.100 emits existing Cargo manifest unused-dependency warnings;
-those are separate from Rust compiler warnings. Full native-suite results and
-final CPU timing distributions will be recorded below when complete. The earlier
+those are separate from Rust compiler warnings. The complete native suite ran 3,495 tests: **3,482 passed, 13 failed, 11 skipped**
+in 1,047.957 seconds. Its thirteen failing test names exactly match the earlier
+first-milestone local run. The earlier
 milestone reproduced unrelated native startup/capacity and shutdown failures on
 its untouched baseline; do not attribute those to reference MIDI without evidence.
 
@@ -133,3 +134,79 @@ CI results and review feedback are excluded unless explicitly requested. No RTL
 simulation, synthesis, physical-device behavior, or hard hardware deadline is
 claimed. The production native MIDI backend and frontend/control protocol were
 not changed.
+
+### CPU timings
+
+Measured on a shared five-vCPU x86-64 Intel Xeon Platinum 8573C host with
+Rust 1.100.0, release optimization, Q=32, and a 48 kHz timeline. Each normal
+profile simulates 30 seconds of capture and 30 seconds of playback. The quantum
+samples include the whole SP/audio/MIDI processing call; import/export checks
+also run between calls under their transfer grants. Values describe this host.
+
+| Events per loop | Capture wall time | Playback wall time | Quantum p50 | Quantum p99 | Largest quantum sample | One complete grab |
+| --- | --- | --- | --- | --- | --- | --- |
+| 3,000 | 1.193 s | 2.382 s | 19.9 µs | 375.5 µs | 24.7 ms | 158.3 µs |
+| 8,192 | 1.584 s | 5.391 s | 18.1 µs | 796.1 µs | 20.5 ms | 147.9 µs |
+
+Both grabs deliberately use a 31-message prefix, share one derived state, and
+commit all 128 bindings without advancing SP time. Their comparison work is
+544 units (eight bitmap copies plus one changed controller per destination);
+state copies and binding/reference work are measured separately. An earlier
+3,000-event run had a 2.026 ms grab outlier and a 28.1 ms largest quantum; an
+earlier 8,192-event run had a 72.3 ms largest quantum. These remain part of the
+observed scheduling limits, even though the final run above was less interrupted.
+
+A separate **101-sample** grab profile replaces **128 distinct full 8,192-event
+views** each time, deriving the target from **31 distinct controllers**. It runs
+while the local native suite is active. Complete foreground operation timings:
+
+| Minimum | Median | p99 | Maximum | Maximum replay | Maximum comparison work | Maximum storage work |
+| --- | --- | --- | --- | --- | --- | --- |
+| 20.9 µs | 21.6 µs | 54.2 µs | 93.5 µs | 31 steps | 784 units | 9,489 units |
+
+The additional run during native-suite load measured 21.7 µs median, 137.5 µs
+p99, and 196.6 µs maximum. The old 8,192-event tables are detached, not walked
+in either interval. Cleanup
+between trials uses the explicit budgeted collector. Run with:
+
+```sh
+cargo run --locked --release -p rt_fpga_reference --all-features --example midi_session_profile -- grab
+```
+
+For context, Q=32 at 48 kHz spans 666.7 µs. The 3,000-event p99 and repeated-grab measurements fit that interval. At
+8,192 events, p99 varied from 594 to 796 µs across runs and can exceed it; the
+largest scheduling outliers exceed it substantially. The functional one-quantum guarantee is an atomic, bounded publication
+with no deferred event/state copying; these shared-host results do not prove an
+OS or future FPGA hard deadline. Output-message bandwidth remains a separate
+start-playback obligation.
+
+Before the relevant-target/stable-bit optimization, the same CC profiles had
+roughly 0.94 ms / 1.56 ms quantum p99 at 3,000 / 8,192 events. The runtime now
+skips targets that never established the changed control and avoids rewriting
+unchanged difference bits. Work remains incremental, with no whole-state
+comparison at a ready playback boundary.
+
+### Native baseline comparison
+
+The failure-name sets were compared directly with the first milestone's complete
+local log (`midi-native-suite-small.log`) and are identical:
+
+- Twelve application startup/recovery cases fail while creating the native engine
+  with `Runtime(Capacity)`. A representative is
+  `native_recovery_tests::a_new_connection_cancels_old_inputs_and_cannot_consume_old_file_callbacks`.
+- `shoop_host::recovery::siblings_survive_the_launcher_exit_and_later_control_needs_no_child_handle`
+  fails in its shutdown/recovery endpoint handling.
+
+Representative failures were also reproduced on the untouched first-milestone
+base, as recorded in the earlier milestone evidence. The production native
+implementation was not changed to address them here. The full native run preceded
+the final reference-only note-continuation refinement; the complete 124-test
+reference/compiler suite and warning-denying build were rerun after that change.
+This separates current reference evidence from the wider unchanged native code.
+
+Raw local evidence files are `midi2-final-focused-latest.log`,
+`midi2-final-build-latest.log`, `midi2-native-suite-final.log`, and
+`midi2-profile-{3000,8192,grab}-final.log` in the execution workspace. The commands
+and representative results above make the validation reproducible without those
+local files. Existing Cargo build-script output lookup warnings appeared during
+the native run; no physical backend availability is inferred from allowed skips.

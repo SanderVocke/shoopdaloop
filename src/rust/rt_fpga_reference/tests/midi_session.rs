@@ -715,3 +715,59 @@ fn cold_grab_replaces_128_full_sequence_views_without_releasing_their_tables_inl
     assert!(evidence.max_comparison_work < 1000);
     assert!(evidence.max_storage_work < 12_000);
 }
+
+#[shoop_test]
+fn plain_note_differences_preserve_matching_notes_and_order_velocity_replacement() {
+    for replace_velocity in [false, true] {
+        let mut f = Fixture::new(16, 1);
+        let mut target = MidiState::default();
+        target
+            .apply_packet(&[0x90, 60, if replace_velocity { 100 } else { 80 }], 3)
+            .unwrap();
+        if !replace_velocity {
+            target.apply_packet(&[0x90, 67, 90], 3).unwrap();
+        }
+        f.midi
+            .send(
+                OutputEvent {
+                    destination: 0,
+                    offset: 0,
+                    message: msg(&[0x90, 60, 80]),
+                },
+                &mut |_| Ok(()),
+            )
+            .unwrap();
+        if !replace_velocity {
+            f.midi
+                .send(
+                    OutputEvent {
+                        destination: 0,
+                        offset: 0,
+                        message: msg(&[0x90, 64, 70]),
+                    },
+                    &mut |_| Ok(()),
+                )
+                .unwrap();
+        }
+        let view = f.midi.begin_import(&target).unwrap();
+        while !f.midi.finish_import(view, 16, 256).unwrap() {}
+        f.pipeline.replace_midi(&mut f.midi, &[0], view).unwrap();
+        f.midi.release(view).unwrap();
+        f.command(
+            0,
+            Operation::Play {
+                position: 0,
+                retrigger: true,
+            },
+        );
+        assert_no_heap(|| {
+            assert_eq!(f.run(&[]).error, None);
+        });
+        let expected = if replace_velocity {
+            [msg(&[0x80, 60, 0]), msg(&[0x90, 60, 100])]
+        } else {
+            [msg(&[0x80, 64, 0]), msg(&[0x90, 67, 90])]
+        };
+        assert!(f.emitted.iter().map(|e| e.message).eq(expected));
+    }
+}
