@@ -5357,8 +5357,10 @@ name = "shoop_carla"
 version = "0.3.0"
 dependencies = [
  "anyhow",
+ "base64",
  "libc",
  "memmap2",
+ "serde_json",
  "shoop_plugin_protocol",
  "shoop_wasm_test_support",
  "tempfile",
@@ -5447,7 +5449,6 @@ dependencies = [
  "arc-swap",
  "assert2",
  "assert_no_alloc",
- "base64",
  "cpal 0.18.2",
  "enum-iterator",
  "jack",
@@ -5461,7 +5462,6 @@ dependencies = [
  "rfd",
  "rtrb",
  "rubato",
- "serde_json",
  "shoop_carla",
  "shoop_common",
  "shoop_dsp",

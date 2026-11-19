@@ -5,7 +5,6 @@ use crate::carla_processor::{
 };
 use crate::FXChainType;
 use anyhow::{anyhow, bail, Context, Result};
-use base64::Engine;
 use libloading::Library;
 use std::cell::UnsafeCell;
 use std::collections::BTreeMap;
@@ -33,11 +32,6 @@ pub(crate) fn lock_carla_test() -> impl Drop {
 
 pub const CARLA_MAX_BUFFER_SIZE: usize = shoop_plugin_protocol::MAX_BLOCK_FRAMES;
 pub const CARLA_MIDI_BUFFER_CAPACITY: usize = shoop_plugin_protocol::MAX_MIDI_EVENTS_PER_BLOCK;
-const MAX_STATE_BYTES: usize = 16 * 1024 * 1024;
-const STATE_PREFIX_V1: &str = "shoop-carla-native-state:1:";
-const STATE_PREFIX_V2: &str = "shoop-carla-native-state:2:";
-const LEGACY_CHUNK_URI: &str = "http://kxstudio.sf.net/ns/carla/chunk";
-const LEGACY_ATOM_STRING_URI: &str = "http://lv2plug.in/ns/ext/atom#String";
 const NATIVE_PLUGIN_HAS_UI: c_int = 1 << 2;
 const NATIVE_PLUGIN_NEEDS_UI_MAIN_THREAD: c_int = 1 << 4;
 const NATIVE_PLUGIN_USES_STATE: c_int = 1 << 9;
@@ -789,79 +783,12 @@ unsafe extern "C" fn host_dispatcher(
     }
 }
 
-fn state_chain_label(chain_type: FXChainType) -> Result<&'static str> {
-    match chain_type {
-        FXChainType::CarlaRack => Ok("rack"),
-        FXChainType::CarlaPatchbay => Ok("patchbay"),
-        FXChainType::CarlaPatchbay16x => Ok("patchbay16"),
-        _ => bail!("{chain_type:?} is not a Carla chain type"),
-    }
-}
-
 fn encode_state(chain_type: FXChainType, bytes: &[u8]) -> Result<String> {
-    if bytes.len() > MAX_STATE_BYTES {
-        bail!("Carla state exceeds {MAX_STATE_BYTES} bytes");
-    }
-    if bytes.contains(&0) {
-        bail!("Carla state contains an interior NUL byte");
-    }
-    Ok(format!(
-        "{STATE_PREFIX_V2}{}:{}",
-        state_chain_label(chain_type)?,
-        base64::engine::general_purpose::STANDARD.encode(bytes)
-    ))
+    shoop_carla::state::encode_state(chain_type.try_into()?, bytes)
 }
 
-fn decode_native_state(encoded: &str) -> Result<Vec<u8>> {
-    base64::engine::general_purpose::STANDARD
-        .decode(encoded)
-        .context("invalid Carla Native state base64")
-}
-
-fn decode_state(state: &str, expected_chain_type: FXChainType) -> Result<Vec<u8>> {
-    let decoded = if let Some(tagged) = state.strip_prefix(STATE_PREFIX_V2) {
-        let (chain, encoded) = tagged
-            .split_once(':')
-            .ok_or_else(|| anyhow!("Carla Native state has no chain tag"))?;
-        let expected = state_chain_label(expected_chain_type)?;
-        if chain != expected {
-            bail!("Carla Native state is for {chain}, not {expected}");
-        }
-        decode_native_state(encoded)?
-    } else if let Some(encoded) = state.strip_prefix(STATE_PREFIX_V1) {
-        // Version 1 was emitted briefly during direct-host development before
-        // states carried a chain tag. Keep it readable, but only v2 is written.
-        decode_native_state(encoded)?
-    } else {
-        let value: serde_json::Value =
-            serde_json::from_str(state).context("unsupported Carla state format")?;
-        let entry = value
-            .as_object()
-            .and_then(|object| object.get(LEGACY_CHUNK_URI))
-            .ok_or_else(|| anyhow!("legacy Carla state has no chunk"))?;
-        if entry.get("type").and_then(|value| value.as_str()) != Some(LEGACY_ATOM_STRING_URI) {
-            bail!("legacy Carla state chunk has the wrong type");
-        }
-        let encoded = entry
-            .get("value")
-            .and_then(|value| value.as_str())
-            .ok_or_else(|| anyhow!("legacy Carla state chunk has no value"))?;
-        let mut bytes = base64::engine::general_purpose::STANDARD
-            .decode(encoded)
-            .context("invalid legacy Carla state base64")?;
-        if bytes.last() != Some(&0) {
-            bail!("legacy Carla state chunk has no trailing NUL byte");
-        }
-        bytes.pop();
-        bytes
-    };
-    if decoded.len() > MAX_STATE_BYTES {
-        bail!("Carla state exceeds {MAX_STATE_BYTES} bytes");
-    }
-    if decoded.contains(&0) {
-        bail!("Carla state contains an interior NUL byte");
-    }
-    Ok(decoded)
+fn decode_state(state: &str, chain_type: FXChainType) -> Result<Vec<u8>> {
+    shoop_carla::state::decode_state(state, chain_type.try_into()?)
 }
 
 trait MainThreadUiTarget: Send + Sync {
@@ -1430,16 +1357,15 @@ impl CarlaProcessor for CarlaNativeHost {
             .ok_or_else(|| anyhow!("Carla Native plugin has no state getter"))?;
         let state = unsafe { get_state(self.instance.handle.as_ptr()) };
         let state = NonNull::new(state).ok_or_else(|| anyhow!("Carla state save failed"))?;
-        let bytes = unsafe { CStr::from_ptr(state.as_ptr()) }
-            .to_bytes()
-            .to_vec();
+        let bytes = unsafe { CStr::from_ptr(state.as_ptr()) }.to_bytes();
         let runtime = self
             .instance
             .runtime
             .as_ref()
             .expect("a production Carla instance retains its runtime");
+        let encoded = encode_state(self.info.chain_type, bytes);
         unsafe { (runtime.state_free)(state.as_ptr().cast()) };
-        encode_state(self.info.chain_type, &bytes)
+        encoded
     }
 
     #[tracing::instrument(
@@ -1944,76 +1870,6 @@ mod tests {
         assert_eq!(std::mem::offset_of!(NativePluginDescriptor, process), 208);
         assert_eq!(std::mem::offset_of!(NativePluginDescriptor, get_state), 216);
         assert_eq!(std::mem::offset_of!(NativePluginDescriptor, ui_width), 272);
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn direct_state_codec_round_trips_and_rejects_invalid_input() {
-        let encoded = encode_state(FXChainType::CarlaRack, b"<CARLA-PROJECT />").unwrap();
-        assert_eq!(
-            decode_state(&encoded, FXChainType::CarlaRack).unwrap(),
-            b"<CARLA-PROJECT />"
-        );
-        let version_one = format!(
-            "{STATE_PREFIX_V1}{}",
-            base64::engine::general_purpose::STANDARD.encode(b"old direct state")
-        );
-        assert_eq!(
-            decode_state(&version_one, FXChainType::CarlaRack).unwrap(),
-            b"old direct state"
-        );
-        assert!(encode_state(FXChainType::CarlaRack, b"bad\0state").is_err());
-        assert!(decode_state(&encoded, FXChainType::CarlaPatchbay).is_err());
-        assert!(decode_state(
-            "shoop-carla-native-state:2:rack:not-base64!",
-            FXChainType::CarlaRack
-        )
-        .is_err());
-        let oversized = format!(
-            "{STATE_PREFIX_V2}rack:{}",
-            base64::engine::general_purpose::STANDARD.encode(vec![0_u8; MAX_STATE_BYTES + 1])
-        );
-        assert!(decode_state(&oversized, FXChainType::CarlaRack).is_err());
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn legacy_lv2_chunks_for_every_descriptor_decode_to_native_state() {
-        for (state, project, chain_type) in [
-            (
-                include_str!("../test_data/carla_legacy_rack_loaded_state.json"),
-                include_bytes!("../test_data/carla_legacy_rack_loaded_project.xml").as_slice(),
-                FXChainType::CarlaRack,
-            ),
-            (
-                include_str!("../test_data/carla_legacy_patchbay_loaded_state.json"),
-                include_bytes!("../test_data/carla_legacy_patchbay_loaded_project.xml").as_slice(),
-                FXChainType::CarlaPatchbay,
-            ),
-            (
-                include_str!("../test_data/carla_legacy_patchbay16_loaded_state.json"),
-                include_bytes!("../test_data/carla_legacy_patchbay16_loaded_project.xml")
-                    .as_slice(),
-                FXChainType::CarlaPatchbay16x,
-            ),
-        ] {
-            assert_eq!(decode_state(state, chain_type).unwrap(), project);
-        }
-    }
-
-    #[shoop_wasm_test_support::shoop_test]
-    fn legacy_state_codec_rejects_malformed_wrong_type_and_nul_contracts() {
-        let wrong_type =
-            r#"{"http://kxstudio.sf.net/ns/carla/chunk":{"type":"wrong","value":"AA=="}}"#;
-        assert!(decode_state(wrong_type, FXChainType::CarlaRack).is_err());
-        let no_trailing_nul = format!(
-            r#"{{"{LEGACY_CHUNK_URI}":{{"type":"{LEGACY_ATOM_STRING_URI}","value":"{}"}}}}"#,
-            base64::engine::general_purpose::STANDARD.encode(b"state")
-        );
-        assert!(decode_state(&no_trailing_nul, FXChainType::CarlaRack).is_err());
-        let interior_nul = format!(
-            r#"{{"{LEGACY_CHUNK_URI}":{{"type":"{LEGACY_ATOM_STRING_URI}","value":"{}"}}}}"#,
-            base64::engine::general_purpose::STANDARD.encode(b"bad\0state\0")
-        );
-        assert!(decode_state(&interior_nul, FXChainType::CarlaRack).is_err());
     }
 
     #[shoop_wasm_test_support::shoop_test]

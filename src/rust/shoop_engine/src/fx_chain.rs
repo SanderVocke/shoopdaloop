@@ -36,6 +36,20 @@ impl TryFrom<u32> for FXChainType {
     }
 }
 
+#[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
+impl TryFrom<FXChainType> for shoop_plugin_protocol::CarlaChainType {
+    type Error = anyhow::Error;
+
+    fn try_from(chain_type: FXChainType) -> anyhow::Result<Self> {
+        match chain_type {
+            FXChainType::CarlaRack => Ok(Self::Rack),
+            FXChainType::CarlaPatchbay => Ok(Self::Patchbay),
+            FXChainType::CarlaPatchbay16x => Ok(Self::Patchbay16x),
+            _ => anyhow::bail!("{chain_type:?} is not a Carla chain type"),
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct FXChainState {
     pub ready: u32,

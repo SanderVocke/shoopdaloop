@@ -6,10 +6,15 @@ edition = "2021"
 [lints]
 workspace = true
 
+[features]
+native = ["dep:base64", "dep:serde_json"]
+
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 anyhow = { workspace = true, features = ["std"] }
+base64 = { workspace = true, optional = true }
 libc = { workspace = true }
 memmap2 = { workspace = true }
+serde_json = { workspace = true, optional = true }
 shoop_plugin_protocol = { path = "../shoop_plugin_protocol" }
 tempfile = { workspace = true }
 

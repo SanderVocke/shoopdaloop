@@ -25,8 +25,6 @@ jack-sys = { workspace = true, optional = true }
 cpal = { workspace = true, optional = true }
 # MIDI for hosts without JACK. Optional for the same reason.
 midir = { workspace = true, optional = true }
-base64 = { workspace = true }
-serde_json = { workspace = true, optional = true }
 libloading = { workspace = true, optional = true }
 assert_no_alloc = { workspace = true }
 shoop_plugin_protocol = { path = "../shoop_plugin_protocol" }
@@ -54,7 +52,7 @@ prebuild = []
 jack = ["dep:jack", "dep:jack-sys"]
 cpal = ["dep:cpal", "midir"]
 midir = ["dep:midir"]
-carla = ["dep:serde_json", "dep:libloading", "dep:rfd"]
+carla = ["shoop_carla/native", "dep:libloading", "dep:rfd"]
 carla-system-tests = ["carla"]
 native_audio_backend = ["app_backend", "cpal"]
 app_backend = ["jack"]
