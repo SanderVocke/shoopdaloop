@@ -2,6 +2,8 @@
 
 //! Native Carla worker support shared by the host implementations.
 
+#[cfg(feature = "buffered")]
+pub mod buffered;
 mod carla_completion;
 pub mod carla_shared_memory;
 #[cfg(feature = "native")]

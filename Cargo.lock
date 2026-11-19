@@ -5362,6 +5362,8 @@ dependencies = [
  "libloading 0.9.0",
  "memmap2",
  "rfd",
+ "rt_buffered",
+ "rt_runtime",
  "serde_json",
  "shoop_plugin_protocol",
  "shoop_tracing",

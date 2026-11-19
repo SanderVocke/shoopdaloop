@@ -1376,13 +1376,23 @@ impl CarlaNativeHost {
         if events.len() > CARLA_MIDI_BUFFER_CAPACITY {
             bail!("Carla MIDI input event capacity exceeded");
         }
+        self.load_midi_input(events.iter().copied())
+    }
+
+    pub(super) fn load_midi_input<'a>(
+        &mut self,
+        events: impl Iterator<Item = (u32, &'a [u8])>,
+    ) -> Result<()> {
         self.midi_inputs.clear();
         for (time, bytes) in events {
+            if self.midi_inputs.len() == CARLA_MIDI_BUFFER_CAPACITY {
+                bail!("Carla MIDI input event capacity exceeded");
+            }
             if bytes.is_empty() || bytes.len() > 4 {
                 bail!("invalid Carla Native MIDI input event size");
             }
             let mut event = NativeMidiEvent {
-                time: *time,
+                time,
                 port: 0,
                 size: bytes.len() as u8,
                 data: [0; 4],
@@ -1401,6 +1411,13 @@ impl CarlaNativeHost {
         if index != 0 {
             bail!("No Carla MIDI output port {index}");
         }
+        for (time, packet) in self.midi_packets() {
+            visit(time, packet)?;
+        }
+        Ok(())
+    }
+
+    pub(super) fn midi_packets(&self) -> impl Iterator<Item = (u32, &[u8])> {
         let output = unsafe { &*self.instance.host_context.midi_output.get() };
         let count = self
             .instance
@@ -1408,10 +1425,9 @@ impl CarlaNativeHost {
             .midi_output_count
             .load(Ordering::Relaxed)
             .min(output.len());
-        for event in &output[..count] {
-            visit(event.time, &event.data[..event.size.min(4) as usize])?;
-        }
-        Ok(())
+        output[..count]
+            .iter()
+            .map(|event| (event.time, &event.data[..event.size.min(4) as usize]))
     }
 
     pub fn process(&mut self, frames: usize) -> Result<()> {
