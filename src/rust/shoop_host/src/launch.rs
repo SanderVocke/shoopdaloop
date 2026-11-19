@@ -160,11 +160,12 @@ pub fn spawn(
             })();
             let _ = sender.send(result);
         });
-        let readiness = if config.backend == shoop_app_api::BackendType::RtlSim {
-            Duration::from_secs(300)
-        } else {
-            Duration::from_secs(12)
-        };
+        let readiness = Duration::from_secs(match config.backend {
+            shoop_app_api::BackendType::RtlSim => 300,
+            // Cold startup includes pre-touching the complete native media and graph pools.
+            shoop_app_api::BackendType::Native => 30,
+            shoop_app_api::BackendType::RustFpga => 12,
+        });
         let mut target = receiver
             .recv_timeout(readiness)
             .context("host readiness timed out")??;
