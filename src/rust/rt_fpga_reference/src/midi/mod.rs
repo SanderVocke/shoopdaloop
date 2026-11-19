@@ -1,9 +1,11 @@
 //! Bounded MIDI 1.0 components for functional reference execution.
+mod content;
 mod emission;
 pub(crate) mod engine;
 mod state;
 mod storage;
 
+pub use content::{ContentStore, Description, SnapshotId, StoreLimits, StoreUsage, ViewId};
 pub use emission::{Emission, EmissionKind};
 pub use engine::{Engine, ProcessError, Report};
 use state::BasicUpdate;

@@ -225,13 +225,13 @@ state, comparison, metadata, and reclamation costs. Commit the agreed contracts.
 
 ### 2. Implement shared event blocks, views, snapshots, and retirement
 
-- [ ] Replace `Take`'s private flat-buffer ownership with prepared block/view pools,
+- [x] Replace `Take`'s private flat-buffer ownership with prepared block/view pools,
   recording writers, immutable snapshots, and generation-checked retained handles.
-- [ ] Implement exact range views, independent duration, append into stable tails,
+- [x] Implement exact range views, independent duration, append into stable tails,
   shared duplication, pinned cursors/exports, and incomplete-recording status.
-- [ ] Add fixed-cost detachment and resumable reference/metadata reclamation with
+- [x] Add fixed-cost detachment and resumable reference/metadata reclamation with
   separate foreground reservations and non-accumulating maintenance budgets.
-- [ ] Preserve a small compatibility adapter for the existing one-loop fixtures
+- [x] Preserve a small compatibility adapter for the existing one-loop fixtures
   while migrating callers; remove duplicate authoritative storage at integration.
 
 Verification: compare byte/time/order results with a plain event-list model;
@@ -378,3 +378,10 @@ blocks, at most 33 block references for an 8,192-event range, and independent
 snapshot/comparison/retirement budgets. A 128-target same-range publication needs
 one state derivation, not 128. Checkpoints follow expensive state operations;
 the ordinary replay prefix is limited to 31 events.
+
+Stage 2: shared content pools, immutable snapshots/ranges, generation checks,
+retained prefixes, and bounded retirement are implemented. The original `Take`
+API now delegates to the same store using one allocation block; it no longer
+owns a second flat event representation. All 103 reference/compiler tests pass,
+including four allocation-guarded ownership/capacity tests. Warning-denying
+reference build and Rust test-policy check pass.
