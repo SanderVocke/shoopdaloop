@@ -36,9 +36,10 @@ Bus catalogs advertise Built-in FX under the [bus contract](bus-fx.md). Bus and 
 
 An independent Native session host built with `shoop_host/carla` can advertise
 Rack and stereo Patchbay for tracks and buses when it discovers the Carla
-runtime. Isolated hosting also requires the companion built with
-`shoop_rt_host_process/carla-worker`. The catalogue reports whether each type
-is available and how many instances the host prepared.
+runtime. The independent session host uses its own executable to launch
+isolated Carla workers. The separate RT engine companion uses
+`shoop_rt_host_process/carla-worker` for the same capability. The catalogue
+reports whether each type is available and how many instances the host prepared.
 
 In desktop settings, choose **Native** and an independent host under **Audio →
 Session delivery**. Under **Carla**, choose **In session host** or **One
@@ -50,6 +51,8 @@ host manager's **New host** dialog also accepts Carla mode and counts under
 Linux development tests exercise both modes with the pinned runtime and actual
 Carla editors. In isolated mode the FX control can restart a crashed worker and
 reopen its editor. The host reports the new generation when the worker is ready.
+Full session saves refuse when a Carla track or bus is present. Selected loop
+media can still be captured for export.
 See the plan for qualification scope and pending work. [Carla hosting plan](../../PLAN_CARLA_HOSTING.md#stage-4-host-stereo-carla-through-the-production-native-service)
 
 ## Routing and media matrix

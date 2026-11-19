@@ -230,9 +230,7 @@ def normalize(args: argparse.Namespace) -> None:
     verify_component(output, args.platform)
 
 
-def verify_component(root: Path, platform: str | None = None) -> dict:
-    manifest_path = root / "manifest.json"
-    manifest = json.loads(manifest_path.read_text())
+def component_paths(manifest: dict, platform: str | None = None) -> set[str]:
     if set(manifest) != {"schema", "platform", "library", "resource_dir", "files"}:
         raise RuntimeError("unexpected Carla component manifest fields")
     if manifest.get("schema") != 1:
@@ -251,7 +249,11 @@ def verify_component(root: Path, platform: str | None = None) -> dict:
         if set(entry) != {"path", "sha256", "size", "executable"}:
             raise RuntimeError("unexpected Carla component file fields")
         relative = PurePosixPath(entry["path"])
-        if relative.is_absolute() or ".." in relative.parts or relative.as_posix() != entry["path"]:
+        if (
+            not relative.parts or relative.is_absolute() or ".." in relative.parts
+            or relative.as_posix() != entry["path"] or "\\" in entry["path"]
+            or ":" in entry["path"] or entry["path"] == "manifest.json"
+        ):
             raise RuntimeError(f"unsafe Carla component path: {entry['path']}")
         if not isinstance(entry["size"], int) or entry["size"] < 0 or not isinstance(entry["executable"], bool):
             raise RuntimeError(f"invalid Carla component metadata: {entry['path']}")
@@ -261,6 +263,41 @@ def verify_component(root: Path, platform: str | None = None) -> dict:
     if len(paths) != len(set(paths)):
         raise RuntimeError("duplicate Carla component manifest path")
     expected = set(paths) | {"manifest.json"}
+    suffix = ".exe" if manifest["platform"] == "windows" else ""
+    required = {
+        manifest["library"],
+        "runtime-lock.json",
+        "licenses/README.md",
+        "licenses/COPYING",
+        f"bin/carla-discovery-native{suffix}",
+        f"bin/carla-bridge-native{suffix}",
+        *(f"resources/{helper}" for helper in HELPER_NAMES[manifest["platform"]]),
+    }
+    if manifest["platform"] == "windows":
+        required.add("resources/libcarla_utils.dll")
+    if not required <= expected:
+        raise RuntimeError(f"Carla component is incomplete: {sorted(required - expected)}")
+    excluded_prefixes = tuple(LOCK_DATA["component"]["excluded_prefixes"])
+    forbidden = [
+        path for path in expected
+        if any(part.startswith(excluded_prefixes) for part in PurePosixPath(path).parts)
+        or PurePosixPath(path).name.lower() in FORBIDDEN_STANDALONE_NAMES
+    ]
+    if forbidden:
+        raise RuntimeError(f"Carla component contains excluded wrappers/standalone payloads: {sorted(forbidden)}")
+    return expected
+
+
+def verify_component_metadata(lock: bytes, notice: bytes) -> None:
+    if lock != LOCK.read_bytes():
+        raise RuntimeError("Carla component runtime lock differs from the reviewed lock")
+    if notice != (ROOT / "third_party" / "carla" / "README.md").read_bytes():
+        raise RuntimeError("Carla component review notice differs from the checked-in notice")
+
+
+def verify_component(root: Path, platform: str | None = None) -> dict:
+    manifest = json.loads((root / "manifest.json").read_text())
+    expected = component_paths(manifest, platform)
     actual = {
         PurePosixPath(path.relative_to(root)).as_posix()
         for path in root.rglob("*")
@@ -273,39 +310,16 @@ def verify_component(root: Path, platform: str | None = None) -> dict:
         raise RuntimeError(
             f"Carla component manifest mismatch; missing={sorted(expected-actual)}, extra={sorted(actual-expected)}"
         )
-    for entry in entries:
+    for entry in manifest["files"]:
         path = root / entry["path"]
         if path.stat().st_size != entry["size"] or digest(path) != entry["sha256"]:
             raise RuntimeError(f"Carla component checksum mismatch: {entry['path']}")
         if entry["executable"] and path.stat().st_mode & 0o111 == 0:
             raise RuntimeError(f"Carla component lost executable mode: {entry['path']}")
-    suffix = ".exe" if manifest["platform"] == "windows" else ""
-    required = {
-        manifest["library"],
-        "runtime-lock.json",
-        "licenses/README.md",
-        "licenses/COPYING",
-        f"bin/carla-discovery-native{suffix}",
-        f"bin/carla-bridge-native{suffix}",
-        f"resources/{HELPER_NAMES[manifest['platform']][0]}",
-        f"resources/{HELPER_NAMES[manifest['platform']][1]}",
-    }
-    if manifest["platform"] == "windows":
-        required.add("resources/libcarla_utils.dll")
-    if not required <= actual:
-        raise RuntimeError(f"Carla component is incomplete: {sorted(required-actual)}")
-    if (root / "runtime-lock.json").read_bytes() != LOCK.read_bytes():
-        raise RuntimeError("Carla component runtime lock differs from the reviewed lock")
-    if (root / "licenses" / "README.md").read_bytes() != (ROOT / "third_party" / "carla" / "README.md").read_bytes():
-        raise RuntimeError("Carla component review notice differs from the checked-in notice")
-    excluded_prefixes = tuple(LOCK_DATA["component"]["excluded_prefixes"])
-    forbidden = [
-        path for path in actual
-        if any(part.startswith(excluded_prefixes) for part in PurePosixPath(path).parts)
-        or PurePosixPath(path).name.lower() in FORBIDDEN_STANDALONE_NAMES
-    ]
-    if forbidden:
-        raise RuntimeError(f"Carla component contains excluded wrappers/standalone payloads: {sorted(forbidden)}")
+    verify_component_metadata(
+        (root / "runtime-lock.json").read_bytes(),
+        (root / "licenses" / "README.md").read_bytes(),
+    )
     return manifest
 
 

@@ -31,6 +31,7 @@ NATIVE_PLATFORMS = ("linux", "windows", "macos")
 APPLICATION_ICON = ROOT / "resources" / "iconset" / "icon.png"
 BUILTINS = ROOT / "resources" / "builtins"
 sys.path.insert(0, str(ROOT / "scripts"))
+from carla_runtime import component_paths, verify_component, verify_component_metadata  # noqa: E402
 from check_macos_compatibility import inspect_macho, verify_payloads  # noqa: E402
 ROBOTO_FILES = (
     "LICENSE.txt",
@@ -100,7 +101,17 @@ def windows_manager_shortcut() -> bytes:
     return header + struct.pack("<H", len(target) // 2) + target + bytes(4)
 
 
-def create_native_stage(platform: str, binary: Path, stage: Path, macos_minimum_version: str = "11.0") -> None:
+def carla_component_path(platform: str) -> PurePosixPath:
+    root = PurePosixPath(ARCHIVE_ROOT)
+    if platform == "macos":
+        root /= "ShoopDaLoop.app/Contents/Frameworks"
+    return root / "carla-runtime"
+
+
+def create_native_stage(
+    platform: str, binary: Path, stage: Path, macos_minimum_version: str = "11.0",
+    *, carla_runtime: Path | None = None,
+) -> None:
     root = stage / ARCHIVE_ROOT
     root.mkdir()
     copy_metadata(root)
@@ -167,6 +178,9 @@ def create_native_stage(platform: str, binary: Path, stage: Path, macos_minimum_
     else:
         shutil.copy2(APPLICATION_ICON, root / "icon.png")
         shutil.copy2(PACKAGE / "shoop_host_manager.desktop", root / "shoop_host_manager.desktop")
+    if carla_runtime is not None:
+        verify_component(carla_runtime, platform)
+        shutil.copytree(carla_runtime, stage / carla_component_path(platform))
 
 
 def write_tar(source: Path, output: Path) -> None:
@@ -201,12 +215,23 @@ def package_native(args: argparse.Namespace) -> list[Path]:
     output.unlink(missing_ok=True)
     with tempfile.TemporaryDirectory(prefix="shoop-package-") as temporary:
         stage = Path(temporary)
-        create_native_stage(args.platform, binary, stage, args.macos_minimum_version or "11.0")
+        create_native_stage(
+            args.platform, binary, stage, args.macos_minimum_version or "11.0",
+            carla_runtime=args.carla_runtime,
+        )
         staged_executable = (
             stage / ARCHIVE_ROOT / "ShoopDaLoop.app" / "Contents" / "MacOS" / "shoopdaloop"
             if args.platform == "macos"
             else stage / ARCHIVE_ROOT / executable_name(args.platform)
         )
+        if args.carla_runtime is not None:
+            env = os.environ.copy()
+            env.pop("SHOOP_CARLA_NATIVE_LIBRARY", None)
+            env.pop("SHOOP_CARLA_RESOURCE_DIR", None)
+            subprocess.run(
+                [str(staged_executable.with_name(engine_executable_name(args.platform))), "--probe-carla-native"],
+                cwd=stage, check=True, timeout=60, env=env,
+            )
         subprocess.run(
             [str(staged_executable), "--probe-builtins"],
             cwd=stage,
@@ -239,7 +264,7 @@ def package_native(args: argparse.Namespace) -> list[Path]:
             write_zip(stage / ARCHIVE_ROOT, output)
         else:
             write_tar(stage / ARCHIVE_ROOT, output)
-    verify_native(output, args.platform, args.arch, args.macos_minimum_version)
+    verify_native(output, args.platform, args.arch, args.macos_minimum_version, with_carla=args.carla_runtime is not None)
     return [output]
 
 
@@ -423,7 +448,37 @@ def reject_carla_native_payload(binary: bytes, artifact: str) -> None:
         raise RuntimeError(f"{artifact} contains Carla Native payload markers: {present}")
 
 
-def verify_native(path: Path, platform: str, arch: str | None = None, macos_minimum_version: str | None = None) -> None:
+def verify_carla_payloads(
+    payloads: dict[str, bytes], modes: dict[str, int], platform: str, arch: str | None,
+) -> set[str]:
+    root = carla_component_path(platform)
+    manifest_path = str(root / "manifest.json")
+    try:
+        manifest = json.loads(payloads[manifest_path])
+    except (KeyError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise RuntimeError("native package is missing a valid Carla component manifest") from error
+    required = {str(root / name) for name in component_paths(manifest, platform)}
+    missing = required - payloads.keys()
+    if missing:
+        raise RuntimeError(f"native package is missing Carla component files: {sorted(missing)}")
+    verify_component_metadata(
+        payloads[str(root / "runtime-lock.json")], payloads[str(root / "licenses/README.md")],
+    )
+    for entry in manifest["files"]:
+        name = str(root / entry["path"])
+        payload = payloads[name]
+        if len(payload) != entry["size"] or hashlib.sha256(payload).hexdigest() != entry["sha256"]:
+            raise RuntimeError(f"packaged Carla checksum mismatch: {name}")
+        if platform != "windows" and entry["executable"] and modes.get(name, 0) & 0o111 == 0:
+            raise RuntimeError(f"packaged Carla helper has no execute bit: {name}")
+    require_native_architecture(payloads[str(root / manifest["library"])], platform, "Carla Native library", arch)
+    return required
+
+
+def verify_native(
+    path: Path, platform: str, arch: str | None = None, macos_minimum_version: str | None = None,
+    *, with_carla: bool = False,
+) -> None:
     names, modes = archive_names(path)
     payloads = archive_payloads(path)
     root = f"{ARCHIVE_ROOT}/"
@@ -473,6 +528,8 @@ def verify_native(path: Path, platform: str, arch: str | None = None, macos_mini
     if source_tree_marker in names:
         raise RuntimeError("native archive contains a source-tree marker")
     required.update(verify_builtins(payloads, builtins_prefix))
+    if with_carla:
+        required.update(verify_carla_payloads(payloads, modes, platform, arch))
     if names != required:
         raise RuntimeError(
             f"unexpected {platform} archive manifest; missing={sorted(required - names)}, "
@@ -497,7 +554,11 @@ def verify_native(path: Path, platform: str, arch: str | None = None, macos_mini
         print("\n".join(verify_payloads(payloads, arch or "arm64", macos_minimum_version)))
     require_application_icon(binary, "native executable")
     reject_carla_native_payload(binary, "native executable")
-    reject_carla_native_payload(payloads[companion], "session host")
+    if with_carla:
+        if b"SHOOP_CARLA_NATIVE_LIBRARY" not in payloads[companion]:
+            raise RuntimeError("session host has no Carla Native support")
+    else:
+        reject_carla_native_payload(payloads[companion], "session host")
     reject_application_script_payload(binary, "native executable")
 
 
@@ -595,9 +656,11 @@ def verify(args: argparse.Namespace) -> list[Path]:
     if args.artifact == Path(".") and os.environ.get("SHOOP_ARTIFACT"):
         args.artifact = Path(os.environ["SHOOP_ARTIFACT"])
     if args.platform == "web":
+        if args.with_carla:
+            raise RuntimeError("--with-carla requires a native package")
         verify_web(args.artifact, args.html)
         return [args.artifact, *([args.html] if args.html is not None else [])]
-    verify_native(args.artifact, args.platform, args.arch, args.macos_minimum_version)
+    verify_native(args.artifact, args.platform, args.arch, args.macos_minimum_version, with_carla=args.with_carla)
     return [args.artifact]
 
 
@@ -612,6 +675,7 @@ def parser() -> argparse.ArgumentParser:
     native.add_argument("--binary", type=Path, required=True)
     native.add_argument("--output-dir", type=Path, required=True)
     native.add_argument("--macos-minimum-version")
+    native.add_argument("--carla-runtime", type=Path, help="verified optional Carla runtime component")
     native.set_defaults(function=package_native)
 
     web = subcommands.add_parser("web")
@@ -626,6 +690,7 @@ def parser() -> argparse.ArgumentParser:
     check.add_argument("--html", type=Path)
     check.add_argument("--arch", choices=("x86_64", "arm64"))
     check.add_argument("--macos-minimum-version")
+    check.add_argument("--with-carla", action="store_true", help="require the native Carla component")
     check.set_defaults(function=verify)
     return result
 
