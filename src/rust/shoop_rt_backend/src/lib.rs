@@ -53,6 +53,7 @@ mod prepared_graph;
 pub use shoop_graph;
 mod preview;
 mod processor_controls;
+mod processor_logs;
 mod processors;
 mod reads;
 mod requests;
@@ -194,6 +195,7 @@ pub struct RtBackend<C, K> {
     status: Status,
     mirror: Mirror,
     requests: Requests,
+    processor_logs: processor_logs::Logs,
     reads: Reads,
     read_cancel_needed: bool,
     resync: Option<Vec<StateRecord>>,
@@ -261,6 +263,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             status: Status::default(),
             mirror: Mirror::new(),
             requests: Requests::default(),
+            processor_logs: Default::default(),
             reads: Reads::default(),
             read_cancel_needed: false,
             resync: None,
@@ -751,6 +754,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
         self.disconnect_composites();
         self.requests.clear();
+        self.processor_logs = Default::default();
         self.reads.clear();
         if let Some(preview) = &mut self.preview {
             preview.job.disconnected(reason.clone());

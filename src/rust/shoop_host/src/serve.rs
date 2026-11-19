@@ -381,11 +381,12 @@ pub fn run_with_ready(
         == shoop_app_api::CarlaHosting::InProcess)
         .then(shoop_carla::native::CarlaMainThreadUiService::new)
         .unzip();
-    let carla = CarlaHostOptions {
-        worker: options.carla_worker.clone(),
-        #[cfg(feature = "carla")]
-        ui: carla_dispatcher,
-    };
+    let mut carla = CarlaHostOptions::default();
+    carla.worker.clone_from(&options.carla_worker);
+    #[cfg(feature = "carla")]
+    {
+        carla.ui = carla_dispatcher;
+    }
     let StartedBackend {
         #[cfg(feature = "fpga-reference")]
         mut reference_driver,

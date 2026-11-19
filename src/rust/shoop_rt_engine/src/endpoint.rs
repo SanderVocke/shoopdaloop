@@ -163,6 +163,7 @@ impl Work {
 /// Hosted processor observations and controls on the non-render endpoint.
 pub trait HostedProcessorControls: Send {
     fn has_editors(&self) -> bool;
+    fn has_logs(&self) -> bool;
     fn status(&self, index: u16) -> Option<HostedProcessorObservation>;
     fn set_visible(&self, index: u16, visible: bool) -> Result<(), Refusal>;
     fn recover(
@@ -177,6 +178,12 @@ pub trait HostedProcessorControls: Send {
         owner: u64,
         generation: u64,
     ) -> Result<Box<dyn HostedControlTicket>, Refusal>;
+    fn read_logs(
+        &self,
+        index: u16,
+        owner: u64,
+        generation: u64,
+    ) -> Result<Box<dyn crate::HostedLogTicket>, Refusal>;
 }
 
 pub struct HostedProcessorObservation {
@@ -206,6 +213,7 @@ pub struct ControlEndpoint {
     pub(crate) processor_catalog: crate::ProcessorCatalog,
     pub(crate) hosted_processors: Option<Box<dyn HostedProcessorControls>>,
     pub(crate) hosted_controls: Box<[Option<PendingHostedControl>]>,
+    pub(crate) hosted_logs: crate::hosted_logs::Store,
     pub(crate) processor_cells: Box<[Arc<crate::processors::ProcessorCells>]>,
     pub(crate) projected_bus_processors: Box<
         [Option<(
@@ -398,7 +406,7 @@ impl ControlEndpoint {
         self.hosted_processors = Some(controls);
     }
 
-    fn hosted_processor_owner(
+    pub(crate) fn hosted_processor_owner(
         &self,
         target: shoop_rt_protocol::ProcessorTarget,
     ) -> Result<crate::model::ProcessorOwner, Refusal> {
@@ -411,7 +419,7 @@ impl ControlEndpoint {
         .ok_or(Refusal::Unsupported)
     }
 
-    fn confirmed_hosted_processor(
+    pub(crate) fn confirmed_hosted_processor(
         &self,
         target: shoop_rt_protocol::ProcessorTarget,
         slot: shoop_rt_protocol::ProcessorSlot,
@@ -568,6 +576,7 @@ impl ControlEndpoint {
             && self.job.as_ref().is_none_or(Job::idle)
             && self.pending.iter().all(Option::is_none)
             && self.hosted_controls.iter().all(Option::is_none)
+            && self.hosted_logs.idle()
             && self.bulk.idle()
             && self.uploads.idle()
             && self.next_frame().0 >= self.quiet_until
@@ -632,6 +641,13 @@ impl ControlEndpoint {
             .is_some_and(|controls| controls.has_editors())
         {
             capabilities = capabilities.union(Capabilities::EXTERNAL_PROCESSOR_EDITOR);
+        }
+        if self
+            .hosted_processors
+            .as_ref()
+            .is_some_and(|controls| controls.has_logs())
+        {
+            capabilities = capabilities.union(Capabilities::PROCESSOR_LOGS);
         }
         Capabilities(capabilities.0 & self.capability_mask.0)
     }
@@ -779,6 +795,7 @@ impl ControlEndpoint {
         self.projected_timing.fill(None);
         self.limits_changed = false;
         self.protocol_error = false;
+        self.hosted_logs.disconnect();
         for pending in self.hosted_controls.iter_mut().flatten() {
             pending.correlation = None;
         }
@@ -1278,6 +1295,15 @@ impl ControlEndpoint {
                 Err(Refusal::Busy) => return Err(()),
                 result => result,
             },
+            Request::ProcessorLogs {
+                target,
+                slot,
+                worker_generation,
+                command,
+            } => match self.processor_logs(correlation, target, slot, worker_generation, command) {
+                Err(Refusal::Busy) => return Err(()),
+                result => result,
+            },
             Request::BusProcessorControl { bus, control } => self
                 .model
                 .bus(bus)
@@ -1624,6 +1650,7 @@ impl ControlEndpoint {
             });
             self.results.pop();
         }
+        self.flush_hosted_log_page(out);
         if self.limits_changed && out.available(ProtocolLane::Reliable) > 0 {
             let _ = out.push(EngineMessage::LimitsChanged(self.limits));
             self.limits_changed = false;
@@ -1922,6 +1949,7 @@ impl Endpoint for ControlEndpoint {
         }
         self.drain_runtime();
         self.advance_hosted_controls();
+        self.advance_hosted_logs();
         self.immediate.responses(out, self.connected);
         self.refresh_snapshot_timing();
         self.reconcile_immediate();

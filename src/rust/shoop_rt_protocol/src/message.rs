@@ -1,8 +1,8 @@
 //! Messages exchanged over a carrier, and their lanes.
 
 use crate::schema::{
-    BulkChunk, BulkRead, Capabilities, DriverStatus, Limits, Outcome, Request, StateRecord,
-    Telemetry,
+    BulkChunk, BulkRead, Capabilities, DriverStatus, Limits, Outcome, ProcessorLogPage, Request,
+    StateRecord, Telemetry,
 };
 
 pub use shoop_transport::Lane;
@@ -62,6 +62,10 @@ pub enum EngineMessage {
     Result {
         correlation: u64,
         outcome: Outcome,
+    },
+    ProcessorLogPage {
+        correlation: u64,
+        page: ProcessorLogPage,
     },
     Telemetry(Telemetry),
     State(StateRecord),

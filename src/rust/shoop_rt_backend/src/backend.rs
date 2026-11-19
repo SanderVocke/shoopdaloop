@@ -801,6 +801,10 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         self.processor_control(track_id, control)
     }
 
+    fn request_track_fx_logs(&mut self, track_id: BackendTrackId) -> Result<()> {
+        self.request_processor_logs(crate::processor_logs::Target::Track(track_id))
+    }
+
     fn set_loop_gain(&mut self, loop_id: BackendLoopId, gain: f32) -> Result<()> {
         self.ready()?;
         let slot = self.live_loop_slot(loop_id)?;
@@ -1465,6 +1469,9 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     ) -> Result<()> {
         self.bus_processor_control(bus_id, control)
     }
+    fn request_bus_fx_logs(&mut self, bus_id: BackendBusId) -> Result<()> {
+        self.request_processor_logs(crate::processor_logs::Target::Bus(bus_id))
+    }
     fn bus_fx_state_string(
         &mut self,
         bus_id: BackendBusId,
@@ -1574,7 +1581,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         {
             profiling.groups = self.profiling_groups.1.clone();
         }
-        Ok(BackendSnapshot {
+        let mut snapshot = BackendSnapshot {
             composite_operations: self.composite_operations(),
             composite_receipts: core::mem::take(&mut self.composites.receipts),
             profiling,
@@ -1594,7 +1601,9 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
                     .extract_if(.., |completion| completion.result.is_err())
                     .collect()
             },
-        })
+        };
+        self.display_processor_logs(&mut snapshot);
+        Ok(snapshot)
     }
 
     fn wait_idle(&mut self) {

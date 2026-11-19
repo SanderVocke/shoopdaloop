@@ -8,8 +8,9 @@ use shoop_carla::{
 };
 use shoop_plugin_protocol::{CarlaChainType, CarlaProcessorLifecycle, ChainId, WorkerExitKind};
 use shoop_rt_engine::{
-    EngineDescription, HostedControlTicket, HostedProcessor, HostedProcessorControls,
-    HostedProcessorObservation, PreparedProcessor, PreparedProcessors,
+    EngineDescription, HostedControlTicket, HostedLogTicket, HostedProcessor,
+    HostedProcessorControls, HostedProcessorLog, HostedProcessorObservation, PreparedProcessor,
+    PreparedProcessors,
 };
 use shoop_rt_protocol::{
     processors::{
@@ -141,6 +142,7 @@ pub(crate) struct Controls {
     first: usize,
     chains: Vec<Chain>,
     has_editors: bool,
+    has_logs: bool,
 }
 
 struct Chain {
@@ -160,6 +162,9 @@ impl Controls {
                 })
                 .collect(),
             has_editors: services.iter().any(|service| service.editor().is_some()),
+            has_logs: services
+                .iter()
+                .any(|service| service.monitor().owned_health().1.generation != 0),
         }
     }
 
@@ -171,6 +176,10 @@ impl Controls {
 impl HostedProcessorControls for Controls {
     fn has_editors(&self) -> bool {
         self.has_editors
+    }
+
+    fn has_logs(&self) -> bool {
+        self.has_logs
     }
 
     fn status(&self, index: u16) -> Option<HostedProcessorObservation> {
@@ -236,6 +245,20 @@ impl HostedProcessorControls for Controls {
             .map_err(|_| Refusal::Internal)?;
         Ok(Box::new(PendingControl(ticket)))
     }
+
+    fn read_logs(
+        &self,
+        index: u16,
+        owner: u64,
+        generation: u64,
+    ) -> Result<Box<dyn HostedLogTicket>, Refusal> {
+        let chain = self.chain(index).ok_or(Refusal::Unsupported)?;
+        let ticket = chain
+            .control
+            .read_logs(owner, generation)
+            .map_err(|_| Refusal::Internal)?;
+        Ok(Box::new(PendingLogs(ticket)))
+    }
 }
 
 struct PendingControl(ControlTicket);
@@ -245,6 +268,28 @@ impl HostedControlTicket for PendingControl {
         self.0
             .poll()
             .map(|result| result.map_err(|_| Refusal::Internal))
+    }
+}
+
+struct PendingLogs(shoop_carla::service::LogTicket);
+
+impl HostedLogTicket for PendingLogs {
+    fn poll(&mut self) -> Option<Result<Vec<HostedProcessorLog>, Refusal>> {
+        self.0.poll().map(|result| {
+            result
+                .map(|logs| {
+                    logs.into_iter()
+                        .map(|log| HostedProcessorLog {
+                            generation: log.generation,
+                            stdout: log.stdout,
+                            stderr: log.stderr,
+                            stdout_dropped: log.stdout_dropped_bytes,
+                            stderr_dropped: log.stderr_dropped_bytes,
+                        })
+                        .collect()
+                })
+                .map_err(|_| Refusal::Internal)
+        })
     }
 }
 

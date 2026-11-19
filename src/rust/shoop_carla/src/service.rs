@@ -9,7 +9,8 @@ use crate::{
 use anyhow::{anyhow, bail, Context, Result};
 use rt_buffered::{BufferLimits, PreparedTiming};
 use shoop_plugin_protocol::{
-    CarlaChainType, CarlaProcessorLifecycle, ChainId, WorkerExitKind, MAX_STATE_ENVELOPE_BYTES,
+    CarlaChainType, CarlaGenerationLog, CarlaProcessorLifecycle, ChainId, WorkerExitKind,
+    MAX_STATE_ENVELOPE_BYTES,
 };
 use std::{
     path::PathBuf,
@@ -42,11 +43,13 @@ enum Operation {
 enum OwnedOperation {
     Recover { show_editor: bool },
     ClearLogs,
+    ReadLogs,
 }
 
 enum Reply {
     Done,
     State(String),
+    Logs(Vec<CarlaGenerationLog>),
 }
 
 struct Command {
@@ -94,17 +97,34 @@ impl ReplyTicket {
             .recv_timeout(self.deadline.saturating_duration_since(Instant::now()))
             .context("waiting for Carla control")?
     }
+
+    fn poll(&self) -> Option<Result<Reply>> {
+        match self.response.try_recv() {
+            Ok(result) => Some(result),
+            Err(TryRecvError::Empty) => None,
+            Err(TryRecvError::Disconnected) => Some(Err(anyhow!("Carla service stopped"))),
+        }
+    }
 }
 
 pub struct ControlTicket(ReplyTicket);
 
 impl ControlTicket {
     pub fn poll(&self) -> Option<Result<()>> {
-        match self.0.response.try_recv() {
-            Ok(result) => Some(result.map(|_| ())),
-            Err(TryRecvError::Empty) => None,
-            Err(TryRecvError::Disconnected) => Some(Err(anyhow!("Carla service stopped"))),
-        }
+        self.0.poll().map(|result| result.map(|_| ()))
+    }
+}
+
+pub struct LogTicket(ReplyTicket);
+
+impl LogTicket {
+    pub fn poll(&self) -> Option<Result<Vec<CarlaGenerationLog>>> {
+        self.0.poll().map(|result| {
+            result.and_then(|reply| match reply {
+                Reply::Logs(logs) => Ok(logs),
+                _ => bail!("Carla log response was incomplete"),
+            })
+        })
     }
 }
 
@@ -148,6 +168,12 @@ impl ChainControl {
             OwnedOperation::ClearLogs,
             CONTROL_TIMEOUT,
         )
+    }
+
+    pub fn read_logs(&self, owner: u64, generation: u64) -> Result<LogTicket> {
+        let request =
+            self.submit_owned(owner, generation, OwnedOperation::ReadLogs, CONTROL_TIMEOUT)?;
+        Ok(LogTicket(request.0))
     }
 }
 
@@ -334,7 +360,7 @@ impl ChainService {
     pub fn save_state(&self) -> Result<String> {
         match self.request(Operation::Save)? {
             Reply::State(state) => Ok(state),
-            Reply::Done => bail!("Carla state response was incomplete"),
+            _ => bail!("Carla state response was incomplete"),
         }
     }
 
@@ -442,6 +468,9 @@ fn run(
                                 Err(anyhow!("Carla processor owner changed"))
                             } else {
                                 match action {
+                                    OwnedOperation::ReadLogs => {
+                                        Ok(Reply::Logs(processor.generation_logs()))
+                                    }
                                     OwnedOperation::ClearLogs => {
                                         processor.clear_logs();
                                         Ok(Reply::Done)

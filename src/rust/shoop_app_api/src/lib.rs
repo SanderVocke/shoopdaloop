@@ -2662,6 +2662,7 @@ pub enum TrackAction {
     FxClearLogs,
     BuiltInFx(BuiltInFxControl),
     OxiSynth(OxiSynthControl),
+    FxReadLogs,
 }
 
 pub type TrackWidgetAction = TrackAction;
@@ -2681,6 +2682,7 @@ pub enum BusAction {
     FxClearLogs,
     BuiltInFx(BuiltInFxControl),
     FxProcessorChanged(Option<TrackProcessorTypeId>),
+    FxReadLogs,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -3103,6 +3105,7 @@ impl TrackAction {
             Self::FxToggleOrRecover => "track.fx_toggle_or_recover",
             Self::FxRestoreState(_) => "track.fx_restore_state",
             Self::FxClearLogs => "track.fx_clear_logs",
+            Self::FxReadLogs => "track.fx_read_logs",
             Self::BuiltInFx(control) => control.kind(),
             Self::OxiSynth(control) => control.kind(),
         }
@@ -3122,6 +3125,7 @@ impl BusAction {
             Self::FxToggleOrRecover => "bus.fx_toggle_or_recover",
             Self::FxRestoreState(_) => "bus.fx_restore_state",
             Self::FxClearLogs => "bus.fx_clear_logs",
+            Self::FxReadLogs => "bus.fx_read_logs",
             Self::BuiltInFx(control) => control.kind(),
             Self::FxProcessorChanged(_) => "bus.fx_processor",
         }

@@ -114,6 +114,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         && self
                             .capabilities
                             .contains(Capabilities::EXTERNAL_PROCESSOR_EDITOR),
+                    logs: available && self.capabilities.contains(Capabilities::PROCESSOR_LOGS),
                     ..Default::default()
                 },
                 editor: None,

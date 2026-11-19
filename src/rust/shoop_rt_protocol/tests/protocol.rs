@@ -1170,6 +1170,52 @@ fn input_progress_capacity_and_terminal_phases_round_trip_with_exact_frames() {
 }
 
 #[shoop_test]
+fn hosted_processor_log_pages_fit_in_a_reliable_record_and_reject_invalid_ranges() {
+    let page = ProcessorLogPage {
+        generation: 2,
+        dropped: 33,
+        total: PROCESSOR_LOG_STREAM_BYTES as u32,
+        offset: (PROCESSOR_LOG_STREAM_BYTES - BULK_CHUNK_BYTES) as u32,
+        len: BULK_CHUNK_BYTES as u16,
+        bytes: core::array::from_fn(|index| index as u8),
+    };
+    let message = |page| EngineMessage::ProcessorLogPage {
+        correlation: 10,
+        page,
+    };
+    let mut bytes = [0; MAX_RECORD_BYTES];
+    let len = encode_engine(&message(page), &mut bytes).unwrap();
+    assert_eq!(decode_engine(&bytes[..len]).unwrap(), message(page));
+    let past_end = ProcessorLogPage {
+        offset: page.offset + 1,
+        ..page
+    };
+    assert_eq!(
+        encode_engine(&message(past_end), &mut bytes),
+        Err(CodecError::Invalid)
+    );
+    let request = ClientMessage::Request {
+        correlation: 10,
+        request: Request::ProcessorLogs {
+            target: ProcessorTarget::Strip(StripId(SlotId::new(2, 3))),
+            slot: ProcessorSlot {
+                index: 4,
+                generation: 5,
+            },
+            worker_generation: 6,
+            command: ProcessorLogCommand::Read {
+                snapshot: 7,
+                generation_index: 1,
+                stderr: true,
+                offset: page.offset,
+            },
+        },
+    };
+    let len = encode_client(&request, &mut bytes).unwrap();
+    assert_eq!(decode_client(&bytes[..len]).unwrap(), request);
+}
+
+#[shoop_test]
 fn capability_flags_do_not_alias_other_features() {
     let flags = [
         Capabilities::MIDI_INJECTION,
@@ -1183,6 +1229,7 @@ fn capability_flags_do_not_alias_other_features() {
         Capabilities::TRACK_PROCESSORS,
         Capabilities::GLOBAL_FX_CONTROL,
         Capabilities::EXTERNAL_DRY_WET,
+        Capabilities::PROCESSOR_LOGS,
         Capabilities::LOOP_TIMING,
         Capabilities::INPUT_BATCH,
         Capabilities::REPLACING,

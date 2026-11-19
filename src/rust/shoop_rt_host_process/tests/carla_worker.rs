@@ -103,6 +103,7 @@ fn companion_installs_real_carla_track_and_bus_banks() {
             .find(|entry| entry.id.as_str() == "carla_rack")
             .unwrap();
         assert!(rack.available);
+        assert_eq!(rack.features.logs, hosting == CarlaHosting::Subprocess);
         assert_eq!(rack.resources.as_ref().unwrap().buffering_frames, 768);
 
         let track = backend
@@ -790,6 +791,26 @@ fn isolated_service_uses_the_prepared_render_endpoint() {
             assert!(
                 Instant::now() < deadline,
                 "Carla log control was not processed"
+            );
+            thread::sleep(Duration::from_millis(1));
+        }
+    }
+    let stale = control.read_logs(owner, health.generation).unwrap();
+    let current = control.read_logs(new_owner, new_health.generation).unwrap();
+    let deadline = Instant::now() + TIMEOUT;
+    for (ticket, accepted) in [(stale, false), (current, true)] {
+        loop {
+            if let Some(outcome) = ticket.poll() {
+                assert_eq!(outcome.is_ok(), accepted, "{outcome:?}");
+                if let Ok(logs) = outcome {
+                    assert_eq!(logs.len(), 1);
+                    assert_eq!(logs[0].generation, new_health.generation);
+                }
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "Carla log read was not processed"
             );
             thread::sleep(Duration::from_millis(1));
         }

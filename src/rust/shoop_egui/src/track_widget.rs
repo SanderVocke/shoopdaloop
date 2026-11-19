@@ -988,6 +988,7 @@ impl TrackWidget {
                             .clicked()
                         {
                             self.fx_logs_open = true;
+                            result.actions.push(TrackWidgetAction::FxReadLogs);
                             ui.close();
                         }
                     });
@@ -1308,6 +1309,9 @@ impl TrackWidget {
                     ui.colored_label(egui::Color32::LIGHT_RED, summary);
                 }
                 ui.horizontal(|ui| {
+                    if ui.button("Refresh").clicked() {
+                        result.actions.push(TrackWidgetAction::FxReadLogs);
+                    }
                     if ui.button("Clear").clicked() {
                         result.actions.push(TrackWidgetAction::FxClearLogs);
                     }

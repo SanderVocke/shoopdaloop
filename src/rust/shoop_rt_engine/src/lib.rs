@@ -41,6 +41,7 @@ mod cells;
 mod composite;
 mod content;
 mod history;
+mod hosted_logs;
 mod input;
 mod memory;
 pub use history::HistoryCapacity;
@@ -81,6 +82,7 @@ pub use description::{EngineDescription, HostPorts, Segment, MAX_HOST_PORTS};
 pub use endpoint::{
     ControlEndpoint, HostedControlTicket, HostedProcessorControls, HostedProcessorObservation,
 };
+pub use hosted_logs::{HostedLogTicket, HostedProcessorLog};
 pub use node::{EngineNode, EngineOp, NodeConfiguration};
 pub use processors::{
     HostedProcessor, PreparedProcessor, PreparedProcessors, ProcessorCatalog, ProcessorPhase,
@@ -845,6 +847,7 @@ fn prepare_complete_using<R>(
         processor_catalog,
         hosted_processors: None,
         hosted_controls: Box::new([]),
+        hosted_logs: Default::default(),
         processor_cells,
         profiling: profile_reader,
         profile_named: vec![false; pool.nodes()].into_boxed_slice(),

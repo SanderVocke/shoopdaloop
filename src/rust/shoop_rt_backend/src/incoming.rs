@@ -160,10 +160,23 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                             | Purpose::InjectMidi(..)
                             | Purpose::Preview
                             | Purpose::CancelReads
+                            | Purpose::ProcessorLogs
                     ) {
                         self.snapshots.capture_after = self.status.frame;
                     }
                     self.answered(pending, outcome);
+                }
+            }
+            EngineMessage::ProcessorLogPage { correlation, page } => {
+                if let Some(pending) = self.requests.in_flight.remove(&correlation) {
+                    if pending.purpose != Purpose::ProcessorLogs {
+                        self.lose("the engine returned a log page for another request".to_owned());
+                    } else {
+                        self.processor_logs_answered(
+                            pending.request,
+                            crate::processor_logs::Reply::Page(page),
+                        );
+                    }
                 }
             }
             EngineMessage::Telemetry(record) => {
@@ -893,6 +906,25 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     }
 
     pub(crate) fn answered(&mut self, pending: Pending, outcome: Outcome) {
+        if pending.purpose == Purpose::ProcessorLogs {
+            self.processor_logs_answered(
+                pending.request,
+                crate::processor_logs::Reply::Outcome(outcome),
+            );
+            return;
+        }
+        if outcome == Outcome::Done {
+            match pending.purpose {
+                Purpose::ProcessorControl(id, shoop_backend::BackendTrackFxControl::ClearLogs) => {
+                    self.processor_logs
+                        .clear_confirmed(crate::processor_logs::Target::Track(id))
+                }
+                Purpose::BusFxControl(id, shoop_backend::BackendBusFxControl::ClearLogs) => self
+                    .processor_logs
+                    .clear_confirmed(crate::processor_logs::Target::Bus(id)),
+                _ => {}
+            }
+        }
         if pending.purpose == Purpose::Input {
             self.input_answered(pending.request, outcome);
             return;
@@ -935,6 +967,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     Outcome::CompositeApplied { .. }
                     | Outcome::ContentApplied { .. }
                     | Outcome::ContentPrepared { .. }
+                    | Outcome::ProcessorLogs { .. }
                     | Outcome::Input(_)
                     | Outcome::InputCapacity(_) => Err("unexpected transaction outcome".to_owned()),
                     Outcome::Refused(refusal) => Err(refusal_text(refusal).to_owned()),
@@ -945,6 +978,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             Outcome::CompositeApplied { .. }
             | Outcome::ContentApplied { .. }
             | Outcome::ContentPrepared { .. }
+            | Outcome::ProcessorLogs { .. }
             | Outcome::Input(_)
             | Outcome::InputCapacity(_) => Some(Refusal::Internal),
             Outcome::Refused(refusal) => Some(refusal),
@@ -1358,6 +1392,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 | Purpose::Input,
                 _,
             ) => {}
+            (Purpose::ProcessorLogs, _) => unreachable!("internal result handled above"),
         }
     }
 }

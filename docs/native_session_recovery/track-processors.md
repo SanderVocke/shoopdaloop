@@ -116,6 +116,9 @@ select in-process or isolated hosting and set the available instance counts.
 In isolation mode, the FX control can restart a failed worker. Linux desktop
 validation covered selecting an Audio File source in the editor, recording
 its stereo Rack output, and exporting the dry and wet channels in both modes.
+The track and bus FX menus open **Process logs** for isolated workers. Use
+**Refresh** to read the latest snapshot and **Clear** to discard retained logs.
+Each generation shows stdout, stderr, and the dropped-byte counts.
 Wet rerecord follows the dry loop across wraps and commits after the buffered
 output tail. A missing required block preserves the previous take.
 Selected loop media can be exported while Carla is active. Full session save

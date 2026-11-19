@@ -201,6 +201,12 @@ pub enum Request {
         slot: ProcessorSlot,
         worker_generation: u64,
     },
+    ProcessorLogs {
+        target: ProcessorTarget,
+        slot: ProcessorSlot,
+        worker_generation: u64,
+        command: ProcessorLogCommand,
+    },
     CreateProcessedStrip {
         strip: StripId,
         shape: StripShape,
@@ -398,8 +404,48 @@ pub enum Outcome {
     TimingApplied(crate::TimingState),
     ContentPrepared { revision: u64 },
     ContentApplied { revision: u64 },
+    ProcessorLogs { snapshot: u64, generations: u8 },
     Done,
     Refused(Refusal),
+}
+
+pub const PROCESSOR_LOG_GENERATIONS: usize = 9;
+pub const PROCESSOR_LOG_STREAM_BYTES: usize = 64 * 1024;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProcessorLogCommand {
+    Open,
+    Read {
+        snapshot: u64,
+        generation_index: u8,
+        stderr: bool,
+        offset: u32,
+    },
+    Close {
+        snapshot: u64,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProcessorLogPage {
+    pub generation: u64,
+    pub dropped: u64,
+    pub total: u32,
+    pub offset: u32,
+    pub len: u16,
+    pub bytes: [u8; BULK_CHUNK_BYTES],
+}
+
+impl ProcessorLogPage {
+    pub(crate) fn valid(&self) -> bool {
+        self.generation != 0
+            && usize::from(self.len) <= BULK_CHUNK_BYTES
+            && self.total as usize <= PROCESSOR_LOG_STREAM_BYTES
+            && self
+                .offset
+                .checked_add(u32::from(self.len))
+                .is_some_and(|end| end <= self.total)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -461,6 +507,7 @@ impl Capabilities {
     pub const PREPARED_GRAPH: Self = Self(1 << 15);
     pub const LIVE_PROGRAMS: Self = Self(1 << 16);
     pub const EXTERNAL_PROCESSOR_EDITOR: Self = Self(1 << 17);
+    pub const PROCESSOR_LOGS: Self = Self(1 << 18);
     pub const INPUT_BATCH: Self = Self(1 << 12);
     pub const REPLACING: Self = Self(1 << 13);
     pub const PROFILING: Self = Self(1 << 6);

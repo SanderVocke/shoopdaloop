@@ -269,6 +269,56 @@ fn carla_editor_controls_follow_the_confirmed_track_and_bus() {
         }
         #[cfg(target_os = "linux")]
         if hosting == CarlaHosting::Subprocess {
+            let read_logs = |client: &mut Client,
+                             connection: &mut Connection,
+                             from_track: bool,
+                             generation: u64| {
+                let action = if from_track {
+                    Command::Track {
+                        track,
+                        action: TrackAction::FxReadLogs,
+                    }
+                } else {
+                    Command::Bus {
+                        bus,
+                        action: BusAction::FxReadLogs,
+                    }
+                };
+                let outcome = command(client, connection, action);
+                assert!(matches!(outcome, Outcome::Confirmed { .. }), "{outcome:?}");
+                let deadline = Instant::now() + Duration::from_secs(5);
+                loop {
+                    connection.poll(client).unwrap();
+                    let snapshot = client.snapshot().unwrap();
+                    let fx = if from_track {
+                        snapshot
+                            .tracks
+                            .iter()
+                            .find(|entry| entry.id == track)
+                            .and_then(|entry| entry.fx.as_ref())
+                    } else {
+                        snapshot
+                            .buses
+                            .iter()
+                            .find(|entry| entry.id == bus)
+                            .and_then(|entry| entry.fx.as_ref())
+                    };
+                    if let Some(logs) = fx
+                        .map(|fx| &fx.logs)
+                        .filter(|logs| logs.last().is_some_and(|log| log.generation == generation))
+                    {
+                        assert!(logs
+                            .windows(2)
+                            .all(|logs| logs[0].generation < logs[1].generation));
+                        break;
+                    }
+                    assert!(
+                        Instant::now() < deadline,
+                        "Carla worker logs were not projected for generation {generation}"
+                    );
+                    thread::sleep(Duration::from_millis(10));
+                }
+            };
             kill_carla_chain(host.child.id(), b"1");
             let deadline = Instant::now() + Duration::from_secs(5);
             loop {
@@ -294,6 +344,8 @@ fn carla_editor_controls_follow_the_confirmed_track_and_bus() {
                 assert!(Instant::now() < deadline, "worker loss was not projected");
                 thread::sleep(Duration::from_millis(10));
             }
+            read_logs(&mut client, &mut connection, true, 1);
+            read_logs(&mut client, &mut connection, false, 1);
             for clear in [
                 Command::Track {
                     track,
@@ -307,6 +359,7 @@ fn carla_editor_controls_follow_the_confirmed_track_and_bus() {
                 let outcome = command(&mut client, &mut connection, clear);
                 assert!(matches!(outcome, Outcome::Confirmed { .. }), "{outcome:?}");
             }
+            read_logs(&mut client, &mut connection, true, 1);
             let outcome = command(
                 &mut client,
                 &mut connection,
@@ -362,6 +415,8 @@ fn carla_editor_controls_follow_the_confirmed_track_and_bus() {
             assert_eq!(track_fx.generation, 2);
             assert_ne!(track_fx.lifecycle, FxLifecycle::Crashed);
             assert!(track_fx.crash_summary.is_none());
+            assert!(track_fx.logs.is_empty());
+            read_logs(&mut client, &mut connection, true, 2);
         }
         shutdown(&mut host, &mut client);
     }

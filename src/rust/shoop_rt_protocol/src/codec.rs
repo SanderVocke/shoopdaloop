@@ -943,6 +943,18 @@ impl Wire for Request {
                 slot.put(w)?;
                 w.u64(worker_generation)
             }
+            Self::ProcessorLogs {
+                target,
+                slot,
+                worker_generation,
+                command,
+            } => {
+                w.u8(76)?;
+                target.put(w)?;
+                slot.put(w)?;
+                w.u64(worker_generation)?;
+                command.put(w)
+            }
             Self::StripDefaultPlayback {
                 strip,
                 dry_through_wet,
@@ -1365,6 +1377,12 @@ impl Wire for Request {
                 slot: ProcessorSlot::get(r)?,
                 worker_generation: r.u64()?,
             },
+            76 => Self::ProcessorLogs {
+                target: ProcessorTarget::get(r)?,
+                slot: ProcessorSlot::get(r)?,
+                worker_generation: r.u64()?,
+                command: ProcessorLogCommand::get(r)?,
+            },
             36 => Self::StripDefaultPlayback {
                 strip: StripId::get(r)?,
                 dry_through_wet: r.bool()?,
@@ -1668,6 +1686,74 @@ impl Wire for crate::StripPreset {
     }
 }
 
+impl Wire for ProcessorLogCommand {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        match *self {
+            Self::Open => w.u8(0),
+            Self::Read {
+                snapshot,
+                generation_index,
+                stderr,
+                offset,
+            } => {
+                w.u8(1)?;
+                w.u64(snapshot)?;
+                w.u8(generation_index)?;
+                w.bool(stderr)?;
+                w.u32(offset)
+            }
+            Self::Close { snapshot } => {
+                w.u8(2)?;
+                w.u64(snapshot)
+            }
+        }
+    }
+
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(match r.u8()? {
+            0 => Self::Open,
+            1 => Self::Read {
+                snapshot: r.u64()?,
+                generation_index: r.u8()?,
+                stderr: r.bool()?,
+                offset: r.u32()?,
+            },
+            2 => Self::Close { snapshot: r.u64()? },
+            _ => return Err(CodecError::Invalid),
+        })
+    }
+}
+
+impl Wire for ProcessorLogPage {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        if !self.valid() {
+            return Err(CodecError::Invalid);
+        }
+        w.u64(self.generation)?;
+        w.u64(self.dropped)?;
+        w.u32(self.total)?;
+        w.u32(self.offset)?;
+        w.u16(self.len)?;
+        w.bytes(&self.bytes[..usize::from(self.len)])
+    }
+
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        let mut page = Self {
+            generation: r.u64()?,
+            dropped: r.u64()?,
+            total: r.u32()?,
+            offset: r.u32()?,
+            len: r.u16()?,
+            bytes: [0; BULK_CHUNK_BYTES],
+        };
+        if !page.valid() {
+            return Err(CodecError::Invalid);
+        }
+        page.bytes[..usize::from(page.len)].copy_from_slice(r.bytes(usize::from(page.len))?);
+        Ok(page)
+    }
+}
+
 impl Wire for Outcome {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
@@ -1698,6 +1784,14 @@ impl Wire for Outcome {
                 w.u8(3)?;
                 w.u64(*revision)
             }
+            Self::ProcessorLogs {
+                snapshot,
+                generations,
+            } => {
+                w.u8(8)?;
+                w.u64(*snapshot)?;
+                w.u8(*generations)
+            }
             Self::Refused(refusal) => {
                 w.u8(1)?;
                 refusal.put(w)
@@ -1716,6 +1810,17 @@ impl Wire for Outcome {
             0 => Self::Done,
             2 => Self::ContentApplied { revision: r.u64()? },
             3 => Self::ContentPrepared { revision: r.u64()? },
+            8 => {
+                let snapshot = r.u64()?;
+                let generations = r.u8()?;
+                if snapshot == 0 || usize::from(generations) > PROCESSOR_LOG_GENERATIONS {
+                    return Err(CodecError::Invalid);
+                }
+                Self::ProcessorLogs {
+                    snapshot,
+                    generations,
+                }
+            }
             1 => Self::Refused(Refusal::get(r)?),
             _ => return Err(CodecError::Invalid),
         })
@@ -2996,6 +3101,11 @@ impl Wire for EngineMessage {
                 w.u64(*correlation)?;
                 outcome.put(w)
             }
+            Self::ProcessorLogPage { correlation, page } => {
+                w.u8(14)?;
+                w.u64(*correlation)?;
+                page.put(w)
+            }
             Self::Telemetry(telemetry) => {
                 w.u8(3)?;
                 telemetry.put(w)
@@ -3066,6 +3176,10 @@ impl Wire for EngineMessage {
             2 => Self::Result {
                 correlation: r.u64()?,
                 outcome: Outcome::get(r)?,
+            },
+            14 => Self::ProcessorLogPage {
+                correlation: r.u64()?,
+                page: ProcessorLogPage::get(r)?,
             },
             3 => Self::Telemetry(Telemetry::get(r)?),
             4 => Self::State(StateRecord::get(r)?),

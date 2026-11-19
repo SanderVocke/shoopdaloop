@@ -441,6 +441,7 @@ impl BusControls {
                 .clicked()
             {
                 self.fx_logs_open = true;
+                actions.push(BusAction::FxReadLogs);
                 ui.close();
             }
             if ui.button("Remove FX").clicked() {
@@ -489,18 +490,29 @@ impl BusControls {
                 if let Some(summary) = &fx.crash_summary {
                     ui.colored_label(egui::Color32::LIGHT_RED, summary);
                 }
-                if fx.logs.is_empty() {
-                    ui.weak("No process logs");
-                }
-                for log in fx.logs.iter() {
-                    ui.label(format!(
-                        "generation {}\nstdout:\n{}\nstderr:\n{}",
-                        log.generation, log.stdout, log.stderr
-                    ));
-                }
-                if ui.button("Clear").clicked() {
-                    actions.push(BusAction::FxClearLogs);
-                }
+                ui.horizontal(|ui| {
+                    if ui.button("Refresh").clicked() {
+                        actions.push(BusAction::FxReadLogs);
+                    }
+                    if ui.button("Clear").clicked() {
+                        actions.push(BusAction::FxClearLogs);
+                    }
+                });
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    for log in fx.logs.iter() {
+                        ui.collapsing(format!("Generation {}", log.generation), |ui| {
+                            ui.label(format!(
+                                "Dropped stdout/stderr bytes: {}/{}",
+                                log.dropped_stdout_bytes, log.dropped_stderr_bytes
+                            ));
+                            ui.monospace(format!("stdout:\n{}", log.stdout));
+                            ui.monospace(format!("stderr:\n{}", log.stderr));
+                        });
+                    }
+                    if fx.logs.is_empty() {
+                        ui.weak("No process logs");
+                    }
+                });
             });
         if !open {
             self.fx_logs_open = false;
