@@ -4,9 +4,12 @@ Implementation contract for [the persistence plan](https://github.com/SanderVock
 The core slice is implemented and validated;
 [acceptance evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/session-persistence.md) records its scope.
 The [feature backlog](feature-parity.md#missing-features) assigns remaining
-save/load/store/export requirements to Carla (P07), latency compensation (P09),
-take alignment (P10), duplication/MIDI state (P11) and session scripts/resources
-(P16). Historical P01/P02 are no longer standalone backlog items.
+save/load/store/export requirements to Carla (P07), latency compensation (P09)
+and take alignment (P10). P11 is complete for CPU-native basic MIDI under the
+[accepted scope](feature-parity.md#p11-basic-midi-scope); unsupported arbitrary
+state reconstruction is an explicit limit, not missing parity. P16 client-owned
+scripts/resources are implemented. Historical P01/P02 are no longer standalone
+backlog items.
 
 ## Shared audio reconciliation
 
@@ -91,7 +94,7 @@ for archive, worker and client workflow changes.
 | Native wire turns | At most 64 persistence records per connection turn (≤64 KiB of media), with at most 64 upload records awaiting replies; ordinary commands retain their 16-record limit. Outbound accounting counts emitted records and bounds encoder cleanup separately. This batches file work across platform timer wakeups without increasing RT buffer ownership |
 | Wire chunk | 1024 bytes; fits the existing 1280-byte carriers with identities/envelope |
 | MIDI | At most 1,000,000 events per job, additionally bounded by decoded bytes and runtime packet/index capacities |
-| MIDI initial/preroll state | At most 16,384 short channel or System Reset packets per loop; parameter history that remains untracked after the complete prefix and vendor/system initial state refuse before activation (P11) |
+| MIDI initial/preroll state | At most 16,384 short channel or System Reset packets per loop; parameter history that remains untracked after the complete prefix and vendor/system initial state refuse before activation; arbitrary history reconstruction is outside the accepted P11 basic-MIDI scope |
 | Wire MIDI read index | At most 8 MiB plus one offset per object; built only for byte delivery, alongside retained immutable media |
 | Adapter read assembly | ≤16 outstanding bulk records per read. Audio fills final channels on arrival; MIDI has one ≤256 MiB byte builder and decodes ≤256 KiB per pump, with one complete ≤1 MiB packet atomic. Event/packet allocation remains bounded by one million events and the media budget |
 | Engine upload window | At most 64 queued writes when WIDE_CONTENT_UPLOAD is advertised, otherwise eight; cap the window by reliable credits. Both use a fixed pool of 32 prepared runtime buffers. Chunks divide a resource page and are at most 1024 bytes. Preparation adds at most 32 KiB of upload copy allowance per callback, separately from existing render/read reservations, and reserves validation for one MIDI chunk. Queue depth alone does not change these finite budgets |

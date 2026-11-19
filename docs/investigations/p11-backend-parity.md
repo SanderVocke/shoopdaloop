@@ -1,5 +1,12 @@
 # P11 replacement-backend parity investigation
 
+> Historical investigation: the broad MIDI-history requirements below were
+> superseded by the user-approved basic-MIDI scope of PR #996 and the 2026-11-19
+> CPU-native reconciliation. P11 is complete under that scope; see the
+> [current ledger](../native_session_recovery/feature-parity.md#p11-basic-midi-scope).
+> Deferred arbitrary vendor/parameter history is not an outstanding parity
+> requirement. The implementation proposal below is retained as history.
+
 Investigated on 2026-11-12. This is an implementation assessment, not a feature
 implementation or a claim that P11 is complete.
 
