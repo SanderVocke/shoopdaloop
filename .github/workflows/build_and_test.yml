@@ -360,6 +360,31 @@ jobs:
           archive: false
           retention-days: 30
           if-no-files-found: error
+      - name: Qualify Carla on the Intel deployment build
+        if: matrix.flavor == 'macos-intel-10.15'
+        run: |
+          bash scripts/prepare_carla_macos.sh --catalina
+          python3 scripts/check_macos_compatibility.py --root .carla-component --arch x86_64 --minimum-os 10.15
+          cargo build --locked --release -p shoop_host --no-default-features \
+            --features carla --target x86_64-apple-darwin
+          python3 src/rust/shoopdaloop/package_artifacts.py native \
+            --platform macos --arch x86_64 --profile release --macos-minimum-version 10.15 \
+            --binary target/x86_64-apple-darwin/release/shoopdaloop \
+            --carla-runtime .carla-component --output-dir carla-artifacts
+          package=(carla-artifacts/*-carla.tar.gz)
+          test "${#package[@]}" -eq 1
+          python3 src/rust/shoopdaloop/package_artifacts.py verify \
+            --platform macos --arch x86_64 --macos-minimum-version 10.15 \
+            --with-carla --artifact "${package[0]}"
+          python3 scripts/smoke_engine_package.py --platform macos --artifacts carla-artifacts --carla native
+      - name: Upload Carla-enabled Catalina distribution
+        if: matrix.flavor == 'macos-intel-10.15'
+        uses: actions/upload-artifact@v7
+        with:
+          path: carla-artifacts/*-carla.tar.gz
+          archive: false
+          if-no-files-found: error
+          retention-days: 30
       - uses: taiki-e/install-action@v2
         if: runner.os == 'Linux'
         with:
@@ -646,6 +671,69 @@ jobs:
         shell: bash
         run: |
           python3 scripts/smoke_engine_package.py --platform '${{ matrix.target }}' --artifacts artifacts
+
+      - name: Build pinned Linux Carla component
+        if: matrix.target == 'linux' && matrix.profile == 'release'
+        run: |
+          python3 scripts/carla_runtime.py fetch --asset source --output carla-source.tar.gz
+          mkdir .carla-source
+          tar -xzf carla-source.tar.gz -C .carla-source --strip-components=1
+          header_sha=$(python3 -c 'import json; print(json.load(open("third_party/carla/runtime-lock.json"))["source"]["native_header_sha256"])')
+          echo "$header_sha  .carla-source/source/includes/CarlaNative.h" | sha256sum --check
+          cc -std=c11 -I .carla-source/source/includes third_party/carla/abi_probe.c -o .carla-abi-probe
+          ./.carla-abi-probe > .carla-abi.actual
+          diff -u third_party/carla/abi-x86_64.expected .carla-abi.actual
+          python3 -m venv .carla-venv
+          .carla-venv/bin/pip install --disable-pip-version-check 'cx-Freeze==7.2.7' 'PyQt5==5.15.11'
+          PATH="$PWD/.carla-venv/bin:$PATH" make -C .carla-source -j2 plugin frontend
+          .carla-venv/bin/python scripts/build_carla_linux_ui.py --source .carla-source --output .carla-frozen-ui
+          python3 scripts/carla_runtime.py normalize --platform linux \
+            --search-root .carla-source/bin --search-root .carla-frozen-ui \
+            --license .carla-source/doc/GPL.txt --output .carla-component
+          readelf -d .carla-component/lib/libcarla_native-plugin.so | grep 'Shared library: \[libsndfile'
+
+      - name: Prepare pinned Windows Carla component
+        if: matrix.target == 'windows' && matrix.profile == 'release'
+        shell: bash
+        run: |
+          python3 scripts/carla_runtime.py fetch --asset windows-x86_64 --output carla-win64.zip
+          python3 -m zipfile -e carla-win64.zip .carla-upstream
+          revision=$(python3 -c 'import json; print(json.load(open("third_party/carla/runtime-lock.json"))["git_revision"])')
+          curl --fail --location --retry 3 -o carla-GPL.txt "https://raw.githubusercontent.com/falkTX/Carla/$revision/doc/GPL.txt"
+          python3 scripts/carla_runtime.py normalize --platform windows \
+            --search-root .carla-upstream --license carla-GPL.txt --output .carla-component
+
+      - name: Prepare pinned macOS Carla component
+        if: matrix.target == 'macos' && matrix.profile == 'release'
+        run: bash scripts/prepare_carla_macos.sh
+
+      - name: Package and qualify the Carla-enabled host
+        if: matrix.target != 'web' && matrix.profile == 'release'
+        env:
+          RUSTFLAGS: -D warnings
+        shell: bash
+        run: |
+          cargo build --locked --release -p shoop_host --features carla
+          python3 src/rust/shoopdaloop/package_artifacts.py native \
+            --platform '${{ matrix.target }}' --arch '${{ matrix.arch }}' --profile release \
+            --binary '${{ matrix.binary }}' --carla-runtime .carla-component --output-dir carla-artifacts
+          package=(carla-artifacts/*-carla.*)
+          test "${#package[@]}" -eq 1
+          python3 src/rust/shoopdaloop/package_artifacts.py verify \
+            --platform '${{ matrix.target }}' --arch '${{ matrix.arch }}' --with-carla --artifact "${package[0]}"
+          if [ '${{ matrix.target }}' = linux ]; then
+            xvfb-run -a python3 scripts/smoke_engine_package.py --platform linux --artifacts carla-artifacts --carla editor
+          else
+            python3 scripts/smoke_engine_package.py --platform '${{ matrix.target }}' --artifacts carla-artifacts --carla native
+          fi
+
+      - name: Upload Carla-enabled host package
+        if: matrix.target != 'web' && matrix.profile == 'release' && env.ACT != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          path: carla-artifacts/*-carla.*
+          archive: false
+          if-no-files-found: error
 
       - name: Test native application path
         if: matrix.target != 'web' && (matrix.target != 'linux' || matrix.profile != 'debug')

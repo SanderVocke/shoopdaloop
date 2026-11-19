@@ -250,13 +250,16 @@ shortcut in the extracted folder. Linux includes `shoop_host_manager.desktop` an
 the executables on `PATH` and the icon installed as `shoopdaloop.png`. Keep the
 three executables together when installing. On macOS, keep both app bundles
 together, for example by copying both to Applications.
-The default packages omit Carla. To build a development package with Carla,
+The default packages omit Carla. To build a package with Carla,
 build `shoopdaloop` and `shoop_host_manager` together, then build `shoop_host`
 with `--features carla` in a separate Cargo invocation using the same profile.
 Pass the normalized runtime directory as `--carla-runtime` to
 `package_artifacts.py native` and use `--with-carla` when verifying the archive.
+Archives with the component have a `-carla` suffix before the file extension.
 The session host resolves Carla beside the executables on Linux and Windows or
-under `Contents/Frameworks` on macOS. [Runtime lock and component layout](../../../third_party/carla/README.md)
+under `Contents/Frameworks` on macOS. The release build checks the loader from
+an extracted archive with the component present and removed. The Linux release
+job also opens the bundled Carla editors under Xvfb. [Runtime lock and component layout](../../../third_party/carla/README.md)
 
 ## Runtime profiling
 

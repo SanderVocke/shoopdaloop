@@ -210,6 +210,8 @@ def package_native(args: argparse.Namespace) -> list[Path]:
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     stem = artifact_stem(args.platform, args.arch, args.profile)
+    if args.carla_runtime is not None:
+        stem += "-carla"
     suffix = ".zip" if args.platform == "windows" else ".tar.gz"
     output = args.output_dir / f"{stem}{suffix}"
     output.unlink(missing_ok=True)

@@ -38,6 +38,17 @@ def digest(path: Path) -> str:
     return value.hexdigest()
 
 
+def fetch(args: argparse.Namespace) -> None:
+    assets = {"source": LOCK_DATA["source"], **LOCK_DATA["upstream_binaries"]}
+    asset = assets[args.asset]
+    subprocess.run(
+        ["curl", "--fail", "--location", "--retry", "3", "--output", str(args.output), asset["url"]],
+        check=True,
+    )
+    if digest(args.output) != asset["sha256"]:
+        raise RuntimeError(f"Carla {args.asset} checksum mismatch")
+
+
 def copy_file(source: Path, destination: Path, executable: bool = False) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists():
@@ -330,6 +341,10 @@ def verify(args: argparse.Namespace) -> None:
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser()
     commands = result.add_subparsers(dest="command", required=True)
+    download = commands.add_parser("fetch")
+    download.add_argument("--asset", choices=("source", *LOCK_DATA["upstream_binaries"]), required=True)
+    download.add_argument("--output", type=Path, required=True)
+    download.set_defaults(function=fetch)
     build = commands.add_parser("normalize")
     build.add_argument("--platform", choices=tuple(LIBRARY_NAMES), required=True)
     build.add_argument("--search-root", type=Path, action="append", required=True)
