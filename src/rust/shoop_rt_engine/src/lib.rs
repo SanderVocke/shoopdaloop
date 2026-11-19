@@ -461,8 +461,7 @@ fn prepare_complete_using<R>(
         }
         let expected = instance
             .kind
-            .fixed_audio_channels()
-            .unwrap_or(description.strip_channels as usize);
+            .prepared_audio_channels(description.strip_channels.into());
         let ports = instance.backend.ports();
         if ports.audio_inputs != expected
             || ports.audio_outputs != expected

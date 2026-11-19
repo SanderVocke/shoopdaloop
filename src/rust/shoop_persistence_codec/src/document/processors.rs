@@ -35,7 +35,10 @@ pub(super) fn image_topology(
             audio_channels,
             midi,
         } => {
-            ensure!(audio_channels <= 8, "track exceeds channel capacity");
+            ensure!(
+                audio_channels as usize <= MAX_SESSION_CHANNELS_PER_ROLE,
+                "track exceeds channel capacity"
+            );
             return Ok((TrackTopology::Direct, audio_channels, midi));
         }
         TrackTopologyDocument::Trigger => return Ok((TrackTopology::Direct, 0, false)),
@@ -62,7 +65,9 @@ pub(super) fn image_topology(
         _ => bail!("unsupported track processor (P07)"),
     };
     ensure!(
-        dry <= 8 && wet <= 8 && (dry != 0 || wet != 0 || midi),
+        dry as usize <= MAX_SESSION_CHANNELS_PER_ROLE
+            && wet as usize <= MAX_SESSION_CHANNELS_PER_ROLE
+            && (dry != 0 || wet != 0 || midi),
         "invalid dry/wet shape"
     );
     Ok((

@@ -36,6 +36,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             }
         };
         let width = Some(u32::from(limits.channels));
+        let fx_width =
+            Some(ProcessorKind::BuiltInFx.prepared_audio_channels(limits.channels.into()) as u32);
         let fx = hosted
             && limits.effective.fx_instances > 0
             && limits.effective.fx_unavailable.is_none();
@@ -147,9 +149,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 unavailable_reason: unavailable(fx, limits.effective.fx_unavailable),
                 constraints: TrackProcessorConstraints {
                     min_dry_audio_channels: Some(1),
-                    max_dry_audio_channels: width,
+                    max_dry_audio_channels: fx_width,
                     min_wet_audio_channels: Some(1),
-                    max_wet_audio_channels: width,
+                    max_wet_audio_channels: fx_width,
                     matching_audio_channels: true,
                     midi: TrackProcessorMidiPolicy::Required,
                 },

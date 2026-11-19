@@ -2249,7 +2249,7 @@ impl Wire for ProcessorLimits {
         if u32::from(fx_instances) + u32::from(synth_instances) + carla_instances
             > u32::from(crate::processors::MAX_INSTANCES)
             || reserved_bytes > memory_bytes
-            || !(1..=8).contains(&channels)
+            || !(1..=MAX_STRIP_CHANNELS).contains(&usize::from(channels))
             || builtin_latency_frames == 0
             || (fx_instances > 0 && fx_unavailable.is_some())
             || (synth_instances > 0 && synth_unavailable.is_some())

@@ -524,6 +524,7 @@ impl Dialog {
             }
         });
         ui.collapsing("Capacity and session defaults", |ui| {
+            let max_channels = self.backend.max_session_channels();
             egui::Grid::new("new_host_capacity")
                 .num_columns(2)
                 .spacing([10.0, 6.0])
@@ -532,7 +533,9 @@ impl Dialog {
                     ui.add(egui::DragValue::new(&mut self.pools.buses).range(1..=8));
                     ui.end_row();
                     ui.label("Bus channels");
-                    ui.add(egui::DragValue::new(&mut self.pools.bus_channels).range(2..=8));
+                    ui.add(
+                        egui::DragValue::new(&mut self.pools.bus_channels).range(2..=max_channels),
+                    );
                     ui.end_row();
                     ui.label("Tracks");
                     ui.add(egui::DragValue::new(&mut self.pools.tracks).range(1..=64));
@@ -541,7 +544,7 @@ impl Dialog {
                     ui.add(egui::DragValue::new(&mut self.pools.loops).range(1..=256));
                     ui.end_row();
                     ui.label("Channels");
-                    ui.add(egui::DragValue::new(&mut self.pools.channels).range(1..=8));
+                    ui.add(egui::DragValue::new(&mut self.pools.channels).range(1..=max_channels));
                     ui.end_row();
                     ui.label("Loop memory");
                     ui.add(

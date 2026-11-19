@@ -33,10 +33,11 @@ fn mul(a: u64, b: u64) -> Result<u64, Error> {
 /// delay storage per channel/stereo bank, plus explicit staging and unit metadata.
 /// Feedback decay time changes gains, not allocated delay lengths.
 fn fx_bytes(d: &EngineDescription) -> Result<u64, Error> {
+    let channels = ProcessorKind::BuiltInFx.prepared_audio_channels(d.strip_channels.into()) as u64;
     add(
         add(
-            mul(mul(d.sample_rate as u64, 128)?, d.strip_channels as u64 + 1)?,
-            mul(d.quantum as u64, d.strip_channels as u64 * 16)?,
+            mul(mul(d.sample_rate as u64, 128)?, channels + 1)?,
+            mul(d.quantum as u64, channels * 16)?,
         )?,
         1 << 20,
     )
@@ -84,11 +85,7 @@ fn reservation(d: &EngineDescription, effective: Effective, q: Quantum) -> Resul
         if count == 0 {
             continue;
         }
-        let channels = if kind == ProcessorKind::OxiSynth {
-            2
-        } else {
-            d.strip_channels as usize
-        };
+        let channels = kind.prepared_audio_channels(d.strip_channels.into());
         let ports = PortCounts {
             audio_inputs: channels,
             audio_outputs: channels,
@@ -136,7 +133,7 @@ fn backend(kind: ProcessorKind, d: &EngineDescription) -> Result<Box<dyn Backend
                     shoop_dsp::backends::FxBackend::prepare(
                         d.sample_rate as f32,
                         d.quantum,
-                        d.strip_channels as usize,
+                        kind.prepared_audio_channels(d.strip_channels.into()),
                     )
                     .map_err(|_| Error::Preparation("Built-in FX"))?,
                 ))
@@ -169,7 +166,7 @@ pub fn reservation_bytes(d: &EngineDescription) -> Result<u64, Error> {
         d.processors
             .resolve_for_channels(support(), d.sample_rate, d.strip_channels)?;
     let q = Quantum::new(d.quantum).map_err(|_| Error::Capacity)?;
-    if !(1..=8).contains(&d.strip_channels) {
+    if !(1..=shoop_rt_protocol::MAX_STRIP_CHANNELS).contains(&usize::from(d.strip_channels)) {
         return Err(Error::Capacity);
     }
     reservation(d, effective, q)
@@ -180,7 +177,7 @@ pub fn prepare(d: &EngineDescription) -> Result<PreparedProcessors, Error> {
         d.processors
             .resolve_for_channels(support(), d.sample_rate, d.strip_channels)?;
     let q = Quantum::new(d.quantum).map_err(|_| Error::Capacity)?;
-    if !(1..=8).contains(&d.strip_channels) {
+    if !(1..=shoop_rt_protocol::MAX_STRIP_CHANNELS).contains(&usize::from(d.strip_channels)) {
         return Err(Error::Capacity);
     }
     let reserved_bytes = reservation(d, effective, q)?;

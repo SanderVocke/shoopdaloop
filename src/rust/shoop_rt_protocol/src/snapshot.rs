@@ -20,7 +20,7 @@ impl Default for SnapshotDelivery {
     }
 }
 
-pub const VERSION: u32 = 2;
+pub const VERSION: u32 = 3;
 pub const HEADER: usize = 44;
 pub const CHUNK_BYTES: usize = 1024;
 

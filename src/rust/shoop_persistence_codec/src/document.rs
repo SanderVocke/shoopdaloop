@@ -2,6 +2,7 @@ mod processors;
 use anyhow::{anyhow, bail, ensure, Result};
 use processors::*;
 use shoop_app_api::*;
+use shoop_app_protocol::persistence::MAX_SESSION_CHANNELS_PER_ROLE;
 use shoop_app_protocol::persistence_image as image;
 use shoop_session::*;
 use std::{collections::BTreeSet, sync::Arc};
@@ -418,7 +419,7 @@ pub(super) fn requirements(doc: &SessionDocument) -> Result<()> {
         || doc
             .buses
             .iter()
-            .any(|b| b.channels.is_empty() || b.channels.len() > 8)
+            .any(|b| b.channels.is_empty() || b.channels.len() > MAX_SESSION_CHANNELS_PER_ROLE)
     {
         unsupported.insert("buses exceeding replacement engine capacity");
     }

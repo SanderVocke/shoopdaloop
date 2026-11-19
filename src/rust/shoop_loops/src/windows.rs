@@ -2,7 +2,7 @@
 
 use crate::Error;
 
-pub const MAX_AUDIO_CHANNELS: usize = 16;
+pub const MAX_AUDIO_CHANNELS: usize = 32;
 pub const MAX_CHANNEL_UPDATES: usize = MAX_AUDIO_CHANNELS + 1;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -45,13 +45,24 @@ pub struct ChannelUpdate {
     pub preplay: Option<u32>,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Edit {
     pub length: Option<u64>,
     pub start_offset: Option<i32>,
     pub preplay: Option<u32>,
     pub count: u8,
     pub channels: [ChannelUpdate; MAX_CHANNEL_UPDATES],
+}
+impl Default for Edit {
+    fn default() -> Self {
+        Self {
+            length: None,
+            start_offset: None,
+            preplay: None,
+            count: 0,
+            channels: [ChannelUpdate::default(); MAX_CHANNEL_UPDATES],
+        }
+    }
 }
 impl Windows {
     pub fn edited(self, edit: Edit, audio: usize, midi: bool) -> Result<Self, Error> {

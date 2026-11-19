@@ -905,12 +905,12 @@ pub fn register_audio_backend_settings(
             NEW_ENGINE_CHANNELS,
             defaults.channels,
             "Track channels",
-            "Most audio channels of a track input or output in the new engine backend.",
+            "Maximum audio channels per track input or output. Native hosts support up to 16. FPGA backends support up to 8.",
             1,
-            8,
+            shoop_app_api::BackendType::Native.max_session_channels(),
         ),
         (55, NEW_ENGINE_BUSES, defaults.buses, "Buses", "Output buses prepared at startup, including the default bus.", 1, 8),
-        (56, NEW_ENGINE_BUS_CHANNELS, defaults.bus_channels, "Bus channels", "Maximum audio channels per output bus.", 2, 8),
+        (56, NEW_ENGINE_BUS_CHANNELS, defaults.bus_channels, "Bus channels", "Maximum audio channels per output bus. Native hosts support up to 16. FPGA backends support up to 8.", 2, shoop_app_api::BackendType::Native.max_session_channels()),
         (
             54,
             NEW_ENGINE_LOOP_MEMORY_MB,
@@ -4380,7 +4380,10 @@ mod tests {
         draft.set(NEW_ENGINE_QUANTUM, "17".to_owned());
         assert!(registry.validate_draft(&draft).is_err());
         draft.set(NEW_ENGINE_QUANTUM, "32".to_owned());
-        draft.set(NEW_ENGINE_CHANNELS, 9);
+        draft.set(NEW_ENGINE_CHANNELS, 16);
+        draft.set(NEW_ENGINE_BUS_CHANNELS, 16);
+        assert!(registry.validate_draft(&draft).is_ok());
+        draft.set(NEW_ENGINE_CHANNELS, 17);
         assert!(registry.validate_draft(&draft).is_err());
         for kind in crate::BackendType::ALL {
             assert_eq!(kind.id().parse::<crate::BackendType>().unwrap(), kind);

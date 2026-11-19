@@ -12,6 +12,8 @@ pub const MAX_SESSION_METADATA_BYTES: u64 = MAX_SNAPSHOT_BYTES as u64;
 pub const MAX_SESSION_FILE_BYTES: u64 = 512 * 1024 * 1024;
 pub const MAX_SESSION_OBJECTS: u32 = 4096;
 pub const MAX_SESSION_MIDI_EVENTS: u64 = 1_000_000;
+pub const MAX_SESSION_CHANNELS_PER_ROLE: usize = 16;
+pub const MAX_SESSION_AUDIO_CHANNELS: usize = 2 * MAX_SESSION_CHANNELS_PER_ROLE;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Key {

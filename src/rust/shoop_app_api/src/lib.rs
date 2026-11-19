@@ -4219,6 +4219,13 @@ pub enum BackendType {
     RtlSim,
 }
 impl BackendType {
+    pub const fn max_session_channels(self) -> u32 {
+        match self {
+            Self::Native => 16,
+            _ => 8,
+        }
+    }
+
     pub const ALL: [Self; 3] = [Self::Native, Self::RustFpga, Self::RtlSim];
     pub const fn id(self) -> &'static str {
         match self {
@@ -4291,11 +4298,12 @@ impl HostSettings {
         if !matches!(self.pools.quantum, 1 | 16 | 32 | 64 | 128) {
             return Err("processing quantum must be 1, 16, 32, 64 or 128 frames");
         }
+        let channels = self.backend.max_session_channels();
         if !(1..=8).contains(&self.pools.buses)
-            || !(2..=8).contains(&self.pools.bus_channels)
+            || !(2..=channels).contains(&self.pools.bus_channels)
             || !(1..=64).contains(&self.pools.tracks)
             || !(1..=256).contains(&self.pools.loops)
-            || !(1..=8).contains(&self.pools.channels)
+            || !(1..=channels).contains(&self.pools.channels)
             || !(1..=1024).contains(&self.pools.loop_memory_mb)
         {
             return Err("session engine capacities exceed supported bounds");

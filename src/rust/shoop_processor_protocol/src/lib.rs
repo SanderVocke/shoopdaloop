@@ -123,6 +123,8 @@ pub enum Kind {
     CarlaRack = 3,
     CarlaPatchbay = 4,
 }
+pub const BUILTIN_FX_MAX_AUDIO_CHANNELS: usize = 8;
+
 impl Kind {
     pub const fn is_carla(self) -> bool {
         matches!(self, Self::CarlaRack | Self::CarlaPatchbay)
@@ -134,6 +136,12 @@ impl Kind {
         match self {
             Self::OxiSynth | Self::CarlaRack | Self::CarlaPatchbay => Some(2),
             Self::BuiltInFx | Self::External => None,
+        }
+    }
+    pub fn prepared_audio_channels(self, strip_capacity: usize) -> usize {
+        match self {
+            Self::BuiltInFx => strip_capacity.min(BUILTIN_FX_MAX_AUDIO_CHANNELS),
+            _ => self.fixed_audio_channels().unwrap_or(strip_capacity),
         }
     }
     pub const fn scalar_count(self) -> usize {

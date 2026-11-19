@@ -608,9 +608,7 @@ impl ControlEndpoint {
         if !kind.supports_bus() {
             return Err(Staged::Refused(Refusal::Unsupported));
         }
-        let width = kind
-            .fixed_audio_channels()
-            .unwrap_or(self.shape.processor_channels);
+        let width = kind.prepared_audio_channels(self.shape.processor_channels);
         if usize::from(channels) > width || usize::from(channels) > self.shape.processor_channels {
             return Err(Staged::Refused(Refusal::Capacity));
         }
@@ -716,6 +714,8 @@ impl ControlEndpoint {
                             || shape.midi_output
                             || shape.audio_inputs == 0
                             || shape.audio_inputs != shape.audio_outputs
+                            || usize::from(shape.audio_inputs)
+                                > kind.prepared_audio_channels(self.shape.processor_channels)
                             || (kind == shoop_rt_protocol::ProcessorKind::OxiSynth
                                 && shape.audio_inputs != 2)
                         {

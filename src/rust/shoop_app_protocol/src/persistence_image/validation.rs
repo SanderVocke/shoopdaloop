@@ -122,10 +122,10 @@ impl Progress {
                     return Err(Refusal::Invalid);
                 }
                 if session.buses.len() > 8
-                    || session
-                        .buses
-                        .iter()
-                        .any(|bus| bus.channels.is_empty() || bus.channels.len() > 8)
+                    || session.buses.iter().any(|bus| {
+                        bus.channels.is_empty()
+                            || bus.channels.len() > MAX_SESSION_CHANNELS_PER_ROLE
+                    })
                     || session.bus_display_order.len() != session.buses.len()
                 {
                     return Err(Refusal::Invalid);
@@ -176,7 +176,7 @@ impl Progress {
             } => {
                 if *sample_rate == 0
                     || frames.is_some_and(|f| f > u32::MAX as u64)
-                    || audio.len() > 16
+                    || audio.len() > MAX_SESSION_AUDIO_CHANNELS
                     || midi.len() > 1
                 {
                     return Err(Refusal::Invalid);
@@ -196,7 +196,7 @@ impl Progress {
                 || !content.gain.is_finite()
                 || !(-1.0..=1.0).contains(&content.balance)
                 || content.name.len() > 128
-                || content.audio.len() > 16
+                || content.audio.len() > MAX_SESSION_AUDIO_CHANNELS
                 || content.midi.len() > 1
                 || content
                     .recorded_processor_state
@@ -220,9 +220,9 @@ impl Progress {
                 .iter()
                 .filter(|c| c.mode == ChannelMode::Wet)
                 .count();
-            if direct > 8
-                || dry > 8
-                || wet > 8
+            if direct > MAX_SESSION_CHANNELS_PER_ROLE
+                || dry > MAX_SESSION_CHANNELS_PER_ROLE
+                || wet > MAX_SESSION_CHANNELS_PER_ROLE
                 || (direct > 0 && dry + wet > 0)
                 || content
                     .audio

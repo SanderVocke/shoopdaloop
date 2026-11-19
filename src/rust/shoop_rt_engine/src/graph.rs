@@ -264,10 +264,7 @@ impl Builder {
             let capture = pool.capture(slot);
             let mut count = 0;
             if let Some(owner) = strip.processor {
-                let prepared_width = owner
-                    .kind
-                    .fixed_audio_channels()
-                    .unwrap_or(shape.processor_channels);
+                let prepared_width = owner.kind.prepared_audio_channels(shape.processor_channels);
                 for channel in 0..strip.shape.audio_outputs as usize {
                     let source = owner
                         .slot
