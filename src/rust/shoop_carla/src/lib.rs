@@ -10,10 +10,14 @@ pub mod carla_shared_memory;
 pub mod child;
 #[cfg(feature = "native")]
 pub mod native;
+#[cfg(feature = "native")]
+pub mod processor;
 #[cfg(feature = "buffered")]
 pub mod service;
 #[cfg(feature = "native")]
 pub mod state;
+#[cfg(feature = "native")]
+pub mod subprocess;
 
 #[cfg(test)]
 #[global_allocator]

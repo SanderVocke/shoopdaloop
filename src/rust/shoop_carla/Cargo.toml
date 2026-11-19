@@ -7,7 +7,7 @@ edition = "2021"
 workspace = true
 
 [features]
-native = ["dep:base64", "dep:libloading", "dep:rfd", "dep:serde_json", "dep:shoop_tracing", "dep:tracing"]
+native = ["dep:base64", "dep:libloading", "dep:rfd", "dep:serde_json", "dep:shoop_tracing", "dep:tracing", "dep:uuid"]
 buffered = ["native", "dep:rt_buffered", "dep:rt_runtime"]
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -24,6 +24,7 @@ shoop_plugin_protocol = { path = "../shoop_plugin_protocol" }
 shoop_tracing = { workspace = true, features = ["perfetto"], optional = true }
 tempfile = { workspace = true }
 tracing = { workspace = true, features = ["std"], optional = true }
+uuid = { workspace = true, optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }

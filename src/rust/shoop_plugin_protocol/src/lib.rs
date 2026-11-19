@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::io::{Read, Write};
 
+mod hosted;
 mod midi_buffer;
+pub use hosted::{CarlaGenerationLog, CarlaProcessorInfo, CarlaProcessorLifecycle};
 pub use midi_buffer::{MidiBufferError, PreparedMidiBuffer};
 
 pub const PROTOCOL_VERSION: u32 = 3;

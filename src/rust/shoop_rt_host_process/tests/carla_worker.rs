@@ -1,10 +1,14 @@
 #![cfg(all(not(target_arch = "wasm32"), feature = "carla-worker"))]
 
-use shoop_carla::carla_shared_memory::SharedBlockTransport;
+use shoop_carla::{
+    carla_shared_memory::SharedBlockTransport, processor::CarlaProcessor, state::encode_state,
+    subprocess::SupervisedCarlaProcessor,
+};
 use shoop_plugin_protocol::{
-    read_frame, write_frame, BlockSequence, CarlaChainType, ChainId, ControlRequest,
-    ControlRequestKind, ControlResponse, ControlResponseKind, MidiEvent, ParentToWorker,
-    ProcessGeneration, ProtocolErrorCode, PrototypeBlock, RequestId, WorkerToParent,
+    read_frame, write_frame, BlockSequence, CarlaChainType, CarlaProcessorLifecycle, ChainId,
+    ControlRequest, ControlRequestKind, ControlResponse, ControlResponseKind, MidiEvent,
+    ParentToWorker, ProcessGeneration, ProtocolErrorCode, PrototypeBlock, RequestId,
+    WorkerToParent,
 };
 use shoop_wasm_test_support::shoop_test;
 use std::{
@@ -17,6 +21,20 @@ use std::{
 const TIMEOUT: Duration = Duration::from_secs(5);
 const CHAIN: ChainId = ChainId(41);
 const GENERATION: ProcessGeneration = ProcessGeneration(73);
+
+fn runtime_available() -> bool {
+    match shoop_carla::native::carla_runtime_availability() {
+        Ok(()) => true,
+        Err(error) => {
+            assert!(
+                std::env::var_os("SHOOP_REQUIRE_CARLA_TESTS").is_none(),
+                "{error}"
+            );
+            eprintln!("skipping Carla child test: {error}");
+            false
+        }
+    }
+}
 
 struct Worker(Child);
 
@@ -57,12 +75,7 @@ fn send(
 
 #[shoop_test]
 fn companion_carla_child_processes_socket_and_shared_audio_and_midi() {
-    if let Err(error) = shoop_carla::native::carla_runtime_availability() {
-        assert!(
-            std::env::var_os("SHOOP_REQUIRE_CARLA_TESTS").is_none(),
-            "{error}"
-        );
-        eprintln!("skipping Carla child test: {error}");
+    if !runtime_available() {
         return;
     }
     const FRAMES: usize = 64;
@@ -234,4 +247,78 @@ fn companion_carla_child_processes_socket_and_shared_audio_and_midi() {
         assert!(start.elapsed() < TIMEOUT, "Carla child shutdown timed out");
         thread::sleep(Duration::from_millis(1));
     }
+}
+
+#[shoop_test]
+fn a_lost_carla_child_recovers_its_checkpoint_while_another_chain_keeps_running() {
+    if !runtime_available() {
+        return;
+    }
+    const FRAMES: usize = 256;
+    let launch = |id| {
+        let mut chain = SupervisedCarlaProcessor::launch(
+            env!("CARGO_BIN_EXE_shoop_rt_host_process"),
+            CarlaChainType::Rack,
+            48_000,
+            FRAMES as u32,
+            ChainId(id),
+        )
+        .unwrap();
+        assert!(chain.is_ready(), "{:?}", chain.crash_summary());
+        chain.set_active(true);
+        assert!(chain.is_active());
+        chain
+    };
+    let mut recover = launch(100);
+    let mut unaffected = launch(101);
+    let project = include_str!("../../shoop_engine/test_data/carla_legacy_rack_loaded_project.xml")
+        .replacen("<Value>1</Value>", "<Value>0.5</Value>", 1);
+    let checkpoint = encode_state(CarlaChainType::Rack, project.as_bytes()).unwrap();
+    recover.restore_state(&checkpoint).unwrap();
+    let confirm_audio = |chain: &mut SupervisedCarlaProcessor, expected: f32| {
+        for _ in 0..12 {
+            chain.audio_input_mut(0).unwrap()[..FRAMES].fill(0.25);
+            chain.audio_input_mut(1).unwrap()[..FRAMES].fill(-0.25);
+            chain.process(FRAMES).unwrap();
+            let left = &chain.audio_output(0).unwrap()[..FRAMES];
+            let right = &chain.audio_output(1).unwrap()[..FRAMES];
+            if left
+                .iter()
+                .all(|sample| (*sample - expected).abs() < 0.0001)
+                && right
+                    .iter()
+                    .all(|sample| (*sample + expected).abs() < 0.0001)
+            {
+                return;
+            }
+            thread::sleep(Duration::from_millis(1));
+        }
+        panic!(
+            "worker audio was {}, expected {expected}",
+            chain.audio_output(0).unwrap()[FRAMES - 1]
+        );
+    };
+    confirm_audio(&mut recover, 0.125);
+    confirm_audio(&mut unaffected, 0.25);
+    let generation = recover.generation();
+    let unaffected_generation = unaffected.generation();
+    recover.terminate_worker_for_test().unwrap();
+    assert!(!recover.is_ready());
+    assert_eq!(recover.lifecycle(), CarlaProcessorLifecycle::Crashed);
+    confirm_audio(&mut unaffected, 0.25);
+    recover.recover(false).unwrap();
+    assert_eq!(recover.generation(), generation + 1);
+    assert_eq!(unaffected.generation(), unaffected_generation);
+    assert!(recover.is_active());
+    confirm_audio(&mut recover, 0.125);
+    let logs = recover.generation_logs();
+    assert_eq!(
+        logs.iter().map(|log| log.generation).collect::<Vec<_>>(),
+        [generation, generation + 1]
+    );
+    recover.clear_logs();
+    let logs = recover.generation_logs();
+    assert_eq!(logs.len(), 1);
+    assert_eq!(logs[0].generation, generation + 1);
+    assert!(logs[0].stdout.is_empty() && logs[0].stderr.is_empty());
 }
