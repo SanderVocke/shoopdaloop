@@ -215,6 +215,43 @@ impl StateProcessor {
             .ok_or(TransitionError::InvalidState)?
             .slot(id)
     }
+    pub(crate) fn validate_midi_contents(
+        &self,
+        updates: &[(LoopId, u64)],
+    ) -> Result<(), TransitionError> {
+        let q = self.quantum().ok_or(TransitionError::InvalidState)?;
+        for &(id, frames) in updates {
+            if frames % u64::from(q) != 0 {
+                return Err(TransitionError::InvalidFrame);
+            }
+            self.loop_state(id)?
+                .state
+                .revision_watermark
+                .checked_add(1)
+                .ok_or(TransitionError::Exhausted)?;
+        }
+        Ok(())
+    }
+    pub(crate) fn publish_midi_contents(
+        &mut self,
+        updates: &[(LoopId, u64)],
+    ) -> Result<(), TransitionError> {
+        self.validate_midi_contents(updates)?;
+        let loops = self.loops.as_mut().ok_or(TransitionError::InvalidState)?;
+        for &(id, frames) in updates {
+            let slot = loops.slot_mut(id)?;
+            let mut state = slot.state;
+            state.content_length = frames;
+            state.revision_watermark += 1;
+            state.content_revision = state.revision_watermark;
+            state.mode = crate::transitions::Mode::Stopped;
+            state.position = 0;
+            state.capture_frames = 0;
+            state.cycles = 0;
+            *slot = LoopSlot::initial(state, slot.mode_plan);
+        }
+        Ok(())
+    }
     pub fn loop_states(&self) -> impl Iterator<Item = LoopState> + '_ {
         self.loops.iter().flat_map(|loops| {
             loops

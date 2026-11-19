@@ -5,6 +5,7 @@ extern crate alloc;
 pub mod chunk_memory;
 pub mod fixed;
 pub mod jobs;
+pub mod midi;
 pub mod pipeline;
 pub mod records;
 pub mod resolver;
