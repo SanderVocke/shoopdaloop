@@ -1,6 +1,6 @@
 # MIDI through the shared state and job processors
 
-Status: in progress; Rust execution contracts and baseline frozen.
+Status: Rust replacement and mapping review complete; RTL rebuild next.
 
 ## Goal and scope
 
@@ -275,7 +275,7 @@ refusals, stale handles, capacity exhaustion and edits during mixed playback.
   multi-output, all supported quanta, callback partitioning, history rollover,
   content operations, failure recovery and exact audio output. Exercise the
   128-binding/3,000-event workload, configured limits and allocation guards.
-- [ ] Document the new program/job semantics, ownership, API changes, capacities
+- [x] Document the new program/job semantics, ownership, API changes, capacities
   and work bounds. Make CPU profiling descriptive only; no cloud wall-clock or
   simultaneous-128-grab pass threshold. Finish the Rust PR/milestone.
 - [x] Review RTL mappability of the completed Rust design: record each job's
@@ -289,8 +289,10 @@ refusals, stale handles, capacity exhaustion and edits during mixed playback.
 Verification gate: complete reference/compiler tests, affected loading/transport/
 reference-host tests, audio regressions, formatting, warning-denying builds and
 required test-policy checks, plus the documented RTL-mappability review above.
-Use broader local workspace checks at this milestone
-according to repository guidance, recording unrelated environment blockers.
+Start broader local workspace checks at this milestone according to repository
+guidance, recording unrelated environment blockers. They may continue alongside
+the RTL work after the focused Rust gate above passes; finish/reconcile their
+results before final delivery.
 **Do not start the RTL rebuild before this gate is satisfied.**
 
 ### 5. Rebuild RTL through the existing SP and JP
@@ -426,3 +428,15 @@ and speculative profiling.
 - The compiler exposes explicit `with_midi` context bindings on an audio graph's
   logical program; general application MIDI strip/bus graph wiring stays outside
   scope. This gives compiled mixed images without enabling unrelated app profiles.
+- Stage 4 verification sequencing: the complete all-feature reference/compiler
+  gate, affected host/transport suites, warning-denying workspace build and
+  documented mapping review pass. The 3,503-case broader local workspace run
+  takes substantially longer and runs in the background; its results must be
+  reconciled before final delivery. This changes verification sequencing only,
+  not Rust/RTL functional acceptance or the required local checks.
+- Stage 4 Rust gate passed: final focused reference/compiler, loading, transport,
+  mixed image and oracle tests; full all-feature reference/compiler suite before
+  the final inactive-job optimization; no-heap capacity/history/content scenarios;
+  targeted host/protocol/transport tests; warning-denying workspace build; format
+  and test-attribute policy. Mapping/software-cost review is documented. The
+  final local workspace suite continues in the background and will be reported.

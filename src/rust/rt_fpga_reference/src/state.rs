@@ -560,16 +560,24 @@ impl StateProcessor {
                         },
                         P::ClaimEstablished | P::ClaimNew => {
                             let r = record.ok_or(Error::InvalidState)?;
+                            if r.mode != Mode::Playing || r.position >= r.content_length {
+                                continue;
+                            }
                             M::Claim {
                                 context,
                                 playing: r.mode == Mode::Playing && r.position < r.content_length,
                                 established: phase == P::ClaimEstablished,
                             }
                         }
-                        P::Playback => M::ReadUntil {
-                            context,
-                            record: record.ok_or(Error::InvalidState)?,
-                        },
+                        P::Playback => {
+                            let record = record.ok_or(Error::InvalidState)?;
+                            if record.mode != Mode::Playing
+                                || record.position >= record.content_length
+                            {
+                                continue;
+                            }
+                            M::ReadUntil { context, record }
+                        }
                         P::Output => M::Output,
                         P::Complete => {
                             let r = record.ok_or(Error::InvalidState)?;

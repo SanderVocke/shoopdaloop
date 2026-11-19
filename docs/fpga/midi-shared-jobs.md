@@ -103,17 +103,22 @@ on this cloud machine, before/after the shared path:
 | Measurement | Frozen path | Shared path |
 | --- | ---: | ---: |
 | Prepared MIDI storage | 34,457,072 bytes | 34,457,072 bytes |
-| Median quantum | 19.8 µs | 43.8 µs |
-| 99th percentile quantum | 332.7 µs | 403.2 µs |
-| Full 30-second recording workload | 1.05 s | 2.72 s |
-| Full playback workload | 2.42 s | 3.48 s |
-| Optional 128-target grab | 122.5 µs | 126.3 µs |
+| Median quantum | 19.8 µs | 63.9 µs |
+| 99th percentile quantum | 332.7 µs | 625.7 µs |
+| Full 30-second recording workload | 1.05 s | 3.52 s |
+| Full playback workload | 2.42 s | 6.85 s |
+| Optional 128-target grab | 122.5 µs | 85.4 µs |
 
-The added constant cost comes from compiled per-channel work and queue/dispatcher
-traffic, now explicit for every quantum. Storage algorithms and prepared MIDI
+These single cloud runs had different host load; the final run overlapped the
+workspace suite. Their timing difference does not isolate algorithmic cost.
+The added bounded work consists of compiled per-channel work and queue/dispatcher
+traffic, now explicit for every quantum. Inactive ownership/playback jobs are
+skipped during recording and stopped modes. Storage algorithms and prepared MIDI
 bytes remain unchanged; the common queue additionally reserves the above finite
-job storage. It is a real software cost of this architecture, not evidence that
-memory lookups or whole-state comparisons grew. The median is about 6.6% of a
+job storage. SP omits claim/read jobs for channels that are not playing,
+which avoids unnecessary dispatch during recording or stopped operation. It is
+a real software cost of this architecture, not evidence that
+memory lookups or whole-state comparisons grew. The median is about 9.6% of a
 32-frame/48-kHz quantum's 667-µs time allowance for this MIDI-heavy fixture, which
 has only a trivial audio path. This does not qualify a full audio session's CPU
 budget or its worst case. Cloud timing extremes are noisy; no wall-clock or

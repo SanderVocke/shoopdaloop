@@ -229,3 +229,38 @@ fn context_reuse_requires_stopped_execution_and_keeps_export_pins() {
     assert_eq!(f.pipeline.state().frame(), frame);
     f.midi.release(view).unwrap();
 }
+
+#[shoop_test]
+fn mixed_queue_preflight_refuses_before_advancing_musical_time() {
+    use crate::{jobs::JobQueue, state::StateProcessor, transitions::*};
+    let f = fixture::Fixture::new(32, 1);
+    let plan = TransitionPlan::compile(
+        PlanDescription {
+            quantum: 32,
+            loops: alloc::vec![LoopSpec {
+                id: fixture::id(0),
+                kind: LoopKind::Primitive,
+                length: 0,
+                sync_source: None,
+                repeat_sync: false,
+                timeline: None
+            }],
+        },
+        TransitionLimits {
+            loop_slots: 1,
+            events: 4,
+        },
+    )
+    .unwrap();
+    let mut state = StateProcessor::with_loops(plan, alloc::vec![]);
+    let mut program = f.pipeline.program().clone();
+    let bound = program.jobs_per_quantum;
+    program.jobs_per_quantum -= 1;
+    let mut queue = JobQueue::new(bound);
+    assert_eq!(
+        state.run(&program, &mut queue),
+        Err(crate::Error::QueueFull)
+    );
+    assert_eq!(state.frame(), 0);
+    assert!(queue.is_empty());
+}
