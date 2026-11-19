@@ -3,8 +3,11 @@
 use rt_buffered::{AsyncBatch, Backend, BatchTag, BufferLimits, MidiLimits, Timing};
 use rt_runtime::{buffer::MidiBuffer, Frame, Quantum};
 use shoop_carla::{
-    carla_shared_memory::SharedBlockTransport, processor::CarlaProcessor, service::ChainService,
-    state::encode_state, subprocess::SupervisedCarlaProcessor,
+    carla_shared_memory::SharedBlockTransport,
+    processor::CarlaProcessor,
+    service::ChainService,
+    state::{decode_state, encode_state},
+    subprocess::SupervisedCarlaProcessor,
 };
 use shoop_plugin_protocol::{
     read_frame, write_frame, BlockSequence, CarlaChainType, CarlaProcessorLifecycle, ChainId,
@@ -586,5 +589,27 @@ fn isolated_service_uses_the_prepared_render_endpoint() {
         }
     }
     assert!(received);
+    let project =
+        include_bytes!("../../shoop_engine/test_data/carla_legacy_rack_loaded_project.xml");
+    service
+        .restore_state(encode_state(CarlaChainType::Rack, project).unwrap())
+        .unwrap();
+    let has_gain = |state: &str| {
+        let xml = decode_state(state, CarlaChainType::Rack).unwrap();
+        String::from_utf8(xml).unwrap().contains("audiogain_s")
+    };
+    assert!(has_gain(&service.save_state().unwrap()));
+    assert!(!assert_no_heap(|| endpoint.reset_step(0)).unwrap());
+    let deadline = Instant::now() + TIMEOUT;
+    let mut step = 1;
+    while !assert_no_heap(|| endpoint.reset_step(step)).unwrap() {
+        assert!(
+            Instant::now() < deadline,
+            "Carla owner retirement timed out"
+        );
+        thread::sleep(Duration::from_millis(1));
+        step += 1;
+    }
+    assert!(!has_gain(&service.save_state().unwrap()));
     service.stop(TIMEOUT).unwrap();
 }

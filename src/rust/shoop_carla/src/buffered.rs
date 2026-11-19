@@ -10,10 +10,19 @@ use shoop_plugin_protocol::{
     MAX_MIDI_EVENTS_PER_BLOCK, MAX_NATIVE_MIDI_PACKET_BYTES,
 };
 use std::mem::size_of;
+use std::sync::{
+    atomic::{AtomicU8, Ordering},
+    Arc,
+};
+
+const OWNER_READY: u8 = 0;
+const OWNER_RESET_REQUESTED: u8 = 1;
+const OWNER_RESET_FAILED: u8 = 2;
 
 pub struct RenderEndpoint {
     transport: LocalTransport,
     ports: PortCounts,
+    owner_reset: Arc<AtomicU8>,
 }
 
 pub struct Worker {
@@ -21,6 +30,7 @@ pub struct Worker {
     processor: Box<dyn CarlaProcessor>,
     midi_output: PreparedMidiBuffer,
     enabled: bool,
+    owner_reset: Arc<AtomicU8>,
 }
 
 fn ports(chain_type: CarlaChainType) -> PortCounts {
@@ -79,8 +89,13 @@ impl Worker {
             return Err(Error::InvalidShape);
         }
         let (transport, worker) = LocalTransport::prepare(ports, timing, limits, timing.slots())?;
+        let owner_reset = Arc::new(AtomicU8::new(OWNER_READY));
         Ok((
-            RenderEndpoint { transport, ports },
+            RenderEndpoint {
+                transport,
+                ports,
+                owner_reset: Arc::clone(&owner_reset),
+            },
             Self {
                 transport: worker,
                 processor,
@@ -89,6 +104,7 @@ impl Worker {
                     MAX_NATIVE_MIDI_PACKET_BYTES,
                 ),
                 enabled: true,
+                owner_reset,
             },
         ))
     }
@@ -96,6 +112,34 @@ impl Worker {
     /// Called by the service on the same non-render owner that pumps batches.
     pub fn processor(&mut self) -> &mut dyn CarlaProcessor {
         self.processor.as_mut()
+    }
+
+    pub(super) fn owner_reset_requested(&self) -> bool {
+        self.owner_reset.load(Ordering::Acquire) == OWNER_RESET_REQUESTED
+    }
+
+    pub(super) fn discard_retired_batches(&mut self) -> Result<(), Error> {
+        // Retirement stops submissions before it publishes the reset. Return
+        // any queued jobs with their old tags without applying their MIDI or
+        // audio to the next processor.
+        while self
+            .transport
+            .process_next(|_, _| Err(Error::Disconnected))?
+        {}
+        Ok(())
+    }
+
+    pub(super) fn replace_retired_owner(&mut self, replacement: Option<Box<dyn CarlaProcessor>>) {
+        let status = if let Some(processor) = replacement {
+            self.processor = processor;
+            self.enabled = true;
+            OWNER_READY
+        } else {
+            self.enabled = false;
+            OWNER_RESET_FAILED
+        };
+        self.midi_output.clear();
+        self.owner_reset.store(status, Ordering::Release);
     }
 
     pub fn set_active(&mut self, active: bool) -> Result<(), Error> {
@@ -140,6 +184,19 @@ impl Backend for RenderEndpoint {
 
     fn reset(&mut self) -> Result<(), Error> {
         Ok(())
+    }
+
+    fn reset_step(&mut self, step: usize) -> Result<bool, Error> {
+        if step == 0 {
+            self.owner_reset
+                .store(OWNER_RESET_REQUESTED, Ordering::Release);
+            return Ok(false);
+        }
+        match self.owner_reset.load(Ordering::Acquire) {
+            OWNER_READY => Ok(true),
+            OWNER_RESET_REQUESTED => Ok(false),
+            _ => Err(Error::Disconnected),
+        }
     }
 }
 

@@ -124,11 +124,12 @@ impl Kind {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[repr(u8)]
 pub enum Policy {
     #[default]
-    Auto,
-    On,
-    Off,
+    Auto = 0,
+    On = 1,
+    Off = 2,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -137,11 +138,12 @@ pub enum Policy {
     derive(serde::Serialize, serde::Deserialize),
     serde(rename_all = "snake_case")
 )]
+#[repr(u8)]
 pub enum CarlaHosting {
     #[default]
-    Disabled,
-    InProcess,
-    Subprocess,
+    Disabled = 0,
+    InProcess = 1,
+    Subprocess = 2,
 }
 
 // Native Carla v2 accepts up to 1,024 short packets per block. The engine may

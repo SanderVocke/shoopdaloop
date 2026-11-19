@@ -13,7 +13,7 @@ use std::{
     path::PathBuf,
     sync::{
         mpsc::{sync_channel, Receiver, SyncSender, TryRecvError},
-        Arc,
+        Arc, RwLock,
     },
     thread::{self, JoinHandle},
     time::{Duration, Instant},
@@ -47,7 +47,7 @@ struct Command {
 pub struct ChainService {
     commands: SyncSender<Command>,
     thread: JoinHandle<()>,
-    editor: Option<Arc<dyn CarlaExternalUi>>,
+    editor: Arc<RwLock<Option<Arc<dyn CarlaExternalUi>>>>,
 }
 
 impl ChainService {
@@ -60,7 +60,7 @@ impl ChainService {
     ) -> Result<(RenderEndpoint, Self)> {
         let frames = timing.batch_frames() as u32;
         Self::start_worker(chain, timing, limits, move || {
-            let processor = match ui {
+            let processor = match ui.clone() {
                 Some(ui) => {
                     CarlaNativeHost::instantiate_with_ui_dispatcher(chain, sample_rate, frames, ui)
                 }
@@ -81,7 +81,7 @@ impl ChainService {
         let frames = timing.batch_frames() as u32;
         Self::start_worker(chain, timing, limits, move || {
             Ok(Box::new(SupervisedCarlaProcessor::launch(
-                executable,
+                executable.clone(),
                 chain,
                 sample_rate,
                 frames,
@@ -94,16 +94,18 @@ impl ChainService {
         chain: CarlaChainType,
         timing: PreparedTiming,
         limits: BufferLimits,
-        factory: impl FnOnce() -> Result<Box<dyn CarlaProcessor>> + Send + 'static,
+        factory: impl Fn() -> Result<Box<dyn CarlaProcessor>> + Send + 'static,
     ) -> Result<(RenderEndpoint, Self)> {
         Worker::transport_bytes(chain, timing, limits)
             .map_err(|error| anyhow!("could not prepare Carla worker storage: {error:?}"))?;
         let (commands, receiver) = sync_channel(COMMAND_SLOTS);
         let (ready, startup) = sync_channel(1);
+        let editor = Arc::new(RwLock::new(None));
+        let published_editor = Arc::clone(&editor);
         let thread = thread::Builder::new()
             .name("carla-native-dsp".into())
             .spawn(move || {
-                let prepared: Result<_> = (|| {
+                let create = || {
                     let mut processor = factory()?;
                     if !processor.is_ready() || processor.info().chain_type != chain {
                         bail!(
@@ -114,15 +116,19 @@ impl ChainService {
                                 .unwrap_or("unexpected worker state")
                         );
                     }
-                    let editor = processor.external_ui();
+                    Ok(processor)
+                };
+                let prepared: Result<_> = create().and_then(|processor| {
+                    let handle = processor.external_ui();
                     let (endpoint, worker) = Worker::prepare_boxed(processor, timing, limits)
                         .map_err(|error| anyhow!("could not prepare Carla worker: {error:?}"))?;
-                    Ok((endpoint, worker, editor))
-                })();
+                    *published_editor.write().unwrap() = handle;
+                    Ok((endpoint, worker))
+                });
                 match prepared {
-                    Ok((endpoint, worker, editor)) => {
-                        if ready.send(Ok((endpoint, editor))).is_ok() {
-                            run(worker, receiver);
+                    Ok((endpoint, worker)) => {
+                        if ready.send(Ok(endpoint)).is_ok() {
+                            run(worker, receiver, create, published_editor);
                         }
                     }
                     Err(error) => {
@@ -131,7 +137,7 @@ impl ChainService {
                 }
             })
             .context("spawning Carla DSP worker")?;
-        let (endpoint, editor) = startup
+        let endpoint = startup
             .recv_timeout(START_TIMEOUT)
             .context("waiting for Carla DSP startup")??;
         Ok((
@@ -183,8 +189,8 @@ impl ChainService {
         self.request(Operation::Restore(state)).map(|_| ())
     }
 
-    pub fn editor(&self) -> Option<&dyn CarlaExternalUi> {
-        self.editor.as_deref()
+    pub fn editor(&self) -> Option<Arc<dyn CarlaExternalUi>> {
+        self.editor.read().ok()?.clone()
     }
 
     pub fn recover(&self, show_editor: bool) -> Result<()> {
@@ -207,8 +213,27 @@ impl ChainService {
     }
 }
 
-fn run(mut worker: Worker, commands: Receiver<Command>) {
+fn run(
+    mut worker: Worker,
+    commands: Receiver<Command>,
+    create: impl Fn() -> Result<Box<dyn CarlaProcessor>>,
+    editor: Arc<RwLock<Option<Arc<dyn CarlaExternalUi>>>>,
+) {
     loop {
+        if worker.owner_reset_requested() {
+            let replacement = worker
+                .discard_retired_batches()
+                .ok()
+                .and_then(|()| create().ok());
+            *editor.write().unwrap() = replacement
+                .as_ref()
+                .and_then(|processor| processor.external_ui());
+            let failed = replacement.is_none();
+            worker.replace_retired_owner(replacement);
+            if failed {
+                break;
+            }
+        }
         match commands.try_recv() {
             Ok(command) => {
                 let reply = if Instant::now() >= command.deadline {

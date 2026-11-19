@@ -145,7 +145,8 @@ fn reservation(
     } else {
         0
     };
-    let per_slot = adapter + transport + aux + audio + ipc;
+    // A retired owner's replacement can be prepared before releasing the previous processor.
+    let per_slot = adapter + transport + aux + 2 * (audio + ipc);
     let total = (per_slot as u64)
         .checked_mul(u64::from(description.processors.carla.configured_instances()) * 2)
         .and_then(|bytes| bytes.checked_add(processors.reserved_bytes))
