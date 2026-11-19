@@ -96,8 +96,13 @@ transition or recovery.
 
 ## Pipeline and content API
 
-1. Prepare `MidiSession` with `SessionLimits`, then bind its finite loop slots to
-   logical loop identities, input/destination indices, and owned channel masks.
+1. Compile the audio graph and call `LogicalStateProgram::with_midi` with stable
+   MIDI context slots and loop identities. Lower/load that mixed program through
+   `RustTarget`. Prepare `MidiSession` with `SessionLimits`, then bind the same
+   context slots to the resulting **physical** loop identities, input/destination
+   indices and owned channel masks. Continuing contexts stay bound during image
+   replacement. `unbind` requires stopped, cleaned-up execution; it releases
+   content ownership through bounded retirement while exports remain pinned.
 2. Feed ordered callback-relative `InputEvent`s to
    `Pipeline::process_midi_session`, with an `OutputEvent` sink. A callback may
    contain several quanta. The event at an interval's end belongs to the next one.
@@ -174,3 +179,20 @@ oracle remain separate checks. Provenance: state rules derive from `rt_runtime`
 at `1d081bf8`; ordering derives from `shoop_loops` at `9eb71d04`. No production
 runtime dependency was added. Local evidence and memory/timing results are in
 [the storage milestone](../../../../../docs/fpga/midi-reference-storage.md).
+
+
+## Shared execution
+
+The SP's compiled work pass emits capture completion/start, input observation,
+append, cleanup, ownership claims, restoration/read windows, merged output and
+completion/maintenance jobs. One `JobProcessor` drains these alongside audio.
+These services receive explicit settled operands and never inspect SP loop
+state to schedule work. Context slots resolve content at execution time, so a
+finish-recording job can publish a take for playback later in the same quantum.
+
+`process_midi_session` is the prepared I/O adapter for that normal pipeline,
+not a second scheduler or observer. MIDI refusal is accumulated separately from
+fatal pipeline errors; output acceptance still commits state/cursor progress.
+The frozen standalone implementation is available only under `cfg(test)` for
+behavior comparisons. [Execution and RTL mapping](../../../../../docs/fpga/midi-shared-jobs.md)
+describes work bounds and the review required before the hardware port.

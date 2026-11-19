@@ -4785,6 +4785,7 @@ name = "rt_fpga_compiler"
 version = "0.3.0"
 dependencies = [
  "libm",
+ "schemars",
  "serde",
  "shoop_graph",
  "shoop_rt_protocol",

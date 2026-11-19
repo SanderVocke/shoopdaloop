@@ -227,7 +227,7 @@ fn live_regions_preserve_ramps_history_plans_and_frames_with_concurrent_uploads(
     {
         *destination = 5;
     }
-    for op in &mut next.audio_pass {
+    for op in &mut next.work_pass {
         if let Operation::Output { source, .. } = op {
             *source = 5;
         }
@@ -328,7 +328,7 @@ fn live_regions_preserve_ramps_history_plans_and_frames_with_concurrent_uploads(
                 id.generation = generation;
             }
         }
-        for op in &mut replacement.audio_pass {
+        for op in &mut replacement.work_pass {
             if let Operation::Smoothing { loop_id, .. } = op {
                 loop_id.generation = generation;
             }
@@ -372,7 +372,7 @@ fn live_regions_preserve_ramps_history_plans_and_frames_with_concurrent_uploads(
     empty.initial_state.clear();
     empty.state_bindings.clear();
     empty.bindings.clear();
-    empty.audio_pass = vec![
+    empty.work_pass = vec![
         Operation::Silence { destination: 0 },
         Operation::Output { source: 0, port: 0 },
     ];
@@ -518,7 +518,7 @@ fn live_media_graph_switch_preserves_recording_and_fences_axi_work() {
             quantum(&mut d, &mut s, &mut p, &mut jobs, &mut media, tick);
         }
         let mut next = logical.clone();
-        next.audio_pass
+        next.work_pass
             .insert(0, Operation::Silence { destination: 7 });
         next.resources.buffers = 8;
         next.jobs_per_quantum += 1;

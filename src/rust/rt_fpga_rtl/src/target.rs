@@ -123,6 +123,13 @@ impl StateProgramTarget for RtlTarget<'_> {
         }
     }
     fn build(&self, logical: &LogicalStateProgram) -> Result<CompiledProgram, CompileError> {
+        if logical
+            .work_pass
+            .iter()
+            .any(|op| matches!(op, Operation::Midi { .. }))
+        {
+            return Err(CompileError::InvalidProgram);
+        }
         logical.validate(self.limits())?;
         if usize::from(self.state_base) + logical.initial_state.len()
             > self.limits().state_values as usize
@@ -174,8 +181,9 @@ impl StateProgramTarget for RtlTarget<'_> {
                 .set(72, 1, 1);
             instructions.push(bits);
         }
-        for op in &logical.audio_pass {
+        for op in &logical.work_pass {
             let instruction = match *op {
+                Operation::Midi { .. } => return Err(CompileError::InvalidProgram),
                 Operation::Silence { destination } => component::Instruction::ProcessSilence {
                     destination: operand(destination)?,
                 },

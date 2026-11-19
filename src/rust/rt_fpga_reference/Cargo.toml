@@ -8,7 +8,7 @@ publish = false
 [features]
 rt-interface = ["dep:shoop_rt_protocol", "dep:shoop_rt_transport", "dep:rtrb"]
 serde = ["dep:serde", "rt_fpga_compiler/serde"]
-schema = ["serde", "dep:schemars"]
+schema = ["serde", "rt_fpga_compiler/schema", "dep:schemars"]
 
 [dependencies]
 rt_fpga_compiler = { path = "../rt_fpga_compiler" }

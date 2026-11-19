@@ -1,4 +1,5 @@
 mod control;
+mod jobs;
 use super::{
     history::History, ComparisonId, ContentStore, DifferenceService, Differences, Error,
     Interpreter, Message, MidiState, Record, SnapshotId, StateTransition, StoreLimits, StoreUsage,
@@ -257,6 +258,25 @@ impl MidiSession {
         context.binding = Some(binding);
         Ok(())
     }
+    pub fn unbind(&mut self, slot: u16) -> Result<(), Error> {
+        let c = self
+            .contexts
+            .get(usize::from(slot))
+            .ok_or(Error::InvalidState)?;
+        if c.mode != Mode::Stopped
+            || c.active.is_some()
+            || c.transition.is_some()
+            || c.writer.is_some()
+        {
+            return Err(Error::Busy);
+        }
+        if let Some(view) = c.view {
+            self.store.can_release(core::slice::from_ref(&view))?;
+            self.store.release(view)?;
+        }
+        self.contexts[usize::from(slot)] = Context::new(self.limits.store.max_events);
+        Ok(())
+    }
     pub fn set_record_limit(&mut self, slot: u16, events: u32) -> Result<(), Error> {
         if events == 0 || events > self.limits.store.max_events {
             return Err(Error::Capacity);
@@ -404,6 +424,45 @@ impl MidiSession {
                 }
                 self.recovery[usize::from(destination)] += 1;
             }
+        }
+        Ok(())
+    }
+    pub(crate) fn validate_program(&self, program: &crate::state::Program) -> Result<(), Error> {
+        use crate::state::Instruction;
+        use rt_fpga_compiler::MidiPhase;
+        let mut actual = program
+            .instructions
+            .iter()
+            .filter(|i| matches!(i, Instruction::ProcessMidi { .. }));
+        for phase in MidiPhase::ORDER {
+            if phase.global() {
+                if actual.next()
+                    != Some(&Instruction::ProcessMidi {
+                        phase,
+                        loop_id: None,
+                        context: 0,
+                    })
+                {
+                    return Err(Error::InvalidState);
+                }
+            } else {
+                for (i, c) in self.contexts.iter().enumerate() {
+                    if let Some(b) = c.binding {
+                        if actual.next()
+                            != Some(&Instruction::ProcessMidi {
+                                phase,
+                                loop_id: Some(b.loop_id),
+                                context: i as u16,
+                            })
+                        {
+                            return Err(Error::InvalidState);
+                        }
+                    }
+                }
+            }
+        }
+        if actual.next().is_some() {
+            return Err(Error::InvalidState);
         }
         Ok(())
     }
@@ -680,260 +739,5 @@ impl MidiSession {
             break;
         }
         Ok(())
-    }
-    pub(super) fn quantum(
-        &mut self,
-        state: &StateProcessor,
-        base: u32,
-        events: &[InputEvent],
-        sink: &mut impl FnMut(OutputEvent) -> Result<(), Error>,
-    ) -> Result<(), Error> {
-        let q = state.quantum().ok_or(Error::InvalidState)?;
-        let start = state
-            .frame()
-            .checked_sub(u64::from(q))
-            .ok_or(Error::InvalidState)?;
-        self.next_frame = Some(state.frame());
-        let mut error = None;
-        if let Err(e) = self.drain_recovery(base, sink) {
-            error = Some(e);
-        }
-        self.owners.fill(0);
-        for i in 0..self.contexts.len() {
-            let Some(binding) = self.contexts[i].binding else {
-                continue;
-            };
-            self.work.context_visits = self.work.context_visits.saturating_add(1);
-            let record = state
-                .loop_state(binding.loop_id)
-                .map_err(|_| Error::InvalidState)?
-                .render;
-            if self.contexts[i].mode == Mode::Recording && record.mode != Mode::Recording {
-                if let Err(e) = self.finish_recording(i) {
-                    error.get_or_insert(e);
-                    self.contexts[i].status = TakeStatus::Incomplete;
-                }
-            }
-            if record.mode == Mode::Recording && record.begin_capture {
-                if let Err(e) = self.start_recording(i, start) {
-                    error.get_or_insert(e);
-                    self.contexts[i].status = TakeStatus::Incomplete;
-                }
-            }
-        }
-        for seed in &mut self.seeds {
-            if let Some(id) = seed.take() {
-                self.store.release_snapshot(id)?;
-            }
-        }
-        for event in events
-            .iter()
-            .filter(|e| e.offset >= base && e.offset < base + q)
-        {
-            let input = usize::from(event.input);
-            let before = self.inputs[input].steps();
-            if let Err(e) = self.histories[input].observe(
-                &mut self.store,
-                &mut self.maps,
-                &self.outputs,
-                &mut self.inputs[input],
-                start + u64::from(event.offset - base),
-                event.message,
-            ) {
-                error.get_or_insert(e);
-            }
-            self.work.input_steps = self
-                .work
-                .input_steps
-                .saturating_add(self.inputs[input].steps() - before);
-            for c in &mut self.contexts {
-                let Some(b) = c.binding else {
-                    continue;
-                };
-                let Some(writer) = c.writer else {
-                    continue;
-                };
-                if b.input != event.input
-                    || c.status != TakeStatus::Recording
-                    || (event.message.as_bytes()[0] != 0xff
-                        && b.channels & (1 << (event.message.as_bytes()[0] & 15)) == 0)
-                {
-                    continue;
-                }
-                let frame = self.store.describe(writer)?.frames + u64::from(event.offset - base);
-                if self.store.describe(writer)?.events >= c.record_limit {
-                    c.status = TakeStatus::Incomplete;
-                    self.store.mark_incomplete(writer)?;
-                    error.get_or_insert(Error::Capacity);
-                    continue;
-                }
-                if let Err(e) = self.store.append(writer, frame, event.message) {
-                    c.status = TakeStatus::Incomplete;
-                    error.get_or_insert(e);
-                }
-            }
-        }
-        for h in &mut self.histories {
-            if let Err(e) = h.advance(&mut self.store, state.frame()) {
-                error.get_or_insert(e);
-            }
-        }
-        for c in &mut self.contexts {
-            if c.status == TakeStatus::Recording {
-                if let Some(writer) = c.writer {
-                    let end = self
-                        .store
-                        .describe(writer)?
-                        .frames
-                        .checked_add(u64::from(q))
-                        .ok_or(Error::Overflow)?;
-                    if let Err(e) = self.store.advance(writer, end) {
-                        c.status = TakeStatus::Incomplete;
-                        error.get_or_insert(e);
-                    }
-                }
-            }
-        }
-        self.heap.clear();
-        for c in &mut self.contexts {
-            c.blocked = false;
-        }
-        for i in 0..self.contexts.len() {
-            let Some(b) = self.contexts[i].binding else {
-                continue;
-            };
-            if self.recovery[usize::from(b.destination)] != 32 {
-                continue;
-            }
-            let record = state
-                .loop_state(b.loop_id)
-                .map_err(|_| Error::InvalidState)?
-                .render;
-            if let Err(e) = self.prepare_cleanup(i, record, base, sink) {
-                error.get_or_insert(e);
-                self.contexts[i].blocked = true;
-                self.owners[usize::from(b.destination)] |= b.channels;
-            }
-        }
-        for established in [true, false] {
-            for c in &mut self.contexts {
-                let Some(b) = c.binding else {
-                    continue;
-                };
-                if c.blocked || c.active.is_some() != established {
-                    continue;
-                }
-                let r = state
-                    .loop_state(b.loop_id)
-                    .map_err(|_| Error::InvalidState)?
-                    .render;
-                if r.mode != Mode::Playing || r.position >= r.content_length {
-                    continue;
-                }
-                let owned = &mut self.owners[usize::from(b.destination)];
-                if *owned & b.channels != 0 {
-                    c.blocked = true;
-                    c.desynchronized = true;
-                    error.get_or_insert(Error::Unsupported);
-                } else {
-                    *owned |= b.channels;
-                }
-            }
-        }
-        for i in 0..self.contexts.len() {
-            let Some(b) = self.contexts[i].binding else {
-                continue;
-            };
-            let record = state
-                .loop_state(b.loop_id)
-                .map_err(|_| Error::InvalidState)?
-                .render;
-            if !self.contexts[i].blocked && self.recovery[usize::from(b.destination)] == 32 {
-                if let Err(e) = self.prepare_playback(i, record, base, sink) {
-                    if !matches!(e, Error::Busy | Error::Incomplete | Error::Unsupported)
-                        && !self.contexts[i].cleaning
-                    {
-                        self.fail_destination(b.destination);
-                    }
-                    error.get_or_insert(e);
-                } else if record.mode == Mode::Playing && record.position < record.content_length {
-                    self.push_head(i, base, q)?;
-                }
-            }
-            self.contexts[i].mode =
-                if record.mode == Mode::Playing && record.position >= record.content_length {
-                    Mode::Stopped
-                } else {
-                    record.mode
-                };
-        }
-        while let Some(Reverse((offset, index))) = self.heap.pop() {
-            let i = usize::from(index);
-            let c = &self.contexts[i];
-            let b = c.binding.unwrap();
-            if self.recovery[usize::from(b.destination)] != 32 {
-                continue;
-            }
-            let event = self
-                .store
-                .read(c.active.unwrap(), c.cursor)?
-                .ok_or(Error::InvalidState)?;
-            if event.message.as_bytes()[0] == 0xff && b.channels != u16::MAX {
-                self.fail_destination(b.destination);
-                error.get_or_insert(Error::Unsupported);
-                continue;
-            }
-            match self.emit(
-                OutputEvent {
-                    destination: b.destination,
-                    offset,
-                    message: event.message,
-                },
-                sink,
-            ) {
-                Ok(()) => {
-                    self.update_activity(i, event.message)?;
-                    self.contexts[i].cursor += 1;
-                    self.push_head(i, base, q)?;
-                }
-                Err(e) => {
-                    self.fail_destination(b.destination);
-                    error.get_or_insert(e);
-                }
-            }
-        }
-        for c in &mut self.contexts {
-            if c.active.is_some() && !c.cleaning && !c.blocked && !c.desynchronized {
-                c.position = c.position.saturating_add(u64::from(q));
-            }
-        }
-        self.store.maintenance(self.limits.maintenance_steps);
-        self.transfer_events = 64;
-        self.transfer_cells = 256;
-        self.transfer_metadata = 64;
-        self.publication_bindings = 128;
-        match error {
-            Some(e) => Err(e),
-            None => Ok(()),
-        }
-    }
-}
-
-pub(crate) struct SessionObserver<'a, F> {
-    pub session: &'a mut MidiSession,
-    pub events: &'a [InputEvent],
-    pub sink: &'a mut F,
-    pub error: Option<Error>,
-}
-impl<F: FnMut(OutputEvent) -> Result<(), Error>> crate::pipeline::Observer
-    for SessionObserver<'_, F>
-{
-    fn quantum(&mut self, state: &StateProcessor, base: usize) {
-        if let Err(e) = self
-            .session
-            .quantum(state, base as u32, self.events, self.sink)
-        {
-            self.error.get_or_insert(e);
-        }
     }
 }

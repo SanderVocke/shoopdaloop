@@ -132,7 +132,7 @@ fn combined_trace_runs_sp_and_jp_without_copied_loop_operands() {
 }
 
 #[shoop_test]
-fn combined_trace_latches_failed_audio_pass_after_computing_next_cursors() {
+fn combined_trace_latches_failed_work_pass_after_computing_next_cursors() {
     let mut case = fixture();
     let rt_fpga_reference::state::Instruction::ProcessLogicalPlayback { loop_id, .. } =
         &mut case.program.instructions[0]

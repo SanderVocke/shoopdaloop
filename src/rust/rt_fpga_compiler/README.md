@@ -114,3 +114,20 @@ cargo test --locked -p shoop_rt_host_marlin --features sim
 ```
 
 See [the loading design](../../../LOADING_DESIGN.md) for the ownership contract.
+
+## Mixed MIDI work
+
+`LogicalStateProgram::work_pass` contains both audio and MIDI operations.
+`with_midi(&[MidiBinding { loop_id, context }])` appends ordered MIDI operations
+to an audio graph's compiled program. Context slots are prepared external MIDI
+resources, independent of relocated loop/state addresses. Contexts determine
+MIDI tie order and remain stable across image replacement; loop operands are
+relocated by the normal allocator. Input/destination indices and MIDI channel
+masks remain prepared reference-session bindings. General MIDI strip/bus graph
+routing and application enablement remain separate work.
+
+The compiler checks phase order, unique bindings, operand bounds and conservative
+queue capacity (`4 + 8 * MIDI bindings` additional jobs). Unsupported targets
+reject these operations explicitly. Rust lowering emits MIDI instructions;
+the normal state processor derives concrete capture/playback jobs from settled
+loop state. It never delegates a whole quantum to another MIDI scheduler.

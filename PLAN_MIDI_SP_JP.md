@@ -223,17 +223,17 @@ handoff. Review that the design has one musical clock and one execution queue.
 
 ### 2. Build the minimal mixed compiler/SP/JP path
 
-- [ ] Extend compiler operations, stable bindings/initializers and limits for
+- [x] Extend compiler operations, stable bindings/initializers and limits for
   MIDI channels, input/output streams and execution slots. Lower them through
   `RustTarget`. Unsupported targets explicitly reject the new operations until
   implemented; no automatic app capability enablement.
-- [ ] Extend SP's instruction execution to update the small MIDI scheduling
+- [x] Extend SP's instruction execution to update the small MIDI scheduling
   fields and emit begin/finish capture, append and playback work from the
   compiled program. Use the existing settled render state and sync decisions.
-- [ ] Extend the existing `Job` enum, queue and `JobProcessor` dispatcher with
+- [x] Extend the existing `Job` enum, queue and `JobProcessor` dispatcher with
   small MIDI operations and prepared stream/result storage. Connect the reusable
   event store. The ordinary execution loop must process both job families.
-- [ ] Demonstrate record, stop, play and repeat alongside audio through a compiled
+- [x] Demonstrate record, stop, play and repeat alongside audio through a compiled
   image. Include silence, multiple loops, same-quantum finish/start dependencies,
   timestamp boundaries and stable merge ordering. This is an intermediate slice;
   it is not the final managed-MIDI behavior gate.
@@ -245,16 +245,16 @@ that success comes through JP execution rather than the legacy observer path.
 
 ### 3. Port the complete managed behavior onto explicit jobs
 
-- [ ] Integrate the reused interpreter, incremental comparisons and ordered
+- [x] Integrate the reused interpreter, incremental comparisons and ordered
   restoration/cleanup as JP operations, with accepted-output progress and
   per-loop activity. Keep targets immutable and output state shared by destination.
-- [ ] Integrate input observation, rolling history/checkpoints, pinned start-state
+- [x] Integrate input observation, rolling history/checkpoints, pinned start-state
   seeds, recording limits/completion and shared range playback. Preserve exact
   start-frame inclusion/exclusion and bounded checkpoint replay.
-- [ ] Integrate channel ownership, cleanup-before-handoff, stable output merging,
+- [x] Integrate channel ownership, cleanup-before-handoff, stable output merging,
   refusal/recovery, partial transitions, incomplete recordings and fatal pipeline
   behavior. MIDI-specific failures must not accidentally abort ordinary audio.
-- [ ] Route grab/duplicate/clear/replace and import/export preparation/publication
+- [x] Route grab/duplicate/clear/replace and import/export preparation/publication
   through the new binding/transaction model. Keep coherent pinned exports,
   atomic groups, capture reservations and budgeted background work/retirement.
 
@@ -265,20 +265,20 @@ refusals, stale handles, capacity exhaustion and edits during mixed playback.
 
 ### 4. Complete the Rust replacement and pass its gate
 
-- [ ] Remove MIDI execution from `SessionObserver` and the production standalone
+- [x] Remove MIDI execution from `SessionObserver` and the production standalone
   session loop. A compatibility API may forward to prepared resources and the
   normal pipeline; it must not preserve a second execution path.
-- [ ] Complete compiler graph/fixture coverage for supported audio-plus-MIDI
+- [x] Complete compiler graph/fixture coverage for supported audio-plus-MIDI
   routing and program loading. Verify the same JP handles real mixed job traces
   and that continuing state survives relocation, replacement and slot reuse.
-- [ ] Compare all existing managed-MIDI scenarios with the oracle, plus multi-loop/
+- [x] Compare all existing managed-MIDI scenarios with the oracle, plus multi-loop/
   multi-output, all supported quanta, callback partitioning, history rollover,
   content operations, failure recovery and exact audio output. Exercise the
   128-binding/3,000-event workload, configured limits and allocation guards.
 - [ ] Document the new program/job semantics, ownership, API changes, capacities
   and work bounds. Make CPU profiling descriptive only; no cloud wall-clock or
   simultaneous-128-grab pass threshold. Finish the Rust PR/milestone.
-- [ ] Review RTL mappability of the completed Rust design: record each job's
+- [x] Review RTL mappability of the completed Rust design: record each job's
   bounded work, storage/access needs, arithmetic ranges and plausible hardware
   implementation. Identify risks of excessive hardware state or duplicated
   calculations without requiring Rust to implement hardware blocks. Review
@@ -415,3 +415,14 @@ and speculative profiling.
   execution contract in [midi-shared-jobs.md](docs/fpga/midi-shared-jobs.md).
   Base is the previously measured RTL branch, which contains the reusable Rust
   work; origin backend is still `147c2457`. PR dependency handling remains explicit.
+- Stages 2–3: compiled mixed work pass and explicit MIDI jobs are implemented;
+  the production observer/standalone quantum scheduler is removed. Existing
+  reference/compiler suites pass with all features, including the 128-binding
+  dense/storage/allocation scenarios. Frozen-oracle comparisons cover all five
+  quanta, pedals, cross-destination ordering and partial output. Real compiled
+  image replacement retains active MIDI capture. Targeted host/protocol/transport
+  tests and the warning-denying workspace build pass. Broader workspace tests
+  are running before the Rust gate is closed.
+- The compiler exposes explicit `with_midi` context bindings on an audio graph's
+  logical program; general application MIDI strip/bus graph wiring stays outside
+  scope. This gives compiled mixed images without enabling unrelated app profiles.

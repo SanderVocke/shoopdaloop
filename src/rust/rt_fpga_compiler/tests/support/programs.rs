@@ -15,7 +15,7 @@ pub fn mono_loops(quantum: u32, count: u32) -> LogicalStateProgram {
         });
         count as usize
     ];
-    let mut audio_pass = vec![Operation::Input {
+    let mut work_pass = vec![Operation::Input {
         port: 0,
         destination: 0,
     }];
@@ -25,7 +25,7 @@ pub fn mono_loops(quantum: u32, count: u32) -> LogicalStateProgram {
         let playback = 1 + 2 * i;
         let output = 2 + 2 * i;
         initial_state.push(InitialValue::MediaView(i));
-        audio_pass.extend([
+        work_pass.extend([
             Operation::Playback {
                 loop_id: id(i),
                 view,
@@ -57,7 +57,7 @@ pub fn mono_loops(quantum: u32, count: u32) -> LogicalStateProgram {
         quantum,
         chunk_frames: 1,
         sync_pass: (0..count).map(id).collect(),
-        audio_pass,
+        work_pass,
         initial_state,
         state_bindings: (0..count)
             .map(|channel| StateBinding {
@@ -107,7 +107,7 @@ pub fn sync_smoothing(quantum: u32) -> LogicalStateProgram {
         quantum,
         chunk_frames: 1,
         sync_pass: vec![id],
-        audio_pass: vec![
+        work_pass: vec![
             Operation::Input {
                 port: 0,
                 destination: 0,

@@ -542,23 +542,10 @@ fn synchronization_wait_releases_notes_and_resumes_only_on_the_source_pulse() {
         },
     )
     .unwrap();
-    let program = Program {
-        sync_instructions: vec![],
-        quantum: 16,
-        chunk_frames: 1,
-        jobs_per_quantum: 2,
-        instructions: vec![
-            Instruction::ProcessInput {
-                port: 0,
-                destination: BufferId(0),
-            },
-            Instruction::ProcessOutput {
-                source: BufferId(0),
-                port: 0,
-            },
-        ],
-    };
-    f.pipeline = Pipeline::prepare(plan, program, vec![], 2).unwrap();
+    let mut program = f.pipeline.program().clone();
+    program.sync_instructions.clear();
+    let capacity = program.jobs_per_quantum;
+    f.pipeline = Pipeline::prepare(plan, program, vec![], capacity).unwrap();
     f.command(
         1,
         Operation::Play {

@@ -183,8 +183,12 @@ impl Layout {
             b.gain = b.gain.map(address);
             b.view = b.view.map(address);
         }
-        for op in &mut bound.audio_pass {
+        for op in &mut bound.work_pass {
             match op {
+                Operation::Midi {
+                    loop_id: Some(loop_id),
+                    ..
+                } => *loop_id = id(*loop_id)?,
                 Operation::Playback { loop_id, view, .. }
                 | Operation::Capture { loop_id, view, .. } => {
                     *loop_id = id(*loop_id)?;

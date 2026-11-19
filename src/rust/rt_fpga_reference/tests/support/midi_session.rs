@@ -10,6 +10,7 @@ pub use rt_fpga_reference::{
         LoopKind, LoopSpec, Operation, PlanDescription, TransitionLimits, TransitionPlan,
     },
 };
+use std::{vec, vec::Vec};
 pub fn msg(bytes: &[u8]) -> Message {
     Message::managed(bytes).unwrap()
 }
@@ -81,22 +82,76 @@ impl Fixture {
             },
         )
         .unwrap();
-        let program = Program {
-            sync_instructions: vec![],
-            instructions: vec![
-                Instruction::ProcessInput {
-                    port: 0,
-                    destination: BufferId(0),
-                },
-                Instruction::ProcessOutput {
-                    source: BufferId(0),
-                    port: 0,
-                },
-            ],
+        use rt_fpga_compiler::{
+            LogicalStateProgram, Operation as Op, Resources, StateProgramTarget,
+        };
+        let logical = LogicalStateProgram {
             quantum: q,
             chunk_frames: 1,
+            sync_pass: (0..limits.loops)
+                .map(|slot| rt_fpga_compiler::Identity {
+                    slot: u32::from(slot),
+                    generation: 1,
+                })
+                .collect(),
+            work_pass: vec![
+                Op::Input {
+                    port: 0,
+                    destination: 0,
+                },
+                Op::Output { source: 0, port: 0 },
+            ],
+            initial_state: vec![],
+            state_bindings: vec![],
+            loops: (0..limits.loops)
+                .map(|slot| rt_fpga_compiler::Loop {
+                    id: rt_fpga_compiler::Identity {
+                        slot: u32::from(slot),
+                        generation: 1,
+                    },
+                    length: 0,
+                    sync_source: None,
+                    repeat_sync: false,
+                })
+                .collect(),
+            bindings: (0..limits.loops)
+                .map(|slot| rt_fpga_compiler::LoopBinding {
+                    id: rt_fpga_compiler::Identity {
+                        slot: u32::from(slot),
+                        generation: 1,
+                    },
+                    gain: None,
+                    view: None,
+                    meter: None,
+                })
+                .collect(),
             jobs_per_quantum: 2,
-        };
+            resources: Resources {
+                queue_capacity: 2,
+                buffers: 1,
+                history_slots: 0,
+                input_ports: 1,
+                output_ports: 1,
+                events: 512,
+            },
+        }
+        .with_midi(
+            &(0..limits.loops)
+                .map(|context| rt_fpga_compiler::MidiBinding {
+                    loop_id: rt_fpga_compiler::Identity {
+                        slot: u32::from(context),
+                        generation: 1,
+                    },
+                    context,
+                })
+                .collect::<Vec<_>>(),
+        )
+        .unwrap();
+        let compiled = rt_fpga_reference::target::RustTarget::new(&[])
+            .build(&logical)
+            .unwrap();
+        let program = compiled.program;
+        let capacity = program.jobs_per_quantum;
         let mut midi = MidiSession::prepare(limits).unwrap();
         for i in 0..limits.loops {
             midi.bind(
@@ -111,7 +166,7 @@ impl Fixture {
             .unwrap();
         }
         Self {
-            pipeline: Pipeline::prepare(plan, program, vec![], 2).unwrap(),
+            pipeline: Pipeline::prepare(plan, program, vec![], capacity).unwrap(),
             jobs: JobProcessor::new(q as usize, 1),
             audio: MediaStore::new(1).unwrap(),
             midi,

@@ -116,9 +116,18 @@ impl StateProgramTarget for RustTarget<'_> {
             })
             .collect::<Result<Vec<_>, CompileError>>()?;
         let instructions = logical
-            .audio_pass
+            .work_pass
             .iter()
             .map(|op| match *op {
+                Operation::Midi {
+                    phase,
+                    loop_id,
+                    context,
+                } => Instruction::ProcessMidi {
+                    phase,
+                    loop_id: loop_id.map(id),
+                    context,
+                },
                 Operation::Silence { destination } => Instruction::ProcessSilence {
                     destination: BufferId(destination as usize),
                 },

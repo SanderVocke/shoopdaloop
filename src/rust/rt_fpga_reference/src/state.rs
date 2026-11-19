@@ -34,6 +34,33 @@ pub struct Program {
     pub jobs_per_quantum: usize,
 }
 
+impl Program {
+    pub(crate) fn check_midi_job_budget(&self) -> Result<(), Error> {
+        if self
+            .instructions
+            .iter()
+            .any(|i| matches!(i, Instruction::ProcessMidi { .. }))
+        {
+            let needed = self
+                .instructions
+                .iter()
+                .try_fold(0usize, |total, instruction| {
+                    let count = match instruction {
+                        Instruction::ProcessMidi { phase, .. } => phase.jobs() as usize,
+                        Instruction::ProcessLogicalCapture { .. }
+                        | Instruction::ProcessLoopCapture { .. } => 2,
+                        _ => 1,
+                    };
+                    total.checked_add(count).ok_or(Error::QueueFull)
+                })?;
+            if needed > self.jobs_per_quantum {
+                return Err(Error::QueueFull);
+            }
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(transparent))]
@@ -84,6 +111,11 @@ impl Value {
 )]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum Instruction {
+    ProcessMidi {
+        phase: rt_fpga_compiler::MidiPhase,
+        loop_id: Option<Identity>,
+        context: u16,
+    },
     ProcessSilence {
         destination: BufferId,
     },
@@ -446,6 +478,7 @@ impl StateProcessor {
         loops: Option<SettledRecords<'_>>,
         sink: &mut impl FnMut(crate::resolver::ReadIntent),
     ) -> Result<(), Error> {
+        program.check_midi_job_budget()?;
         if !queue.is_empty() || queue.remaining() < program.jobs_per_quantum {
             return Err(Error::QueueFull);
         }
@@ -485,6 +518,74 @@ impl StateProcessor {
         };
         for &instruction in &program.instructions {
             match instruction {
+                Instruction::ProcessMidi {
+                    phase,
+                    loop_id,
+                    context,
+                } => {
+                    use crate::midi::MidiJob as M;
+                    use rt_fpga_compiler::MidiPhase as P;
+                    let record = loop_id.map(|id| self.loop_record(loops, id)).transpose()?;
+                    let start = self
+                        .frame()
+                        .checked_sub(u64::from(program.quantum))
+                        .ok_or(Error::InvalidState)?;
+                    let job = match phase {
+                        P::Begin => M::Begin {
+                            frame: self.frame(),
+                        },
+                        P::Capture => {
+                            let r = record.ok_or(Error::InvalidState)?;
+                            if r.mode != Mode::Recording {
+                                emit(Job::Midi(M::FinishCapture { context }))?;
+                            }
+                            if r.mode == Mode::Recording && r.begin_capture {
+                                emit(Job::Midi(M::BeginCapture {
+                                    context,
+                                    frame: start,
+                                }))?;
+                            }
+                            continue;
+                        }
+                        P::Observe => M::Observe,
+                        P::Append => {
+                            if record.ok_or(Error::InvalidState)?.mode != Mode::Recording {
+                                continue;
+                            }
+                            M::Append { context }
+                        }
+                        P::Cleanup => M::Cleanup {
+                            context,
+                            record: record.ok_or(Error::InvalidState)?,
+                        },
+                        P::ClaimEstablished | P::ClaimNew => {
+                            let r = record.ok_or(Error::InvalidState)?;
+                            M::Claim {
+                                context,
+                                playing: r.mode == Mode::Playing && r.position < r.content_length,
+                                established: phase == P::ClaimEstablished,
+                            }
+                        }
+                        P::Playback => M::ReadUntil {
+                            context,
+                            record: record.ok_or(Error::InvalidState)?,
+                        },
+                        P::Output => M::Output,
+                        P::Complete => {
+                            let r = record.ok_or(Error::InvalidState)?;
+                            M::Complete {
+                                context,
+                                mode: if r.mode == Mode::Playing && r.position >= r.content_length {
+                                    Mode::Stopped
+                                } else {
+                                    r.mode
+                                },
+                            }
+                        }
+                        P::Maintain => M::Maintain,
+                    };
+                    emit(Job::Midi(job))?;
+                }
                 Instruction::ProcessSilence { destination } => emit(Job::Silence { destination })?,
                 Instruction::ProcessConstant { value, destination } => {
                     emit(Job::Constant { value, destination })?

@@ -43,7 +43,7 @@ fn channel_topologies_have_stable_state_and_deterministic_single_write_programs(
                     .unwrap()
         );
         let mut written = std::collections::BTreeSet::new();
-        for op in &program.audio_pass {
+        for op in &program.work_pass {
             let destination = match *op {
                 Operation::Silence { destination }
                 | Operation::Input { destination, .. }
@@ -117,7 +117,7 @@ fn target_resource_admission_includes_channels_smoothing_and_all_emitted_operati
     g.loops[0].boundary_smoothing_frames = 33;
     let p = compile(&g, context()).unwrap();
     let exact = ProgramLimits {
-        instructions: (p.sync_pass.len() + p.audio_pass.len()) as u32,
+        instructions: (p.sync_pass.len() + p.work_pass.len()) as u32,
         state_values: p.initial_state.len() as u32,
         loop_slots: 3,
         jobs: p.resources.queue_capacity,
@@ -178,11 +178,11 @@ fn empty_sessions_and_monitoring_without_loops_are_real_programs() {
     let p = compile(&g, context()).unwrap();
     assert!(p.loops.is_empty());
     assert!(p
-        .audio_pass
+        .work_pass
         .iter()
         .any(|op| matches!(op, Operation::Input { .. })));
     assert!(p
-        .audio_pass
+        .work_pass
         .iter()
         .any(|op| matches!(op, Operation::Output { .. })));
 }

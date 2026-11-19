@@ -33,8 +33,12 @@ The programmatic MIDI path uses `midi::MidiSession` and
 playback/repeat/stop, immutable content views, initial-state transitions, continuing
 history, atomic multi-loop grabs, and retained import/export/duplication. Pipeline
 methods publish MIDI content and timing metadata together at quantum boundaries.
-It is not exposed through the shared graph compiler, RT endpoint, application
-host or hardware target; their MIDI refusals remain intentional.
+Compile an audio graph, then use `LogicalStateProgram::with_midi` to bind MIDI
+context slots to its loop identities before target lowering/loading. The compiled
+mixed work pass emits explicit MIDI jobs through the same SP, queue and JP as
+audio. `MidiSession` supplies prepared content/state services; it has no quantum
+scheduler. Direct application graph MIDI wiring, the RT endpoint and application
+host remain outside this profile. See [execution and mapping](../../../docs/fpga/midi-shared-jobs.md).
 
 ## SP configuration and execution
 

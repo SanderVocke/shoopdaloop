@@ -12,7 +12,7 @@ fn raw_state_programs_enforce_prepared_resource_limits() {
             programs::sync_smoothing(quantum),
         ] {
             let exact = ProgramLimits {
-                instructions: (program.sync_pass.len() + program.audio_pass.len()) as u32,
+                instructions: (program.sync_pass.len() + program.work_pass.len()) as u32,
                 state_values: program.initial_state.len() as u32,
                 loop_slots: program.loops.len() as u32,
                 jobs: program.resources.queue_capacity,
@@ -68,7 +68,7 @@ fn malformed_program_parameters_and_references_are_rejected() {
             0 => invalid.sync_pass.reverse(),
             1 => invalid.bindings[0].gain = Some(2),
             2 => {
-                invalid.audio_pass[0] = Operation::Input {
+                invalid.work_pass[0] = Operation::Input {
                     port: 1,
                     destination: 0,
                 }
@@ -81,4 +81,62 @@ fn malformed_program_parameters_and_references_are_rejected() {
             Err(CompileError::InvalidProgram)
         );
     }
+}
+
+#[shoop_test]
+fn mixed_programs_validate_phase_order_stable_contexts_and_queue_bounds() {
+    let audio = programs::mono_loops(32, 2);
+    let mixed = audio
+        .clone()
+        .with_midi(&[
+            MidiBinding {
+                loop_id: audio.loops[1].id,
+                context: 7,
+            },
+            MidiBinding {
+                loop_id: audio.loops[0].id,
+                context: 3,
+            },
+        ])
+        .unwrap();
+    mixed.validate(ProgramLimits::default()).unwrap();
+    assert_eq!(mixed.jobs_per_quantum, audio.jobs_per_quantum + 4 + 8 * 2);
+    for change in 0..5 {
+        let mut bad = mixed.clone();
+        let start = audio.work_pass.len();
+        match change {
+            0 => bad.work_pass.swap(start, start + 1),
+            1 => bad.work_pass.push(bad.work_pass[start]),
+            2 => {
+                bad.work_pass[start + 1] = Operation::Midi {
+                    phase: MidiPhase::Capture,
+                    loop_id: Some(audio.loops[0].id),
+                    context: 7,
+                }
+            }
+            3 => {
+                bad.work_pass.remove(start + 1);
+            }
+            _ => {
+                bad.jobs_per_quantum -= 1;
+            }
+        };
+        assert_eq!(
+            bad.validate(ProgramLimits::default()),
+            Err(CompileError::InvalidProgram)
+        );
+    }
+    assert_eq!(
+        audio.with_midi(&[
+            MidiBinding {
+                loop_id: mixed.loops[0].id,
+                context: 3
+            },
+            MidiBinding {
+                loop_id: mixed.loops[1].id,
+                context: 3
+            },
+        ]),
+        Err(CompileError::InvalidProgram)
+    );
 }
