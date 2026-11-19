@@ -17,6 +17,9 @@ The crate is `no_std` with `alloc`. It contains:
 - `fixed`, `records`: independent arithmetic/ramps and explicit read-only records.
 - `storage`, `chunk_memory`, `resolver`: logical media ownership, slices,
   recording/readback, chunk storage and advisory read resolution.
+- `midi`: shared event views, stepped musical state, incremental differences,
+  history grabs, bounded transfers, and multi-loop execution on the SP clock. See the
+  [MIDI component guide](src/midi/README.md).
 
 The core models have no TP command admission, retained request table or old ARM
 protocol. The optional `rt-interface` implements the current command/response and
@@ -24,6 +27,14 @@ snapshot profile, and an optional `shoop_host` profile provides restricted
 application integration. Native CPU request processing remains in the production
 runtime. `serde` and `schema` describe fixtures and values, rather than a transport
 contract.
+
+The programmatic MIDI path uses `midi::MidiSession` and
+`Pipeline::process_midi_session`. It supports prepared multi-loop recording,
+playback/repeat/stop, immutable content views, initial-state transitions, continuing
+history, atomic multi-loop grabs, and retained import/export/duplication. Pipeline
+methods publish MIDI content and timing metadata together at quantum boundaries.
+It is not exposed through the shared graph compiler, RT endpoint, application
+host or hardware target; their MIDI refusals remain intentional.
 
 ## SP configuration and execution
 
