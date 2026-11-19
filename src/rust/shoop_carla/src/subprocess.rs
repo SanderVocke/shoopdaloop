@@ -28,7 +28,6 @@ use std::{
     thread::{self, JoinHandle},
     time::{Duration, Instant},
 };
-use uuid::Uuid;
 
 const LOG_CAPACITY: usize = 64 * 1024;
 const MAX_LOG_GENERATIONS: usize = 8;
@@ -37,7 +36,7 @@ const CONTROL_TIMEOUT: Duration = Duration::from_secs(2);
 const UI_CONTROL_TIMEOUT: Duration = Duration::from_secs(10);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
 
-fn nonce_hex(nonce: &[u8; 32]) -> String {
+pub fn nonce_hex(nonce: &[u8; 32]) -> String {
     let mut output = String::with_capacity(64);
     for byte in nonce {
         use std::fmt::Write;
@@ -46,11 +45,11 @@ fn nonce_hex(nonce: &[u8; 32]) -> String {
     output
 }
 
-fn new_nonce() -> [u8; 32] {
-    let mut nonce = [0u8; 32];
-    nonce[..16].copy_from_slice(Uuid::new_v4().as_bytes());
-    nonce[16..].copy_from_slice(Uuid::new_v4().as_bytes());
-    nonce
+pub fn new_nonce() -> Result<[u8; 32]> {
+    let mut bytes = [std::mem::MaybeUninit::uninit(); 32];
+    let bytes = getrandom::fill_uninit(&mut bytes)
+        .map_err(|error| anyhow!("could not generate Carla worker nonce: {error}"))?;
+    Ok(bytes.try_into().expect("the nonce buffer has 32 bytes"))
 }
 
 #[derive(Debug, Default)]
@@ -325,7 +324,7 @@ impl SubprocessCarlaProcessor {
         let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))?;
         listener.set_nonblocking(true)?;
         let address = listener.local_addr()?;
-        let nonce = new_nonce();
+        let nonce = new_nonce()?;
         let shared_transport = SharedBlockTransport::create(generation, &nonce)?;
         let mut command = Command::new(executable.as_ref());
         command
@@ -1518,7 +1517,7 @@ mod tests {
 
     #[shoop_wasm_test_support::shoop_test]
     fn nonce_round_trip_and_validation() {
-        let nonce = new_nonce();
+        let nonce = new_nonce().unwrap();
         assert_eq!(
             crate::child::parse_nonce(&nonce_hex(&nonce)).unwrap(),
             nonce

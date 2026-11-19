@@ -31,15 +31,15 @@ const CONTROL_TIMEOUT: Duration = Duration::from_secs(2);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
 
 pub fn parse_nonce(value: &str) -> Result<[u8; 32]> {
-    if value.len() != 64 || !value.is_ascii() {
+    if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err(anyhow!("Carla worker nonce must contain 64 hex digits"));
     }
-    let mut nonce = [0u8; 32];
-    for (index, byte) in nonce.iter_mut().enumerate() {
-        *byte = u8::from_str_radix(&value[index * 2..index * 2 + 2], 16)
-            .context("worker nonce contains invalid hexadecimal")?;
-    }
-    Ok(nonce)
+    let (first, second) = value.split_at(32);
+    let parts = [
+        u128::from_str_radix(first, 16)?.to_be_bytes(),
+        u128::from_str_radix(second, 16)?.to_be_bytes(),
+    ];
+    Ok(std::array::from_fn(|i| parts[i / 16][i % 16]))
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

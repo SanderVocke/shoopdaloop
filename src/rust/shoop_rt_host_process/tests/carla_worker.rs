@@ -7,7 +7,7 @@ use shoop_carla::{
     processor::CarlaProcessor,
     service::ChainService,
     state::{decode_state, encode_state},
-    subprocess::SupervisedCarlaProcessor,
+    subprocess::{new_nonce, nonce_hex, SupervisedCarlaProcessor},
 };
 use shoop_plugin_protocol::{
     read_frame, write_frame, BlockSequence, CarlaChainType, CarlaProcessorLifecycle, ChainId,
@@ -261,7 +261,7 @@ fn companion_carla_child_processes_socket_and_shared_audio_and_midi() {
         return;
     }
     const FRAMES: usize = 64;
-    let nonce = [0x53; 32];
+    let nonce = new_nonce().unwrap();
     let mut transport = SharedBlockTransport::create(GENERATION, &nonce).unwrap();
     let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
     listener.set_nonblocking(true).unwrap();
@@ -270,7 +270,8 @@ fn companion_carla_child_processes_socket_and_shared_audio_and_midi() {
             .arg("--carla-worker")
             .arg("--carla-worker-address")
             .arg(listener.local_addr().unwrap().to_string())
-            .arg("--carla-worker-nonce=5353535353535353535353535353535353535353535353535353535353535353")
+            .arg("--carla-worker-nonce")
+            .arg(nonce_hex(&nonce))
             .arg("--carla-worker-chain-id")
             .arg(CHAIN.0.to_string())
             .arg("--carla-worker-generation")
