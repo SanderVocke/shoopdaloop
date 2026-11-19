@@ -1,10 +1,12 @@
 //! Bounded MIDI 1.0 components for functional reference execution.
 mod emission;
 mod state;
+mod storage;
 
 pub use emission::{Emission, EmissionKind};
 use state::BasicUpdate;
 pub use state::{ChannelState, MidiState, NoteState};
+pub use storage::{Cursor, Event, Record, Take, TakeStatus};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {

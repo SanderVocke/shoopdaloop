@@ -142,14 +142,14 @@ Commit after these checks pass; do not run the whole workspace on every iteratio
 
 ### 3. Add the simple take store and playback cursor
 
-- [ ] Add bounded inline event records, append-only capture, saved initial state,
+- [x] Add bounded inline event records, append-only capture, saved initial state,
   recording length, and a sequential playback cursor.
-- [ ] Validate timestamps and stable equal-time ordering. Define and test record
+- [x] Validate timestamps and stable equal-time ordering. Define and test record
   start/finalization and zero-event recordings without relying on event count as
   the recording duration.
-- [ ] Preserve accepted records on exhaustion; return the failure and completed
+- [x] Preserve accepted records on exhaustion; return the failure and completed
   extent explicitly. Refuse invalid take reuse before mutation.
-- [ ] Test exact round trips, same-time note/control sequences, window boundaries,
+- [x] Test exact round trips, same-time note/control sequences, window boundaries,
   minimal capacities, exhausted storage, and counter overflow.
 
 Verification: small-capacity unit tests against a plain test-only event list,
@@ -230,3 +230,6 @@ timing results.
 - Integration uses the SP loop render state after synchronization and before the next quantum; MIDI owns no loop clock.
 - Invalid windows are refused before MIDI mutation. Storage exhaustion freezes the accepted prefix as incomplete; output refusal enters acknowledged recovery and blocks ordinary output.
 - Rust bindings are programmatic; shared graph compilation continues to reject MIDI.
+
+- State component: six focused tests passed, including generated comparison and independent sustain model; crate build passed with warnings denied.
+- Storage: four integration tests and the counter-overflow unit test passed; crate build passed with warnings denied.

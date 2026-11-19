@@ -34,3 +34,13 @@ excluded and explicit acknowledged field-by-field progress replacing bulk output
 
 Tests include production-state comparisons, independently specified bank and
 sostenuto ordering, a separate held-key map for sustain, and allocation guards.
+
+## Takes
+
+A take owns a prepared flat event buffer and its initial state. Equal-frame events
+retain append order; silent windows still add duration. Invalid windows do not
+mutate the take. Exhaustion freezes an incomplete take, preserving accepted records
+and the duration of fully accepted windows; a partial final window may contain
+records beyond that duration. Incomplete takes cannot play. A playback cursor pins
+the take against replacement until explicitly released. Revisions reject stale
+cursors after a new take begins.
