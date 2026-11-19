@@ -370,7 +370,66 @@ impl<S: Sample> Processor<LoopPlanner<S>, (), S> for CaptureNode<S> {
         }
         let row = block.domain.rows[slot].as_mut().ok_or(Error::InvalidId)?;
         if let Some(take) = row.delayed.as_mut().filter(|_| !row.aborted) {
-            if let Some(edit) = row.active.as_mut().filter(|edit| edit.edit.is_some()) {
+            if let Some((writer, start, revision)) = row
+                .active
+                .and_then(|edit| Some((edit.writer?, edit.started_at, edit.revision)))
+            {
+                let result = (|| {
+                    let owner = row.worker_source.ok_or(Error::InvalidState)?;
+                    let inputs = block
+                        .domain
+                        .worker_inputs
+                        .as_mut()
+                        .ok_or(Error::InvalidState)?;
+                    let shared = block.domain.shared.as_mut().ok_or(Error::InvalidState)?;
+                    let target = row.binding.target;
+                    let decision = view.decision.state;
+                    let frames = block.quantum.frames();
+                    if take.cut.is_none() && decision.mode == crate::Mode::Replacing {
+                        inputs.observe_edit_position(
+                            target,
+                            revision,
+                            block.frame,
+                            decision.position,
+                        )?;
+                        shared.write_replacement_input(
+                            writer,
+                            block.frame,
+                            frames,
+                            &mut block.resources,
+                        )?;
+                    }
+                    if let Some(source) =
+                        take.release_source(start, block.frame, owner.delay_frames)
+                    {
+                        let (_, _, stream) = inputs
+                            .completed(row.history_source as usize, owner, block.frame)
+                            .ok_or(Error::Incomplete)?;
+                        if take
+                            .stream_generation
+                            .is_some_and(|expected| expected != stream)
+                        {
+                            return Err(Error::Incomplete);
+                        }
+                        let position = inputs
+                            .edit_position(target, revision, source)
+                            .ok_or(Error::Incomplete)?;
+                        shared.write_replacement_wet(
+                            writer,
+                            position,
+                            frames,
+                            &block.audio,
+                            &mut block.resources,
+                        )?;
+                        take.stream_generation = Some(stream);
+                    }
+                    Ok(())
+                })();
+                if let Err(error) = result {
+                    row.aborted = true;
+                    row.failure = Some(error);
+                }
+            } else if let Some(edit) = row.active.as_mut().filter(|edit| edit.edit.is_some()) {
                 let result = (|| {
                     let owner = row.worker_source.ok_or(Error::InvalidState)?;
                     let inputs = block

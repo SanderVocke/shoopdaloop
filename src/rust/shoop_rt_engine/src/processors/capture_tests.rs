@@ -62,6 +62,7 @@ struct Fixture {
     host: OfflineHost,
     workers: Vec<LocalWorker>,
     fail_worker: bool,
+    fail_source: Option<u64>,
     worker_gain: f32,
 }
 
@@ -145,6 +146,7 @@ impl Fixture {
             host: OfflineHost::new_with_processors(&description, prepared).unwrap(),
             workers,
             fail_worker: false,
+            fail_source: None,
             worker_gain: 2.,
         };
         fixture.host.connect().unwrap();
@@ -188,7 +190,12 @@ impl Fixture {
             for worker in &mut self.workers {
                 worker
                     .process_next(|_, batch| {
-                        if self.fail_worker {
+                        if self.fail_worker
+                            || self.fail_source.is_some_and(|source| {
+                                (batch.tag.source.0..batch.tag.source.0 + batch.frames as u64)
+                                    .contains(&source)
+                            })
+                        {
                             return Err(Error::Incomplete);
                         }
                         for channel in 0..2 {
@@ -215,15 +222,45 @@ impl Fixture {
     }
 
     fn done(&mut self, request: Request) {
+        assert_eq!(self.answer(request), Outcome::Done, "{request:?}");
+    }
+
+    fn answer(&mut self, request: Request) -> Outcome {
         let id = self.host.request(request).unwrap();
-        let outcome = self.wait_for(|event| match event {
+        self.wait_for(|event| match event {
             EngineMessage::Result {
                 correlation,
                 outcome,
             } if correlation == id => Some(outcome),
             _ => None,
-        });
-        assert_eq!(outcome, Outcome::Done, "{request:?}");
+        })
+    }
+
+    fn replacing(&mut self, id: u64, position: u64) -> u64 {
+        for request in [
+            Request::InputBegin { id, count: 1 },
+            Request::InputAppend {
+                id,
+                edit: InputEdit {
+                    loop_id: target(),
+                    intent: InputIntent::Mode {
+                        mode: LoopMode::Replacing,
+                        position: Some(position),
+                    },
+                },
+            },
+            Request::InputPrepare { id },
+        ] {
+            assert!(
+                matches!(self.answer(request), Outcome::Input(_)),
+                "{request:?}"
+            );
+        }
+        let Outcome::Input(progress) = self.answer(Request::InputCommit { id, delay: None }) else {
+            panic!("replace input")
+        };
+        assert_eq!(progress.phase, InputPhase::Applied);
+        progress.effective_frame.unwrap()
     }
 
     fn wait_for<T>(&mut self, mut find: impl FnMut(EngineMessage) -> Option<T>) -> T {
@@ -416,4 +453,84 @@ fn worker_rerecords_wet_at_wrapped_source_positions_and_rolls_back_a_lost_tail()
         rerecorded.payload
     );
     assert_eq!(fixture.read(BulkSelector::Midi, 5, 0).payload, midi);
+}
+
+#[shoop_test]
+fn worker_replacing_pairs_wrapped_dry_wet_and_midi_and_rolls_back_a_missing_tail() {
+    let mut fixture = Fixture::new();
+    let start = fixture.mode(LoopMode::Recording).frame;
+    fixture.step();
+    fixture.step();
+    let length = fixture.mode(LoopMode::Stopped).frame - start;
+    let delay = (TIMING.batch_quanta + TIMING.slack_quanta) * Q;
+    for _ in 0..=delay / Q {
+        fixture.step();
+    }
+    assert_eq!(fixture.state().revision, 1);
+
+    fixture.worker_gain = 3.;
+    let position = Q as u64;
+    let start = fixture.replacing(1, position);
+    for _ in 0..length / Q as u64 + 2 {
+        fixture.step();
+    }
+    let cut = fixture.mode(LoopMode::Stopped);
+    assert_eq!(cut.revision, 1);
+    let frames = cut.frame - start;
+    assert!(frames > length);
+    while fixture.host.next_frame() < cut.frame + delay as u64 {
+        fixture.step();
+        assert_eq!(fixture.state().revision, 1);
+    }
+    fixture.step();
+    assert_eq!(fixture.state().revision, 2);
+    assert_eq!(fixture.state().length, length);
+    let source = |offset: u64| {
+        let first = (offset + length - position) % length;
+        start + first + (frames - first - 1) / length * length
+    };
+    let audio = fixture.read(BulkSelector::AudioRoles, 1, 0);
+    assert_eq!(audio.total, length);
+    let BulkPayload::Audio { len, samples } = audio.payload else {
+        panic!("audio")
+    };
+    assert_eq!(u64::from(len), 4 * length);
+    for (offset, actual) in samples[..usize::from(len)].chunks_exact(4).enumerate() {
+        let sample = dry(source(offset as u64));
+        assert_eq!(actual, [sample, -sample, 3. * sample, -3. * sample]);
+    }
+    let midi = fixture.read(BulkSelector::Midi, 2, 0).payload;
+    let BulkPayload::Midi { len, bytes } = midi else {
+        panic!("MIDI")
+    };
+    assert_eq!(u64::from(len), length / Q as u64 * 15);
+    for (tick, event) in bytes[..usize::from(len)].chunks_exact(15).enumerate() {
+        let offset = (tick * Q) as u64;
+        assert_eq!(event[..8], (offset + 7).to_le_bytes());
+        assert_eq!(event[8..12], 3_u32.to_le_bytes());
+        assert_eq!(event[12..], packet(source(offset)));
+    }
+
+    fixture.worker_gain = 4.;
+    fixture.replacing(2, 0);
+    for _ in 0..=delay / Q {
+        fixture.step();
+    }
+    let missing = fixture.host.next_frame();
+    fixture.fail_source = Some(missing);
+    fixture.step();
+    fixture.step();
+    let stopped = fixture.mode(LoopMode::Stopped);
+    assert_eq!(stopped.revision, 2);
+    assert!(stopped.frame > missing);
+    for _ in 0..=delay / Q + 2 {
+        fixture.step();
+    }
+    assert!(fixture.state().capture_incomplete);
+    assert_eq!(fixture.state().revision, 2);
+    assert_eq!(
+        fixture.read(BulkSelector::AudioRoles, 3, 0).payload,
+        audio.payload
+    );
+    assert_eq!(fixture.read(BulkSelector::Midi, 4, 0).payload, midi);
 }

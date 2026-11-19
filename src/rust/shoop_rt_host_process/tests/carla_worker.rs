@@ -457,6 +457,62 @@ fn companion_installs_real_carla_track_and_bus_banks() {
         let refused = backend.replace_session(&invalid).unwrap_err();
         assert!(refused.to_string().contains("InvalidValue"), "{refused:#}");
         wait_for_routed_audio(&mut backend);
+
+        let old_revision = backend.poll().unwrap().loops[&new_loop].content_revision;
+        backend
+            .transition_loop(new_loop, BackendLoopMode::Replacing, None)
+            .unwrap();
+        let deadline = Instant::now() + TIMEOUT;
+        let mut started = None;
+        loop {
+            let state = backend.poll().unwrap();
+            let take = &state.loops[&new_loop];
+            assert!(
+                state.mutation_failures.is_empty(),
+                "{:?}",
+                state.mutation_failures
+            );
+            assert!(!take.capture_incomplete, "{take:?}");
+            if take.mode == BackendLoopMode::Replacing {
+                let start = *started.get_or_insert(state.status.processed_frames);
+                assert_eq!(take.content_revision, old_revision);
+                if state.status.processed_frames - start >= 2 * u64::from(take.length) {
+                    break;
+                }
+            }
+            assert!(
+                Instant::now() < deadline,
+                "replacing did not start: {take:?}"
+            );
+            thread::sleep(Duration::from_millis(2));
+        }
+        backend
+            .transition_loop(new_loop, BackendLoopMode::Stopped, None)
+            .unwrap();
+        let deadline = Instant::now() + TIMEOUT;
+        let replaced = loop {
+            let state = backend.poll().unwrap();
+            let take = &state.loops[&new_loop];
+            assert!(!take.capture_incomplete, "{take:?}");
+            if take.mode == BackendLoopMode::Stopped && take.content_revision > old_revision {
+                if let BackendAsyncResult::Ready(take) =
+                    backend.capture_loop_content_async(new_loop).unwrap()
+                {
+                    break take;
+                }
+            }
+            assert!(
+                Instant::now() < deadline,
+                "replacement tail did not settle: {take:?}"
+            );
+            thread::sleep(Duration::from_millis(2));
+        };
+        assert_eq!(replaced.length, 1024);
+        assert_eq!(replaced.audio.len(), 3);
+        assert!(replaced
+            .audio
+            .iter()
+            .all(|channel| channel.samples.as_slice() == &[0.; 1024]));
         drop(backend);
         let report = supervisor.stop();
         assert!(

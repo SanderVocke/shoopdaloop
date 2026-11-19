@@ -163,7 +163,7 @@ impl<S: Sample> LoopPlanner<S> {
         let row = self.rows[slot].ok_or(Error::InvalidId)?;
         if let Some(writer) = row
             .active
-            .filter(|_| row.dry_wet)
+            .filter(|_| row.dry_wet && row.delayed.is_none())
             .and_then(|take| take.writer)
         {
             self.shared

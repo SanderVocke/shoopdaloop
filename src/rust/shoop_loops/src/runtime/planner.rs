@@ -252,7 +252,7 @@ impl<S: Sample> LoopPlanner<S> {
         io: &mut PlannerResourceIo<'_, S>,
     ) -> Result<(), Error> {
         let row = self.rows[slot].ok_or(Error::InvalidId)?;
-        if row.worker_source.is_some() {
+        if row.worker_source.is_some() && decision.state.mode != Mode::Replacing {
             if !matches!(
                 decision.state.mode,
                 Mode::Recording | Mode::RecordingDryIntoWet
@@ -685,6 +685,12 @@ impl<S: Sample> LoopPlanner<S> {
             let mut decision = self.views[slot].decision;
             if aborted {
                 if let Some(take) = active {
+                    if let Some(writer) = take.writer {
+                        self.shared
+                            .as_mut()
+                            .ok_or(Error::InvalidState)?
+                            .cancel_live(writer, io)?;
+                    }
                     if let Some(token) = take.token {
                         io.capture().abort(token)?;
                     }
@@ -790,12 +796,14 @@ impl<S: Sample> LoopPlanner<S> {
                         interval: None,
                         stream_generation: None,
                     }),
-                    (None, Some(_)) if take.edit.is_some() => Some(worker_capture::DelayedTake {
-                        token: None,
-                        cut: None,
-                        interval: None,
-                        stream_generation: None,
-                    }),
+                    (None, Some(_)) if take.edit.is_some() || take.writer.is_some() => {
+                        Some(worker_capture::DelayedTake {
+                            token: None,
+                            cut: None,
+                            interval: None,
+                            stream_generation: None,
+                        })
+                    }
                     (Some(token), None) => {
                         io.capture().activate(token, frame)?;
                         None
