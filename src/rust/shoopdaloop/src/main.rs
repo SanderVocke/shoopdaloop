@@ -3298,7 +3298,8 @@ impl Runtime {
             midi.hub(),
             backend,
             pools,
-            shoop_egui::processor_settings_from_snapshot(settings).map_err(anyhow::Error::msg)?,
+            shoop_egui::processor_settings_from_snapshot(settings, backend)
+                .map_err(anyhow::Error::msg)?,
         )?;
         if offline {
             set_offline_audio_permission_presentation();

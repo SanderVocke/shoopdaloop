@@ -209,7 +209,11 @@ impl AppArgs {
         settings: &shoop_settings::SettingsSnapshot,
     ) -> anyhow::Result<shoop_app_api::ProcessorSettings> {
         self.audio.apply_processors(
-            shoop_egui::processor_settings_from_snapshot(settings).map_err(anyhow::Error::msg)?,
+            shoop_egui::processor_settings_from_snapshot(
+                settings,
+                self.selected_backend(settings)?,
+            )
+            .map_err(anyhow::Error::msg)?,
         )
     }
 
@@ -335,6 +339,9 @@ mod native_tests {
         let mut draft = shoop_settings::SettingsDraft::from_snapshot(&registry.defaults(1));
         draft.set(shoop_egui::BACKEND, "rust-fpga".into());
         draft.set(shoop_egui::NEW_ENGINE_QUANTUM, "16".into());
+        draft.set(shoop_egui::CARLA_HOSTING_MODE, "subprocess".into());
+        draft.set(shoop_egui::CARLA_RACK_INSTANCES, 2);
+        draft.set(shoop_egui::CARLA_PATCHBAY_INSTANCES, 1);
         let document = registry
             .document_from_draft(
                 &shoop_settings::SettingsDocument::empty("test"),
@@ -348,6 +355,7 @@ mod native_tests {
         assert_eq!(config.backend, BackendType::RustFpga);
         assert_eq!(config.pools.quantum, 16);
         assert_eq!(config.loop_smoothing_ms, 0);
+        assert_eq!(config.processors.carla, Default::default());
         assert!(matches!(
             config.driver,
             shoop_app_api::AudioDriverConfig::Dummy(_)
@@ -369,10 +377,14 @@ mod native_tests {
         assert_eq!(settings.get(shoop_egui::NEW_ENGINE_QUANTUM).unwrap(), "16");
         assert_eq!(settings.get(shoop_egui::DUMMY_BUFFER_SIZE).unwrap(), 256);
         let args = AppArgs::try_parse_from(["shoopdaloop", "--backend", "native"]).unwrap();
+        let config = args.configured_host_settings(&settings).unwrap();
+        assert_eq!(config.backend, BackendType::Native);
         assert_eq!(
-            args.selected_backend(&settings).unwrap(),
-            BackendType::Native
+            config.processors.carla.hosting,
+            shoop_app_api::CarlaHosting::Subprocess
         );
+        assert_eq!(config.processors.carla.rack_instances, 2);
+        assert_eq!(config.processors.carla.patchbay_instances, 1);
     }
 
     #[shoop_wasm_test_support::shoop_test]

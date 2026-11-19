@@ -290,12 +290,16 @@ impl Dialog {
                 anyhow::bail!("a simulated clock is unavailable in native hosts")
             }
         };
+        let mut processors = self.processors;
+        if self.backend != BackendType::Native {
+            processors.carla = Default::default();
+        }
         let config = HostConfig {
             settings: HostSettings {
                 backend: self.backend,
                 driver,
                 pools: self.pools.clone(),
-                processors: self.processors,
+                processors,
                 master_auto_connect: self.master_auto_connect,
                 loop_smoothing_ms: self.smoothing,
             },
@@ -584,6 +588,41 @@ impl Dialog {
                 ui.label("Synth instances");
                 ui.add(egui::DragValue::new(&mut self.processors.synth_instances).range(0..=64));
             });
+            if self.backend == BackendType::Native {
+                use shoop_app_api::CarlaHosting;
+                let carla = &mut self.processors.carla;
+                let choices = [
+                    (CarlaHosting::Disabled, "Disabled"),
+                    (CarlaHosting::InProcess, "In session host"),
+                    (CarlaHosting::Subprocess, "One subprocess per chain"),
+                ];
+                ui.horizontal(|ui| {
+                    ui.label("Carla hosting");
+                    let label = choices
+                        .iter()
+                        .find(|(mode, _)| *mode == carla.hosting)
+                        .unwrap()
+                        .1;
+                    egui::ComboBox::from_id_salt("new_host_carla")
+                        .selected_text(label)
+                        .show_ui(ui, |ui| {
+                            for (mode, label) in choices {
+                                ui.selectable_value(&mut carla.hosting, mode, label);
+                            }
+                        });
+                });
+                if carla.hosting != CarlaHosting::Disabled {
+                    for (label, count) in [
+                        ("Carla Rack instances", &mut carla.rack_instances),
+                        ("Carla Patchbay instances", &mut carla.patchbay_instances),
+                    ] {
+                        ui.horizontal(|ui| {
+                            ui.label(label);
+                            ui.add(egui::DragValue::new(count).range(0..=64));
+                        });
+                    }
+                }
+            }
             ui.horizontal(|ui| {
                 ui.label("Processor memory");
                 ui.add(
@@ -1055,5 +1094,25 @@ mod tests {
         assert!(request.options.export_profile.is_none());
         assert!(request.options.log_file.is_none());
         assert_eq!(request.options.endpoint.port(), 0);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn carla_mode_and_instance_counts_are_host_startup_settings() {
+        use shoop_app_api::CarlaHosting;
+        let root = tempfile::tempdir().unwrap();
+        let mut dialog = form(root.path());
+        let mut screen = Screen::new(egui::vec2(800.0, 1100.0));
+        screen.frame(vec![], |ui| dialog.fields(ui));
+        screen.click("Track processors", |ui| dialog.fields(ui));
+        screen.click("Disabled", |ui| dialog.fields(ui));
+        screen.click("One subprocess per chain", |ui| dialog.fields(ui));
+        assert!(
+            screen.contains("Carla Rack instances") && screen.contains("Carla Patchbay instances")
+        );
+        dialog.processors.carla.rack_instances = 2;
+        dialog.processors.carla.patchbay_instances = 1;
+        let carla = dialog.request().unwrap().config.settings.processors.carla;
+        assert_eq!(carla.hosting, CarlaHosting::Subprocess);
+        assert_eq!((carla.rack_instances, carla.patchbay_instances), (2, 1));
     }
 }

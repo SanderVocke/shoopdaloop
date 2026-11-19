@@ -30,7 +30,26 @@ stereo and isolated non-stereo behavior. The complete maximum shape is eight dry
 plus eight wet channels. Synth is fixed at two dry/two wet/one dry MIDI; it ignores
 dry audio samples. FX also requires dry MIDI. External tracks support independent
 dry/wet widths and optional dry MIDI where native host ports support the shape.
-Bus catalogs advertise Built-in FX under the [bus contract](bus-fx.md). Bus and track FX share prepared slots and channel limits. Carla remains unavailable.
+Bus catalogs advertise Built-in FX under the [bus contract](bus-fx.md). Bus and track FX share prepared slots and channel limits.
+
+## Carla development builds
+
+An independent Native session host built with `shoop_host/carla` can advertise
+Rack and stereo Patchbay for tracks and buses when it discovers the Carla
+runtime. Isolated hosting also requires the companion built with
+`shoop_rt_host_process/carla-worker`. The catalogue reports whether each type
+is available and how many instances the host prepared.
+
+In desktop settings, choose **Native** and an independent host under **Audio →
+Session delivery**. Under **Carla**, choose **In session host** or **One
+subprocess per FX chain**, and set the Rack and stereo Patchbay counts. Set both
+counts to zero to disable Carla. Restart the owning host to apply changes. The
+host manager's **New host** dialog also accepts Carla mode and counts under
+**Track processors**. These settings belong to the host configuration.
+
+Linux development tests exercise both modes with the pinned runtime and with
+the actual Carla editors. See the plan for the qualification scope and pending
+work. [Carla hosting plan](../../PLAN_CARLA_HOSTING.md#stage-4-host-stereo-carla-through-the-production-native-service)
 
 ## Routing and media matrix
 
@@ -78,7 +97,8 @@ recording global-only traffic. A dual-routed controller remains additive.
 | Backend / service | Confirmed operations, recovery projection, fenced replacement | Authoritative track processors, controls, MIDI projection and admission |
 | Persistence / client | Retained editors/roles/documents; production core codecs | Dry/wet images/media, recorded FX state, truthful UI/Lua and transactional restore |
 
-Audio/MIDI never travels to a separate processor executor. Control events retain
+Built-in DSP executes in the graph callback. Carla uses a prepared queue to hand
+blocks to the host's chain service, with a declared wet release delay. Control events retain
 source-frame ordering through batching and cannot mutate completed output.
 Render paths, worklet record pumping and slot admission allocate/free nothing.
 Processor storage is prepared, activated, retired/reset in bounded pieces, and
@@ -88,7 +108,8 @@ bank; failure returns reservations and leaves current audio and media untouched.
 Changes to RT/app schemas and worklet configuration must version their wire
 contracts together. Generation-fenced reconnect publishes actual state rather
 than replaying mutations. UI disconnect does not reset voices or buffered output.
-Only implemented facets are advertised; general P09/P10 controls, Carla remains separately refused; Built-in bus FX follows the bus contract. P06 is complete within this contract; P07 remains open for Carla.
+The host advertises implemented facets. Built-in bus FX follows the bus contract.
+P06 is complete within this contract. P07 and general P09/P10 controls remain open.
 
 ## Delivery limitations
 

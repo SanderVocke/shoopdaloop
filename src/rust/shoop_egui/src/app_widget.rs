@@ -105,6 +105,8 @@ pub const BUILTIN_SCRIPTS: SettingKey<StringToggleList> =
     SettingKey::new("scripting.builtins.scripts");
 pub const USER_SCRIPTS: SettingKey<StringToggleList> = SettingKey::new("scripting.user_scripts");
 pub const CARLA_HOSTING_MODE: SettingKey<String> = SettingKey::new("carla.hosting_mode");
+pub const CARLA_RACK_INSTANCES: SettingKey<u32> = SettingKey::new("carla.rack_instances");
+pub const CARLA_PATCHBAY_INSTANCES: SettingKey<u32> = SettingKey::new("carla.patchbay_instances");
 
 pub const LOOP_EDGE_SMOOTHING_MS: SettingKey<u32> = SettingKey::new("audio.loop_edge_smoothing_ms");
 pub const RUNTIME_PROFILING: SettingKey<bool> = SettingKey::new("developer.runtime_profiling");
@@ -644,18 +646,37 @@ pub fn register_carla_settings(
             shoop_settings::CarlaHostingMode::InProcess.as_str().to_owned(),
             "Carla",
             "Hosting mode",
-            "Run Carla in this process or in a supervised subprocess. This is a global machine setting, is not stored in sessions, and takes effect after restart.",
+            "Select how a native Socket or Shared Memory session host runs Carla. Restart the host to apply changes.",
         )
         .category_order(7)
         .setting_order(10)
         .effect(SettingEffect::RestartRequired)
         .editor(shoop_settings::SettingEditor::StringChoice {
             choices: &[
-                ("in_process", "In application process"),
+                ("in_process", "In session host"),
                 ("subprocess", "One subprocess per FX chain"),
             ],
         }),
-    )
+    )?;
+    for (key, label, order) in [
+        (CARLA_RACK_INSTANCES, "Rack instances", 11),
+        (CARLA_PATCHBAY_INSTANCES, "Stereo Patchbay instances", 12),
+    ] {
+        builder.register(
+            SettingDefinition::new(
+                key,
+                0,
+                "Carla",
+                label,
+                "Capacity reserved when the host starts. Set both counts to zero to disable Carla.",
+            )
+            .category_order(7)
+            .setting_order(order)
+            .effect(SettingEffect::RestartRequired)
+            .editor(SettingEditor::UnsignedInteger { min: 0, max: 64 }),
+        )?;
+    }
+    Ok(())
 }
 
 pub fn carla_hosting_mode_from_snapshot(
@@ -719,6 +740,7 @@ pub const PROCESSOR_MEMORY_MB: SettingKey<u32> = SettingKey::new("audio.processo
 
 pub fn processor_settings_from_snapshot(
     snapshot: &SettingsSnapshot,
+    backend: crate::BackendType,
 ) -> Result<shoop_app_api::ProcessorSettings, String> {
     let policy = |key| -> Result<shoop_app_api::ProcessorPolicy, String> {
         let value: String = snapshot.get(key).map_err(|error| error.to_string())?;
@@ -735,7 +757,7 @@ pub fn processor_settings_from_snapshot(
     let synth: u32 = snapshot
         .get(PROCESSOR_SYNTH_INSTANCES)
         .map_err(|error| error.to_string())?;
-    let settings = shoop_app_api::ProcessorSettings {
+    let mut settings = shoop_app_api::ProcessorSettings {
         builtin_fx: policy(PROCESSOR_FX_POLICY)?,
         oxisynth: policy(PROCESSOR_SYNTH_POLICY)?,
         fx_instances: u16::try_from(fx).map_err(|error| error.to_string())?,
@@ -745,6 +767,25 @@ pub fn processor_settings_from_snapshot(
             .map_err(|error| error.to_string())?,
         carla: Default::default(),
     };
+    if backend == crate::BackendType::Native {
+        let carla_slots = |key: SettingKey<u32>| match snapshot.get(key) {
+            Ok(count) => u16::try_from(count).map_err(|error| error.to_string()),
+            Err(shoop_settings::SettingsAccessError::UnknownKey(_)) => Ok(0),
+            Err(error) => Err(error.to_string()),
+        };
+        settings.carla.rack_instances = carla_slots(CARLA_RACK_INSTANCES)?;
+        settings.carla.patchbay_instances = carla_slots(CARLA_PATCHBAY_INSTANCES)?;
+        if settings.carla.rack_instances != 0 || settings.carla.patchbay_instances != 0 {
+            settings.carla.hosting = match carla_hosting_mode_from_snapshot(snapshot)? {
+                shoop_settings::CarlaHostingMode::InProcess => {
+                    shoop_app_api::CarlaHosting::InProcess
+                }
+                shoop_settings::CarlaHostingMode::Subprocess => {
+                    shoop_app_api::CarlaHosting::Subprocess
+                }
+            };
+        }
+    }
     settings.validate().map_err(|error| error.to_string())?;
     Ok(settings)
 }
@@ -759,6 +800,8 @@ pub fn backend_from_snapshot(snapshot: &SettingsSnapshot) -> Result<crate::Backe
 pub fn register_audio_backend_settings(
     builder: &mut SettingsRegistryBuilder,
 ) -> Result<(), SettingsRegistryError> {
+    #[cfg(not(target_arch = "wasm32"))]
+    register_carla_settings(builder)?;
     builder.register(
         SettingDefinition::new(
             BACKEND,
