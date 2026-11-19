@@ -4,7 +4,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use base64::Engine;
 use quick_xml::{events::Event, Reader};
 use serde::Deserialize;
-use shoop_plugin_protocol::{CarlaChainType, MAX_STATE_BYTES};
+use shoop_plugin_protocol::{CarlaChainType, MAX_STATE_BYTES, MAX_STATE_ENVELOPE_BYTES};
 
 const STATE_PREFIX_V1: &str = "shoop-carla-native-state:1:";
 const STATE_PREFIX_V2: &str = "shoop-carla-native-state:2:";
@@ -49,6 +49,9 @@ fn decode_payload(encoded: &str, max_bytes: usize) -> Result<Vec<u8>> {
 }
 
 pub fn decode_state(state: &str, expected_chain_type: CarlaChainType) -> Result<Vec<u8>> {
+    if state.len() > MAX_STATE_ENVELOPE_BYTES {
+        bail!("Carla state envelope exceeds {MAX_STATE_ENVELOPE_BYTES} bytes");
+    }
     let decoded = if let Some(tagged) = state.strip_prefix(STATE_PREFIX_V2) {
         let (chain, encoded) = tagged
             .split_once(':')

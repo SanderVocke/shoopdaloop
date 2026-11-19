@@ -9,7 +9,7 @@ use crate::{
 use anyhow::{anyhow, bail, Context, Result};
 use rt_buffered::{BufferLimits, PreparedTiming};
 use shoop_plugin_protocol::{
-    CarlaChainType, CarlaProcessorLifecycle, ChainId, WorkerExitKind, MAX_STATE_BYTES,
+    CarlaChainType, CarlaProcessorLifecycle, ChainId, WorkerExitKind, MAX_STATE_ENVELOPE_BYTES,
 };
 use std::{
     path::PathBuf,
@@ -339,7 +339,7 @@ impl ChainService {
     }
 
     pub fn restore_state(&self, state: String) -> Result<()> {
-        if state.len() > MAX_STATE_BYTES {
+        if state.len() > MAX_STATE_ENVELOPE_BYTES {
             bail!("Carla state exceeds the worker transfer limit");
         }
         self.request(Operation::Restore(state)).map(|_| ())
@@ -419,7 +419,7 @@ fn run(
                                 anyhow!("Carla active state was not confirmed: {error:?}")
                             }),
                         Operation::Save => worker.processor().save_state().and_then(|state| {
-                            if state.len() > MAX_STATE_BYTES {
+                            if state.len() > MAX_STATE_ENVELOPE_BYTES {
                                 bail!("Carla state exceeds the worker transfer limit");
                             }
                             Ok(Reply::State(state))
