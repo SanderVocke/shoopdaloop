@@ -63,7 +63,7 @@ Depends on Stage 2. Prove the workflow with the fake worker before loading Carla
 
 The current capture group permits one reserved tick at a time and commits all its members together. Queue source-frame work in prepared storage and reserve the group tick only when matching dry and wet data are ready. Keep the take unpublished while its required tail drains. Fence the pending work with the source and take identities, and preserve the synchronous capture path. [Capture group reservations](src/rust/rt_runtime/src/resource/group/tick.rs) · [Loop capture boundary](src/rust/shoop_loops/src/runtime/state_boundary.rs)
 
-- [x] Verify the resource boundary can commit delayed data at the logical source frame. Check that freezing before the tail refuses and that the completed snapshot retains exact audio and MIDI. [Capture interval tests](src/rust/rt_runtime/tests/capture_group_intervals.rs)
+- [x] Add delayed takes and tick reservations to the production planner resource boundary. Verify the fixed delay, callback ceiling, rejection before the required tail, and exact audio and MIDI at the logical source cut. [Capture interval tests](src/rust/rt_runtime/tests/capture_group_intervals.rs)
 - [x] Connect prepared local worker queues to the hosted render path and verify padded tail release after demand stops. The next stream starts after the prior tail drains, with a fresh stream generation. [Local worker transport](src/rust/rt_buffered/src/local.rs) · [Hosted renderer](src/rust/shoop_rt_engine/src/processors.rs)
 - [x] Prepare a budgeted strip-input history that retains exact dry samples and MIDI through the maximum worker delay. Verify source-frame and strip-generation matching before routing a wet release to the capture tap. [Prepared input history](src/rust/shoop_loops/src/runtime/worker_capture.rs) · [Hosted graph fixture](src/rust/shoop_rt_engine/src/processors.rs)
 - [ ] Replace the async owner's immediate wet capture tap with bounded, source-tagged pending writes in the RT engine and loop layer. Keep dry audio and dry MIDI at their original positions. Resolve wet tails after Stop and across wraps before publishing a take or opening it for save/export.
@@ -84,6 +84,8 @@ Depends on Stages 2–3. This milestone delivers Rack and stereo Patchbay for qu
 - [ ] Implement generation-scoped health, bounded process logs, clearing logs, and recovery. Reject stale controls and completions after host, slot, or worker replacement. Exercise UI disconnect without advancing the plugin generation.
 
 Verification gate for A1, A2, A4, and A6. Run loaded gain and MIDI fixtures in both modes through production Dummy tracks and a stereo bus. Exercise typed, socket, and shared-memory routes as applicable, editor show/idle/close/reopen, failed discovery, worker kill, hung DSP, saturation, and a simultaneously audible unrelated track. Confirm the disabled and unavailable catalog outcomes.
+
+The Linux development build of Carla 2.5.10 passed the pinned source and header checksum checks and the C ABI probe. The `shoop_carla` required-runtime test loaded Rack, Patchbay, and Patchbay 16x legacy states and verified audio, MIDI offsets, and save/restore through the extracted Native loader. Stage 4 still requires the replacement session host and real editor, and Stage 7 covers the packaged runtime.
 
 ## Stage 5 Complete state persistence and driver switching
 

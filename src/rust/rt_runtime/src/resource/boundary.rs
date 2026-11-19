@@ -25,6 +25,25 @@ pub struct CaptureBoundaryIo<'a, S: Sample = f32> {
     frame: Frame,
     ceiling: Frame,
 }
+
+/// A capture take whose source cut precedes its release boundary by a fixed delay.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DelayedCaptureTake {
+    take: CaptureTakeId,
+    delay_frames: usize,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DelayedCaptureTick {
+    interval: CaptureTickId,
+    delay_frames: usize,
+}
+
+impl DelayedCaptureTick {
+    pub fn interval(self) -> CaptureTickId {
+        self.interval
+    }
+}
 impl<S: Sample> ResourceStore<S> {
     pub fn planner_io(&mut self, frame: Frame, ceiling: Frame) -> PlannerResourceIo<'_, S> {
         PlannerResourceIo {
@@ -73,6 +92,21 @@ impl<S: Sample> CaptureBoundaryIo<'_, S> {
         self.check_frame(frame)?;
         self.store.activate_capture_take(id, frame)
     }
+    /// Start capture at the current source boundary. The first writable interval
+    /// is reserved at its corresponding future render boundary.
+    pub fn activate_delayed(
+        &mut self,
+        take: CaptureTakeId,
+        delay_frames: usize,
+    ) -> Result<DelayedCaptureTake, Error> {
+        let quantum = self.store.quantum.frames();
+        if delay_frames == 0 || delay_frames % quantum != 0 {
+            return Err(Error::InvalidConfig);
+        }
+        self.frame.checked_add(delay_frames)?.checked_add(quantum)?;
+        self.activate(take, self.frame)?;
+        Ok(DelayedCaptureTake { take, delay_frames })
+    }
     pub fn freeze(
         &mut self,
         id: CaptureTakeId,
@@ -103,12 +137,55 @@ impl<S: Sample> CaptureBoundaryIo<'_, S> {
         }
         self.store.reserve_capture_tick(id, frame)
     }
+    /// Reserve the next contiguous source interval at its physical render boundary.
+    pub fn reserve_delayed(
+        &mut self,
+        take: DelayedCaptureTake,
+    ) -> Result<DelayedCaptureTick, Error> {
+        if self.frame.checked_add(self.store.quantum.frames())? > self.ceiling {
+            return Err(Error::InvalidFrame);
+        }
+        let source = self.source_boundary(take.delay_frames)?;
+        let interval = self.store.reserve_capture_tick(take.take, source)?;
+        Ok(DelayedCaptureTick {
+            interval,
+            delay_frames: take.delay_frames,
+        })
+    }
     pub fn cancel_tick(&mut self, id: CaptureTickId) -> Result<(), Error> {
         self.store.cancel_capture_tick(id)
     }
     pub fn commit(&mut self, id: CaptureTickId) -> Result<(), Error> {
         self.check_frame(self.store.capture_tick_end(id)?)?;
         self.store.commit_capture_tick(id)
+    }
+    pub fn commit_delayed(&mut self, tick: DelayedCaptureTick) -> Result<(), Error> {
+        let source = self.source_boundary(tick.delay_frames)?;
+        if self.store.capture_tick_end(tick.interval)? != source {
+            return Err(Error::InvalidFrame);
+        }
+        self.store.commit_capture_tick(tick.interval)
+    }
+    /// Freeze the complete take at its source cut after its physical tail settles.
+    pub fn freeze_delayed(
+        &mut self,
+        take: DelayedCaptureTake,
+        source_cut: Frame,
+        output: &mut [Option<Snapshot>],
+    ) -> Result<(), Error> {
+        if self.source_boundary(take.delay_frames)? != source_cut {
+            return Err(Error::InvalidFrame);
+        }
+        self.store
+            .freeze_capture_take(take.take, source_cut, None, output)
+    }
+    fn source_boundary(&self, delay_frames: usize) -> Result<Frame, Error> {
+        self.check_frame(self.frame)?;
+        self.frame
+            .0
+            .checked_sub(delay_frames as u64)
+            .map(Frame)
+            .ok_or(Error::InvalidFrame)
     }
     fn check_frame(&self, frame: Frame) -> Result<(), Error> {
         if frame != self.frame || self.frame > self.ceiling {

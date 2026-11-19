@@ -238,34 +238,88 @@ fn delayed_capture_settles_at_the_source_cut_after_the_physical_tail() {
     let delay = 3;
     let mut snapshots = [None; 2];
     assert_no_heap(|| {
-        store.activate_capture_take(take, start).unwrap();
+        assert_eq!(
+            store
+                .planner_io(start, start)
+                .capture()
+                .activate_delayed(take, 0),
+            Err(Error::InvalidConfig)
+        );
+        let take = store
+            .planner_io(start, start)
+            .capture()
+            .activate_delayed(take, delay)
+            .unwrap();
         for tick in 0..delay + 2 {
             store.begin_callback();
+            let physical = start.checked_add(tick).unwrap();
+            let next = physical.checked_add(1).unwrap();
             if tick == (end.0 - start.0) as usize {
                 assert_eq!(
-                    store.freeze_capture_take(take, end, None, &mut snapshots),
+                    store.planner_io(physical, next).capture().freeze_delayed(
+                        take,
+                        end,
+                        &mut snapshots
+                    ),
                     Err(Error::InvalidFrame)
                 );
                 assert!(snapshots.iter().all(Option::is_none));
                 assert_eq!(store.usage().reserved_pages, 0);
             }
             let Some(source_offset) = tick.checked_sub(delay) else {
+                assert_eq!(
+                    store
+                        .planner_io(physical, next)
+                        .capture()
+                        .reserve_delayed(take),
+                    Err(Error::InvalidFrame)
+                );
                 continue;
             };
-            let source = start.checked_add(source_offset).unwrap();
-            let interval = store.reserve_capture_tick(take, source).unwrap();
+            assert_eq!(
+                store
+                    .planner_io(physical, physical)
+                    .capture()
+                    .reserve_delayed(take),
+                Err(Error::InvalidFrame)
+            );
+            let interval = store
+                .planner_io(physical, next)
+                .capture()
+                .reserve_delayed(take)
+                .unwrap();
             midi.clear();
             midi.push(0, 1, &[0x90, 60 + source_offset as u8, 100])
                 .unwrap();
             store
-                .stage_capture_audio(interval, 0, &[source_offset as f32 + 1., -1.])
+                .render_io()
+                .stage_audio(interval.interval(), 0, &[source_offset as f32 + 1., -1.])
                 .unwrap();
-            store.stage_capture_midi(interval, 1, &midi).unwrap();
-            store.commit_capture_tick(interval).unwrap();
+            store
+                .render_io()
+                .stage_midi(interval.interval(), 1, &midi)
+                .unwrap();
+            assert_eq!(
+                store
+                    .planner_io(physical, next)
+                    .capture()
+                    .commit_delayed(interval),
+                Err(Error::InvalidFrame)
+            );
+            store
+                .planner_io(next, next)
+                .capture()
+                .commit_delayed(interval)
+                .unwrap();
         }
+        let freeze = end.checked_add(delay).unwrap();
         store
-            .freeze_capture_take(take, end, None, &mut snapshots)
+            .planner_io(freeze, freeze)
+            .capture()
+            .freeze_delayed(take, end, &mut snapshots)
             .unwrap();
+        assert_eq!(snapshots[0].unwrap().cut_frame, end);
+        assert_eq!(snapshots[1].unwrap().cut_frame, end);
         assert_eq!(snapshots[0].unwrap().description.frames, 2);
         assert_eq!(snapshots[1].unwrap().description.frames, 2);
         let audio = store.read_index(snapshots[0].unwrap().id).unwrap();
