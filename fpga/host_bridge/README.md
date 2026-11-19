@@ -144,6 +144,16 @@ described in the deployment guide. The QEMU gate checks authentication of
 the signed pair through U-Boot and refusal of a changed fabric payload.
 Physical PCAP programming requires the board. [Deployment guide](../../platforms/zynq7000/deployment/README.md)
 
+Keep the factory loader directory, including `factory.json`, with the factory
+image. To package a later FPGA release, pair its routed artifacts and firmware
+as above and pass `--factory-loader work/zturn-v2/sd/loader` to `bundle.py`.
+Write the new FIT to the release directory. The signer and installed loader
+check the same versioned PS contract. It covers the board profile and the
+XSA's generated `ps7_init_gpl.c` and `ps7_init_gpl.h`. A new PL build can have
+a different XSA and bitstream while using the same PS initialization. A PS
+initialization change needs a separately provisioned loader. Factory loaders
+built before this contract need to be regenerated once for this update flow.
+
 ## Native I²S comparison
 
 Use `bitstream native i2s` in the Vivado command and a fresh route directory.

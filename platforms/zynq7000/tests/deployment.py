@@ -46,7 +46,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     boards.argument(parser)
     parser.add_argument("--directory", type=Path, required=True, help="New private test directory")
-    parser.add_argument("--recovery", action="store_true", help="Also check trial rollback and malformed SD image recovery")
+    parser.add_argument("--recovery", action="store_true", help="Also qualify trial rollback and recovery for the board")
     args = parser.parse_args()
     board = boards.load(args.board)
     directory = args.directory.resolve()
@@ -71,11 +71,13 @@ def main():
     initial_build = json.loads(source.with_suffix(".json").read_text())["build_id"]
     identities = [initial_build, "board-update" if initial_build != "board-update" else "board-update-2"]
     loader = artifacts / "loader"
+    firmware = artifacts / "firmware"
+    firmware.mkdir()
     for index, identity in enumerate(identities):
         if index:
             run([sys.executable, PLATFORM / "build.py", "--board", args.board,
                  "--app", "host", "--deployment", "--build-id", identity])
-        elf = artifacts / (identity + ".elf")
+        elf = firmware / (identity + ".elf")
         shutil.copyfile(source, elf)
         shutil.copyfile(source.with_suffix(".json"), elf.with_suffix(".json"))
         bundle.create(elf, identity, keys, artifacts / (identity + ".itb"), loader, board)
@@ -114,6 +116,9 @@ def main():
     assert len(nonces) >= 3 and nonces == sorted(set(nonces)), "Boot authority was reused"
     if args.recovery:
         result["recovery"] = qualify_recovery(board, private, keys)
+        if board.name == "zturn-v2":
+            from fpga_update import qualify_fpga_update
+            result["fpga_update"] = qualify_fpga_update(board, private, keys, firmware / (identities[0] + ".elf"))
     result.update(passed=True, nonces=nonces, builds=identities)
     result_path.write_text(json.dumps(result, indent=2) + "\n")
     print(f"{args.board}: signed SD boot, A/B update, cleanup and persistent restart identity passed")

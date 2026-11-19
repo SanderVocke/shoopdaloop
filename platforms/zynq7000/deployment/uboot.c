@@ -9,12 +9,16 @@
 #include <mmc.h>
 #include <lmb.h>
 #include <net.h>
+#include <net/fastboot_udp.h>
 #include <dm.h>
 #include <asm/global_data.h>
 #include <asm/io.h>
 #include <elf.h>
 #include <u-boot/sha256.h>
 #include "shoop_boot_state.h"
+#include "shoop_ps_contract.h"
+
+#define SHOOP_UPDATE_IDLE_MS 30000UL
 
 DECLARE_GLOBAL_DATA_PTR;
 static struct blk_desc *card;
@@ -73,7 +77,7 @@ static int configure_network(void) {
     struct udevice *ethernet = eth_get_dev();
     if (!ethernet) {
         puts("SHOOP_ETHERNET_UNAVAILABLE\n");
-        return SHOOP_IO;
+        return invalid;
     }
     eth_env_get_enetaddr("ethaddr", eth_get_ethaddr());
     if (eth_get_ops(ethernet)->write_hwaddr)
@@ -162,6 +166,17 @@ static int verify_bundle(const void *fit, uint32_t size, struct image *out) {
     const char *fabric = fdt_getprop(fit, config, "fpga", &length);
     if (fabric) {
 #ifdef SHOOP_PL_DDR_BYTES
+        int ps_length;
+        const char *ps_contract = fdt_getprop(fit, config, "shoop,ps-contract", &ps_length);
+#ifdef SHOOP_PS_CONTRACT
+        if (!ps_contract || ps_length != sizeof(SHOOP_PS_CONTRACT) ||
+            memcmp(ps_contract, SHOOP_PS_CONTRACT, sizeof(SHOOP_PS_CONTRACT))) {
+            puts("SHOOP_PS_CONTRACT_REFUSED\n");
+            return SHOOP_INVALID;
+        }
+#else
+        if (ps_contract) return SHOOP_INVALID;
+#endif
         int node = fdt_path_offset(fit, "/images/fabric");
         if (length != sizeof "fabric" || memcmp(fabric, "fabric", sizeof "fabric") || node < 0 ||
             !fit_image_check_type(fit, node, IH_TYPE_FPGA) || !fit_image_check_comp(fit, node, IH_COMP_NONE))
@@ -291,7 +306,7 @@ static int launch(const struct image *image, uint32_t slot, const struct shoop_s
         printf("SHOOP_FPGA_PROGRAM bytes=%u\n", image->fpga_size);
         if (fpga_load(0, scratch, image->fpga_size, BIT_FULL, 0)) {
             puts("SHOOP_FPGA_PROGRAM_REFUSED\n");
-            return SHOOP_IO;
+            return SHOOP_FPGA_REFUSED;
         }
         puts("SHOOP_FPGA_PROGRAMMED\n");
     }
@@ -329,14 +344,18 @@ static int boot_local(struct shoop_state *state) {
     const uint8_t *expected = slot == state->pending ? state->pending_hash : state->confirmed_hash;
     if (load_slot(slot, expected, &image)) {
         printf("SHOOP_IMAGE_REFUSED slot=%u\n", slot);
-        if (slot != state->pending) return SHOOP_INVALID;
-        state->pending = SHOOP_NO_SLOT; state->attempts = 0;
-        memset(state->pending_hash, 0, 32);
-        if (shoop_state_store(&io, state) || state->confirmed >= 2 ||
-            load_slot(state->confirmed, state->confirmed_hash, &image)) return SHOOP_INVALID;
-        slot = state->confirmed;
+        if (slot != state->pending || shoop_reject_candidate(&io, state) || shoop_select(&io, state, &slot) ||
+            load_slot(slot, state->confirmed_hash, &image)) return SHOOP_INVALID;
     }
-    return launch(&image, slot, state);
+    int result = launch(&image, slot, state);
+    if (result == SHOOP_FPGA_REFUSED && slot == state->pending) {
+        if (shoop_reject_candidate(&io, state)) return SHOOP_IO;
+        if (state->confirmed < 2) {
+            puts("SHOOP_FPGA_TRIAL_ROLLBACK\n");
+            do_reset(NULL, 0, 0, NULL);
+        }
+    }
+    return result;
 }
 static int do_shoop(struct cmd_tbl *command, int flags, int argc, char *const argv[]) {
     (void)command; (void)flags;
@@ -350,6 +369,7 @@ static int do_shoop(struct cmd_tbl *command, int flags, int argc, char *const ar
     int storage = open_card();
     storage_valid = !storage;
     int configuration_invalid = configure_network();
+    bool maintenance = false;
     if (storage) puts("SHOOP_CARD_INVALID\n");
     else if (!configuration_invalid) {
         struct shoop_state state;
@@ -358,6 +378,7 @@ static int do_shoop(struct cmd_tbl *command, int flags, int argc, char *const ar
             if (mode != SHOOP_BOOT_NORMAL) {
                 state.mode = SHOOP_BOOT_NORMAL;
                 if (shoop_state_store(&io, &state)) mode = SHOOP_BOOT_UPDATE;
+                else maintenance = mode == SHOOP_BOOT_UPDATE && state.confirmed < 2;
             }
             if (mode == SHOOP_BOOT_NETWORK || !strcmp(argv[1], "netboot")) {
                 int result = network_boot(&state);
@@ -369,9 +390,14 @@ static int do_shoop(struct cmd_tbl *command, int flags, int argc, char *const ar
     for (;;) {
         update_status();
         puts("SHOOP_UPDATER_READY\n");
-        run_command("fastboot udp", 0);
+        fastboot_udp_set_idle_timeout(maintenance ? SHOOP_UPDATE_IDLE_MS : 0);
+        int result = run_command("fastboot udp", 0);
+        bool abandoned = maintenance && result;
+        maintenance = false;
         struct shoop_state state;
-        if (!storage && !configuration_invalid && !shoop_state_load(&io, &state)) boot_local(&state);
+        if (storage || configuration_invalid || shoop_state_load(&io, &state)) continue;
+        if (abandoned && state.pending < 2 && shoop_reject_candidate(&io, &state)) continue;
+        boot_local(&state);
     }
 }
 U_BOOT_CMD(shoop, 2, 0, do_shoop, "Shoop SD boot and network deployment", "boot | netboot | recovery");

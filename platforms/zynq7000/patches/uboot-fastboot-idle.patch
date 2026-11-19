@@ -1,0 +1,70 @@
+diff --git a/include/net/fastboot_udp.h b/include/net/fastboot_udp.h
+--- a/include/net/fastboot_udp.h
++++ b/include/net/fastboot_udp.h
+@@ -10,5 +10,6 @@
+  * Wait for incoming UDP fastboot comands.
+  */
+ void fastboot_udp_start_server(void);
++void fastboot_udp_set_idle_timeout(ulong milliseconds);
+ 
+ #endif /* __NET_FASTBOOT_H__ */
+diff --git a/net/fastboot_udp.c b/net/fastboot_udp.c
+--- a/net/fastboot_udp.c
++++ b/net/fastboot_udp.c
+@@ -39,6 +39,19 @@
+ static int fastboot_remote_port;
+ /* The UDP port at our end */
+ static int fastboot_our_port;
++static ulong fastboot_idle_timeout;
++
++void fastboot_udp_set_idle_timeout(ulong milliseconds)
++{
++	fastboot_idle_timeout = milliseconds;
++}
++
++static void fastboot_udp_idle(void)
++{
++	fastboot_data_cancel();
++	puts("Fastboot UDP idle timeout\n");
++	net_set_state(NETLOOP_FAIL);
++}
+ 
+ /**
+  * fastboot_udp_send_response() - Send an response into UDP
+@@ -250,6 +263,7 @@
+ 	struct fastboot_header header;
+ 	char fastboot_data[DATA_SIZE] = {0};
+ 	unsigned int fastboot_data_len = 0;
++	bool advanced;
+ 
+ 	if (dport != fastboot_our_port)
+ 		return;
+@@ -265,6 +279,9 @@
+ 	packet += sizeof(header);
+ 	len -= sizeof(header);
+ 
++	advanced = header.seq == sequence_number &&
++		(header.id == FASTBOOT_INIT || header.id == FASTBOOT_FASTBOOT);
++
+ 	switch (header.id) {
+ 	case FASTBOOT_QUERY:
+ 		fastboot_send(header, fastboot_data, 0, 0);
+@@ -290,6 +307,9 @@
+ 		fastboot_send(header, fastboot_data, 0, 0);
+ 		break;
+ 	}
++
++	if (fastboot_idle_timeout && advanced)
++		net_set_timeout_handler(fastboot_idle_timeout, fastboot_udp_idle);
+ }
+ 
+ void fastboot_udp_start_server(void)
+@@ -303,6 +323,8 @@
+ 		fastboot_set_progress_callback(fastboot_timed_send_info);
+ 
+ 	net_set_udp_handler(fastboot_handler);
++	if (fastboot_idle_timeout)
++		net_set_timeout_handler(fastboot_idle_timeout, fastboot_udp_idle);
+ 
+ 	/* zero out server ether in case the server ip has changed */
+ 	memset(net_server_ethaddr, 0, 6);
