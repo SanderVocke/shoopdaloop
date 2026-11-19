@@ -67,6 +67,7 @@ in `third_party/marlin-verilator`.
 Focused runs:
 
 ```sh
+cargo test --locked -p rt_fpga_testbench --features sim --test midi -- --test-threads=1
 cargo run --locked -p rt_fpga_testbench --features sim -- state --config small
 cargo run --locked -p rt_fpga_testbench --features sim -- audio --config small
 cargo run --locked -p rt_fpga_testbench --features sim -- pipeline --config small --memory-model fixed
