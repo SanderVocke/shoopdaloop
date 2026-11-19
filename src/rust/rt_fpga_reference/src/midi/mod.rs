@@ -3,6 +3,9 @@ mod content;
 mod difference;
 mod emission;
 mod history;
+#[cfg(test)]
+#[allow(dead_code)]
+mod oracle;
 pub(crate) mod session;
 mod state;
 mod storage;
