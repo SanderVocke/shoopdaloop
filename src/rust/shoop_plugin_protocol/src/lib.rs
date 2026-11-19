@@ -17,9 +17,9 @@ pub const MAX_BLOCK_FRAMES: usize = 8192;
 pub const MAX_MIDI_EVENTS_PER_BLOCK: usize = 1024;
 pub const MAX_MIDI_BYTES_PER_BLOCK: usize = 8192;
 pub const MAX_NATIVE_MIDI_PACKET_BYTES: usize = 4;
-pub const MAX_STATE_BYTES: usize = 16 * 1024 * 1024;
+pub use shoop_processor_protocol::MAX_OPAQUE_STATE_BYTES as MAX_STATE_BYTES;
 /// Base64 state, including the legacy trailing NUL and envelope text.
-pub const MAX_STATE_ENVELOPE_BYTES: usize = (MAX_STATE_BYTES + 1).div_ceil(3) * 4 + 512;
+pub use shoop_processor_protocol::MAX_OPAQUE_STATE_ENVELOPE_BYTES as MAX_STATE_ENVELOPE_BYTES;
 pub const MAX_CONTROL_PAYLOAD_BYTES: usize = MAX_STATE_ENVELOPE_BYTES + 4096;
 pub const MAX_ERROR_MESSAGE_BYTES: usize = 4096;
 

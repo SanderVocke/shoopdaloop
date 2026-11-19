@@ -207,6 +207,12 @@ pub enum Request {
         worker_generation: u64,
         command: ProcessorLogCommand,
     },
+    ProcessorCheckpoint {
+        target: ProcessorTarget,
+        slot: ProcessorSlot,
+        worker_generation: u64,
+        command: ProcessorCheckpointCommand,
+    },
     CreateProcessedStrip {
         strip: StripId,
         shape: StripShape,
@@ -405,12 +411,40 @@ pub enum Outcome {
     ContentPrepared { revision: u64 },
     ContentApplied { revision: u64 },
     ProcessorLogs { snapshot: u64, generations: u8 },
+    ProcessorCheckpoint { snapshot: u64, bytes: u32 },
     Done,
     Refused(Refusal),
 }
 
 pub const PROCESSOR_LOG_GENERATIONS: usize = 9;
 pub const PROCESSOR_LOG_STREAM_BYTES: usize = 64 * 1024;
+pub use shoop_processor_protocol::MAX_OPAQUE_STATE_ENVELOPE_BYTES as MAX_PROCESSOR_CHECKPOINT_BYTES;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProcessorCheckpointCommand {
+    Open,
+    Read { snapshot: u64, offset: u32 },
+    Close { snapshot: u64 },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProcessorCheckpointPage {
+    pub snapshot: u64,
+    pub offset: u32,
+    pub total: u32,
+    pub len: u16,
+    pub bytes: [u8; BULK_CHUNK_BYTES],
+}
+
+impl ProcessorCheckpointPage {
+    pub(crate) fn valid(&self) -> bool {
+        self.snapshot != 0
+            && self.total as usize <= MAX_PROCESSOR_CHECKPOINT_BYTES
+            && self.total.checked_sub(self.offset).is_some_and(|left| {
+                left != 0 && usize::from(self.len) == (left as usize).min(BULK_CHUNK_BYTES)
+            })
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProcessorLogCommand {
@@ -508,6 +542,7 @@ impl Capabilities {
     pub const LIVE_PROGRAMS: Self = Self(1 << 16);
     pub const EXTERNAL_PROCESSOR_EDITOR: Self = Self(1 << 17);
     pub const PROCESSOR_LOGS: Self = Self(1 << 18);
+    pub const PROCESSOR_CHECKPOINTS: Self = Self(1 << 19);
     pub const INPUT_BATCH: Self = Self(1 << 12);
     pub const REPLACING: Self = Self(1 << 13);
     pub const PROFILING: Self = Self(1 << 6);

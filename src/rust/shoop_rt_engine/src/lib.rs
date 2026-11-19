@@ -41,6 +41,7 @@ mod cells;
 mod composite;
 mod content;
 mod history;
+mod hosted_checkpoints;
 mod hosted_logs;
 mod input;
 mod memory;
@@ -82,6 +83,7 @@ pub use description::{EngineDescription, HostPorts, Segment, MAX_HOST_PORTS};
 pub use endpoint::{
     ControlEndpoint, HostedControlTicket, HostedProcessorControls, HostedProcessorObservation,
 };
+pub use hosted_checkpoints::HostedCheckpointTicket;
 pub use hosted_logs::{HostedLogTicket, HostedProcessorLog};
 pub use node::{EngineNode, EngineOp, NodeConfiguration};
 pub use processors::{
@@ -849,6 +851,7 @@ fn prepare_complete_using<R>(
         hosted_processors: None,
         hosted_controls: Box::new([]),
         hosted_logs: Default::default(),
+        hosted_checkpoints: Default::default(),
         processor_cells,
         profiling: profile_reader,
         profile_named: vec![false; pool.nodes()].into_boxed_slice(),

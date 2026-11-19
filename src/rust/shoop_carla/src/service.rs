@@ -133,7 +133,11 @@ pub struct StateTicket(ReplyTicket);
 
 impl StateTicket {
     pub fn poll(&self) -> Option<Result<String>> {
-        self.0.poll().map(|result| match result? {
+        let result = self.0.poll().or_else(|| {
+            (Instant::now() >= self.0.deadline)
+                .then(|| Err(anyhow!("timed out capturing Carla state")))
+        });
+        result.map(|result| match result? {
             Reply::State(state) => Ok(state),
             _ => bail!("Carla state response was incomplete"),
         })

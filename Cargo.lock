@@ -5708,6 +5708,7 @@ version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
+ "shoop_processor_protocol",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",
 ]

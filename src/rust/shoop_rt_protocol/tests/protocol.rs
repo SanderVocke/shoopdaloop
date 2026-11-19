@@ -1216,6 +1216,57 @@ fn hosted_processor_log_pages_fit_in_a_reliable_record_and_reject_invalid_ranges
 }
 
 #[shoop_test]
+fn hosted_checkpoints_bound_the_snapshot_and_require_a_complete_page() {
+    let mut wire = [0; MAX_RECORD_BYTES];
+    let total = MAX_PROCESSOR_CHECKPOINT_BYTES as u32;
+    let metadata = EngineMessage::Result {
+        correlation: 11,
+        outcome: Outcome::ProcessorCheckpoint {
+            snapshot: 8,
+            bytes: total,
+        },
+    };
+    let len = encode_engine(&metadata, &mut wire).unwrap();
+    assert_eq!(decode_engine(&wire[..len]).unwrap(), metadata);
+    let oversize = EngineMessage::Result {
+        correlation: 11,
+        outcome: Outcome::ProcessorCheckpoint {
+            snapshot: 8,
+            bytes: total + 1,
+        },
+    };
+    assert_eq!(
+        encode_engine(&oversize, &mut wire),
+        Err(CodecError::Invalid)
+    );
+    let page = ProcessorCheckpointPage {
+        snapshot: 8,
+        offset: total - 1,
+        total,
+        len: 1,
+        bytes: core::array::from_fn(|index| if index == 0 { b'}' } else { 0 }),
+    };
+    let message = |page| EngineMessage::ProcessorCheckpointPage {
+        correlation: 12,
+        page,
+    };
+    let len = encode_engine(&message(page), &mut wire).unwrap();
+    assert_eq!(decode_engine(&wire[..len]).unwrap(), message(page));
+    for invalid in [
+        ProcessorCheckpointPage {
+            offset: total,
+            ..page
+        },
+        ProcessorCheckpointPage { len: 2, ..page },
+    ] {
+        assert_eq!(
+            encode_engine(&message(invalid), &mut wire),
+            Err(CodecError::Invalid)
+        );
+    }
+}
+
+#[shoop_test]
 fn capability_flags_do_not_alias_other_features() {
     let flags = [
         Capabilities::MIDI_INJECTION,
@@ -1230,6 +1281,7 @@ fn capability_flags_do_not_alias_other_features() {
         Capabilities::GLOBAL_FX_CONTROL,
         Capabilities::EXTERNAL_DRY_WET,
         Capabilities::PROCESSOR_LOGS,
+        Capabilities::PROCESSOR_CHECKPOINTS,
         Capabilities::LOOP_TIMING,
         Capabilities::INPUT_BATCH,
         Capabilities::REPLACING,

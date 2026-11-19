@@ -6,7 +6,7 @@ use shoop_rt_protocol::{
 };
 use shoop_rt_transport::carrier::Outbox;
 
-use crate::ControlEndpoint;
+use crate::{endpoint::HostedOwner, ControlEndpoint};
 
 pub struct HostedProcessorLog {
     pub generation: u64,
@@ -20,28 +20,20 @@ pub trait HostedLogTicket: Send {
     fn poll(&mut self) -> Option<Result<Vec<HostedProcessorLog>, Refusal>>;
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
-struct Owner {
-    target: ProcessorTarget,
-    slot: ProcessorSlot,
-    service_owner: u64,
-    worker_generation: u64,
-}
-
 struct Pending {
-    owner: Owner,
+    owner: HostedOwner,
     correlation: u64,
     ticket: Box<dyn HostedLogTicket>,
 }
 
 struct Snapshot {
-    owner: Owner,
+    owner: HostedOwner,
     id: u64,
     logs: Vec<HostedProcessorLog>,
 }
 
 struct PendingPage {
-    owner: Owner,
+    owner: HostedOwner,
     snapshot: u64,
     correlation: u64,
     page: ProcessorLogPage,
@@ -66,7 +58,11 @@ impl Store {
         self.page = None;
     }
 
-    fn publish(&mut self, owner: Owner, logs: Vec<HostedProcessorLog>) -> Result<Outcome, Refusal> {
+    fn publish(
+        &mut self,
+        owner: HostedOwner,
+        logs: Vec<HostedProcessorLog>,
+    ) -> Result<Outcome, Refusal> {
         if logs.len() > PROCESSOR_LOG_GENERATIONS
             || logs.iter().any(|log| {
                 log.generation == 0
@@ -90,7 +86,7 @@ impl Store {
         })
     }
 
-    fn get(&self, owner: Owner, id: u64) -> Result<&Snapshot, Refusal> {
+    fn get(&self, owner: HostedOwner, id: u64) -> Result<&Snapshot, Refusal> {
         self.snapshot
             .as_ref()
             .filter(|snapshot| snapshot.owner == owner && snapshot.id == id)
@@ -99,19 +95,6 @@ impl Store {
 }
 
 impl ControlEndpoint {
-    fn current_log_owner(&self, owner: Owner) -> bool {
-        self.hosted_processor_owner(owner.target)
-            .is_ok_and(|target| target.slot == Some(owner.slot))
-            && self
-                .hosted_processors
-                .as_ref()
-                .and_then(|controls| controls.status(owner.slot.index))
-                .is_some_and(|current| {
-                    current.owner == owner.service_owner
-                        && current.status.generation == owner.worker_generation
-                })
-    }
-
     pub(crate) fn processor_logs(
         &mut self,
         correlation: u64,
@@ -127,21 +110,11 @@ impl ControlEndpoint {
             .hosted_logs
             .snapshot
             .as_ref()
-            .is_some_and(|snapshot| !self.current_log_owner(snapshot.owner))
+            .is_some_and(|snapshot| !self.current_hosted_owner(snapshot.owner))
         {
             self.hosted_logs.snapshot = None;
         }
-        let controls = self.confirmed_hosted_processor(target, slot)?;
-        let observed = controls.status(slot.index).ok_or(Refusal::Unsupported)?;
-        if observed.status.generation != worker_generation {
-            return Err(Refusal::InvalidId);
-        }
-        let owner = Owner {
-            target,
-            slot,
-            service_owner: observed.owner,
-            worker_generation,
-        };
+        let (owner, controls) = self.confirm_hosted_owner(target, slot, worker_generation)?;
         match command {
             ProcessorLogCommand::Open => {
                 if self.hosted_logs.pending.is_some() || self.hosted_logs.snapshot.is_some() {
@@ -217,7 +190,7 @@ impl ControlEndpoint {
             .pending
             .take()
             .expect("pending log request");
-        let result = if self.current_log_owner(pending.owner) {
+        let result = if self.current_hosted_owner(pending.owner) {
             result.and_then(|logs| self.hosted_logs.publish(pending.owner, logs))
         } else {
             Err(Refusal::InvalidId)
@@ -233,7 +206,7 @@ impl ControlEndpoint {
             return;
         };
         let correlation = pending.correlation;
-        let message = if self.current_log_owner(pending.owner)
+        let message = if self.current_hosted_owner(pending.owner)
             && self
                 .hosted_logs
                 .get(pending.owner, pending.snapshot)

@@ -164,6 +164,9 @@ impl Work {
 pub trait HostedProcessorControls: Send {
     fn has_editors(&self) -> bool;
     fn has_logs(&self) -> bool;
+    fn has_checkpoints(&self) -> bool {
+        false
+    }
     fn status(&self, index: u16) -> Option<HostedProcessorObservation>;
     fn set_visible(&self, index: u16, visible: bool) -> Result<(), Refusal>;
     fn recover(
@@ -184,6 +187,14 @@ pub trait HostedProcessorControls: Send {
         owner: u64,
         generation: u64,
     ) -> Result<Box<dyn crate::HostedLogTicket>, Refusal>;
+    fn capture_checkpoint(
+        &self,
+        _index: u16,
+        _owner: u64,
+        _generation: u64,
+    ) -> Result<Box<dyn crate::HostedCheckpointTicket>, Refusal> {
+        Err(Refusal::Unsupported)
+    }
 }
 
 pub struct HostedProcessorObservation {
@@ -193,6 +204,14 @@ pub struct HostedProcessorObservation {
 
 pub trait HostedControlTicket: Send {
     fn poll(&mut self) -> Option<Result<(), Refusal>>;
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub(crate) struct HostedOwner {
+    pub target: shoop_rt_protocol::ProcessorTarget,
+    pub slot: shoop_rt_protocol::ProcessorSlot,
+    pub service_owner: u64,
+    pub worker_generation: u64,
 }
 
 pub(crate) struct PendingHostedControl {
@@ -214,6 +233,7 @@ pub struct ControlEndpoint {
     pub(crate) hosted_processors: Option<Box<dyn HostedProcessorControls>>,
     pub(crate) hosted_controls: Box<[Option<PendingHostedControl>]>,
     pub(crate) hosted_logs: crate::hosted_logs::Store,
+    pub(crate) hosted_checkpoints: crate::hosted_checkpoints::Store,
     pub(crate) processor_cells: Box<[Arc<crate::processors::ProcessorCells>]>,
     pub(crate) projected_bus_processors: Box<
         [Option<(
@@ -448,6 +468,41 @@ impl ControlEndpoint {
         Ok(controls)
     }
 
+    pub(crate) fn current_hosted_owner(&self, owner: HostedOwner) -> bool {
+        self.hosted_processor_owner(owner.target)
+            .is_ok_and(|target| target.slot == Some(owner.slot))
+            && self
+                .hosted_processors
+                .as_ref()
+                .and_then(|controls| controls.status(owner.slot.index))
+                .is_some_and(|current| {
+                    current.owner == owner.service_owner
+                        && current.status.generation == owner.worker_generation
+                })
+    }
+
+    pub(crate) fn confirm_hosted_owner(
+        &self,
+        target: shoop_rt_protocol::ProcessorTarget,
+        slot: shoop_rt_protocol::ProcessorSlot,
+        worker_generation: u64,
+    ) -> Result<(HostedOwner, &dyn HostedProcessorControls), Refusal> {
+        let controls = self.confirmed_hosted_processor(target, slot)?;
+        let observed = controls.status(slot.index).ok_or(Refusal::Unsupported)?;
+        if observed.status.generation != worker_generation {
+            return Err(Refusal::InvalidId);
+        }
+        Ok((
+            HostedOwner {
+                target,
+                slot,
+                service_owner: observed.owner,
+                worker_generation,
+            },
+            controls,
+        ))
+    }
+
     fn processor_editor(
         &mut self,
         correlation: u64,
@@ -577,6 +632,7 @@ impl ControlEndpoint {
             && self.pending.iter().all(Option::is_none)
             && self.hosted_controls.iter().all(Option::is_none)
             && self.hosted_logs.idle()
+            && self.hosted_checkpoints.idle()
             && self.bulk.idle()
             && self.uploads.idle()
             && self.next_frame().0 >= self.quiet_until
@@ -648,6 +704,13 @@ impl ControlEndpoint {
             .is_some_and(|controls| controls.has_logs())
         {
             capabilities = capabilities.union(Capabilities::PROCESSOR_LOGS);
+        }
+        if self
+            .hosted_processors
+            .as_ref()
+            .is_some_and(|controls| controls.has_checkpoints())
+        {
+            capabilities = capabilities.union(Capabilities::PROCESSOR_CHECKPOINTS);
         }
         Capabilities(capabilities.0 & self.capability_mask.0)
     }
@@ -796,6 +859,7 @@ impl ControlEndpoint {
         self.limits_changed = false;
         self.protocol_error = false;
         self.hosted_logs.disconnect();
+        self.hosted_checkpoints.disconnect();
         for pending in self.hosted_controls.iter_mut().flatten() {
             pending.correlation = None;
         }
@@ -1304,6 +1368,21 @@ impl ControlEndpoint {
                 Err(Refusal::Busy) => return Err(()),
                 result => result,
             },
+            Request::ProcessorCheckpoint {
+                target,
+                slot,
+                worker_generation,
+                command,
+            } => match self.processor_checkpoint(
+                correlation,
+                target,
+                slot,
+                worker_generation,
+                command,
+            ) {
+                Err(Refusal::Busy) => return Err(()),
+                result => result,
+            },
             Request::BusProcessorControl { bus, control } => self
                 .model
                 .bus(bus)
@@ -1651,6 +1730,7 @@ impl ControlEndpoint {
             self.results.pop();
         }
         self.flush_hosted_log_page(out);
+        self.flush_hosted_checkpoint_page(out);
         if self.limits_changed && out.available(ProtocolLane::Reliable) > 0 {
             let _ = out.push(EngineMessage::LimitsChanged(self.limits));
             self.limits_changed = false;
@@ -1950,6 +2030,7 @@ impl Endpoint for ControlEndpoint {
         self.drain_runtime();
         self.advance_hosted_controls();
         self.advance_hosted_logs();
+        self.advance_hosted_checkpoints();
         self.immediate.responses(out, self.connected);
         self.refresh_snapshot_timing();
         self.reconcile_immediate();

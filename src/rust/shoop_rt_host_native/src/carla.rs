@@ -8,9 +8,9 @@ use shoop_carla::{
 };
 use shoop_plugin_protocol::{CarlaChainType, CarlaProcessorLifecycle, ChainId, WorkerExitKind};
 use shoop_rt_engine::{
-    EngineDescription, HostedControlTicket, HostedLogTicket, HostedProcessor,
-    HostedProcessorControls, HostedProcessorLog, HostedProcessorObservation, PreparedProcessor,
-    PreparedProcessors,
+    EngineDescription, HostedCheckpointTicket, HostedControlTicket, HostedLogTicket,
+    HostedProcessor, HostedProcessorControls, HostedProcessorLog, HostedProcessorObservation,
+    PreparedProcessor, PreparedProcessors,
 };
 use shoop_rt_protocol::{
     processors::{
@@ -211,6 +211,10 @@ impl HostedProcessorControls for Controls {
         self.has_logs
     }
 
+    fn has_checkpoints(&self) -> bool {
+        !self.chains.is_empty()
+    }
+
     fn status(&self, index: u16) -> Option<HostedProcessorObservation> {
         let chain = &self.chain(index)?.monitor;
         let (owner, health) = chain.owned_health();
@@ -287,6 +291,30 @@ impl HostedProcessorControls for Controls {
             .read_logs(owner, generation)
             .map_err(|_| Refusal::Internal)?;
         Ok(Box::new(PendingLogs(ticket)))
+    }
+
+    fn capture_checkpoint(
+        &self,
+        index: u16,
+        owner: u64,
+        generation: u64,
+    ) -> Result<Box<dyn HostedCheckpointTicket>, Refusal> {
+        let chain = self.chain(index).ok_or(Refusal::Unsupported)?;
+        let ticket = chain
+            .control
+            .capture_state(owner, generation)
+            .map_err(|_| Refusal::Internal)?;
+        Ok(Box::new(PendingCheckpoint(ticket)))
+    }
+}
+
+struct PendingCheckpoint(shoop_carla::service::StateTicket);
+
+impl HostedCheckpointTicket for PendingCheckpoint {
+    fn poll(&mut self) -> Option<Result<String, Refusal>> {
+        self.0
+            .poll()
+            .map(|result| result.map_err(|_| Refusal::Internal))
     }
 }
 

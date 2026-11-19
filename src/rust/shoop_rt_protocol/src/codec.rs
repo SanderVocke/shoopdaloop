@@ -969,6 +969,18 @@ impl Wire for Request {
                 w.u64(worker_generation)?;
                 command.put(w)
             }
+            Self::ProcessorCheckpoint {
+                target,
+                slot,
+                worker_generation,
+                command,
+            } => {
+                w.u8(77)?;
+                target.put(w)?;
+                slot.put(w)?;
+                w.u64(worker_generation)?;
+                command.put(w)
+            }
             Self::StripDefaultPlayback {
                 strip,
                 dry_through_wet,
@@ -1397,6 +1409,12 @@ impl Wire for Request {
                 worker_generation: r.u64()?,
                 command: ProcessorLogCommand::get(r)?,
             },
+            77 => Self::ProcessorCheckpoint {
+                target: ProcessorTarget::get(r)?,
+                slot: ProcessorSlot::get(r)?,
+                worker_generation: r.u64()?,
+                command: ProcessorCheckpointCommand::get(r)?,
+            },
             36 => Self::StripDefaultPlayback {
                 strip: StripId::get(r)?,
                 dry_through_wet: r.bool()?,
@@ -1768,6 +1786,63 @@ impl Wire for ProcessorLogPage {
     }
 }
 
+impl Wire for ProcessorCheckpointCommand {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        match *self {
+            Self::Open => w.u8(0),
+            Self::Read { snapshot, offset } => {
+                w.u8(1)?;
+                w.u64(snapshot)?;
+                w.u32(offset)
+            }
+            Self::Close { snapshot } => {
+                w.u8(2)?;
+                w.u64(snapshot)
+            }
+        }
+    }
+
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(match r.u8()? {
+            0 => Self::Open,
+            1 => Self::Read {
+                snapshot: r.u64()?,
+                offset: r.u32()?,
+            },
+            2 => Self::Close { snapshot: r.u64()? },
+            _ => return Err(CodecError::Invalid),
+        })
+    }
+}
+
+impl Wire for ProcessorCheckpointPage {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        if !self.valid() {
+            return Err(CodecError::Invalid);
+        }
+        w.u64(self.snapshot)?;
+        w.u32(self.offset)?;
+        w.u32(self.total)?;
+        w.u16(self.len)?;
+        w.bytes(&self.bytes[..usize::from(self.len)])
+    }
+
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        let mut page = Self {
+            snapshot: r.u64()?,
+            offset: r.u32()?,
+            total: r.u32()?,
+            len: r.u16()?,
+            bytes: [0; BULK_CHUNK_BYTES],
+        };
+        if !page.valid() {
+            return Err(CodecError::Invalid);
+        }
+        page.bytes[..usize::from(page.len)].copy_from_slice(r.bytes(usize::from(page.len))?);
+        Ok(page)
+    }
+}
+
 impl Wire for Outcome {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
@@ -1806,6 +1881,15 @@ impl Wire for Outcome {
                 w.u64(*snapshot)?;
                 w.u8(*generations)
             }
+            Self::ProcessorCheckpoint { snapshot, bytes } => {
+                if *snapshot == 0 || *bytes == 0 || *bytes as usize > MAX_PROCESSOR_CHECKPOINT_BYTES
+                {
+                    return Err(CodecError::Invalid);
+                }
+                w.u8(9)?;
+                w.u64(*snapshot)?;
+                w.u32(*bytes)
+            }
             Self::Refused(refusal) => {
                 w.u8(1)?;
                 refusal.put(w)
@@ -1834,6 +1918,14 @@ impl Wire for Outcome {
                     snapshot,
                     generations,
                 }
+            }
+            9 => {
+                let snapshot = r.u64()?;
+                let bytes = r.u32()?;
+                if snapshot == 0 || bytes == 0 || bytes as usize > MAX_PROCESSOR_CHECKPOINT_BYTES {
+                    return Err(CodecError::Invalid);
+                }
+                Self::ProcessorCheckpoint { snapshot, bytes }
             }
             1 => Self::Refused(Refusal::get(r)?),
             _ => return Err(CodecError::Invalid),
@@ -3122,6 +3214,11 @@ impl Wire for EngineMessage {
                 w.u64(*correlation)?;
                 page.put(w)
             }
+            Self::ProcessorCheckpointPage { correlation, page } => {
+                w.u8(15)?;
+                w.u64(*correlation)?;
+                page.put(w)
+            }
             Self::Telemetry(telemetry) => {
                 w.u8(3)?;
                 telemetry.put(w)
@@ -3196,6 +3293,10 @@ impl Wire for EngineMessage {
             14 => Self::ProcessorLogPage {
                 correlation: r.u64()?,
                 page: ProcessorLogPage::get(r)?,
+            },
+            15 => Self::ProcessorCheckpointPage {
+                correlation: r.u64()?,
+                page: ProcessorCheckpointPage::get(r)?,
             },
             3 => Self::Telemetry(Telemetry::get(r)?),
             4 => Self::State(StateRecord::get(r)?),

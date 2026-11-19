@@ -615,6 +615,182 @@ fn patchbay_16x_services_process_loaded_high_audio_lanes_and_capture_live_state(
     }
 }
 
+#[shoop_test]
+fn native_companion_serves_and_releases_a_confirmed_carla_checkpoint() {
+    use shoop_rt_engine::EngineDescription;
+    use shoop_rt_host_native::{DriverConfig, DummyConfig, NativeConfig};
+    use shoop_rt_host_process::{Client, Pending, Started, Transport};
+    use shoop_rt_protocol::{
+        processors::{CarlaHosting, CarlaSettings},
+        BusId, Capabilities, EngineMessage, Outcome, ProcessorCheckpointCommand as Command,
+        ProcessorKind, ProcessorSettings, ProcessorTarget, Refusal, Request, SlotId, StateRecord,
+        BULK_CHUNK_BYTES,
+    };
+
+    if !runtime_available() {
+        return;
+    }
+    fn receive<T>(client: &mut Client, mut inspect: impl FnMut(EngineMessage) -> Option<T>) -> T {
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            if let Some(value) = client.poll().and_then(&mut inspect) {
+                return value;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "waiting for checkpoint control response"
+            );
+            thread::sleep(Duration::from_millis(1));
+        }
+    }
+    fn result(client: &mut Client, request: Request) -> Outcome {
+        let correlation = client.request(request).unwrap();
+        receive(client, |message| match message {
+            EngineMessage::Result {
+                correlation: id,
+                outcome,
+            } if id == correlation => Some(outcome),
+            _ => None,
+        })
+    }
+
+    let companion = std::path::Path::new(env!("CARGO_BIN_EXE_shoop_rt_host_process"));
+    for (hosting, transport, generation) in [
+        (CarlaHosting::InProcess, Transport::Socket, 0),
+        (CarlaHosting::Subprocess, Transport::SharedMemory, 1),
+    ] {
+        let Started {
+            mut client,
+            supervisor,
+            ..
+        } = Pending::spawn(companion, transport)
+            .unwrap()
+            .start(&NativeConfig {
+                driver: DriverConfig::Dummy(DummyConfig::default()),
+                engine: EngineDescription {
+                    processors: ProcessorSettings {
+                        memory_mb: 256,
+                        carla: CarlaSettings {
+                            hosting,
+                            patchbay_instances: 1,
+                            ..CarlaSettings::default()
+                        },
+                        ..ProcessorSettings::disabled()
+                    },
+                    ..EngineDescription::default()
+                },
+            })
+            .unwrap();
+        client.connect().unwrap();
+        let capabilities = receive(&mut client, |message| match message {
+            EngineMessage::Welcome { capabilities, .. } => Some(capabilities),
+            _ => None,
+        });
+        assert!(capabilities.contains(Capabilities::PROCESSOR_CHECKPOINTS));
+        let bus = BusId(SlotId::new(1, 1));
+        assert_eq!(
+            result(
+                &mut client,
+                Request::CreateProcessedBus {
+                    bus,
+                    channels: 2,
+                    kind: ProcessorKind::CarlaPatchbay
+                }
+            ),
+            Outcome::Done
+        );
+        client.resync().unwrap();
+        let slot = receive(&mut client, |message| match message {
+            EngineMessage::State(StateRecord::BusProcessor {
+                bus: observed,
+                slot,
+                ..
+            }) if observed == bus => slot,
+            _ => None,
+        });
+        let checkpoint = |command| Request::ProcessorCheckpoint {
+            target: ProcessorTarget::Bus(bus),
+            slot,
+            worker_generation: generation,
+            command,
+        };
+        let Outcome::ProcessorCheckpoint { snapshot, bytes } =
+            result(&mut client, checkpoint(Command::Open))
+        else {
+            panic!("expected a real Carla checkpoint");
+        };
+        assert_eq!(
+            result(&mut client, checkpoint(Command::Open)),
+            Outcome::Refused(Refusal::Busy)
+        );
+        assert_eq!(
+            result(
+                &mut client,
+                checkpoint(Command::Read {
+                    snapshot,
+                    offset: bytes
+                })
+            ),
+            Outcome::Refused(Refusal::InvalidValue)
+        );
+        let mut state = Vec::with_capacity(bytes as usize);
+        while state.len() < bytes as usize {
+            let offset = state.len() as u32;
+            let correlation = client
+                .request(checkpoint(Command::Read { snapshot, offset }))
+                .unwrap();
+            let page = receive(&mut client, |message| match message {
+                EngineMessage::ProcessorCheckpointPage {
+                    correlation: id,
+                    page,
+                } if id == correlation => Some(page),
+                EngineMessage::Result {
+                    correlation: id,
+                    outcome,
+                } if id == correlation => panic!("checkpoint page refused: {outcome:?}"),
+                _ => None,
+            });
+            assert_eq!(
+                (page.snapshot, page.offset, page.total),
+                (snapshot, offset, bytes)
+            );
+            assert_eq!(
+                usize::from(page.len),
+                (bytes as usize - state.len()).min(BULK_CHUNK_BYTES)
+            );
+            state.extend_from_slice(&page.bytes[..usize::from(page.len)]);
+        }
+        let xml = decode_state(
+            std::str::from_utf8(&state).unwrap(),
+            CarlaChainType::Patchbay,
+        )
+        .unwrap();
+        assert!(std::str::from_utf8(&xml)
+            .unwrap()
+            .contains("<CARLA-PROJECT"));
+        assert_eq!(
+            result(&mut client, checkpoint(Command::Close { snapshot })),
+            Outcome::Done
+        );
+        assert_eq!(
+            result(
+                &mut client,
+                checkpoint(Command::Read {
+                    snapshot,
+                    offset: 0
+                })
+            ),
+            Outcome::Refused(Refusal::InvalidId)
+        );
+        drop(client);
+        let report = supervisor.stop();
+        assert!(
+            report.success && report.cleaned && report.midi_reset,
+            "{report:?}"
+        );
+    }
+}
+
 struct Worker(Child);
 
 impl Drop for Worker {

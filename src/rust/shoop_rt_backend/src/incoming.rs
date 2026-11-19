@@ -179,6 +179,11 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     }
                 }
             }
+            EngineMessage::ProcessorCheckpointPage { .. } => {
+                self.lose(
+                    "the engine returned an unsolicited processor checkpoint page".to_owned(),
+                );
+            }
             EngineMessage::Telemetry(record) => {
                 let unmigrated = match record {
                     Telemetry::Loop { loop_id, .. } => self
@@ -955,6 +960,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     | Outcome::ContentApplied { .. }
                     | Outcome::ContentPrepared { .. }
                     | Outcome::ProcessorLogs { .. }
+                    | Outcome::ProcessorCheckpoint { .. }
                     | Outcome::Input(_)
                     | Outcome::InputCapacity(_) => Err("unexpected transaction outcome".to_owned()),
                     Outcome::Refused(refusal) => Err(refusal_text(refusal).to_owned()),
@@ -966,6 +972,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             | Outcome::ContentApplied { .. }
             | Outcome::ContentPrepared { .. }
             | Outcome::ProcessorLogs { .. }
+            | Outcome::ProcessorCheckpoint { .. }
             | Outcome::Input(_)
             | Outcome::InputCapacity(_) => Some(Refusal::Internal),
             Outcome::Refused(refusal) => Some(refusal),

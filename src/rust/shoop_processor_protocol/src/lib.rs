@@ -23,6 +23,10 @@ pub const SYNTH_PRESET: u32 = 2;
 pub const SYNTH_PANIC: u32 = 3;
 pub const MAX_INSTANCES: u16 = 64;
 pub const STATE_SCALARS: usize = 64;
+pub const MAX_OPAQUE_STATE_BYTES: usize = 16 * 1024 * 1024;
+/// A Base64 state envelope, including a possible serialized terminator and metadata.
+pub const MAX_OPAQUE_STATE_ENVELOPE_BYTES: usize =
+    (MAX_OPAQUE_STATE_BYTES + 1).div_ceil(3) * 4 + 512;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Control {
