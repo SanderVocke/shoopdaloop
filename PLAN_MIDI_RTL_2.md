@@ -9,7 +9,7 @@ use finite pools, explicit handles, sequential event access, and measurable work
 This remains a functional Rust backend, not a cycle-accurate hardware design.
 
 Investigated baseline: `feat/fpga-reference-midi` at
-`17c06dcd0e7c3f21879638a7822ad0cae278fa70`. Execution started on `feat/fpga-reference-midi-storage`.
+`17c06dcd0e7c3f21879638a7822ad0cae278fa70`. Execution is complete on `feat/fpga-reference-midi-storage`.
 The completed first milestone is documented in [midi_RTL_new.md](midi_RTL_new.md).
 
 This milestone includes recording, playback from the beginning, stop/repeat,
@@ -338,7 +338,7 @@ audio and MIDI output comparisons against a run without background transfers.
   warning-denying workspace build, and the documented complete native suite once
   the integrated implementation is stable. Investigate relevant local regressions
   and report reproduced baseline failures explicitly.
-- [ ] Commit completed milestones, push the implementation branch, and create or
+- [x] Commit completed milestones, push the implementation branch, and create or
   update its PR with local validation evidence. Follow the user's override:
   disregard CI results and review feedback unless explicitly asked. Do not poll,
   wait for, rerun, or address remote CI/review as a completion gate. Do not merge.
@@ -436,8 +436,8 @@ before any new-owner restoration, and reject a new conflicting context without
 dropping an established context's note-off. Regression tests cover both cases.
 
 The warning-denying workspace build, formatting, test-policy checker, and capability
-parity checker pass. Full native-suite validation and the final timing distribution
-are in progress; no CI or review status is being consulted.
+parity checker pass. Final native-suite validation and timing results are recorded
+below; no CI or review status was consulted.
 
 Stage 7 validation: the final complete reference/compiler run passes 124 tests.
 Warning-denying workspace build, formatting, test-policy, and capability-parity
@@ -456,11 +456,17 @@ the 8,192-event quantum p99 occasionally exceeding Q=32 are explicitly recorded
 in `docs/fpga/midi-reference-storage.md`; no hard OS/FPGA deadline is claimed.
 
 PR #1016 remains open, so delivery is stacked against `feat/fpga-reference-midi`,
-as planned. No CI or review feedback was queried. Final push and PR publication
-remain to be checked off once their concrete result is available.
+as planned. Delivery is published as [PR #1019](https://github.com/SanderVocke/shoopdaloop/pull/1019).
+The implementation branch is pushed and all seven stages are complete. No CI or
+review feedback was queried, and neither PR was merged.
 
 User clarification applied: criterion 6 no longer requires supporting 128 targets
 in a single grab, and criterion 9 has no cloud timing threshold. Atomic grabs,
 correct state, bounded operations, 128-loop storage, and non-disruptive transfers
 remain required. Existing 128-target tests/profiles are retained as useful extra
 evidence; no further profiling or optimization is needed for delivery.
+
+Final delivery: the adapted plan is complete, including the user's functionality-
+first clarification. Profiling remains descriptive and no further timing work is
+a completion requirement. The implementation, tests, documentation, and local
+validation evidence are in PR #1019 against `feat/fpga-reference-midi`.
