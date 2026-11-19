@@ -805,7 +805,7 @@ mod tests {
                 let deadline = Instant::now() + Duration::from_secs(2);
                 if reuse {
                     let mut count = 0;
-                    assert_no_alloc::assert_no_alloc(|| {
+                    shoop_wasm_test_support::heap::assert_no_heap(|| {
                         parent.wait_and_copy_reusing_midi(
                             token,
                             deadline,
