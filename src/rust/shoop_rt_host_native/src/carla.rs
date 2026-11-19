@@ -4,14 +4,17 @@ use rt_runtime::{graph::PortCounts, Error, Quantum};
 use shoop_carla::{
     buffered::Worker,
     native::{carla_runtime_availability, CarlaMainThreadUiDispatcher},
-    service::{ChainEditor, ChainService},
+    service::{ChainMonitor, ChainService},
 };
-use shoop_plugin_protocol::{CarlaChainType, ChainId};
+use shoop_plugin_protocol::{CarlaChainType, CarlaProcessorLifecycle, ChainId, WorkerExitKind};
 use shoop_rt_engine::{
-    EngineDescription, HostedProcessor, PreparedProcessor, PreparedProcessors, ProcessorEditors,
+    EngineDescription, HostedProcessor, HostedProcessorControls, PreparedProcessor,
+    PreparedProcessors,
 };
 use shoop_rt_protocol::{
-    processors::{CarlaHosting, EffectiveCarla, Unavailable},
+    processors::{
+        CarlaHosting, EffectiveCarla, HostedFailure, HostedLifecycle, HostedStatus, Unavailable,
+    },
     ProcessorKind, Refusal,
 };
 use std::path::Path;
@@ -134,39 +137,61 @@ fn prepare_enabled(
     Ok((instances, services, bytes))
 }
 
-pub(crate) struct Editors {
+pub(crate) struct Controls {
     first: usize,
-    chains: Vec<ChainEditor>,
+    chains: Vec<ChainMonitor>,
+    has_editors: bool,
 }
 
-impl Editors {
-    pub(crate) fn new(first: usize, services: &[ChainService]) -> Option<Self> {
-        services
-            .iter()
-            .any(|service| service.editor().is_some())
-            .then(|| Self {
-                first,
-                chains: services.iter().map(ChainService::editor_handle).collect(),
-            })
+impl Controls {
+    pub(crate) fn new(first: usize, services: &[ChainService]) -> Self {
+        Self {
+            first,
+            chains: services.iter().map(ChainService::monitor).collect(),
+            has_editors: services.iter().any(|service| service.editor().is_some()),
+        }
     }
 
-    fn editor(
-        &self,
-        index: u16,
-    ) -> Option<std::sync::Arc<dyn shoop_carla::processor::CarlaExternalUi>> {
-        self.chains
-            .get(usize::from(index).checked_sub(self.first)?)?
-            .current()
+    fn chain(&self, index: u16) -> Option<&ChainMonitor> {
+        self.chains.get(usize::from(index).checked_sub(self.first)?)
     }
 }
 
-impl ProcessorEditors for Editors {
-    fn visible(&self, index: u16) -> Option<bool> {
-        Some(self.editor(index)?.is_visible())
+impl HostedProcessorControls for Controls {
+    fn has_editors(&self) -> bool {
+        self.has_editors
+    }
+
+    fn status(&self, index: u16) -> Option<HostedStatus> {
+        let chain = self.chain(index)?;
+        let health = chain.health();
+        Some(HostedStatus {
+            generation: health.generation,
+            active: health.active,
+            lifecycle: match health.lifecycle {
+                CarlaProcessorLifecycle::Stopped => HostedLifecycle::Stopped,
+                CarlaProcessorLifecycle::Starting => HostedLifecycle::Starting,
+                CarlaProcessorLifecycle::Running => HostedLifecycle::Running,
+                CarlaProcessorLifecycle::Degraded => HostedLifecycle::Degraded,
+                CarlaProcessorLifecycle::Crashed => HostedLifecycle::Crashed,
+                CarlaProcessorLifecycle::Restarting => HostedLifecycle::Restarting,
+                CarlaProcessorLifecycle::Unavailable => HostedLifecycle::Unavailable,
+            },
+            failure: match health.exit {
+                WorkerExitKind::None | WorkerExitKind::Requested | WorkerExitKind::UiClosed => None,
+                WorkerExitKind::StartupFailure => Some(HostedFailure::Startup),
+                WorkerExitKind::ProtocolFailure => Some(HostedFailure::Protocol),
+                WorkerExitKind::UnexpectedExit => Some(HostedFailure::UnexpectedExit),
+                WorkerExitKind::Unresponsive => Some(HostedFailure::Unresponsive),
+                WorkerExitKind::ParentDisconnected => Some(HostedFailure::Disconnected),
+            },
+            editor_visible: chain.editor().map(|editor| editor.is_visible()),
+        })
     }
 
     fn set_visible(&self, index: u16, visible: bool) -> Result<(), Refusal> {
-        self.editor(index)
+        self.chain(index)
+            .and_then(ChainMonitor::editor)
             .ok_or(Refusal::Unsupported)?
             .set_visible(visible)
             .map_err(|_| Refusal::Internal)

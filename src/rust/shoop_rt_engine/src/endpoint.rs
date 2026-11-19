@@ -160,9 +160,10 @@ impl Work {
     }
 }
 
-/// External editor operations owned by the host's non-render control endpoint.
-pub trait ProcessorEditors: Send {
-    fn visible(&self, index: u16) -> Option<bool>;
+/// Hosted processor observations and controls on the non-render endpoint.
+pub trait HostedProcessorControls: Send {
+    fn has_editors(&self) -> bool;
+    fn status(&self, index: u16) -> Option<shoop_rt_protocol::processors::HostedStatus>;
     fn set_visible(&self, index: u16, visible: bool) -> Result<(), Refusal>;
 }
 
@@ -175,7 +176,7 @@ pub struct ControlEndpoint {
     pub(crate) projected_timing: Box<[Option<(LoopSlotId, shoop_rt_protocol::TimingState)>]>,
     pub(crate) projected_recorded: Box<[Option<(LoopSlotId, u64, bool)>]>,
     pub(crate) processor_catalog: crate::ProcessorCatalog,
-    pub(crate) processor_editors: Option<Box<dyn ProcessorEditors>>,
+    pub(crate) hosted_processors: Option<Box<dyn HostedProcessorControls>>,
     pub(crate) processor_cells: Box<[Arc<crate::processors::ProcessorCells>]>,
     pub(crate) projected_bus_processors: Box<
         [Option<(
@@ -358,8 +359,11 @@ fn finite_balance(value: f32) -> bool {
 }
 
 impl ControlEndpoint {
-    pub fn install_processor_editors(&mut self, editors: Box<dyn ProcessorEditors>) {
-        self.processor_editors = Some(editors);
+    pub fn install_hosted_processor_controls(
+        &mut self,
+        controls: Box<dyn HostedProcessorControls>,
+    ) {
+        self.hosted_processors = Some(controls);
     }
 
     fn processor_editor(
@@ -369,8 +373,8 @@ impl ControlEndpoint {
         visible: Option<bool>,
     ) -> Result<(), Refusal> {
         use shoop_rt_protocol::{processors::Phase, ProcessorTarget};
-        let editors = self
-            .processor_editors
+        let controls = self
+            .hosted_processors
             .as_ref()
             .ok_or(Refusal::Unsupported)?;
         let owner = match target {
@@ -391,8 +395,11 @@ impl ControlEndpoint {
         {
             return Err(Refusal::InvalidId);
         }
-        let current = editors.visible(slot.index).ok_or(Refusal::Unsupported)?;
-        editors.set_visible(slot.index, visible.unwrap_or(!current))
+        let current = controls
+            .status(slot.index)
+            .and_then(|status| status.editor_visible)
+            .ok_or(Refusal::Unsupported)?;
+        controls.set_visible(slot.index, visible.unwrap_or(!current))
     }
 
     pub fn processor_catalog(&self) -> &crate::ProcessorCatalog {
@@ -499,7 +506,11 @@ impl ControlEndpoint {
         if !self.processor_catalog.kinds.is_empty() {
             capabilities = capabilities.union(Capabilities::TRACK_PROCESSORS);
         }
-        if self.processor_editors.is_some() {
+        if self
+            .hosted_processors
+            .as_ref()
+            .is_some_and(|controls| controls.has_editors())
+        {
             capabilities = capabilities.union(Capabilities::EXTERNAL_PROCESSOR_EDITOR);
         }
         Capabilities(capabilities.0 & self.capability_mask.0)

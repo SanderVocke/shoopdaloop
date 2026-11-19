@@ -78,7 +78,7 @@ pub mod testing;
 
 pub use cells::HostStatus;
 pub use description::{EngineDescription, HostPorts, Segment, MAX_HOST_PORTS};
-pub use endpoint::{ControlEndpoint, ProcessorEditors};
+pub use endpoint::{ControlEndpoint, HostedProcessorControls};
 pub use node::{EngineNode, EngineOp, NodeConfiguration};
 pub use processors::{
     HostedProcessor, PreparedProcessor, PreparedProcessors, ProcessorCatalog, ProcessorPhase,
@@ -841,7 +841,7 @@ fn prepare_complete_using<R>(
         projected_timing: vec![None; loops].into_boxed_slice(),
         projected_recorded: vec![None; loops].into_boxed_slice(),
         processor_catalog,
-        processor_editors: None,
+        hosted_processors: None,
         processor_cells,
         profiling: profile_reader,
         profile_named: vec![false; pool.nodes()].into_boxed_slice(),

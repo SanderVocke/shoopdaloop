@@ -1307,7 +1307,7 @@ impl CarlaProcessor for SupervisedCarlaProcessor {
     }
 
     fn exit_kind(&self) -> WorkerExitKind {
-        if self.external_ui.ui_was_closed() {
+        if self.exit_kind == WorkerExitKind::None && self.external_ui.ui_was_closed() {
             WorkerExitKind::UiClosed
         } else {
             self.exit_kind

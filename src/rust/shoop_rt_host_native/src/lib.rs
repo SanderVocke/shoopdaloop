@@ -343,8 +343,11 @@ fn prepare(factory: &NativeFactory, opened: drivers::Opened) -> Result<drivers::
     );
     let mut engine = shoop_rt_engine::prepare_with_processors(&description, driver, processors)?;
     #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
-    if let Some(editors) = carla::Editors::new(carla_first_slot, &carla_services) {
-        engine.endpoint.install_processor_editors(Box::new(editors));
+    if !carla_services.is_empty() {
+        let controls = carla::Controls::new(carla_first_slot, &carla_services);
+        engine
+            .endpoint
+            .install_hosted_processor_controls(Box::new(controls));
     }
     engine
         .render

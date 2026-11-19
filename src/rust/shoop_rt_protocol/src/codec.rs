@@ -529,6 +529,44 @@ tags!(crate::processors::Phase {
     4 => crate::processors::Phase::Faulted,
 });
 
+tags!(crate::processors::HostedLifecycle {
+    0 => crate::processors::HostedLifecycle::Stopped,
+    1 => crate::processors::HostedLifecycle::Starting,
+    2 => crate::processors::HostedLifecycle::Running,
+    3 => crate::processors::HostedLifecycle::Degraded,
+    4 => crate::processors::HostedLifecycle::Crashed,
+    5 => crate::processors::HostedLifecycle::Restarting,
+    6 => crate::processors::HostedLifecycle::Unavailable,
+});
+
+tags!(crate::processors::HostedFailure {
+    0 => crate::processors::HostedFailure::Startup,
+    1 => crate::processors::HostedFailure::Protocol,
+    2 => crate::processors::HostedFailure::UnexpectedExit,
+    3 => crate::processors::HostedFailure::Unresponsive,
+    4 => crate::processors::HostedFailure::Disconnected,
+});
+
+impl Wire for crate::processors::HostedStatus {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.u64(self.generation)?;
+        self.lifecycle.put(w)?;
+        w.bool(self.active)?;
+        self.failure.put(w)?;
+        self.editor_visible.put(w)
+    }
+
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(Self {
+            generation: r.u64()?,
+            lifecycle: crate::processors::HostedLifecycle::get(r)?,
+            active: r.bool()?,
+            failure: Option::get(r)?,
+            editor_visible: Option::get(r)?,
+        })
+    }
+}
+
 impl Wire for crate::processors::Control {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
@@ -632,7 +670,7 @@ impl Wire for crate::processors::Snapshot {
                 .map_or(0, |data| u32::from_le_bytes([data[0], data[1], data[2], 1])),
         )?;
         self.worker.put(w)?;
-        self.external_editor_visible.put(w)?;
+        self.hosted.put(w)?;
         for value in self.values {
             w.f32(value)?;
         }
@@ -663,7 +701,7 @@ impl Wire for crate::processors::Snapshot {
             return Err(CodecError::Invalid);
         }
         let worker = Option::get(r)?;
-        let external_editor_visible = Option::get(r)?;
+        let hosted = Option::get(r)?;
         let mut values = [0.; crate::processors::STATE_SCALARS];
         for value in &mut values {
             *value = r.f32()?;
@@ -673,7 +711,7 @@ impl Wire for crate::processors::Snapshot {
             phase,
             global_midi,
             worker,
-            external_editor_visible,
+            hosted,
             values,
         })
     }

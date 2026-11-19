@@ -47,6 +47,36 @@ pub enum Phase {
     Faulted,
 }
 
+/// Lifecycle of the native service that owns a prepared hosted processor.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HostedLifecycle {
+    Stopped,
+    Starting,
+    Running,
+    Degraded,
+    Crashed,
+    Restarting,
+    Unavailable,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HostedFailure {
+    Startup,
+    Protocol,
+    UnexpectedExit,
+    Unresponsive,
+    Disconnected,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HostedStatus {
+    pub generation: u64,
+    pub lifecycle: HostedLifecycle,
+    pub active: bool,
+    pub failure: Option<HostedFailure>,
+    pub editor_visible: Option<bool>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Snapshot {
     /// Exclusive source-frame end of the batch represented by these values.
@@ -54,7 +84,7 @@ pub struct Snapshot {
     pub phase: Phase,
     pub global_midi: GlobalMidiDiagnostics,
     pub worker: Option<WorkerDiagnostics>,
-    pub external_editor_visible: Option<bool>,
+    pub hosted: Option<HostedStatus>,
     pub values: [f32; STATE_SCALARS],
 }
 

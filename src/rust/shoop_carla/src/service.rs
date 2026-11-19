@@ -8,7 +8,9 @@ use crate::{
 };
 use anyhow::{anyhow, bail, Context, Result};
 use rt_buffered::{BufferLimits, PreparedTiming};
-use shoop_plugin_protocol::{CarlaChainType, ChainId, MAX_STATE_BYTES};
+use shoop_plugin_protocol::{
+    CarlaChainType, CarlaProcessorLifecycle, ChainId, WorkerExitKind, MAX_STATE_BYTES,
+};
 use std::{
     path::PathBuf,
     sync::{
@@ -24,6 +26,7 @@ const START_TIMEOUT: Duration = Duration::from_secs(5);
 const CONTROL_TIMEOUT: Duration = Duration::from_secs(2);
 const RECOVERY_TIMEOUT: Duration = Duration::from_secs(20);
 const IDLE_POLL: Duration = Duration::from_micros(200);
+const HEALTH_POLL: Duration = Duration::from_millis(20);
 
 enum Operation {
     Active(bool),
@@ -47,15 +50,68 @@ struct Command {
 pub struct ChainService {
     commands: SyncSender<Command>,
     thread: JoinHandle<()>,
-    editor: ChainEditor,
+    monitor: ChainMonitor,
 }
 
 #[derive(Clone)]
-pub struct ChainEditor(Arc<RwLock<Option<Arc<dyn CarlaExternalUi>>>>);
+pub struct ChainMonitor(Arc<RwLock<Observation>>);
 
-impl ChainEditor {
-    pub fn current(&self) -> Option<Arc<dyn CarlaExternalUi>> {
-        self.0.read().ok()?.clone()
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ChainHealth {
+    pub generation: u64,
+    pub lifecycle: CarlaProcessorLifecycle,
+    pub exit: WorkerExitKind,
+    pub active: bool,
+}
+
+impl ChainHealth {
+    fn observe(processor: &mut dyn CarlaProcessor) -> Self {
+        processor.is_ready();
+        Self {
+            generation: processor.generation(),
+            lifecycle: processor.lifecycle(),
+            exit: processor.exit_kind(),
+            active: processor.is_active(),
+        }
+    }
+}
+
+#[derive(Default)]
+struct Observation {
+    editor: Option<Arc<dyn CarlaExternalUi>>,
+    health: ChainHealth,
+}
+
+impl ChainMonitor {
+    pub fn editor(&self) -> Option<Arc<dyn CarlaExternalUi>> {
+        self.0.read().ok()?.editor.clone()
+    }
+
+    pub fn health(&self) -> ChainHealth {
+        self.0.read().unwrap().health
+    }
+
+    fn publish_health(&self, processor: &mut dyn CarlaProcessor) {
+        let health = ChainHealth::observe(processor);
+        self.0.write().unwrap().health = health;
+    }
+
+    fn replace(&self, processor: Option<&mut dyn CarlaProcessor>) {
+        let mut observation = self.0.write().unwrap();
+        *observation = match processor {
+            Some(processor) => Observation {
+                editor: processor.external_ui(),
+                health: ChainHealth::observe(processor),
+            },
+            None => Observation {
+                editor: None,
+                health: ChainHealth {
+                    active: false,
+                    lifecycle: CarlaProcessorLifecycle::Unavailable,
+                    ..observation.health
+                },
+            },
+        };
     }
 }
 
@@ -109,8 +165,8 @@ impl ChainService {
             .map_err(|error| anyhow!("could not prepare Carla worker storage: {error:?}"))?;
         let (commands, receiver) = sync_channel(COMMAND_SLOTS);
         let (ready, startup) = sync_channel(1);
-        let editor = Arc::new(RwLock::new(None));
-        let published_editor = Arc::clone(&editor);
+        let monitor = ChainMonitor(Arc::new(RwLock::new(Observation::default())));
+        let published = monitor.clone();
         let thread = thread::Builder::new()
             .name("carla-native-dsp".into())
             .spawn(move || {
@@ -128,17 +184,19 @@ impl ChainService {
                     Ok(processor)
                 };
                 let prepared: Result<_> = create().and_then(|processor| {
-                    let handle = processor.external_ui();
-                    let (endpoint, worker) = Worker::prepare_boxed(processor, timing, limits)
-                        .map_err(|error| anyhow!("could not prepare Carla worker: {error:?}"))?;
-                    *published_editor.write().unwrap() = handle;
+                    let (endpoint, mut worker) = Worker::prepare_boxed(processor, timing, limits)
+                        .map_err(|error| {
+                        anyhow!("could not prepare Carla worker: {error:?}")
+                    })?;
+                    published.replace(Some(worker.processor()));
                     Ok((endpoint, worker))
                 });
                 match prepared {
                     Ok((endpoint, worker)) => {
                         if ready.send(Ok(endpoint)).is_ok() {
-                            run(worker, receiver, create, published_editor);
+                            run(worker, receiver, create, &published);
                         }
+                        published.replace(None);
                     }
                     Err(error) => {
                         let _ = ready.send(Err(error));
@@ -154,7 +212,7 @@ impl ChainService {
             Self {
                 commands,
                 thread,
-                editor: ChainEditor(editor),
+                monitor,
             },
         ))
     }
@@ -199,11 +257,11 @@ impl ChainService {
     }
 
     pub fn editor(&self) -> Option<Arc<dyn CarlaExternalUi>> {
-        self.editor.current()
+        self.monitor.editor()
     }
 
-    pub fn editor_handle(&self) -> ChainEditor {
-        self.editor.clone()
+    pub fn monitor(&self) -> ChainMonitor {
+        self.monitor.clone()
     }
 
     pub fn recover(&self, show_editor: bool) -> Result<()> {
@@ -230,17 +288,19 @@ fn run(
     mut worker: Worker,
     commands: Receiver<Command>,
     create: impl Fn() -> Result<Box<dyn CarlaProcessor>>,
-    editor: Arc<RwLock<Option<Arc<dyn CarlaExternalUi>>>>,
+    monitor: &ChainMonitor,
 ) {
+    let mut next_health = Instant::now() + HEALTH_POLL;
     loop {
         if worker.owner_reset_requested() {
-            let replacement = worker
+            let mut replacement = worker
                 .discard_retired_batches()
                 .ok()
                 .and_then(|()| create().ok());
-            *editor.write().unwrap() = replacement
-                .as_ref()
-                .and_then(|processor| processor.external_ui());
+            match replacement.as_mut() {
+                Some(processor) => monitor.replace(Some(processor.as_mut())),
+                None => monitor.replace(None),
+            }
             let failed = replacement.is_none();
             worker.replace_retired_owner(replacement);
             if failed {
@@ -279,10 +339,16 @@ fn run(
                         }
                     }
                 };
+                monitor.publish_health(worker.processor());
                 let _ = command.reply.send(reply);
             }
             Err(TryRecvError::Disconnected) => break,
             Err(TryRecvError::Empty) => {}
+        }
+        let now = Instant::now();
+        if now >= next_health {
+            monitor.publish_health(worker.processor());
+            next_health = now + HEALTH_POLL;
         }
         match worker.process_next() {
             Ok(true) => {}
@@ -329,6 +395,8 @@ mod tests {
             }
             Err(error) => panic!("Carla service could not start: {error:#}"),
         };
+        let monitor = service.monitor();
+        assert_eq!(monitor.health().lifecycle, CarlaProcessorLifecycle::Running);
         let state = service.save_state().unwrap();
         service.restore_state(state).unwrap();
         let transport = endpoint.async_transport().unwrap();
@@ -347,6 +415,7 @@ mod tests {
         };
         for (sequence, active) in [false, true].into_iter().enumerate() {
             service.set_active(active).unwrap();
+            assert_eq!(monitor.health().active, active);
             let submission = batch(sequence as u64);
             let tag = submission.tag;
             assert_no_heap(|| transport.try_submit(submission)).unwrap();
@@ -372,6 +441,11 @@ mod tests {
             }
         }
         service.stop(CONTROL_TIMEOUT).unwrap();
+        assert_eq!(
+            monitor.health().lifecycle,
+            CarlaProcessorLifecycle::Unavailable
+        );
+        assert!(!monitor.health().active);
         assert_eq!(
             transport.try_submit(batch(2)),
             Err(rt_runtime::Error::Disconnected)

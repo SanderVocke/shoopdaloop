@@ -657,13 +657,19 @@ fn engine_samples() -> Vec<EngineMessage> {
         }),
         EngineMessage::State(StateRecord::BusProcessorState {
             bus: BusId::MASTER,
-            kind: ProcessorKind::BuiltInFx,
+            kind: ProcessorKind::CarlaRack,
             slot: ProcessorSlot {
                 index: 63,
                 generation: 123,
             },
             snapshot: processors::Snapshot {
-                external_editor_visible: Some(true),
+                hosted: Some(processors::HostedStatus {
+                    generation: 5,
+                    lifecycle: processors::HostedLifecycle::Crashed,
+                    active: false,
+                    failure: Some(processors::HostedFailure::UnexpectedExit),
+                    editor_visible: Some(false),
+                }),
                 worker: Some(processors::WorkerDiagnostics {
                     pending: 2,
                     peak_pending: 4,
@@ -691,7 +697,7 @@ fn engine_samples() -> Vec<EngineMessage> {
                 generation: 123,
             },
             snapshot: processors::Snapshot {
-                external_editor_visible: None,
+                hosted: None,
                 worker: None,
                 source_frame: u64::MAX,
                 phase: processors::Phase::Running,

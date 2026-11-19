@@ -5,8 +5,8 @@ use anyhow::{anyhow, Result};
 use shoop_app_api::*;
 use shoop_backend::{BackendTrackFxControl, BackendTrackId, BackendTrackTopology};
 use shoop_processor_protocol::{
-    state::State, Control, Kind, Phase, CC_BASE, CLEAR_CC, DRIVE_TYPE, MODULATION_TYPE,
-    REVERB_TYPE, STAGE_BASE, SYNTH_PANIC, SYNTH_PRESET,
+    state::State, Control, HostedFailure, HostedLifecycle, Kind, Phase, CC_BASE, CLEAR_CC,
+    DRIVE_TYPE, MODULATION_TYPE, REVERB_TYPE, STAGE_BASE, SYNTH_PANIC, SYNTH_PRESET,
 };
 use shoop_rt_protocol::{Capabilities, ProcessorSlot, ProcessorTarget, Request};
 use shoop_rt_transport::carrier::Carrier;
@@ -272,7 +272,10 @@ fn fx_state(
                 .into(),
         }),
         Kind::CarlaRack | Kind::CarlaPatchbay => {
-            let visible = snapshot.external_editor_visible.unwrap_or(false);
+            let visible = snapshot
+                .hosted
+                .and_then(|status| status.editor_visible)
+                .unwrap_or(false);
             return Some(processor_status(kind, snapshot, slot, visible, None));
         }
         Kind::External => return None,
@@ -292,17 +295,45 @@ fn processor_status(
     visible: bool,
     editor: Option<TrackProcessorEditorState>,
 ) -> TrackFxState {
-    TrackFxState {
-        processor_type: TrackProcessorTypeId::new(processor_id(kind)),
-        active: snapshot.phase == Phase::Running,
-        visible,
-        lifecycle: match snapshot.phase {
+    let active =
+        snapshot.phase == Phase::Running && snapshot.hosted.is_none_or(|status| status.active);
+    let lifecycle = match snapshot.hosted.map(|status| status.lifecycle) {
+        Some(HostedLifecycle::Starting) => FxLifecycle::Starting,
+        Some(HostedLifecycle::Degraded) => FxLifecycle::Degraded,
+        Some(HostedLifecycle::Crashed) => FxLifecycle::Crashed,
+        Some(HostedLifecycle::Restarting) => FxLifecycle::Restarting,
+        Some(HostedLifecycle::Unavailable) => FxLifecycle::Unavailable,
+        Some(HostedLifecycle::Stopped) => FxLifecycle::Stopped,
+        None | Some(HostedLifecycle::Running) => match snapshot.phase {
             Phase::Running => FxLifecycle::Running,
             Phase::Faulted => FxLifecycle::Crashed,
             Phase::Free | Phase::Retiring => FxLifecycle::Unavailable,
             Phase::Owned => FxLifecycle::Stopped,
         },
-        generation: slot.map_or(0, |slot| u64::from(slot.generation)),
+    };
+    let crash_summary = snapshot
+        .hosted
+        .and_then(|status| status.failure)
+        .map(|failure| {
+            match failure {
+                HostedFailure::Startup => "Carla worker could not start",
+                HostedFailure::Protocol => "Carla worker failed a protocol operation",
+                HostedFailure::UnexpectedExit => "Carla worker exited unexpectedly",
+                HostedFailure::Unresponsive => "Carla worker became unresponsive",
+                HostedFailure::Disconnected => "Carla worker disconnected from its host",
+            }
+            .into()
+        });
+    TrackFxState {
+        processor_type: TrackProcessorTypeId::new(processor_id(kind)),
+        active,
+        visible,
+        lifecycle,
+        generation: snapshot
+            .hosted
+            .map(|status| status.generation)
+            .filter(|generation| *generation != 0)
+            .unwrap_or_else(|| slot.map_or(0, |slot| u64::from(slot.generation))),
         deadline_misses: snapshot.worker.map_or(0, |worker| worker.missed),
         stale_completions: snapshot.worker.map_or(0, |worker| worker.stale),
         status_summary: if snapshot.phase == Phase::Faulted {
@@ -315,7 +346,7 @@ fn processor_status(
         } else {
             None
         },
-        crash_summary: None,
+        crash_summary,
         logs: Arc::from([]),
         editor,
     }

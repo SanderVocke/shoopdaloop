@@ -105,10 +105,10 @@ impl ControlEndpoint {
                 phase: state.phase,
                 global_midi: state.global_midi,
                 worker: state.worker,
-                external_editor_visible: self
-                    .processor_editors
+                hosted: self
+                    .hosted_processors
                     .as_ref()
-                    .and_then(|editor| editor.visible(owner.index)),
+                    .and_then(|controls| controls.status(owner.index)),
                 values: state.values,
             },
         })
@@ -130,10 +130,10 @@ impl ControlEndpoint {
                 phase: state.phase,
                 global_midi: state.global_midi,
                 worker: state.worker,
-                external_editor_visible: self
-                    .processor_editors
+                hosted: self
+                    .hosted_processors
                     .as_ref()
-                    .and_then(|editor| editor.visible(slot.index)),
+                    .and_then(|controls| controls.status(slot.index)),
                 values: state.values,
             },
         })
@@ -216,7 +216,7 @@ impl ControlEndpoint {
                     && previous.phase == snapshot.phase
                     && previous.global_midi == snapshot.global_midi
                     && previous.worker == snapshot.worker
-                    && previous.external_editor_visible == snapshot.external_editor_visible
+                    && previous.hosted == snapshot.hosted
                     && previous
                         .values
                         .iter()

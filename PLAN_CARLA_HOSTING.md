@@ -91,13 +91,14 @@ Depends on Stages 2–3. This milestone delivers Rack and stereo Patchbay for qu
 - [x] Pass the saved restart preference and Carla instance counts to independent Native session startup. Expose per-host settings in the host manager and verify both configuration paths. [Desktop launch](src/rust/shoopdaloop/src/app_args.rs) · [Host manager](src/rust/shoop_host_manager/src/host_manager/start_host.rs)
 - [ ] Qualify Native file dialogs through the production UI path.
 - [ ] Route dry/wet audio and supported MIDI through the hosted graph. Preserve track activation demand and bus signal order around preview, processing, gains, meters and outputs. Reuse the global FX lane and explicitly validate the Native ABI's short MIDI packet limit.
-- [ ] Implement generation-scoped health, bounded process logs, clearing logs, and recovery. Reject stale controls and completions after host, slot, or worker replacement. Exercise UI disconnect without advancing the plugin generation.
+- [x] Project worker lifecycle, confirmed activation, generation, and failure classification through the native host. Verify that terminating the Rack worker reaches the application and that the Patchbay editor remains available. [Worker service](src/rust/shoop_carla/src/service.rs) · [Application test](src/rust/shoop_host/tests/recovery.rs)
+- [ ] Expose bounded generation logs, clearing logs, and worker recovery in the application. Reject stale controls and completions after host, slot, or worker replacement. Exercise UI disconnect without advancing the plugin generation.
 
 Verification gate for A1, A2, A4, and A6. Run loaded gain and MIDI fixtures in both modes through production Dummy tracks and a stereo bus. Exercise typed, socket, and shared-memory routes as applicable, editor show/idle/close/reopen, failed discovery, worker kill, hung DSP, saturation, and a simultaneously audible unrelated track. Confirm the disabled and unavailable catalog outcomes.
 
 The Linux development build of Carla 2.5.10 passed the pinned source and header checksum checks and the C ABI probe. The `shoop_carla` required-runtime test loaded Rack, Patchbay, and Patchbay 16x legacy states and verified audio, MIDI offsets, and save/restore through the extracted Native loader. The Native UI probe exercised the real Qt editors for all three descriptors on Xvfb. The application test used eight tracks, 32 loop slots, and a 16 MiB loop pool. It confirmed Rack track and stereo Patchbay bus visibility through the socket and shared-memory application connections. Stage 7 covers the packaged runtime.
 
-The stereo graph test negotiates a 32-frame quantum and a 256-frame Dummy period. The provisional batching policy collects a driver period and allows two periods for dispatch and processing, for 768 frames of declared worker buffering. Stage 6 must qualify this policy against the matched heavy workload and variable callback periods. The Native packet and memory limits are enforced at the host boundary. The remaining Stage 4 work includes file-dialog qualification, generation-scoped health, and loaded plugin signal tests through the application.
+The stereo graph test negotiates a 32-frame quantum and a 256-frame Dummy period. The provisional batching policy collects a driver period and allows two periods for dispatch and processing, for 768 frames of declared worker buffering. Stage 6 must qualify this policy against the matched heavy workload and variable callback periods. The Native packet and memory limits are enforced at the host boundary. The remaining Stage 4 work includes file-dialog qualification, application-triggered recovery with logs, and loaded plugin signal tests through the application.
 
 ## Stage 5 Complete state persistence and driver switching
 
@@ -132,6 +133,8 @@ Depends on Stages 1–6.
 - [ ] Push the final implementation head and wait for applicable native and cross-platform CI. Diagnose failures, rerun affected checks, and verify the final head again. Check for automated review after meaningful pushes and on the final head, address feedback and repeat until approval if available, and record review disposition. Leave the PR unmerged.
 
 Verification gate for A1–A8. Final-head CI and a production evidence map must substantiate each criterion. Required checks that time out, skip their target facility, or lack an available runner remain unqualified.
+
+During development, CI exposed a stale firmware lockfile and a missing browser import. After fixing both, the locked ARM firmware check and both browser build configurations passed locally. The Native JACK acceptance job also reported a standalone startup failure. A local JACK Dummy run reproduced a processor-capacity refusal at the default 32 tracks and 128 loops. An eight-track configuration reached readiness. The full JACK acceptance gate remains open. [JACK CI run](https://github.com/SanderVocke/shoopdaloop/actions/runs/44565483282/job/135706698210)
 
 ## Test cadence
 
