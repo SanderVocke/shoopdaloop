@@ -1188,11 +1188,18 @@ impl SupervisedCarlaProcessor {
             }
         };
         if self.has_checkpoint {
-            if let Err(error) = current.restore_state(&self.checkpoint) {
+            let restored = if self.test_mode.is_some() {
+                current.restore_state(&self.checkpoint)
+            } else {
+                crate::state::restore_candidate(&mut current, &self.checkpoint)
+            };
+            if let Err(error) = restored {
                 self.lifecycle = CarlaProcessorLifecycle::Unavailable;
                 self.exit_kind = WorkerExitKind::StartupFailure;
                 self.crash_summary = Some(format!("state restore failed: {error}"));
                 self.current = Some(current);
+                self.retain_current_logs_and_health();
+                drop(self.current.take());
                 return;
             }
         }

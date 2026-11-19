@@ -504,6 +504,27 @@ fn a_lost_carla_child_recovers_its_checkpoint_while_another_chain_keeps_running(
     assert_eq!(logs.len(), 1);
     assert_eq!(logs[0].generation, generation + 1);
     assert!(logs[0].stdout.is_empty() && logs[0].stderr.is_empty());
+
+    // Simulate a checkpoint whose plugin was unavailable on the replacement worker.
+    let missing = project.replacen(
+        "<Label>audiogain_s</Label>",
+        "<Label>shoop-missing-plugin-fixture</Label>",
+        1,
+    );
+    assert_ne!(missing, project);
+    let missing = encode_state(CarlaChainType::Rack, missing.as_bytes()).unwrap();
+    recover.terminate_worker_for_test().unwrap();
+    assert!(!recover.is_ready());
+    recover.restore_state(&missing).unwrap();
+    assert!(recover
+        .recover(false)
+        .unwrap_err()
+        .to_string()
+        .contains("different plugin inventory"));
+    assert_eq!(recover.lifecycle(), CarlaProcessorLifecycle::Unavailable);
+    assert!(!recover.is_active());
+    assert!(recover.worker_id().is_none());
+    confirm_audio(&mut unaffected, 0.25);
 }
 
 #[shoop_test]

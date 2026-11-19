@@ -4484,6 +4484,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e660451e55124f798a69a5af3f49ccfbefbd41910eefd25caf2393e1f3473ec1"
 dependencies = [
  "memchr",
+ "serde",
 ]
 
 [[package]]
@@ -5362,9 +5363,11 @@ dependencies = [
  "libc",
  "libloading 0.9.0",
  "memmap2",
+ "quick-xml",
  "rfd",
  "rt_buffered",
  "rt_runtime",
+ "serde",
  "serde_json",
  "shoop_plugin_protocol",
  "shoop_tracing",

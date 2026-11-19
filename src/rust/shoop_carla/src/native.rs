@@ -1902,7 +1902,7 @@ mod tests {
                 assert!(midi_matches(&host));
             }
 
-            host.restore_state(fixture).unwrap();
+            crate::state::restore_candidate(&mut host, fixture).unwrap();
             host.set_active(false);
             host.set_active(true);
             let mut loaded_processed = false;
@@ -1933,7 +1933,20 @@ mod tests {
             let state_xml = String::from_utf8(decode_state(&state, chain_type).unwrap()).unwrap();
             assert!(state_xml.contains("<Label>audiogain_s</Label>"));
             assert!(state_xml.contains("<Label>midithrough</Label>"));
-            host.restore_state(&state).unwrap();
+            crate::state::restore_candidate(&mut host, &state).unwrap();
+
+            let missing_xml = state_xml.replacen(
+                "<Label>audiogain_s</Label>",
+                "<Label>shoop-missing-plugin-fixture</Label>",
+                1,
+            );
+            assert_ne!(missing_xml, state_xml);
+            let missing = encode_state(chain_type, missing_xml.as_bytes()).unwrap();
+            let refusal = crate::state::restore_candidate(&mut host, &missing).unwrap_err();
+            assert!(
+                refusal.to_string().contains("different plugin inventory"),
+                "{refusal:#}"
+            );
         }
     }
 }
