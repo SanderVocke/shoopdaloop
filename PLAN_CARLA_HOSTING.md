@@ -1,0 +1,121 @@
+# Carla Hosting on the CPU Replacement Backend
+
+Restore native Carla hosting through the replacement session host, with master-equivalent tracks, buses, editors, process isolation, session files, and timing controls. Use the replacement graph for routing and capture and the retained Carla Native implementation for plugin hosting. Deliver stereo Rack and Patchbay first, then qualify the full Patchbay 16x topology and timing workflows before claiming parity.
+
+The implementation base is upstream `feat/backend-replacement`, inspected at `ebc804797ba5bcc8d20fb2c38182cbaf36281793`. The comparison baseline is upstream [`master` at `bebdd42299a2dec7897aad233b5c0370bbf8c833`](https://github.com/SanderVocke/shoopdaloop/tree/bebdd42299a2dec7897aad233b5c0370bbf8c833). This plan covers P07, Carla bus support beyond the completed Built-in P08 scope, and the P09/P10 behavior required by Carla workflows. General P09/P10 closure requires its own acceptance evidence. [Parity ledger](docs/native_session_recovery/feature-parity.md) · [Planning instructions](.agents/prompts/write_plan.md)
+
+## Immutable acceptance criteria
+
+| ID | Required result |
+| --- | --- |
+| A1 Native routing | Rack, Patchbay, and Patchbay 16x are offered on tracks and buses when supported by the native host. Tracks allow the master dry/wet shapes and optional dry MIDI. Buses use matching widths. Audio is verified through channel 16 on both. Existing monitor, wet playback, dry-through-wet, rerecord, Replacing, Grab, and supported composite workflows use the confirmed routes. Global FX MIDI reaches each intended Carla destination once per intended lane. |
+| A2 Realtime transport | The callback uses bounded prepared work with no allocation, destruction, locks, waits, or OS I/O. Audio and supported MIDI release at the declared delay. Late, missing, malformed, or stale blocks cannot block unrelated audio or publish under a different source frame or owner. MIDI recovery prevents stuck notes. Saturation and teardown preserve bounded storage and reclaim retired owners. |
+| A3 Wet time and capture | Wet capture, retained input history, and rerecord associate output with the original source window across startup, stop, and wrap. An operation that loses required wet data reports failure and preserves the previous committed take when replacing it. Master-style signed recording alignment, manual processor latency, automatic plus trim, and completed-take wet-only correction work wherever master supports them. Future settings leave existing takes unchanged. Export uses the logical compensated window. |
+| A4 Hosting and recovery | Both in-process and per-chain supervised subprocess modes work through the host-owned restart setting. The external Carla editor and supported file dialogs open, idle, close, and reopen. Confirmed activation, bypass, health, crash/recovery, bounded generation logs, and clear-log controls work on tracks and buses. An isolated worker failure leaves unrelated chains and transport running. Recovery uses the last confirmed checkpoint and desired active state. UI reattachment reconciles accepted operations once. |
+| A5 State and persistence | Save, store, load, save again, and role-aware import/export preserve applicable live and recorded Carla state, identity, MIDI mappings, declared resources, audio/MIDI, and routing. Master Native and legacy LV2 state fixtures restore through the production path. A missing plugin or resource, invalid state, or exhausted candidate reservation refuses atomically. Failed recorded-state restore leaves the active chain and take usable. Driver switching preserves supported state and timing or rolls back. |
+| A6 Platforms and optionality | Native release artifacts ship and verify the pinned runtime, dependencies, helpers, resources, and license/source metadata on the supported desktop targets. The owning host reports unavailable runtimes or unsupported shapes accurately. Core-only native, browser, and firmware configurations retain their supported workflows. Neither the legacy engine nor Carla Native becomes a dependency of the portable graph, client, or worklet. |
+| A7 Diagnostics and transport | Per-chain diagnostics expose queue depth, completion timing, misses, and stale outputs. Report the known host and processor buffering delays separately from intrinsic plugin latency. Provide source-frame playback and available tempo/position information to Carla, including discontinuities, and verify it with a tempo-synced fixture. |
+| A8 Delivery | Link production evidence for A1–A7 to the exact final PR head, pass applicable CI, and check automated review. Mark P07 complete and record the delivered Carla bus and timing scope in the ledger only after the corresponding evidence is available. Leave the PR unmerged for the maintainer. |
+
+## Design rules
+
+- Add a distinct hosted Carla capability and reuse the existing track and bus ownership model. `ProcessorKind::External` continues to describe physical dry/wet send and return. Use the session host for runtime ownership, separate from the UI client's lifetime. [Hosted processor contract](docs/native_session_recovery/track-processors.md) · [Master reconciliation](docs/native_session_recovery/master-reconciliation.md)
+- Extend the prepared buffering seam with bounded submission and completion for worker-backed DSP. Keep host, processor slot, stream, worker, and session identities where each is needed to reject stale work. Honor source order for stateful DSP. For lost input, specify how the stream resets or reprimes and how notes are cleared. Retain the existing synchronous path for built-in DSP. [Buffer contract](src/rust/rt_buffered/README.md)
+- Keep Carla calls, process spawning, shared-memory lifecycle, wakeups that require I/O, plugin scans, UI work, state serialization, and cleanup off the render thread. Reuse retained Native ABI and subprocess machinery behind that boundary. Charge prepared queues, staging, candidate reservations, state blobs, logs, and media tails to bounded host budgets. [Legacy completion investigation](docs/investigations/carla-890.md) · [Runtime component lock](third_party/carla/runtime-lock.json)
+- Treat source frame, scheduled wet release, and intrinsic plugin delay as distinct values. Choose batch size and slack using measured driver callback shapes and worker timing. Multiple quanta can execute consecutively inside one callback. Capture maps wet completions to original source positions and applies user latency settings once. Carla's master-compatible automatic intrinsic baseline is zero. [Buffer timing](src/rust/rt_buffered/README.md#timing) · [Master latency usage](https://github.com/SanderVocke/shoopdaloop/blob/bebdd42299a2dec7897aad233b5c0370bbf8c833/docs/source/usage.latency_compensation.rst)
+- Own opaque state on the host and use bounded immutable revision references on RT paths. Preserve the existing session document chain IDs and decode the retained state formats with explicit limits. Fence editor changes and checkpoints to a documented source boundary. Validate required plugin identities and declared assets after private restore. A successful return from Carla Native's `void` setter provides no plugin inventory. [Native state codec](src/rust/shoop_engine/src/carla_native.rs) · [Migration fixtures](src/rust/shoop_engine/test_data/CARLA_LEGACY_FIXTURES.md)
+- Negotiate width, DSP slot counts, and feature availability explicitly. Audit routing masks, graph edges, meters, media, and wire formats together for 16-channel support. Preserve existing default pool budgets by using explicit wider configurations and report supported shapes. Version changed wire and worklet contracts together. [RT protocol limits](src/rust/shoop_rt_protocol/src/lib.rs) · [Bus routing](src/rust/shoop_rt_engine/src/graph.rs)
+
+## Stage 1 Establish the compatibility and delivery baseline
+
+- [x] Refresh upstream and create `feat/p07-carla-hosting` from `feat/backend-replacement`. Carry this plan onto that branch and record the implementation base and master comparison revision.
+- [x] Map A1–A8 to production owners and reference tests. Capture the master track and bus signal order, control and MIDI behavior, supported archive fixtures, timing policies, hosting modes, and desktop release matrix.
+- [x] Inventory callback sizes, fixed quanta, native ABI capacity, and storage ceilings. Define the benchmark workloads, observed metrics, and success thresholds from baseline runs before tuning. Identify the shared P09/P10 pieces needed for Carla.
+- [ ] Record focused baseline tests and known environmental limitations. Commit the baseline and plan, push the feature branch, and open a draft PR against `feat/backend-replacement`.
+
+Verification gate for A1–A8. Reproduce baseline buffering, hosted processor routing, and Carla completion oracles. Track any environment-dependent skips, including the same-CPU `SCHED_FIFO` reproduction, for a suitable runner.
+
+### Compatibility and workload baseline
+
+| Criteria | Reference and production seam |
+| --- | --- |
+| A1 | Use master's `native_dummy_bus_fx_master_workflow_includes_carla_when_available` and `native_fx_catalog_advertises_carla_facets_and_constraints` for type and routing behavior. Reuse the replacement host processor graph and service tests. Its bus graph sums tracks, injects preview at bus input, feeds processor and global MIDI, then applies output controls. [Master native backend](https://github.com/SanderVocke/shoopdaloop/blob/bebdd42299a2dec7897aad233b5c0370bbf8c833/src/rust/shoop_backend/src/native.rs) · [Replacement bus contract](docs/native_session_recovery/bus-fx.md) |
+| A2, A7 | Use `rt_buffered` sample/MIDI and partition tests as scheduling oracles. Benchmark against the matched 48 kHz, 1,024-frame empty and eight-Dragonfly workload from the retained starvation report. Also exercise the replacement defaults of Q=32 and 256-frame driver buffers and variable callback partitions. Measure callback tails and xruns, per-chain completion times/misses, output samples, and steady-state memory. Require zero induced xruns and correct wet samples in the matched healthy run, and bounded losses with unaffected audio under injected overload. [Async foundation](src/rust/rt_buffered/README.md) · [Reference workload](docs/investigations/carla-890.md#narrow-version-validation) |
+| A3 | Compare master signed preroll/postroll, wet-only offsets, compensated dry dispatch, and logical export with the replacement capture/history tests. Shared P09/P10 work includes policy latching, source-window storage and correction, and checked frame conversion. [Master latency guide](https://github.com/SanderVocke/shoopdaloop/blob/bebdd42299a2dec7897aad233b5c0370bbf8c833/docs/source/usage.latency_compensation.rst) · [Replacement persistence contract](docs/native_session_recovery/persistence-contract.md) |
+| A4–A6 | Use the retained fake bridge and shared-memory fixtures, loaded Rack/Patchbay/Patchbay16 legacy envelopes, and native runtime probes. The Native worker protocol bounds audio to 16 channels per side and 8,192 frames per block, MIDI to 1,024 events and 8,192 bytes per block, and state to 16 MiB. The runtime lock defines Linux x86-64, Windows x86-64, and macOS x86-64/arm64 payloads. Budget both prepared processor banks against the replacement default 256 MiB processor storage ceiling. [Worker protocol](src/rust/shoop_plugin_protocol/src/lib.rs) · [Legacy fixtures](src/rust/shoop_engine/test_data/CARLA_LEGACY_FIXTURES.md) · [Runtime lock](third_party/carla/runtime-lock.json) |
+| A8 | Use the final-head CI and production workflows in the validation guide. [Validation guide](VALIDATION.md) |
+
+## Stage 2 Build the asynchronous buffering primitive
+
+Depends on Stage 1. Use a deterministic fake processor first.
+
+- [ ] Extend `rt_buffered` with prepared transport ownership, bounded submit/poll, and tagged completion slots. Make asynchronous slots own MIDI and control input across calls, including the current one-quantum borrowed-input fast path. Share timing and release rules with synchronous processing.
+- [ ] Implement release, expiry, bounded discard, reset, drain, and retirement. Specify how missed or rejected input affects DSP state and note cleanup. Keep expired slots fenced until transport ownership returns.
+- [ ] Validate output shape, frame count, finite audio, MIDI offsets and ordering before publication. Track startup silence, starvation, and transport faults distinctly. Expose fixed-size queue and timing counters for host collection.
+
+Verification gate for A2 and A7. Use a manually stepped fake worker to force early, late, absent, malformed, duplicated and out-of-order completions, queue exhaustion, and stale generations. Check exact audio/MIDI output across variable callback partitions, no render heap work or waits, bounded retirement, and unchanged synchronous behavior.
+
+## Stage 3 Make delayed wet capture and history source-aligned
+
+Depends on Stage 2. Prove the workflow with the fake worker before loading Carla.
+
+- [ ] Replace the async owner's immediate wet capture tap with bounded, source-tagged pending writes in the RT engine and loop layer. Keep dry audio and dry MIDI at their original positions. Resolve wet tails after Stop and across wraps before publishing a take or opening it for save/export.
+- [ ] Integrate async validity and history coverage into ordinary capture, dry playback, wet rerecord, Replacing, Grab, and supported composites. Define refusal or rollback for missing wet frames, worker reset, and capacity exhaustion. Preserve committed media and unaffected tracks.
+- [ ] Add an applied processor revision handoff tied to source position and take revision. Use a fake opaque checkpoint through recording, cancellation, and restore so the final state path has an exact behavioral test.
+
+Verification gate for A1, A3, and A5. Compare impulses and frame-offset MIDI against independent source-window expectations at start, wrap, stop, rerecord, and retrospective capture. Inject a missing block at each boundary and verify the outcome, prior media, and restrictions on pending reads. Exercise concurrent loops and interleaved sync/composite operations.
+
+## Stage 4 Host stereo Carla through the production native service
+
+Depends on Stages 2–3. This milestone delivers Rack and stereo Patchbay for qualification.
+
+- [ ] Extract the retained Carla Native loader, ABI validation, editor dispatch, subprocess protocol and supervision into a native host component. Provide an off-render executor for in-process hosting and an isolated child per chain in subprocess mode. Keep control and state operations separate from bounded audio submissions.
+- [ ] Add optional native host configuration and the host-owned restart preference, catalogue availability, private endpoint installation, and track/bus control projection. Register the worker/probe entry with the production host or its dedicated companion. Wire editor and file-dialog dispatch to the appropriate native main thread.
+- [ ] Route dry/wet audio and supported MIDI through the hosted graph. Preserve track activation demand and bus signal order around preview, processing, gains, meters and outputs. Reuse the global FX lane and explicitly validate the Native ABI's short MIDI packet limit.
+- [ ] Implement generation-scoped health, bounded process logs, clearing logs, and recovery. Reject stale controls and completions after host, slot, or worker replacement. Exercise UI disconnect without advancing the plugin generation.
+
+Verification gate for A1, A2, A4, and A6. Run loaded gain and MIDI fixtures in both modes through production Dummy tracks and a stereo bus. Exercise typed, socket, and shared-memory routes as applicable, editor show/idle/close/reopen, failed discovery, worker kill, hung DSP, saturation, and a simultaneously audible unrelated track. Confirm the disabled and unavailable catalog outcomes.
+
+## Stage 5 Complete state persistence and driver switching
+
+Depends on Stages 3–4.
+
+- [ ] Add bounded host-owned immutable checkpoints and bulk transfer for large state. Use master's command-admission snapshot as the compatibility baseline and bind the replacement take to the applied revision at its source start. Define when editor changes take effect and test an intervening edit on a scheduled take. Keep old checkpoints alive while takes, captures, or candidates reference them.
+- [ ] Extend the production persistence image, codec, and service for live track/bus state, recorded-take state, plugin identities, and declared asset payloads. Use owned, bounded archive resources with validated paths and checksums. Round-trip master Native and legacy LV2 states, and preserve role-aware media and routes.
+- [ ] Instantiate and restore candidates privately. Inspect the restored plugin graph or available runtime diagnostics to verify required plugins and assets before activation. Establish this verification with a missing-plugin fixture before enabling transactional load. Apply the same candidate mechanism to recorded-state restore and driver switching, with prior-state rollback.
+
+Verification gate for A4 and A5. Exercise structure-only and media-bearing save/load/save, old archives, state larger than one record, missing plugins/resources, malformed data, failed state restore, slot exhaustion, cancellation, and UI reconnect. Compare media, state, mappings, and routing before and after refusal. Verify rate/buffer changes and restore rollback through the production driver-switch path.
+
+## Stage 6 Finish full-width routing, latency, and transport diagnostics
+
+Depends on Stages 3–5. Isolate the width, timing, and diagnostics changes into reviewable milestones.
+
+- [ ] Implement Patchbay 16x on tracks and buses. Extend negotiated dimensions and prepared graph/media capacities where needed. Replace the single-word bus route encoding where it cannot address all supported channels, and audit dependent wire formats and persistence shapes.
+- [ ] Implement or integrate the Carla-facing P09/P10 controls. Latch signed recording alignment and processor latency per operation. Preserve preroll/postroll and wet-only completed-take correction, dispatch dry playback and rerecord at their compensated source position, and export the logical window. Retain master refusal rules for operations that cannot use the configured offset. Prove that host and worker buffering are accounted for once.
+- [ ] Publish per-chain queue depth, completion timing, misses and stale outputs through confirmed host diagnostics. Feed Carla source-frame position, playing state, and available tempo information with defined behavior at seeks, wraps, tempo changes, and restarts. Choose supported default buffering after validating driver period and CPU-contention workloads.
+
+Verification gate for A1, A3, and A7. Use channel-isolated impulses on channels 1, 8, 9, and 16 through both a track and bus, with routing, meters, save/load, and memory-budget checks. Compare dry/wet timing and exported media against known plugin delays across rates and driver periods. Check tempo-synced output and report callback tails and worker misses against the Stage 1 workload.
+
+## Stage 7 Qualify packages and complete delivery
+
+Depends on Stages 1–6.
+
+- [ ] Restore release packaging using the retained lock, normalizer, platform dependencies, and probes. Limit native payloads to the owning host or worker component and verify portable artifacts still exclude them. Exercise the installed layout with runtime present and absent on the supported desktop matrix.
+- [ ] Run the packaged end-to-end scenario in both modes. Create Carla tracks and buses, open the editor, load plugins, send MIDI, capture and rerecord wet media, restore take state, save/load/export, switch drivers, kill an isolated worker during playback, and reconnect the UI. Compare real output, timing, and confirmed state against independent oracles. Include matched same-CPU contention and sustained multi-chain pressure to qualify deadlines, recovery, and steady-state memory.
+- [ ] Run the final workspace gates and production native, browser, and firmware regression checks. Use a runner with realtime scheduling for the starvation regression and actual AudioWorklet execution for the browser baseline. Record actual device and GUI coverage accurately. [Validation guide](VALIDATION.md)
+- [ ] Update the parity ledger, host and user guides, and persistence/timing contracts. Attach the A1–A8 evidence map, reproducible commands, measured budgets, and supported configurations to the PR.
+- [ ] Push the final implementation head and wait for applicable native and cross-platform CI. Diagnose failures, rerun affected checks, and verify the final head again. Check for automated review after meaningful pushes and on the final head, address feedback and repeat until approval if available, and record review disposition. Leave the PR unmerged.
+
+Verification gate for A1–A8. Final-head CI and a production evidence map must substantiate each criterion. Required checks that time out, skip their target facility, or lack an available runner remain unqualified.
+
+## Test cadence
+
+Use deterministic tests at each changed boundary during iteration. Run `rt_buffered` and focused RT/loop tests first, then run native fixture, carrier, codec, and session tests as their stages land. Use real plugins at the stereo milestone to expose ABI and editor behavior early. Reserve expanded device, packaging, browser, Miri ownership, and release contention runs for integration milestones and final-head validation. Run the applicable workspace suite and formatting, warnings, test-usage, parity, and dependency checks at final delivery. Rerun the affected layer after fixes and recheck applicable CI on the new head. [Validation guide](VALIDATION.md)
+
+## Execution contract
+
+- Keep the plan updated as work progresses and check off completed items.
+- Commit each completed stage or meaningful milestone.
+- Implementation steps may be revised when new evidence warrants it.
+- Design rules may be revised for a documented, well-supported reason.
+- Goals and acceptance criteria may change only with explicit user approval.
