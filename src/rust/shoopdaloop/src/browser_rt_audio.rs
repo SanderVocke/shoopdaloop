@@ -128,7 +128,9 @@ mod platform {
     };
     use web_time::Instant;
 
-    use super::{worklet_config, AudioSetup, RESERVED_CAPTURE_CHANNELS};
+    use super::{
+        worklet_config, AudioSetup, BROWSER_MAX_LOOP_MEMORY_MB, RESERVED_CAPTURE_CHANNELS,
+    };
     use crate::browser_midi::{BrowserMidiHub, BrowserMidiState, TrackForwarder};
 
     const PROCESSOR_NAME: &str = "shoop-rt-audio-processor";

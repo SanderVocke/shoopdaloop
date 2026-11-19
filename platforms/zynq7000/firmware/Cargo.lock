@@ -144,6 +144,7 @@ name = "rt_buffered"
 version = "0.3.0"
 dependencies = [
  "rt_runtime",
+ "rtrb",
 ]
 
 [[package]]
