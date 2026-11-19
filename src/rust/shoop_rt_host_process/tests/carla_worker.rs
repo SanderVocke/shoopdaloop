@@ -574,6 +574,44 @@ fn a_lost_carla_child_recovers_its_checkpoint_while_another_chain_keeps_running(
     assert!(!recover.is_active());
     assert!(recover.worker_id().is_none());
     confirm_audio(&mut unaffected, 0.25);
+
+    let files = tempfile::tempdir().unwrap();
+    let source = files.path().join("checkpoint.mid");
+    std::fs::write(
+        &source,
+        b"MThd\0\0\0\x06\0\0\0\x01\0\x60MTrk\0\0\0\x0c\0\x90\x3c\x64\x60\x80\x3c\0\0\xff\x2f\0",
+    )
+    .unwrap();
+    let path = source
+        .to_str()
+        .unwrap()
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;");
+    let project = format!(
+        "<CARLA-PROJECT VERSION='2.5'><Plugin><Info><Type>INTERNAL</Type>\
+         <Label>midifile</Label></Info><Data><Active>Yes</Active><CustomData>\
+         <Type>http://kxstudio.sf.net/ns/carla/string</Type><Key>file</Key>\
+         <Value>{path}</Value></CustomData></Data></Plugin></CARLA-PROJECT>"
+    );
+    let checkpoint = encode_state(CarlaChainType::Rack, project.as_bytes()).unwrap();
+    recover.restore_state(&checkpoint).unwrap();
+    recover.recover(false).unwrap();
+    assert!(recover.is_ready());
+    recover.terminate_worker_for_test().unwrap();
+    assert!(!recover.is_ready());
+    std::fs::remove_file(&source).unwrap();
+    let refusal = recover.recover(false).unwrap_err();
+    assert!(
+        refusal
+            .to_string()
+            .contains("Carla source file is unavailable"),
+        "{refusal:#}"
+    );
+    assert_eq!(recover.lifecycle(), CarlaProcessorLifecycle::Unavailable);
+    assert!(!recover.is_active());
+    assert!(recover.worker_id().is_none());
+    confirm_audio(&mut unaffected, 0.25);
 }
 
 #[shoop_test]

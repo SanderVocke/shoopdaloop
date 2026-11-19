@@ -1949,4 +1949,71 @@ mod tests {
             );
         }
     }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn verifies_native_file_resources_before_restoring_a_candidate() {
+        let _exclusive = lock_carla_test();
+        let chain = CarlaChainType::Rack;
+        let mut host = match CarlaNativeHost::instantiate(chain, 48_000, 64) {
+            Ok(host) => host,
+            Err(_) if std::env::var_os("SHOOP_REQUIRE_CARLA_TESTS").is_none() => return,
+            Err(error) => panic!("required Carla Native runtime is unavailable: {error:#}"),
+        };
+        let files = tempfile::tempdir().unwrap();
+        let mut wav = b"RIFF\x24\x02\0\0WAVEfmt \x10\0\0\0\x01\0\x01\0\x80\xbb\0\0\0\x77\x01\0\x02\0\x10\0data\0\x02\0\0".to_vec();
+        for sample in [0x4000i16, -0x4000].repeat(128) {
+            wav.extend_from_slice(&sample.to_le_bytes());
+        }
+        let midi =
+            b"MThd\0\0\0\x06\0\0\0\x01\0\x60MTrk\0\0\0\x0c\0\x90\x3c\x64\x60\x80\x3c\0\0\xff\x2f\0";
+        for (label, name, payload) in [
+            ("audiofile", "source & audio.wav", wav.as_slice()),
+            ("midifile", "source & midi.mid", midi.as_slice()),
+        ] {
+            let source = files.path().join(name);
+            std::fs::write(&source, payload).unwrap();
+            let parameters = if label == "audiofile" {
+                "<Parameter><Index>1</Index><Name>Host Sync</Name><Value>0</Value></Parameter>"
+            } else {
+                ""
+            };
+            let state = |source: &std::path::Path| {
+                let path = quick_xml::escape::escape(source.to_str().unwrap());
+                let xml = format!(
+                    "<CARLA-PROJECT VERSION='2.5'><Plugin><Info><Type>INTERNAL</Type>\
+                     <Label>{label}</Label></Info><Data><Active>Yes</Active>{parameters}<CustomData>\
+                     <Type>http://kxstudio.sf.net/ns/carla/string</Type><Key>file</Key>\
+                     <Value>{path}</Value></CustomData></Data></Plugin></CARLA-PROJECT>"
+                );
+                encode_state(chain, xml.as_bytes()).unwrap()
+            };
+            crate::state::restore_candidate(&mut host, &state(&source)).unwrap();
+            if label == "audiofile" && std::env::var_os("SHOOP_REQUIRE_CARLA_TESTS").is_some() {
+                host.set_active(true);
+                let played = (0..20).any(|_| {
+                    host.idle();
+                    host.process(64).unwrap();
+                    let samples = &host.audio_output(0).unwrap()[..64];
+                    samples.iter().any(|&sample| sample > 0.45)
+                        && samples.iter().any(|&sample| sample < -0.45)
+                });
+                assert!(played, "restored Audio File produced no fixture samples");
+            }
+            let installed = host.save_state().unwrap();
+
+            let missing = files.path().join(format!("missing {name}"));
+            let refusal = crate::state::restore_candidate(&mut host, &state(&missing)).unwrap_err();
+            assert!(refusal
+                .to_string()
+                .contains("Carla source file is unavailable"));
+            assert_eq!(host.save_state().unwrap(), installed);
+
+            std::fs::create_dir(&missing).unwrap();
+            let refusal = crate::state::restore_candidate(&mut host, &state(&missing)).unwrap_err();
+            assert!(refusal
+                .to_string()
+                .contains("Carla source path is not a file"));
+            assert_eq!(host.save_state().unwrap(), installed);
+        }
+    }
 }

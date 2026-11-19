@@ -103,6 +103,28 @@ struct Project {
 struct ProjectPlugin {
     #[serde(rename = "Info")]
     identity: PluginIdentity,
+    #[serde(rename = "Data", default)]
+    data: PluginData,
+}
+
+#[derive(Default, Deserialize)]
+struct PluginData {
+    #[serde(rename = "CustomData", default)]
+    custom: Vec<PluginCustomData>,
+}
+
+#[derive(Deserialize)]
+struct PluginCustomData {
+    #[serde(rename = "Key", default)]
+    key: String,
+    #[serde(rename = "Value", default)]
+    value: String,
+}
+
+#[derive(Eq, PartialEq)]
+struct ProjectEntry {
+    identity: PluginIdentity,
+    source_file: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Eq, PartialEq)]
@@ -154,7 +176,7 @@ impl PluginIdentity {
     }
 }
 
-fn plugin_inventory(chain: CarlaChainType, state: &str) -> Result<Vec<PluginIdentity>> {
+fn project_entries(chain: CarlaChainType, state: &str) -> Result<Vec<ProjectEntry>> {
     let xml = decode_state(state, chain)?;
     let mut reader = Reader::from_reader(xml.as_slice());
     reader.config_mut().trim_text(true);
@@ -204,37 +226,68 @@ fn plugin_inventory(chain: CarlaChainType, state: &str) -> Result<Vec<PluginIden
     anyhow::ensure!(root && depth == 0, "incomplete Carla project");
     let project: Project =
         quick_xml::de::from_reader(xml.as_slice()).context("reading Carla project inventory")?;
-    let mut identities = project
-        .plugins
-        .into_iter()
-        .map(|plugin| plugin.identity)
-        .collect::<Vec<_>>();
     anyhow::ensure!(
-        identities.len() == plugins,
+        project.plugins.len() == plugins,
         "incomplete Carla plugin inventory"
     );
-    for identity in &mut identities {
-        identity.normalize()?;
-    }
-    Ok(identities)
+    project
+        .plugins
+        .into_iter()
+        .map(|ProjectPlugin { mut identity, data }| {
+            identity.normalize()?;
+            let mut source_file = None;
+            if identity.kind == "INTERNAL"
+                && matches!(identity.label.as_str(), "audiofile" | "midifile")
+            {
+                let mut files = data.custom.into_iter().filter(|entry| entry.key == "file");
+                source_file = files
+                    .next()
+                    .map(|entry| entry.value)
+                    .filter(|value| !value.is_empty());
+                anyhow::ensure!(
+                    files.next().is_none(),
+                    "duplicate Carla source file declaration"
+                );
+            }
+            Ok(ProjectEntry {
+                identity,
+                source_file,
+            })
+        })
+        .collect()
 }
 
 /// Verify a disposable candidate before publishing it. The Native ABI setter
-/// returns void even when it skips a plugin.
+/// returns void even when it skips a plugin or its source file.
 pub(crate) fn restore_candidate(
     processor: &mut dyn crate::processor::CarlaProcessor,
     state: &str,
 ) -> Result<()> {
     let chain = processor.info().chain_type;
-    let expected = plugin_inventory(chain, state)?;
+    let expected = project_entries(chain, state)?;
+    for path in expected
+        .iter()
+        .filter_map(|entry| entry.source_file.as_ref())
+    {
+        let metadata = std::fs::metadata(path)
+            .with_context(|| format!("Carla source file is unavailable: {path}"))?;
+        anyhow::ensure!(
+            metadata.is_file(),
+            "Carla source path is not a file: {path}"
+        );
+    }
     processor.restore_state(state)?;
-    let actual = plugin_inventory(chain, &processor.save_state()?)?;
+    let actual = project_entries(chain, &processor.save_state()?)?;
     anyhow::ensure!(
-        actual == expected,
+        actual
+            .iter()
+            .map(|entry| &entry.identity)
+            .eq(expected.iter().map(|entry| &entry.identity)),
         "Carla restored a different plugin inventory (expected {} plugins, got {})",
         expected.len(),
         actual.len()
     );
+    anyhow::ensure!(actual == expected, "Carla restored different source files");
     Ok(())
 }
 
