@@ -48,6 +48,9 @@ impl Differences {
     pub(super) fn set(&mut self, cell: usize, different: bool) {
         let word = cell / 64;
         let bit = 1 << (cell % 64);
+        if (self.words[word] & bit != 0) == different {
+            return;
+        }
         if different {
             self.words[word] |= bit;
         } else {
@@ -83,6 +86,24 @@ fn differs(target: &MidiState, current: &MidiState, cell: usize) -> bool {
                 && t != c
         }
         259 => t != c,
+        _ => false,
+    }
+}
+fn relevant(target: &MidiState, cell: usize) -> bool {
+    if cell == STATE_CELLS - 1 {
+        return false;
+    }
+    match cell % 264 {
+        0..128 | 259 => true,
+        128..256 | 260 => target.cell(cell) < 128,
+        256..=258 => {
+            target.cell(cell) < 128
+                && target
+                    .channel((cell / 264) as u8)
+                    .unwrap()
+                    .program()
+                    .is_some()
+        }
         _ => false,
     }
 }
@@ -183,12 +204,15 @@ impl DifferenceService {
         assert!(destination < self.destinations);
         self.work = self.work.saturating_add(store.usage().snapshots as u64);
         for snapshot in store.snapshot_ids() {
+            let target = store.state(snapshot).unwrap();
+            if !relevant(target, cell) {
+                continue;
+            }
             let i =
                 snapshot.slot as usize * usize::from(self.destinations) + usize::from(destination);
             let e = &mut self.entries[i];
             if e.generation == snapshot.generation && cell < e.cursor {
-                e.differences
-                    .compare(store.state(snapshot).unwrap(), current, cell);
+                e.differences.compare(target, current, cell);
                 self.work = self.work.saturating_add(1);
             }
         }

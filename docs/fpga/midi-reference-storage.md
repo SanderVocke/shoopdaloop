@@ -5,8 +5,8 @@ This document records the Rust reference profile; it does not freeze an RTL ABI.
 
 ## Capacity and work model
 
-The session profile has 128 loops, eight controlled destinations, one history
-source, 8,192 events per sequence, 256 events per allocation block, 4,864 event
+The default session profile has 128 loops, eight controlled destinations, one input
+with full history, 8,192 events per sequence, 256 events per allocation block, 4,864 event
 blocks, 512 views, 768 state snapshots, and 256 queued retirements. It reserves
 32 blocks per live full sequence (4,096 total), leaving 768 blocks for history,
 transfers, old retained versions, and recording headroom. Reservations make these
@@ -71,7 +71,65 @@ coherent version. Control workers do not mutate live store arrays.
 
 ## Validation evidence
 
-Baseline: 99 reference/compiler tests passed. Existing unrelated native-suite
-failures are recorded by the first milestone. Stage results, resource accounting,
-complete grab timings, and final native results will be appended as implemented.
-CI results and review feedback are excluded unless explicitly requested.
+The normal stress fixture uses 128 inputs and loops, with one full 30-second
+history and 127 inputs retaining only a recording-start prefix. Its input limit is
+one event per input per quantum. Eight destinations each host sixteen disjoint
+channel owners. It records and replays 3,000 CC events per loop at 100/second;
+the full-capacity release run records/replays 8,192 events per loop over 30 seconds.
+Both validate all original bytes/timestamps, passthrough audio, concurrent export
+and import, duplicate/replacement, atomic 128-loop grab, and eventual reclamation
+of all loop owners. The remaining 128 history writers are intentional live owners.
+
+Prepared session memory in that profile is **34,457,072 bytes (32.86 MiB)**,
+including event payload capacity, snapshot/difference tables, context/input state,
+free lists, checkpoint queues, and retirement/transfer metadata. Caller audio,
+input/sink arrays, and profile samples are excluded. One input with history can
+serve many loops; 128 full retrospective histories are not implicitly provisioned.
+History writers reserve two additional blocks of event-count headroom for rolling
+prefix/arrival handling. Published sequences still admit at most 8,192 events.
+
+### Work bounds
+
+| Operation | Accounted limit |
+| --- | --- |
+| Ordinary view event range | At most 8,192 records and 33 intersecting blocks. |
+| History state derivation | At most 31 ordinary messages from a ready checkpoint; exact checkpoint starts share state. |
+| Group publication | Up to 128 bindings; fixed per-binding metadata, without walking old event/block tables. |
+| New target comparisons | Copy one ready bitmap per configured destination and update replay-changed cells. |
+| Changed output cell | Probe live target snapshots, at most the snapshot pool capacity; skip irrelevant targets and unchanged bits. |
+| Ordinary note update / pedal release / System Reset | 1 / 129 / 4,226 interpreter steps; a bulk command can notify many changed fields. |
+| Online transfers between quanta | 64 event transfers, 256 setup cells, 64 handle/metadata operations, 128 binding publications. |
+| Automatic retirement | At most the configured number of block/descriptor release steps per quantum; default 64. |
+
+Snapshot copies, replay, lookup, comparison fanout, reference retention, publication,
+and deferred release are counted and included in complete operation timings.
+`storage_work` combines bookkeeping visits and snapshot-copy bytes; separate
+`state_copy_bytes` makes copy volume explicit. Counts are functional software units,
+not RTL clocks. The declared protocol/pool limits bound heavy reset/pedal work;
+the CC timings below do not establish its deadline on every configured topology.
+
+### Local checks
+
+Baseline: 99 focused reference/compiler tests passed. The latest all-feature run
+passes 122; an extra cold-grab test passes separately, bringing current coverage
+to 123. All thirteen original pipeline scenarios were migrated to the new runtime.
+Tests include full-comparison oracles after 700 mixed updates; independent pedal,
+bank/program and exact event traces; one-message cleanup/refusal; sync waits;
+fatal audio faults; generation/capacity failures; import grants/cancellation;
+background admission reservations; and a guarded 128-loop end-to-end session.
+
+The extra cold-grab fixture replaces 128 distinct views containing 8,192 events
+and derives state by replaying 31 distinct controls, while allocating no heap and
+without advancing the SP frame. Source/target lifetimes survive collector progress.
+
+Warning-denying workspace build, formatting, test-policy, and capability-parity
+checks pass. Rust 1.100 emits existing Cargo manifest unused-dependency warnings;
+those are separate from Rust compiler warnings. Full native-suite results and
+final CPU timing distributions will be recorded below when complete. The earlier
+milestone reproduced unrelated native startup/capacity and shutdown failures on
+its untouched baseline; do not attribute those to reference MIDI without evidence.
+
+CI results and review feedback are excluded unless explicitly requested. No RTL
+simulation, synthesis, physical-device behavior, or hard hardware deadline is
+claimed. The production native MIDI backend and frontend/control protocol were
+not changed.

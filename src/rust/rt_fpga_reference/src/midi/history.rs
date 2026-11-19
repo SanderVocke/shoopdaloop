@@ -16,22 +16,36 @@ pub(super) struct History {
     prefix: u32,
     next_order: u32,
     retention: u64,
+    burst: u32,
     pub earliest: u64,
     pub frozen: bool,
     pub replay_work: u64,
+    pub copied_bytes: u64,
 }
 impl History {
     pub fn reserved_snapshots(&self, max_events: u32) -> u32 {
-        (max_events / 32 + 2).saturating_sub(self.checkpoints.len() as u32)
+        if self.retention == 0 {
+            return self.burst;
+        }
+        (max_events / 32 + 2)
+            .saturating_sub(self.checkpoints.len() as u32)
+            .saturating_add(self.burst)
+    }
+    pub fn set_retention(&mut self, frames: u64) {
+        self.retention = frames;
+    }
+    pub fn reserved_blocks(&self, maximum: u32, used: u32) -> u32 {
+        (if self.retention == 0 { 3 } else { maximum + 3 }).saturating_sub(used)
     }
     pub fn prepare(
         store: &mut ContentStore,
         differences: &mut DifferenceService,
         destinations: &[Interpreter],
         retention: u64,
+        burst: u32,
     ) -> Result<Self, Error> {
         let initial = store.snapshot(&MidiState::default())?;
-        let writer = store.writer(initial)?;
+        let writer = store.history_writer(initial)?;
         for (destination, current) in destinations.iter().enumerate() {
             differences.initialize(
                 store,
@@ -58,9 +72,11 @@ impl History {
             prefix: 0,
             next_order: 0,
             retention,
+            burst,
             earliest: 0,
             frozen: false,
             replay_work: 0,
+            copied_bytes: 0,
         })
     }
     pub fn prepared_bytes(&self) -> usize {
@@ -173,8 +189,6 @@ impl History {
             }
         }
         let checkpoint = self.checkpoints[low];
-        let mut state = Interpreter::new(*store.state(checkpoint.state)?);
-        let mut changed = Differences::default();
         let first = store
             .read(self.writer, 0)?
             .map_or(self.next_order, |r| r.order);
@@ -185,6 +199,16 @@ impl History {
         if index - begin > 31 {
             return Err(Error::InvalidState);
         }
+        if index == begin {
+            store.retain_snapshot(checkpoint.state)?;
+            return Ok(checkpoint.state);
+        }
+
+        let mut state = Interpreter::new(*store.state(checkpoint.state)?);
+        self.copied_bytes = self
+            .copied_bytes
+            .saturating_add(size_of::<MidiState>() as u64);
+        let mut changed = Differences::default();
         for i in begin..index {
             let event = store.read(self.writer, i)?.ok_or(Error::InvalidState)?;
             let before = state.steps();

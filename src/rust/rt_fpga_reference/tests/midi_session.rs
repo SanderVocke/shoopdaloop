@@ -1,5 +1,5 @@
 #[path = "support/midi_session.rs"]
-mod support;
+pub mod support;
 use shoop_wasm_test_support::{heap::assert_no_heap, shoop_test};
 use support::*;
 #[global_allocator]
@@ -395,4 +395,323 @@ fn clearing_content_reclaims_old_events_after_acknowledged_stop() {
     assert_eq!(f.midi.content(0).unwrap(), None);
     assert_eq!(f.midi.store().describe(view), Err(Error::InvalidState));
     assert_eq!(f.midi.store().usage().views, base.views);
+}
+
+#[shoop_test]
+fn session_records_128_loops_and_grabs_all_of_them_while_transfers_and_history_continue() {
+    let evidence = support::dense_session_workload(3000, |operation| assert_no_heap(operation));
+    assert_eq!(evidence.events_per_loop, 3000);
+    assert!(evidence.grab_replay_steps <= 31);
+    assert_eq!(evidence.final_usage.views, 128);
+}
+
+#[shoop_test]
+fn control_transfer_grants_are_shared_and_cancelled_imports_release_all_owners() {
+    let mut f = Fixture::new(16, 1);
+    f.run(&[]);
+    let initial = f.midi.store().usage();
+    let view = f.midi.begin_import(&MidiState::default()).unwrap();
+    let mut data = core::array::from_fn::<Record, 64, _>(|i| Record {
+        frame: i as u64,
+        order: i as u32,
+        message: msg(&[0xb0, 1, i as u8]),
+    });
+    assert_no_heap(|| {
+        assert_eq!(f.midi.import_events(view, &data).unwrap(), 64);
+        data[0].frame = 64;
+        assert_eq!(f.midi.import_events(view, &data[..1]), Err(Error::Busy));
+        assert_eq!(f.midi.store().describe(view).unwrap().events, 64);
+        f.run(&[]);
+        f.midi.import_events(view, &data[..1]).unwrap();
+        let before = f.midi.work().comparison_work;
+        for _ in 0..20 {
+            assert!(!f.midi.finish_import(view, 80, 256).unwrap());
+        }
+        assert!(f.midi.work().comparison_work - before <= 256);
+        f.midi.release(view).unwrap();
+        while f.midi.maintenance(32) != 0 {}
+    });
+    assert_eq!(f.midi.store().usage(), initial);
+}
+
+#[shoop_test]
+fn background_import_reserves_capacity_for_admitted_capture_and_history() {
+    let mut l = limits(1);
+    l.store.blocks = 12;
+    l.store.max_events = 16;
+    let mut f = Fixture::with_limits(16, l);
+    f.command(0, Operation::Record);
+    assert_eq!(f.run(&[]).error, None);
+    let a = f.midi.begin_import(&MidiState::default()).unwrap();
+    let b = f.midi.begin_import(&MidiState::default()).unwrap();
+    let data = core::array::from_fn::<Record, 16, _>(|i| Record {
+        frame: i as u64,
+        order: i as u32,
+        message: msg(&[0xb0, 1, i as u8]),
+    });
+    f.midi.import_events(a, &data).unwrap();
+    assert_eq!(f.midi.import_events(b, &data), Err(Error::Capacity));
+    assert_eq!(f.midi.store().describe(b).unwrap().events, 0);
+    let input = core::array::from_fn::<InputEvent, 16, _>(|i| event(i as u32, &[0xb0, 2, i as u8]));
+    assert_no_heap(|| {
+        assert_eq!(f.run(&input).error, None);
+    });
+    f.command(0, Operation::Stop);
+    assert_eq!(f.run(&[]).error, None);
+    assert_eq!(f.midi.take_status(0).unwrap(), TakeStatus::Complete);
+    f.midi.release(a).unwrap();
+    f.midi.release(b).unwrap();
+}
+
+#[shoop_test]
+fn matching_state_needs_no_restoration_and_unsupported_channel_overlap_emits_nothing() {
+    let mut f = Fixture::new(16, 1);
+    let mut target = MidiState::default();
+    target.apply_packet(&[0xb0, 1, 40], 3).unwrap();
+    f.midi
+        .send(
+            OutputEvent {
+                destination: 0,
+                offset: 0,
+                message: msg(&[0xb0, 1, 40]),
+            },
+            &mut |_| Ok(()),
+        )
+        .unwrap();
+    let view = f.midi.begin_import(&target).unwrap();
+    while !f.midi.finish_import(view, 16, 256).unwrap() {}
+    f.pipeline.replace_midi(&mut f.midi, &[0], view).unwrap();
+    f.midi.release(view).unwrap();
+    let before = f.midi.work().comparison_work;
+    f.command(
+        0,
+        Operation::Play {
+            position: 0,
+            retrigger: true,
+        },
+    );
+    assert_eq!(f.run(&[]).error, None);
+    assert!(f.emitted.is_empty());
+    assert_eq!(f.midi.work().comparison_work, before);
+    let mut f = Fixture::new(16, 2);
+    f.midi = MidiSession::prepare(limits(2)).unwrap();
+    for i in 0..2 {
+        f.midi
+            .bind(
+                i,
+                Binding {
+                    loop_id: id(i as usize),
+                    input: 0,
+                    destination: 0,
+                    channels: 1,
+                },
+            )
+            .unwrap();
+    }
+    f.run(&[]);
+    f.pipeline
+        .grab_midi(&mut f.midi, 0, 0, 16, &[0, 1])
+        .unwrap();
+    f.command(
+        0,
+        Operation::Play {
+            position: 0,
+            retrigger: true,
+        },
+    );
+    f.command(
+        1,
+        Operation::Play {
+            position: 0,
+            retrigger: true,
+        },
+    );
+    assert_eq!(f.run(&[]).error, Some(Error::Unsupported));
+    assert!(f.emitted.is_empty());
+}
+
+#[shoop_test]
+fn channel_handoff_cleans_the_old_owner_before_restoring_the_new_owner() {
+    let mut f = Fixture::new(16, 2);
+    f.midi = MidiSession::prepare(limits(2)).unwrap();
+    for i in 0..2 {
+        f.midi
+            .bind(
+                i,
+                Binding {
+                    loop_id: id(i as usize),
+                    input: 0,
+                    destination: 0,
+                    channels: 1,
+                },
+            )
+            .unwrap();
+    }
+    let mut target = MidiState::default();
+    target.apply_packet(&[0x90, 60, 80], 3).unwrap();
+    let new = f.midi.begin_import(&target).unwrap();
+    while !f.midi.finish_import(new, 32, 256).unwrap() {}
+    let old = f.midi.begin_import(&MidiState::default()).unwrap();
+    f.midi
+        .import_events(
+            old,
+            &[Record {
+                frame: 0,
+                order: 0,
+                message: msg(&[0x90, 60, 40]),
+            }],
+        )
+        .unwrap();
+    while !f.midi.finish_import(old, 32, 256).unwrap() {}
+    f.pipeline.replace_midi(&mut f.midi, &[0], new).unwrap();
+    f.pipeline.replace_midi(&mut f.midi, &[1], old).unwrap();
+    f.midi.release(new).unwrap();
+    f.midi.release(old).unwrap();
+    f.command(
+        1,
+        Operation::Play {
+            position: 0,
+            retrigger: true,
+        },
+    );
+    assert_eq!(f.run(&[]).error, None);
+    f.emitted.clear();
+    f.command(1, Operation::Stop);
+    f.command(
+        0,
+        Operation::Play {
+            position: 0,
+            retrigger: true,
+        },
+    );
+    assert_no_heap(|| {
+        assert_eq!(f.run(&[]).error, None);
+    });
+    assert!(f
+        .emitted
+        .iter()
+        .map(|e| e.message)
+        .eq([msg(&[0x80, 60, 0]), msg(&[0x90, 60, 80])]));
+    assert_eq!(
+        f.midi
+            .output_state(0)
+            .unwrap()
+            .channel(0)
+            .unwrap()
+            .note(60)
+            .unwrap()
+            .velocity(),
+        80
+    );
+}
+
+#[shoop_test]
+fn rejected_channel_overlap_does_not_drop_the_established_owners_note_off() {
+    let mut f = Fixture::new(16, 2);
+    f.midi = MidiSession::prepare(limits(2)).unwrap();
+    for i in 0..2 {
+        f.midi
+            .bind(
+                i,
+                Binding {
+                    loop_id: id(i as usize),
+                    input: 0,
+                    destination: 0,
+                    channels: 1,
+                },
+            )
+            .unwrap();
+    }
+    let view = f.midi.begin_import(&MidiState::default()).unwrap();
+    f.midi
+        .import_events(
+            view,
+            &[
+                Record {
+                    frame: 0,
+                    order: 0,
+                    message: msg(&[0x90, 60, 40]),
+                },
+                Record {
+                    frame: 20,
+                    order: 1,
+                    message: msg(&[0x80, 60, 0]),
+                },
+            ],
+        )
+        .unwrap();
+    while !f.midi.finish_import(view, 32, 256).unwrap() {}
+    f.pipeline.replace_midi(&mut f.midi, &[0, 1], view).unwrap();
+    f.midi.release(view).unwrap();
+    f.command(
+        1,
+        Operation::Play {
+            position: 0,
+            retrigger: true,
+        },
+    );
+    assert_eq!(f.run(&[]).error, None);
+    f.emitted.clear();
+    f.command(
+        0,
+        Operation::Play {
+            position: 0,
+            retrigger: true,
+        },
+    );
+    assert_eq!(f.run(&[]).error, Some(Error::Unsupported));
+    assert_eq!(f.emitted.len(), 1);
+    assert_eq!(f.emitted[0].message, msg(&[0x80, 60, 0]));
+    assert_eq!(f.emitted[0].offset, 4);
+    assert_eq!(
+        f.midi
+            .output_state(0)
+            .unwrap()
+            .channel(0)
+            .unwrap()
+            .note(60)
+            .unwrap()
+            .velocity(),
+        0
+    );
+}
+
+#[shoop_test]
+fn least_prepared_history_start_replays_31_distinct_controls_without_a_full_comparison() {
+    let mut f = Fixture::new(16, 1);
+    let controllers =
+        core::array::from_fn::<u8, 31, _>(|i| if i < 5 { i as u8 + 1 } else { i as u8 + 2 });
+    let a = core::array::from_fn::<InputEvent, 16, _>(|i| {
+        event(i as u32, &[0xb0, controllers[i], 40 + i as u8])
+    });
+    let b = core::array::from_fn::<InputEvent, 15, _>(|i| {
+        event(i as u32, &[0xb0, controllers[i + 16], 56 + i as u8])
+    });
+    f.run(&a);
+    f.run(&b);
+    f.run(&[]);
+    let before = f.midi.work();
+    assert_no_heap(|| {
+        f.pipeline.grab_midi(&mut f.midi, 0, 31, 47, &[0]).unwrap();
+    });
+    let after = f.midi.work();
+    assert_eq!(after.replay_steps - before.replay_steps, 31);
+    assert!(after.comparison_work - before.comparison_work < 500);
+    let view = f.midi.content(0).unwrap().unwrap();
+    let state = f
+        .midi
+        .store()
+        .state(f.midi.store().describe(view).unwrap().initial)
+        .unwrap();
+    for (i, &cc) in controllers.iter().enumerate() {
+        assert_eq!(state.channel(0).unwrap().controller(cc), Some(40 + i as u8));
+    }
+}
+
+#[shoop_test]
+fn cold_grab_replaces_128_full_sequence_views_without_releasing_their_tables_inline() {
+    let evidence = support::repeated_grab_workload(3, |operation| assert_no_heap(operation));
+    assert_eq!(evidence.max_replay_steps, 31);
+    assert!(evidence.max_comparison_work < 1000);
+    assert!(evidence.max_storage_work < 12_000);
 }

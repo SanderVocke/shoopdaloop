@@ -1,5 +1,5 @@
 #[path = "support/midi_session.rs"]
-mod support;
+pub mod support;
 use shoop_wasm_test_support::{heap::assert_no_heap, shoop_test};
 use support::*;
 #[global_allocator]

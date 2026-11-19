@@ -10,7 +10,7 @@ impl MidiSession {
         let mut reserved = 2u32;
         for h in &self.histories {
             reserved = reserved
-                .saturating_add((maximum + 1).saturating_sub(self.store.view_blocks(h.writer)?));
+                .saturating_add(h.reserved_blocks(maximum, self.store.view_blocks(h.writer)?));
         }
         for c in &self.contexts {
             if c.status == TakeStatus::Recording {
@@ -65,9 +65,14 @@ impl MidiSession {
         if d.status != TakeStatus::Recording {
             return Err(Error::InvalidState);
         }
-        let needed = (d.events as usize + records.len())
-            .div_ceil(self.limits.store.block_events as usize) as u32
-            - self.store.view_blocks(view)?;
+        if self.histories.iter().any(|h| h.writer == view)
+            || self.contexts.iter().any(|c| c.writer == Some(view))
+        {
+            return Err(Error::InvalidState);
+        }
+        let needed = ((d.events as usize + records.len())
+            .div_ceil(self.limits.store.block_events as usize) as u32)
+            .saturating_sub(self.store.view_blocks(view)?);
         if self
             .limits
             .store
@@ -89,6 +94,11 @@ impl MidiSession {
         Ok(records.len())
     }
     pub fn finish_import(&mut self, view: ViewId, frames: u64, budget: u32) -> Result<bool, Error> {
+        if self.histories.iter().any(|h| h.writer == view)
+            || self.contexts.iter().any(|c| c.writer == Some(view))
+        {
+            return Err(Error::InvalidState);
+        }
         if self.store.describe(view)?.status == TakeStatus::Recording {
             self.store.finish(view, frames)?;
         }
@@ -210,11 +220,29 @@ impl MidiSession {
     pub fn maintenance(&mut self, budget: u32) -> u32 {
         self.store.maintenance(budget)
     }
-    pub fn history_range(&mut self, input: u16, start: u64, end: u64) -> Result<ViewId, Error> {
+    pub fn set_history_retention(&mut self, input: u16, frames: u64) -> Result<(), Error> {
+        if self.next_frame.is_some() {
+            return Err(Error::Busy);
+        }
         self.histories
             .get_mut(usize::from(input))
             .ok_or(Error::InvalidState)?
-            .range(&mut self.store, &mut self.maps, &self.outputs, start, end)
+            .set_retention(frames);
+        Ok(())
+    }
+    pub fn history_range(&mut self, input: u16, start: u64, end: u64) -> Result<ViewId, Error> {
+        if self.next_frame.is_some() && self.transfer_metadata == 0 {
+            return Err(Error::Busy);
+        }
+        let result = self
+            .histories
+            .get_mut(usize::from(input))
+            .ok_or(Error::InvalidState)?
+            .range(&mut self.store, &mut self.maps, &self.outputs, start, end);
+        if result.is_ok() && self.next_frame.is_some() {
+            self.transfer_metadata -= 1;
+        }
+        result
     }
     pub fn history_bounds(&self, input: u16) -> Result<(u64, u64, bool), Error> {
         let h = self

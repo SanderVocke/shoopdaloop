@@ -48,6 +48,7 @@ struct View {
     first: usize,
     origin: u64,
     next_order: u32,
+    event_limit: u32,
     description: Description,
 }
 struct Snapshot {
@@ -75,6 +76,7 @@ pub struct ContentStore {
     live_snapshots: Vec<u32>,
     retired: VecDeque<ViewId>,
     work: u64,
+    snapshot_bytes: u64,
 }
 fn prepared<T>(count: usize, mut value: impl FnMut() -> T) -> Result<Vec<T>, Error> {
     let mut v = Vec::new();
@@ -103,7 +105,11 @@ impl ContentStore {
         let count = (limits.blocks as usize)
             .checked_mul(limits.block_events as usize)
             .ok_or(Error::Capacity)?;
-        let table = (limits.max_events as usize)
+        let capacity = limits
+            .max_events
+            .checked_add(limits.block_events.checked_mul(2).ok_or(Error::Capacity)?)
+            .ok_or(Error::Capacity)?;
+        let table = (capacity as usize)
             .div_ceil(limits.block_events as usize)
             .checked_add(1)
             .ok_or(Error::Capacity)?;
@@ -121,6 +127,7 @@ impl ContentStore {
                 first: 0,
                 origin: 0,
                 next_order: 0,
+                event_limit: limits.max_events,
                 description: Description {
                     events: 0,
                     frames: 0,
@@ -167,6 +174,7 @@ impl ContentStore {
             },
             retired,
             work: 0,
+            snapshot_bytes: 0,
         })
     }
     pub fn limits(&self) -> StoreLimits {
@@ -174,6 +182,9 @@ impl ContentStore {
     }
     pub(super) fn view_blocks(&self, id: ViewId) -> Result<u32, Error> {
         Ok(self.view(id)?.blocks as u32)
+    }
+    pub(super) fn snapshot_bytes(&self) -> u64 {
+        self.snapshot_bytes
     }
     pub fn work(&self) -> u64 {
         self.work
@@ -216,6 +227,9 @@ impl ContentStore {
         s.refs = 1;
         s.state = *state;
         self.work = self.work.saturating_add(size_of::<MidiState>() as u64);
+        self.snapshot_bytes = self
+            .snapshot_bytes
+            .saturating_add(size_of::<MidiState>() as u64);
         Ok(SnapshotId { slot, generation })
     }
     pub fn state(&self, id: SnapshotId) -> Result<&MidiState, Error> {
@@ -281,6 +295,7 @@ impl ContentStore {
         v.first = 0;
         v.origin = 0;
         v.next_order = 0;
+        v.event_limit = self.limits.max_events;
         v.description = Description {
             events: 0,
             frames: 0,
@@ -291,6 +306,12 @@ impl ContentStore {
     }
     pub fn writer(&mut self, initial: SnapshotId) -> Result<ViewId, Error> {
         self.allocate_view(initial)
+    }
+    pub(super) fn history_writer(&mut self, initial: SnapshotId) -> Result<ViewId, Error> {
+        let id = self.allocate_view(initial)?;
+        self.views[id.slot as usize].event_limit =
+            self.limits.max_events + 2 * self.limits.block_events;
+        Ok(id)
     }
     pub fn describe(&self, id: ViewId) -> Result<Description, Error> {
         Ok(self.view(id)?.description)
@@ -413,7 +434,7 @@ impl ContentStore {
         let v = self.view(id)?;
         let at = v.first + v.description.events as usize;
         Ok(v.description.status == TakeStatus::Recording
-            && v.description.events < self.limits.max_events
+            && v.description.events < v.event_limit
             && (at / (self.limits.block_events as usize) < v.blocks
                 || !self.free_blocks.is_empty()))
     }
@@ -432,9 +453,7 @@ impl ContentStore {
         let order = v.next_order.checked_add(1).ok_or(Error::Overflow)?;
         let at = v.first + v.description.events as usize;
         let new_block = at / self.limits.block_events as usize == v.blocks;
-        if v.description.events == self.limits.max_events
-            || (new_block && self.free_blocks.is_empty())
-        {
+        if v.description.events == v.event_limit || (new_block && self.free_blocks.is_empty()) {
             self.views[id.slot as usize].description.status = TakeStatus::Incomplete;
             return Err(Error::Capacity);
         }
@@ -503,6 +522,9 @@ impl ContentStore {
         let first_event = self.lower_bound(source, start)?;
         let end_event = self.lower_bound(source, end)?;
         let count = end_event - first_event;
+        if count > self.limits.max_events {
+            return Err(Error::Capacity);
+        }
         let offset = v.first + first_event as usize;
         let first_block = offset / self.limits.block_events as usize;
         let blocks = if count == 0 {

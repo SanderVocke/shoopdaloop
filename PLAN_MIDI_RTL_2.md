@@ -278,14 +278,14 @@ sinks, and recovery. Preserve Q=1/16/32/64/128 and callback-partition equivalenc
 
 ### 5. Implement continuing history and atomic multi-loop grabs
 
-- [ ] Add rolling append-only history, bounded checkpoint preparation, boundary
+- [x] Add rolling append-only history, bounded checkpoint preparation, boundary
   states, and comparison readiness using the Stage 1 strategy.
-- [ ] Implement range lookup/state derivation without whole-history replay; keep
+- [x] Implement range lookup/state derivation without whole-history replay; keep
   checkpoint/difference work coherent with moving input and destination state.
-- [ ] Reserve and publish one-range-to-many-loop grabs atomically, sharing event
+- [x] Reserve and publish one-range-to-many-loop grabs atomically, sharing event
   storage, starting snapshots, and matching comparisons. Include loop metadata
   updates at the same existing settlement boundary.
-- [ ] Preserve grabbed contents during subsequent rollover and pinned-history
+- [x] Preserve grabbed contents during subsequent rollover and pinned-history
   capacity pressure. Reject a failed reservation before changing any target.
 
 Verification: 1- and 128-target grabs, already populated targets, starts inside
@@ -296,13 +296,13 @@ the least-prepared legal range, not only an already cached favorable boundary.
 
 ### 6. Add bounded content transfers and replacement operations
 
-- [ ] Add coherent retained exports and incremental reads of snapshot, duration,
+- [x] Add coherent retained exports and incremental reads of snapshot, duration,
   and events. Replacing/deleting/recording the source must not alter an export.
-- [ ] Add staged imports with incremental validation, reservations, comparison
+- [x] Add staged imports with incremental validation, reservations, comparison
   preparation, cancellation, and atomic publication. Reuse existing message policy.
-- [ ] Expose handle-based duplication and loop-to-loop replacement. Specify the
+- [x] Expose handle-based duplication and loop-to-loop replacement. Specify the
   preflight/cleanup sequence for replacing a playing target without dangling uses.
-- [ ] Bound control-transfer and collector service per quantum, reserve recording
+- [x] Bound control-transfer and collector service per quantum, reserve recording
   headroom, and expose progress/capacity status. No background operation may
   silently consume all resources promised to admitted capture or grab operations.
 
@@ -399,9 +399,33 @@ Stages 3–4: `MidiSession` now owns input, output, playback, and shared compari
 registries. Destination transitions use sparse differences and ordered dependency
 groups. All 13 original pipeline regression scenarios were migrated to the new
 runtime, including fault/recovery, pedal ownership, sync waits, and incomplete
-recordings; the superseded `Engine` was removed. All 116 reference/compiler tests
-pass. State transitions, history, control operations, and event ownership are
+recordings; the superseded `Engine` was removed. All 115 reference/compiler tests
+passed at this milestone. State transitions, history, control operations, and event ownership are
 separate modules. Transfers have shared per-quantum event/setup/metadata grants;
 complete cold preparation before the first processing call remains an offline
 operation. History/transfer APIs are implemented; their large-session validation
 is the next milestone. Reference warning-denying build and test policy pass.
+
+Stages 5–6: completed continuing history, atomic group grabs, pinned export,
+staged import, duplication, replacement, and clear. A 128-input/128-loop fixture
+records and plays 3,000 events per loop, retains one full history, transfers content
+during playback, and publishes a 128-target grab with a deliberately maximal
+31-message replay prefix. The release profile also captures/plays 8,192 events per
+loop. All 122 focused tests pass; an additional three-trial, allocation-guarded
+cold-grab test passes separately, bringing coverage to 123 tests. The cold-grab
+fixture replaces 128 distinct full 8,192-event views and replays 31 distinct
+controls. Old table release remains deferred.
+
+History writers have two extra event blocks of internal count headroom to avoid
+exhausting a full legal sequence at the next rolling-window boundary; retained
+sequence views remain limited to 8,192 events. Inputs without retrospective history
+retain only the bounded prefix needed for recording-start state. Snapshot admission
+reserves the configured incoming burst as well as history/checkpoint capacity.
+
+Final inspection also added destination channel leases: finish all old-owner cleanup
+before any new-owner restoration, and reject a new conflicting context without
+dropping an established context's note-off. Regression tests cover both cases.
+
+The warning-denying workspace build, formatting, test-policy checker, and capability
+parity checker pass. Full native-suite validation and the final timing distribution
+are in progress; no CI or review status is being consulted.

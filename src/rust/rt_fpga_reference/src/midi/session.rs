@@ -87,6 +87,7 @@ struct Context {
     desynchronized: bool,
     status: TakeStatus,
     record_limit: u32,
+    blocked: bool,
 }
 impl Context {
     fn new(record_limit: u32) -> Self {
@@ -104,6 +105,7 @@ impl Context {
             desynchronized: false,
             status: TakeStatus::Empty,
             record_limit,
+            blocked: false,
         }
     }
 }
@@ -157,6 +159,7 @@ impl MidiSession {
                 &mut maps,
                 &outputs,
                 limits.history_frames,
+                limits.input_events_per_quantum,
             )?);
         }
         let mut old_views = Vec::new();
@@ -194,6 +197,11 @@ impl MidiSession {
     }
     pub fn work(&self) -> SessionWork {
         SessionWork {
+            state_copy_bytes: self
+                .work
+                .state_copy_bytes
+                .saturating_add(self.store.snapshot_bytes())
+                .saturating_add(self.histories.iter().map(|h| h.copied_bytes).sum::<u64>()),
             comparison_work: self.maps.work(),
             storage_work: self.store.work(),
             replay_steps: self.histories.iter().map(|h| h.replay_work).sum(),
@@ -472,7 +480,7 @@ impl MidiSession {
             let b = c.binding.unwrap();
             let (next, message) = if c.cleaning {
                 transition.propose(
-                    &MidiState::default(),
+                    c.activity.state()?,
                     c.activity.state()?,
                     &Differences::default(),
                 )
@@ -566,7 +574,7 @@ impl MidiSession {
         c.status = TakeStatus::Complete;
         Ok(())
     }
-    fn prepare_playback(
+    fn prepare_cleanup(
         &mut self,
         index: usize,
         record: crate::records::LoopRecord,
@@ -589,6 +597,17 @@ impl MidiSession {
             c.cleaning = false;
             c.activity = Interpreter::default();
         }
+        Ok(())
+    }
+    fn prepare_playback(
+        &mut self,
+        index: usize,
+        record: crate::records::LoopRecord,
+        base: u32,
+        sink: &mut impl FnMut(OutputEvent) -> Result<(), Error>,
+    ) -> Result<(), Error> {
+        let playing = record.mode == Mode::Playing && record.position < record.content_length;
+        let boundary = playing && record.position == 0;
         if !playing {
             return Ok(());
         }
@@ -701,13 +720,6 @@ impl MidiSession {
                     self.contexts[i].status = TakeStatus::Incomplete;
                 }
             }
-            if record.mode == Mode::Playing && record.position < record.content_length {
-                let mask = &mut self.owners[usize::from(binding.destination)];
-                if *mask & binding.channels != 0 {
-                    error.get_or_insert(Error::Unsupported);
-                }
-                *mask |= binding.channels;
-            }
         }
         for seed in &mut self.seeds {
             if let Some(id) = seed.take() {
@@ -783,7 +795,51 @@ impl MidiSession {
             }
         }
         self.heap.clear();
-        let overlap = error == Some(Error::Unsupported);
+        for c in &mut self.contexts {
+            c.blocked = false;
+        }
+        for i in 0..self.contexts.len() {
+            let Some(b) = self.contexts[i].binding else {
+                continue;
+            };
+            if self.recovery[usize::from(b.destination)] != 32 {
+                continue;
+            }
+            let record = state
+                .loop_state(b.loop_id)
+                .map_err(|_| Error::InvalidState)?
+                .render;
+            if let Err(e) = self.prepare_cleanup(i, record, base, sink) {
+                error.get_or_insert(e);
+                self.contexts[i].blocked = true;
+                self.owners[usize::from(b.destination)] |= b.channels;
+            }
+        }
+        for established in [true, false] {
+            for c in &mut self.contexts {
+                let Some(b) = c.binding else {
+                    continue;
+                };
+                if c.blocked || c.active.is_some() != established {
+                    continue;
+                }
+                let r = state
+                    .loop_state(b.loop_id)
+                    .map_err(|_| Error::InvalidState)?
+                    .render;
+                if r.mode != Mode::Playing || r.position >= r.content_length {
+                    continue;
+                }
+                let owned = &mut self.owners[usize::from(b.destination)];
+                if *owned & b.channels != 0 {
+                    c.blocked = true;
+                    c.desynchronized = true;
+                    error.get_or_insert(Error::Unsupported);
+                } else {
+                    *owned |= b.channels;
+                }
+            }
+        }
         for i in 0..self.contexts.len() {
             let Some(b) = self.contexts[i].binding else {
                 continue;
@@ -792,7 +848,7 @@ impl MidiSession {
                 .loop_state(b.loop_id)
                 .map_err(|_| Error::InvalidState)?
                 .render;
-            if !overlap && self.recovery[usize::from(b.destination)] == 32 {
+            if !self.contexts[i].blocked && self.recovery[usize::from(b.destination)] == 32 {
                 if let Err(e) = self.prepare_playback(i, record, base, sink) {
                     if !matches!(e, Error::Busy | Error::Incomplete | Error::Unsupported)
                         && !self.contexts[i].cleaning
@@ -847,7 +903,7 @@ impl MidiSession {
             }
         }
         for c in &mut self.contexts {
-            if c.active.is_some() && !c.cleaning {
+            if c.active.is_some() && !c.cleaning && !c.blocked && !c.desynchronized {
                 c.position = c.position.saturating_add(u64::from(q));
             }
         }
