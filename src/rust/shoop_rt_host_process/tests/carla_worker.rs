@@ -469,8 +469,9 @@ fn companion_installs_real_carla_track_and_bus_banks() {
 #[shoop_test]
 fn companion_negotiates_independent_patchbay_16x_capacity() {
     use shoop_backend::{
-        Backend, BackendBusFxRequest, BackendBusRequest, BackendPortDirection, BackendTrackControl,
-        BackendTrackTopology, TrackRequest,
+        Backend, BackendAudioContent, BackendBusFxRequest, BackendBusRequest, BackendChannelMode,
+        BackendLoopMode, BackendMidiContent, BackendPortDirection, BackendPortRole,
+        BackendSessionMixerRoute, BackendTrackControl, BackendTrackTopology, TrackRequest,
     };
     use shoop_rt_engine::EngineDescription;
     use shoop_rt_host_native::{DriverConfig, DummyConfig, NativeConfig};
@@ -619,6 +620,146 @@ fn companion_negotiates_independent_patchbay_16x_capacity() {
                     .count(),
                 16
             );
+            let chain = CarlaChainType::Patchbay16x;
+            let project =
+                wide_loaded_project().replacen("<Value>1</Value>", "<Value>0.5</Value>", 1);
+            let checkpoint = encode_state(chain, project.as_bytes()).unwrap();
+            let mut session = backend.capture_session().unwrap();
+            let target_bus = session
+                .buses
+                .iter_mut()
+                .find(|entry| entry.source_id == bus.bus_id.raw())
+                .unwrap();
+            target_bus.processor_state = Some(checkpoint.clone());
+            let target = session
+                .tracks
+                .iter_mut()
+                .find(|entry| entry.source_id == track.track_id.raw())
+                .unwrap();
+            target.processor_state = Some(checkpoint);
+            let lanes = [(0, 0.25_f32), (7, 0.375), (8, 0.5), (15, 0.625)];
+            let take = &mut target.loops[0];
+            take.length = 1024;
+            let take_id = take.source_id;
+            take.audio = [BackendChannelMode::Dry, BackendChannelMode::Wet]
+                .into_iter()
+                .flat_map(|mode| {
+                    (0..16).map(move |channel| {
+                        let sample = lanes
+                            .iter()
+                            .find(|(lane, _)| *lane == channel && mode == BackendChannelMode::Dry)
+                            .map_or(0., |(_, sample)| *sample);
+                        BackendAudioContent {
+                            mode,
+                            samples: std::sync::Arc::new(vec![sample; 1024]),
+                            gain: 1.,
+                            start_offset: 0,
+                            capture_alignment_frames: 0,
+                            preplay: 0,
+                        }
+                    })
+                })
+                .collect();
+            take.midi = vec![BackendMidiContent {
+                mode: BackendChannelMode::Dry,
+                length: 1024,
+                start_state: vec![],
+                events: std::sync::Arc::new(vec![
+                    shoop_backend::BackendMidiEvent {
+                        frame: 59,
+                        data: vec![0x90, 61, 100].into(),
+                    },
+                    shoop_backend::BackendMidiEvent {
+                        frame: 184,
+                        data: vec![0x80, 61, 0].into(),
+                    },
+                ]),
+                start_offset: 0,
+                capture_alignment_frames: 0,
+                preplay: 0,
+            }];
+            for (channel, port) in target
+                .ports
+                .iter()
+                .filter(|port| port.descriptor.role == BackendPortRole::AudioOutput)
+                .enumerate()
+            {
+                session.mixer_routes.push(BackendSessionMixerRoute {
+                    source_port_id: port.source_id,
+                    destination_channel_id: target_bus.channels[channel].source_id,
+                });
+            }
+            let mut track_id = track.track_id.raw();
+            let mut bus_id = bus.bus_id.raw();
+            let mut take_id = take_id;
+            for _ in 0..2 {
+                let mapping = backend.replace_session(&session).unwrap();
+                let restored_track = mapping.tracks[&track_id].track_id;
+                let restored_bus = mapping.buses[&bus_id];
+                let restored_take = mapping.loops[&take_id];
+                backend
+                    .transition_loop(restored_take, BackendLoopMode::PlayingDryThroughWet, None)
+                    .unwrap();
+                let deadline = Instant::now() + TIMEOUT;
+                loop {
+                    let state = backend.poll().unwrap();
+                    assert!(
+                        state.mutation_failures.is_empty(),
+                        "{:?}",
+                        state.mutation_failures
+                    );
+                    let track = &state.tracks[&restored_track];
+                    let bus = &state.mixer.buses[&restored_bus];
+                    let close =
+                        |value: f32, sample: f32| (value - 20. * sample.log10()).abs() < 0.015;
+                    if lanes.iter().all(|&(lane, amplitude)| {
+                        let gain = if lane == 0 || lane == 15 { 0.5 } else { 1. };
+                        close(track.output_peaks[lane], amplitude * gain)
+                            && close(bus.output_peaks_db[lane], amplitude * gain * gain)
+                    }) {
+                        assert!((0..16)
+                            .filter(|index| !lanes.iter().any(|&(lane, _)| lane == *index))
+                            .all(|index| track.output_peaks[index] < -150.
+                                && bus.output_peaks_db[index] < -150.));
+                        break;
+                    }
+                    assert!(
+                        Instant::now() < deadline,
+                        "track {:?}, bus {:?}",
+                        track.output_peaks,
+                        bus.output_peaks_db
+                    );
+                    thread::sleep(Duration::from_millis(2));
+                }
+                track_id = restored_track.raw();
+                bus_id = restored_bus.raw();
+                take_id = restored_take.raw();
+                session = backend.capture_session().unwrap();
+                let saved_track = session
+                    .tracks
+                    .iter()
+                    .find(|entry| entry.source_id == track_id)
+                    .unwrap();
+                let saved_take = &saved_track.loops[0];
+                assert_eq!(saved_take.audio.len(), 32);
+                assert_eq!(saved_take.midi[0].events[0].frame, 59);
+                assert_eq!(saved_take.midi[0].events[1].frame, 184);
+                assert_eq!(
+                    session
+                        .mixer_routes
+                        .iter()
+                        .filter(|route| session
+                            .buses
+                            .iter()
+                            .find(|entry| entry.source_id == bus_id)
+                            .unwrap()
+                            .channels
+                            .iter()
+                            .any(|channel| channel.source_id == route.destination_channel_id))
+                        .count(),
+                    16
+                );
+            }
         }
         drop(backend);
         let report = supervisor.stop();
@@ -627,6 +768,16 @@ fn companion_negotiates_independent_patchbay_16x_capacity() {
             "{report:?}"
         );
     }
+}
+
+fn wide_loaded_project() -> String {
+    include_str!("../../shoop_engine/test_data/carla_legacy_patchbay16_loaded_project.xml")
+        .replace("Audio Input:Capture 2<", "Audio Input:Capture 16<")
+        .replace("Audio Output:Playback 2<", "Audio Output:Playback 16<")
+        .replace(" </Patchbay>", concat!(
+            "  <Connection><Source>Audio Input:Capture 8</Source><Target>Audio Output:Playback 8</Target></Connection>\n",
+            "  <Connection><Source>Audio Input:Capture 9</Source><Target>Audio Output:Playback 9</Target></Connection>\n",
+            " </Patchbay>"))
 }
 
 #[shoop_test]
@@ -650,13 +801,7 @@ fn patchbay_16x_services_process_loaded_high_audio_lanes_and_capture_live_state(
         parameters_per_quantum: 0,
     };
     let chain = CarlaChainType::Patchbay16x;
-    let project = include_str!("../../shoop_engine/test_data/carla_legacy_patchbay16_loaded_project.xml")
-        .replace("Audio Input:Capture 2<", "Audio Input:Capture 16<")
-        .replace("Audio Output:Playback 2<", "Audio Output:Playback 16<")
-        .replace(" </Patchbay>", concat!(
-            "  <Connection><Source>Audio Input:Capture 8</Source><Target>Audio Output:Playback 8</Target></Connection>\n",
-            "  <Connection><Source>Audio Input:Capture 9</Source><Target>Audio Output:Playback 9</Target></Connection>\n",
-            " </Patchbay>"));
+    let project = wide_loaded_project();
     for isolated in [false, true] {
         let (mut endpoint, service) = if isolated {
             ChainService::start_isolated(

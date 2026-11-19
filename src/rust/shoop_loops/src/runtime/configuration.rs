@@ -84,7 +84,7 @@ impl<S: Sample> LoopPlanner<S> {
             }
             if let Some(previous) = edit.previous {
                 let mode = self.resolver.state(previous)?.mode;
-                if mode != Mode::Stopped && !(replace_all && mode == Mode::Playing) {
+                if mode != Mode::Stopped && !(replace_all && mode.playback_mode()) {
                     return Err(crate::Error::InvalidState.into());
                 }
             }
