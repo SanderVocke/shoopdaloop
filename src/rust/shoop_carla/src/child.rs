@@ -361,6 +361,7 @@ pub fn run_with_factory(
         options.generation,
         &options.nonce,
     )?;
+    let editor_visibility = shared_transport.editor_visibility()?;
     let _shared_memory_cleanup = SharedMemoryCleanup(options.shared_memory_path.clone());
     let host: Arc<Mutex<Option<WorkerHost>>> = Arc::new(Mutex::new(None));
     let mut external_ui: Option<Arc<dyn CarlaExternalUi>> = None;
@@ -399,6 +400,9 @@ pub fn run_with_factory(
         PreparedMidiBuffer::new(MAX_MIDI_EVENTS_PER_BLOCK, MAX_NATIVE_MIDI_PACKET_BYTES);
     loop {
         ui_service.pump();
+        if let Some(ui) = &external_ui {
+            editor_visibility.store(ui.is_visible());
+        }
         let mut available = [0_u8; 1];
         match stream.peek(&mut available) {
             Ok(0) => return Ok(()),
@@ -462,6 +466,7 @@ pub fn run_with_factory(
                     let kind = match ui.set_visible(*visible) {
                         Ok(()) => {
                             status.visible = ui.is_visible();
+                            editor_visibility.store(status.visible);
                             ControlResponseKind::Ack
                         }
                         Err(error) => protocol_error(error),

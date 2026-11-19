@@ -47,7 +47,16 @@ struct Command {
 pub struct ChainService {
     commands: SyncSender<Command>,
     thread: JoinHandle<()>,
-    editor: Arc<RwLock<Option<Arc<dyn CarlaExternalUi>>>>,
+    editor: ChainEditor,
+}
+
+#[derive(Clone)]
+pub struct ChainEditor(Arc<RwLock<Option<Arc<dyn CarlaExternalUi>>>>);
+
+impl ChainEditor {
+    pub fn current(&self) -> Option<Arc<dyn CarlaExternalUi>> {
+        self.0.read().ok()?.clone()
+    }
 }
 
 impl ChainService {
@@ -145,7 +154,7 @@ impl ChainService {
             Self {
                 commands,
                 thread,
-                editor,
+                editor: ChainEditor(editor),
             },
         ))
     }
@@ -190,7 +199,11 @@ impl ChainService {
     }
 
     pub fn editor(&self) -> Option<Arc<dyn CarlaExternalUi>> {
-        self.editor.read().ok()?.clone()
+        self.editor.current()
+    }
+
+    pub fn editor_handle(&self) -> ChainEditor {
+        self.editor.clone()
     }
 
     pub fn recover(&self, show_editor: bool) -> Result<()> {

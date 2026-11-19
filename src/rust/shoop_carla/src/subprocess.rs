@@ -1,6 +1,6 @@
 //! Parent-side control and supervision for a dedicated Carla child.
 
-use crate::carla_shared_memory::SharedBlockTransport;
+use crate::carla_shared_memory::{EditorVisibility, SharedBlockTransport};
 use crate::child::CarlaWorkerTestMode;
 use crate::processor::{
     CarlaExternalUi, CarlaGenerationLog, CarlaProcessor, CarlaProcessorInfo,
@@ -128,6 +128,7 @@ struct SubprocessControlLink {
     request_id: AtomicU64,
     stream: Mutex<TcpStream>,
     visible: AtomicBool,
+    editor_visibility: EditorVisibility,
     ui_closed: AtomicBool,
     ready: AtomicBool,
 }
@@ -168,7 +169,12 @@ impl CarlaExternalUi for SubprocessExternalUi {
     }
 
     fn is_visible(&self) -> bool {
-        self.control.visible.load(Ordering::Acquire)
+        self.control.ready.load(Ordering::Acquire)
+            && self
+                .control
+                .editor_visibility
+                .get()
+                .unwrap_or_else(|| self.control.visible.load(Ordering::Acquire))
     }
 
     fn ui_was_closed(&self) -> bool {
@@ -326,6 +332,7 @@ impl SubprocessCarlaProcessor {
         let address = listener.local_addr()?;
         let nonce = new_nonce()?;
         let shared_transport = SharedBlockTransport::create(generation, &nonce)?;
+        let editor_visibility = shared_transport.editor_visibility()?;
         let mut command = Command::new(executable.as_ref());
         command
             .arg("--carla-worker")
@@ -438,6 +445,7 @@ impl SubprocessCarlaProcessor {
                 request_id: AtomicU64::new(1),
                 stream: Mutex::new(stream),
                 visible: AtomicBool::new(false),
+                editor_visibility,
                 ui_closed: AtomicBool::new(false),
                 ready: AtomicBool::new(false),
             }),

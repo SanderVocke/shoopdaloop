@@ -33,7 +33,8 @@ pub const CARLA_MIDI_BUFFER_CAPACITY: usize = shoop_plugin_protocol::MAX_MIDI_EV
 const NATIVE_PLUGIN_HAS_UI: c_int = 1 << 2;
 const NATIVE_PLUGIN_NEEDS_UI_MAIN_THREAD: c_int = 1 << 4;
 const NATIVE_PLUGIN_USES_STATE: c_int = 1 << 9;
-const UI_COMMAND_CAPACITY: usize = 64;
+// Cover registration and teardown of both prepared banks before the next pump.
+const UI_COMMAND_CAPACITY: usize = 512;
 const UI_IDLE_INTERVAL: Duration = Duration::from_millis(25);
 const NATIVE_HOST_OPCODE_UI_UNAVAILABLE: c_int = 6;
 const NATIVE_HOST_OPCODE_INTERNAL_PLUGIN: c_int = 8;

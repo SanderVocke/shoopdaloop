@@ -1,25 +1,38 @@
+use crate::CarlaHostOptions;
 use rt_buffered::{BufferLimits, PreparedTiming, Timing};
 use rt_runtime::{graph::PortCounts, Error, Quantum};
-use shoop_carla::{buffered::Worker, native::carla_runtime_availability, service::ChainService};
+use shoop_carla::{
+    buffered::Worker,
+    native::{carla_runtime_availability, CarlaMainThreadUiDispatcher},
+    service::{ChainEditor, ChainService},
+};
 use shoop_plugin_protocol::{CarlaChainType, ChainId};
-use shoop_rt_engine::{EngineDescription, HostedProcessor, PreparedProcessor, PreparedProcessors};
+use shoop_rt_engine::{
+    EngineDescription, HostedProcessor, PreparedProcessor, PreparedProcessors, ProcessorEditors,
+};
 use shoop_rt_protocol::{
     processors::{CarlaHosting, EffectiveCarla, Unavailable},
-    ProcessorKind,
+    ProcessorKind, Refusal,
 };
 use std::path::Path;
 
 pub(crate) fn prepare(
     description: &EngineDescription,
     period_frames: usize,
-    executable: Option<&Path>,
+    options: &CarlaHostOptions,
     mut processors: PreparedProcessors,
 ) -> (PreparedProcessors, Vec<ChainService>) {
     let settings = description.processors.carla;
     if settings.hosting == CarlaHosting::Disabled {
         return (processors, Vec::new());
     }
-    let prepared = prepare_enabled(description, period_frames, executable, &processors);
+    let prepared = prepare_enabled(
+        description,
+        period_frames,
+        options.worker.as_deref(),
+        options.ui.as_ref(),
+        &processors,
+    );
     match prepared {
         Ok((instances, services, bytes)) => {
             processors.instances.extend(instances);
@@ -42,6 +55,7 @@ fn prepare_enabled(
     description: &EngineDescription,
     period_frames: usize,
     executable: Option<&Path>,
+    ui: Option<&CarlaMainThreadUiDispatcher>,
     processors: &PreparedProcessors,
 ) -> Result<(Vec<PreparedProcessor>, Vec<ChainService>, u64), Unavailable> {
     let settings = description.processors.carla;
@@ -104,7 +118,7 @@ fn prepare_enabled(
                         description.sample_rate,
                         timing,
                         limits,
-                        None,
+                        ui.cloned(),
                     )
                 };
                 let (endpoint, service) = ready.map_err(|_| Unavailable::Runtime)?;
@@ -118,6 +132,45 @@ fn prepare_enabled(
         }
     }
     Ok((instances, services, bytes))
+}
+
+pub(crate) struct Editors {
+    first: usize,
+    chains: Vec<ChainEditor>,
+}
+
+impl Editors {
+    pub(crate) fn new(first: usize, services: &[ChainService]) -> Option<Self> {
+        services
+            .iter()
+            .any(|service| service.editor().is_some())
+            .then(|| Self {
+                first,
+                chains: services.iter().map(ChainService::editor_handle).collect(),
+            })
+    }
+
+    fn editor(
+        &self,
+        index: u16,
+    ) -> Option<std::sync::Arc<dyn shoop_carla::processor::CarlaExternalUi>> {
+        self.chains
+            .get(usize::from(index).checked_sub(self.first)?)?
+            .current()
+    }
+}
+
+impl ProcessorEditors for Editors {
+    fn visible(&self, index: u16) -> Option<bool> {
+        Some(self.editor(index)?.is_visible())
+    }
+
+    fn set_visible(&self, index: u16, visible: bool) -> Result<(), Refusal> {
+        self.editor(index)
+            .ok_or(Refusal::Unsupported)?
+            .set_visible(visible)
+            .map_err(|_| Refusal::Internal)
+    }
 }
 
 fn reservation(

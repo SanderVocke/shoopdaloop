@@ -8,7 +8,7 @@ use shoop_processor_protocol::{
     state::State, Control, Kind, Phase, CC_BASE, CLEAR_CC, DRIVE_TYPE, MODULATION_TYPE,
     REVERB_TYPE, STAGE_BASE, SYNTH_PANIC, SYNTH_PRESET,
 };
-use shoop_rt_protocol::Request;
+use shoop_rt_protocol::{Capabilities, ProcessorSlot, ProcessorTarget, Request};
 use shoop_rt_transport::carrier::Carrier;
 
 pub(crate) fn snapshot_state(
@@ -272,6 +272,7 @@ fn fx_state(
                 .into(),
         }),
         Kind::CarlaRack | Kind::CarlaPatchbay => {
+            let visible = snapshot.external_editor_visible.unwrap_or(false);
             return Some(processor_status(kind, snapshot, slot, visible, None));
         }
         Kind::External => return None,
@@ -329,6 +330,27 @@ fn cc_value(channel: u8, controller: u8) -> Result<f32> {
     Ok((u16::from(channel) * 128 + u16::from(controller)) as f32)
 }
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
+    fn external_editor_request(
+        &self,
+        target: ProcessorTarget,
+        slot: Option<ProcessorSlot>,
+        visible: Option<bool>,
+    ) -> Result<Request> {
+        if !self
+            .capabilities
+            .contains(Capabilities::EXTERNAL_PROCESSOR_EDITOR)
+        {
+            return Err(anyhow!(
+                "external processor editor unavailable on this host"
+            ));
+        }
+        Ok(Request::ProcessorEditor {
+            target,
+            slot: slot.ok_or_else(|| anyhow!("processor ownership is not confirmed"))?,
+            visible,
+        })
+    }
+
     fn processor_update(
         &self,
         kind: Kind,
@@ -461,18 +483,29 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 .as_deref()
                 .and_then(processor_kind)
                 .ok_or_else(|| anyhow!("unknown bus processor"))?;
+            if kind.is_carla() {
+                let visible = match control {
+                    BusControl::SetVisible(visible) => Some(Some(visible)),
+                    BusControl::ToggleOrRecover => Some(None),
+                    _ => None,
+                };
+                if let Some(visible) = visible {
+                    let request = self.external_editor_request(
+                        ProcessorTarget::Bus(slot),
+                        bus.processor_slot,
+                        visible,
+                    )?;
+                    self.requests
+                        .push(request, Purpose::BusFxControl(id, control));
+                    return Ok(());
+                }
+            }
             let track_control = match &control {
                 BusControl::SetVisible(value) => {
-                    if kind.is_carla() {
-                        return Err(anyhow!("Carla editor dispatch is unavailable"));
-                    }
                     self.mirror.buses.get_mut(&id).unwrap().processor_visible = *value;
                     return Ok(());
                 }
                 BusControl::ToggleOrRecover => {
-                    if kind.is_carla() {
-                        return Err(anyhow!("Carla editor dispatch is unavailable"));
-                    }
                     let bus = self.mirror.buses.get_mut(&id).unwrap();
                     bus.processor_visible = !bus.processor_visible;
                     return Ok(());
@@ -505,11 +538,26 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .ok_or_else(|| anyhow!("unknown track {id:?}"))?;
         let kind = track_kind(track).ok_or_else(|| anyhow!("track has no hosted processor"))?;
         let strip = track.strip;
+        if kind.is_carla() {
+            let visible = match control {
+                BackendTrackFxControl::SetVisible(visible) => Some(Some(visible)),
+                BackendTrackFxControl::ToggleOrRecover => Some(None),
+                _ => None,
+            };
+            if let Some(visible) = visible {
+                self.require_mutation_capacity(1)?;
+                let request = self.external_editor_request(
+                    ProcessorTarget::Strip(strip),
+                    track.processor_slot,
+                    visible,
+                )?;
+                self.requests
+                    .push(request, Purpose::ProcessorControl(id, control));
+                return Ok(());
+            }
+        }
         match &control {
             BackendTrackFxControl::SetVisible(visible) => {
-                if kind.is_carla() {
-                    return Err(anyhow!("Carla editor dispatch is unavailable"));
-                }
                 self.mirror
                     .tracks
                     .get_mut(&id)
@@ -518,9 +566,6 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 return Ok(());
             }
             BackendTrackFxControl::ToggleOrRecover => {
-                if kind.is_carla() {
-                    return Err(anyhow!("Carla editor dispatch is unavailable"));
-                }
                 let track = self.mirror.tracks.get_mut(&id).expect("live track");
                 track.processor_visible = !track.processor_visible;
                 return Ok(());

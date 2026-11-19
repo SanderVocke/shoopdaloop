@@ -54,6 +54,7 @@ pub struct Snapshot {
     pub phase: Phase,
     pub global_midi: GlobalMidiDiagnostics,
     pub worker: Option<WorkerDiagnostics>,
+    pub external_editor_visible: Option<bool>,
     pub values: [f32; STATE_SCALARS],
 }
 

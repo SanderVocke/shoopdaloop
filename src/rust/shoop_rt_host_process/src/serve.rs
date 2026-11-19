@@ -19,11 +19,17 @@ use std::{
 pub fn run() -> Result<()> {
     #[cfg(feature = "carla-worker")]
     if let Ok(worker) = std::env::current_exe() {
-        return run_impl(|config| {
-            shoop_rt_host_native::start_endpoint_with_carla_worker(config, worker.clone())
-        });
+        let (mut ui, dispatcher) = shoop_carla::native::CarlaMainThreadUiService::new();
+        let carla = shoop_rt_host_native::CarlaHostOptions {
+            worker: Some(worker),
+            ui: Some(dispatcher),
+        };
+        return run_impl(
+            |config| shoop_rt_host_native::start_endpoint_with_carla(config, carla.clone()),
+            || ui.pump(),
+        );
     }
-    run_impl(shoop_rt_host_native::start_endpoint)
+    run_impl(shoop_rt_host_native::start_endpoint, || {})
 }
 #[cfg(feature = "testing")]
 pub fn run_with_start(
@@ -31,7 +37,7 @@ pub fn run_with_start(
         &NativeConfig,
     ) -> std::result::Result<StartedEndpoint, shoop_rt_host_native::StartError>,
 ) -> Result<()> {
-    run_impl(start)
+    run_impl(start, || {})
 }
 fn send(control: &mut shoop_rt_transport_socket::Port, reply: HostReply) -> Result<()> {
     let mut bytes = [0; MAX_RECORD_BYTES];
@@ -182,6 +188,7 @@ fn run_impl(
     mut start: impl FnMut(
         &NativeConfig,
     ) -> std::result::Result<StartedEndpoint, shoop_rt_host_native::StartError>,
+    mut pump_ui: impl FnMut(),
 ) -> Result<()> {
     let address = std::env::var("SHOOP_RT_PROCESS_ADDRESS")?.parse()?;
     let transport = Transport::parse(&std::env::var("SHOOP_RT_PROCESS_TRANSPORT")?)?;
@@ -444,6 +451,7 @@ fn run_impl(
     #[cfg(feature = "testing")]
     let mut last_status = Instant::now();
     while !stop.load(Ordering::Acquire) {
+        pump_ui();
         if let Some(server) = connection.as_mut() {
             server.pump(32);
             let channel_lost = disconnect.load(Ordering::Acquire);
@@ -503,6 +511,7 @@ fn run_impl(
     drop(connection);
     drop(retired);
     let report = host.stop();
+    pump_ui();
     let flags = u8::from(report.midi_reset) | if report.stopped.is_ok() { 2 } else { 0 };
     let _ = writeln!(std::io::stdout(), "@STOP {flags}");
     if report.stopped.is_err() {

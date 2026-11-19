@@ -303,6 +303,15 @@ impl Wire for TimingState {
     }
 }
 
+impl Wire for bool {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.bool(*self)
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        r.bool()
+    }
+}
+
 impl Wire for u32 {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         w.u32(*self)
@@ -623,6 +632,7 @@ impl Wire for crate::processors::Snapshot {
                 .map_or(0, |data| u32::from_le_bytes([data[0], data[1], data[2], 1])),
         )?;
         self.worker.put(w)?;
+        self.external_editor_visible.put(w)?;
         for value in self.values {
             w.f32(value)?;
         }
@@ -653,6 +663,7 @@ impl Wire for crate::processors::Snapshot {
             return Err(CodecError::Invalid);
         }
         let worker = Option::get(r)?;
+        let external_editor_visible = Option::get(r)?;
         let mut values = [0.; crate::processors::STATE_SCALARS];
         for value in &mut values {
             *value = r.f32()?;
@@ -662,6 +673,7 @@ impl Wire for crate::processors::Snapshot {
             phase,
             global_midi,
             worker,
+            external_editor_visible,
             values,
         })
     }
@@ -872,6 +884,25 @@ impl Wire for Request {
                 w.u8(37)?;
                 strip.put(w)?;
                 control.put(w)
+            }
+            Self::ProcessorEditor {
+                target,
+                slot,
+                visible,
+            } => {
+                w.u8(74)?;
+                match target {
+                    ProcessorTarget::Strip(strip) => {
+                        w.u8(0)?;
+                        strip.put(w)?;
+                    }
+                    ProcessorTarget::Bus(bus) => {
+                        w.u8(1)?;
+                        bus.put(w)?;
+                    }
+                }
+                slot.put(w)?;
+                visible.put(w)
             }
             Self::StripDefaultPlayback {
                 strip,
@@ -1284,6 +1315,15 @@ impl Wire for Request {
             37 => Self::ProcessorControl {
                 strip: StripId::get(r)?,
                 control: crate::processors::Control::get(r)?,
+            },
+            74 => Self::ProcessorEditor {
+                target: match r.u8()? {
+                    0 => ProcessorTarget::Strip(StripId::get(r)?),
+                    1 => ProcessorTarget::Bus(BusId::get(r)?),
+                    _ => return Err(CodecError::Invalid),
+                },
+                slot: ProcessorSlot::get(r)?,
+                visible: Option::get(r)?,
             },
             36 => Self::StripDefaultPlayback {
                 strip: StripId::get(r)?,

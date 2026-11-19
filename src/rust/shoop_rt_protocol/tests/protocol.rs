@@ -92,6 +92,22 @@ fn client_samples() -> Vec<ClientMessage> {
             bus: BusId::MASTER,
             control: processors::Control::Active(false),
         },
+        Request::ProcessorEditor {
+            target: ProcessorTarget::Bus(BusId::MASTER),
+            slot: ProcessorSlot {
+                index: 2,
+                generation: 7,
+            },
+            visible: Some(true),
+        },
+        Request::ProcessorEditor {
+            target: ProcessorTarget::Strip(strip(0)),
+            slot: ProcessorSlot {
+                index: 1,
+                generation: 5,
+            },
+            visible: None,
+        },
         Request::ReplacementEdit {
             id: 9,
             edit: ReplacementEdit::BusProcessor {
@@ -647,6 +663,7 @@ fn engine_samples() -> Vec<EngineMessage> {
                 generation: 123,
             },
             snapshot: processors::Snapshot {
+                external_editor_visible: Some(true),
                 worker: Some(processors::WorkerDiagnostics {
                     pending: 2,
                     peak_pending: 4,
@@ -674,6 +691,7 @@ fn engine_samples() -> Vec<EngineMessage> {
                 generation: 123,
             },
             snapshot: processors::Snapshot {
+                external_editor_visible: None,
                 worker: None,
                 source_frame: u64::MAX,
                 phase: processors::Phase::Running,

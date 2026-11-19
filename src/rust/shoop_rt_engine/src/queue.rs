@@ -251,6 +251,10 @@ impl ControlEndpoint {
             Request::StripControl { strip: id, .. }
             | Request::StripDefaultPlayback { strip: id, .. }
             | Request::ProcessorControl { strip: id, .. }
+            | Request::ProcessorEditor {
+                target: shoop_rt_protocol::ProcessorTarget::Strip(id),
+                ..
+            }
             | Request::InjectMidi { strip: id, .. } => strip(id.0.index, HARD),
             Request::LoopTransition { loop_id, delay, .. } => {
                 let owner = self
@@ -269,9 +273,12 @@ impl ControlEndpoint {
             Request::LoopClear { loop_id } | Request::ContentApply { loop_id, .. } => {
                 loop_(loop_id.0.index, SOFT)
             }
-            Request::BusProcessorControl { bus: id, .. } | Request::BusControl { bus: id, .. } => {
-                bus(id, HARD)
-            }
+            Request::BusProcessorControl { bus: id, .. }
+            | Request::BusControl { bus: id, .. }
+            | Request::ProcessorEditor {
+                target: shoop_rt_protocol::ProcessorTarget::Bus(id),
+                ..
+            } => bus(id, HARD),
             Request::SetSmoothing { .. } => false,
             Request::CreateStrip { strip: id, .. }
             | Request::CreateProcessedStrip { strip: id, .. } => strip(id.0.index, WAITING),
@@ -369,6 +376,10 @@ impl ControlEndpoint {
             Request::StripControl { strip: id, .. }
             | Request::StripDefaultPlayback { strip: id, .. }
             | Request::ProcessorControl { strip: id, .. }
+            | Request::ProcessorEditor {
+                target: shoop_rt_protocol::ProcessorTarget::Strip(id),
+                ..
+            }
             | Request::InjectMidi { strip: id, .. }
             | Request::CreateStrip { strip: id, .. }
             | Request::CreateProcessedStrip { strip: id, .. }
@@ -393,6 +404,10 @@ impl ControlEndpoint {
             Request::SetBusProcessor { bus, .. }
             | Request::SetBusProcessorKind { bus, .. }
             | Request::BusProcessorControl { bus, .. }
+            | Request::ProcessorEditor {
+                target: shoop_rt_protocol::ProcessorTarget::Bus(bus),
+                ..
+            }
             | Request::CreateProcessedBus { bus, .. }
             | Request::CreateBus { bus, .. }
             | Request::RemoveBus { bus }

@@ -25,6 +25,7 @@ const SLOT_SIZE: usize = SLOT_CONTENT_BYTES.div_ceil(4096) * 4096;
 pub const FILE_SIZE: usize = FILE_HEADER_SIZE + SHARED_SLOT_COUNT * SLOT_SIZE;
 const MAGIC: &[u8; 8] = b"SHOOPFX\0";
 const COMPLETION_PORT_OFFSET: usize = 64;
+const EDITOR_VISIBILITY_OFFSET: usize = 68;
 
 const STATE_FREE: u32 = 0;
 const STATE_READY: u32 = 1;
@@ -78,6 +79,30 @@ pub struct SharedBlockTransport {
     completion: Completion,
 }
 
+#[cfg(feature = "native")]
+#[derive(Debug)]
+pub(crate) struct EditorVisibility(MmapMut);
+
+#[cfg(feature = "native")]
+impl EditorVisibility {
+    fn cell(&self) -> &AtomicU32 {
+        // The aligned header word is initialized before the worker opens the file.
+        unsafe { &*self.0.as_ptr().add(EDITOR_VISIBILITY_OFFSET).cast() }
+    }
+
+    pub(crate) fn store(&self, visible: bool) {
+        self.cell().store(1 + u32::from(visible), Ordering::Release);
+    }
+
+    pub(crate) fn get(&self) -> Option<bool> {
+        match self.cell().load(Ordering::Acquire) {
+            1 => Some(false),
+            2 => Some(true),
+            _ => None,
+        }
+    }
+}
+
 unsafe impl Send for SharedBlockTransport {}
 
 impl std::fmt::Debug for SharedBlockTransport {
@@ -116,6 +141,12 @@ impl SharedBlockTransport {
         let completion =
             Completion::create().context("could not create Carla completion notification")?;
         write_u32(&mut mapping, COMPLETION_PORT_OFFSET, completion.port());
+        unsafe {
+            std::ptr::write(
+                mapping.as_mut_ptr().add(EDITOR_VISIBILITY_OFFSET).cast(),
+                AtomicU32::new(0),
+            );
+        }
         for slot in 0..SHARED_SLOT_COUNT {
             unsafe {
                 std::ptr::write(
@@ -193,6 +224,17 @@ impl SharedBlockTransport {
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    #[cfg(feature = "native")]
+    pub(crate) fn editor_visibility(&self) -> Result<EditorVisibility> {
+        let file = self
+            ._file
+            .as_ref()
+            .or_else(|| self._temporary_file.as_ref().map(NamedTempFile::as_file))
+            .context("Carla shared-memory file is unavailable")?;
+        let mapping = unsafe { MmapOptions::new().len(FILE_HEADER_SIZE).map_mut(file)? };
+        Ok(EditorVisibility(mapping))
     }
 
     pub fn generation(&self) -> ProcessGeneration {
@@ -835,6 +877,16 @@ mod tests {
         let generation = ProcessGeneration(4);
         let mut parent = SharedBlockTransport::create(generation, &nonce).unwrap();
         let mut worker = SharedBlockTransport::open(parent.path(), generation, &nonce).unwrap();
+        #[cfg(feature = "native")]
+        {
+            let observed = parent.editor_visibility().unwrap();
+            let published = worker.editor_visibility().unwrap();
+            assert_eq!(observed.get(), None);
+            published.store(true);
+            assert_eq!(observed.get(), Some(true));
+            published.store(false);
+            assert_eq!(observed.get(), Some(false));
+        }
         let inputs = vec![vec![0.25; 64], vec![-0.5; 64]];
         let midi = vec![vec![(7, vec![0x90, 64, 100])]];
         let token = parent

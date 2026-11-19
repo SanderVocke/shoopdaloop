@@ -683,8 +683,13 @@ impl Fixture {
             },
         )
         .unwrap();
-        let (owner, controller) =
-            controller(started.host, settings, Box::new(|_| Ok(())), None).unwrap();
+        let (owner, controller) = controller(
+            started.host,
+            settings,
+            Box::new(|_| Ok(())),
+            Default::default(),
+        )
+        .unwrap();
         service.set_audio_driver_controller(controller).unwrap();
         let deadline = std::time::Instant::now() + Duration::from_secs(20);
         while !service.is_ready() || service.snapshot().audio_drivers.catalog.len() != 3 {

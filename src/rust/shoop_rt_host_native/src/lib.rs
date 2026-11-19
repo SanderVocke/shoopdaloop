@@ -35,6 +35,12 @@ pub struct NativeConfig {
     pub driver: DriverConfig,
     pub engine: EngineDescription,
 }
+#[derive(Clone, Debug, Default)]
+pub struct CarlaHostOptions {
+    pub worker: Option<std::path::PathBuf>,
+    #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
+    pub ui: Option<shoop_carla::native::CarlaMainThreadUiDispatcher>,
+}
 pub struct Started {
     pub host: NativeHost,
     pub client: NativeClient,
@@ -176,25 +182,31 @@ pub fn start_endpoint(config: &NativeConfig) -> Result<StartedEndpoint, StartErr
     split_endpoint(start(config)?)
 }
 
-#[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
-pub fn start_endpoint_with_carla_worker(
+pub fn start_endpoint_with_carla(
     config: &NativeConfig,
-    worker: std::path::PathBuf,
+    options: CarlaHostOptions,
 ) -> Result<StartedEndpoint, StartError> {
-    split_endpoint(start_with_carla_worker(config, worker)?)
+    split_endpoint(start_with_carla(config, options)?)
 }
 
-#[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
-pub fn start_with_carla_worker(
+pub fn start_with_carla(
     config: &NativeConfig,
-    worker: std::path::PathBuf,
+    options: CarlaHostOptions,
 ) -> Result<Started, StartError> {
-    let mut engine = template(&config.engine);
-    engine.factory = Arc::new(NativeFactory {
-        description: config.engine.clone(),
-        carla_worker: Some(worker),
-    });
-    start_with_template(config, engine)
+    #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
+    {
+        let mut engine = template(&config.engine);
+        engine.factory = Arc::new(NativeFactory {
+            description: config.engine.clone(),
+            carla: options,
+        });
+        start_with_template(config, engine)
+    }
+    #[cfg(not(all(feature = "carla", not(target_arch = "wasm32"))))]
+    {
+        let _ = options;
+        start(config)
+    }
 }
 
 fn split_endpoint(Started { host, client }: Started) -> Result<StartedEndpoint, StartError> {
@@ -235,14 +247,14 @@ pub fn template(engine: &EngineDescription) -> drivers::Template {
         factory: Arc::new(NativeFactory {
             description: engine.clone(),
             #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
-            carla_worker: None,
+            carla: CarlaHostOptions::default(),
         }),
     }
 }
 struct NativeFactory {
     description: EngineDescription,
     #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
-    carla_worker: Option<std::path::PathBuf>,
+    carla: CarlaHostOptions,
 }
 impl drivers::Factory for NativeFactory {
     fn prepare(&self, opened: drivers::Opened) -> Result<drivers::Parts, drivers::StartError> {
@@ -321,13 +333,19 @@ fn prepare(factory: &NativeFactory, opened: drivers::Opened) -> Result<drivers::
     let processors =
         shoop_host_processors::prepare(&description).map_err(StartError::Processors)?;
     #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
+    let carla_first_slot = processors.instances.len();
+    #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
     let (processors, carla_services) = carla::prepare(
         &description,
         driver.buffer_frames as usize,
-        factory.carla_worker.as_deref(),
+        &factory.carla,
         processors,
     );
     let mut engine = shoop_rt_engine::prepare_with_processors(&description, driver, processors)?;
+    #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
+    if let Some(editors) = carla::Editors::new(carla_first_slot, &carla_services) {
+        engine.endpoint.install_processor_editors(Box::new(editors));
+    }
     engine
         .render
         .set_profiling_clock(drivers::profiling_clock());

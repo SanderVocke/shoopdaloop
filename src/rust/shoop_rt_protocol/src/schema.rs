@@ -137,6 +137,12 @@ pub struct StripShape {
     pub midi_output: bool,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProcessorTarget {
+    Strip(StripId),
+    Bus(BusId),
+}
+
 /// A reliable request. The client chooses slot IDs; the engine refuses an ID whose
 /// slot is occupied, unprepared or not newer than its last generation.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -183,6 +189,12 @@ pub enum Request {
     ProcessorControl {
         strip: StripId,
         control: crate::processors::Control,
+    },
+    ProcessorEditor {
+        target: ProcessorTarget,
+        slot: ProcessorSlot,
+        /// None toggles the confirmed visibility.
+        visible: Option<bool>,
     },
     CreateProcessedStrip {
         strip: StripId,
@@ -443,6 +455,7 @@ impl Capabilities {
     /// Single-install mono graph profile; fixed virtual input and stereo Master outputs.
     pub const PREPARED_GRAPH: Self = Self(1 << 15);
     pub const LIVE_PROGRAMS: Self = Self(1 << 16);
+    pub const EXTERNAL_PROCESSOR_EDITOR: Self = Self(1 << 17);
     pub const INPUT_BATCH: Self = Self(1 << 12);
     pub const REPLACING: Self = Self(1 << 13);
     pub const PROFILING: Self = Self(1 << 6);

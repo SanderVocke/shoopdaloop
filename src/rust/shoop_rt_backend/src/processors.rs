@@ -109,7 +109,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     midi: TrackProcessorMidiPolicy::Optional,
                     matching_audio_channels: false,
                 },
-                features: TrackProcessorFeatures::default(),
+                features: TrackProcessorFeatures {
+                    external_ui: available
+                        && self
+                            .capabilities
+                            .contains(Capabilities::EXTERNAL_PROCESSOR_EDITOR),
+                    ..Default::default()
+                },
                 editor: None,
             }
         };

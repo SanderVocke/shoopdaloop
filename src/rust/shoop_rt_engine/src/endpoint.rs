@@ -160,6 +160,12 @@ impl Work {
     }
 }
 
+/// External editor operations owned by the host's non-render control endpoint.
+pub trait ProcessorEditors: Send {
+    fn visible(&self, index: u16) -> Option<bool>;
+    fn set_visible(&self, index: u16, visible: bool) -> Result<(), Refusal>;
+}
+
 pub struct ControlEndpoint {
     pub(crate) capability_mask: Capabilities,
     #[cfg(feature = "testing")]
@@ -169,6 +175,7 @@ pub struct ControlEndpoint {
     pub(crate) projected_timing: Box<[Option<(LoopSlotId, shoop_rt_protocol::TimingState)>]>,
     pub(crate) projected_recorded: Box<[Option<(LoopSlotId, u64, bool)>]>,
     pub(crate) processor_catalog: crate::ProcessorCatalog,
+    pub(crate) processor_editors: Option<Box<dyn ProcessorEditors>>,
     pub(crate) processor_cells: Box<[Arc<crate::processors::ProcessorCells>]>,
     pub(crate) projected_bus_processors: Box<
         [Option<(
@@ -351,6 +358,43 @@ fn finite_balance(value: f32) -> bool {
 }
 
 impl ControlEndpoint {
+    pub fn install_processor_editors(&mut self, editors: Box<dyn ProcessorEditors>) {
+        self.processor_editors = Some(editors);
+    }
+
+    fn processor_editor(
+        &self,
+        target: shoop_rt_protocol::ProcessorTarget,
+        slot: shoop_rt_protocol::ProcessorSlot,
+        visible: Option<bool>,
+    ) -> Result<(), Refusal> {
+        use shoop_rt_protocol::{processors::Phase, ProcessorTarget};
+        let editors = self
+            .processor_editors
+            .as_ref()
+            .ok_or(Refusal::Unsupported)?;
+        let owner = match target {
+            ProcessorTarget::Strip(id) => self.model.strip(id).ok_or(Refusal::InvalidId)?.processor,
+            ProcessorTarget::Bus(id) => self.model.bus(id).ok_or(Refusal::InvalidId)?.processor,
+        }
+        .filter(|owner| owner.kind.is_carla())
+        .ok_or(Refusal::Unsupported)?;
+        if owner.slot != Some(slot) {
+            return Err(Refusal::InvalidId);
+        }
+        let state = self
+            .processor_state(slot.index as usize)
+            .ok_or(Refusal::Busy)?;
+        if state.generation != slot.generation
+            || state.kind != owner.kind
+            || matches!(state.phase, Phase::Free | Phase::Retiring)
+        {
+            return Err(Refusal::InvalidId);
+        }
+        let current = editors.visible(slot.index).ok_or(Refusal::Unsupported)?;
+        editors.set_visible(slot.index, visible.unwrap_or(!current))
+    }
+
     pub fn processor_catalog(&self) -> &crate::ProcessorCatalog {
         &self.processor_catalog
     }
@@ -454,6 +498,9 @@ impl ControlEndpoint {
         }
         if !self.processor_catalog.kinds.is_empty() {
             capabilities = capabilities.union(Capabilities::TRACK_PROCESSORS);
+        }
+        if self.processor_editors.is_some() {
+            capabilities = capabilities.union(Capabilities::EXTERNAL_PROCESSOR_EDITOR);
         }
         Capabilities(capabilities.0 & self.capability_mask.0)
     }
@@ -1081,6 +1128,14 @@ impl ControlEndpoint {
             Request::StripControl { strip, control } => {
                 self.strip_control(correlation, strip, control)
             }
+            Request::ProcessorEditor {
+                target,
+                slot,
+                visible,
+            } => match self.processor_editor(target, slot, visible) {
+                Err(Refusal::Busy) => return Err(()),
+                result => result.map(|()| Some(Outcome::Done)),
+            },
             Request::BusProcessorControl { bus, control } => self
                 .model
                 .bus(bus)
