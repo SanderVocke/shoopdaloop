@@ -19,7 +19,8 @@ import boards
 
 
 class BootQemu(Qemu):
-    def __init__(self, loader, card, directory, port_base=15400, updater_port=15554, tftp=None, qemu=None, first_stage=False, block_url=None, board=None):
+    def __init__(self, loader, card, directory, port_base=15400, updater_port=15554, tftp=None, qemu=None,
+                 first_stage=False, block_url=None, board=None, *, link_down=False):
         self.board = board or boards.load()
         self.directory = Path(directory).resolve()
         self.directory.mkdir(parents=True, exist_ok=True)
@@ -53,6 +54,8 @@ class BootQemu(Qemu):
                         "-device", entry, "-drive", f"file={block_url or Path(card).resolve()},if=sd,format=raw,cache=directsync",
                         "-netdev", network, "-net", "nic,netdev=lan",
                         "-object", f"filter-dump,id=trace,netdev=lan,file={self.directory / 'ethernet.pcap'}"]
+        if link_down:
+            self.command.append("-S")
         (self.directory / "command.json").write_text(json.dumps(self.command, indent=2) + "\n")
         self.log = (self.directory / "qemu.log").open("w")
         self.connection = self.messages = None
@@ -72,6 +75,9 @@ class BootQemu(Qemu):
             self._serial_socket.settimeout(.1)
             self._reader = threading.Thread(target=self._capture, daemon=True)
             self._reader.start()
+            if link_down:
+                self.qmp("set_link", {"name": "lan", "up": False})
+                self.qmp("cont")
         except BaseException:
             self.close()
             raise

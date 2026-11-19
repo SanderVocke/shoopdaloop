@@ -116,6 +116,14 @@ int shoop_candidate(const struct shoop_io *io, struct shoop_state *state, uint32
     memcpy(state->pending_hash, hash, 32);
     return shoop_state_store(io, state);
 }
+int shoop_reject_candidate(const struct shoop_io *io, struct shoop_state *state) {
+    if (state->pending >= 2) return SHOOP_CONFLICT;
+    state->pending = SHOOP_NO_SLOT;
+    state->attempts = 0;
+    state->boot_failures = 0;
+    memset(state->pending_hash, 0, sizeof state->pending_hash);
+    return shoop_state_store(io, state);
+}
 int shoop_select(const struct shoop_io *io, struct shoop_state *state, uint32_t *slot) {
     if (state->pending != SHOOP_NO_SLOT) {
         if (state->attempts) {
@@ -126,10 +134,7 @@ int shoop_select(const struct shoop_io *io, struct shoop_state *state, uint32_t 
             *slot = state->pending;
             return SHOOP_OK;
         }
-        state->pending = SHOOP_NO_SLOT;
-        state->boot_failures = 0;
-        memset(state->pending_hash, 0, 32);
-        int result = shoop_state_store(io, state);
+        int result = shoop_reject_candidate(io, state);
         if (result) return result;
     }
     if (state->boot_failures >= 3) {

@@ -11,6 +11,7 @@ import subprocess
 import termios
 import time
 import tty
+import zipfile
 
 import boards
 
@@ -19,6 +20,7 @@ PART = "xc7z020clg400-2"
 RTL_ABI = ROOT / "fpga/host_bridge/registers.json"
 NATIVE_AUDIO_ABI = ROOT / "fpga/host_bridge/native_audio.json"
 BUILD_FILES = {"zturn_v2.bit", "zturn_v2.xsa", "ps7_init.tcl", "ps-properties.txt", "fpga-abi.json", "geometry.txt"}
+PS_INIT_FILES = ("ps7_init_gpl.c", "ps7_init_gpl.h")
 
 
 def digest(path):
@@ -27,6 +29,17 @@ def digest(path):
         for block in iter(lambda: stream.read(1 << 20), b""):
             sha256.update(block)
     return sha256.hexdigest()
+
+
+def ps_init_sources(xsa):
+    with zipfile.ZipFile(xsa) as archive:
+        return {name: archive.read(name) for name in PS_INIT_FILES}
+
+
+def ps_contract(board, sources):
+    inputs = {**board.manifest(), "ps_init": {name: hashlib.sha256(sources[name]).hexdigest()
+                                           for name in PS_INIT_FILES}}
+    return "v1:" + hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
 
 
 def contract(board, abi_path=RTL_ABI):

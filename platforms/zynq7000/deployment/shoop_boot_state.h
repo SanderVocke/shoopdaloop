@@ -85,7 +85,7 @@ struct shoop_io {
 };
 enum shoop_error {
     SHOOP_OK = 0, SHOOP_IO = -1, SHOOP_INVALID = -2,
-    SHOOP_EXHAUSTED = -3, SHOOP_CONFLICT = -4,
+    SHOOP_EXHAUSTED = -3, SHOOP_CONFLICT = -4, SHOOP_FPGA_REFUSED = -5,
 };
 uint32_t shoop_crc32(const void *, size_t);
 void shoop_record_seal(void *, uint32_t);
@@ -95,6 +95,7 @@ int shoop_state_load(const struct shoop_io *, struct shoop_state *);
 int shoop_state_store(const struct shoop_io *, struct shoop_state *);
 int shoop_nonce_reserve(const struct shoop_io *, uint64_t *);
 int shoop_candidate(const struct shoop_io *, struct shoop_state *, uint32_t, const uint8_t *);
+int shoop_reject_candidate(const struct shoop_io *, struct shoop_state *);
 int shoop_select(const struct shoop_io *, struct shoop_state *, uint32_t *);
 int shoop_confirm(const struct shoop_io *, uint32_t, const uint8_t *);
 int shoop_handoff_valid(const struct shoop_handoff *);
