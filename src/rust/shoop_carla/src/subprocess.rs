@@ -1,6 +1,6 @@
 //! Parent-side control and supervision for a dedicated Carla child.
 
-use crate::carla_shared_memory::{EditorVisibility, SharedBlockTransport};
+use crate::carla_shared_memory::{BlockTime, EditorVisibility, SharedBlockTransport};
 use crate::child::CarlaWorkerTestMode;
 use crate::processor::{
     CarlaExternalUi, CarlaGenerationLog, CarlaProcessor, CarlaProcessorInfo,
@@ -855,6 +855,13 @@ impl CarlaProcessor for SubprocessCarlaProcessor {
         Ok(())
     }
 
+    fn process_at(&mut self, frames: usize, time: Option<BlockTime>) -> Result<()> {
+        self.shared_transport.set_block_time(time);
+        let result = self.process(frames);
+        self.shared_transport.set_block_time(None);
+        result
+    }
+
     fn process(&mut self, frames: usize) -> Result<()> {
         if self.serialized_reference_transport {
             return self.process_serialized_reference(frames);
@@ -1506,6 +1513,10 @@ impl CarlaProcessor for SupervisedCarlaProcessor {
     }
 
     fn process(&mut self, frames: usize) -> Result<()> {
+        self.process_at(frames, None)
+    }
+
+    fn process_at(&mut self, frames: usize, time: Option<BlockTime>) -> Result<()> {
         if self.lifecycle != CarlaProcessorLifecycle::Running {
             return Err(anyhow!("Carla worker is not running"));
         }
@@ -1513,7 +1524,7 @@ impl CarlaProcessor for SupervisedCarlaProcessor {
             .current
             .as_mut()
             .ok_or_else(|| anyhow!("Carla worker is unavailable"))?
-            .process(frames);
+            .process_at(frames, time);
         if let Err(error) = &result {
             self.lifecycle = CarlaProcessorLifecycle::Crashed;
             self.exit_kind = if self

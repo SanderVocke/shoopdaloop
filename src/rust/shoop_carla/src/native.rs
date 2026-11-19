@@ -1,10 +1,13 @@
 //! Direct hosting of Carla Rack and Patchbay through the Carla Native C ABI.
 
-use crate::state::{decode_state, encode_state};
+use crate::{
+    carla_shared_memory::BlockTime,
+    state::{decode_state, encode_state},
+};
 use anyhow::{anyhow, bail, Context, Result};
 use libloading::Library;
 use shoop_plugin_protocol::CarlaChainType;
-use std::cell::UnsafeCell;
+use std::cell::{Cell, UnsafeCell};
 use std::collections::BTreeMap;
 use std::ffi::{c_char, c_int, c_uint, c_void, CStr, CString};
 use std::path::{Path, PathBuf};
@@ -111,6 +114,34 @@ struct NativeTimeInfo {
     frame: u64,
     usecs: u64,
     bbt: NativeTimeInfoBbt,
+}
+
+thread_local! {
+    // The C ABI reads this during process. UI calls on other threads see their
+    // host's immutable default until a clock is supplied in that callback domain.
+    static PROCESS_TIME: Cell<Option<(NativeHostHandle, NativeTimeInfo)>> = const { Cell::new(None) };
+}
+
+struct ProcessTime(Option<(NativeHostHandle, NativeTimeInfo)>);
+
+impl ProcessTime {
+    fn install(host: &HostContext, time: BlockTime) -> Self {
+        let usecs = u128::from(time.source_frame) * 1_000_000 / host.sample_rate as u128;
+        let native = NativeTimeInfo {
+            playing: time.playing,
+            frame: time.source_frame,
+            usecs: u64::try_from(usecs).unwrap_or(u64::MAX),
+            bbt: NativeTimeInfoBbt::default(),
+        };
+        let handle = (host as *const HostContext).cast_mut().cast();
+        Self(PROCESS_TIME.with(|time| time.replace(Some((handle, native)))))
+    }
+}
+
+impl Drop for ProcessTime {
+    fn drop(&mut self) {
+        PROCESS_TIME.with(|time| time.set(self.0));
+    }
 }
 
 #[repr(C)]
@@ -654,9 +685,16 @@ unsafe extern "C" fn host_is_offline(_handle: NativeHostHandle) -> bool {
 }
 
 unsafe extern "C" fn host_get_time_info(handle: NativeHostHandle) -> *const NativeTimeInfo {
-    unsafe { context(handle) }
-        .map(|host| &host.time_info as *const NativeTimeInfo)
-        .unwrap_or(std::ptr::null())
+    let Some(host) = (unsafe { context(handle) }) else {
+        return std::ptr::null();
+    };
+    PROCESS_TIME.with(|time| {
+        // The owning DSP thread keeps this snapshot fixed for the call into Carla.
+        unsafe { &*time.as_ptr() }
+            .as_ref()
+            .filter(|(owner, _)| *owner == handle)
+            .map_or(&host.time_info, |(_, time)| time)
+    })
 }
 
 unsafe extern "C" fn host_write_midi_event(
@@ -1432,6 +1470,10 @@ impl CarlaNativeHost {
     }
 
     pub fn process(&mut self, frames: usize) -> Result<()> {
+        self.process_at(frames, None)
+    }
+
+    pub(crate) fn process_at(&mut self, frames: usize, time: Option<BlockTime>) -> Result<()> {
         if !self.active {
             return Ok(());
         }
@@ -1459,6 +1501,7 @@ impl CarlaNativeHost {
             .ok_or_else(|| anyhow!("Carla Native plugin has no process callback"))?;
         let _span =
             shoop_tracing::realtime_span_detail!("engine.rt.fx.plugin_process", value = frames);
+        let _time = time.map(|time| ProcessTime::install(&self.instance.host_context, time));
         unsafe {
             process(
                 self.instance.handle.as_ptr(),
@@ -1653,6 +1696,46 @@ mod tests {
                 && calls.iter().any(|(call, _)| *call == "idle")
                 && calls.iter().filter(|(call, _)| *call == "cleanup").count() == 1
         }));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn native_time_query_uses_the_calling_dsp_hosts_source_clock() {
+        let (instance, _descriptor, _state) = test_native_instance();
+        let (other, _other_descriptor, _other_state) = test_native_instance();
+        let read = |host: &HostContext| unsafe {
+            *host_get_time_info((host as *const HostContext).cast_mut().cast())
+        };
+        let host = instance.host_context.as_ref();
+        let other_host = other.host_context.as_ref();
+        let playing = BlockTime {
+            source_frame: 48_000 * 90_000,
+            playing: true,
+        };
+        shoop_wasm_test_support::heap::assert_no_heap(|| {
+            let _clock = ProcessTime::install(host, playing);
+            let time = read(host);
+            assert_eq!(time.frame, playing.source_frame);
+            assert_eq!(time.usecs, 90_000_000_000);
+            assert!(time.playing);
+            assert!(!time.bbt.valid);
+            assert_eq!(read(other_host).frame, 0);
+            let _seek = ProcessTime::install(
+                host,
+                BlockTime {
+                    source_frame: 24_000,
+                    playing: false,
+                },
+            );
+            let paused = read(host);
+            assert_eq!(paused.frame, 24_000);
+            assert_eq!(paused.usecs, 500_000);
+            assert!(!paused.playing);
+        });
+        assert_eq!(read(host).frame, 0);
+        other.cleanup();
+        instance.cleanup();
+        drop(other);
+        drop(instance);
     }
 
     #[shoop_wasm_test_support::shoop_test]

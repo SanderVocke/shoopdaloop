@@ -12,7 +12,7 @@ pub mod state;
 pub use hosted::{CarlaGenerationLog, CarlaProcessorInfo, CarlaProcessorLifecycle};
 pub use midi_buffer::{MidiBufferError, PreparedMidiBuffer};
 
-pub const PROTOCOL_VERSION: u32 = 5;
+pub const PROTOCOL_VERSION: u32 = 6;
 pub const MAX_AUDIO_CHANNELS: usize = 16;
 pub const MAX_BLOCK_FRAMES: usize = 8192;
 pub const MAX_MIDI_EVENTS_PER_BLOCK: usize = 1024;

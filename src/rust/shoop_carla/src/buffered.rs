@@ -245,7 +245,13 @@ fn process(
         target[..batch.frames].copy_from_slice(input);
     }
     processor
-        .process(batch.frames)
+        .process_at(
+            batch.frames,
+            Some(crate::carla_shared_memory::BlockTime {
+                source_frame: batch.tag.source.0,
+                playing: true,
+            }),
+        )
         .map_err(|_| Error::InvalidState)?;
     if processor.lifecycle() == CarlaProcessorLifecycle::Degraded {
         return Err(Error::Incomplete);

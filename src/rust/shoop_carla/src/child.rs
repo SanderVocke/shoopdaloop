@@ -265,7 +265,7 @@ fn run_shared_worker(
                 *destination = (event.frame_offset, event.data.as_slice());
             }
             host.set_midi_input_events(0, &refs[..midi_inputs.as_slice().len()])?;
-            host.process(token.frames)?;
+            host.process_at(token.frames, token.time)?;
             midi_outputs.clear();
             host.fill_midi_output_events(0, &mut midi_outputs)?;
             let mut audio_outputs = [&[][..]; MAX_AUDIO_CHANNELS];

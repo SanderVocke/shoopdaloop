@@ -1,6 +1,9 @@
 //! Processor control and block access on the native worker owner.
 
-use crate::native::{CarlaNativeHost, CarlaNativeUiHandle};
+use crate::{
+    carla_shared_memory::BlockTime,
+    native::{CarlaNativeHost, CarlaNativeUiHandle},
+};
 use anyhow::Result;
 use std::{fmt::Debug, sync::Arc};
 
@@ -83,6 +86,9 @@ pub trait CarlaProcessor: Send + Debug {
         Ok(())
     }
     fn process(&mut self, frames: usize) -> Result<()>;
+    fn process_at(&mut self, frames: usize, _time: Option<BlockTime>) -> Result<()> {
+        self.process(frames)
+    }
 }
 
 impl CarlaExternalUi for CarlaNativeUiHandle {
@@ -147,6 +153,9 @@ impl CarlaProcessor for CarlaNativeHost {
 
     fn process(&mut self, frames: usize) -> Result<()> {
         CarlaNativeHost::process(self, frames)
+    }
+    fn process_at(&mut self, frames: usize, time: Option<BlockTime>) -> Result<()> {
+        CarlaNativeHost::process_at(self, frames, time)
     }
 
     fn set_midi_input_events(&mut self, index: usize, events: &[(u32, &[u8])]) -> Result<()> {
