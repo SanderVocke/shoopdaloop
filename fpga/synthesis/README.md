@@ -21,3 +21,12 @@ No complete loop core or ARM board demo synthesis target remains.
 `measurements/` is historical evidence with original source manifests, revisions,
 constraints and reports. Earlier system and 150 MHz results do not certify the
 current component-only architecture. Preserve those measured artifacts unchanged.
+
+`midi_session.py before|after --mhz 100|150 --output DIRECTORY` prepares the
+frozen 64-stereo-loop comparison, including registered component boundaries,
+historical RTL snapshots, Vivado 2021.1 compatibility patches, source hashes,
+constraints and the implementation script. Run `vivado -mode batch -source
+run.tcl` in the output directory. This composes the audio and optional MIDI
+components for resource/timing measurement; it does not add a board frontend.
+See the [Zynq-7020 comparison](../../docs/fpga/midi-vivado-7020.md) for the
+configuration, storage requirements and results.

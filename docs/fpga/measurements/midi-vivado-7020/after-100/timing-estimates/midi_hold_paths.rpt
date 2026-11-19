@@ -1,0 +1,508 @@
+Copyright 1986-2021 Xilinx, Inc. All Rights Reserved.
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2021.1 (lin64) Build 3247384 Thu Jun 10 19:36:07 MDT 2021
+| Date         : Thu Nov 19 18:28:25 2026
+| Host         : 958cb5b1ec9b running 64-bit Ubuntu 20.04.4 LTS
+| Command      : report_timing -from [get_cells -hierarchical -filter {IS_SEQUENTIAL && NAME =~ midi/*}] -to [get_cells -hierarchical -filter {IS_SEQUENTIAL && NAME =~ midi/*}] -delay_type min -max_paths 10 -file midi_hold_paths.rpt
+| Design       : session_context
+| Device       : 7z020-clg484
+| Speed File   : -1  PRODUCTION 1.12 2019-11-22
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Timing Report
+
+Slack (MET) :             0.033ns  (arrival time - required time)
+  Source:                 midi/core_under_test/core/reserved_snapshots_reg[0]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            midi/core_under_test/core/reserved_snapshots_reg[2]/D
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core_clk
+  Path Type:              Hold (Min at Fast Process Corner)
+  Requirement:            0.000ns  (core_clk rise@0.000ns - core_clk rise@0.000ns)
+  Data Path Delay:        0.332ns  (logic 0.241ns (72.580%)  route 0.091ns (27.420%))
+  Logic Levels:           1  (CARRY4=1)
+  Clock Path Skew:        0.022ns (DCD - SCD - CPR)
+    Destination Clock Delay (DCD):    0.432ns
+    Source Clock Delay      (SCD):    0.410ns
+    Clock Pessimism Removal (CPR):    -0.000ns
+  Clock Uncertainty:      0.200ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.000ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=37095, unset)        0.410     0.410    midi/core_under_test/core/clk
+                         FDRE                                         r  midi/core_under_test/core/reserved_snapshots_reg[0]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.118     0.528 r  midi/core_under_test/core/reserved_snapshots_reg[0]/Q
+                         net (fo=4, unplaced)         0.091     0.619    midi/core_under_test/core/reserved_snapshots[0]
+                         CARRY4 (Prop_carry4_DI[0]_O[2])
+                                                      0.123     0.742 r  midi/core_under_test/core/reserved_snapshots_reg[3]_i_1/O[2]
+                         net (fo=1, unplaced)         0.000     0.742    midi/core_under_test/core/reserved_snapshots_reg[3]_i_1_n_5
+                         FDRE                                         r  midi/core_under_test/core/reserved_snapshots_reg[2]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=37095, unset)        0.432     0.432    midi/core_under_test/core/clk
+                         FDRE                                         r  midi/core_under_test/core/reserved_snapshots_reg[2]/C
+                         clock pessimism              0.000     0.432    
+                         clock uncertainty            0.200     0.632    
+                         FDRE (Hold_fdre_C_D)         0.077     0.709    midi/core_under_test/core/reserved_snapshots_reg[2]
+  -------------------------------------------------------------------
+                         required time                         -0.709    
+                         arrival time                           0.742    
+  -------------------------------------------------------------------
+                         slack                                  0.033    
+
+Slack (MET) :             0.034ns  (arrival time - required time)
+  Source:                 midi/core_under_test/memory/transfer/memory_read_data_reg[0]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            midi/core_under_test/core/states/transition_engine/differences_reg_r1_0_15_0_5/RAMA/I
+                            (rising edge-triggered cell RAMD32 clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core_clk
+  Path Type:              Hold (Min at Fast Process Corner)
+  Requirement:            0.000ns  (core_clk rise@0.000ns - core_clk rise@0.000ns)
+  Data Path Delay:        0.293ns  (logic 0.118ns (40.341%)  route 0.175ns (59.659%))
+  Logic Levels:           0  
+  Clock Path Skew:        0.022ns (DCD - SCD - CPR)
+    Destination Clock Delay (DCD):    0.432ns
+    Source Clock Delay      (SCD):    0.410ns
+    Clock Pessimism Removal (CPR):    -0.000ns
+  Clock Uncertainty:      0.200ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.000ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=37095, unset)        0.410     0.410    midi/core_under_test/memory/transfer/clk
+                         FDRE                                         r  midi/core_under_test/memory/transfer/memory_read_data_reg[0]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.118     0.528 r  midi/core_under_test/memory/transfer/memory_read_data_reg[0]/Q
+                         net (fo=45, unplaced)        0.175     0.703    midi/core_under_test/core/states/transition_engine/differences_reg_r1_0_15_0_5/DIA0
+                         RAMD32                                       r  midi/core_under_test/core/states/transition_engine/differences_reg_r1_0_15_0_5/RAMA/I
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=37095, unset)        0.432     0.432    midi/core_under_test/core/states/transition_engine/differences_reg_r1_0_15_0_5/WCLK
+                         RAMD32                                       r  midi/core_under_test/core/states/transition_engine/differences_reg_r1_0_15_0_5/RAMA/CLK
+                         clock pessimism              0.000     0.432    
+                         clock uncertainty            0.200     0.632    
+                         RAMD32 (Hold_ramd32_CLK_I)
+                                                      0.037     0.669    midi/core_under_test/core/states/transition_engine/differences_reg_r1_0_15_0_5/RAMA
+  -------------------------------------------------------------------
+                         required time                         -0.669    
+                         arrival time                           0.703    
+  -------------------------------------------------------------------
+                         slack                                  0.034    
+
+Slack (MET) :             0.034ns  (arrival time - required time)
+  Source:                 midi/core_under_test/memory/transfer/memory_read_data_reg[12]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            midi/core_under_test/core/states/transition_engine/differences_reg_r1_0_15_12_17/RAMA/I
+                            (rising edge-triggered cell RAMD32 clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core_clk
+  Path Type:              Hold (Min at Fast Process Corner)
+  Requirement:            0.000ns  (core_clk rise@0.000ns - core_clk rise@0.000ns)
+  Data Path Delay:        0.293ns  (logic 0.118ns (40.341%)  route 0.175ns (59.659%))
+  Logic Levels:           0  
+  Clock Path Skew:        0.022ns (DCD - SCD - CPR)
+    Destination Clock Delay (DCD):    0.432ns
+    Source Clock Delay      (SCD):    0.410ns
+    Clock Pessimism Removal (CPR):    -0.000ns
+  Clock Uncertainty:      0.200ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.000ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=37095, unset)        0.410     0.410    midi/core_under_test/memory/transfer/clk
+                         FDRE                                         r  midi/core_under_test/memory/transfer/memory_read_data_reg[12]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.118     0.528 r  midi/core_under_test/memory/transfer/memory_read_data_reg[12]/Q
+                         net (fo=46, unplaced)        0.175     0.703    midi/core_under_test/core/states/transition_engine/differences_reg_r1_0_15_12_17/DIA0
+                         RAMD32                                       r  midi/core_under_test/core/states/transition_engine/differences_reg_r1_0_15_12_17/RAMA/I
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=37095, unset)        0.432     0.432    midi/core_under_test/core/states/transition_engine/differences_reg_r1_0_15_12_17/WCLK
+                         RAMD32                                       r  midi/core_under_test/core/states/transition_engine/differences_reg_r1_0_15_12_17/RAMA/CLK
+                         clock pessimism              0.000     0.432    
+                         clock uncertainty            0.200     0.632    
+                         RAMD32 (Hold_ramd32_CLK_I)
+                                                      0.037     0.669    midi/core_under_test/core/states/transition_engine/differences_reg_r1_0_15_12_17/RAMA
+  -------------------------------------------------------------------
+                         required time                         -0.669    
+                         arrival time                           0.703    
+  -------------------------------------------------------------------
+                         slack                                  0.034    
+
+Slack (MET) :             0.034ns  (arrival time - required time)
+  Source:                 midi/core_under_test/memory/transfer/memory_read_data_reg[18]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            midi/core_under_test/core/states/transition_engine/differences_reg_r1_0_15_18_23/RAMA/I
+                            (rising edge-triggered cell RAMD32 clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core_clk
+  Path Type:              Hold (Min at Fast Process Corner)
+  Requirement:            0.000ns  (core_clk rise@0.000ns - core_clk rise@0.000ns)
+  Data Path Delay:        0.293ns  (logic 0.118ns (40.341%)  route 0.175ns (59.659%))
+  Logic Levels:           0  
+  Clock Path Skew:        0.022ns (DCD - SCD - CPR)
+    Destination Clock Delay (DCD):    0.432ns
+    Source Clock Delay      (SCD):    0.410ns
+    Clock Pessimism Removal (CPR):    -0.000ns
+  Clock Uncertainty:      0.200ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.000ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=37095, unset)        0.410     0.410    midi/core_under_test/memory/transfer/clk
+                         FDRE                                         r  midi/core_under_test/memory/transfer/memory_read_data_reg[18]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.118     0.528 r  midi/core_under_test/memory/transfer/memory_read_data_reg[18]/Q
+                         net (fo=46, unplaced)        0.175     0.703    midi/core_under_test/core/states/transition_engine/differences_reg_r1_0_15_18_23/DIA0
+                         RAMD32                                       r  midi/core_under_test/core/states/transition_engine/differences_reg_r1_0_15_18_23/RAMA/I
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=37095, unset)        0.432     0.432    midi/core_under_test/core/states/transition_engine/differences_reg_r1_0_15_18_23/WCLK
+                         RAMD32                                       r  midi/core_under_test/core/states/transition_engine/differences_reg_r1_0_15_18_23/RAMA/CLK
+                         clock pessimism              0.000     0.432    
+                         clock uncertainty            0.200     0.632    
+                         RAMD32 (Hold_ramd32_CLK_I)
+                                                      0.037     0.669    midi/core_under_test/core/states/transition_engine/differences_reg_r1_0_15_18_23/RAMA
+  -------------------------------------------------------------------
+                         required time                         -0.669    
+                         arrival time                           0.703    
+  -------------------------------------------------------------------
+                         slack                                  0.034    
+
+Slack (MET) :             0.034ns  (arrival time - required time)
+  Source:                 midi/core_under_test/memory/transfer/memory_read_data_reg[24]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            midi/core_under_test/core/states/transition_engine/differences_reg_r1_0_15_24_29/RAMA/I
+                            (rising edge-triggered cell RAMD32 clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core_clk
+  Path Type:              Hold (Min at Fast Process Corner)
+  Requirement:            0.000ns  (core_clk rise@0.000ns - core_clk rise@0.000ns)
+  Data Path Delay:        0.293ns  (logic 0.118ns (40.341%)  route 0.175ns (59.659%))
+  Logic Levels:           0  
+  Clock Path Skew:        0.022ns (DCD - SCD - CPR)
+    Destination Clock Delay (DCD):    0.432ns
+    Source Clock Delay      (SCD):    0.410ns
+    Clock Pessimism Removal (CPR):    -0.000ns
+  Clock Uncertainty:      0.200ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.000ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=37095, unset)        0.410     0.410    midi/core_under_test/memory/transfer/clk
+                         FDRE                                         r  midi/core_under_test/memory/transfer/memory_read_data_reg[24]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.118     0.528 r  midi/core_under_test/memory/transfer/memory_read_data_reg[24]/Q
+                         net (fo=45, unplaced)        0.175     0.703    midi/core_under_test/core/states/transition_engine/differences_reg_r1_0_15_24_29/DIA0
+                         RAMD32                                       r  midi/core_under_test/core/states/transition_engine/differences_reg_r1_0_15_24_29/RAMA/I
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=37095, unset)        0.432     0.432    midi/core_under_test/core/states/transition_engine/differences_reg_r1_0_15_24_29/WCLK
+                         RAMD32                                       r  midi/core_under_test/core/states/transition_engine/differences_reg_r1_0_15_24_29/RAMA/CLK
+                         clock pessimism              0.000     0.432    
+                         clock uncertainty            0.200     0.632    
+                         RAMD32 (Hold_ramd32_CLK_I)
+                                                      0.037     0.669    midi/core_under_test/core/states/transition_engine/differences_reg_r1_0_15_24_29/RAMA
+  -------------------------------------------------------------------
+                         required time                         -0.669    
+                         arrival time                           0.703    
+  -------------------------------------------------------------------
+                         slack                                  0.034    
+
+Slack (MET) :             0.034ns  (arrival time - required time)
+  Source:                 midi/core_under_test/memory/transfer/memory_read_data_reg[6]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            midi/core_under_test/core/states/transition_engine/differences_reg_r1_0_15_6_11/RAMA/I
+                            (rising edge-triggered cell RAMD32 clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core_clk
+  Path Type:              Hold (Min at Fast Process Corner)
+  Requirement:            0.000ns  (core_clk rise@0.000ns - core_clk rise@0.000ns)
+  Data Path Delay:        0.293ns  (logic 0.118ns (40.341%)  route 0.175ns (59.659%))
+  Logic Levels:           0  
+  Clock Path Skew:        0.022ns (DCD - SCD - CPR)
+    Destination Clock Delay (DCD):    0.432ns
+    Source Clock Delay      (SCD):    0.410ns
+    Clock Pessimism Removal (CPR):    -0.000ns
+  Clock Uncertainty:      0.200ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.000ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=37095, unset)        0.410     0.410    midi/core_under_test/memory/transfer/clk
+                         FDRE                                         r  midi/core_under_test/memory/transfer/memory_read_data_reg[6]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.118     0.528 r  midi/core_under_test/memory/transfer/memory_read_data_reg[6]/Q
+                         net (fo=45, unplaced)        0.175     0.703    midi/core_under_test/core/states/transition_engine/differences_reg_r1_0_15_6_11/DIA0
+                         RAMD32                                       r  midi/core_under_test/core/states/transition_engine/differences_reg_r1_0_15_6_11/RAMA/I
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=37095, unset)        0.432     0.432    midi/core_under_test/core/states/transition_engine/differences_reg_r1_0_15_6_11/WCLK
+                         RAMD32                                       r  midi/core_under_test/core/states/transition_engine/differences_reg_r1_0_15_6_11/RAMA/CLK
+                         clock pessimism              0.000     0.432    
+                         clock uncertainty            0.200     0.632    
+                         RAMD32 (Hold_ramd32_CLK_I)
+                                                      0.037     0.669    midi/core_under_test/core/states/transition_engine/differences_reg_r1_0_15_6_11/RAMA
+  -------------------------------------------------------------------
+                         required time                         -0.669    
+                         arrival time                           0.703    
+  -------------------------------------------------------------------
+                         slack                                  0.034    
+
+Slack (MET) :             0.034ns  (arrival time - required time)
+  Source:                 midi/core_under_test/memory/transfer/memory_read_data_reg[0]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            midi/core_under_test/core/states/transition_engine/differences_reg_r2_0_15_0_5/RAMA/I
+                            (rising edge-triggered cell RAMD32 clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core_clk
+  Path Type:              Hold (Min at Fast Process Corner)
+  Requirement:            0.000ns  (core_clk rise@0.000ns - core_clk rise@0.000ns)
+  Data Path Delay:        0.293ns  (logic 0.118ns (40.341%)  route 0.175ns (59.659%))
+  Logic Levels:           0  
+  Clock Path Skew:        0.022ns (DCD - SCD - CPR)
+    Destination Clock Delay (DCD):    0.432ns
+    Source Clock Delay      (SCD):    0.410ns
+    Clock Pessimism Removal (CPR):    -0.000ns
+  Clock Uncertainty:      0.200ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.000ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=37095, unset)        0.410     0.410    midi/core_under_test/memory/transfer/clk
+                         FDRE                                         r  midi/core_under_test/memory/transfer/memory_read_data_reg[0]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.118     0.528 r  midi/core_under_test/memory/transfer/memory_read_data_reg[0]/Q
+                         net (fo=45, unplaced)        0.175     0.703    midi/core_under_test/core/states/transition_engine/differences_reg_r2_0_15_0_5/DIA0
+                         RAMD32                                       r  midi/core_under_test/core/states/transition_engine/differences_reg_r2_0_15_0_5/RAMA/I
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=37095, unset)        0.432     0.432    midi/core_under_test/core/states/transition_engine/differences_reg_r2_0_15_0_5/WCLK
+                         RAMD32                                       r  midi/core_under_test/core/states/transition_engine/differences_reg_r2_0_15_0_5/RAMA/CLK
+                         clock pessimism              0.000     0.432    
+                         clock uncertainty            0.200     0.632    
+                         RAMD32 (Hold_ramd32_CLK_I)
+                                                      0.037     0.669    midi/core_under_test/core/states/transition_engine/differences_reg_r2_0_15_0_5/RAMA
+  -------------------------------------------------------------------
+                         required time                         -0.669    
+                         arrival time                           0.703    
+  -------------------------------------------------------------------
+                         slack                                  0.034    
+
+Slack (MET) :             0.034ns  (arrival time - required time)
+  Source:                 midi/core_under_test/memory/transfer/memory_read_data_reg[12]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            midi/core_under_test/core/states/transition_engine/differences_reg_r2_0_15_12_17/RAMA/I
+                            (rising edge-triggered cell RAMD32 clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core_clk
+  Path Type:              Hold (Min at Fast Process Corner)
+  Requirement:            0.000ns  (core_clk rise@0.000ns - core_clk rise@0.000ns)
+  Data Path Delay:        0.293ns  (logic 0.118ns (40.341%)  route 0.175ns (59.659%))
+  Logic Levels:           0  
+  Clock Path Skew:        0.022ns (DCD - SCD - CPR)
+    Destination Clock Delay (DCD):    0.432ns
+    Source Clock Delay      (SCD):    0.410ns
+    Clock Pessimism Removal (CPR):    -0.000ns
+  Clock Uncertainty:      0.200ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.000ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=37095, unset)        0.410     0.410    midi/core_under_test/memory/transfer/clk
+                         FDRE                                         r  midi/core_under_test/memory/transfer/memory_read_data_reg[12]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.118     0.528 r  midi/core_under_test/memory/transfer/memory_read_data_reg[12]/Q
+                         net (fo=46, unplaced)        0.175     0.703    midi/core_under_test/core/states/transition_engine/differences_reg_r2_0_15_12_17/DIA0
+                         RAMD32                                       r  midi/core_under_test/core/states/transition_engine/differences_reg_r2_0_15_12_17/RAMA/I
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=37095, unset)        0.432     0.432    midi/core_under_test/core/states/transition_engine/differences_reg_r2_0_15_12_17/WCLK
+                         RAMD32                                       r  midi/core_under_test/core/states/transition_engine/differences_reg_r2_0_15_12_17/RAMA/CLK
+                         clock pessimism              0.000     0.432    
+                         clock uncertainty            0.200     0.632    
+                         RAMD32 (Hold_ramd32_CLK_I)
+                                                      0.037     0.669    midi/core_under_test/core/states/transition_engine/differences_reg_r2_0_15_12_17/RAMA
+  -------------------------------------------------------------------
+                         required time                         -0.669    
+                         arrival time                           0.703    
+  -------------------------------------------------------------------
+                         slack                                  0.034    
+
+Slack (MET) :             0.034ns  (arrival time - required time)
+  Source:                 midi/core_under_test/memory/transfer/memory_read_data_reg[18]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            midi/core_under_test/core/states/transition_engine/differences_reg_r2_0_15_18_23/RAMA/I
+                            (rising edge-triggered cell RAMD32 clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core_clk
+  Path Type:              Hold (Min at Fast Process Corner)
+  Requirement:            0.000ns  (core_clk rise@0.000ns - core_clk rise@0.000ns)
+  Data Path Delay:        0.293ns  (logic 0.118ns (40.341%)  route 0.175ns (59.659%))
+  Logic Levels:           0  
+  Clock Path Skew:        0.022ns (DCD - SCD - CPR)
+    Destination Clock Delay (DCD):    0.432ns
+    Source Clock Delay      (SCD):    0.410ns
+    Clock Pessimism Removal (CPR):    -0.000ns
+  Clock Uncertainty:      0.200ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.000ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=37095, unset)        0.410     0.410    midi/core_under_test/memory/transfer/clk
+                         FDRE                                         r  midi/core_under_test/memory/transfer/memory_read_data_reg[18]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.118     0.528 r  midi/core_under_test/memory/transfer/memory_read_data_reg[18]/Q
+                         net (fo=46, unplaced)        0.175     0.703    midi/core_under_test/core/states/transition_engine/differences_reg_r2_0_15_18_23/DIA0
+                         RAMD32                                       r  midi/core_under_test/core/states/transition_engine/differences_reg_r2_0_15_18_23/RAMA/I
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=37095, unset)        0.432     0.432    midi/core_under_test/core/states/transition_engine/differences_reg_r2_0_15_18_23/WCLK
+                         RAMD32                                       r  midi/core_under_test/core/states/transition_engine/differences_reg_r2_0_15_18_23/RAMA/CLK
+                         clock pessimism              0.000     0.432    
+                         clock uncertainty            0.200     0.632    
+                         RAMD32 (Hold_ramd32_CLK_I)
+                                                      0.037     0.669    midi/core_under_test/core/states/transition_engine/differences_reg_r2_0_15_18_23/RAMA
+  -------------------------------------------------------------------
+                         required time                         -0.669    
+                         arrival time                           0.703    
+  -------------------------------------------------------------------
+                         slack                                  0.034    
+
+Slack (MET) :             0.034ns  (arrival time - required time)
+  Source:                 midi/core_under_test/memory/transfer/memory_read_data_reg[24]/C
+                            (rising edge-triggered cell FDRE clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Destination:            midi/core_under_test/core/states/transition_engine/differences_reg_r2_0_15_24_29/RAMA/I
+                            (rising edge-triggered cell RAMD32 clocked by core_clk  {rise@0.000ns fall@5.000ns period=10.000ns})
+  Path Group:             core_clk
+  Path Type:              Hold (Min at Fast Process Corner)
+  Requirement:            0.000ns  (core_clk rise@0.000ns - core_clk rise@0.000ns)
+  Data Path Delay:        0.293ns  (logic 0.118ns (40.341%)  route 0.175ns (59.659%))
+  Logic Levels:           0  
+  Clock Path Skew:        0.022ns (DCD - SCD - CPR)
+    Destination Clock Delay (DCD):    0.432ns
+    Source Clock Delay      (SCD):    0.410ns
+    Clock Pessimism Removal (CPR):    -0.000ns
+  Clock Uncertainty:      0.200ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.000ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=37095, unset)        0.410     0.410    midi/core_under_test/memory/transfer/clk
+                         FDRE                                         r  midi/core_under_test/memory/transfer/memory_read_data_reg[24]/C
+  -------------------------------------------------------------------    -------------------
+                         FDRE (Prop_fdre_C_Q)         0.118     0.528 r  midi/core_under_test/memory/transfer/memory_read_data_reg[24]/Q
+                         net (fo=45, unplaced)        0.175     0.703    midi/core_under_test/core/states/transition_engine/differences_reg_r2_0_15_24_29/DIA0
+                         RAMD32                                       r  midi/core_under_test/core/states/transition_engine/differences_reg_r2_0_15_24_29/RAMA/I
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core_clk rise edge)
+                                                      0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=37095, unset)        0.432     0.432    midi/core_under_test/core/states/transition_engine/differences_reg_r2_0_15_24_29/WCLK
+                         RAMD32                                       r  midi/core_under_test/core/states/transition_engine/differences_reg_r2_0_15_24_29/RAMA/CLK
+                         clock pessimism              0.000     0.432    
+                         clock uncertainty            0.200     0.632    
+                         RAMD32 (Hold_ramd32_CLK_I)
+                                                      0.037     0.669    midi/core_under_test/core/states/transition_engine/differences_reg_r2_0_15_24_29/RAMA
+  -------------------------------------------------------------------
+                         required time                         -0.669    
+                         arrival time                           0.703    
+  -------------------------------------------------------------------
+                         slack                                  0.034    
+
+
+
+
