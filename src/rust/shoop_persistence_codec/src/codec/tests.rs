@@ -59,6 +59,7 @@ pub(super) fn channel(object: u32, frames: u64, offset: i64) -> image::Channel {
 }
 pub(super) fn content() -> image::Loop {
     image::Loop {
+        recorded_processor_checkpoint: None,
         recorded_processor_state: None,
         sync_source: None,
         repeat_sync: false,
@@ -383,6 +384,7 @@ pub(super) fn session(content: image::Loop, channels: u32, midi: bool) -> image:
         sample_rate: 48000,
         global: GlobalControlState::default(),
         tracks: vec![image::Track {
+            processor_checkpoint: None,
             topology: shoop_app_api::TrackTopology::Direct,
             default_playback_mode: Default::default(),
             processor_state: None,

@@ -50,6 +50,7 @@ pub enum ObjectKind {
     Metadata,
     Audio,
     Midi,
+    ProcessorCheckpoint,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -80,9 +81,13 @@ impl ObjectDescription {
     pub fn valid(self) -> bool {
         self.index < MAX_SESSION_OBJECTS
             && (self.kind != ObjectKind::Audio || self.bytes % 4 == 0)
+            && (self.kind != ObjectKind::ProcessorCheckpoint || self.bytes != 0)
             && self.bytes
                 <= match self.kind {
                     ObjectKind::Metadata => MAX_SESSION_METADATA_BYTES,
+                    ObjectKind::ProcessorCheckpoint => {
+                        shoop_app_api::MAX_OPAQUE_STATE_ENVELOPE_BYTES as u64
+                    }
                     _ => MAX_SESSION_MEDIA_BYTES,
                 }
     }

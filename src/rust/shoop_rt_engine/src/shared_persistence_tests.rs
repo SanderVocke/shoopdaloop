@@ -75,6 +75,7 @@ impl Pinned {
             recording_started_at: None,
         };
         let content = image::Loop {
+            recorded_processor_checkpoint: None,
             recorded_processor_state: None,
             sync_source: None,
             repeat_sync: false,
@@ -101,6 +102,7 @@ impl Pinned {
                 sample_rate: 1000,
                 global: api::GlobalControlState::default(),
                 tracks: vec![image::Track {
+                    processor_checkpoint: None,
                     topology: shoop_app_api::TrackTopology::Direct,
                     default_playback_mode: Default::default(),
                     processor_state: None,

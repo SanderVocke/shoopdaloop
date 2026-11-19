@@ -100,6 +100,13 @@ impl TrackProcessorTypeId {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    pub fn is_carla(&self) -> bool {
+        matches!(
+            self.as_str(),
+            Self::CARLA_RACK | Self::CARLA_PATCHBAY | Self::CARLA_PATCHBAY_16X
+        )
+    }
 }
 
 impl fmt::Display for TrackProcessorTypeId {
@@ -4329,4 +4336,5 @@ impl HostSettings {
 
 pub use shoop_processor_protocol::{
     CarlaHosting, Policy as ProcessorPolicy, Settings as ProcessorSettings,
+    MAX_OPAQUE_STATE_ENVELOPE_BYTES,
 };

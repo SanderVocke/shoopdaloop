@@ -581,6 +581,7 @@ pub(super) fn from_bundle(mut bundle: SessionBundle) -> Result<Arc<image::Image>
                     "unsupported bus processor"
                 );
                 Ok(image::BusFx {
+                    processor_checkpoint: None,
                     processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::BUILTIN_FX),
                     state: canonical_state(chain.chain_type, &chain.internal_state)?,
                     midi_cc_assignments: chain
@@ -725,6 +726,7 @@ pub(super) fn from_bundle(mut bundle: SessionBundle) -> Result<Arc<image::Image>
                 })
                 .transpose()?;
             loops.push(image::Loop {
+                recorded_processor_checkpoint: None,
                 recorded_processor_state,
                 sync_source: content
                     .execution
@@ -752,6 +754,7 @@ pub(super) fn from_bundle(mut bundle: SessionBundle) -> Result<Arc<image::Image>
         }
         let c = track.controls;
         tracks.push(image::Track {
+            processor_checkpoint: None,
             topology,
             default_playback_mode: match track.default_playback_mode {
                 DefaultPlaybackModeDocument::Regular => DefaultPlaybackMode::Regular,

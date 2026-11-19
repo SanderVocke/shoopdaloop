@@ -51,6 +51,7 @@ fn capture() -> Arc<image::Image> {
                 fence_content: true,
                 restart: index == 0,
                 content: Some(image::Loop {
+                    recorded_processor_checkpoint: None,
                     recorded_processor_state: None,
                     sync_source: None,
                     repeat_sync: false,

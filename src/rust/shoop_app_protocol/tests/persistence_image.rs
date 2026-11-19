@@ -41,6 +41,7 @@ fn image(samples: usize) -> Arc<Image> {
             sample_rate: 48000,
             content: Loop {
                 recorded_processor_state: None,
+                recorded_processor_checkpoint: None,
                 composite: None,
                 sync_source: None,
                 repeat_sync: false,
@@ -166,6 +167,51 @@ fn images_above_the_old_media_view_limit_use_only_bounded_records() {
     let rebuilt = assemble(receiver.into_objects().unwrap()).unwrap();
     assert_eq!(*rebuilt, *image);
 }
+#[shoop_test]
+fn recorded_processor_checkpoints_travel_outside_metadata_in_bounded_chunks() {
+    let mut capture = image(16).as_ref().clone();
+    let Manifest::Loop { content, .. } = &mut capture.manifest else {
+        unreachable!()
+    };
+    capture
+        .payloads
+        .push(Payload::ProcessorCheckpoint(Arc::new(vec![
+            b'A';
+            MAX_SNAPSHOT_BYTES
+                + 17
+        ])));
+    let checkpoint = capture.payloads.len() as u32;
+    content.recorded_processor_checkpoint = Some(checkpoint);
+    let capture = Arc::new(capture);
+    let source = Source::new(Arc::clone(&capture)).unwrap();
+    assert_eq!(
+        source.object(checkpoint).unwrap().kind,
+        ObjectKind::ProcessorCheckpoint
+    );
+    assert!(source.object(0).unwrap().bytes < MAX_SESSION_METADATA_BYTES);
+    let mut upload = UploadStream::new(Arc::clone(&capture), key(), target()).unwrap();
+    let Request::Begin(description) = upload.next_request().unwrap().unwrap() else {
+        panic!()
+    };
+    assert!(description.media_bytes > MAX_SESSION_METADATA_BYTES);
+    let mut receiver = Receiver::new(authority(), description).unwrap();
+    while let Some(request) = upload.next_request().unwrap() {
+        if let Request::Chunk { bytes, .. } = &request {
+            assert!(bytes.len() <= CHUNK_BYTES);
+        }
+        receiver.apply(authority(), request).unwrap();
+    }
+    let rebuilt = assemble(receiver.into_objects().unwrap()).unwrap();
+    assert_eq!(rebuilt.as_ref(), capture.as_ref());
+
+    let mut wrong = capture.as_ref().clone();
+    let Manifest::Loop { content, .. } = &mut wrong.manifest else {
+        unreachable!()
+    };
+    content.recorded_processor_checkpoint = Some(1);
+    assert!(Source::new(Arc::new(wrong)).is_err());
+}
+
 #[shoop_test]
 fn typed_media_cannot_enter_an_ordinary_wire_record_and_bad_references_refuse() {
     let image = image(16);

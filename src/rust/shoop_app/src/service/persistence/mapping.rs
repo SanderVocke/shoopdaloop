@@ -91,12 +91,33 @@ fn midi_events(
     }
 }
 
+fn processor_state(
+    image: &image::Image,
+    checkpoint: Option<u32>,
+    inline_state: Option<&str>,
+) -> Result<Option<String>> {
+    let Some(checkpoint) = checkpoint else {
+        return Ok(inline_state.map(String::from));
+    };
+    let index = checkpoint
+        .checked_sub(1)
+        .ok_or_else(|| anyhow!("invalid processor checkpoint"))? as usize;
+    let Some(image::Payload::ProcessorCheckpoint(bytes)) = image.payloads.get(index) else {
+        return Err(anyhow!("missing processor checkpoint payload"));
+    };
+    Ok(Some(String::from(core::str::from_utf8(bytes)?)))
+}
+
 pub(super) fn backend_loop(
     image: &image::Image,
     content: &image::Loop,
 ) -> Result<BackendLoopContent> {
     Ok(BackendLoopContent {
-        recorded_processor_state: content.recorded_processor_state.clone(),
+        recorded_processor_state: processor_state(
+            image,
+            content.recorded_processor_checkpoint,
+            content.recorded_processor_state.as_deref(),
+        )?,
         source_id: content.id.raw(),
         length: if content.composite.is_some() {
             0
@@ -470,7 +491,8 @@ impl Candidate {
                             stereo: track.audio_channels == 2,
                             gain: content.gain,
                             balance: content.balance,
-                            has_recorded_fx_state: content.recorded_processor_state.is_some(),
+                            has_recorded_fx_state: content.recorded_processor_state.is_some()
+                                || content.recorded_processor_checkpoint.is_some(),
                             ..Default::default()
                         },
                     },
@@ -526,7 +548,11 @@ impl Candidate {
                     .iter()
                     .map(|port| backend_port(port, BackendPortOwner::Track))
                     .collect::<Result<_>>()?,
-                processor_state: track.processor_state.clone(),
+                processor_state: processor_state(
+                    image,
+                    track.processor_checkpoint,
+                    track.processor_state.as_deref(),
+                )?,
                 builtin_fx_midi_cc_assignments: track
                     .builtin_fx_midi_cc_assignments
                     .iter()
@@ -691,7 +717,12 @@ impl Candidate {
                     .fx
                     .as_ref()
                     .map(|fx| fx.processor_type.as_str().to_owned()),
-                processor_state: bus.fx.as_ref().map(|fx| fx.state.clone()),
+                processor_state: bus
+                    .fx
+                    .as_ref()
+                    .map(|fx| processor_state(image, fx.processor_checkpoint, Some(&fx.state)))
+                    .transpose()?
+                    .flatten(),
                 builtin_fx_midi_cc_assignments: bus
                     .fx
                     .as_ref()
