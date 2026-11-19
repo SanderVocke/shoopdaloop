@@ -456,7 +456,9 @@ impl ControlEndpoint {
                                 {
                                     let bit = cursor.bit;
                                     cursor.bit += 1;
-                                    if routes[cursor.channel] & (1 << bit) != 0 {
+                                    let bus = bit / shoop_rt_protocol::MAX_STRIP_CHANNELS;
+                                    let channel = bit % shoop_rt_protocol::MAX_STRIP_CHANNELS;
+                                    if routes[cursor.channel].contains(bus, channel) {
                                         return Some(StateRecord::Route {
                                             port: StripPort {
                                                 strip: strip.id,
@@ -464,11 +466,8 @@ impl ControlEndpoint {
                                                 index: cursor.channel as u8,
                                             },
                                             bus: BusPort {
-                                                bus: self.model.buses
-                                                    [bit / shoop_rt_protocol::MAX_STRIP_CHANNELS]?
-                                                    .id,
-                                                index: (bit % shoop_rt_protocol::MAX_STRIP_CHANNELS)
-                                                    as u8,
+                                                bus: self.model.buses[bus]?.id,
+                                                index: channel as u8,
                                             },
                                         });
                                     }

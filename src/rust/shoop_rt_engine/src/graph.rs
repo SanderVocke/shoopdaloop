@@ -397,11 +397,7 @@ impl Builder {
                     for channel in 0..strip.shape.audio_outputs as usize {
                         let routes = strip.outputs.buses[bank][channel];
                         for target in 0..bus.channels as usize {
-                            if routes
-                                & (1u64
-                                    << (bus_slot * shoop_rt_protocol::MAX_STRIP_CHANNELS + target))
-                                != 0
-                            {
+                            if routes.contains(bus_slot, target) {
                                 push(
                                     &mut self.edges,
                                     &mut count,

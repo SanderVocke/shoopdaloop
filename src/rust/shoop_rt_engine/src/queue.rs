@@ -945,19 +945,15 @@ impl ControlEndpoint {
                     Staged::Refused(Refusal::InvalidValue)
                 }
                 Some(entry) => {
-                    let (channel, target) = (
-                        port.index as usize,
-                        bus.0.index as usize * shoop_rt_protocol::MAX_STRIP_CHANNELS
-                            + index as usize,
-                    );
+                    let channel = port.index as usize;
                     let mask = entry.outputs.buses[entry.outputs.active][channel];
-                    if (mask & (1 << target) != 0) == connected {
+                    if mask.contains(bus.0.index as usize, index as usize) == connected {
                         Staged::Done
                     } else {
                         Staged::Change(Change::Route {
                             strip: port.strip,
                             channel,
-                            target,
+                            target: BusPort { bus, index },
                             connected,
                         })
                     }
