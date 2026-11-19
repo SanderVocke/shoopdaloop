@@ -268,7 +268,11 @@ impl Engine {
                 result = Err(error);
             }
         }
-        self.mode = record.mode;
+        self.mode = if record.mode == Mode::Playing && record.position >= record.content_length {
+            Mode::Stopped
+        } else {
+            record.mode
+        };
         result
     }
     fn capture_window(&mut self, frames: u32, base: u32, input: &[Event]) -> Result<(), Error> {
@@ -282,10 +286,10 @@ impl Engine {
         sink: &mut impl FnMut(Event) -> Result<(), Error>,
     ) -> Result<(), Error> {
         self.drain_recovery(base, sink)?;
-        let boundary = record.mode == Mode::Playing && record.position == 0;
+        let playing = record.mode == Mode::Playing && record.position < record.content_length;
+        let boundary = playing && record.position == 0;
         if self.cleanup.is_some()
-            || ((self.mode == Mode::Playing || self.cursor.is_some())
-                && (record.mode != Mode::Playing || boundary))
+            || ((self.mode == Mode::Playing || self.cursor.is_some()) && (!playing || boundary))
         {
             self.desynchronized = true;
             self.cleanup_output(base, sink)?;
@@ -293,10 +297,10 @@ impl Engine {
                 self.take.end_playback(cursor)?;
             }
         }
-        if self.desynchronized && record.mode == Mode::Playing && !boundary {
+        if self.desynchronized && playing && !boundary {
             return Err(Error::Busy);
         }
-        if record.mode != Mode::Playing {
+        if !playing {
             self.desynchronized = false;
             return Ok(());
         }

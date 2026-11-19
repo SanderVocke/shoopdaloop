@@ -51,7 +51,9 @@ Prepare `Engine::prepare(loop_id, record_event_capacity, input_events_per_quantu
 and attach it while the bound loop is stopped. Pass it, callback-relative input
 events and an accepting/refusing output sink to `Pipeline::process_midi_block`.
 The engine consumes the state processor's settled loop record after audio jobs;
-it does not advance time or resolve loop transitions. Input remains observed
+it does not advance time or resolve loop transitions. When SP holds the loop at
+its end awaiting synchronization, MIDI releases held output and stays silent
+until SP resumes playback at the beginning. Input remains observed
 while stopped and playing, but is captured only during recording and is not
 monitored to output. Playback emits the saved take.
 

@@ -634,3 +634,92 @@ fn silent_takes_repeat_and_input_budget_refusal_preserves_the_clock() {
     assert_eq!(f.emitted.len(), 4 * 64);
     assert!(f.midi.take().records().is_empty());
 }
+
+#[shoop_test]
+fn synchronization_wait_releases_notes_and_resumes_only_on_the_source_pulse() {
+    let mut f = Fixture::new(16, 8);
+    let source = Identity {
+        slot: 1,
+        generation: 7,
+    };
+    let plan = TransitionPlan::compile(
+        PlanDescription {
+            quantum: 16,
+            loops: vec![
+                LoopSpec {
+                    id: ID,
+                    kind: LoopKind::Primitive,
+                    length: 0,
+                    sync_source: Some(source),
+                    repeat_sync: true,
+                    timeline: None,
+                },
+                LoopSpec {
+                    id: source,
+                    kind: LoopKind::Primitive,
+                    length: 96,
+                    sync_source: None,
+                    repeat_sync: false,
+                    timeline: None,
+                },
+            ],
+        },
+        TransitionLimits {
+            loop_slots: 2,
+            events: 8,
+        },
+    )
+    .unwrap();
+    let program = Program {
+        sync_instructions: vec![],
+        quantum: 16,
+        chunk_frames: 1,
+        jobs_per_quantum: 2,
+        instructions: vec![
+            Instruction::ProcessInput {
+                port: 0,
+                destination: BufferId(0),
+            },
+            Instruction::ProcessOutput {
+                source: BufferId(0),
+                port: 0,
+            },
+        ],
+    };
+    f.pipeline = Pipeline::prepare(plan, program, vec![], 2).unwrap();
+    f.pipeline
+        .write_plans(
+            source,
+            [
+                Some(PlannedTransition {
+                    sequence: 1,
+                    operation: Operation::Play {
+                        position: 0,
+                        retrigger: true,
+                    },
+                    on_pulse: false,
+                    effective: 0,
+                    remaining_ticks: 0,
+                }),
+                None,
+            ],
+        )
+        .unwrap();
+    f.command(Operation::Record);
+    f.tick(&[event(0, &[0x90, 60, 80])]);
+    f.command(Operation::Stop);
+    f.tick(&[]);
+    f.command(Operation::Play {
+        position: 0,
+        retrigger: true,
+    });
+    f.tick(&[]);
+    let before = f.emitted.len();
+    for _ in 0..3 {
+        assert_eq!(f.tick(&[]).error, None);
+    }
+    assert_eq!(f.emitted.len(), before + 1);
+    assert_eq!(f.emitted.last().unwrap().1, msg(&[0x80, 60, 0]));
+    assert_eq!(f.tick(&[]).error, None);
+    assert_eq!(f.emitted.last().unwrap().1, msg(&[0x90, 60, 80]));
+}

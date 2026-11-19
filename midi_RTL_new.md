@@ -174,7 +174,7 @@ events immediately before a boundary, empty takes, repeated wraps, pedal-held
 stops, full output, and refusal followed by recovery. Compare multi-quantum calls
 with equivalent single-quantum calls. Commit the integrated path when green.
 
-### 5. Validate end to end and prepare the PR
+### 5. Validate locally and deliver the PR
 
 - [x] Run the complete milestone fixture through the Rust reference pipeline:
   observe input while stopped, record notes/pedals/controllers, stop, play, repeat,
@@ -194,13 +194,14 @@ with equivalent single-quantum calls. Commit the integrated path when green.
   Follow `.agents/info/build.md` and `.agents/info/test.md`; use the Nix development
   shell when applicable. Run targeted checks during development and the broader
   gates once the integrated implementation is stable.
-- [ ] Commit the completed milestone, push the feature branch, and open a PR
+- [x] Commit the completed milestone, push the feature branch, and open a PR
   against `feat/backend-replacement`. Keep its description scoped to Rust reference
   MIDI and include validation evidence and remaining limitations.
-- [ ] Monitor affected CI and automated review. Fix failures and relevant review
-  findings, rerun affected checks, and repeat until CI is green and the automated
-  reviewer approves. Leave the PR ready for maintainer review; do not merge it
-  autonomously.
+- [x] Complete the milestone using local validation and recorded evidence. Per
+  the user's updated instruction, disregard CI results and review feedback unless
+  explicitly asked. Do not wait for CI or review approval, rerun remote jobs, or
+  make changes in response to that feedback. Leave the PR for maintainer review;
+  do not merge it autonomously.
 
 Verification commands include:
 
@@ -223,27 +224,35 @@ timing results.
 - Implementation steps may be revised when new evidence warrants it.
 - Design rules may be revised for a documented, well-supported reason.
 - Goals and acceptance criteria must not be changed without explicit user approval.
+- Disregard CI results and review feedback unless the user explicitly asks.
+  Local milestone checks and transparent reporting of baseline failures determine
+  completion; CI or automated review approval is not a completion gate.
 
 ## Execution evidence
 
-- Baseline: `cargo test --locked -p rt_fpga_reference --all-features -p rt_fpga_compiler` passed (74 tests).
-- Integration uses the SP loop render state after synchronization and before the next quantum; MIDI owns no loop clock.
-- Invalid windows are refused before MIDI mutation. Storage exhaustion freezes the accepted prefix as incomplete; output refusal enters acknowledged recovery and blocks ordinary output.
-- Rust bindings are programmatic; shared graph compilation continues to reject MIDI.
+All five stages are complete. The user explicitly removed CI and review follow-up
+from the scope; no CI or review outcome is claimed here.
 
-- State component: six focused tests passed, including generated comparison and independent sustain model; crate build passed with warnings denied.
-- Storage: four integration tests and the counter-overflow unit test passed; crate build passed with warnings denied.
-
-- Integrated Rust pipeline: exact record/play/repeat/stop traces at Q=1/16/32/64/128 passed, including split-call equivalence, capacity faults, delayed output recovery, and audio-fault recovery.
-
-- Workspace build completed with `RUSTFLAGS="-D warnings"`. Cargo 1.100 reported existing manifest-level unused-dependency notices; no Rust warning failed the build.
-- Formatting, test-attribute policy and feature-parity checks passed.
-- The first full native test build exhausted disk during linking, before running tests. Generated incremental caches and abandoned Rust object files were removed; validation resumed with the same command and unchanged test settings.
-
-- Full native validation was restarted with `CARGO_PROFILE_DEV_DEBUG=0`, `CARGO_PROFILE_TEST_DEBUG=0` and `CARGO_INCREMENTAL=0`, matching the FPGA CI resource settings. Debug assertions and test logic remain enabled; no timeout or test-selection change was made.
-- Recovery regressions cover ordinary note-off refusal and partial initial restoration with a pedal already sent; acknowledged resets retain pedal ownership until stop releases it.
-
-- Final focused suite: 98 passed (24 new MIDI tests); final workspace build passed with warnings denied.
-- Full native suite: 3,456 passed, 13 failed, 11 skipped. Twelve native frontend startup checks report `Runtime(Capacity)`; a representative fails in 10 isolated attempts. The unchanged host shutdown-polling case fails in 10 nextest stress iterations. These are recorded validation failures, not a green full-suite claim.
-- Cleanup retains acknowledged field progress under one-message output capacity, without restarting emergency recovery. Direct play-to-record transitions release the old output notes.
-- Resource and CPU sample: see `docs/fpga/midi-reference-milestone.md`.
+- Baseline reference/compiler suite: 74 passed. Final all-feature reference and
+  compiler suite: **99 passed**, including **25 new MIDI tests**.
+- Exact traces cover Q=1/16/32/64/128, callback partitioning, initial state,
+  record/play/repeat/stop, synchronization waits, direct play-to-record changes,
+  and acknowledged cleanup with one accepted output message per call.
+- Heap guards, independent note/pedal models, storage/counter limits, refused
+  note-offs, partial restoration, and fatal audio-fault recovery pass.
+- Warning-denying workspace and reference builds, formatting, test-attribute
+  policy, and feature-parity checks pass. Cargo's existing manifest-level
+  unused-dependency notices are separate from Rust warnings.
+- The broad native run completed: **3,456 passed, 13 failed, 11 skipped**. Twelve
+  startup checks fail with native `Runtime(Capacity)` and one host check fails
+  while polling shutdown after endpoint retirement. Both representative failures
+  also reproduce on untouched base commit `9eb71d04`. Native production code was
+  left unchanged; these are recorded baseline failures, not passing checks.
+- Full native validation used `CARGO_PROFILE_DEV_DEBUG=0`,
+  `CARGO_PROFILE_TEST_DEBUG=0`, and `CARGO_INCREMENTAL=0` after debug-symbol output
+  exhausted workspace disk space. Assertions and test logic remained enabled;
+  no timeout or test-selection change hid failures.
+- Resource/CPU sample and validation limits:
+  [milestone evidence](docs/fpga/midi-reference-milestone.md).
+- Branch: `feat/fpga-reference-midi`.
+- PR: https://github.com/SanderVocke/shoopdaloop/pull/1016.

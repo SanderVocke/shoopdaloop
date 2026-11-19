@@ -15,7 +15,7 @@ native test with debug symbols exceeded the workspace disk capacity.
 
 | Check | Result |
 | --- | --- |
-| Reference and compiler, all reference features | 98 passed, including 24 new MIDI tests |
+| Reference and compiler, all reference features | 99 passed, including 25 new MIDI tests |
 | Workspace build | Passed; existing Cargo manifest unused-dependency notices remain |
 | Formatting, test attributes, feature parity | Passed |
 | Complete native nextest suite | 3,456 passed, 13 failed, 11 skipped |
@@ -34,10 +34,11 @@ No RTL simulation, synthesis, or board measurements are claimed here.
 The failures are in unchanged native app/host paths. Twelve application checks
 fail while starting the native engine with `Runtime(Capacity)`; the representative
 `a_new_connection_cancels_old_inputs_and_cannot_consume_old_file_callbacks` fails
-in ten isolated runs too. The host test
+in ten isolated runs too, and reproduces on untouched base commit `9eb71d04`. The host test
 `siblings_survive_the_launcher_exit_and_later_control_needs_no_child_handle`
 fails while polling shutdown results after the endpoint closes; it also fails in
-ten nextest stress iterations. These checks are not reported as passing, and no
+ten nextest stress iterations and reproduces on untouched base commit
+`9eb71d04`. These checks are not reported as passing, and no
 test or timeout was changed to hide them. The prototype is not enabled in these
 native execution paths.
 
@@ -65,9 +66,12 @@ software work, not hardware clock cycles, and the timing sample establishes no
 worst-case callback deadline.
 
 Integration tests compare exact note/control ordering at Q=1/16/32/64/128,
-single/multiple-quantum calls, silent takes, direct play-to-record transitions,
+single/multiple-quantum calls, silent takes, synchronization waits, direct play-to-record transitions,
 initial state, stop/repeat cleanup, exhausted storage, and output refusal. Cleanup
 can resume with one accepted message per call. Both ordinary and partial-restore
 pedal ownership survive emergency recovery. Heap guards cover processing and
 recovery after preparation; independent traces and a held-key map supplement
 comparison with the existing state implementation.
+
+Per the user's updated instruction, CI results and review feedback are excluded
+from this milestone's completion criteria and are disregarded unless requested.
