@@ -3,13 +3,54 @@ use crate::{mirror::Track, requests::Purpose, EngineClock, RtBackend};
 use alloc::{format, sync::Arc, vec::Vec};
 use anyhow::{anyhow, Result};
 use shoop_app_api::*;
-use shoop_backend::{BackendTrackFxControl, BackendTrackId, BackendTrackTopology};
+use shoop_backend::{BackendBusId, BackendTrackFxControl, BackendTrackId, BackendTrackTopology};
 use shoop_processor_protocol::{
     state::State, Control, HostedFailure, HostedLifecycle, Kind, Phase, CC_BASE, CLEAR_CC,
     DRIVE_TYPE, MODULATION_TYPE, REVERB_TYPE, STAGE_BASE, SYNTH_PANIC, SYNTH_PRESET,
 };
 use shoop_rt_protocol::{Capabilities, ProcessorSlot, ProcessorTarget, Request};
 use shoop_rt_transport::carrier::Carrier;
+
+#[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+pub(crate) enum Target {
+    Track(BackendTrackId),
+    Bus(BackendBusId),
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub(crate) struct Owner {
+    pub target: ProcessorTarget,
+    pub slot: ProcessorSlot,
+    pub generation: u64,
+}
+
+impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
+    pub(crate) fn hosted_owner(&self, target: Target) -> Option<Owner> {
+        let (target, slot, snapshot) = match target {
+            Target::Track(id) => {
+                let track = self.mirror.live_track(id)?;
+                (
+                    ProcessorTarget::Strip(track.strip),
+                    track.processor_slot,
+                    track.processor_snapshot,
+                )
+            }
+            Target::Bus(id) => {
+                let bus = self.mirror.buses.get(&id).filter(|bus| !bus.removing)?;
+                (
+                    ProcessorTarget::Bus(bus.slot),
+                    bus.processor_slot,
+                    bus.processor_snapshot,
+                )
+            }
+        };
+        Some(Owner {
+            target,
+            slot: slot?,
+            generation: snapshot?.hosted?.generation,
+        })
+    }
+}
 
 pub(crate) fn snapshot_state(
     kind: Kind,

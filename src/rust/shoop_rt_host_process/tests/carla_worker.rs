@@ -180,13 +180,38 @@ fn companion_installs_real_carla_track_and_bus_banks() {
                 thread::sleep(Duration::from_millis(2));
             }
         }
-        let refusal = backend.capture_session().unwrap_err();
-        assert!(
-            refusal
-                .to_string()
-                .contains("cannot save Carla plugin state"),
-            "{refusal:#}"
-        );
+        assert!(matches!(
+            backend.capture_session_async().unwrap(),
+            BackendAsyncResult::Pending(_)
+        ));
+        backend.cancel_media_reads();
+        let capture = backend.capture_session().unwrap();
+        let track_state = capture
+            .tracks
+            .iter()
+            .find(|value| value.source_id == track.track_id.raw())
+            .unwrap();
+        let bus_state = capture
+            .buses
+            .iter()
+            .find(|value| value.source_id == bus.bus_id.raw())
+            .unwrap();
+        for (state, kind) in [
+            (
+                track_state.processor_state.as_deref(),
+                shoop_plugin_protocol::CarlaChainType::Rack,
+            ),
+            (
+                bus_state.processor_state.as_deref(),
+                shoop_plugin_protocol::CarlaChainType::Patchbay,
+            ),
+        ] {
+            let checkpoint =
+                shoop_plugin_protocol::state::decode_state(state.unwrap(), kind).unwrap();
+            assert!(checkpoint
+                .windows(b"<CARLA-PROJECT".len())
+                .any(|window| window == b"<CARLA-PROJECT"));
+        }
         let loop_id = track.loops[0];
         let audio = |mode, sample| BackendAudioContent {
             mode,

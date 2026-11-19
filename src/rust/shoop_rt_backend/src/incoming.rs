@@ -161,6 +161,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                             | Purpose::Preview
                             | Purpose::CancelReads
                             | Purpose::ProcessorLogs
+                            | Purpose::ProcessorCheckpoint
                     ) {
                         self.snapshots.capture_after = self.status.frame;
                     }
@@ -179,10 +180,17 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     }
                 }
             }
-            EngineMessage::ProcessorCheckpointPage { .. } => {
-                self.lose(
-                    "the engine returned an unsolicited processor checkpoint page".to_owned(),
-                );
+            EngineMessage::ProcessorCheckpointPage { correlation, page } => {
+                match self.requests.in_flight.remove(&correlation) {
+                    Some(pending) if pending.purpose == Purpose::ProcessorCheckpoint => self
+                        .processor_checkpoint_answered(
+                            pending.request,
+                            crate::processor_checkpoints::Reply::Page(page),
+                        ),
+                    _ => self.lose(
+                        "the engine returned an unsolicited processor checkpoint page".to_owned(),
+                    ),
+                }
             }
             EngineMessage::Telemetry(record) => {
                 let unmigrated = match record {
@@ -898,6 +906,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     }
 
     pub(crate) fn answered(&mut self, pending: Pending, outcome: Outcome) {
+        if pending.purpose == Purpose::ProcessorCheckpoint {
+            self.processor_checkpoint_answered(
+                pending.request,
+                crate::processor_checkpoints::Reply::Outcome(outcome),
+            );
+            return;
+        }
         if pending.purpose == Purpose::ProcessorLogs {
             self.processor_logs_answered(
                 pending.request,
@@ -1386,7 +1401,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 | Purpose::Input,
                 _,
             ) => {}
-            (Purpose::ProcessorLogs, _) => unreachable!("internal result handled above"),
+            (Purpose::ProcessorLogs | Purpose::ProcessorCheckpoint, _) => {
+                unreachable!("internal result handled above")
+            }
         }
     }
 }

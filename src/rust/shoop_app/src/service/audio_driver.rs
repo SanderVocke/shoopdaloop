@@ -328,6 +328,15 @@ impl Service {
     }
 
     fn driver_prepare(&mut self, job: &mut Job, image: &image::Image, rate: u32) -> Result<()> {
+        if image
+            .payloads
+            .iter()
+            .any(|payload| matches!(payload, image::Payload::ProcessorCheckpoint(_)))
+        {
+            return Err(anyhow!(
+                "Switching audio drivers with Carla requires checkpoint restoration"
+            ));
+        }
         let (candidate, data, sync) =
             Candidate::prepare_switch(self, image, self.driver_format(rate))?;
         job.candidate = Some(candidate);

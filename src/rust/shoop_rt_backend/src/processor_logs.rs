@@ -5,34 +5,22 @@ use alloc::{
 };
 use anyhow::{anyhow, bail, ensure, Result};
 use shoop_app_api::FxGenerationLogState;
-use shoop_backend::{BackendBusId, BackendMutationKind, BackendSnapshot, BackendTrackId};
+use shoop_backend::{BackendMutationKind, BackendSnapshot};
 use shoop_rt_protocol::{
-    Outcome, ProcessorLogCommand as Command, ProcessorLogPage, ProcessorSlot, ProcessorTarget,
-    Request, PROCESSOR_LOG_GENERATIONS, PROCESSOR_LOG_STREAM_BYTES,
+    Outcome, ProcessorLogCommand as Command, ProcessorLogPage, Request, PROCESSOR_LOG_GENERATIONS,
+    PROCESSOR_LOG_STREAM_BYTES,
 };
 
-use crate::{requests::Purpose, EngineClock, RtBackend};
-
-#[derive(Clone, Copy, Eq, PartialEq)]
-pub(crate) enum Target {
-    Track(BackendTrackId),
-    Bus(BackendBusId),
-}
+pub(crate) use crate::processor_controls::Target;
+use crate::{processor_controls::Owner, requests::Purpose, EngineClock, RtBackend};
 
 pub(crate) enum Reply {
     Outcome(Outcome),
     Page(ProcessorLogPage),
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
-struct Owner {
-    target: ProcessorTarget,
-    slot: ProcessorSlot,
-    generation: u64,
-}
-
 impl Owner {
-    fn command(self, command: Command) -> Request {
+    fn log_command(self, command: Command) -> Request {
         Request::ProcessorLogs {
             target: self.target,
             slot: self.slot,
@@ -175,30 +163,8 @@ impl Read {
 
 impl<C: shoop_rt_transport::carrier::Carrier, T: EngineClock> RtBackend<C, T> {
     fn log_owner(&self, target: Target) -> Option<Owner> {
-        let (target, slot, snapshot) = match target {
-            Target::Track(id) => {
-                let track = self.mirror.live_track(id)?;
-                (
-                    ProcessorTarget::Strip(track.strip),
-                    track.processor_slot,
-                    track.processor_snapshot,
-                )
-            }
-            Target::Bus(id) => {
-                let bus = self.mirror.buses.get(&id).filter(|bus| !bus.removing)?;
-                (
-                    ProcessorTarget::Bus(bus.slot),
-                    bus.processor_slot,
-                    bus.processor_snapshot,
-                )
-            }
-        };
-        let generation = snapshot?.hosted?.generation;
-        (generation != 0).then_some(Owner {
-            target,
-            slot: slot?,
-            generation,
-        })
+        self.hosted_owner(target)
+            .filter(|owner| owner.generation != 0)
     }
 
     pub(crate) fn request_processor_logs(&mut self, target: Target) -> Result<()> {
@@ -221,7 +187,7 @@ impl<C: shoop_rt_transport::carrier::Carrier, T: EngineClock> RtBackend<C, T> {
         self.require_mutation_capacity(1)?;
         self.processor_logs.reading = Some(Read::new(target, owner));
         self.requests
-            .push_internal(owner.command(Command::Open), Purpose::ProcessorLogs);
+            .push_internal(owner.log_command(Command::Open), Purpose::ProcessorLogs);
         Ok(())
     }
 
@@ -230,7 +196,7 @@ impl<C: shoop_rt_transport::carrier::Carrier, T: EngineClock> RtBackend<C, T> {
             return;
         };
         if !self.processor_logs.reading.as_ref().is_some_and(|read| {
-            request == read.owner.command(command)
+            request == read.owner.log_command(command)
                 && (read.snapshot == 0) == matches!(command, Command::Open)
         }) {
             return;
@@ -242,7 +208,7 @@ impl<C: shoop_rt_transport::carrier::Carrier, T: EngineClock> RtBackend<C, T> {
         match read.accept(command, reply) {
             Ok(Some(next)) => {
                 self.requests
-                    .push_internal(read.owner.command(next), Purpose::ProcessorLogs);
+                    .push_internal(read.owner.log_command(next), Purpose::ProcessorLogs);
                 self.processor_logs.reading = Some(read);
             }
             Ok(None) => {
@@ -253,7 +219,7 @@ impl<C: shoop_rt_transport::carrier::Carrier, T: EngineClock> RtBackend<C, T> {
             Err(error) => {
                 if read.snapshot != 0 && !matches!(command, Command::Close { .. }) {
                     self.requests.push_internal(
-                        read.owner.command(Command::Close {
+                        read.owner.log_command(Command::Close {
                             snapshot: read.snapshot,
                         }),
                         Purpose::ProcessorLogs,

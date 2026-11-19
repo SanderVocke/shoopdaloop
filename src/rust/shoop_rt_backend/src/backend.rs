@@ -394,6 +394,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     }
 
     fn cancel_media_reads(&mut self) {
+        self.processor_checkpoints.cancel();
         self.reads.clear();
         self.capture_validation = None;
         self.prepared_content
