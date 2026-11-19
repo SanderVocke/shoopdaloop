@@ -15,6 +15,7 @@ pub struct RenderEndpoint {
 pub struct Worker {
     transport: LocalWorker,
     processor: CarlaNativeHost,
+    enabled: bool,
 }
 
 fn ports(chain_type: CarlaChainType) -> PortCounts {
@@ -52,6 +53,7 @@ impl Worker {
             Self {
                 transport: worker,
                 processor,
+                enabled: true,
             },
         ))
     }
@@ -61,10 +63,21 @@ impl Worker {
         &mut self.processor
     }
 
+    pub fn set_active(&mut self, active: bool) {
+        self.enabled = active;
+        self.processor.set_active(active);
+    }
+
     pub fn process_next(&mut self) -> Result<bool, Error> {
         let processor = &mut self.processor;
-        self.transport
-            .process_next(|discontinuous, batch| process(processor, discontinuous, batch))
+        let enabled = self.enabled;
+        self.transport.process_next(|discontinuous, batch| {
+            if enabled {
+                process(processor, discontinuous, batch)
+            } else {
+                Err(Error::InvalidState)
+            }
+        })
     }
 }
 
