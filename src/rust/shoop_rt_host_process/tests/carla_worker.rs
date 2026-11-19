@@ -391,6 +391,12 @@ fn companion_carla_child_processes_socket_and_shared_audio_and_midi() {
         panic!("missing Carla Native state");
     };
     assert!(state.starts_with("shoop-carla-native-state:2:rack:"));
+    let mut xml = shoop_carla::state::decode_state(&state, CarlaChainType::Rack).unwrap();
+    xml.extend_from_slice(b"\n<!--");
+    xml.resize(shoop_plugin_protocol::MAX_STATE_BYTES - 3, b'x');
+    xml.extend_from_slice(b"-->");
+    let state = shoop_carla::state::encode_state(CarlaChainType::Rack, &xml).unwrap();
+    drop(xml);
     assert_eq!(
         send(
             &mut stream,
