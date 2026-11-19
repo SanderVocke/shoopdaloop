@@ -76,9 +76,10 @@ globalThis.registerProcessor = (name, processor) => {
 };
 let clockCalls = 0;
 let clockMillis = 0;
+let clockStepMillis = 0.001;
 Object.defineProperty(globalThis, 'performance', {
   configurable: true,
-  value: { now() { clockCalls += 1; clockMillis += 0.001; return clockMillis; } },
+  value: { now() { clockCalls += 1; clockMillis += clockStepMillis; return clockMillis; } },
 });
 globalThis.sampleRate = 1000;
 globalThis.currentFrame = 5000;
@@ -88,7 +89,7 @@ if (registered?.name !== 'shoop-rt-audio-processor') {
 }
 
 // The configuration record, written from its documented layout.
-function configRecord({ version = 7, maxFrames = 128 } = {}) {
+function configRecord({ version = 8, maxFrames = 128 } = {}) {
   const numbers = [
     version, 1000, maxFrames, 1, 2, 2, 0, 0, 0, 0, 2, 2, 8, 8, 0, 8, 4, 0, 512, 256, 64, 512, 32, 8, 2, 0,
     1, 64, 64, 512, 2,
@@ -104,6 +105,8 @@ function configRecord({ version = 7, maxFrames = 128 } = {}) {
     u32(names.length);
     for (const name of names) bytes.push(name.length, ...Array.from(name, c => c.charCodeAt(0)));
   }
+  u32(0); // Native backend.
+  u32(256); // Reference backend memory in MiB.
   return new Uint8Array(bytes).buffer;
 }
 
@@ -120,7 +123,8 @@ function quantum(node, input) {
 }
 
 const node = processor(configRecord());
-if (node.port.take('failed').length) throw new Error('a valid configuration was refused');
+const failures = node.port.take('failed');
+if (failures.length) throw new Error(`a valid configuration was refused: ${JSON.stringify(failures)}`);
 const preparedBytes = node.wasm.memory.buffer.byteLength;
 
 // A Hello record split across two messages.
@@ -274,10 +278,11 @@ for (const packet of profileRecords.map(audioRecord).filter(record => record?.sa
 }
 if (!timedNodes) throw new Error('profiling sent no graph node completion timestamps');
 if (!profileRecords.some(record => audioRecord(record)?.graphEnd)) throw new Error('profiling sent no complete executable topology');
-node.load = 2;
+clockStepMillis = 150; // Exceed the 128 ms callback budget once.
 const captureMessages = [];
 for (let index = 0; index < 64; index += 1) {
   quantum(node, 0.25);
+  clockStepMillis = 0.001;
   captureMessages.push(...takeEngineRecords());
 }
 const captureRecords = captureMessages.map(audioRecord).filter(record => record?.samples);
