@@ -647,6 +647,17 @@ fn engine_samples() -> Vec<EngineMessage> {
                 generation: 123,
             },
             snapshot: processors::Snapshot {
+                worker: Some(processors::WorkerDiagnostics {
+                    pending: 2,
+                    peak_pending: 4,
+                    missed: 20,
+                    stale: 12,
+                    rejected: 3,
+                    failed: 2,
+                    invalid: 1,
+                    last_completion_frames: 48,
+                    peak_completion_frames: 96,
+                }),
                 source_frame: 42,
                 phase: processors::Phase::Running,
                 global_midi: processors::GlobalMidiDiagnostics {
@@ -663,6 +674,7 @@ fn engine_samples() -> Vec<EngineMessage> {
                 generation: 123,
             },
             snapshot: processors::Snapshot {
+                worker: None,
                 source_frame: u64::MAX,
                 phase: processors::Phase::Running,
                 global_midi: processors::GlobalMidiDiagnostics::default(),

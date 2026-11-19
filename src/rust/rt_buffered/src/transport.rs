@@ -46,6 +46,9 @@ pub struct AsyncStats {
     pub stale: u64,
     pub invalid: u64,
     pub failed: u64,
+    /// Render frames from the end of a submitted batch to observing its result.
+    pub last_completion_frames: u64,
+    pub peak_completion_frames: u64,
     /// Submitted batches awaiting a result and still eligible for release.
     pub pending: usize,
     pub peak_pending: usize,

@@ -342,4 +342,16 @@ fn worker_capture_drains_at_stop_and_keeps_committed_roles_after_a_lost_tail() {
         &samples[..4],
         [dry(start), -dry(start), 2. * dry(start), -2. * dry(start)]
     );
+    fixture.done(Request::StripControl {
+        strip: StripId(SlotId::new(0, 1)),
+        control: StripControl::Monitoring(true),
+    });
+    let diagnostics = fixture.wait_for(|event| match event {
+        EngineMessage::State(StateRecord::ProcessorState { snapshot, .. }) => snapshot
+            .worker
+            .filter(|worker| worker.failed > 0 && worker.missed > 0),
+        _ => None,
+    });
+    assert!(diagnostics.peak_pending > 0);
+    assert!(diagnostics.pending <= diagnostics.peak_pending);
 }

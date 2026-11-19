@@ -288,6 +288,8 @@ fn async_buffering_expires_whole_batches_and_resumes_after_recovering_notes() {
     assert_eq!(host.tick([7.; Q]), [4.; Q]);
     let stats = host.node.async_stats().unwrap();
     assert_eq!((stats.missed, stats.stale, stats.completed), (1, 1, 1));
+    assert_eq!(stats.last_completion_frames, Q as u64);
+    assert_eq!(stats.peak_completion_frames, Q as u64);
     assert_eq!(host.node.lifecycle(), Lifecycle::Running);
 }
 

@@ -53,7 +53,23 @@ pub struct Snapshot {
     pub source_frame: u64,
     pub phase: Phase,
     pub global_midi: GlobalMidiDiagnostics,
+    pub worker: Option<WorkerDiagnostics>,
     pub values: [f32; STATE_SCALARS],
+}
+
+/// Bounded render-side observations for the current worker stream.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct WorkerDiagnostics {
+    pub pending: u32,
+    pub peak_pending: u32,
+    pub missed: u64,
+    pub stale: u64,
+    pub rejected: u64,
+    pub failed: u64,
+    pub invalid: u64,
+    /// Frames between the input batch end and the render-side result.
+    pub last_completion_frames: u64,
+    pub peak_completion_frames: u64,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

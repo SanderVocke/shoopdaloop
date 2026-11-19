@@ -104,6 +104,7 @@ impl ControlEndpoint {
                 source_frame: state.frame.0,
                 phase: state.phase,
                 global_midi: state.global_midi,
+                worker: state.worker,
                 values: state.values,
             },
         })
@@ -124,6 +125,7 @@ impl ControlEndpoint {
                 source_frame: state.frame.0,
                 phase: state.phase,
                 global_midi: state.global_midi,
+                worker: state.worker,
                 values: state.values,
             },
         })
@@ -205,6 +207,7 @@ impl ControlEndpoint {
                     && previous_slot == slot
                     && previous.phase == snapshot.phase
                     && previous.global_midi == snapshot.global_midi
+                    && previous.worker == snapshot.worker
                     && previous
                         .values
                         .iter()

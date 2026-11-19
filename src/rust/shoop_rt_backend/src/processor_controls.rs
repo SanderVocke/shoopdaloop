@@ -302,8 +302,8 @@ fn processor_status(
             Phase::Owned => FxLifecycle::Stopped,
         },
         generation: slot.map_or(0, |slot| u64::from(slot.generation)),
-        deadline_misses: 0,
-        stale_completions: 0,
+        deadline_misses: snapshot.worker.map_or(0, |worker| worker.missed),
+        stale_completions: snapshot.worker.map_or(0, |worker| worker.stale),
         status_summary: if snapshot.phase == Phase::Faulted {
             Some("processor faulted".into())
         } else if snapshot.global_midi.pending > 0 {

@@ -1,11 +1,11 @@
 //! Prepared opaque processor owners and allocation-free applied-state observation.
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
-use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
-use rt_buffered::{Backend, BufferLimits, BufferedProcessor, Lifecycle, Timing};
+use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use rt_buffered::{AsyncStats, Backend, BufferLimits, BufferedProcessor, Lifecycle, Timing};
 use rt_runtime::{graph::PortCounts, processor::ProcessBlock, Error, Frame, Quantum};
 use shoop_loops::runtime::{LoopPlanner, WorkerCaptureRelease, WorkerCaptureSource};
 use shoop_rt_protocol::{
-    processors::{Effective, Unavailable, STATE_SCALARS},
+    processors::{Effective, Unavailable, WorkerDiagnostics, STATE_SCALARS},
     ProcessorKind,
 };
 
@@ -63,6 +63,7 @@ pub struct ProcessorState {
     pub frame: Frame,
     pub generation: u32,
     pub phase: ProcessorPhase,
+    pub worker: Option<WorkerDiagnostics>,
     pub values: [f32; STATE_SCALARS],
 }
 
@@ -72,6 +73,9 @@ pub(crate) struct ProcessorCells {
     global_counts: [AtomicU64; 4],
     global_pending: AtomicU32,
     global_latest: AtomicU32,
+    has_worker: AtomicBool,
+    worker_depths: [AtomicU32; 2],
+    worker_counts: [AtomicU64; 7],
     kind: ProcessorKind,
     revision: AtomicU64,
     frame: AtomicU64,
@@ -85,6 +89,9 @@ impl ProcessorCells {
             global_counts: core::array::from_fn(|_| AtomicU64::new(0)),
             global_pending: AtomicU32::new(0),
             global_latest: AtomicU32::new(0),
+            has_worker: AtomicBool::new(false),
+            worker_depths: core::array::from_fn(|_| AtomicU32::new(0)),
+            worker_counts: core::array::from_fn(|_| AtomicU64::new(0)),
             kind,
             revision: AtomicU64::new(0),
             frame: AtomicU64::new(0),
@@ -100,6 +107,7 @@ impl ProcessorCells {
         generation: u32,
         phase: ProcessorPhase,
         global: shoop_rt_protocol::processors::GlobalMidiDiagnostics,
+        worker: Option<AsyncStats>,
     ) {
         self.revision.fetch_add(1, Ordering::SeqCst);
         for (cell, value) in self.global_counts.iter().zip([
@@ -118,6 +126,22 @@ impl ProcessorCells {
         );
         self.global_pending
             .store(u32::from(global.pending), Ordering::SeqCst);
+        if let Some(worker) = worker {
+            for (cell, value) in self.worker_counts.iter().zip([
+                worker.missed,
+                worker.stale,
+                worker.rejected,
+                worker.failed,
+                worker.invalid,
+                worker.last_completion_frames,
+                worker.peak_completion_frames,
+            ]) {
+                cell.store(value, Ordering::SeqCst);
+            }
+            self.worker_depths[0].store(worker.pending as u32, Ordering::SeqCst);
+            self.worker_depths[1].store(worker.peak_pending as u32, Ordering::SeqCst);
+            self.has_worker.store(true, Ordering::SeqCst);
+        }
         for index in 0..self.kind.scalar_count() {
             if let Some(value) = self
                 .kind
@@ -150,6 +174,20 @@ impl ProcessorCells {
             drained: self.global_counts[3].load(Ordering::SeqCst),
             pending: self.global_pending.load(Ordering::SeqCst) as u16,
         };
+        let worker = self
+            .has_worker
+            .load(Ordering::SeqCst)
+            .then(|| WorkerDiagnostics {
+                pending: self.worker_depths[0].load(Ordering::SeqCst),
+                peak_pending: self.worker_depths[1].load(Ordering::SeqCst),
+                missed: self.worker_counts[0].load(Ordering::SeqCst),
+                stale: self.worker_counts[1].load(Ordering::SeqCst),
+                rejected: self.worker_counts[2].load(Ordering::SeqCst),
+                failed: self.worker_counts[3].load(Ordering::SeqCst),
+                invalid: self.worker_counts[4].load(Ordering::SeqCst),
+                last_completion_frames: self.worker_counts[5].load(Ordering::SeqCst),
+                peak_completion_frames: self.worker_counts[6].load(Ordering::SeqCst),
+            });
         let phase = match self.phase.load(Ordering::SeqCst) {
             0 => ProcessorPhase::Free,
             1 => ProcessorPhase::Owned,
@@ -166,6 +204,7 @@ impl ProcessorCells {
             frame,
             generation,
             phase,
+            worker,
             values,
         })
     }
@@ -239,6 +278,7 @@ impl HostedProcessor {
             0,
             ProcessorPhase::Free,
             Default::default(),
+            buffered.async_stats(),
         );
         buffered.abort(Frame(0))?;
         Ok(Self {
@@ -329,6 +369,7 @@ impl HostedProcessor {
             self.generation,
             self.phase,
             self.global.diagnostics(),
+            self.buffered.async_stats(),
         );
     }
     fn check(&self, generation: u32) -> Result<(), Error> {

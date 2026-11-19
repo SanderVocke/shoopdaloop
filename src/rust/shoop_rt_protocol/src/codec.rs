@@ -567,6 +567,47 @@ impl Wire for crate::processors::Control {
         }
     }
 }
+impl Wire for crate::processors::WorkerDiagnostics {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        if self.pending > self.peak_pending
+            || self.last_completion_frames > self.peak_completion_frames
+        {
+            return Err(CodecError::Invalid);
+        }
+        w.u32(self.pending)?;
+        w.u32(self.peak_pending)?;
+        w.u64(self.missed)?;
+        w.u64(self.stale)?;
+        w.u64(self.rejected)?;
+        w.u64(self.failed)?;
+        w.u64(self.invalid)?;
+        w.u64(self.last_completion_frames)?;
+        w.u64(self.peak_completion_frames)
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        let pending = r.u32()?;
+        let peak_pending = r.u32()?;
+        if pending > peak_pending {
+            return Err(CodecError::Invalid);
+        }
+        let result = Self {
+            pending,
+            peak_pending,
+            missed: r.u64()?,
+            stale: r.u64()?,
+            rejected: r.u64()?,
+            failed: r.u64()?,
+            invalid: r.u64()?,
+            last_completion_frames: r.u64()?,
+            peak_completion_frames: r.u64()?,
+        };
+        if result.last_completion_frames > result.peak_completion_frames {
+            return Err(CodecError::Invalid);
+        }
+        Ok(result)
+    }
+}
+
 impl Wire for crate::processors::Snapshot {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         w.u64(self.source_frame)?;
@@ -581,6 +622,7 @@ impl Wire for crate::processors::Snapshot {
                 .latest_cc
                 .map_or(0, |data| u32::from_le_bytes([data[0], data[1], data[2], 1])),
         )?;
+        self.worker.put(w)?;
         for value in self.values {
             w.f32(value)?;
         }
@@ -610,6 +652,7 @@ impl Wire for crate::processors::Snapshot {
         if usize::from(global_midi.pending) > crate::processors::midi::CONTROL_KEYS {
             return Err(CodecError::Invalid);
         }
+        let worker = Option::get(r)?;
         let mut values = [0.; crate::processors::STATE_SCALARS];
         for value in &mut values {
             *value = r.f32()?;
@@ -618,6 +661,7 @@ impl Wire for crate::processors::Snapshot {
             source_frame,
             phase,
             global_midi,
+            worker,
             values,
         })
     }

@@ -568,9 +568,10 @@ impl<B: Backend> BufferedProcessor<B> {
         self.process_ports_tick_inner(frame, quantum, audio, inputs, outputs, controls, observer)
     }
 
-    fn poll_worker(&mut self) -> Result<(), Error> {
+    fn poll_worker(&mut self, frame: Frame) -> Result<(), Error> {
         let transport = self.backend.async_transport().ok_or(Error::InvalidState)?;
         let slots = self.slots.len() as u64;
+        let frames = self.timing.batch_frames() as u64;
         let stats = &mut self.async_stats;
         for _ in 0..COMPLETIONS_PER_TICK {
             let Some(completion) = transport.try_completion() else {
@@ -596,6 +597,9 @@ impl<B: Backend> BufferedProcessor<B> {
                 stats.invalid = stats.invalid.saturating_add(1);
                 continue;
             }
+            let elapsed = frame.0.saturating_sub(tag.source.0.saturating_add(frames));
+            stats.last_completion_frames = elapsed;
+            stats.peak_completion_frames = stats.peak_completion_frames.max(elapsed);
             stats.completed = stats.completed.saturating_add(1);
             slot.status = BatchStatus::Ready;
         }
@@ -673,7 +677,7 @@ impl<B: Backend> BufferedProcessor<B> {
             }
         }
         if self.asynchronous {
-            self.poll_worker()?;
+            self.poll_worker(frame)?;
         }
         let playing = &self.slots[self.read];
         let playback = if let Some(tag) =
