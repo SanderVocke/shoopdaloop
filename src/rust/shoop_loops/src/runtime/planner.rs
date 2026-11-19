@@ -105,11 +105,15 @@ impl<S: Sample> LoopPlanner<S> {
         }
     }
     pub(super) fn cancel_ticks(&mut self, io: &mut PlannerResourceIo<'_, S>) -> Result<(), Error> {
-        for slot in 0..self.rows.len() {
-            if let Some(row) = self.rows[slot] {
-                if let Some(interval) = row.interval {
-                    io.capture().cancel_tick(interval)?;
-                    self.rows[slot].as_mut().expect("row").interval = None;
+        for row in self.rows.iter_mut().flatten() {
+            if let Some(interval) = row.interval {
+                io.capture().cancel_tick(interval)?;
+                row.interval = None;
+            }
+            if let Some(take) = &mut row.delayed {
+                if let Some(interval) = take.interval {
+                    io.capture().cancel_tick(interval.interval())?;
+                    take.interval = None;
                 }
             }
         }
@@ -248,7 +252,11 @@ impl<S: Sample> LoopPlanner<S> {
         io: &mut PlannerResourceIo<'_, S>,
     ) -> Result<(), Error> {
         let row = self.rows[slot].ok_or(Error::InvalidId)?;
-        if let Some(take) = self.prepare_live_take(slot, decision, io)? {
+        if row.worker_source.is_some() {
+            if decision.state.mode != Mode::Recording || decision.state.capture_frames != 0 {
+                return Err(Error::InvalidState);
+            }
+        } else if let Some(take) = self.prepare_live_take(slot, decision, io)? {
             self.rows[slot].as_mut().unwrap().prepared = Some(take);
             return Ok(());
         }
@@ -404,6 +412,44 @@ impl<S: Sample> LoopPlanner<S> {
                 continue;
             };
             let decision = self.views[slot].decision;
+            if let Some(delayed) = current.delayed.filter(|_| !current.aborted) {
+                let delay = current
+                    .worker_source
+                    .ok_or(Error::InvalidState)?
+                    .delay_frames;
+                let start = current.active.ok_or(Error::InvalidState)?.started_at;
+                if frame >= start.checked_add(delay)?
+                    && delayed
+                        .cut
+                        .is_none_or(|cut| frame.0 - (delay as u64) < cut.0)
+                {
+                    match io.capture().reserve_delayed(delayed.token) {
+                        Ok(interval) => {
+                            self.rows[slot]
+                                .as_mut()
+                                .unwrap()
+                                .delayed
+                                .as_mut()
+                                .unwrap()
+                                .interval = Some(interval);
+                        }
+                        Err(error) => {
+                            if self.failures.len() == self.failures.capacity() {
+                                return Err(Error::InvalidState);
+                            }
+                            self.failures.push(crate::Observation::CaptureAborted {
+                                target: current.binding.target,
+                                reason: timeline_error(error),
+                            });
+                            let row = self.rows[slot].as_mut().unwrap();
+                            row.aborted = true;
+                            row.failure = Some(error);
+                            return Ok(false);
+                        }
+                    }
+                }
+            }
+            let current = self.rows[slot].as_ref().unwrap();
             let recording = decision.state.writes();
             let starting = recording
                 && current
@@ -443,6 +489,15 @@ impl<S: Sample> LoopPlanner<S> {
                 }
             }
             if let Some(token) = take.token {
+                if let Some(owner) = row.worker_source {
+                    if starting {
+                        if let Err(error) = end.checked_add(owner.delay_frames) {
+                            self.latch(slot, decision, error, true)?;
+                            return Ok(false);
+                        }
+                    }
+                    continue;
+                }
                 let result = if starting {
                     io.capture().reserve_prepared(token, frame)
                 } else {
@@ -572,15 +627,25 @@ impl<S: Sample> LoopPlanner<S> {
             let members = usize::from(row.binding.channels > 0)
                 + usize::from(row.dry_wet && row.binding.auxiliary_channels > 0)
                 + usize::from(row.binding.midi);
-            io.capture().freeze(
-                token,
-                frame,
-                if incomplete { row.failure } else { None },
-                &mut output[..members],
-            )?;
+            if let Some(delayed) = row.delayed {
+                io.capture().freeze_delayed(
+                    delayed.token,
+                    delayed.cut.ok_or(Error::InvalidState)?,
+                    &mut output[..members],
+                )?;
+            } else {
+                io.capture().freeze(
+                    token,
+                    frame,
+                    if incomplete { row.failure } else { None },
+                    &mut output[..members],
+                )?;
+            }
             self.rows[slot].as_mut().expect("row").frozen = output;
         }
-        self.rows[slot].as_mut().expect("row").active = None;
+        let current = self.rows[slot].as_mut().expect("row");
+        current.active = None;
+        current.delayed = None;
         let frames = self
             .resolver
             .state(row.binding.target)
@@ -611,6 +676,8 @@ impl<S: Sample> LoopPlanner<S> {
             };
             let (aborted, target) = (current.aborted, current.binding.target);
             let active = current.active.as_ref().copied();
+            let delayed = current.delayed;
+            let worker_source = current.worker_source;
             let mut decision = self.views[slot].decision;
             if aborted {
                 if let Some(take) = active {
@@ -619,11 +686,32 @@ impl<S: Sample> LoopPlanner<S> {
                     }
                     Self::release_edit(take, io)?;
                     self.ledger.retire(io, take.media)?;
-                    self.rows[slot].as_mut().expect("row").active = None;
+                    let row = self.rows[slot].as_mut().expect("row");
+                    row.active = None;
+                    row.delayed = None;
                 }
                 self.rows[slot].as_mut().expect("row").aborted = false;
             } else if let Some(take) = active {
-                if !decision.state.writes() || decision.state.capture_revision != take.revision {
+                let complete = if let Some(delayed) = delayed {
+                    if let Some(cut) = delayed.cut {
+                        let delay = worker_source.ok_or(Error::InvalidState)?.delay_frames;
+                        frame == cut.checked_add(delay)?
+                    } else {
+                        if decision.state.capture_pending() {
+                            self.rows[slot]
+                                .as_mut()
+                                .unwrap()
+                                .delayed
+                                .as_mut()
+                                .unwrap()
+                                .cut = Some(frame);
+                        }
+                        false
+                    }
+                } else {
+                    !decision.state.writes() || decision.state.capture_revision != take.revision
+                };
+                if complete {
                     let media = self.freeze(slot, frame, io)?;
                     if decision.state.content_revision == take.revision {
                         self.ledger.set_playback(io, target, Some(media))?;
@@ -691,14 +779,28 @@ impl<S: Sample> LoopPlanner<S> {
                     };
                     self.shared.as_mut().unwrap().start_live(id, position, io)?;
                 }
-                if let Some(token) = take.token {
-                    io.capture().activate(token, frame)?;
-                }
+                let delayed = match (take.token, worker_source) {
+                    (Some(token), Some(owner)) => Some(worker_capture::DelayedTake {
+                        token: io.capture().activate_delayed(token, owner.delay_frames)?,
+                        cut: None,
+                        interval: None,
+                        stream_generation: None,
+                    }),
+                    (Some(token), None) => {
+                        io.capture().activate(token, frame)?;
+                        None
+                    }
+                    (None, _) => None,
+                };
                 let row = self.rows[slot].as_mut().expect("row");
-                if decision.state.mode == Mode::Recording && !decision.state.monitor_previous {
+                if delayed.is_none()
+                    && decision.state.mode == Mode::Recording
+                    && !decision.state.monitor_previous
+                {
                     row.windows = take.windows;
                 }
                 row.active = Some(take);
+                row.delayed = delayed;
                 row.prepared = None;
                 row.next_bank = 1 - take.bank;
                 row.failure = None;
@@ -813,6 +915,9 @@ impl<S: Sample> LoopPlanner<S> {
         io: &mut PlannerResourceIo<'_, S>,
     ) -> Result<media::ExportId, Error> {
         let row = self.row(target)?;
+        if row.delayed.is_some() {
+            return Err(Error::Busy);
+        }
         let take = row.active.ok_or(Error::InvalidState)?;
         let state = self.resolver.state(target).map_err(runtime_error)?;
         if self.ledger.usage().free_exports == 0 {
@@ -1059,6 +1164,16 @@ impl<S: Sample> LoopPlanner<S> {
                 resources.cancel_capture_tick(interval)?;
                 self.rows[slot].as_mut().expect("row").interval = None;
             }
+            if let Some(interval) = row.delayed.and_then(|take| take.interval) {
+                resources.cancel_capture_tick(interval.interval())?;
+                self.rows[slot]
+                    .as_mut()
+                    .unwrap()
+                    .delayed
+                    .as_mut()
+                    .unwrap()
+                    .interval = None;
+            }
             if let Some(take) = row.prepared {
                 if let Some(token) = take.token {
                     resources.cancel_capture_take(token)?;
@@ -1067,7 +1182,9 @@ impl<S: Sample> LoopPlanner<S> {
                 self.rows[slot].as_mut().expect("row").prepared = None;
             }
             if let Some(take) = row.active {
-                if let Some(token) = take.token {
+                if let Some(token) = take.token.filter(|_| row.delayed.is_some()) {
+                    resources.abort_capture_take(token)?;
+                } else if let Some(token) = take.token {
                     let info = resources.capture_group_info(
                         row.groups[take.bank][usize::from(row.dry_wet)]
                             .ok_or(Error::InvalidState)?,
@@ -1085,7 +1202,9 @@ impl<S: Sample> LoopPlanner<S> {
                     self.rows[slot].as_mut().expect("row").frozen = output;
                 }
                 Self::release_edit(take, &mut resources.io())?;
-                self.rows[slot].as_mut().expect("row").active = None;
+                let row = self.rows[slot].as_mut().expect("row");
+                row.active = None;
+                row.delayed = None;
             }
             for member in 0..3 {
                 if let Some(snapshot) = self.rows[slot].expect("row").frozen[member] {
@@ -1910,7 +2029,7 @@ impl<S: Sample> LoopPlanner<S> {
                     }
                     let row = self.row(target)?;
                     let state = self.resolver.state(target)?;
-                    if state.writes() {
+                    if state.writes() || state.capture_pending() {
                         return Err(Error::Busy.into());
                     }
                     let revision = state

@@ -509,10 +509,15 @@ fn prepare_complete_using<R>(
     let midi_events = description.midi_events;
     let midi_bytes = description.midi_bytes;
     let mut worker_delay = 0;
+    let mut worker_delays = Vec::with_capacity(processors.instances.len());
     for processor in &mut processors.instances {
-        if processor.backend.async_transport().is_some() {
-            worker_delay = worker_delay.max(processor.timing.prepare(quantum)?.latency_frames());
-        }
+        let delay = if processor.backend.async_transport().is_some() {
+            processor.timing.prepare(quantum)?.latency_frames()
+        } else {
+            0
+        };
+        worker_delay = worker_delay.max(delay);
+        worker_delays.push(delay);
     }
     let worker_capture =
         (worker_delay != 0).then_some(shoop_loops::runtime::WorkerCaptureInputSettings {
@@ -688,6 +693,7 @@ fn prepare_complete_using<R>(
         reserved_bytes: processors.reserved_bytes,
         kinds: processors.instances.iter().map(|p| p.kind).collect(),
         presets: processors.presets,
+        worker_delays: worker_delays.into_boxed_slice(),
     };
     let processor_input = description.processor_midi_input_capacity()?;
     let buffer_limits = rt_buffered::BufferLimits {

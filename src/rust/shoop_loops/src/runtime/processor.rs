@@ -368,6 +368,48 @@ impl<S: Sample> Processor<LoopPlanner<S>, (), S> for CaptureNode<S> {
                 self.binding.channels,
             )?;
         }
+        let row = block.domain.rows[slot].as_mut().ok_or(Error::InvalidId)?;
+        if let Some(take) = row.delayed.as_mut().filter(|_| !row.aborted) {
+            if let Some(tick) = take.interval {
+                let interval = tick.interval();
+                let result = (|| {
+                    let owner = row.worker_source.ok_or(Error::InvalidState)?;
+                    let (dry, midi, stream) = block
+                        .domain
+                        .worker_inputs
+                        .as_ref()
+                        .and_then(|inputs| {
+                            inputs.completed(row.history_source as usize, owner, block.frame)
+                        })
+                        .ok_or(Error::Incomplete)?;
+                    if take
+                        .stream_generation
+                        .is_some_and(|expected| expected != stream)
+                    {
+                        return Err(Error::Incomplete);
+                    }
+                    let mut render = block.resources.render();
+                    let mut member = 0;
+                    if let Some(audio) = &mut self.audio {
+                        audio.stage_port_range(&mut render, interval, member, &block.audio, 0)?;
+                        member += 1;
+                    }
+                    if self.auxiliary.is_some() {
+                        render.stage_audio(interval, member, dry)?;
+                        member += 1;
+                    }
+                    if self.midi.is_some() {
+                        render.stage_midi(interval, member, midi)?;
+                    }
+                    take.stream_generation = Some(stream);
+                    Ok(())
+                })();
+                if let Err(error) = result {
+                    row.aborted = true;
+                    row.failure = Some(error);
+                }
+            }
+        }
         if let (Some(audio), Some((resource, revision))) = (&mut self.audio, view.replace) {
             match audio.replace_windowed_ports(
                 &mut block.resources.render(),

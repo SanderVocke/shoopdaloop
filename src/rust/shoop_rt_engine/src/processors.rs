@@ -3,11 +3,14 @@ use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use rt_buffered::{Backend, BufferLimits, BufferedProcessor, Lifecycle, Timing};
 use rt_runtime::{graph::PortCounts, processor::ProcessBlock, Error, Frame, Quantum};
-use shoop_loops::runtime::LoopPlanner;
+use shoop_loops::runtime::{LoopPlanner, WorkerCaptureRelease, WorkerCaptureSource};
 use shoop_rt_protocol::{
     processors::{Effective, Unavailable, STATE_SCALARS},
     ProcessorKind,
 };
+
+#[cfg(test)]
+mod capture_tests;
 
 pub struct PreparedProcessor {
     pub kind: ProcessorKind,
@@ -49,6 +52,7 @@ pub struct ProcessorCatalog {
     pub reserved_bytes: u64,
     pub kinds: Box<[ProcessorKind]>,
     pub presets: Box<[ProcessorPreset]>,
+    pub(crate) worker_delays: Box<[usize]>,
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ProcessorState {
@@ -551,9 +555,7 @@ impl HostedProcessor {
         }
         if self.buffered.is_worker_backed() {
             if let Some((source, _)) = self.track_binding() {
-                block
-                    .domain
-                    .abort_source_captures(source as u32, Error::Incomplete);
+                block.domain.abort_unpaired_worker_captures(source as u32);
             }
         }
         let result = self.render(block, demand);
@@ -691,16 +693,30 @@ impl HostedProcessor {
         }
         let paired_worker_release = worker
             && self.track_binding().is_some_and(|(source, generation)| {
-                self.buffered
+                let Some(release) = self
+                    .buffered
                     .last_release()
                     .filter(|release| release.available)
-                    .and_then(|release| release.tag.source.checked_add(release.offset).ok())
-                    .is_some_and(|frame| {
-                        block
-                            .domain
-                            .worker_capture_input(source, generation, frame)
-                            .is_some()
-                    })
+                else {
+                    return false;
+                };
+                let Ok(source_frame) = release.tag.source.checked_add(release.offset) else {
+                    return false;
+                };
+                block.domain.publish_worker_capture_release(
+                    source,
+                    WorkerCaptureRelease {
+                        owner: WorkerCaptureSource {
+                            strip_generation: generation,
+                            processor: block.node,
+                            processor_generation: self.generation,
+                            delay_frames: self.buffered.timing().latency_frames(),
+                        },
+                        source_frame,
+                        render_frame: block.frame,
+                        stream_generation: release.tag.generation,
+                    },
+                )
             });
         for port in 0..ports.audio_outputs {
             if paired_worker_release {

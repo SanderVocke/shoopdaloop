@@ -2,7 +2,8 @@ use alloc::{boxed::Box, vec};
 use core::mem::size_of;
 use rt_runtime::{
     buffer::{AudioPorts, MidiBuffer, MidiCapacity},
-    Error, Frame, Quantum, Sample,
+    resource::{DelayedCaptureTake, DelayedCaptureTick},
+    Error, Frame, NodeId, Quantum, Sample,
 };
 
 #[derive(Clone, Copy)]
@@ -13,6 +14,30 @@ pub struct WorkerCaptureInputSettings {
     pub delay_frames: usize,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct WorkerCaptureSource {
+    pub strip_generation: u32,
+    pub processor: NodeId,
+    pub processor_generation: u32,
+    pub delay_frames: usize,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct WorkerCaptureRelease {
+    pub owner: WorkerCaptureSource,
+    pub source_frame: Frame,
+    pub render_frame: Frame,
+    pub stream_generation: u64,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct DelayedTake {
+    pub token: DelayedCaptureTake,
+    pub cut: Option<Frame>,
+    pub interval: Option<DelayedCaptureTick>,
+    pub stream_generation: Option<u64>,
+}
+
 #[derive(Clone, Copy, Eq, PartialEq)]
 struct Stamp {
     generation: u32,
@@ -21,6 +46,7 @@ struct Stamp {
 
 struct Input<S> {
     stamp: Option<Stamp>,
+    release: Option<WorkerCaptureRelease>,
     audio: Box<[S]>,
     midi: MidiBuffer,
 }
@@ -73,6 +99,7 @@ impl<S: Sample> WorkerCaptureInputs<S> {
                 core::hint::black_box(&mut *audio).fill(S::ZERO);
                 Ok(Input {
                     stamp: None,
+                    release: None,
                     audio,
                     midi: MidiBuffer::new(settings.midi.events, settings.midi.bytes)?,
                 })
@@ -84,6 +111,21 @@ impl<S: Sample> WorkerCaptureInputs<S> {
             channels: settings.channels,
             quantum,
         })
+    }
+
+    pub(super) fn accepts(
+        &self,
+        source: usize,
+        owner: WorkerCaptureSource,
+        channels: usize,
+    ) -> bool {
+        self.index(source, Frame(0)).is_some()
+            && owner.delay_frames != 0
+            && owner.delay_frames % self.quantum.frames() == 0
+            && owner.delay_frames / self.quantum.frames() < self.slots_per_source
+            && owner.strip_generation != 0
+            && owner.processor_generation != 0
+            && channels == self.channels
     }
 
     fn index(&self, source: usize, frame: Frame) -> Option<usize> {
@@ -105,6 +147,7 @@ impl<S: Sample> WorkerCaptureInputs<S> {
         let index = self.index(source, frame).ok_or(Error::InvalidFrame)?;
         let input = &mut self.inputs[index];
         input.stamp = None;
+        input.release = None;
         if generation == 0 {
             return Err(Error::InvalidId);
         }
@@ -132,12 +175,47 @@ impl<S: Sample> WorkerCaptureInputs<S> {
         Ok(())
     }
 
-    pub(super) fn read(
+    pub(super) fn publish_release(&mut self, source: usize, release: WorkerCaptureRelease) -> bool {
+        let Some(index) = self.index(source, release.source_frame) else {
+            return false;
+        };
+        let input = &mut self.inputs[index];
+        if input.stamp
+            != Some(Stamp {
+                generation: release.owner.strip_generation,
+                frame: release.source_frame,
+            })
+            || release.stream_generation == 0
+            || release
+                .source_frame
+                .checked_add(release.owner.delay_frames)
+                .ok()
+                != Some(release.render_frame)
+            || input.release.is_some()
+        {
+            return false;
+        }
+        input.release = Some(release);
+        true
+    }
+
+    pub(super) fn completed(
         &self,
         source: usize,
-        generation: u32,
-        frame: Frame,
-    ) -> Option<(&[S], &MidiBuffer)> {
+        owner: WorkerCaptureSource,
+        render_frame: Frame,
+    ) -> Option<(&[S], &MidiBuffer, u64)> {
+        let frame = Frame(render_frame.0.checked_sub(owner.delay_frames as u64)?);
+        let input = &self.inputs[self.index(source, frame)?];
+        let release = input.release?;
+        if release.owner != owner || release.render_frame != render_frame {
+            return None;
+        }
+        Some((&input.audio, &input.midi, release.stream_generation))
+    }
+
+    #[cfg(test)]
+    fn read(&self, source: usize, generation: u32, frame: Frame) -> Option<(&[S], &MidiBuffer)> {
         let input = &self.inputs[self.index(source, frame)?];
         (input.stamp == Some(Stamp { generation, frame }))
             .then_some((input.audio.as_ref(), &input.midi))

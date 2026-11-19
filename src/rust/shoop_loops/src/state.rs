@@ -11,6 +11,15 @@ pub struct CompositeState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct PendingCapture {
+    pub mode: Mode,
+    pub frames: u64,
+    pub position: u64,
+    pub cycles: u64,
+    pub pulse: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct State {
     pub timing_revision: u64,
     pub id: LoopId,
@@ -27,6 +36,7 @@ pub struct State {
     pub composite: Option<CompositeState>,
     pub repeat_sync: bool,
     pub(crate) revision_watermark: Revision,
+    pub(crate) pending_capture: Option<PendingCapture>,
 }
 
 impl State {
@@ -47,6 +57,7 @@ impl State {
             composite: None,
             repeat_sync: false,
             revision_watermark: Revision(0),
+            pending_capture: None,
         }
     }
 
@@ -59,6 +70,10 @@ impl State {
     }
     pub fn writes(self) -> bool {
         self.mode.records() || self.mode == Mode::Replacing
+    }
+
+    pub fn capture_pending(self) -> bool {
+        self.pending_capture.is_some()
     }
 
     pub fn advances(self) -> bool {

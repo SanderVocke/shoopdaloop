@@ -23,7 +23,9 @@ use crate::topology::{TopologyLoop, RECORD_BYTES};
 use rt_runtime::executor::Command;
 use rt_runtime::{Frame, NodeId};
 use shoop_loops::audio::Smoothing;
-use shoop_loops::runtime::{GraphStageId, NodePairInitial, NodePairStageId, Operation, Reply};
+use shoop_loops::runtime::{
+    GraphStageId, NodePairInitial, NodePairStageId, Operation, Reply, WorkerCaptureSource,
+};
 use shoop_loops::topology::staging::StageId;
 use shoop_loops::{Timing, Transition};
 use shoop_rt_protocol::{LoopSlotId, Outcome, Refusal};
@@ -1230,6 +1232,19 @@ impl ControlEndpoint {
                 if before == after {
                     continue;
                 }
+                let worker_source = self.next.loops[slot]
+                    .and_then(|entry| self.next.strip(entry.strip?))
+                    .and_then(|strip| {
+                        let slot = strip.processor?.slot?;
+                        let index = slot.index as usize;
+                        let delay_frames = self.processor_catalog.worker_delays[index];
+                        (delay_frames != 0).then_some(WorkerCaptureSource {
+                            strip_generation: strip.id.0.generation,
+                            processor: self.pool.processor(index),
+                            processor_generation: slot.generation,
+                            delay_frames,
+                        })
+                    });
                 let initial = match after {
                     None => None,
                     Some(created) if job.replacing() => {
@@ -1254,6 +1269,7 @@ impl ControlEndpoint {
                         let entry = self.next.loops[slot].expect("candidate loop");
                         Some(NodePairInitial {
                             history_source: entry.strip.expect("primitive owner").0.index,
+                            worker_source,
                             audio_widths: self
                                 .next
                                 .strip(entry.strip.expect("primitive owner"))
@@ -1289,6 +1305,7 @@ impl ControlEndpoint {
                         let entry = self.next.loops[slot].expect("new loop");
                         Some(NodePairInitial {
                             history_source: entry.strip.expect("primitive owner").0.index,
+                            worker_source,
                             audio_widths: self
                                 .next
                                 .strip(entry.strip.expect("primitive owner"))

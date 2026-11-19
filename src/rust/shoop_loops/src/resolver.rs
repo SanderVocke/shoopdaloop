@@ -794,8 +794,14 @@ impl Resolver {
                 .iter()
                 .any(|previous| match (*previous, *observation) {
                     (
-                        Observation::CaptureAborted { target: a, .. },
-                        Observation::CaptureAborted { target: b, .. },
+                        Observation::CaptureAborted { target: a, .. }
+                        | Observation::CaptureReady { target: a, .. },
+                        Observation::CaptureAborted { target: b, .. }
+                        | Observation::CaptureReady { target: b, .. },
+                    )
+                    | (
+                        Observation::DelayCapture { target: a },
+                        Observation::DelayCapture { target: b },
                     ) => a == b,
                     (
                         Observation::CaptureExhausted { target: a }
@@ -817,10 +823,22 @@ impl Resolver {
                 return Err(Error::DuplicateId);
             }
             match *observation {
-                Observation::CaptureAborted { target, .. }
+                Observation::CaptureAborted { target, .. } => {
+                    let state = self.state(target)?;
+                    if !state.writes() && !state.capture_pending() {
+                        return Err(Error::InvalidState);
+                    }
+                }
+                Observation::DelayCapture { target }
                 | Observation::CaptureExhausted { target }
                 | Observation::CapturePrefixExhausted { target } => {
                     if !self.state(target)?.writes() {
+                        return Err(Error::InvalidState);
+                    }
+                }
+                Observation::CaptureReady { target, revision } => {
+                    let state = self.state(target)?;
+                    if !state.capture_pending() || state.capture_revision != revision {
                         return Err(Error::InvalidState);
                     }
                 }
@@ -1174,8 +1192,9 @@ impl Resolver {
             }
             for state in self.states.iter().flatten() {
                 if candidate.node(state.id).is_err()
-                    && state.mode != Mode::Stopped
-                    && !(stop_playback && state.mode.playback_mode())
+                    && (state.capture_pending()
+                        || state.mode != Mode::Stopped
+                            && !(stop_playback && state.mode.playback_mode()))
                 {
                     return Err(Error::InvalidState);
                 }
@@ -1465,7 +1484,23 @@ impl Boundary<'_> {
         }
         let mut state = self.scratch.states[target].expect("prepared state");
         let before = state;
-        let result = if let Some(program) = self.topology.program(state.id) {
+        let delayed = self
+            .observations
+            .contains(&Observation::DelayCapture { target: state.id });
+        let result = if let Some(mut pending) = state.pending_capture {
+            if intent.transition == Transition::Stop {
+                pending.mode = Mode::Stopped;
+                pending.position = 0;
+                pending.pulse = false;
+                state.pending_capture = Some(pending);
+                Ok((false, ProgramAction::None))
+            } else {
+                Err(Error::InvalidState)
+            }
+        } else if delayed && state.writes() {
+            close_delayed_capture(&mut state, intent.transition)
+                .map(|()| (false, ProgramAction::None))
+        } else if let Some(program) = self.topology.program(state.id) {
             composite_transition(
                 &mut state,
                 intent.transition,
@@ -1584,7 +1619,22 @@ impl Boundary<'_> {
                 state.capture_frames = 0;
                 state.capture_incomplete = true;
                 state.monitor_previous = false;
+                state.pending_capture = None;
                 self.event(target, EventKind::Refused(reason));
+            }
+            if let Observation::CaptureReady { target, .. } = *observation {
+                let slot = target.slot() as usize;
+                let state = self.scratch.states[slot]
+                    .as_mut()
+                    .expect("validated capture");
+                let pending = state.pending_capture.take().ok_or(Error::InvalidState)?;
+                state.content_revision = state.capture_revision;
+                state.content_length = pending.frames;
+                state.mode = pending.mode;
+                state.position = pending.position;
+                state.cycles = pending.cycles;
+                self.scratch.pulses[slot] = pending.pulse;
+                self.scratch.playback_discontinuities[slot] = state.plays();
             }
             if let Observation::CaptureExhausted { target }
             | Observation::CapturePrefixExhausted { target } = *observation
@@ -2105,6 +2155,29 @@ fn playback_discontinuity(before: State, after: State, operation: Transition) ->
         Transition::Rerecord => !before.mode.playback_mode(),
         _ => false,
     }
+}
+
+fn close_delayed_capture(state: &mut State, operation: Transition) -> Result<(), Error> {
+    if !matches!(
+        operation,
+        Transition::Stop | Transition::Play { .. } | Transition::PlayDry { .. }
+    ) {
+        return Err(Error::InvalidState);
+    }
+    let before = *state;
+    let pulse = transition(state, operation)?;
+    state.pending_capture = Some(crate::state::PendingCapture {
+        mode: state.mode,
+        frames: state.content_length,
+        position: state.position,
+        cycles: state.cycles,
+        pulse,
+    });
+    state.content_revision = before.content_revision;
+    state.content_length = before.content_length;
+    state.mode = Mode::Stopped;
+    state.position = 0;
+    Ok(())
 }
 
 fn transition(state: &mut State, operation: Transition) -> Result<bool, Error> {

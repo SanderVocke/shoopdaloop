@@ -54,7 +54,7 @@ pub use node_pairs::{
 pub use processor::{CaptureNode, LoopNode, LoopNodes, PlaybackNode};
 pub use rt_runtime::graph::activation::{StageId as GraphStageId, StageStatus as GraphStageStatus};
 pub use topology::TopologySettings;
-pub use worker_capture::WorkerCaptureInputSettings;
+pub use worker_capture::{WorkerCaptureInputSettings, WorkerCaptureRelease, WorkerCaptureSource};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Failure {
@@ -591,6 +591,7 @@ struct Row<S: Sample = f32> {
     assigned: bool,
     dry_wet: bool,
     history_source: u32,
+    worker_source: Option<WorkerCaptureSource>,
     audio_widths: [usize; 2],
     reset_input: bool,
     groups: [[Option<CaptureGroupId>; 2]; 2],
@@ -598,6 +599,7 @@ struct Row<S: Sample = f32> {
     active: Option<Take>,
     prepared: Option<Take>,
     interval: Option<CaptureTickId>,
+    delayed: Option<worker_capture::DelayedTake>,
     next_bank: usize,
     frozen: [Option<Snapshot>; 3],
     failure: Option<Error>,
@@ -851,6 +853,7 @@ impl<S: Sample> LoopPlanner<S> {
                 assigned,
                 dry_wet: binding.dry_wet,
                 history_source: 0,
+                worker_source: None,
                 audio_widths: [binding.channels, binding.auxiliary_channels],
                 reset_input: false,
                 groups: [[None; 2]; 2],
@@ -858,6 +861,7 @@ impl<S: Sample> LoopPlanner<S> {
                 active: None,
                 prepared: None,
                 interval: None,
+                delayed: None,
                 next_bank: 0,
                 frozen: [None; 3],
                 failure: None,
@@ -1156,25 +1160,32 @@ impl<S: Sample> LoopPlanner<S> {
         }
     }
 
-    pub fn worker_capture_input(
-        &self,
+    pub fn publish_worker_capture_release(
+        &mut self,
         source: usize,
-        generation: u32,
-        frame: Frame,
-    ) -> Option<(&[S], &rt_runtime::buffer::MidiBuffer)> {
-        self.worker_inputs.as_ref()?.read(source, generation, frame)
+        release: WorkerCaptureRelease,
+    ) -> bool {
+        self.worker_inputs
+            .as_mut()
+            .is_some_and(|inputs| inputs.publish_release(source, release))
     }
 
     /// Prevent a failed source from replacing committed media at the next cut.
     pub fn abort_source_captures(&mut self, source: u32, reason: Error) {
-        for row in self
-            .rows
-            .iter_mut()
-            .flatten()
-            .filter(|row| row.assigned && row.dry_wet && row.history_source == source)
-        {
+        self.abort_captures(source, reason, |_| true);
+    }
+
+    pub fn abort_unpaired_worker_captures(&mut self, source: u32) {
+        self.abort_captures(source, Error::Incomplete, |row| row.delayed.is_none());
+    }
+
+    fn abort_captures(&mut self, source: u32, reason: Error, matches: impl Fn(&Row<S>) -> bool) {
+        for row in self.rows.iter_mut().flatten().filter(|row| {
+            row.assigned && row.dry_wet && row.history_source == source && matches(row)
+        }) {
             let slot = row.binding.target.slot() as usize;
-            if self.views[slot].decision.state.writes() {
+            let state = self.views[slot].decision.state;
+            if state.writes() || state.capture_pending() {
                 row.aborted = true;
                 row.failure = Some(reason);
                 self.views[slot].capture = None;
