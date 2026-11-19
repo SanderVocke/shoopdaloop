@@ -116,6 +116,7 @@ impl EngineDescription {
     ) -> shoop_loops::runtime::WorkerCaptureInputSettings {
         shoop_loops::runtime::WorkerCaptureInputSettings {
             sources: self.strips(),
+            edit_loops: self.loops(),
             channels: self.strip_channels as usize,
             midi: MidiCapacity {
                 events: self.midi_events,

@@ -62,6 +62,7 @@ struct Fixture {
     host: OfflineHost,
     workers: Vec<LocalWorker>,
     fail_worker: bool,
+    worker_gain: f32,
 }
 
 fn dry(frame: u64) -> f32 {
@@ -144,6 +145,7 @@ impl Fixture {
             host: OfflineHost::new_with_processors(&description, prepared).unwrap(),
             workers,
             fail_worker: false,
+            worker_gain: 2.,
         };
         fixture.host.connect().unwrap();
         while fixture.host.receive().is_some() {}
@@ -192,7 +194,7 @@ impl Fixture {
                         for channel in 0..2 {
                             let (input, output) = batch.audio.pair(channel, channel).unwrap();
                             for (output, input) in output.iter_mut().zip(input) {
-                                *output = 2. * input;
+                                *output = self.worker_gain * input;
                             }
                         }
                         Ok(())
@@ -354,4 +356,64 @@ fn worker_capture_drains_at_stop_and_keeps_committed_roles_after_a_lost_tail() {
     });
     assert!(diagnostics.peak_pending > 0);
     assert!(diagnostics.pending <= diagnostics.peak_pending);
+}
+
+#[shoop_test]
+fn worker_rerecords_wet_at_wrapped_source_positions_and_rolls_back_a_lost_tail() {
+    let mut fixture = Fixture::new();
+    let start = fixture.mode(LoopMode::Recording).frame;
+    fixture.step();
+    fixture.step();
+    let cut = fixture.mode(LoopMode::Stopped).frame;
+    let frames = cut - start;
+    let delay_quanta = TIMING.batch_quanta + TIMING.slack_quanta;
+    for _ in 0..=delay_quanta {
+        fixture.step();
+    }
+    assert_eq!(fixture.state().revision, 1);
+    let midi = fixture.read(BulkSelector::Midi, 1, 0).payload;
+
+    fixture.worker_gain = 3.;
+    fixture.mode(LoopMode::RecordingDryIntoWet);
+    for _ in 0..frames / Q as u64 + 2 {
+        fixture.step();
+    }
+    let stopped = fixture.mode(LoopMode::Stopped);
+    assert_eq!(stopped.revision, 1);
+    let publish = stopped.frame + (delay_quanta * Q) as u64;
+    while fixture.host.next_frame() < publish {
+        fixture.step();
+        assert_eq!(fixture.state().revision, 1);
+    }
+    fixture.step();
+    assert_eq!(fixture.state().revision, 2);
+    let rerecorded = fixture.read(BulkSelector::AudioRoles, 2, 0);
+    assert_eq!(rerecorded.total, frames);
+    let BulkPayload::Audio { len, samples } = rerecorded.payload else {
+        panic!("{rerecorded:?}");
+    };
+    assert_eq!(u64::from(len), 4 * frames);
+    for (offset, values) in samples[..usize::from(len)].chunks_exact(4).enumerate() {
+        let sample = dry(start + offset as u64);
+        assert_eq!(values, [sample, -sample, 3. * sample, -3. * sample]);
+    }
+    assert_eq!(fixture.read(BulkSelector::Midi, 3, 0).payload, midi);
+
+    fixture.worker_gain = 4.;
+    fixture.mode(LoopMode::RecordingDryIntoWet);
+    for _ in 0..=delay_quanta {
+        fixture.step();
+    }
+    assert_eq!(fixture.mode(LoopMode::Stopped).revision, 2);
+    fixture.fail_worker = true;
+    for _ in 0..=delay_quanta + 2 {
+        fixture.step();
+    }
+    assert!(fixture.state().capture_incomplete);
+    assert_eq!(fixture.state().revision, 2);
+    assert_eq!(
+        fixture.read(BulkSelector::AudioRoles, 4, 0).payload,
+        rerecorded.payload
+    );
+    assert_eq!(fixture.read(BulkSelector::Midi, 5, 0).payload, midi);
 }

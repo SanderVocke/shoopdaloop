@@ -116,6 +116,8 @@ select in-process or isolated hosting and set the available instance counts.
 In isolation mode, the FX control can restart a failed worker. Linux desktop
 validation covered selecting an Audio File source in the editor, recording
 its stereo Rack output, and exporting the dry and wet channels in both modes.
+Wet rerecord follows the dry loop across wraps and commits after the buffered
+output tail. A missing required block preserves the previous take.
 Selected loop media can be exported while Carla is active. Full session save
 refuses while the session contains Carla state. [Production evidence](../../PLAN_CARLA_HOSTING.md#stage-4-host-stereo-carla-through-the-production-native-service)
 

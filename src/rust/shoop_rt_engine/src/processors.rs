@@ -1024,6 +1024,7 @@ mod tests {
             .planner
             .prepare_worker_capture_inputs(WorkerCaptureInputSettings {
                 sources: 1,
+                edit_loops: 0,
                 channels: 1,
                 midi: MidiCapacity::default(),
                 delay_frames: timing.prepare(q).unwrap().latency_frames(),

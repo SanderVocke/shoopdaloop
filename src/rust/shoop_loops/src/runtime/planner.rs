@@ -253,7 +253,11 @@ impl<S: Sample> LoopPlanner<S> {
     ) -> Result<(), Error> {
         let row = self.rows[slot].ok_or(Error::InvalidId)?;
         if row.worker_source.is_some() {
-            if decision.state.mode != Mode::Recording || decision.state.capture_frames != 0 {
+            if !matches!(
+                decision.state.mode,
+                Mode::Recording | Mode::RecordingDryIntoWet
+            ) || decision.state.capture_frames != 0
+            {
                 return Err(Error::InvalidState);
             }
         } else if let Some(take) = self.prepare_live_take(slot, decision, io)? {
@@ -412,18 +416,18 @@ impl<S: Sample> LoopPlanner<S> {
                 continue;
             };
             let decision = self.views[slot].decision;
-            if let Some(delayed) = current.delayed.filter(|_| !current.aborted) {
+            if let Some((delayed, token)) = current
+                .delayed
+                .filter(|_| !current.aborted)
+                .and_then(|delayed| delayed.token.map(|token| (delayed, token)))
+            {
                 let delay = current
                     .worker_source
                     .ok_or(Error::InvalidState)?
                     .delay_frames;
                 let start = current.active.ok_or(Error::InvalidState)?.started_at;
-                if frame >= start.checked_add(delay)?
-                    && delayed
-                        .cut
-                        .is_none_or(|cut| frame.0 - (delay as u64) < cut.0)
-                {
-                    match io.capture().reserve_delayed(delayed.token) {
+                if delayed.release_source(start, frame, delay).is_some() {
+                    match io.capture().reserve_delayed(token) {
                         Ok(interval) => {
                             self.rows[slot]
                                 .as_mut()
@@ -488,16 +492,16 @@ impl<S: Sample> LoopPlanner<S> {
                     return Ok(false);
                 }
             }
-            if let Some(token) = take.token {
-                if let Some(owner) = row.worker_source {
-                    if starting {
-                        if let Err(error) = end.checked_add(owner.delay_frames) {
-                            self.latch(slot, decision, error, true)?;
-                            return Ok(false);
-                        }
+            if let Some(owner) = row.worker_source {
+                if starting {
+                    if let Err(error) = end.checked_add(owner.delay_frames) {
+                        self.latch(slot, decision, error, true)?;
+                        return Ok(false);
                     }
-                    continue;
                 }
+                continue;
+            }
+            if let Some(token) = take.token {
                 let result = if starting {
                     io.capture().reserve_prepared(token, frame)
                 } else {
@@ -629,7 +633,7 @@ impl<S: Sample> LoopPlanner<S> {
                 + usize::from(row.binding.midi);
             if let Some(delayed) = row.delayed {
                 io.capture().freeze_delayed(
-                    delayed.token,
+                    delayed.token.ok_or(Error::InvalidState)?,
                     delayed.cut.ok_or(Error::InvalidState)?,
                     &mut output[..members],
                 )?;
@@ -781,7 +785,13 @@ impl<S: Sample> LoopPlanner<S> {
                 }
                 let delayed = match (take.token, worker_source) {
                     (Some(token), Some(owner)) => Some(worker_capture::DelayedTake {
-                        token: io.capture().activate_delayed(token, owner.delay_frames)?,
+                        token: Some(io.capture().activate_delayed(token, owner.delay_frames)?),
+                        cut: None,
+                        interval: None,
+                        stream_generation: None,
+                    }),
+                    (None, Some(_)) if take.edit.is_some() => Some(worker_capture::DelayedTake {
+                        token: None,
                         cut: None,
                         interval: None,
                         stream_generation: None,
@@ -884,7 +894,10 @@ impl<S: Sample> LoopPlanner<S> {
                     Some(Transition::Record { .. } | Transition::ReplaceInput { .. })
                 ),
                 pre_rerecording: matches!(next, Some(Transition::Rerecord)),
-                replace: row.active.as_ref().and_then(|take| take.edit),
+                replace: row
+                    .active
+                    .and_then(|take| take.edit)
+                    .filter(|_| row.delayed.is_none()),
                 auxiliary: media
                     .filter(|_| dry_playing)
                     .and_then(|m| m.auxiliary)

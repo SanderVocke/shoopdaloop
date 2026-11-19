@@ -239,10 +239,51 @@ fn companion_installs_real_carla_track_and_bus_banks() {
             assert!(Instant::now() < deadline, "{track:?}");
             thread::sleep(Duration::from_millis(2));
         }
+        let old_revision = backend.poll().unwrap().loops[&loop_id].content_revision;
+        backend
+            .transition_loop(loop_id, BackendLoopMode::RecordingDryIntoWet, None)
+            .unwrap();
+        let deadline = Instant::now() + TIMEOUT;
+        let mut started_at = None;
+        loop {
+            let state = backend.poll().unwrap();
+            assert!(
+                state.mutation_failures.is_empty(),
+                "{:?}",
+                state.mutation_failures
+            );
+            let view = &state.loops[&loop_id];
+            assert!(!view.capture_incomplete, "{view:?}");
+            if view.mode == BackendLoopMode::RecordingDryIntoWet {
+                let frame = state.status.processed_frames;
+                let start = *started_at.get_or_insert(frame);
+                if frame.saturating_sub(start) >= 2 * u64::from(view.length) {
+                    break;
+                }
+            }
+            assert!(
+                Instant::now() < deadline,
+                "Carla rerecord did not wrap: {view:?}"
+            );
+            thread::sleep(Duration::from_millis(2));
+        }
         backend
             .transition_loop(loop_id, BackendLoopMode::Stopped, None)
             .unwrap();
         let deadline = Instant::now() + TIMEOUT;
+        loop {
+            let state = backend.poll().unwrap();
+            let view = &state.loops[&loop_id];
+            assert!(!view.capture_incomplete, "{view:?}");
+            if view.mode == BackendLoopMode::Stopped && view.content_revision > old_revision {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "Carla wet tail did not settle: {view:?}"
+            );
+            thread::sleep(Duration::from_millis(2));
+        }
         let captured = loop {
             if let BackendAsyncResult::Ready(captured) =
                 backend.capture_loop_content_async(loop_id).unwrap()
@@ -258,6 +299,10 @@ fn companion_installs_real_carla_track_and_bus_banks() {
         assert_eq!(captured.length, 1024);
         assert_eq!(captured.audio[0].mode, BackendChannelMode::Dry);
         assert_eq!(captured.audio[0].samples.as_slice(), &[0.25; 1024]);
+        assert_eq!(captured.audio[1].mode, BackendChannelMode::Wet);
+        assert_eq!(captured.audio[1].samples.as_slice(), &[0.25; 1024]);
+        assert_eq!(captured.audio[2].mode, BackendChannelMode::Wet);
+        assert_eq!(captured.audio[2].samples.as_slice(), &[0.; 1024]);
         drop(backend);
         let report = supervisor.stop();
         assert!(

@@ -3,12 +3,13 @@ use core::mem::size_of;
 use rt_runtime::{
     buffer::{AudioPorts, MidiBuffer, MidiCapacity},
     resource::{DelayedCaptureTake, DelayedCaptureTick},
-    Error, Frame, NodeId, Quantum, Sample,
+    Error, Frame, NodeId, Quantum, Revision, Sample,
 };
 
 #[derive(Clone, Copy)]
 pub struct WorkerCaptureInputSettings {
     pub sources: usize,
+    pub edit_loops: usize,
     pub channels: usize,
     pub midi: MidiCapacity,
     pub delay_frames: usize,
@@ -32,10 +33,25 @@ pub struct WorkerCaptureRelease {
 
 #[derive(Clone, Copy)]
 pub(super) struct DelayedTake {
-    pub token: DelayedCaptureTake,
+    pub token: Option<DelayedCaptureTake>,
     pub cut: Option<Frame>,
     pub interval: Option<DelayedCaptureTick>,
     pub stream_generation: Option<u64>,
+}
+
+impl DelayedTake {
+    pub fn release_source(self, start: Frame, frame: Frame, delay: usize) -> Option<Frame> {
+        let source = Frame(frame.0.checked_sub(delay as u64)?);
+        (source >= start && self.cut.is_none_or(|cut| source < cut)).then_some(source)
+    }
+}
+
+#[derive(Clone, Copy)]
+struct EditPosition {
+    frame: Frame,
+    target: crate::LoopId,
+    revision: Revision,
+    position: u64,
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -53,6 +69,7 @@ struct Input<S> {
 
 pub(super) struct WorkerCaptureInputs<S> {
     inputs: Box<[Input<S>]>,
+    edit_positions: Box<[Option<EditPosition>]>,
     slots_per_source: usize,
     channels: usize,
     quantum: Quantum,
@@ -77,9 +94,18 @@ impl WorkerCaptureInputSettings {
             .and_then(|audio| audio.checked_add(midi))
             .and_then(|payload| payload.checked_add(size_of::<Input<S>>()))
             .ok_or(Error::Capacity)?;
-        self.slots(quantum)?
-            .checked_mul(self.sources)
-            .and_then(|slots| slots.checked_mul(slot_bytes))
+        let slots = self.slots(quantum)?;
+        let audio_and_midi = self
+            .sources
+            .checked_mul(slot_bytes)
+            .ok_or(Error::Capacity)?;
+        let positions = self
+            .edit_loops
+            .checked_mul(size_of::<Option<EditPosition>>())
+            .ok_or(Error::Capacity)?;
+        audio_and_midi
+            .checked_add(positions)
+            .and_then(|bytes| bytes.checked_mul(slots))
             .filter(|bytes| *bytes <= i32::MAX as usize)
             .ok_or(Error::Capacity)
     }
@@ -105,8 +131,14 @@ impl<S: Sample> WorkerCaptureInputs<S> {
                 })
             })
             .collect::<Result<_, Error>>()?;
+        let mut edit_positions =
+            vec![None; slots_per_source * settings.edit_loops].into_boxed_slice();
+        for position in &mut edit_positions {
+            *core::hint::black_box(position) = None;
+        }
         Ok(Self {
             inputs,
+            edit_positions,
             slots_per_source,
             channels: settings.channels,
             quantum,
@@ -129,11 +161,46 @@ impl<S: Sample> WorkerCaptureInputs<S> {
     }
 
     fn index(&self, source: usize, frame: Frame) -> Option<usize> {
-        if !self.quantum.aligned(frame) || source >= self.inputs.len() / self.slots_per_source {
+        self.slot(source, frame, self.inputs.len())
+    }
+
+    fn slot(&self, source: usize, frame: Frame, storage_len: usize) -> Option<usize> {
+        if !self.quantum.aligned(frame) || source >= storage_len / self.slots_per_source {
             return None;
         }
         let tick = frame.0 / self.quantum.frames() as u64;
         Some(source * self.slots_per_source + (tick % self.slots_per_source as u64) as usize)
+    }
+
+    pub(super) fn observe_edit_position(
+        &mut self,
+        target: crate::LoopId,
+        revision: Revision,
+        frame: Frame,
+        position: u64,
+    ) -> Result<(), Error> {
+        let index = self
+            .slot(target.slot() as usize, frame, self.edit_positions.len())
+            .ok_or(Error::InvalidId)?;
+        self.edit_positions[index] = Some(EditPosition {
+            frame,
+            target,
+            revision,
+            position,
+        });
+        Ok(())
+    }
+
+    pub(super) fn edit_position(
+        &self,
+        target: crate::LoopId,
+        revision: Revision,
+        frame: Frame,
+    ) -> Option<u64> {
+        let index = self.slot(target.slot() as usize, frame, self.edit_positions.len())?;
+        let position = self.edit_positions[index]?;
+        (position.frame == frame && position.target == target && position.revision == revision)
+            .then_some(position.position)
     }
 
     pub(super) fn observe(
@@ -232,6 +299,7 @@ mod tests {
         let quantum = Quantum::new(16).unwrap();
         let settings = WorkerCaptureInputSettings {
             sources: 2,
+            edit_loops: 2,
             channels: 2,
             midi: MidiCapacity {
                 events: 2,
