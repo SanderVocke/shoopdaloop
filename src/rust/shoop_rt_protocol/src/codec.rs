@@ -1119,6 +1119,16 @@ impl Wire for Request {
                 w.u64(id)?;
                 edit.put(w)
             }
+            Self::ReplacementCheckpoint {
+                id,
+                target,
+                command,
+            } => {
+                w.u8(78)?;
+                w.u64(id)?;
+                target.put(w)?;
+                command.put(w)
+            }
             Self::ReplacementPrepare { id } => {
                 w.u8(21)?;
                 w.u64(id)
@@ -1499,6 +1509,11 @@ impl Wire for Request {
                 id: r.u64()?,
                 edit: crate::ReplacementEdit::get(r)?,
             },
+            78 => Self::ReplacementCheckpoint {
+                id: r.u64()?,
+                target: ProcessorTarget::get(r)?,
+                command: crate::ReplacementCheckpointCommand::get(r)?,
+            },
             21 => Self::ReplacementPrepare { id: r.u64()? },
             22 => Self::ReplacementCommit { id: r.u64()? },
             23 => Self::ReplacementCancel { id: r.u64()? },
@@ -1520,9 +1535,55 @@ impl Wire for Request {
     }
 }
 
+impl Wire for crate::ReplacementCheckpointCommand {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        match *self {
+            Self::Begin { bytes } => {
+                if bytes == 0 || bytes as usize > MAX_PROCESSOR_CHECKPOINT_BYTES {
+                    return Err(CodecError::Invalid);
+                }
+                w.u8(0)?;
+                w.u32(bytes)
+            }
+            Self::Write { offset, data } => {
+                w.u8(1)?;
+                w.u32(offset)?;
+                w.u16(data.as_bytes().len() as u16)?;
+                w.bytes(data.as_bytes())
+            }
+        }
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(match r.u8()? {
+            0 => {
+                let bytes = r.u32()?;
+                if bytes == 0 || bytes as usize > MAX_PROCESSOR_CHECKPOINT_BYTES {
+                    return Err(CodecError::Invalid);
+                }
+                Self::Begin { bytes }
+            }
+            1 => {
+                let offset = r.u32()?;
+                let len = r.u16()? as usize;
+                let data = crate::ContentChunk::new(r.bytes(len)?).ok_or(CodecError::Invalid)?;
+                Self::Write { offset, data }
+            }
+            _ => return Err(CodecError::Invalid),
+        })
+    }
+}
+
 impl Wire for crate::ReplacementEdit {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match *self {
+            Self::CarlaBus { bus, kind } => {
+                if !kind.is_carla() {
+                    return Err(CodecError::Invalid);
+                }
+                w.u8(12)?;
+                bus.put(w)?;
+                kind.put(w)
+            }
             Self::BusProcessor { bus, state } => {
                 w.u8(11)?;
                 bus.put(w)?;
@@ -1627,6 +1688,14 @@ impl Wire for crate::ReplacementEdit {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            12 => {
+                let bus = BusId::get(r)?;
+                let kind = ProcessorKind::get(r)?;
+                if !kind.is_carla() {
+                    return Err(CodecError::Invalid);
+                }
+                Self::CarlaBus { bus, kind }
+            }
             11 => Self::BusProcessor {
                 bus: BusId::get(r)?,
                 state: crate::processors::Control::get(r)?,

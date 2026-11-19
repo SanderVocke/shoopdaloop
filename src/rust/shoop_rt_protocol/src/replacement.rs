@@ -15,8 +15,23 @@ pub struct StripPreset {
     pub output_mute: bool,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReplacementCheckpointCommand {
+    Begin {
+        bytes: u32,
+    },
+    Write {
+        offset: u32,
+        data: crate::ContentChunk,
+    },
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ReplacementEdit {
+    CarlaBus {
+        bus: crate::BusId,
+        kind: crate::ProcessorKind,
+    },
     BusProcessor {
         bus: crate::BusId,
         state: crate::processors::Control,

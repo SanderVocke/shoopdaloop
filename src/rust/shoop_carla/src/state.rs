@@ -193,7 +193,7 @@ pub(crate) fn restore_candidate(
         );
     }
     processor.restore_state(state)?;
-    let actual = project_entries(chain, &processor.save_state()?)?;
+    let actual = project_entries(chain, &processor.capture_state()?)?;
     anyhow::ensure!(
         actual
             .iter()

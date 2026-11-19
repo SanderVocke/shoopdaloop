@@ -116,6 +116,7 @@ impl ControlEndpoint {
                 | Request::Composite(shoop_rt_protocol::CompositeCommand::Cancel { .. })
                 | Request::ReplacementBegin { .. }
                 | Request::ReplacementEdit { .. }
+                | Request::ReplacementCheckpoint { .. }
                 | Request::ReplacementPrepare { .. }
                 | Request::ReplacementCommit { .. }
                 | Request::ReplacementCancel { .. }
@@ -239,6 +240,7 @@ impl ControlEndpoint {
             Request::Diagnostic(_) | Request::PreviewStop | Request::CancelBulk => false,
             Request::ReplacementBegin { .. }
             | Request::ReplacementEdit { .. }
+            | Request::ReplacementCheckpoint { .. }
             | Request::ReplacementPrepare { .. }
             | Request::ReplacementCommit { .. }
             | Request::ReplacementCancel { .. } => false,
@@ -388,6 +390,7 @@ impl ControlEndpoint {
             | Request::CancelBulk => {}
             Request::ReplacementBegin { .. }
             | Request::ReplacementEdit { .. }
+            | Request::ReplacementCheckpoint { .. }
             | Request::ReplacementPrepare { .. }
             | Request::ReplacementCommit { .. }
             | Request::ReplacementCancel { .. } => {}

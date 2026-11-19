@@ -37,6 +37,7 @@ pub(crate) struct Replacement {
     pub initial: Box<[Option<Initial>]>,
     pub bus_processor_states: Box<[Option<shoop_rt_protocol::processors::Control>]>,
     pub processor_states: Box<[Option<shoop_rt_protocol::processors::Control>]>,
+    pub checkpoints: crate::replacement_checkpoints::Store,
 }
 impl Replacement {
     pub(crate) fn new(strips: usize, loops: usize, buses: usize, program_segments: usize) -> Self {
@@ -56,6 +57,7 @@ impl Replacement {
             initial: vec![None; loops].into_boxed_slice(),
             bus_processor_states: vec![None; buses].into_boxed_slice(),
             processor_states: vec![None; strips].into_boxed_slice(),
+            checkpoints: Default::default(),
         }
     }
     pub(crate) fn clear(&mut self) {
@@ -64,6 +66,14 @@ impl Replacement {
         self.initial.fill(None);
         self.bus_processor_states.fill(None);
         self.processor_states.fill(None);
+        self.checkpoints = Default::default();
+    }
+
+    pub(crate) fn disconnect(&mut self) {
+        self.last_id = 0;
+        if self.state == State::Receiving {
+            self.clear();
+        }
     }
 }
 
@@ -102,6 +112,7 @@ impl ControlEndpoint {
                 return Ok(Some(Outcome::Done));
             }
             Request::ReplacementEdit { id, .. }
+            | Request::ReplacementCheckpoint { id, .. }
             | Request::ReplacementPrepare { id }
             | Request::ReplacementCommit { id }
             | Request::ReplacementCancel { id } => id,
@@ -111,6 +122,26 @@ impl ControlEndpoint {
             return Err(Refusal::InvalidId);
         }
         match request {
+            Request::ReplacementCheckpoint {
+                target, command, ..
+            } => {
+                if self.replacement.state != State::Receiving {
+                    return Err(Refusal::Busy);
+                }
+                if !self
+                    .hosted_processors
+                    .as_ref()
+                    .is_some_and(|controls| controls.has_checkpoints())
+                {
+                    return Err(Refusal::Unsupported);
+                }
+                self.replacement.checkpoints.receive(
+                    &self.replacement.candidate,
+                    target,
+                    command,
+                )?;
+                Ok(Some(Outcome::Done))
+            }
             Request::ReplacementEdit { edit, .. } => {
                 if self.replacement.state != State::Receiving {
                     return Err(Refusal::Busy);
@@ -309,6 +340,9 @@ impl ControlEndpoint {
                     return Err(Refusal::InvalidValue);
                 };
                 let entry = self.next.bus(bus).ok_or(Refusal::InvalidId)?;
+                if entry.processor.is_some() {
+                    return Err(Refusal::InvalidValue);
+                }
                 crate::recorded::validate_state(
                     Some(shoop_rt_protocol::ProcessorKind::BuiltInFx),
                     Some(shoop_rt_protocol::RecordedProcessorState {
@@ -322,6 +356,22 @@ impl ControlEndpoint {
                 }
                 self.replacement.bus_processor_states[bus.0.index as usize] = Some(state);
                 Request::SetBusProcessor { bus, enabled: true }
+            }
+            ReplacementEdit::CarlaBus { bus, kind } => {
+                if !kind.is_carla()
+                    || self
+                        .next
+                        .bus(bus)
+                        .ok_or(Refusal::InvalidId)?
+                        .processor
+                        .is_some()
+                {
+                    return Err(Refusal::InvalidValue);
+                }
+                Request::SetBusProcessorKind {
+                    bus,
+                    kind: Some(kind),
+                }
             }
             ReplacementEdit::Bus { bus, channels } => Request::CreateBus { bus, channels },
             ReplacementEdit::BusControl { bus, control } => {
@@ -505,6 +555,7 @@ impl ControlEndpoint {
 
     fn validate_replacement(&self) -> Result<(), Refusal> {
         let model = &self.replacement.candidate;
+        self.replacement.checkpoints.validate(model)?;
         let entries: u64 = model
             .loops
             .iter()

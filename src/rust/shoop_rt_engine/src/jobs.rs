@@ -13,6 +13,7 @@
 
 use alloc::boxed::Box;
 use core::sync::atomic::Ordering;
+use core::task::Poll;
 
 use crate::endpoint::{
     completion_refusal, execution_outcome, loop_id, ControlEndpoint, Purpose, RuntimeResult,
@@ -568,6 +569,13 @@ impl ControlEndpoint {
         if let Kind::Family { commit } = job.kind {
             return self.step_family(job, commit);
         }
+        if job.replacing() {
+            match self.poll_replacement_checkpoint() {
+                Poll::Pending => return false,
+                Poll::Ready(Err(reason)) => job.fail(reason),
+                Poll::Ready(Ok(())) => {}
+            }
+        }
         if job.cancelled && !matches!(job.phase, Phase::Cleanup | Phase::Finishing) {
             job.phase = Phase::Cleanup;
             return true;
@@ -1058,6 +1066,16 @@ impl ControlEndpoint {
             }
             if count + bus_count > 0 {
                 return true;
+            }
+        }
+        if job.replacing() {
+            match self.start_replacement_checkpoint() {
+                Ok(true) => return true,
+                Ok(false) => {}
+                Err(reason) => {
+                    job.fail(reason);
+                    return true;
+                }
             }
         }
         if !self.room(3 + self.configuration_nodes()) {

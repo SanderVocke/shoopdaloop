@@ -195,6 +195,15 @@ pub trait HostedProcessorControls: Send {
     ) -> Result<Box<dyn crate::HostedCheckpointTicket>, Refusal> {
         Err(Refusal::Unsupported)
     }
+    fn restore_candidate(
+        &self,
+        _index: u16,
+        _owner: u64,
+        _generation: u64,
+        _state: alloc::string::String,
+    ) -> Result<Box<dyn HostedControlTicket>, Refusal> {
+        Err(Refusal::Unsupported)
+    }
 }
 
 pub struct HostedProcessorObservation {
@@ -874,6 +883,7 @@ impl ControlEndpoint {
             }
         }
         self.forget_job_answers();
+        self.replacement.disconnect();
         self.disconnect_input();
         if self.family.id.is_some() && !self.family.committing {
             self.family.cancel_requested = true;
@@ -1268,6 +1278,7 @@ impl ControlEndpoint {
             }
             Request::ReplacementBegin { .. }
             | Request::ReplacementEdit { .. }
+            | Request::ReplacementCheckpoint { .. }
             | Request::ReplacementPrepare { .. }
             | Request::ReplacementCommit { .. }
             | Request::ReplacementCancel { .. } => {

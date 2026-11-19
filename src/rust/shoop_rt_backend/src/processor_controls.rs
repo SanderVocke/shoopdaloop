@@ -100,6 +100,11 @@ pub(crate) fn recorded_state(
     };
     let kind = topology_kind(topology)
         .ok_or_else(|| anyhow!("recorded state requires a hosted processor"))?;
+    if kind.is_carla() {
+        // Carla state is retained in host-owned canonical content.
+        session_checkpoint(Some(encoded))?;
+        return Ok(None);
+    }
     let mut state = State::decode(kind, encoded)?;
     if kind == Kind::BuiltInFx {
         state.values[55] = topology.dry_audio_channels() as f32;
@@ -111,6 +116,16 @@ pub(crate) fn recorded_state(
     }))
 }
 
+pub(crate) fn session_checkpoint(encoded: Option<&str>) -> Result<&str> {
+    let encoded = encoded.ok_or_else(|| anyhow!("session is missing a Carla checkpoint"))?;
+    if encoded.is_empty() || encoded.len() > shoop_rt_protocol::MAX_PROCESSOR_CHECKPOINT_BYTES {
+        return Err(anyhow!(
+            "session Carla checkpoint is outside the transfer limit"
+        ));
+    }
+    Ok(encoded)
+}
+
 pub(crate) fn bus_session_state(bus: &shoop_backend::BackendSessionBus) -> Result<Option<Control>> {
     let Some(kind) = bus.processor_type.as_deref() else {
         if bus.processor_state.is_some() || !bus.builtin_fx_midi_cc_assignments.is_empty() {
@@ -118,7 +133,17 @@ pub(crate) fn bus_session_state(bus: &shoop_backend::BackendSessionBus) -> Resul
         }
         return Ok(None);
     };
-    if kind != TrackProcessorTypeId::BUILTIN_FX {
+    let kind = processor_kind(kind).ok_or_else(|| anyhow!("unsupported bus processor"))?;
+    if kind.is_carla() {
+        if !bus.builtin_fx_midi_cc_assignments.is_empty()
+            || bus.channels.len() > kind.fixed_audio_channels().unwrap_or_default()
+        {
+            return Err(anyhow!("invalid Carla bus shape or MIDI mappings"));
+        }
+        session_checkpoint(bus.processor_state.as_deref())?;
+        return Ok(None);
+    }
+    if kind != Kind::BuiltInFx {
         return Err(anyhow!("unsupported bus processor"));
     }
     let mut state = match &bus.processor_state {
@@ -158,6 +183,15 @@ pub(crate) fn session_state(track: &shoop_backend::BackendSessionTrack) -> Resul
         }
         return Ok(None);
     };
+    if kind.is_carla() {
+        if !track.builtin_fx_midi_cc_assignments.is_empty()
+            || !track.oxisynth_midi_cc_assignments.is_empty()
+        {
+            return Err(anyhow!("Carla checkpoints carry their own MIDI mappings"));
+        }
+        session_checkpoint(track.processor_state.as_deref())?;
+        return Ok(None);
+    }
     let mut state = match &track.processor_state {
         Some(encoded) => State::decode(kind, encoded)?,
         None => State::new(kind)?,

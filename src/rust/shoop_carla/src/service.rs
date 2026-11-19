@@ -45,6 +45,7 @@ enum OwnedOperation {
     ClearLogs,
     ReadLogs,
     CaptureState,
+    RestoreCandidate(String),
 }
 
 enum Reply {
@@ -200,6 +201,24 @@ impl ChainControl {
             CONTROL_TIMEOUT,
         )?;
         Ok(StateTicket(request.0))
+    }
+
+    /// Apply a checkpoint to a claimed processor that has not joined the render graph.
+    pub fn restore_candidate(
+        &self,
+        owner: u64,
+        generation: u64,
+        state: String,
+    ) -> Result<ControlTicket> {
+        if state.is_empty() || state.len() > MAX_STATE_ENVELOPE_BYTES {
+            bail!("Carla state is outside the worker transfer limit");
+        }
+        self.submit_owned(
+            owner,
+            generation,
+            OwnedOperation::RestoreCandidate(state),
+            RECOVERY_TIMEOUT,
+        )
     }
 }
 
@@ -506,6 +525,15 @@ fn run(
                                         }
                                         Ok(Reply::State(state))
                                     }),
+                                    OwnedOperation::RestoreCandidate(state) => {
+                                        if !processor.is_ready() {
+                                            Err(anyhow!("Carla candidate worker is unavailable"))
+                                        } else {
+                                            crate::state::restore_candidate(processor, &state)
+                                                .inspect_err(|error| tracing::warn!(%error, "Carla candidate restore refused"))
+                                                .map(|()| Reply::Done)
+                                        }
+                                    }
                                     OwnedOperation::ClearLogs => {
                                         processor.clear_logs();
                                         Ok(Reply::Done)

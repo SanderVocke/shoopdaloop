@@ -306,6 +306,31 @@ impl HostedProcessorControls for Controls {
             .map_err(|_| Refusal::Internal)?;
         Ok(Box::new(PendingCheckpoint(ticket)))
     }
+
+    fn restore_candidate(
+        &self,
+        index: u16,
+        owner: u64,
+        generation: u64,
+        state: String,
+    ) -> Result<Box<dyn HostedControlTicket>, Refusal> {
+        let chain = self.chain(index).ok_or(Refusal::Unsupported)?;
+        let ticket = chain
+            .control
+            .restore_candidate(owner, generation, state)
+            .map_err(|_| Refusal::Internal)?;
+        Ok(Box::new(PendingCandidate(ticket)))
+    }
+}
+
+struct PendingCandidate(ControlTicket);
+
+impl HostedControlTicket for PendingCandidate {
+    fn poll(&mut self) -> Option<Result<(), Refusal>> {
+        self.0
+            .poll()
+            .map(|result| result.map_err(|_| Refusal::InvalidValue))
+    }
 }
 
 struct PendingCheckpoint(shoop_carla::service::StateTicket);

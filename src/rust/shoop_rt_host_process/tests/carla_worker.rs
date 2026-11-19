@@ -52,7 +52,8 @@ fn companion_installs_real_carla_track_and_bus_banks() {
     use shoop_backend::{
         Backend, BackendAsyncResult, BackendAudioContent, BackendBusFxControl, BackendBusFxRequest,
         BackendBusRequest, BackendChannelMode, BackendLoopContent, BackendLoopMode,
-        BackendTrackFxControl, BackendTrackTopology, TrackRequest,
+        BackendPortRole, BackendSessionMixerRoute, BackendTrackFxControl, BackendTrackTopology,
+        TrackRequest,
     };
     use shoop_rt_engine::EngineDescription;
     use shoop_rt_host_native::{DriverConfig, DummyConfig, NativeConfig};
@@ -330,6 +331,132 @@ fn companion_installs_real_carla_track_and_bus_banks() {
         assert_eq!(captured.audio[1].samples.as_slice(), &[0.25; 1024]);
         assert_eq!(captured.audio[2].mode, BackendChannelMode::Wet);
         assert_eq!(captured.audio[2].samples.as_slice(), &[0.; 1024]);
+
+        let rack_fixture =
+            include_str!("../../shoop_engine/test_data/carla_legacy_rack_loaded_state.json");
+        let bus_fixture =
+            include_str!("../../shoop_engine/test_data/carla_legacy_patchbay_loaded_state.json");
+        let rack_project =
+            String::from_utf8(decode_state(rack_fixture, CarlaChainType::Rack).unwrap()).unwrap();
+        let mut project = rack_project
+            .replacen("<Value>1</Value>", "<Value>0.5</Value>", 1)
+            .into_bytes();
+        if hosting == CarlaHosting::Subprocess {
+            project.extend_from_slice(b"\n<!--");
+            project.resize(shoop_plugin_protocol::MAX_STATE_BYTES - 3, b'x');
+            project.extend_from_slice(b"-->");
+        }
+        let rack_state = encode_state(CarlaChainType::Rack, &project).unwrap();
+        let mut replacement = backend.capture_session().unwrap();
+        let candidate_track = replacement
+            .tracks
+            .iter_mut()
+            .find(|value| value.source_id == track.track_id.raw())
+            .unwrap();
+        candidate_track.processor_state = Some(rack_state);
+        candidate_track.loops[0].recorded_processor_state = Some(rack_fixture.into());
+        let candidate_bus = replacement
+            .buses
+            .iter_mut()
+            .find(|value| value.source_id == bus.bus_id.raw())
+            .unwrap();
+        candidate_bus.processor_state = Some(bus_fixture.into());
+        replacement.mixer_routes.push(BackendSessionMixerRoute {
+            source_port_id: candidate_track
+                .ports
+                .iter()
+                .find(|port| port.descriptor.role == BackendPortRole::AudioOutput)
+                .unwrap()
+                .source_id,
+            destination_channel_id: candidate_bus.channels[0].source_id,
+        });
+        let mapping = backend.replace_session(&replacement).unwrap();
+        let new_track = mapping.tracks[&track.track_id.raw()].track_id;
+        let new_bus = mapping.buses[&bus.bus_id.raw()];
+        let new_loop = mapping.loops[&loop_id.raw()];
+        backend
+            .transition_loop(new_loop, BackendLoopMode::PlayingDryThroughWet, None)
+            .unwrap();
+
+        let wait_for_routed_audio = |backend: &mut dyn Backend| {
+            let deadline = Instant::now() + TIMEOUT;
+            let expected = 20.0 * 0.125_f32.log10();
+            loop {
+                let state = backend.poll().unwrap();
+                assert!(
+                    state.mutation_failures.is_empty(),
+                    "{:?}",
+                    state.mutation_failures
+                );
+                let track = &state.tracks[&new_track];
+                let bus = &state.mixer.buses[&new_bus];
+                if track
+                    .output_peaks
+                    .first()
+                    .is_some_and(|peak| (*peak - expected).abs() < 0.01)
+                    && bus
+                        .output_peaks_db
+                        .first()
+                        .is_some_and(|peak| (*peak - expected).abs() < 0.01)
+                {
+                    assert!(track.fx.as_ref().unwrap().active);
+                    assert!(bus.fx.as_ref().unwrap().active);
+                    break;
+                }
+                assert!(Instant::now() < deadline, "track {track:?}, bus {bus:?}");
+                thread::sleep(Duration::from_millis(2));
+            }
+        };
+        wait_for_routed_audio(&mut backend);
+        let saved = backend.capture_session().unwrap();
+        let saved_track = saved
+            .tracks
+            .iter()
+            .find(|value| value.source_id == new_track.raw())
+            .unwrap();
+        assert_eq!(
+            saved_track.loops[0].recorded_processor_state.as_deref(),
+            Some(rack_fixture)
+        );
+        assert_eq!(
+            saved_track.loops[0].audio[0].samples,
+            captured.audio[0].samples
+        );
+        let saved_bus = saved
+            .buses
+            .iter()
+            .find(|value| value.source_id == new_bus.raw())
+            .unwrap();
+        let state = decode_state(
+            saved_bus.processor_state.as_deref().unwrap(),
+            CarlaChainType::Patchbay,
+        )
+        .unwrap();
+        assert!(String::from_utf8(state)
+            .unwrap()
+            .contains("<Label>audiogain_s</Label>"));
+
+        let mut invalid = saved;
+        let invalid_track = invalid
+            .tracks
+            .iter_mut()
+            .find(|value| value.source_id == new_track.raw())
+            .unwrap();
+        invalid_track.processor_state = Some(
+            encode_state(
+                CarlaChainType::Rack,
+                rack_project
+                    .replace(
+                        "<Label>audiogain_s</Label>",
+                        "<Label>shoop_missing_carla_plugin</Label>",
+                    )
+                    .as_bytes(),
+            )
+            .unwrap(),
+        );
+        let refused = backend.replace_session(&invalid).unwrap_err();
+        assert!(refused.to_string().contains("InvalidValue"), "{refused:#}");
+        wait_for_routed_audio(&mut backend);
         drop(backend);
         let report = supervisor.stop();
         assert!(

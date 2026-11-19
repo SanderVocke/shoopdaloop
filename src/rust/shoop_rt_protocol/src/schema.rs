@@ -284,6 +284,11 @@ pub enum Request {
         id: u64,
         edit: crate::ReplacementEdit,
     },
+    ReplacementCheckpoint {
+        id: u64,
+        target: ProcessorTarget,
+        command: crate::ReplacementCheckpointCommand,
+    },
     ReplacementPrepare {
         id: u64,
     },

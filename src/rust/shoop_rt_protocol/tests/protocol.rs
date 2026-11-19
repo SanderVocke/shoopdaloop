@@ -1264,6 +1264,33 @@ fn hosted_checkpoints_bound_the_snapshot_and_require_a_complete_page() {
             Err(CodecError::Invalid)
         );
     }
+    let upload = |command| ClientMessage::Request {
+        correlation: 13,
+        request: Request::ReplacementCheckpoint {
+            id: 1,
+            target: ProcessorTarget::Strip(StripId(SlotId::new(2, 3))),
+            command,
+        },
+    };
+    for command in [
+        ReplacementCheckpointCommand::Begin { bytes: total },
+        ReplacementCheckpointCommand::Write {
+            offset: total - shoop_rt_protocol::content::CONTENT_CHUNK_BYTES as u32,
+            data: ContentChunk::new(&[b'a'; shoop_rt_protocol::content::CONTENT_CHUNK_BYTES])
+                .unwrap(),
+        },
+    ] {
+        let message = upload(command);
+        let len = encode_client(&message, &mut wire).unwrap();
+        assert_eq!(decode_client(&wire[..len]).unwrap(), message);
+    }
+    assert_eq!(
+        encode_client(
+            &upload(ReplacementCheckpointCommand::Begin { bytes: total + 1 }),
+            &mut wire
+        ),
+        Err(CodecError::Invalid)
+    );
 }
 
 #[shoop_test]

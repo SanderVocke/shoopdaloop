@@ -13,6 +13,7 @@ fn image() -> Arc<Image> {
         manifest: Manifest::Loop {
             sample_rate: 48000,
             content: Loop {
+                recorded_processor_checkpoint: None,
                 composite: None,
                 sync_source: None,
                 repeat_sync: false,

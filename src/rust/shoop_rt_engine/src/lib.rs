@@ -68,6 +68,7 @@ mod queue;
 mod recorded;
 mod render;
 mod replacement;
+mod replacement_checkpoints;
 mod resync;
 mod ring;
 mod snapshots;

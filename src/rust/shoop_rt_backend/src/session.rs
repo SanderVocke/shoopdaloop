@@ -105,11 +105,16 @@ fn check_track(
     if let BackendTrackTopology::DryWetProcessor { .. } = &track.topology {
         let kind = crate::processor_controls::topology_kind(&track.topology)
             .ok_or_else(|| unavailable(BackendCapability::TrackFx))?;
-        if dry == 0
-            || dry != wet
-            || !midi
-            || (kind == shoop_rt_protocol::ProcessorKind::OxiSynth && dry != 2)
-        {
+        let valid_shape = if kind.is_carla() {
+            let width = kind.fixed_audio_channels().unwrap_or_default() as u32;
+            dry <= width && wet <= width && (dry > 0 || wet > 0 || midi)
+        } else {
+            dry != 0
+                && dry == wet
+                && midi
+                && (kind != shoop_rt_protocol::ProcessorKind::OxiSynth || dry == 2)
+        };
+        if !valid_shape {
             return Err(anyhow!("invalid audio/MIDI shape for this processor"));
         }
     }
@@ -195,12 +200,14 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     ) -> Result<BackendSessionReplacement> {
         use crate::{
             mirror::db_amplitude,
-            persistence::{Job, Work},
+            persistence::{CheckpointUpload, Job, Work},
             prepared::Upload,
             requests::Purpose,
         };
         use alloc::{collections::VecDeque, sync::Arc};
-        use shoop_rt_protocol::{Capabilities, ReplacementEdit, Request, StripPreset};
+        use shoop_rt_protocol::{
+            Capabilities, ProcessorTarget, ReplacementEdit, Request, StripPreset,
+        };
         self.ready()?;
         if !self.requests.is_empty()
             || !self.composites.jobs.is_empty()
@@ -218,6 +225,41 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             return Err(unavailable(BackendCapability::SessionContentLoad));
         }
         self.check_session(session)?;
+        let checkpoint_bytes = session
+            .tracks
+            .iter()
+            .filter(|track| {
+                crate::processor_controls::topology_kind(&track.topology)
+                    .is_some_and(|kind| kind.is_carla())
+            })
+            .flat_map(|track| {
+                core::iter::once(track.processor_state.as_ref()).chain(
+                    track
+                        .loops
+                        .iter()
+                        .map(|content| content.recorded_processor_state.as_ref()),
+                )
+            })
+            .chain(
+                session
+                    .buses
+                    .iter()
+                    .filter(|bus| {
+                        bus.processor_type
+                            .as_deref()
+                            .and_then(crate::processor_controls::processor_kind)
+                            .is_some_and(|kind| kind.is_carla())
+                    })
+                    .map(|bus| bus.processor_state.as_ref()),
+            )
+            .flatten()
+            .map(|state| state.len() as u64)
+            .sum::<u64>();
+        let media_limit = self
+            .resource_limits
+            .media_bytes
+            .checked_sub(checkpoint_bytes)
+            .ok_or_else(|| anyhow!("Carla checkpoints exceed the host media budget"))?;
         let mut sync = session.loop_sync.clone();
         for (&target, &source) in sync_sources {
             if sync.insert(target, source).is_some_and(|old| old != source) {
@@ -395,7 +437,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     prepared_bytes = prepared_bytes
                         .checked_add(upload.description.bytes)
                         .ok_or_else(|| anyhow!("prepared media size overflow"))?;
-                    if prepared_bytes > self.resource_limits.media_bytes {
+                    if prepared_bytes > media_limit {
                         return Err(anyhow!(
                             "session engine image exceeds the host prepared media budget"
                         ));
@@ -433,7 +475,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .map(|track| {
                 Ok((
                     mapping.tracks[&track.source_id].track_id,
-                    crate::processor_controls::session_state(track)?,
+                    (
+                        crate::processor_controls::session_state(track)?,
+                        track.processor_state.as_deref(),
+                    ),
                 ))
             })
             .collect::<Result<BTreeMap<_, _>>>()?;
@@ -471,7 +516,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     kind,
                     default_dry: track.default_playback_mode
                         == BackendDefaultPlaybackMode::DryThroughWet,
-                    state: processor_states[track_id],
+                    state: processor_states[track_id].0,
                 },
                 None => ReplacementEdit::Strip {
                     strip: track.strip,
@@ -480,6 +525,15 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 },
             };
             work.push_back(Work::Request(Request::ReplacementEdit { id, edit }));
+            if kind.is_some_and(|kind| kind.is_carla()) {
+                let checkpoint =
+                    crate::processor_controls::session_checkpoint(processor_states[track_id].1)?;
+                work.push_back(Work::Checkpoint(CheckpointUpload::new(
+                    id,
+                    ProcessorTarget::Strip(track.strip),
+                    checkpoint,
+                )));
+            }
         }
         let sync_slots = sync
             .iter()
@@ -562,13 +616,31 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             }
         }
         for bus in &session.buses {
+            let live = mapping.buses[&bus.source_id];
+            let entry = candidate.buses.get_mut(&live).expect("candidate bus");
+            entry.processor_type.clone_from(&bus.processor_type);
+            let slot = entry.slot;
             if let Some(state) = crate::processor_controls::bus_session_state(bus)? {
-                let live = mapping.buses[&bus.source_id];
-                let slot = candidate.buses[&live].slot;
                 work.push_back(Work::Request(Request::ReplacementEdit {
                     id,
                     edit: ReplacementEdit::BusProcessor { bus: slot, state },
                 }));
+            } else if let Some(kind) = bus
+                .processor_type
+                .as_deref()
+                .and_then(crate::processor_controls::processor_kind)
+            {
+                let checkpoint =
+                    crate::processor_controls::session_checkpoint(bus.processor_state.as_deref())?;
+                work.push_back(Work::Request(Request::ReplacementEdit {
+                    id,
+                    edit: ReplacementEdit::CarlaBus { bus: slot, kind },
+                }));
+                work.push_back(Work::Checkpoint(CheckpointUpload::new(
+                    id,
+                    ProcessorTarget::Bus(slot),
+                    checkpoint,
+                )));
             }
         }
         work.push_back(Work::Request(Request::ReplacementPrepare { id }));
@@ -583,7 +655,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 true,
                 contents.values().cloned(),
                 usize::from(self.limits().strip_audio_channels),
-                self.resource_limits.media_bytes,
+                media_limit,
             )?,
             content: contents,
             connection_failures: failures,
@@ -639,6 +711,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         for kind in [
             shoop_rt_protocol::ProcessorKind::BuiltInFx,
             shoop_rt_protocol::ProcessorKind::OxiSynth,
+            shoop_rt_protocol::ProcessorKind::CarlaRack,
+            shoop_rt_protocol::ProcessorKind::CarlaPatchbay,
+            shoop_rt_protocol::ProcessorKind::CarlaPatchbay16x,
         ] {
             let requested = session
                 .tracks
@@ -647,18 +722,41 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     crate::processor_controls::topology_kind(&track.topology) == Some(kind)
                 })
                 .count()
-                + if kind == shoop_rt_protocol::ProcessorKind::BuiltInFx {
-                    session
-                        .buses
-                        .iter()
-                        .filter(|bus| bus.processor_type.is_some())
-                        .count()
-                } else {
-                    0
-                };
+                + session
+                    .buses
+                    .iter()
+                    .filter(|bus| {
+                        bus.processor_type
+                            .as_deref()
+                            .and_then(crate::processor_controls::processor_kind)
+                            == Some(kind)
+                    })
+                    .count();
+            if requested != 0
+                && kind.is_carla()
+                && !self
+                    .capabilities
+                    .contains(shoop_rt_protocol::Capabilities::PROCESSOR_CHECKPOINTS)
+            {
+                return Err(anyhow!(
+                    "Carla checkpoint restoration is unavailable on this host"
+                ));
+            }
             let available = self.processors.map_or(0, |limits| match kind {
                 shoop_rt_protocol::ProcessorKind::BuiltInFx => limits.effective.fx_instances,
-                _ => limits.effective.synth_instances,
+                shoop_rt_protocol::ProcessorKind::OxiSynth => limits.effective.synth_instances,
+                shoop_rt_protocol::ProcessorKind::CarlaRack => {
+                    limits.effective.carla.rack_instances
+                }
+                shoop_rt_protocol::ProcessorKind::CarlaPatchbay => {
+                    limits.effective.carla.patchbay_instances
+                }
+                shoop_rt_protocol::ProcessorKind::CarlaPatchbay16x => {
+                    limits.effective.carla.patchbay16x_instances
+                }
+                shoop_rt_protocol::ProcessorKind::External => {
+                    unreachable!("external requires no hosted processor slot")
+                }
             });
             if requested > available as usize {
                 return Err(anyhow!("session requires {requested} {kind:?} instances; the host prepared {available}"));
