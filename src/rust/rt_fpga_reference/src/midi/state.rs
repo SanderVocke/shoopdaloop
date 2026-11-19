@@ -285,6 +285,31 @@ impl Default for MidiState {
     }
 }
 impl MidiState {
+    pub(super) fn cell(&self, cell: usize) -> u64 {
+        if cell == step::BASIC_STATE_CELLS - 1 {
+            return u64::from(self.system_reset);
+        }
+        let s = &self.channels[cell / 264];
+        let optional = |v: Option<u8>| u64::from(v.unwrap_or(128));
+        match cell % 264 {
+            n @ 0..128 => {
+                let n = s.notes[n];
+                u64::from(n.velocity) | (u64::from(n.flags) << 8) | (u64::from(n.pressure) << 16)
+            }
+            c @ 128..256 => optional(s.controller((c - 128) as u8)),
+            256 => optional(s.program),
+            257 => optional(s.program_bank[0]),
+            258 => optional(s.program_bank[1]),
+            259 => u64::from(s.pitch_bend),
+            260 => optional(s.pressure),
+            261 => u64::from(s.reset_controllers),
+            262 => s
+                .parameter_family
+                .map_or(0, |f| if f == ParameterFamily::Rpn { 1 } else { 2 }),
+            263 => u64::from(s.parameter_history_untracked),
+            _ => unreachable!(),
+        }
+    }
     /// Reassemble exported opaque channel projections. Callers must use channels
     /// and the reset marker from the same immutable state cut.
     pub fn from_channels(channels: [ChannelState; 16], system_reset_seen: bool) -> Self {

@@ -243,9 +243,9 @@ Use heap guards and foreground work counts independent of old content length.
 
 - [ ] Extract prepared input, destination, and playback-context registries from
   `Engine`; make snapshot ownership and binding references explicit.
-- [ ] Add changed-field/dependency reporting to every interpreter mutation path,
+- [x] Add changed-field/dependency reporting to every interpreter mutation path,
   including reset, bulk copy, controller modes, pedals, and bank/program changes.
-- [ ] Implement fixed difference maps, sparse summaries, shared comparison keys,
+- [x] Implement fixed difference maps, sparse summaries, shared comparison keys,
   bounded interested-target dispatch, staged initialization, and epoch invalidation.
 - [ ] Update destination state only for accepted output, including monitored input
   and generated messages. Keep incomplete state/difference work private and bound
@@ -385,3 +385,12 @@ API now delegates to the same store using one allocation block; it no longer
 owns a second flat event representation. All 103 reference/compiler tests pass,
 including four allocation-guarded ownership/capacity tests. Warning-denying
 reference build and Rust test-policy check pass.
+
+Stage 3 progress: stepped updates now notify changed cells; fixed difference maps
+track drift and return, support staged initialization, and derive new target maps
+from an existing checkpoint. Three new tests pass, including 700 mixed updates
+checked against fresh full comparisons, resets/pedals/modes, and heap guards.
+The comparison registry uses generation-validated weak snapshot references; live
+bindings/history own the strong references. This avoids a reference cycle while
+rejecting stale comparisons after snapshot reuse. Live-owner extraction follows
+with multi-loop integration.
