@@ -85,7 +85,9 @@ impl WorkletConfig {
     /// The worklet's own bounds; the engine validates its description when it is
     /// prepared.
     pub fn validate(&self) -> Result<(), ConfigError> {
-        if self.engine.processors.carla != Default::default() {
+        if self.engine.processors.carla != Default::default()
+            || self.engine.midi_output_limit_bytes.is_some()
+        {
             return Err(ConfigError::BackendUnavailable);
         }
         self.engine
@@ -112,7 +114,8 @@ impl WorkletConfig {
             Ok(())
         }
         let engine = &self.engine;
-        if engine.processors.carla != Default::default() {
+        if engine.processors.carla != Default::default() || engine.midi_output_limit_bytes.is_some()
+        {
             return Err(ConfigError::BackendUnavailable);
         }
         let mut out = Vec::new();
@@ -310,6 +313,7 @@ impl WorkletConfig {
                 page_bytes,
                 midi_events,
                 midi_bytes,
+                midi_output_limit_bytes: None,
                 pending_transitions,
                 reliable_credits,
                 bulk_credits,
