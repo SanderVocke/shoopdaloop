@@ -119,6 +119,33 @@ fn partial_updates_are_private_and_pedal_work_is_visible() {
 }
 
 #[shoop_test]
+fn direct_state_updates_keep_the_same_managed_policy_as_the_interpreter() {
+    let mut state = MidiState::default();
+    let mut stepped = Interpreter::default();
+    for bytes in [
+        [0x90, 60, 70],
+        [0xb0, 64, 127],
+        [0x80, 60, 0],
+        [0xb0, 121, 0],
+    ] {
+        state.apply_packet(&bytes, 3).unwrap();
+        stepped.apply(message(&bytes)).unwrap();
+        assert_eq!(&state, stepped.state().unwrap());
+        assert!(state.is_basic());
+    }
+    let before = state;
+    assert_eq!(
+        state.apply_packet(&[0xb0, 6, 1], 3),
+        Err(Error::Unsupported)
+    );
+    assert_eq!(state, before);
+    assert_eq!(
+        Message::managed(&[0xf0, 1, 2, 0xf7]),
+        Err(Error::Unsupported)
+    );
+}
+
+#[shoop_test]
 fn restore_orders_loaded_bank_pending_bank_and_sostenuto_and_retries_exactly() {
     let mut state = Interpreter::default();
     for data in [

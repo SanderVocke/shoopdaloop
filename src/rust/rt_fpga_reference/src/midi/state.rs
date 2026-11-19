@@ -304,12 +304,15 @@ impl MidiState {
     }
     pub fn apply_packet(&mut self, data: &[u8], max_bytes: usize) -> Result<(), Error> {
         let message = Message::parse(data, max_bytes)?;
-        self.apply(message);
+        let mut update = BasicUpdate::begin(message)?;
+        while !update.complete() {
+            update.step(self);
+        }
         Ok(())
     }
     /// Repeated note-ons retain the most recent velocity for that key. Packets
     /// remain distinct in the event stream; this is not a per-voice synth model.
-    pub fn apply(&mut self, message: Message) {
+    pub(super) fn apply(&mut self, message: Message) {
         let data = message.data();
         if data[0] == 0xff {
             *self = Self::default();

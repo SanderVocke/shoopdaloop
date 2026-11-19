@@ -31,6 +31,7 @@ pub struct Engine {
     next_position: u64,
     window_events: u32,
     recovery: Option<Emission>,
+    cleanup: Option<Emission>,
     desynchronized: bool,
     work: Work,
 }
@@ -54,6 +55,7 @@ impl Engine {
             next_position: 0,
             window_events,
             recovery: None,
+            cleanup: None,
             desynchronized: false,
             work: Work::default(),
         })
@@ -65,7 +67,7 @@ impl Engine {
         self.input.state().unwrap()
     }
     pub fn output_state(&self) -> Result<&MidiState, Error> {
-        if self.recovery.is_some() || self.desynchronized {
+        if self.recovery.is_some() || self.cleanup.is_some() || self.desynchronized {
             Err(Error::Busy)
         } else {
             self.output.state()
@@ -76,6 +78,9 @@ impl Engine {
     }
     pub fn recovery_pending(&self) -> bool {
         self.recovery.is_some()
+    }
+    pub fn cleanup_pending(&self) -> bool {
+        self.cleanup.is_some()
     }
     pub fn prepared_bytes(&self) -> usize {
         size_of::<Self>() + self.take.prepared_bytes() - size_of::<Take>()
@@ -108,14 +113,14 @@ impl Engine {
         }
         let quantum = state.quantum().ok_or(Error::InvalidState)?;
         let mut window = 0;
-        let mut count = 0;
+        let mut count = 0u32;
         for event in events {
             let current = event.offset / quantum;
             if current != window {
                 window = current;
                 count = 0;
             }
-            count += 1;
+            count = count.checked_add(1).ok_or(Error::Overflow)?;
             if count > self.window_events {
                 return Err(Error::Capacity);
             }
@@ -130,6 +135,7 @@ impl Engine {
         }
     }
     pub(crate) fn fault(&mut self) {
+        self.cleanup = None;
         if self.recovery.is_none() {
             self.recovery = Some(Emission::new(EmissionKind::Recovery));
         }
@@ -142,12 +148,18 @@ impl Engine {
     ) -> Result<(), Error> {
         if let Some(recovery) = &mut self.recovery {
             while !recovery.complete() {
-                recovery.step(self.output.state()?, &mut self.work, &mut |message| {
-                    sink(Event { offset, message })
-                })?;
+                let before = self.output.steps();
+                let result = recovery.step(self.take.initial(), &mut self.work, &mut |message| {
+                    sink(Event { offset, message })?;
+                    self.output.apply(message)
+                });
+                self.work.update_steps = self
+                    .work
+                    .update_steps
+                    .saturating_add(self.output.steps() - before);
+                result?;
             }
             self.recovery = None;
-            self.output = Interpreter::default();
         }
         Ok(())
     }
@@ -159,20 +171,44 @@ impl Engine {
     ) -> Result<(), Error> {
         let mut emission = Emission::new(kind);
         let source = if kind == EmissionKind::Restore {
-            self.take.initial()
+            *self.take.initial()
         } else {
-            self.output.state()?
+            *self.output.state()?
         };
         while !emission.complete() {
-            emission.step(source, &mut self.work, &mut |message| {
-                sink(Event { offset, message })
-            })?;
+            let before = self.output.steps();
+            let result = emission.step(&source, &mut self.work, &mut |message| {
+                sink(Event { offset, message })?;
+                self.output.apply(message)
+            });
+            self.work.update_steps = self
+                .work
+                .update_steps
+                .saturating_add(self.output.steps() - before);
+            result?;
         }
         self.output = Interpreter::new(if kind == EmissionKind::Restore {
             *self.take.initial()
         } else {
             MidiState::default()
         });
+        Ok(())
+    }
+    fn cleanup_output(
+        &mut self,
+        offset: u32,
+        sink: &mut impl FnMut(Event) -> Result<(), Error>,
+    ) -> Result<(), Error> {
+        let emission = self
+            .cleanup
+            .get_or_insert_with(|| Emission::new(EmissionKind::Cleanup));
+        while !emission.complete() {
+            emission.step(self.output.state()?, &mut self.work, &mut |message| {
+                sink(Event { offset, message })
+            })?;
+        }
+        self.cleanup = None;
+        self.output = Interpreter::default();
         Ok(())
     }
     pub(crate) fn quantum(
@@ -221,7 +257,11 @@ impl Engine {
 
         let output_result = self.play_window(record, q, offset, sink);
         if let Err(error) = output_result {
-            if error != Error::Incomplete && error != Error::Unsupported && error != Error::Busy {
+            if self.cleanup.is_none()
+                && error != Error::Incomplete
+                && error != Error::Unsupported
+                && error != Error::Busy
+            {
                 self.fault();
             }
             if result.is_ok() {
@@ -243,14 +283,18 @@ impl Engine {
     ) -> Result<(), Error> {
         self.drain_recovery(base, sink)?;
         let boundary = record.mode == Mode::Playing && record.position == 0;
-        if self.desynchronized && record.mode == Mode::Playing && !boundary {
-            return Err(Error::Busy);
-        }
-        if self.cursor.is_some() && (record.mode != Mode::Playing || boundary) {
-            self.emit_boundary(EmissionKind::Cleanup, base, sink)?;
+        if self.cleanup.is_some()
+            || ((self.mode == Mode::Playing || self.cursor.is_some())
+                && (record.mode != Mode::Playing || boundary))
+        {
+            self.desynchronized = true;
+            self.cleanup_output(base, sink)?;
             if let Some(cursor) = self.cursor.take() {
                 self.take.end_playback(cursor)?;
             }
+        }
+        if self.desynchronized && record.mode == Mode::Playing && !boundary {
+            return Err(Error::Busy);
         }
         if record.mode != Mode::Playing {
             self.desynchronized = false;

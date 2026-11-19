@@ -259,8 +259,19 @@ impl Pipeline {
         events: &[crate::midi::Event],
         sink: &mut impl FnMut(crate::midi::Event) -> Result<(), crate::midi::Error>,
     ) -> Result<crate::midi::Report, crate::midi::ProcessError> {
-        midi.validate(&self.state, frames, events)
-            .map_err(crate::midi::ProcessError::Midi)?;
+        if let Some(error) = self.fault {
+            for output in outputs.iter_mut() {
+                output.fill(Fixed::ZERO);
+            }
+            midi.fault();
+            return Err(crate::midi::ProcessError::Pipeline(error));
+        }
+        if let Err(error) = midi.validate(&self.state, frames, events) {
+            for output in outputs.iter_mut() {
+                output.fill(Fixed::ZERO);
+            }
+            return Err(crate::midi::ProcessError::Midi(error));
+        }
         let mut observer = crate::midi::engine::MidiObserver {
             engine: midi,
             events,

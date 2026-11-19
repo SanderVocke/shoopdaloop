@@ -410,9 +410,133 @@ fn refused_note_off_triggers_recovery_and_never_replays_a_delayed_event() {
 }
 
 #[shoop_test]
+fn recovery_preserves_pedal_ownership_until_stop_releases_it() {
+    let mut f = Fixture::new(16, 8);
+    f.command(Operation::Record);
+    f.tick(&[
+        event(0, &[0xb0, 64, 127]),
+        event(1, &[0x90, 60, 80]),
+        event(15, &[0x80, 60, 0]),
+    ]);
+    f.command(Operation::Stop);
+    f.tick(&[]);
+    f.command(Operation::Play {
+        position: 0,
+        retrigger: true,
+    });
+    f.limit = 66;
+    assert_eq!(f.tick(&[]).error, Some(Error::Capacity));
+    let before = f.emitted.len();
+    f.command(Operation::Stop);
+    f.limit = usize::MAX;
+    assert_eq!(f.tick(&[]).error, None);
+    assert_eq!(f.emitted.len() - before, 33);
+    assert_eq!(f.emitted.last().unwrap().1, msg(&[0xb0, 64, 0]));
+}
+
+#[shoop_test]
+fn a_partially_restored_pedal_is_owned_until_recovery_and_stop_finish() {
+    let mut f = Fixture::new(16, 8);
+    f.tick(&[
+        event(0, &[0xb0, 64, 127]),
+        event(0, &[0x90, 60, 80]),
+        event(0, &[0x80, 60, 0]),
+    ]);
+    f.command(Operation::Record);
+    f.tick(&[]);
+    f.command(Operation::Stop);
+    f.tick(&[]);
+    f.command(Operation::Play {
+        position: 0,
+        retrigger: true,
+    });
+    f.limit = 5;
+    assert_eq!(f.tick(&[]).error, Some(Error::Capacity));
+    assert_eq!(f.emitted.last().unwrap().1, msg(&[0x90, 60, 80]));
+    let before = f.emitted.len();
+    f.command(Operation::Stop);
+    f.limit = usize::MAX;
+    assert_eq!(f.tick(&[]).error, None);
+    assert_eq!(f.emitted.len() - before, 33);
+    assert_eq!(f.emitted.last().unwrap().1, msg(&[0xb0, 64, 0]));
+}
+
+#[shoop_test]
+fn cleanup_resumes_one_message_at_a_time_without_restarting_recovery() {
+    let mut f = Fixture::new(16, 8);
+    f.command(Operation::Record);
+    f.tick(&[
+        event(0, &[0x90, 60, 80]),
+        event(0, &[0xb0, 64, 127]),
+        event(0, &[0xb0, 66, 127]),
+        event(0, &[0xb0, 69, 127]),
+    ]);
+    f.command(Operation::Stop);
+    f.tick(&[]);
+    f.command(Operation::Play {
+        position: 0,
+        retrigger: true,
+    });
+    f.tick(&[]);
+    f.command(Operation::Stop);
+    f.limit = 1;
+    let before = f.emitted.len();
+    for i in 0..4 {
+        let report = f.tick(&[]);
+        assert_eq!(
+            report.error,
+            if i == 3 { None } else { Some(Error::Capacity) }
+        );
+        assert!(!f.midi.recovery_pending());
+        assert_eq!(f.midi.cleanup_pending(), i != 3);
+        if i != 3 {
+            assert_eq!(f.midi.output_state(), Err(Error::Busy));
+        }
+    }
+    assert_eq!(
+        f.emitted[before..]
+            .iter()
+            .map(|(_, m)| *m)
+            .collect::<Vec<_>>(),
+        [
+            msg(&[0xb0, 64, 0]),
+            msg(&[0xb0, 66, 0]),
+            msg(&[0xb0, 69, 0]),
+            msg(&[0x80, 60, 0])
+        ]
+    );
+}
+
+#[shoop_test]
+fn recording_directly_from_playback_releases_the_previous_output_notes() {
+    let mut f = Fixture::new(16, 8);
+    f.command(Operation::Record);
+    f.tick(&[event(0, &[0x90, 60, 80])]);
+    f.command(Operation::Stop);
+    f.tick(&[]);
+    f.command(Operation::Play {
+        position: 0,
+        retrigger: true,
+    });
+    f.tick(&[]);
+    let before = f.emitted.len();
+    f.command(Operation::Record);
+    assert_eq!(f.tick(&[event(0, &[0x90, 61, 90])]).error, None);
+    assert_eq!(
+        f.emitted[before..]
+            .iter()
+            .map(|(_, m)| *m)
+            .collect::<Vec<_>>(),
+        [msg(&[0x80, 60, 0])]
+    );
+    assert_eq!(f.midi.take().records()[0].message, msg(&[0x90, 61, 90]));
+}
+
+#[shoop_test]
 fn a_fatal_audio_fault_silences_audio_and_leaves_midi_recovery_drainable() {
     use rt_fpga_reference::{jobs::Memory, storage::ViewId};
-    struct Fault;
+    #[derive(Default)]
+    struct Fault(core::cell::Cell<u32>);
     impl Memory for Fault {
         fn chunk_frames(&self) -> usize {
             1
@@ -433,7 +557,9 @@ fn a_fatal_audio_fault_silences_audio_and_leaves_midi_recovery_drainable() {
             Ok(())
         }
         fn fault(&self) -> Option<rt_fpga_reference::Error> {
-            Some(rt_fpga_reference::Error::MemoryFull)
+            let calls = self.0.get();
+            self.0.set(calls + 1);
+            (calls != 0).then_some(rt_fpga_reference::Error::MemoryFull)
         }
     }
     let mut f = Fixture::new(16, 8);
@@ -449,7 +575,7 @@ fn a_fatal_audio_fault_silences_audio_and_leaves_midi_recovery_drainable() {
     let result = assert_no_heap(|| {
         f.pipeline.process_midi_block(
             &mut f.jobs,
-            &mut Fault,
+            &mut Fault::default(),
             &[&f.input[..16]],
             &mut [&mut f.output[..16]],
             16,
@@ -462,6 +588,21 @@ fn a_fatal_audio_fault_silences_audio_and_leaves_midi_recovery_drainable() {
     assert!(f.output[..16].iter().all(|s| *s == Fixed::ZERO));
     assert!(f.pipeline.fault().is_some());
     assert!(f.midi.recovery_pending());
+    f.output[..16].fill(Fixed(7));
+    let again = assert_no_heap(|| {
+        f.pipeline.process_midi_block(
+            &mut f.jobs,
+            &mut Fault::default(),
+            &[&f.input[..16]],
+            &mut [&mut f.output[..16]],
+            16,
+            &mut f.midi,
+            &[],
+            &mut |_| Ok(()),
+        )
+    });
+    assert_eq!(again, result);
+    assert!(f.output[..16].iter().all(|s| *s == Fixed::ZERO));
     let mut count = 0;
     assert_no_heap(|| {
         f.midi.drain_recovery(0, &mut |_| {

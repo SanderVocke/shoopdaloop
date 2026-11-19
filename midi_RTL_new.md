@@ -176,20 +176,20 @@ with equivalent single-quantum calls. Commit the integrated path when green.
 
 ### 5. Validate end to end and prepare the PR
 
-- [ ] Run the complete milestone fixture through the Rust reference pipeline:
+- [x] Run the complete milestone fixture through the Rust reference pipeline:
   observe input while stopped, record notes/pedals/controllers, stop, play, repeat,
   stop, and start a new take. Check bytes, timestamps, state, and accepted output
   against an independently specified trace.
-- [ ] Run audio-only regressions and the combined audio/MIDI fixture. Exercise
+- [x] Run audio-only regressions and the combined audio/MIDI fixture. Exercise
   storage/output exhaustion and recovery with small capacities; verify supported
   processing and recovery perform no allocations after preparation.
-- [ ] Record configured capacities, memory footprint, and work counts for ordinary
+- [x] Record configured capacities, memory footprint, and work counts for ordinary
   notes, pedal release, reset, and cleanup/restoration. Include a small dense-event
   timing measurement as descriptive evidence, without claiming FPGA cycle counts
   or a hardware deadline.
-- [ ] Update the reference README and this plan with supported operations, message
+- [x] Update the reference README and this plan with supported operations, message
   policy, limits, test commands, results, and the next integration boundaries.
-- [ ] Run formatting, the test-policy checker if Rust tests changed, a
+- [x] Run formatting, the test-policy checker if Rust tests changed, a
   warning-denying workspace build, and the required native suite before pushing.
   Follow `.agents/info/build.md` and `.agents/info/test.md`; use the Nix development
   shell when applicable. Run targeted checks during development and the broader
@@ -235,3 +235,15 @@ timing results.
 - Storage: four integration tests and the counter-overflow unit test passed; crate build passed with warnings denied.
 
 - Integrated Rust pipeline: exact record/play/repeat/stop traces at Q=1/16/32/64/128 passed, including split-call equivalence, capacity faults, delayed output recovery, and audio-fault recovery.
+
+- Workspace build completed with `RUSTFLAGS="-D warnings"`. Cargo 1.100 reported existing manifest-level unused-dependency notices; no Rust warning failed the build.
+- Formatting, test-attribute policy and feature-parity checks passed.
+- The first full native test build exhausted disk during linking, before running tests. Generated incremental caches and abandoned Rust object files were removed; validation resumed with the same command and unchanged test settings.
+
+- Full native validation was restarted with `CARGO_PROFILE_DEV_DEBUG=0`, `CARGO_PROFILE_TEST_DEBUG=0` and `CARGO_INCREMENTAL=0`, matching the FPGA CI resource settings. Debug assertions and test logic remain enabled; no timeout or test-selection change was made.
+- Recovery regressions cover ordinary note-off refusal and partial initial restoration with a pedal already sent; acknowledged resets retain pedal ownership until stop releases it.
+
+- Final focused suite: 98 passed (24 new MIDI tests); final workspace build passed with warnings denied.
+- Full native suite: 3,456 passed, 13 failed, 11 skipped. Twelve native frontend startup checks report `Runtime(Capacity)`; a representative fails in 10 isolated attempts. The unchanged host shutdown-polling case fails in 10 nextest stress iterations. These are recorded validation failures, not a green full-suite claim.
+- Cleanup retains acknowledged field progress under one-message output capacity, without restarting emergency recovery. Direct play-to-record transitions release the old output notes.
+- Resource and CPU sample: see `docs/fpga/midi-reference-milestone.md`.
