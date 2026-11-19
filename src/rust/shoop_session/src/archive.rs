@@ -24,6 +24,8 @@ use thiserror::Error;
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
+mod carla;
+
 const MANIFEST_PATH: &str = "manifest.json";
 const PRE_ALIGNMENT_SESSION_DOCUMENT_VERSION: u16 = 6;
 const PRE_PROCESSOR_ADJUSTMENT_SESSION_DOCUMENT_VERSION: u16 = 7;
@@ -118,6 +120,8 @@ struct SessionManifest {
     media: Vec<MediaRecord>,
     #[serde(default)]
     scripts: Vec<ScriptResourceRecord>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    carla_checkpoints: Vec<carla::Record>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -166,6 +170,7 @@ fn encode_session_inner(
     limits: Option<CodecLimits>,
 ) -> Result<Vec<u8>, SessionError> {
     validate_bundle(bundle)?;
+    let mut budget = limits.map(Budget::new);
     if let Some(limits) = limits {
         if bundle.media.len()
             + bundle
@@ -180,7 +185,7 @@ fn encode_session_inner(
                 "encoded entry/script budget exceeded".into(),
             ));
         }
-        let mut budget = Budget::new(limits);
+        let budget = budget.as_mut().expect("codec budget");
         for media in bundle.media.values() {
             match media {
                 MediaPayload::Audio(a) => budget.charge(a.samples.len() as u64 * 4)?,
@@ -271,15 +276,32 @@ fn encode_session_inner(
         (left.owner_script_id, &left.relative_path)
             .cmp(&(right.owner_script_id, &right.relative_path))
     });
+    let mut document = bundle.document.clone();
+    let carla_checkpoints = carla::encode(
+        &mut document,
+        &mut payloads,
+        &mut remaining,
+        budget.as_mut(),
+    )?;
+    if limits.is_some_and(|limits| payloads.len() + 1 > limits.entries) {
+        return Err(SessionError::ResourceLimit(
+            "encoded entry budget exceeded".into(),
+        ));
+    }
     let manifest = SessionManifest {
         format: SESSION_FORMAT.to_owned(),
         format_version: FormatVersion::default(),
-        document_version: SESSION_DOCUMENT_VERSION,
+        document_version: if carla_checkpoints.is_empty() {
+            SESSION_DOCUMENT_VERSION
+        } else {
+            carla::DOCUMENT_VERSION
+        },
         writer_app_version: writer_app_version.to_owned(),
         sample_rate: bundle.document.sample_rate,
-        document: bundle.document.clone(),
+        document,
         media: records,
         scripts: script_records,
+        carla_checkpoints,
     };
     encode_zip_bounded(
         &manifest,
@@ -355,6 +377,7 @@ fn decode_session_inner(
                 | PRE_DYNAMIC_BUS_SESSION_DOCUMENT_VERSION
                 | PRE_COMPOSITE_TIMING_SESSION_DOCUMENT_VERSION
                 | SESSION_DOCUMENT_VERSION
+                | carla::DOCUMENT_VERSION
         )
     {
         return Err(SessionError::UnsupportedVersion {
@@ -398,6 +421,12 @@ fn decode_session_inner(
     let mut declared_paths = BTreeSet::from([MANIFEST_PATH.to_owned()]);
     declared_paths.extend(manifest.media.iter().map(|record| record.path.clone()));
     declared_paths.extend(manifest.scripts.iter().map(|record| record.path.clone()));
+    declared_paths.extend(
+        manifest
+            .carla_checkpoints
+            .iter()
+            .map(|record| record.path.clone()),
+    );
     if archive_paths != declared_paths {
         return Err(SessionError::Archive(format!(
             "archive entries do not match the manifest; undeclared={:?}, missing={:?}",
@@ -409,8 +438,20 @@ fn decode_session_inner(
                 .collect::<Vec<_>>()
         )));
     }
-    document_policy(&manifest.document)?;
     let mut budget = codec.map(Budget::new);
+    if manifest.document_version == carla::DOCUMENT_VERSION {
+        carla::decode(
+            &mut archive,
+            &mut manifest.document,
+            manifest.carla_checkpoints,
+            budget.as_mut(),
+        )?;
+    } else if !manifest.carla_checkpoints.is_empty() {
+        return Err(SessionError::Validation(
+            "Carla checkpoint entries require their document version".to_owned(),
+        ));
+    }
+    document_policy(&manifest.document)?;
     let script_bundles =
         decode_script_bundles(&mut archive, &manifest.document, manifest.scripts, limits)?;
     let mut media = BTreeMap::new();
