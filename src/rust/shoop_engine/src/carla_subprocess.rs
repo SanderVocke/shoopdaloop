@@ -1,4 +1,3 @@
-use crate::carla_native::CarlaNativeHost;
 use crate::carla_processor::{
     CarlaExternalUi, CarlaGenerationLog, CarlaMidiBuffer, CarlaProcessor, CarlaProcessorInfo,
     CarlaProcessorLifecycle, FakeCarlaProcessor, FakeProcessorBehavior,
@@ -9,15 +8,14 @@ use crate::FXChainType;
 use anyhow::{anyhow, Context, Result};
 use shoop_plugin_protocol::{
     read_frame, write_frame, BlockSequence, CarlaChainType, ChainId, ControlRequest,
-    ControlRequestKind, ControlResponse, ControlResponseKind, LifecycleState, MidiEvent,
-    ParentToWorker, ProcessGeneration, ProtocolError, ProtocolErrorCode, PrototypeBlockResult,
-    RequestId, WorkerExitKind, WorkerHello, WorkerStatus, WorkerToParent, MAX_AUDIO_CHANNELS,
-    MAX_BLOCK_FRAMES, MAX_MIDI_EVENTS_PER_BLOCK,
+    ControlRequestKind, ControlResponse, ControlResponseKind, MidiEvent, ParentToWorker,
+    ProcessGeneration, RequestId, WorkerExitKind, WorkerStatus, WorkerToParent, MAX_BLOCK_FRAMES,
+    MAX_MIDI_EVENTS_PER_BLOCK,
 };
 use std::collections::VecDeque;
 use std::fmt;
-use std::io::{Read, Write};
-use std::net::{SocketAddr, TcpListener, TcpStream, UdpSocket};
+use std::io::Read;
+use std::net::{TcpListener, TcpStream, UdpSocket};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -61,18 +59,6 @@ fn nonce_hex(nonce: &[u8; 32]) -> String {
     output
 }
 
-pub fn parse_nonce(value: &str) -> Result<[u8; 32]> {
-    if value.len() != 64 {
-        return Err(anyhow!("worker nonce must contain 64 hexadecimal digits"));
-    }
-    let mut nonce = [0u8; 32];
-    for (index, byte) in nonce.iter_mut().enumerate() {
-        *byte = u8::from_str_radix(&value[index * 2..index * 2 + 2], 16)
-            .context("worker nonce contains invalid hexadecimal")?;
-    }
-    Ok(nonce)
-}
-
 fn new_nonce() -> [u8; 32] {
     let mut nonce = [0u8; 32];
     nonce[..16].copy_from_slice(Uuid::new_v4().as_bytes());
@@ -80,233 +66,13 @@ fn new_nonce() -> [u8; 32] {
     nonce
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CarlaWorkerTestMode {
-    Fake,
-    Abort,
-    ProcessError,
-    Hang,
-    DelayOnce,
-    UiClose,
-    FloodLogs,
-    MalformedHandshake,
-    HangShutdown,
-}
+use shoop_carla::child::ChildPlugin;
+pub use shoop_carla::child::{
+    parse_nonce, worker_options, CarlaWorkerOptions, CarlaWorkerTestMode,
+};
 
-impl std::str::FromStr for CarlaWorkerTestMode {
-    type Err = anyhow::Error;
-
-    fn from_str(value: &str) -> Result<Self> {
-        match value {
-            "fake" => Ok(Self::Fake),
-            "abort" => Ok(Self::Abort),
-            "process-error" => Ok(Self::ProcessError),
-            "hang" => Ok(Self::Hang),
-            "delay-once" => Ok(Self::DelayOnce),
-            "ui-close" => Ok(Self::UiClose),
-            "flood-logs" => Ok(Self::FloodLogs),
-            "malformed-handshake" => Ok(Self::MalformedHandshake),
-            "hang-shutdown" => Ok(Self::HangShutdown),
-            _ => Err(anyhow!("unknown Carla worker test mode {value:?}")),
-        }
-    }
-}
-
-impl fmt::Display for CarlaWorkerTestMode {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::Fake => "fake",
-            Self::Abort => "abort",
-            Self::ProcessError => "process-error",
-            Self::Hang => "hang",
-            Self::DelayOnce => "delay-once",
-            Self::UiClose => "ui-close",
-            Self::FloodLogs => "flood-logs",
-            Self::MalformedHandshake => "malformed-handshake",
-            Self::HangShutdown => "hang-shutdown",
-        })
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct CarlaWorkerOptions {
-    pub address: SocketAddr,
-    pub nonce: [u8; 32],
-    pub chain_id: ChainId,
-    pub generation: ProcessGeneration,
-    pub shared_memory_path: PathBuf,
-    pub test_mode: Option<CarlaWorkerTestMode>,
-}
-
-fn response(
-    options: &CarlaWorkerOptions,
-    request_id: RequestId,
-    kind: ControlResponseKind,
-) -> WorkerToParent {
-    WorkerToParent::Control(ControlResponse {
-        request_id,
-        chain_id: options.chain_id,
-        generation: options.generation,
-        kind,
-    })
-}
-
-fn protocol_error(error: impl fmt::Display) -> ControlResponseKind {
-    ControlResponseKind::Error(ProtocolError {
-        code: ProtocolErrorCode::HostFailure,
-        message: error.to_string(),
-    })
-}
-
-struct SharedMemoryCleanup(PathBuf);
-
-impl Drop for SharedMemoryCleanup {
-    fn drop(&mut self) {
-        // On Unix the worker may unlink while the parent mapping is still open;
-        // on Windows this succeeds after an abnormal parent exit and otherwise
-        // the parent's NamedTempFile performs the normal cleanup.
-        let _ = std::fs::remove_file(&self.0);
-    }
-}
-
-struct SharedWorkerGuard {
-    stop: Arc<AtomicBool>,
-    thread: Option<JoinHandle<()>>,
-}
-
-impl Drop for SharedWorkerGuard {
-    fn drop(&mut self) {
-        self.stop.store(true, Ordering::Release);
-        if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
-        }
-    }
-}
-
-type WorkerHost = Box<dyn CarlaProcessor>;
-
-fn run_shared_worker(
-    mut transport: SharedBlockTransport,
-    host: Arc<Mutex<Option<WorkerHost>>>,
-    stop: Arc<AtomicBool>,
-    processed_blocks: Arc<AtomicU64>,
-    notification: UdpSocket,
-    notification_token: [u8; 16],
-) {
-    let mut midi_inputs = CarlaMidiBuffer::new(
-        MAX_MIDI_EVENTS_PER_BLOCK,
-        crate::midi_storage::MAX_MSG_BYTES,
-    );
-    let mut midi_outputs = CarlaMidiBuffer::new(
-        MAX_MIDI_EVENTS_PER_BLOCK,
-        crate::midi_storage::MAX_MSG_BYTES,
-    );
-    let mut notification_buffer = [0_u8; 16];
-    while !stop.load(Ordering::Acquire) {
-        let Some(token) = transport.worker_take() else {
-            match notification.recv(&mut notification_buffer) {
-                Ok(read)
-                    if read == notification_token.len()
-                        && notification_buffer == notification_token => {}
-                Ok(_) => continue,
-                Err(error)
-                    if matches!(
-                        error.kind(),
-                        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
-                    ) =>
-                {
-                    continue
-                }
-                Err(_) => break,
-            }
-            continue;
-        };
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Result<()> {
-            let mut host = host.lock().unwrap_or_else(|error| error.into_inner());
-            let host = host
-                .as_mut()
-                .ok_or_else(|| anyhow!("shared block arrived before Carla instantiation"))?;
-            let info = host.info();
-            if transport.worker_audio_input_channels(token) != info.audio_inputs
-                || transport.worker_audio_output_channels(token) != info.audio_outputs
-            {
-                return Err(anyhow!(
-                    "shared block channel layout does not match Carla host"
-                ));
-            }
-            for channel in 0..info.audio_inputs {
-                let destination = host
-                    .audio_input_mut(channel)
-                    .ok_or_else(|| anyhow!("Carla audio input {channel} disappeared"))?;
-                transport.worker_copy_audio_input(token, channel, destination)?;
-            }
-            let (midi_pool, midi_count) = midi_inputs.storage_mut();
-            transport.worker_read_midi_reusing(token, midi_pool, midi_count)?;
-            if info.midi_inputs > 0 {
-                let mut refs = [(0_u32, &[][..]); MAX_MIDI_EVENTS_PER_BLOCK];
-                for (destination, event) in refs.iter_mut().zip(midi_inputs.as_slice()) {
-                    *destination = (event.frame_offset, event.data.as_slice());
-                }
-                host.set_midi_input_events(0, &refs[..midi_inputs.as_slice().len()])?;
-            }
-            host.process(token.frames)?;
-            midi_outputs.clear();
-            if info.midi_outputs > 0 {
-                host.fill_midi_output_events(0, &mut midi_outputs)?;
-            }
-            let mut audio_outputs = [&[][..]; MAX_AUDIO_CHANNELS];
-            for (channel, output) in audio_outputs
-                .iter_mut()
-                .enumerate()
-                .take(info.audio_outputs)
-            {
-                *output = host
-                    .audio_output(channel)
-                    .ok_or_else(|| anyhow!("Carla audio output {channel} disappeared"))?;
-            }
-            transport.worker_complete(
-                token,
-                &audio_outputs[..info.audio_outputs],
-                midi_outputs.as_slice(),
-            )?;
-            processed_blocks.fetch_add(1, Ordering::Relaxed);
-            Ok(())
-        }));
-        match result {
-            Ok(Ok(())) => {}
-            Ok(Err(error))
-                if matches!(
-                    error.downcast_ref::<crate::carla_shared_memory::SharedBlockError>(),
-                    Some(
-                        crate::carla_shared_memory::SharedBlockError::DeadlineMiss
-                            | crate::carla_shared_memory::SharedBlockError::StaleCompletion
-                    )
-                ) =>
-            {
-                // The parent owns deadline accounting and bounded fallback.
-                // A stale realtime block is recoverable and must not turn one
-                // scheduling miss into a supervised-process crash.
-            }
-            Ok(Err(error)) => {
-                eprintln!("Carla shared-memory worker failed: {error:#}");
-                std::process::exit(70);
-            }
-            Err(_) => {
-                eprintln!("Carla shared-memory worker panicked");
-                std::process::abort();
-            }
-        }
-    }
-}
-
-fn instantiate_worker_host(
-    options: &CarlaWorkerOptions,
-    chain_type: CarlaChainType,
-    sample_rate: u32,
-    nominal_buffer_size: u32,
-    ui_dispatcher: crate::carla_native::CarlaMainThreadUiDispatcher,
-) -> Result<WorkerHost> {
-    if let Some(mode) = options.test_mode {
+pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
+    shoop_carla::child::run_with_factory(options, |mode, chain_type| {
         let mut fake = FakeCarlaProcessor::new(
             engine_chain_type(chain_type),
             chain_type.audio_channels() as usize,
@@ -338,321 +104,52 @@ fn instantiate_worker_host(
         };
         fake.set_behavior(behavior);
         Ok(Box::new(fake))
-    } else {
-        CarlaNativeHost::instantiate_with_ui_dispatcher(
-            engine_chain_type(chain_type),
-            sample_rate,
-            nominal_buffer_size,
-            ui_dispatcher,
-        )
-        .map(|host| Box::new(host) as WorkerHost)
-    }
+    })
 }
 
-pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
-    let (mut ui_service, ui_dispatcher) = crate::carla_native::CarlaMainThreadUiService::new();
-    let mut stream = TcpStream::connect_timeout(&options.address, STARTUP_TIMEOUT)
-        .context("worker could not connect to parent")?;
-    stream.set_nodelay(true)?;
-    // A short timeout lets the control owner service Carla's UI without depending
-    // on control traffic. Timeouts are idle ticks, not worker failures.
-    stream.set_read_timeout(Some(Duration::from_millis(30)))?;
-    stream.set_write_timeout(Some(CONTROL_TIMEOUT))?;
-    let notification = UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST, 0))?;
-    notification.set_read_timeout(Some(Duration::from_millis(10)))?;
-    let mut hello = WorkerHello::current(options.nonce, options.generation);
-    hello.notification_port = notification.local_addr()?.port();
-    if options.test_mode == Some(CarlaWorkerTestMode::MalformedHandshake) {
-        hello.protocol_version = hello.protocol_version.saturating_add(1);
+impl ChildPlugin for FakeCarlaProcessor {
+    fn set_active(&mut self, active: bool) {
+        CarlaProcessor::set_active(self, active)
     }
-    if options.test_mode == Some(CarlaWorkerTestMode::FloodLogs) {
-        let flood = vec![b'x'; LOG_CAPACITY * 4];
-        std::io::stdout().write_all(&flood)?;
-        std::io::stderr().write_all(&flood)?;
-    }
-    write_frame(
-        &mut stream,
-        &response(
-            &options,
-            RequestId(1),
-            ControlResponseKind::Handshake(hello),
-        ),
-    )?;
 
-    let shared_transport = SharedBlockTransport::open(
-        &options.shared_memory_path,
-        options.generation,
-        &options.nonce,
-    )?;
-    let _shared_memory_cleanup = SharedMemoryCleanup(options.shared_memory_path.clone());
-    let host: Arc<Mutex<Option<WorkerHost>>> = Arc::new(Mutex::new(None));
-    let mut external_ui: Option<Arc<dyn CarlaExternalUi>> = None;
-    let stop = Arc::new(AtomicBool::new(false));
-    let processed_blocks = Arc::new(AtomicU64::new(0));
-    let shared_thread = thread::Builder::new()
-        .name("carla-worker-realtime".to_owned())
-        .spawn({
-            let host = Arc::clone(&host);
-            let stop = Arc::clone(&stop);
-            let processed_blocks = Arc::clone(&processed_blocks);
-            let notification_token: [u8; 16] = options.nonce[..16]
-                .try_into()
-                .expect("nonce prefix has fixed size");
-            move || {
-                run_shared_worker(
-                    shared_transport,
-                    host,
-                    stop,
-                    processed_blocks,
-                    notification,
-                    notification_token,
-                )
-            }
-        })?;
-    let _shared_worker = SharedWorkerGuard {
-        stop,
-        thread: Some(shared_thread),
-    };
-    let mut status = WorkerStatus {
-        lifecycle: LifecycleState::Starting,
-        generation: options.generation,
-        ..Default::default()
-    };
-    loop {
-        ui_service.pump();
-        let mut available = [0_u8; 1];
-        match stream.peek(&mut available) {
-            Ok(0) => return Ok(()),
-            Ok(_) => {}
-            Err(error)
-                if matches!(
-                    error.kind(),
-                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
-                ) =>
-            {
-                continue;
-            }
-            Err(error) => return Err(error.into()),
-        }
-        // Once a frame starts, read it without a timeout so a partial TCP frame
-        // cannot be mistaken for a fresh header on the next idle tick.
-        stream.set_read_timeout(None)?;
-        let result = read_frame(&mut stream);
-        stream.set_read_timeout(Some(Duration::from_millis(30)))?;
-        let message: ParentToWorker = match result {
-            Ok(message) => message,
-            Err(shoop_plugin_protocol::WireError::Io(error))
-                if matches!(
-                    error.kind(),
-                    std::io::ErrorKind::UnexpectedEof
-                        | std::io::ErrorKind::ConnectionReset
-                        | std::io::ErrorKind::BrokenPipe
-                ) =>
-            {
-                return Ok(());
-            }
-            Err(error) => return Err(error.into()),
-        };
-        match message {
-            ParentToWorker::Control(request) => {
-                if let Err(error) = request.validate() {
-                    write_frame(
-                        &mut stream,
-                        &response(&options, request.request_id, protocol_error(error)),
-                    )?;
-                    continue;
-                }
-                if request.chain_id != options.chain_id || request.generation != options.generation
-                {
-                    write_frame(
-                        &mut stream,
-                        &response(
-                            &options,
-                            request.request_id,
-                            ControlResponseKind::Error(ProtocolError {
-                                code: ProtocolErrorCode::StaleGeneration,
-                                message: "request identity does not match worker".to_owned(),
-                            }),
-                        ),
-                    )?;
-                    continue;
-                }
-                let request_id = request.request_id;
-                if let (ControlRequestKind::SetVisible(visible), Some(ui)) =
-                    (&request.kind, external_ui.as_ref())
-                {
-                    let kind = match ui.set_visible(*visible) {
-                        Ok(()) => {
-                            status.visible = ui.is_visible();
-                            ControlResponseKind::Ack
-                        }
-                        Err(error) => protocol_error(error),
-                    };
-                    write_frame(&mut stream, &response(&options, request_id, kind))?;
-                    continue;
-                }
-                let mut host = host.lock().unwrap_or_else(|error| error.into_inner());
-                let kind = match request.kind {
-                    ControlRequestKind::Instantiate {
-                        chain_type,
-                        sample_rate,
-                        nominal_buffer_size,
-                    } => match instantiate_worker_host(
-                        &options,
-                        chain_type,
-                        sample_rate,
-                        nominal_buffer_size,
-                        ui_dispatcher.clone(),
-                    ) {
-                        Ok(created) => {
-                            external_ui = created.external_ui();
-                            *host = Some(created);
-                            status.lifecycle = LifecycleState::Running;
-                            status.ready = true;
-                            ControlResponseKind::Ack
-                        }
-                        Err(error) => {
-                            status.lifecycle = LifecycleState::Unavailable;
-                            status.exit_kind = WorkerExitKind::StartupFailure;
-                            protocol_error(error)
-                        }
-                    },
-                    ControlRequestKind::SetActive(active) => match host.as_mut() {
-                        Some(host) => {
-                            host.set_active(active);
-                            status.active = active;
-                            ControlResponseKind::Ack
-                        }
-                        None => protocol_error("Carla host is not instantiated"),
-                    },
-                    ControlRequestKind::SetVisible(visible) => {
-                        if let Some(ui) = &external_ui {
-                            match ui.set_visible(visible) {
-                                Ok(()) => {
-                                    status.visible = ui.is_visible();
-                                    ControlResponseKind::Ack
-                                }
-                                Err(error) => protocol_error(error),
-                            }
-                        } else {
-                            match host.as_mut() {
-                                Some(host) => match host.set_visible(visible) {
-                                    Ok(()) => {
-                                        status.visible = host.is_visible();
-                                        ControlResponseKind::Ack
-                                    }
-                                    Err(error) => protocol_error(error),
-                                },
-                                None => protocol_error("Carla host is not instantiated"),
-                            }
-                        }
-                    }
-                    ControlRequestKind::SaveState => match host.as_mut() {
-                        Some(host) => match host.save_state() {
-                            Ok(state) => ControlResponseKind::State(state),
-                            Err(error) => protocol_error(error),
-                        },
-                        None => protocol_error("Carla host is not instantiated"),
-                    },
-                    ControlRequestKind::RestoreState(state) => match host.as_mut() {
-                        Some(host) => match host.restore_state(&state) {
-                            Ok(()) => ControlResponseKind::Ack,
-                            Err(error) => protocol_error(error),
-                        },
-                        None => protocol_error("Carla host is not instantiated"),
-                    },
-                    ControlRequestKind::Status => {
-                        if let Some(host) = host.as_mut() {
-                            status.active = host.is_active();
-                            status.visible = external_ui
-                                .as_ref()
-                                .map(|ui| ui.is_visible())
-                                .unwrap_or_else(|| host.is_visible());
-                        }
-                        status.processed_blocks = processed_blocks.load(Ordering::Relaxed);
-                        ControlResponseKind::Status(status.clone())
-                    }
-                    ControlRequestKind::Ping => ControlResponseKind::Pong,
-                    ControlRequestKind::Shutdown => {
-                        if options.test_mode == Some(CarlaWorkerTestMode::HangShutdown) {
-                            thread::sleep(
-                                CONTROL_TIMEOUT + SHUTDOWN_TIMEOUT + Duration::from_secs(2),
-                            );
-                        }
-                        write_frame(
-                            &mut stream,
-                            &response(&options, request_id, ControlResponseKind::Ack),
-                        )?;
-                        return Ok(());
-                    }
-                    ControlRequestKind::Handshake(_) => {
-                        protocol_error("worker handshake is initiated by the worker")
-                    }
-                };
-                write_frame(&mut stream, &response(&options, request_id, kind))?;
-            }
-            ParentToWorker::Process(block) => {
-                if let Err(error) = block.validate() {
-                    return Err(error.into());
-                }
-                if block.generation != options.generation {
-                    status.stale_completions = status.stale_completions.saturating_add(1);
-                    continue;
-                }
-                let mut host = host.lock().unwrap_or_else(|error| error.into_inner());
-                let host = host
-                    .as_mut()
-                    .ok_or_else(|| anyhow!("received process block before instantiation"))?;
-                let info = host.info();
-                if block.audio_inputs.len() != info.audio_inputs {
-                    return Err(anyhow!(
-                        "audio input channel count does not match Carla host"
-                    ));
-                }
-                for (index, source) in block.audio_inputs.iter().enumerate() {
-                    let destination = host
-                        .audio_input_mut(index)
-                        .ok_or_else(|| anyhow!("Carla audio input {index} disappeared"))?;
-                    destination[..block.frames as usize].copy_from_slice(source);
-                }
-                let midi: Vec<_> = block
-                    .midi_inputs
-                    .iter()
-                    .map(|event| (event.frame_offset, event.data.as_slice()))
-                    .collect();
-                if info.midi_inputs > 0 {
-                    host.set_midi_input_events(0, &midi)?;
-                }
-                host.process(block.frames as usize)?;
-                let mut audio_outputs = Vec::with_capacity(info.audio_outputs);
-                for index in 0..info.audio_outputs {
-                    audio_outputs.push(
-                        host.audio_output(index)
-                            .ok_or_else(|| anyhow!("Carla audio output {index} disappeared"))?
-                            [..block.frames as usize]
-                            .to_vec(),
-                    );
-                }
-                let mut midi_outputs = Vec::new();
-                if info.midi_outputs > 0 {
-                    midi_outputs.extend(
-                        host.midi_output_events(0)?
-                            .into_iter()
-                            .map(|(frame_offset, data)| MidiEvent { frame_offset, data }),
-                    );
-                }
-                processed_blocks.fetch_add(1, Ordering::Relaxed);
-                let result = PrototypeBlockResult {
-                    sequence: block.sequence,
-                    generation: options.generation,
-                    frames: block.frames,
-                    audio_outputs,
-                    midi_outputs,
-                };
-                result.validate()?;
-                write_frame(&mut stream, &WorkerToParent::Process(result))?;
-            }
-        }
+    fn is_active(&self) -> bool {
+        CarlaProcessor::is_active(self)
+    }
+
+    fn set_visible(&mut self, visible: bool) -> Result<()> {
+        CarlaProcessor::set_visible(self, visible)
+    }
+
+    fn is_visible(&mut self) -> bool {
+        CarlaProcessor::is_visible(self)
+    }
+
+    fn save_state(&mut self) -> Result<String> {
+        CarlaProcessor::save_state(self)
+    }
+
+    fn restore_state(&mut self, state: &str) -> Result<()> {
+        CarlaProcessor::restore_state(self, state)
+    }
+
+    fn audio_input_mut(&mut self, channel: usize) -> Option<&mut [f32]> {
+        CarlaProcessor::audio_input_mut(self, channel)
+    }
+
+    fn audio_output(&self, channel: usize) -> Option<&[f32]> {
+        CarlaProcessor::audio_output(self, channel)
+    }
+
+    fn process(&mut self, frames: usize) -> Result<()> {
+        CarlaProcessor::process(self, frames)
+    }
+
+    fn set_midi_input(&mut self, events: &[(u32, &[u8])]) -> Result<()> {
+        self.set_midi_input_events(0, events)
+    }
+
+    fn fill_midi_output(&mut self, output: &mut CarlaMidiBuffer) -> Result<()> {
+        self.fill_midi_output_events(0, output)
     }
 }
 

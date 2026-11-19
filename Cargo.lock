@@ -5815,6 +5815,8 @@ dependencies = [
  "anyhow",
  "cpal 0.18.2",
  "shoop_backend",
+ "shoop_carla",
+ "shoop_plugin_protocol",
  "shoop_rt_backend",
  "shoop_rt_engine",
  "shoop_rt_host_native",

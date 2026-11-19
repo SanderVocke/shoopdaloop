@@ -53,67 +53,10 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<std::ffi::OsStr>,
 {
-    let args = args
-        .into_iter()
-        .map(|value| {
-            value
-                .as_ref()
-                .to_str()
-                .map(str::to_owned)
-                .ok_or_else(|| anyhow!("Carla worker arguments must be valid UTF-8"))
-        })
-        .collect::<Result<Vec<_>>>()?;
-    if !args.iter().any(|argument| argument == "--carla-worker") {
+    let Some(options) = shoop_engine::carla_subprocess::worker_options(args)? else {
         return Ok(false);
-    }
-    let value = |name: &str| -> Result<String> {
-        let prefix = format!("{name}=");
-        for (index, argument) in args.iter().enumerate() {
-            if let Some(value) = argument.strip_prefix(&prefix) {
-                return Ok(value.to_owned());
-            }
-            if argument == name {
-                return args
-                    .get(index + 1)
-                    .cloned()
-                    .ok_or_else(|| anyhow!("missing value for {name}"));
-            }
-        }
-        Err(anyhow!("missing Carla worker argument {name}"))
     };
-    let nonce = value("--carla-worker-nonce")?;
-    if nonce.len() != 64 {
-        return Err(anyhow!("Carla worker nonce must contain 64 hex digits"));
-    }
-    let mut decoded_nonce = [0_u8; 32];
-    for (index, byte) in decoded_nonce.iter_mut().enumerate() {
-        *byte = u8::from_str_radix(&nonce[index * 2..index * 2 + 2], 16)
-            .map_err(|_| anyhow!("Carla worker nonce is not hexadecimal"))?;
-    }
-    let test_mode = args
-        .iter()
-        .position(|argument| {
-            argument == "--carla-worker-test-mode"
-                || argument.starts_with("--carla-worker-test-mode=")
-        })
-        .map(|_| value("--carla-worker-test-mode"))
-        .transpose()?
-        .map(|value| value.parse())
-        .transpose()?;
-    shoop_engine::carla_subprocess::run_carla_worker(
-        shoop_engine::carla_subprocess::CarlaWorkerOptions {
-            address: value("--carla-worker-address")?
-                .parse()
-                .map_err(|error| anyhow!("invalid Carla worker address: {error}"))?,
-            nonce: decoded_nonce,
-            chain_id: shoop_plugin_protocol::ChainId(value("--carla-worker-chain-id")?.parse()?),
-            generation: shoop_plugin_protocol::ProcessGeneration(
-                value("--carla-worker-generation")?.parse()?,
-            ),
-            shared_memory_path: value("--carla-worker-shared-memory")?.into(),
-            test_mode,
-        },
-    )?;
+    shoop_engine::carla_subprocess::run_carla_worker(options)?;
     Ok(true)
 }
 

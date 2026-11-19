@@ -48,7 +48,8 @@ impl CarlaNativeHost {
         Ok(Self { host, chain_type })
     }
 
-    pub(crate) fn instantiate_with_ui_dispatcher(
+    #[cfg(all(test, feature = "carla-system-tests"))]
+    fn instantiate_with_ui_dispatcher(
         chain_type: FXChainType,
         rate: u32,
         frames: u32,
@@ -148,7 +149,7 @@ impl CarlaProcessor for CarlaNativeHost {
     ) -> Result<()> {
         destination.clear();
         self.host
-            .visit_midi_output(index, |frame, bytes| destination.push(frame, bytes))
+            .visit_midi_output(index, |frame, bytes| Ok(destination.push(frame, bytes)?))
     }
 
     fn process(&mut self, frames: usize) -> Result<()> {

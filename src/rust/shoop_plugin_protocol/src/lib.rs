@@ -6,11 +6,15 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::io::{Read, Write};
 
+mod midi_buffer;
+pub use midi_buffer::{MidiBufferError, PreparedMidiBuffer};
+
 pub const PROTOCOL_VERSION: u32 = 3;
 pub const MAX_AUDIO_CHANNELS: usize = 16;
 pub const MAX_BLOCK_FRAMES: usize = 8192;
 pub const MAX_MIDI_EVENTS_PER_BLOCK: usize = 1024;
 pub const MAX_MIDI_BYTES_PER_BLOCK: usize = 8192;
+pub const MAX_NATIVE_MIDI_PACKET_BYTES: usize = 4;
 pub const MAX_CONTROL_PAYLOAD_BYTES: usize = 16 * 1024 * 1024;
 pub const MAX_STATE_BYTES: usize = 16 * 1024 * 1024;
 pub const MAX_ERROR_MESSAGE_BYTES: usize = 4096;
