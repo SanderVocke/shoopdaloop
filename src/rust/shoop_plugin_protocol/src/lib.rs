@@ -8,6 +8,7 @@ use std::io::{Read, Write};
 
 mod hosted;
 mod midi_buffer;
+pub mod state;
 pub use hosted::{CarlaGenerationLog, CarlaProcessorInfo, CarlaProcessorLifecycle};
 pub use midi_buffer::{MidiBufferError, PreparedMidiBuffer};
 

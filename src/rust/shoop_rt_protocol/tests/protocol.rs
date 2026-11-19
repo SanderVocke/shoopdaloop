@@ -1055,7 +1055,7 @@ fn processor_catalog_wire_refuses_capacity_and_resource_inconsistency() {
             carla: Default::default(),
         },
         reserved_bytes: 4 << 20,
-        channels: 8,
+        channels: MAX_STRIP_CHANNELS as u8,
         builtin_latency_frames: 32,
         carla_latency_frames: 0,
     };
@@ -1063,7 +1063,7 @@ fn processor_catalog_wire_refuses_capacity_and_resource_inconsistency() {
     for invalid in 0..4 {
         let valid = limits;
         match invalid {
-            0 => limits.channels = 9,
+            0 => limits.channels = MAX_STRIP_CHANNELS as u8 + 1,
             1 => limits.reserved_bytes = limits.effective.memory_bytes + 1,
             2 => limits.effective.fx_instances = 65,
             _ => limits.effective.fx_unavailable = Some(processors::Unavailable::NotCompiled),

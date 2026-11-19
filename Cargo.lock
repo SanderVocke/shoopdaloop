@@ -5358,7 +5358,6 @@ name = "shoop_carla"
 version = "0.3.0"
 dependencies = [
  "anyhow",
- "base64",
  "getrandom 0.4.3",
  "libc",
  "libloading 0.9.0",
@@ -5368,7 +5367,6 @@ dependencies = [
  "rt_buffered",
  "rt_runtime",
  "serde",
- "serde_json",
  "shoop_plugin_protocol",
  "shoop_tracing",
  "shoop_wasm_test_support",
@@ -5706,6 +5704,8 @@ dependencies = [
 name = "shoop_plugin_protocol"
 version = "0.3.0"
 dependencies = [
+ "anyhow",
+ "base64",
  "serde",
  "serde_json",
  "shoop_processor_protocol",

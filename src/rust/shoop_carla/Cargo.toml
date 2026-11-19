@@ -7,12 +7,11 @@ edition = "2021"
 workspace = true
 
 [features]
-native = ["dep:base64", "dep:getrandom", "dep:libloading", "dep:quick-xml", "dep:rfd", "dep:serde", "dep:serde_json", "dep:shoop_tracing", "dep:tracing"]
+native = ["dep:getrandom", "dep:libloading", "dep:quick-xml", "dep:rfd", "dep:serde", "dep:shoop_tracing", "dep:tracing"]
 buffered = ["native", "dep:rt_buffered", "dep:rt_runtime"]
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 anyhow = { workspace = true, features = ["std"] }
-base64 = { workspace = true, optional = true }
 getrandom = { version = "0.4", optional = true }
 libc = { workspace = true }
 libloading = { workspace = true, optional = true }
@@ -22,7 +21,6 @@ rfd = { workspace = true, default-features = false, features = ["xdg-portal", "a
 rt_buffered = { path = "../rt_buffered", optional = true }
 rt_runtime = { path = "../rt_runtime", optional = true }
 serde = { workspace = true, features = ["derive"], optional = true }
-serde_json = { workspace = true, optional = true }
 shoop_plugin_protocol = { path = "../shoop_plugin_protocol" }
 shoop_tracing = { workspace = true, features = ["perfetto"], optional = true }
 tempfile = { workspace = true }
