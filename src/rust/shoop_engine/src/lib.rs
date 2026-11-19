@@ -15,7 +15,7 @@ pub mod audio_preview;
 pub mod basic_loop;
 pub mod buffer_queue;
 pub mod builtin_fx;
-#[cfg(feature = "carla")]
+#[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
 pub mod carla_native;
 pub mod carla_processor;
 #[cfg(not(target_arch = "wasm32"))]

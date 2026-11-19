@@ -25,7 +25,6 @@ jack-sys = { workspace = true, optional = true }
 cpal = { workspace = true, optional = true }
 # MIDI for hosts without JACK. Optional for the same reason.
 midir = { workspace = true, optional = true }
-libloading = { workspace = true, optional = true }
 assert_no_alloc = { workspace = true }
 shoop_plugin_protocol = { path = "../shoop_plugin_protocol" }
 shoop_latency = { path = "../shoop_latency" }
@@ -39,7 +38,6 @@ libc = { workspace = true }
 shoop_carla = { path = "../shoop_carla" }
 shoop_tracing = { workspace = true, features = ["perfetto"] }
 uuid = { workspace = true }
-rfd = { workspace = true, default-features = false, features = ["xdg-portal", "async-std"], optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 shoop_tracing = { workspace = true, default-features = false }
@@ -52,7 +50,7 @@ prebuild = []
 jack = ["dep:jack", "dep:jack-sys"]
 cpal = ["dep:cpal", "midir"]
 midir = ["dep:midir"]
-carla = ["shoop_carla/native", "dep:libloading", "dep:rfd"]
+carla = ["shoop_carla/native"]
 carla-system-tests = ["carla"]
 native_audio_backend = ["app_backend", "cpal"]
 app_backend = ["jack"]

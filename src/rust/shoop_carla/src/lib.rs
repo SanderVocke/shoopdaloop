@@ -5,6 +5,8 @@
 mod carla_completion;
 pub mod carla_shared_memory;
 #[cfg(feature = "native")]
+pub mod native;
+#[cfg(feature = "native")]
 pub mod state;
 
 #[cfg(test)]
