@@ -157,16 +157,16 @@ byte/order equality, and allocation guards. Commit before pipeline integration.
 
 ### 4. Connect record/play to the Rust reference pipeline
 
-- [ ] Add prepared MIDI bindings and input/output buffers for one loop. Consume
+- [x] Add prepared MIDI bindings and input/output buffers for one loop. Consume
   existing loop render decisions alongside audio execution, with no duplicate
   transition resolver or frame clock.
-- [ ] Implement record, stop/finalize, play from the beginning, repeat, initial
+- [x] Implement record, stop/finalize, play from the beginning, repeat, initial
   restoration, and stop cleanup. Refuse unsupported operations such as a nonzero
   playback start before changing MIDI state.
-- [ ] Keep output/recovery progress on refusal. Distinguish MIDI capacity results
+- [x] Keep output/recovery progress on refusal. Distinguish MIDI capacity results
   from fatal pipeline faults, preserve the existing audio fault contract, and
   expose enough status to prevent a partial capture from appearing successful.
-- [ ] Add a combined pipeline fixture and confirm existing shared compiler and
+- [x] Add a combined pipeline fixture and confirm existing shared compiler and
   hardware targets still refuse MIDI graphs.
 
 Verification: exact output traces at Q=1/16/32/64/128, including equal-time events,
@@ -233,3 +233,5 @@ timing results.
 
 - State component: six focused tests passed, including generated comparison and independent sustain model; crate build passed with warnings denied.
 - Storage: four integration tests and the counter-overflow unit test passed; crate build passed with warnings denied.
+
+- Integrated Rust pipeline: exact record/play/repeat/stop traces at Q=1/16/32/64/128 passed, including split-call equivalence, capacity faults, delayed output recovery, and audio-fault recovery.

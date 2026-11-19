@@ -49,8 +49,12 @@ impl Take {
         if events == 0 || (events as u64) * (size_of::<Record>() as u64) > isize::MAX as u64 {
             return Err(Error::Capacity);
         }
+        let mut records = Vec::new();
+        records
+            .try_reserve_exact(events as usize)
+            .map_err(|_| Error::Capacity)?;
         Ok(Self {
-            records: Vec::with_capacity(events as usize),
+            records,
             limit: events,
             initial: MidiState::default(),
             frames: 0,
@@ -73,6 +77,14 @@ impl Take {
     }
     pub fn append_window(&mut self, frames: u32, events: &[Event]) -> Result<(), Error> {
         Event::validate_window(events, frames)?;
+        self.append_window_at(frames, 0, events)
+    }
+    pub(super) fn append_window_at(
+        &mut self,
+        frames: u32,
+        base: u32,
+        events: &[Event],
+    ) -> Result<(), Error> {
         if self.status != TakeStatus::Recording {
             return Err(Error::InvalidState);
         }
@@ -86,7 +98,7 @@ impl Take {
                 return Err(Error::Capacity);
             }
             self.records.push(Record {
-                frame: self.frames + u64::from(event.offset),
+                frame: self.frames + u64::from(event.offset - base),
                 order: self.records.len() as u32,
                 message: event.message,
             });

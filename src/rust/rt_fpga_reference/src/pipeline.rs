@@ -30,6 +30,7 @@ pub enum PipelineError {
 pub trait Observer {
     fn settled(&mut self, _state: &StateProcessor) {}
     fn processed(&mut self, _jobs: &JobProcessor) {}
+    fn quantum(&mut self, _state: &StateProcessor, _base: usize) {}
 }
 impl Observer for () {}
 
@@ -246,6 +247,36 @@ impl Pipeline {
         }
         result
     }
+    /// MIDI capacity/refusal is reported independently from fatal audio failures.
+    pub fn process_midi_block(
+        &mut self,
+        jobs: &mut JobProcessor,
+        memory: &mut impl Memory,
+        inputs: &[&[Fixed]],
+        outputs: &mut [&mut [Fixed]],
+        frames: usize,
+        midi: &mut crate::midi::Engine,
+        events: &[crate::midi::Event],
+        sink: &mut impl FnMut(crate::midi::Event) -> Result<(), crate::midi::Error>,
+    ) -> Result<crate::midi::Report, crate::midi::ProcessError> {
+        midi.validate(&self.state, frames, events)
+            .map_err(crate::midi::ProcessError::Midi)?;
+        let mut observer = crate::midi::engine::MidiObserver {
+            engine: midi,
+            events,
+            sink,
+            error: None,
+        };
+        match self.process_observed(jobs, memory, inputs, outputs, frames, &mut observer) {
+            Ok(()) => Ok(observer.engine.report(observer.error)),
+            Err(error) => {
+                if self.fault.is_some() {
+                    observer.engine.fault();
+                }
+                Err(crate::midi::ProcessError::Pipeline(error))
+            }
+        }
+    }
     pub(crate) fn process_quantum(
         &mut self,
         jobs: &mut JobProcessor,
@@ -280,6 +311,7 @@ impl Pipeline {
         if let Some(error) = memory.fault() {
             return Err(PipelineError::Jobs(error));
         }
+        observer.quantum(&self.state, base);
         observer.processed(jobs);
         Ok(())
     }

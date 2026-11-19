@@ -1,9 +1,11 @@
 //! Bounded MIDI 1.0 components for functional reference execution.
 mod emission;
+pub(crate) mod engine;
 mod state;
 mod storage;
 
 pub use emission::{Emission, EmissionKind};
+pub use engine::{Engine, ProcessError, Report};
 use state::BasicUpdate;
 pub use state::{ChannelState, MidiState, NoteState};
 pub use storage::{Cursor, Event, Record, Take, TakeStatus};
@@ -46,10 +48,13 @@ pub struct Message {
 }
 impl Message {
     pub fn parse(data: &[u8], max_bytes: usize) -> Result<Self, Error> {
+        let status = *data.first().ok_or(Error::InvalidEvent)?;
+        if matches!(status, 0xf0..=0xfe) {
+            return Err(Error::Unsupported);
+        }
         if data.len() > max_bytes {
             return Err(Error::Capacity);
         }
-        let status = *data.first().ok_or(Error::InvalidEvent)?;
         let len = match status {
             0x80..=0xbf | 0xe0..=0xef => 3,
             0xc0..=0xdf => 2,
