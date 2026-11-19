@@ -308,6 +308,11 @@ impl MidiBuffer {
     pub fn is_recovery(&self) -> bool {
         self.recovering
     }
+    /// Replace this output quantum with the reserved all-sound/all-notes-off
+    /// recovery events at its start, regardless of normal packet capacity.
+    pub fn recover_notes(&mut self) {
+        self.force_reset(0);
+    }
     pub fn remaining_events(&self) -> usize {
         if self.recovering {
             0

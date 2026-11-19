@@ -5,7 +5,7 @@ use rt_runtime::{
     Error, Frame,
 };
 
-/// Source identity remains unchanged when a synchronous batch completes.
+/// Source identity remains unchanged across submission and completion.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BatchTag {
     pub generation: u64,
@@ -48,11 +48,17 @@ impl<'a> Batch<'a, '_> {
     }
 }
 
-/// A prepared synchronous implementation. Every method must be bounded and must
+/// A prepared implementation. Every render-side method must be bounded and must
 /// not allocate, deallocate, lock, wait, perform I/O or panic during normal use.
 /// Processing fills every audio output and consumes events in source-time order.
 pub trait Backend: Send {
     fn ports(&self) -> PortCounts;
+    /// Return a transport for worker-backed processing. This choice is fixed for
+    /// the lifetime of the buffered node. Worker-backed nodes use the transport
+    /// instead of `process` and do not take borrowed source observers.
+    fn async_transport(&mut self) -> Option<&mut dyn crate::AsyncTransport> {
+        None
+    }
     /// Whether processing honors source observations after equal-time controls.
     fn supports_observation(&self) -> bool {
         false
@@ -99,6 +105,9 @@ pub trait Backend: Send {
 impl<B: Backend + ?Sized> Backend for Box<B> {
     fn ports(&self) -> PortCounts {
         (**self).ports()
+    }
+    fn async_transport(&mut self) -> Option<&mut dyn crate::AsyncTransport> {
+        (**self).async_transport()
     }
     fn supports_observation(&self) -> bool {
         (**self).supports_observation()

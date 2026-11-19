@@ -4,9 +4,10 @@
 scheduled output. `BufferedProcessor::with_backend` accepts a production `Backend`
 with independent audio/MIDI input/output counts, including zero-port sides.
 `BufferLimits` bounds input MIDI, output MIDI and source-timed parameter events
-separately. Backends are prepared before construction and execute synchronously
-on the render thread; the adapter never allocates or destroys a backend there.
- The development backend `InlineTestProcessor` runs on the render thread:
+separately. Backends are prepared before construction. Synchronous backends
+execute on the render thread, and worker-backed backends submit through a
+prepared `AsyncTransport`. The adapter never allocates or destroys a backend
+there. The development backend `InlineTestProcessor` runs on the render thread:
 it doubles audio samples and moves each MIDI channel-voice message to the next
 channel, wrapping channel 16 to channel 1. System messages pass through unchanged.
 The graph still supplies and consumes exactly its prepared quantum Q.
@@ -51,7 +52,7 @@ This latency is measured between node ports. Host buffering adds its own declare
 delay; the standard buffered host adds Q frames, giving 64 total frames in the
 example. There is no graph latency compensation. Several graph ticks can execute
 back-to-back inside one host callback, so stream delay does not guarantee elapsed
-worker execution time. This backend neither simulates nor certifies remote timing.
+worker execution time.
 
 ## Storage and rendering
 
@@ -65,8 +66,8 @@ The adapter prepares `ceil(latency_frames/batch_frames)+1` slots: a collecting
 block plus enough storage for completed blocks spanning the delay window. A slot
 cannot be reused until its final output quantum is emitted. Each completion is
 tagged with stream generation, block sequence, and source frame. The inline
-backend completes synchronously through a private submission/completion seam.
-There are no transport queues, threads, locks, waits, I/O, or render allocations.
+backend completes synchronously. Every render-side operation must be bounded
+and free of heap work, locks, waits, and OS I/O.
 
 `MidiLimits` bounds events and bytes per quantum independently. Each batch reserves
 M times those limits. Rotation preserves count and payload sizes, so output needs
@@ -89,6 +90,32 @@ reset/recovery; malformed or over-capacity output is never silently published.
 Backend intrinsic delay is reported in `latency_frames()` but is not applied a
 second time to the adapter release schedule.
 
+## Worker transport
+
+A worker-backed `Backend` supplies `AsyncTransport` for its entire lifetime.
+Use `BufferLimits::async_storage_bytes_for` to account for its adapter storage,
+including owned MIDI collection even for M=1. The host separately budgets
+transport storage. Submissions borrow planar audio, ordered MIDI, and parameters
+for the call. The transport copies them into prepared worker storage and retains
+it until the worker returns its completion. The worker preserves submission
+order for DSP state and resets stream-local state on generation changes,
+sequence gaps, or processing failure.
+
+The adapter consumes at most eight completions per tick before release. Only a
+matching pending tag can publish output, after validating the audio shape and
+samples and checking MIDI capacity and offsets. Early completions wait for the
+scheduled release. If the first quantum is due and the batch is unavailable,
+the entire batch releases silence and sends the reserved MIDI recovery events
+at its first quantum. Late and duplicate completions are discarded. Rejected
+submissions and worker errors follow the same missing-release policy. One
+failed release does not fault the node.
+
+`last_release` carries the released stream identity, offset and availability for
+source-aligned consumers. Startup silence has no release identity. `async_stats`
+reports submissions, results, losses and eligible pending depth per generation.
+Source observations that borrow a synchronous backend are unavailable with a
+worker transport.
+
 ## Lifecycle
 
 Changing timing requires preparing a new node. `reset(origin)` clears all buffered
@@ -102,8 +129,8 @@ with silence once, and emits its retained output before entering `Suspended`.
 without scanning audio storage. Call it only after downstream MIDI cleanup.
 `activate(origin)` resets an inactive backend and begins a new stream, including
 startup silence. The backend reset must itself have a documented bounded cost.
-Ordinary graph epoch changes do not change lifetime state. Asynchronous
-readiness/deadline policies remain outside this synchronous interface.
+Ordinary graph epoch changes do not change lifetime state. Worker results from an
+aborted generation are discarded when they are returned.
 
 ## Development check
 

@@ -31,9 +31,11 @@ The implementation base is upstream `feat/backend-replacement`, inspected at `eb
 - [x] Refresh upstream and create `feat/p07-carla-hosting` from `feat/backend-replacement`. Carry this plan onto that branch and record the implementation base and master comparison revision.
 - [x] Map A1–A8 to production owners and reference tests. Capture the master track and bus signal order, control and MIDI behavior, supported archive fixtures, timing policies, hosting modes, and desktop release matrix.
 - [x] Inventory callback sizes, fixed quanta, native ABI capacity, and storage ceilings. Define the benchmark workloads, observed metrics, and success thresholds from baseline runs before tuning. Identify the shared P09/P10 pieces needed for Carla.
-- [ ] Record focused baseline tests and known environmental limitations. Commit the baseline and plan, push the feature branch, and open a draft PR against `feat/backend-replacement`.
+- [x] Record focused baseline tests and known environmental limitations. Commit the baseline and plan, push the feature branch, and open a draft PR against `feat/backend-replacement`.
 
 Verification gate for A1–A8. Reproduce baseline buffering, hosted processor routing, and Carla completion oracles. Track any environment-dependent skips, including the same-CPU `SCHED_FIFO` reproduction, for a suitable runner.
+
+The buffering suite, hosted processor graph/service suite with both built-in features, and the retained Carla bridge/shared-memory fixtures pass on the baseline. The same-CPU starvation scenario requires a runner that permits `SCHED_FIFO`; this environment denied it. The feature branch is tracking the draft delivery PR. [Draft PR #1018](https://github.com/SanderVocke/shoopdaloop/pull/1018)
 
 ### Compatibility and workload baseline
 
@@ -49,15 +51,17 @@ Verification gate for A1–A8. Reproduce baseline buffering, hosted processor ro
 
 Depends on Stage 1. Use a deterministic fake processor first.
 
-- [ ] Extend `rt_buffered` with prepared transport ownership, bounded submit/poll, and tagged completion slots. Make asynchronous slots own MIDI and control input across calls, including the current one-quantum borrowed-input fast path. Share timing and release rules with synchronous processing.
-- [ ] Implement release, expiry, bounded discard, reset, drain, and retirement. Specify how missed or rejected input affects DSP state and note cleanup. Keep expired slots fenced until transport ownership returns.
-- [ ] Validate output shape, frame count, finite audio, MIDI offsets and ordering before publication. Track startup silence, starvation, and transport faults distinctly. Expose fixed-size queue and timing counters for host collection.
+- [x] Extend `rt_buffered` with prepared transport ownership, bounded submit/poll, and tagged completion slots. Make asynchronous slots own MIDI and control input across calls, including the current one-quantum borrowed-input fast path. Share timing and release rules with synchronous processing.
+- [x] Implement release, expiry, bounded discard, reset, drain, and retirement. Specify how missed or rejected input affects DSP state and note cleanup. Keep expired slots fenced until transport ownership returns.
+- [x] Validate output shape, frame count, finite audio, MIDI offsets and ordering before publication. Track startup silence, starvation, and transport faults distinctly. Expose fixed-size queue and timing counters for host collection.
 
 Verification gate for A2 and A7. Use a manually stepped fake worker to force early, late, absent, malformed, duplicated and out-of-order completions, queue exhaustion, and stale generations. Check exact audio/MIDI output across variable callback partitions, no render heap work or waits, bounded retirement, and unchanged synchronous behavior.
 
 ## Stage 3 Make delayed wet capture and history source-aligned
 
 Depends on Stage 2. Prove the workflow with the fake worker before loading Carla.
+
+The current capture group permits one reserved tick at a time and commits all its members together. Queue source-frame work in prepared storage and reserve the group tick only when matching dry and wet data are ready. Keep the take unpublished while its required tail drains. Fence the pending work with the source and take identities, and preserve the synchronous capture path. [Capture group reservations](src/rust/rt_runtime/src/resource/group/tick.rs) · [Loop capture boundary](src/rust/shoop_loops/src/runtime/state_boundary.rs)
 
 - [ ] Replace the async owner's immediate wet capture tap with bounded, source-tagged pending writes in the RT engine and loop layer. Keep dry audio and dry MIDI at their original positions. Resolve wet tails after Stop and across wraps before publishing a take or opening it for save/export.
 - [ ] Integrate async validity and history coverage into ordinary capture, dry playback, wet rerecord, Replacing, Grab, and supported composites. Define refusal or rollback for missing wet frames, worker reset, and capacity exhaustion. Preserve committed media and unaffected tracks.
