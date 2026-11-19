@@ -4315,4 +4315,6 @@ impl HostSettings {
     }
 }
 
-pub use shoop_processor_protocol::{Policy as ProcessorPolicy, Settings as ProcessorSettings};
+pub use shoop_processor_protocol::{
+    CarlaHosting, Policy as ProcessorPolicy, Settings as ProcessorSettings,
+};

@@ -84,6 +84,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     shoop_rt_protocol::Request::CreateBus { .. }
                     | shoop_rt_protocol::Request::CreateProcessedBus { .. }
                     | shoop_rt_protocol::Request::SetBusProcessor { .. }
+                    | shoop_rt_protocol::Request::SetBusProcessorKind { .. }
                     | shoop_rt_protocol::Request::BusProcessorControl { .. }
                     | shoop_rt_protocol::Request::RemoveBus { .. }
                     | shoop_rt_protocol::Request::CreateStrip { .. }

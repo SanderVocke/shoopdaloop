@@ -17,6 +17,12 @@ use std::{
     time::{Duration, Instant},
 };
 pub fn run() -> Result<()> {
+    #[cfg(feature = "carla-worker")]
+    if let Ok(worker) = std::env::current_exe() {
+        return run_impl(|config| {
+            shoop_rt_host_native::start_endpoint_with_carla_worker(config, worker.clone())
+        });
+    }
     run_impl(shoop_rt_host_native::start_endpoint)
 }
 #[cfg(feature = "testing")]

@@ -89,6 +89,7 @@ fn complete_payload_replaces_all_roles_and_empty_media_with_no_spare_loop_slot()
             fx_instances: 1,
             synth_instances: 1,
             memory_mb: 128,
+            carla: Default::default(),
         };
         let (offline, client) = shoop_rt_engine::testing::OfflineRender::new_with_processors(
             &d,

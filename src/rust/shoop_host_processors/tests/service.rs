@@ -543,6 +543,7 @@ impl Fixture {
                 fx_instances,
                 synth_instances: 1,
                 memory_mb: 128,
+                carla: Default::default(),
             },
             ..Default::default()
         };
@@ -662,6 +663,8 @@ fn composite_role_modes_survive_hosted_processing_and_real_session_files() {
             f.confirmed(Command::Global(GlobalControlAction::SetSync(false)));
             let processor = match kind {
                 ProcessorKind::External => TrackProcessorTypeId::EXTERNAL,
+                ProcessorKind::CarlaRack => TrackProcessorTypeId::CARLA_RACK,
+                ProcessorKind::CarlaPatchbay => TrackProcessorTypeId::CARLA_PATCHBAY,
                 ProcessorKind::BuiltInFx => TrackProcessorTypeId::BUILTIN_FX,
                 ProcessorKind::OxiSynth => TrackProcessorTypeId::OXISYNTH,
             };

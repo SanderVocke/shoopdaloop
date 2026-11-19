@@ -154,6 +154,7 @@ mod tests {
             fx_instances: 5,
             synth_instances: 3,
             memory_mb: 384,
+            carla: Default::default(),
         };
         let decoded: super::HostConfig =
             serde_json::from_slice(&serde_json::to_vec(&custom).unwrap()).unwrap();

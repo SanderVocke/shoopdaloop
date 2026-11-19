@@ -444,7 +444,12 @@ impl ControlEndpoint {
         if self.settings.external_dry_wet {
             capabilities = capabilities.union(Capabilities::EXTERNAL_DRY_WET);
         }
-        if self.processor_catalog.effective.fx_instances > 0 {
+        if self
+            .processor_catalog
+            .kinds
+            .iter()
+            .any(|kind| kind.supports_bus())
+        {
             capabilities = capabilities.union(Capabilities::BUS_PROCESSORS);
         }
         if !self.processor_catalog.kinds.is_empty() {
@@ -1201,6 +1206,7 @@ impl ControlEndpoint {
             },
             Request::CreateProcessedBus { .. }
             | Request::SetBusProcessor { .. }
+            | Request::SetBusProcessorKind { .. }
             | Request::CreateBus { .. }
             | Request::RemoveBus { .. }
             | Request::CreateStrip { .. }

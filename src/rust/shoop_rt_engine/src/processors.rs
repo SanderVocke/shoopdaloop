@@ -39,6 +39,7 @@ impl Default for PreparedProcessors {
                 fx_unavailable: Some(Unavailable::Disabled),
                 synth_unavailable: Some(Unavailable::Disabled),
                 memory_bytes: 0,
+                carla: Default::default(),
             },
             reserved_bytes: 0,
             instances: Vec::new(),
@@ -53,6 +54,7 @@ pub struct ProcessorCatalog {
     pub kinds: Box<[ProcessorKind]>,
     pub presets: Box<[ProcessorPreset]>,
     pub(crate) worker_delays: Box<[usize]>,
+    pub(crate) carla_delay: u32,
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ProcessorState {
@@ -192,6 +194,7 @@ pub struct HostedProcessor {
     global: crate::global_midi::GlobalMidi,
     midi_capacity: rt_runtime::buffer::MidiCapacity,
     global_capacity: rt_runtime::buffer::MidiCapacity,
+    midi_output_capacity: rt_runtime::buffer::MidiCapacity,
 }
 impl HostedProcessor {
     pub fn additional_prepared_bytes(
@@ -258,6 +261,10 @@ impl HostedProcessor {
             midi_capacity: rt_runtime::buffer::MidiCapacity {
                 events: limits.midi_input.events_per_quantum,
                 bytes: limits.midi_input.bytes_per_quantum,
+            },
+            midi_output_capacity: rt_runtime::buffer::MidiCapacity {
+                events: limits.midi_output.events_per_quantum,
+                bytes: limits.midi_output.bytes_per_quantum,
             },
         })
     }
@@ -513,6 +520,13 @@ impl HostedProcessor {
                 input: true,
                 port: 2,
                 capacity: self.global_capacity,
+            });
+        }
+        if self.buffered.ports().midi_outputs == 1 {
+            settings.ports[2] = Some(MidiPortCapacity {
+                input: false,
+                port: 0,
+                capacity: self.midi_output_capacity,
             });
         }
         Ok(settings)

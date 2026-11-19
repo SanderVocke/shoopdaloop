@@ -101,6 +101,53 @@ impl EngineDescription {
 }
 
 impl EngineDescription {
+    pub(crate) fn worker_capture_settings(
+        &self,
+        delay_frames: usize,
+    ) -> shoop_loops::runtime::WorkerCaptureInputSettings {
+        shoop_loops::runtime::WorkerCaptureInputSettings {
+            sources: self.strips(),
+            channels: self.strip_channels as usize,
+            midi: MidiCapacity {
+                events: self.midi_events,
+                bytes: self.midi_bytes,
+            },
+            delay_frames,
+        }
+    }
+
+    pub fn worker_capture_storage_bytes(&self, delay_frames: usize) -> Result<usize, Error> {
+        self.worker_capture_settings(delay_frames)
+            .storage_bytes::<f32>(rt_runtime::Quantum::new(self.quantum)?)
+    }
+
+    pub fn processor_buffer_limits(
+        &self,
+        kind: shoop_rt_protocol::ProcessorKind,
+    ) -> Result<rt_buffered::BufferLimits, Error> {
+        let mut input = self.processor_midi_input_capacity()?;
+        if kind.is_carla() {
+            use shoop_rt_protocol::processors::{CARLA_MIDI_BYTES, CARLA_MIDI_EVENTS};
+            input.events = input.events.min(CARLA_MIDI_EVENTS);
+            input.bytes = input.bytes.min(CARLA_MIDI_BYTES);
+        }
+        Ok(rt_buffered::BufferLimits {
+            midi_input: rt_buffered::MidiLimits {
+                events_per_quantum: input.events,
+                bytes_per_quantum: input.bytes,
+            },
+            midi_output: if kind.is_carla() {
+                rt_buffered::MidiLimits {
+                    events_per_quantum: self.midi_events,
+                    bytes_per_quantum: self.midi_bytes,
+                }
+            } else {
+                rt_buffered::MidiLimits::default()
+            },
+            parameters_per_quantum: if kind.is_carla() { 0 } else { 64 },
+        })
+    }
+
     pub fn global_midi_input_capacity(&self) -> Result<MidiCapacity, Error> {
         Layout::new(self).map(|layout| layout.global)
     }

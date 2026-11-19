@@ -102,7 +102,7 @@ impl Layout {
         Some(mul(total_pages, d.page_bytes)?)
             .filter(|&bytes| bytes <= i32::MAX as usize)
             .ok_or(Error::Capacity)?;
-        let mut limits = runtime_capacities(d, q.frames());
+        let mut limits = runtime_capacities(d, q.frames(), 0);
         limits.resource_pages = total_pages;
         let runtime = limits.prepare()?;
         let writers = (d.history.writers as usize).min(d.loops());

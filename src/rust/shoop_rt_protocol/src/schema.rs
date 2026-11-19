@@ -2,7 +2,9 @@
 //! driver. Every value has a bounded size so it can be encoded without allocation.
 
 use crate::ids::{BusId, HostPortId, LoopSlotId, StripId};
-use crate::{BULK_CHUNK_BYTES, BULK_CHUNK_SAMPLES, MAX_MIDI_BYTES, MAX_STRIP_CHANNELS};
+use crate::{
+    ProcessorKind, BULK_CHUNK_BYTES, BULK_CHUNK_SAMPLES, MAX_MIDI_BYTES, MAX_STRIP_CHANNELS,
+};
 
 pub use profiling_protocol::Name;
 
@@ -164,10 +166,15 @@ pub enum Request {
     CreateProcessedBus {
         bus: BusId,
         channels: u8,
+        kind: ProcessorKind,
     },
     SetBusProcessor {
         bus: BusId,
         enabled: bool,
+    },
+    SetBusProcessorKind {
+        bus: BusId,
+        kind: Option<ProcessorKind>,
     },
     BusProcessorControl {
         bus: BusId,
@@ -571,6 +578,7 @@ pub struct ProcessorLimits {
     pub reserved_bytes: u64,
     pub channels: u8,
     pub builtin_latency_frames: u32,
+    pub carla_latency_frames: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -587,10 +595,12 @@ pub enum StateRecord {
     BusProcessor {
         bus: BusId,
         slot: Option<ProcessorSlot>,
+        kind: Option<ProcessorKind>,
     },
     BusProcessorState {
         bus: BusId,
         slot: ProcessorSlot,
+        kind: ProcessorKind,
         snapshot: crate::processors::Snapshot,
     },
     RecordedProcessorState {

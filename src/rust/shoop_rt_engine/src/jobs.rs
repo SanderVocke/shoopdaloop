@@ -1007,7 +1007,10 @@ impl ControlEndpoint {
                 if self.model.bus(bus.id).and_then(|old| old.processor) == bus.processor {
                     continue;
                 }
-                let Some(slot) = bus.processor.and_then(|owner| owner.slot) else {
+                let Some(owner) = bus.processor else {
+                    continue;
+                };
+                let Some(slot) = owner.slot else {
                     continue;
                 };
                 let node = self.pool.processor(slot.index as usize);
@@ -1015,11 +1018,13 @@ impl ControlEndpoint {
                     Some(EngineOp::ProcessorClaim {
                         generation: slot.generation,
                     }),
-                    Some(EngineOp::ProcessorParameter {
-                        generation: slot.generation,
-                        parameter: shoop_rt_protocol::processors::WIDTH,
-                        value: bus.channels as f32,
-                    }),
+                    (owner.kind == shoop_rt_protocol::ProcessorKind::BuiltInFx).then_some(
+                        EngineOp::ProcessorParameter {
+                            generation: slot.generation,
+                            parameter: shoop_rt_protocol::processors::WIDTH,
+                            value: bus.channels as f32,
+                        },
+                    ),
                     if job.replacing() {
                         self.replacement.bus_processor_states[index].map(|control| {
                             EngineOp::ProcessorControl {

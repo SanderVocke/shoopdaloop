@@ -72,35 +72,28 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             BackendTrackTopology::DryWetProcessor { .. } if self.prepared_graph.is_some() => {
                 Some(shoop_rt_protocol::ProcessorKind::External)
             }
-            BackendTrackTopology::DryWetProcessor { processor_type, .. } => {
-                Some(match processor_type.as_str() {
-                    shoop_app_api::TrackProcessorTypeId::BUILTIN_FX => {
-                        shoop_rt_protocol::ProcessorKind::BuiltInFx
-                    }
-                    shoop_app_api::TrackProcessorTypeId::OXISYNTH => {
-                        shoop_rt_protocol::ProcessorKind::OxiSynth
-                    }
-                    _ => return Err(anyhow!("unsupported track processor {processor_type}")),
-                })
-            }
+            BackendTrackTopology::DryWetProcessor { processor_type, .. } => Some(
+                crate::processor_controls::processor_kind(processor_type.as_str())
+                    .ok_or_else(|| anyhow!("unsupported track processor {processor_type}"))?,
+            ),
         };
         if kind.is_some_and(|kind| kind != shoop_rt_protocol::ProcessorKind::External) {
             let kind = kind.expect("hosted processor");
-            if dry == 0
-                || dry != wet
-                || !midi
-                || (kind == shoop_rt_protocol::ProcessorKind::OxiSynth && dry != 2)
-            {
+            let valid = if kind.is_carla() {
+                dry <= 2 && wet <= 2 && (dry != 0 || wet != 0 || midi)
+            } else {
+                dry != 0
+                    && dry == wet
+                    && midi
+                    && (kind != shoop_rt_protocol::ProcessorKind::OxiSynth || dry == 2)
+            };
+            if !valid {
                 return Err(anyhow!("invalid audio/MIDI shape for this track processor"));
             }
             let processors = self
                 .processors
                 .ok_or_else(|| anyhow!("host processor limits are unavailable"))?;
-            let available = if kind == shoop_rt_protocol::ProcessorKind::BuiltInFx {
-                processors.effective.fx_instances
-            } else {
-                processors.effective.synth_instances
-            };
+            let available = processors.effective.instances(kind);
             let used = self
                 .mirror
                 .tracks
@@ -118,9 +111,20 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     ) => before == after,
                     _ => false,
                 })
-                .count();
+                .count()
+                + self
+                    .mirror
+                    .buses
+                    .values()
+                    .filter(|bus| {
+                        bus.processor_type.as_deref()
+                            == Some(crate::processor_controls::processor_id(kind))
+                    })
+                    .count();
             if available == 0 {
-                let reason = if kind == shoop_rt_protocol::ProcessorKind::BuiltInFx {
+                let reason = if kind.is_carla() {
+                    processors.effective.carla.unavailable
+                } else if kind == shoop_rt_protocol::ProcessorKind::BuiltInFx {
                     processors.effective.fx_unavailable
                 } else {
                     processors.effective.synth_unavailable
@@ -688,6 +692,7 @@ mod track_role_tests {
                 fx_instances: 1,
                 synth_instances: 1,
                 memory_mb: 256,
+                carla: Default::default(),
                 ..Default::default()
             },
             ..EngineDescription::default()

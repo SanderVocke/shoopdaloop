@@ -743,6 +743,7 @@ pub fn processor_settings_from_snapshot(
         memory_mb: snapshot
             .get(PROCESSOR_MEMORY_MB)
             .map_err(|error| error.to_string())?,
+        carla: Default::default(),
     };
     settings.validate().map_err(|error| error.to_string())?;
     Ok(settings)

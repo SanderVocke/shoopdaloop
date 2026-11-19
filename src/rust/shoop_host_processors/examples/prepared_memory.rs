@@ -22,6 +22,7 @@ fn main() {
         host: HostPorts::numbered(channels as usize, channels as usize, 1),
         processors: ProcessorSettings {
             memory_mb: processor_memory,
+            carla: Default::default(),
             ..ProcessorSettings::default()
         },
         ..EngineDescription::default()

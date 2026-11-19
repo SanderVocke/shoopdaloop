@@ -73,11 +73,25 @@ pub enum Kind {
     External = 0,
     BuiltInFx = 1,
     OxiSynth = 2,
+    CarlaRack = 3,
+    CarlaPatchbay = 4,
 }
 impl Kind {
+    pub const fn is_carla(self) -> bool {
+        matches!(self, Self::CarlaRack | Self::CarlaPatchbay)
+    }
+    pub const fn supports_bus(self) -> bool {
+        matches!(self, Self::BuiltInFx) || self.is_carla()
+    }
+    pub const fn fixed_audio_channels(self) -> Option<usize> {
+        match self {
+            Self::OxiSynth | Self::CarlaRack | Self::CarlaPatchbay => Some(2),
+            Self::BuiltInFx | Self::External => None,
+        }
+    }
     pub const fn scalar_count(self) -> usize {
         match self {
-            Self::External => 0,
+            Self::External | Self::CarlaRack | Self::CarlaPatchbay => 0,
             Self::BuiltInFx => 56,
             Self::OxiSynth => 5,
         }
@@ -99,7 +113,7 @@ impl Kind {
                 3..=4 => Some(CC_BASE + (index - 3) as u32),
                 _ => None,
             },
-            Self::External => None,
+            Self::External | Self::CarlaRack | Self::CarlaPatchbay => None,
         }
     }
 }
@@ -117,6 +131,45 @@ pub enum Policy {
     Off,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "snake_case")
+)]
+pub enum CarlaHosting {
+    #[default]
+    Disabled,
+    InProcess,
+    Subprocess,
+}
+
+// Native Carla v2 accepts up to 1,024 short packets per block. The engine may
+// provision smaller quotas based on its own MIDI pools.
+pub const CARLA_MIDI_EVENTS: usize = 1024;
+pub const CARLA_MIDI_BYTES: usize = CARLA_MIDI_EVENTS * 4;
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(default, deny_unknown_fields)
+)]
+pub struct CarlaSettings {
+    pub hosting: CarlaHosting,
+    pub rack_instances: u16,
+    pub patchbay_instances: u16,
+}
+
+impl CarlaSettings {
+    pub const fn configured_instances(self) -> u32 {
+        match self.hosting {
+            CarlaHosting::Disabled => 0,
+            _ => self.rack_instances as u32 + self.patchbay_instances as u32,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(
     feature = "serde",
@@ -129,6 +182,7 @@ pub struct Settings {
     pub fx_instances: u16,
     pub synth_instances: u16,
     pub memory_mb: u32,
+    pub carla: CarlaSettings,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -138,6 +192,7 @@ impl Default for Settings {
             fx_instances: 2,
             synth_instances: 2,
             memory_mb: 256,
+            carla: CarlaSettings::default(),
         }
     }
 }
@@ -149,10 +204,18 @@ impl Settings {
             fx_instances: 0,
             synth_instances: 0,
             memory_mb: 0,
+            carla: CarlaSettings {
+                hosting: CarlaHosting::Disabled,
+                rack_instances: 0,
+                patchbay_instances: 0,
+            },
         }
     }
     pub fn validate(self) -> Result<(), Error> {
-        if u32::from(self.fx_instances) + u32::from(self.synth_instances) > u32::from(MAX_INSTANCES)
+        if u32::from(self.fx_instances)
+            + u32::from(self.synth_instances)
+            + self.carla.configured_instances()
+            > u32::from(MAX_INSTANCES)
             || self.memory_mb > 4096
         {
             return Err(Error::Capacity);
@@ -164,7 +227,8 @@ impl Settings {
         }
         if self.memory_mb == 0
             && ((self.builtin_fx != Policy::Off && self.fx_instances > 0)
-                || (self.oxisynth != Policy::Off && self.synth_instances > 0))
+                || (self.oxisynth != Policy::Off && self.synth_instances > 0)
+                || self.carla.configured_instances() != 0)
         {
             return Err(Error::Capacity);
         }
@@ -215,6 +279,10 @@ impl Settings {
             fx_unavailable: fx,
             synth_unavailable: synth,
             memory_bytes: u64::from(self.memory_mb) * (1 << 20),
+            carla: EffectiveCarla::unavailable(match self.carla.hosting {
+                CarlaHosting::Disabled => Unavailable::Disabled,
+                _ => Unavailable::NotCompiled,
+            }),
         })
     }
 }
@@ -232,6 +300,8 @@ pub enum Unavailable {
     SampleRate = 2,
     NoCapacity = 3,
     ChannelCapacity = 4,
+    Runtime = 5,
+    Memory = 6,
 }
 impl Unavailable {
     pub const fn message(self) -> &'static str {
@@ -240,7 +310,9 @@ impl Unavailable {
             Self::NotCompiled => "not compiled into this host",
             Self::SampleRate => "unsupported host sample rate",
             Self::NoCapacity => "no processor instances configured",
-            Self::ChannelCapacity => "synth requires two prepared audio channels per side",
+            Self::ChannelCapacity => "processor requires two prepared audio channels per side",
+            Self::Runtime => "Carla Native runtime could not be started",
+            Self::Memory => "processor buffers exceed the host memory budget",
         }
     }
 }
@@ -251,10 +323,45 @@ pub struct Effective {
     pub fx_unavailable: Option<Unavailable>,
     pub synth_unavailable: Option<Unavailable>,
     pub memory_bytes: u64,
+    pub carla: EffectiveCarla,
 }
 impl Effective {
     pub const fn slots(self) -> usize {
-        2 * (self.fx_instances as usize + self.synth_instances as usize)
+        2 * (self.fx_instances as usize
+            + self.synth_instances as usize
+            + self.carla.rack_instances as usize
+            + self.carla.patchbay_instances as usize)
+    }
+
+    pub const fn instances(self, kind: Kind) -> u16 {
+        match kind {
+            Kind::BuiltInFx => self.fx_instances,
+            Kind::OxiSynth => self.synth_instances,
+            Kind::CarlaRack => self.carla.rack_instances,
+            Kind::CarlaPatchbay => self.carla.patchbay_instances,
+            Kind::External => 0,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct EffectiveCarla {
+    pub rack_instances: u16,
+    pub patchbay_instances: u16,
+    pub unavailable: Option<Unavailable>,
+}
+impl EffectiveCarla {
+    pub const fn unavailable(reason: Unavailable) -> Self {
+        Self {
+            rack_instances: 0,
+            patchbay_instances: 0,
+            unavailable: Some(reason),
+        }
+    }
+}
+impl Default for EffectiveCarla {
+    fn default() -> Self {
+        Self::unavailable(Unavailable::Disabled)
     }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

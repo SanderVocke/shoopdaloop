@@ -85,6 +85,9 @@ impl WorkletConfig {
     /// The worklet's own bounds; the engine validates its description when it is
     /// prepared.
     pub fn validate(&self) -> Result<(), ConfigError> {
+        if self.engine.processors.carla != Default::default() {
+            return Err(ConfigError::BackendUnavailable);
+        }
         self.engine
             .processors
             .validate()
@@ -109,6 +112,9 @@ impl WorkletConfig {
             Ok(())
         }
         let engine = &self.engine;
+        if engine.processors.carla != Default::default() {
+            return Err(ConfigError::BackendUnavailable);
+        }
         let mut out = Vec::new();
         for value in [
             CONFIG_VERSION as usize,
@@ -205,6 +211,7 @@ impl WorkletConfig {
             fx_instances: r.narrow()?,
             synth_instances: r.narrow()?,
             memory_mb: r.u32()?,
+            carla: Default::default(),
         };
         processors.validate().map_err(|_| ConfigError::Range)?;
         let external_dry_wet = match r.u32()? {

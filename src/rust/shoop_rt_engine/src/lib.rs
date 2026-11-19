@@ -189,11 +189,12 @@ fn host_ports(description: &EngineDescription) -> Box<[HostPort]> {
     ports.into_boxed_slice()
 }
 
-fn runtime_capacities(description: &EngineDescription, graph_frames: usize) -> Config {
+fn runtime_capacities(
+    description: &EngineDescription,
+    graph_frames: usize,
+    processor_slots: usize,
+) -> Config {
     let (strips, loops) = (description.strips(), description.loops());
-    let processor_slots = 2
-        * (usize::from(description.processors.fx_instances)
-            + usize::from(description.processors.synth_instances));
     let nodes = 1 + 2 * strips + 3 * loops + 2 * description.buses as usize + processor_slots;
     let channels = description.strip_channels as usize;
     let master_channels = description.bus_channels as usize;
@@ -212,7 +213,7 @@ fn runtime_capacities(description: &EngineDescription, graph_frames: usize) -> C
         + loops * (8 * channels + 2)
         + 3 * buses * master_channels
         + counts.iter().sum::<usize>()
-        + processor_slots * (3 * channels + 3)
+        + processor_slots * (3 * channels + 4)
         + description.buses as usize
             * (2 * description.bus_channels as usize + description.host.midi_inputs.len());
     let edges = strips
@@ -222,7 +223,7 @@ fn runtime_capacities(description: &EngineDescription, graph_frames: usize) -> C
         + loops * (6 * channels + 3)
         + (channels + 1) * (strips + loops)
         + 2 * buses * master_channels * audio_out
-        + processor_slots * (3 * channels + 3)
+        + processor_slots * (3 * channels + 4)
         + description.buses as usize
             * (2 * description.bus_channels as usize + description.host.midi_inputs.len());
     let page_bytes = description.page_bytes;
@@ -421,9 +422,15 @@ fn prepare_complete_using<R>(
     description.validate()?;
     let policy = description.processors;
     let effective = processors.effective;
+    let carla = effective.carla;
+    let carla_instances = u32::from(carla.rack_instances) + u32::from(carla.patchbay_instances);
     if effective.memory_bytes != u64::from(policy.memory_mb) * (1 << 20)
         || effective.fx_instances > policy.fx_instances
         || effective.synth_instances > policy.synth_instances
+        || carla.rack_instances > policy.carla.rack_instances
+        || carla.patchbay_instances > policy.carla.patchbay_instances
+        || carla_instances > policy.carla.configured_instances()
+        || (carla_instances == 0) != carla.unavailable.is_some()
         || (policy.builtin_fx == shoop_rt_protocol::ProcessorPolicy::Off
             && effective.fx_instances != 0)
         || (policy.oxisynth == shoop_rt_protocol::ProcessorPolicy::Off
@@ -445,18 +452,18 @@ fn prepare_complete_using<R>(
         return Err(rt_runtime::Error::InvalidConfig.into());
     }
     for instance in &processors.instances {
-        let expected = match instance.kind {
-            shoop_rt_protocol::ProcessorKind::BuiltInFx => description.strip_channels as usize,
-            shoop_rt_protocol::ProcessorKind::OxiSynth => 2,
-            shoop_rt_protocol::ProcessorKind::External => {
-                return Err(rt_runtime::Error::InvalidConfig.into())
-            }
-        };
+        if instance.kind == shoop_rt_protocol::ProcessorKind::External {
+            return Err(rt_runtime::Error::InvalidConfig.into());
+        }
+        let expected = instance
+            .kind
+            .fixed_audio_channels()
+            .unwrap_or(description.strip_channels as usize);
         let ports = instance.backend.ports();
         if ports.audio_inputs != expected
             || ports.audio_outputs != expected
             || ports.midi_inputs != 1
-            || ports.midi_outputs != 0
+            || ports.midi_outputs != usize::from(instance.kind.is_carla())
             || expected > description.strip_channels as usize
         {
             return Err(rt_runtime::Error::InvalidShape.into());
@@ -464,18 +471,21 @@ fn prepare_complete_using<R>(
     }
     if processors.instances.len() != processors.effective.slots()
         || processors.reserved_bytes > processors.effective.memory_bytes
-        || processors
-            .instances
-            .iter()
-            .filter(|p| p.kind == shoop_rt_protocol::ProcessorKind::BuiltInFx)
-            .count()
-            != 2 * processors.effective.fx_instances as usize
-        || processors
-            .instances
-            .iter()
-            .filter(|p| p.kind == shoop_rt_protocol::ProcessorKind::OxiSynth)
-            .count()
-            != 2 * processors.effective.synth_instances as usize
+        || [
+            shoop_rt_protocol::ProcessorKind::BuiltInFx,
+            shoop_rt_protocol::ProcessorKind::OxiSynth,
+            shoop_rt_protocol::ProcessorKind::CarlaRack,
+            shoop_rt_protocol::ProcessorKind::CarlaPatchbay,
+        ]
+        .into_iter()
+        .any(|kind| {
+            processors
+                .instances
+                .iter()
+                .filter(|processor| processor.kind == kind)
+                .count()
+                != 2 * usize::from(effective.instances(kind))
+        })
     {
         return Err(rt_runtime::Error::InvalidConfig.into());
     }
@@ -504,31 +514,29 @@ fn prepare_complete_using<R>(
     let bulk_credits = usize::from(description.bulk_credits);
     let pending = description.pending_transitions;
     let quantum = rt_runtime::Quantum::new(description.quantum)?;
-    let config = runtime_capacities(description, quantum.frames()).prepare()?;
+    let config = runtime_capacities(description, quantum.frames(), pool.processors()).prepare()?;
     let slots = config.limits().command_slots;
     let midi_events = description.midi_events;
     let midi_bytes = description.midi_bytes;
     let mut worker_delay = 0;
+    let mut carla_delay = 0;
     let mut worker_delays = Vec::with_capacity(processors.instances.len());
     for processor in &mut processors.instances {
         let delay = if processor.backend.async_transport().is_some() {
             processor.timing.prepare(quantum)?.latency_frames()
+        } else if processor.kind.is_carla() {
+            return Err(rt_runtime::Error::InvalidConfig.into());
         } else {
             0
         };
         worker_delay = worker_delay.max(delay);
+        if processor.kind.is_carla() {
+            carla_delay = carla_delay.max(delay as u32);
+        }
         worker_delays.push(delay);
     }
     let worker_capture =
-        (worker_delay != 0).then_some(shoop_loops::runtime::WorkerCaptureInputSettings {
-            sources: strips,
-            channels,
-            midi: rt_runtime::buffer::MidiCapacity {
-                events: midi_events,
-                bytes: midi_bytes,
-            },
-            delay_frames: worker_delay,
-        });
+        (worker_delay != 0).then(|| description.worker_capture_settings(worker_delay));
     if let Some(settings) = worker_capture {
         let bytes = settings.storage_bytes::<f32>(quantum)? as u64;
         processors.reserved_bytes = processors
@@ -691,23 +699,13 @@ fn prepare_complete_using<R>(
     let processor_catalog = ProcessorCatalog {
         effective: processors.effective,
         reserved_bytes: processors.reserved_bytes,
+        carla_delay,
         kinds: processors.instances.iter().map(|p| p.kind).collect(),
         presets: processors.presets,
         worker_delays: worker_delays.into_boxed_slice(),
     };
-    let processor_input = description.processor_midi_input_capacity()?;
-    let buffer_limits = rt_buffered::BufferLimits {
-        midi_input: rt_buffered::MidiLimits {
-            events_per_quantum: processor_input.events,
-            bytes_per_quantum: processor_input.bytes,
-        },
-        midi_output: rt_buffered::MidiLimits {
-            events_per_quantum: 0,
-            bytes_per_quantum: 0,
-        },
-        parameters_per_quantum: 64,
-    };
     for (slot, processor) in processors.instances.into_iter().enumerate() {
+        let buffer_limits = description.processor_buffer_limits(processor.kind)?;
         let mut node = HostedProcessor::new(
             processor,
             processor_cells[slot].clone(),

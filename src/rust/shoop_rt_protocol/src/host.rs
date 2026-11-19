@@ -1,7 +1,7 @@
 //! Portable host setup vocabulary; execution and OS configuration belong to hosts.
 use crate::{DriverKind, DriverStatus};
 
-pub const HOST_VERSION: u16 = 8;
+pub const HOST_VERSION: u16 = 9;
 pub const MAX_HOST_TEXT_BYTES: usize = 256;
 pub const MAX_SETUP_ITEMS: usize = 256;
 
@@ -77,6 +77,7 @@ impl Default for InputHistorySettings {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct EngineSettings {
+    pub processors: crate::ProcessorSettings,
     pub history: InputHistorySettings,
     pub composite_entries: u32,
     pub composite_segments: u32,

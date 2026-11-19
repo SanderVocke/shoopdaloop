@@ -159,9 +159,9 @@ fn backend(kind: ProcessorKind, d: &EngineDescription) -> Result<Box<dyn Backend
                 Err(Error::Preparation("Built-in Synth is not compiled"))
             }
         }
-        ProcessorKind::External => Err(Error::Preparation(
-            "external processors do not own inline DSP",
-        )),
+        ProcessorKind::External | ProcessorKind::CarlaRack | ProcessorKind::CarlaPatchbay => {
+            Err(Error::Preparation("processor has no inline DSP factory"))
+        }
     }
 }
 pub fn reservation_bytes(d: &EngineDescription) -> Result<u64, Error> {
@@ -307,6 +307,7 @@ mod tests {
                         fx_instances: 1,
                         synth_instances: 1,
                         memory_mb: 128,
+                        carla: Default::default(),
                     },
                     ..EngineDescription::default()
                 };
@@ -355,6 +356,7 @@ mod tests {
                 strip_channels: channels,
                 processors: ProcessorSettings {
                     memory_mb: 512,
+                    carla: Default::default(),
                     ..ProcessorSettings::default()
                 },
                 ..EngineDescription::default()

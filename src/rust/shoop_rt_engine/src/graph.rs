@@ -264,11 +264,10 @@ impl Builder {
             let capture = pool.capture(slot);
             let mut count = 0;
             if let Some(owner) = strip.processor {
-                let prepared_width = if owner.kind == shoop_rt_protocol::ProcessorKind::OxiSynth {
-                    2
-                } else {
-                    shape.processor_channels
-                };
+                let prepared_width = owner
+                    .kind
+                    .fixed_audio_channels()
+                    .unwrap_or(shape.processor_channels);
                 for channel in 0..strip.shape.audio_outputs as usize {
                     let source = owner
                         .slot
@@ -352,22 +351,37 @@ impl Builder {
                 }
             }
             if strip.shape.midi_output {
-                if strip.shape.midi_input {
+                if let Some(processor) = strip
+                    .processor
+                    .filter(|owner| owner.kind.is_carla())
+                    .and_then(|owner| owner.slot)
+                {
                     push(
                         &mut self.edges,
                         &mut count,
-                        link(midi(input, 1), midi(node, 0)),
+                        link(
+                            midi(pool.processor(processor.index as usize), 0),
+                            midi(node, 0),
+                        ),
                     )?;
-                }
-                for (loop_slot, entry) in model.loops.iter().enumerate() {
-                    if entry.is_some_and(|entry| {
-                        entry.strip == Some(strip.id) && entry.program.is_none()
-                    }) {
+                } else {
+                    if strip.shape.midi_input {
                         push(
                             &mut self.edges,
                             &mut count,
-                            link(midi(pool.playback(loop_slot), 0), midi(node, 0)),
+                            link(midi(input, 1), midi(node, 0)),
                         )?;
+                    }
+                    for (loop_slot, entry) in model.loops.iter().enumerate() {
+                        if entry.is_some_and(|entry| {
+                            entry.strip == Some(strip.id) && entry.program.is_none()
+                        }) {
+                            push(
+                                &mut self.edges,
+                                &mut count,
+                                link(midi(pool.playback(loop_slot), 0), midi(node, 0)),
+                            )?;
+                        }
                     }
                 }
             }

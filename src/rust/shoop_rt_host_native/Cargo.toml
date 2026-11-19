@@ -8,6 +8,7 @@ description = "Native engine host with JACK audio/MIDI, CPAL/midir and dummy dri
 workspace = true
 
 [features]
+carla = ["dep:rt_buffered", "dep:shoop_carla", "dep:shoop_plugin_protocol"]
 builtin-fx = ["shoop_host_processors/builtin-fx"]
 oxisynth = ["shoop_host_processors/oxisynth"]
 default = ["cpal", "jack"]
@@ -34,3 +35,6 @@ shoop_port_graph = { path = "../shoop_port_graph", features = ["testing"] }
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rt_buffered = { path = "../rt_buffered", optional = true }
+shoop_carla = { path = "../shoop_carla", features = ["buffered"], optional = true }
+shoop_plugin_protocol = { path = "../shoop_plugin_protocol", optional = true }

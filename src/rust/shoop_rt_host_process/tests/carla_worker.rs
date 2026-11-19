@@ -44,6 +44,177 @@ fn runtime_available() -> bool {
     }
 }
 
+#[shoop_test]
+fn companion_installs_real_carla_track_and_bus_banks() {
+    use shoop_backend::{
+        Backend, BackendAsyncResult, BackendAudioContent, BackendBusFxRequest, BackendBusRequest,
+        BackendChannelMode, BackendLoopContent, BackendLoopMode, BackendTrackTopology,
+        TrackRequest,
+    };
+    use shoop_rt_engine::EngineDescription;
+    use shoop_rt_host_native::{DriverConfig, DummyConfig, NativeConfig};
+    use shoop_rt_host_process::{Pending, Started, Transport};
+    use shoop_rt_protocol::{
+        processors::{CarlaHosting, CarlaSettings},
+        ProcessorSettings,
+    };
+
+    if !runtime_available() {
+        return;
+    }
+    for (hosting, transport) in [
+        (CarlaHosting::InProcess, Transport::Socket),
+        (CarlaHosting::Subprocess, Transport::SharedMemory),
+    ] {
+        let companion = std::path::Path::new(env!("CARGO_BIN_EXE_shoop_rt_host_process"));
+        let Started {
+            client, supervisor, ..
+        } = Pending::spawn(companion, transport)
+            .unwrap()
+            .start(&NativeConfig {
+                driver: DriverConfig::Dummy(DummyConfig::default()),
+                engine: EngineDescription {
+                    processors: ProcessorSettings {
+                        memory_mb: 256,
+                        carla: CarlaSettings {
+                            hosting,
+                            rack_instances: 1,
+                            patchbay_instances: 1,
+                        },
+                        ..ProcessorSettings::disabled()
+                    },
+                    ..EngineDescription::default()
+                },
+            })
+            .unwrap();
+        let mut backend =
+            shoop_rt_backend::RtBackend::connect(client, shoop_rt_backend::Sleep::default())
+                .unwrap();
+        let limits = backend.processor_limits().unwrap();
+        assert_eq!(limits.effective.carla.rack_instances, 1, "{limits:?}");
+        assert_eq!(limits.effective.carla.patchbay_instances, 1, "{limits:?}");
+        assert_eq!(limits.carla_latency_frames, 768);
+        let descriptors = backend.track_processor_catalog().unwrap();
+        let rack = descriptors
+            .iter()
+            .find(|entry| entry.id.as_str() == "carla_rack")
+            .unwrap();
+        assert!(rack.available);
+        assert_eq!(rack.resources.as_ref().unwrap().buffering_frames, 768);
+
+        let track = backend
+            .create_track(TrackRequest {
+                port_name_base: "Carla rack".into(),
+                topology: BackendTrackTopology::DryWetProcessor {
+                    dry_audio_channels: 1,
+                    wet_audio_channels: 2,
+                    dry_midi: false,
+                    processor_type: rack.id.to_string(),
+                },
+                initial_loops: 1,
+            })
+            .unwrap();
+        let bus = backend
+            .create_bus(BackendBusRequest {
+                name: "Carla patchbay".into(),
+                channel_count: 2,
+                fx: Some(BackendBusFxRequest {
+                    processor_type: "carla_patchbay".into(),
+                    audio_channels: 2,
+                }),
+            })
+            .unwrap();
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            let state = backend.poll().unwrap();
+            assert!(
+                state.mutation_failures.is_empty(),
+                "{:?}",
+                state.mutation_failures
+            );
+            let fx = state
+                .tracks
+                .get(&track.track_id)
+                .and_then(|track| track.fx.as_ref());
+            let bus_fx = state
+                .mixer
+                .buses
+                .get(&bus.bus_id)
+                .and_then(|bus| bus.fx.as_ref());
+            if let (Some(fx), Some(bus_fx)) = (fx, bus_fx.filter(|fx| fx.active)) {
+                assert_eq!(fx.processor_type.as_str(), "carla_rack");
+                assert_eq!(bus_fx.processor_type.as_str(), "carla_patchbay");
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "track FX={fx:?} bus FX={bus_fx:?}"
+            );
+            thread::sleep(Duration::from_millis(2));
+        }
+        let loop_id = track.loops[0];
+        let audio = |mode, sample| BackendAudioContent {
+            mode,
+            samples: std::sync::Arc::new(vec![sample; 1024]),
+            gain: 1.,
+            start_offset: 0,
+            capture_alignment_frames: 0,
+            preplay: 0,
+        };
+        let content = BackendLoopContent {
+            recorded_processor_state: None,
+            source_id: 0,
+            length: 1024,
+            gain: 1.,
+            balance: 0.,
+            audio: vec![
+                audio(BackendChannelMode::Dry, 0.25),
+                audio(BackendChannelMode::Wet, 0.),
+                audio(BackendChannelMode::Wet, 0.),
+            ],
+            midi: vec![],
+        };
+        let deadline = Instant::now() + TIMEOUT;
+        while !matches!(
+            backend.load_loop_content_async(loop_id, &content).unwrap(),
+            BackendAsyncResult::Ready(())
+        ) {
+            assert!(Instant::now() < deadline, "Carla track upload stalled");
+            thread::sleep(Duration::from_millis(2));
+        }
+        backend
+            .transition_loop(loop_id, BackendLoopMode::PlayingDryThroughWet, None)
+            .unwrap();
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            let state = backend.poll().unwrap();
+            assert!(
+                state.mutation_failures.is_empty(),
+                "{:?}",
+                state.mutation_failures
+            );
+            let track = &state.tracks[&track.track_id];
+            if track
+                .output_peaks
+                .first()
+                .is_some_and(|peak| (*peak - 20.0 * 0.25_f32.log10()).abs() < 1e-4)
+            {
+                assert!(track.output_peaks[1] < -150.);
+                assert!(track.fx.as_ref().unwrap().active);
+                break;
+            }
+            assert!(Instant::now() < deadline, "{track:?}");
+            thread::sleep(Duration::from_millis(2));
+        }
+        drop(backend);
+        let report = supervisor.stop();
+        assert!(
+            report.success && report.cleaned && report.midi_reset,
+            "{report:?}"
+        );
+    }
+}
+
 struct Worker(Child);
 
 impl Drop for Worker {

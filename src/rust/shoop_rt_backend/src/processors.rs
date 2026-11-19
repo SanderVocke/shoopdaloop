@@ -6,7 +6,7 @@ use shoop_app_api::{
     TrackProcessorEditorDescriptor, TrackProcessorFeatures, TrackProcessorMidiPolicy,
     TrackProcessorPresetDescriptor, TrackProcessorTypeId,
 };
-use shoop_rt_protocol::{processors::Unavailable, Capabilities};
+use shoop_rt_protocol::{processors::Unavailable, Capabilities, ProcessorKind};
 use shoop_rt_transport::carrier::Carrier;
 
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
@@ -71,14 +71,47 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                                 bus.confirmed
                                     && !bus.removing
                                     && bus.processor_slot.is_some()
-                                    && kind == shoop_rt_protocol::ProcessorKind::BuiltInFx
+                                    && bus.processor_type.as_deref()
+                                        == Some(crate::processor_controls::processor_id(kind))
                             })
                             .count(),
                     ) as u16,
-                buffering_frames: limits.builtin_latency_frames,
+                buffering_frames: if kind.is_carla() {
+                    limits.carla_latency_frames
+                } else {
+                    limits.builtin_latency_frames
+                },
                 reserved_host_bytes: limits.reserved_bytes,
                 budget_host_bytes: limits.effective.memory_bytes,
             })
+        };
+        let carla = |kind: ProcessorKind, label: &str| {
+            let instances = limits.effective.instances(kind);
+            let available = hosted && instances != 0;
+            TrackProcessorDescriptor {
+                resources: resources(kind, instances),
+                id: TrackProcessorTypeId::new(crate::processor_controls::processor_id(kind)),
+                label: label.into(),
+                available,
+                unavailable_reason: unavailable(
+                    available,
+                    limits
+                        .effective
+                        .carla
+                        .unavailable
+                        .or(Some(Unavailable::NoCapacity)),
+                ),
+                constraints: TrackProcessorConstraints {
+                    min_dry_audio_channels: Some(0),
+                    max_dry_audio_channels: Some(2),
+                    min_wet_audio_channels: Some(0),
+                    max_wet_audio_channels: Some(2),
+                    midi: TrackProcessorMidiPolicy::Optional,
+                    matching_audio_channels: false,
+                },
+                features: TrackProcessorFeatures::default(),
+                editor: None,
+            }
         };
         Arc::from([
             TrackProcessorDescriptor {
@@ -146,6 +179,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     presets: presets.into(),
                 }),
             },
+            carla(ProcessorKind::CarlaRack, "Carla Rack"),
+            carla(ProcessorKind::CarlaPatchbay, "Carla Patchbay"),
         ])
     }
 }

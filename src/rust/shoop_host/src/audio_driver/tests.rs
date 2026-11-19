@@ -651,6 +651,7 @@ impl Fixture {
                 fx_instances: 1,
                 synth_instances: 1,
                 memory_mb: 128,
+                carla: Default::default(),
             },
             master_auto_connect: false,
             ..Default::default()
@@ -682,7 +683,8 @@ impl Fixture {
             },
         )
         .unwrap();
-        let (owner, controller) = controller(started.host, settings, Box::new(|_| Ok(()))).unwrap();
+        let (owner, controller) =
+            controller(started.host, settings, Box::new(|_| Ok(())), None).unwrap();
         service.set_audio_driver_controller(controller).unwrap();
         let deadline = std::time::Instant::now() + Duration::from_secs(20);
         while !service.is_ready() || service.snapshot().audio_drivers.catalog.len() != 3 {

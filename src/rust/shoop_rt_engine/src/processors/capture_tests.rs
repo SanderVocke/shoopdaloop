@@ -96,6 +96,7 @@ impl Fixture {
                 fx_instances: 1,
                 synth_instances: 0,
                 memory_mb: 16,
+                carla: Default::default(),
             },
             ..EngineDescription::default()
         };

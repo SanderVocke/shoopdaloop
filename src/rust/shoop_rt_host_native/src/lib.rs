@@ -9,6 +9,8 @@ use shoop_rt_transport::{
 };
 use std::sync::Arc;
 mod benchmark;
+#[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
+mod carla;
 pub use drivers::DriverStatusReport as NativeStatus;
 #[cfg(feature = "jack")]
 pub use drivers::JackConfig;
@@ -159,13 +161,43 @@ fn assemble(started: drivers::Started) -> Result<Started, StartError> {
     })
 }
 pub fn start(config: &NativeConfig) -> Result<Started, StartError> {
+    start_with_template(config, template(&config.engine))
+}
+fn start_with_template(
+    config: &NativeConfig,
+    engine: drivers::Template,
+) -> Result<Started, StartError> {
     assemble(drivers::start(&drivers::DriverSettings {
         driver: config.driver.clone(),
-        engine: template(&config.engine),
+        engine,
     })?)
 }
 pub fn start_endpoint(config: &NativeConfig) -> Result<StartedEndpoint, StartError> {
-    let Started { host, client } = start(config)?;
+    split_endpoint(start(config)?)
+}
+
+#[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
+pub fn start_endpoint_with_carla_worker(
+    config: &NativeConfig,
+    worker: std::path::PathBuf,
+) -> Result<StartedEndpoint, StartError> {
+    split_endpoint(start_with_carla_worker(config, worker)?)
+}
+
+#[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
+pub fn start_with_carla_worker(
+    config: &NativeConfig,
+    worker: std::path::PathBuf,
+) -> Result<Started, StartError> {
+    let mut engine = template(&config.engine);
+    engine.factory = Arc::new(NativeFactory {
+        description: config.engine.clone(),
+        carla_worker: Some(worker),
+    });
+    start_with_template(config, engine)
+}
+
+fn split_endpoint(Started { host, client }: Started) -> Result<StartedEndpoint, StartError> {
     let (endpoint, outbox) = client.into_carrier().into_parts();
     Ok(StartedEndpoint {
         host,
@@ -200,13 +232,21 @@ pub fn template(engine: &EngineDescription) -> drivers::Template {
             engine.strips(),
             engine.strips(),
         ],
-        factory: Arc::new(NativeFactory(engine.clone())),
+        factory: Arc::new(NativeFactory {
+            description: engine.clone(),
+            #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
+            carla_worker: None,
+        }),
     }
 }
-struct NativeFactory(EngineDescription);
+struct NativeFactory {
+    description: EngineDescription,
+    #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
+    carla_worker: Option<std::path::PathBuf>,
+}
 impl drivers::Factory for NativeFactory {
     fn prepare(&self, opened: drivers::Opened) -> Result<drivers::Parts, drivers::StartError> {
-        prepare(&self.0, opened).map_err(|e| drivers::StartError::Factory(Box::new(e)))
+        prepare(self, opened).map_err(|e| drivers::StartError::Factory(Box::new(e)))
     }
 }
 fn describe(
@@ -274,15 +314,19 @@ fn describe(
 
     Ok(description)
 }
-fn prepare(
-    template: &EngineDescription,
-    opened: drivers::Opened,
-) -> Result<drivers::Parts, StartError> {
+fn prepare(factory: &NativeFactory, opened: drivers::Opened) -> Result<drivers::Parts, StartError> {
     let driver = opened.driver;
-    let description = describe(template, opened)?;
+    let description = describe(&factory.description, opened)?;
     let master_connections = description.master_connections.clone();
     let processors =
         shoop_host_processors::prepare(&description).map_err(StartError::Processors)?;
+    #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
+    let (processors, carla_services) = carla::prepare(
+        &description,
+        driver.buffer_frames as usize,
+        factory.carla_worker.as_deref(),
+        processors,
+    );
     let mut engine = shoop_rt_engine::prepare_with_processors(&description, driver, processors)?;
     engine
         .render
@@ -310,7 +354,11 @@ fn prepare(
             output_midi_events: capacity.events,
             output_midi_bytes: capacity.bytes,
         },
-        renderer: Box::new(NativeRenderer(engine.render)),
+        renderer: Box::new(NativeRenderer(
+            engine.render,
+            #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
+            carla_services,
+        )),
         observer: Arc::new(NativeObserver {
             host: engine.host,
             benchmark,
@@ -320,7 +368,11 @@ fn prepare(
         master_connections,
     })
 }
-pub struct NativeRenderer(pub Render);
+pub struct NativeRenderer(
+    pub Render,
+    #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
+    Vec<shoop_carla::service::ChainService>,
+);
 impl rt_runtime::host::Renderer for NativeRenderer {
     fn next_frame(&self) -> rt_runtime::Frame {
         self.0.next_frame()
@@ -340,6 +392,10 @@ impl drivers::Processor for NativeRenderer {
     fn finish(self: Box<Self>) -> Result<Box<dyn std::any::Any + Send>, rt_runtime::Error> {
         let mut stopped = self.0.into_stopped();
         stopped.cleanup()?;
+        #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
+        for service in self.1 {
+            let _ = service.stop(std::time::Duration::from_secs(2));
+        }
         Ok(Box::new(stopped))
     }
     fn diagnostic_work(&self) -> [u64; 14] {

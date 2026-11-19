@@ -1,6 +1,9 @@
 use super::{decode, encode, CodecError, Reader, Wire, Writer};
 use crate::host::*;
-use crate::{DriverKind, DriverStatus};
+use crate::{
+    processors::{CarlaHosting, CarlaSettings},
+    DriverKind, DriverStatus, ProcessorPolicy, ProcessorSettings,
+};
 impl Wire for Text {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         w.u16(self.as_str().len() as u16)?;
@@ -67,6 +70,17 @@ impl Wire for InputHistorySettings {
 }
 impl Wire for EngineSettings {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        self.processors
+            .validate()
+            .map_err(|_| CodecError::Invalid)?;
+        w.u8(self.processors.builtin_fx as u8)?;
+        w.u8(self.processors.oxisynth as u8)?;
+        w.u16(self.processors.fx_instances)?;
+        w.u16(self.processors.synth_instances)?;
+        w.u32(self.processors.memory_mb)?;
+        w.u8(self.processors.carla.hosting as u8)?;
+        w.u16(self.processors.carla.rack_instances)?;
+        w.u16(self.processors.carla.patchbay_instances)?;
         w.u32(self.composite_entries)?;
         w.u32(self.composite_segments)?;
         w.u32(self.timing_relations)?;
@@ -91,7 +105,34 @@ impl Wire for EngineSettings {
         self.history.put(w)
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        fn policy(r: &mut Reader<'_>) -> Result<ProcessorPolicy, CodecError> {
+            match r.u8()? {
+                0 => Ok(ProcessorPolicy::Auto),
+                1 => Ok(ProcessorPolicy::On),
+                2 => Ok(ProcessorPolicy::Off),
+                _ => Err(CodecError::Invalid),
+            }
+        }
+        let processors = ProcessorSettings {
+            builtin_fx: policy(r)?,
+            oxisynth: policy(r)?,
+            fx_instances: r.u16()?,
+            synth_instances: r.u16()?,
+            memory_mb: r.u32()?,
+            carla: CarlaSettings {
+                hosting: match r.u8()? {
+                    0 => CarlaHosting::Disabled,
+                    1 => CarlaHosting::InProcess,
+                    2 => CarlaHosting::Subprocess,
+                    _ => return Err(CodecError::Invalid),
+                },
+                rack_instances: r.u16()?,
+                patchbay_instances: r.u16()?,
+            },
+        };
+        processors.validate().map_err(|_| CodecError::Invalid)?;
         Ok(Self {
+            processors,
             composite_entries: r.u32()?,
             composite_segments: r.u32()?,
             timing_relations: r.u32()?,

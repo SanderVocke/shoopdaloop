@@ -6,6 +6,14 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 #[shoop_test]
 fn bounded_host_messages_round_trip_and_do_not_decode_as_engine_messages() {
     let engine = EngineSettings {
+        processors: shoop_rt_protocol::ProcessorSettings {
+            carla: shoop_rt_protocol::processors::CarlaSettings {
+                hosting: shoop_rt_protocol::processors::CarlaHosting::Subprocess,
+                rack_instances: 1,
+                patchbay_instances: 2,
+            },
+            ..Default::default()
+        },
         history: InputHistorySettings::default(),
         composite_entries: 256,
         composite_segments: 1024,

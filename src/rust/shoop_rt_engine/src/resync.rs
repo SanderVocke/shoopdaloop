@@ -110,14 +110,16 @@ impl ControlEndpoint {
     }
 
     fn bus_processor_record(&self, bus: shoop_rt_protocol::BusId) -> Option<StateRecord> {
-        let slot = self.model.bus(bus)?.processor?.slot?;
+        let owner = self.model.bus(bus)?.processor?;
+        let slot = owner.slot?;
         let state = self.processor_cells.get(slot.index as usize)?.read()?;
-        if state.generation != slot.generation {
+        if state.generation != slot.generation || state.kind != owner.kind {
             return None;
         }
         Some(StateRecord::BusProcessorState {
             bus,
             slot,
+            kind: owner.kind,
             snapshot: shoop_rt_protocol::processors::Snapshot {
                 source_frame: state.frame.0,
                 phase: state.phase,
@@ -170,9 +172,13 @@ impl ControlEndpoint {
         if self.projected_bus_processors[index] == Some(key) {
             return Ok(());
         }
-        out.push(EngineMessage::State(
-            record.unwrap_or(StateRecord::BusProcessor { bus: bus.id, slot }),
-        ))?;
+        out.push(EngineMessage::State(record.unwrap_or(
+            StateRecord::BusProcessor {
+                bus: bus.id,
+                slot,
+                kind: bus.processor.map(|owner| owner.kind),
+            },
+        )))?;
         self.projected_bus_processors[index] = Some(key);
         Ok(())
     }
@@ -344,6 +350,7 @@ impl ControlEndpoint {
                             reserved_bytes: self.processor_catalog.reserved_bytes,
                             channels: self.shape.processor_channels as u8,
                             builtin_latency_frames: self.limits.quantum,
+                            carla_latency_frames: self.processor_catalog.carla_delay,
                         },
                     ));
                 }
@@ -617,6 +624,7 @@ impl ControlEndpoint {
                         return Some(StateRecord::BusProcessor {
                             bus: bus.id,
                             slot: bus.processor.and_then(|owner| owner.slot),
+                            kind: bus.processor.map(|owner| owner.kind),
                         });
                     }
                     if cursor.part == 5 {

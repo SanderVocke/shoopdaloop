@@ -368,7 +368,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
 
     fn bus_processor_record(&mut self, record: StateRecord) {
         match record {
-            StateRecord::BusProcessor { bus, slot } => {
+            StateRecord::BusProcessor { bus, slot, kind } => {
                 if let Some(entry) = self
                     .mirror
                     .buses
@@ -379,11 +379,15 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         entry.processor_snapshot = None;
                     }
                     entry.processor_slot = slot;
+                    entry.processor_type = kind
+                        .map(crate::processor_controls::processor_id)
+                        .map(Into::into);
                 }
             }
             StateRecord::BusProcessorState {
                 bus,
                 slot,
+                kind,
                 snapshot,
             } => {
                 if let Some(entry) = self
@@ -392,14 +396,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     .values_mut()
                     .find(|entry| entry.slot == bus && !entry.removing)
                 {
-                    if crate::processor_controls::snapshot_state(
-                        shoop_processor_protocol::Kind::BuiltInFx,
-                        snapshot.values,
-                    )
-                    .is_ok()
+                    if kind.is_carla()
+                        || crate::processor_controls::snapshot_state(kind, snapshot.values).is_ok()
                     {
                         entry.processor_slot = Some(slot);
                         entry.processor_snapshot = Some(snapshot);
+                        entry.processor_type =
+                            Some(crate::processor_controls::processor_id(kind).into());
                     }
                 }
             }
@@ -686,6 +689,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                             }
                             shoop_rt_protocol::ProcessorKind::OxiSynth => {
                                 processor_type == shoop_app_api::TrackProcessorTypeId::OXISYNTH
+                            }
+                            shoop_rt_protocol::ProcessorKind::CarlaRack => {
+                                processor_type == shoop_app_api::TrackProcessorTypeId::CARLA_RACK
+                            }
+                            shoop_rt_protocol::ProcessorKind::CarlaPatchbay => {
+                                processor_type
+                                    == shoop_app_api::TrackProcessorTypeId::CARLA_PATCHBAY
                             }
                             shoop_rt_protocol::ProcessorKind::External => false,
                         },

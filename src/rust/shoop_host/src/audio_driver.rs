@@ -147,10 +147,23 @@ impl AudioDriverController for Controller {
     }
 }
 
+pub(crate) fn start_native(
+    config: &NativeConfig,
+    carla_worker: Option<&std::path::Path>,
+) -> Result<shoop_rt_host_native::Started, shoop_rt_host_native::StartError> {
+    #[cfg(feature = "carla")]
+    if let Some(worker) = carla_worker {
+        return shoop_rt_host_native::start_with_carla_worker(config, worker.to_path_buf());
+    }
+    let _ = carla_worker;
+    shoop_rt_host_native::start(config)
+}
+
 pub fn controller(
     host: NativeHost,
     settings: HostSettings,
     mut preferences: PreferenceWriter,
+    carla_worker: Option<std::path::PathBuf>,
 ) -> Result<(Owner, Box<dyn AudioDriverController>)> {
     let (sender, requests) = mpsc::sync_channel(2);
     let (results, receiver) = mpsc::sync_channel(1);
@@ -239,7 +252,7 @@ pub fn controller(
                                 }
                                 #[cfg(not(feature = "cpal"))]
                                 let _ = exact_devices;
-                                let started = shoop_rt_host_native::start(&native)?;
+                                let started = start_native(&native, carla_worker.as_deref())?;
                                 ensure!(
                                     !exact_devices || started.host.warnings().is_empty(),
                                     "the target audio configuration could not be honored: {}",
