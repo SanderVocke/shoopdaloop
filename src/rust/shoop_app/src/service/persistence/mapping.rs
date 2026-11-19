@@ -370,8 +370,6 @@ impl Candidate {
                 || !track_ids.insert(track.id)
                 || track.name.len() > 128
                 || track.port_name_base.len() > 128
-                || dry > 8
-                || wet > 8
                 || track.audio_channels != wet
                 || track.midi != topology.has_midi()
                 || (track.sync && (track.loops.len() != 1 || sync_source.is_some()))

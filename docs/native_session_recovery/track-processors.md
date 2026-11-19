@@ -124,8 +124,12 @@ The track and bus FX menus open **Process logs** for isolated workers. Use
 Each generation shows stdout, stderr, and the dropped-byte counts.
 Wet rerecord follows the dry loop across wraps and commits after the buffered
 output tail. A missing required block preserves the previous take.
-Selected loop media can be exported while Carla is active. Full session save
-refuses while the session contains Carla state. [Production evidence](../../PLAN_CARLA_HOSTING.md#stage-4-host-stereo-carla-through-the-production-native-service)
+Selected loop media can be exported while Carla is active. Native session saves
+include the confirmed track and bus projects and any retained wet-take checkpoint.
+Loading a session checks the plugin inventory in a private bank before activation.
+File-based plugins resolve their sources on the owning host. Portable packaging
+of those source files and applying an individual take's checkpoint remain open
+under P07. [Persistence evidence](../../PLAN_CARLA_HOSTING.md#stage-5-complete-state-persistence-and-driver-switching)
 
 Changes to RT/app schemas and worklet configuration must version their wire
 contracts together. Generation-fenced reconnect publishes actual state rather

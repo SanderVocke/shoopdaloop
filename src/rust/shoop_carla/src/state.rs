@@ -4,7 +4,7 @@ use anyhow::{bail, Context, Result};
 use quick_xml::{events::Event, Reader};
 use serde::Deserialize;
 pub use shoop_plugin_protocol::state::{decode_state, encode_state};
-use shoop_plugin_protocol::CarlaChainType;
+pub use shoop_plugin_protocol::CarlaChainType;
 
 const MAX_PROJECT_DEPTH: usize = 128;
 const MAX_PROJECT_PLUGINS: usize = 512;

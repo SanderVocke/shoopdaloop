@@ -169,10 +169,16 @@ impl Fixture {
             },
             ..Default::default()
         };
+        Self::with_settings(settings, mode)
+    }
+
+    fn with_settings(settings: HostSettings, mode: DeliveryMode) -> Self {
         let delivery = if !matches!(mode, DeliveryMode::Local) {
             let root = tempfile::tempdir().unwrap();
             let profile = root.path().join("profile.json");
             let mut options = shoop_host::serve::StartOptions::new().unwrap();
+            options.driver_preferences = Some(root.path().join("audio-driver.json"));
+            options.use_configured_driver = true;
             if matches!(mode, DeliveryMode::Tcp) {
                 options.lan = true;
                 options.export_profile = Some(profile.clone());
@@ -281,8 +287,12 @@ impl Fixture {
         thread::sleep(Duration::from_millis(2));
     }
     #[track_caller]
-    fn until(&mut self, mut done: impl FnMut(&mut Client) -> bool) {
-        let deadline = Instant::now() + Duration::from_secs(10);
+    fn until(&mut self, done: impl FnMut(&mut Client) -> bool) {
+        self.until_with_timeout(Duration::from_secs(10), done);
+    }
+    #[track_caller]
+    fn until_with_timeout(&mut self, timeout: Duration, mut done: impl FnMut(&mut Client) -> bool) {
+        let deadline = Instant::now() + timeout;
         loop {
             self.tick();
             if done(&mut self.client) {
@@ -320,13 +330,18 @@ impl Fixture {
         outcome
     }
     fn outcome(&mut self, command: protocol::Command) -> Outcome {
+        let timeout = if matches!(command, protocol::Command::AudioDriver(_)) {
+            shoop_host::launch::NATIVE_READINESS_TIMEOUT
+        } else {
+            Duration::from_secs(10)
+        };
         let message = self.client.command(command, None).unwrap();
         let ClientMessage::Submit { operation, .. } = &message else {
             unreachable!()
         };
         let operation = *operation;
         self.send(message);
-        self.until(|client| client.results().contains_key(&operation));
+        self.until_with_timeout(timeout, |client| client.results().contains_key(&operation));
         self.client.results()[&operation].clone()
     }
     fn reconnect(&mut self) {
@@ -433,6 +448,344 @@ impl Fixture {
         }
         self.command(protocol::Command::CommitPersistence(key));
         self.until(|client| client.snapshot().unwrap().persistence_epoch != key.epoch);
+    }
+}
+
+#[cfg(feature = "carla")]
+#[shoop_test(no_wasm = "native Carla session companion and driver replacement")]
+fn native_carla_session_archive_survives_driver_rate_and_period_change() {
+    use persistence_image as image;
+    use protocol::audio_driver::Command as Driver;
+    use shoop_carla::state::{encode_state, CarlaChainType};
+    use shoop_persistence_codec::codec::{Value, Work};
+
+    if std::env::var_os("SHOOP_REQUIRE_CARLA_TESTS").is_none() {
+        return;
+    }
+    for (hosting, delivery) in [
+        (CarlaHosting::InProcess, DeliveryMode::Socket),
+        (CarlaHosting::Subprocess, DeliveryMode::SharedMemory),
+    ] {
+        let mut processors = ProcessorSettings {
+            builtin_fx: ProcessorPolicy::Off,
+            oxisynth: ProcessorPolicy::Off,
+            ..Default::default()
+        };
+        processors.carla.hosting = hosting;
+        processors.carla.patchbay16x_instances = 2;
+        let mut fixture = Fixture::with_settings(
+            HostSettings {
+                processors,
+                driver: AudioDriverConfig::Dummy(DummyAudioDriverConfig::default()),
+                pools: NewEnginePools {
+                    tracks: 2,
+                    loops: 16,
+                    channels: 16,
+                    buses: 2,
+                    bus_channels: 16,
+                    loop_memory_mb: 16,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            delivery,
+        );
+        let patchbay = TrackProcessorTypeId::new(TrackProcessorTypeId::CARLA_PATCHBAY_16X);
+        let Outcome::TrackCreated { track, .. } = fixture.command(Command::AddTrack(TrackSpec {
+            name: "Archived Wide Track".into(),
+            topology: TrackSpecTopology::DryWet {
+                dry_audio_channels: 16,
+                wet_audio_channels: 16,
+                dry_midi: true,
+                processor_type: patchbay.clone(),
+                default_playback_mode: Default::default(),
+            },
+            latency: Default::default(),
+            initial_output_bus_names: vec![],
+            creation_request_id: None,
+        })) else {
+            panic!("Carla track creation")
+        };
+        fixture.command(Command::Track {
+            track,
+            action: TrackAction::InputMonitoringChanged {
+                enabled: true,
+                respect_auto_mute: false,
+            },
+        });
+        fixture.command(Command::AddBus(BusSpec {
+            name: "Archived Patchbay".into(),
+            channel_count: 16,
+            fx: Some(BusFxSpec {
+                processor_type: patchbay,
+            }),
+            creation_request_id: None,
+        }));
+        fixture.until(|client| {
+            let state = client.snapshot().unwrap();
+            state.tracks.iter().any(|entry| {
+                entry.name == "Archived Wide Track" && entry.fx.as_ref().is_some_and(|fx| fx.active)
+            }) && state.buses.iter().any(|entry| {
+                entry.name == "Archived Patchbay" && entry.fx.as_ref().is_some_and(|fx| fx.active)
+            })
+        });
+
+        let mut captured = (*fixture.capture(1)).clone();
+        let image::Manifest::Session(session) = &mut captured.manifest else {
+            panic!("session capture")
+        };
+        session.global.sync = false;
+        let track = session
+            .tracks
+            .iter_mut()
+            .find(|entry| entry.name == "Archived Wide Track")
+            .unwrap();
+        let bus = session
+            .buses
+            .iter_mut()
+            .find(|entry| entry.name == "Archived Patchbay")
+            .unwrap();
+        let recorded =
+            include_str!("../../shoop_engine/test_data/carla_legacy_patchbay16_loaded_state.json");
+        let project = include_str!("../../shoop_engine/test_data/carla_legacy_patchbay16_loaded_project.xml")
+            .replace("Audio Input:Capture 2<", "Audio Input:Capture 16<")
+            .replace("Audio Output:Playback 2<", "Audio Output:Playback 16<")
+            .replacen("<Value>1</Value>", "<Value>0.5</Value>", 1)
+            .replace(" </Patchbay>", concat!(
+                "  <Connection><Source>Audio Input:Capture 8</Source><Target>Audio Output:Playback 8</Target></Connection>\n",
+                "  <Connection><Source>Audio Input:Capture 9</Source><Target>Audio Output:Playback 9</Target></Connection>\n",
+                " </Patchbay>"));
+        let checkpoint = Arc::new(
+            encode_state(CarlaChainType::Patchbay16x, project.as_bytes())
+                .unwrap()
+                .into_bytes(),
+        );
+        captured.payloads[track.processor_checkpoint.unwrap() as usize - 1] =
+            image::Payload::ProcessorCheckpoint(Arc::clone(&checkpoint));
+        captured.payloads[bus.fx.as_ref().unwrap().processor_checkpoint.unwrap() as usize - 1] =
+            image::Payload::ProcessorCheckpoint(checkpoint);
+        let take = &mut track.loops[0];
+        take.frames = 1024;
+        captured
+            .payloads
+            .push(image::Payload::ProcessorCheckpoint(Arc::new(
+                recorded.as_bytes().to_vec(),
+            )));
+        take.recorded_processor_checkpoint = Some(captured.payloads.len() as u32);
+        let lanes = [
+            (0, 0.25_f32, 0.0625_f32),
+            (7, 0.375, 0.375),
+            (8, 0.5, 0.5),
+            (15, 0.625, 0.15625),
+        ];
+        let mut dry = 0;
+        for channel in &mut take.audio {
+            let mut amplitude = 0.;
+            if channel.mode == image::ChannelMode::Dry {
+                amplitude = lanes
+                    .iter()
+                    .find(|&&(lane, _, _)| lane == dry)
+                    .map_or(0., |&(_, sample, _)| sample);
+                dry += 1;
+            }
+            captured
+                .payloads
+                .push(image::Payload::Audio(Arc::new(vec![amplitude; 1024])));
+            channel.object = Some(captured.payloads.len() as u32);
+            channel.frames = 1024;
+        }
+        captured.payloads.push(image::Payload::Midi(Arc::new(vec![
+            MidiEventState {
+                frame: 59,
+                data: vec![0x90, 61, 100].into(),
+            },
+            MidiEventState {
+                frame: 244,
+                data: vec![0x80, 61, 0].into(),
+            },
+        ])));
+        take.midi[0].channel.object = Some(captured.payloads.len() as u32);
+        take.midi[0].channel.frames = 1024;
+        session.routes.extend(
+            track
+                .ports
+                .iter()
+                .filter(|port| port.state.role == PortRole::AudioOutput)
+                .zip(&bus.channels)
+                .map(|(port, channel)| MixerRouteState {
+                    source_port_id: port.state.id,
+                    destination_channel_id: channel.id,
+                }),
+        );
+        let archive = |image| match (Work::Encode {
+            image,
+            kind: IoTaskKind::SaveSession,
+            wav: false,
+            standard: false,
+            channels: vec![],
+        })
+        .run()
+        .unwrap()
+        {
+            Value::File { bytes, .. } => bytes,
+            _ => panic!("session archive"),
+        };
+        let load = |bytes, rate| {
+            let Value::Decoded(decoded) = (Work::Decode {
+                kind: IoTaskKind::LoadSession,
+                bytes,
+                rate,
+            })
+            .run()
+            .unwrap() else {
+                panic!("decoded session")
+            };
+            let Value::Image(image) = (Work::Prepare {
+                decoded,
+                mapping: vec![],
+                update_length: true,
+            })
+            .run()
+            .unwrap() else {
+                panic!("prepared session")
+            };
+            image
+        };
+        fixture.load(load(archive(Arc::new(captured)), 48_000));
+        let track = fixture
+            .client
+            .snapshot()
+            .unwrap()
+            .tracks
+            .iter()
+            .find(|entry| entry.name == "Archived Wide Track")
+            .unwrap();
+        let (track, take) = (track.id, track.loops[0].id);
+        let play = |fixture: &mut Fixture| {
+            fixture.command(Command::Loop {
+                track,
+                loop_id: take,
+                action: LoopAction::PlayDryClicked,
+            });
+            fixture.until(|client| {
+                let state = client.snapshot().unwrap();
+                let bus = state
+                    .buses
+                    .iter()
+                    .find(|entry| entry.name == "Archived Patchbay")
+                    .unwrap();
+                lanes.iter().all(|&(lane, _, expected)| {
+                    (bus.output_peaks_db[lane] - 20. * expected.log10()).abs() < 0.02
+                })
+            });
+        };
+        play(&mut fixture);
+
+        let request_driver = |fixture: &mut Fixture, buffer_size| {
+            fixture.command(Command::AudioDriver(Driver::Request(
+                AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                    sample_rate: 96_000,
+                    buffer_size,
+                    ..Default::default()
+                }),
+            )));
+            fixture.until(|client| {
+                client.snapshot().unwrap().audio_drivers.switch.status
+                    == AudioDriverSwitchStatus::AwaitingConfirmation
+            });
+            let request_id = fixture
+                .client
+                .snapshot()
+                .unwrap()
+                .audio_drivers
+                .switch
+                .request_id;
+            Command::AudioDriver(Driver::Confirm {
+                request_id,
+                accept: true,
+            })
+        };
+        let switch = request_driver(&mut fixture, 512);
+        fixture.command(switch);
+        fixture.until(|client| {
+            let switch = &client.snapshot().unwrap().audio_drivers.switch;
+            assert!(
+                !matches!(
+                    switch.status,
+                    AudioDriverSwitchStatus::Fatal | AudioDriverSwitchStatus::Failed
+                ),
+                "{switch:?}"
+            );
+            switch.status == AudioDriverSwitchStatus::Completed
+        });
+        let active = fixture
+            .client
+            .snapshot()
+            .unwrap()
+            .audio_drivers
+            .active
+            .as_ref()
+            .unwrap();
+        assert_eq!((active.sample_rate, active.buffer_size), (96_000, 512));
+        play(&mut fixture);
+        let saved = load(archive(fixture.capture(3)), 96_000);
+        let image::Manifest::Session(session) = &saved.manifest else {
+            panic!("session manifest")
+        };
+        let track = session
+            .tracks
+            .iter()
+            .find(|entry| entry.name == "Archived Wide Track")
+            .unwrap();
+        let take = &track.loops[0];
+        assert_eq!(take.frames, 2048);
+        assert_eq!(take.audio.len(), 32);
+        let image::Payload::Midi(events) =
+            &saved.payloads[take.midi[0].channel.object.unwrap() as usize - 1]
+        else {
+            panic!("retimed MIDI")
+        };
+        assert_eq!(events[0].frame, 118);
+        assert!(take.recorded_processor_checkpoint.is_some());
+        assert!(track.processor_checkpoint.is_some());
+        assert!(session
+            .buses
+            .iter()
+            .find(|bus| bus.name == "Archived Patchbay")
+            .unwrap()
+            .fx
+            .as_ref()
+            .unwrap()
+            .processor_checkpoint
+            .is_some());
+
+        // This period exceeds Carla Native's maximum block. The target engine
+        // cannot prepare a Carla bank, so the prior format and projects must return.
+        let switch = request_driver(&mut fixture, 16_384);
+        let outcome = fixture.outcome(switch);
+        assert!(matches!(outcome, Outcome::Refused { .. }), "{outcome:?}");
+        fixture.until_with_timeout(shoop_host::launch::NATIVE_READINESS_TIMEOUT, |client| {
+            let switch = &client.snapshot().unwrap().audio_drivers.switch;
+            assert_ne!(switch.status, AudioDriverSwitchStatus::Fatal, "{switch:?}");
+            switch.status == AudioDriverSwitchStatus::Failed
+        });
+        let snapshot = fixture.client.snapshot().unwrap();
+        assert_eq!(
+            snapshot.audio_drivers.switch.status,
+            AudioDriverSwitchStatus::Failed
+        );
+        assert!(
+            snapshot
+                .audio_drivers
+                .switch
+                .message
+                .contains("prior driver and session were restored"),
+            "{:?}",
+            snapshot.audio_drivers.switch
+        );
+        let restored = snapshot.audio_drivers.active.as_ref().unwrap();
+        assert_eq!((restored.sample_rate, restored.buffer_size), (96_000, 512));
+        play(&mut fixture);
     }
 }
 
