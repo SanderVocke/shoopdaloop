@@ -1,14 +1,29 @@
 //! Bounded MIDI 1.0 components for functional reference execution.
+mod content;
+mod difference;
 mod emission;
-pub(crate) mod engine;
+mod history;
+pub(crate) mod session;
 mod state;
 mod storage;
+mod transition;
 
+pub use content::{ContentStore, Description, SnapshotId, StoreLimits, StoreUsage, ViewId};
+pub use difference::{ComparisonId, DifferenceService, Differences, STATE_CELLS};
 pub use emission::{Emission, EmissionKind};
-pub use engine::{Engine, ProcessError, Report};
+pub use session::{
+    Binding, InputEvent, MidiSession, OutputEvent, SessionLimits, SessionReport, SessionWork,
+};
 use state::BasicUpdate;
 pub use state::{ChannelState, MidiState, NoteState};
 pub use storage::{Cursor, Event, Record, Take, TakeStatus};
+pub use transition::StateTransition;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProcessError {
+    Midi(Error),
+    Pipeline(crate::pipeline::PipelineError),
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
@@ -159,11 +174,25 @@ impl Interpreter {
     }
     /// Visit at most one note/controller cell; true means the update is published.
     pub fn step(&mut self) -> bool {
+        self.step_observed(|_, _| {})
+    }
+    pub fn step_observed(&mut self, mut changed: impl FnMut(&MidiState, usize)) -> bool {
         let Some(update) = &mut self.pending else {
             return true;
         };
+        let (cells, count) = update.cells();
+        let mut before = [0; 8];
+        for i in 0..count {
+            before[i] = self.state.cell(cells[i]);
+        }
         self.steps = self.steps.saturating_add(1);
-        if update.step(&mut self.state) {
+        let done = update.step(&mut self.state);
+        for i in 0..count {
+            if before[i] != self.state.cell(cells[i]) {
+                changed(&self.state, cells[i]);
+            }
+        }
+        if done {
             self.pending = None;
             true
         } else {

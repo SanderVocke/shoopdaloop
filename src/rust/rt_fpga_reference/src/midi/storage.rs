@@ -1,5 +1,4 @@
-use super::{Error, Message, MidiState};
-use alloc::vec::Vec;
+use super::{ContentStore, Error, Message, MidiState, SnapshotId, StoreLimits, ViewId};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Event {
@@ -36,9 +35,9 @@ pub enum TakeStatus {
 }
 
 pub struct Take {
-    records: Vec<Record>,
-    limit: u32,
-    initial: MidiState,
+    store: ContentStore,
+    view: Option<ViewId>,
+    initial: SnapshotId,
     frames: u64,
     revision: u64,
     status: TakeStatus,
@@ -49,14 +48,19 @@ impl Take {
         if events == 0 || (events as u64) * (size_of::<Record>() as u64) > isize::MAX as u64 {
             return Err(Error::Capacity);
         }
-        let mut records = Vec::new();
-        records
-            .try_reserve_exact(events as usize)
-            .map_err(|_| Error::Capacity)?;
+        let mut store = ContentStore::prepare(StoreLimits {
+            block_events: events,
+            blocks: 1,
+            max_events: events,
+            views: 1,
+            snapshots: 2,
+            retirements: 1,
+        })?;
+        let initial = store.snapshot(&MidiState::default())?;
         Ok(Self {
-            records,
-            limit: events,
-            initial: MidiState::default(),
+            store,
+            view: None,
+            initial,
             frames: 0,
             revision: 0,
             status: TakeStatus::Empty,
@@ -68,8 +72,14 @@ impl Take {
             return Err(Error::Busy);
         }
         let revision = self.revision.checked_add(1).ok_or(Error::Overflow)?;
-        self.records.clear();
-        self.initial = *initial;
+        let next = self.store.snapshot(initial)?;
+        if let Some(view) = self.view.take() {
+            self.store.release(view)?;
+            self.store.maintenance(2);
+        }
+        self.store.release_snapshot(self.initial)?;
+        self.initial = next;
+        self.view = Some(self.store.writer(next)?);
         self.frames = 0;
         self.revision = revision;
         self.status = TakeStatus::Recording;
@@ -93,22 +103,25 @@ impl Take {
             .checked_add(u64::from(frames))
             .ok_or(Error::Overflow)?;
         for event in events {
-            if self.records.len() == self.limit as usize {
+            if let Err(error) = self.store.append(
+                self.view.ok_or(Error::InvalidState)?,
+                self.frames + u64::from(event.offset - base),
+                event.message,
+            ) {
                 self.status = TakeStatus::Incomplete;
-                return Err(Error::Capacity);
+                return Err(error);
             }
-            self.records.push(Record {
-                frame: self.frames + u64::from(event.offset - base),
-                order: self.records.len() as u32,
-                message: event.message,
-            });
         }
+        self.store
+            .advance(self.view.ok_or(Error::InvalidState)?, end)?;
         self.frames = end;
         Ok(())
     }
     pub fn finish(&mut self) -> Result<(), Error> {
         match self.status {
             TakeStatus::Recording => {
+                self.store
+                    .finish(self.view.ok_or(Error::InvalidState)?, self.frames)?;
                 self.status = TakeStatus::Complete;
                 Ok(())
             }
@@ -135,20 +148,20 @@ impl Take {
         Ok(())
     }
     pub fn records(&self) -> &[Record] {
-        &self.records
+        self.view.map_or(&[], |view| self.store.contiguous(view))
     }
     /// Fully accepted windows; an incomplete take may also contain a partial window prefix.
     pub fn frames(&self) -> u64 {
         self.frames
     }
     pub fn initial(&self) -> &MidiState {
-        &self.initial
+        self.store.state(self.initial).expect("owned initial state")
     }
     pub fn status(&self) -> TakeStatus {
         self.status
     }
     pub fn prepared_bytes(&self) -> usize {
-        size_of::<Self>() + self.records.capacity() * size_of::<Record>()
+        size_of::<Self>() + self.store.prepared_bytes() - size_of::<ContentStore>()
     }
 }
 
@@ -167,7 +180,7 @@ impl Cursor {
     }
     pub fn peek(&self, take: &Take) -> Result<Option<Record>, Error> {
         self.validate(take)?;
-        Ok(take.records.get(self.next as usize).copied())
+        Ok(take.records().get(self.next as usize).copied())
     }
     pub fn acknowledge(&mut self, take: &Take) -> Result<(), Error> {
         if self.peek(take)?.is_none() {

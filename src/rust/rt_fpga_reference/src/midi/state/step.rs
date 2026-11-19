@@ -38,6 +38,51 @@ pub struct BasicUpdate {
     phase: Phase,
 }
 impl BasicUpdate {
+    pub(crate) fn cells(&self) -> ([usize; 8], usize) {
+        let mut ids = [0; 8];
+        let mut len = 0;
+        let mut add = |id| {
+            ids[len] = id;
+            len += 1;
+        };
+        let data = self.message.as_bytes();
+        let base = usize::from(data[0] & 15) * CHANNEL_CELLS;
+        match self.phase {
+            Phase::Done => {}
+            Phase::Reset(cell) => add(cell),
+            Phase::Controls(cc) => add(base + 128 + usize::from(cc)),
+            Phase::Defaults(index) => {
+                add(base + 128 + usize::from(DEFAULT_CONTROLS[usize::from(index)].0));
+                if usize::from(index) + 1 == DEFAULT_CONTROLS.len() {
+                    for field in 259..264 {
+                        add(base + field);
+                    }
+                }
+            }
+            Phase::Notes { key, .. } => add(base + usize::from(key)),
+            Phase::Start => match data[0] & 0xf0 {
+                0x80 | 0x90 | 0xa0 => add(base + usize::from(data[1])),
+                0xb0 => {
+                    let cc = data[1];
+                    if !matches!(cc, 120 | 121 | 123) {
+                        add(base + 128 + usize::from(cc));
+                    }
+                    if matches!(cc, 124..=127) {
+                        add(base + 128 + usize::from(cc ^ 1));
+                    }
+                }
+                0xc0 => {
+                    for field in 256..259 {
+                        add(base + field);
+                    }
+                }
+                0xd0 => add(base + 260),
+                0xe0 => add(base + 259),
+                _ => {}
+            },
+        }
+        (ids, len)
+    }
     pub fn begin(message: ShortMessage) -> Result<Self, Error> {
         ShortMessage::managed(message.as_bytes()).map_err(Error::from)?;
         Ok(Self {

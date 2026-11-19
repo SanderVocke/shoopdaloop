@@ -247,18 +247,62 @@ impl Pipeline {
         }
         result
     }
-    /// MIDI capacity/refusal is reported independently from fatal audio failures.
-    pub fn process_midi_block(
+    pub fn grab_midi(
+        &mut self,
+        midi: &mut crate::midi::MidiSession,
+        input: u16,
+        start: u64,
+        end: u64,
+        slots: &[u16],
+    ) -> Result<(), crate::midi::Error> {
+        if self.fault.is_some() {
+            return Err(crate::midi::Error::InvalidState);
+        }
+        midi.grab(&mut self.state, input, start, end, slots)
+    }
+    pub fn replace_midi(
+        &mut self,
+        midi: &mut crate::midi::MidiSession,
+        slots: &[u16],
+        view: crate::midi::ViewId,
+    ) -> Result<(), crate::midi::Error> {
+        if self.fault.is_some() {
+            return Err(crate::midi::Error::InvalidState);
+        }
+        midi.replace_group(&mut self.state, slots, view)
+    }
+    pub fn clear_midi(
+        &mut self,
+        midi: &mut crate::midi::MidiSession,
+        slots: &[u16],
+    ) -> Result<(), crate::midi::Error> {
+        if self.fault.is_some() {
+            return Err(crate::midi::Error::InvalidState);
+        }
+        midi.clear_group(&mut self.state, slots)
+    }
+    pub fn duplicate_midi(
+        &mut self,
+        midi: &mut crate::midi::MidiSession,
+        source: u16,
+        destination: u16,
+    ) -> Result<(), crate::midi::Error> {
+        if self.fault.is_some() {
+            return Err(crate::midi::Error::InvalidState);
+        }
+        midi.duplicate(&mut self.state, source, destination)
+    }
+    pub fn process_midi_session(
         &mut self,
         jobs: &mut JobProcessor,
         memory: &mut impl Memory,
         inputs: &[&[Fixed]],
         outputs: &mut [&mut [Fixed]],
         frames: usize,
-        midi: &mut crate::midi::Engine,
-        events: &[crate::midi::Event],
-        sink: &mut impl FnMut(crate::midi::Event) -> Result<(), crate::midi::Error>,
-    ) -> Result<crate::midi::Report, crate::midi::ProcessError> {
+        midi: &mut crate::midi::MidiSession,
+        events: &[crate::midi::InputEvent],
+        sink: &mut impl FnMut(crate::midi::OutputEvent) -> Result<(), crate::midi::Error>,
+    ) -> Result<crate::midi::SessionReport, crate::midi::ProcessError> {
         if let Some(error) = self.fault {
             for output in outputs.iter_mut() {
                 output.fill(Fixed::ZERO);
@@ -272,17 +316,17 @@ impl Pipeline {
             }
             return Err(crate::midi::ProcessError::Midi(error));
         }
-        let mut observer = crate::midi::engine::MidiObserver {
-            engine: midi,
+        let mut observer = crate::midi::session::SessionObserver {
+            session: midi,
             events,
             sink,
             error: None,
         };
         match self.process_observed(jobs, memory, inputs, outputs, frames, &mut observer) {
-            Ok(()) => Ok(observer.engine.report(observer.error)),
+            Ok(()) => Ok(observer.session.report(observer.error)),
             Err(error) => {
                 if self.fault.is_some() {
-                    observer.engine.fault();
+                    observer.session.fault();
                 }
                 Err(crate::midi::ProcessError::Pipeline(error))
             }

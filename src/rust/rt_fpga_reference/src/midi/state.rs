@@ -68,6 +68,7 @@ pub struct ChannelState {
     notes: [NoteState; 128],
     controllers: [u8; 128],
     note_keys: u128,
+    active_keys: u128,
     controller_keys: u128,
     program: Option<u8>,
     program_bank: [Option<u8>; 2],
@@ -94,6 +95,7 @@ impl ChannelState {
             }; 128],
             controllers: [0; 128],
             note_keys: 0,
+            active_keys: 0,
             controller_keys: (1 << 64) | (1 << 66) | (1 << 69),
             program: None,
             program_bank: [None; 2],
@@ -130,11 +132,30 @@ impl ChannelState {
     fn refresh_note(&mut self, key: u8) {
         let note = self.notes[key as usize];
         let bit = 1u128 << key;
+        if note.velocity != 0 || note.held() {
+            self.active_keys |= bit;
+        } else {
+            self.active_keys &= !bit;
+        }
         if note.velocity != 0 || note.held() || note.sostenuto() || note.pressure().is_some() {
             self.note_keys |= bit;
         } else {
             self.note_keys &= !bit;
         }
+    }
+    pub(super) fn has_activity(&self) -> bool {
+        self.active_keys != 0
+    }
+    pub(super) fn next_projected(&self, from: u16) -> Option<(u8, NoteState)> {
+        if from >= 128 {
+            return None;
+        }
+        let bits = self.note_keys & (u128::MAX << from);
+        if bits == 0 {
+            return None;
+        }
+        let key = bits.trailing_zeros() as u8;
+        Some((key, self.notes[usize::from(key)]))
     }
     fn refresh_notes(&mut self) {
         for key in 0..128 {
@@ -285,6 +306,31 @@ impl Default for MidiState {
     }
 }
 impl MidiState {
+    pub(super) fn cell(&self, cell: usize) -> u64 {
+        if cell == step::BASIC_STATE_CELLS - 1 {
+            return u64::from(self.system_reset);
+        }
+        let s = &self.channels[cell / 264];
+        let optional = |v: Option<u8>| u64::from(v.unwrap_or(128));
+        match cell % 264 {
+            n @ 0..128 => {
+                let n = s.notes[n];
+                u64::from(n.velocity) | (u64::from(n.flags) << 8) | (u64::from(n.pressure) << 16)
+            }
+            c @ 128..256 => optional(s.controller((c - 128) as u8)),
+            256 => optional(s.program),
+            257 => optional(s.program_bank[0]),
+            258 => optional(s.program_bank[1]),
+            259 => u64::from(s.pitch_bend),
+            260 => optional(s.pressure),
+            261 => u64::from(s.reset_controllers),
+            262 => s
+                .parameter_family
+                .map_or(0, |f| if f == ParameterFamily::Rpn { 1 } else { 2 }),
+            263 => u64::from(s.parameter_history_untracked),
+            _ => unreachable!(),
+        }
+    }
     /// Reassemble exported opaque channel projections. Callers must use channels
     /// and the reset marker from the same immutable state cut.
     pub fn from_channels(channels: [ChannelState; 16], system_reset_seen: bool) -> Self {

@@ -1,6 +1,6 @@
-use rt_fpga_reference::{
-    midi::{Emission, EmissionKind, Engine, Event, Interpreter, Message, MidiState, Take, Work},
-    records::Identity,
+use rt_fpga_reference::midi::{
+    Emission, EmissionKind, Event, Interpreter, Message, MidiSession, MidiState, SessionLimits,
+    Take, Work,
 };
 use std::{hint::black_box, time::Instant};
 
@@ -38,16 +38,8 @@ fn main() {
         interpreter = Interpreter::default();
     }
     times.sort_unstable();
-    let engine = Engine::prepare(
-        Identity {
-            slot: 0,
-            generation: 1,
-        },
-        EVENTS,
-        DENSITY as u32,
-    )
-    .unwrap();
-    println!("events={EVENTS} events_per_128_frames={DENSITY} repeats={REPEATS} median_capture_read_state_ns={} min_ns={} max_ns={} prepared_engine_bytes={} state_bytes={}",
+    let engine = MidiSession::prepare(SessionLimits::session()).unwrap();
+    println!("events={EVENTS} events_per_128_frames={DENSITY} repeats={REPEATS} median_capture_read_state_ns={} min_ns={} max_ns={} prepared_session_bytes={} state_bytes={}",
         times[REPEATS/2],times[0],times[REPEATS-1],engine.prepared_bytes(),size_of::<MidiState>());
     for bytes in [
         &[0x90, 60, 80][..],
