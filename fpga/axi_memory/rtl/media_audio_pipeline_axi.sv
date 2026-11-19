@@ -3,11 +3,12 @@
 
 module media_audio_pipeline_axi #(
     parameter integer EXTERNAL_IO = 0,
+    parameter integer ENABLE_MIDI = 0,
     parameter integer LIVE_LOADING = 0,
     parameter integer EXPORT_SYNC_EVENTS = 0,
     parameter integer PROGRAM_REGIONS = LIVE_LOADING != 0 ? 2 : 1,
     parameter integer PROGRAM_DEPTH = 32, parameter integer STATE_DEPTH = 16,
-    parameter integer JOB_DEPTH = 32, parameter integer MAX_FRAMES = 32,
+    parameter integer JOB_DEPTH = 32, parameter integer READ_HINT_DEPTH = JOB_DEPTH, parameter integer MAX_FRAMES = 32,
     parameter integer BUFFERS = 16, parameter integer INPUT_PORTS = 2, parameter integer OUTPUT_PORTS = 2,
     parameter integer REUSE_VIEWS = 0,
     parameter integer MAINTENANCE_AT_RUN = 1,
@@ -24,6 +25,12 @@ module media_audio_pipeline_axi #(
     parameter [31:0] PHYSICAL_BASE = 32'h01000000,
     parameter [63:0] PHYSICAL_BYTES_LIMIT = 64'h100000000
 ) (
+    output wire midi_job_valid,
+    input wire midi_job_ready,
+    output wire [255:0] midi_job_data,
+    input wire midi_job_done,
+    input wire [3:0] midi_job_error,
+    output wire [3:0] midi_error_code,
     output wire sample_input_read,
     output wire [31:0] sample_input_address,
     input wire [31:0] sample_input_data,
@@ -213,12 +220,14 @@ module media_audio_pipeline_axi #(
     wire [31:0] physical_base = PHYSICAL_BASE;
     media_audio_pipeline #(
         .EXTERNAL_IO(EXTERNAL_IO),
+        .ENABLE_MIDI(ENABLE_MIDI),
         .LIVE_LOADING(LIVE_LOADING),
         .EXPORT_SYNC_EVENTS(EXPORT_SYNC_EVENTS),
         .PROGRAM_REGIONS(PROGRAM_REGIONS),
         .PROGRAM_DEPTH(PROGRAM_DEPTH),
         .STATE_DEPTH(STATE_DEPTH),
         .JOB_DEPTH(JOB_DEPTH),
+        .READ_HINT_DEPTH(READ_HINT_DEPTH),
         .MAX_FRAMES(MAX_FRAMES),
         .BUFFERS(BUFFERS),
         .INPUT_PORTS(INPUT_PORTS),

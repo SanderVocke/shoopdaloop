@@ -56,7 +56,7 @@ impl Agent for Sink {
 }
 pub fn compile(loops: u64) -> Result<Compiled> {
     let sources = [
-        "midi_runtime",
+        "midi_job_service",
         "midi_store",
         "midi_state_service",
         "midi_state",
@@ -64,7 +64,7 @@ pub fn compile(loops: u64) -> Result<Compiled> {
         "midi_transition",
     ];
     let mut d = Design::new(
-        "midi_runtime",
+        "midi_job_service",
         sources
             .iter()
             .map(|p| crate::root().join(format!("fpga/midi/rtl/{p}.sv")))
@@ -88,7 +88,7 @@ pub fn compile(loops: u64) -> Result<Compiled> {
 }
 pub fn compile_limits(l: rt_fpga_reference::midi::SessionLimits) -> Result<Compiled> {
     let sources = [
-        "midi_runtime",
+        "midi_job_service",
         "midi_store",
         "midi_state_service",
         "midi_state",
@@ -96,7 +96,7 @@ pub fn compile_limits(l: rt_fpga_reference::midi::SessionLimits) -> Result<Compi
         "midi_transition",
     ];
     let mut d = Design::new(
-        "midi_runtime",
+        "midi_job_service",
         sources
             .iter()
             .map(|p| crate::root().join(format!("fpga/midi/rtl/{p}.sv")))
@@ -218,27 +218,6 @@ impl<'a> Driver<'a> {
         plans: &[LoopRecord],
         events: &[InputEvent],
     ) -> u64 {
-        for (i, p) in plans.iter().enumerate() {
-            let mode = match p.mode {
-                Mode::Stopped => 0,
-                Mode::Recording => 1,
-                Mode::Playing => 2,
-                Mode::Invalid => 3,
-            };
-            assert_eq!(
-                self.issue(
-                    2,
-                    [
-                        i as u64,
-                        mode,
-                        p.position,
-                        p.content_length,
-                        u64::from(p.begin_capture)
-                    ]
-                ),
-                0
-            );
-        }
         let mut words = Vec::new();
         for e in events {
             let packet = e
@@ -252,9 +231,102 @@ impl<'a> Driver<'a> {
             words.extend([u32::from(e.input), e.offset, packet, 0]);
         }
         self.write(self.scratch, &words);
-        self.issue(
-            3,
-            [start, u64::from(q), self.scratch, events.len() as u64, 0],
-        )
+        self.sim.model.set("quantum_frames", u64::from(q));
+        let mut first = self.issue(
+            24,
+            [
+                start + u64::from(q),
+                self.scratch,
+                events.len() as u64,
+                0,
+                0,
+            ],
+        );
+        for phase in rt_fpga_compiler::MidiPhase::ORDER.into_iter().skip(1) {
+            if phase.global() {
+                let op = match phase {
+                    rt_fpga_compiler::MidiPhase::Observe => 27,
+                    rt_fpga_compiler::MidiPhase::Output => 32,
+                    rt_fpga_compiler::MidiPhase::Maintain => 34,
+                    _ => unreachable!(),
+                };
+                let error = self.issue(op, [0; 5]);
+                if first == 0 {
+                    first = error;
+                }
+            } else {
+                for (i, p) in plans.iter().enumerate() {
+                    let identity = u64::from(p.id.slot) | u64::from(p.id.generation) << 32;
+                    let mode = match p.mode {
+                        Mode::Stopped => 0,
+                        Mode::Playing => 1,
+                        Mode::Recording => 2,
+                        Mode::Invalid => 3,
+                    };
+                    let playing = p.mode == Mode::Playing && p.position < p.content_length;
+                    let (op, args) = match phase {
+                        rt_fpga_compiler::MidiPhase::Capture if p.mode != Mode::Recording => {
+                            (25, [i as u64, 0, 0, 0, identity])
+                        }
+                        rt_fpga_compiler::MidiPhase::Capture if p.begin_capture => {
+                            (26, [i as u64, start, 0, 0, identity])
+                        }
+                        rt_fpga_compiler::MidiPhase::Append if p.mode == Mode::Recording => {
+                            (28, [i as u64, 0, 0, 0, identity])
+                        }
+                        rt_fpga_compiler::MidiPhase::Cleanup => (
+                            29,
+                            [
+                                i as u64,
+                                p.position,
+                                p.content_length,
+                                mode | u64::from(p.begin_capture) << 2,
+                                identity,
+                            ],
+                        ),
+                        rt_fpga_compiler::MidiPhase::ClaimEstablished
+                        | rt_fpga_compiler::MidiPhase::ClaimNew
+                            if playing =>
+                        {
+                            (
+                                30,
+                                [
+                                    i as u64,
+                                    1 | u64::from(
+                                        phase == rt_fpga_compiler::MidiPhase::ClaimEstablished,
+                                    ) << 1,
+                                    0,
+                                    0,
+                                    identity,
+                                ],
+                            )
+                        }
+                        rt_fpga_compiler::MidiPhase::Playback if playing => {
+                            (31, [i as u64, p.position, p.content_length, mode, identity])
+                        }
+                        rt_fpga_compiler::MidiPhase::Complete => (
+                            33,
+                            [
+                                i as u64,
+                                if p.mode == Mode::Playing && !playing {
+                                    0
+                                } else {
+                                    mode
+                                },
+                                0,
+                                0,
+                                identity,
+                            ],
+                        ),
+                        _ => continue,
+                    };
+                    let error = self.issue(op, args);
+                    if first == 0 {
+                        first = error;
+                    }
+                }
+            }
+        }
+        first
     }
 }

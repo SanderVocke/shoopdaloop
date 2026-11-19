@@ -264,3 +264,33 @@ fn mixed_queue_preflight_refuses_before_advancing_musical_time() {
     assert_eq!(state.frame(), 0);
     assert!(queue.is_empty());
 }
+
+#[shoop_test]
+fn prepared_input_history_continues_without_bound_midi_loops() {
+    use rt_fpga_compiler::StateProgramTarget;
+    let mut f = fixture::Fixture::new(16, 1);
+    f.midi.unbind(0).unwrap();
+    let mut logical = fixture::logical(16, fixture::limits(1));
+    logical
+        .work_pass
+        .retain(|op| !matches!(op, rt_fpga_compiler::Operation::Midi { .. }));
+    logical.jobs_per_quantum = 2;
+    logical.resources.queue_capacity = 2;
+    let logical = logical.with_midi(&[]).unwrap();
+    let c = crate::target::RustTarget::new(&[]).build(&logical).unwrap();
+    let capacity = c.program.jobs_per_quantum;
+    f.pipeline = crate::pipeline::Pipeline::prepare(c.plan, c.program, c.memory, capacity).unwrap();
+    assert_eq!(f.run(&[fixture::event(3, &[0xb0, 1, 42])]).error, None);
+    assert_eq!(
+        f.midi
+            .input_state(0)
+            .unwrap()
+            .channel(0)
+            .unwrap()
+            .controller(1),
+        Some(42)
+    );
+    assert_eq!(f.pipeline.state().frame(), 16);
+    assert!(f.emitted.is_empty());
+    assert_eq!(f.midi.history_bounds(0).unwrap().1, 16);
+}

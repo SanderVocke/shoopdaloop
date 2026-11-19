@@ -123,13 +123,6 @@ impl StateProgramTarget for RtlTarget<'_> {
         }
     }
     fn build(&self, logical: &LogicalStateProgram) -> Result<CompiledProgram, CompileError> {
-        if logical
-            .work_pass
-            .iter()
-            .any(|op| matches!(op, Operation::Midi { .. }))
-        {
-            return Err(CompileError::InvalidProgram);
-        }
         logical.validate(self.limits())?;
         if usize::from(self.state_base) + logical.initial_state.len()
             > self.limits().state_values as usize
@@ -183,7 +176,18 @@ impl StateProgramTarget for RtlTarget<'_> {
         }
         for op in &logical.work_pass {
             let instruction = match *op {
-                Operation::Midi { .. } => return Err(CompileError::InvalidProgram),
+                Operation::Midi {
+                    phase,
+                    loop_id,
+                    context,
+                } => component::Instruction::ProcessMidi {
+                    phase: phase as u16,
+                    loop_id: loop_id.map(|id| component::Identity {
+                        slot: id.slot,
+                        generation: id.generation,
+                    }),
+                    context,
+                },
                 Operation::Silence { destination } => component::Instruction::ProcessSilence {
                     destination: operand(destination)?,
                 },

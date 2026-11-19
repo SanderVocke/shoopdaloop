@@ -2,11 +2,12 @@
 
 module media_audio_pipeline #(
     parameter integer EXTERNAL_IO = 0,
+    parameter integer ENABLE_MIDI = 0,
     parameter integer LIVE_LOADING = 0,
     parameter integer EXPORT_SYNC_EVENTS = 0,
     parameter integer PROGRAM_REGIONS = LIVE_LOADING != 0 ? 2 : 1,
     parameter integer PROGRAM_DEPTH = 32, parameter integer STATE_DEPTH = 16,
-    parameter integer JOB_DEPTH = 32, parameter integer MAX_FRAMES = 32,
+    parameter integer JOB_DEPTH = 32, parameter integer READ_HINT_DEPTH = JOB_DEPTH, parameter integer MAX_FRAMES = 32,
     parameter integer BUFFERS = 16, parameter integer INPUT_PORTS = 2, parameter integer OUTPUT_PORTS = 2,
     parameter integer REUSE_VIEWS = 0,
     parameter integer MAINTENANCE_AT_RUN = 1,
@@ -20,6 +21,10 @@ module media_audio_pipeline #(
     parameter integer TABLE_LINES = 8, parameter integer REF_LINES = 4, parameter integer STACK_LINES = 2,
     parameter integer READ_BUFFERS = 4, parameter integer WRITE_BUFFERS = 4, parameter integer BURST_MEMORY = 0
 ) (
+    output wire midi_job_valid, input wire midi_job_ready,
+    output wire [255:0] midi_job_data,
+    input wire midi_job_done, input wire [3:0] midi_job_error,
+    output wire [3:0] midi_error_code,
     output wire sample_input_read,
     output wire [31:0] sample_input_address,
     input wire [31:0] sample_input_data,
@@ -147,10 +152,12 @@ module media_audio_pipeline #(
     assign sync_event_valid = unused_sync_event;
     assign sync_event_data = unused_sync_data;
     audio_pipeline #(.EXTERNAL_IO(EXTERNAL_IO), .LIVE_LOADING(LIVE_LOADING), .PROGRAM_REGIONS(PROGRAM_REGIONS),
-        .PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH),
+        .PROGRAM_DEPTH(PROGRAM_DEPTH), .STATE_DEPTH(STATE_DEPTH), .JOB_DEPTH(JOB_DEPTH), .READ_HINT_DEPTH(READ_HINT_DEPTH),
         .MAX_FRAMES(MAX_FRAMES), .BUFFERS(BUFFERS), .INPUT_PORTS(INPUT_PORTS), .OUTPUT_PORTS(OUTPUT_PORTS),
-        .CHUNK_FRAMES(CHUNK_FRAMES), .ENABLE_MEDIA(1)
+        .CHUNK_FRAMES(CHUNK_FRAMES), .ENABLE_MEDIA(1), .ENABLE_MIDI(ENABLE_MIDI)
     ) pipeline (
+        .midi_job_valid(midi_job_valid), .midi_job_ready(midi_job_ready), .midi_job_data(midi_job_data),
+        .midi_job_done(midi_job_done), .midi_job_error(midi_job_error), .midi_error_code(midi_error_code),
         .sample_input_read(sample_input_read), .sample_input_address(sample_input_address), .sample_input_data(sample_input_data),
         .sample_output_write(sample_output_write), .sample_output_address(sample_output_address), .sample_output_data(sample_output_data),
         .clk(clk), .reset(reset), .run_valid(run_valid && internal_ready && !store_cmd_valid && (LIVE_LOADING != 0 || !store_cfg_valid)), .run_ready(pipeline_ready),

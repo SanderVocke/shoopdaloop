@@ -8,11 +8,16 @@ module job_processor #(
     parameter integer OUTPUT_PORTS = 2,
     parameter integer CHUNK_FRAMES = 1,
     parameter integer ENABLE_MEDIA = 0,
+    parameter integer ENABLE_MIDI = 0,
     parameter integer BUFFER_BITS = (BUFFERS > 1) ? $clog2(BUFFERS) : 1,
     parameter integer SCRATCH_BITS = (BUFFERS * MAX_FRAMES > 1) ? $clog2(BUFFERS * MAX_FRAMES) : 1,
     parameter integer INPUT_BITS = (INPUT_PORTS * MAX_FRAMES > 1) ? $clog2(INPUT_PORTS * MAX_FRAMES) : 1,
     parameter integer OUTPUT_BITS = (OUTPUT_PORTS * MAX_FRAMES > 1) ? $clog2(OUTPUT_PORTS * MAX_FRAMES) : 1
 ) (
+    output wire midi_job_valid, input wire midi_job_ready,
+    output wire [255:0] midi_job_data,
+    input wire midi_job_done, input wire [3:0] midi_job_error,
+    output reg [3:0] midi_error_code,
     output wire sample_input_read,
     output wire [31:0] sample_input_address,
     input wire [31:0] sample_input_data,
@@ -68,7 +73,7 @@ module job_processor #(
         STORE, GAIN_STREAM, MIX_STREAM,
         ARITH_B_REQUEST, ARITH_B_CAPTURE, ARITH_B_RESULT, ARITH_OPERAND, ARITH_MULTIPLY, ARITH_PRODUCT, ARITH_RESULT,
         SMOOTH_LOAD, SMOOTH_PREPARE, SMOOTH_OPERAND, SMOOTH_MULTIPLY, SMOOTH_PRODUCT, SMOOTH_RESULT, SMOOTH_CLAMP,
-        MEDIA_COMMAND, MEDIA_READ, MEDIA_SOURCE_REQUEST, MEDIA_SOURCE_RESULT, MEDIA_WRITE, MEDIA_DONE
+        MEDIA_COMMAND, MEDIA_READ, MEDIA_SOURCE_REQUEST, MEDIA_SOURCE_RESULT, MEDIA_WRITE, MEDIA_DONE, MIDI_COMMAND, MIDI_DONE
     } phase_t;
     localparam [5:0] CHUNK_SHIFT = shift_for(32'(CHUNK_FRAMES));
     reg media_shape_valid;
@@ -85,6 +90,8 @@ module job_processor #(
         else frame_offset = 32'(value);
     endfunction
     phase_t phase;
+    assign midi_job_valid = ENABLE_MIDI != 0 && phase == MIDI_COMMAND && !reset;
+    assign midi_job_data = ENABLE_MIDI != 0 ? packet : 256'b0;
     wire media_active = phase == MEDIA_COMMAND || phase == MEDIA_READ || phase == MEDIA_SOURCE_REQUEST
         || phase == MEDIA_SOURCE_RESULT || phase == MEDIA_WRITE || phase == MEDIA_DONE;
     reg [FRAME_BITS-1:0] quantum, quantum_last, frame, stream_frame;
@@ -342,6 +349,7 @@ module job_processor #(
             input_count <= 0;
             output_count <= 0;
             remaining_jobs <= 0;
+            midi_error_code <= 0;
             jobs_pending <= 0;
             frame <= 0;
             clear_port <= 0;
@@ -401,6 +409,7 @@ module job_processor #(
             end else case (phase)
                 IDLE: if (run_valid && run_ready) begin
                     error_code <= OK;
+                    midi_error_code <= 0;
                     if ((run_quantum == 0) || (run_quantum > 32'(MAX_FRAMES))
                         || (run_buffers > 32'(BUFFERS)) || (run_inputs > 32'(INPUT_PORTS))
                         || (run_outputs > 32'(OUTPUT_PORTS))) begin
@@ -460,6 +469,12 @@ module job_processor #(
                     frame <= 0;
                     stream_frame <= 0; mix_second <= 0;
                     case (opcode)
+                        `SHOOP_SP_MIDI_BEGIN, `SHOOP_SP_MIDI_FINISH_CAPTURE, `SHOOP_SP_MIDI_BEGIN_CAPTURE,
+                        `SHOOP_SP_MIDI_OBSERVE, `SHOOP_SP_MIDI_APPEND, `SHOOP_SP_MIDI_CLEANUP,
+                        `SHOOP_SP_MIDI_CLAIM, `SHOOP_SP_MIDI_READ, `SHOOP_SP_MIDI_OUTPUT,
+                        `SHOOP_SP_MIDI_COMPLETE, `SHOOP_SP_MIDI_MAINTAIN:
+                            if(ENABLE_MIDI != 0) phase<=MIDI_COMMAND;
+                            else begin error_code<=UNSUPPORTED;done<=1;busy<=0;phase<=IDLE;end
                         `SHOOP_SP_JOB_INPUT: begin
                             if (!destination1_valid || !input_port_valid) begin
                                 error_code <= INVALID_BUFFER;
@@ -761,6 +776,11 @@ module job_processor #(
                         frame <= frame + 1;
                         phase <= (opcode == `SHOOP_SP_JOB_SILENCE || opcode == `SHOOP_SP_JOB_CONSTANT || (opcode==`SHOOP_SP_JOB_SMOOTHING && !packet[128])) ? STORE : READ_REQUEST;
                     end
+                end
+                MIDI_COMMAND: if(midi_job_ready) phase<=MIDI_DONE;
+                MIDI_DONE: if(midi_job_done) begin
+                    if(midi_error_code==0) midi_error_code<=midi_job_error;
+                    phase<=FETCH;
                 end
                 MEDIA_COMMAND: if (media_cmd_valid && media_cmd_ready)
                     phase <= opcode == `SHOOP_SP_JOB_BEGIN_CAPTURE ? MEDIA_DONE : (opcode == `SHOOP_SP_JOB_READ) ? MEDIA_READ : MEDIA_SOURCE_REQUEST;

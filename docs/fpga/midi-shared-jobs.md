@@ -125,3 +125,72 @@ budget or its worst case. Cloud timing extremes are noisy; no wall-clock or
 128-simultaneous-grab threshold is used. Job/work/allocation checks provide the
 repeatable evidence. Further optimization can target inactive scheduling and
 job dispatch if needed, without changing the storage model or imitating RTL.
+
+## Shared SP/JP hardware
+
+The production composition is `midi_audio_pipeline_axi`. Its compiled SP executes
+one mixed program, and the ordinary JP dispatches audio and distinct MIDI jobs
+from one queue. `midi_job_service` supplies the prepared event/history/state
+operations behind JP. It has no command that runs an entire quantum and accepts
+no external table of settled loop records. The older `midi_runtime` and wrapper
+remain historical component fixtures; the new composition does not instantiate
+them.
+
+`midi_audio_pipeline` exposes a word-memory boundary for MIDI simulation;
+`midi_audio_pipeline_axi` connects it to a second ordered AXI3 DDR port. Audio
+keeps its existing sample and metadata caches. MIDI has no cache. The two DDR
+ranges must be disjoint; arbitration at the DDR controller is part of the SoC
+embedding. Both 32- and 64-bit MIDI AXI endpoints have functional tests. Large
+states, snapshots, comparisons, history/checkpoints, views and event payloads
+live in DDR. The small primary context table and per-quantum merge-head table
+fit in BRAM. One head per context is working data, reset at each quantum.
+
+Prepared context indices are stable across program relocation, and every channel
+job also carries the loop identity/generation checked against its binding.
+Capture completion resolves its view before later playback jobs consume it.
+Only accepted output advances cursors, activity and comparison state. The MIDI
+result is separate from fatal audio/pipeline errors. Fatal errors fence future
+quanta, notify the MIDI services and leave explicit recovery draining available.
+
+An explicit `with_midi(&[])` Rust program keeps input/history work running with
+no bound MIDI loops. Context removal requires stopped, fully cleaned-up execution;
+exports retain their own content reference. Remove the context from compiled work
+before reusing its slot for another loop generation.
+
+### Content publication
+
+The internal control boundary is available between quanta. Group grab, replace,
+duplicate and clear first prepare/publish MIDI ownership. The service then raises
+`midi_publication_valid` and holds both its completion and the next quantum.
+The embedding validates the target loops, updates their SP metadata through the
+existing loop-configuration interface, and acknowledges `midi_publication_commit`.
+Only then does the control completion become visible and processing resume.
+This keeps one SP owner of loop mode, length and revisions. Program loading and
+this metadata handoff must be serialized by the embedding. The Rust `Pipeline`
+content methods perform the corresponding validation/publication directly.
+Application transport/board MIDI enablement remains outside this profile.
+
+### Mapping and work
+
+Rust keeps ordinary functions and a bounded merge heap. RTL uses a small head RAM
+and bounded scans. Activity initialization copies only owned MIDI channels plus
+the shared reset flag; inactive activity needs no clear because the next start
+overwrites every field that can be used. Bindings still own the same complete
+musical state. Bounded arena offsets use 32 bits after validating capacities;
+arena bases and musical timestamps remain 64-bit. Generation checks precede
+addressing retained handles. This avoids unnecessary wide arithmetic and DDR
+transfers without making Rust simulate hardware registers.
+
+The 64-stereo-plus-MIDI compiled profile has 1,030 instructions, 1,158 worst-case
+jobs and 384 audio buffers. It uses 2,048-entry program/job memories. Audio read
+hints have a separate 256-entry bound: at most one SP and one JP hint per each
+of 128 audio reads. MIDI jobs cannot enlarge the audio hint queue. Existing
+profiles retain their original default hint capacity.
+
+A delayed-memory two-loop compiled test compares exact jobs, audio samples,
+MIDI output and accepted destination state at all five quantum sizes. It also
+covers partial output/recovery, fenced grouped history publication/clear and a
+fatal audio fault with recovery. Existing full MIDI service scenarios cover
+transfers, controller/pedal state, multiple inputs, capacity, 128 bindings and
+ownership. AXI tests retain a virtual arena above 4 GiB to check that narrowing
+offsets does not truncate arena bases.

@@ -131,3 +131,6 @@ queue capacity (`4 + 8 * MIDI bindings` additional jobs). Unsupported targets
 reject these operations explicitly. Rust lowering emits MIDI instructions;
 the normal state processor derives concrete capture/playback jobs from settled
 loop state. It never delegates a whole quantum to another MIDI scheduler.
+
+Calling `with_midi(&[])` explicitly enables input/history and maintenance jobs
+without bound loops. Omitting `with_midi` preserves an audio-only program.

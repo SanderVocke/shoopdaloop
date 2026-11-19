@@ -289,9 +289,6 @@ impl LogicalStateProgram {
                 return Err(CompileError::InvalidProgram);
             }
         }
-        if bindings.is_empty() {
-            return Ok(self);
-        }
         let mut ordered = bindings.to_vec();
         ordered.sort_unstable_by_key(|b| b.context);
         for phase in MidiPhase::ORDER {
@@ -522,8 +519,7 @@ impl LogicalStateProgram {
                     _ => None,
                 })
                 .collect::<Vec<_>>();
-            if bindings.is_empty()
-                || bindings.windows(2).any(|w| w[0].context >= w[1].context)
+            if bindings.windows(2).any(|w| w[0].context >= w[1].context)
                 || bindings
                     .iter()
                     .enumerate()

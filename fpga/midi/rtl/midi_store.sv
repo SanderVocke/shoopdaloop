@@ -91,14 +91,21 @@ module midi_store #(
     assign response_events=desc[5];
     assign response_status=desc[2];
     assign response_snapshot={desc[11],desc[10]};
+    localparam integer VIEW_BITS = VIEWS > 1 ? $clog2(VIEWS) : 1;
+    localparam integer SNAP_BITS = SNAPSHOTS > 1 ? $clog2(SNAPSHOTS) : 1;
+    localparam integer TABLE_BITS = TABLE_ENTRIES > 1 ? $clog2(TABLE_ENTRIES) : 1;
+    initial if(RETIRE_BASE+64'(RETIREMENTS)*8>64'h100000000) $fatal(1,"MIDI storage offsets exceed 32 bits");
     function automatic [63:0] view_address(input [31:0] slot, input integer field);
-        view_address=arena_base+64'(slot)*64+64'(field)*4;
+        reg [31:0] offset;
+        begin offset=32'(VIEW_BITS'(slot))*64+32'(field[3:0])*4;view_address=arena_base+{32'b0,offset};end
     endfunction
     function automatic [63:0] table_address(input [31:0] slot, input [31:0] ordinal);
-        table_address=arena_base+TABLE_BASE+(64'(slot)*64'(TABLE_ENTRIES)+64'(ordinal))*4;
+        reg [31:0] offset;
+        begin offset=32'(TABLE_BASE)+(32'(VIEW_BITS'(slot))*32'(TABLE_ENTRIES)+32'(TABLE_BITS'(ordinal)))*4;table_address=arena_base+{32'b0,offset};end
     endfunction
     function automatic [63:0] snapshot_address(input [31:0] slot);
-        snapshot_address=arena_base+SNAP_BASE+64'(slot)*16916;
+        reg [31:0] offset;
+        begin offset=32'(SNAP_BASE)+32'(SNAP_BITS'(slot))*16916;snapshot_address=arena_base+{32'b0,offset};end
     endfunction
     task automatic read_word(input [63:0] address, input [7:0] next);
         begin memory_address<=address;return_phase<=next;phase<=READ_REQ;end

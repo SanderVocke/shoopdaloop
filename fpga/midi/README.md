@@ -1,4 +1,15 @@
-# Cache-less MIDI RTL
+# MIDI through the shared SP and JP
+
+The new hardware entry point is `midi_audio_pipeline_axi`: one compiled SP,
+one mixed queue and one JP for audio and MIDI. MIDI storage/state operations
+live behind explicit jobs. See [architecture and mapping](../../docs/fpga/midi-shared-jobs.md)
+for ownership, work bounds, publication and integration requirements.
+
+`midi_job_service` and `midi_job_service_axi` support isolated service tests.
+`midi_runtime` and `midi_runtime_axi` below describe the earlier standalone
+composition, retained as historical fixtures. It is absent from the new pipeline.
+
+# Historical standalone MIDI RTL
 
 This is the hardware counterpart of managed MIDI in the Rust FPGA reference. It
 records and plays timestamped packets, shares recorded content between loops,

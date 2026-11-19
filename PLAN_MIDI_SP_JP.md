@@ -1,6 +1,6 @@
 # MIDI through the shared state and job processors
 
-Status: Rust replacement and mapping review complete; RTL rebuild next.
+Status: Rust and shared RTL implemented; final RTL checks and fresh Vivado measurements in progress.
 
 ## Goal and scope
 
@@ -440,3 +440,21 @@ and speculative profiling.
   targeted host/protocol/transport tests; warning-denying workspace build; format
   and test-attribute policy. Mapping/software-cost review is documented. The
   final local workspace suite continues in the background and will be reported.
+- Stage 5: shared SP/JP RTL and connected word/dual-AXI tops are implemented.
+  The compiled trace/sample/state test passes all five quanta, including partial
+  output, atomic publication fences and fatal audio recovery. All 16 retained
+  service scenarios pass; context-unbind/export lifetime and zero-bound-loop
+  history scenarios were added. Audio/compiler/loading tests pass; the DDR audio
+  gate passed after provisioning its documented DRAMsim3 dependency.
+- Hardware publication uses an explicit completed-boundary fence: the embedding
+  validates/publishes SP loop metadata through its existing configuration port,
+  then acknowledges before MIDI completion/next quantum. This keeps application
+  transport enablement out of scope while preventing mismatched content/lengths.
+- Work review eliminated full 16-channel activity copies for single-channel owners
+  and unnecessary clearing of inactive activity, retaining observable semantics.
+  Bounded address operands/offsets are narrowed only in RTL; Rust remains direct.
+- Broad local workspace check: 3,487/3,503 passed; 16 failed and 11 skipped. Twelve
+  app startup capacity failures are represented by the untouched baseline's same
+  Runtime(Capacity) failure. Three of four host/timeout failures pass in isolation;
+  the launcher-recovery test remains blocked outside the changed reference path.
+  These are local results, not CI feedback.

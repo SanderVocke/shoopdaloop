@@ -45,6 +45,71 @@ pub fn limits(loops: u16) -> SessionLimits {
         maintenance_steps: 8,
     }
 }
+pub fn logical(q: u32, limits: SessionLimits) -> rt_fpga_compiler::LogicalStateProgram {
+    use rt_fpga_compiler::{LogicalStateProgram, Operation as Op, Resources};
+    LogicalStateProgram {
+        quantum: q,
+        chunk_frames: 1,
+        sync_pass: (0..limits.loops)
+            .map(|slot| rt_fpga_compiler::Identity {
+                slot: u32::from(slot),
+                generation: 1,
+            })
+            .collect(),
+        work_pass: vec![
+            Op::Input {
+                port: 0,
+                destination: 0,
+            },
+            Op::Output { source: 0, port: 0 },
+        ],
+        initial_state: vec![],
+        state_bindings: vec![],
+        loops: (0..limits.loops)
+            .map(|slot| rt_fpga_compiler::Loop {
+                id: rt_fpga_compiler::Identity {
+                    slot: u32::from(slot),
+                    generation: 1,
+                },
+                length: 0,
+                sync_source: None,
+                repeat_sync: false,
+            })
+            .collect(),
+        bindings: (0..limits.loops)
+            .map(|slot| rt_fpga_compiler::LoopBinding {
+                id: rt_fpga_compiler::Identity {
+                    slot: u32::from(slot),
+                    generation: 1,
+                },
+                gain: None,
+                view: None,
+                meter: None,
+            })
+            .collect(),
+        jobs_per_quantum: 2,
+        resources: Resources {
+            queue_capacity: 2,
+            buffers: 1,
+            history_slots: 0,
+            input_ports: 1,
+            output_ports: 1,
+            events: 512,
+        },
+    }
+    .with_midi(
+        &(0..limits.loops)
+            .map(|context| rt_fpga_compiler::MidiBinding {
+                loop_id: rt_fpga_compiler::Identity {
+                    slot: u32::from(context),
+                    generation: 1,
+                },
+                context,
+            })
+            .collect::<Vec<_>>(),
+    )
+    .unwrap()
+}
 pub struct Fixture {
     pub pipeline: Pipeline,
     pub jobs: JobProcessor,
@@ -82,71 +147,8 @@ impl Fixture {
             },
         )
         .unwrap();
-        use rt_fpga_compiler::{
-            LogicalStateProgram, Operation as Op, Resources, StateProgramTarget,
-        };
-        let logical = LogicalStateProgram {
-            quantum: q,
-            chunk_frames: 1,
-            sync_pass: (0..limits.loops)
-                .map(|slot| rt_fpga_compiler::Identity {
-                    slot: u32::from(slot),
-                    generation: 1,
-                })
-                .collect(),
-            work_pass: vec![
-                Op::Input {
-                    port: 0,
-                    destination: 0,
-                },
-                Op::Output { source: 0, port: 0 },
-            ],
-            initial_state: vec![],
-            state_bindings: vec![],
-            loops: (0..limits.loops)
-                .map(|slot| rt_fpga_compiler::Loop {
-                    id: rt_fpga_compiler::Identity {
-                        slot: u32::from(slot),
-                        generation: 1,
-                    },
-                    length: 0,
-                    sync_source: None,
-                    repeat_sync: false,
-                })
-                .collect(),
-            bindings: (0..limits.loops)
-                .map(|slot| rt_fpga_compiler::LoopBinding {
-                    id: rt_fpga_compiler::Identity {
-                        slot: u32::from(slot),
-                        generation: 1,
-                    },
-                    gain: None,
-                    view: None,
-                    meter: None,
-                })
-                .collect(),
-            jobs_per_quantum: 2,
-            resources: Resources {
-                queue_capacity: 2,
-                buffers: 1,
-                history_slots: 0,
-                input_ports: 1,
-                output_ports: 1,
-                events: 512,
-            },
-        }
-        .with_midi(
-            &(0..limits.loops)
-                .map(|context| rt_fpga_compiler::MidiBinding {
-                    loop_id: rt_fpga_compiler::Identity {
-                        slot: u32::from(context),
-                        generation: 1,
-                    },
-                    context,
-                })
-                .collect::<Vec<_>>(),
-        )
-        .unwrap();
+        use rt_fpga_compiler::StateProgramTarget;
+        let logical = logical(q, limits);
         let compiled = rt_fpga_reference::target::RustTarget::new(&[])
             .build(&logical)
             .unwrap();
@@ -418,9 +420,11 @@ pub fn dense_session_workload(
     assert_eq!(f.pipeline.state().frame(), now);
     let after = f.midi.work();
     let grabbed = f.midi.content(0).unwrap().unwrap();
-    assert!(slots
-        .iter()
-        .all(|&slot| f.midi.content(slot).unwrap() == Some(grabbed)));
+    assert!(
+        slots
+            .iter()
+            .all(|&slot| f.midi.content(slot).unwrap() == Some(grabbed))
+    );
     assert!(f.midi.store().usage().snapshots <= old_usage.snapshots + 1);
     let d = f.midi.store().describe(grabbed).unwrap();
     assert_eq!(d.frames, 48_000);
@@ -461,9 +465,11 @@ pub fn dense_session_workload(
         while f.midi.maintenance(64) != 0 {}
     });
     assert_eq!(f.midi.store().usage().views, 128);
-    assert!(slots
-        .iter()
-        .all(|&slot| f.midi.content(slot).unwrap().is_none()));
+    assert!(
+        slots
+            .iter()
+            .all(|&slot| f.midi.content(slot).unwrap().is_none())
+    );
     times.sort_unstable();
     SessionProfile {
         events_per_loop,
@@ -553,9 +559,11 @@ pub fn repeated_grab_workload(
             max_comparison_work.max(after.comparison_work - before.comparison_work);
         max_storage_work = max_storage_work.max(after.storage_work - before.storage_work);
         let view = f.midi.content(0).unwrap().unwrap();
-        assert!(slots
-            .iter()
-            .all(|&slot| f.midi.content(slot).unwrap() == Some(view)));
+        assert!(
+            slots
+                .iter()
+                .all(|&slot| f.midi.content(slot).unwrap() == Some(view))
+        );
     }
     times.sort_unstable();
     GrabProfile {

@@ -1,3 +1,23 @@
+# Shared MIDI job boundary
+
+The new pipeline uses SP opcode `0x0e` and JP job kinds `0x20..0x2a`:
+begin window, finish capture, begin capture, observe input/history, append,
+cleanup, claim ownership, read until timestamp, ordered output, complete and
+maintenance. The instruction names a prepared context and loop generation;
+jobs contain settled operands. Time is in frames, including when audio chunks
+contain multiple frames. `midi_error_code` is four bits; code 8 means incomplete
+content and code 7 remains a memory fault. MIDI errors do not silence audio.
+
+The isolated job service exposes these operations as commands 24..34 for tests.
+The pipeline control port accepts only commands below 24: command 2 now unbinds a
+stopped, cleaned-up context. Whole-quantum command 3 is removed. The control port
+cannot submit execution jobs. Group-changing controls use the publication fence
+in [the architecture contract](../../docs/fpga/midi-shared-jobs.md#content-publication)
+before reporting completion. Controls/program loading are embedding interfaces;
+no new application endpoint is enabled.
+
+The descriptions below apply to the historical standalone controller.
+
 # MIDI component protocol
 
 All interfaces use one clock. Configuration (`arena_base`, `quantum_frames`, AXI

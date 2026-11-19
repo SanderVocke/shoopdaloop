@@ -117,7 +117,8 @@ fn compare_quantum(
         Some(Error::InvalidEvent) => 1,
         Some(Error::Unsupported) => 2,
         Some(Error::Capacity) => 3,
-        Some(Error::InvalidState | Error::Incomplete) => 4,
+        Some(Error::InvalidState) => 4,
+        Some(Error::Incomplete) => 8,
         Some(Error::Busy) => 5,
         Some(Error::Overflow) => 6,
     };
@@ -741,4 +742,43 @@ fn midi_ddr_existing_channel_owner_keeps_its_note_off_before_handoff() {
     f.command(0, Operation::Stop);
     compare_quantum(&mut f, &mut d, &[]);
     compare_quantum(&mut f, &mut d, &[]);
+}
+
+#[shoop_test]
+fn midi_compiled_sp_and_shared_jp_match_audio_messages_and_job_traces() {
+    rt_fpga_testbench::suites::midi::compiled_mixed_conformance().unwrap();
+}
+
+#[shoop_test]
+fn midi_context_unbind_requires_cleanup_and_preserves_pinned_exports() {
+    use rt_fpga_testbench::suites::midi::runtime::{Driver, compile};
+    let compiled = compile(2).unwrap();
+    let mut d = Driver::new(&compiled, 2).unwrap();
+    let record = |mode, begin_capture| rt_fpga_reference::records::LoopRecord {
+        id: oracle::id(0),
+        mode,
+        position: 0,
+        content_length: 16,
+        begin_capture,
+    };
+    use rt_fpga_reference::records::Mode;
+    assert_eq!(
+        d.process(
+            0,
+            16,
+            &[record(Mode::Recording, true)],
+            &[oracle::event(0, &[0x90, 60, 80])]
+        ),
+        0
+    );
+    assert_eq!(d.process(16, 16, &[record(Mode::Playing, false)], &[]), 0);
+    assert_eq!(d.issue(2, [0; 5]), 5);
+    assert_eq!(d.issue(11, [0; 5]), 0);
+    let view = d.sim.model.get("response_handle");
+    assert_eq!(d.process(32, 16, &[record(Mode::Stopped, false)], &[]), 0);
+    assert_eq!(d.issue(2, [0; 5]), 0);
+    assert_eq!(d.issue(1, [0, 2 << 32, 0, 0, 1]), 0);
+    assert_eq!(d.issue(12, [view, 0, 0, 0, 0]), 0);
+    assert_eq!(d.sim.model.get("response_packet") & 0xffffff, 0x503c90);
+    assert_eq!(d.issue(13, [view, 0, 0, 0, 0]), 0);
 }
