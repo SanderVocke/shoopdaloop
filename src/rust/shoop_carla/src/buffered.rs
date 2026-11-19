@@ -1,11 +1,15 @@
 //! Prepared audio handoff for a native Carla instance owned by the worker.
 
-use crate::native::{CarlaNativeHost, CARLA_MAX_BUFFER_SIZE, CARLA_MIDI_BUFFER_CAPACITY};
+use crate::{native::CARLA_MAX_BUFFER_SIZE, processor::CarlaProcessor};
 use rt_buffered::{
     AsyncTransport, Backend, Batch, BufferLimits, LocalTransport, LocalWorker, PreparedTiming,
 };
 use rt_runtime::{graph::PortCounts, Error};
-use shoop_plugin_protocol::CarlaChainType;
+use shoop_plugin_protocol::{
+    CarlaChainType, CarlaProcessorLifecycle, MidiEvent, PreparedMidiBuffer,
+    MAX_MIDI_EVENTS_PER_BLOCK, MAX_NATIVE_MIDI_PACKET_BYTES,
+};
+use std::mem::size_of;
 
 pub struct RenderEndpoint {
     transport: LocalTransport,
@@ -14,7 +18,8 @@ pub struct RenderEndpoint {
 
 pub struct Worker {
     transport: LocalWorker,
-    processor: CarlaNativeHost,
+    processor: Box<dyn CarlaProcessor>,
+    midi_output: PreparedMidiBuffer,
     enabled: bool,
 }
 
@@ -37,43 +42,78 @@ impl Worker {
         if timing.batch_frames() > CARLA_MAX_BUFFER_SIZE {
             return Err(Error::InvalidConfig);
         }
-        LocalTransport::prepared_bytes(ports(chain_type), timing, limits, timing.slots())
+        let transfer =
+            LocalTransport::prepared_bytes(ports(chain_type), timing, limits, timing.slots())?;
+        let output = size_of::<PreparedMidiBuffer>()
+            + MAX_MIDI_EVENTS_PER_BLOCK * (size_of::<MidiEvent>() + MAX_NATIVE_MIDI_PACKET_BYTES);
+        transfer.checked_add(output).ok_or(Error::Capacity)
     }
 
     pub fn prepare(
-        processor: CarlaNativeHost,
+        processor: impl CarlaProcessor + 'static,
         timing: PreparedTiming,
         limits: BufferLimits,
     ) -> Result<(RenderEndpoint, Self), Error> {
-        Self::transport_bytes(processor.chain_type(), timing, limits)?;
-        let ports = ports(processor.chain_type());
+        Self::prepare_boxed(Box::new(processor), timing, limits)
+    }
+
+    pub(super) fn prepare_boxed(
+        processor: Box<dyn CarlaProcessor>,
+        timing: PreparedTiming,
+        limits: BufferLimits,
+    ) -> Result<(RenderEndpoint, Self), Error> {
+        let info = processor.info();
+        Self::transport_bytes(info.chain_type, timing, limits)?;
+        let ports = ports(info.chain_type);
+        if (
+            info.audio_inputs,
+            info.audio_outputs,
+            info.midi_inputs,
+            info.midi_outputs,
+        ) != (
+            ports.audio_inputs,
+            ports.audio_outputs,
+            ports.midi_inputs,
+            ports.midi_outputs,
+        ) {
+            return Err(Error::InvalidShape);
+        }
         let (transport, worker) = LocalTransport::prepare(ports, timing, limits, timing.slots())?;
         Ok((
             RenderEndpoint { transport, ports },
             Self {
                 transport: worker,
                 processor,
+                midi_output: PreparedMidiBuffer::new(
+                    MAX_MIDI_EVENTS_PER_BLOCK,
+                    MAX_NATIVE_MIDI_PACKET_BYTES,
+                ),
                 enabled: true,
             },
         ))
     }
 
     /// Called by the service on the same non-render owner that pumps batches.
-    pub fn processor(&mut self) -> &mut CarlaNativeHost {
-        &mut self.processor
+    pub fn processor(&mut self) -> &mut dyn CarlaProcessor {
+        self.processor.as_mut()
     }
 
-    pub fn set_active(&mut self, active: bool) {
-        self.enabled = active;
+    pub fn set_active(&mut self, active: bool) -> Result<(), Error> {
         self.processor.set_active(active);
+        if !self.processor.is_ready() || self.processor.is_active() != active {
+            return Err(Error::Disconnected);
+        }
+        self.enabled = active;
+        Ok(())
     }
 
     pub fn process_next(&mut self) -> Result<bool, Error> {
         let processor = &mut self.processor;
+        let midi_output = &mut self.midi_output;
         let enabled = self.enabled;
         self.transport.process_next(|discontinuous, batch| {
             if enabled {
-                process(processor, discontinuous, batch)
+                process(processor.as_mut(), midi_output, discontinuous, batch)
             } else {
                 Err(Error::InvalidState)
             }
@@ -104,7 +144,8 @@ impl Backend for RenderEndpoint {
 }
 
 fn process(
-    processor: &mut CarlaNativeHost,
+    processor: &mut dyn CarlaProcessor,
+    midi_output: &mut PreparedMidiBuffer,
     discontinuous: bool,
     batch: &mut Batch<'_, '_>,
 ) -> Result<(), Error> {
@@ -114,28 +155,38 @@ fn process(
     let midi = batch.midi_input(0).ok_or(Error::InvalidShape)?;
     let reset = discontinuous && processor.is_active();
     let reset_events = if reset { 16 } else { 0 };
-    if midi.len() > CARLA_MIDI_BUFFER_CAPACITY - reset_events {
+    if midi.len() > MAX_MIDI_EVENTS_PER_BLOCK - reset_events {
         return Err(Error::Capacity);
     }
     if midi.iter().any(|(offset, bytes)| {
-        offset as usize >= batch.frames || bytes.is_empty() || bytes.len() > 4
+        offset as usize >= batch.frames
+            || bytes.is_empty()
+            || bytes.len() > MAX_NATIVE_MIDI_PACKET_BYTES
     }) {
         return Err(Error::InvalidEvent);
     }
     let recovery: [[u8; 3]; 16] = std::array::from_fn(|channel| [0xb0 | channel as u8, 120, 0]);
+    let mut messages = [(0, &[][..]); MAX_MIDI_EVENTS_PER_BLOCK];
+    let events = recovery[..reset_events]
+        .iter()
+        .map(|packet| (0, packet.as_slice()))
+        .chain(midi.iter());
+    for (slot, packet) in messages.iter_mut().zip(events) {
+        *slot = packet;
+    }
     processor
-        .load_midi_input(
-            recovery[..reset_events]
-                .iter()
-                .map(|packet| (0, packet.as_slice()))
-                .chain(midi.iter()),
-        )
+        .set_midi_input_events(0, &messages[..reset_events + midi.len()])
         .map_err(|_| Error::InvalidEvent)?;
     if reset {
         processor.set_active(false);
     }
-    processor.set_active(true);
-    let channels = usize::from(processor.chain_type().audio_channels());
+    if !processor.is_active() {
+        processor.set_active(true);
+    }
+    if !processor.is_active() {
+        return Err(Error::Disconnected);
+    }
+    let channels = processor.info().audio_inputs;
     for channel in 0..channels {
         let input = batch.audio.input(channel).ok_or(Error::InvalidShape)?;
         let target = processor
@@ -146,14 +197,21 @@ fn process(
     processor
         .process(batch.frames)
         .map_err(|_| Error::InvalidState)?;
+    if processor.lifecycle() == CarlaProcessorLifecycle::Degraded {
+        return Err(Error::Incomplete);
+    }
     for channel in 0..channels {
         let source = processor.audio_output(channel).ok_or(Error::InvalidShape)?;
         let target = batch.audio.output(channel).ok_or(Error::InvalidShape)?;
         target.copy_from_slice(&source[..batch.frames]);
     }
     let output = batch.midi_outputs.first_mut().ok_or(Error::InvalidShape)?;
-    for (offset, packet) in processor.midi_packets() {
-        output.push(offset, batch.frames, packet)?;
+    midi_output.clear();
+    processor
+        .fill_midi_output_events(0, midi_output)
+        .map_err(|_| Error::InvalidEvent)?;
+    for event in midi_output.as_slice() {
+        output.push(event.frame_offset, batch.frames, &event.data)?;
     }
     Ok(())
 }
@@ -161,6 +219,7 @@ fn process(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::native::CarlaNativeHost;
     use rt_buffered::{AsyncBatch, BatchTag, MidiLimits, Timing};
     use rt_runtime::{buffer::MidiBuffer, Frame, Quantum};
     use shoop_wasm_test_support::{heap::assert_no_heap, shoop_test};

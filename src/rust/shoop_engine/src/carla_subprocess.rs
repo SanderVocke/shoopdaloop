@@ -9,7 +9,6 @@ use crate::{
 };
 use anyhow::Result;
 use shoop_carla::{
-    child::ChildPlugin,
     processor::{CarlaExternalUi as NativeEditor, CarlaProcessor as NativeProcessor},
     subprocess as parent,
 };
@@ -68,53 +67,80 @@ pub fn run_carla_worker(options: CarlaWorkerOptions) -> Result<()> {
             _ => FakeProcessorBehavior::default(),
         };
         fake.set_behavior(behavior);
-        Ok(Box::new(fake))
+        Ok(Box::new(ChildFake {
+            processor: fake,
+            chain_type,
+        }))
     })
 }
 
-impl ChildPlugin for FakeCarlaProcessor {
+#[derive(Debug)]
+struct ChildFake {
+    processor: FakeCarlaProcessor,
+    chain_type: CarlaChainType,
+}
+
+impl NativeProcessor for ChildFake {
+    fn info(&self) -> shoop_plugin_protocol::CarlaProcessorInfo {
+        let info = self.processor.info();
+        shoop_plugin_protocol::CarlaProcessorInfo {
+            chain_type: self.chain_type,
+            audio_inputs: info.audio_inputs,
+            audio_outputs: info.audio_outputs,
+            midi_inputs: info.midi_inputs,
+            midi_outputs: info.midi_outputs,
+        }
+    }
     fn set_active(&mut self, active: bool) {
-        CarlaProcessor::set_active(self, active)
+        CarlaProcessor::set_active(&mut self.processor, active)
     }
 
     fn is_active(&self) -> bool {
-        CarlaProcessor::is_active(self)
+        CarlaProcessor::is_active(&self.processor)
     }
 
     fn set_visible(&mut self, visible: bool) -> Result<()> {
-        CarlaProcessor::set_visible(self, visible)
+        CarlaProcessor::set_visible(&mut self.processor, visible)
     }
 
     fn is_visible(&mut self) -> bool {
-        CarlaProcessor::is_visible(self)
+        CarlaProcessor::is_visible(&mut self.processor)
     }
 
     fn save_state(&mut self) -> Result<String> {
-        CarlaProcessor::save_state(self)
+        CarlaProcessor::save_state(&mut self.processor)
     }
 
     fn restore_state(&mut self, state: &str) -> Result<()> {
-        CarlaProcessor::restore_state(self, state)
+        CarlaProcessor::restore_state(&mut self.processor, state)
     }
 
     fn audio_input_mut(&mut self, channel: usize) -> Option<&mut [f32]> {
-        CarlaProcessor::audio_input_mut(self, channel)
+        CarlaProcessor::audio_input_mut(&mut self.processor, channel)
     }
 
     fn audio_output(&self, channel: usize) -> Option<&[f32]> {
-        CarlaProcessor::audio_output(self, channel)
+        CarlaProcessor::audio_output(&self.processor, channel)
     }
 
     fn process(&mut self, frames: usize) -> Result<()> {
-        CarlaProcessor::process(self, frames)
+        CarlaProcessor::process(&mut self.processor, frames)
     }
 
-    fn set_midi_input(&mut self, events: &[(u32, &[u8])]) -> Result<()> {
-        self.set_midi_input_events(0, events)
+    fn set_midi_input_events(&mut self, index: usize, events: &[(u32, &[u8])]) -> Result<()> {
+        self.processor.set_midi_input_events(index, events)
     }
 
-    fn fill_midi_output(&mut self, output: &mut CarlaMidiBuffer) -> Result<()> {
-        self.fill_midi_output_events(0, output)
+    fn midi_output_events(&mut self, index: usize) -> Result<Vec<(u32, Vec<u8>)>> {
+        self.processor.midi_output_events(index)
+    }
+
+    fn fill_midi_output_events(
+        &mut self,
+        index: usize,
+        output: &mut CarlaMidiBuffer,
+    ) -> Result<()> {
+        self.processor.fill_midi_output_events(index, output)
     }
 }
 

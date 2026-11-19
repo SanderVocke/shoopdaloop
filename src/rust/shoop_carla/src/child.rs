@@ -1,7 +1,8 @@
 //! Child-side Carla control and DSP protocol.
 
 use crate::carla_shared_memory::{SharedBlockError, SharedBlockTransport};
-use crate::native::{CarlaMainThreadUiService, CarlaNativeHost, CarlaNativeUiHandle};
+use crate::native::{CarlaMainThreadUiService, CarlaNativeHost};
+use crate::processor::{CarlaExternalUi, CarlaProcessor};
 use anyhow::{anyhow, Context, Result};
 use shoop_plugin_protocol::{
     read_frame, write_frame, CarlaChainType, ChainId, ControlRequestKind, ControlResponse,
@@ -28,75 +29,6 @@ const LOG_CAPACITY: usize = 64 * 1024;
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(5);
 const CONTROL_TIMEOUT: Duration = Duration::from_secs(2);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
-
-/// Operations for the processor running in the child. A supplied test processor
-/// uses the same shape and control protocol as the Native host.
-pub trait ChildPlugin: Send {
-    fn editor(&self) -> Option<CarlaNativeUiHandle> {
-        None
-    }
-    fn set_active(&mut self, active: bool);
-    fn is_active(&self) -> bool;
-    fn set_visible(&mut self, visible: bool) -> Result<()>;
-    fn is_visible(&mut self) -> bool;
-    fn save_state(&mut self) -> Result<String>;
-    fn restore_state(&mut self, state: &str) -> Result<()>;
-    fn audio_input_mut(&mut self, channel: usize) -> Option<&mut [f32]>;
-    fn audio_output(&self, channel: usize) -> Option<&[f32]>;
-    fn set_midi_input(&mut self, events: &[(u32, &[u8])]) -> Result<()>;
-    fn fill_midi_output(&mut self, output: &mut PreparedMidiBuffer) -> Result<()>;
-    fn process(&mut self, frames: usize) -> Result<()>;
-}
-
-impl ChildPlugin for CarlaNativeHost {
-    fn editor(&self) -> Option<CarlaNativeUiHandle> {
-        self.external_ui()
-    }
-
-    fn set_active(&mut self, active: bool) {
-        CarlaNativeHost::set_active(self, active)
-    }
-
-    fn is_active(&self) -> bool {
-        CarlaNativeHost::is_active(self)
-    }
-
-    fn set_visible(&mut self, visible: bool) -> Result<()> {
-        CarlaNativeHost::set_visible(self, visible)
-    }
-
-    fn is_visible(&mut self) -> bool {
-        CarlaNativeHost::is_visible(self)
-    }
-
-    fn save_state(&mut self) -> Result<String> {
-        CarlaNativeHost::save_state(self)
-    }
-
-    fn restore_state(&mut self, state: &str) -> Result<()> {
-        CarlaNativeHost::restore_state(self, state)
-    }
-
-    fn audio_input_mut(&mut self, channel: usize) -> Option<&mut [f32]> {
-        CarlaNativeHost::audio_input_mut(self, channel)
-    }
-
-    fn audio_output(&self, channel: usize) -> Option<&[f32]> {
-        CarlaNativeHost::audio_output(self, channel)
-    }
-
-    fn process(&mut self, frames: usize) -> Result<()> {
-        CarlaNativeHost::process(self, frames)
-    }
-
-    fn set_midi_input(&mut self, events: &[(u32, &[u8])]) -> Result<()> {
-        self.set_midi_input_events(0, events)
-    }
-
-    fn fill_midi_output(&mut self, output: &mut PreparedMidiBuffer) -> Result<()> {
-        self.visit_midi_output(0, |offset, bytes| Ok(output.push(offset, bytes)?))
-    }
-}
 
 pub fn parse_nonce(value: &str) -> Result<[u8; 32]> {
     if value.len() != 64 || !value.is_ascii() {
@@ -270,7 +202,7 @@ impl Drop for SharedWorkerGuard {
 }
 
 struct WorkerHost {
-    plugin: Box<dyn ChildPlugin>,
+    plugin: Box<dyn CarlaProcessor>,
     channels: usize,
 }
 
@@ -332,10 +264,10 @@ fn run_shared_worker(
             for (destination, event) in refs.iter_mut().zip(midi_inputs.as_slice()) {
                 *destination = (event.frame_offset, event.data.as_slice());
             }
-            host.set_midi_input(&refs[..midi_inputs.as_slice().len()])?;
+            host.set_midi_input_events(0, &refs[..midi_inputs.as_slice().len()])?;
             host.process(token.frames)?;
             midi_outputs.clear();
-            host.fill_midi_output(&mut midi_outputs)?;
+            host.fill_midi_output_events(0, &mut midi_outputs)?;
             let mut audio_outputs = [&[][..]; MAX_AUDIO_CHANNELS];
             for (channel, output) in audio_outputs.iter_mut().enumerate().take(channels) {
                 *output = host
@@ -387,7 +319,7 @@ pub fn run(options: CarlaWorkerOptions) -> Result<()> {
 
 pub fn run_with_factory(
     options: CarlaWorkerOptions,
-    test_factory: impl Fn(CarlaWorkerTestMode, CarlaChainType) -> Result<Box<dyn ChildPlugin>>,
+    test_factory: impl Fn(CarlaWorkerTestMode, CarlaChainType) -> Result<Box<dyn CarlaProcessor>>,
 ) -> Result<()> {
     if !options.address.ip().is_loopback() {
         return Err(anyhow!("Carla parent address must be loopback"));
@@ -431,7 +363,7 @@ pub fn run_with_factory(
     )?;
     let _shared_memory_cleanup = SharedMemoryCleanup(options.shared_memory_path.clone());
     let host: Arc<Mutex<Option<WorkerHost>>> = Arc::new(Mutex::new(None));
-    let mut external_ui: Option<CarlaNativeUiHandle> = None;
+    let mut external_ui: Option<Arc<dyn CarlaExternalUi>> = None;
     let stop = Arc::new(AtomicBool::new(false));
     let processed_blocks = Arc::new(AtomicU64::new(0));
     let shared_thread = thread::Builder::new()
@@ -553,11 +485,11 @@ pub fn run_with_factory(
                                 nominal_buffer_size,
                                 ui_dispatcher.clone(),
                             )
-                            .map(|processor| Box::new(processor) as Box<dyn ChildPlugin>)
+                            .map(|processor| Box::new(processor) as Box<dyn CarlaProcessor>)
                         };
                         match created {
                             Ok(plugin) => {
-                                external_ui = plugin.editor();
+                                external_ui = plugin.external_ui();
                                 *host = Some(WorkerHost {
                                     plugin,
                                     channels: usize::from(chain_type.audio_channels()),
@@ -677,7 +609,7 @@ pub fn run_with_factory(
                     .iter()
                     .map(|event| (event.frame_offset, event.data.as_slice()))
                     .collect();
-                host.set_midi_input(&midi)?;
+                host.set_midi_input_events(0, &midi)?;
                 host.process(block.frames as usize)?;
                 let mut audio_outputs = Vec::with_capacity(channels);
                 for index in 0..channels {
@@ -689,7 +621,7 @@ pub fn run_with_factory(
                     );
                 }
                 message_midi.clear();
-                host.fill_midi_output(&mut message_midi)?;
+                host.fill_midi_output_events(0, &mut message_midi)?;
                 processed_blocks.fetch_add(1, Ordering::Relaxed);
                 let result = PrototypeBlockResult {
                     sequence: block.sequence,

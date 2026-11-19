@@ -1365,6 +1365,10 @@ impl CarlaProcessor for SupervisedCarlaProcessor {
         }
     }
 
+    fn recover(&mut self, show_editor: bool) -> Result<()> {
+        SupervisedCarlaProcessor::recover(self, show_editor)
+    }
+
     fn set_active(&mut self, active: bool) {
         self.desired_active = active;
         if self.lifecycle == CarlaProcessorLifecycle::Running {

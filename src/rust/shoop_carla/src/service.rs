@@ -1,14 +1,20 @@
-//! In-process Carla ownership off the audio callback.
+//! Carla worker ownership off the audio callback.
 
 use crate::{
     buffered::{RenderEndpoint, Worker},
-    native::{CarlaMainThreadUiDispatcher, CarlaNativeHost, CarlaNativeUiHandle},
+    native::{CarlaMainThreadUiDispatcher, CarlaNativeHost},
+    processor::{CarlaExternalUi, CarlaProcessor},
+    subprocess::SupervisedCarlaProcessor,
 };
 use anyhow::{anyhow, bail, Context, Result};
 use rt_buffered::{BufferLimits, PreparedTiming};
-use shoop_plugin_protocol::{CarlaChainType, MAX_STATE_BYTES};
+use shoop_plugin_protocol::{CarlaChainType, ChainId, MAX_STATE_BYTES};
 use std::{
-    sync::mpsc::{sync_channel, Receiver, SyncSender, TryRecvError},
+    path::PathBuf,
+    sync::{
+        mpsc::{sync_channel, Receiver, SyncSender, TryRecvError},
+        Arc,
+    },
     thread::{self, JoinHandle},
     time::{Duration, Instant},
 };
@@ -16,12 +22,14 @@ use std::{
 const COMMAND_SLOTS: usize = 8;
 const START_TIMEOUT: Duration = Duration::from_secs(5);
 const CONTROL_TIMEOUT: Duration = Duration::from_secs(2);
+const RECOVERY_TIMEOUT: Duration = Duration::from_secs(20);
 const IDLE_POLL: Duration = Duration::from_micros(200);
 
 enum Operation {
     Active(bool),
     Save,
     Restore(String),
+    Recover { show_editor: bool },
 }
 
 enum Reply {
@@ -36,40 +44,78 @@ struct Command {
 }
 
 /// The host keeps this handle for the lifetime of the installed render endpoint.
-pub struct InProcess {
+pub struct ChainService {
     commands: SyncSender<Command>,
     thread: JoinHandle<()>,
-    editor: Option<CarlaNativeUiHandle>,
+    editor: Option<Arc<dyn CarlaExternalUi>>,
 }
 
-impl InProcess {
-    pub fn start(
+impl ChainService {
+    pub fn start_in_process(
         chain: CarlaChainType,
         sample_rate: u32,
         timing: PreparedTiming,
         limits: BufferLimits,
         ui: Option<CarlaMainThreadUiDispatcher>,
     ) -> Result<(RenderEndpoint, Self)> {
+        let frames = timing.batch_frames() as u32;
+        Self::start_worker(chain, timing, limits, move || {
+            let processor = match ui {
+                Some(ui) => {
+                    CarlaNativeHost::instantiate_with_ui_dispatcher(chain, sample_rate, frames, ui)
+                }
+                None => CarlaNativeHost::instantiate(chain, sample_rate, frames),
+            }?;
+            Ok(Box::new(processor))
+        })
+    }
+
+    pub fn start_isolated(
+        executable: PathBuf,
+        id: ChainId,
+        chain: CarlaChainType,
+        sample_rate: u32,
+        timing: PreparedTiming,
+        limits: BufferLimits,
+    ) -> Result<(RenderEndpoint, Self)> {
+        let frames = timing.batch_frames() as u32;
+        Self::start_worker(chain, timing, limits, move || {
+            Ok(Box::new(SupervisedCarlaProcessor::launch(
+                executable,
+                chain,
+                sample_rate,
+                frames,
+                id,
+            )?))
+        })
+    }
+
+    fn start_worker(
+        chain: CarlaChainType,
+        timing: PreparedTiming,
+        limits: BufferLimits,
+        factory: impl FnOnce() -> Result<Box<dyn CarlaProcessor>> + Send + 'static,
+    ) -> Result<(RenderEndpoint, Self)> {
         Worker::transport_bytes(chain, timing, limits)
             .map_err(|error| anyhow!("could not prepare Carla worker storage: {error:?}"))?;
-        let frames = timing.batch_frames() as u32;
         let (commands, receiver) = sync_channel(COMMAND_SLOTS);
         let (ready, startup) = sync_channel(1);
         let thread = thread::Builder::new()
             .name("carla-native-dsp".into())
             .spawn(move || {
                 let prepared: Result<_> = (|| {
-                    let processor = match ui {
-                        Some(ui) => CarlaNativeHost::instantiate_with_ui_dispatcher(
-                            chain,
-                            sample_rate,
-                            frames,
-                            ui,
-                        ),
-                        None => CarlaNativeHost::instantiate(chain, sample_rate, frames),
-                    }?;
+                    let mut processor = factory()?;
+                    if !processor.is_ready() || processor.info().chain_type != chain {
+                        bail!(
+                            "Carla worker startup failed: {}",
+                            processor
+                                .crash_summary()
+                                .as_deref()
+                                .unwrap_or("unexpected worker state")
+                        );
+                    }
                     let editor = processor.external_ui();
-                    let (endpoint, worker) = Worker::prepare(processor, timing, limits)
+                    let (endpoint, worker) = Worker::prepare_boxed(processor, timing, limits)
                         .map_err(|error| anyhow!("could not prepare Carla worker: {error:?}"))?;
                     Ok((endpoint, worker, editor))
                 })();
@@ -100,7 +146,12 @@ impl InProcess {
 
     fn request(&self, operation: Operation) -> Result<Reply> {
         let (reply, response) = sync_channel(1);
-        let deadline = Instant::now() + CONTROL_TIMEOUT;
+        let timeout = if matches!(operation, Operation::Recover { .. }) {
+            RECOVERY_TIMEOUT
+        } else {
+            CONTROL_TIMEOUT
+        };
+        let deadline = Instant::now() + timeout;
         self.commands
             .try_send(Command {
                 operation,
@@ -132,8 +183,12 @@ impl InProcess {
         self.request(Operation::Restore(state)).map(|_| ())
     }
 
-    pub fn editor(&self) -> Option<&CarlaNativeUiHandle> {
-        self.editor.as_ref()
+    pub fn editor(&self) -> Option<&dyn CarlaExternalUi> {
+        self.editor.as_deref()
+    }
+
+    pub fn recover(&self, show_editor: bool) -> Result<()> {
+        self.request(Operation::Recover { show_editor }).map(|_| ())
     }
 
     pub fn stop(self, timeout: Duration) -> Result<()> {
@@ -160,10 +215,12 @@ fn run(mut worker: Worker, commands: Receiver<Command>) {
                     Err(anyhow!("Carla control expired before execution"))
                 } else {
                     match command.operation {
-                        Operation::Active(active) => {
-                            worker.set_active(active);
-                            Ok(Reply::Done)
-                        }
+                        Operation::Active(active) => worker
+                            .set_active(active)
+                            .map(|()| Reply::Done)
+                            .map_err(|error| {
+                                anyhow!("Carla active state was not confirmed: {error:?}")
+                            }),
                         Operation::Save => worker.processor().save_state().and_then(|state| {
                             if state.len() > MAX_STATE_BYTES {
                                 bail!("Carla state exceeds the worker transfer limit");
@@ -174,6 +231,14 @@ fn run(mut worker: Worker, commands: Receiver<Command>) {
                             .processor()
                             .restore_state(&state)
                             .map(|()| Reply::Done),
+                        Operation::Recover { show_editor } => {
+                            let processor = worker.processor();
+                            if processor.is_ready() {
+                                Err(anyhow!("Carla worker is already running"))
+                            } else {
+                                processor.recover(show_editor).map(|()| Reply::Done)
+                            }
+                        }
                     }
                 };
                 let _ = command.reply.send(reply);
@@ -209,18 +274,23 @@ mod tests {
             midi_output: midi,
             parameters_per_quantum: 0,
         };
-        let (mut endpoint, service) =
-            match InProcess::start(CarlaChainType::Rack, 48_000, timing, limits, None) {
-                Ok(service) => service,
-                Err(error)
-                    if std::env::var_os("SHOOP_REQUIRE_CARLA_TESTS").is_none()
-                        && crate::native::carla_runtime_availability().is_err() =>
-                {
-                    eprintln!("skipping in-process Carla service test: {error:#}");
-                    return;
-                }
-                Err(error) => panic!("Carla service could not start: {error:#}"),
-            };
+        let (mut endpoint, service) = match ChainService::start_in_process(
+            CarlaChainType::Rack,
+            48_000,
+            timing,
+            limits,
+            None,
+        ) {
+            Ok(service) => service,
+            Err(error)
+                if std::env::var_os("SHOOP_REQUIRE_CARLA_TESTS").is_none()
+                    && crate::native::carla_runtime_availability().is_err() =>
+            {
+                eprintln!("skipping in-process Carla service test: {error:#}");
+                return;
+            }
+            Err(error) => panic!("Carla service could not start: {error:#}"),
+        };
         let state = service.save_state().unwrap();
         service.restore_state(state).unwrap();
         let transport = endpoint.async_transport().unwrap();

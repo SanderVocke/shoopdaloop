@@ -1,8 +1,10 @@
 #![cfg(all(not(target_arch = "wasm32"), feature = "carla-worker"))]
 
+use rt_buffered::{AsyncBatch, Backend, BatchTag, BufferLimits, MidiLimits, Timing};
+use rt_runtime::{buffer::MidiBuffer, Frame, Quantum};
 use shoop_carla::{
-    carla_shared_memory::SharedBlockTransport, processor::CarlaProcessor, state::encode_state,
-    subprocess::SupervisedCarlaProcessor,
+    carla_shared_memory::SharedBlockTransport, processor::CarlaProcessor, service::ChainService,
+    state::encode_state, subprocess::SupervisedCarlaProcessor,
 };
 use shoop_plugin_protocol::{
     read_frame, write_frame, BlockSequence, CarlaChainType, CarlaProcessorLifecycle, ChainId,
@@ -10,7 +12,10 @@ use shoop_plugin_protocol::{
     ParentToWorker, ProcessGeneration, ProtocolErrorCode, PrototypeBlock, RequestId,
     WorkerToParent,
 };
-use shoop_wasm_test_support::shoop_test;
+use shoop_wasm_test_support::{
+    heap::{assert_no_heap, TrackingAllocator},
+    shoop_test,
+};
 use std::{
     net::{Ipv4Addr, TcpListener, TcpStream, UdpSocket},
     process::{Child, Command},
@@ -21,6 +26,9 @@ use std::{
 const TIMEOUT: Duration = Duration::from_secs(5);
 const CHAIN: ChainId = ChainId(41);
 const GENERATION: ProcessGeneration = ProcessGeneration(73);
+
+#[global_allocator]
+static ALLOCATOR: TrackingAllocator = TrackingAllocator;
 
 fn runtime_available() -> bool {
     match shoop_carla::native::carla_runtime_availability() {
@@ -321,4 +329,91 @@ fn a_lost_carla_child_recovers_its_checkpoint_while_another_chain_keeps_running(
     assert_eq!(logs.len(), 1);
     assert_eq!(logs[0].generation, generation + 1);
     assert!(logs[0].stdout.is_empty() && logs[0].stderr.is_empty());
+}
+
+#[shoop_test]
+fn isolated_service_uses_the_prepared_render_endpoint() {
+    if !runtime_available() {
+        return;
+    }
+    const FRAMES: usize = 256;
+    let prepared = Timing::default()
+        .prepare(Quantum::new(128).unwrap())
+        .unwrap();
+    assert_eq!(prepared.batch_frames(), FRAMES);
+    let midi = MidiLimits {
+        events_per_quantum: 32,
+        bytes_per_quantum: 128,
+    };
+    let limits = BufferLimits {
+        midi_input: midi,
+        midi_output: midi,
+        parameters_per_quantum: 0,
+    };
+    let (mut endpoint, service) = ChainService::start_isolated(
+        env!("CARGO_BIN_EXE_shoop_rt_host_process").into(),
+        ChainId(102),
+        CarlaChainType::Rack,
+        48_000,
+        prepared,
+        limits,
+    )
+    .unwrap();
+    let checkpoint = service.save_state().unwrap();
+    service.restore_state(checkpoint).unwrap();
+    service.set_active(true).unwrap();
+
+    let mut inputs = [0.25; FRAMES * 2];
+    inputs[FRAMES..].fill(-0.625);
+    let mut midi_input = [MidiBuffer::new(4, 16).unwrap()];
+    midi_input[0].push(63, FRAMES, &[0x90, 64, 100]).unwrap();
+    let transport = endpoint.async_transport().unwrap();
+    let mut received = false;
+    for sequence in 0..8 {
+        let tag = BatchTag {
+            generation: 7,
+            sequence,
+            source: Frame(sequence * FRAMES as u64),
+        };
+        assert_no_heap(|| {
+            transport.try_submit(AsyncBatch {
+                tag,
+                frames: FRAMES,
+                audio: &inputs,
+                midi: &midi_input,
+                parameters: &[],
+            })
+        })
+        .unwrap();
+        let start = Instant::now();
+        loop {
+            let result = assert_no_heap(|| {
+                let completion = transport.try_completion()?;
+                assert_eq!(completion.tag, tag);
+                Some(match completion.output {
+                    Ok(output) => {
+                        assert_eq!(output.audio, inputs);
+                        let midi = &output.midi[0];
+                        assert_eq!(midi.get(midi.len() - 1), Some((63, &[0x90, 64, 100][..])));
+                        true
+                    }
+                    Err(error) => {
+                        assert_eq!(error, rt_runtime::Error::Incomplete);
+                        false
+                    }
+                })
+            });
+            if let Some(result) = result {
+                received = result;
+                break;
+            }
+            assert!(start.elapsed() < TIMEOUT, "isolated Carla audio timed out");
+            thread::sleep(Duration::from_micros(200));
+        }
+        if received {
+            break;
+        }
+    }
+    assert!(received);
+    service.stop(TIMEOUT).unwrap();
 }

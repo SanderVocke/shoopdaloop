@@ -5814,6 +5814,8 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "cpal 0.18.2",
+ "rt_buffered",
+ "rt_runtime",
  "shoop_backend",
  "shoop_carla",
  "shoop_plugin_protocol",

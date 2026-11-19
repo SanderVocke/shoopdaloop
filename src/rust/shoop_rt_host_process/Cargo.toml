@@ -9,7 +9,7 @@ workspace = true
 default = ["cpal", "jack"]
 jack = ["shoop_rt_host_native/jack"]
 cpal = ["shoop_rt_host_native/cpal", "dep:cpal"]
-carla-worker = ["dep:shoop_carla", "shoop_carla/native"]
+carla-worker = ["dep:shoop_carla", "shoop_carla/buffered"]
 testing = []
 [dependencies]
 anyhow = { workspace = true, features = ["std"] }
@@ -24,6 +24,8 @@ shoop_rt_host_native = { path = "../shoop_rt_host_native", default-features = fa
 shoop_rt_transport_socket = { path = "../shoop_rt_transport_socket" }
 shoop_rt_transport_shared_memory = { path = "../shoop_rt_transport_shared_memory" }
 [dev-dependencies]
+rt_buffered = { path = "../rt_buffered" }
+rt_runtime = { path = "../rt_runtime" }
 tempfile = { workspace = true }
 shoop_plugin_protocol = { path = "../shoop_plugin_protocol" }
 shoop_rt_host_process = { path = ".", default-features = false, features = ["testing"] }
