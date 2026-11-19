@@ -15,9 +15,9 @@ use std::{
     path::PathBuf,
     sync::{
         mpsc::{sync_channel, Receiver, SyncSender, TryRecvError},
-        Arc, RwLock,
+        Arc, RwLock, Weak,
     },
-    thread::{self, JoinHandle},
+    thread::{self, JoinHandle, Thread},
     time::{Duration, Instant},
 };
 
@@ -32,7 +32,11 @@ enum Operation {
     Active(bool),
     Save,
     Restore(String),
-    Recover { show_editor: bool },
+    Recover {
+        owner: u64,
+        generation: u64,
+        show_editor: bool,
+    },
 }
 
 enum Reply {
@@ -48,9 +52,79 @@ struct Command {
 
 /// The host keeps this handle for the lifetime of the installed render endpoint.
 pub struct ChainService {
-    commands: SyncSender<Command>,
+    commands: Arc<Commands>,
     thread: JoinHandle<()>,
     monitor: ChainMonitor,
+}
+
+struct Commands {
+    queue: SyncSender<Command>,
+    worker: Thread,
+}
+
+impl Commands {
+    fn submit(&self, operation: Operation, timeout: Duration) -> Result<ReplyTicket> {
+        let (reply, response) = sync_channel(1);
+        let deadline = Instant::now() + timeout;
+        self.queue
+            .try_send(Command {
+                operation,
+                reply,
+                deadline,
+            })
+            .map_err(|error| anyhow!("Carla control submission failed: {error}"))?;
+        self.worker.unpark();
+        Ok(ReplyTicket { response, deadline })
+    }
+}
+
+struct ReplyTicket {
+    response: Receiver<Result<Reply>>,
+    deadline: Instant,
+}
+
+impl ReplyTicket {
+    fn wait(self) -> Result<Reply> {
+        self.response
+            .recv_timeout(self.deadline.saturating_duration_since(Instant::now()))
+            .context("waiting for Carla control")?
+    }
+}
+
+pub struct RecoveryTicket(ReplyTicket);
+
+impl RecoveryTicket {
+    pub fn poll(&self) -> Option<Result<()>> {
+        match self.0.response.try_recv() {
+            Ok(result) => Some(result.map(|_| ())),
+            Err(TryRecvError::Empty) => None,
+            Err(TryRecvError::Disconnected) => Some(Err(anyhow!("Carla service stopped"))),
+        }
+    }
+}
+
+pub struct ChainControl {
+    commands: Weak<Commands>,
+}
+
+impl ChainControl {
+    pub fn recover(
+        &self,
+        owner: u64,
+        generation: u64,
+        show_editor: bool,
+    ) -> Result<RecoveryTicket> {
+        let commands = self.commands.upgrade().context("Carla service stopped")?;
+        let ticket = commands.submit(
+            Operation::Recover {
+                owner,
+                generation,
+                show_editor,
+            },
+            RECOVERY_TIMEOUT,
+        )?;
+        Ok(RecoveryTicket(ticket))
+    }
 }
 
 #[derive(Clone)]
@@ -78,6 +152,7 @@ impl ChainHealth {
 
 #[derive(Default)]
 struct Observation {
+    owner: u64,
     editor: Option<Arc<dyn CarlaExternalUi>>,
     health: ChainHealth,
 }
@@ -87,8 +162,10 @@ impl ChainMonitor {
         self.0.read().ok()?.editor.clone()
     }
 
-    pub fn health(&self) -> ChainHealth {
-        self.0.read().unwrap().health
+    /// Read health and the prepared owner incarnation together before submitting a control.
+    pub fn owned_health(&self) -> (u64, ChainHealth) {
+        let observation = self.0.read().unwrap();
+        (observation.owner, observation.health)
     }
 
     fn publish_health(&self, processor: &mut dyn CarlaProcessor) {
@@ -100,10 +177,12 @@ impl ChainMonitor {
         let mut observation = self.0.write().unwrap();
         *observation = match processor {
             Some(processor) => Observation {
+                owner: observation.owner.wrapping_add(1),
                 editor: processor.external_ui(),
                 health: ChainHealth::observe(processor),
             },
             None => Observation {
+                owner: observation.owner,
                 editor: None,
                 health: ChainHealth {
                     active: false,
@@ -210,7 +289,10 @@ impl ChainService {
         Ok((
             endpoint,
             Self {
-                commands,
+                commands: Arc::new(Commands {
+                    queue: commands,
+                    worker: thread.thread().clone(),
+                }),
                 thread,
                 monitor,
             },
@@ -218,24 +300,7 @@ impl ChainService {
     }
 
     fn request(&self, operation: Operation) -> Result<Reply> {
-        let (reply, response) = sync_channel(1);
-        let timeout = if matches!(operation, Operation::Recover { .. }) {
-            RECOVERY_TIMEOUT
-        } else {
-            CONTROL_TIMEOUT
-        };
-        let deadline = Instant::now() + timeout;
-        self.commands
-            .try_send(Command {
-                operation,
-                reply,
-                deadline,
-            })
-            .map_err(|error| anyhow!("Carla control submission failed: {error}"))?;
-        self.thread.thread().unpark();
-        response
-            .recv_timeout(deadline.saturating_duration_since(Instant::now()))
-            .context("waiting for Carla control")?
+        self.commands.submit(operation, CONTROL_TIMEOUT)?.wait()
     }
 
     pub fn set_active(&self, active: bool) -> Result<()> {
@@ -264,8 +329,18 @@ impl ChainService {
         self.monitor.clone()
     }
 
+    pub fn control(&self) -> ChainControl {
+        ChainControl {
+            commands: Arc::downgrade(&self.commands),
+        }
+    }
+
     pub fn recover(&self, show_editor: bool) -> Result<()> {
-        self.request(Operation::Recover { show_editor }).map(|_| ())
+        let (owner, health) = self.monitor.owned_health();
+        let ticket = self
+            .control()
+            .recover(owner, health.generation, show_editor)?;
+        ticket.0.wait().map(|_| ())
     }
 
     pub fn stop(self, timeout: Duration) -> Result<()> {
@@ -294,7 +369,7 @@ fn run(
     loop {
         if worker.owner_reset_requested() {
             let mut replacement = worker
-                .discard_retired_batches()
+                .discard_submitted_batches()
                 .ok()
                 .and_then(|()| create().ok());
             match replacement.as_mut() {
@@ -329,12 +404,32 @@ fn run(
                             .processor()
                             .restore_state(&state)
                             .map(|()| Reply::Done),
-                        Operation::Recover { show_editor } => {
+                        Operation::Recover {
+                            owner,
+                            generation,
+                            show_editor,
+                        } => {
+                            let retiring = worker.owner_reset_requested();
                             let processor = worker.processor();
-                            if processor.is_ready() {
+                            if retiring
+                                || owner != monitor.0.read().unwrap().owner
+                                || generation != processor.generation()
+                            {
+                                Err(anyhow!("Carla recovery owner changed"))
+                            } else if processor.is_ready() {
                                 Err(anyhow!("Carla worker is already running"))
                             } else {
-                                processor.recover(show_editor).map(|()| Reply::Done)
+                                monitor.0.write().unwrap().health.lifecycle =
+                                    CarlaProcessorLifecycle::Restarting;
+                                let result = processor.recover(show_editor);
+                                // Jobs queued during recovery belong to the old worker.
+                                worker
+                                    .discard_submitted_batches()
+                                    .map_err(|error| {
+                                        anyhow!("retiring Carla submissions: {error:?}")
+                                    })
+                                    .and(result)
+                                    .map(|()| Reply::Done)
                             }
                         }
                     }
@@ -396,7 +491,10 @@ mod tests {
             Err(error) => panic!("Carla service could not start: {error:#}"),
         };
         let monitor = service.monitor();
-        assert_eq!(monitor.health().lifecycle, CarlaProcessorLifecycle::Running);
+        assert_eq!(
+            monitor.owned_health().1.lifecycle,
+            CarlaProcessorLifecycle::Running
+        );
         let state = service.save_state().unwrap();
         service.restore_state(state).unwrap();
         let transport = endpoint.async_transport().unwrap();
@@ -415,7 +513,7 @@ mod tests {
         };
         for (sequence, active) in [false, true].into_iter().enumerate() {
             service.set_active(active).unwrap();
-            assert_eq!(monitor.health().active, active);
+            assert_eq!(monitor.owned_health().1.active, active);
             let submission = batch(sequence as u64);
             let tag = submission.tag;
             assert_no_heap(|| transport.try_submit(submission)).unwrap();
@@ -442,10 +540,10 @@ mod tests {
         }
         service.stop(CONTROL_TIMEOUT).unwrap();
         assert_eq!(
-            monitor.health().lifecycle,
+            monitor.owned_health().1.lifecycle,
             CarlaProcessorLifecycle::Unavailable
         );
-        assert!(!monitor.health().active);
+        assert!(!monitor.owned_health().1.active);
         assert_eq!(
             transport.try_submit(batch(2)),
             Err(rt_runtime::Error::Disconnected)

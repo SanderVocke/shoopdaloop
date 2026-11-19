@@ -47,9 +47,10 @@ counts to zero to disable Carla. Restart the owning host to apply changes. The
 host manager's **New host** dialog also accepts Carla mode and counts under
 **Track processors**. These settings belong to the host configuration.
 
-Linux development tests exercise both modes with the pinned runtime and with
-the actual Carla editors. See the plan for the qualification scope and pending
-work. [Carla hosting plan](../../PLAN_CARLA_HOSTING.md#stage-4-host-stereo-carla-through-the-production-native-service)
+Linux development tests exercise both modes with the pinned runtime and actual
+Carla editors. In isolated mode the FX control can restart a crashed worker and
+reopen its editor. The host reports the new generation when the worker is ready.
+See the plan for qualification scope and pending work. [Carla hosting plan](../../PLAN_CARLA_HOSTING.md#stage-4-host-stereo-carla-through-the-production-native-service)
 
 ## Routing and media matrix
 

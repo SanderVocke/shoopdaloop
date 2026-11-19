@@ -233,6 +233,16 @@ impl AsyncTransport for LocalTransport {
 }
 
 impl LocalWorker {
+    /// Return jobs already submitted to the old worker with their original tags.
+    /// The next batch reprimes the stream even when there were no queued jobs.
+    pub fn discard_pending(&mut self) -> Result<(), Error> {
+        for _ in 0..self.jobs.slots() {
+            self.process_next(|_, _| Err(Error::Disconnected))?;
+        }
+        self.previous = None;
+        Ok(())
+    }
+
     /// Run at most one submitted batch. Reset stream-local DSP state before
     /// applying any input when the callback's first argument is true.
     pub fn process_next(
@@ -392,6 +402,21 @@ mod tests {
                 assert_eq!(completion.output.map(|_| ()), result);
             });
         }
+        assert_no_heap(|| {
+            submit(&mut transport, 2, 1).unwrap();
+            worker.discard_pending().unwrap();
+            let abandoned = transport.try_completion().unwrap();
+            assert_eq!(abandoned.tag, tag(2, 1));
+            assert_eq!(abandoned.output.err(), Some(Error::Disconnected));
+            submit(&mut transport, 2, 2).unwrap();
+            assert!(worker
+                .process_next(|must_reset, _| {
+                    assert!(must_reset);
+                    Ok(())
+                })
+                .unwrap());
+            assert_eq!(transport.try_completion().unwrap().tag, tag(2, 2));
+        });
         assert!(!worker
             .process_next(|_, _| panic!("empty queue ran DSP"))
             .unwrap());

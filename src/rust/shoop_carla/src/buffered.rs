@@ -118,15 +118,8 @@ impl Worker {
         self.owner_reset.load(Ordering::Acquire) == OWNER_RESET_REQUESTED
     }
 
-    pub(super) fn discard_retired_batches(&mut self) -> Result<(), Error> {
-        // Retirement stops submissions before it publishes the reset. Return
-        // any queued jobs with their old tags without applying their MIDI or
-        // audio to the next processor.
-        while self
-            .transport
-            .process_next(|_, _| Err(Error::Disconnected))?
-        {}
-        Ok(())
+    pub(super) fn discard_submitted_batches(&mut self) -> Result<(), Error> {
+        self.transport.discard_pending()
     }
 
     pub(super) fn replace_retired_owner(&mut self, replacement: Option<Box<dyn CarlaProcessor>>) {

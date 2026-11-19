@@ -145,6 +145,7 @@ fn carla_editor_controls_follow_the_confirmed_track_and_bus() {
     for (hosting, transport) in [
         (CarlaHosting::InProcess, AppTransport::Socket),
         (CarlaHosting::Subprocess, AppTransport::SharedMemory),
+        (CarlaHosting::Subprocess, AppTransport::Socket),
     ] {
         let mut config = HostConfig {
             transport,
@@ -303,6 +304,51 @@ fn carla_editor_controls_follow_the_confirmed_track_and_bus() {
             );
             assert!(matches!(outcome, Outcome::Confirmed { .. }), "{outcome:?}");
             wait(&mut client, &mut connection, (false, true));
+            let recover = Command::Track {
+                track,
+                action: TrackAction::FxToggleOrRecover,
+            };
+            if transport == AppTransport::Socket {
+                connection
+                    .send(client.command(recover, None).unwrap())
+                    .unwrap();
+                let deadline = Instant::now() + Duration::from_secs(5);
+                loop {
+                    connection.poll(&mut client).unwrap();
+                    let observed = client.snapshot().unwrap().tracks.iter().any(|entry| {
+                        entry.id == track
+                            && entry.fx.as_ref().is_some_and(|fx| {
+                                fx.lifecycle == FxLifecycle::Restarting || fx.generation == 2
+                            })
+                    });
+                    if observed {
+                        break;
+                    }
+                    assert!(
+                        Instant::now() < deadline,
+                        "worker recovery was not accepted"
+                    );
+                    thread::sleep(Duration::from_millis(10));
+                }
+                drop(connection);
+                (client, connection) = attach(&host.entry, 803);
+            } else {
+                let outcome = command(&mut client, &mut connection, recover);
+                assert!(matches!(outcome, Outcome::Confirmed { .. }), "{outcome:?}");
+            }
+            wait(&mut client, &mut connection, (true, true));
+            let snapshot = client.snapshot().unwrap();
+            let track_fx = snapshot
+                .tracks
+                .iter()
+                .find(|entry| entry.id == track)
+                .unwrap()
+                .fx
+                .as_ref()
+                .unwrap();
+            assert_eq!(track_fx.generation, 2);
+            assert_ne!(track_fx.lifecycle, FxLifecycle::Crashed);
+            assert!(track_fx.crash_summary.is_none());
         }
         shutdown(&mut host, &mut client);
     }

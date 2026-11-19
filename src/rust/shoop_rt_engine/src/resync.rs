@@ -108,7 +108,8 @@ impl ControlEndpoint {
                 hosted: self
                     .hosted_processors
                     .as_ref()
-                    .and_then(|controls| controls.status(owner.index)),
+                    .and_then(|controls| controls.status(owner.index))
+                    .map(|observation| observation.status),
                 values: state.values,
             },
         })
@@ -133,7 +134,8 @@ impl ControlEndpoint {
                 hosted: self
                     .hosted_processors
                     .as_ref()
-                    .and_then(|controls| controls.status(slot.index)),
+                    .and_then(|controls| controls.status(slot.index))
+                    .map(|observation| observation.status),
                 values: state.values,
             },
         })

@@ -4,12 +4,12 @@ use rt_runtime::{graph::PortCounts, Error, Quantum};
 use shoop_carla::{
     buffered::Worker,
     native::{carla_runtime_availability, CarlaMainThreadUiDispatcher},
-    service::{ChainMonitor, ChainService},
+    service::{ChainControl, ChainMonitor, ChainService, RecoveryTicket},
 };
 use shoop_plugin_protocol::{CarlaChainType, CarlaProcessorLifecycle, ChainId, WorkerExitKind};
 use shoop_rt_engine::{
-    EngineDescription, HostedProcessor, HostedProcessorControls, PreparedProcessor,
-    PreparedProcessors,
+    EngineDescription, HostedProcessor, HostedProcessorControls, HostedProcessorObservation,
+    HostedRecovery, PreparedProcessor, PreparedProcessors,
 };
 use shoop_rt_protocol::{
     processors::{
@@ -139,20 +139,31 @@ fn prepare_enabled(
 
 pub(crate) struct Controls {
     first: usize,
-    chains: Vec<ChainMonitor>,
+    chains: Vec<Chain>,
     has_editors: bool,
+}
+
+struct Chain {
+    monitor: ChainMonitor,
+    control: ChainControl,
 }
 
 impl Controls {
     pub(crate) fn new(first: usize, services: &[ChainService]) -> Self {
         Self {
             first,
-            chains: services.iter().map(ChainService::monitor).collect(),
+            chains: services
+                .iter()
+                .map(|service| Chain {
+                    monitor: service.monitor(),
+                    control: service.control(),
+                })
+                .collect(),
             has_editors: services.iter().any(|service| service.editor().is_some()),
         }
     }
 
-    fn chain(&self, index: u16) -> Option<&ChainMonitor> {
+    fn chain(&self, index: u16) -> Option<&Chain> {
         self.chains.get(usize::from(index).checked_sub(self.first)?)
     }
 }
@@ -162,10 +173,10 @@ impl HostedProcessorControls for Controls {
         self.has_editors
     }
 
-    fn status(&self, index: u16) -> Option<HostedStatus> {
-        let chain = self.chain(index)?;
-        let health = chain.health();
-        Some(HostedStatus {
+    fn status(&self, index: u16) -> Option<HostedProcessorObservation> {
+        let chain = &self.chain(index)?.monitor;
+        let (owner, health) = chain.owned_health();
+        let status = HostedStatus {
             generation: health.generation,
             active: health.active,
             lifecycle: match health.lifecycle {
@@ -186,15 +197,40 @@ impl HostedProcessorControls for Controls {
                 WorkerExitKind::ParentDisconnected => Some(HostedFailure::Disconnected),
             },
             editor_visible: chain.editor().map(|editor| editor.is_visible()),
-        })
+        };
+        Some(HostedProcessorObservation { owner, status })
     }
 
     fn set_visible(&self, index: u16, visible: bool) -> Result<(), Refusal> {
         self.chain(index)
-            .and_then(ChainMonitor::editor)
+            .and_then(|chain| chain.monitor.editor())
             .ok_or(Refusal::Unsupported)?
             .set_visible(visible)
             .map_err(|_| Refusal::Internal)
+    }
+
+    fn recover(
+        &self,
+        index: u16,
+        owner: u64,
+        generation: u64,
+    ) -> Result<Box<dyn HostedRecovery>, Refusal> {
+        let chain = self.chain(index).ok_or(Refusal::Unsupported)?;
+        let ticket = chain
+            .control
+            .recover(owner, generation, true)
+            .map_err(|_| Refusal::Internal)?;
+        Ok(Box::new(Recovery(ticket)))
+    }
+}
+
+struct Recovery(RecoveryTicket);
+
+impl HostedRecovery for Recovery {
+    fn poll(&mut self) -> Option<Result<(), Refusal>> {
+        self.0
+            .poll()
+            .map(|result| result.map_err(|_| Refusal::Internal))
     }
 }
 

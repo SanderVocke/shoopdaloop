@@ -163,8 +163,30 @@ impl Work {
 /// Hosted processor observations and controls on the non-render endpoint.
 pub trait HostedProcessorControls: Send {
     fn has_editors(&self) -> bool;
-    fn status(&self, index: u16) -> Option<shoop_rt_protocol::processors::HostedStatus>;
+    fn status(&self, index: u16) -> Option<HostedProcessorObservation>;
     fn set_visible(&self, index: u16, visible: bool) -> Result<(), Refusal>;
+    fn recover(
+        &self,
+        index: u16,
+        owner: u64,
+        generation: u64,
+    ) -> Result<Box<dyn HostedRecovery>, Refusal>;
+}
+
+pub struct HostedProcessorObservation {
+    pub owner: u64,
+    pub status: shoop_rt_protocol::processors::HostedStatus,
+}
+
+pub trait HostedRecovery: Send {
+    fn poll(&mut self) -> Option<Result<(), Refusal>>;
+}
+
+pub(crate) struct PendingHostedRecovery {
+    target: shoop_rt_protocol::ProcessorTarget,
+    slot: shoop_rt_protocol::ProcessorSlot,
+    correlation: Option<u64>,
+    ticket: Box<dyn HostedRecovery>,
 }
 
 pub struct ControlEndpoint {
@@ -177,6 +199,7 @@ pub struct ControlEndpoint {
     pub(crate) projected_recorded: Box<[Option<(LoopSlotId, u64, bool)>]>,
     pub(crate) processor_catalog: crate::ProcessorCatalog,
     pub(crate) hosted_processors: Option<Box<dyn HostedProcessorControls>>,
+    pub(crate) hosted_recoveries: Box<[Option<PendingHostedRecovery>]>,
     pub(crate) processor_cells: Box<[Arc<crate::processors::ProcessorCells>]>,
     pub(crate) projected_bus_processors: Box<
         [Option<(
@@ -363,26 +386,38 @@ impl ControlEndpoint {
         &mut self,
         controls: Box<dyn HostedProcessorControls>,
     ) {
+        self.hosted_recoveries = core::iter::repeat_with(|| None)
+            .take(self.processor_cells.len())
+            .collect();
         self.hosted_processors = Some(controls);
     }
 
-    fn processor_editor(
+    fn hosted_processor_owner(
         &self,
         target: shoop_rt_protocol::ProcessorTarget,
-        slot: shoop_rt_protocol::ProcessorSlot,
-        visible: Option<bool>,
-    ) -> Result<(), Refusal> {
-        use shoop_rt_protocol::{processors::Phase, ProcessorTarget};
-        let controls = self
-            .hosted_processors
-            .as_ref()
-            .ok_or(Refusal::Unsupported)?;
-        let owner = match target {
+    ) -> Result<crate::model::ProcessorOwner, Refusal> {
+        use shoop_rt_protocol::ProcessorTarget;
+        match target {
             ProcessorTarget::Strip(id) => self.model.strip(id).ok_or(Refusal::InvalidId)?.processor,
             ProcessorTarget::Bus(id) => self.model.bus(id).ok_or(Refusal::InvalidId)?.processor,
         }
         .filter(|owner| owner.kind.is_carla())
-        .ok_or(Refusal::Unsupported)?;
+        .ok_or(Refusal::Unsupported)
+    }
+
+    fn processor_editor(
+        &mut self,
+        correlation: u64,
+        target: shoop_rt_protocol::ProcessorTarget,
+        slot: shoop_rt_protocol::ProcessorSlot,
+        visible: Option<bool>,
+    ) -> Result<Option<Outcome>, Refusal> {
+        use shoop_rt_protocol::processors::{HostedLifecycle, Phase};
+        let controls = self
+            .hosted_processors
+            .as_ref()
+            .ok_or(Refusal::Unsupported)?;
+        let owner = self.hosted_processor_owner(target)?;
         if owner.slot != Some(slot) {
             return Err(Refusal::InvalidId);
         }
@@ -395,11 +430,54 @@ impl ControlEndpoint {
         {
             return Err(Refusal::InvalidId);
         }
-        let current = controls
-            .status(slot.index)
-            .and_then(|status| status.editor_visible)
-            .ok_or(Refusal::Unsupported)?;
-        controls.set_visible(slot.index, visible.unwrap_or(!current))
+        let index = slot.index as usize;
+        if self.hosted_recoveries[index].is_some() {
+            return Err(Refusal::Busy);
+        }
+        let HostedProcessorObservation { owner, status } =
+            controls.status(slot.index).ok_or(Refusal::Unsupported)?;
+        if visible.is_none()
+            && status.generation != 0
+            && matches!(
+                status.lifecycle,
+                HostedLifecycle::Crashed | HostedLifecycle::Unavailable
+            )
+        {
+            let ticket = controls.recover(slot.index, owner, status.generation)?;
+            self.hosted_recoveries[index] = Some(PendingHostedRecovery {
+                target,
+                slot,
+                correlation: Some(correlation),
+                ticket,
+            });
+            return Ok(None);
+        }
+        let current = status.editor_visible.ok_or(Refusal::Unsupported)?;
+        controls.set_visible(slot.index, visible.unwrap_or(!current))?;
+        Ok(Some(Outcome::Done))
+    }
+
+    fn advance_hosted_recoveries(&mut self) {
+        for index in 0..self.hosted_recoveries.len() {
+            let Some(result) = self.hosted_recoveries[index]
+                .as_mut()
+                .and_then(|pending| pending.ticket.poll())
+            else {
+                continue;
+            };
+            let pending = self.hosted_recoveries[index].take().unwrap();
+            if let Some(correlation) = pending.correlation {
+                let outcome = if self
+                    .hosted_processor_owner(pending.target)
+                    .is_ok_and(|owner| owner.slot == Some(pending.slot))
+                {
+                    result.map_or_else(Outcome::Refused, |()| Outcome::Done)
+                } else {
+                    Outcome::Refused(Refusal::InvalidId)
+                };
+                self.answer(correlation, outcome);
+            }
+        }
     }
 
     pub fn processor_catalog(&self) -> &crate::ProcessorCatalog {
@@ -448,6 +526,7 @@ impl ControlEndpoint {
             && self.queue.len() == 0
             && self.job.as_ref().is_none_or(Job::idle)
             && self.pending.iter().all(Option::is_none)
+            && self.hosted_recoveries.iter().all(Option::is_none)
             && self.bulk.idle()
             && self.uploads.idle()
             && self.next_frame().0 >= self.quiet_until
@@ -659,6 +738,9 @@ impl ControlEndpoint {
         self.projected_timing.fill(None);
         self.limits_changed = false;
         self.protocol_error = false;
+        for pending in self.hosted_recoveries.iter_mut().flatten() {
+            pending.correlation = None;
+        }
         for pending in self.pending.iter_mut().flatten() {
             match &mut pending.purpose {
                 Purpose::Reply(correlation)
@@ -1143,9 +1225,9 @@ impl ControlEndpoint {
                 target,
                 slot,
                 visible,
-            } => match self.processor_editor(target, slot, visible) {
+            } => match self.processor_editor(correlation, target, slot, visible) {
                 Err(Refusal::Busy) => return Err(()),
-                result => result.map(|()| Some(Outcome::Done)),
+                result => result,
             },
             Request::BusProcessorControl { bus, control } => self
                 .model
@@ -1790,6 +1872,7 @@ impl Endpoint for ControlEndpoint {
             return;
         }
         self.drain_runtime();
+        self.advance_hosted_recoveries();
         self.immediate.responses(out, self.connected);
         self.refresh_snapshot_timing();
         self.reconcile_immediate();
