@@ -676,7 +676,7 @@ fn prepare_complete_using<R>(
     };
     for (slot, processor) in processors.instances.into_iter().enumerate() {
         let mut node = HostedProcessor::new(
-            processor.backend,
+            processor,
             processor_cells[slot].clone(),
             quantum,
             buffer_limits,

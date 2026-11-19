@@ -1,5 +1,5 @@
 //! Host-only preparation. No factory or DSP constructor runs after callbacks start.
-use rt_buffered::{Backend, BufferLimits, MidiLimits, Timing};
+use rt_buffered::{Backend, BufferLimits, MidiLimits};
 use rt_runtime::{graph::PortCounts, Quantum};
 use shoop_rt_engine::{EngineDescription, PreparedProcessor, PreparedProcessors, ProcessorPreset};
 use shoop_rt_protocol::{
@@ -76,10 +76,7 @@ fn limits(d: &EngineDescription) -> Result<BufferLimits, Error> {
 }
 fn reservation(d: &EngineDescription, effective: Effective, q: Quantum) -> Result<u64, Error> {
     let mut total = 0;
-    let timing = Timing {
-        batch_quanta: 1,
-        slack_quanta: 0,
-    };
+    let timing = PreparedProcessor::INLINE_TIMING;
     for (kind, count) in [
         (ProcessorKind::BuiltInFx, effective.fx_instances),
         (ProcessorKind::OxiSynth, effective.synth_instances),
@@ -197,6 +194,7 @@ pub fn prepare(d: &EngineDescription) -> Result<PreparedProcessors, Error> {
                 instances.push(PreparedProcessor {
                     kind,
                     backend: backend(kind, d)?,
+                    timing: PreparedProcessor::INLINE_TIMING,
                 });
             }
         }

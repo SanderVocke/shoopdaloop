@@ -335,6 +335,9 @@ impl<B: Backend> BufferedProcessor<B> {
     pub fn async_stats(&self) -> Option<AsyncStats> {
         self.asynchronous.then_some(self.async_stats)
     }
+    pub fn is_worker_backed(&self) -> bool {
+        self.asynchronous
+    }
     pub fn last_release(&self) -> Option<Release> {
         self.last_release
     }

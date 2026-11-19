@@ -101,6 +101,10 @@ it until the worker returns its completion. The worker preserves submission
 order for DSP state and resets stream-local state on generation changes,
 sequence gaps, or processing failure.
 
+`LocalTransport::prepare` supplies an in-process endpoint pair with bounded SPSC
+queues. The host includes `LocalTransport::prepared_bytes` in its reservation,
+drives `LocalWorker::process_next` off-render, and reclaims both ends off-render.
+
 The adapter consumes at most eight completions per tick before release. Only a
 matching pending tag can publish output, after validating the audio shape and
 samples and checking MIDI capacity and offsets. Early completions wait for the

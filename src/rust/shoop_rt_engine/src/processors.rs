@@ -1,7 +1,7 @@
 //! Prepared opaque processor owners and allocation-free applied-state observation.
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
-use rt_buffered::{Backend, BufferLimits, BufferedProcessor, Timing};
+use rt_buffered::{Backend, BufferLimits, BufferedProcessor, Lifecycle, Timing};
 use rt_runtime::{graph::PortCounts, processor::ProcessBlock, Error, Frame, Quantum};
 use shoop_loops::runtime::LoopPlanner;
 use shoop_rt_protocol::{
@@ -12,6 +12,13 @@ use shoop_rt_protocol::{
 pub struct PreparedProcessor {
     pub kind: ProcessorKind,
     pub backend: Box<dyn Backend>,
+    pub timing: Timing,
+}
+impl PreparedProcessor {
+    pub const INLINE_TIMING: Timing = Timing {
+        batch_quanta: 1,
+        slack_quanta: 0,
+    };
 }
 pub use shoop_rt_protocol::ProcessorPreset;
 pub struct PreparedProcessors {
@@ -196,7 +203,7 @@ impl HostedProcessor {
         )
     }
     pub(crate) fn new(
-        backend: Box<dyn Backend>,
+        processor: PreparedProcessor,
         cells: Arc<ProcessorCells>,
         quantum: Quantum,
         limits: BufferLimits,
@@ -204,7 +211,7 @@ impl HostedProcessor {
         slot: usize,
         slots: usize,
     ) -> Result<Self, Error> {
-        if backend.ports().midi_inputs > 1 {
+        if processor.backend.ports().midi_inputs > 1 {
             return Err(Error::InvalidShape);
         }
         let global = crate::global_midi::GlobalMidi::new(
@@ -214,15 +221,11 @@ impl HostedProcessor {
             },
             global_capacity,
         )?;
-        let mut buffered = BufferedProcessor::with_backend(
-            backend,
-            quantum,
-            Timing {
-                batch_quanta: 1,
-                slack_quanta: 0,
-            },
-            limits,
-        )?;
+        let mut buffered =
+            BufferedProcessor::with_backend(processor.backend, quantum, processor.timing, limits)?;
+        if !buffered.is_worker_backed() && processor.timing != PreparedProcessor::INLINE_TIMING {
+            return Err(Error::InvalidConfig);
+        }
         cells.publish(
             &**buffered.backend(),
             Frame(0),
@@ -546,6 +549,13 @@ impl HostedProcessor {
                 self.manual_active = None;
             }
         }
+        if self.buffered.is_worker_backed() {
+            if let Some((source, _)) = self.track_binding() {
+                block
+                    .domain
+                    .abort_source_captures(source as u32, Error::Incomplete);
+            }
+        }
         let result = self.render(block, demand);
         if result.is_err() {
             self.phase = ProcessorPhase::Faulted;
@@ -625,17 +635,20 @@ impl HostedProcessor {
             }
             return Ok(());
         }
+        let worker = self.buffered.is_worker_backed();
+        if !demand && self.buffered.lifecycle() == Lifecycle::Running {
+            self.buffered.begin_drain()?;
+        }
+        let collecting = self.buffered.lifecycle() == Lifecycle::Running;
         if has_midi {
             self.global.render(
                 &block.midi_inputs[2],
                 &block.midi_inputs[0],
                 block.frames,
-                demand,
+                collecting,
             )?;
         }
-        if !demand {
-            self.buffered.begin_drain()?;
-        } else {
+        if collecting {
             for &(frame, id, value) in &self.parameters[..self.parameter_count] {
                 self.buffered.schedule_parameter(frame, id, value)?;
             }
@@ -646,10 +659,13 @@ impl HostedProcessor {
             let mut audio = block
                 .audio
                 .subset(0..ports.audio_inputs, 0..ports.audio_outputs)?;
-            let capture_source = self
-                .track_binding()
-                .map(|(source, _)| source as u32)
-                .filter(|source| block.domain.recording_starts(*source).next().is_some());
+            let capture_source = if worker {
+                None
+            } else {
+                self.track_binding()
+                    .map(|(source, _)| source as u32)
+                    .filter(|source| block.domain.recording_starts(*source).next().is_some())
+            };
             let mut observer = crate::recorded::TakeObserver {
                 domain: block.domain,
                 cells: self.signal.as_deref(),
@@ -658,7 +674,7 @@ impl HostedProcessor {
                 frame: block.frame,
                 done: false,
             };
-            let observed = self.buffered.backend().supports_observation();
+            let observed = !worker && self.buffered.backend().supports_observation();
             self.buffered.process_ports_tick_controls(
                 block.frame,
                 block.quantum,
@@ -678,7 +694,10 @@ impl HostedProcessor {
                 .audio
                 .output(ports.audio_outputs + port)
                 .ok_or(Error::InvalidShape)?;
-            if let Some((_, samples)) = self.buffered.completed_audio(block.frame, port) {
+            if let Some((_, samples)) = (!worker)
+                .then(|| self.buffered.completed_audio(block.frame, port))
+                .flatten()
+            {
                 output.copy_from_slice(samples);
             } else {
                 output.fill(0.);
@@ -692,7 +711,7 @@ impl HostedProcessor {
         }) {
             return Err(Error::InvalidParameter);
         }
-        if !demand {
+        if (!worker && !collecting) || self.buffered.lifecycle() == Lifecycle::Suspended {
             self.suspend(block.frame.checked_add(self.quantum)?, self.generation)?;
             if has_midi {
                 self.idle_controls(&block.midi_inputs[1], &block.midi_inputs[0])?;
@@ -757,7 +776,7 @@ impl HostedProcessor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rt_buffered::{Batch, MidiLimits};
+    use rt_buffered::{AsyncTransport, Batch, LocalTransport, MidiLimits};
     use shoop_wasm_test_support::{heap::assert_no_heap, shoop_test};
     struct TestBackend {
         value: f32,
@@ -801,11 +820,208 @@ mod tests {
             Ok(false)
         }
     }
+
+    #[shoop_test]
+    fn hosted_worker_releases_the_padded_tail_before_suspending() {
+        use crate::node::EngineNode;
+        use rt_runtime::{
+            buffer::{AudioBlock, MidiBlock},
+            executor::{GraphRuntime, PreparedNode},
+            graph::{Connection, Endpoint, GraphDescription, PortType},
+            resource::ResourceStore,
+            Config, NodeId, PlannerId,
+        };
+        use shoop_loops::{runtime::Settings, Limits, TopologyDescription};
+
+        const PORTS: PortCounts = PortCounts {
+            audio_inputs: 1,
+            audio_outputs: 1,
+            midi_inputs: 0,
+            midi_outputs: 0,
+        };
+        struct EchoWorker(LocalTransport);
+        impl Backend for EchoWorker {
+            fn ports(&self) -> PortCounts {
+                PORTS
+            }
+
+            fn async_transport(&mut self) -> Option<&mut dyn AsyncTransport> {
+                Some(&mut self.0)
+            }
+
+            fn process(&mut self, _: &mut Batch<'_, '_>) -> Result<(), Error> {
+                panic!("worker ran inline")
+            }
+
+            fn suspend(&mut self) -> Result<(), Error> {
+                Ok(())
+            }
+
+            fn reset(&mut self) -> Result<(), Error> {
+                Ok(())
+            }
+        }
+
+        let q = Quantum::new(16).unwrap();
+        let timing = Timing {
+            batch_quanta: 2,
+            slack_quanta: 1,
+        };
+        let limits = BufferLimits::default();
+        let (transport, mut worker) =
+            LocalTransport::prepare(PORTS, timing.prepare(q).unwrap(), limits, 2).unwrap();
+        let state = Arc::new(ProcessorCells::new(ProcessorKind::BuiltInFx));
+        let mut hosted = HostedProcessor::new(
+            PreparedProcessor {
+                kind: ProcessorKind::BuiltInFx,
+                backend: Box::new(EchoWorker(transport)),
+                timing,
+            },
+            state.clone(),
+            q,
+            limits,
+            Default::default(),
+            0,
+            1,
+        )
+        .unwrap();
+        let signal = crate::cells::Cells::new(
+            1,
+            1,
+            1,
+            512,
+            shoop_rt_protocol::DriverStatus {
+                kind: shoop_rt_protocol::DriverKind::Dummy,
+                state: shoop_rt_protocol::DriverRunState::Running,
+                sample_rate: 8000,
+                buffer_frames: 16,
+            },
+            16,
+        );
+        signal.strips[0]
+            .owner_generation
+            .store(1, Ordering::Relaxed);
+        hosted.attach(signal.clone());
+        hosted.claim(Frame(0), 1).unwrap();
+        hosted.binding = Some(ProcessorTarget::Track {
+            source: 0,
+            generation: 1,
+        });
+        let config = Config {
+            audio_inputs: 1,
+            audio_outputs: 2,
+            midi_inputs: 0,
+            midi_outputs: 0,
+            ..Config::default()
+        }
+        .prepare()
+        .unwrap();
+        let mut resources = ResourceStore::new(config, q).unwrap();
+        let topology =
+            shoop_loops::compile(Limits::default(), &TopologyDescription::default()).unwrap();
+        let loops = LoopPlanner::prepare(
+            config,
+            q,
+            topology,
+            &mut resources,
+            Settings {
+                planner: PlannerId::from_parts(0, 1).unwrap(),
+                normal_requests: 1,
+                media_slots: 2,
+                export_slots: 1,
+            },
+            Vec::new(),
+            Vec::new(),
+            Default::default(),
+        )
+        .unwrap();
+        let node = NodeId::from_parts(0, 1).unwrap();
+        let (_, mut runtime) = GraphRuntime::prepare_with_planner_and_resources(
+            config,
+            q,
+            alloc::vec![PreparedNode::new(node, EngineNode::Processor(hosted))],
+            loops.planner,
+            resources,
+        )
+        .unwrap();
+        runtime
+            .prepare_initial_graph(&GraphDescription {
+                nodes: alloc::vec![node],
+                connections: alloc::vec![
+                    Connection {
+                        source: Endpoint::host(PortType::Audio, 0),
+                        destination: Endpoint::node(node, PortType::Audio, 0)
+                    },
+                    Connection {
+                        source: Endpoint::node(node, PortType::Audio, 0),
+                        destination: Endpoint::host(PortType::Audio, 0)
+                    },
+                    Connection {
+                        source: Endpoint::node(node, PortType::Audio, 1),
+                        destination: Endpoint::host(PortType::Audio, 1)
+                    },
+                ],
+            })
+            .unwrap();
+
+        for tick in 0..10 {
+            worker
+                .process_next(|_, batch| {
+                    let (input, output) = batch.audio.pair(0, 0).unwrap();
+                    output.copy_from_slice(input);
+                    Ok(())
+                })
+                .unwrap();
+            signal.strips[0]
+                .processor_demand
+                .store(tick == 0 || (3..=6).contains(&tick), Ordering::Relaxed);
+            let mut monitor = [0.; 16];
+            let mut capture = [1.; 16];
+            assert_no_heap(|| {
+                runtime.process(
+                    AudioBlock {
+                        frame: Frame(tick * 16),
+                        frames: 16,
+                        inputs: &[&[tick as f32 + 1.; 16]],
+                        outputs: &mut [&mut monitor, &mut capture],
+                    },
+                    MidiBlock {
+                        inputs: &[],
+                        outputs: &mut [],
+                    },
+                )
+            })
+            .unwrap();
+            assert_eq!(
+                monitor,
+                [match tick {
+                    3 => 1.,
+                    8 => 6.,
+                    9 => 7.,
+                    _ => 0.,
+                }; 16]
+            );
+            assert_eq!(capture, [0.; 16]);
+            assert_eq!(
+                state.read().unwrap().phase,
+                if [4, 9].contains(&tick) {
+                    ProcessorPhase::Owned
+                } else {
+                    ProcessorPhase::Running
+                }
+            );
+        }
+    }
+
     #[shoop_test]
     fn generation_claim_and_incremental_return_never_expose_previous_owner() {
         let cells = Arc::new(ProcessorCells::new(ProcessorKind::BuiltInFx));
         let mut node = HostedProcessor::new(
-            Box::new(TestBackend { value: 0. }),
+            PreparedProcessor {
+                kind: ProcessorKind::BuiltInFx,
+                backend: Box::new(TestBackend { value: 0. }),
+                timing: PreparedProcessor::INLINE_TIMING,
+            },
             cells.clone(),
             Quantum::new(16).unwrap(),
             BufferLimits {

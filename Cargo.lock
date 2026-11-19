@@ -4776,6 +4776,7 @@ name = "rt_buffered"
 version = "0.3.0"
 dependencies = [
  "rt_runtime",
+ "rtrb",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",
 ]
