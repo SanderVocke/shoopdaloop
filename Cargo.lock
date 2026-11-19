@@ -5692,6 +5692,7 @@ dependencies = [
  "serde",
  "shoop_app_api",
  "shoop_app_protocol",
+ "shoop_plugin_protocol",
  "shoop_loops",
  "shoop_processor_protocol",
  "shoop_script_resources",

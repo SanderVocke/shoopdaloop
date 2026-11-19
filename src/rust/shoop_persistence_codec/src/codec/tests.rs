@@ -45,6 +45,93 @@ fn session_files_preserve_ordinary_bus_shapes_order_and_an_empty_bus_set() {
         crate::document::from_bundle(reloaded).unwrap();
     }
 }
+
+#[shoop_test]
+fn carla_session_migrates_a_legacy_track_bus_and_recorded_wet_checkpoint() {
+    use shoop_plugin_protocol::{state, CarlaChainType};
+    use shoop_session::{
+        FxChainDocument, FxChainTypeDocument, FxStateDocument, TrackTopologyDocument,
+    };
+
+    let legacy =
+        include_str!("../../../shoop_engine/test_data/carla_legacy_patchbay16_loaded_state.json");
+    let project = include_bytes!(
+        "../../../shoop_engine/test_data/carla_legacy_patchbay16_loaded_project.xml"
+    );
+    let chain_type = FxChainTypeDocument::CarlaPatchbay16x;
+    let mut take = content();
+    take.audio = (1..=16).map(|object| channel(object, 4, 0)).collect();
+    // Create a document with the same shape and state fields emitted by master.
+    let base = image::Image {
+        manifest: image::Manifest::Session(session(take, 16, false)),
+        payloads: vec![image::Payload::Audio(Arc::new(vec![0.; 4])); 16],
+    };
+    let mut bundle = crate::document::to_bundle(&base).unwrap();
+    let chain = FxChainDocument {
+        id: 1,
+        title: "Carla Patchbay 16x".into(),
+        chain_type,
+        ports: vec![],
+        internal_state: legacy.into(),
+        builtin_fx_midi_cc_assignments: vec![],
+        midi_cc_assignments: vec![],
+    };
+    let track = &mut bundle.document.track_groups[1].tracks[0];
+    track.topology = TrackTopologyDocument::Carla {
+        chain_type,
+        audio_channels: 16,
+        midi: false,
+        dry_audio_channels: Some(0),
+        wet_audio_channels: Some(16),
+    };
+    track.fx_chain = Some(chain.clone());
+    for channel in &mut track.loops[0].channels {
+        channel.mode = shoop_session::ChannelModeDocument::Wet;
+        channel.recording_fx_state_id = Some(1);
+    }
+    bundle.document.fx_states = vec![FxStateDocument {
+        id: 1,
+        chain_type,
+        internal_state: legacy.into(),
+    }];
+    bundle.document.buses[0].fx_chain = Some(chain);
+
+    let legacy_file = encode_session(&bundle, "legacy-carla").unwrap();
+    let image = crate::document::from_bundle(decode_session(&legacy_file).unwrap()).unwrap();
+    let image::Manifest::Session(session) = &image.manifest else {
+        panic!("session manifest")
+    };
+    let track = &session.tracks[0];
+    assert_eq!(track.audio_channels, 16);
+    assert!(track.processor_state.is_none());
+    assert_eq!(track.loops[0].audio.len(), 16);
+    let bus = session.buses[0].fx.as_ref().unwrap();
+    assert!(bus.state.is_empty());
+    for reference in [
+        track.processor_checkpoint,
+        track.loops[0].recorded_processor_checkpoint,
+        bus.processor_checkpoint,
+    ] {
+        let image::Payload::ProcessorCheckpoint(checkpoint) =
+            &image.payloads[reference.unwrap() as usize - 1]
+        else {
+            panic!("checkpoint payload")
+        };
+        assert_eq!(
+            state::decode_state(
+                std::str::from_utf8(checkpoint).unwrap(),
+                CarlaChainType::Patchbay16x
+            )
+            .unwrap(),
+            project
+        );
+    }
+
+    let saved = crate::document::to_bundle(&image).unwrap();
+    let current_file = encode_session(&saved, "current-carla").unwrap();
+    let reloaded = crate::document::from_bundle(decode_session(&current_file).unwrap()).unwrap();
+    assert_eq!(image, reloaded);
+}
 pub(super) fn channel(object: u32, frames: u64, offset: i64) -> image::Channel {
     image::Channel {
         mode: image::ChannelMode::Direct,
