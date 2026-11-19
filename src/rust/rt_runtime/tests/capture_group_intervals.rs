@@ -230,6 +230,69 @@ fn staged_stereo_and_midi_match_independent_content_across_callback_partitions()
     }
 }
 #[shoop_test]
+fn delayed_capture_settles_at_the_source_cut_after_the_physical_tail() {
+    let (mut store, group, take, resources) = prepared();
+    let mut midi = MidiBuffer::new(8, 128).unwrap();
+    let start = Frame(100);
+    let end = Frame(102);
+    let delay = 3;
+    let mut snapshots = [None; 2];
+    assert_no_heap(|| {
+        store.activate_capture_take(take, start).unwrap();
+        for tick in 0..delay + 2 {
+            store.begin_callback();
+            if tick == (end.0 - start.0) as usize {
+                assert_eq!(
+                    store.freeze_capture_take(take, end, None, &mut snapshots),
+                    Err(Error::InvalidFrame)
+                );
+                assert!(snapshots.iter().all(Option::is_none));
+                assert_eq!(store.usage().reserved_pages, 0);
+            }
+            let Some(source_offset) = tick.checked_sub(delay) else {
+                continue;
+            };
+            let source = start.checked_add(source_offset).unwrap();
+            let interval = store.reserve_capture_tick(take, source).unwrap();
+            midi.clear();
+            midi.push(0, 1, &[0x90, 60 + source_offset as u8, 100])
+                .unwrap();
+            store
+                .stage_capture_audio(interval, 0, &[source_offset as f32 + 1., -1.])
+                .unwrap();
+            store.stage_capture_midi(interval, 1, &midi).unwrap();
+            store.commit_capture_tick(interval).unwrap();
+        }
+        store
+            .freeze_capture_take(take, end, None, &mut snapshots)
+            .unwrap();
+        assert_eq!(snapshots[0].unwrap().description.frames, 2);
+        assert_eq!(snapshots[1].unwrap().description.frames, 2);
+        let audio = store.read_index(snapshots[0].unwrap().id).unwrap();
+        let mut cursor = store.render_io().cursor_at(audio, 0).unwrap();
+        let mut bytes = [0; 16];
+        assert_eq!(
+            store.render_io().read(&mut cursor, &mut bytes),
+            Ok(bytes.len())
+        );
+        for (channel, expected) in bytes.chunks_exact(4).zip([1.0_f32, -1.0, 2.0, -1.0]) {
+            assert_eq!(channel, expected.to_le_bytes());
+        }
+        let midi = store.read_index(snapshots[1].unwrap().id).unwrap();
+        let mut cursor = store.render_io().midi_cursor(midi).unwrap();
+        for source_offset in 0..2 {
+            let event = store.render_io().midi_next(&mut cursor).unwrap().unwrap();
+            let mut packet = [0; 3];
+            assert_eq!(event.frame(), source_offset);
+            assert_eq!(store.render_io().midi_read(event, &mut packet), Ok(3));
+            assert_eq!(packet, [0x90, 60 + source_offset as u8, 100]);
+        }
+        assert_eq!(store.render_io().midi_next(&mut cursor), Ok(None));
+    });
+    finish(&mut store, group, resources, snapshots);
+}
+
+#[shoop_test]
 fn partial_staging_is_unpublished_and_cancelled_tokens_cannot_retarget() {
     let (mut store, group, take, resources) = prepared();
     let input = MidiBuffer::new(8, 128).unwrap();
