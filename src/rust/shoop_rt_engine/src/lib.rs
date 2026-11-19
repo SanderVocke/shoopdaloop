@@ -414,7 +414,7 @@ fn prepare_complete_using<R>(
     description: &EngineDescription,
     driver: DriverStatus,
     shared_settings: shoop_loops::runtime::SharedSettings,
-    processors: PreparedProcessors,
+    mut processors: PreparedProcessors,
     wet_pages: usize,
     factory: impl FnOnce(external::Preparation) -> Result<external::Consumer<R>, PrepareError>,
 ) -> Result<external::Prepared<R>, PrepareError> {
@@ -508,6 +508,30 @@ fn prepare_complete_using<R>(
     let slots = config.limits().command_slots;
     let midi_events = description.midi_events;
     let midi_bytes = description.midi_bytes;
+    let mut worker_delay = 0;
+    for processor in &mut processors.instances {
+        if processor.backend.async_transport().is_some() {
+            worker_delay = worker_delay.max(processor.timing.prepare(quantum)?.latency_frames());
+        }
+    }
+    let worker_capture =
+        (worker_delay != 0).then_some(shoop_loops::runtime::WorkerCaptureInputSettings {
+            sources: strips,
+            channels,
+            midi: rt_runtime::buffer::MidiCapacity {
+                events: midi_events,
+                bytes: midi_bytes,
+            },
+            delay_frames: worker_delay,
+        });
+    if let Some(settings) = worker_capture {
+        let bytes = settings.storage_bytes::<f32>(quantum)? as u64;
+        processors.reserved_bytes = processors
+            .reserved_bytes
+            .checked_add(bytes)
+            .filter(|bytes| *bytes <= effective.memory_bytes)
+            .ok_or(rt_runtime::Error::Capacity)?;
+    }
     let mut resources = ResourceStore::with_capture_groups(
         config,
         quantum,
@@ -605,6 +629,9 @@ fn prepare_complete_using<R>(
         },
     )?;
     let input_capacity = input::Stage::capacity(&shared_settings);
+    if let Some(settings) = worker_capture {
+        planner.prepare_worker_capture_inputs(settings)?;
+    }
     if pool.processors() > 0 || description.external_dry_wet {
         planner.prepare_wet_edits(
             &mut resources,

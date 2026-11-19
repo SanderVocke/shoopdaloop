@@ -689,7 +689,24 @@ impl HostedProcessor {
                 if observed { Some(&mut observer) } else { None },
             )?;
         }
+        let paired_worker_release = worker
+            && self.track_binding().is_some_and(|(source, generation)| {
+                self.buffered
+                    .last_release()
+                    .filter(|release| release.available)
+                    .and_then(|release| release.tag.source.checked_add(release.offset).ok())
+                    .is_some_and(|frame| {
+                        block
+                            .domain
+                            .worker_capture_input(source, generation, frame)
+                            .is_some()
+                    })
+            });
         for port in 0..ports.audio_outputs {
+            if paired_worker_release {
+                block.audio.copy_output(port, ports.audio_outputs + port)?;
+                continue;
+            }
             let output = block
                 .audio
                 .output(ports.audio_outputs + port)
@@ -822,16 +839,19 @@ mod tests {
     }
 
     #[shoop_test]
-    fn hosted_worker_releases_the_padded_tail_before_suspending() {
-        use crate::node::EngineNode;
+    fn hosted_worker_pairs_source_inputs_and_releases_the_padded_tail_before_suspending() {
+        use crate::node::{EngineNode, EngineOp, NodeConfiguration, NodeSettings, StripInput};
         use rt_runtime::{
-            buffer::{AudioBlock, MidiBlock},
+            buffer::{AudioBlock, MidiBlock, MidiCapacity},
             executor::{GraphRuntime, PreparedNode},
             graph::{Connection, Endpoint, GraphDescription, PortType},
             resource::ResourceStore,
-            Config, NodeId, PlannerId,
+            Config, Epoch, NodeId, PlannerId,
         };
-        use shoop_loops::{runtime::Settings, Limits, TopologyDescription};
+        use shoop_loops::{
+            runtime::{Settings, WorkerCaptureInputSettings},
+            Limits, TopologyDescription,
+        };
 
         const PORTS: PortCounts = PortCounts {
             audio_inputs: 1,
@@ -885,19 +905,13 @@ mod tests {
             1,
         )
         .unwrap();
-        let signal = crate::cells::Cells::new(
-            1,
-            1,
-            1,
-            512,
-            shoop_rt_protocol::DriverStatus {
-                kind: shoop_rt_protocol::DriverKind::Dummy,
-                state: shoop_rt_protocol::DriverRunState::Running,
-                sample_rate: 8000,
-                buffer_frames: 16,
-            },
-            16,
-        );
+        let driver = shoop_rt_protocol::DriverStatus {
+            kind: shoop_rt_protocol::DriverKind::Dummy,
+            state: shoop_rt_protocol::DriverRunState::Running,
+            sample_rate: 8000,
+            buffer_frames: 16,
+        };
+        let signal = crate::cells::Cells::new(1, 1, 1, 512, driver, 16);
         signal.strips[0]
             .owner_generation
             .store(1, Ordering::Relaxed);
@@ -919,7 +933,7 @@ mod tests {
         let mut resources = ResourceStore::new(config, q).unwrap();
         let topology =
             shoop_loops::compile(Limits::default(), &TopologyDescription::default()).unwrap();
-        let loops = LoopPlanner::prepare(
+        let mut loops = LoopPlanner::prepare(
             config,
             q,
             topology,
@@ -935,21 +949,74 @@ mod tests {
             Default::default(),
         )
         .unwrap();
+        loops
+            .planner
+            .prepare_worker_capture_inputs(WorkerCaptureInputSettings {
+                sources: 1,
+                channels: 1,
+                midi: MidiCapacity::default(),
+                delay_frames: timing.prepare(q).unwrap().latency_frames(),
+            })
+            .unwrap();
+        // Drive the worker's demand explicitly while exercising the production dry tap.
+        let mut source = EngineNode::StripInput(StripInput::new(
+            0,
+            &NodeSettings {
+                midi: crate::midi_layout::Layout::new(&crate::EngineDescription::default())
+                    .unwrap(),
+                external_midi: None,
+                cells: crate::cells::Cells::new(1, 1, 1, 512, driver, 16),
+                channels: 1,
+                master_channels: 1,
+                frames: q.frames(),
+                ramp: 0,
+            },
+        ));
+        source
+            .apply_signal(
+                EngineOp::Configure(NodeConfiguration {
+                    immediate_playback: false,
+                    recorded_state: None,
+                    processor: Some(ProcessorKind::BuiltInFx),
+                    send_bank: 0,
+                    return_bank: 0,
+                    token: 1,
+                    epoch: Epoch(1),
+                    inputs: 1,
+                    outputs: 1,
+                    bank: 0,
+                    gain: 1.,
+                    balance: 0.,
+                    monitoring: false,
+                    generation: 1,
+                    muted: false,
+                }),
+                Epoch(0),
+            )
+            .unwrap();
         let node = NodeId::from_parts(0, 1).unwrap();
+        let input = NodeId::from_parts(1, 1).unwrap();
         let (_, mut runtime) = GraphRuntime::prepare_with_planner_and_resources(
             config,
             q,
-            alloc::vec![PreparedNode::new(node, EngineNode::Processor(hosted))],
+            alloc::vec![
+                PreparedNode::new(node, EngineNode::Processor(hosted)),
+                PreparedNode::new(input, source),
+            ],
             loops.planner,
             resources,
         )
         .unwrap();
         runtime
             .prepare_initial_graph(&GraphDescription {
-                nodes: alloc::vec![node],
+                nodes: alloc::vec![input, node],
                 connections: alloc::vec![
                     Connection {
                         source: Endpoint::host(PortType::Audio, 0),
+                        destination: Endpoint::node(input, PortType::Audio, 0)
+                    },
+                    Connection {
+                        source: Endpoint::node(input, PortType::Audio, 0),
                         destination: Endpoint::node(node, PortType::Audio, 0)
                     },
                     Connection {
@@ -1001,7 +1068,7 @@ mod tests {
                     _ => 0.,
                 }; 16]
             );
-            assert_eq!(capture, [0.; 16]);
+            assert_eq!(capture, monitor);
             assert_eq!(
                 state.read().unwrap().phase,
                 if [4, 9].contains(&tick) {

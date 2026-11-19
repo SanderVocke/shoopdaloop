@@ -739,6 +739,18 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
             Self::Loop(node) => node.process(block),
             Self::StripInput(node) => {
                 node.render(block)?;
+                if node
+                    .processor
+                    .is_some_and(|kind| kind != shoop_rt_protocol::ProcessorKind::External)
+                {
+                    block.domain.observe_worker_capture_input(
+                        node.slot,
+                        node.generation,
+                        block.frame,
+                        &mut block.audio,
+                        block.midi_outputs.first(),
+                    );
+                }
                 block.domain.observe_history(
                     node.slot as u32,
                     node.history_token,

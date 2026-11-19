@@ -45,6 +45,7 @@ mod processor;
 mod state_boundary;
 mod topology;
 mod transitions;
+mod worker_capture;
 use crate::topology::staging::{Progress, StageId, Status};
 pub use node_pairs::{
     NodePairInitial, NodePairScope, NodePairSettings, NodePairSourceId, NodePairSourceStatus,
@@ -53,6 +54,7 @@ pub use node_pairs::{
 pub use processor::{CaptureNode, LoopNode, LoopNodes, PlaybackNode};
 pub use rt_runtime::graph::activation::{StageId as GraphStageId, StageStatus as GraphStageStatus};
 pub use topology::TopologySettings;
+pub use worker_capture::WorkerCaptureInputSettings;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Failure {
@@ -669,6 +671,7 @@ pub struct SourceActivity {
 
 pub struct LoopPlanner<S: Sample = f32> {
     shared: Option<shared::Shared<S>>,
+    worker_inputs: Option<worker_capture::WorkerCaptureInputs<S>>,
     wet_edits: Option<AudioStoreId>,
     observer: Box<dyn BoundaryObserver>,
     settings: Settings,
@@ -1060,6 +1063,7 @@ impl<S: Sample> LoopPlanner<S> {
         failures.clear();
         let planner = LoopPlanner {
             shared: None,
+            worker_inputs: None,
             wet_edits: None,
             observer,
             settings,
@@ -1123,6 +1127,42 @@ impl<S: Sample> LoopPlanner<S> {
             activity.pre_rerecording |= view.pre_rerecording;
         }
         activity
+    }
+
+    pub fn prepare_worker_capture_inputs(
+        &mut self,
+        settings: WorkerCaptureInputSettings,
+    ) -> Result<(), Error> {
+        if self.worker_inputs.is_some() {
+            return Err(Error::InvalidState);
+        }
+        self.worker_inputs = Some(worker_capture::WorkerCaptureInputs::prepare(
+            settings,
+            self.resolver.quantum(),
+        )?);
+        Ok(())
+    }
+
+    pub fn observe_worker_capture_input(
+        &mut self,
+        source: usize,
+        generation: u32,
+        frame: Frame,
+        ports: &mut rt_runtime::buffer::AudioPorts<'_, S>,
+        midi: Option<&rt_runtime::buffer::MidiBuffer>,
+    ) {
+        if let Some(inputs) = self.worker_inputs.as_mut() {
+            let _ = inputs.observe(source, generation, frame, ports, midi);
+        }
+    }
+
+    pub fn worker_capture_input(
+        &self,
+        source: usize,
+        generation: u32,
+        frame: Frame,
+    ) -> Option<(&[S], &rt_runtime::buffer::MidiBuffer)> {
+        self.worker_inputs.as_ref()?.read(source, generation, frame)
     }
 
     /// Prevent a failed source from replacing committed media at the next cut.
