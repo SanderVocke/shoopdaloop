@@ -38,3 +38,15 @@ codec or board I/O. It consumes fabric resources. It does not load/play the
 compiled session during synthesis: the profile demonstrates capacity and valid
 lowering; functional tests separately execute compiled images. The external DDR
 controller must arbitrate the two AXI3 ports in an embedding.
+
+Component attribution also reads the optimized checkpoints using the retained
+[attribution Tcl](attribution/run.tcl). This adds reports without changing the
+implementation. Its module-name queries tolerate Vivado's rebuilt hierarchy; the
+current preparation template uses the same queries. Full hierarchical reports
+remain available from each original run.
+
+`summary.json` extracts resource/timing/packing results from the reports, including
+total negative slack and failing endpoint counts. `resources.svg` is a vector
+figure; regenerate it with `python3 plot.py` after installing Matplotlib. The
+`validation` directory retains the local test logs, the untouched native-startup
+reproduction and a final delayed-memory compiled job/cycle trace.

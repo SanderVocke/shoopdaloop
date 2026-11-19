@@ -19,15 +19,16 @@ close $f
 proc reports {stage} {
     report_utilization -file ${stage}_utilization.rpt
     report_utilization -hierarchical -hierarchical_depth 8 -file ${stage}_hierarchical_utilization.rpt
-    foreach {component path} {
-        pipeline pipeline/core_under_test
-        audio pipeline/core_under_test/audio
-        state pipeline/core_under_test/audio/core/pipeline/state_engine
-        jobs pipeline/core_under_test/audio/core/pipeline/sample_engine
-        midi pipeline/core_under_test/midi
-        midi_service pipeline/core_under_test/midi/service
+    foreach {component original} {
+        pipeline midi_audio_pipeline_axi
+        audio media_audio_pipeline_axi
+        state state_processor
+        jobs job_processor
+        midi midi_job_port
+        midi_service midi_job_service
     } {
-        set cells [get_cells -quiet $path]
+        # Rebuilt hierarchy may insert generated wrappers between public tops.
+        set cells [get_cells -quiet -hierarchical -filter "ORIG_REF_NAME == $original"]
         if {[llength $cells]} {report_utilization -cells $cells -file ${stage}_${component}_utilization.rpt}
     }
     report_timing_summary -delay_type min_max -report_unconstrained -check_timing_verbose -max_paths 20 -file ${stage}_timing_summary.rpt

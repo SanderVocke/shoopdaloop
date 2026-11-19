@@ -1,6 +1,6 @@
 # MIDI through the shared state and job processors
 
-Status: Rust and shared RTL implemented and MIDI regressions passed; fresh Vivado measurements and final delivery in progress.
+Status: fully executed. Rust/RTL functional gates and all four fresh Vivado runs are complete; results and delivery are recorded below.
 
 ## Goal and scope
 
@@ -328,31 +328,31 @@ lint, synthesis/latch/RAM checks and the relevant retained RTL component gates.
 
 ### 6. Run and report the new Vivado measurements
 
-- [ ] Preserve the previous study's source hashes, reports and failures unchanged.
+- [x] Preserve the previous study's source hashes, reports and failures unchanged.
   Extend its preparation flow for the shared architecture. Pin every measured
   revision, configuration, context, constraints and tool/image provenance.
-- [ ] Run fresh audio-only and shared-SP/JP audio-plus-MIDI synthesis and
+- [x] Run fresh audio-only and shared-SP/JP audio-plus-MIDI synthesis and
   placement/routing attempts with public Docker-sourced **Vivado 2021.1**, using
   the original vendor payload and the recorded matching runtime. Use
   **`xc7z020clg484-1`**, **100 and 150 MHz**, 0.2 ns uncertainty and comparable
   implementation settings. Check interface liveness and constrained timing paths.
-- [ ] Keep the session at **64 loops, each with two audio channels and one MIDI data channel**, **48 kHz**,
+- [x] Keep the session at **64 loops, each with two audio channels and one MIDI data channel**, **48 kHz**,
   approximately **30 seconds/channel**, **audio chunks 32**, **quantum 32**,
   **64-bit AXI**, two audio inputs/outputs and one MIDI input/eight destinations.
   Preserve sequence capacity of 8,192 events, 256-event blocks and equivalent
   pool/headroom provisioning. Keep audio cache and program/queue/buffer limits
   comparable to the recorded profile; explain any unavoidable architectural change.
-- [ ] Use an audio-only baseline that genuinely excludes MIDI hardware. Compare
+- [x] Use an audio-only baseline that genuinely excludes MIDI hardware. Compare
   the new increment with the old standalone MIDI implementation, rerunning old
   profiles if changed conditions would otherwise make that comparison misleading.
   Do not reduce loop count, duration, capacities or features to obtain a better
   fit. Count shared-processor changes and measurement-wrapper overhead explicitly.
-- [ ] Report optimized and, where available, routed LUT/register/BRAM/DSP/slice
+- [x] Report optimized and, where available, routed LUT/register/BRAM/DSP/slice
   utilization, control groups/headroom, setup WNS/TNS/failing endpoints, hold
   WHS/THS, route status and DRC results. Attribute critical paths and separate
   pre-existing audio limits from new MIDI/shared-execution limits. Unplaced
   estimates and failed attempts must be clearly labeled.
-- [ ] Investigate avoidable resource/timing growth in the new implementation and
+- [x] Investigate avoidable resource/timing growth in the new implementation and
   make targeted improvements within the agreed design. Publish the achieved
   results and any unresolved fit/timing limitations without inventing successful
   timing or expanding into unrelated audio/board work to close a clock target.
@@ -369,15 +369,15 @@ cloud CPU timings or 128 simultaneous grabs into acceptance thresholds.
 
 ### 7. Final end-to-end validation and delivery
 
-- [ ] Run full local reference/compiler and affected RTL regression suites on the
+- [x] Run full local reference/compiler and affected RTL regression suites on the
   final implementation. Trace compiled mixed programs from SP loop updates through
   the common queue/JP to audio samples, MIDI messages and persistent state.
   Recheck loading, history grabs, staged transfers, ownership, refusal and faults.
-- [ ] Verify final evidence matches the committed source and actual configuration.
+- [x] Verify final evidence matches the committed source and actual configuration.
   Summarize required workload support, memory accounting, hardware fit/timing and
   remaining integration boundaries. Preserve the distinction between functional
   completion and a physically timing-qualified deployment.
-- [ ] Update reference, compiler, RTL, testbench and measurement documentation;
+- [x] Update reference, compiler, RTL, testbench and measurement documentation;
   mark this plan accurately. Commit/push meaningful milestones and open/update
   PR(s) targeting `feat/backend-replacement`, with clear dependency handling if
   the Rust and RTL changes use separate PRs. Report links and local validation.
@@ -465,3 +465,22 @@ and speculative profiling.
   Vivado runs use committed RTL `c2d6e6ff`; retained audio/loading checks continue.
   The two AXI interfaces rely explicitly on DDR-controller arbitration in the
   embedding; this fabric-only milestone does not instantiate PS7.
+
+- Stage 6 complete: four fresh public-Docker Vivado 2021.1 runs at 100/150 MHz.
+  The shared design uses 49,841/49,832 optimized LUTs, 68 BRAM equivalents and
+  23 DSPs. Both shared builds fail placement; audio-only routes but misses setup
+  timing at −4.578/−7.770 ns. No combined routed timing or board qualification is
+  claimed. The earlier study remains unchanged. Raw reports, source/artifact
+  hashes, compiled profile, provenance and the comparison figure are retained in
+  [the new study](docs/fpga/midi-shared-jobs-vivado-7020.md).
+- Final verification: 131 all-feature reference/compiler tests, 18 MIDI RTL tests
+  and nine retained audio/compiler/loading/target tests pass. The final compiled
+  delayed-memory trace was repeated to retain cycle evidence. Generator checks,
+  top lint, coverage policy, formatting and warning-denying builds passed. The
+  broader local workspace failures and baseline reproduction remain documented.
+- Delivery: [PR #1021](https://github.com/SanderVocke/shoopdaloop/pull/1021) targets
+  `feat/backend-replacement`, includes the required storage work from the still-open
+  #1020 and replaces its execution in the new composition. Functional completion
+  does not remove the remaining 7020 packing/address-timing or full-session DDR
+  throughput qualification work. No CI/review feedback was consulted; no merge
+  was performed.

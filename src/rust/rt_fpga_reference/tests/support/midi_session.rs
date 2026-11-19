@@ -420,11 +420,10 @@ pub fn dense_session_workload(
     assert_eq!(f.pipeline.state().frame(), now);
     let after = f.midi.work();
     let grabbed = f.midi.content(0).unwrap().unwrap();
-    assert!(
-        slots
-            .iter()
-            .all(|&slot| f.midi.content(slot).unwrap() == Some(grabbed))
-    );
+    let all_share_grabbed = slots
+        .iter()
+        .all(|&slot| f.midi.content(slot).unwrap() == Some(grabbed));
+    assert!(all_share_grabbed);
     assert!(f.midi.store().usage().snapshots <= old_usage.snapshots + 1);
     let d = f.midi.store().describe(grabbed).unwrap();
     assert_eq!(d.frames, 48_000);
@@ -465,11 +464,10 @@ pub fn dense_session_workload(
         while f.midi.maintenance(64) != 0 {}
     });
     assert_eq!(f.midi.store().usage().views, 128);
-    assert!(
-        slots
-            .iter()
-            .all(|&slot| f.midi.content(slot).unwrap().is_none())
-    );
+    let all_cleared = slots
+        .iter()
+        .all(|&slot| f.midi.content(slot).unwrap().is_none());
+    assert!(all_cleared);
     times.sort_unstable();
     SessionProfile {
         events_per_loop,
@@ -559,11 +557,10 @@ pub fn repeated_grab_workload(
             max_comparison_work.max(after.comparison_work - before.comparison_work);
         max_storage_work = max_storage_work.max(after.storage_work - before.storage_work);
         let view = f.midi.content(0).unwrap().unwrap();
-        assert!(
-            slots
-                .iter()
-                .all(|&slot| f.midi.content(slot).unwrap() == Some(view))
-        );
+        let all_share_view = slots
+            .iter()
+            .all(|&slot| f.midi.content(slot).unwrap() == Some(view));
+        assert!(all_share_view);
     }
     times.sort_unstable();
     GrabProfile {

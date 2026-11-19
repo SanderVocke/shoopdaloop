@@ -1,9 +1,11 @@
 # Rust reference MIDI components
 
-`MidiSession` is the programmatic MIDI runtime within `rt_fpga_reference`.
-It follows SP loop timing and runs after the audio jobs of each quantum. Shared
-app graph compilation, control endpoint, host drivers, and SystemVerilog targets
-continue to refuse MIDI; this component does not enable them.
+`MidiSession` supplies prepared MIDI storage/state services within
+`rt_fpga_reference`. Compiled work follows SP loop timing and emits distinct MIDI
+jobs into the same queue and job processor as audio. Rust and RTL targets support
+explicit MIDI context bindings on a compiled audio program. General application
+MIDI graph wiring, the application control endpoint and host drivers remain
+outside this profile; this component does not enable them.
 
 ## Scope and ownership
 

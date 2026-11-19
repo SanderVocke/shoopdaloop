@@ -162,8 +162,10 @@ before reusing its slot for another loop generation.
 The internal control boundary is available between quanta. Group grab, replace,
 duplicate and clear first prepare/publish MIDI ownership. The service then raises
 `midi_publication_valid` and holds both its completion and the next quantum.
-The embedding validates the target loops, updates their SP metadata through the
-existing loop-configuration interface, and acknowledges `midi_publication_commit`.
+Before submitting such a control, the embedding validates every target SP loop
+and serializes other loop/program configuration until publication completes.
+While fenced it writes the already validated SP metadata through the existing
+loop-configuration interface, then acknowledges `midi_publication_commit`.
 Only then does the control completion become visible and processing resume.
 This keeps one SP owner of loop mode, length and revisions. Program loading and
 this metadata handoff must be serialized by the embedding. The Rust `Pipeline`

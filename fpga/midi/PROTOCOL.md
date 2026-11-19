@@ -16,6 +16,10 @@ in [the architecture contract](../../docs/fpga/midi-shared-jobs.md#content-publi
 before reporting completion. Controls/program loading are embedding interfaces;
 no new application endpoint is enabled.
 
+The embedding must validate all target SP loops before submitting a content
+publication and serialize loop/program configuration until the fence is
+acknowledged. The service cannot validate the separate SP RAM itself.
+
 The descriptions below apply to the historical standalone controller.
 
 # MIDI component protocol

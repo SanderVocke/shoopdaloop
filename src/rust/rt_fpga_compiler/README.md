@@ -128,9 +128,13 @@ routing and application enablement remain separate work.
 
 The compiler checks phase order, unique bindings, operand bounds and conservative
 queue capacity (`4 + 8 * MIDI bindings` additional jobs). Unsupported targets
-reject these operations explicitly. Rust lowering emits MIDI instructions;
+reject these operations explicitly. Rust and packed RTL lowering emit MIDI instructions;
 the normal state processor derives concrete capture/playback jobs from settled
 loop state. It never delegates a whole quantum to another MIDI scheduler.
 
 Calling `with_midi(&[])` explicitly enables input/history and maintenance jobs
 without bound loops. Omitting `with_midi` preserves an audio-only program.
+
+The RTL target packs `ProcessMidi` as SP opcode `0x0e`; the shared JP dispatches
+job kinds `0x20..0x2a`. [The execution contract](../../../docs/fpga/midi-shared-jobs.md)
+describes settled operands, generation checks, queue limits and publication.

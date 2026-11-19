@@ -2,11 +2,22 @@
 
 The active hardware consists of the state processor (SP), job processor (JP),
 media store, metadata/sample caches, prefetch and AXI memory services. SP executes
-explicit programs and emits jobs; JP performs sample work through media/memory.
+explicit programs and emits jobs; JP dispatches audio and MIDI work through
+their storage/state services.
 `media_audio_pipeline` and its AXI wrapper connect these components without a
 transition processor. A Rust functional reference implements the same execution
 model and has an optional, restricted application host profile. Marlin exercises
 the RTL components and live program loader; it has no complete application host.
+
+Explicit MIDI context bindings extend the compiled work pass in both Rust and
+RTL. SP remains the sole owner of loop time/modes, and MIDI operations share the
+ordinary queue and JP with audio. `midi_audio_pipeline_axi` connects that path;
+MIDI content/state live in cache-less DDR with small context/working tables on
+chip. Audio keeps its caches. General application MIDI wiring and the SoC
+embedding remain separate. See [the execution design](docs/fpga/midi-shared-jobs.md),
+[validation](docs/fpga/midi-shared-jobs-validation.md), and
+[Vivado measurements](docs/fpga/midi-shared-jobs-vivado-7020.md).
+
 
 The RTL transition processor, full-loop hardware coordinator, old ARM control interfaces,
 application simulator devices and prepared board demos have been retired.
