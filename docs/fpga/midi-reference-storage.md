@@ -71,6 +71,10 @@ coherent version. Control workers do not mutate live store arrays.
 
 ## Validation evidence
 
+Functional correctness and bounded operations determine acceptance. Per the user's
+clarification, simultaneous 128-target grabs are useful stress measurements, not a
+required support level; cloud wall-clock timings are informational, not gates.
+
 The normal stress fixture uses 128 inputs and loops, with one full 30-second
 history and 127 inputs retaining only a recording-start prefix. Its input limit is
 one event per input per quantum. Eight destinations each host sixteen disjoint

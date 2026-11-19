@@ -49,13 +49,15 @@ outside this milestone. The new architecture must leave room for those extension
    selected versus pending banks, and programs. Destination state and difference
    progress reflect accepted output only. Refusal, partial transitions, resets,
    and recovery never expose an unfinished transition as successfully restored.
-6. One history grab can publish a selected retained interval into any selection
-   of 1–128 loops within one quantum, including its correct initial state and
-   ready comparisons. The selected interval may start inside a storage block and
-   contain leading/trailing silence. Define valid ranges using the existing loop
-   timing constraints; do not silently reduce this to a single preselected range.
+6. History grabs publish a selected retained interval into one or more loops at a
+   single quantum boundary, including correct initial state and ready comparisons,
+   within the configured operation/resource budget. The interval may start inside
+   a storage block and contain leading/trailing silence. Define valid ranges using
+   existing loop timing constraints, rather than a single preselected range.
    Group publication is atomic: all destinations change or none do. Sharing the
    same source/range must not copy events or full state once per target loop.
+   A simultaneous 128-target grab is an optional scalability measurement, not a
+   required support level or a hard wall-clock deadline on a cloud server.
 7. Import/export/duplicate/replace can progress across quanta while playback and
    history capture continue. Export retains one coherent content version; import
    publishes only fully validated, prepared content. Background work has a finite
@@ -68,8 +70,10 @@ outside this milestone. The new architecture must leave room for those extension
 9. Publish memory accounting and work bounds for the capacity profile, including
    state copies, comparison fanout, expensive message effects, grab preparation,
    event lookup, transfers, and reclamation. Demonstrate the required workloads
-   in a combined audio/MIDI pipeline and report measured CPU timing and its limits.
-   A metadata-only grab measurement is insufficient evidence for criterion 6.
+   in a combined audio/MIDI pipeline. Verify complete grab functionality, including
+   state/comparison preparation, rather than only event metadata. CPU timings are
+   descriptive measurements; no timing threshold or further profiling is required
+   for acceptance on this unpredictable cloud host.
 10. Existing loop timing remains authoritative. Audio-only behavior, combined
     audio output, sync waits, callback partitioning, and fatal-fault handling stay
     correct. App-facing compiler and hardware targets continue to refuse MIDI.
@@ -178,7 +182,8 @@ separate memory devices or threads. Retain `no_std` + `alloc` and safe Rust.
   exhaustion. Do not store an unbounded snapshot per quantum or per event.
 - Prepare supported destination/mapping relationships as part of binding/history
   setup. New routes can require staged setup; ordinary grabs on configured routes
-  must meet the one-quantum contract. Maintain readiness while capture/output move.
+  commit atomically at one quantum boundary. Maintain readiness while capture/output
+  move. This is a functional publication contract, not a cloud wall-time guarantee.
 - For one source/range, prepare one retained view and starting snapshot, sharing
   comparison handles where applicable. Reserve every target binding and required
   retirement record before committing the group at the existing quantum boundary.
@@ -288,11 +293,12 @@ sinks, and recovery. Preserve Q=1/16/32/64/128 and callback-partition equivalenc
 - [x] Preserve grabbed contents during subsequent rollover and pinned-history
   capacity pressure. Reject a failed reservation before changing any target.
 
-Verification: 1- and 128-target grabs, already populated targets, starts inside
+Verification: functional single/small-group grabs, already populated targets, starts inside
 blocks/checkpoint intervals, history wrap, held/pedal-latched start state, silent
 margins, different configured destinations, and every preparation failure point.
 Assert a single-quantum complete commit and count all state/comparison work; test
 the least-prepared legal range, not only an already cached favorable boundary.
+The existing 128-target fixture remains an optional stress measurement.
 
 ### 6. Add bounded content transfers and replacement operations
 
@@ -368,6 +374,9 @@ claimed by these Rust-only checks.
 - Disregard CI results and review feedback unless the user explicitly asks. Local
   checks and transparent evidence determine completion; remote approval does not.
 - The user authorized full execution of this plan with `/goal`.
+- Per the user's subsequent clarification, prioritize functional correctness.
+  Profiling is informational; simultaneous 128-target grabs and cloud timing
+  thresholds are not delivery gates. Keep the existing useful stress tests.
 
 ## Execution evidence
 
@@ -449,3 +458,9 @@ in `docs/fpga/midi-reference-storage.md`; no hard OS/FPGA deadline is claimed.
 PR #1016 remains open, so delivery is stacked against `feat/fpga-reference-midi`,
 as planned. No CI or review feedback was queried. Final push and PR publication
 remain to be checked off once their concrete result is available.
+
+User clarification applied: criterion 6 no longer requires supporting 128 targets
+in a single grab, and criterion 9 has no cloud timing threshold. Atomic grabs,
+correct state, bounded operations, 128-loop storage, and non-disruptive transfers
+remain required. Existing 128-target tests/profiles are retained as useful extra
+evidence; no further profiling or optimization is needed for delivery.
