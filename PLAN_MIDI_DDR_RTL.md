@@ -37,7 +37,7 @@ comparison initialization and reclamation expose bounded resumable work.
   command/output pressure, capacity failures, transfers and multiple loop quanta.
 - [x] Check synthesizability and on-chip storage; run relevant Rust/build checks,
   document measured coverage and remaining hardware integration limits.
-- [ ] Commit meaningful stages, push, and open PR(s) against
+- [x] Commit meaningful stages, push, and open PR(s) against
   `feat/backend-replacement`. Do not merge autonomously.
 
 Keep this plan current. Implementation steps may change with evidence; the goal
@@ -49,3 +49,6 @@ The standalone runtime, DDR protocol and diagrams are in
 124-test reference/compiler gate passed; AXI32/64 and full-core synthesis were
 checked. Application capability enablement and board timing remain outside this
 functional milestone. No CI/review feedback was inspected.
+
+Delivered in [PR #1020](https://github.com/SanderVocke/shoopdaloop/pull/1020),
+targeting `feat/backend-replacement`. The PR is open and has not been merged.
