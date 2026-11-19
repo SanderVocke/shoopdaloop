@@ -275,8 +275,11 @@ def component_paths(manifest: dict, platform: str | None = None) -> set[str]:
         raise RuntimeError("duplicate Carla component manifest path")
     expected = set(paths) | {"manifest.json"}
     suffix = ".exe" if manifest["platform"] == "windows" else ""
+    utils = LIBRARY_NAMES[manifest["platform"]].replace("native-plugin", "utils")
     required = {
         manifest["library"],
+        utils,
+        f"lib/{utils}",
         "runtime-lock.json",
         "licenses/README.md",
         "licenses/COPYING",
