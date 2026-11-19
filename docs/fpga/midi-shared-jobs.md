@@ -194,3 +194,22 @@ fatal audio fault with recovery. Existing full MIDI service scenarios cover
 transfers, controller/pedal state, multiple inputs, capacity, 128 bindings and
 ownership. AXI tests retain a virtual arena above 4 GiB to check that narrowing
 offsets does not truncate arena bases.
+
+```mermaid
+flowchart LR
+    P[Compiled mixed program] --> SP[SP: settle loop time and modes]
+    SP --> Q[One audio and MIDI job queue]
+    Q --> JP[JP: execute each operation]
+    JP --> A[Existing audio operations and caches]
+    JP --> M[MIDI job services]
+    M --> B[Small context and merge-head RAM]
+    M --> S[Events, views, snapshots and mutable state in DDR]
+    A --> D[Audio DDR port]
+    S --> E[MIDI DDR port]
+    D --> C[DDR controller arbitration in SoC]
+    E --> C
+```
+
+[Validation and remaining integration boundaries](midi-shared-jobs-validation.md)
+record what was checked and distinguish functional equivalence from a physically
+qualified board deployment.

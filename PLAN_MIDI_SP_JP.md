@@ -1,6 +1,6 @@
 # MIDI through the shared state and job processors
 
-Status: Rust and shared RTL implemented; final RTL checks and fresh Vivado measurements in progress.
+Status: Rust and shared RTL implemented and MIDI regressions passed; fresh Vivado measurements and final delivery in progress.
 
 ## Goal and scope
 
@@ -297,26 +297,26 @@ results before final delivery.
 
 ### 5. Rebuild RTL through the existing SP and JP
 
-- [ ] Extend packed compiler lowering and the existing RTL SP instruction/job
+- [x] Extend packed compiler lowering and the existing RTL SP instruction/job
   interfaces for the agreed operations. Integrate with SP-owned loop execution,
   the common job queue and the existing JP dispatcher. Exercise compiled programs;
   external settled-record fixtures alone are insufficient integration proof.
-- [ ] Implement the MIDI job operations and reusable storage/state services behind
+- [x] Implement the MIDI job operations and reusable storage/state services behind
   JP. Replace the standalone `midi_runtime` orchestration in the new production
   composition. Keep audio's current sample/metadata caches; MIDI remains cache-less.
-- [ ] Map large events, snapshots, states and scalable metadata to DDR. Budget
+- [x] Map large events, snapshots, states and scalable metadata to DDR. Budget
   small queues and primary context/working memory explicitly. Choose arithmetic
   reuse, pipeline stages and limited parallelism according to area, timing and
   throughput needs. Avoid mechanically duplicating every software calculation
   into a wide circuit, or mechanically serializing all calculations through one
   unit. Validate bounds before narrowing indices; keep musical timestamps intact.
-- [ ] Provide ordered, backpressured memory/output interfaces and explicit audio/
+- [x] Provide ordered, backpressured memory/output interfaces and explicit audio/
   MIDI memory arbitration. Preserve coherent ownership and fence behavior across
   jobs, content publication and program replacement. Check AXI32/64 where supported.
-- [ ] Adapt the RTL testbench to run the same compiled images against the new Rust
+- [x] Adapt the RTL testbench to run the same compiled images against the new Rust
   model. Preserve the old scenarios until replacement coverage is demonstrated;
   retire obsolete runtime-command drivers only with an explicit coverage mapping.
-- [ ] Obtain quick mapped-resource estimates after the first useful MIDI job
+- [x] Obtain quick mapped-resource estimates after the first useful MIDI job
   slice and after major additions. Track controller logic, registers, control
   groups and inferred RAM. Investigate unexpectedly large growth before carrying
   the complete feature set forward; no opaque whole-session worker in JP.
@@ -458,3 +458,10 @@ and speculative profiling.
   Runtime(Capacity) failure. Three of four host/timeout failures pass in isolation;
   the launcher-recovery test remains blocked outside the changed reference path.
   These are local results, not CI feedback.
+
+- Final Rust all-feature reference/compiler run passed. The final MIDI RTL suite
+  passes all 18 tests, including compiled mixed execution and 128 bindings. The
+  dual-AXI top passes lint and all generated RTL matches its generators. Fresh
+  Vivado runs use committed RTL `c2d6e6ff`; retained audio/loading checks continue.
+  The two AXI interfaces rely explicitly on DDR-controller arbitration in the
+  embedding; this fabric-only milestone does not instantiate PS7.
