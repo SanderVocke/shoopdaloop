@@ -241,13 +241,13 @@ Use heap guards and foreground work counts independent of old content length.
 
 ### 3. Establish live-state owners and incremental difference tracking
 
-- [ ] Extract prepared input, destination, and playback-context registries from
+- [x] Extract prepared input, destination, and playback-context registries from
   `Engine`; make snapshot ownership and binding references explicit.
 - [x] Add changed-field/dependency reporting to every interpreter mutation path,
   including reset, bulk copy, controller modes, pedals, and bank/program changes.
 - [x] Implement fixed difference maps, sparse summaries, shared comparison keys,
   bounded interested-target dispatch, staged initialization, and epoch invalidation.
-- [ ] Update destination state only for accepted output, including monitored input
+- [x] Update destination state only for accepted output, including monitored input
   and generated messages. Keep incomplete state/difference work private and bound
   its completion/resumption within the processing/output-order contract.
 
@@ -258,18 +258,18 @@ Check reset/pedal progress, failed initialization rollback, and allocation guard
 
 ### 4. Integrate ordered transitions and multi-loop reference execution
 
-- [ ] Replace `EmissionKind::Restore`'s unconditional full traversal with a
+- [x] Replace `EmissionKind::Restore`'s unconditional full traversal with a
   destination-aware transition planner/cursor over differences and dependencies.
-- [ ] Preserve refined pedal/note and bank/program behavior, with explicit ordinary
+- [x] Preserve refined pedal/note and bank/program behavior, with explicit ordinary
   stop/repeat policy. Keep acknowledged progress, reserved recovery, and accepted
   destination-state updates consistent under output refusal and interleaving.
-- [ ] Replace the one-engine/one-input/one-output integration ceiling with prepared
+- [x] Replace the one-engine/one-input/one-output integration ceiling with prepared
   bindings and bounded context iteration in `Pipeline::process_midi_block` or its
   successor. Observe each input once and consume existing settled loop records.
-- [ ] Stage content/binding replacements atomically; retain old contexts until
+- [x] Stage content/binding replacements atomically; retain old contexts until
   their accepted output and required cleanup complete. Coordinate destination-wide
   recovery, sync waits, and fatal audio faults without changing the SP clock.
-- [ ] Migrate existing fixtures and remove superseded single-take state owners.
+- [x] Migrate existing fixtures and remove superseded single-take state owners.
 
 Verification: independently specified exact traces for equal/differing controls,
 bank dependencies, pedal-held notes, continuation/retrigger policy, repeat, stops,
@@ -394,3 +394,14 @@ The comparison registry uses generation-validated weak snapshot references; live
 bindings/history own the strong references. This avoids a reference cycle while
 rejecting stale comparisons after snapshot reuse. Live-owner extraction follows
 with multi-loop integration.
+
+Stages 3–4: `MidiSession` now owns input, output, playback, and shared comparison
+registries. Destination transitions use sparse differences and ordered dependency
+groups. All 13 original pipeline regression scenarios were migrated to the new
+runtime, including fault/recovery, pedal ownership, sync waits, and incomplete
+recordings; the superseded `Engine` was removed. All 116 reference/compiler tests
+pass. State transitions, history, control operations, and event ownership are
+separate modules. Transfers have shared per-quantum event/setup/metadata grants;
+complete cold preparation before the first processing call remains an offline
+operation. History/transfer APIs are implemented; their large-session validation
+is the next milestone. Reference warning-denying build and test policy pass.

@@ -51,6 +51,7 @@ struct View {
     description: Description,
 }
 struct Snapshot {
+    active: usize,
     generation: u32,
     refs: u32,
     state: MidiState,
@@ -71,6 +72,7 @@ pub struct ContentStore {
     free_views: Vec<u32>,
     snapshots: Box<[Snapshot]>,
     free_snapshots: Vec<u32>,
+    live_snapshots: Vec<u32>,
     retired: VecDeque<ViewId>,
     work: u64,
 }
@@ -101,7 +103,10 @@ impl ContentStore {
         let count = (limits.blocks as usize)
             .checked_mul(limits.block_events as usize)
             .ok_or(Error::Capacity)?;
-        let table = (limits.max_events as usize).div_ceil(limits.block_events as usize) + 1;
+        let table = (limits.max_events as usize)
+            .div_ceil(limits.block_events as usize)
+            .checked_add(1)
+            .ok_or(Error::Capacity)?;
         let mut views = Vec::new();
         views
             .try_reserve_exact(limits.views as usize)
@@ -147,18 +152,28 @@ impl ContentStore {
             views: views.into_boxed_slice(),
             free_views: free_ids(limits.views)?,
             snapshots: prepared(limits.snapshots as usize, || Snapshot {
+                active: 0,
                 generation: 0,
                 refs: 0,
                 state: MidiState::default(),
             })?
             .into_boxed_slice(),
             free_snapshots: free_ids(limits.snapshots)?,
+            live_snapshots: {
+                let mut ids = Vec::new();
+                ids.try_reserve_exact(limits.snapshots as usize)
+                    .map_err(|_| Error::Capacity)?;
+                ids
+            },
             retired,
             work: 0,
         })
     }
     pub fn limits(&self) -> StoreLimits {
         self.limits
+    }
+    pub(super) fn view_blocks(&self, id: ViewId) -> Result<u32, Error> {
+        Ok(self.view(id)?.blocks as u32)
     }
     pub fn work(&self) -> u64 {
         self.work
@@ -184,7 +199,7 @@ impl ContentStore {
                 .sum::<usize>()
             + self.free_views.capacity() * size_of::<u32>()
             + self.snapshots.len() * size_of::<Snapshot>()
-            + self.free_snapshots.capacity() * size_of::<u32>()
+            + (self.free_snapshots.capacity() + self.live_snapshots.capacity()) * size_of::<u32>()
             + self.retired.capacity() * size_of::<ViewId>()
     }
     pub fn snapshot(&mut self, state: &MidiState) -> Result<SnapshotId, Error> {
@@ -195,6 +210,8 @@ impl ContentStore {
         let s = &mut self.snapshots[slot as usize];
         let generation = s.generation.checked_add(1).ok_or(Error::Overflow)?;
         self.free_snapshots.pop();
+        s.active = self.live_snapshots.len();
+        self.live_snapshots.push(slot);
         s.generation = generation;
         s.refs = 1;
         s.state = *state;
@@ -222,19 +239,20 @@ impl ContentStore {
         let s = &mut self.snapshots[id.slot as usize];
         s.refs -= 1;
         if s.refs == 0 {
+            let at = s.active;
+            self.live_snapshots.swap_remove(at);
+            if let Some(&moved) = self.live_snapshots.get(at) {
+                self.snapshots[moved as usize].active = at;
+            }
             self.free_snapshots.push(id.slot);
         }
         Ok(())
     }
     pub fn snapshot_ids(&self) -> impl Iterator<Item = SnapshotId> + '_ {
-        self.snapshots
-            .iter()
-            .enumerate()
-            .filter(|(_, s)| s.refs != 0)
-            .map(|(i, s)| SnapshotId {
-                slot: i as u32,
-                generation: s.generation,
-            })
+        self.live_snapshots.iter().map(|&slot| SnapshotId {
+            slot,
+            generation: self.snapshots[slot as usize].generation,
+        })
     }
     fn view(&self, id: ViewId) -> Result<&View, Error> {
         let v = self
@@ -286,6 +304,14 @@ impl ContentStore {
         self.views[id.slot as usize].refs = refs;
         self.work = self.work.saturating_add(1);
         Ok(id)
+    }
+    pub(super) fn can_retain(&self, id: ViewId, count: u32) -> Result<(), Error> {
+        let v = self.view(id)?;
+        if v.description.status != TakeStatus::Complete {
+            return Err(Error::Incomplete);
+        }
+        v.refs.checked_add(count).ok_or(Error::Overflow)?;
+        Ok(())
     }
     pub fn can_release(&self, ids: &[ViewId]) -> Result<(), Error> {
         let mut needed = 0;
@@ -383,6 +409,14 @@ impl ContentStore {
         }
         Ok(low)
     }
+    pub(super) fn can_append(&self, id: ViewId) -> Result<bool, Error> {
+        let v = self.view(id)?;
+        let at = v.first + v.description.events as usize;
+        Ok(v.description.status == TakeStatus::Recording
+            && v.description.events < self.limits.max_events
+            && (at / (self.limits.block_events as usize) < v.blocks
+                || !self.free_blocks.is_empty()))
+    }
     pub fn append(&mut self, id: ViewId, frame: u64, message: Message) -> Result<(), Error> {
         Message::managed(message.as_bytes())?;
         let v = self.view(id)?;
@@ -435,6 +469,13 @@ impl ContentStore {
             return Err(Error::InvalidEvent);
         }
         self.views[id.slot as usize].description.frames = frames;
+        Ok(())
+    }
+    pub(super) fn mark_incomplete(&mut self, id: ViewId) -> Result<(), Error> {
+        if self.describe(id)?.status != TakeStatus::Recording {
+            return Err(Error::InvalidState);
+        }
+        self.views[id.slot as usize].description.status = TakeStatus::Incomplete;
         Ok(())
     }
     pub fn finish(&mut self, id: ViewId, frames: u64) -> Result<(), Error> {
@@ -501,6 +542,14 @@ impl ContentStore {
             return Err(Error::InvalidState);
         }
         let count = self.lower_bound(id, frame)?;
+        self.discard_events(id, count)?;
+        Ok(count)
+    }
+    pub(super) fn discard_events(&mut self, id: ViewId, count: u32) -> Result<(), Error> {
+        let v = self.view(id)?;
+        if v.description.status != TakeStatus::Recording || count > v.description.events {
+            return Err(Error::InvalidState);
+        }
         let at = v.first + count as usize;
         let remove = at / self.limits.block_events as usize;
         for i in 0..remove {
@@ -513,6 +562,6 @@ impl ContentStore {
         v.first = at % self.limits.block_events as usize;
         v.description.events -= count;
         self.work = self.work.saturating_add((remove + v.blocks) as u64);
-        Ok(count)
+        Ok(())
     }
 }

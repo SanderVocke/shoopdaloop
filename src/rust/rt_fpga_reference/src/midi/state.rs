@@ -68,6 +68,7 @@ pub struct ChannelState {
     notes: [NoteState; 128],
     controllers: [u8; 128],
     note_keys: u128,
+    active_keys: u128,
     controller_keys: u128,
     program: Option<u8>,
     program_bank: [Option<u8>; 2],
@@ -94,6 +95,7 @@ impl ChannelState {
             }; 128],
             controllers: [0; 128],
             note_keys: 0,
+            active_keys: 0,
             controller_keys: (1 << 64) | (1 << 66) | (1 << 69),
             program: None,
             program_bank: [None; 2],
@@ -130,11 +132,30 @@ impl ChannelState {
     fn refresh_note(&mut self, key: u8) {
         let note = self.notes[key as usize];
         let bit = 1u128 << key;
+        if note.velocity != 0 || note.held() {
+            self.active_keys |= bit;
+        } else {
+            self.active_keys &= !bit;
+        }
         if note.velocity != 0 || note.held() || note.sostenuto() || note.pressure().is_some() {
             self.note_keys |= bit;
         } else {
             self.note_keys &= !bit;
         }
+    }
+    pub(super) fn has_activity(&self) -> bool {
+        self.active_keys != 0
+    }
+    pub(super) fn next_projected(&self, from: u16) -> Option<(u8, NoteState)> {
+        if from >= 128 {
+            return None;
+        }
+        let bits = self.note_keys & (u128::MAX << from);
+        if bits == 0 {
+            return None;
+        }
+        let key = bits.trailing_zeros() as u8;
+        Some((key, self.notes[usize::from(key)]))
     }
     fn refresh_notes(&mut self) {
         for key in 0..128 {

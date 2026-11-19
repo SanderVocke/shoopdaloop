@@ -2,17 +2,28 @@
 mod content;
 mod difference;
 mod emission;
-pub(crate) mod engine;
+mod history;
+pub(crate) mod session;
 mod state;
 mod storage;
+mod transition;
 
 pub use content::{ContentStore, Description, SnapshotId, StoreLimits, StoreUsage, ViewId};
 pub use difference::{ComparisonId, DifferenceService, Differences, STATE_CELLS};
 pub use emission::{Emission, EmissionKind};
-pub use engine::{Engine, ProcessError, Report};
+pub use session::{
+    Binding, InputEvent, MidiSession, OutputEvent, SessionLimits, SessionReport, SessionWork,
+};
 use state::BasicUpdate;
 pub use state::{ChannelState, MidiState, NoteState};
 pub use storage::{Cursor, Event, Record, Take, TakeStatus};
+pub use transition::StateTransition;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProcessError {
+    Midi(Error),
+    Pipeline(crate::pipeline::PipelineError),
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {

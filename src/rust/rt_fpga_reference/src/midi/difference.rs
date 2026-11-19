@@ -181,6 +181,7 @@ impl DifferenceService {
         cell: usize,
     ) {
         assert!(destination < self.destinations);
+        self.work = self.work.saturating_add(store.usage().snapshots as u64);
         for snapshot in store.snapshot_ids() {
             let i =
                 snapshot.slot as usize * usize::from(self.destinations) + usize::from(destination);
