@@ -24,8 +24,8 @@ FX supports 8,000–384,000 Hz. The pinned OxiSynth supports
 explicit On refuses startup. Initial real processing uses M=1, S=0 and thus one
 graph quantum of node latency. Host buffering is a separate delay.
 
-The per-side audio limit is the negotiated engine strip width, at most eight.
-FX slots support all widths from one through that limit, with distinct linked
+The Native engine supports up to 16 channels per side. Built-in FX slots support
+one through eight channels within the negotiated strip width, with distinct linked
 stereo and isolated non-stereo behavior. The complete maximum shape is eight dry
 plus eight wet channels. Synth is fixed at two dry/two wet/one dry MIDI; it ignores
 dry audio samples. FX also requires dry MIDI. External tracks support independent
@@ -35,15 +35,18 @@ Bus catalogs advertise Built-in FX under the [bus contract](bus-fx.md). Bus and 
 ## Carla development builds
 
 An independent Native session host built with `shoop_host/carla` can advertise
-Rack on tracks and stereo Patchbay on tracks and buses when it discovers the
-Carla runtime. The independent session host uses its own executable to launch
+Rack, stereo Patchbay, and Patchbay 16x on tracks and buses when it discovers the
+Carla runtime and has prepared slots. The independent session host uses its own executable to launch
 isolated Carla workers. The separate RT engine companion uses
 `shoop_rt_host_process/carla-worker` for the same capability. The catalogue
 reports whether each type is available and how many instances the host prepared.
 
 In desktop settings, choose **Native** and an independent host under **Audio →
 Session delivery**. Under **Carla**, choose **In session host** or **One
-subprocess per FX chain**, and set the Rack and stereo Patchbay counts. Set both
+subprocess per FX chain**, and set the instance counts for the types you need.
+For Patchbay 16x, set **Track channels** to 16 under **Audio** and also set **Bus
+channels** to 16 to use all lanes on a bus. The startup pool reserves processor
+slots and their buffering within the processor memory budget. Set all instance
 counts to zero to disable Carla. Restart the owning host to apply changes. The
 host manager's **New host** dialog also accepts Carla mode and counts under
 **Track processors**. These settings belong to the host configuration.
@@ -109,8 +112,8 @@ Processor storage is prepared, activated, retired/reset in bounded pieces, and
 destroyed off-render or after callbacks stop. Session candidates reserve their own
 bank; failure returns reservations and leaves current audio and media untouched.
 
-In a Carla-enabled Native host, choose Rack or stereo Patchbay when adding a
-Dry/Wet track. Stereo Patchbay is also available on a stereo bus. Select the
+In a Carla-enabled Native host, choose an available Carla type when adding a
+Dry/Wet track or a bus. Buses use matching input and output widths. Select the
 track or bus FX control to open the Carla editor. The host's startup settings
 select in-process or isolated hosting and set the available instance counts.
 In isolation mode, the FX control can restart a failed worker. Linux desktop

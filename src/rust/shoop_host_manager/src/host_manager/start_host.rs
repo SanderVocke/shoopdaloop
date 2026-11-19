@@ -618,6 +618,10 @@ impl Dialog {
                     for (label, count) in [
                         ("Carla Rack instances", &mut carla.rack_instances),
                         ("Carla Patchbay instances", &mut carla.patchbay_instances),
+                        (
+                            "Carla Patchbay 16x instances",
+                            &mut carla.patchbay16x_instances,
+                        ),
                     ] {
                         ui.horizontal(|ui| {
                             ui.label(label);

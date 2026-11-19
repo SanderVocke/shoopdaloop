@@ -62,6 +62,10 @@ pub trait CarlaProcessor: Send + Debug {
     fn set_visible(&mut self, visible: bool) -> Result<()>;
     fn is_visible(&mut self) -> bool;
     fn save_state(&mut self) -> Result<String>;
+    /// Capture the current live processor state for an explicit user save.
+    fn capture_state(&mut self) -> Result<String> {
+        self.save_state()
+    }
     fn restore_state(&mut self, state: &str) -> Result<()>;
     fn audio_input_mut(&mut self, index: usize) -> Option<&mut [f32]>;
     fn audio_output(&self, index: usize) -> Option<&[f32]>;

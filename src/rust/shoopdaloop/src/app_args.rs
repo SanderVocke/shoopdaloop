@@ -342,6 +342,7 @@ mod native_tests {
         draft.set(shoop_egui::CARLA_HOSTING_MODE, "subprocess".into());
         draft.set(shoop_egui::CARLA_RACK_INSTANCES, 2);
         draft.set(shoop_egui::CARLA_PATCHBAY_INSTANCES, 1);
+        draft.set(shoop_egui::CARLA_PATCHBAY_16X_INSTANCES, 3);
         let document = registry
             .document_from_draft(
                 &shoop_settings::SettingsDocument::empty("test"),
@@ -385,6 +386,7 @@ mod native_tests {
         );
         assert_eq!(config.processors.carla.rack_instances, 2);
         assert_eq!(config.processors.carla.patchbay_instances, 1);
+        assert_eq!(config.processors.carla.patchbay16x_instances, 3);
     }
 
     #[shoop_wasm_test_support::shoop_test]

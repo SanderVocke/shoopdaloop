@@ -35,6 +35,7 @@ pub(crate) fn processor_kind(id: &str) -> Option<Kind> {
         TrackProcessorTypeId::OXISYNTH => Some(Kind::OxiSynth),
         TrackProcessorTypeId::CARLA_RACK => Some(Kind::CarlaRack),
         TrackProcessorTypeId::CARLA_PATCHBAY => Some(Kind::CarlaPatchbay),
+        TrackProcessorTypeId::CARLA_PATCHBAY_16X => Some(Kind::CarlaPatchbay16x),
         _ => None,
     }
 }
@@ -45,6 +46,7 @@ pub(crate) fn processor_id(kind: Kind) -> &'static str {
         Kind::OxiSynth => TrackProcessorTypeId::OXISYNTH,
         Kind::CarlaRack => TrackProcessorTypeId::CARLA_RACK,
         Kind::CarlaPatchbay => TrackProcessorTypeId::CARLA_PATCHBAY,
+        Kind::CarlaPatchbay16x => TrackProcessorTypeId::CARLA_PATCHBAY_16X,
     }
 }
 
@@ -271,7 +273,7 @@ fn fx_state(
                 .collect::<Vec<_>>()
                 .into(),
         }),
-        Kind::CarlaRack | Kind::CarlaPatchbay => {
+        Kind::CarlaRack | Kind::CarlaPatchbay | Kind::CarlaPatchbay16x => {
             let visible = snapshot
                 .hosted
                 .and_then(|status| status.editor_visible)

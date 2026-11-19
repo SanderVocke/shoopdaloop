@@ -11,6 +11,7 @@ fn bounded_host_messages_round_trip_and_do_not_decode_as_engine_messages() {
                 hosting: shoop_rt_protocol::processors::CarlaHosting::Subprocess,
                 rack_instances: 1,
                 patchbay_instances: 2,
+                patchbay16x_instances: 1,
             },
             ..Default::default()
         },

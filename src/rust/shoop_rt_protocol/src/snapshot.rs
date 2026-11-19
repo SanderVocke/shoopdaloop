@@ -20,7 +20,7 @@ impl Default for SnapshotDelivery {
     }
 }
 
-pub const VERSION: u32 = 3;
+pub const VERSION: u32 = 4;
 pub const HEADER: usize = 44;
 pub const CHUNK_BYTES: usize = 1024;
 
@@ -121,6 +121,27 @@ impl Iterator for Records<'_> {
 mod tests {
     use super::*;
     use crate::{codec, ClientMessage, EngineMessage, MAX_RECORD_BYTES};
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn playback_windows_preserve_all_roles_within_the_snapshot_budget() {
+        let loop_id = LoopSlotId(crate::SlotId::new(1, 1));
+        let mut timing = crate::TimingState::default();
+        let encode = |timing, output: &mut [u8]| {
+            let record = Record::State(StateRecord::LoopTiming { loop_id, timing });
+            let len = codec::encode_snapshot(&record, output).unwrap();
+            assert_eq!(codec::decode_snapshot(&output[..len]).unwrap(), record);
+            len
+        };
+        let mut bytes = [0; MAX_RECORD_BYTES];
+        assert!(encode(timing, &mut bytes) < 100);
+        for (index, window) in timing.windows.audio.iter_mut().enumerate() {
+            window.raw_frames = Some(128 + index as u64);
+            window.start_offset = index as i32 - 16;
+        }
+        timing.windows.midi.raw_frames = Some(176);
+        assert!(encode(timing, &mut bytes) < 1024);
+    }
+
     #[shoop_wasm_test_support::shoop_test]
     fn selection_configuration_and_full_chunks_roundtrip() {
         let mut bytes = [0; MAX_RECORD_BYTES];

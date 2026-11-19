@@ -38,15 +38,11 @@ pub(crate) fn prepare(
         &processors,
     );
     match prepared {
-        Ok((instances, services, bytes)) => {
-            processors.instances.extend(instances);
-            processors.reserved_bytes = bytes;
-            processors.effective.carla = EffectiveCarla {
-                rack_instances: settings.rack_instances,
-                patchbay_instances: settings.patchbay_instances,
-                unavailable: None,
-            };
-            (processors, services)
+        Ok(prepared) => {
+            processors.instances.extend(prepared.instances);
+            processors.reserved_bytes = prepared.bytes;
+            processors.effective.carla = prepared.effective;
+            (processors, prepared.services)
         }
         Err(reason) => {
             processors.effective.carla = EffectiveCarla::unavailable(reason);
@@ -55,18 +51,40 @@ pub(crate) fn prepare(
     }
 }
 
+struct PreparedBanks {
+    instances: Vec<PreparedProcessor>,
+    services: Vec<ChainService>,
+    bytes: u64,
+    effective: EffectiveCarla,
+}
+
 fn prepare_enabled(
     description: &EngineDescription,
     period_frames: usize,
     executable: Option<&Path>,
     ui: Option<&CarlaMainThreadUiDispatcher>,
     processors: &PreparedProcessors,
-) -> Result<(Vec<PreparedProcessor>, Vec<ChainService>, u64), Unavailable> {
+) -> Result<PreparedBanks, Unavailable> {
     let settings = description.processors.carla;
     if settings.configured_instances() == 0 {
         return Err(Unavailable::NoCapacity);
     }
     if description.strip_channels < 2 {
+        return Err(Unavailable::ChannelCapacity);
+    }
+    let effective = EffectiveCarla {
+        rack_instances: settings.rack_instances,
+        patchbay_instances: settings.patchbay_instances,
+        patchbay16x_instances: if u16::from(description.strip_channels)
+            >= CarlaChainType::Patchbay16x.audio_channels()
+        {
+            settings.patchbay16x_instances
+        } else {
+            0
+        },
+        unavailable: None,
+    };
+    if effective.instances() == 0 {
         return Err(Unavailable::ChannelCapacity);
     }
     let isolated = settings.hosting == CarlaHosting::Subprocess;
@@ -86,26 +104,32 @@ fn prepare_enabled(
     let limits = description
         .processor_buffer_limits(ProcessorKind::CarlaRack)
         .map_err(|_| Unavailable::Memory)?;
-    let bytes = reservation(description, timing, limits, isolated, processors)
+    let banks = [
+        (
+            CarlaChainType::Rack,
+            ProcessorKind::CarlaRack,
+            effective.rack_instances,
+        ),
+        (
+            CarlaChainType::Patchbay,
+            ProcessorKind::CarlaPatchbay,
+            effective.patchbay_instances,
+        ),
+        (
+            CarlaChainType::Patchbay16x,
+            ProcessorKind::CarlaPatchbay16x,
+            effective.patchbay16x_instances,
+        ),
+    ];
+    let bytes = reservation(description, timing, limits, isolated, processors, &banks)
         .map_err(|_| Unavailable::Memory)?;
     carla_runtime_availability().map_err(|_| Unavailable::Runtime)?;
 
-    let slots = settings.configured_instances() as usize * 2;
+    let slots = effective.instances() as usize * 2;
     let mut instances = Vec::with_capacity(slots);
     let mut services = Vec::with_capacity(slots);
     for _ in 0..2 {
-        for (chain, kind, count) in [
-            (
-                CarlaChainType::Rack,
-                ProcessorKind::CarlaRack,
-                settings.rack_instances,
-            ),
-            (
-                CarlaChainType::Patchbay,
-                ProcessorKind::CarlaPatchbay,
-                settings.patchbay_instances,
-            ),
-        ] {
+        for (chain, kind, count) in banks {
             for _ in 0..count {
                 let ready = if let Some(executable) = executable.filter(|_| isolated) {
                     ChainService::start_isolated(
@@ -135,7 +159,12 @@ fn prepare_enabled(
             }
         }
     }
-    Ok((instances, services, bytes))
+    Ok(PreparedBanks {
+        instances,
+        services,
+        bytes,
+        effective,
+    })
 }
 
 pub(crate) struct Controls {
@@ -299,31 +328,37 @@ fn reservation(
     limits: BufferLimits,
     isolated: bool,
     processors: &PreparedProcessors,
+    banks: &[(CarlaChainType, ProcessorKind, u16)],
 ) -> Result<u64, Error> {
-    let ports = PortCounts {
-        audio_inputs: 2,
-        audio_outputs: 2,
-        midi_inputs: 1,
-        midi_outputs: 1,
-    };
-    let adapter = limits.async_storage_bytes_for(ports, timing.quantum(), timing.timing())?;
-    let transport = Worker::transport_bytes(CarlaChainType::Rack, timing, limits)?;
     let aux = HostedProcessor::additional_prepared_bytes(
         limits,
         description.global_midi_input_capacity()?,
     )?;
-    let audio = shoop_carla::native::CARLA_MAX_BUFFER_SIZE * 4 * std::mem::size_of::<f32>();
-    let ipc = if isolated {
-        shoop_carla::carla_shared_memory::FILE_SIZE + audio
-    } else {
-        0
-    };
-    // A retired owner's replacement can be prepared before releasing the previous processor.
-    let per_slot = adapter + transport + aux + 2 * (audio + ipc);
-    let total = (per_slot as u64)
-        .checked_mul(u64::from(description.processors.carla.configured_instances()) * 2)
-        .and_then(|bytes| bytes.checked_add(processors.reserved_bytes))
-        .ok_or(Error::Capacity)?;
+    let mut total = processors.reserved_bytes;
+    for &(chain, _, count) in banks.iter().filter(|(_, _, count)| *count != 0) {
+        let channels = usize::from(chain.audio_channels());
+        let ports = PortCounts {
+            audio_inputs: channels,
+            audio_outputs: channels,
+            midi_inputs: 1,
+            midi_outputs: 1,
+        };
+        let adapter = limits.async_storage_bytes_for(ports, timing.quantum(), timing.timing())?;
+        let transport = Worker::transport_bytes(chain, timing, limits)?;
+        let audio =
+            shoop_carla::native::CARLA_MAX_BUFFER_SIZE * 2 * channels * std::mem::size_of::<f32>();
+        let ipc = if isolated {
+            shoop_carla::carla_shared_memory::FILE_SIZE + audio
+        } else {
+            0
+        };
+        // A retired owner's replacement can be prepared before releasing its predecessor.
+        let per_slot = adapter + transport + aux + 2 * (audio + ipc);
+        total = (per_slot as u64)
+            .checked_mul(u64::from(count) * 2)
+            .and_then(|bytes| bytes.checked_add(total))
+            .ok_or(Error::Capacity)?;
+    }
     let capture = description.worker_capture_storage_bytes(timing.latency_frames())? as u64;
     if total.saturating_add(capture) > processors.effective.memory_bytes {
         return Err(Error::Capacity);

@@ -427,12 +427,13 @@ fn prepare_complete_using<R>(
     let policy = description.processors;
     let effective = processors.effective;
     let carla = effective.carla;
-    let carla_instances = u32::from(carla.rack_instances) + u32::from(carla.patchbay_instances);
+    let carla_instances = carla.instances();
     if effective.memory_bytes != u64::from(policy.memory_mb) * (1 << 20)
         || effective.fx_instances > policy.fx_instances
         || effective.synth_instances > policy.synth_instances
         || carla.rack_instances > policy.carla.rack_instances
         || carla.patchbay_instances > policy.carla.patchbay_instances
+        || carla.patchbay16x_instances > policy.carla.patchbay16x_instances
         || carla_instances > policy.carla.configured_instances()
         || (carla_instances == 0) != carla.unavailable.is_some()
         || (policy.builtin_fx == shoop_rt_protocol::ProcessorPolicy::Off
@@ -479,6 +480,7 @@ fn prepare_complete_using<R>(
             shoop_rt_protocol::ProcessorKind::OxiSynth,
             shoop_rt_protocol::ProcessorKind::CarlaRack,
             shoop_rt_protocol::ProcessorKind::CarlaPatchbay,
+            shoop_rt_protocol::ProcessorKind::CarlaPatchbay16x,
         ]
         .into_iter()
         .any(|kind| {

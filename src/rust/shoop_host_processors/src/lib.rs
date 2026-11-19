@@ -156,7 +156,10 @@ fn backend(kind: ProcessorKind, d: &EngineDescription) -> Result<Box<dyn Backend
                 Err(Error::Preparation("Built-in Synth is not compiled"))
             }
         }
-        ProcessorKind::External | ProcessorKind::CarlaRack | ProcessorKind::CarlaPatchbay => {
+        ProcessorKind::External
+        | ProcessorKind::CarlaRack
+        | ProcessorKind::CarlaPatchbay
+        | ProcessorKind::CarlaPatchbay16x => {
             Err(Error::Preparation("processor has no inline DSP factory"))
         }
     }

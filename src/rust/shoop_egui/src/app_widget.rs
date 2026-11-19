@@ -107,6 +107,8 @@ pub const USER_SCRIPTS: SettingKey<StringToggleList> = SettingKey::new("scriptin
 pub const CARLA_HOSTING_MODE: SettingKey<String> = SettingKey::new("carla.hosting_mode");
 pub const CARLA_RACK_INSTANCES: SettingKey<u32> = SettingKey::new("carla.rack_instances");
 pub const CARLA_PATCHBAY_INSTANCES: SettingKey<u32> = SettingKey::new("carla.patchbay_instances");
+pub const CARLA_PATCHBAY_16X_INSTANCES: SettingKey<u32> =
+    SettingKey::new("carla.patchbay16x_instances");
 
 pub const LOOP_EDGE_SMOOTHING_MS: SettingKey<u32> = SettingKey::new("audio.loop_edge_smoothing_ms");
 pub const RUNTIME_PROFILING: SettingKey<bool> = SettingKey::new("developer.runtime_profiling");
@@ -661,6 +663,7 @@ pub fn register_carla_settings(
     for (key, label, order) in [
         (CARLA_RACK_INSTANCES, "Rack instances", 11),
         (CARLA_PATCHBAY_INSTANCES, "Stereo Patchbay instances", 12),
+        (CARLA_PATCHBAY_16X_INSTANCES, "Patchbay 16x instances", 13),
     ] {
         builder.register(
             SettingDefinition::new(
@@ -668,7 +671,7 @@ pub fn register_carla_settings(
                 0,
                 "Carla",
                 label,
-                "Capacity reserved when the host starts. Set both counts to zero to disable Carla.",
+                "Capacity reserved when the host starts. Set all instance counts to zero to disable Carla.",
             )
             .category_order(7)
             .setting_order(order)
@@ -775,7 +778,11 @@ pub fn processor_settings_from_snapshot(
         };
         settings.carla.rack_instances = carla_slots(CARLA_RACK_INSTANCES)?;
         settings.carla.patchbay_instances = carla_slots(CARLA_PATCHBAY_INSTANCES)?;
-        if settings.carla.rack_instances != 0 || settings.carla.patchbay_instances != 0 {
+        settings.carla.patchbay16x_instances = carla_slots(CARLA_PATCHBAY_16X_INSTANCES)?;
+        if settings.carla.rack_instances != 0
+            || settings.carla.patchbay_instances != 0
+            || settings.carla.patchbay16x_instances != 0
+        {
             settings.carla.hosting = match carla_hosting_mode_from_snapshot(snapshot)? {
                 shoop_settings::CarlaHostingMode::InProcess => {
                     shoop_app_api::CarlaHosting::InProcess

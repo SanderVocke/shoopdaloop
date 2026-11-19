@@ -79,20 +79,22 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         };
         if kind.is_some_and(|kind| kind != shoop_rt_protocol::ProcessorKind::External) {
             let kind = kind.expect("hosted processor");
+            let processors = self
+                .processors
+                .ok_or_else(|| anyhow!("host processor limits are unavailable"))?;
+            let channels = kind.prepared_audio_channels(processors.channels.into()) as u32;
             let valid = if kind.is_carla() {
-                dry <= 2 && wet <= 2 && (dry != 0 || wet != 0 || midi)
+                dry <= channels && wet <= channels && (dry != 0 || wet != 0 || midi)
             } else {
                 dry != 0
                     && dry == wet
+                    && dry <= channels
                     && midi
                     && (kind != shoop_rt_protocol::ProcessorKind::OxiSynth || dry == 2)
             };
             if !valid {
                 return Err(anyhow!("invalid audio/MIDI shape for this track processor"));
             }
-            let processors = self
-                .processors
-                .ok_or_else(|| anyhow!("host processor limits are unavailable"))?;
             let available = processors.effective.instances(kind);
             let used = self
                 .mirror

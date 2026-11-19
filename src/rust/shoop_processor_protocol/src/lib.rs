@@ -122,12 +122,16 @@ pub enum Kind {
     OxiSynth = 2,
     CarlaRack = 3,
     CarlaPatchbay = 4,
+    CarlaPatchbay16x = 5,
 }
 pub const BUILTIN_FX_MAX_AUDIO_CHANNELS: usize = 8;
 
 impl Kind {
     pub const fn is_carla(self) -> bool {
-        matches!(self, Self::CarlaRack | Self::CarlaPatchbay)
+        matches!(
+            self,
+            Self::CarlaRack | Self::CarlaPatchbay | Self::CarlaPatchbay16x
+        )
     }
     pub const fn supports_bus(self) -> bool {
         matches!(self, Self::BuiltInFx) || self.is_carla()
@@ -135,6 +139,7 @@ impl Kind {
     pub const fn fixed_audio_channels(self) -> Option<usize> {
         match self {
             Self::OxiSynth | Self::CarlaRack | Self::CarlaPatchbay => Some(2),
+            Self::CarlaPatchbay16x => Some(16),
             Self::BuiltInFx | Self::External => None,
         }
     }
@@ -146,7 +151,7 @@ impl Kind {
     }
     pub const fn scalar_count(self) -> usize {
         match self {
-            Self::External | Self::CarlaRack | Self::CarlaPatchbay => 0,
+            Self::External | Self::CarlaRack | Self::CarlaPatchbay | Self::CarlaPatchbay16x => 0,
             Self::BuiltInFx => 56,
             Self::OxiSynth => 5,
         }
@@ -168,7 +173,7 @@ impl Kind {
                 3..=4 => Some(CC_BASE + (index - 3) as u32),
                 _ => None,
             },
-            Self::External | Self::CarlaRack | Self::CarlaPatchbay => None,
+            Self::External | Self::CarlaRack | Self::CarlaPatchbay | Self::CarlaPatchbay16x => None,
         }
     }
 }
@@ -216,13 +221,18 @@ pub struct CarlaSettings {
     pub hosting: CarlaHosting,
     pub rack_instances: u16,
     pub patchbay_instances: u16,
+    pub patchbay16x_instances: u16,
 }
 
 impl CarlaSettings {
     pub const fn configured_instances(self) -> u32 {
         match self.hosting {
             CarlaHosting::Disabled => 0,
-            _ => self.rack_instances as u32 + self.patchbay_instances as u32,
+            _ => {
+                self.rack_instances as u32
+                    + self.patchbay_instances as u32
+                    + self.patchbay16x_instances as u32
+            }
         }
     }
 }
@@ -265,6 +275,7 @@ impl Settings {
                 hosting: CarlaHosting::Disabled,
                 rack_instances: 0,
                 patchbay_instances: 0,
+                patchbay16x_instances: 0,
             },
         }
     }
@@ -386,8 +397,7 @@ impl Effective {
     pub const fn slots(self) -> usize {
         2 * (self.fx_instances as usize
             + self.synth_instances as usize
-            + self.carla.rack_instances as usize
-            + self.carla.patchbay_instances as usize)
+            + self.carla.instances() as usize)
     }
 
     pub const fn instances(self, kind: Kind) -> u16 {
@@ -396,6 +406,7 @@ impl Effective {
             Kind::OxiSynth => self.synth_instances,
             Kind::CarlaRack => self.carla.rack_instances,
             Kind::CarlaPatchbay => self.carla.patchbay_instances,
+            Kind::CarlaPatchbay16x => self.carla.patchbay16x_instances,
             Kind::External => 0,
         }
     }
@@ -405,13 +416,21 @@ impl Effective {
 pub struct EffectiveCarla {
     pub rack_instances: u16,
     pub patchbay_instances: u16,
+    pub patchbay16x_instances: u16,
     pub unavailable: Option<Unavailable>,
 }
 impl EffectiveCarla {
+    pub const fn instances(self) -> u32 {
+        self.rack_instances as u32
+            + self.patchbay_instances as u32
+            + self.patchbay16x_instances as u32
+    }
+
     pub const fn unavailable(reason: Unavailable) -> Self {
         Self {
             rack_instances: 0,
             patchbay_instances: 0,
+            patchbay16x_instances: 0,
             unavailable: Some(reason),
         }
     }

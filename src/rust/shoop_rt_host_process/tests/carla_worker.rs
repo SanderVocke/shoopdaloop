@@ -83,6 +83,7 @@ fn companion_installs_real_carla_track_and_bus_banks() {
                             hosting,
                             rack_instances: 1,
                             patchbay_instances: 1,
+                            patchbay16x_instances: 0,
                         },
                         ..ProcessorSettings::disabled()
                     },
@@ -310,6 +311,307 @@ fn companion_installs_real_carla_track_and_bus_banks() {
             report.success && report.cleaned && report.midi_reset,
             "{report:?}"
         );
+    }
+}
+
+#[shoop_test]
+fn companion_negotiates_independent_patchbay_16x_capacity() {
+    use shoop_backend::{
+        Backend, BackendBusFxRequest, BackendBusRequest, BackendPortDirection, BackendTrackControl,
+        BackendTrackTopology, TrackRequest,
+    };
+    use shoop_rt_engine::EngineDescription;
+    use shoop_rt_host_native::{DriverConfig, DummyConfig, NativeConfig};
+    use shoop_rt_host_process::{Pending, Started, Transport};
+    use shoop_rt_protocol::{
+        processors::{CarlaHosting, CarlaSettings, Unavailable},
+        ProcessorSettings,
+    };
+
+    if !runtime_available() {
+        return;
+    }
+    let companion = std::path::Path::new(env!("CARGO_BIN_EXE_shoop_rt_host_process"));
+    for (hosting, transport, channels, memory_mb) in [
+        (CarlaHosting::InProcess, Transport::Socket, 16, 256),
+        (CarlaHosting::Subprocess, Transport::SharedMemory, 16, 256),
+        (CarlaHosting::InProcess, Transport::Socket, 8, 256),
+        (CarlaHosting::Subprocess, Transport::SharedMemory, 16, 1),
+    ] {
+        let Started {
+            client, supervisor, ..
+        } = Pending::spawn(companion, transport)
+            .unwrap()
+            .start(&NativeConfig {
+                driver: DriverConfig::Dummy(DummyConfig::default()),
+                engine: EngineDescription {
+                    strip_channels: channels,
+                    bus_channels: channels,
+                    processors: ProcessorSettings {
+                        memory_mb,
+                        carla: CarlaSettings {
+                            hosting,
+                            rack_instances: 1,
+                            patchbay_instances: 0,
+                            patchbay16x_instances: 2,
+                        },
+                        ..ProcessorSettings::disabled()
+                    },
+                    ..EngineDescription::default()
+                },
+            })
+            .unwrap_or_else(|error| panic!("starting {hosting:?} {transport:?} channels={channels} budget={memory_mb} MiB: {error:#}"));
+        let mut backend =
+            shoop_rt_backend::RtBackend::connect(client, shoop_rt_backend::Sleep::default())
+                .unwrap();
+        let limits = backend.processor_limits().unwrap();
+        let effective = limits.effective.carla;
+        let wide = "carla_patchbay_16x";
+        let catalog = backend.track_processor_catalog().unwrap();
+        let descriptor = catalog
+            .iter()
+            .find(|entry| entry.id.as_str() == wide)
+            .unwrap();
+        if memory_mb == 1 {
+            assert_eq!(effective.unavailable, Some(Unavailable::Memory));
+            assert!(!descriptor.available);
+        } else if channels == 8 {
+            assert_eq!(effective.rack_instances, 1);
+            assert_eq!(effective.patchbay16x_instances, 0);
+            assert!(!descriptor.available);
+            assert!(descriptor
+                .unavailable_reason
+                .as_deref()
+                .unwrap()
+                .contains("16 prepared track channels"));
+        } else {
+            assert_eq!(effective.rack_instances, 1);
+            assert_eq!(effective.patchbay16x_instances, 2, "{limits:?}");
+            assert!(
+                limits.reserved_bytes > 0 && limits.reserved_bytes <= limits.effective.memory_bytes
+            );
+            assert!(descriptor.available);
+            assert_eq!(descriptor.constraints.max_dry_audio_channels, Some(16));
+            assert_eq!(descriptor.constraints.max_wet_audio_channels, Some(16));
+            assert!(descriptor.features.logs == (hosting == CarlaHosting::Subprocess));
+            assert!(backend
+                .bus_processor_catalog()
+                .unwrap()
+                .iter()
+                .any(|entry| entry.id.as_str() == wide && entry.available));
+            let track = backend
+                .create_track(TrackRequest {
+                    port_name_base: "Wide Carla track".into(),
+                    topology: BackendTrackTopology::DryWetProcessor {
+                        dry_audio_channels: 16,
+                        wet_audio_channels: 16,
+                        dry_midi: true,
+                        processor_type: wide.into(),
+                    },
+                    initial_loops: 1,
+                })
+                .unwrap();
+            let bus = backend
+                .create_bus(BackendBusRequest {
+                    name: "Wide Carla bus".into(),
+                    channel_count: 16,
+                    fx: Some(BackendBusFxRequest {
+                        processor_type: wide.into(),
+                        audio_channels: 16,
+                    }),
+                })
+                .unwrap();
+            backend
+                .set_track_control(track.track_id, BackendTrackControl::InputMonitoring(true))
+                .unwrap();
+            let through = backend.mutation_cursor();
+            let deadline = Instant::now() + TIMEOUT;
+            loop {
+                let state = backend.poll().unwrap();
+                assert!(
+                    state.mutation_failures.is_empty(),
+                    "{:?}",
+                    state.mutation_failures
+                );
+                let track_fx = state
+                    .tracks
+                    .get(&track.track_id)
+                    .and_then(|track| track.fx.as_ref());
+                let bus_fx = state
+                    .mixer
+                    .buses
+                    .get(&bus.bus_id)
+                    .and_then(|bus| bus.fx.as_ref());
+                if let (false, Some(track_fx), Some(bus_fx)) = (
+                    backend.mutations_pending_through(through),
+                    track_fx.filter(|fx| fx.active),
+                    bus_fx.filter(|fx| fx.active),
+                ) {
+                    assert_eq!(track_fx.processor_type.as_str(), wide);
+                    assert_eq!(bus_fx.processor_type.as_str(), wide);
+                    assert_eq!(state.tracks[&track.track_id].output_peaks.len(), 16);
+                    assert_eq!(state.mixer.buses[&bus.bus_id].channels.len(), 16);
+                    break;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "track={track_fx:?} bus={bus_fx:?}"
+                );
+                thread::sleep(Duration::from_millis(2));
+            }
+            assert_eq!(
+                track
+                    .ports
+                    .iter()
+                    .filter(|port| port.direction == BackendPortDirection::Output)
+                    .count(),
+                16
+            );
+        }
+        drop(backend);
+        let report = supervisor.stop();
+        assert!(
+            report.success && report.cleaned && report.midi_reset,
+            "{report:?}"
+        );
+    }
+}
+
+#[shoop_test]
+fn patchbay_16x_services_process_loaded_high_audio_lanes_and_capture_live_state() {
+    if !runtime_available() {
+        return;
+    }
+    let timing = Timing {
+        batch_quanta: 1,
+        ..Timing::default()
+    }
+    .prepare(Quantum::new(64).unwrap())
+    .unwrap();
+    let midi = MidiLimits {
+        events_per_quantum: 32,
+        bytes_per_quantum: 128,
+    };
+    let limits = BufferLimits {
+        midi_input: midi,
+        midi_output: midi,
+        parameters_per_quantum: 0,
+    };
+    let chain = CarlaChainType::Patchbay16x;
+    let project = include_str!("../../shoop_engine/test_data/carla_legacy_patchbay16_loaded_project.xml")
+        .replace("Audio Input:Capture 2<", "Audio Input:Capture 16<")
+        .replace("Audio Output:Playback 2<", "Audio Output:Playback 16<")
+        .replace(" </Patchbay>", concat!(
+            "  <Connection><Source>Audio Input:Capture 8</Source><Target>Audio Output:Playback 8</Target></Connection>\n",
+            "  <Connection><Source>Audio Input:Capture 9</Source><Target>Audio Output:Playback 9</Target></Connection>\n",
+            " </Patchbay>"));
+    for isolated in [false, true] {
+        let (mut endpoint, service) = if isolated {
+            ChainService::start_isolated(
+                env!("CARGO_BIN_EXE_shoop_rt_host_process").into(),
+                ChainId(104),
+                chain,
+                48_000,
+                timing,
+                limits,
+            )
+        } else {
+            ChainService::start_in_process(chain, 48_000, timing, limits, None)
+        }
+        .unwrap();
+        service
+            .restore_state(encode_state(chain, project.as_bytes()).unwrap())
+            .unwrap();
+        let monitor = service.monitor();
+        let control = service.control();
+        let (owner, health) = monitor.owned_health();
+        let transport = endpoint.async_transport().unwrap();
+        let mut inputs = [0.; 64 * 16];
+        for (frame, channel) in [0, 7, 8, 15].into_iter().enumerate() {
+            inputs[channel * 64 + 20 + frame] = 0.125 * (frame + 1) as f32;
+        }
+        let mut midi_input = [MidiBuffer::new(4, 16).unwrap()];
+        midi_input[0].push(34, 64, &[0x90, 64, 100]).unwrap();
+        let until = Instant::now() + TIMEOUT;
+        let mut sequence = 0;
+        loop {
+            let tag = BatchTag {
+                generation: 7,
+                sequence,
+                source: Frame(sequence * 64),
+            };
+            assert_no_heap(|| {
+                transport.try_submit(AsyncBatch {
+                    tag,
+                    frames: 64,
+                    audio: &inputs,
+                    midi: &midi_input,
+                    parameters: &[],
+                })
+            })
+            .unwrap();
+            let matched = loop {
+                let matched = assert_no_heap(|| {
+                    let completion = transport.try_completion()?;
+                    assert_eq!(completion.tag, tag);
+                    Some(completion.output.map(|output| {
+                        let impulse = [20, 7 * 64 + 21, 8 * 64 + 22, 15 * 64 + 23]
+                            .map(|index| output.audio[index]);
+                        let midi = &output.midi[0];
+                        let midi = (0..midi.len())
+                            .filter(|&index| midi.get(index) == Some((34, &[0x90, 64, 100][..])))
+                            .count()
+                            == 1;
+                        let audio = output.audio.iter().zip(&inputs).enumerate().all(
+                            |(index, (&actual, &expected))| {
+                                // Carla's stereo gain has a smoothed, nominal unity setting.
+                                if index == 20 || index == 15 * 64 + 23 {
+                                    (actual - expected).abs() <= 1.0e-5
+                                } else {
+                                    actual == expected
+                                }
+                            },
+                        );
+                        (audio && midi, impulse, midi)
+                    }))
+                });
+                if let Some(matched) = matched {
+                    break matched;
+                }
+                assert!(
+                    Instant::now() < until,
+                    "waiting for Patchbay 16x output in isolated={isolated}, sequence={sequence}, health={:?}", monitor.owned_health()
+                );
+                thread::sleep(Duration::from_millis(2));
+            };
+            if matches!(matched, Ok((true, ..))) {
+                break;
+            }
+            assert!(
+                Instant::now() < until,
+                "Patchbay 16x audio/MIDI did not match in isolated={isolated}: {matched:?}"
+            );
+            sequence += 1;
+            thread::sleep(Duration::from_millis(20));
+        }
+        let state = control.capture_state(owner, health.generation).unwrap();
+        let stale = control.capture_state(owner + 1, health.generation).unwrap();
+        let deadline = Instant::now() + TIMEOUT;
+        for (ticket, accepted) in [(state, true), (stale, false)] {
+            loop {
+                if let Some(result) = ticket.poll() {
+                    assert_eq!(result.is_ok(), accepted, "{result:?}");
+                    if let Ok(state) = result {
+                        let xml = String::from_utf8(decode_state(&state, chain).unwrap()).unwrap();
+                        assert!(xml.contains("Audio Output:Playback 16"));
+                    }
+                    break;
+                }
+                assert!(Instant::now() < deadline, "waiting for Patchbay 16x state");
+                thread::sleep(Duration::from_millis(2));
+            }
+        }
+        service.stop(TIMEOUT).unwrap();
     }
 }
 

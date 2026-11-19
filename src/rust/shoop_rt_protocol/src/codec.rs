@@ -116,7 +116,7 @@ macro_rules! tags {
     };
 }
 
-tags!(ProcessorKind { 0 => ProcessorKind::External, 1 => ProcessorKind::BuiltInFx, 2 => ProcessorKind::OxiSynth, 3 => ProcessorKind::CarlaRack, 4 => ProcessorKind::CarlaPatchbay });
+tags!(ProcessorKind { 0 => ProcessorKind::External, 1 => ProcessorKind::BuiltInFx, 2 => ProcessorKind::OxiSynth, 3 => ProcessorKind::CarlaRack, 4 => ProcessorKind::CarlaPatchbay, 5 => ProcessorKind::CarlaPatchbay16x });
 tags!(LoopMode { 0 => LoopMode::Stopped, 1 => LoopMode::Playing, 2 => LoopMode::Recording, 3 => LoopMode::PlayingDryThroughWet, 4 => LoopMode::RecordingDryIntoWet, 5 => LoopMode::Replacing });
 tags!(PortKind { 0 => PortKind::AudioIn, 1 => PortKind::AudioOut, 2 => PortKind::MidiIn, 3 => PortKind::MidiOut, 4 => PortKind::AudioSend, 5 => PortKind::AudioReturn, 6 => PortKind::MidiSend });
 tags!(Refusal {
@@ -226,15 +226,29 @@ impl Wire for ChannelWindow {
 }
 impl Wire for PlaybackWindows {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
-        for channel in &self.audio {
+        let channels = self
+            .audio
+            .iter()
+            .rposition(|window| *window != ChannelWindow::default())
+            .map_or(0, |last| last + 1);
+        w.u8(channels as u8)?;
+        for channel in &self.audio[..channels] {
             channel.put(w)?;
         }
         self.midi.put(w)
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         let mut value = Self::default();
-        for channel in &mut value.audio {
+        let channels = usize::from(r.u8()?);
+        let audio = value.audio.get_mut(..channels).ok_or(CodecError::Invalid)?;
+        for channel in audio.iter_mut() {
             *channel = ChannelWindow::get(r)?;
+        }
+        if audio
+            .last()
+            .is_some_and(|window| *window == ChannelWindow::default())
+        {
+            return Err(CodecError::Invalid);
         }
         value.midi = ChannelWindow::get(r)?;
         Ok(value)
@@ -2223,6 +2237,7 @@ impl Wire for ProcessorLimits {
         self.effective.synth_unavailable.put(w)?;
         w.u16(self.effective.carla.rack_instances)?;
         w.u16(self.effective.carla.patchbay_instances)?;
+        w.u16(self.effective.carla.patchbay16x_instances)?;
         self.effective.carla.unavailable.put(w)?;
         w.u64(self.effective.memory_bytes)?;
         w.u64(self.reserved_bytes)?;
@@ -2238,9 +2253,10 @@ impl Wire for ProcessorLimits {
         let carla = crate::processors::EffectiveCarla {
             rack_instances: r.u16()?,
             patchbay_instances: r.u16()?,
+            patchbay16x_instances: r.u16()?,
             unavailable: Option::get(r)?,
         };
-        let carla_instances = u32::from(carla.rack_instances) + u32::from(carla.patchbay_instances);
+        let carla_instances = carla.instances();
         let memory_bytes = r.u64()?;
         let reserved_bytes = r.u64()?;
         let channels = r.u8()?;

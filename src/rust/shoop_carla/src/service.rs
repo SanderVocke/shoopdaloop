@@ -44,6 +44,7 @@ enum OwnedOperation {
     Recover { show_editor: bool },
     ClearLogs,
     ReadLogs,
+    CaptureState,
 }
 
 enum Reply {
@@ -128,6 +129,17 @@ impl LogTicket {
     }
 }
 
+pub struct StateTicket(ReplyTicket);
+
+impl StateTicket {
+    pub fn poll(&self) -> Option<Result<String>> {
+        self.0.poll().map(|result| match result? {
+            Reply::State(state) => Ok(state),
+            _ => bail!("Carla state response was incomplete"),
+        })
+    }
+}
+
 pub struct ChainControl {
     commands: Weak<Commands>,
 }
@@ -174,6 +186,16 @@ impl ChainControl {
         let request =
             self.submit_owned(owner, generation, OwnedOperation::ReadLogs, CONTROL_TIMEOUT)?;
         Ok(LogTicket(request.0))
+    }
+
+    pub fn capture_state(&self, owner: u64, generation: u64) -> Result<StateTicket> {
+        let request = self.submit_owned(
+            owner,
+            generation,
+            OwnedOperation::CaptureState,
+            CONTROL_TIMEOUT,
+        )?;
+        Ok(StateTicket(request.0))
     }
 }
 
@@ -471,6 +493,15 @@ fn run(
                                     OwnedOperation::ReadLogs => {
                                         Ok(Reply::Logs(processor.generation_logs()))
                                     }
+                                    OwnedOperation::CaptureState => processor.capture_state().and_then(|state| {
+                                        if state.is_empty() || state.len() > MAX_STATE_ENVELOPE_BYTES {
+                                            bail!("Carla state is outside the worker transfer limit");
+                                        }
+                                        if worker.owner_reset_requested() {
+                                            bail!("Carla processor owner changed");
+                                        }
+                                        Ok(Reply::State(state))
+                                    }),
                                     OwnedOperation::ClearLogs => {
                                         processor.clear_logs();
                                         Ok(Reply::Done)

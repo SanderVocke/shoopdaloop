@@ -81,6 +81,7 @@ impl Wire for EngineSettings {
         w.u8(self.processors.carla.hosting as u8)?;
         w.u16(self.processors.carla.rack_instances)?;
         w.u16(self.processors.carla.patchbay_instances)?;
+        w.u16(self.processors.carla.patchbay16x_instances)?;
         w.u32(self.composite_entries)?;
         w.u32(self.composite_segments)?;
         w.u32(self.timing_relations)?;
@@ -128,6 +129,7 @@ impl Wire for EngineSettings {
                 },
                 rack_instances: r.u16()?,
                 patchbay_instances: r.u16()?,
+                patchbay16x_instances: r.u16()?,
             },
         };
         processors.validate().map_err(|_| CodecError::Invalid)?;

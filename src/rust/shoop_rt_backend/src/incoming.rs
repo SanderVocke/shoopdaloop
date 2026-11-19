@@ -696,22 +696,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         shoop_backend::BackendTrackTopology::DryWetProcessor {
                             processor_type,
                             ..
-                        } => match kind {
-                            shoop_rt_protocol::ProcessorKind::BuiltInFx => {
-                                processor_type == shoop_app_api::TrackProcessorTypeId::BUILTIN_FX
-                            }
-                            shoop_rt_protocol::ProcessorKind::OxiSynth => {
-                                processor_type == shoop_app_api::TrackProcessorTypeId::OXISYNTH
-                            }
-                            shoop_rt_protocol::ProcessorKind::CarlaRack => {
-                                processor_type == shoop_app_api::TrackProcessorTypeId::CARLA_RACK
-                            }
-                            shoop_rt_protocol::ProcessorKind::CarlaPatchbay => {
-                                processor_type
-                                    == shoop_app_api::TrackProcessorTypeId::CARLA_PATCHBAY
-                            }
-                            shoop_rt_protocol::ProcessorKind::External => false,
-                        },
+                        } => {
+                            crate::processor_controls::processor_kind(processor_type) == Some(kind)
+                        }
                     };
                     if !matches {
                         self.lose("engine track processor differs from its owner".to_owned());

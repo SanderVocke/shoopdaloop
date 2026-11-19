@@ -90,24 +90,33 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         let carla = |kind: ProcessorKind, label: &str| {
             let instances = limits.effective.instances(kind);
             let available = hosted && instances != 0;
-            TrackProcessorDescriptor {
-                resources: resources(kind, instances),
-                id: TrackProcessorTypeId::new(crate::processor_controls::processor_id(kind)),
-                label: label.into(),
-                available,
-                unavailable_reason: unavailable(
+            let channels = kind.prepared_audio_channels(limits.channels.into()) as u32;
+            let reason = if !available
+                && kind == ProcessorKind::CarlaPatchbay16x
+                && u32::from(limits.channels) < channels
+            {
+                Some("Carla Patchbay 16x requires 16 prepared track channels".into())
+            } else {
+                unavailable(
                     available,
                     limits
                         .effective
                         .carla
                         .unavailable
                         .or(Some(Unavailable::NoCapacity)),
-                ),
+                )
+            };
+            TrackProcessorDescriptor {
+                resources: resources(kind, instances),
+                id: TrackProcessorTypeId::new(crate::processor_controls::processor_id(kind)),
+                label: label.into(),
+                available,
+                unavailable_reason: reason,
                 constraints: TrackProcessorConstraints {
                     min_dry_audio_channels: Some(0),
-                    max_dry_audio_channels: Some(2),
+                    max_dry_audio_channels: Some(channels),
                     min_wet_audio_channels: Some(0),
-                    max_wet_audio_channels: Some(2),
+                    max_wet_audio_channels: Some(channels),
                     midi: TrackProcessorMidiPolicy::Optional,
                     matching_audio_channels: false,
                 },
@@ -190,6 +199,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             },
             carla(ProcessorKind::CarlaRack, "Carla Rack"),
             carla(ProcessorKind::CarlaPatchbay, "Carla Patchbay"),
+            carla(ProcessorKind::CarlaPatchbay16x, "Carla Patchbay 16x"),
         ])
     }
 }

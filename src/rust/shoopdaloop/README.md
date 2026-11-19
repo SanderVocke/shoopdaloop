@@ -284,7 +284,7 @@ channel; absent/incompatible names leave a track unconnected. Explicit bus and
 direct system routes coexist. Lua bus indices follow stable logical order rather
 than mixer drag order, including after save/load. Built-in bus FX uses the
 negotiated FX width and shared track/bus instance budget. An optional Native
-Carla host offers stereo Patchbay bus FX. [Carla setup](../../../docs/native_session_recovery/track-processors.md#carla-development-builds)
+Carla host offers Rack, stereo Patchbay, and Patchbay 16x bus FX with prepared slots. [Carla setup](../../../docs/native_session_recovery/track-processors.md#carla-development-builds)
 
 ## Browser
 

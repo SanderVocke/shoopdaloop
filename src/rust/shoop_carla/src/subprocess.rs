@@ -1441,6 +1441,20 @@ impl CarlaProcessor for SupervisedCarlaProcessor {
         Ok(self.checkpoint.clone())
     }
 
+    fn capture_state(&mut self) -> Result<String> {
+        if !self.is_ready() {
+            anyhow::bail!("Carla worker is unavailable for state capture");
+        }
+        let current = self
+            .current
+            .as_mut()
+            .context("Carla worker is unavailable")?;
+        let state = current.capture_state()?;
+        self.checkpoint.clone_from(&state);
+        self.has_checkpoint = true;
+        Ok(state)
+    }
+
     fn restore_state(&mut self, state: &str) -> Result<()> {
         if self.lifecycle == CarlaProcessorLifecycle::Running {
             let current = self

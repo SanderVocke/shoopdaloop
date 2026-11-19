@@ -81,6 +81,11 @@ pub struct AudioArgs {
     pub carla_rack_instances: Option<u16>,
     #[arg(long, help_heading = "Track processors")]
     pub carla_patchbay_instances: Option<u16>,
+    #[arg(
+        long = "carla-patchbay-16x-instances",
+        help_heading = "Track processors"
+    )]
+    pub carla_patchbay16x_instances: Option<u16>,
 
     /// Audio driver for this launch; does not change saved preferences.
     #[arg(long = "driver", value_enum, help_heading = "Backend")]
@@ -131,6 +136,9 @@ impl AudioArgs {
         }
         if let Some(value) = self.carla_patchbay_instances {
             base.carla.patchbay_instances = value;
+        }
+        if let Some(value) = self.carla_patchbay16x_instances {
+            base.carla.patchbay16x_instances = value;
         }
         base.validate()?;
         Ok(base)
