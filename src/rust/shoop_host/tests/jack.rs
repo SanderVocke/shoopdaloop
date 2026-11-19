@@ -89,7 +89,7 @@ fn standalone_cli_publishes_session_ports_without_a_fixed_bank() {
             .spawn()
             .unwrap(),
     );
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + shoop_host::launch::NATIVE_READINESS_TIMEOUT;
     let target = loop {
         if let Ok(profile) = shoop_host::remote::RemoteProfile::read(&profile) {
             if let Ok(target) = connection::resolve_target(&profile, Duration::from_secs(1)) {

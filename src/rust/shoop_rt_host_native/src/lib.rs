@@ -258,7 +258,20 @@ struct NativeFactory {
 }
 impl drivers::Factory for NativeFactory {
     fn prepare(&self, opened: drivers::Opened) -> Result<drivers::Parts, drivers::StartError> {
-        prepare(self, opened).map_err(|e| drivers::StartError::Factory(Box::new(e)))
+        // Preparing the owned engine uses a larger stack than some native
+        // executable entry threads provide, especially in debug builds.
+        std::thread::scope(|scope| {
+            std::thread::Builder::new()
+                .name("native-engine-prepare".to_string())
+                .stack_size(4 * 1024 * 1024)
+                .spawn_scoped(scope, move || prepare(self, opened))
+                .map_err(|error| drivers::StartError::Thread(error.to_string()))?
+                .join()
+                .map_err(|_| {
+                    drivers::StartError::Thread("native engine preparation panicked".to_string())
+                })?
+                .map_err(|error| drivers::StartError::Factory(Box::new(error)))
+        })
     }
 }
 fn describe(

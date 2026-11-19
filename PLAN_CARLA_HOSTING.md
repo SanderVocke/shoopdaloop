@@ -140,6 +140,8 @@ The large reference-browser graph test exceeded its snapshot delivery window whe
 
 The debug loop command dispatcher reserved roughly 403 KiB in one callback stack frame. Its graph, timeline, playback-window and media paths now run in separate frames. The formerly crashing Native JACK application test passed all four connections under JACK2 Dummy at 48 kHz and 128 frames. The engine unit suite passed 69 tests with one manual test ignored. The Windows startup stack failure remains open. [Loop command dispatcher](src/rust/shoop_loops/src/runtime/planner.rs) · [JACK application acceptance](src/rust/shoop_host/tests/jack.rs)
 
+On Linux, the default Native session host reproduced the startup stack failure with an 896 KiB main-thread stack. It reached readiness with the same limit after moving graph preparation onto a scoped thread with a 4 MiB stack. Five Native JACK application tests passed on the rebuilt host. The remaining standalone CLI test passed after it adopted the Native launcher's existing 30-second readiness deadline. Windows confirmation remains part of release CI. [Native preparation](src/rust/shoop_rt_host_native/src/lib.rs) · [Host launch](src/rust/shoop_host/src/launch.rs)
+
 ## Stage 7 Qualify packages and complete delivery
 
 Depends on Stages 1–6.
