@@ -230,6 +230,16 @@ impl Audio {
         (buffers, outputs)
     }
     pub fn execute(&mut self, s: &mut Sim<'_>, inputs: &[Vec<i32>], stalls: bool) -> (u64, u64) {
+        let limit = 200 * self.capacities[2] + 40 * self.capacities[3] * self.capacities[0] + 100;
+        self.execute_with_limit(s, inputs, stalls, limit)
+    }
+    pub fn execute_with_limit(
+        &mut self,
+        s: &mut Sim<'_>,
+        inputs: &[Vec<i32>],
+        stalls: bool,
+        limit: u64,
+    ) -> (u64, u64) {
         assert!(
             inputs.len() as u64 <= self.capacities[5]
                 && inputs.iter().all(|p| p.len() as u64 == self.frames)
@@ -255,9 +265,7 @@ impl Audio {
         ]);
         let mut after = self.start(s);
         let mut done = false;
-        for index in
-            0..200 * self.capacities[2] + 40 * self.capacities[3] * self.capacities[0] + 100
-        {
+        for index in 0..limit {
             if after.get("done") != 0 {
                 done = true;
                 break;

@@ -1,0 +1,58 @@
+   Compiling rt_fpga_testbench v0.3.0 (/workspace/work/current-backend/src/rust/rt_fpga_testbench)
+    Finished `test` profile [unoptimized] target(s) in 5.87s
+     Running tests/audio.rs (target/debug/build/rt_fpga_testbench/1611e955791ddea0/out/audio-1611e955791ddea0)
+
+running 1 test
+   Compiling bench_top#10538590841517307900 (/workspace/work/current-backend/work/marlin-suite/audio/audio_pipeline-7b56ca24f9f93759/bench_top.sv)
+    Finished `verilator-O0` profile [unoptimized] target in 27.80s
+   Compiling bench_top#8751450977386241959 (/workspace/work/current-backend/work/marlin-suite/audio/audio_pipeline-2ea4ed91d78666a0/bench_top.sv)
+test sample_pipeline_arithmetic_streaming_reset_and_production_numeric_contract has been running for over 60 seconds
+    Finished `verilator-O0` profile [unoptimized] target in 28.30s
+test sample_pipeline_arithmetic_streaming_reset_and_production_numeric_contract ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 80.11s
+
+     Running tests/core.rs (target/debug/build/rt_fpga_testbench/79b62bfa51ba25a4/out/core-79b62bfa51ba25a4)
+
+running 1 test
+test elaborated_widths_wide_inputs_probes_and_independent_models ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.82s
+
+     Running tests/graph_compiler.rs (target/debug/build/rt_fpga_testbench/040e3b9cb6bcb783/out/graph_compiler-040e3b9cb6bcb783)
+
+running 2 tests
+   Compiling bench_top#1968017242526530261 (/workspace/work/current-backend/work/marlin-suite/graph-compiler-audio/audio_pipeline-16d5ddd1949f7767/bench_top.sv)
+test multichannel_recording_smoothing_and_bus_programs_emit_identical_rust_and_rtl_jobs ... ok
+    Finished `verilator-O0` profile [unoptimized] target in 27.62s
+test general_compiler_gain_balance_monitoring_and_multibus_samples_match_on_rtl ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 30.16s
+
+     Running tests/loading.rs (target/debug/build/rt_fpga_testbench/1abbd20afa63a778/out/loading-1abbd20afa63a778)
+
+running 3 tests
+   Compiling bench_top#8058613176873760184 (/workspace/work/current-backend/work/marlin-suite/loading/audio_pipeline-47cc2a4c884cad6e/bench_top.sv)
+   Compiling bench_top#1719869073536942487 (/workspace/work/current-backend/work/marlin-suite/loading-media/media_audio_pipeline_axi-8ad755e81e73ce13/bench_top.sv)
+    Finished `verilator-O0` profile [unoptimized] target in 28.61s
+test live_regions_preserve_ramps_history_plans_and_frames_with_concurrent_uploads ... ok
+    Finished `verilator-O0` profile [unoptimized] target in 44.75s
+   Compiling bench_top#7804663044501843630 (/workspace/work/current-backend/work/marlin-suite/loading-media/media_audio_pipeline_axi-313530c123e14300/bench_top.sv)
+test live_media_graph_switch_preserves_recording_and_fences_axi_work has been running for over 60 seconds
+test looping_workloads_with_thirty_two_frame_chunks_and_dram_timing has been running for over 60 seconds
+test looping_workloads_with_thirty_two_frame_chunks_and_dram_timing ... ok
+    Finished `verilator-O0` profile [unoptimized] target in 25.94s
+test live_media_graph_switch_preserves_recording_and_fences_axi_work ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 74.03s
+
+     Running tests/targets.rs (target/debug/build/rt_fpga_testbench/5115d9a9ad419e69/out/targets-5115d9a9ad419e69)
+
+running 2 tests
+test targets_reject_missing_media_and_physical_capacity_before_loading ... ok
+   Compiling bench_top#7701222081171409145 (/workspace/work/current-backend/work/marlin-suite/sync/state_processor-e04e79b32925cda3/bench_top.sv)
+    Finished `verilator-O0` profile [unoptimized] target in 9.82s
+test targets_match_raw_and_compiled_programs_at_distinct_state_addresses ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 13.50s
+

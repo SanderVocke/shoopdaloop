@@ -32,6 +32,8 @@ def generate():
         "store_cmd_start": "64'b0", "store_cmd_length": "64'b0",
         "store_cmd_count": "32'b0", "store_write_valid": "1'b0", "store_write_data": "32'b0",
         "store_read_ready": "1'b0",
+        "midi_job_ready": "1'b0", "midi_job_done": "1'b0", "midi_job_error": "4'b0",
+        "midi_job_ready": "1'b0", "midi_job_done": "1'b0", "midi_job_error": "4'b0",
     }
     public = []
     local = []
@@ -55,8 +57,10 @@ def generate():
             if name not in dispatch_ports:
                 unused.append(name)
 
-    params = core[2].strip().replace("LIVE_LOADING = 0", "LIVE_LOADING = 1")
+    core_params = re.sub(r"\s*parameter integer ENABLE_MIDI = 0,", "", core[2])
+    params = core_params.strip().replace("LIVE_LOADING = 0", "LIVE_LOADING = 1")
     params = params.replace("EXPORT_SYNC_EVENTS = 0", "EXPORT_SYNC_EVENTS = 1")
+    params = params.replace("parameter integer ENABLE_MIDI = 0,\n    ", "")
     params = params.replace("AXI_DATA_WIDTH = 32", "AXI_DATA_WIDTH = 64")
     params = params.replace("parameter [31:0] PHYSICAL_BASE = 32'h01000000",
                             "parameter [31:0] ARENA_BASE = 32'h30000000")
@@ -103,7 +107,7 @@ def generate():
     text += "        .WATCHDOG_CYCLES(WATCHDOG_CYCLES)) dispatcher (.*);\n"
     text += "    media_audio_pipeline_axi #(\n        "
     text += ",\n        ".join(f".{name}({name})" for name in param_names)
-    text += ",\n        .PHYSICAL_BASE(ARENA_BASE), .PHYSICAL_BYTES_LIMIT({32'b0, ARENA_BYTES})) core (\n        "
+    text += ",\n        .ENABLE_MIDI(0), .ENABLE_MIDI(0), .PHYSICAL_BASE(ARENA_BASE), .PHYSICAL_BYTES_LIMIT({32'b0, ARENA_BYTES})) core (\n        "
     text += ",\n        ".join(f".{name}({value})" for name, value in core_constants.items())
     text += ",\n        .*);\nendmodule\n"
     # Vivado 2021.1 requires a Verilog or VHDL top for block design module references.

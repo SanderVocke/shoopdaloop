@@ -1,0 +1,79 @@
+
+SCOPE pipeline/core_under_test/core/midi/service cells 23173 types Counter({'FDRE': 6630, 'LUT6': 4225, 'LUT2': 3064, 'LUT4': 2612, 'LUT5': 2090, 'LUT3': 1868, 'CARRY4': 1305, 'LUT1': 563, 'MUXF7': 349, 'FDSE': 173, 'GND': 166, 'MUXF8': 103, 'DSP48E1': 15, 'VCC': 7, 'RAMB36E1': 3})
+FF total 6803 top [('c', 1024), ('h', 768), ('owners', 128), ('target_seen', 128), ('a0', 64), ('a1', 64), ('a2', 64), ('a3', 64), ('a4', 64), ('alignment_value', 64), ('checkpoint_snapshot', 64), ('copy_target', 64), ('event_base', 64), ('initial_snapshot', 64), ('last_frame', 64), ('last_handle', 64), ('last_initial', 64), ('next_checkpoint', 64), ('next_frame', 64), ('own_address', 64), ('pending_writer', 64), ('query_frame', 64), ('range_end', 64), ('range_start', 64), ('range_view', 64), ('response_frame', 64), ('response_handle', 64), ('snapshot_id', 64)]
+LUT total 14422 top [('own_address', 1231), ('c', 1185), ('h', 846), ('own_data', 769), ('store_arg0', 743), ('pc', 726), ('response_error', 657), ('target_count', 439), ('state_pairs', 301), ('query_frame', 272), ('store_view', 226), ('head_write_data', 222), ('store_snapshot', 220), ('alignment_remainder', 208), ('reserved_blocks', 191), ('state_current', 188), ('snapshot_id', 165), ('checkpoint_index', 151), ('prepare_budget', 145), ('range_view', 136), ('response_frame', 134), ('density', 133), ('response_handle', 131), ('transfer_cells', 131), ('context_words_reg_0', 128), ('import_needed', 126), ('range_start', 126), ('event_base', 125)]
+CARRY total 1305 top [('state_pairs', 144), ('own_address', 122), ('h', 72), ('response_error', 70), ('c', 69), ('target_count', 50), ('state_current', 38), ('response_state', 36), ('pc', 34), ('context_words_reg_0', 28), ('import_needed', 28), ('query_frame', 28), ('checkpoint_index', 27), ('alignment_remainder', 24), ('head_write_data', 24), ('store_arg0', 24), ('event_base', 22), ('reserved_blocks', 20), ('middle', 19), ('own_data', 19), ('density', 16), ('index', 16), ('replay_index', 16), ('response_frame', 16), ('start_frame', 16), ('copy_source', 14), ('reserved_snapshots', 14), ('snapshot_base', 14)]
+
+SCOPE pipeline/core_under_test/core/midi/service/content cells 10744 types Counter({'FDRE': 2248, 'LUT4': 1941, 'LUT6': 1854, 'LUT2': 1569, 'LUT3': 1281, 'CARRY4': 772, 'LUT5': 688, 'LUT1': 266, 'GND': 94, 'MUXF7': 23, 'VCC': 4, 'DSP48E1': 4})
+FF total 2248 top [('desc', 512), ('payload', 128), ('arg0', 64), ('arg1', 64), ('memory_address', 64), ('response_frame', 64), ('response_handle', 64), ('search_frame', 64), ('snapshot_handle', 64), ('view_handle', 64), ('record_address', 41), ('response_state', 34), ('block_id', 32), ('candidate', 32), ('cursor', 32), ('data_word', 32), ('discard_count', 32), ('free_count', 32), ('generation', 32), ('high', 32), ('low', 32), ('memory_write_data', 32), ('middle', 32), ('queue_count', 32), ('range_count', 32), ('range_first', 32), ('record_word', 32), ('refs', 32)]
+LUT total 7599 top [('memory_address', 1331), ('desc', 995), ('memory_write_data', 569), ('phase', 455), ('snapshot_address0_return0', 381), ('after_record', 263), ('target_count', 166), ('payload', 160), ('response_error', 155), ('response_frame', 141), ('c', 140), ('source_slot', 134), ('target_seen', 129), ('last_frame', 125), ('return_phase', 118), ('high', 102), ('pc', 98), ('discard_count', 86), ('used_snapshots', 82), ('index', 78), ('middle', 77), ('cursor', 76), ('queue_count', 73), ('response_handle', 70), ('free_count', 66), ('last_order', 66), ('search_frame', 66), ('used_views', 65)]
+CARRY total 772 top [('memory_address', 214), ('desc', 90), ('snapshot_address0_return0', 38), ('memory_write_data', 37), ('after_record', 31), ('target_count', 29), ('phase', 21), ('index', 20), ('middle', 19), ('response_frame', 16), ('source_slot', 16), ('record_address', 15), ('cursor', 14), ('c', 12), ('last_frame', 11), ('return_phase', 10), ('pc', 9), ('candidate', 8), ('discard_count', 8), ('free_count', 8), ('generation', 8), ('high', 8), ('low', 8), ('queue_count', 8), ('range_count', 8), ('record_word', 8), ('released_refs', 8), ('removed_blocks', 8)]
+
+SCOPE pipeline/core_under_test/core/midi/service/states cells 1196 types Counter({'FDRE': 694, 'LUT6': 152, 'LUT3': 115, 'LUT4': 74, 'LUT5': 65, 'CARRY4': 49, 'LUT2': 38, 'LUT1': 4, 'GND': 2, 'VCC': 2, 'MUXF7': 1})
+FF total 694 top [('entry', 320), ('current_base', 34), ('target_base', 34), ('changes_word', 32), ('pair_index', 32), ('snapshot_generation', 32), ('pairs', 29), ('activity_base', 25), ('map_base', 25), ('packet', 24), ('changes_base', 18), ('channels', 16), ('cell_count', 13), ('changed_index', 13), ('first_cell', 13), ('directory_base', 11), ('phase', 5), ('cursor', 4), ('op', 3), ('response_error', 3), ('length', 2), ('refused', 1), ('returning_to_transition', 1), ('snapshot_word', 1), ('track_activity', 1), ('track_changes', 1), ('updating_activity', 1)]
+LUT total 448 top [('snapshot_word', 40), ('phase', 36), ('pair_index', 34), ('pc', 33), ('response_error', 33), ('payload', 32), ('cursor', 29), ('offset_carry__0', 17), ('offset_carry__1', 16), ('offset_carry__2', 14), ('offset_carry__4', 14), ('offset_carry__5', 13), ('entry', 12), ('offset_carry__3', 12), ('offset_carry__6', 12), ('offset_carry__7', 12), ('offset_carry', 10), ('last_error', 9), ('offset_carry__8', 8), ('lane', 4), ('offset_carry__10', 4), ('offset_carry__11', 4), ('offset_carry__12', 4), ('offset_carry__13', 4), ('offset_carry__14', 4), ('offset_carry__9', 4), ('prepared', 2), ('recovery', 2)]
+CARRY total 49 top [('pair_index', 8), ('cursor', 6), ('snapshot_word', 6), ('response_error', 4), ('offset_carry__0', 2), ('offset_carry__1', 2), ('offset_carry__2', 2), ('offset_carry__3', 2), ('offset_carry__4', 2), ('offset_carry__5', 2), ('offset_carry__6', 2), ('offset_carry__7', 2), ('offset_carry__8', 2), ('offset_carry__10', 1), ('offset_carry__11', 1), ('offset_carry__12', 1), ('offset_carry__13', 1), ('offset_carry__14', 1), ('offset_carry__9', 1), ('offset_carry', 1)]
+
+SCOPE pipeline/core_under_test/core/midi/service/states/transition_engine cells 1959 types Counter({'FDRE': 873, 'LUT6': 493, 'LUT5': 228, 'LUT4': 106, 'LUT3': 92, 'LUT2': 69, 'CARRY4': 60, 'MUXF7': 14, 'RAM32M': 10, 'LUT1': 4, 'RAM32X1D': 4, 'MUXF8': 3, 'GND': 2, 'VCC': 1})
+FF total 873 top [('current_scalar', 320), ('target_scalar', 320), ('current_base', 34), ('target_base', 34), ('target_value', 32), ('map_base', 25), ('current_value', 24), ('packet_data', 24), ('channels', 16), ('cursor', 10), ('load_cursor', 10), ('channel', 5), ('step', 5), ('phase', 4), ('response_error', 3), ('packet_length', 2), ('active', 1), ('cleanup', 1), ('has_diff', 1), ('notes_changed', 1), ('rebase', 1)]
+LUT total 992 top [('packet_data', 319), ('packet_length', 114), ('phase', 88), ('step', 45), ('offset_carry__0', 44), ('current_base', 34), ('offset_carry__1', 28), ('packet', 27), ('cursor', 25), ('midi_packet_data_INST_0', 24), ('load_cursor', 21), ('offset_carry', 21), ('rebase', 21), ('current_scalar', 20), ('offset_carry__2', 17), ('response_error', 15), ('target_scalar', 14), ('channel', 13), ('has_diff', 13), ('offset_carry__3', 13), ('offset_carry__4', 12), ('differences_reg_r1_0_15_0_5', 9), ('notes_changed', 4), ('active', 3), ('midi_packet_valid_INST_0', 3), ('offset_carry__10', 3), ('offset_carry__11', 3), ('offset_carry__12', 3)]
+CARRY total 60 top [('packet_data', 20), ('packet_length', 9), ('offset_carry__0', 6), ('offset_carry__1', 5), ('offset_carry__2', 4), ('phase', 3), ('offset_carry__10', 1), ('offset_carry__11', 1), ('offset_carry__12', 1), ('offset_carry__13', 1), ('offset_carry__14', 1), ('offset_carry__3', 1), ('offset_carry__4', 1), ('offset_carry__5', 1), ('offset_carry__6', 1), ('offset_carry__7', 1), ('offset_carry__8', 1), ('offset_carry__9', 1), ('offset_carry', 1)]
+
+DSP name	AREG	BREG	CREG	MREG	PREG	USE_MULT
+pipeline/core_under_test/core/audio/core/pipeline/sample_engine/partial_hh_reg0	0	0	1	0	0	MULTIPLY
+pipeline/core_under_test/core/audio/core/pipeline/sample_engine/partial_hl_reg0	0	0	1	0	0	MULTIPLY
+pipeline/core_under_test/core/audio/core/pipeline/sample_engine/partial_lh_reg0	0	0	1	0	0	MULTIPLY
+pipeline/core_under_test/core/audio/core/pipeline/sample_engine/partial_ll_reg0	0	0	1	0	0	MULTIPLY
+pipeline/core_under_test/core/midi/service/activity_address2_return0	1	0	0	0	0	MULTIPLY
+pipeline/core_under_test/core/midi/service/activity_address6_return0	1	0	0	0	0	MULTIPLY
+pipeline/core_under_test/core/midi/service/directory_address1_return0	0	0	0	0	0	MULTIPLY
+pipeline/core_under_test/core/midi/service/directory_address3_return0	0	0	0	0	0	MULTIPLY
+pipeline/core_under_test/core/midi/service/directory_address6_return0	0	0	0	0	0	MULTIPLY
+pipeline/core_under_test/core/midi/service/directory_address_return0	0	0	0	0	0	MULTIPLY
+pipeline/core_under_test/core/midi/service/execution.source0	1	0	1	0	0	MULTIPLY
+pipeline/core_under_test/core/midi/service/map_address0_return0	0	0	0	0	0	MULTIPLY
+pipeline/core_under_test/core/midi/service/map_address1_return0	0	0	0	0	0	MULTIPLY
+pipeline/core_under_test/core/midi/service/map_address3_return0	0	0	0	0	0	MULTIPLY
+pipeline/core_under_test/core/midi/service/map_address_return0	0	0	0	0	0	MULTIPLY
+pipeline/core_under_test/core/midi/service/snapshot_address12_return0	1	0	0	0	0	MULTIPLY
+pipeline/core_under_test/core/midi/service/snapshot_address14_return0	1	0	0	0	0	MULTIPLY
+pipeline/core_under_test/core/midi/service/snapshot_address19_return0	1	0	0	0	0	MULTIPLY
+pipeline/core_under_test/core/midi/service/snapshot_address_return0	2	0	0	0	0	MULTIPLY
+pipeline/core_under_test/core/midi/service/content/snapshot_address0_return0	2	0	0	0	0	MULTIPLY
+pipeline/core_under_test/core/midi/service/content/snapshot_address10_return0	1	0	0	0	0	MULTIPLY
+pipeline/core_under_test/core/midi/service/content/snapshot_address5_return0	1	0	0	0	0	MULTIPLY
+pipeline/core_under_test/core/midi/service/content/snapshot_address_return0	0	0	0	0	0	MULTIPLY
+
+
+MIDI logical FF control groups (raw net signatures): 300
+Group size histogram Counter({32: 168, 64: 14, 6: 12, 16: 9, 5: 8, 30: 7, 8: 7, 26: 6, 4: 5, 31: 4, 24: 4, 7: 4, 10: 4, 13: 3, 68: 2, 41: 2, 34: 2, 56: 2, 9: 2, 55: 2, 335: 1, 160: 1, 63: 1, 23: 1, 73: 1, 44: 1, 59: 1, 27: 1, 161: 1, 348: 1, 72: 1, 111: 1, 50: 1, 128: 1, 38: 1, 1: 1, 25: 1, 85: 1, 151: 1, 286: 1, 96: 1, 19: 1, 222: 1, 29: 1, 71: 1, 35: 1, 65: 1, 223: 1, 162: 1, 2: 1, 12: 1, 45: 1, 110: 1})
+Singleton FF groups 1
+CONTROL BANKS pipeline/core_under_test/core/midi/service [('c', 1024, 34), ('h', 768, 26), ('owners', 128, 8), ('recovery', 48, 8), ('alignment_bit', 6, 2), ('prepare_destination', 35, 2), ('reserved_snapshots', 32, 2), ('scan', 35, 2), ('checkpoint_snapshot', 64, 2), ('pc', 8, 2), ('pc_reg_rep', 8, 2), ('pc_reg_rep__0', 8, 2), ('pc_reg_rep__1', 8, 2), ('pc_reg_rep__2', 8, 2), ('pc_reg_rep__3', 8, 2), ('pc_reg_rep__4', 8, 2), ('pc_reg_rep__5', 8, 2), ('pc_reg_rep__6', 8, 2), ('pc_reg_rep__10', 7, 2), ('pc_reg_rep__11', 6, 2)]
+CONTROL BANKS pipeline/core_under_test/core/midi/service/content [('desc', 512, 18), ('payload', 128, 5), ('after_block', 3, 1), ('after_load', 3, 1), ('after_snapshot', 2, 1), ('response_error', 3, 1), ('response_length', 2, 1), ('after_record', 5, 1), ('record_index', 14, 1), ('after_save', 6, 1), ('arg0', 64, 1), ('arg1', 64, 1), ('length', 2, 1), ('op', 4, 1), ('packet', 24, 1), ('snapshot_handle', 64, 1), ('block_id', 32, 1), ('candidate', 32, 1), ('cursor', 32, 1), ('data_word', 32, 1)]
+CONTROL BANKS pipeline/core_under_test/core/midi/service/states/transition_engine [('current_scalar', 320, 10), ('target_scalar', 320, 10), ('active', 1, 1), ('has_diff', 1, 1), ('notes_changed', 1, 1), ('rebase', 1, 1), ('response_error', 3, 1), ('channel', 5, 1), ('channels', 16, 1), ('cleanup', 1, 1), ('current_base', 34, 1), ('map_base', 25, 1), ('target_base', 34, 1), ('current_value', 24, 1), ('cursor', 10, 1), ('load_cursor', 10, 1), ('packet_data', 24, 1), ('packet_length', 2, 1), ('phase', 4, 1), ('step', 5, 1)]
+
+SERVICE FF input cones (non-additive LUT primitives)
+c 1024 D 1172 CE 503 R 123 union 1528
+own_address 64 D 1186 CE 129 R 0 union 1315
+cursor 32 D 33 CE 968 R 0 union 1001
+cursor_reg_rep 3 D 4 CE 968 R 0 union 972
+cursor_reg_rep__0 3 D 4 CE 968 R 0 union 972
+cursor_reg_rep__1 3 D 4 CE 968 R 0 union 972
+cursor_reg_rep__2 2 D 3 CE 968 R 0 union 971
+cursor_reg_rep__3 1 D 2 CE 968 R 0 union 970
+h 768 D 778 CE 123 R 0 union 862
+store_arg0 64 D 854 CE 0 R 0 union 854
+own_data 32 D 790 CE 40 R 0 union 830
+response_error 4 D 658 CE 0 R 0 union 658
+state_pairs 29 D 340 CE 215 R 0 union 555
+state_current 34 D 188 CE 215 R 0 union 403
+snapshot_id 64 D 193 CE 127 R 0 union 320
+state_count 13 D 79 CE 215 R 0 union 294
+state_target 34 D 59 CE 215 R 0 union 274
+state_map 25 D 52 CE 215 R 0 union 267
+head_write_data 62 D 224 CE 172 R 0 union 266
+checkpoint_index 9 D 223 CE 38 R 0 union 261
+state_first 13 D 50 CE 215 R 0 union 257
+state_packet 24 D 56 CE 187 R 0 union 243
+context_slot 6 D 26 CE 207 R 0 union 233
+store_view 64 D 232 CE 0 R 0 union 232

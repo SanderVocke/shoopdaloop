@@ -38,6 +38,11 @@ pub enum ArithmeticMode {
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Instruction {
+    ProcessMidi {
+        phase: u16,
+        loop_id: Option<Identity>,
+        context: u16,
+    },
     ProcessHistorySmoothing {
         loop_id: Identity,
         control: u16,
@@ -101,6 +106,26 @@ pub fn value_words(value: Value) -> [u32; 5] {
 }
 pub fn instruction_words(value: Instruction) -> crate::Result<[u32; 5]> {
     let (opcode, args) = match value {
+        Instruction::ProcessMidi {
+            phase,
+            loop_id,
+            context,
+        } => {
+            let id = loop_id.unwrap_or(Identity {
+                slot: 0,
+                generation: 0,
+            });
+            (
+                14,
+                vec![
+                    u16::try_from(id.slot)?,
+                    id.generation as u16,
+                    (id.generation >> 16) as u16,
+                    context,
+                    phase,
+                ],
+            )
+        }
         Instruction::ProcessHistorySmoothing {
             loop_id,
             control,

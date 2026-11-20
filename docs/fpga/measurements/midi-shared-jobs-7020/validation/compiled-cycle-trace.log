@@ -1,0 +1,66 @@
+   Compiling rt_fpga_compiler v0.3.0 (/workspace/work/current-backend/src/rust/rt_fpga_compiler)
+   Compiling rt_runtime v0.3.0 (/workspace/work/current-backend/src/rust/rt_runtime)
+   Compiling rt_fpga_reference v0.3.0 (/workspace/work/current-backend/src/rust/rt_fpga_reference)
+   Compiling rt_fpga_rtl v0.3.0 (/workspace/work/current-backend/src/rust/rt_fpga_rtl)
+   Compiling shoop_rt_transport v0.3.0 (/workspace/work/current-backend/src/rust/shoop_rt_transport)
+   Compiling rt_fpga_testbench v0.3.0 (/workspace/work/current-backend/src/rust/rt_fpga_testbench)
+    Finished `test` profile [unoptimized] target(s) in 16.04s
+     Running tests/midi.rs (target/debug/build/rt_fpga_testbench/13fa027fe74d073d/out/midi-13fa027fe74d073d)
+
+running 1 test
+mixed Q=1 cycles=9230
+mixed Q=1 cycles=6349
+mixed Q=1 cycles=15510
+mixed Q=1 cycles=6246
+mixed Q=1 cycles=8677
+mixed Q=1 cycles=14749
+mixed Q=1 cycles=6235
+mixed Q=1 cycles=19552
+mixed Q=1 cycles=8786
+mixed Q=16 cycles=9386
+mixed Q=16 cycles=6525
+mixed Q=16 cycles=15662
+mixed Q=16 cycles=6441
+mixed Q=16 cycles=9010
+mixed Q=16 cycles=14953
+mixed Q=16 cycles=6429
+mixed Q=16 cycles=19877
+mixed Q=16 cycles=8858
+mixed Q=32 cycles=9592
+mixed Q=32 cycles=6702
+mixed Q=32 cycles=15969
+mixed Q=32 cycles=6691
+mixed Q=32 cycles=9086
+mixed Q=32 cycles=14879
+mixed Q=32 cycles=6392
+mixed Q=32 cycles=19721
+mixed Q=32 cycles=8922
+test midi_compiled_sp_and_shared_jp_match_audio_messages_and_job_traces has been running for over 60 seconds
+mixed Q=32 cycles=14548
+mixed Q=32 cycles=5948
+mixed Q=32 cycles=46151
+mixed Q=32 cycles=16839
+mixed Q=32 cycles=9144
+mixed Q=32 cycles=4121
+mixed Q=64 cycles=9990
+mixed Q=64 cycles=7129
+mixed Q=64 cycles=16130
+mixed Q=64 cycles=6758
+mixed Q=64 cycles=9349
+mixed Q=64 cycles=15254
+mixed Q=64 cycles=6835
+mixed Q=64 cycles=20221
+mixed Q=64 cycles=9257
+mixed Q=128 cycles=10922
+mixed Q=128 cycles=7911
+mixed Q=128 cycles=16920
+mixed Q=128 cycles=7618
+mixed Q=128 cycles=10147
+mixed Q=128 cycles=16175
+mixed Q=128 cycles=7593
+mixed Q=128 cycles=20931
+mixed Q=128 cycles=10122
+test midi_compiled_sp_and_shared_jp_match_audio_messages_and_job_traces ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 17 filtered out; finished in 110.71s
+

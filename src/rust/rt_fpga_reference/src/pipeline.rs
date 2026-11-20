@@ -94,6 +94,11 @@ impl Pipeline {
         {
             return Err(PipelineError::State(Error::InvalidState));
         }
+        image
+            .compiled
+            .program
+            .check_midi_job_budget()
+            .map_err(PipelineError::State)?;
         self.state.switch_image(image);
         core::mem::swap(&mut self.program, &mut image.compiled.program);
         self.revision = image.layout.revision;
@@ -109,6 +114,9 @@ impl Pipeline {
         if plan.image().description.quantum != program.quantum {
             return Err(PipelineError::Transition(TransitionError::InvalidConfig));
         }
+        program
+            .check_midi_job_budget()
+            .map_err(PipelineError::State)?;
         if capacity < program.jobs_per_quantum {
             return Err(PipelineError::State(Error::QueueFull));
         }
@@ -218,6 +226,20 @@ impl Pipeline {
         frames: usize,
         observer: &mut impl Observer,
     ) -> Result<(), PipelineError> {
+        self.process_mixed(jobs, memory, inputs, outputs, frames, observer, &mut |_| {
+            Err(Error::UnsupportedJob)
+        })
+    }
+    fn process_mixed(
+        &mut self,
+        jobs: &mut JobProcessor,
+        memory: &mut impl Memory,
+        inputs: &[&[Fixed]],
+        outputs: &mut [&mut [Fixed]],
+        frames: usize,
+        observer: &mut impl Observer,
+        midi: &mut impl FnMut(crate::midi::MidiJob) -> Result<(), Error>,
+    ) -> Result<(), PipelineError> {
         for output in outputs.iter_mut() {
             output.fill(Fixed::ZERO);
         }
@@ -237,7 +259,16 @@ impl Pipeline {
             return Err(PipelineError::Jobs(Error::InvalidShape));
         }
         let result = (0..frames).step_by(q).try_for_each(|base| {
-            self.process_quantum(jobs, memory, inputs, outputs, base, observer, base == 0)
+            self.process_quantum_mixed(
+                jobs,
+                memory,
+                inputs,
+                outputs,
+                base,
+                observer,
+                base == 0,
+                midi,
+            )
         });
         if let Err(error) = result {
             self.fault = Some(error);
@@ -316,22 +347,33 @@ impl Pipeline {
             }
             return Err(crate::midi::ProcessError::Midi(error));
         }
-        let mut observer = crate::midi::session::SessionObserver {
+        if let Err(error) = midi.validate_program(&self.program) {
+            for output in outputs.iter_mut() {
+                output.fill(Fixed::ZERO);
+            }
+            return Err(crate::midi::ProcessError::Midi(error));
+        }
+        let mut execution = crate::midi::Execution {
             session: midi,
             events,
             sink,
+            base: 0,
+            quantum: self.program.quantum,
             error: None,
         };
-        match self.process_observed(jobs, memory, inputs, outputs, frames, &mut observer) {
-            Ok(()) => Ok(observer.session.report(observer.error)),
+        match self.process_mixed(jobs, memory, inputs, outputs, frames, &mut (), &mut |job| {
+            execution.execute(job)
+        }) {
+            Ok(()) => Ok(execution.session.report(execution.error)),
             Err(error) => {
                 if self.fault.is_some() {
-                    observer.session.fault();
+                    execution.session.fault();
                 }
                 Err(crate::midi::ProcessError::Pipeline(error))
             }
         }
     }
+    #[cfg(feature = "rt-interface")]
     pub(crate) fn process_quantum(
         &mut self,
         jobs: &mut JobProcessor,
@@ -341,6 +383,28 @@ impl Pipeline {
         base: usize,
         observer: &mut impl Observer,
         publish: bool,
+    ) -> Result<(), PipelineError> {
+        self.process_quantum_mixed(
+            jobs,
+            memory,
+            inputs,
+            outputs,
+            base,
+            observer,
+            publish,
+            &mut |_| Err(Error::UnsupportedJob),
+        )
+    }
+    fn process_quantum_mixed(
+        &mut self,
+        jobs: &mut JobProcessor,
+        memory: &mut impl Memory,
+        inputs: &[&[Fixed]],
+        outputs: &mut [&mut [Fixed]],
+        base: usize,
+        observer: &mut impl Observer,
+        publish: bool,
+        midi: &mut impl FnMut(crate::midi::MidiJob) -> Result<(), Error>,
     ) -> Result<(), PipelineError> {
         self.emitted.clear();
         if let Some(error) = memory.fault() {
@@ -361,7 +425,7 @@ impl Pipeline {
         if publish {
             observer.settled(&self.state);
         }
-        jobs.run_at(&mut self.queue, memory, inputs, outputs, base)
+        jobs.run_at_mixed(&mut self.queue, memory, inputs, outputs, base, midi)
             .map_err(PipelineError::Jobs)?;
         if let Some(error) = memory.fault() {
             return Err(PipelineError::Jobs(error));

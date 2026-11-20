@@ -378,7 +378,7 @@ impl<'a> Plan<'a> {
             .collect::<BTreeSet<_>>();
         let mut buffers = vec![None; self.steps.len()];
         let mut depth = 0u32;
-        let mut audio_pass = Vec::new();
+        let mut work_pass = Vec::new();
         let mut jobs = 0u32;
         let mut emitted = 0;
         let mut input_ports = 0;
@@ -457,7 +457,7 @@ impl<'a> Plan<'a> {
                     1
                 })
                 .ok_or(CompileError::Capacity(Resource::Jobs))?;
-            audio_pass.push(op);
+            work_pass.push(op);
             for &user in &users[n] {
                 remaining[user] -= 1;
                 if remaining[user] == 0 {
@@ -479,7 +479,7 @@ impl<'a> Plan<'a> {
             quantum: context.quantum,
             chunk_frames,
             sync_pass,
-            audio_pass,
+            work_pass,
             initial_state: self.state,
             state_bindings: self.keys,
             loops: self

@@ -1,0 +1,100 @@
+    Finished `dev` profile [unoptimized] target(s) in 2.65s
+     Running `target/debug/examples/midi_cycles_64 --active-loops 1`
+   Compiling bench_top#15088387236041588210 (/workspace/work/current-backend/work/marlin-suite/midi/midi_job_service-1eb1e81ff4d6b9b7/bench_top.sv)
+"verilator" "--cc" "-sv" "--build" "-j" "2" "-CFLAGS" "-shared -fpic -std=c++14 -DVL_TIME_CONTEXT" "-MAKEFLAGS" "CXX=c++" "--Mdir" "/workspace/work/current-backend/work/marlin-suite/midi/midi_job_service-1eb1e81ff4d6b9b7/model/bench_top__workspace_work_current-backend_work_marlin-suite_midi_midi__job__service-1eb1e81ff4d6b9b7_bench__top.sv_15088387236041588210/obj_dir" "--top-module" "bench_top" "/workspace/work/current-backend/fpga/midi/rtl/midi_job_service.sv" "/workspace/work/current-backend/fpga/midi/rtl/midi_store.sv" "/workspace/work/current-backend/fpga/midi/rtl/midi_state_service.sv" "/workspace/work/current-backend/fpga/midi/rtl/midi_state.sv" "/workspace/work/current-backend/fpga/midi/rtl/midi_difference.sv" "/workspace/work/current-backend/fpga/midi/rtl/midi_transition.sv" "/workspace/work/current-backend/work/marlin-suite/midi/midi_job_service-1eb1e81ff4d6b9b7/bench_top.sv" "../ffi/ffi.cpp" "-I/workspace/work/current-backend/fpga/state_processor/rtl" "-I/workspace/work/current-backend/fpga/midi/rtl" "--trace"
+    Finished `verilator-O0` profile [unoptimized] target in 93.31s
+64 stopped bindings, no input: 12529 clocks, 0 output packets
+begin recordings: 31927 clocks, 0 output packets
+record CC messages: 33393 clocks, 0 output packets
+record CC messages: 36867 clocks, 0 output packets
+finish recordings: 28296 clocks, 0 output packets
+begin playback: 34680 clocks, 0 output packets
+playback, first CC window: 29158 clocks, 1 output packets
+playback, second CC window: 21785 clocks, 1 output packets
+{
+  "active_loops": 1,
+  "admitted_input_events_per_quantum": 16,
+  "destinations_available": 8,
+  "destinations_bound": 4,
+  "history_retention_frames": 128,
+  "idle_only": false,
+  "loops": 64,
+  "measurements": [
+    {
+      "cycles": 12529,
+      "input_events": 0,
+      "microseconds_at_100mhz": 125.29,
+      "microseconds_at_150mhz": 83.52666666666667,
+      "operation": "64 stopped bindings, no input",
+      "output_events": 0
+    },
+    {
+      "cycles": 31927,
+      "input_events": 0,
+      "microseconds_at_100mhz": 319.27,
+      "microseconds_at_150mhz": 212.84666666666666,
+      "operation": "begin recordings",
+      "output_events": 0
+    },
+    {
+      "cycles": 33393,
+      "input_events": 1,
+      "microseconds_at_100mhz": 333.93,
+      "microseconds_at_150mhz": 222.62,
+      "operation": "record CC messages",
+      "output_events": 0
+    },
+    {
+      "cycles": 36867,
+      "input_events": 1,
+      "microseconds_at_100mhz": 368.67,
+      "microseconds_at_150mhz": 245.78,
+      "operation": "record CC messages",
+      "output_events": 0
+    },
+    {
+      "cycles": 28296,
+      "input_events": 0,
+      "microseconds_at_100mhz": 282.96,
+      "microseconds_at_150mhz": 188.64,
+      "operation": "finish recordings",
+      "output_events": 0
+    },
+    {
+      "cycles": 34680,
+      "input_events": 0,
+      "microseconds_at_100mhz": 346.8,
+      "microseconds_at_150mhz": 231.2,
+      "operation": "begin playback",
+      "output_events": 0
+    },
+    {
+      "cycles": 29158,
+      "input_events": 0,
+      "microseconds_at_100mhz": 291.58,
+      "microseconds_at_150mhz": 194.38666666666666,
+      "operation": "playback, first CC window",
+      "output_events": 1
+    },
+    {
+      "cycles": 21785,
+      "input_events": 0,
+      "microseconds_at_100mhz": 217.85,
+      "microseconds_at_150mhz": 145.23333333333332,
+      "operation": "playback, second CC window",
+      "output_events": 1
+    }
+  ],
+  "memory": "deterministic randomized word acknowledgements and backpressure from the conformance driver",
+  "quantum_frames": 32,
+  "sample_rate": 48000,
+  "scope": "MIDI service jobs only; SP, shared JP dispatch, audio and board DDR are excluded",
+  "store": {
+    "block_events": 256,
+    "blocks": 2432,
+    "max_events": 8192,
+    "retirements": 128,
+    "snapshots": 384,
+    "views": 256
+  }
+}

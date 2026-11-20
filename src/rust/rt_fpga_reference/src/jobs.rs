@@ -44,6 +44,7 @@ pub struct BufferId(
 )]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum Job {
+    Midi(crate::midi::MidiJob),
     Constant {
         value: i32,
         destination: BufferId,
@@ -229,6 +230,19 @@ impl JobProcessor {
         outputs: &mut [&mut [Fixed]],
         base: usize,
     ) -> Result<(), Error> {
+        self.run_at_mixed(queue, memory, inputs, outputs, base, &mut |_| {
+            Err(Error::UnsupportedJob)
+        })
+    }
+    pub(crate) fn run_at_mixed(
+        &mut self,
+        queue: &mut JobQueue,
+        memory: &mut impl Memory,
+        inputs: &[&[Fixed]],
+        outputs: &mut [&mut [Fixed]],
+        base: usize,
+        midi: &mut impl FnMut(crate::midi::MidiJob) -> Result<(), Error>,
+    ) -> Result<(), Error> {
         self.ready.fill(false);
         for output in outputs.iter_mut() {
             output[base..base + self.quantum].fill(Fixed::ZERO);
@@ -248,7 +262,10 @@ impl JobProcessor {
                     (self.quantum / memory.chunk_frames()) as u64,
                 );
             }
-            self.execute_at(job, memory, inputs, outputs, base)?;
+            match job {
+                Job::Midi(job) => midi(job)?,
+                job => self.execute_at(job, memory, inputs, outputs, base)?,
+            }
         }
         Ok(())
     }
@@ -311,6 +328,7 @@ impl JobProcessor {
             return Err(Error::UnsupportedJob);
         }
         match job {
+            Job::Midi(_) => return Err(Error::UnsupportedJob),
             Job::Constant { value, destination } => {
                 self.destination(destination)?;
                 self.buffers[destination.0].fill(Fixed(value));

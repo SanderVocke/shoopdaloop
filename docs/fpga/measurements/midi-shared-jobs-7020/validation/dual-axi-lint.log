@@ -1,0 +1,3 @@
+- V e r i l a t i o n   R e p o r t: Verilator 5.032 2025-01-01 rev (Debian 5.032-1+b2)
+- Verilator: Built from 12.462 MB sources in 43 modules, into 4.011 MB in 8 C++ files needing 0.000 MB
+- Verilator: Walltime 5.134 s (elab=0.299, cvt=3.960, bld=0.000); cpu 2.031 s on 1 threads; alloced 54.848 MB

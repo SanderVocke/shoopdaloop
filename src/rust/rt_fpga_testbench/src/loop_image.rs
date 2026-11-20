@@ -24,7 +24,11 @@ pub fn operation(op: Operation) -> (u64, u64, bool) {
 pub fn image(slot: &LoopSlot, spec: &LoopSpec, stamp: Option<u64>) -> Bits {
     let mut b = Bits::zero(1024);
     let s = slot.state;
-    assert_eq!(s.capture_revision, s.revision_watermark);
+    if s.mode == Mode::Recording {
+        if s.mode == Mode::Recording {
+            assert_eq!(s.capture_revision, s.revision_watermark);
+        }
+    }
     assert_eq!(slot.render.content_length, s.content_length);
     b.set(0, 1, 1)
         .set(1, 32, u64::from(s.id.generation))

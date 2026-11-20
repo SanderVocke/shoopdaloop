@@ -1,0 +1,115 @@
+--- a/fpga/midi/rtl/midi_job_service.sv
++++ b/fpga/midi/rtl/midi_job_service.sv
+@@ -28,20 +28,20 @@
+             $fatal(1,"Invalid MIDI runtime capacities");
+     end
+     localparam [63:0] SNAP_OFFSET=64'(VIEWS)*64+64'(VIEWS)*64'(TABLE_ENTRIES)*4+64'(BLOCKS)*8;
+-    localparam [63:0] CONTENT_BYTES=SNAP_OFFSET+64'(SNAPSHOTS)*16916+
++    localparam [63:0] CONTENT_BYTES=SNAP_OFFSET+64'(SNAPSHOTS)*32768+
+         64'(BLOCKS)*64'(BLOCK_EVENTS)*16+64'(RETIREMENTS)*8;
+     localparam [63:0] CONTEXT_OFFSET=CONTENT_BYTES,
+         INPUT_OFFSET=CONTEXT_OFFSET+64'(LOOPS)*128,
+-        OUTPUT_OFFSET=INPUT_OFFSET+64'(INPUTS)*16900,
+-        ACTIVITY_OFFSET=OUTPUT_OFFSET+64'(DESTINATIONS)*16900,
+-        HISTORY_OFFSET=ACTIVITY_OFFSET+64'(LOOPS)*16900,
++        OUTPUT_OFFSET=INPUT_OFFSET+64'(INPUTS)*32768,
++        ACTIVITY_OFFSET=OUTPUT_OFFSET+64'(DESTINATIONS)*32768,
++        HISTORY_OFFSET=ACTIVITY_OFFSET+64'(LOOPS)*32768,
+         CHECKPOINT_OFFSET=HISTORY_OFFSET+64'(INPUTS)*96,
+         CHANGES_OFFSET=CHECKPOINT_OFFSET+64'(INPUTS)*64'(SNAPSHOTS)*16,
+-        MAP_OFFSET=CHANGES_OFFSET+64'(INPUTS)*532,
+-        DIRECTORY_OFFSET=MAP_OFFSET+64'(SNAPSHOTS)*64'(DESTINATIONS)*532;
+-    localparam [63:0] SCRATCH_CHANGES_OFFSET=DIRECTORY_OFFSET+64'(SNAPSHOTS)*64'(DESTINATIONS)*48;
+-    assign arena_bytes=SCRATCH_CHANGES_OFFSET+532;
+-    initial if(SCRATCH_CHANGES_OFFSET+532 > 64'h100000000) $fatal(1,"MIDI arena offsets exceed 32 bits");
++        MAP_OFFSET=CHANGES_OFFSET+64'(INPUTS)*1024,
++        DIRECTORY_OFFSET=MAP_OFFSET+64'(SNAPSHOTS)*64'(DESTINATIONS)*1024;
++    localparam [63:0] SCRATCH_CHANGES_OFFSET=DIRECTORY_OFFSET+64'(SNAPSHOTS)*64'(DESTINATIONS)*64;
++    assign arena_bytes=SCRATCH_CHANGES_OFFSET+1024;
++    initial if(SCRATCH_CHANGES_OFFSET+1024 > 64'h100000000) $fatal(1,"MIDI arena offsets exceed 32 bits");
+     reg [4:0] activity_channel;
+     reg [7:0] pc, service_return, memory_return, context_return, history_return, copy_return, prepare_return;
+     reg [5:0] op;
+@@ -467,15 +467,15 @@
+     endfunction
+     function automatic [63:0] input_address(input [31:0] slot);
+         reg [31:0] offset;
+-        begin offset=32'(INPUT_OFFSET)+32'(INPUT_BITS'(slot))*16900;input_address=arena_base+{32'b0,offset};end
++        begin offset=32'(INPUT_OFFSET)+32'(INPUT_BITS'(slot))*32768;input_address=arena_base+{32'b0,offset};end
+     endfunction
+     function automatic [63:0] output_address(input [31:0] slot);
+         reg [31:0] offset;
+-        begin offset=32'(OUTPUT_OFFSET)+32'(DEST_BITS'(slot))*16900;output_address=arena_base+{32'b0,offset};end
++        begin offset=32'(OUTPUT_OFFSET)+32'(DEST_BITS'(slot))*32768;output_address=arena_base+{32'b0,offset};end
+     endfunction
+     function automatic [63:0] activity_address(input [31:0] slot);
+         reg [31:0] offset;
+-        begin offset=32'(ACTIVITY_OFFSET)+32'(LOOP_BITS'(slot))*16900;activity_address=arena_base+{32'b0,offset};end
++        begin offset=32'(ACTIVITY_OFFSET)+32'(LOOP_BITS'(slot))*32768;activity_address=arena_base+{32'b0,offset};end
+     endfunction
+     function automatic [63:0] history_address(input [31:0] slot);
+         reg [31:0] offset;
+@@ -487,19 +487,19 @@
+     endfunction
+     function automatic [63:0] snapshot_address(input [63:0] id);
+         reg [31:0] offset;
+-        begin offset=32'(SNAP_OFFSET)+32'(id[SNAP_BITS-1:0])*16916+16;snapshot_address=arena_base+{32'b0,offset};end
++        begin offset=32'(SNAP_OFFSET)+32'(id[SNAP_BITS-1:0])*32768+16;snapshot_address=arena_base+{32'b0,offset};end
+     endfunction
+     function automatic [63:0] changes_address(input [31:0] slot);
+         reg [31:0] offset;
+-        begin offset=32'(CHANGES_OFFSET)+32'(INPUT_BITS'(slot))*532;changes_address=arena_base+{32'b0,offset};end
++        begin offset=32'(CHANGES_OFFSET)+32'(INPUT_BITS'(slot))*1024;changes_address=arena_base+{32'b0,offset};end
+     endfunction
+     function automatic [63:0] map_address(input [63:0] id,input [31:0] dst);
+         reg [31:0] offset;
+-        begin offset=32'(MAP_OFFSET)+(32'(id[SNAP_BITS-1:0])*32'(DESTINATIONS)+32'(DEST_BITS'(dst)))*532;map_address=arena_base+{32'b0,offset};end
++        begin offset=32'(MAP_OFFSET)+(32'(id[SNAP_BITS-1:0])*32'(DESTINATIONS)+32'(DEST_BITS'(dst)))*1024;map_address=arena_base+{32'b0,offset};end
+     endfunction
+     function automatic [63:0] directory_address(input [63:0] id,input [31:0] dst);
+         reg [31:0] offset;
+-        begin offset=32'(DIRECTORY_OFFSET)+(32'(id[SNAP_BITS-1:0])*32'(DESTINATIONS)+32'(DEST_BITS'(dst)))*48;directory_address=arena_base+{32'b0,offset};end
++        begin offset=32'(DIRECTORY_OFFSET)+(32'(id[SNAP_BITS-1:0])*32'(DESTINATIONS)+32'(DEST_BITS'(dst)))*64;directory_address=arena_base+{32'b0,offset};end
+     endfunction
+     function automatic [31:0] checkpoint_slot(input [31:0] head,input [31:0] distance);
+         reg [31:0] total;
+@@ -811,7 +811,7 @@
+             BOOT_CONTEXT_NEXT: begin scan<=scan+1;pc<=BOOT_CONTEXT;end
+             BOOT_DIRECTORY: if(scan==32'(SNAPSHOTS)*32'(DESTINATIONS)) begin
+                     scan<=0;high_snapshot<=0;pc<=BOOT_OUTPUT;
+-                end else write_word(arena_base+DIRECTORY_OFFSET+64'(scan)*48,0,BOOT_DIRECTORY_NEXT);
++                end else write_word(arena_base+DIRECTORY_OFFSET+64'(scan)*64,0,BOOT_DIRECTORY_NEXT);
+             BOOT_DIRECTORY_NEXT: begin scan<=scan+1;pc<=BOOT_DIRECTORY;end
+             BOOT_OUTPUT: if(scan==32'(DESTINATIONS)) begin scan<=0;pc<=BOOT_INPUT;end
+                 else begin recovery[scan]<=32;owners[scan]<=0;call_state(0,output_address(scan),0,0,0,0,0,BOOT_OUTPUT_NEXT);end
+--- a/fpga/midi/rtl/midi_store.sv
++++ b/fpga/midi/rtl/midi_store.sv
+@@ -33,7 +33,7 @@
+         REF_BASE=TABLE_BASE+64'(VIEWS)*64'(TABLE_ENTRIES)*4,
+         FREE_BASE=REF_BASE+64'(BLOCKS)*4,
+         SNAP_BASE=FREE_BASE+64'(BLOCKS)*4,
+-        EVENT_BASE=SNAP_BASE+64'(SNAPSHOTS)*16916,
++        EVENT_BASE=SNAP_BASE+64'(SNAPSHOTS)*32768,
+         RETIRE_BASE=EVENT_BASE+64'(BLOCKS)*64'(BLOCK_EVENTS)*16;
+     assign arena_bytes=RETIRE_BASE+64'(RETIREMENTS)*8;
+     localparam [7:0] IDLE=0, RESPONSE=1, READ_REQ=2, READ_WAIT=3, WRITE_REQ=4, WRITE_WAIT=5,
+@@ -105,7 +105,7 @@
+     endfunction
+     function automatic [63:0] snapshot_address(input [31:0] slot);
+         reg [31:0] offset;
+-        begin offset=32'(SNAP_BASE)+32'(SNAP_BITS'(slot))*16916;snapshot_address=arena_base+{32'b0,offset};end
++        begin offset=32'(SNAP_BASE)+32'(SNAP_BITS'(slot))*32768;snapshot_address=arena_base+{32'b0,offset};end
+     endfunction
+     task automatic read_word(input [63:0] address, input [7:0] next);
+         begin memory_address<=address;return_phase<=next;phase<=READ_REQ;end
+--- a/fpga/midi/rtl/midi_state_service.sv
++++ b/fpga/midi/rtl/midi_state_service.sv
+@@ -65,7 +65,7 @@
+     wire select_diff = phase == DIFF_START || phase == DIFF_WAIT;
+     wire select_transition = phase == TRANSITION_START || phase == TRANSITION_WAIT || phase == TRANSITION_ACK;
+     wire [63:0] own_address = mask_memory ? changes_base+64'(changed_index >> 5)*4 : phase == SNAPSHOT || phase == SNAPSHOT_WAIT ?
+-        {entry[9],entry[8]} + 64'(snapshot_word)*4 : directory_base+64'(pair_index)*48+64'(cursor)*4;
++        {entry[9],entry[8]} + 64'(snapshot_word)*4 : directory_base+64'(pair_index)*64+64'(cursor)*4;
+     assign memory_valid = own_memory ? (phase == DIRECTORY || phase == SNAPSHOT || phase == MASK || phase == MASK_WRITE) :
+         select_diff ? diff_memory_valid : select_transition ? transition_memory_valid : state_memory_valid;
+     assign memory_write = own_memory ? phase == MASK_WRITE : select_diff ? diff_memory_write :

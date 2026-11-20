@@ -7,7 +7,7 @@ module host_pipeline_axi #(
     parameter integer EXPORT_SYNC_EVENTS = 1,
     parameter integer PROGRAM_REGIONS = LIVE_LOADING != 0 ? 2 : 1,
     parameter integer PROGRAM_DEPTH = 32, parameter integer STATE_DEPTH = 16,
-    parameter integer JOB_DEPTH = 32, parameter integer MAX_FRAMES = 32,
+    parameter integer JOB_DEPTH = 32, parameter integer READ_HINT_DEPTH = JOB_DEPTH, parameter integer MAX_FRAMES = 32,
     parameter integer BUFFERS = 16, parameter integer INPUT_PORTS = 2, parameter integer OUTPUT_PORTS = 2,
     parameter integer REUSE_VIEWS = 0,
     parameter integer MAINTENANCE_AT_RUN = 1,
@@ -162,6 +162,9 @@ module host_pipeline_axi #(
     wire [255:0] sync_event_data;
     wire [63:0] active_revision;
     wire event_overflow;
+    wire midi_job_valid;
+    wire [255:0] midi_job_data;
+    wire [3:0] midi_error_code;
     wire [31:0] reclaim_pending;
     wire [31:0] reclaim_high_water;
     wire [63:0] reclaim_references;
@@ -254,7 +257,7 @@ module host_pipeline_axi #(
     wire store_cfg_response_error;
     wire [159:0] store_cfg_read_data;
     wire memory_fault;
-    wire unused_core_outputs = &{1'b0,reclaim_pending,reclaim_high_water,reclaim_references,reclaim_active,reclaim_released,reclaim_block,reclaim_blocks,reclaim_freed,reclaim_cycles,reclaim_quiescent,reclaim_pages_used,reclaim_pages_available,reclaim_pages_freed,reclaim_capacity_failures,busy,state_busy,state_done,jobs_busy,jobs_done,buffer_ready,monitor_valid,monitor_ready,monitor_data,queued_jobs,drain_valid,loop_read_valid,loop_read_slot,store_busy,store_result_view,store_result_empty,store_write_ready,store_read_valid,store_read_data};
+    wire unused_core_outputs = &{1'b0,midi_job_valid,midi_job_data,midi_error_code,reclaim_pending,reclaim_high_water,reclaim_references,reclaim_active,reclaim_released,reclaim_block,reclaim_blocks,reclaim_freed,reclaim_cycles,reclaim_quiescent,reclaim_pages_used,reclaim_pages_available,reclaim_pages_freed,reclaim_capacity_failures,busy,state_busy,state_done,jobs_busy,jobs_done,buffer_ready,monitor_valid,monitor_ready,monitor_data,queued_jobs,drain_valid,loop_read_valid,loop_read_slot,store_busy,store_result_view,store_result_empty,store_write_ready,store_read_valid,store_read_data};
     initial begin
         if (LIVE_LOADING != 1 || PROGRAM_REGIONS != 2) $fatal(1,"host requires live loading");
         if (QUANTUM > MAX_FRAMES || QUANTUM < 1) $fatal(1,"invalid host quantum");
@@ -274,6 +277,7 @@ module host_pipeline_axi #(
         .PROGRAM_DEPTH(PROGRAM_DEPTH),
         .STATE_DEPTH(STATE_DEPTH),
         .JOB_DEPTH(JOB_DEPTH),
+        .READ_HINT_DEPTH(READ_HINT_DEPTH),
         .MAX_FRAMES(MAX_FRAMES),
         .BUFFERS(BUFFERS),
         .INPUT_PORTS(INPUT_PORTS),
@@ -297,7 +301,7 @@ module host_pipeline_axi #(
         .WRITE_BUFFERS(WRITE_BUFFERS),
         .BURST_MEMORY(BURST_MEMORY),
         .AXI_DATA_WIDTH(AXI_DATA_WIDTH),
-        .PHYSICAL_BASE(ARENA_BASE), .PHYSICAL_BYTES_LIMIT({32'b0, ARENA_BYTES})) core (
+        .ENABLE_MIDI(0), .ENABLE_MIDI(0), .PHYSICAL_BASE(ARENA_BASE), .PHYSICAL_BYTES_LIMIT({32'b0, ARENA_BYTES})) core (
         .arena_base({32'b0, ARENA_BASE}),
         .maintenance_enable(1'b1),
         .maintenance_tick(1'b0),
@@ -319,5 +323,8 @@ module host_pipeline_axi #(
         .store_write_valid(1'b0),
         .store_write_data(32'b0),
         .store_read_ready(1'b0),
+        .midi_job_ready(1'b0),
+        .midi_job_done(1'b0),
+        .midi_job_error(4'b0),
         .*);
 endmodule

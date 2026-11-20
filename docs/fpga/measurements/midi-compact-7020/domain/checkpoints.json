@@ -1,0 +1,58 @@
+{
+  "before-100": {
+    "source_revision": "c2d6e6ffcaf428d0b485b8d45c5c6c2c05ab8370",
+    "source_run": "shared-final-100",
+    "stage": "post_opt",
+    "clock_mhz": 100,
+    "checkpoint_sha256": "9122d83e4886bd8daa77cfadda50bbda8fbdc9390c33ca816982866636336471"
+  },
+  "banked-100": {
+    "source_revision": "c4d96817588f2a5217c59e322cd6147d2adcfb91",
+    "source_run": "compact-banked-100",
+    "stage": "post_route",
+    "clock_mhz": 100,
+    "checkpoint_sha256": "8e9beb2e0530ca8c52e634c0e0b5e5005ee11004c806fddf663fe9bcafd8ecc6"
+  },
+  "compact-opt-100": {
+    "source_revision": "ad08d55e3b1123686555722fa0656f74688574fd",
+    "source_run": "compact-pipelined-100",
+    "stage": "post_opt",
+    "clock_mhz": 100,
+    "checkpoint_sha256": "bdf964fdc75dfd57d16a6d880c5bc162e3461d233cd4c1b6463795cfcf7fba49"
+  },
+  "compact-route-100": {
+    "source_revision": "ad08d55e3b1123686555722fa0656f74688574fd",
+    "source_run": "compact-pipelined-100",
+    "stage": "post_route",
+    "clock_mhz": 100,
+    "checkpoint_sha256": "5b82ca0f684c410e69cb512ce53b198ee13fbed3042bfa91b1976a4a336dacdd"
+  },
+  "before-150": {
+    "source_revision": "c2d6e6ffcaf428d0b485b8d45c5c6c2c05ab8370",
+    "source_run": "shared-final-150",
+    "stage": "post_opt",
+    "clock_mhz": 150,
+    "checkpoint_sha256": "d369568cdb86d2a32ee814a607c8b9a688b4fd099c85007e697d7c5cb44e75b9"
+  },
+  "banked-150": {
+    "source_revision": "c4d96817588f2a5217c59e322cd6147d2adcfb91",
+    "source_run": "compact-banked-150",
+    "stage": "post_route",
+    "clock_mhz": 150,
+    "checkpoint_sha256": "4640a9dd5e0a7704d4ba2641a2c63790f480af16995b84800718d9122387517d"
+  },
+  "compact-opt-150": {
+    "source_revision": "ad08d55e3b1123686555722fa0656f74688574fd",
+    "source_run": "compact-pipelined-150",
+    "stage": "post_opt",
+    "clock_mhz": 150,
+    "checkpoint_sha256": "48c1842472c6ee6d18727915cd9887323ab92d9e41ad1394539a7a6ba3d8f5e2"
+  },
+  "compact-route-150": {
+    "source_revision": "ad08d55e3b1123686555722fa0656f74688574fd",
+    "source_run": "compact-pipelined-150",
+    "stage": "post_route",
+    "clock_mhz": 150,
+    "checkpoint_sha256": "2182bc7c013be84f23e58572d4356e2e85722be43859e01f37c60124fee39b18"
+  }
+}

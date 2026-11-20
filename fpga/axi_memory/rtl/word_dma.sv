@@ -1,5 +1,6 @@
 module word_dma #(
-    parameter integer DATA_WIDTH = 32
+    parameter integer DATA_WIDTH = 32,
+    parameter integer REGISTER_REQUEST = 0
 ) (
     input wire clk, input wire reset,
     input wire [63:0] arena_base, input wire [63:0] arena_bytes,
@@ -28,15 +29,21 @@ module word_dma #(
     input wire completion_error
 );
     localparam integer LANE_BITS = $clog2(DATA_WIDTH/8);
-    localparam [2:0] IDLE = 0, COMMAND = 1, WRITE = 2, READ = 3, ACK = 4, RESPONSE = 5;
+    localparam [2:0] IDLE = 0, COMMAND = 1, WRITE = 2, READ = 3, ACK = 4, RESPONSE = 5, CHECK = 6;
     reg [2:0] phase;
 
     reg [31:0] payload;
     reg [LANE_BITS-1:0] lane;
-    wire [63:0] offset = memory_address-arena_base;
-    wire [64:0] mapped = {33'b0, physical_base}+{1'b0, offset};
-    wire bad_address = memory_address < arena_base || arena_bytes < 4 || offset > arena_bytes-4
-        || mapped[64:32] != 0 || mapped[31:0] > 32'hfffffffc || memory_address[1:0] != 0
+    reg [63:0] request_address,request_base,request_bytes;
+    reg [31:0] request_physical;
+    wire [63:0] checked_address=REGISTER_REQUEST!=0 ? request_address : memory_address;
+    wire [63:0] checked_base=REGISTER_REQUEST!=0 ? request_base : arena_base;
+    wire [63:0] checked_bytes=REGISTER_REQUEST!=0 ? request_bytes : arena_bytes;
+    wire [31:0] checked_physical=REGISTER_REQUEST!=0 ? request_physical : physical_base;
+    wire [63:0] offset = checked_address-checked_base;
+    wire [64:0] mapped = {33'b0, checked_physical}+{1'b0, offset};
+    wire bad_address = checked_address < checked_base || checked_bytes < 4 || offset > checked_bytes-4
+        || mapped[64:32] != 0 || mapped[31:0] > 32'hfffffffc || checked_address[1:0] != 0
         || mapped[1:0] != 0;
     assign command_valid = phase == COMMAND;
 
@@ -56,14 +63,23 @@ module word_dma #(
 
     always @(posedge clk) begin
         if (reset) begin
+            request_address<=0;request_base<=0;request_bytes<=0;request_physical<=0;
             phase <= IDLE; command_write <= 0; command_address <= 0; payload <= 0; lane <= 0;
             memory_response_error <= 0; memory_read_data <= 0;
         end else begin
             if (memory_valid && memory_ready) begin
-                command_write <= memory_write; command_address <= mapped[31:0];
-                payload <= memory_write_data; lane <= mapped[LANE_BITS-1:0];
-                memory_response_error <= bad_address; memory_read_data <= 0;
-                phase <= bad_address ? RESPONSE : COMMAND;
+                command_write <= memory_write;payload <= memory_write_data;memory_read_data <= 0;
+                if(REGISTER_REQUEST!=0) begin
+                    request_address<=memory_address;request_base<=arena_base;request_bytes<=arena_bytes;request_physical<=physical_base;
+                    phase<=CHECK;
+                end else begin
+                    command_address<=mapped[31:0];lane<=mapped[LANE_BITS-1:0];
+                    memory_response_error<=bad_address;phase<=bad_address ? RESPONSE : COMMAND;
+                end
+            end
+            if(phase==CHECK) begin
+                command_address<=mapped[31:0];lane<=mapped[LANE_BITS-1:0];
+                memory_response_error<=bad_address;phase<=bad_address ? RESPONSE : COMMAND;
             end
             if (command_valid && command_ready) phase <= command_write ? WRITE : READ;
             if (write_valid && write_ready) phase <= ACK;

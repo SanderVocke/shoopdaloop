@@ -67,12 +67,18 @@ in `third_party/marlin-verilator`.
 Focused runs:
 
 ```sh
+cargo test --locked -p rt_fpga_testbench --features sim --test midi -- --test-threads=1
 cargo run --locked -p rt_fpga_testbench --features sim -- state --config small
 cargo run --locked -p rt_fpga_testbench --features sim -- audio --config small
 cargo run --locked -p rt_fpga_testbench --features sim -- pipeline --config small --memory-model fixed
 cargo run --locked -p rt_fpga_testbench --features sim -- pipeline --config small --memory-model dramsim3 --axi-data-width 32
 cargo run --locked -p rt_fpga_testbench --features sim -- deferred --memory-model dramsim3
 ```
+
+The `midi` test target includes compiled mixed SP/JP programs, exact audio and
+MIDI output/job/state comparisons at all supported quanta, publication fences,
+partial output and fatal recovery. It also retains DDR service scenarios and
+AXI32/64 checks. See the [coverage and limits](../../../docs/fpga/midi-shared-jobs-validation.md).
 
 `pipeline` is the TP-free SP -> JP -> media/cache execution harness. Explicit
 instructions, initial state and samples exercise exact output, recording/readback,

@@ -1,0 +1,1895 @@
+WARNING: Default location for XILINX_HLS not found
+
+****** Vivado v2021.1 (64-bit)
+  **** SW Build 3247384 on Thu Jun 10 19:36:07 MDT 2021
+    ** Copyright 1986-2021 Xilinx, Inc. All Rights Reserved.
+
+source run.tcl
+# if {[version -short] ne {2021.1}} {error "This experiment requires Vivado 2021.1"}
+# set_param general.maxThreads 2
+# create_project -in_memory -part xc7z020clg484-1
+# set includes {}
+# set sources {}
+# foreach library {state_processor job_processor chunk_memory media_store axi_memory midi} {
+#     set directory source/fpga/$library/rtl
+#     if {![file isdirectory $directory]} {continue}
+#     lappend includes [file normalize $directory]
+#     foreach source [lsort [glob $directory/*.sv]] {lappend sources $source}
+# }
+# set_property include_dirs $includes [current_fileset]
+# lappend sources context.sv
+# read_verilog -sv $sources
+# read_xdc context.xdc
+# set f [open setup.txt w]
+# puts $f "Vivado: [version]\nPart: xc7z020clg484-1\nThreads: 2\nUncertainty: 0.2 ns\nFlow: OOC, rebuilt hierarchy, default placement/routing, post-place phys_opt"
+# close $f
+# proc reports {stage} {
+#     report_utilization -file ${stage}_utilization.rpt
+#     report_utilization -hierarchical -hierarchical_depth 8 -file ${stage}_hierarchical_utilization.rpt
+#     foreach component {audio midi} {
+#         set cells [get_cells -quiet $component/core_under_test]
+#         if {[llength $cells]} {report_utilization -cells $cells -file ${stage}_${component}_utilization.rpt}
+#     }
+#     report_timing_summary -delay_type min_max -report_unconstrained -check_timing_verbose -max_paths 20 -file ${stage}_timing_summary.rpt
+#     report_timing -delay_type max -max_paths 20 -path_type full_clock_expanded -file ${stage}_critical_paths.rpt
+#     check_timing -verbose -file ${stage}_check_timing.rpt
+#     set setup_paths [get_timing_paths -delay_type max -max_paths 1]
+#     set hold_paths [get_timing_paths -delay_type min -max_paths 1]
+#     set f [open ${stage}.json w]
+#     puts $f "{\"wns_ns\":[get_property SLACK $setup_paths],\"whs_ns\":[get_property SLACK $hold_paths]}"
+#     close $f
+# }
+# set stage synth
+Command: synth_design -top session_context -part xc7z020clg484-1 -mode out_of_context -flatten_hierarchy rebuilt
+Starting synth_design
+Attempting to get a license for feature 'Synthesis' and/or device 'xc7z020'
+INFO: [Common 17-349] Got license for feature 'Synthesis' and/or device 'xc7z020'
+INFO: [Device 21-403] Loading part xc7z020clg484-1
+INFO: [Synth 8-7079] Multithreading enabled for synth_design using a maximum of 2 processes.
+INFO: [Synth 8-7078] Launching helper process for spawning children vivado processes
+INFO: [Synth 8-7075] Helper process launched with PID 48
+WARNING: [Synth 8-6901] identifier 'arg4' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/state_processor/rtl/sp_engine.sv:94]
+WARNING: [Synth 8-6901] identifier 'arg3' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/state_processor/rtl/sp_engine.sv:94]
+WARNING: [Synth 8-6901] identifier 'arg2' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/state_processor/rtl/sp_engine.sv:94]
+WARNING: [Synth 8-6901] identifier 'arg1' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/state_processor/rtl/sp_engine.sv:94]
+WARNING: [Synth 8-6901] identifier 'arg0' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/state_processor/rtl/sp_engine.sv:94]
+WARNING: [Synth 8-6901] identifier 'hint_push_data' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/job_processor/rtl/audio_pipeline.sv:138]
+WARNING: [Synth 8-6901] identifier 'input_read' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/job_processor/rtl/job_processor.sv:167]
+WARNING: [Synth 8-6901] identifier 'output_write' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/job_processor/rtl/job_processor.sv:169]
+WARNING: [Synth 8-6901] identifier 'output_address' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/job_processor/rtl/job_processor.sv:171]
+WARNING: [Synth 8-6901] identifier 'dma_active' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/chunk_memory/rtl/chunk_memory.sv:87]
+WARNING: [Synth 8-6901] identifier 'handoff_request' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_audio_pipeline.sv:125]
+WARNING: [Synth 8-6901] identifier 'fence_issued' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_audio_pipeline.sv:125]
+WARNING: [Synth 8-6901] identifier 'fence_issued' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_audio_pipeline.sv:128]
+WARNING: [Synth 8-992] cancel_lookup is already implicitly declared earlier [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_store.sv:318]
+WARNING: [Synth 8-992] gc_retire_valid is already implicitly declared earlier [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_store.sv:336]
+WARNING: [Synth 8-992] gc_retire_ready is already implicitly declared earlier [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_store.sv:336]
+WARNING: [Synth 8-992] gc_retire_done is already implicitly declared earlier [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_store.sv:336]
+WARNING: [Synth 8-992] gc_retire_busy is already implicitly declared earlier [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_store.sv:336]
+WARNING: [Synth 8-992] gc_retire_error is already implicitly declared earlier [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_store.sv:337]
+WARNING: [Synth 8-992] advance is already implicitly declared earlier [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_store.sv:403]
+WARNING: [Synth 8-6901] identifier 'advance' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_store.sv:221]
+WARNING: [Synth 8-6901] identifier 'cm_arena_base' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_store.sv:230]
+WARNING: [Synth 8-6901] identifier 'gc_fault' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_store.sv:233]
+WARNING: [Synth 8-6901] identifier 'command_window' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_store.sv:251]
+WARNING: [Synth 8-6901] identifier 'gc_lock_held' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_store.sv:251]
+WARNING: [Synth 8-6901] identifier 'gc_lock_held' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_store.sv:253]
+WARNING: [Synth 8-6901] identifier 'advance' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_store.sv:253]
+WARNING: [Synth 8-6901] identifier 'metadata_request_valid' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_store.sv:367]
+WARNING: [Synth 8-6901] identifier 'metadata_request_valid' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_store.sv:368]
+WARNING: [Synth 8-6901] identifier 'READ_REQUEST' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_runtime.sv:128]
+WARNING: [Synth 8-6901] identifier 'WRITE_REQUEST' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_runtime.sv:128]
+WARNING: [Synth 8-6901] identifier 'WRITE_REQUEST' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_runtime.sv:129]
+WARNING: [Synth 8-6901] identifier 'READ_WAIT' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_runtime.sv:133]
+WARNING: [Synth 8-6901] identifier 'WRITE_WAIT' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_runtime.sv:133]
+WARNING: [Synth 8-6901] identifier 'PANIC_EMIT' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_runtime.sv:138]
+WARNING: [Synth 8-6901] identifier 'PANIC_EMIT' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_runtime.sv:139]
+WARNING: [Synth 8-6901] identifier 'recovery_packet' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_runtime.sv:139]
+WARNING: [Synth 8-6901] identifier 'PANIC_EMIT' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_runtime.sv:140]
+WARNING: [Synth 8-6901] identifier 'IDLE' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_runtime.sv:141]
+WARNING: [Synth 8-6901] identifier 'RESPONSE' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_runtime.sv:142]
+WARNING: [Synth 8-6901] identifier 'pairs' is used before its declaration [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_state_service.sv:31]
+---------------------------------------------------------------------------------
+Starting RTL Elaboration : Time (s): cpu = 00:00:04 ; elapsed = 00:00:07 . Memory (MB): peak = 2626.703 ; gain = 0.000 ; free physical = 2056 ; free virtual = 9770
+---------------------------------------------------------------------------------
+INFO: [Synth 8-6157] synthesizing module 'session_context' [/workspace/work/midi-vivado/after-150/context.sv:1108]
+WARNING: [Synth 8-4446] all outputs are unconnected for this instance and logic may be removed [/workspace/work/midi-vivado/after-150/context.sv:1134]
+INFO: [Synth 8-6157] synthesizing module 'audio_context' [/workspace/work/midi-vivado/after-150/context.sv:2]
+	Parameter EXTERNAL_IO bound to: 1 - type: integer 
+	Parameter LIVE_LOADING bound to: 1 - type: integer 
+	Parameter EXPORT_SYNC_EVENTS bound to: 1 - type: integer 
+	Parameter PROGRAM_DEPTH bound to: 1024 - type: integer 
+	Parameter STATE_DEPTH bound to: 256 - type: integer 
+	Parameter JOB_DEPTH bound to: 1024 - type: integer 
+	Parameter MAX_FRAMES bound to: 32 - type: integer 
+	Parameter BUFFERS bound to: 512 - type: integer 
+	Parameter INPUT_PORTS bound to: 2 - type: integer 
+	Parameter OUTPUT_PORTS bound to: 2 - type: integer 
+	Parameter REUSE_VIEWS bound to: 1 - type: integer 
+	Parameter VIEWS bound to: 512 - type: integer 
+	Parameter SLOTS bound to: 5763072 - type: integer 
+	Parameter CHUNK_FRAMES bound to: 32 - type: integer 
+	Parameter BLOCK_CHUNKS bound to: 32 - type: integer 
+	Parameter RETIRED_TABLES bound to: 256 - type: integer 
+	Parameter TABLE_LINES bound to: 128 - type: integer 
+	Parameter REF_LINES bound to: 4 - type: integer 
+	Parameter STACK_LINES bound to: 2 - type: integer 
+	Parameter READ_BUFFERS bound to: 4 - type: integer 
+	Parameter WRITE_BUFFERS bound to: 4 - type: integer 
+	Parameter BURST_MEMORY bound to: 1 - type: integer 
+	Parameter AXI_DATA_WIDTH bound to: 64 - type: integer 
+	Parameter PHYSICAL_BASE bound to: 32'b00000001000000000000000000000000 
+	Parameter PHYSICAL_BYTES_LIMIT bound to: 64'b0000000000000000000000000000000001000000000000000000000000000000 
+INFO: [Synth 8-6157] synthesizing module 'media_audio_pipeline_axi' [/workspace/work/midi-vivado/after-150/source/fpga/axi_memory/rtl/media_audio_pipeline_axi.sv:4]
+	Parameter EXTERNAL_IO bound to: 1 - type: integer 
+	Parameter LIVE_LOADING bound to: 1 - type: integer 
+	Parameter EXPORT_SYNC_EVENTS bound to: 1 - type: integer 
+	Parameter PROGRAM_REGIONS bound to: 2 - type: integer 
+	Parameter PROGRAM_DEPTH bound to: 1024 - type: integer 
+	Parameter STATE_DEPTH bound to: 256 - type: integer 
+	Parameter JOB_DEPTH bound to: 1024 - type: integer 
+	Parameter MAX_FRAMES bound to: 32 - type: integer 
+	Parameter BUFFERS bound to: 512 - type: integer 
+	Parameter INPUT_PORTS bound to: 2 - type: integer 
+	Parameter OUTPUT_PORTS bound to: 2 - type: integer 
+	Parameter REUSE_VIEWS bound to: 1 - type: integer 
+	Parameter MAINTENANCE_AT_RUN bound to: 1 - type: integer 
+	Parameter VIEWS bound to: 512 - type: integer 
+	Parameter SLOTS bound to: 5763072 - type: integer 
+	Parameter CHUNK_FRAMES bound to: 32 - type: integer 
+	Parameter MEMORY_RESPONSE_CYCLES bound to: 1 - type: integer 
+	Parameter BLOCK_CHUNKS bound to: 32 - type: integer 
+	Parameter RETIRED_TABLES bound to: 256 - type: integer 
+	Parameter RECLAIM_BLOCKS bound to: 0 - type: integer 
+	Parameter RECLAIM_CYCLES bound to: 5000 - type: integer 
+	Parameter RECLAIM_GUARD bound to: 1024 - type: integer 
+	Parameter TABLE_PAGES bound to: 16119 - type: integer 
+	Parameter TABLE_LINES bound to: 128 - type: integer 
+	Parameter REF_LINES bound to: 4 - type: integer 
+	Parameter STACK_LINES bound to: 2 - type: integer 
+	Parameter READ_BUFFERS bound to: 4 - type: integer 
+	Parameter WRITE_BUFFERS bound to: 4 - type: integer 
+	Parameter BURST_MEMORY bound to: 1 - type: integer 
+	Parameter AXI_DATA_WIDTH bound to: 64 - type: integer 
+	Parameter PHYSICAL_BASE bound to: 32'b00000001000000000000000000000000 
+	Parameter PHYSICAL_BYTES_LIMIT bound to: 64'b0000000000000000000000000000000001000000000000000000000000000000 
+INFO: [Synth 8-6157] synthesizing module 'media_audio_pipeline' [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_audio_pipeline.sv:3]
+	Parameter EXTERNAL_IO bound to: 1 - type: integer 
+	Parameter LIVE_LOADING bound to: 1 - type: integer 
+	Parameter EXPORT_SYNC_EVENTS bound to: 1 - type: integer 
+	Parameter PROGRAM_REGIONS bound to: 2 - type: integer 
+	Parameter PROGRAM_DEPTH bound to: 1024 - type: integer 
+	Parameter STATE_DEPTH bound to: 256 - type: integer 
+	Parameter JOB_DEPTH bound to: 1024 - type: integer 
+	Parameter MAX_FRAMES bound to: 32 - type: integer 
+	Parameter BUFFERS bound to: 512 - type: integer 
+	Parameter INPUT_PORTS bound to: 2 - type: integer 
+	Parameter OUTPUT_PORTS bound to: 2 - type: integer 
+	Parameter REUSE_VIEWS bound to: 1 - type: integer 
+	Parameter MAINTENANCE_AT_RUN bound to: 1 - type: integer 
+	Parameter VIEWS bound to: 512 - type: integer 
+	Parameter SLOTS bound to: 5763072 - type: integer 
+	Parameter CHUNK_FRAMES bound to: 32 - type: integer 
+	Parameter MEMORY_RESPONSE_CYCLES bound to: 1 - type: integer 
+	Parameter BLOCK_CHUNKS bound to: 32 - type: integer 
+	Parameter RETIRED_TABLES bound to: 256 - type: integer 
+	Parameter RECLAIM_BLOCKS bound to: 0 - type: integer 
+	Parameter RECLAIM_CYCLES bound to: 5000 - type: integer 
+	Parameter RECLAIM_GUARD bound to: 1024 - type: integer 
+	Parameter TABLE_PAGES bound to: 16119 - type: integer 
+	Parameter TABLE_LINES bound to: 128 - type: integer 
+	Parameter REF_LINES bound to: 4 - type: integer 
+	Parameter STACK_LINES bound to: 2 - type: integer 
+	Parameter READ_BUFFERS bound to: 4 - type: integer 
+	Parameter WRITE_BUFFERS bound to: 4 - type: integer 
+	Parameter BURST_MEMORY bound to: 1 - type: integer 
+INFO: [Synth 8-6157] synthesizing module 'audio_pipeline' [/workspace/work/midi-vivado/after-150/source/fpga/job_processor/rtl/audio_pipeline.sv:3]
+	Parameter PROGRAM_DEPTH bound to: 1024 - type: integer 
+	Parameter LIVE_LOADING bound to: 1 - type: integer 
+	Parameter PROGRAM_REGIONS bound to: 2 - type: integer 
+	Parameter STATE_DEPTH bound to: 256 - type: integer 
+	Parameter JOB_DEPTH bound to: 1024 - type: integer 
+	Parameter EXTERNAL_IO bound to: 1 - type: integer 
+	Parameter MAX_FRAMES bound to: 32 - type: integer 
+	Parameter BUFFERS bound to: 512 - type: integer 
+	Parameter INPUT_PORTS bound to: 2 - type: integer 
+	Parameter OUTPUT_PORTS bound to: 2 - type: integer 
+	Parameter CHUNK_FRAMES bound to: 32 - type: integer 
+	Parameter ENABLE_MEDIA bound to: 1 - type: integer 
+INFO: [Synth 8-6157] synthesizing module 'sp_job_fifo' [/workspace/work/midi-vivado/after-150/source/fpga/state_processor/rtl/sp_job_fifo.sv:3]
+	Parameter DEPTH bound to: 1024 - type: integer 
+	Parameter COUNT_BITS bound to: 11 - type: integer 
+INFO: [Synth 8-6157] synthesizing module 'sp_ram' [/workspace/work/midi-vivado/after-150/source/fpga/state_processor/rtl/sp_ram.sv:1]
+	Parameter WIDTH bound to: 256 - type: integer 
+	Parameter DEPTH bound to: 1024 - type: integer 
+	Parameter ADDR_BITS bound to: 10 - type: integer 
+INFO: [Synth 8-6155] done synthesizing module 'sp_ram' (1#1) [/workspace/work/midi-vivado/after-150/source/fpga/state_processor/rtl/sp_ram.sv:1]
+INFO: [Synth 8-6155] done synthesizing module 'sp_job_fifo' (2#1) [/workspace/work/midi-vivado/after-150/source/fpga/state_processor/rtl/sp_job_fifo.sv:3]
+INFO: [Synth 8-6157] synthesizing module 'state_processor' [/workspace/work/midi-vivado/after-150/source/fpga/state_processor/rtl/state_processor.sv:3]
+	Parameter PROGRAM_DEPTH bound to: 1024 - type: integer 
+	Parameter PROGRAM_REGIONS bound to: 2 - type: integer 
+	Parameter STATE_DEPTH bound to: 256 - type: integer 
+	Parameter JOB_DEPTH bound to: 1024 - type: integer 
+	Parameter LOOP_DEPTH bound to: 256 - type: integer 
+INFO: [Synth 8-6157] synthesizing module 'sp_ram__parameterized0' [/workspace/work/midi-vivado/after-150/source/fpga/state_processor/rtl/sp_ram.sv:1]
+	Parameter WIDTH bound to: 96 - type: integer 
+	Parameter DEPTH bound to: 2048 - type: integer 
+	Parameter ADDR_BITS bound to: 11 - type: integer 
+INFO: [Synth 8-6155] done synthesizing module 'sp_ram__parameterized0' (2#1) [/workspace/work/midi-vivado/after-150/source/fpga/state_processor/rtl/sp_ram.sv:1]
+INFO: [Synth 8-6157] synthesizing module 'sp_ram__parameterized1' [/workspace/work/midi-vivado/after-150/source/fpga/state_processor/rtl/sp_ram.sv:1]
+	Parameter WIDTH bound to: 129 - type: integer 
+	Parameter DEPTH bound to: 256 - type: integer 
+	Parameter ADDR_BITS bound to: 8 - type: integer 
+INFO: [Synth 8-6155] done synthesizing module 'sp_ram__parameterized1' (2#1) [/workspace/work/midi-vivado/after-150/source/fpga/state_processor/rtl/sp_ram.sv:1]
+INFO: [Synth 8-6157] synthesizing module 'sp_engine' [/workspace/work/midi-vivado/after-150/source/fpga/state_processor/rtl/sp_engine.sv:4]
+	Parameter PROGRAM_DEPTH bound to: 1024 - type: integer 
+	Parameter STATE_DEPTH bound to: 256 - type: integer 
+	Parameter LOOP_DEPTH bound to: 256 - type: integer 
+	Parameter LOOP_MEMORY_BITS bound to: 12 - type: integer 
+	Parameter PROGRAM_ADDR_BITS bound to: 10 - type: integer 
+	Parameter STATE_ADDR_BITS bound to: 8 - type: integer 
+INFO: [Synth 8-6155] done synthesizing module 'sp_engine' (3#1) [/workspace/work/midi-vivado/after-150/source/fpga/state_processor/rtl/sp_engine.sv:4]
+INFO: [Synth 8-6157] synthesizing module 'sp_ram__parameterized2' [/workspace/work/midi-vivado/after-150/source/fpga/state_processor/rtl/sp_ram.sv:1]
+	Parameter WIDTH bound to: 64 - type: integer 
+	Parameter DEPTH bound to: 4096 - type: integer 
+	Parameter ADDR_BITS bound to: 12 - type: integer 
+INFO: [Synth 8-6155] done synthesizing module 'sp_ram__parameterized2' (3#1) [/workspace/work/midi-vivado/after-150/source/fpga/state_processor/rtl/sp_ram.sv:1]
+INFO: [Synth 8-6155] done synthesizing module 'state_processor' (4#1) [/workspace/work/midi-vivado/after-150/source/fpga/state_processor/rtl/state_processor.sv:3]
+INFO: [Synth 8-6157] synthesizing module 'job_processor' [/workspace/work/midi-vivado/after-150/source/fpga/job_processor/rtl/job_processor.sv:3]
+	Parameter EXTERNAL_IO bound to: 1 - type: integer 
+	Parameter MAX_FRAMES bound to: 32 - type: integer 
+	Parameter BUFFERS bound to: 512 - type: integer 
+	Parameter INPUT_PORTS bound to: 2 - type: integer 
+	Parameter OUTPUT_PORTS bound to: 2 - type: integer 
+	Parameter CHUNK_FRAMES bound to: 32 - type: integer 
+	Parameter ENABLE_MEDIA bound to: 1 - type: integer 
+INFO: [Synth 8-6157] synthesizing module 'jp_divider' [/workspace/work/midi-vivado/after-150/source/fpga/job_processor/rtl/jp_divider.sv:1]
+INFO: [Synth 8-6155] done synthesizing module 'jp_divider' (5#1) [/workspace/work/midi-vivado/after-150/source/fpga/job_processor/rtl/jp_divider.sv:1]
+INFO: [Synth 8-6157] synthesizing module 'jp_sample_ram' [/workspace/work/midi-vivado/after-150/source/fpga/job_processor/rtl/jp_sample_ram.sv:1]
+	Parameter DEPTH bound to: 16384 - type: integer 
+	Parameter ADDR_BITS bound to: 14 - type: integer 
+INFO: [Synth 8-6155] done synthesizing module 'jp_sample_ram' (6#1) [/workspace/work/midi-vivado/after-150/source/fpga/job_processor/rtl/jp_sample_ram.sv:1]
+INFO: [Synth 8-6157] synthesizing module 'sp_ram__parameterized3' [/workspace/work/midi-vivado/after-150/source/fpga/state_processor/rtl/sp_ram.sv:1]
+	Parameter WIDTH bound to: 128 - type: integer 
+	Parameter DEPTH bound to: 512 - type: integer 
+	Parameter ADDR_BITS bound to: 9 - type: integer 
+INFO: [Synth 8-6155] done synthesizing module 'sp_ram__parameterized3' (6#1) [/workspace/work/midi-vivado/after-150/source/fpga/state_processor/rtl/sp_ram.sv:1]
+INFO: [Synth 8-6155] done synthesizing module 'job_processor' (7#1) [/workspace/work/midi-vivado/after-150/source/fpga/job_processor/rtl/job_processor.sv:3]
+INFO: [Synth 8-6155] done synthesizing module 'audio_pipeline' (8#1) [/workspace/work/midi-vivado/after-150/source/fpga/job_processor/rtl/audio_pipeline.sv:3]
+INFO: [Synth 8-6157] synthesizing module 'media_store' [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_store.sv:1]
+	Parameter REUSE_VIEWS bound to: 1 - type: integer 
+	Parameter VIEWS bound to: 512 - type: integer 
+	Parameter SLOTS bound to: 5763072 - type: integer 
+	Parameter CHUNK_FRAMES bound to: 32 - type: integer 
+	Parameter BLOCK_CHUNKS bound to: 32 - type: integer 
+	Parameter RETIRED_TABLES bound to: 256 - type: integer 
+	Parameter RECLAIM_BLOCKS bound to: 0 - type: integer 
+	Parameter RECLAIM_CYCLES bound to: 5000 - type: integer 
+	Parameter RECLAIM_GUARD bound to: 1024 - type: integer 
+	Parameter TABLE_PAGES bound to: 16119 - type: integer 
+	Parameter TABLE_LINES bound to: 128 - type: integer 
+	Parameter REF_LINES bound to: 4 - type: integer 
+	Parameter STACK_LINES bound to: 2 - type: integer 
+	Parameter READ_BUFFERS bound to: 4 - type: integer 
+	Parameter WRITE_BUFFERS bound to: 4 - type: integer 
+	Parameter BURST_MEMORY bound to: 1 - type: integer 
+INFO: [Synth 8-6157] synthesizing module 'chunk_memory' [/workspace/work/midi-vivado/after-150/source/fpga/chunk_memory/rtl/chunk_memory.sv:1]
+	Parameter SLOTS bound to: 5763072 - type: integer 
+	Parameter CHUNK_FRAMES bound to: 32 - type: integer 
+	Parameter READ_BUFFERS bound to: 4 - type: integer 
+	Parameter WRITE_BUFFERS bound to: 4 - type: integer 
+	Parameter BURST_MEMORY bound to: 1 - type: integer 
+	Parameter RETIRE_CHUNKS bound to: 32 - type: integer 
+INFO: [Synth 8-6157] synthesizing module 'chunk_priority' [/workspace/work/midi-vivado/after-150/source/fpga/chunk_memory/rtl/chunk_priority.sv:1]
+	Parameter LINES bound to: 4 - type: integer 
+INFO: [Synth 8-6157] synthesizing module 'chunk_priority__parameterized0' [/workspace/work/midi-vivado/after-150/source/fpga/chunk_memory/rtl/chunk_priority.sv:1]
+	Parameter LINES bound to: 2 - type: integer 
+	Parameter INDEX_BITS bound to: 2 - type: integer 
+INFO: [Synth 8-6157] synthesizing module 'chunk_priority__parameterized1' [/workspace/work/midi-vivado/after-150/source/fpga/chunk_memory/rtl/chunk_priority.sv:1]
+	Parameter LINES bound to: 1 - type: integer 
+	Parameter INDEX_BITS bound to: 2 - type: integer 
+INFO: [Synth 8-6155] done synthesizing module 'chunk_priority__parameterized1' (9#1) [/workspace/work/midi-vivado/after-150/source/fpga/chunk_memory/rtl/chunk_priority.sv:1]
+INFO: [Synth 8-6155] done synthesizing module 'chunk_priority__parameterized0' (9#1) [/workspace/work/midi-vivado/after-150/source/fpga/chunk_memory/rtl/chunk_priority.sv:1]
+INFO: [Synth 8-6155] done synthesizing module 'chunk_priority' (9#1) [/workspace/work/midi-vivado/after-150/source/fpga/chunk_memory/rtl/chunk_priority.sv:1]
+INFO: [Synth 8-6157] synthesizing module 'chunk_ram' [/workspace/work/midi-vivado/after-150/source/fpga/chunk_memory/rtl/chunk_ram.sv:1]
+	Parameter DEPTH bound to: 128 - type: integer 
+	Parameter ADDR_BITS bound to: 7 - type: integer 
+INFO: [Synth 8-6155] done synthesizing module 'chunk_ram' (10#1) [/workspace/work/midi-vivado/after-150/source/fpga/chunk_memory/rtl/chunk_ram.sv:1]
+INFO: [Synth 8-6155] done synthesizing module 'chunk_memory' (11#1) [/workspace/work/midi-vivado/after-150/source/fpga/chunk_memory/rtl/chunk_memory.sv:1]
+INFO: [Synth 8-6157] synthesizing module 'media_prefetch_resolver' [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_prefetch_resolver.sv:1]
+	Parameter SLOTS bound to: 180096 - type: integer 
+	Parameter CHUNK_FRAMES bound to: 32 - type: integer 
+	Parameter BLOCK_CHUNKS bound to: 32 - type: integer 
+INFO: [Synth 8-226] default block is never used [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_prefetch_resolver.sv:52]
+INFO: [Synth 8-6155] done synthesizing module 'media_prefetch_resolver' (12#1) [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_prefetch_resolver.sv:1]
+INFO: [Synth 8-6157] synthesizing module 'media_ram' [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_ram.sv:1]
+	Parameter WIDTH bound to: 160 - type: integer 
+	Parameter DEPTH bound to: 512 - type: integer 
+	Parameter ADDR_BITS bound to: 9 - type: integer 
+INFO: [Synth 8-6155] done synthesizing module 'media_ram' (13#1) [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_ram.sv:1]
+INFO: [Synth 8-6157] synthesizing module 'media_reclaimer' [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_reclaimer.sv:1]
+	Parameter GUARD_CYCLES bound to: 1024 - type: integer 
+INFO: [Synth 8-6155] done synthesizing module 'media_reclaimer' (14#1) [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_reclaimer.sv:1]
+INFO: [Synth 8-6157] synthesizing module 'media_metadata' [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_metadata.sv:1]
+	Parameter VIEWS bound to: 512 - type: integer 
+	Parameter SLOTS bound to: 180096 - type: integer 
+	Parameter CHUNK_FRAMES bound to: 1024 - type: integer 
+	Parameter TABLE_PAGES bound to: 16119 - type: integer 
+	Parameter RETIRED_TABLES bound to: 256 - type: integer 
+	Parameter TABLE_LINES bound to: 128 - type: integer 
+	Parameter REF_LINES bound to: 4 - type: integer 
+	Parameter STACK_LINES bound to: 2 - type: integer 
+	Parameter BURST_MEMORY bound to: 1 - type: integer 
+INFO: [Synth 8-6157] synthesizing module 'metadata_cache' [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/metadata_cache.sv:1]
+	Parameter LINES bound to: 128 - type: integer 
+	Parameter BURST_MEMORY bound to: 1 - type: integer 
+INFO: [Synth 8-6157] synthesizing module 'media_ram__parameterized0' [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_ram.sv:1]
+	Parameter DEPTH bound to: 2048 - type: integer 
+	Parameter ADDR_BITS bound to: 11 - type: integer 
+INFO: [Synth 8-6155] done synthesizing module 'media_ram__parameterized0' (14#1) [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_ram.sv:1]
+INFO: [Synth 8-6155] done synthesizing module 'metadata_cache' (15#1) [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/metadata_cache.sv:1]
+INFO: [Synth 8-6157] synthesizing module 'metadata_cache__parameterized0' [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/metadata_cache.sv:1]
+	Parameter LINES bound to: 4 - type: integer 
+	Parameter BURST_MEMORY bound to: 1 - type: integer 
+INFO: [Synth 8-6157] synthesizing module 'media_ram__parameterized1' [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_ram.sv:1]
+	Parameter DEPTH bound to: 64 - type: integer 
+	Parameter ADDR_BITS bound to: 6 - type: integer 
+INFO: [Synth 8-6155] done synthesizing module 'media_ram__parameterized1' (15#1) [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_ram.sv:1]
+INFO: [Synth 8-6155] done synthesizing module 'metadata_cache__parameterized0' (15#1) [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/metadata_cache.sv:1]
+INFO: [Synth 8-6157] synthesizing module 'metadata_cache__parameterized1' [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/metadata_cache.sv:1]
+	Parameter LINES bound to: 2 - type: integer 
+	Parameter BURST_MEMORY bound to: 1 - type: integer 
+INFO: [Synth 8-6157] synthesizing module 'media_ram__parameterized2' [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_ram.sv:1]
+	Parameter DEPTH bound to: 32 - type: integer 
+	Parameter ADDR_BITS bound to: 5 - type: integer 
+INFO: [Synth 8-6155] done synthesizing module 'media_ram__parameterized2' (15#1) [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_ram.sv:1]
+INFO: [Synth 8-6155] done synthesizing module 'metadata_cache__parameterized1' (15#1) [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/metadata_cache.sv:1]
+INFO: [Synth 8-6157] synthesizing module 'media_ram__parameterized3' [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_ram.sv:1]
+	Parameter WIDTH bound to: 128 - type: integer 
+	Parameter DEPTH bound to: 512 - type: integer 
+	Parameter ADDR_BITS bound to: 9 - type: integer 
+INFO: [Synth 8-6155] done synthesizing module 'media_ram__parameterized3' (15#1) [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_ram.sv:1]
+INFO: [Synth 8-6155] done synthesizing module 'media_metadata' (16#1) [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_metadata.sv:1]
+INFO: [Synth 8-6155] done synthesizing module 'media_store' (17#1) [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_store.sv:1]
+INFO: [Synth 8-6157] synthesizing module 'memory_delay' [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/memory_delay.sv:2]
+	Parameter RESPONSE_CYCLES bound to: 1 - type: integer 
+INFO: [Synth 8-6155] done synthesizing module 'memory_delay' (18#1) [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/memory_delay.sv:2]
+INFO: [Synth 8-6155] done synthesizing module 'media_audio_pipeline' (19#1) [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_audio_pipeline.sv:3]
+INFO: [Synth 8-6157] synthesizing module 'shared_axi' [/workspace/work/midi-vivado/after-150/source/fpga/axi_memory/rtl/shared_axi.sv:1]
+	Parameter DATA_WIDTH bound to: 64 - type: integer 
+	Parameter BURST_MEMORY bound to: 1 - type: integer 
+	Parameter MAX_SAMPLE_WORDS bound to: 32 - type: integer 
+	Parameter MAX_METADATA_WORDS bound to: 16 - type: integer 
+INFO: [Synth 8-6157] synthesizing module 'chunk_dma' [/workspace/work/midi-vivado/after-150/source/fpga/axi_memory/rtl/chunk_dma.sv:1]
+	Parameter DATA_WIDTH bound to: 64 - type: integer 
+	Parameter MAX_WORDS bound to: 32 - type: integer 
+INFO: [Synth 8-6155] done synthesizing module 'chunk_dma' (20#1) [/workspace/work/midi-vivado/after-150/source/fpga/axi_memory/rtl/chunk_dma.sv:1]
+INFO: [Synth 8-6157] synthesizing module 'chunk_dma__parameterized0' [/workspace/work/midi-vivado/after-150/source/fpga/axi_memory/rtl/chunk_dma.sv:1]
+	Parameter DATA_WIDTH bound to: 64 - type: integer 
+	Parameter MAX_WORDS bound to: 16 - type: integer 
+INFO: [Synth 8-6155] done synthesizing module 'chunk_dma__parameterized0' (20#1) [/workspace/work/midi-vivado/after-150/source/fpga/axi_memory/rtl/chunk_dma.sv:1]
+INFO: [Synth 8-6157] synthesizing module 'axi_burst_mux' [/workspace/work/midi-vivado/after-150/source/fpga/axi_memory/rtl/axi_burst_mux.sv:1]
+	Parameter DATA_WIDTH bound to: 64 - type: integer 
+INFO: [Synth 8-6157] synthesizing module 'axi_master' [/workspace/work/midi-vivado/after-150/source/fpga/axi_memory/rtl/axi_master.sv:1]
+	Parameter DATA_WIDTH bound to: 64 - type: integer 
+INFO: [Synth 8-6155] done synthesizing module 'axi_master' (21#1) [/workspace/work/midi-vivado/after-150/source/fpga/axi_memory/rtl/axi_master.sv:1]
+INFO: [Synth 8-6155] done synthesizing module 'axi_burst_mux' (22#1) [/workspace/work/midi-vivado/after-150/source/fpga/axi_memory/rtl/axi_burst_mux.sv:1]
+INFO: [Synth 8-6155] done synthesizing module 'shared_axi' (23#1) [/workspace/work/midi-vivado/after-150/source/fpga/axi_memory/rtl/shared_axi.sv:1]
+INFO: [Synth 8-6155] done synthesizing module 'media_audio_pipeline_axi' (24#1) [/workspace/work/midi-vivado/after-150/source/fpga/axi_memory/rtl/media_audio_pipeline_axi.sv:4]
+INFO: [Synth 8-6155] done synthesizing module 'audio_context' (25#1) [/workspace/work/midi-vivado/after-150/context.sv:2]
+WARNING: [Synth 8-4446] all outputs are unconnected for this instance and logic may be removed [/workspace/work/midi-vivado/after-150/context.sv:1147]
+INFO: [Synth 8-6157] synthesizing module 'midi_context' [/workspace/work/midi-vivado/after-150/context.sv:805]
+	Parameter DATA_WIDTH bound to: 64 - type: integer 
+	Parameter LOOPS bound to: 64 - type: integer 
+	Parameter INPUTS bound to: 1 - type: integer 
+	Parameter DESTINATIONS bound to: 8 - type: integer 
+	Parameter BLOCK_EVENTS bound to: 256 - type: integer 
+	Parameter BLOCKS bound to: 2432 - type: integer 
+	Parameter MAX_EVENTS bound to: 8192 - type: integer 
+	Parameter VIEWS bound to: 256 - type: integer 
+	Parameter SNAPSHOTS bound to: 384 - type: integer 
+	Parameter RETIREMENTS bound to: 128 - type: integer 
+	Parameter INPUT_EVENTS bound to: 256 - type: integer 
+	Parameter MAINTENANCE bound to: 64 - type: integer 
+INFO: [Synth 8-6157] synthesizing module 'midi_runtime_axi' [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_runtime_axi.sv:1]
+	Parameter DATA_WIDTH bound to: 64 - type: integer 
+	Parameter LOOPS bound to: 64 - type: integer 
+	Parameter INPUTS bound to: 1 - type: integer 
+	Parameter DESTINATIONS bound to: 8 - type: integer 
+	Parameter BLOCK_EVENTS bound to: 256 - type: integer 
+	Parameter BLOCKS bound to: 2432 - type: integer 
+	Parameter MAX_EVENTS bound to: 8192 - type: integer 
+	Parameter VIEWS bound to: 256 - type: integer 
+	Parameter SNAPSHOTS bound to: 384 - type: integer 
+	Parameter RETIREMENTS bound to: 128 - type: integer 
+	Parameter INPUT_EVENTS bound to: 256 - type: integer 
+	Parameter MAINTENANCE bound to: 64 - type: integer 
+	Parameter TABLE_ENTRIES bound to: 35 - type: integer 
+INFO: [Synth 8-6157] synthesizing module 'midi_runtime' [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_runtime.sv:1]
+	Parameter LOOPS bound to: 64 - type: integer 
+	Parameter INPUTS bound to: 1 - type: integer 
+	Parameter DESTINATIONS bound to: 8 - type: integer 
+	Parameter BLOCK_EVENTS bound to: 256 - type: integer 
+	Parameter BLOCKS bound to: 2432 - type: integer 
+	Parameter MAX_EVENTS bound to: 8192 - type: integer 
+	Parameter VIEWS bound to: 256 - type: integer 
+	Parameter SNAPSHOTS bound to: 384 - type: integer 
+	Parameter RETIREMENTS bound to: 128 - type: integer 
+	Parameter INPUT_EVENTS bound to: 256 - type: integer 
+	Parameter MAINTENANCE bound to: 64 - type: integer 
+	Parameter TABLE_ENTRIES bound to: 35 - type: integer 
+INFO: [Synth 8-6157] synthesizing module 'midi_store' [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_store.sv:1]
+	Parameter BLOCK_EVENTS bound to: 256 - type: integer 
+	Parameter BLOCKS bound to: 2432 - type: integer 
+	Parameter MAX_EVENTS bound to: 8192 - type: integer 
+	Parameter VIEWS bound to: 256 - type: integer 
+	Parameter SNAPSHOTS bound to: 384 - type: integer 
+	Parameter RETIREMENTS bound to: 128 - type: integer 
+	Parameter TABLE_ENTRIES bound to: 35 - type: integer 
+INFO: [Synth 8-6155] done synthesizing module 'midi_store' (26#1) [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_store.sv:1]
+INFO: [Synth 8-6157] synthesizing module 'midi_state_service' [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_state_service.sv:1]
+INFO: [Synth 8-6157] synthesizing module 'midi_state' [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_state.sv:1]
+INFO: [Synth 8-6155] done synthesizing module 'midi_state' (27#1) [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_state.sv:1]
+INFO: [Synth 8-6157] synthesizing module 'midi_difference' [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_difference.sv:1]
+INFO: [Synth 8-6155] done synthesizing module 'midi_difference' (28#1) [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_difference.sv:1]
+INFO: [Synth 8-6157] synthesizing module 'midi_transition' [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_transition.sv:1]
+INFO: [Synth 8-6155] done synthesizing module 'midi_transition' (29#1) [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_transition.sv:1]
+INFO: [Synth 8-6155] done synthesizing module 'midi_state_service' (30#1) [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_state_service.sv:1]
+Reason is one or more of the following :
+	1: Only 1 word in RAM 
+RAM "density_reg" dissolved into registers
+INFO: [Synth 8-6155] done synthesizing module 'midi_runtime' (31#1) [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_runtime.sv:1]
+INFO: [Synth 8-6157] synthesizing module 'word_axi' [/workspace/work/midi-vivado/after-150/source/fpga/axi_memory/rtl/word_axi.sv:1]
+	Parameter DATA_WIDTH bound to: 64 - type: integer 
+INFO: [Synth 8-6157] synthesizing module 'word_dma' [/workspace/work/midi-vivado/after-150/source/fpga/axi_memory/rtl/word_dma.sv:1]
+	Parameter DATA_WIDTH bound to: 64 - type: integer 
+INFO: [Synth 8-6155] done synthesizing module 'word_dma' (32#1) [/workspace/work/midi-vivado/after-150/source/fpga/axi_memory/rtl/word_dma.sv:1]
+INFO: [Synth 8-6155] done synthesizing module 'word_axi' (33#1) [/workspace/work/midi-vivado/after-150/source/fpga/axi_memory/rtl/word_axi.sv:1]
+INFO: [Synth 8-6155] done synthesizing module 'midi_runtime_axi' (34#1) [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_runtime_axi.sv:1]
+INFO: [Synth 8-6155] done synthesizing module 'midi_context' (35#1) [/workspace/work/midi-vivado/after-150/context.sv:805]
+INFO: [Synth 8-6155] done synthesizing module 'session_context' (36#1) [/workspace/work/midi-vivado/after-150/context.sv:1108]
+---------------------------------------------------------------------------------
+Finished RTL Elaboration : Time (s): cpu = 00:00:33 ; elapsed = 00:00:44 . Memory (MB): peak = 2990.328 ; gain = 363.625 ; free physical = 1501 ; free virtual = 9468
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start Handling Custom Attributes
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Finished Handling Custom Attributes : Time (s): cpu = 00:00:52 ; elapsed = 00:01:09 . Memory (MB): peak = 2999.234 ; gain = 372.531 ; free physical = 1834 ; free virtual = 9547
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Finished RTL Optimization Phase 1 : Time (s): cpu = 00:00:52 ; elapsed = 00:01:09 . Memory (MB): peak = 2999.234 ; gain = 372.531 ; free physical = 1834 ; free virtual = 9547
+---------------------------------------------------------------------------------
+Netlist sorting complete. Time (s): cpu = 00:00:02 ; elapsed = 00:00:02 . Memory (MB): peak = 2999.234 ; gain = 0.000 ; free physical = 1736 ; free virtual = 9449
+INFO: [Project 1-570] Preparing netlist for logic optimization
+
+Processing XDC Constraints
+Initializing timing engine
+Parsing XDC File [/workspace/work/midi-vivado/after-150/context.xdc]
+WARNING: [Vivado 12-2489] -period contains time 6.666667 which will be rounded to 6.667 to ensure it is an integer multiple of 1 picosecond [/workspace/work/midi-vivado/after-150/context.xdc:1]
+Finished Parsing XDC File [/workspace/work/midi-vivado/after-150/context.xdc]
+INFO: [Project 1-236] Implementation specific constraints were found while reading constraint file [/workspace/work/midi-vivado/after-150/context.xdc]. These constraints will be ignored for synthesis but will be used in implementation. Impacted constraints are listed in the file [.Xil/session_context_propImpl.xdc].
+Resolution: To avoid this warning, move constraints listed in [.Xil/session_context_propImpl.xdc] to another XDC file and exclude this new file from synthesis with the used_in_synthesis property (File Properties dialog in GUI) and re-run elaboration/synthesis.
+Completed Processing XDC Constraints
+
+Netlist sorting complete. Time (s): cpu = 00:00:00.01 ; elapsed = 00:00:00.02 . Memory (MB): peak = 3334.711 ; gain = 0.000 ; free physical = 1254 ; free virtual = 8934
+INFO: [Project 1-111] Unisim Transformation Summary:
+No Unisim elements were transformed.
+
+Constraint Validation Runtime : Time (s): cpu = 00:00:00.49 ; elapsed = 00:00:00.76 . Memory (MB): peak = 3334.711 ; gain = 0.000 ; free physical = 1242 ; free virtual = 8922
+---------------------------------------------------------------------------------
+Finished Constraint Validation : Time (s): cpu = 00:01:35 ; elapsed = 00:02:05 . Memory (MB): peak = 3334.711 ; gain = 708.008 ; free physical = 1827 ; free virtual = 9410
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start Loading Part and Timing Information
+---------------------------------------------------------------------------------
+INFO: [Synth 8-802] inferred FSM for state register 'phase_reg' in module 'audio_pipeline'
+INFO: [Synth 8-802] inferred FSM for state register 'dma_phase_reg' in module 'chunk_memory'
+INFO: [Synth 8-802] inferred FSM for state register 'phase_reg' in module 'media_prefetch_resolver'
+INFO: [Synth 8-802] inferred FSM for state register 'phase_reg' in module 'axi_master'
+---------------------------------------------------------------------------------------------------
+                   State |                     New Encoding |                Previous Encoding 
+---------------------------------------------------------------------------------------------------
+                    IDLE |                            00001 |                              000
+             STATE_START |                            10000 |                              001
+              STATE_WAIT |                            01000 |                              010
+               JOB_START |                            00100 |                              011
+                JOB_WAIT |                            00010 |                              100
+---------------------------------------------------------------------------------------------------
+INFO: [Synth 8-3354] encoded FSM with state register 'phase_reg' using encoding 'one-hot' in module 'audio_pipeline'
+INFO: [Synth 8-3971] The signal "chunk_ram:/block_memory.samples_reg" was recognized as a true dual port RAM template.
+---------------------------------------------------------------------------------------------------
+                   State |                     New Encoding |                Previous Encoding 
+---------------------------------------------------------------------------------------------------
+                  D_IDLE |                    0000000010000 |                             0000
+                   D_TAG |                    0000001000000 |                             1100
+                  D_HINT |                    0000100000000 |                             1011
+              D_TRANSFER |                    0000010000000 |                             0111
+           D_RAM_REQUEST |                    0000000000001 |                             0011
+            D_RAM_RESULT |                    0000000000010 |                             0100
+          D_STREAM_WRITE |                    0000000000100 |                             1001
+           D_STREAM_READ |                    0010000000000 |                             1000
+           D_STREAM_WAIT |                    0001000000000 |                             1010
+---------------------------------------------------------------------------------------------------
+INFO: [Synth 8-3354] encoded FSM with state register 'dma_phase_reg' using encoding 'one-hot' in module 'chunk_memory'
+---------------------------------------------------------------------------------------------------
+                   State |                     New Encoding |                Previous Encoding 
+---------------------------------------------------------------------------------------------------
+                    IDLE |                         00000010 |                              000
+              HINT_CHECK |                         10000000 |                              001
+      DESCRIPTOR_REQUEST |                         01000000 |                              010
+         DESCRIPTOR_WAIT |                         00100000 |                              011
+      DESCRIPTOR_CAPTURE |                         00010000 |                              100
+           TABLE_REQUEST |                         00000100 |                              101
+              TABLE_WAIT |                         00001000 |                              110
+                    SEND |                         00000001 |                              111
+---------------------------------------------------------------------------------------------------
+INFO: [Synth 8-3354] encoded FSM with state register 'phase_reg' using encoding 'one-hot' in module 'media_prefetch_resolver'
+---------------------------------------------------------------------------------------------------
+                   State |                     New Encoding |                Previous Encoding 
+---------------------------------------------------------------------------------------------------
+                 iSTATE4 |                           100000 |                              000
+*
+                  iSTATE |                           000001 |                              101
+                 iSTATE1 |                           000010 |                              011
+                 iSTATE0 |                           000100 |                              100
+                 iSTATE3 |                           001000 |                              001
+                 iSTATE2 |                           010000 |                              010
+---------------------------------------------------------------------------------------------------
+INFO: [Synth 8-3354] encoded FSM with state register 'phase_reg' using encoding 'one-hot' in module 'axi_master'
+---------------------------------------------------------------------------------
+Finished RTL Optimization Phase 2 : Time (s): cpu = 00:02:55 ; elapsed = 00:04:30 . Memory (MB): peak = 3342.715 ; gain = 716.012 ; free physical = 1351 ; free virtual = 7688
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start RTL Component Statistics 
+---------------------------------------------------------------------------------
+Detailed RTL Component Info : 
++---Adders : 
+	   2 Input   65 Bit       Adders := 9     
+	   3 Input   65 Bit       Adders := 1     
+	   4 Input   64 Bit       Adders := 3     
+	   3 Input   64 Bit       Adders := 33    
+	   2 Input   64 Bit       Adders := 96    
+	   3 Input   42 Bit       Adders := 1     
+	   2 Input   41 Bit       Adders := 1     
+	   5 Input   40 Bit       Adders := 2     
+	   2 Input   40 Bit       Adders := 1     
+	   2 Input   39 Bit       Adders := 5     
+	   2 Input   38 Bit       Adders := 4     
+	   2 Input   37 Bit       Adders := 2     
+	   2 Input   36 Bit       Adders := 7     
+	   2 Input   35 Bit       Adders := 4     
+	   2 Input   34 Bit       Adders := 2     
+	   3 Input   33 Bit       Adders := 6     
+	   2 Input   33 Bit       Adders := 5     
+	   2 Input   32 Bit       Adders := 131   
+	   3 Input   32 Bit       Adders := 20    
+	   4 Input   32 Bit       Adders := 2     
+	   2 Input   27 Bit       Adders := 1     
+	   2 Input   18 Bit       Adders := 1     
+	   2 Input   14 Bit       Adders := 8     
+	   3 Input   14 Bit       Adders := 3     
+	   3 Input   13 Bit       Adders := 2     
+	   2 Input   13 Bit       Adders := 12    
+	   2 Input   12 Bit       Adders := 1     
+	   2 Input   11 Bit       Adders := 6     
+	   2 Input   10 Bit       Adders := 517   
+	   2 Input    9 Bit       Adders := 8     
+	   2 Input    8 Bit       Adders := 13    
+	   2 Input    7 Bit       Adders := 7     
+	   2 Input    6 Bit       Adders := 13    
+	   3 Input    6 Bit       Adders := 1     
+	   3 Input    5 Bit       Adders := 1     
+	   2 Input    5 Bit       Adders := 2     
+	   2 Input    4 Bit       Adders := 8     
+	   2 Input    3 Bit       Adders := 4     
+	   4 Input    3 Bit       Adders := 1     
+	   2 Input    2 Bit       Adders := 6     
+	   2 Input    1 Bit       Adders := 2     
++---XORs : 
+	   2 Input     32 Bit         XORs := 1     
+	   2 Input      1 Bit         XORs := 88    
++---Registers : 
+	              512 Bit    Registers := 5     
+	              256 Bit    Registers := 9     
+	              164 Bit    Registers := 1     
+	              160 Bit    Registers := 8     
+	              129 Bit    Registers := 4     
+	              128 Bit    Registers := 5     
+	               96 Bit    Registers := 2     
+	               65 Bit    Registers := 5     
+	               64 Bit    Registers := 298   
+	               42 Bit    Registers := 1     
+	               33 Bit    Registers := 4     
+	               32 Bit    Registers := 429   
+	               24 Bit    Registers := 14    
+	               23 Bit    Registers := 13    
+	               16 Bit    Registers := 49    
+	               13 Bit    Registers := 19    
+	               12 Bit    Registers := 1     
+	               11 Bit    Registers := 5     
+	               10 Bit    Registers := 7     
+	                9 Bit    Registers := 6     
+	                8 Bit    Registers := 38    
+	                7 Bit    Registers := 8     
+	                6 Bit    Registers := 28    
+	                5 Bit    Registers := 9     
+	                4 Bit    Registers := 34    
+	                3 Bit    Registers := 26    
+	                2 Bit    Registers := 44    
+	                1 Bit    Registers := 331   
++---Multipliers : 
+	              15x32  Multipliers := 17    
+	              10x37  Multipliers := 1     
+	              10x36  Multipliers := 2     
+	               6x36  Multipliers := 4     
+	              10x32  Multipliers := 1     
+	               9x32  Multipliers := 1     
+	               7x32  Multipliers := 1     
+	               6x32  Multipliers := 4     
++---RAMs : 
+	             512K Bit	(16384 X 32 bit)          RAMs := 1     
+	             256K Bit	(1024 X 256 bit)          RAMs := 2     
+	             256K Bit	(4096 X 64 bit)          RAMs := 1     
+	             192K Bit	(2048 X 96 bit)          RAMs := 1     
+	              80K Bit	(512 X 160 bit)          RAMs := 1     
+	              64K Bit	(512 X 128 bit)          RAMs := 2     
+	              64K Bit	(2048 X 32 bit)          RAMs := 2     
+	              32K Bit	(256 X 129 bit)          RAMs := 1     
+	               4K Bit	(128 X 32 bit)          RAMs := 2     
+	               2K Bit	(64 X 32 bit)          RAMs := 1     
+	             1024 Bit	(32 X 32 bit)          RAMs := 1     
+	              320 Bit	(5 X 64 bit)          RAMs := 1     
+	              288 Bit	(9 X 32 bit)          RAMs := 1     
+	              160 Bit	(5 X 32 bit)          RAMs := 1     
++---Muxes : 
+	   2 Input  512 Bit        Muxes := 20    
+	  40 Input  512 Bit        Muxes := 3     
+	   3 Input  256 Bit        Muxes := 1     
+	   2 Input  256 Bit        Muxes := 8     
+	  61 Input  256 Bit        Muxes := 2     
+	  12 Input  256 Bit        Muxes := 1     
+	   4 Input  256 Bit        Muxes := 1     
+	   2 Input  160 Bit        Muxes := 5     
+	   6 Input  160 Bit        Muxes := 2     
+	   6 Input  129 Bit        Muxes := 1     
+	   2 Input  129 Bit        Muxes := 6     
+	  61 Input  129 Bit        Muxes := 1     
+	   2 Input  128 Bit        Muxes := 11    
+	  16 Input  128 Bit        Muxes := 2     
+	   4 Input  128 Bit        Muxes := 1     
+	   3 Input   96 Bit        Muxes := 1     
+	   2 Input   96 Bit        Muxes := 2     
+	  61 Input   96 Bit        Muxes := 1     
+	   2 Input   64 Bit        Muxes := 72    
+	   3 Input   64 Bit        Muxes := 4     
+	   6 Input   64 Bit        Muxes := 2     
+	   8 Input   64 Bit        Muxes := 2     
+	  61 Input   64 Bit        Muxes := 3     
+	   4 Input   64 Bit        Muxes := 5     
+	   7 Input   64 Bit        Muxes := 1     
+	  36 Input   64 Bit        Muxes := 2     
+	  19 Input   64 Bit        Muxes := 3     
+	  16 Input   64 Bit        Muxes := 2     
+	  87 Input   64 Bit        Muxes := 2     
+	  17 Input   64 Bit        Muxes := 4     
+	   9 Input   64 Bit        Muxes := 1     
+	  18 Input   64 Bit        Muxes := 1     
+	  10 Input   64 Bit        Muxes := 2     
+	 253 Input   64 Bit        Muxes := 12    
+	  14 Input   64 Bit        Muxes := 1     
+	  11 Input   64 Bit        Muxes := 1     
+	  30 Input   64 Bit        Muxes := 1     
+	   2 Input   47 Bit        Muxes := 2     
+	   6 Input   47 Bit        Muxes := 1     
+	 253 Input   47 Bit        Muxes := 1     
+	   2 Input   42 Bit        Muxes := 1     
+	   2 Input   38 Bit        Muxes := 10    
+	   3 Input   38 Bit        Muxes := 2     
+	   4 Input   38 Bit        Muxes := 1     
+	   7 Input   38 Bit        Muxes := 1     
+	   3 Input   35 Bit        Muxes := 1     
+	   2 Input   35 Bit        Muxes := 1     
+	   2 Input   32 Bit        Muxes := 191   
+	  40 Input   32 Bit        Muxes := 1     
+	   4 Input   32 Bit        Muxes := 11    
+	   3 Input   32 Bit        Muxes := 11    
+	   6 Input   32 Bit        Muxes := 6     
+	   7 Input   32 Bit        Muxes := 3     
+	  16 Input   32 Bit        Muxes := 5     
+	  36 Input   32 Bit        Muxes := 10    
+	   5 Input   32 Bit        Muxes := 1     
+	   8 Input   32 Bit        Muxes := 1     
+	  87 Input   32 Bit        Muxes := 3     
+	  17 Input   32 Bit        Muxes := 2     
+	 253 Input   32 Bit        Muxes := 13    
+	  19 Input   32 Bit        Muxes := 1     
+	   2 Input   30 Bit        Muxes := 1     
+	   2 Input   27 Bit        Muxes := 5     
+	   6 Input   27 Bit        Muxes := 2     
+	   2 Input   24 Bit        Muxes := 9     
+	 253 Input   24 Bit        Muxes := 1     
+	   3 Input   24 Bit        Muxes := 1     
+	   2 Input   23 Bit        Muxes := 14    
+	  12 Input   23 Bit        Muxes := 1     
+	   5 Input   23 Bit        Muxes := 1     
+	   4 Input   23 Bit        Muxes := 3     
+	   9 Input   23 Bit        Muxes := 5     
+	   2 Input   19 Bit        Muxes := 1     
+	   2 Input   18 Bit        Muxes := 4     
+	   6 Input   18 Bit        Muxes := 3     
+	   2 Input   17 Bit        Muxes := 1     
+	   4 Input   17 Bit        Muxes := 1     
+	   4 Input   16 Bit        Muxes := 1     
+	   2 Input   16 Bit        Muxes := 33    
+	  11 Input   16 Bit        Muxes := 1     
+	   7 Input   16 Bit        Muxes := 1     
+	 253 Input   16 Bit        Muxes := 6     
+	  18 Input   16 Bit        Muxes := 1     
+	  17 Input   16 Bit        Muxes := 1     
+	   2 Input   14 Bit        Muxes := 8     
+	   6 Input   14 Bit        Muxes := 1     
+	   9 Input   13 Bit        Muxes := 1     
+	   2 Input   13 Bit        Muxes := 17    
+	 253 Input   13 Bit        Muxes := 2     
+	   6 Input   13 Bit        Muxes := 2     
+	  15 Input   13 Bit        Muxes := 3     
+	   2 Input   12 Bit        Muxes := 3     
+	  61 Input   12 Bit        Muxes := 1     
+	   2 Input   11 Bit        Muxes := 2     
+	  13 Input   10 Bit        Muxes := 2     
+	   2 Input   10 Bit        Muxes := 8     
+	   6 Input   10 Bit        Muxes := 1     
+	  10 Input   10 Bit        Muxes := 1     
+	  36 Input    9 Bit        Muxes := 1     
+	   2 Input    9 Bit        Muxes := 14    
+	   6 Input    9 Bit        Muxes := 2     
+	   3 Input    8 Bit        Muxes := 9     
+	   2 Input    8 Bit        Muxes := 88    
+	  11 Input    8 Bit        Muxes := 1     
+	  13 Input    8 Bit        Muxes := 1     
+	  61 Input    8 Bit        Muxes := 1     
+	   5 Input    8 Bit        Muxes := 3     
+	  16 Input    8 Bit        Muxes := 3     
+	  36 Input    8 Bit        Muxes := 3     
+	   6 Input    8 Bit        Muxes := 1     
+	   8 Input    8 Bit        Muxes := 1     
+	   4 Input    8 Bit        Muxes := 6     
+	  12 Input    8 Bit        Muxes := 1     
+	  87 Input    8 Bit        Muxes := 3     
+	  15 Input    8 Bit        Muxes := 1     
+	   2 Input    7 Bit        Muxes := 46    
+	   4 Input    7 Bit        Muxes := 4     
+	  61 Input    7 Bit        Muxes := 1     
+	  16 Input    7 Bit        Muxes := 1     
+	   9 Input    7 Bit        Muxes := 1     
+	   3 Input    7 Bit        Muxes := 5     
+	   7 Input    7 Bit        Muxes := 1     
+	   5 Input    7 Bit        Muxes := 1     
+	   2 Input    6 Bit        Muxes := 86    
+	   4 Input    6 Bit        Muxes := 3     
+	   3 Input    6 Bit        Muxes := 12    
+	   9 Input    6 Bit        Muxes := 2     
+	   6 Input    6 Bit        Muxes := 3     
+	  36 Input    6 Bit        Muxes := 2     
+	   7 Input    6 Bit        Muxes := 1     
+	  12 Input    6 Bit        Muxes := 2     
+	  16 Input    6 Bit        Muxes := 1     
+	  30 Input    6 Bit        Muxes := 1     
+	 253 Input    6 Bit        Muxes := 1     
+	   2 Input    5 Bit        Muxes := 68    
+	   3 Input    5 Bit        Muxes := 7     
+	  12 Input    5 Bit        Muxes := 1     
+	   6 Input    5 Bit        Muxes := 1     
+	   5 Input    5 Bit        Muxes := 1     
+	   4 Input    5 Bit        Muxes := 2     
+	  16 Input    5 Bit        Muxes := 2     
+	  87 Input    5 Bit        Muxes := 1     
+	 253 Input    5 Bit        Muxes := 1     
+	   9 Input    5 Bit        Muxes := 1     
+	  14 Input    5 Bit        Muxes := 2     
+	  13 Input    5 Bit        Muxes := 2     
+	   2 Input    4 Bit        Muxes := 213   
+	   5 Input    4 Bit        Muxes := 4     
+	   3 Input    4 Bit        Muxes := 18    
+	  61 Input    4 Bit        Muxes := 3     
+	  10 Input    4 Bit        Muxes := 1     
+	  16 Input    4 Bit        Muxes := 5     
+	   7 Input    4 Bit        Muxes := 1     
+	  12 Input    4 Bit        Muxes := 8     
+	   9 Input    4 Bit        Muxes := 10    
+	  87 Input    4 Bit        Muxes := 1     
+	 253 Input    4 Bit        Muxes := 5     
+	  18 Input    4 Bit        Muxes := 1     
+	  30 Input    4 Bit        Muxes := 1     
+	  14 Input    4 Bit        Muxes := 2     
+	   6 Input    4 Bit        Muxes := 2     
+	  19 Input    4 Bit        Muxes := 3     
+	   4 Input    4 Bit        Muxes := 2     
+	  17 Input    4 Bit        Muxes := 1     
+	   2 Input    3 Bit        Muxes := 75    
+	  40 Input    3 Bit        Muxes := 2     
+	  41 Input    3 Bit        Muxes := 1     
+	   3 Input    3 Bit        Muxes := 15    
+	  61 Input    3 Bit        Muxes := 5     
+	   7 Input    3 Bit        Muxes := 1     
+	   6 Input    3 Bit        Muxes := 2     
+	  16 Input    3 Bit        Muxes := 1     
+	   5 Input    3 Bit        Muxes := 2     
+	  36 Input    3 Bit        Muxes := 1     
+	  50 Input    3 Bit        Muxes := 2     
+	  87 Input    3 Bit        Muxes := 1     
+	   4 Input    3 Bit        Muxes := 2     
+	 253 Input    3 Bit        Muxes := 6     
+	   9 Input    3 Bit        Muxes := 1     
+	  30 Input    3 Bit        Muxes := 3     
+	  14 Input    3 Bit        Muxes := 1     
+	  26 Input    3 Bit        Muxes := 1     
+	  19 Input    3 Bit        Muxes := 1     
+	  11 Input    2 Bit        Muxes := 1     
+	   2 Input    2 Bit        Muxes := 127   
+	   4 Input    2 Bit        Muxes := 4     
+	  40 Input    2 Bit        Muxes := 1     
+	   3 Input    2 Bit        Muxes := 9     
+	  61 Input    2 Bit        Muxes := 4     
+	   6 Input    2 Bit        Muxes := 1     
+	  16 Input    2 Bit        Muxes := 4     
+	  36 Input    2 Bit        Muxes := 3     
+	   7 Input    2 Bit        Muxes := 1     
+	  50 Input    2 Bit        Muxes := 2     
+	   9 Input    2 Bit        Muxes := 1     
+	  87 Input    2 Bit        Muxes := 2     
+	 253 Input    2 Bit        Muxes := 3     
+	  14 Input    2 Bit        Muxes := 1     
+	   2 Input    1 Bit        Muxes := 1460  
+	  40 Input    1 Bit        Muxes := 32    
+	  41 Input    1 Bit        Muxes := 14    
+	  11 Input    1 Bit        Muxes := 14    
+	   4 Input    1 Bit        Muxes := 35    
+	   3 Input    1 Bit        Muxes := 20    
+	  61 Input    1 Bit        Muxes := 46    
+	   6 Input    1 Bit        Muxes := 28    
+	  12 Input    1 Bit        Muxes := 32    
+	   7 Input    1 Bit        Muxes := 14    
+	   8 Input    1 Bit        Muxes := 11    
+	   5 Input    1 Bit        Muxes := 13    
+	  16 Input    1 Bit        Muxes := 210   
+	 128 Input    1 Bit        Muxes := 1     
+	  36 Input    1 Bit        Muxes := 44    
+	  10 Input    1 Bit        Muxes := 2     
+	  50 Input    1 Bit        Muxes := 40    
+	  20 Input    1 Bit        Muxes := 10    
+	   9 Input    1 Bit        Muxes := 15    
+	  87 Input    1 Bit        Muxes := 61    
+	 253 Input    1 Bit        Muxes := 131   
+	  30 Input    1 Bit        Muxes := 11    
+	  15 Input    1 Bit        Muxes := 12    
+	  13 Input    1 Bit        Muxes := 38    
+	  14 Input    1 Bit        Muxes := 5     
+	  19 Input    1 Bit        Muxes := 26    
+	  17 Input    1 Bit        Muxes := 14    
+---------------------------------------------------------------------------------
+Finished RTL Component Statistics 
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start Part Resource Summary
+---------------------------------------------------------------------------------
+Part Resources:
+DSPs: 220 (col length:60)
+BRAMs: 280 (col length: RAMB18 60 RAMB36 30)
+---------------------------------------------------------------------------------
+Finished Part Resource Summary
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start Cross Boundary and Area Optimization
+---------------------------------------------------------------------------------
+INFO: [Synth 8-4471] merging register 'port_index_reg[15:0]' into 'port_index_reg[15:0]' [/workspace/work/midi-vivado/after-150/source/fpga/job_processor/rtl/job_processor.sv:168]
+INFO: [Synth 8-4471] merging register 'destination_reg[15:0]' into 'destination_reg[15:0]' [/workspace/work/midi-vivado/after-150/source/fpga/job_processor/rtl/job_processor.sv:186]
+INFO: [Synth 8-5544] ROM "error_code" won't be mapped to Block RAM because address size (3) smaller than threshold (5)
+DSP Report: Generating DSP partial_lh_reg0, operation Mode is: A*B.
+DSP Report: operator partial_lh_reg0 is absorbed into DSP partial_lh_reg0.
+DSP Report: Generating DSP partial_hl_reg0, operation Mode is: A*B.
+DSP Report: operator partial_hl_reg0 is absorbed into DSP partial_hl_reg0.
+DSP Report: Generating DSP partial_hh_reg0, operation Mode is: A*B.
+DSP Report: operator partial_hh_reg0 is absorbed into DSP partial_hh_reg0.
+DSP Report: Generating DSP partial_ll_reg0, operation Mode is: A*B.
+DSP Report: operator partial_ll_reg0 is absorbed into DSP partial_ll_reg0.
+WARNING: [Synth 8-3917] design job_processor__GB1 has port sample_input_address[31] driven by constant 0
+WARNING: [Synth 8-3917] design job_processor__GB1 has port sample_input_address[30] driven by constant 0
+WARNING: [Synth 8-3917] design job_processor__GB1 has port sample_input_address[29] driven by constant 0
+WARNING: [Synth 8-3917] design job_processor__GB1 has port sample_input_address[28] driven by constant 0
+WARNING: [Synth 8-3917] design job_processor__GB1 has port sample_input_address[27] driven by constant 0
+WARNING: [Synth 8-3917] design job_processor__GB1 has port sample_input_address[26] driven by constant 0
+WARNING: [Synth 8-3917] design job_processor__GB1 has port sample_input_address[25] driven by constant 0
+WARNING: [Synth 8-3917] design job_processor__GB1 has port sample_input_address[24] driven by constant 0
+WARNING: [Synth 8-3917] design job_processor__GB1 has port sample_input_address[23] driven by constant 0
+INFO: [Synth 8-4652] Swapped enable and write-enable on 16 RAM instances of RAM scratch_memory/memory_reg to conserve power
+INFO: [Synth 8-5544] ROM "operand_data" won't be mapped to Block RAM because address size (3) smaller than threshold (5)
+INFO: [Synth 8-5544] ROM "phase" won't be mapped to Block RAM because address size (3) smaller than threshold (5)
+INFO: [Synth 8-5784] Optimized 63 bits of RAM "read_intents/storage/memory_reg" due to constant propagation. Old ram width 256 bits, new ram width 193 bits.
+INFO: [Synth 8-4652] Swapped enable and write-enable on 6 RAM instances of RAM read_intents/storage/memory_reg to conserve power
+INFO: [Synth 8-4652] Swapped enable and write-enable on 6 RAM instances of RAM state_engine/program_memory/memory_reg to conserve power
+INFO: [Synth 8-4652] Swapped enable and write-enable on 8 RAM instances of RAM state_engine/loop_memory/memory_reg to conserve power
+INFO: [Synth 8-4652] Swapped enable and write-enable on 8 RAM instances of RAM state_engine/jobs/storage/memory_reg to conserve power
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\state_engine/engine /\operation_return_reg[6] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\state_engine/engine /\error_code_reg[5] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\state_engine/engine /\capture_job_reg[255] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\state_engine/engine /\sync_natural_return_reg[4] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\state_engine/engine /\run_state_count_reg[31] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\state_engine/engine /\sync_event_return_reg[6] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\state_engine/engine /\memory_return_reg[6] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\state_engine/engine /\arithmetic_return_reg[6] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\state_engine/engine /\phase_reg[6] )
+INFO: [Synth 8-3886] merging instance 'tags_reg[0][3]' (FDE) to 'tags_reg[0][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[0][4]' (FDE) to 'tags_reg[0][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[0][5]' (FDE) to 'tags_reg[0][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[0][0]' (FDE) to 'tags_reg[0][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[0][1]' (FDE) to 'tags_reg[0][2]'
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[0][2] )
+INFO: [Synth 8-3886] merging instance 'tags_reg[1][3]' (FDE) to 'tags_reg[1][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[1][4]' (FDE) to 'tags_reg[1][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[1][5]' (FDE) to 'tags_reg[1][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[1][0]' (FDE) to 'tags_reg[1][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[1][1]' (FDE) to 'tags_reg[1][2]'
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[1][2] )
+INFO: [Synth 8-3886] merging instance 'tags_reg[2][3]' (FDE) to 'tags_reg[2][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[2][4]' (FDE) to 'tags_reg[2][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[2][5]' (FDE) to 'tags_reg[2][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[2][0]' (FDE) to 'tags_reg[2][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[2][1]' (FDE) to 'tags_reg[2][2]'
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[2][2] )
+INFO: [Synth 8-3886] merging instance 'tags_reg[3][3]' (FDE) to 'tags_reg[3][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[3][4]' (FDE) to 'tags_reg[3][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[3][5]' (FDE) to 'tags_reg[3][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[3][0]' (FDE) to 'tags_reg[3][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[3][1]' (FDE) to 'tags_reg[3][2]'
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[3][2] )
+INFO: [Synth 8-3886] merging instance 'tags_reg[4][3]' (FDE) to 'tags_reg[4][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[4][4]' (FDE) to 'tags_reg[4][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[4][5]' (FDE) to 'tags_reg[4][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[4][0]' (FDE) to 'tags_reg[4][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[4][1]' (FDE) to 'tags_reg[4][2]'
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[4][2] )
+INFO: [Synth 8-3886] merging instance 'tags_reg[5][3]' (FDE) to 'tags_reg[5][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[5][4]' (FDE) to 'tags_reg[5][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[5][5]' (FDE) to 'tags_reg[5][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[5][0]' (FDE) to 'tags_reg[5][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[5][1]' (FDE) to 'tags_reg[5][2]'
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[5][2] )
+INFO: [Synth 8-3886] merging instance 'tags_reg[6][3]' (FDE) to 'tags_reg[6][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[6][4]' (FDE) to 'tags_reg[6][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[6][5]' (FDE) to 'tags_reg[6][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[6][0]' (FDE) to 'tags_reg[6][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[6][1]' (FDE) to 'tags_reg[6][2]'
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[6][2] )
+INFO: [Synth 8-3886] merging instance 'tags_reg[7][3]' (FDE) to 'tags_reg[7][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[7][4]' (FDE) to 'tags_reg[7][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[7][5]' (FDE) to 'tags_reg[7][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[7][0]' (FDE) to 'tags_reg[7][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[7][1]' (FDE) to 'tags_reg[7][2]'
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[7][2] )
+INFO: [Synth 8-3886] merging instance 'tags_reg[8][3]' (FDE) to 'tags_reg[8][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[8][4]' (FDE) to 'tags_reg[8][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[8][5]' (FDE) to 'tags_reg[8][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[8][0]' (FDE) to 'tags_reg[8][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[8][1]' (FDE) to 'tags_reg[8][2]'
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[8][2] )
+INFO: [Synth 8-3886] merging instance 'tags_reg[9][3]' (FDE) to 'tags_reg[9][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[9][4]' (FDE) to 'tags_reg[9][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[9][5]' (FDE) to 'tags_reg[9][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[9][0]' (FDE) to 'tags_reg[9][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[9][1]' (FDE) to 'tags_reg[9][2]'
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[9][2] )
+INFO: [Synth 8-3886] merging instance 'tags_reg[10][3]' (FDE) to 'tags_reg[10][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[10][4]' (FDE) to 'tags_reg[10][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[10][5]' (FDE) to 'tags_reg[10][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[10][0]' (FDE) to 'tags_reg[10][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[10][1]' (FDE) to 'tags_reg[10][2]'
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[10][2] )
+INFO: [Synth 8-3886] merging instance 'tags_reg[11][3]' (FDE) to 'tags_reg[11][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[11][4]' (FDE) to 'tags_reg[11][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[11][5]' (FDE) to 'tags_reg[11][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[11][0]' (FDE) to 'tags_reg[11][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[11][1]' (FDE) to 'tags_reg[11][2]'
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[11][2] )
+INFO: [Synth 8-3886] merging instance 'tags_reg[12][3]' (FDE) to 'tags_reg[12][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[12][4]' (FDE) to 'tags_reg[12][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[12][5]' (FDE) to 'tags_reg[12][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[12][0]' (FDE) to 'tags_reg[12][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[12][1]' (FDE) to 'tags_reg[12][2]'
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[12][2] )
+INFO: [Synth 8-3886] merging instance 'tags_reg[13][3]' (FDE) to 'tags_reg[13][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[13][4]' (FDE) to 'tags_reg[13][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[13][5]' (FDE) to 'tags_reg[13][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[13][0]' (FDE) to 'tags_reg[13][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[13][1]' (FDE) to 'tags_reg[13][2]'
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[13][2] )
+INFO: [Synth 8-3886] merging instance 'tags_reg[14][3]' (FDE) to 'tags_reg[14][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[14][4]' (FDE) to 'tags_reg[14][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[14][5]' (FDE) to 'tags_reg[14][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[14][0]' (FDE) to 'tags_reg[14][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[14][1]' (FDE) to 'tags_reg[14][2]'
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[14][2] )
+INFO: [Synth 8-3886] merging instance 'tags_reg[15][3]' (FDE) to 'tags_reg[15][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[15][4]' (FDE) to 'tags_reg[15][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[15][5]' (FDE) to 'tags_reg[15][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[15][0]' (FDE) to 'tags_reg[15][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[15][1]' (FDE) to 'tags_reg[15][2]'
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[15][2] )
+INFO: [Synth 8-3886] merging instance 'tags_reg[16][3]' (FDE) to 'tags_reg[16][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[16][4]' (FDE) to 'tags_reg[16][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[16][5]' (FDE) to 'tags_reg[16][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[16][0]' (FDE) to 'tags_reg[16][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[16][1]' (FDE) to 'tags_reg[16][2]'
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[16][2] )
+INFO: [Synth 8-3886] merging instance 'tags_reg[17][3]' (FDE) to 'tags_reg[17][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[17][4]' (FDE) to 'tags_reg[17][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[17][5]' (FDE) to 'tags_reg[17][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[17][0]' (FDE) to 'tags_reg[17][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[17][1]' (FDE) to 'tags_reg[17][2]'
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[17][2] )
+INFO: [Synth 8-3886] merging instance 'tags_reg[18][3]' (FDE) to 'tags_reg[18][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[18][4]' (FDE) to 'tags_reg[18][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[18][5]' (FDE) to 'tags_reg[18][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[18][0]' (FDE) to 'tags_reg[18][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[18][1]' (FDE) to 'tags_reg[18][2]'
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[18][2] )
+INFO: [Synth 8-3886] merging instance 'tags_reg[19][3]' (FDE) to 'tags_reg[19][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[19][4]' (FDE) to 'tags_reg[19][5]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[19][5]' (FDE) to 'tags_reg[19][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[19][0]' (FDE) to 'tags_reg[19][2]'
+INFO: [Synth 8-3886] merging instance 'tags_reg[19][1]' (FDE) to 'tags_reg[19][2]'
+INFO: [Common 17-14] Message 'Synth 8-3886' appears 100 times and further instances of the messages will be disabled. Use the Tcl command set_msg_config to change the current settings.
+INFO: [Common 17-14] Message 'Synth 8-3886' appears 100 times and further instances of the messages will be disabled. Use the Tcl command set_msg_config to change the current settings.
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[19][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[20][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[21][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[22][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[23][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[24][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[25][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[26][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[27][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[28][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[29][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[30][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[35][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[36][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[37][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[38][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[39][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[40][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[41][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[42][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[43][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[44][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[45][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[46][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[47][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[48][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[49][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[50][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[51][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[52][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[53][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[54][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[55][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[56][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[57][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[58][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[59][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[60][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[61][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[62][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[64][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[65][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[66][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[67][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[68][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[79][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[80][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[81][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[82][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[83][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[85][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[87][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[89][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[90][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[91][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[93][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[94][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[95][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[96][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[97][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[98][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[100][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[101][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[102][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[103][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[105][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[106][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[107][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[108][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[109][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[110][2] )
+INFO: [Synth 8-3333] propagating constant 0 across sequential element (\tags_reg[111][2] )
+INFO: [Common 17-14] Message 'Synth 8-3333' appears 100 times and further instances of the messages will be disabled. Use the Tcl command set_msg_config to change the current settings.
+INFO: [Common 17-14] Message 'Synth 8-3333' appears 100 times and further instances of the messages will be disabled. Use the Tcl command set_msg_config to change the current settings.
+INFO: [Synth 8-4652] Swapped enable and write-enable on 2 RAM instances of RAM data_ram/memory_reg to conserve power
+INFO: [Synth 8-4471] merging register 'retired_head_index_reg[7:0]' into 'retired_head_index_reg[7:0]' [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_metadata.sv:33]
+INFO: [Synth 8-4471] merging register 'retired_tail_index_reg[7:0]' into 'retired_tail_index_reg[7:0]' [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/media_metadata.sv:34]
+INFO: [Synth 8-4471] merging register 'banks[1].cache/target_reg[1:0]' into 'banks[1].cache/target_reg[1:0]' [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/metadata_cache.sv:55]
+INFO: [Synth 8-4471] merging register 'banks[2].cache/target_reg[0:0]' into 'banks[2].cache/target_reg[0:0]' [/workspace/work/midi-vivado/after-150/source/fpga/media_store/rtl/metadata_cache.sv:55]
+INFO: [Synth 8-5546] ROM "invalid_tree_request" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "trim_finished" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "trim_used_pages" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "gc_used" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "root_data" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "capacity_insufficient" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "additional" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "free_head" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "required_nodes" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "gc_root" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "retired_tail_index" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "retired_references" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "parent_address" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "invalid_tree_request" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "trim_finished" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "trim_used_pages" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "gc_used" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "root_data" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "capacity_insufficient" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "additional" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "free_head" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "required_nodes" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "gc_root" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "retired_tail_index" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "retired_references" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "parent_address" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5544] ROM "banks[1].cache/matched_lines" won't be mapped to Block RAM because address size (4) smaller than threshold (5)
+INFO: [Synth 8-5544] ROM "banks[2].cache/matched_lines" won't be mapped to Block RAM because address size (4) smaller than threshold (5)
+INFO: [Synth 8-7067] Removed DRAM instance i_17/i_0/path_address_reg_0_7_63_63 from module extram__14 due to constant propagation
+INFO: [Synth 8-7067] Removed DRAM instance i_17/i_0/path_address_reg_0_7_62_62 from module extram__14 due to constant propagation
+INFO: [Synth 8-7067] Removed DRAM instance i_17/i_0/path_address_reg_0_7_61_61 from module extram__14 due to constant propagation
+INFO: [Synth 8-7067] Removed DRAM instance i_17/i_0/path_address_reg_0_7_60_60 from module extram__14 due to constant propagation
+INFO: [Synth 8-7067] Removed DRAM instance i_17/i_0/path_address_reg_0_7_59_59 from module extram__14 due to constant propagation
+INFO: [Synth 8-7067] Removed DRAM instance i_17/i_0/path_address_reg_0_7_58_58 from module extram__14 due to constant propagation
+INFO: [Synth 8-7067] Removed DRAM instance i_17/i_0/path_address_reg_0_7_57_57 from module extram__14 due to constant propagation
+INFO: [Synth 8-7067] Removed DRAM instance i_17/i_0/path_address_reg_0_7_56_56 from module extram__14 due to constant propagation
+INFO: [Synth 8-7067] Removed DRAM instance i_17/i_0/path_address_reg_0_7_55_55 from module extram__14 due to constant propagation
+INFO: [Synth 8-7067] Removed DRAM instance i_17/i_0/path_address_reg_0_7_54_54 from module extram__14 due to constant propagation
+INFO: [Synth 8-7067] Removed DRAM instance i_17/i_0/path_address_reg_0_7_53_53 from module extram__14 due to constant propagation
+INFO: [Synth 8-7067] Removed DRAM instance i_17/i_0/path_address_reg_0_7_52_52 from module extram__14 due to constant propagation
+INFO: [Synth 8-7067] Removed DRAM instance i_17/i_0/path_address_reg_0_7_51_51 from module extram__14 due to constant propagation
+INFO: [Synth 8-7067] Removed DRAM instance i_17/i_0/path_address_reg_0_7_50_50 from module extram__14 due to constant propagation
+INFO: [Synth 8-7067] Removed DRAM instance i_17/i_0/path_address_reg_0_7_49_49 from module extram__14 due to constant propagation
+INFO: [Synth 8-7067] Removed DRAM instance i_17/i_0/path_address_reg_0_7_48_48 from module extram__14 due to constant propagation
+INFO: [Synth 8-7067] Removed DRAM instance i_17/i_0/path_address_reg_0_7_47_47 from module extram__14 due to constant propagation
+INFO: [Synth 8-7067] Removed DRAM instance i_17/i_0/path_address_reg_0_7_46_46 from module extram__14 due to constant propagation
+INFO: [Synth 8-7067] Removed DRAM instance i_17/i_0/path_address_reg_0_7_45_45 from module extram__14 due to constant propagation
+INFO: [Synth 8-7067] Removed DRAM instance i_17/i_0/path_address_reg_0_7_44_44 from module extram__14 due to constant propagation
+INFO: [Synth 8-7067] Removed DRAM instance i_17/i_0/path_address_reg_0_7_43_43 from module extram__14 due to constant propagation
+INFO: [Synth 8-7067] Removed DRAM instance i_17/i_0/path_address_reg_0_7_42_42 from module extram__14 due to constant propagation
+INFO: [Synth 8-7067] Removed DRAM instance i_17/i_0/path_address_reg_0_7_41_41 from module extram__14 due to constant propagation
+INFO: [Synth 8-7067] Removed DRAM instance i_17/i_0/path_address_reg_0_7_63_63 from module extram__14 due to constant propagation
+INFO: [Synth 8-7067] Removed DRAM instance i_17/i_0/path_address_reg_0_7_40_40 from module extram__14 due to constant propagation
+INFO: [Synth 8-7067] Removed DRAM instance i_17/i_0/path_address_reg_0_7_39_39 from module extram__14 due to constant propagation
+INFO: [Synth 8-7067] Removed DRAM instance i_17/i_0/path_address_reg_0_7_1_1 from module extram__14 due to constant propagation
+INFO: [Synth 8-7067] Removed DRAM instance i_17/i_0/path_address_reg_0_7_0_0 from module extram__14 due to constant propagation
+INFO: [Synth 8-7067] Removed DRAM instance i_17/i_0/path_address_reg_0_7_40_40 from module extram__14 due to constant propagation
+INFO: [Synth 8-4471] merging register 'dma_chunk_reg[22:0]' into 'dma_chunk_reg[22:0]' [/workspace/work/midi-vivado/after-150/source/fpga/chunk_memory/rtl/chunk_memory.sv:87]
+INFO: [Synth 8-4471] merging register 'dma_index_reg[5:0]' into 'dma_index_reg[5:0]' [/workspace/work/midi-vivado/after-150/source/fpga/chunk_memory/rtl/chunk_memory.sv:261]
+INFO: [Synth 8-4471] merging register 'dma_line_reg[31:0]' into 'dma_line_reg[31:0]' [/workspace/work/midi-vivado/after-150/source/fpga/chunk_memory/rtl/chunk_memory.sv:266]
+INFO: [Synth 8-5544] ROM "opcode" won't be mapped to Block RAM because address size (4) smaller than threshold (5)
+WARNING: [Synth 8-6014] Unused sequential element read_ram/block_memory.samples_reg was removed. 
+WARNING: [Synth 8-6014] Unused sequential element write_ram/block_memory.samples_reg was removed. 
+WARNING: [Synth 8-3332] Sequential element (FSM_onehot_dma_phase_reg[12]) is unused and will be removed from module chunk_memory.
+WARNING: [Synth 8-3332] Sequential element (FSM_onehot_dma_phase_reg[11]) is unused and will be removed from module chunk_memory.
+WARNING: [Synth 8-3332] Sequential element (FSM_onehot_dma_phase_reg[5]) is unused and will be removed from module chunk_memory.
+WARNING: [Synth 8-3332] Sequential element (FSM_onehot_dma_phase_reg[3]) is unused and will be removed from module chunk_memory.
+INFO: [Synth 8-4471] merging register 'address_reg[31:0]' into 'address_reg[31:0]' [/workspace/work/midi-vivado/after-150/source/fpga/axi_memory/rtl/chunk_dma.sv:50]
+INFO: [Synth 8-4471] merging register 'address_reg[31:0]' into 'address_reg[31:0]' [/workspace/work/midi-vivado/after-150/source/fpga/axi_memory/rtl/chunk_dma.sv:50]
+WARNING: [Synth 8-3917] design shared_axi has port m_axi_awid driven by constant 0
+WARNING: [Synth 8-3917] design shared_axi has port m_axi_awburst[1] driven by constant 0
+WARNING: [Synth 8-3917] design shared_axi has port m_axi_awburst[0] driven by constant 1
+WARNING: [Synth 8-3917] design shared_axi has port m_axi_wid driven by constant 0
+WARNING: [Synth 8-3917] design shared_axi has port m_axi_arid driven by constant 0
+WARNING: [Synth 8-3917] design shared_axi has port m_axi_arburst[1] driven by constant 0
+WARNING: [Synth 8-3917] design shared_axi has port m_axi_arburst[0] driven by constant 1
+INFO: [Synth 8-5546] ROM "block_id" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "snapshot_generation" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "record_address" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-4471] merging register 'change_word_index_reg[31:0]' into 'change_word_index_reg[31:0]' [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_runtime.sv:582]
+INFO: [Synth 8-4471] merging register 'cursor_reg[8:0]' into 'cursor_reg[8:0]' [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_state.sv:55]
+INFO: [Synth 8-4471] merging register 'channel_base_reg[12:0]' into 'channel_base_reg[12:0]' [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_state.sv:41]
+INFO: [Synth 8-4471] merging register 'channel_base_reg[12:0]' into 'channel_base_reg[12:0]' [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_state.sv:41]
+INFO: [Synth 8-4471] merging register 'channel_base_reg[12:0]' into 'channel_base_reg[12:0]' [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_state.sv:41]
+INFO: [Synth 8-4471] merging register 'channel_base_reg[12:0]' into 'channel_base_reg[12:0]' [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_state.sv:41]
+INFO: [Synth 8-4471] merging register 'channel_base_reg[12:0]' into 'channel_base_reg[12:0]' [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_state.sv:41]
+INFO: [Synth 8-4471] merging register 'channel_base_reg[12:0]' into 'channel_base_reg[12:0]' [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_state.sv:41]
+INFO: [Synth 8-5544] ROM "execution.cc" won't be mapped to Block RAM because address size (3) smaller than threshold (5)
+INFO: [Synth 8-4471] merging register 'cell_index_reg[12:0]' into 'cell_index_reg[12:0]' [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_difference.sv:46]
+INFO: [Synth 8-4471] merging register 'channel_base_reg[12:0]' into 'channel_base_reg[12:0]' [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_difference.sv:46]
+INFO: [Synth 8-4471] merging register 'channel_reg[4:0]' into 'channel_reg[4:0]' [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_transition.sv:43]
+INFO: [Synth 8-4471] merging register 'channel_reg[4:0]' into 'channel_reg[4:0]' [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_transition.sv:43]
+INFO: [Synth 8-4471] merging register 'channel_reg[4:0]' into 'channel_reg[4:0]' [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_transition.sv:43]
+INFO: [Synth 8-5546] ROM "response_error" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "phase33" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "scalar_field" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "response_error" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "phase33" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "scalar_field" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5544] ROM "scalar_field" won't be mapped to Block RAM because address size (4) smaller than threshold (5)
+INFO: [Synth 8-4471] merging register 'snapshot_word_reg[1:0]' into 'snapshot_word_reg[1:0]' [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_state_service.sv:68]
+INFO: [Synth 8-4471] merging register 'cursor_reg[3:0]' into 'cursor_reg[3:0]' [/workspace/work/midi-vivado/after-150/source/fpga/midi/rtl/midi_state_service.sv:68]
+INFO: [Synth 8-5546] ROM "range_order" won't be mapped to RAM because it is too sparse
+INFO: [Synth 8-5546] ROM "context_words" won't be mapped to RAM because it is too sparse
+INFO: [Common 17-14] Message 'Synth 8-3886' appears 100 times and further instances of the messages will be disabled. Use the Tcl command set_msg_config to change the current settings.
+INFO: [Synth 8-5546] ROM "density" won't be mapped to RAM because it is too sparse
+---------------------------------------------------------------------------------
+Finished Cross Boundary and Area Optimization : Time (s): cpu = 00:06:26 ; elapsed = 00:10:22 . Memory (MB): peak = 3354.641 ; gain = 727.938 ; free physical = 4221 ; free virtual = 9115
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start ROM, RAM, DSP, Shift Register and Retiming Reporting
+---------------------------------------------------------------------------------
+
+Block RAM: Preliminary Mapping Report (see note below)
++---------------------+----------------------------------------+------------------------+---+---+------------------------+---+---+------------------+--------+--------+
+|Module Name          | RTL Object                             | PORT A (Depth x Width) | W | R | PORT B (Depth x Width) | W | R | Ports driving FF | RAMB18 | RAMB36 | 
++---------------------+----------------------------------------+------------------------+---+---+------------------------+---+---+------------------+--------+--------+
+|job_processor__GB1   | smoothing_memory/memory_reg            | 512 x 128(READ_FIRST)  | W |   | 512 x 128(WRITE_FIRST) |   | R | Port A and B     | 0      | 2      | 
+|job_processor__GB1   | scratch_memory/memory_reg              | 16 K x 32(READ_FIRST)  | W |   | 16 K x 32(WRITE_FIRST) |   | R | Port A and B     | 0      | 16     | 
+|audio_pipeline__GC0  | read_intents/storage/memory_reg        | 1 K x 256(READ_FIRST)  | W |   | 1 K x 256(WRITE_FIRST) |   | R | Port A and B     | 1      | 5      | 
+|audio_pipeline__GC0  | state_engine/program_memory/memory_reg | 2 K x 96(READ_FIRST)   | W |   | 2 K x 96(WRITE_FIRST)  |   | R | Port A and B     | 1      | 5      | 
+|audio_pipeline__GC0  | state_engine/state_memory/memory_reg   | 256 x 129(READ_FIRST)  | W |   | 256 x 129(WRITE_FIRST) |   | R | Port A and B     | 0      | 2      | 
+|audio_pipeline__GC0  | state_engine/loop_memory/memory_reg    | 4 K x 64(READ_FIRST)   | W |   | 4 K x 64(WRITE_FIRST)  |   | R | Port A and B     | 1      | 7      | 
+|audio_pipeline__GC0  | state_engine/jobs/storage/memory_reg   | 1 K x 256(READ_FIRST)  | W |   | 1 K x 256(WRITE_FIRST) |   | R | Port A and B     | 1      | 7      | 
+|metadata_cache__GB2  | data_ram/memory_reg                    | 2 K x 32(READ_FIRST)   | W |   | 2 K x 32(WRITE_FIRST)  |   | R | Port A and B     | 0      | 2      | 
+|media_metadata__GCB0 | banks[1].cache/data_ram/memory_reg     | 64 x 32(READ_FIRST)    | W |   | 64 x 32(WRITE_FIRST)   |   | R | Port A and B     | 1      | 0      | 
+|media_metadata__GCB0 | banks[2].cache/data_ram/memory_reg     | 32 x 32(READ_FIRST)    | W |   | 32 x 32(WRITE_FIRST)   |   | R | Port A and B     | 1      | 0      | 
+|media_metadata__GCB0 | roots/memory_reg                       | 512 x 128(READ_FIRST)  | W |   | 512 x 128(WRITE_FIRST) |   | R | Port A and B     | 0      | 2      | 
+|media_store__GCB0    | descriptors/memory_reg                 | 512 x 160(READ_FIRST)  | W |   | 512 x 160(WRITE_FIRST) |   | R | Port A and B     | 1      | 2      | 
+|sample_memory        | read_ram/block_memory.samples_reg      | 128 x 32(READ_FIRST)   | W |   | 128 x 32(WRITE_FIRST)  |   | R | Port A and B     | 1      | 0      | 
+|sample_memory        | write_ram/block_memory.samples_reg     | 128 x 32(READ_FIRST)   | W | R | 128 x 32(WRITE_FIRST)  |   | R | Port A and B     | 0      | 1      | 
+|midi_runtime__GCB2   | context_words_reg                      | 2 K x 32(READ_FIRST)   | W |   | 2 K x 32(WRITE_FIRST)  |   | R | Port A and B     | 0      | 2      | 
++---------------------+----------------------------------------+------------------------+---+---+------------------------+---+---+------------------+--------+--------+
+
+Note: The table above is a preliminary report that shows the Block RAMs at the current stage of the synthesis flow. Some Block RAMs may be reimplemented as non Block RAM primitives later in the synthesis flow. Multiple instantiated Block RAMs are reported only once. 
+
+Distributed RAM: Preliminary Mapping Report (see note below)
++-------------------------+------------------+-----------+----------------------+----------------+
+|Module Name              | RTL Object       | Inference | Size (Depth x Width) | Primitives     | 
++-------------------------+------------------+-----------+----------------------+----------------+
+|media_metadata__GCB0     | path_page_reg    | Implied   | 8 x 32               | RAM32M x 6     | 
+|media_metadata__GCB0     | path_address_reg | Implied   | 8 x 41               | RAM16X1D x 64  | 
+|states/transition_engine | differences_reg  | Implied   | 16 x 32              | RAM32M x 12    | 
++-------------------------+------------------+-----------+----------------------+----------------+
+
+Note: The table above is a preliminary report that shows the Distributed RAMs at the current stage of the synthesis flow. Some Distributed RAMs may be reimplemented as non Distributed RAM primitives later in the synthesis flow. Multiple instantiated RAMs are reported only once.
+
+DSP: Preliminary Mapping Report (see note below)
++--------------+-------------+--------+--------+--------+--------+--------+------+------+------+------+-------+------+------+
+|Module Name   | DSP Mapping | A Size | B Size | C Size | D Size | P Size | AREG | BREG | CREG | DREG | ADREG | MREG | PREG | 
++--------------+-------------+--------+--------+--------+--------+--------+------+------+------+------+-------+------+------+
+|job_processor | A*B         | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|job_processor | A*B         | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|job_processor | A*B         | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
+|job_processor | A*B         | 16     | 16     | -      | -      | 32     | 0    | 0    | -    | -    | -     | 0    | 0    | 
++--------------+-------------+--------+--------+--------+--------+--------+------+------+------+------+-------+------+------+
+
+Note: The table above is a preliminary report that shows the DSPs inferred at the current stage of the synthesis flow. Some DSP may be reimplemented as non DSP primitives later in the synthesis flow. Multiple instantiated DSPs are reported only once.
+---------------------------------------------------------------------------------
+Finished ROM, RAM, DSP, Shift Register and Retiming Reporting
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start Applying XDC Timing Constraints
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Finished Applying XDC Timing Constraints : Time (s): cpu = 00:06:44 ; elapsed = 00:10:41 . Memory (MB): peak = 3354.641 ; gain = 727.938 ; free physical = 4037 ; free virtual = 9025
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start Timing Optimization
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Finished Timing Optimization : Time (s): cpu = 00:07:38 ; elapsed = 00:11:38 . Memory (MB): peak = 3354.641 ; gain = 727.938 ; free physical = 3987 ; free virtual = 8846
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start ROM, RAM, DSP, Shift Register and Retiming Reporting
+---------------------------------------------------------------------------------
+
+Block RAM: Final Mapping Report
++---------------------+----------------------------------------+------------------------+---+---+------------------------+---+---+------------------+--------+--------+
+|Module Name          | RTL Object                             | PORT A (Depth x Width) | W | R | PORT B (Depth x Width) | W | R | Ports driving FF | RAMB18 | RAMB36 | 
++---------------------+----------------------------------------+------------------------+---+---+------------------------+---+---+------------------+--------+--------+
+|job_processor__GB1   | smoothing_memory/memory_reg            | 512 x 128(READ_FIRST)  | W |   | 512 x 128(WRITE_FIRST) |   | R | Port A and B     | 0      | 2      | 
+|job_processor__GB1   | scratch_memory/memory_reg              | 16 K x 32(READ_FIRST)  | W |   | 16 K x 32(WRITE_FIRST) |   | R | Port A and B     | 0      | 16     | 
+|audio_pipeline__GC0  | read_intents/storage/memory_reg        | 1 K x 256(READ_FIRST)  | W |   | 1 K x 256(WRITE_FIRST) |   | R | Port A and B     | 1      | 5      | 
+|audio_pipeline__GC0  | state_engine/program_memory/memory_reg | 2 K x 96(READ_FIRST)   | W |   | 2 K x 96(WRITE_FIRST)  |   | R | Port A and B     | 1      | 5      | 
+|audio_pipeline__GC0  | state_engine/state_memory/memory_reg   | 256 x 129(READ_FIRST)  | W |   | 256 x 129(WRITE_FIRST) |   | R | Port A and B     | 0      | 2      | 
+|audio_pipeline__GC0  | state_engine/loop_memory/memory_reg    | 4 K x 64(READ_FIRST)   | W |   | 4 K x 64(WRITE_FIRST)  |   | R | Port A and B     | 1      | 7      | 
+|audio_pipeline__GC0  | state_engine/jobs/storage/memory_reg   | 1 K x 256(READ_FIRST)  | W |   | 1 K x 256(WRITE_FIRST) |   | R | Port A and B     | 1      | 7      | 
+|metadata_cache__GB2  | data_ram/memory_reg                    | 2 K x 32(READ_FIRST)   | W |   | 2 K x 32(WRITE_FIRST)  |   | R | Port A and B     | 0      | 2      | 
+|media_metadata__GCB0 | banks[1].cache/data_ram/memory_reg     | 64 x 32(READ_FIRST)    | W |   | 64 x 32(WRITE_FIRST)   |   | R | Port A and B     | 1      | 0      | 
+|media_metadata__GCB0 | banks[2].cache/data_ram/memory_reg     | 32 x 32(READ_FIRST)    | W |   | 32 x 32(WRITE_FIRST)   |   | R | Port A and B     | 1      | 0      | 
+|media_metadata__GCB0 | roots/memory_reg                       | 512 x 128(READ_FIRST)  | W |   | 512 x 128(WRITE_FIRST) |   | R | Port A and B     | 0      | 2      | 
+|media_store__GCB0    | descriptors/memory_reg                 | 512 x 160(READ_FIRST)  | W |   | 512 x 160(WRITE_FIRST) |   | R | Port A and B     | 1      | 2      | 
+|sample_memory        | read_ram/block_memory.samples_reg      | 128 x 32(READ_FIRST)   | W |   | 128 x 32(WRITE_FIRST)  |   | R | Port A and B     | 1      | 0      | 
+|sample_memory        | write_ram/block_memory.samples_reg     | 128 x 32(READ_FIRST)   | W | R | 128 x 32(WRITE_FIRST)  |   | R | Port A and B     | 0      | 1      | 
+|midi_runtime__GCB2   | context_words_reg                      | 2 K x 32(READ_FIRST)   | W |   | 2 K x 32(WRITE_FIRST)  |   | R | Port A and B     | 0      | 2      | 
++---------------------+----------------------------------------+------------------------+---+---+------------------------+---+---+------------------+--------+--------+
+
+
+Distributed RAM: Final Mapping Report
++-------------------------+------------------+-----------+----------------------+----------------+
+|Module Name              | RTL Object       | Inference | Size (Depth x Width) | Primitives     | 
++-------------------------+------------------+-----------+----------------------+----------------+
+|media_metadata__GCB0     | path_page_reg    | Implied   | 8 x 32               | RAM32M x 6     | 
+|media_metadata__GCB0     | path_address_reg | Implied   | 8 x 41               | RAM16X1D x 64  | 
+|states/transition_engine | differences_reg  | Implied   | 16 x 32              | RAM32M x 12    | 
++-------------------------+------------------+-----------+----------------------+----------------+
+
+---------------------------------------------------------------------------------
+Finished ROM, RAM, DSP, Shift Register and Retiming Reporting
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start Technology Mapping
+---------------------------------------------------------------------------------
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/sample_enginei_1/smoothing_memory/memory_reg_0 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/sample_enginei_1/smoothing_memory/memory_reg_1 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/sample_enginei_1/scratch_memory/memory_reg_0 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/sample_enginei_1/scratch_memory/memory_reg_1 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/sample_enginei_1/scratch_memory/memory_reg_2 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/sample_enginei_1/scratch_memory/memory_reg_3 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/sample_enginei_1/scratch_memory/memory_reg_4 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/sample_enginei_1/scratch_memory/memory_reg_5 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/sample_enginei_1/scratch_memory/memory_reg_6 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/sample_enginei_1/scratch_memory/memory_reg_7 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/sample_enginei_1/scratch_memory/memory_reg_8 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/sample_enginei_1/scratch_memory/memory_reg_9 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/sample_enginei_1/scratch_memory/memory_reg_10 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/sample_enginei_1/scratch_memory/memory_reg_11 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/sample_enginei_1/scratch_memory/memory_reg_12 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/sample_enginei_1/scratch_memory/memory_reg_13 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/sample_enginei_1/scratch_memory/memory_reg_14 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/sample_enginei_1/scratch_memory/memory_reg_15 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/banks[0].cachei_5/data_ram/memory_reg_0 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/banks[0].cachei_5/data_ram/memory_reg_1 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/mediai_11/sample_memory/read_ram/block_memory.samples_reg (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/mediai_11/sample_memory/write_ram/block_memory.samples_reg (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance midi/core_under_test/corei_5/context_words_reg_0 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance midi/core_under_test/corei_5/context_words_reg_1 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/pipelinei_2/core/pipeline/state_engine/program_memory/memory_reg_0 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/pipelinei_2/core/pipeline/state_engine/program_memory/memory_reg_1 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/pipelinei_2/core/pipeline/state_engine/program_memory/memory_reg_2 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/pipelinei_2/core/pipeline/state_engine/program_memory/memory_reg_3 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/pipelinei_2/core/pipeline/state_engine/program_memory/memory_reg_4 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/pipelinei_2/core/pipeline/state_engine/program_memory/memory_reg_5 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/pipelinei_2/core/pipeline/state_engine/state_memory/memory_reg_0 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/pipelinei_2/core/pipeline/state_engine/state_memory/memory_reg_1 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/pipelinei_2/core/pipeline/state_engine/loop_memory/memory_reg_0 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/pipelinei_2/core/pipeline/state_engine/loop_memory/memory_reg_1 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/pipelinei_2/core/pipeline/state_engine/loop_memory/memory_reg_2 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/pipelinei_2/core/pipeline/state_engine/loop_memory/memory_reg_3 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/pipelinei_2/core/pipeline/state_engine/loop_memory/memory_reg_4 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/pipelinei_2/core/pipeline/state_engine/loop_memory/memory_reg_5 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/pipelinei_2/core/pipeline/state_engine/loop_memory/memory_reg_6 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/pipelinei_2/core/pipeline/state_engine/loop_memory/memory_reg_7 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/metadatai_6/core/media/metadata/banks[1].cache/data_ram/memory_reg (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/metadatai_6/core/media/metadata/banks[2].cache/data_ram/memory_reg (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/metadatai_6/core/media/metadata/roots/memory_reg_0 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/mediai_8/core/media/descriptors/memory_reg_0 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/mediai_8/core/media/descriptors/memory_reg_1 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+---------------------------------------------------------------------------------
+Finished Technology Mapping : Time (s): cpu = 00:08:29 ; elapsed = 00:12:41 . Memory (MB): peak = 3362.645 ; gain = 735.941 ; free physical = 6078 ; free virtual = 10299
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start IO Insertion
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start Flattening Before IO Insertion
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Finished Flattening Before IO Insertion
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start Final Netlist Cleanup
+---------------------------------------------------------------------------------
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/sample_engine/smoothing_memory/memory_reg_0 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/sample_engine/smoothing_memory/memory_reg_1 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/sample_engine/scratch_memory/memory_reg_0 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/sample_engine/scratch_memory/memory_reg_1 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/sample_engine/scratch_memory/memory_reg_2 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/sample_engine/scratch_memory/memory_reg_3 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/sample_engine/scratch_memory/memory_reg_4 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/sample_engine/scratch_memory/memory_reg_5 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/sample_engine/scratch_memory/memory_reg_6 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/sample_engine/scratch_memory/memory_reg_7 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/sample_engine/scratch_memory/memory_reg_8 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/sample_engine/scratch_memory/memory_reg_9 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/sample_engine/scratch_memory/memory_reg_10 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/sample_engine/scratch_memory/memory_reg_11 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/sample_engine/scratch_memory/memory_reg_12 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/sample_engine/scratch_memory/memory_reg_13 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/sample_engine/scratch_memory/memory_reg_14 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/sample_engine/scratch_memory/memory_reg_15 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/state_engine/program_memory/memory_reg_0 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/state_engine/program_memory/memory_reg_1 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/state_engine/program_memory/memory_reg_2 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/state_engine/program_memory/memory_reg_3 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/state_engine/program_memory/memory_reg_4 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/state_engine/program_memory/memory_reg_5 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/state_engine/state_memory/memory_reg_0 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/state_engine/state_memory/memory_reg_1 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/state_engine/loop_memory/memory_reg_0 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/state_engine/loop_memory/memory_reg_1 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/state_engine/loop_memory/memory_reg_2 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/state_engine/loop_memory/memory_reg_3 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/state_engine/loop_memory/memory_reg_4 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/state_engine/loop_memory/memory_reg_5 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/state_engine/loop_memory/memory_reg_6 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/pipeline/state_engine/loop_memory/memory_reg_7 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/media/metadata/banks[0].cache/data_ram/memory_reg_0 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/media/metadata/banks[0].cache/data_ram/memory_reg_1 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/media/metadata/banks[1].cache/data_ram/memory_reg (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/media/metadata/banks[2].cache/data_ram/memory_reg (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/media/metadata/roots/memory_reg_0 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/media/descriptors/memory_reg_0 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/media/descriptors/memory_reg_1 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/media/sample_memory/read_ram/block_memory.samples_reg (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance audio/core_under_test/core/media/sample_memory/write_ram/block_memory.samples_reg (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance midi/core_under_test/core/context_words_reg_0 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+INFO: [Synth 8-7052] The timing for the instance midi/core_under_test/core/context_words_reg_1 (implemented as a Block RAM) might be sub-optimal as no optional output register could be merged into the ram block. Providing additional output register may help in improving timing.
+---------------------------------------------------------------------------------
+Finished Final Netlist Cleanup
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Finished IO Insertion : Time (s): cpu = 00:08:53 ; elapsed = 00:13:06 . Memory (MB): peak = 3362.645 ; gain = 735.941 ; free physical = 5209 ; free virtual = 10331
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start Renaming Generated Instances
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Finished Renaming Generated Instances : Time (s): cpu = 00:08:54 ; elapsed = 00:13:07 . Memory (MB): peak = 3362.645 ; gain = 735.941 ; free physical = 4967 ; free virtual = 10306
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start Rebuilding User Hierarchy
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Finished Rebuilding User Hierarchy : Time (s): cpu = 00:09:13 ; elapsed = 00:13:26 . Memory (MB): peak = 3362.645 ; gain = 735.941 ; free physical = 3145 ; free virtual = 10137
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start Renaming Generated Ports
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Finished Renaming Generated Ports : Time (s): cpu = 00:09:14 ; elapsed = 00:13:27 . Memory (MB): peak = 3362.645 ; gain = 735.941 ; free physical = 3137 ; free virtual = 10128
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start Handling Custom Attributes
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Finished Handling Custom Attributes : Time (s): cpu = 00:09:21 ; elapsed = 00:13:34 . Memory (MB): peak = 3362.645 ; gain = 735.941 ; free physical = 3025 ; free virtual = 10044
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start Renaming Generated Nets
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Finished Renaming Generated Nets : Time (s): cpu = 00:09:21 ; elapsed = 00:13:35 . Memory (MB): peak = 3362.645 ; gain = 735.941 ; free physical = 3029 ; free virtual = 10048
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+Start Writing Synthesis Report
+---------------------------------------------------------------------------------
+
+Report BlackBoxes: 
++-+--------------+----------+
+| |BlackBox name |Instances |
++-+--------------+----------+
++-+--------------+----------+
+
+Report Cell Usage: 
++------+---------+------+
+|      |Cell     |Count |
++------+---------+------+
+|1     |CARRY4   |  7784|
+|2     |DSP48E1  |     4|
+|3     |LUT1     | 12233|
+|4     |LUT2     | 16321|
+|5     |LUT3     |  6997|
+|6     |LUT4     | 11106|
+|7     |LUT5     |  7705|
+|8     |LUT6     | 22975|
+|9     |MUXF7    |  1813|
+|10    |MUXF8    |   564|
+|11    |RAM16X1D |    37|
+|12    |RAM32M   |    15|
+|13    |RAM32X1D |     6|
+|14    |RAMB18E1 |     8|
+|19    |RAMB36E1 |    53|
+|25    |FDRE     | 37601|
+|26    |FDSE     |   153|
++------+---------+------+
+---------------------------------------------------------------------------------
+Finished Writing Synthesis Report : Time (s): cpu = 00:09:22 ; elapsed = 00:13:36 . Memory (MB): peak = 3362.645 ; gain = 735.941 ; free physical = 2898 ; free virtual = 9918
+---------------------------------------------------------------------------------
+Synthesis finished with 0 errors, 0 critical warnings and 22 warnings.
+Synthesis Optimization Runtime : Time (s): cpu = 00:09:04 ; elapsed = 00:13:11 . Memory (MB): peak = 3362.645 ; gain = 400.465 ; free physical = 4745 ; free virtual = 11801
+Synthesis Optimization Complete : Time (s): cpu = 00:09:30 ; elapsed = 00:13:44 . Memory (MB): peak = 3362.645 ; gain = 735.941 ; free physical = 4760 ; free virtual = 11798
+INFO: [Project 1-571] Translating synthesized netlist
+Netlist sorting complete. Time (s): cpu = 00:00:01 ; elapsed = 00:00:01 . Memory (MB): peak = 3362.645 ; gain = 0.000 ; free physical = 4842 ; free virtual = 11709
+INFO: [Netlist 29-17] Analyzing 10284 Unisim elements for replacement
+INFO: [Netlist 29-28] Unisim Transformation completed in 0 CPU seconds
+INFO: [Project 1-570] Preparing netlist for logic optimization
+Parsing XDC File [/workspace/work/midi-vivado/after-150/context.xdc]
+WARNING: [Vivado 12-2489] -period contains time 6.666667 which will be rounded to 6.667 to ensure it is an integer multiple of 1 picosecond [/workspace/work/midi-vivado/after-150/context.xdc:1]
+INFO: [Vivado 12-4761] HD.CLK_SRC property is set on port clk. The net connecting to the port drives either clock PIN or hierarchical black box. Use the create_clock constraint to create a clock on this port prior to setting HD.CLK_SRC.  [/workspace/work/midi-vivado/after-150/context.xdc:3]
+Finished Parsing XDC File [/workspace/work/midi-vivado/after-150/context.xdc]
+INFO: [Opt 31-138] Pushed 0 inverter(s) to 0 load pin(s).
+Netlist sorting complete. Time (s): cpu = 00:00:00.13 ; elapsed = 00:00:00.13 . Memory (MB): peak = 3362.645 ; gain = 0.000 ; free physical = 6964 ; free virtual = 13367
+INFO: [Project 1-111] Unisim Transformation Summary:
+  A total of 58 instances were transformed.
+  RAM16X1D => RAM32X1D (RAMD32(x2)): 37 instances
+  RAM32M => RAM32M (RAMD32(x6), RAMS32(x2)): 15 instances
+  RAM32X1D => RAM32X1D (RAMD32(x2)): 6 instances
+
+Synth Design complete, checksum: 166198c4
+INFO: [Common 17-83] Releasing license: Synthesis
+527 Infos, 67 Warnings, 0 Critical Warnings and 0 Errors encountered.
+synth_design completed successfully
+synth_design: Time (s): cpu = 00:10:08 ; elapsed = 00:14:25 . Memory (MB): peak = 3362.645 ; gain = 848.621 ; free physical = 6901 ; free virtual = 13312
+INFO: [Common 17-600] The following parameters have non-default value.
+general.maxThreads
+INFO: [Timing 38-35] Done setting XDC timing constraints.
+INFO: [Timing 38-480] Writing timing data to binary archive.
+INFO: [Common 17-1381] The checkpoint '/workspace/work/midi-vivado/after-150/post_synth.dcp' has been generated.
+write_checkpoint: Time (s): cpu = 00:00:39 ; elapsed = 00:00:39 . Memory (MB): peak = 3414.750 ; gain = 52.105 ; free physical = 10334 ; free virtual = 14536
+INFO: [Timing 38-91] UpdateTimingParams: Speed grade: -1, Delay Type: min_max.
+INFO: [Timing 38-191] Multithreading enabled for timing update using a maximum of 2 CPUs
+report_timing_summary: Time (s): cpu = 00:00:21 ; elapsed = 00:00:14 . Memory (MB): peak = 3414.750 ; gain = 0.000 ; free physical = 10283 ; free virtual = 14485
+INFO: [Timing 38-91] UpdateTimingParams: Speed grade: -1, Delay Type: max.
+INFO: [Timing 38-191] Multithreading enabled for timing update using a maximum of 2 CPUs
+INFO: [Timing 38-78] ReportTimingParams: -max_paths 20 -nworst 1 -delay_type max -sort_by slack.
+Command: opt_design
+Attempting to get a license for feature 'Implementation' and/or device 'xc7z020'
+INFO: [Common 17-349] Got license for feature 'Implementation' and/or device 'xc7z020'
+Running DRC as a precondition to command opt_design
+
+Starting DRC Task
+INFO: [DRC 23-27] Running DRC with 2 threads
+INFO: [Project 1-461] DRC finished with 0 Errors
+INFO: [Project 1-462] Please refer to the DRC report (report_drc) for more information.
+
+Time (s): cpu = 00:00:02 ; elapsed = 00:00:01 . Memory (MB): peak = 3414.750 ; gain = 0.000 ; free physical = 10282 ; free virtual = 14484
+
+Starting Cache Timing Information Task
+Ending Cache Timing Information Task | Checksum: ae815c91
+
+Time (s): cpu = 00:00:00.01 ; elapsed = 00:00:00.02 . Memory (MB): peak = 3414.750 ; gain = 0.000 ; free physical = 10282 ; free virtual = 14484
+
+Starting Logic Optimization Task
+
+Phase 1 Retarget
+INFO: [Opt 31-138] Pushed 0 inverter(s) to 0 load pin(s).
+INFO: [Opt 31-49] Retargeted 0 cell(s).
+Phase 1 Retarget | Checksum: f96f9605
+
+Time (s): cpu = 00:00:09 ; elapsed = 00:00:08 . Memory (MB): peak = 3414.750 ; gain = 0.000 ; free physical = 10368 ; free virtual = 14511
+INFO: [Opt 31-389] Phase Retarget created 1148 cells and removed 11855 cells
+INFO: [Opt 31-1021] In phase Retarget, 65 netlist objects are constrained preventing optimization. Please run opt_design with -debug_log to get more detail. 
+
+Phase 2 Constant propagation
+INFO: [Opt 31-138] Pushed 8 inverter(s) to 11 load pin(s).
+Phase 2 Constant propagation | Checksum: 11a7b9a7b
+
+Time (s): cpu = 00:00:12 ; elapsed = 00:00:11 . Memory (MB): peak = 3414.750 ; gain = 0.000 ; free physical = 10368 ; free virtual = 14511
+INFO: [Opt 31-389] Phase Constant propagation created 2710 cells and removed 10074 cells
+INFO: [Opt 31-1021] In phase Constant propagation, 275 netlist objects are constrained preventing optimization. Please run opt_design with -debug_log to get more detail. 
+
+Phase 3 Sweep
+Phase 3 Sweep | Checksum: 14a005784
+
+Time (s): cpu = 00:00:15 ; elapsed = 00:00:13 . Memory (MB): peak = 3414.750 ; gain = 0.000 ; free physical = 10368 ; free virtual = 14511
+INFO: [Opt 31-389] Phase Sweep created 0 cells and removed 51 cells
+INFO: [Opt 31-1021] In phase Sweep, 13690 netlist objects are constrained preventing optimization. Please run opt_design with -debug_log to get more detail. 
+
+Phase 4 BUFG optimization
+Phase 4 BUFG optimization | Checksum: 14a005784
+
+Time (s): cpu = 00:00:15 ; elapsed = 00:00:14 . Memory (MB): peak = 3414.750 ; gain = 0.000 ; free physical = 10372 ; free virtual = 14515
+INFO: [Opt 31-662] Phase BUFG optimization created 0 cells of which 0 are BUFGs and removed 0 cells.
+
+Phase 5 Shift Register Optimization
+INFO: [Opt 31-1064] SRL Remap converted 0 SRLs to 0 registers and converted 0 registers of register chains to 0 SRLs
+Phase 5 Shift Register Optimization | Checksum: 14a005784
+
+Time (s): cpu = 00:00:16 ; elapsed = 00:00:14 . Memory (MB): peak = 3414.750 ; gain = 0.000 ; free physical = 10372 ; free virtual = 14515
+INFO: [Opt 31-389] Phase Shift Register Optimization created 0 cells and removed 0 cells
+
+Phase 6 Post Processing Netlist
+Phase 6 Post Processing Netlist | Checksum: fc9e07cd
+
+Time (s): cpu = 00:00:16 ; elapsed = 00:00:15 . Memory (MB): peak = 3414.750 ; gain = 0.000 ; free physical = 10372 ; free virtual = 14515
+INFO: [Opt 31-389] Phase Post Processing Netlist created 0 cells and removed 1 cells
+INFO: [Opt 31-1021] In phase Post Processing Netlist, 3096 netlist objects are constrained preventing optimization. Please run opt_design with -debug_log to get more detail. 
+Opt_design Change Summary
+=========================
+
+
+-------------------------------------------------------------------------------------------------------------------------
+|  Phase                        |  #Cells created  |  #Cells Removed  |  #Constrained objects preventing optimizations  |
+-------------------------------------------------------------------------------------------------------------------------
+|  Retarget                     |            1148  |           11855  |                                             65  |
+|  Constant propagation         |            2710  |           10074  |                                            275  |
+|  Sweep                        |               0  |              51  |                                          13690  |
+|  BUFG optimization            |               0  |               0  |                                              0  |
+|  Shift Register Optimization  |               0  |               0  |                                              0  |
+|  Post Processing Netlist      |               0  |               1  |                                           3096  |
+-------------------------------------------------------------------------------------------------------------------------
+
+
+
+Starting Connectivity Check Task
+
+Time (s): cpu = 00:00:00.33 ; elapsed = 00:00:00.32 . Memory (MB): peak = 3414.750 ; gain = 0.000 ; free physical = 10377 ; free virtual = 14521
+Ending Logic Optimization Task | Checksum: 1891f0b89
+
+Time (s): cpu = 00:00:19 ; elapsed = 00:00:18 . Memory (MB): peak = 3414.750 ; gain = 0.000 ; free physical = 10377 ; free virtual = 14521
+
+Starting Power Optimization Task
+INFO: [Pwropt 34-132] Skipping clock gating for clocks with a period < 2.00 ns.
+INFO: [Pwropt 34-9] Applying IDT optimizations ...
+INFO: [Pwropt 34-10] Applying ODC optimizations ...
+INFO: [Timing 38-35] Done setting XDC timing constraints.
+Running Vector-less Activity Propagation...
+
+Finished Running Vector-less Activity Propagation
+
+
+Starting PowerOpt Patch Enables Task
+INFO: [Pwropt 34-162] WRITE_MODE attribute of 0 BRAM(s) out of a total of 61 has been updated to save power. Run report_power_opt to get a complete listing of the BRAMs updated.
+INFO: [Pwropt 34-201] Structural ODC has moved 1 WE to EN ports
+Number of BRAM Ports augmented: 5 newly gated: 1 Total Ports: 122
+Ending PowerOpt Patch Enables Task | Checksum: 1096fffb9
+
+Time (s): cpu = 00:00:00.89 ; elapsed = 00:00:00.90 . Memory (MB): peak = 3725.941 ; gain = 0.000 ; free physical = 10467 ; free virtual = 14547
+Ending Power Optimization Task | Checksum: 1096fffb9
+
+Time (s): cpu = 00:00:40 ; elapsed = 00:00:22 . Memory (MB): peak = 3725.941 ; gain = 311.191 ; free physical = 10514 ; free virtual = 14594
+
+Starting Final Cleanup Task
+
+Starting Logic Optimization Task
+INFO: [Timing 38-35] Done setting XDC timing constraints.
+Ending Logic Optimization Task | Checksum: 1028d1d54
+
+Time (s): cpu = 00:00:10 ; elapsed = 00:00:08 . Memory (MB): peak = 3725.941 ; gain = 0.000 ; free physical = 10389 ; free virtual = 14469
+Ending Final Cleanup Task | Checksum: 1028d1d54
+
+Time (s): cpu = 00:00:13 ; elapsed = 00:00:11 . Memory (MB): peak = 3725.941 ; gain = 0.000 ; free physical = 10468 ; free virtual = 14548
+
+Starting Netlist Obfuscation Task
+Netlist sorting complete. Time (s): cpu = 00:00:00.01 ; elapsed = 00:00:00.02 . Memory (MB): peak = 3725.941 ; gain = 0.000 ; free physical = 10468 ; free virtual = 14548
+Ending Netlist Obfuscation Task | Checksum: 1028d1d54
+
+Time (s): cpu = 00:00:00.01 ; elapsed = 00:00:00.02 . Memory (MB): peak = 3725.941 ; gain = 0.000 ; free physical = 10468 ; free virtual = 14548
+INFO: [Common 17-83] Releasing license: Implementation
+562 Infos, 67 Warnings, 0 Critical Warnings and 0 Errors encountered.
+opt_design completed successfully
+opt_design: Time (s): cpu = 00:01:17 ; elapsed = 00:00:55 . Memory (MB): peak = 3725.941 ; gain = 311.191 ; free physical = 10468 ; free virtual = 14548
+INFO: [Common 17-600] The following parameters have non-default value.
+general.maxThreads
+INFO: [Timing 38-35] Done setting XDC timing constraints.
+report_timing_summary: Time (s): cpu = 00:00:20 ; elapsed = 00:00:13 . Memory (MB): peak = 3725.941 ; gain = 0.000 ; free physical = 10328 ; free virtual = 14410
+INFO: [Timing 38-78] ReportTimingParams: -max_paths 20 -nworst 1 -delay_type max -sort_by slack.
+INFO: [Timing 38-480] Writing timing data to binary archive.
+INFO: [Common 17-1381] The checkpoint '/workspace/work/midi-vivado/after-150/post_opt.dcp' has been generated.
+write_checkpoint: Time (s): cpu = 00:00:24 ; elapsed = 00:00:23 . Memory (MB): peak = 3725.941 ; gain = 0.000 ; free physical = 10302 ; free virtual = 14461
+Command: place_design
+Attempting to get a license for feature 'Implementation' and/or device 'xc7z020'
+INFO: [Common 17-349] Got license for feature 'Implementation' and/or device 'xc7z020'
+INFO: [DRC 23-27] Running DRC with 2 threads
+INFO: [Vivado_Tcl 4-198] DRC finished with 0 Errors
+INFO: [Vivado_Tcl 4-199] Please refer to the DRC report (report_drc) for more information.
+Running DRC as a precondition to command place_design
+INFO: [DRC 23-27] Running DRC with 2 threads
+INFO: [Vivado_Tcl 4-198] DRC finished with 0 Errors
+INFO: [Vivado_Tcl 4-199] Please refer to the DRC report (report_drc) for more information.
+
+Starting Placer Task
+INFO: [Place 30-611] Multithreading enabled for place_design using a maximum of 2 CPUs
+
+Phase 1 Placer Initialization
+
+Phase 1.1 Placer Initialization Netlist Sorting
+Netlist sorting complete. Time (s): cpu = 00:00:00.02 ; elapsed = 00:00:00.03 . Memory (MB): peak = 3725.941 ; gain = 0.000 ; free physical = 10253 ; free virtual = 14455
+Phase 1.1 Placer Initialization Netlist Sorting | Checksum: 3617a579
+
+Time (s): cpu = 00:00:00.10 ; elapsed = 00:00:00.10 . Memory (MB): peak = 3725.941 ; gain = 0.000 ; free physical = 10252 ; free virtual = 14455
+Netlist sorting complete. Time (s): cpu = 00:00:00.01 ; elapsed = 00:00:00.01 . Memory (MB): peak = 3725.941 ; gain = 0.000 ; free physical = 10251 ; free virtual = 14455
+
+Phase 1.2 IO Placement/ Clock Placement/ Build Placer Device
+Phase 1.2 IO Placement/ Clock Placement/ Build Placer Device | Checksum: 9894be1f
+
+Time (s): cpu = 00:00:06 ; elapsed = 00:00:05 . Memory (MB): peak = 3725.941 ; gain = 0.000 ; free physical = 10009 ; free virtual = 14501
+
+Phase 1.3 Build Placer Netlist Model
+WARNING: [Place 30-34] Design utilization is very high. Please run report_utilization command to see design utilization.
+Phase 1.3 Build Placer Netlist Model | Checksum: 18936ec9b
+
+Time (s): cpu = 00:00:32 ; elapsed = 00:00:25 . Memory (MB): peak = 3725.941 ; gain = 0.000 ; free physical = 9106 ; free virtual = 14320
+
+Phase 1.4 Constrain Clocks/Macros
+Phase 1.4 Constrain Clocks/Macros | Checksum: 18936ec9b
+
+Time (s): cpu = 00:00:32 ; elapsed = 00:00:25 . Memory (MB): peak = 3725.941 ; gain = 0.000 ; free physical = 9109 ; free virtual = 14325
+Phase 1 Placer Initialization | Checksum: 18936ec9b
+
+Time (s): cpu = 00:00:32 ; elapsed = 00:00:25 . Memory (MB): peak = 3725.941 ; gain = 0.000 ; free physical = 9096 ; free virtual = 14322
+
+Phase 2 Global Placement
+
+Phase 2.1 Floorplanning
+Phase 2.1 Floorplanning | Checksum: 136c13f70
+
+Time (s): cpu = 00:00:42 ; elapsed = 00:00:33 . Memory (MB): peak = 3725.941 ; gain = 0.000 ; free physical = 8294 ; free virtual = 14232
+
+Phase 2.2 Update Timing before SLR Path Opt
+Phase 2.2 Update Timing before SLR Path Opt | Checksum: a8c56fa8
+
+Time (s): cpu = 00:00:49 ; elapsed = 00:00:38 . Memory (MB): peak = 3725.941 ; gain = 0.000 ; free physical = 8111 ; free virtual = 14238
+
+Phase 2.3 Post-Processing in Floorplanning
+Phase 2.3 Post-Processing in Floorplanning | Checksum: 121158abf
+
+Time (s): cpu = 00:00:50 ; elapsed = 00:00:38 . Memory (MB): peak = 3725.941 ; gain = 0.000 ; free physical = 8107 ; free virtual = 14239
+
+Phase 2.4 Global Placement Core
+
+Phase 2.4.1 Physical Synthesis In Placer
+INFO: [Physopt 32-1035] Found 1916 LUTNM shape to break, 721 LUT instances to create LUTNM shape
+INFO: [Physopt 32-1044] Break lutnm for timing: one critical 617, two critical 1299, total 0, new lutff created 0
+INFO: [Physopt 32-1138] End 1 Pass. Optimized 277 nets or LUTs. Breaked 0 LUT, combined 277 existing LUTs and moved 0 existing LUT
+INFO: [Physopt 32-76] Pass 1. Identified 2 candidate nets for fanout optimization.
+INFO: [Physopt 32-81] Processed net audio/reset. Replicated 80 times.
+INFO: [Physopt 32-81] Processed net midi/reset. Replicated 40 times.
+INFO: [Physopt 32-232] Optimized 2 nets. Created 240 new instances.
+INFO: [Physopt 32-775] End 1 Pass. Optimized 2 nets or cells. Created 240 new cells, deleted 0 existing cell and moved 0 existing cell
+Netlist sorting complete. Time (s): cpu = 00:00:00.64 ; elapsed = 00:00:00.64 . Memory (MB): peak = 3725.941 ; gain = 0.000 ; free physical = 10337 ; free virtual = 14388
+INFO: [Physopt 32-64] No nets found for fanout-optimization.
+INFO: [Physopt 32-232] Optimized 0 net. Created 0 new instance.
+INFO: [Physopt 32-775] End 1 Pass. Optimized 0 net or cell. Created 0 new cell, deleted 0 existing cell and moved 0 existing cell
+INFO: [Physopt 32-68] No nets found for critical-cell optimization.
+INFO: [Physopt 32-232] Optimized 0 net. Created 0 new instance.
+INFO: [Physopt 32-775] End 1 Pass. Optimized 0 net or cell. Created 0 new cell, deleted 0 existing cell and moved 0 existing cell
+INFO: [Physopt 32-456] No candidate cells for DSP register optimization found in the design.
+INFO: [Physopt 32-775] End 2 Pass. Optimized 0 net or cell. Created 0 new cell, deleted 0 existing cell and moved 0 existing cell
+INFO: [Physopt 32-1123] No candidate cells found for Shift Register to Pipeline optimization
+INFO: [Physopt 32-775] End 1 Pass. Optimized 0 net or cell. Created 0 new cell, deleted 0 existing cell and moved 0 existing cell
+INFO: [Physopt 32-677] No candidate cells for Shift Register optimization found in the design
+INFO: [Physopt 32-775] End 1 Pass. Optimized 0 net or cell. Created 0 new cell, deleted 0 existing cell and moved 0 existing cell
+INFO: [Physopt 32-526] No candidate cells for BRAM register optimization found in the design
+INFO: [Physopt 32-775] End 1 Pass. Optimized 0 net or cell. Created 0 new cell, deleted 0 existing cell and moved 0 existing cell
+INFO: [Physopt 32-846] No candidate cells for URAM register optimization found in the design
+INFO: [Physopt 32-775] End 2 Pass. Optimized 0 net or cell. Created 0 new cell, deleted 0 existing cell and moved 0 existing cell
+INFO: [Physopt 32-949] No candidate nets found for dynamic/static region interface net replication
+INFO: [Physopt 32-775] End 1 Pass. Optimized 0 net or cell. Created 0 new cell, deleted 0 existing cell and moved 0 existing cell
+Netlist sorting complete. Time (s): cpu = 00:00:00.01 ; elapsed = 00:00:00.01 . Memory (MB): peak = 3725.941 ; gain = 0.000 ; free physical = 10337 ; free virtual = 14388
+INFO: [Physopt 32-68] No nets found for critical-cell optimization.
+INFO: [Physopt 32-232] Optimized 0 net. Created 0 new instance.
+INFO: [Physopt 32-775] End 1 Pass. Optimized 0 net or cell. Created 0 new cell, deleted 0 existing cell and moved 0 existing cell
+Netlist sorting complete. Time (s): cpu = 00:00:00.01 ; elapsed = 00:00:00.01 . Memory (MB): peak = 3725.941 ; gain = 0.000 ; free physical = 10337 ; free virtual = 14388
+
+Summary of Physical Synthesis Optimizations
+============================================
+
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+|  Optimization                                     |  Added Cells  |  Removed Cells  |  Optimized Cells/Nets  |  Dont Touch  |  Iterations  |  Elapsed   |
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+|  LUT Combining                                    |            0  |            277  |                   277  |           0  |           1  |  00:00:01  |
+|  Retime                                           |            0  |              0  |                     0  |           0  |           1  |  00:00:00  |
+|  Very High Fanout                                 |          240  |              0  |                     2  |           0  |           1  |  00:00:04  |
+|  Fanout                                           |            0  |              0  |                     0  |           0  |           1  |  00:00:00  |
+|  Critical Cell                                    |            0  |              0  |                     0  |           0  |           1  |  00:00:00  |
+|  DSP Register                                     |            0  |              0  |                     0  |           0  |           1  |  00:00:00  |
+|  Shift Register to Pipeline                       |            0  |              0  |                     0  |           0  |           1  |  00:00:00  |
+|  Shift Register                                   |            0  |              0  |                     0  |           0  |           1  |  00:00:00  |
+|  BRAM Register                                    |            0  |              0  |                     0  |           0  |           1  |  00:00:00  |
+|  URAM Register                                    |            0  |              0  |                     0  |           0  |           1  |  00:00:00  |
+|  Dynamic/Static Region Interface Net Replication  |            0  |              0  |                     0  |           0  |           1  |  00:00:00  |
+|  Critical Cell                                    |            0  |              0  |                     0  |           0  |           1  |  00:00:00  |
+|  Total                                            |          240  |            277  |                   279  |           0  |          12  |  00:00:06  |
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+Phase 2.4.1 Physical Synthesis In Placer | Checksum: 18c83bab3
+
+Time (s): cpu = 00:03:59 ; elapsed = 00:02:51 . Memory (MB): peak = 3725.941 ; gain = 0.000 ; free physical = 10310 ; free virtual = 14361
+Phase 2.4 Global Placement Core | Checksum: 1b79bf811
+
+Time (s): cpu = 00:04:04 ; elapsed = 00:02:54 . Memory (MB): peak = 3725.941 ; gain = 0.000 ; free physical = 10322 ; free virtual = 14373
+Phase 2 Global Placement | Checksum: 1b79bf811
+
+Time (s): cpu = 00:04:04 ; elapsed = 00:02:54 . Memory (MB): peak = 3725.941 ; gain = 0.000 ; free physical = 10353 ; free virtual = 14404
+
+Phase 3 Detail Placement
+
+Phase 3.1 Commit Multi Column Macros
+Phase 3.1 Commit Multi Column Macros | Checksum: 139d4f1bb
+
+Time (s): cpu = 00:04:12 ; elapsed = 00:02:59 . Memory (MB): peak = 3725.941 ; gain = 0.000 ; free physical = 10343 ; free virtual = 14394
+
+Phase 3.2 Commit Most Macros & LUTRAMs
+Phase 3.2 Commit Most Macros & LUTRAMs | Checksum: 1acd0413c
+
+Time (s): cpu = 00:04:38 ; elapsed = 00:03:19 . Memory (MB): peak = 3725.941 ; gain = 0.000 ; free physical = 10337 ; free virtual = 14388
+
+Phase 3.3 Area Swap Optimization
+Phase 3.3 Area Swap Optimization | Checksum: 205242372
+
+Time (s): cpu = 00:04:40 ; elapsed = 00:03:20 . Memory (MB): peak = 3725.941 ; gain = 0.000 ; free physical = 10337 ; free virtual = 14388
+
+Phase 3.4 Pipeline Register Optimization
+Phase 3.4 Pipeline Register Optimization | Checksum: 2494100f2
+
+Time (s): cpu = 00:04:40 ; elapsed = 00:03:21 . Memory (MB): peak = 3725.941 ; gain = 0.000 ; free physical = 10337 ; free virtual = 14388
+
+Phase 3.5 Fast Optimization
+Phase 3.5 Fast Optimization | Checksum: 194089758
+
+Time (s): cpu = 00:05:00 ; elapsed = 00:03:35 . Memory (MB): peak = 3725.941 ; gain = 0.000 ; free physical = 10308 ; free virtual = 14360
+
+Phase 3.6 Small Shape Detail Placement
+Phase 3.6 Small Shape Detail Placement | Checksum: 2392efe20
+
+Time (s): cpu = 00:05:24 ; elapsed = 00:03:59 . Memory (MB): peak = 3725.941 ; gain = 0.000 ; free physical = 10370 ; free virtual = 14353
+Phase 3 Detail Placement | Checksum: 2392efe20
+
+Time (s): cpu = 00:05:24 ; elapsed = 00:03:59 . Memory (MB): peak = 3725.941 ; gain = 0.000 ; free physical = 10370 ; free virtual = 14353
+ERROR: [Place 30-487] The packing of instances into the device could not be obeyed. There are a total of 13300 slices in the device, of which 6930 slices are available, however, the unplaced instances require 9608 slices. Please analyze your design to determine if the number of LUTs, FFs, and/or control sets can be reduced.
+
+Number of control sets and instances constrained to the design
+	Control sets: 3370
+	Luts: 55080 (combined) 60935 (total), available capacity: 53200 
+	Flip flops: 36888, available capacity: 106400
+	NOTE: each slice can only accommodate 1 unique control set so FFs cannot be packed to fully fill every slice
+
+
+ERROR: [Place 30-99] Placer failed with error: 'Detail Placement failed please check previous errors for details.'
+Please review all ERROR, CRITICAL WARNING, and WARNING messages during placement to understand the cause for failure.
+Ending Placer Task | Checksum: 590d7db6
+
+Time (s): cpu = 00:05:25 ; elapsed = 00:03:59 . Memory (MB): peak = 3725.941 ; gain = 0.000 ; free physical = 10454 ; free virtual = 14437
+INFO: [Common 17-83] Releasing license: Implementation
+605 Infos, 68 Warnings, 0 Critical Warnings and 3 Errors encountered.
+place_design failed
+# set status [catch {
+#     synth_design -top session_context -part xc7z020clg484-1 -mode out_of_context -flatten_hierarchy rebuilt
+#     write_checkpoint -force post_synth.dcp
+#     reports post_synth
+#     set stage opt
+#     opt_design
+#     reports post_opt
+#     write_checkpoint -force post_opt.dcp
+#     set stage place
+#     place_design
+#     phys_opt_design
+#     write_checkpoint -force post_place.dcp
+#     reports post_place
+#     set stage route
+#     route_design
+#     write_checkpoint -force post_route.dcp
+#     reports post_route
+#     report_route_status -file post_route_route_status.rpt
+#     report_drc -file post_route_drc.rpt
+# } message options]
+# set f [open outcome.txt w]
+# puts $f "stage=$stage\nstatus=$status\nmessage=$message"
+# close $f
+# if {$status} {
+#     puts stderr [dict get $options -errorinfo]
+#     exit 1
+# }
+ERROR: [Common 17-69] Command failed: Placer could not place all instances
+
+    while executing
+"place_design"
+INFO: [Common 17-206] Exiting Vivado at Thu Nov 19 18:34:43 2026...

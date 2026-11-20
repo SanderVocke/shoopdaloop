@@ -1,0 +1,87 @@
+WARNING: Default location for XILINX_HLS not found
+
+****** Vivado v2021.1 (64-bit)
+  **** SW Build 3247384 on Thu Jun 10 19:36:07 MDT 2021
+    ** Copyright 1986-2021 Xilinx, Inc. All Rights Reserved.
+
+source run.tcl
+# if {[version -short] ne {2021.1}} {error "This experiment requires Vivado 2021.1"}
+# set_param general.maxThreads 2
+# foreach mhz {100 150} {
+#     open_checkpoint ../shared-final-${mhz}/post_opt.dcp
+#     foreach {component original} {
+#         pipeline midi_audio_pipeline_axi
+#         audio media_audio_pipeline_axi
+#         state state_processor
+#         jobs job_processor
+#         midi midi_job_port
+#         midi_service midi_job_service
+#     } {
+#         set cells [get_cells -quiet -hierarchical -filter "ORIG_REF_NAME == $original"]
+#         puts "Attribution ${mhz} ${component}: [llength $cells] cells"
+#         if {![llength $cells]} {error "Missing component $original"}
+#         report_utilization -cells $cells -file ../shared-final-${mhz}/post_opt_${component}_utilization.rpt
+#     }
+#     close_design
+# }
+Command: open_checkpoint ../shared-final-100/post_opt.dcp
+
+Starting open_checkpoint Task
+
+Time (s): cpu = 00:00:00.03 ; elapsed = 00:00:00.04 . Memory (MB): peak = 2010.723 ; gain = 3.969 ; free physical = 6806 ; free virtual = 13945
+INFO: [Device 21-403] Loading part xc7z020clg484-1
+Netlist sorting complete. Time (s): cpu = 00:00:00.68 ; elapsed = 00:00:00.69 . Memory (MB): peak = 2652.109 ; gain = 0.000 ; free physical = 6547 ; free virtual = 13670
+INFO: [Netlist 29-17] Analyzing 8934 Unisim elements for replacement
+INFO: [Netlist 29-28] Unisim Transformation completed in 0 CPU seconds
+INFO: [Project 1-479] Netlist was created with Vivado 2021.1
+INFO: [Project 1-570] Preparing netlist for logic optimization
+INFO: [Timing 38-478] Restoring timing data from binary archive.
+INFO: [Timing 38-479] Binary timing data restore complete.
+INFO: [Project 1-856] Restoring constraints from binary archive.
+INFO: [Project 1-853] Binary constraint restore complete.
+Netlist sorting complete. Time (s): cpu = 00:00:00.01 ; elapsed = 00:00:00.02 . Memory (MB): peak = 2770.090 ; gain = 0.000 ; free physical = 5861 ; free virtual = 12985
+INFO: [Project 1-111] Unisim Transformation Summary:
+  A total of 58 instances were transformed.
+  RAM16X1D => RAM32X1D (RAMD32(x2)): 37 instances
+  RAM32M => RAM32M (RAMD32(x6), RAMS32(x2)): 15 instances
+  RAM32X1D => RAM32X1D (RAMD32(x2)): 6 instances
+
+INFO: [Project 1-604] Checkpoint was created with Vivado v2021.1 (64-bit) build 3247384
+open_checkpoint: Time (s): cpu = 00:00:26 ; elapsed = 00:00:29 . Memory (MB): peak = 2770.090 ; gain = 769.273 ; free physical = 5861 ; free virtual = 12985
+Attribution 100 pipeline: 1 cells
+Attribution 100 audio: 1 cells
+Attribution 100 state: 1 cells
+Attribution 100 jobs: 1 cells
+Attribution 100 midi: 1 cells
+Attribution 100 midi_service: 1 cells
+Command: open_checkpoint ../shared-final-150/post_opt.dcp
+
+Starting open_checkpoint Task
+
+Time (s): cpu = 00:00:00 ; elapsed = 00:00:00 . Memory (MB): peak = 2770.090 ; gain = 0.000 ; free physical = 6132 ; free virtual = 13255
+Netlist sorting complete. Time (s): cpu = 00:00:00.43 ; elapsed = 00:00:00.44 . Memory (MB): peak = 2770.090 ; gain = 0.000 ; free physical = 6027 ; free virtual = 13181
+INFO: [Netlist 29-17] Analyzing 8938 Unisim elements for replacement
+INFO: [Netlist 29-28] Unisim Transformation completed in 0 CPU seconds
+INFO: [Project 1-479] Netlist was created with Vivado 2021.1
+INFO: [Project 1-570] Preparing netlist for logic optimization
+INFO: [Timing 38-478] Restoring timing data from binary archive.
+INFO: [Timing 38-479] Binary timing data restore complete.
+INFO: [Project 1-856] Restoring constraints from binary archive.
+INFO: [Project 1-853] Binary constraint restore complete.
+Netlist sorting complete. Time (s): cpu = 00:00:00.01 ; elapsed = 00:00:00.02 . Memory (MB): peak = 2774.090 ; gain = 0.000 ; free physical = 5852 ; free virtual = 12943
+INFO: [Project 1-111] Unisim Transformation Summary:
+  A total of 58 instances were transformed.
+  RAM16X1D => RAM32X1D (RAMD32(x2)): 37 instances
+  RAM32M => RAM32M (RAMD32(x6), RAMS32(x2)): 15 instances
+  RAM32X1D => RAM32X1D (RAMD32(x2)): 6 instances
+
+INFO: [Project 1-604] Checkpoint was created with Vivado v2021.1 (64-bit) build 3247384
+open_checkpoint: Time (s): cpu = 00:00:10 ; elapsed = 00:00:12 . Memory (MB): peak = 2774.090 ; gain = 4.000 ; free physical = 5852 ; free virtual = 12943
+Attribution 150 pipeline: 1 cells
+Attribution 150 audio: 1 cells
+Attribution 150 state: 1 cells
+Attribution 150 jobs: 1 cells
+Attribution 150 midi: 1 cells
+Attribution 150 midi_service: 1 cells
+# exit 0
+INFO: [Common 17-206] Exiting Vivado at Thu Nov 19 22:20:34 2026...

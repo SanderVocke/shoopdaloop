@@ -1,0 +1,109 @@
+{
+  "part": "xc7z020clg484-1",
+  "runs": [
+    {
+      "mhz": 100,
+      "revision": "ad08d55e3b1123686555722fa0656f74688574fd",
+      "evidence": "compact-100",
+      "outcome": "stage=route\nstatus=0\nmessage=0",
+      "post_synth": {
+        "lut": 49673,
+        "ff": 30683,
+        "bram36": 92,
+        "dsp": 8,
+        "timing": {
+          "wns_ns": -8.226,
+          "whs_ns": 0.002
+        },
+        "control_sets": 498
+      },
+      "post_opt": {
+        "lut": 35660,
+        "ff": 29879,
+        "bram36": 92,
+        "dsp": 8,
+        "timing": {
+          "wns_ns": -5.32,
+          "whs_ns": 0.002
+        },
+        "control_sets": 496
+      },
+      "post_place": {
+        "lut": 35408,
+        "ff": 29960,
+        "bram36": 92,
+        "dsp": 8,
+        "slices": 12799,
+        "timing": {
+          "wns_ns": -4.923,
+          "whs_ns": -0.408
+        },
+        "control_sets": 1830
+      },
+      "post_route": {
+        "lut": 35408,
+        "ff": 29960,
+        "bram36": 92,
+        "dsp": 8,
+        "slices": 12799,
+        "timing": {
+          "wns_ns": -5.138,
+          "whs_ns": 0.045
+        },
+        "control_sets": 1830
+      }
+    },
+    {
+      "mhz": 150,
+      "revision": "ad08d55e3b1123686555722fa0656f74688574fd",
+      "evidence": "compact-150",
+      "outcome": "stage=route\nstatus=0\nmessage=0",
+      "post_synth": {
+        "lut": 49679,
+        "ff": 30683,
+        "bram36": 92,
+        "dsp": 8,
+        "timing": {
+          "wns_ns": -11.559,
+          "whs_ns": 0.002
+        },
+        "control_sets": 498
+      },
+      "post_opt": {
+        "lut": 35666,
+        "ff": 29879,
+        "bram36": 92,
+        "dsp": 8,
+        "timing": {
+          "wns_ns": -8.653,
+          "whs_ns": 0.002
+        },
+        "control_sets": 496
+      },
+      "post_place": {
+        "lut": 36128,
+        "ff": 29981,
+        "bram36": 92,
+        "dsp": 8,
+        "slices": 12828,
+        "timing": {
+          "wns_ns": -7.506,
+          "whs_ns": -0.385
+        },
+        "control_sets": 1546
+      },
+      "post_route": {
+        "lut": 36128,
+        "ff": 29981,
+        "bram36": 92,
+        "dsp": 8,
+        "slices": 12828,
+        "timing": {
+          "wns_ns": -7.773,
+          "whs_ns": 0.005
+        },
+        "control_sets": 1546
+      }
+    }
+  ]
+}

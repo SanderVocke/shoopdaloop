@@ -3,6 +3,12 @@ mod content;
 mod difference;
 mod emission;
 mod history;
+mod jobs;
+pub(crate) use jobs::Execution;
+pub use jobs::MidiJob;
+#[cfg(test)]
+#[allow(dead_code)]
+mod oracle;
 pub(crate) mod session;
 mod state;
 mod storage;
@@ -206,3 +212,6 @@ impl Interpreter {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod shared_tests;

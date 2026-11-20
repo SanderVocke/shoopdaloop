@@ -65,7 +65,7 @@ module sp_engine #(
         SYNC_CANCEL, SYNC_CANCEL_NEXT, SYNC_GROUP_DONE, SYNC_NATURAL, SYNC_WRAP, SYNC_WRAP_EVENT,
         SYNC_SOURCE, SYNC_DELIVER, SYNC_SELF, SYNC_RENDER, SYNC_STAMP,
         SYNC_ADVANCE, SYNC_ADV_POSITION, SYNC_ADV_COMMIT, SYNC_ADV_CAPTURE, SYNC_STORE, SYNC_FINISH,
-        SYNC_WRITE, SYNC_EVENT, OWN_FLAGS, OWN_STAMP, OWN_RENDER, OWN_LENGTH
+        SYNC_WRITE, SYNC_EVENT, OWN_FLAGS, OWN_STAMP, OWN_RENDER, OWN_LENGTH, MIDI_DISPATCH
     } phase_t;
     typedef enum logic [2:0] {
         ENABLE, POSITION, LENGTH, VIEW, RAMP, SMOOTHING, LOOP_MEMORY
@@ -94,6 +94,7 @@ module sp_engine #(
     wire [95:0] instruction={instruction_reserved,arg4,arg3,arg2,arg1,arg0,opcode};
     reg [15:0] arg0, arg1, arg2, arg3, arg4;
     reg [15:0] operand_address;
+    reg [63:0] midi_start_frame;
     reg [63:0] position;
     reg [63:0] length;
     reg writeback;
@@ -250,7 +251,7 @@ module sp_engine #(
             memory_return<=IDLE; sync_event_return<=IDLE; sync_natural_return<=IDLE; operation_return<=IDLE; sync_pass<=0;
             scan_index<=0; winner<=0; winner_valid<=0; cancel_index<=0;
             pulse_pending<=0; delivered<=0; masked<=0; protected_valid<=0; protected_newer<=0;
-            changed<=0; applied_pulse<=0; sync_fault<=0; sync_frame<=0;
+            changed<=0; applied_pulse<=0; sync_fault<=0; sync_frame<=0; midi_start_frame<=0;
             run_quantum <= 0; begin_capture <= 0; capture_job <= 0; chunk_shift <= 0;
             opcode <= 0;
             arg0 <= 0;
@@ -287,6 +288,7 @@ module sp_engine #(
                     program_bad <= instruction_count > 32'(PROGRAM_DEPTH) || sync_count>instruction_count || sync_count>32'(LOOP_DEPTH);
                     state_bad <= state_count > 32'(STATE_DEPTH);
                     empty_program <= instruction_count == 0;
+                    midi_start_frame <= sync_frame;
                     run_count <= PC_BITS'(instruction_count);
                     run_state_count <= state_count;
                     run_quantum <= quantum; run_sync_count<=sync_count; run_has_sync<=sync_count!=0;
@@ -345,6 +347,12 @@ module sp_engine #(
                         `SHOOP_SP_PROCESS_LOOP: begin
                             if (instruction[95:56]!=0 && !(instruction[95:72]==24'd1)) begin finish_error(`SHOOP_SP_INVALID_PROGRAM); end
                             else phase<=SYNC_BEGIN;
+                        end
+                        `SHOOP_SP_PROCESS_MIDI: begin
+                            if (arg3 >= 128 || arg4 > 10) finish_error(`SHOOP_SP_INVALID_PROGRAM);
+                            else if (arg4==0 || arg4==2 || arg4==8 || arg4==10) phase<=MIDI_DISPATCH;
+                            else if (run_has_sync) phase<=SYNC_BEGIN;
+                            else finish_error(`SHOOP_SP_INVALID_PROGRAM);
                         end
                         `SHOOP_SP_LOGICAL_PLAYBACK, `SHOOP_SP_LOGICAL_CAPTURE, `SHOOP_SP_PROCESS_SMOOTHING, `SHOOP_SP_HISTORY_SMOOTHING: begin
                             if (run_has_sync) phase<=SYNC_BEGIN;
@@ -418,7 +426,8 @@ module sp_engine #(
                     position_in_range <= position < length;
                     if (loop_invalid) begin
                         finish_error(`SHOOP_SP_INVALID_STATE);
-                    end else if (opcode == `SHOOP_SP_PROCESS_SMOOTHING || opcode == `SHOOP_SP_HISTORY_SMOOTHING) begin
+                    end else if (opcode == `SHOOP_SP_PROCESS_MIDI) phase<=MIDI_DISPATCH;
+                    else if (opcode == `SHOOP_SP_PROCESS_SMOOTHING || opcode == `SHOOP_SP_HISTORY_SMOOTHING) begin
                         playback_flags <= {loop_at_start,loop_mode==1};
                         operand_address <= opcode==`SHOOP_SP_HISTORY_SMOOTHING ? arg1 : arg3; operand <= SMOOTHING; phase <= READ_REQUEST;
                     end else if (opcode == `SHOOP_SP_LOGICAL_PLAYBACK) begin
@@ -761,10 +770,28 @@ module sp_engine #(
                     loop_read(target,RP,OWN_RENDER);
                 end
                 OWN_RENDER: begin
-                    position<=word_value>>chunk_shift; loop_at_start<=!word_nonzero;
+                    position<=opcode==`SHOOP_SP_PROCESS_MIDI ? word_value : word_value>>chunk_shift; loop_at_start<=!word_nonzero;
                     loop_read(target,LEN,OWN_LENGTH);
                 end
-                OWN_LENGTH: begin length<=word_value>>chunk_shift; phase<=LOOP_RESULT; end
+                OWN_LENGTH: begin length<=opcode==`SHOOP_SP_PROCESS_MIDI ? word_value : word_value>>chunk_shift; phase<=LOOP_RESULT; end
+                MIDI_DISPATCH: begin
+                    phase<=EMIT;
+                    case(arg4)
+                        0: job_data<=pack_job(`SHOOP_SP_MIDI_BEGIN,0,0,sync_frame,0,0);
+                        1: if(loop_mode!=2) job_data<=pack_job(`SHOOP_SP_MIDI_FINISH_CAPTURE,arg3,0,0,0,{arg2,arg1,16'b0,arg0});
+                           else if(begin_capture) job_data<=pack_job(`SHOOP_SP_MIDI_BEGIN_CAPTURE,arg3,0,midi_start_frame,0,{arg2,arg1,16'b0,arg0});
+                           else phase<=NEXT;
+                        2: job_data<=pack_job(`SHOOP_SP_MIDI_OBSERVE,0,0,0,0,0);
+                        3: if(loop_mode==2) job_data<=pack_job(`SHOOP_SP_MIDI_APPEND,arg3,0,0,0,{arg2,arg1,16'b0,arg0});else phase<=NEXT;
+                        4: job_data<=pack_job(`SHOOP_SP_MIDI_CLEANUP,arg3,{13'b0,begin_capture,loop_mode},position,length,{arg2,arg1,16'b0,arg0});
+                        5,6: if(loop_mode==1 && position<length) job_data<=pack_job(`SHOOP_SP_MIDI_CLAIM,arg3,{14'b0,arg4==5,1'b1},0,0,{arg2,arg1,16'b0,arg0});else phase<=NEXT;
+                        7: if(loop_mode==1 && position<length) job_data<=pack_job(`SHOOP_SP_MIDI_READ,arg3,{13'b0,begin_capture,loop_mode},position,length,{arg2,arg1,16'b0,arg0});else phase<=NEXT;
+                        8: job_data<=pack_job(`SHOOP_SP_MIDI_OUTPUT,0,0,0,0,0);
+                        9: job_data<=pack_job(`SHOOP_SP_MIDI_COMPLETE,arg3,{14'b0,(loop_mode==1 && position>=length) ? 2'b0 : loop_mode},0,0,{arg2,arg1,16'b0,arg0});
+                        10: job_data<=pack_job(`SHOOP_SP_MIDI_MAINTAIN,0,0,0,0,0);
+                        default: finish_error(`SHOOP_SP_INVALID_PROGRAM);
+                    endcase
+                end
                 NEXT: begin
                     pc <= pc + 1'b1;
                     if (last_instruction) begin

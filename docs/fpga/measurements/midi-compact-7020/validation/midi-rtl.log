@@ -1,0 +1,54 @@
+    Finished `test` profile [unoptimized] target(s) in 0.94s
+     Running tests/midi.rs (target/debug/build/rt_fpga_testbench/13fa027fe74d073d/out/midi-13fa027fe74d073d)
+
+running 18 tests
+   Compiling bench_top#1080117113531657944 (/workspace/work/current-backend/work/marlin-suite/midi/midi_job_service-74e84ef0f4be7753/bench_top.sv)
+   Compiling bench_top#8289102361686046646 (/workspace/work/current-backend/work/marlin-suite/midi/midi_job_service-837891b6cf75cb08/bench_top.sv)
+    Finished `verilator-O0` profile [unoptimized] target in 18.39s
+   Compiling bench_top#4457772560185797727 (/workspace/work/current-backend/work/marlin-suite/midi-mixed/midi_audio_pipeline-d419f7d598d61612/bench_top.sv)
+    Finished `verilator-O0` profile [unoptimized] target in 29.77s
+test midi_context_unbind_requires_cleanup_and_preserves_pinned_exports ... ok
+   Compiling bench_top#13398135224099675180 (/workspace/work/current-backend/work/marlin-suite/midi/midi_job_service_axi-da06f2c2ffe9dd36/bench_top.sv)
+test midi_compiled_sp_and_shared_jp_match_audio_messages_and_job_traces has been running for over 60 seconds
+test midi_ddr_128_loop_group_grab_and_eight_destination_playback_match_rust has been running for over 60 seconds
+test midi_ddr_all_quantum_sizes_and_history_checkpoint_edges_match_rust has been running for over 60 seconds
+    Finished `verilator-O0` profile [unoptimized] target in 39.87s
+    Finished `verilator-O0` profile [unoptimized] target in 65.01s
+test midi_ddr_axi32_and_axi64_record_playback_bounds_and_faults has been running for over 60 seconds
+   Compiling bench_top#14512113521730744405 (/workspace/work/current-backend/work/marlin-suite/midi/midi_job_service_axi-0f57f3eb7f1e865a/bench_top.sv)
+test midi_ddr_all_quantum_sizes_and_history_checkpoint_edges_match_rust ... ok
+    Finished `verilator-O0` profile [unoptimized] target in 37.61s
+test midi_ddr_capacity_protects_capture_and_rejects_private_writer_edits has been running for over 60 seconds
+test midi_ddr_axi32_and_axi64_record_playback_bounds_and_faults ... ok
+   Compiling bench_top#5510216191862878270 (/workspace/work/current-backend/work/marlin-suite/midi/midi_difference-7ba8475d6d786139/bench_top.sv)
+    Finished `verilator-O0` profile [unoptimized] target in 17.23s
+test midi_ddr_difference_initialization_and_incremental_updates_match_reference ... ok
+test midi_ddr_existing_channel_owner_keeps_its_note_off_before_handoff ... ok
+test midi_ddr_group_replace_clear_and_metadata_grants_are_atomic ... ok
+test midi_ddr_import_export_duplicate_and_retake_stay_coherent_during_playback has been running for over 60 seconds
+test midi_ddr_import_export_duplicate_and_retake_stay_coherent_during_playback ... ok
+   Compiling bench_top#4183019545108239942 (/workspace/work/current-backend/work/marlin-suite/midi/midi_job_service-73ee4a2afed7bc49/bench_top.sv)
+    Finished `verilator-O0` profile [unoptimized] target in 37.13s
+test midi_ddr_independent_input_histories_and_incremental_snapshots_match_rust has been running for over 60 seconds
+test midi_ddr_independent_input_histories_and_incremental_snapshots_match_rust ... ok
+   Compiling bench_top#3338252077986569072 (/workspace/work/current-backend/work/marlin-suite/midi/midi_state-bca054c6ef12f0e5/bench_top.sv)
+    Finished `verilator-O0` profile [unoptimized] target in 24.93s
+test midi_ddr_interpreter_matches_reference_with_delayed_memory ... ok
+   Compiling bench_top#5800155251923706009 (/workspace/work/current-backend/work/marlin-suite/midi/midi_transition-e1a58fc5ecbe1b59/bench_top.sv)
+test midi_ddr_128_loop_group_grab_and_eight_destination_playback_match_rust ... ok
+    Finished `verilator-O0` profile [unoptimized] target in 31.69s
+test midi_ddr_ordered_restoration_and_cleanup_match_reference ... ok
+test midi_ddr_recording_exhaustion_keeps_input_tracking_and_rejects_playback ... ok
+   Compiling bench_top#7730474663526664370 (/workspace/work/current-backend/work/marlin-suite/midi/midi_state_service-2e8ce1c771753be8/bench_top.sv)
+test midi_ddr_output_refusal_recovery_and_partial_stop_cleanup_match_rust ... ok
+    Finished `verilator-O0` profile [unoptimized] target in 36.75s
+test midi_ddr_restoration_updates_output_state_and_all_prepared_differences ... ok
+   Compiling bench_top#17689241077422374665 (/workspace/work/current-backend/work/marlin-suite/midi/midi_store-28c64d64ceda7b56/bench_top.sv)
+test midi_ddr_session_record_restore_repeat_stop_and_history_grab_match_rust ... ok
+    Finished `verilator-O0` profile [unoptimized] target in 26.36s
+test midi_ddr_shared_views_snapshots_capacity_and_incremental_retirement_match_reference ... ok
+test midi_compiled_sp_and_shared_jp_match_audio_messages_and_job_traces ... ok
+test midi_ddr_capacity_protects_capture_and_rejects_private_writer_edits ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1050.51s
+

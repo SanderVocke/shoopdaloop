@@ -2,6 +2,10 @@
 #![no_std]
 #![forbid(unsafe_code)]
 extern crate alloc;
+#[cfg(test)]
+extern crate self as rt_fpga_reference;
+#[cfg(test)]
+extern crate std;
 pub mod chunk_memory;
 pub mod fixed;
 pub mod jobs;

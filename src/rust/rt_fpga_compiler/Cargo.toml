@@ -9,8 +9,10 @@ publish = false
 workspace = true
 
 [features]
+schema=["dep:schemars"]
 serde=["dep:serde"]
 [dependencies]
+schemars = { version = "1", optional = true }
 libm = { workspace = true }
 shoop_graph = { path = "../shoop_graph" }
 serde={workspace=true,features=["derive"],optional=true}

@@ -104,7 +104,7 @@ fn compiler_checks_each_target_resource_and_accepts_the_exact_fit() {
     )
     .unwrap();
     let exact = ProgramLimits {
-        instructions: (program.sync_pass.len() + program.audio_pass.len()) as u32,
+        instructions: (program.sync_pass.len() + program.work_pass.len()) as u32,
         state_values: program.initial_state.len() as u32,
         loop_slots: 40,
         jobs: program.resources.queue_capacity,

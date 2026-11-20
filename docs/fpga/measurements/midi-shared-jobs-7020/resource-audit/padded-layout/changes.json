@@ -1,0 +1,18 @@
+{
+  "purpose": "Synthesis-only DDR stride padding; not a validated production implementation",
+  "source_revision": "c2d6e6ff",
+  "changes": {
+    "midi_job_service.sv": {
+      "before_sha256": "7f079e1fa2210d18345baa8c8a955d6190f1d699da544e026c3e1726e405b7e5",
+      "after_sha256": "6c8571ce8f6e4582a93596158d52f7d5952ed46f4434f80e7d4fa45364e4f85b"
+    },
+    "midi_store.sv": {
+      "before_sha256": "f7d3de5111ad4e671a9eadde2c7f9a317a809766bfaee418b4289bf2fe1a5019",
+      "after_sha256": "7fe3decd4db315bd3c4108d4f06df15484e7b1a0387a99f31a1a4d85623c15b9"
+    },
+    "midi_state_service.sv": {
+      "before_sha256": "8b0a5e3a247ab8b17fa3cbfff30b49e4b66473aa9d3c63fbce41cf46257c0c99",
+      "after_sha256": "e9786ca9309dfbf226029e1e6522e85ee553f2d5eb6bd4140ba6c21b4bdf5a87"
+    }
+  }
+}

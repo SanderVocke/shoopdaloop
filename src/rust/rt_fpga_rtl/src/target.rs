@@ -174,8 +174,20 @@ impl StateProgramTarget for RtlTarget<'_> {
                 .set(72, 1, 1);
             instructions.push(bits);
         }
-        for op in &logical.audio_pass {
+        for op in &logical.work_pass {
             let instruction = match *op {
+                Operation::Midi {
+                    phase,
+                    loop_id,
+                    context,
+                } => component::Instruction::ProcessMidi {
+                    phase: phase as u16,
+                    loop_id: loop_id.map(|id| component::Identity {
+                        slot: id.slot,
+                        generation: id.generation,
+                    }),
+                    context,
+                },
                 Operation::Silence { destination } => component::Instruction::ProcessSilence {
                     destination: operand(destination)?,
                 },

@@ -1,0 +1,6 @@
+*.rpt -whitespace
+*.log -whitespace
+*.patch -whitespace
+context.sv -whitespace
+outcome.txt -whitespace
+resources.svg -whitespace

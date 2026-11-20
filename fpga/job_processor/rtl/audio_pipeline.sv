@@ -6,8 +6,10 @@ module audio_pipeline #(
     parameter integer PROGRAM_REGIONS = LIVE_LOADING != 0 ? 2 : 1,
     parameter integer STATE_DEPTH = 16,
     parameter integer JOB_DEPTH = 32,
+    parameter integer READ_HINT_DEPTH = JOB_DEPTH,
     parameter integer LOOP_DEPTH = STATE_DEPTH,
     parameter integer EXTERNAL_IO = 0,
+    parameter integer ENABLE_MIDI = 0,
     parameter integer MAX_FRAMES = 32,
     parameter integer BUFFERS = 16,
     parameter integer INPUT_PORTS = 2,
@@ -15,6 +17,10 @@ module audio_pipeline #(
     parameter integer CHUNK_FRAMES = 1,
     parameter integer ENABLE_MEDIA = 0
 ) (
+    output wire midi_job_valid, input wire midi_job_ready,
+    output wire [255:0] midi_job_data,
+    input wire midi_job_done, input wire [3:0] midi_job_error,
+    output wire [3:0] midi_error_code,
     output wire sample_input_read,
     output wire [31:0] sample_input_address,
     input wire [31:0] sample_input_data,
@@ -134,7 +140,7 @@ module audio_pipeline #(
     wire read_intent_valid, late_hint_valid, late_hint_ready, hint_push_ready, hint_pop_valid;
     wire [`SHOOP_SP_JOB_BITS-1:0] read_intent_data, hint_pop_data;
     wire [63:0] late_hint_view, late_hint_position, late_hint_length;
-    wire [$clog2(JOB_DEPTH+1)-1:0] hint_count;
+    wire [$clog2(READ_HINT_DEPTH+1)-1:0] hint_count;
     wire unused_hint_count = &{1'b0,hint_count,hint_pop_data[63:1],hint_push_data[63:0]};
     wire [`SHOOP_SP_JOB_BITS-1:0] late_hint_data = {late_hint_length,late_hint_position,late_hint_view,56'b0,`SHOOP_SP_JOB_READ};
     reg hint_stage_valid;
@@ -153,7 +159,7 @@ module audio_pipeline #(
     assign media_hint_length = hint_pop_data[255:192];
     assign media_hint_count = quantum;
 
-    sp_job_fifo #(.DEPTH(JOB_DEPTH), .COUNT_BITS($clog2(JOB_DEPTH+1))) read_intents (
+    sp_job_fifo #(.DEPTH(READ_HINT_DEPTH), .COUNT_BITS($clog2(READ_HINT_DEPTH+1))) read_intents (
         .clk(clk), .reset(reset),
         .push_valid(hint_stage_valid), .push_ready(hint_push_ready),
         .push_data(translated_hint),
@@ -198,8 +204,10 @@ module audio_pipeline #(
     );
     job_processor #(.EXTERNAL_IO(EXTERNAL_IO),
         .MAX_FRAMES(MAX_FRAMES), .BUFFERS(BUFFERS), .INPUT_PORTS(INPUT_PORTS), .OUTPUT_PORTS(OUTPUT_PORTS),
-        .CHUNK_FRAMES(CHUNK_FRAMES), .ENABLE_MEDIA(ENABLE_MEDIA)
+        .CHUNK_FRAMES(CHUNK_FRAMES), .ENABLE_MEDIA(ENABLE_MEDIA), .ENABLE_MIDI(ENABLE_MIDI)
     ) sample_engine (
+        .midi_job_valid(midi_job_valid), .midi_job_ready(midi_job_ready), .midi_job_data(midi_job_data),
+        .midi_job_done(midi_job_done), .midi_job_error(midi_job_error), .midi_error_code(midi_error_code),
         .sample_input_read(sample_input_read), .sample_input_address(sample_input_address), .sample_input_data(sample_input_data),
         .sample_output_write(sample_output_write), .sample_output_address(sample_output_address), .sample_output_data(sample_output_data),
         .clk(clk), .reset(reset), .run_valid(phase == JOB_START), .run_ready(job_run_ready),

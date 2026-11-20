@@ -1,0 +1,333 @@
+{
+  "part": "xc7z020clg484-1",
+  "runs": [
+    {
+      "kind": "audio",
+      "mhz": 100,
+      "evidence": "midi-shared-jobs-7020/audio-100",
+      "post_synth": {
+        "lut": 41815,
+        "ff": 23843,
+        "bram36": 55,
+        "dsp": 4,
+        "timing": {
+          "wns_ns": -8.799,
+          "tns_ns": -350.628,
+          "setup_failing": 72,
+          "setup_total": 56460,
+          "whs_ns": 0.002,
+          "ths_ns": 0.0,
+          "hold_failing": 0,
+          "hold_total": 56460
+        }
+      },
+      "post_opt": {
+        "lut": 27993,
+        "ff": 23253,
+        "bram36": 55,
+        "dsp": 4,
+        "timing": {
+          "wns_ns": -5.32,
+          "tns_ns": -308.095,
+          "setup_failing": 72,
+          "setup_total": 54821,
+          "whs_ns": 0.002,
+          "ths_ns": 0.0,
+          "hold_failing": 0,
+          "hold_total": 54821
+        }
+      },
+      "post_place": {
+        "lut": 27625,
+        "ff": 23332,
+        "bram36": 55,
+        "dsp": 4,
+        "slices": 11165,
+        "control_sets": 1380,
+        "timing": {
+          "wns_ns": -4.126,
+          "tns_ns": -4177.969,
+          "setup_failing": 4685,
+          "setup_total": 54905,
+          "whs_ns": -0.434,
+          "ths_ns": -81.341,
+          "hold_failing": 1241,
+          "hold_total": 54905
+        }
+      },
+      "post_route": {
+        "lut": 27625,
+        "ff": 23332,
+        "bram36": 55,
+        "dsp": 4,
+        "slices": 11165,
+        "control_sets": 1380,
+        "timing": {
+          "wns_ns": -4.578,
+          "tns_ns": -2169.937,
+          "setup_failing": 4540,
+          "setup_total": 54905,
+          "whs_ns": 0.046,
+          "ths_ns": 0.0,
+          "hold_failing": 0,
+          "hold_total": 54905
+        }
+      },
+      "outcome": "stage=route\nstatus=0\nmessage=0"
+    },
+    {
+      "kind": "audio",
+      "mhz": 150,
+      "evidence": "midi-shared-jobs-7020/audio-150",
+      "post_synth": {
+        "lut": 41815,
+        "ff": 23843,
+        "bram36": 55,
+        "dsp": 4,
+        "timing": {
+          "wns_ns": -12.132,
+          "tns_ns": -7962.022,
+          "setup_failing": 5518,
+          "setup_total": 56460,
+          "whs_ns": 0.002,
+          "ths_ns": 0.0,
+          "hold_failing": 0,
+          "hold_total": 56460
+        }
+      },
+      "post_opt": {
+        "lut": 27993,
+        "ff": 23253,
+        "bram36": 55,
+        "dsp": 4,
+        "timing": {
+          "wns_ns": -8.653,
+          "tns_ns": -7902.488,
+          "setup_failing": 5471,
+          "setup_total": 54821,
+          "whs_ns": 0.002,
+          "ths_ns": 0.0,
+          "hold_failing": 0,
+          "hold_total": 54821
+        }
+      },
+      "post_place": {
+        "lut": 28289,
+        "ff": 23442,
+        "bram36": 55,
+        "dsp": 4,
+        "slices": 11130,
+        "control_sets": 1429,
+        "timing": {
+          "wns_ns": -7.509,
+          "tns_ns": -32516.383,
+          "setup_failing": 13581,
+          "setup_total": 55237,
+          "whs_ns": -0.311,
+          "ths_ns": -102.79,
+          "hold_failing": 1570,
+          "hold_total": 55237
+        }
+      },
+      "post_route": {
+        "lut": 28289,
+        "ff": 23442,
+        "bram36": 55,
+        "dsp": 4,
+        "slices": 11130,
+        "control_sets": 1429,
+        "timing": {
+          "wns_ns": -7.77,
+          "tns_ns": -52110.145,
+          "setup_failing": 22143,
+          "setup_total": 55237,
+          "whs_ns": 0.042,
+          "ths_ns": 0.0,
+          "hold_failing": 0,
+          "hold_total": 55237
+        }
+      },
+      "outcome": "stage=route\nstatus=0\nmessage=0"
+    },
+    {
+      "kind": "shared",
+      "mhz": 100,
+      "evidence": "midi-shared-jobs-7020/shared-100",
+      "post_synth": {
+        "lut": 66255,
+        "ff": 37866,
+        "bram36": 68,
+        "dsp": 23,
+        "timing": {
+          "wns_ns": -8.226,
+          "tns_ns": -1081.395,
+          "setup_failing": 545,
+          "setup_total": 92371,
+          "whs_ns": 0.002,
+          "ths_ns": 0.0,
+          "hold_failing": 0,
+          "hold_total": 92371
+        }
+      },
+      "post_opt": {
+        "lut": 49841,
+        "ff": 36303,
+        "bram36": 68,
+        "dsp": 23,
+        "timing": {
+          "wns_ns": -5.558,
+          "tns_ns": -881.767,
+          "setup_failing": 528,
+          "setup_total": 87862,
+          "whs_ns": 0.002,
+          "ths_ns": 0.0,
+          "hold_failing": 0,
+          "hold_total": 87862
+        }
+      },
+      "outcome": "stage=place\nstatus=1\nmessage=ERROR: [Common 17-69] Command failed: Placer could not place all instances",
+      "packing": {
+        "available_slices_remaining": 7815,
+        "unplaced_slices_required": 9668,
+        "control_sets": 2600,
+        "luts_combined": 52020,
+        "luts_total": 57859
+      }
+    },
+    {
+      "kind": "shared",
+      "mhz": 150,
+      "evidence": "midi-shared-jobs-7020/shared-150",
+      "post_synth": {
+        "lut": 66276,
+        "ff": 37867,
+        "bram36": 68,
+        "dsp": 23,
+        "timing": {
+          "wns_ns": -11.559,
+          "tns_ns": -17721.328,
+          "setup_failing": 10756,
+          "setup_total": 92374,
+          "whs_ns": 0.002,
+          "ths_ns": 0.0,
+          "hold_failing": 0,
+          "hold_total": 92374
+        }
+      },
+      "post_opt": {
+        "lut": 49832,
+        "ff": 36304,
+        "bram36": 68,
+        "dsp": 23,
+        "timing": {
+          "wns_ns": -8.865,
+          "tns_ns": -15964.721,
+          "setup_failing": 9934,
+          "setup_total": 87865,
+          "whs_ns": 0.002,
+          "ths_ns": 0.0,
+          "hold_failing": 0,
+          "hold_total": 87865
+        }
+      },
+      "outcome": "stage=place\nstatus=1\nmessage=ERROR: [Common 17-69] Command failed: Placer could not place all instances",
+      "packing": {
+        "available_slices_remaining": 7815,
+        "unplaced_slices_required": 9752,
+        "control_sets": 2580,
+        "luts_combined": 52502,
+        "luts_total": 57883
+      }
+    },
+    {
+      "kind": "previous",
+      "mhz": 100,
+      "evidence": "midi-vivado-7020/after-100",
+      "post_synth": {
+        "lut": 67958,
+        "ff": 37754,
+        "bram36": 57,
+        "dsp": 4,
+        "timing": {
+          "wns_ns": -8.799,
+          "tns_ns": -822.596,
+          "setup_failing": 503,
+          "setup_total": 91733,
+          "whs_ns": 0.002,
+          "ths_ns": 0.0,
+          "hold_failing": 0,
+          "hold_total": 91733
+        }
+      },
+      "post_opt": {
+        "lut": 52121,
+        "ff": 36768,
+        "bram36": 57,
+        "dsp": 4,
+        "timing": {
+          "wns_ns": -5.32,
+          "tns_ns": -753.644,
+          "setup_failing": 482,
+          "setup_total": 88958,
+          "whs_ns": 0.002,
+          "ths_ns": 0.0,
+          "hold_failing": 0,
+          "hold_total": 88958
+        }
+      },
+      "outcome": "stage=place\nstatus=1\nmessage=ERROR: [Common 17-69] Command failed: Placer could not place all instances",
+      "packing": {
+        "available_slices_remaining": 6930,
+        "unplaced_slices_required": 9540,
+        "control_sets": 3364,
+        "luts_combined": 54303,
+        "luts_total": 60896
+      }
+    },
+    {
+      "kind": "previous",
+      "mhz": 150,
+      "evidence": "midi-vivado-7020/after-150",
+      "post_synth": {
+        "lut": 68137,
+        "ff": 37754,
+        "bram36": 57,
+        "dsp": 4,
+        "timing": {
+          "wns_ns": -12.132,
+          "tns_ns": -16186.402,
+          "setup_failing": 10457,
+          "setup_total": 91733,
+          "whs_ns": 0.002,
+          "ths_ns": 0.0,
+          "hold_failing": 0,
+          "hold_total": 91733
+        }
+      },
+      "post_opt": {
+        "lut": 52318,
+        "ff": 36768,
+        "bram36": 57,
+        "dsp": 4,
+        "timing": {
+          "wns_ns": -8.653,
+          "tns_ns": -15697.793,
+          "setup_failing": 10183,
+          "setup_total": 88958,
+          "whs_ns": 0.002,
+          "ths_ns": 0.0,
+          "hold_failing": 0,
+          "hold_total": 88958
+        }
+      },
+      "outcome": "stage=place\nstatus=1\nmessage=ERROR: [Common 17-69] Command failed: Placer could not place all instances",
+      "packing": {
+        "available_slices_remaining": 6930,
+        "unplaced_slices_required": 9608,
+        "control_sets": 3370,
+        "luts_combined": 55080,
+        "luts_total": 60935
+      }
+    }
+  ]
+}
