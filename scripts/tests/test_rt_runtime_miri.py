@@ -105,7 +105,7 @@ class MiriRunnerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             reports = Path(directory)
             selected = [(runner.HOST_PACKAGE, "lib", [runner.HOST_CASES[9], "--", "--exact"], 1, 0)]
-            expected = f"-Zmiri-seed=0 -Zmiri-measureme={reports / 'measureme'}"
+            expected = f"-Zmiri-seed=0 -Zmiri-measureme={reports.resolve() / 'measureme'}"
             def case(command, env, log):
                 self.assertEqual(command, runner.case_command(*selected[0][:3]))
                 self.assertEqual(env["MIRIFLAGS"], expected)

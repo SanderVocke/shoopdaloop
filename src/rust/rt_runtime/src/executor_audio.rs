@@ -40,99 +40,107 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
             }
             let mut first = 0;
             for step in &plan.descriptor().steps {
-                {
-                    let buffers = &mut self.slots[step.node.slot() as usize]
-                        .as_mut()
-                        .ok_or(Error::InvalidId)?
-                        .buffers;
-                    buffers.input_sequences.fill(AudioSequence::default());
-                    buffers.output_sequences.fill(AudioSequence::default());
-                    buffers.input_mixed.fill(false);
-                    buffers.midi_forwarded.fill(false);
-                    for input in &mut buffers.midi_input {
-                        input.clear();
-                    }
-                    for output in &mut buffers.midi_output {
-                        output.clear();
-                    }
+                let index = step.node.slot() as usize;
+                let buffers = &mut self.slots[index].as_mut().ok_or(Error::InvalidId)?.buffers;
+                let reusable = buffers.attach_reusable_input(&mut self.reusable_input)?;
+                buffers.input_sequences.fill(AudioSequence::default());
+                buffers.output_sequences.fill(AudioSequence::default());
+                buffers.input_mixed.fill(false);
+                buffers.midi_forwarded.fill(false);
+                for input in &mut buffers.midi_input {
+                    input.clear();
                 }
-                for edge in &plan.descriptor().connections[first..step.input_end] {
-                    if edge.source.kind == PortType::Audio {
-                        route_referenced(
-                            &mut self.slots,
-                            *edge,
-                            &mut arena,
-                            &mut self.host_sequences,
-                            &self.resources,
-                            audio,
-                            start,
-                            q,
-                        )?;
-                    } else {
-                        route_offset(&mut self.slots, *edge, audio, midi, q, start, q, 0)?;
+                for output in &mut buffers.midi_output {
+                    output.clear();
+                }
+                let result: Result<(), Error> = (|| {
+                    for edge in &plan.descriptor().connections[first..step.input_end] {
+                        if edge.source.kind == PortType::Audio {
+                            route_referenced(
+                                &mut self.slots,
+                                *edge,
+                                &mut arena,
+                                &mut self.host_sequences,
+                                &self.resources,
+                                audio,
+                                start,
+                                q,
+                            )?;
+                        } else {
+                            route_offset(&mut self.slots, *edge, audio, midi, q, start, q, 0)?;
+                        }
+                        increment(
+                            &mut self.diagnostics.connections_processed,
+                            &mut self.diagnostics.counter_overflow,
+                        );
+                    }
+                    let slot = self.slots[step.node.slot() as usize]
+                        .as_mut()
+                        .ok_or(Error::InvalidId)?;
+                    let processor = slot.processor.as_mut().ok_or(Error::InvalidId)?;
+                    let buffers = &mut slot.buffers;
+                    let handled = processor.process_references(&mut ReferenceBlock {
+                        node: step.node,
+                        frame,
+                        graph_epoch: self.epoch,
+                        quantum,
+                        inputs: &buffers.input_sequences,
+                        outputs: &mut buffers.output_sequences,
+                        arena: &mut arena,
+                        resources: &mut self.resources,
+                        domain: &mut self.planner,
+                    })?;
+                    if !handled {
+                        for (port, sequence) in buffers.input_sequences.iter().enumerate() {
+                            arena.read_into(
+                                *sequence,
+                                &mut buffers.input[port * q..(port + 1) * q],
+                                &self.resources,
+                                false,
+                            )?;
+                        }
+                        let output_count = slot.ports.audio_outputs;
+                        let offset = arena.allocate(output_count * q)?;
+                        let result = processor.process(&mut ProcessBlock {
+                            node: step.node,
+                            graph_epoch: self.epoch,
+                            callback_start,
+                            frame,
+                            frames: q,
+                            quantum,
+                            audio: AudioPorts::new(
+                                &buffers.input,
+                                arena.output(offset, output_count * q),
+                                q,
+                                0,
+                                q,
+                            )?,
+                            midi_inputs: &buffers.midi_input,
+                            midi_outputs: &mut buffers.midi_output,
+                            midi_forwarded: &mut buffers.midi_forwarded,
+                            resources: self.resources.io(),
+                            domain: &mut self.planner,
+                        });
+                        record_midi_overflow(result, &mut self.diagnostics)?;
+                        for (port, sequence) in buffers.output_sequences.iter_mut().enumerate() {
+                            *sequence = arena.transient(offset + port * q, q);
+                        }
                     }
                     increment(
-                        &mut self.diagnostics.connections_processed,
+                        &mut self.diagnostics.nodes_processed,
                         &mut self.diagnostics.counter_overflow,
                     );
+                    self.profiling.node_ready(u64::from(step.node.slot()));
+                    Ok(())
+                })();
+                if let Some(port) = reusable {
+                    self.slots[index]
+                        .as_mut()
+                        .expect("prepared node remains attached during processing")
+                        .buffers
+                        .release_reusable_input(port, &mut self.reusable_input);
                 }
-                let slot = self.slots[step.node.slot() as usize]
-                    .as_mut()
-                    .ok_or(Error::InvalidId)?;
-                let processor = slot.processor.as_mut().ok_or(Error::InvalidId)?;
-                let buffers = &mut slot.buffers;
-                let handled = processor.process_references(&mut ReferenceBlock {
-                    node: step.node,
-                    frame,
-                    graph_epoch: self.epoch,
-                    quantum,
-                    inputs: &buffers.input_sequences,
-                    outputs: &mut buffers.output_sequences,
-                    arena: &mut arena,
-                    resources: &mut self.resources,
-                    domain: &mut self.planner,
-                })?;
-                if !handled {
-                    for (port, sequence) in buffers.input_sequences.iter().enumerate() {
-                        arena.read_into(
-                            *sequence,
-                            &mut buffers.input[port * q..(port + 1) * q],
-                            &self.resources,
-                            false,
-                        )?;
-                    }
-                    let output_count = slot.ports.audio_outputs;
-                    let offset = arena.allocate(output_count * q)?;
-                    let result = processor.process(&mut ProcessBlock {
-                        node: step.node,
-                        graph_epoch: self.epoch,
-                        callback_start,
-                        frame,
-                        frames: q,
-                        quantum,
-                        audio: AudioPorts::new(
-                            &buffers.input,
-                            arena.output(offset, output_count * q),
-                            q,
-                            0,
-                            q,
-                        )?,
-                        midi_inputs: &buffers.midi_input,
-                        midi_outputs: &mut buffers.midi_output,
-                        midi_forwarded: &mut buffers.midi_forwarded,
-                        resources: self.resources.io(),
-                        domain: &mut self.planner,
-                    });
-                    record_midi_overflow(result, &mut self.diagnostics)?;
-                    for (port, sequence) in buffers.output_sequences.iter_mut().enumerate() {
-                        *sequence = arena.transient(offset + port * q, q);
-                    }
-                }
-                increment(
-                    &mut self.diagnostics.nodes_processed,
-                    &mut self.diagnostics.counter_overflow,
-                );
-                self.profiling.node_ready(u64::from(step.node.slot()));
+                result?;
                 first = step.input_end;
             }
             for edge in &plan.descriptor().connections[first..] {

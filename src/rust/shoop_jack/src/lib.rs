@@ -2,9 +2,41 @@
 #![deny(unsafe_code)]
 
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
     Arc,
 };
+
+/// Observes JACK's MIDI port storage from its buffer-size callback.
+pub struct MidiBufferSize<P> {
+    handler: P,
+    bytes: Arc<AtomicUsize>,
+}
+
+impl<P> MidiBufferSize<P> {
+    pub fn new(handler: P, bytes: Arc<AtomicUsize>) -> Self {
+        Self { handler, bytes }
+    }
+
+    pub fn into_inner(self) -> P {
+        self.handler
+    }
+}
+
+impl<P: jack::ProcessHandler> jack::ProcessHandler for MidiBufferSize<P> {
+    fn process(&mut self, client: &jack::Client, scope: &jack::ProcessScope) -> jack::Control {
+        self.handler.process(client, scope)
+    }
+
+    #[allow(unsafe_code)]
+    fn buffer_size(&mut self, client: &jack::Client, frames: jack::Frames) -> jack::Control {
+        // JACK permits this query here. The static name avoids allocating a CString.
+        let bytes = unsafe {
+            jack_sys::jack_port_type_get_buffer_size(client.raw(), c"8 bit raw midi".as_ptr())
+        };
+        self.bytes.store(bytes, Ordering::Release);
+        self.handler.buffer_size(client, frames)
+    }
+}
 
 /// Forwards graph/rate/xrun notifications and records shutdown without invoking application code.
 pub struct Notifications<N> {

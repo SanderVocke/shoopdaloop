@@ -160,10 +160,36 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                             | Purpose::InjectMidi(..)
                             | Purpose::Preview
                             | Purpose::CancelReads
+                            | Purpose::ProcessorLogs
+                            | Purpose::ProcessorCheckpoint
                     ) {
                         self.snapshots.capture_after = self.status.frame;
                     }
                     self.answered(pending, outcome);
+                }
+            }
+            EngineMessage::ProcessorLogPage { correlation, page } => {
+                if let Some(pending) = self.requests.in_flight.remove(&correlation) {
+                    if pending.purpose != Purpose::ProcessorLogs {
+                        self.lose("the engine returned a log page for another request".to_owned());
+                    } else {
+                        self.processor_logs_answered(
+                            pending.request,
+                            crate::processor_logs::Reply::Page(page),
+                        );
+                    }
+                }
+            }
+            EngineMessage::ProcessorCheckpointPage { correlation, page } => {
+                match self.requests.in_flight.remove(&correlation) {
+                    Some(pending) if pending.purpose == Purpose::ProcessorCheckpoint => self
+                        .processor_checkpoint_answered(
+                            pending.request,
+                            crate::processor_checkpoints::Reply::Page(page),
+                        ),
+                    _ => self.lose(
+                        "the engine returned an unsolicited processor checkpoint page".to_owned(),
+                    ),
                 }
             }
             EngineMessage::Telemetry(record) => {
@@ -368,7 +394,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
 
     fn bus_processor_record(&mut self, record: StateRecord) {
         match record {
-            StateRecord::BusProcessor { bus, slot } => {
+            StateRecord::BusProcessor { bus, slot, kind } => {
                 if let Some(entry) = self
                     .mirror
                     .buses
@@ -379,11 +405,15 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         entry.processor_snapshot = None;
                     }
                     entry.processor_slot = slot;
+                    entry.processor_type = kind
+                        .map(crate::processor_controls::processor_id)
+                        .map(Into::into);
                 }
             }
             StateRecord::BusProcessorState {
                 bus,
                 slot,
+                kind,
                 snapshot,
             } => {
                 if let Some(entry) = self
@@ -392,14 +422,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     .values_mut()
                     .find(|entry| entry.slot == bus && !entry.removing)
                 {
-                    if crate::processor_controls::snapshot_state(
-                        shoop_processor_protocol::Kind::BuiltInFx,
-                        snapshot.values,
-                    )
-                    .is_ok()
+                    if kind.is_carla()
+                        || crate::processor_controls::snapshot_state(kind, snapshot.values).is_ok()
                     {
                         entry.processor_slot = Some(slot);
                         entry.processor_snapshot = Some(snapshot);
+                        entry.processor_type =
+                            Some(crate::processor_controls::processor_id(kind).into());
                     }
                 }
             }
@@ -680,15 +709,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         shoop_backend::BackendTrackTopology::DryWetProcessor {
                             processor_type,
                             ..
-                        } => match kind {
-                            shoop_rt_protocol::ProcessorKind::BuiltInFx => {
-                                processor_type == shoop_app_api::TrackProcessorTypeId::BUILTIN_FX
-                            }
-                            shoop_rt_protocol::ProcessorKind::OxiSynth => {
-                                processor_type == shoop_app_api::TrackProcessorTypeId::OXISYNTH
-                            }
-                            shoop_rt_protocol::ProcessorKind::External => false,
-                        },
+                        } => {
+                            crate::processor_controls::processor_kind(processor_type) == Some(kind)
+                        }
                     };
                     if !matches {
                         self.lose("engine track processor differs from its owner".to_owned());
@@ -883,6 +906,32 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     }
 
     pub(crate) fn answered(&mut self, pending: Pending, outcome: Outcome) {
+        if pending.purpose == Purpose::ProcessorCheckpoint {
+            self.processor_checkpoint_answered(
+                pending.request,
+                crate::processor_checkpoints::Reply::Outcome(outcome),
+            );
+            return;
+        }
+        if pending.purpose == Purpose::ProcessorLogs {
+            self.processor_logs_answered(
+                pending.request,
+                crate::processor_logs::Reply::Outcome(outcome),
+            );
+            return;
+        }
+        if outcome == Outcome::Done {
+            match pending.purpose {
+                Purpose::ProcessorControl(id, shoop_backend::BackendTrackFxControl::ClearLogs) => {
+                    self.processor_logs
+                        .clear_confirmed(crate::processor_logs::Target::Track(id))
+                }
+                Purpose::BusFxControl(id, shoop_backend::BackendBusFxControl::ClearLogs) => self
+                    .processor_logs
+                    .clear_confirmed(crate::processor_logs::Target::Bus(id)),
+                _ => {}
+            }
+        }
         if pending.purpose == Purpose::Input {
             self.input_answered(pending.request, outcome);
             return;
@@ -925,6 +974,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     Outcome::CompositeApplied { .. }
                     | Outcome::ContentApplied { .. }
                     | Outcome::ContentPrepared { .. }
+                    | Outcome::ProcessorLogs { .. }
+                    | Outcome::ProcessorCheckpoint { .. }
                     | Outcome::Input(_)
                     | Outcome::InputCapacity(_) => Err("unexpected transaction outcome".to_owned()),
                     Outcome::Refused(refusal) => Err(refusal_text(refusal).to_owned()),
@@ -935,6 +986,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             Outcome::CompositeApplied { .. }
             | Outcome::ContentApplied { .. }
             | Outcome::ContentPrepared { .. }
+            | Outcome::ProcessorLogs { .. }
+            | Outcome::ProcessorCheckpoint { .. }
             | Outcome::Input(_)
             | Outcome::InputCapacity(_) => Some(Refusal::Internal),
             Outcome::Refused(refusal) => Some(refusal),
@@ -1348,6 +1401,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 | Purpose::Input,
                 _,
             ) => {}
+            (Purpose::ProcessorLogs | Purpose::ProcessorCheckpoint, _) => {
+                unreachable!("internal result handled above")
+            }
         }
     }
 }

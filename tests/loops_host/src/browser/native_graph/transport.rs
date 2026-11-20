@@ -168,7 +168,16 @@ impl Host {
     fn prepare(session: u64, threaded: bool, mode: u8) -> Self {
         assert!(!allocation_guard::is_rendering());
         if !threaded {
-            return Self(Backend::Direct(Box::new(Self::bridge(session, mode))));
+            // The native replay executable can have a 1 MiB main stack on Windows.
+            // Prepare the graph on a larger stack, then render on the caller.
+            let bridge = std::thread::Builder::new()
+                .name("loop-replay-prepare".into())
+                .stack_size(4 * 1024 * 1024)
+                .spawn(move || Box::new(Self::bridge(session, mode)))
+                .expect("start native replay graph preparation")
+                .join()
+                .expect("prepare native replay graph");
+            return Self(Backend::Direct(bridge));
         }
         let (input, inputs) = sync_channel(1);
         let (outputs, output) = sync_channel(1);

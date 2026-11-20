@@ -43,6 +43,22 @@ impl From<ProcessorChoice> for shoop_app_api::ProcessorPolicy {
     }
 }
 
+#[derive(Clone, Copy, Debug, clap::ValueEnum)]
+pub enum CarlaChoice {
+    Disabled,
+    InProcess,
+    Subprocess,
+}
+impl From<CarlaChoice> for shoop_app_api::CarlaHosting {
+    fn from(value: CarlaChoice) -> Self {
+        match value {
+            CarlaChoice::Disabled => Self::Disabled,
+            CarlaChoice::InProcess => Self::InProcess,
+            CarlaChoice::Subprocess => Self::Subprocess,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, clap::Args)]
 #[group(id = "audio_options", multiple = true)]
 pub struct AudioArgs {
@@ -58,6 +74,18 @@ pub struct AudioArgs {
     pub synth_instances: Option<u16>,
     #[arg(long, help_heading = "Track processors")]
     pub processor_memory_mb: Option<u32>,
+    /// Carla Native hosting mode for this host launch.
+    #[arg(long, value_enum, help_heading = "Track processors")]
+    pub carla_hosting: Option<CarlaChoice>,
+    #[arg(long, help_heading = "Track processors")]
+    pub carla_rack_instances: Option<u16>,
+    #[arg(long, help_heading = "Track processors")]
+    pub carla_patchbay_instances: Option<u16>,
+    #[arg(
+        long = "carla-patchbay-16x-instances",
+        help_heading = "Track processors"
+    )]
+    pub carla_patchbay16x_instances: Option<u16>,
 
     /// Audio driver for this launch; does not change saved preferences.
     #[arg(long = "driver", value_enum, help_heading = "Backend")]
@@ -99,6 +127,18 @@ impl AudioArgs {
         }
         if let Some(value) = self.processor_memory_mb {
             base.memory_mb = value;
+        }
+        if let Some(value) = self.carla_hosting {
+            base.carla.hosting = value.into();
+        }
+        if let Some(value) = self.carla_rack_instances {
+            base.carla.rack_instances = value;
+        }
+        if let Some(value) = self.carla_patchbay_instances {
+            base.carla.patchbay_instances = value;
+        }
+        if let Some(value) = self.carla_patchbay16x_instances {
+            base.carla.patchbay16x_instances = value;
         }
         base.validate()?;
         Ok(base)
@@ -349,6 +389,7 @@ mod tests {
                 fx_instances: 7,
                 synth_instances: 3,
                 memory_mb: 384,
+                carla: Default::default(),
             }
         );
         assert!(

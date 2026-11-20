@@ -19,6 +19,17 @@ fn parse_snapshot_hz(value: &str) -> Result<u32, String> {
 }
 #[cfg(not(target_arch = "wasm32"))]
 fn run() -> anyhow::Result<()> {
+    #[cfg(feature = "carla")]
+    {
+        if let Some(worker) = shoop_carla::child::worker_options(std::env::args_os())? {
+            return shoop_carla::child::run(worker);
+        }
+        match std::env::args().nth(1).as_deref() {
+            Some("--probe-carla-native") => return shoop_carla::native::smoke_test_carla_runtime(),
+            Some("--probe-carla-native-ui") => return shoop_carla::native::smoke_test_carla_ui(),
+            _ => {}
+        }
+    }
     use clap::Parser;
     use std::{io::Read, path::PathBuf};
     #[derive(Parser)]
@@ -111,6 +122,9 @@ fn run() -> anyhow::Result<()> {
                     .unwrap_or_else(|_| "info".into()),
             )
             .with_writer(std::io::stderr)
+            // A paired host can outlive the launcher holding its diagnostic pipe.
+            // A failed log write must not panic while serving that host.
+            .log_internal_errors(false)
             .with_ansi(false)
             .init();
     }
@@ -146,6 +160,10 @@ fn run() -> anyhow::Result<()> {
     config.settings.driver = args.audio.apply(config.settings.driver)?;
     config.settings.pools = args.audio.apply_pools(config.settings.pools);
     config.settings.processors = args.audio.apply_processors(config.settings.processors)?;
+    #[cfg(feature = "carla")]
+    if config.settings.processors.carla.hosting == shoop_app_api::CarlaHosting::Subprocess {
+        options.carla_worker = Some(std::env::current_exe()?);
+    }
     config.validate()?;
     tracing::info!(
         "Starting host {} (PID {})",

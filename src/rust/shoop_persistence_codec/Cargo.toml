@@ -24,6 +24,7 @@ bincode = { workspace = true, features = ["std"] }
 serde = { workspace = true, features = ["std", "derive"] }
 shoop_app_api = { path = "../shoop_app_api" }
 shoop_processor_protocol = { path = "../shoop_processor_protocol", features = ["alloc"] }
+shoop_plugin_protocol = { path = "../shoop_plugin_protocol" }
 shoop_app_protocol = { path = "../shoop_app_protocol" }
 shoop_session = { path = "../shoop_session" }
 rt_runtime = { path = "../rt_runtime" }

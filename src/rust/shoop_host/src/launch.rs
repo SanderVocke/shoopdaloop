@@ -10,6 +10,9 @@ use std::{
     time::Duration,
 };
 
+/// Cold Native startup pre-touches the complete media and graph pools.
+pub const NATIVE_READINESS_TIMEOUT: Duration = Duration::from_secs(30);
+
 #[derive(Deserialize, Serialize)]
 pub struct Startup {
     pub config: HostConfig,
@@ -160,10 +163,10 @@ pub fn spawn(
             })();
             let _ = sender.send(result);
         });
-        let readiness = if config.backend == shoop_app_api::BackendType::RtlSim {
-            Duration::from_secs(300)
-        } else {
-            Duration::from_secs(12)
+        let readiness = match config.backend {
+            shoop_app_api::BackendType::RtlSim => Duration::from_secs(300),
+            shoop_app_api::BackendType::Native => NATIVE_READINESS_TIMEOUT,
+            shoop_app_api::BackendType::RustFpga => Duration::from_secs(12),
         };
         let mut target = receiver
             .recv_timeout(readiness)

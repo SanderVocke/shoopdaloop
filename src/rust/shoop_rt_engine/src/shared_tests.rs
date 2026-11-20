@@ -269,7 +269,7 @@ impl Fixture {
     }
     fn from_engine(engine: Engine, q: usize, partition: usize, d: &EngineDescription) -> Self {
         let outbox = engine.outbox();
-        let transfer_bytes = crate::runtime_capacities(d, q).budgets.transfer_bytes;
+        let transfer_bytes = crate::runtime_capacities(d, q, 0).budgets.transfer_bytes;
         let mut h = Self {
             engine,
             outbox,
@@ -3470,8 +3470,8 @@ fn input_batches_preflight_all_media_targets_and_solo_peers_at_one_production_cu
         panic!("source")
     };
     let Reply::ReplacingPrepared {
-        id: Some(_),
-        status: CandidateStatus::Ready,
+        id: Some(writer),
+        mut status,
     } = h.op(Operation::WriterPrepareReplacing {
         target: target(0),
         source: source.id,
@@ -3479,6 +3479,18 @@ fn input_batches_preflight_all_media_targets_and_solo_peers_at_one_production_cu
     else {
         panic!("prepare current immutable playback")
     };
+    for _ in 0..64 {
+        if status == CandidateStatus::Ready {
+            break;
+        }
+        assert_eq!(status, CandidateStatus::Building);
+        let Reply::Writer { status: next, .. } = h.op(Operation::WriterStatus { id: writer })
+        else {
+            panic!("poll prepared replacement writer")
+        };
+        status = next;
+    }
+    assert_eq!(status, CandidateStatus::Ready);
     let replace = h.aligned_future(128);
     let exit = replace + q as u64;
     let entry = h.input_batch(

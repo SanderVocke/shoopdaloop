@@ -139,14 +139,17 @@ impl Builder {
                         link(Endpoint::host(PortType::Midi, host as u32), midi(node, 0)),
                     )?;
                 }
-                if strip.processor.is_some() {
-                    for host in bits(model.global_midi) {
-                        push(
-                            &mut self.edges,
-                            &mut count,
-                            link(Endpoint::host(PortType::Midi, host as u32), midi(node, 2)),
-                        )?;
-                    }
+            }
+            if strip
+                .processor
+                .is_some_and(|owner| strip.shape.midi_input || owner.kind.is_carla())
+            {
+                for host in bits(model.global_midi) {
+                    push(
+                        &mut self.edges,
+                        &mut count,
+                        link(Endpoint::host(PortType::Midi, host as u32), midi(node, 2)),
+                    )?;
                 }
             }
             if strip
@@ -264,11 +267,7 @@ impl Builder {
             let capture = pool.capture(slot);
             let mut count = 0;
             if let Some(owner) = strip.processor {
-                let prepared_width = if owner.kind == shoop_rt_protocol::ProcessorKind::OxiSynth {
-                    2
-                } else {
-                    shape.processor_channels
-                };
+                let prepared_width = owner.kind.prepared_audio_channels(shape.processor_channels);
                 for channel in 0..strip.shape.audio_outputs as usize {
                     let source = owner
                         .slot
@@ -352,22 +351,37 @@ impl Builder {
                 }
             }
             if strip.shape.midi_output {
-                if strip.shape.midi_input {
+                if let Some(processor) = strip
+                    .processor
+                    .filter(|owner| owner.kind.is_carla())
+                    .and_then(|owner| owner.slot)
+                {
                     push(
                         &mut self.edges,
                         &mut count,
-                        link(midi(input, 1), midi(node, 0)),
+                        link(
+                            midi(pool.processor(processor.index as usize), 0),
+                            midi(node, 0),
+                        ),
                     )?;
-                }
-                for (loop_slot, entry) in model.loops.iter().enumerate() {
-                    if entry.is_some_and(|entry| {
-                        entry.strip == Some(strip.id) && entry.program.is_none()
-                    }) {
+                } else {
+                    if strip.shape.midi_input {
                         push(
                             &mut self.edges,
                             &mut count,
-                            link(midi(pool.playback(loop_slot), 0), midi(node, 0)),
+                            link(midi(input, 1), midi(node, 0)),
                         )?;
+                    }
+                    for (loop_slot, entry) in model.loops.iter().enumerate() {
+                        if entry.is_some_and(|entry| {
+                            entry.strip == Some(strip.id) && entry.program.is_none()
+                        }) {
+                            push(
+                                &mut self.edges,
+                                &mut count,
+                                link(midi(pool.playback(loop_slot), 0), midi(node, 0)),
+                            )?;
+                        }
                     }
                 }
             }
@@ -383,11 +397,7 @@ impl Builder {
                     for channel in 0..strip.shape.audio_outputs as usize {
                         let routes = strip.outputs.buses[bank][channel];
                         for target in 0..bus.channels as usize {
-                            if routes
-                                & (1u64
-                                    << (bus_slot * shoop_rt_protocol::MAX_STRIP_CHANNELS + target))
-                                != 0
-                            {
+                            if routes.contains(bus_slot, target) {
                                 push(
                                     &mut self.edges,
                                     &mut count,

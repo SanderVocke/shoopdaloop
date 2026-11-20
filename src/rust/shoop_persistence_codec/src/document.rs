@@ -2,6 +2,7 @@ mod processors;
 use anyhow::{anyhow, bail, ensure, Result};
 use processors::*;
 use shoop_app_api::*;
+use shoop_app_protocol::persistence::MAX_SESSION_CHANNELS_PER_ROLE;
 use shoop_app_protocol::persistence_image as image;
 use shoop_session::*;
 use std::{collections::BTreeSet, sync::Arc};
@@ -198,10 +199,14 @@ pub(super) fn to_bundle(image: &image::Image) -> Result<SessionBundle> {
     for track in &session.tracks {
         let topology = document_topology(track)?;
         image_topology(&topology)?;
-        let fx_chain = processor_chain(track)?;
+        let fx_chain = processor_chain(image, track)?;
         let mut loops = Vec::new();
         for content in &track.loops {
-            let recorded_id = if let Some(encoded) = &content.recorded_processor_state {
+            let recorded_id = if let Some(encoded) = state_reference(
+                image,
+                content.recorded_processor_checkpoint,
+                content.recorded_processor_state.as_deref(),
+            )? {
                 let chain = fx_chain
                     .as_ref()
                     .ok_or_else(|| anyhow!("recorded state needs a processor"))?;
@@ -357,7 +362,7 @@ pub(super) fn to_bundle(image: &image::Image) -> Result<SessionBundle> {
                     .iter()
                     .map(|channel| port_to_document(&channel.port))
                     .collect::<Result<_>>()?,
-                fx_chain: bus_processor_chain(master)?,
+                fx_chain: bus_processor_chain(image, master)?,
                 gain_db: master.gain_db,
                 balance: master.balance,
                 muted: master.muted,
@@ -402,6 +407,7 @@ pub(super) fn requirements(doc: &SessionDocument) -> Result<()> {
                 TrackTopologyDocument::DryWetExternal { .. }
                     | TrackTopologyDocument::BuiltInFx { .. }
                     | TrackTopologyDocument::OxiSynth
+                    | TrackTopologyDocument::Carla { .. }
             )
         })
         .flat_map(|track| &track.loops)
@@ -418,16 +424,25 @@ pub(super) fn requirements(doc: &SessionDocument) -> Result<()> {
         || doc
             .buses
             .iter()
-            .any(|b| b.channels.is_empty() || b.channels.len() > 8)
+            .any(|b| b.channels.is_empty() || b.channels.len() > MAX_SESSION_CHANNELS_PER_ROLE)
     {
         unsupported.insert("buses exceeding replacement engine capacity");
     }
-    if doc.buses.iter().any(|b| {
-        b.fx_chain
-            .as_ref()
-            .is_some_and(|chain| chain.chain_type != FxChainTypeDocument::BuiltInFx)
-    }) {
-        unsupported.insert("unsupported bus processor (Carla is out of scope)");
+    for bus in &doc.buses {
+        if let Some(chain) = &bus.fx_chain {
+            if let Some(carla) = carla_chain(chain.chain_type) {
+                ensure!(
+                    bus.channels.len() <= usize::from(carla.audio_channels()),
+                    "bus exceeds its Carla chain width"
+                );
+            } else if chain.chain_type != FxChainTypeDocument::BuiltInFx {
+                unsupported.insert("unsupported bus processor");
+            }
+            ensure!(
+                chain.ports.is_empty(),
+                "processor port routing is unsupported"
+            );
+        }
     }
     let mut seen_groups = BTreeSet::new();
     for group in &doc.track_groups {
@@ -523,14 +538,10 @@ pub(super) fn from_bundle(mut bundle: SessionBundle) -> Result<Arc<image::Image>
     let fx_states = doc
         .fx_states
         .iter()
-        .map(|state| {
-            Ok((
-                state.id,
-                canonical_state(state.chain_type, &state.internal_state)?,
-            ))
-        })
-        .collect::<Result<std::collections::BTreeMap<_, _>>>()?;
+        .map(|state| (state.id, state))
+        .collect::<std::collections::BTreeMap<_, _>>();
     let mut used_states = BTreeSet::new();
+    let mut payloads = Vec::new();
     let preview_bus = match doc.preview_bus {
         shoop_session::PreviewBusDocument::Automatic => {
             let mut masters = doc.buses.iter().filter(|b| b.name == "Master");
@@ -575,13 +586,23 @@ pub(super) fn from_bundle(mut bundle: SessionBundle) -> Result<Arc<image::Image>
             .as_ref()
             .map(|chain| {
                 ensure!(
-                    chain.chain_type == FxChainTypeDocument::BuiltInFx
-                        && chain.midi_cc_assignments.is_empty(),
-                    "unsupported bus processor"
+                    chain.midi_cc_assignments.is_empty(),
+                    "unsupported bus processor MIDI assignments"
                 );
+                let processor_type = if chain.chain_type == FxChainTypeDocument::BuiltInFx {
+                    TrackProcessorTypeId::BUILTIN_FX
+                } else {
+                    carla_processor_type(
+                        carla_chain(chain.chain_type)
+                            .ok_or_else(|| anyhow!("unsupported bus processor"))?,
+                    )
+                };
+                let (state, processor_checkpoint) =
+                    state_for_image(chain.chain_type, &chain.internal_state, &mut payloads)?;
                 Ok(image::BusFx {
-                    processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::BUILTIN_FX),
-                    state: canonical_state(chain.chain_type, &chain.internal_state)?,
+                    processor_checkpoint,
+                    processor_type: TrackProcessorTypeId::new(processor_type),
+                    state: state.unwrap_or_default(),
                     midi_cc_assignments: chain
                         .builtin_fx_midi_cc_assignments
                         .iter()
@@ -604,7 +625,6 @@ pub(super) fn from_bundle(mut bundle: SessionBundle) -> Result<Arc<image::Image>
             muted: bus.muted,
         });
     }
-    let mut payloads = Vec::new();
     let mut tracks = Vec::new();
     for track in doc.track_groups.into_iter().flat_map(|group| group.tracks) {
         let (topology, audio_channels, midi) = image_topology(&track.topology)?;
@@ -713,17 +733,26 @@ pub(super) fn from_bundle(mut bundle: SessionBundle) -> Result<Arc<image::Image>
                 content.id
             );
             audio.sort_by_key(|c| c.mode as u8);
-            let recorded_processor_state = recorded_id
+            let (recorded_processor_state, recorded_processor_checkpoint) = recorded_id
                 .flatten()
                 .map(|id| {
                     used_states.insert(id);
-                    fx_states
+                    let state = fx_states
                         .get(&id)
-                        .cloned()
-                        .ok_or_else(|| anyhow!("missing recorded processor state"))
+                        .ok_or_else(|| anyhow!("missing recorded processor state"))?;
+                    ensure!(
+                        track
+                            .fx_chain
+                            .as_ref()
+                            .is_some_and(|chain| chain.chain_type == state.chain_type),
+                        "recorded processor state kind differs from its track"
+                    );
+                    state_for_image(state.chain_type, &state.internal_state, &mut payloads)
                 })
-                .transpose()?;
+                .transpose()?
+                .unwrap_or_default();
             loops.push(image::Loop {
+                recorded_processor_checkpoint,
                 recorded_processor_state,
                 sync_source: content
                     .execution
@@ -750,17 +779,20 @@ pub(super) fn from_bundle(mut bundle: SessionBundle) -> Result<Arc<image::Image>
             });
         }
         let c = track.controls;
+        let (processor_state, processor_checkpoint) = track
+            .fx_chain
+            .as_ref()
+            .map(|chain| state_for_image(chain.chain_type, &chain.internal_state, &mut payloads))
+            .transpose()?
+            .unwrap_or_default();
         tracks.push(image::Track {
+            processor_checkpoint,
             topology,
             default_playback_mode: match track.default_playback_mode {
                 DefaultPlaybackModeDocument::Regular => DefaultPlaybackMode::Regular,
                 DefaultPlaybackModeDocument::DryThroughWet => DefaultPlaybackMode::DryThroughWet,
             },
-            processor_state: track
-                .fx_chain
-                .as_ref()
-                .map(|chain| canonical_state(chain.chain_type, &chain.internal_state))
-                .transpose()?,
+            processor_state,
             builtin_fx_midi_cc_assignments: track
                 .fx_chain
                 .as_ref()

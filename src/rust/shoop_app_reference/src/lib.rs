@@ -2398,6 +2398,7 @@ impl ApplicationModel {
                 | TrackAction::FxToggleOrRecover
                 | TrackAction::FxRestoreState(_)
                 | TrackAction::FxClearLogs
+                | TrackAction::FxReadLogs
                 | TrackAction::BuiltInFx(_)
                 | TrackAction::OxiSynth(_) => require(Capability::TrackFx),
                 _ => Ok(()),
@@ -2409,6 +2410,7 @@ impl ApplicationModel {
                 | BusAction::FxToggleOrRecover
                 | BusAction::FxRestoreState(_)
                 | BusAction::FxClearLogs
+                | BusAction::FxReadLogs
                 | BusAction::BuiltInFx(_)
                 | BusAction::FxProcessorChanged(_) => require(Capability::BusFx),
                 _ => Ok(()),
@@ -6006,6 +6008,7 @@ impl ApplicationModel {
                 | BusAction::FxToggleOrRecover
                 | BusAction::FxRestoreState(_)
                 | BusAction::FxClearLogs
+                | BusAction::FxReadLogs
                 | BusAction::BuiltInFx(_)
                 | BusAction::FxProcessorChanged(_)
         ) {
@@ -6022,6 +6025,7 @@ impl ApplicationModel {
             | BusAction::FxToggleOrRecover
             | BusAction::FxRestoreState(_)
             | BusAction::FxClearLogs
+            | BusAction::FxReadLogs
             | BusAction::BuiltInFx(_)
             | BusAction::FxProcessorChanged(_) => unreachable!(),
         };
@@ -6074,6 +6078,11 @@ impl ApplicationModel {
             .get(&bus_id)
             .map(|bus| bus.backend_id)
             .ok_or_else(|| format!("stale or unknown bus {bus_id}"))?;
+        if action == BusAction::FxReadLogs {
+            return backend
+                .request_bus_fx_logs(backend_id)
+                .map_err(|error| error.to_string());
+        }
         let control = match action {
             BusAction::FxActiveChanged(value) => BackendBusFxControl::SetActive(value),
             BusAction::FxVisibilityChanged(value) => BackendBusFxControl::SetVisible(value),
@@ -6253,6 +6262,11 @@ impl ApplicationModel {
                 return backend
                     .set_track_fx_control(track.backend_id, BackendTrackFxControl::ClearLogs)
                     .map_err(|error| format!("could not update track FX {track_id}: {error}"));
+            }
+            TrackAction::FxReadLogs => {
+                return backend
+                    .request_track_fx_logs(track.backend_id)
+                    .map_err(|error| error.to_string());
             }
             TrackAction::BuiltInFx(builtin_fx) => {
                 let control = BackendTrackFxControl::BuiltInFx(builtin_fx);

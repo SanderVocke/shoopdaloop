@@ -229,7 +229,20 @@ mod tests {
                 )
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped());
-            let mut child = command.spawn().unwrap();
+            // A parallel test can fork while the new fixture is still open for
+            // copying. Its exec closes the inherited descriptor.
+            let deadline = Instant::now() + Duration::from_secs(1);
+            let mut child = loop {
+                match command.spawn() {
+                    Err(error)
+                        if error.kind() == std::io::ErrorKind::ExecutableFileBusy
+                            && Instant::now() < deadline =>
+                    {
+                        std::thread::sleep(Duration::from_millis(10))
+                    }
+                    result => break result.unwrap(),
+                }
+            };
             let mut config = HostConfig::default();
             config.settings.pools = shoop_app_api::NewEnginePools {
                 tracks: 3,

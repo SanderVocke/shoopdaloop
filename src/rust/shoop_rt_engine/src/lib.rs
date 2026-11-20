@@ -41,6 +41,8 @@ mod cells;
 mod composite;
 mod content;
 mod history;
+mod hosted_checkpoints;
+mod hosted_logs;
 mod input;
 mod memory;
 pub use history::HistoryCapacity;
@@ -66,6 +68,7 @@ mod queue;
 mod recorded;
 mod render;
 mod replacement;
+mod replacement_checkpoints;
 mod resync;
 mod ring;
 mod snapshots;
@@ -78,7 +81,11 @@ pub mod testing;
 
 pub use cells::HostStatus;
 pub use description::{EngineDescription, HostPorts, Segment, MAX_HOST_PORTS};
-pub use endpoint::ControlEndpoint;
+pub use endpoint::{
+    ControlEndpoint, HostedControlTicket, HostedProcessorControls, HostedProcessorObservation,
+};
+pub use hosted_checkpoints::HostedCheckpointTicket;
+pub use hosted_logs::{HostedLogTicket, HostedProcessorLog};
 pub use node::{EngineNode, EngineOp, NodeConfiguration};
 pub use processors::{
     HostedProcessor, PreparedProcessor, PreparedProcessors, ProcessorCatalog, ProcessorPhase,
@@ -189,11 +196,12 @@ fn host_ports(description: &EngineDescription) -> Box<[HostPort]> {
     ports.into_boxed_slice()
 }
 
-fn runtime_capacities(description: &EngineDescription, graph_frames: usize) -> Config {
+fn runtime_capacities(
+    description: &EngineDescription,
+    graph_frames: usize,
+    processor_slots: usize,
+) -> Config {
     let (strips, loops) = (description.strips(), description.loops());
-    let processor_slots = 2
-        * (usize::from(description.processors.fx_instances)
-            + usize::from(description.processors.synth_instances));
     let nodes = 1 + 2 * strips + 3 * loops + 2 * description.buses as usize + processor_slots;
     let channels = description.strip_channels as usize;
     let master_channels = description.bus_channels as usize;
@@ -212,7 +220,7 @@ fn runtime_capacities(description: &EngineDescription, graph_frames: usize) -> C
         + loops * (8 * channels + 2)
         + 3 * buses * master_channels
         + counts.iter().sum::<usize>()
-        + processor_slots * (3 * channels + 3)
+        + processor_slots * (3 * channels + 4)
         + description.buses as usize
             * (2 * description.bus_channels as usize + description.host.midi_inputs.len());
     let edges = strips
@@ -222,7 +230,7 @@ fn runtime_capacities(description: &EngineDescription, graph_frames: usize) -> C
         + loops * (6 * channels + 3)
         + (channels + 1) * (strips + loops)
         + 2 * buses * master_channels * audio_out
-        + processor_slots * (3 * channels + 3)
+        + processor_slots * (3 * channels + 4)
         + description.buses as usize
             * (2 * description.bus_channels as usize + description.host.midi_inputs.len());
     let page_bytes = description.page_bytes;
@@ -414,16 +422,23 @@ fn prepare_complete_using<R>(
     description: &EngineDescription,
     driver: DriverStatus,
     shared_settings: shoop_loops::runtime::SharedSettings,
-    processors: PreparedProcessors,
+    mut processors: PreparedProcessors,
     wet_pages: usize,
     factory: impl FnOnce(external::Preparation) -> Result<external::Consumer<R>, PrepareError>,
 ) -> Result<external::Prepared<R>, PrepareError> {
     description.validate()?;
     let policy = description.processors;
     let effective = processors.effective;
+    let carla = effective.carla;
+    let carla_instances = carla.instances();
     if effective.memory_bytes != u64::from(policy.memory_mb) * (1 << 20)
         || effective.fx_instances > policy.fx_instances
         || effective.synth_instances > policy.synth_instances
+        || carla.rack_instances > policy.carla.rack_instances
+        || carla.patchbay_instances > policy.carla.patchbay_instances
+        || carla.patchbay16x_instances > policy.carla.patchbay16x_instances
+        || carla_instances > policy.carla.configured_instances()
+        || (carla_instances == 0) != carla.unavailable.is_some()
         || (policy.builtin_fx == shoop_rt_protocol::ProcessorPolicy::Off
             && effective.fx_instances != 0)
         || (policy.oxisynth == shoop_rt_protocol::ProcessorPolicy::Off
@@ -445,18 +460,17 @@ fn prepare_complete_using<R>(
         return Err(rt_runtime::Error::InvalidConfig.into());
     }
     for instance in &processors.instances {
-        let expected = match instance.kind {
-            shoop_rt_protocol::ProcessorKind::BuiltInFx => description.strip_channels as usize,
-            shoop_rt_protocol::ProcessorKind::OxiSynth => 2,
-            shoop_rt_protocol::ProcessorKind::External => {
-                return Err(rt_runtime::Error::InvalidConfig.into())
-            }
-        };
+        if instance.kind == shoop_rt_protocol::ProcessorKind::External {
+            return Err(rt_runtime::Error::InvalidConfig.into());
+        }
+        let expected = instance
+            .kind
+            .prepared_audio_channels(description.strip_channels.into());
         let ports = instance.backend.ports();
         if ports.audio_inputs != expected
             || ports.audio_outputs != expected
             || ports.midi_inputs != 1
-            || ports.midi_outputs != 0
+            || ports.midi_outputs != usize::from(instance.kind.is_carla())
             || expected > description.strip_channels as usize
         {
             return Err(rt_runtime::Error::InvalidShape.into());
@@ -464,18 +478,22 @@ fn prepare_complete_using<R>(
     }
     if processors.instances.len() != processors.effective.slots()
         || processors.reserved_bytes > processors.effective.memory_bytes
-        || processors
-            .instances
-            .iter()
-            .filter(|p| p.kind == shoop_rt_protocol::ProcessorKind::BuiltInFx)
-            .count()
-            != 2 * processors.effective.fx_instances as usize
-        || processors
-            .instances
-            .iter()
-            .filter(|p| p.kind == shoop_rt_protocol::ProcessorKind::OxiSynth)
-            .count()
-            != 2 * processors.effective.synth_instances as usize
+        || [
+            shoop_rt_protocol::ProcessorKind::BuiltInFx,
+            shoop_rt_protocol::ProcessorKind::OxiSynth,
+            shoop_rt_protocol::ProcessorKind::CarlaRack,
+            shoop_rt_protocol::ProcessorKind::CarlaPatchbay,
+            shoop_rt_protocol::ProcessorKind::CarlaPatchbay16x,
+        ]
+        .into_iter()
+        .any(|kind| {
+            processors
+                .instances
+                .iter()
+                .filter(|processor| processor.kind == kind)
+                .count()
+                != 2 * usize::from(effective.instances(kind))
+        })
     {
         return Err(rt_runtime::Error::InvalidConfig.into());
     }
@@ -504,10 +522,37 @@ fn prepare_complete_using<R>(
     let bulk_credits = usize::from(description.bulk_credits);
     let pending = description.pending_transitions;
     let quantum = rt_runtime::Quantum::new(description.quantum)?;
-    let config = runtime_capacities(description, quantum.frames()).prepare()?;
+    let config = runtime_capacities(description, quantum.frames(), pool.processors()).prepare()?;
     let slots = config.limits().command_slots;
     let midi_events = description.midi_events;
     let midi_bytes = description.midi_bytes;
+    let mut worker_delay = 0;
+    let mut carla_delay = 0;
+    let mut worker_delays = Vec::with_capacity(processors.instances.len());
+    for processor in &mut processors.instances {
+        let delay = if processor.backend.async_transport().is_some() {
+            processor.timing.prepare(quantum)?.latency_frames()
+        } else if processor.kind.is_carla() {
+            return Err(rt_runtime::Error::InvalidConfig.into());
+        } else {
+            0
+        };
+        worker_delay = worker_delay.max(delay);
+        if processor.kind.is_carla() {
+            carla_delay = carla_delay.max(delay as u32);
+        }
+        worker_delays.push(delay);
+    }
+    let worker_capture =
+        (worker_delay != 0).then(|| description.worker_capture_settings(worker_delay));
+    if let Some(settings) = worker_capture {
+        let bytes = settings.storage_bytes::<f32>(quantum)? as u64;
+        processors.reserved_bytes = processors
+            .reserved_bytes
+            .checked_add(bytes)
+            .filter(|bytes| *bytes <= effective.memory_bytes)
+            .ok_or(rt_runtime::Error::Capacity)?;
+    }
     let mut resources = ResourceStore::with_capture_groups(
         config,
         quantum,
@@ -605,6 +650,9 @@ fn prepare_complete_using<R>(
         },
     )?;
     let input_capacity = input::Stage::capacity(&shared_settings);
+    if let Some(settings) = worker_capture {
+        planner.prepare_worker_capture_inputs(settings)?;
+    }
     if pool.processors() > 0 || description.external_dry_wet {
         planner.prepare_wet_edits(
             &mut resources,
@@ -659,24 +707,15 @@ fn prepare_complete_using<R>(
     let processor_catalog = ProcessorCatalog {
         effective: processors.effective,
         reserved_bytes: processors.reserved_bytes,
+        carla_delay,
         kinds: processors.instances.iter().map(|p| p.kind).collect(),
         presets: processors.presets,
-    };
-    let processor_input = description.processor_midi_input_capacity()?;
-    let buffer_limits = rt_buffered::BufferLimits {
-        midi_input: rt_buffered::MidiLimits {
-            events_per_quantum: processor_input.events,
-            bytes_per_quantum: processor_input.bytes,
-        },
-        midi_output: rt_buffered::MidiLimits {
-            events_per_quantum: 0,
-            bytes_per_quantum: 0,
-        },
-        parameters_per_quantum: 64,
+        worker_delays: worker_delays.into_boxed_slice(),
     };
     for (slot, processor) in processors.instances.into_iter().enumerate() {
+        let buffer_limits = description.processor_buffer_limits(processor.kind)?;
         let mut node = HostedProcessor::new(
-            processor.backend,
+            processor,
             processor_cells[slot].clone(),
             quantum,
             buffer_limits,
@@ -810,6 +849,10 @@ fn prepare_complete_using<R>(
         projected_timing: vec![None; loops].into_boxed_slice(),
         projected_recorded: vec![None; loops].into_boxed_slice(),
         processor_catalog,
+        hosted_processors: None,
+        hosted_controls: Box::new([]),
+        hosted_logs: Default::default(),
+        hosted_checkpoints: Default::default(),
         processor_cells,
         profiling: profile_reader,
         profile_named: vec![false; pool.nodes()].into_boxed_slice(),

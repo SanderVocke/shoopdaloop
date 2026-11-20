@@ -2,7 +2,7 @@ use crate::jack_graph::{self as graph, Generations};
 use crate::jack_ports;
 use shoop_port_graph::{self as contract, Snapshot, Status};
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
     Arc,
 };
 use std::thread::{self, JoinHandle};
@@ -81,6 +81,8 @@ struct Process {
     cycle: Cycle,
     ports: jack_ports::Callback,
     shared: Arc<Shared>,
+    midi_bytes: Arc<AtomicUsize>,
+    prepared_midi_bytes: Option<usize>,
 }
 struct Io<'a, 's> {
     scope: &'s jack::ProcessScope,
@@ -182,6 +184,12 @@ impl jack::ProcessHandler for Process {
     }
     fn buffer_size(&mut self, _: &jack::Client, frames: u32) -> jack::Control {
         self.shared.set_buffer_frames(frames);
+        if self
+            .prepared_midi_bytes
+            .is_some_and(|prepared| self.midi_bytes.load(Ordering::Relaxed) > prepared)
+        {
+            self.shared.fail(StreamFailure::StreamInvalidated);
+        }
         jack::Control::Continue
     }
 }
@@ -201,13 +209,41 @@ fn error(error: impl std::fmt::Display) -> StartError {
     StartError::Device(error.to_string())
 }
 
+fn probe_midi_buffer(
+    client: jack::Client,
+    bytes: &Arc<AtomicUsize>,
+) -> Result<(jack::Client, Option<usize>), StartError> {
+    struct Probe;
+    impl jack::ProcessHandler for Probe {
+        fn process(&mut self, _: &jack::Client, _: &jack::ProcessScope) -> jack::Control {
+            jack::Control::Continue
+        }
+    }
+
+    let active = client
+        .activate_async((), shoop_jack::MidiBufferSize::new(Probe, bytes.clone()))
+        .map_err(error)?;
+    let deadline = Instant::now() + Duration::from_secs(1);
+    let capacity = loop {
+        let observed = bytes.load(Ordering::Acquire);
+        if observed != usize::MAX {
+            break (observed != 0).then_some(observed);
+        }
+        if Instant::now() >= deadline {
+            return Err(StartError::Device(
+                "JACK did not report a MIDI buffer size".into(),
+            ));
+        }
+        thread::sleep(Duration::from_millis(1));
+    };
+    let (client, _, _) = active.deactivate().map_err(error)?;
+    Ok((client, capacity))
+}
+
 pub(crate) fn start(config: &JackConfig, engine: &Template) -> Result<Started, StartError> {
     config.validate()?;
     let (client, _) = jack::Client::new(&config.client_name, jack::ClientOptions::NO_START_SERVER)
         .map_err(error)?;
-    let instance_name = client.name().to_owned();
-    let sample_rate = client.sample_rate();
-    let buffer_frames = client.buffer_size();
     let mut ports = HostPorts::numbered(0, 0, 0);
     let capacities = engine.jack_capacities;
     for (kind, bank) in [
@@ -242,6 +278,15 @@ pub(crate) fn start(config: &JackConfig, engine: &Template) -> Result<Started, S
         &ports.midi_outputs,
     ]
     .map(|ports| ports.iter().map(|p| p.as_str().to_owned()).collect());
+    let midi_bytes = Arc::new(AtomicUsize::new(usize::MAX));
+    let (client, midi_output_limit_bytes) = if ports.midi_outputs.is_empty() {
+        (client, None)
+    } else {
+        probe_midi_buffer(client, &midi_bytes)?
+    };
+    let instance_name = client.name().to_owned();
+    let sample_rate = client.sample_rate();
+    let buffer_frames = client.buffer_size();
     let Prepared {
         description,
         endpoint,
@@ -256,6 +301,7 @@ pub(crate) fn start(config: &JackConfig, engine: &Template) -> Result<Started, S
         sample_rate,
         Some(buffer_frames),
         0,
+        midi_output_limit_bytes,
     )?;
     let cycle = Cycle::new(render, shared.clone(), &description, Vec::new(), Vec::new())
         .map_err(|_| StartError::InvalidConfig("could not prepare JACK callback buffers"))?;
@@ -299,11 +345,16 @@ pub(crate) fn start(config: &JackConfig, engine: &Template) -> Result<Started, S
                 Notifications(shared.clone(), dirty.clone(), generations.clone()),
                 shutdown.clone(),
             ),
-            Process {
-                cycle,
-                ports: callback_ports,
-                shared: shared.clone(),
-            },
+            shoop_jack::MidiBufferSize::new(
+                Process {
+                    cycle,
+                    ports: callback_ports,
+                    shared: shared.clone(),
+                    midi_bytes: midi_bytes.clone(),
+                    prepared_midi_bytes: midi_output_limit_bytes,
+                },
+                midi_bytes,
+            ),
         )
         .map_err(error)?;
     let monitor_stop = Arc::new(AtomicBool::new(false));
@@ -456,7 +507,7 @@ pub(crate) fn start(config: &JackConfig, engine: &Template) -> Result<Started, S
             active
                 .deactivate()
                 .ok()
-                .map(|(_, _, process)| process.cycle)
+                .map(|(_, _, process)| process.into_inner().cycle)
         })
         .map_err(|failure| StartError::Thread(failure.to_string()))?;
     Ok(assemble(

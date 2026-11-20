@@ -5,8 +5,8 @@ use alloc::boxed::Box;
 use alloc::vec;
 
 use shoop_rt_protocol::{
-    BusControl, BusId, CompositeDescription, CompositeSpan, LoopSlotId, PortKind, StripControl,
-    StripId, StripPort, StripShape, MAX_STRIP_CHANNELS,
+    BusControl, BusId, BusPort, CompositeDescription, CompositeSpan, LoopSlotId, PortKind,
+    StripControl, StripId, StripPort, StripShape, MAX_BUSES, MAX_STRIP_CHANNELS,
 };
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -43,7 +43,78 @@ impl PartialEq<u64> for HostMask {
     }
 }
 pub(crate) type Masks = [HostMask; MAX_STRIP_CHANNELS];
-pub(crate) type BusMasks = [u64; MAX_STRIP_CHANNELS];
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct BusMask([u16; MAX_BUSES]);
+
+impl BusMask {
+    pub fn contains(&self, bus: usize, channel: usize) -> bool {
+        self.0[bus] & (1 << channel) != 0
+    }
+
+    fn set(&mut self, target: BusPort, connected: bool) {
+        let channels = &mut self.0[target.bus.0.index as usize];
+        let bit = 1 << target.index;
+        if connected {
+            *channels |= bit;
+        } else {
+            *channels &= !bit;
+        }
+    }
+
+    fn clear_bus(&mut self, bus: BusId) {
+        self.0[bus.0.index as usize] = 0;
+    }
+}
+
+#[cfg(test)]
+mod bus_mask_tests {
+    use super::*;
+    use shoop_rt_protocol::SlotId;
+    use shoop_wasm_test_support::shoop_test;
+
+    #[shoop_test]
+    fn high_bus_channels_survive_unrelated_route_changes() {
+        let first = BusId(SlotId::new(0, 1));
+        let last_index = MAX_BUSES - 1;
+        let last = BusId(SlotId::new(last_index as u32, 1));
+        let mut routes = BusMask::default();
+        routes.set(
+            BusPort {
+                bus: first,
+                index: 15,
+            },
+            true,
+        );
+        routes.set(
+            BusPort {
+                bus: last,
+                index: 8,
+            },
+            true,
+        );
+        routes.set(
+            BusPort {
+                bus: last,
+                index: 15,
+            },
+            true,
+        );
+        routes.set(
+            BusPort {
+                bus: last,
+                index: 8,
+            },
+            false,
+        );
+        assert!(routes.contains(0, 15));
+        assert!(routes.contains(last_index, 15));
+        assert!(!routes.contains(last_index, 8));
+        routes.clear_bus(last);
+        assert!(routes.contains(0, 15));
+        assert!(!routes.contains(last_index, 15));
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Controls {
@@ -99,7 +170,7 @@ impl Controls {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct Banks {
     pub masks: [Masks; 2],
-    pub buses: [BusMasks; 2],
+    pub buses: [[BusMask; MAX_STRIP_CHANNELS]; 2],
     pub active: usize,
     /// Swapped in the transaction being staged: later changes of the same
     /// transaction edit the new active bank, so the node cross-fades once.
@@ -256,7 +327,7 @@ pub(crate) enum Change {
     Route {
         strip: StripId,
         channel: usize,
-        target: usize,
+        target: BusPort,
         connected: bool,
     },
     /// A Master output channel to host audio output `host`.
@@ -396,11 +467,10 @@ impl Model {
             }
             Change::RemoveBus { bus } => {
                 self.buses[bus.0.index as usize] = None;
-                let mask = !(0xff_u64 << (bus.0.index as usize * MAX_STRIP_CHANNELS));
                 for strip in self.strips.iter_mut().flatten() {
                     for bank in &mut strip.outputs.buses {
                         for routes in bank {
-                            *routes &= mask;
+                            routes.clear_bus(bus);
                         }
                     }
                 }
@@ -538,11 +608,7 @@ impl Model {
                 if let Some(strip) = self.strip_mut(strip) {
                     strip.outputs.swap();
                     let mask = &mut strip.outputs.buses[strip.outputs.active][channel];
-                    if connected {
-                        *mask |= 1 << target;
-                    } else {
-                        *mask &= !(1 << target);
-                    }
+                    mask.set(target, connected);
                 }
             }
         }

@@ -2,7 +2,7 @@
 
 use crate::command::Transition;
 use crate::state::State;
-use crate::{Error, Frame, LoopId, RequestId};
+use crate::{Error, Frame, LoopId, RequestId, Revision};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Interval {
@@ -21,6 +21,15 @@ pub struct Decision {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Observation {
+    /// Close the source window normally and keep the current media until its tail settles.
+    DelayCapture {
+        target: LoopId,
+    },
+    /// The delayed take has reached its previously settled source cut.
+    CaptureReady {
+        target: LoopId,
+        revision: Revision,
+    },
     /// Discard the candidate capture and retain previously committed media.
     CaptureAborted {
         target: LoopId,

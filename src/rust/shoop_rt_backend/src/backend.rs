@@ -394,6 +394,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     }
 
     fn cancel_media_reads(&mut self) {
+        self.processor_checkpoints.cancel();
         self.reads.clear();
         self.capture_validation = None;
         self.prepared_content
@@ -799,6 +800,10 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         control: BackendTrackFxControl,
     ) -> Result<()> {
         self.processor_control(track_id, control)
+    }
+
+    fn request_track_fx_logs(&mut self, track_id: BackendTrackId) -> Result<()> {
+        self.request_processor_logs(crate::processor_logs::Target::Track(track_id))
     }
 
     fn set_loop_gain(&mut self, loop_id: BackendLoopId, gain: f32) -> Result<()> {
@@ -1365,15 +1370,19 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         self.ready()?;
         self.structure_mutable()?;
         let request = request.normalized()?;
-        if let Some(fx) = &request.fx {
+        let kind = if let Some(fx) = &request.fx {
+            let kind = crate::processor_controls::processor_kind(&fx.processor_type)
+                .filter(|kind| kind.supports_bus());
             if self.prepared_graph.is_none()
-                && (!self.capabilities.contains(Capabilities::BUS_PROCESSORS)
-                    || fx.processor_type != shoop_app_api::TrackProcessorTypeId::BUILTIN_FX)
+                && (!self.capabilities.contains(Capabilities::BUS_PROCESSORS) || kind.is_none())
             {
                 return Err(unavailable(BackendCapability::BusFx));
             }
             fx.clone().normalized(request.channel_count as usize)?;
-        }
+            kind.or(Some(shoop_rt_protocol::ProcessorKind::BuiltInFx))
+        } else {
+            None
+        };
         if self.prepared_graph.is_none()
             && request.channel_count > u32::from(self.limits().bus_channels)
         {
@@ -1396,10 +1405,11 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             .processor_type = request.fx.as_ref().map(|fx| fx.processor_type.clone());
         let slot = self.mirror.buses[&creation.bus_id].slot;
         self.requests.push(
-            if request.fx.is_some() {
+            if let Some(kind) = kind {
                 Request::CreateProcessedBus {
                     bus: slot,
                     channels: request.channel_count as u8,
+                    kind,
                 }
             } else {
                 Request::CreateBus {
@@ -1439,11 +1449,17 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         let mut entries: Vec<_> = self
             .processor_descriptors()
             .iter()
-            .filter(|entry| entry.id.as_str() == shoop_app_api::TrackProcessorTypeId::BUILTIN_FX)
+            .filter(|entry| {
+                crate::processor_controls::processor_kind(entry.id.as_str())
+                    .is_some_and(|kind| kind.supports_bus())
+            })
             .cloned()
             .collect();
         for entry in &mut entries {
             entry.constraints.midi = shoop_app_api::TrackProcessorMidiPolicy::Unsupported;
+            entry.constraints.matching_audio_channels = true;
+            entry.constraints.min_dry_audio_channels = Some(1);
+            entry.constraints.min_wet_audio_channels = Some(1);
         }
         Ok(entries.into())
     }
@@ -1453,6 +1469,9 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         control: BackendBusFxControl,
     ) -> Result<()> {
         self.bus_processor_control(bus_id, control)
+    }
+    fn request_bus_fx_logs(&mut self, bus_id: BackendBusId) -> Result<()> {
+        self.request_processor_logs(crate::processor_logs::Target::Bus(bus_id))
     }
     fn bus_fx_state_string(
         &mut self,
@@ -1513,7 +1532,8 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         for (id, track) in mirror.tracks.iter_mut() {
             if track.confirmed {
                 let mut state = Mirror::track_state(track);
-                if crate::processor_controls::track_kind(track).is_some() {
+                if crate::processor_controls::track_kind(track).is_some_and(|kind| !kind.is_carla())
+                {
                     state.latency.automatic_processor_advance_frames = Some(processor_latency);
                     state.latency.processor_adjustment =
                         BackendProcessorLatencyAdjustment::Automatic;
@@ -1562,7 +1582,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         {
             profiling.groups = self.profiling_groups.1.clone();
         }
-        Ok(BackendSnapshot {
+        let mut snapshot = BackendSnapshot {
             composite_operations: self.composite_operations(),
             composite_receipts: core::mem::take(&mut self.composites.receipts),
             profiling,
@@ -1582,7 +1602,9 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
                     .extract_if(.., |completion| completion.result.is_err())
                     .collect()
             },
-        })
+        };
+        self.display_processor_logs(&mut snapshot);
+        Ok(snapshot)
     }
 
     fn wait_idle(&mut self) {

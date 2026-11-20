@@ -9,6 +9,7 @@ workspace = true
 default = ["cpal", "jack"]
 jack = ["shoop_rt_host_native/jack"]
 cpal = ["shoop_rt_host_native/cpal", "dep:cpal"]
+carla-worker = ["dep:shoop_carla", "shoop_carla/buffered", "shoop_rt_host_native/carla"]
 testing = []
 [dependencies]
 anyhow = { workspace = true, features = ["std"] }
@@ -17,12 +18,16 @@ shoop_rt_protocol = { path = "../shoop_rt_protocol" }
 shoop_rt_transport = { path = "../shoop_rt_transport" }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 cpal = { workspace = true, optional = true }
+shoop_carla = { path = "../shoop_carla", optional = true }
 shoop_rt_engine = { path = "../shoop_rt_engine" }
 shoop_rt_host_native = { path = "../shoop_rt_host_native", default-features = false }
 shoop_rt_transport_socket = { path = "../shoop_rt_transport_socket" }
 shoop_rt_transport_shared_memory = { path = "../shoop_rt_transport_shared_memory" }
 [dev-dependencies]
+rt_buffered = { path = "../rt_buffered" }
+rt_runtime = { path = "../rt_runtime" }
 tempfile = { workspace = true }
+shoop_plugin_protocol = { path = "../shoop_plugin_protocol" }
 shoop_rt_host_process = { path = ".", default-features = false, features = ["testing"] }
 shoop_rt_backend = { path = "../shoop_rt_backend" }
 shoop_backend = { path = "../shoop_backend", features = ["contracts"] }

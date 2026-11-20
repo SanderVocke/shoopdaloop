@@ -181,7 +181,9 @@ impl<C: Carrier> ProtocolClient<C> {
             EngineMessage::Welcome { .. } | EngineMessage::Rejected { .. } => {
                 self.state = ClientState::Rejected;
             }
-            EngineMessage::Result { .. } => {
+            EngineMessage::Result { .. }
+            | EngineMessage::ProcessorLogPage { .. }
+            | EngineMessage::ProcessorCheckpointPage { .. } => {
                 self.reliable_in_flight = self.reliable_in_flight.saturating_sub(1);
             }
             EngineMessage::Bulk(_) => {

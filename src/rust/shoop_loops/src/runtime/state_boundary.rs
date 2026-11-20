@@ -47,6 +47,19 @@ impl StateProcessor {
                 }
                 row.interval = None;
             }
+            if let Some(take) = &mut row.delayed {
+                if let Some(tick) = take.interval.take() {
+                    if !row.aborted {
+                        if let Err(error) = context.resources.capture().commit_delayed(tick) {
+                            row.aborted = true;
+                            row.failure = Some(error);
+                        }
+                    }
+                    if row.aborted {
+                        context.resources.capture().cancel_tick(tick.interval())?;
+                    }
+                }
+            }
             row.reset_input = false;
         }
         Ok(())

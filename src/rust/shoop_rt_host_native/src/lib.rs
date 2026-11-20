@@ -9,6 +9,8 @@ use shoop_rt_transport::{
 };
 use std::sync::Arc;
 mod benchmark;
+#[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
+mod carla;
 pub use drivers::DriverStatusReport as NativeStatus;
 #[cfg(feature = "jack")]
 pub use drivers::JackConfig;
@@ -32,6 +34,12 @@ pub type NativeClient = ProtocolClient<InProcess<ControlEndpoint>>;
 pub struct NativeConfig {
     pub driver: DriverConfig,
     pub engine: EngineDescription,
+}
+#[derive(Clone, Debug, Default)]
+pub struct CarlaHostOptions {
+    pub worker: Option<std::path::PathBuf>,
+    #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
+    pub ui: Option<shoop_carla::native::CarlaMainThreadUiDispatcher>,
 }
 pub struct Started {
     pub host: NativeHost,
@@ -159,13 +167,49 @@ fn assemble(started: drivers::Started) -> Result<Started, StartError> {
     })
 }
 pub fn start(config: &NativeConfig) -> Result<Started, StartError> {
+    start_with_template(config, template(&config.engine))
+}
+fn start_with_template(
+    config: &NativeConfig,
+    engine: drivers::Template,
+) -> Result<Started, StartError> {
     assemble(drivers::start(&drivers::DriverSettings {
         driver: config.driver.clone(),
-        engine: template(&config.engine),
+        engine,
     })?)
 }
 pub fn start_endpoint(config: &NativeConfig) -> Result<StartedEndpoint, StartError> {
-    let Started { host, client } = start(config)?;
+    split_endpoint(start(config)?)
+}
+
+pub fn start_endpoint_with_carla(
+    config: &NativeConfig,
+    options: CarlaHostOptions,
+) -> Result<StartedEndpoint, StartError> {
+    split_endpoint(start_with_carla(config, options)?)
+}
+
+pub fn start_with_carla(
+    config: &NativeConfig,
+    options: CarlaHostOptions,
+) -> Result<Started, StartError> {
+    #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
+    {
+        let mut engine = template(&config.engine);
+        engine.factory = Arc::new(NativeFactory {
+            description: config.engine.clone(),
+            carla: options,
+        });
+        start_with_template(config, engine)
+    }
+    #[cfg(not(all(feature = "carla", not(target_arch = "wasm32"))))]
+    {
+        let _ = options;
+        start(config)
+    }
+}
+
+fn split_endpoint(Started { host, client }: Started) -> Result<StartedEndpoint, StartError> {
     let (endpoint, outbox) = client.into_carrier().into_parts();
     Ok(StartedEndpoint {
         host,
@@ -200,13 +244,34 @@ pub fn template(engine: &EngineDescription) -> drivers::Template {
             engine.strips(),
             engine.strips(),
         ],
-        factory: Arc::new(NativeFactory(engine.clone())),
+        factory: Arc::new(NativeFactory {
+            description: engine.clone(),
+            #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
+            carla: CarlaHostOptions::default(),
+        }),
     }
 }
-struct NativeFactory(EngineDescription);
+struct NativeFactory {
+    description: EngineDescription,
+    #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
+    carla: CarlaHostOptions,
+}
 impl drivers::Factory for NativeFactory {
     fn prepare(&self, opened: drivers::Opened) -> Result<drivers::Parts, drivers::StartError> {
-        prepare(&self.0, opened).map_err(|e| drivers::StartError::Factory(Box::new(e)))
+        // Preparing the owned engine uses a larger stack than some native
+        // executable entry threads provide, especially in debug builds.
+        std::thread::scope(|scope| {
+            std::thread::Builder::new()
+                .name("native-engine-prepare".to_string())
+                .stack_size(4 * 1024 * 1024)
+                .spawn_scoped(scope, move || prepare(self, opened))
+                .map_err(|error| drivers::StartError::Thread(error.to_string()))?
+                .join()
+                .map_err(|_| {
+                    drivers::StartError::Thread("native engine preparation panicked".to_string())
+                })?
+                .map_err(|error| drivers::StartError::Factory(Box::new(error)))
+        })
     }
 }
 fn describe(
@@ -239,6 +304,7 @@ fn describe(
         host: ports.clone(),
         master_connections: master_connections.clone(),
         control_lead_frames: template.control_lead_frames.max(buffer_frames),
+        midi_output_limit_bytes: opened.midi_output_limit_bytes,
         ..template.clone()
     };
     if let Ok(value) = std::env::var("SHOOP_AUDIO_RENDER") {
@@ -274,16 +340,29 @@ fn describe(
 
     Ok(description)
 }
-fn prepare(
-    template: &EngineDescription,
-    opened: drivers::Opened,
-) -> Result<drivers::Parts, StartError> {
+fn prepare(factory: &NativeFactory, opened: drivers::Opened) -> Result<drivers::Parts, StartError> {
     let driver = opened.driver;
-    let description = describe(template, opened)?;
+    let description = describe(&factory.description, opened)?;
     let master_connections = description.master_connections.clone();
     let processors =
         shoop_host_processors::prepare(&description).map_err(StartError::Processors)?;
+    #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
+    let carla_first_slot = processors.instances.len();
+    #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
+    let (processors, carla_services) = carla::prepare(
+        &description,
+        driver.buffer_frames as usize,
+        &factory.carla,
+        processors,
+    );
     let mut engine = shoop_rt_engine::prepare_with_processors(&description, driver, processors)?;
+    #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
+    if !carla_services.is_empty() {
+        let controls = carla::Controls::new(carla_first_slot, &carla_services);
+        engine
+            .endpoint
+            .install_hosted_processor_controls(Box::new(controls));
+    }
     engine
         .render
         .set_profiling_clock(drivers::profiling_clock());
@@ -310,7 +389,11 @@ fn prepare(
             output_midi_events: capacity.events,
             output_midi_bytes: capacity.bytes,
         },
-        renderer: Box::new(NativeRenderer(engine.render)),
+        renderer: Box::new(NativeRenderer(
+            engine.render,
+            #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
+            carla_services,
+        )),
         observer: Arc::new(NativeObserver {
             host: engine.host,
             benchmark,
@@ -320,7 +403,11 @@ fn prepare(
         master_connections,
     })
 }
-pub struct NativeRenderer(pub Render);
+pub struct NativeRenderer(
+    pub Render,
+    #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
+    Vec<shoop_carla::service::ChainService>,
+);
 impl rt_runtime::host::Renderer for NativeRenderer {
     fn next_frame(&self) -> rt_runtime::Frame {
         self.0.next_frame()
@@ -340,6 +427,10 @@ impl drivers::Processor for NativeRenderer {
     fn finish(self: Box<Self>) -> Result<Box<dyn std::any::Any + Send>, rt_runtime::Error> {
         let mut stopped = self.0.into_stopped();
         stopped.cleanup()?;
+        #[cfg(all(feature = "carla", not(target_arch = "wasm32")))]
+        for service in self.1 {
+            let _ = service.stop(std::time::Duration::from_secs(2));
+        }
         Ok(Box::new(stopped))
     }
     fn diagnostic_work(&self) -> [u64; 14] {
@@ -431,11 +522,46 @@ mod tests {
                 buffer_frames: 128,
             },
             output_count: 2,
+            midi_output_limit_bytes: None,
         };
         let prepared = describe(&template, opened(DriverKind::Jack)).unwrap();
         assert_eq!(prepared.max_frames, 64);
         assert_eq!(prepared.control_lead_frames, 128);
         assert!(describe(&template, opened(DriverKind::Dummy)).is_err());
+    }
+    #[shoop_test(no_wasm = "native JACK preparation policy")]
+    fn jack_device_output_capacity_keeps_the_default_track_and_loop_pools() {
+        let template = EngineDescription {
+            max_frames: 128,
+            segments: vec![shoop_rt_engine::Segment {
+                strips: 32,
+                loops: 128,
+            }],
+            ..Default::default()
+        };
+        let opened = drivers::Opened {
+            ports: drivers::HostPorts::numbered(0, 0, 32),
+            driver: DriverStatus {
+                kind: DriverKind::Jack,
+                state: shoop_rt_protocol::DriverRunState::Starting,
+                sample_rate: 48000,
+                buffer_frames: 128,
+            },
+            output_count: 0,
+            midi_output_limit_bytes: Some(32768),
+        };
+        let prepared = describe(&template, opened).unwrap();
+        assert_eq!(prepared.max_frames, 128);
+        assert_eq!((prepared.strips(), prepared.loops()), (32, 128));
+        assert_eq!(prepared.host.midi_outputs.len(), 32);
+        assert_eq!(prepared.midi_bytes, template.midi_bytes);
+        assert_eq!(
+            prepared.midi_output_capacity().unwrap(),
+            rt_runtime::buffer::MidiCapacity {
+                events: 32768,
+                bytes: 32768,
+            }
+        );
     }
     #[shoop_test(no_wasm = "native host ownership")]
     fn the_host_handle_can_move_between_threads() {

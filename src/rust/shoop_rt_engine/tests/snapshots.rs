@@ -282,13 +282,15 @@ fn push_rates_can_change_and_pull_bypasses_the_push_timer() {
 fn an_in_progress_pull_finishes_reliably_after_switching_to_push() {
     use shoop_rt_protocol::snapshot::SnapshotDelivery;
     use shoop_rt_transport::carrier::{Endpoint, Outbox};
-    let mut h = Harness::new(&description());
+    let mut settings = description();
+    settings.segments[0].loops = 16;
+    let mut h = Harness::new(&settings);
     let track = strip(0, 1);
     h.done(Request::CreateStrip {
         strip: track,
         shape: shape(2, 2, false),
     });
-    for index in 0..3 {
+    for index in 0..16 {
         h.done(Request::CreateLoop {
             loop_id: loop_id(index, 1),
             strip: track,

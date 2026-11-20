@@ -39,6 +39,7 @@ fn description(channels: u8, kind: ProcessorKind) -> EngineDescription {
             fx_instances: 1,
             synth_instances: 1,
             memory_mb: 128,
+            carla: Default::default(),
         },
         ..EngineDescription::default()
     }

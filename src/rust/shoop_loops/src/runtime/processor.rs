@@ -368,6 +368,165 @@ impl<S: Sample> Processor<LoopPlanner<S>, (), S> for CaptureNode<S> {
                 self.binding.channels,
             )?;
         }
+        let row = block.domain.rows[slot].as_mut().ok_or(Error::InvalidId)?;
+        if let Some(take) = row.delayed.as_mut().filter(|_| !row.aborted) {
+            if let Some((writer, start, revision)) = row
+                .active
+                .and_then(|edit| Some((edit.writer?, edit.started_at, edit.revision)))
+            {
+                let result = (|| {
+                    let owner = row.worker_source.ok_or(Error::InvalidState)?;
+                    let inputs = block
+                        .domain
+                        .worker_inputs
+                        .as_mut()
+                        .ok_or(Error::InvalidState)?;
+                    let shared = block.domain.shared.as_mut().ok_or(Error::InvalidState)?;
+                    let target = row.binding.target;
+                    let decision = view.decision.state;
+                    let frames = block.quantum.frames();
+                    if take.cut.is_none() && decision.mode == crate::Mode::Replacing {
+                        inputs.observe_edit_position(
+                            target,
+                            revision,
+                            block.frame,
+                            decision.position,
+                        )?;
+                        shared.write_replacement_input(
+                            writer,
+                            block.frame,
+                            frames,
+                            &mut block.resources,
+                        )?;
+                    }
+                    if let Some(source) =
+                        take.release_source(start, block.frame, owner.delay_frames)
+                    {
+                        let (_, _, stream) = inputs
+                            .completed(row.history_source as usize, owner, block.frame)
+                            .ok_or(Error::Incomplete)?;
+                        if take
+                            .stream_generation
+                            .is_some_and(|expected| expected != stream)
+                        {
+                            return Err(Error::Incomplete);
+                        }
+                        let position = inputs
+                            .edit_position(target, revision, source)
+                            .ok_or(Error::Incomplete)?;
+                        shared.write_replacement_wet(
+                            writer,
+                            position,
+                            frames,
+                            &block.audio,
+                            &mut block.resources,
+                        )?;
+                        take.stream_generation = Some(stream);
+                    }
+                    Ok(())
+                })();
+                if let Err(error) = result {
+                    row.aborted = true;
+                    row.failure = Some(error);
+                }
+            } else if let Some(edit) = row.active.as_mut().filter(|edit| edit.edit.is_some()) {
+                let result = (|| {
+                    let owner = row.worker_source.ok_or(Error::InvalidState)?;
+                    let inputs = block
+                        .domain
+                        .worker_inputs
+                        .as_mut()
+                        .ok_or(Error::InvalidState)?;
+                    let target = row.binding.target;
+                    let decision = view.decision.state;
+                    if take.cut.is_none() && decision.mode == crate::Mode::RecordingDryIntoWet {
+                        inputs.observe_edit_position(
+                            target,
+                            edit.revision,
+                            block.frame,
+                            decision.position,
+                        )?;
+                    }
+                    let Some(source) =
+                        take.release_source(edit.started_at, block.frame, owner.delay_frames)
+                    else {
+                        return Ok(());
+                    };
+                    let (_, _, stream) = inputs
+                        .completed(row.history_source as usize, owner, block.frame)
+                        .ok_or(Error::Incomplete)?;
+                    if take
+                        .stream_generation
+                        .is_some_and(|expected| expected != stream)
+                    {
+                        return Err(Error::Incomplete);
+                    }
+                    let position = inputs
+                        .edit_position(target, edit.revision, source)
+                        .ok_or(Error::Incomplete)?;
+                    let (resource, revision) = edit.edit.ok_or(Error::InvalidState)?;
+                    let revision = self
+                        .audio
+                        .as_mut()
+                        .ok_or(Error::InvalidShape)?
+                        .replace_windowed_ports(
+                            &mut block.resources.render(),
+                            resource,
+                            revision,
+                            position,
+                            decision.content_length,
+                            &edit.windows.audio
+                                [view.audio_widths[1]..view.audio_widths[1] + view.audio_widths[0]],
+                            &block.audio,
+                        )?;
+                    edit.edit = Some((resource, revision));
+                    take.stream_generation = Some(stream);
+                    Ok(())
+                })();
+                if let Err(error) = result {
+                    row.aborted = true;
+                    row.failure = Some(error);
+                }
+            } else if let Some(tick) = take.interval {
+                let interval = tick.interval();
+                let result = (|| {
+                    let owner = row.worker_source.ok_or(Error::InvalidState)?;
+                    let (dry, midi, stream) = block
+                        .domain
+                        .worker_inputs
+                        .as_ref()
+                        .and_then(|inputs| {
+                            inputs.completed(row.history_source as usize, owner, block.frame)
+                        })
+                        .ok_or(Error::Incomplete)?;
+                    if take
+                        .stream_generation
+                        .is_some_and(|expected| expected != stream)
+                    {
+                        return Err(Error::Incomplete);
+                    }
+                    let mut render = block.resources.render();
+                    let mut member = 0;
+                    if let Some(audio) = &mut self.audio {
+                        audio.stage_port_range(&mut render, interval, member, &block.audio, 0)?;
+                        member += 1;
+                    }
+                    if self.auxiliary.is_some() {
+                        render.stage_audio(interval, member, dry)?;
+                        member += 1;
+                    }
+                    if self.midi.is_some() {
+                        render.stage_midi(interval, member, midi)?;
+                    }
+                    take.stream_generation = Some(stream);
+                    Ok(())
+                })();
+                if let Err(error) = result {
+                    row.aborted = true;
+                    row.failure = Some(error);
+                }
+            }
+        }
         if let (Some(audio), Some((resource, revision))) = (&mut self.audio, view.replace) {
             match audio.replace_windowed_ports(
                 &mut block.resources.render(),

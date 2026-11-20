@@ -1,5 +1,6 @@
 //! Portable processor and role conversion for supported session tracks.
 use super::*;
+use shoop_plugin_protocol::{state, CarlaChainType};
 use shoop_processor_protocol::{state::State, Kind};
 
 pub(super) fn mode_to_document(mode: image::ChannelMode) -> ChannelModeDocument {
@@ -25,7 +26,72 @@ pub(super) fn chain_kind(chain: FxChainTypeDocument) -> Result<Kind> {
     }
 }
 pub(super) fn canonical_state(chain: FxChainTypeDocument, encoded: &str) -> Result<String> {
+    if let Some(carla) = carla_chain(chain) {
+        return state::encode_state(carla, &state::decode_state(encoded, carla)?);
+    }
     Ok(State::decode(chain_kind(chain)?, encoded)?.encode())
+}
+
+pub(super) fn carla_chain(chain: FxChainTypeDocument) -> Option<CarlaChainType> {
+    match chain {
+        FxChainTypeDocument::CarlaRack => Some(CarlaChainType::Rack),
+        FxChainTypeDocument::CarlaPatchbay => Some(CarlaChainType::Patchbay),
+        FxChainTypeDocument::CarlaPatchbay16x => Some(CarlaChainType::Patchbay16x),
+        _ => None,
+    }
+}
+
+pub(super) fn carla_processor_type(chain: CarlaChainType) -> &'static str {
+    match chain {
+        CarlaChainType::Rack => TrackProcessorTypeId::CARLA_RACK,
+        CarlaChainType::Patchbay => TrackProcessorTypeId::CARLA_PATCHBAY,
+        CarlaChainType::Patchbay16x => TrackProcessorTypeId::CARLA_PATCHBAY_16X,
+    }
+}
+
+fn document_chain(processor_type: &str) -> Result<Option<FxChainTypeDocument>> {
+    Ok(Some(match processor_type {
+        TrackProcessorTypeId::BUILTIN_FX => FxChainTypeDocument::BuiltInFx,
+        TrackProcessorTypeId::OXISYNTH => FxChainTypeDocument::OxiSynth,
+        TrackProcessorTypeId::CARLA_RACK => FxChainTypeDocument::CarlaRack,
+        TrackProcessorTypeId::CARLA_PATCHBAY => FxChainTypeDocument::CarlaPatchbay,
+        TrackProcessorTypeId::CARLA_PATCHBAY_16X => FxChainTypeDocument::CarlaPatchbay16x,
+        TrackProcessorTypeId::EXTERNAL => return Ok(None),
+        _ => bail!("unsupported processor type {processor_type}"),
+    }))
+}
+
+pub(super) fn state_reference<'a>(
+    image: &'a image::Image,
+    checkpoint: Option<u32>,
+    inline: Option<&'a str>,
+) -> Result<Option<&'a str>> {
+    let Some(checkpoint) = checkpoint else {
+        return Ok(inline);
+    };
+    let index = checkpoint
+        .checked_sub(1)
+        .ok_or_else(|| anyhow!("invalid processor checkpoint"))? as usize;
+    let Some(image::Payload::ProcessorCheckpoint(bytes)) = image.payloads.get(index) else {
+        bail!("missing processor checkpoint payload");
+    };
+    Ok(Some(std::str::from_utf8(bytes)?))
+}
+
+pub(super) fn state_for_image(
+    chain: FxChainTypeDocument,
+    state: &str,
+    payloads: &mut Vec<image::Payload>,
+) -> Result<(Option<String>, Option<u32>)> {
+    let state = canonical_state(chain, state)?;
+    if carla_chain(chain).is_some() {
+        payloads.push(image::Payload::ProcessorCheckpoint(Arc::new(
+            state.into_bytes(),
+        )));
+        Ok((None, Some(u32::try_from(payloads.len())?)))
+    } else {
+        Ok((Some(state), None))
+    }
 }
 pub(super) fn image_topology(
     topology: &TrackTopologyDocument,
@@ -35,7 +101,10 @@ pub(super) fn image_topology(
             audio_channels,
             midi,
         } => {
-            ensure!(audio_channels <= 8, "track exceeds channel capacity");
+            ensure!(
+                audio_channels as usize <= MAX_SESSION_CHANNELS_PER_ROLE,
+                "track exceeds channel capacity"
+            );
             return Ok((TrackTopology::Direct, audio_channels, midi));
         }
         TrackTopologyDocument::Trigger => return Ok((TrackTopology::Direct, 0, false)),
@@ -59,10 +128,29 @@ pub(super) fn image_topology(
             )
         }
         TrackTopologyDocument::OxiSynth => (2, 2, true, TrackProcessorTypeId::OXISYNTH),
-        _ => bail!("unsupported track processor (P07)"),
+        TrackTopologyDocument::Carla {
+            chain_type,
+            audio_channels,
+            midi,
+            dry_audio_channels,
+            wet_audio_channels,
+        } => {
+            let carla = carla_chain(chain_type)
+                .ok_or_else(|| anyhow!("Carla track has an unsupported chain type"))?;
+            let dry = dry_audio_channels.unwrap_or(audio_channels);
+            let wet = wet_audio_channels.unwrap_or(audio_channels);
+            let width = u32::from(carla.audio_channels());
+            ensure!(
+                dry <= width && wet <= width,
+                "track exceeds its Carla chain width"
+            );
+            (dry, wet, midi, carla_processor_type(carla))
+        }
     };
     ensure!(
-        dry <= 8 && wet <= 8 && (dry != 0 || wet != 0 || midi),
+        dry as usize <= MAX_SESSION_CHANNELS_PER_ROLE
+            && wet as usize <= MAX_SESSION_CHANNELS_PER_ROLE
+            && (dry != 0 || wet != 0 || midi),
         "invalid dry/wet shape"
     );
     Ok((
@@ -111,7 +199,18 @@ pub(super) fn document_topology(track: &image::Track) -> Result<TrackTopologyDoc
                     ensure!(*dry == 2 && *wet == 2 && *midi, "invalid synth shape");
                     TrackTopologyDocument::OxiSynth
                 }
-                _ => bail!("unsupported track processor (P07)"),
+                _ => {
+                    let chain_type = document_chain(processor_type.as_str())?
+                        .filter(|chain| carla_chain(*chain).is_some())
+                        .ok_or_else(|| anyhow!("unsupported track processor"))?;
+                    TrackTopologyDocument::Carla {
+                        chain_type,
+                        audio_channels: *wet,
+                        midi: *midi,
+                        dry_audio_channels: Some(*dry),
+                        wet_audio_channels: Some(*wet),
+                    }
+                }
             }
         }
     })
@@ -182,20 +281,26 @@ pub(super) fn synth_from_document(parameter: OxiSynthParameterDocument) -> OxiSy
         OxiSynthParameterDocument::ChorusSend => OxiSynthParameter::ChorusSend,
     }
 }
-pub(super) fn bus_processor_chain(bus: &image::Bus) -> Result<Option<FxChainDocument>> {
+pub(super) fn bus_processor_chain(
+    image: &image::Image,
+    bus: &image::Bus,
+) -> Result<Option<FxChainDocument>> {
     bus.fx
         .as_ref()
         .map(|fx| {
-            ensure!(
-                fx.processor_type.as_str() == TrackProcessorTypeId::BUILTIN_FX,
-                "unsupported bus processor"
-            );
+            let chain_type = document_chain(fx.processor_type.as_str())?
+                .filter(|chain| {
+                    *chain == FxChainTypeDocument::BuiltInFx || carla_chain(*chain).is_some()
+                })
+                .ok_or_else(|| anyhow!("unsupported bus processor"))?;
+            let encoded = state_reference(image, fx.processor_checkpoint, Some(&fx.state))?
+                .ok_or_else(|| anyhow!("bus processor state missing"))?;
             Ok(FxChainDocument {
                 id: bus.id.raw(),
                 title: bus.name.clone(),
-                chain_type: FxChainTypeDocument::BuiltInFx,
+                chain_type,
                 ports: Vec::new(),
-                internal_state: canonical_state(FxChainTypeDocument::BuiltInFx, &fx.state)?,
+                internal_state: canonical_state(chain_type, encoded)?,
                 builtin_fx_midi_cc_assignments: fx
                     .midi_cc_assignments
                     .iter()
@@ -210,19 +315,22 @@ pub(super) fn bus_processor_chain(bus: &image::Bus) -> Result<Option<FxChainDocu
         })
         .transpose()
 }
-pub(super) fn processor_chain(track: &image::Track) -> Result<Option<FxChainDocument>> {
+pub(super) fn processor_chain(
+    image: &image::Image,
+    track: &image::Track,
+) -> Result<Option<FxChainDocument>> {
     let chain_type = match &track.topology {
-        TrackTopology::DryWet { processor_type, .. } => match processor_type.as_str() {
-            TrackProcessorTypeId::BUILTIN_FX => Some(FxChainTypeDocument::BuiltInFx),
-            TrackProcessorTypeId::OXISYNTH => Some(FxChainTypeDocument::OxiSynth),
-            TrackProcessorTypeId::EXTERNAL => None,
-            _ => bail!("unsupported processor type (P07)"),
-        },
+        TrackTopology::DryWet { processor_type, .. } => document_chain(processor_type.as_str())?,
         TrackTopology::Direct => None,
     };
+    let encoded = state_reference(
+        image,
+        track.processor_checkpoint,
+        track.processor_state.as_deref(),
+    )?;
     let Some(chain_type) = chain_type else {
         ensure!(
-            track.processor_state.is_none()
+            encoded.is_none()
                 && track.builtin_fx_midi_cc_assignments.is_empty()
                 && track.oxisynth_midi_cc_assignments.is_empty(),
             "track has unexpected processor state"
@@ -236,10 +344,7 @@ pub(super) fn processor_chain(track: &image::Track) -> Result<Option<FxChainDocu
         ports: Vec::new(),
         internal_state: canonical_state(
             chain_type,
-            track
-                .processor_state
-                .as_deref()
-                .ok_or_else(|| anyhow!("processor state missing"))?,
+            encoded.ok_or_else(|| anyhow!("processor state missing"))?,
         )?,
         builtin_fx_midi_cc_assignments: track
             .builtin_fx_midi_cc_assignments

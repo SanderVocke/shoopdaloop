@@ -160,6 +160,76 @@ impl Work {
     }
 }
 
+/// Hosted processor observations and controls on the non-render endpoint.
+pub trait HostedProcessorControls: Send {
+    fn has_editors(&self) -> bool;
+    fn has_logs(&self) -> bool;
+    fn has_checkpoints(&self) -> bool {
+        false
+    }
+    fn status(&self, index: u16) -> Option<HostedProcessorObservation>;
+    fn set_visible(&self, index: u16, visible: bool) -> Result<(), Refusal>;
+    fn recover(
+        &self,
+        index: u16,
+        owner: u64,
+        generation: u64,
+    ) -> Result<Box<dyn HostedControlTicket>, Refusal>;
+    fn clear_logs(
+        &self,
+        index: u16,
+        owner: u64,
+        generation: u64,
+    ) -> Result<Box<dyn HostedControlTicket>, Refusal>;
+    fn read_logs(
+        &self,
+        index: u16,
+        owner: u64,
+        generation: u64,
+    ) -> Result<Box<dyn crate::HostedLogTicket>, Refusal>;
+    fn capture_checkpoint(
+        &self,
+        _index: u16,
+        _owner: u64,
+        _generation: u64,
+    ) -> Result<Box<dyn crate::HostedCheckpointTicket>, Refusal> {
+        Err(Refusal::Unsupported)
+    }
+    fn restore_candidate(
+        &self,
+        _index: u16,
+        _owner: u64,
+        _generation: u64,
+        _state: alloc::string::String,
+    ) -> Result<Box<dyn HostedControlTicket>, Refusal> {
+        Err(Refusal::Unsupported)
+    }
+}
+
+pub struct HostedProcessorObservation {
+    pub owner: u64,
+    pub status: shoop_rt_protocol::processors::HostedStatus,
+}
+
+pub trait HostedControlTicket: Send {
+    fn poll(&mut self) -> Option<Result<(), Refusal>>;
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub(crate) struct HostedOwner {
+    pub target: shoop_rt_protocol::ProcessorTarget,
+    pub slot: shoop_rt_protocol::ProcessorSlot,
+    pub service_owner: u64,
+    pub worker_generation: u64,
+}
+
+pub(crate) struct PendingHostedControl {
+    target: shoop_rt_protocol::ProcessorTarget,
+    slot: shoop_rt_protocol::ProcessorSlot,
+    correlation: Option<u64>,
+    ticket: Box<dyn HostedControlTicket>,
+}
+
 pub struct ControlEndpoint {
     pub(crate) capability_mask: Capabilities,
     #[cfg(feature = "testing")]
@@ -169,6 +239,10 @@ pub struct ControlEndpoint {
     pub(crate) projected_timing: Box<[Option<(LoopSlotId, shoop_rt_protocol::TimingState)>]>,
     pub(crate) projected_recorded: Box<[Option<(LoopSlotId, u64, bool)>]>,
     pub(crate) processor_catalog: crate::ProcessorCatalog,
+    pub(crate) hosted_processors: Option<Box<dyn HostedProcessorControls>>,
+    pub(crate) hosted_controls: Box<[Option<PendingHostedControl>]>,
+    pub(crate) hosted_logs: crate::hosted_logs::Store,
+    pub(crate) hosted_checkpoints: crate::hosted_checkpoints::Store,
     pub(crate) processor_cells: Box<[Arc<crate::processors::ProcessorCells>]>,
     pub(crate) projected_bus_processors: Box<
         [Option<(
@@ -351,6 +425,174 @@ fn finite_balance(value: f32) -> bool {
 }
 
 impl ControlEndpoint {
+    pub fn install_hosted_processor_controls(
+        &mut self,
+        controls: Box<dyn HostedProcessorControls>,
+    ) {
+        self.hosted_controls = core::iter::repeat_with(|| None)
+            .take(self.processor_cells.len())
+            .collect();
+        self.hosted_processors = Some(controls);
+    }
+
+    pub(crate) fn hosted_processor_owner(
+        &self,
+        target: shoop_rt_protocol::ProcessorTarget,
+    ) -> Result<crate::model::ProcessorOwner, Refusal> {
+        use shoop_rt_protocol::ProcessorTarget;
+        match target {
+            ProcessorTarget::Strip(id) => self.model.strip(id).ok_or(Refusal::InvalidId)?.processor,
+            ProcessorTarget::Bus(id) => self.model.bus(id).ok_or(Refusal::InvalidId)?.processor,
+        }
+        .filter(|owner| owner.kind.is_carla())
+        .ok_or(Refusal::Unsupported)
+    }
+
+    pub(crate) fn confirmed_hosted_processor(
+        &self,
+        target: shoop_rt_protocol::ProcessorTarget,
+        slot: shoop_rt_protocol::ProcessorSlot,
+    ) -> Result<&dyn HostedProcessorControls, Refusal> {
+        use shoop_rt_protocol::processors::Phase;
+        let controls = self
+            .hosted_processors
+            .as_deref()
+            .ok_or(Refusal::Unsupported)?;
+        let owner = self.hosted_processor_owner(target)?;
+        if owner.slot != Some(slot) {
+            return Err(Refusal::InvalidId);
+        }
+        let state = self
+            .processor_state(slot.index as usize)
+            .ok_or(Refusal::Busy)?;
+        if state.generation != slot.generation
+            || state.kind != owner.kind
+            || matches!(state.phase, Phase::Free | Phase::Retiring)
+        {
+            return Err(Refusal::InvalidId);
+        }
+        if self.hosted_controls[slot.index as usize].is_some() {
+            return Err(Refusal::Busy);
+        }
+        Ok(controls)
+    }
+
+    pub(crate) fn current_hosted_owner(&self, owner: HostedOwner) -> bool {
+        self.hosted_processor_owner(owner.target)
+            .is_ok_and(|target| target.slot == Some(owner.slot))
+            && self
+                .hosted_processors
+                .as_ref()
+                .and_then(|controls| controls.status(owner.slot.index))
+                .is_some_and(|current| {
+                    current.owner == owner.service_owner
+                        && current.status.generation == owner.worker_generation
+                })
+    }
+
+    pub(crate) fn confirm_hosted_owner(
+        &self,
+        target: shoop_rt_protocol::ProcessorTarget,
+        slot: shoop_rt_protocol::ProcessorSlot,
+        worker_generation: u64,
+    ) -> Result<(HostedOwner, &dyn HostedProcessorControls), Refusal> {
+        let controls = self.confirmed_hosted_processor(target, slot)?;
+        let observed = controls.status(slot.index).ok_or(Refusal::Unsupported)?;
+        if observed.status.generation != worker_generation {
+            return Err(Refusal::InvalidId);
+        }
+        Ok((
+            HostedOwner {
+                target,
+                slot,
+                service_owner: observed.owner,
+                worker_generation,
+            },
+            controls,
+        ))
+    }
+
+    fn processor_editor(
+        &mut self,
+        correlation: u64,
+        target: shoop_rt_protocol::ProcessorTarget,
+        slot: shoop_rt_protocol::ProcessorSlot,
+        visible: Option<bool>,
+    ) -> Result<Option<Outcome>, Refusal> {
+        use shoop_rt_protocol::processors::HostedLifecycle;
+        let controls = self.confirmed_hosted_processor(target, slot)?;
+        let HostedProcessorObservation { owner, status } =
+            controls.status(slot.index).ok_or(Refusal::Unsupported)?;
+        if visible.is_none()
+            && status.generation != 0
+            && matches!(
+                status.lifecycle,
+                HostedLifecycle::Crashed | HostedLifecycle::Unavailable
+            )
+        {
+            let ticket = controls.recover(slot.index, owner, status.generation)?;
+            self.hosted_controls[slot.index as usize] = Some(PendingHostedControl {
+                target,
+                slot,
+                correlation: Some(correlation),
+                ticket,
+            });
+            return Ok(None);
+        }
+        let current = status.editor_visible.ok_or(Refusal::Unsupported)?;
+        controls.set_visible(slot.index, visible.unwrap_or(!current))?;
+        Ok(Some(Outcome::Done))
+    }
+
+    fn processor_clear_logs(
+        &mut self,
+        correlation: u64,
+        target: shoop_rt_protocol::ProcessorTarget,
+        slot: shoop_rt_protocol::ProcessorSlot,
+        worker_generation: u64,
+    ) -> Result<Option<Outcome>, Refusal> {
+        if worker_generation == 0 {
+            return Err(Refusal::Unsupported);
+        }
+        let controls = self.confirmed_hosted_processor(target, slot)?;
+        let HostedProcessorObservation { owner, status } =
+            controls.status(slot.index).ok_or(Refusal::Unsupported)?;
+        if status.generation != worker_generation {
+            return Err(Refusal::InvalidId);
+        }
+        let ticket = controls.clear_logs(slot.index, owner, worker_generation)?;
+        self.hosted_controls[slot.index as usize] = Some(PendingHostedControl {
+            target,
+            slot,
+            correlation: Some(correlation),
+            ticket,
+        });
+        Ok(None)
+    }
+
+    fn advance_hosted_controls(&mut self) {
+        for index in 0..self.hosted_controls.len() {
+            let Some(result) = self.hosted_controls[index]
+                .as_mut()
+                .and_then(|pending| pending.ticket.poll())
+            else {
+                continue;
+            };
+            let pending = self.hosted_controls[index].take().unwrap();
+            if let Some(correlation) = pending.correlation {
+                let outcome = if self
+                    .hosted_processor_owner(pending.target)
+                    .is_ok_and(|owner| owner.slot == Some(pending.slot))
+                {
+                    result.map_or_else(Outcome::Refused, |()| Outcome::Done)
+                } else {
+                    Outcome::Refused(Refusal::InvalidId)
+                };
+                self.answer(correlation, outcome);
+            }
+        }
+    }
+
     pub fn processor_catalog(&self) -> &crate::ProcessorCatalog {
         &self.processor_catalog
     }
@@ -397,6 +639,9 @@ impl ControlEndpoint {
             && self.queue.len() == 0
             && self.job.as_ref().is_none_or(Job::idle)
             && self.pending.iter().all(Option::is_none)
+            && self.hosted_controls.iter().all(Option::is_none)
+            && self.hosted_logs.idle()
+            && self.hosted_checkpoints.idle()
             && self.bulk.idle()
             && self.uploads.idle()
             && self.next_frame().0 >= self.quiet_until
@@ -444,11 +689,37 @@ impl ControlEndpoint {
         if self.settings.external_dry_wet {
             capabilities = capabilities.union(Capabilities::EXTERNAL_DRY_WET);
         }
-        if self.processor_catalog.effective.fx_instances > 0 {
+        if self
+            .processor_catalog
+            .kinds
+            .iter()
+            .any(|kind| kind.supports_bus())
+        {
             capabilities = capabilities.union(Capabilities::BUS_PROCESSORS);
         }
         if !self.processor_catalog.kinds.is_empty() {
             capabilities = capabilities.union(Capabilities::TRACK_PROCESSORS);
+        }
+        if self
+            .hosted_processors
+            .as_ref()
+            .is_some_and(|controls| controls.has_editors())
+        {
+            capabilities = capabilities.union(Capabilities::EXTERNAL_PROCESSOR_EDITOR);
+        }
+        if self
+            .hosted_processors
+            .as_ref()
+            .is_some_and(|controls| controls.has_logs())
+        {
+            capabilities = capabilities.union(Capabilities::PROCESSOR_LOGS);
+        }
+        if self
+            .hosted_processors
+            .as_ref()
+            .is_some_and(|controls| controls.has_checkpoints())
+        {
+            capabilities = capabilities.union(Capabilities::PROCESSOR_CHECKPOINTS);
         }
         Capabilities(capabilities.0 & self.capability_mask.0)
     }
@@ -596,6 +867,11 @@ impl ControlEndpoint {
         self.projected_timing.fill(None);
         self.limits_changed = false;
         self.protocol_error = false;
+        self.hosted_logs.disconnect();
+        self.hosted_checkpoints.disconnect();
+        for pending in self.hosted_controls.iter_mut().flatten() {
+            pending.correlation = None;
+        }
         for pending in self.pending.iter_mut().flatten() {
             match &mut pending.purpose {
                 Purpose::Reply(correlation)
@@ -607,6 +883,7 @@ impl ControlEndpoint {
             }
         }
         self.forget_job_answers();
+        self.replacement.disconnect();
         self.disconnect_input();
         if self.family.id.is_some() && !self.family.committing {
             self.family.cancel_requested = true;
@@ -1001,6 +1278,7 @@ impl ControlEndpoint {
             }
             Request::ReplacementBegin { .. }
             | Request::ReplacementEdit { .. }
+            | Request::ReplacementCheckpoint { .. }
             | Request::ReplacementPrepare { .. }
             | Request::ReplacementCommit { .. }
             | Request::ReplacementCancel { .. } => {
@@ -1076,6 +1354,46 @@ impl ControlEndpoint {
             Request::StripControl { strip, control } => {
                 self.strip_control(correlation, strip, control)
             }
+            Request::ProcessorEditor {
+                target,
+                slot,
+                visible,
+            } => match self.processor_editor(correlation, target, slot, visible) {
+                Err(Refusal::Busy) => return Err(()),
+                result => result,
+            },
+            Request::ProcessorClearLogs {
+                target,
+                slot,
+                worker_generation,
+            } => match self.processor_clear_logs(correlation, target, slot, worker_generation) {
+                Err(Refusal::Busy) => return Err(()),
+                result => result,
+            },
+            Request::ProcessorLogs {
+                target,
+                slot,
+                worker_generation,
+                command,
+            } => match self.processor_logs(correlation, target, slot, worker_generation, command) {
+                Err(Refusal::Busy) => return Err(()),
+                result => result,
+            },
+            Request::ProcessorCheckpoint {
+                target,
+                slot,
+                worker_generation,
+                command,
+            } => match self.processor_checkpoint(
+                correlation,
+                target,
+                slot,
+                worker_generation,
+                command,
+            ) {
+                Err(Refusal::Busy) => return Err(()),
+                result => result,
+            },
             Request::BusProcessorControl { bus, control } => self
                 .model
                 .bus(bus)
@@ -1201,6 +1519,7 @@ impl ControlEndpoint {
             },
             Request::CreateProcessedBus { .. }
             | Request::SetBusProcessor { .. }
+            | Request::SetBusProcessorKind { .. }
             | Request::CreateBus { .. }
             | Request::RemoveBus { .. }
             | Request::CreateStrip { .. }
@@ -1421,6 +1740,8 @@ impl ControlEndpoint {
             });
             self.results.pop();
         }
+        self.flush_hosted_log_page(out);
+        self.flush_hosted_checkpoint_page(out);
         if self.limits_changed && out.available(ProtocolLane::Reliable) > 0 {
             let _ = out.push(EngineMessage::LimitsChanged(self.limits));
             self.limits_changed = false;
@@ -1718,6 +2039,9 @@ impl Endpoint for ControlEndpoint {
             return;
         }
         self.drain_runtime();
+        self.advance_hosted_controls();
+        self.advance_hosted_logs();
+        self.advance_hosted_checkpoints();
         self.immediate.responses(out, self.connected);
         self.refresh_snapshot_timing();
         self.reconcile_immediate();

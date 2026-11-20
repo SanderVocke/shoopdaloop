@@ -694,7 +694,7 @@ mod tests {
         let encoded = encode_session(&bundle, "oxisynth-test").unwrap();
         assert_eq!(decode_session(&encoded).unwrap(), bundle);
 
-        for unsupported in [5, SESSION_DOCUMENT_VERSION + 1] {
+        for unsupported in [5, SESSION_DOCUMENT_VERSION + 2] {
             let invalid = rewrite_manifest(encoded.clone(), |manifest| {
                 manifest["document_version"] = serde_json::json!(unsupported);
             });
@@ -2023,6 +2023,53 @@ mod tests {
             + channel.capture_alignment_frames
             + loop_.length_frames as i64;
         assert_eq!(raw_end, channel.data_length_frames as i64);
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn large_carla_checkpoints_round_trip_as_owned_archive_members() {
+        let mut bundle = direct_bundle(2);
+        let track = &mut bundle.document.track_groups[0].tracks[0];
+        track.fx_chain.as_mut().unwrap().internal_state = "å\0carla\n".repeat(8192);
+        let member = format!("carla/track-{}.state", track.id);
+        let mut limits = codec_limits();
+        limits.media_bytes = 1024 * 1024;
+        limits.expanded_bytes = 1024 * 1024;
+        let encoded = encode_session_bounded(&bundle, "carla-checkpoint", limits).unwrap();
+        let mut archive = ZipArchive::new(Cursor::new(&encoded)).unwrap();
+        let mut manifest = Vec::new();
+        archive
+            .by_name("manifest.json")
+            .unwrap()
+            .read_to_end(&mut manifest)
+            .unwrap();
+        let manifest: serde_json::Value = serde_json::from_slice(&manifest).unwrap();
+        assert_eq!(
+            manifest["document_version"],
+            serde_json::json!(SESSION_DOCUMENT_VERSION + 1)
+        );
+        assert_eq!(
+            manifest["document"]["track_groups"][0]["tracks"][0]["fx_chain"]["internal_state"],
+            ""
+        );
+        assert_eq!(manifest["carla_checkpoints"][0]["path"], member);
+        assert_eq!(
+            decode_session_bounded(&encoded, limits, |_| Ok(())).unwrap(),
+            bundle
+        );
+        let corrupt = rewrite_manifest(encoded.clone(), |manifest| {
+            manifest["carla_checkpoints"][0]["sha256"] = serde_json::json!("invalid");
+        });
+        assert!(matches!(
+            decode_session_bounded(&corrupt, limits, |_| Ok(())),
+            Err(SessionError::HashMismatch { .. })
+        ));
+        let wrong_owner = rewrite_manifest(encoded, |manifest| {
+            manifest["carla_checkpoints"][0]["owner"] = serde_json::json!({"bus": 1});
+        });
+        assert!(matches!(
+            decode_session_bounded(&wrong_owner, limits, |_| Ok(())),
+            Err(SessionError::Validation(_))
+        ));
     }
 
     #[shoop_wasm_test_support::shoop_test]

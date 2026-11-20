@@ -16,6 +16,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[path = "support/shutdown.rs"]
+mod shutdown;
+
 struct Host {
     child: Child,
     root: tempfile::TempDir,
@@ -58,7 +61,6 @@ fn host_with_driver(
     loop_memory_mb: u32,
     driver: Option<AudioDriverConfig>,
 ) -> Host {
-    let root = tempfile::tempdir().unwrap();
     let real_device = driver.is_some();
     let config = HostConfig {
         settings: shoop_host::config::HostSettings {
@@ -83,8 +85,14 @@ fn host_with_driver(
         test_signal: !real_device,
         ..Default::default()
     };
+    spawn_host(&config, real_device)
+}
+
+fn spawn_host(config: &HostConfig, real_device: bool) -> Host {
+    let root = tempfile::tempdir().unwrap();
+    let transport = config.transport;
     let config_path = root.path().join("config.json");
-    std::fs::write(&config_path, serde_json::to_vec(&config).unwrap()).unwrap();
+    std::fs::write(&config_path, serde_json::to_vec(config).unwrap()).unwrap();
 
     let path = root.path().join("profile.json");
     let log_path = if real_device || std::env::var_os("SHOOP_PREVIEW_LOG_DIR").is_some() {
@@ -129,6 +137,298 @@ fn host_with_driver(
         stderr_path,
     }
 }
+
+#[cfg(feature = "carla")]
+#[shoop_test]
+fn carla_editor_controls_follow_the_confirmed_track_and_bus() {
+    if std::env::var_os("SHOOP_REQUIRE_CARLA_UI_TESTS").is_none() {
+        return;
+    }
+    shoop_carla::native::carla_runtime_availability().unwrap();
+    for (hosting, transport) in [
+        (CarlaHosting::InProcess, AppTransport::Socket),
+        (CarlaHosting::Subprocess, AppTransport::SharedMemory),
+        (CarlaHosting::Subprocess, AppTransport::Socket),
+    ] {
+        let mut config = HostConfig {
+            transport,
+            ..Default::default()
+        };
+        config.settings.processors.builtin_fx = ProcessorPolicy::Off;
+        config.settings.processors.oxisynth = ProcessorPolicy::Off;
+        config.settings.processors.carla.hosting = hosting;
+        config.settings.processors.carla.rack_instances = 1;
+        config.settings.processors.carla.patchbay_instances = 1;
+        config.settings.pools.tracks = 8;
+        config.settings.pools.loops = 32;
+        config.settings.pools.loop_memory_mb = 16;
+        let mut host = spawn_host(&config, false);
+        let (mut client, mut connection) = attach(&host.entry, 802);
+        let outcome = command(
+            &mut client,
+            &mut connection,
+            Command::AddTrack(TrackSpec {
+                name: "Carla Rack".into(),
+                topology: TrackSpecTopology::DryWet {
+                    dry_audio_channels: 2,
+                    wet_audio_channels: 2,
+                    dry_midi: false,
+                    processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::CARLA_RACK),
+                    default_playback_mode: Default::default(),
+                },
+                latency: Default::default(),
+                initial_output_bus_names: Vec::new(),
+                creation_request_id: None,
+            }),
+        );
+        let Outcome::TrackCreated { track, .. } = outcome else {
+            panic!("{outcome:?}")
+        };
+        let outcome = command(
+            &mut client,
+            &mut connection,
+            Command::AddBus(BusSpec {
+                name: "Carla Patchbay".into(),
+                channel_count: 2,
+                fx: Some(BusFxSpec {
+                    processor_type: TrackProcessorTypeId::new(TrackProcessorTypeId::CARLA_PATCHBAY),
+                }),
+                creation_request_id: None,
+            }),
+        );
+        assert!(matches!(outcome, Outcome::Confirmed { .. }), "{outcome:?}");
+        let bus = client
+            .snapshot()
+            .unwrap()
+            .buses
+            .iter()
+            .find(|bus| bus.name == "Carla Patchbay")
+            .unwrap()
+            .id;
+        let wait = |client: &mut Client, connection: &mut Connection, expected: (bool, bool)| {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                connection.poll(client).unwrap();
+                let snapshot = client.snapshot().unwrap();
+                let track_fx = snapshot
+                    .tracks
+                    .iter()
+                    .find(|entry| entry.id == track)
+                    .and_then(|entry| entry.fx.as_ref());
+                let bus_fx = snapshot
+                    .buses
+                    .iter()
+                    .find(|entry| entry.id == bus)
+                    .and_then(|entry| entry.fx.as_ref());
+                if let (Some(track_fx), Some(bus_fx)) = (track_fx, bus_fx) {
+                    if (track_fx.visible, bus_fx.visible) == expected {
+                        return;
+                    }
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "{hosting:?} did not confirm editor visibility {expected:?}"
+                );
+                thread::sleep(Duration::from_millis(10));
+            }
+        };
+        wait(&mut client, &mut connection, (false, false));
+        for _ in 0..2 {
+            for (action, expected) in [
+                (
+                    Command::Track {
+                        track,
+                        action: TrackAction::FxToggleOrRecover,
+                    },
+                    (true, false),
+                ),
+                (
+                    Command::Bus {
+                        bus,
+                        action: BusAction::FxToggleOrRecover,
+                    },
+                    (true, true),
+                ),
+                (
+                    Command::Track {
+                        track,
+                        action: TrackAction::FxVisibilityChanged(false),
+                    },
+                    (false, true),
+                ),
+                (
+                    Command::Bus {
+                        bus,
+                        action: BusAction::FxVisibilityChanged(false),
+                    },
+                    (false, false),
+                ),
+            ] {
+                let outcome = command(&mut client, &mut connection, action);
+                assert!(matches!(outcome, Outcome::Confirmed { .. }), "{outcome:?}");
+                wait(&mut client, &mut connection, expected);
+                thread::sleep(Duration::from_millis(100));
+            }
+        }
+        #[cfg(target_os = "linux")]
+        if hosting == CarlaHosting::Subprocess {
+            let read_logs = |client: &mut Client,
+                             connection: &mut Connection,
+                             from_track: bool,
+                             generation: u64| {
+                let action = if from_track {
+                    Command::Track {
+                        track,
+                        action: TrackAction::FxReadLogs,
+                    }
+                } else {
+                    Command::Bus {
+                        bus,
+                        action: BusAction::FxReadLogs,
+                    }
+                };
+                let outcome = command(client, connection, action);
+                assert!(matches!(outcome, Outcome::Confirmed { .. }), "{outcome:?}");
+                let deadline = Instant::now() + Duration::from_secs(5);
+                loop {
+                    connection.poll(client).unwrap();
+                    let snapshot = client.snapshot().unwrap();
+                    let fx = if from_track {
+                        snapshot
+                            .tracks
+                            .iter()
+                            .find(|entry| entry.id == track)
+                            .and_then(|entry| entry.fx.as_ref())
+                    } else {
+                        snapshot
+                            .buses
+                            .iter()
+                            .find(|entry| entry.id == bus)
+                            .and_then(|entry| entry.fx.as_ref())
+                    };
+                    if let Some(logs) = fx
+                        .map(|fx| &fx.logs)
+                        .filter(|logs| logs.last().is_some_and(|log| log.generation == generation))
+                    {
+                        assert!(logs
+                            .windows(2)
+                            .all(|logs| logs[0].generation < logs[1].generation));
+                        break;
+                    }
+                    assert!(
+                        Instant::now() < deadline,
+                        "Carla worker logs were not projected for generation {generation}"
+                    );
+                    thread::sleep(Duration::from_millis(10));
+                }
+            };
+            carla_worker::kill(host.child.id(), b"1");
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                connection.poll(&mut client).unwrap();
+                let snapshot = client.snapshot().unwrap();
+                let track_fx = snapshot
+                    .tracks
+                    .iter()
+                    .find(|entry| entry.id == track)
+                    .unwrap()
+                    .fx
+                    .as_ref()
+                    .unwrap();
+                if track_fx.lifecycle == FxLifecycle::Crashed {
+                    assert!(!track_fx.active);
+                    assert_eq!(track_fx.generation, 1);
+                    assert_eq!(
+                        track_fx.crash_summary.as_deref(),
+                        Some("Carla worker exited unexpectedly")
+                    );
+                    break;
+                }
+                assert!(Instant::now() < deadline, "worker loss was not projected");
+                thread::sleep(Duration::from_millis(10));
+            }
+            read_logs(&mut client, &mut connection, true, 1);
+            read_logs(&mut client, &mut connection, false, 1);
+            for clear in [
+                Command::Track {
+                    track,
+                    action: TrackAction::FxClearLogs,
+                },
+                Command::Bus {
+                    bus,
+                    action: BusAction::FxClearLogs,
+                },
+            ] {
+                let outcome = command(&mut client, &mut connection, clear);
+                assert!(matches!(outcome, Outcome::Confirmed { .. }), "{outcome:?}");
+            }
+            read_logs(&mut client, &mut connection, true, 1);
+            let outcome = command(
+                &mut client,
+                &mut connection,
+                Command::Bus {
+                    bus,
+                    action: BusAction::FxToggleOrRecover,
+                },
+            );
+            assert!(matches!(outcome, Outcome::Confirmed { .. }), "{outcome:?}");
+            wait(&mut client, &mut connection, (false, true));
+            let recover = Command::Track {
+                track,
+                action: TrackAction::FxToggleOrRecover,
+            };
+            if transport == AppTransport::Socket {
+                connection
+                    .send(client.command(recover, None).unwrap())
+                    .unwrap();
+                let deadline = Instant::now() + Duration::from_secs(5);
+                loop {
+                    connection.poll(&mut client).unwrap();
+                    let observed = client.snapshot().unwrap().tracks.iter().any(|entry| {
+                        entry.id == track
+                            && entry.fx.as_ref().is_some_and(|fx| {
+                                fx.lifecycle == FxLifecycle::Restarting || fx.generation == 2
+                            })
+                    });
+                    if observed {
+                        break;
+                    }
+                    assert!(
+                        Instant::now() < deadline,
+                        "worker recovery was not accepted"
+                    );
+                    thread::sleep(Duration::from_millis(10));
+                }
+                drop(connection);
+                (client, connection) = attach(&host.entry, 803);
+            } else {
+                let outcome = command(&mut client, &mut connection, recover);
+                assert!(matches!(outcome, Outcome::Confirmed { .. }), "{outcome:?}");
+            }
+            wait(&mut client, &mut connection, (true, true));
+            let snapshot = client.snapshot().unwrap();
+            let track_fx = snapshot
+                .tracks
+                .iter()
+                .find(|entry| entry.id == track)
+                .unwrap()
+                .fx
+                .as_ref()
+                .unwrap();
+            assert_eq!(track_fx.generation, 2);
+            assert_ne!(track_fx.lifecycle, FxLifecycle::Crashed);
+            assert!(track_fx.crash_summary.is_none());
+            assert!(track_fx.logs.is_empty());
+            read_logs(&mut client, &mut connection, true, 2);
+        }
+        shutdown(&mut host, &mut client);
+    }
+}
+
+#[cfg(all(feature = "carla", target_os = "linux"))]
+#[path = "support/carla_worker.rs"]
+mod carla_worker;
+
 fn attach(entry: &HostEntry, _id: u128) -> (Client, Connection) {
     let mut connection = connection::connect(entry, Duration::from_secs(2)).unwrap();
     let mut client = Client::new();
@@ -349,52 +649,7 @@ fn bus_lifecycle_uses_both_carriers_and_socket_recovery_does_not_recreate_master
     }
 }
 fn shutdown(host: &mut Host, client: &mut Client) {
-    let ClientMessage::Shutdown {
-        authority,
-        operation,
-    } = client.shutdown().unwrap()
-    else {
-        unreachable!()
-    };
-    let deadline = Instant::now() + Duration::from_secs(5);
-    let mut reply = connection::management(
-        &host.entry,
-        ManagementRequest::Shutdown {
-            authority,
-            operation,
-        },
-        deadline.saturating_duration_since(Instant::now()),
-    )
-    .unwrap();
-    loop {
-        match reply {
-            ManagementReply::Finished { result, .. } => {
-                assert!(
-                    matches!(result.outcome, Outcome::Confirmed { .. }),
-                    "{:?}",
-                    result.outcome
-                );
-                break;
-            }
-            ManagementReply::Accepted { .. } => {}
-            other => panic!("shutdown refused: {other:?}"),
-        }
-        assert!(Instant::now() < deadline, "shutdown timed out");
-        thread::sleep(Duration::from_millis(10));
-        reply = connection::management(
-            &host.entry,
-            ManagementRequest::Result {
-                authority,
-                operation,
-            },
-            deadline.saturating_duration_since(Instant::now()),
-        )
-        .unwrap();
-    }
-    while host.child.try_wait().unwrap().is_none() {
-        assert!(Instant::now() < deadline, "host did not exit after cleanup");
-        thread::sleep(Duration::from_millis(10));
-    }
+    let _ = shutdown::shutdown(&mut host.child, &host.entry, client);
     assert!(host.path.exists());
 }
 

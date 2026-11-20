@@ -184,6 +184,7 @@ fn initial(
 ) -> NodePairInitial {
     NodePairInitial {
         history_source: 0,
+        worker_source: None,
         audio_widths: None,
         dry_wet: false,
         auxiliary: None,
@@ -208,6 +209,7 @@ fn full_replacement(h: &mut Harness) -> (NodePairStageId, StageId, GraphStageId)
             previous: Some(id(0)),
             initial: Some(NodePairInitial {
                 history_source: 0,
+                worker_source: None,
                 audio_widths: None,
                 dry_wet: false,
                 auxiliary: None,
@@ -847,6 +849,7 @@ fn generation_graph_media_capture_and_old_exports_share_one_cut_and_independent_
 fn timing_initial(target: LoopId, frames: u64) -> NodePairInitial {
     NodePairInitial {
         history_source: 0,
+        worker_source: None,
         audio_widths: None,
         dry_wet: false,
         auxiliary: None,

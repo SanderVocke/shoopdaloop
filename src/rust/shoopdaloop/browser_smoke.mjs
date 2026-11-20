@@ -580,6 +580,9 @@ try {
     }
     let step;
     let compositeStep;
+    // The composite variant also saves and reloads each hosted processor's
+    // nested arrangement. Keep the same assertions with room for those transfers.
+    const workflowTimeout = largeMedia ? 900_000 : composites ? 600_000 : 300_000;
     const state = await waitFor(
       candidate => {
         if (candidate.newEngineSelfTest !== step) {
@@ -596,7 +599,7 @@ try {
         return candidate.newEngineSelfTest === 'passed';
       },
       'the new engine workflow did not finish',
-      largeMedia ? 900_000 : 300_000,
+      workflowTimeout,
     );
     if (!previewOnly && (!inputStalled || state.inputSelfTest !== 'Passed')) { throw new Error(`input acceptance incomplete: ${JSON.stringify(state)}`); }
     if (composites && (!compositeStalled || state.compositeSelfTest !== 'Passed')) {

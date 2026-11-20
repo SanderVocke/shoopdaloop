@@ -22,9 +22,10 @@ const MIDI_INPUT_OFFSET: usize = AUDIO_OUTPUT_OFFSET + AUDIO_REGION_BYTES;
 const MIDI_OUTPUT_OFFSET: usize = MIDI_INPUT_OFFSET + MAX_MIDI_BYTES_PER_BLOCK;
 const SLOT_CONTENT_BYTES: usize = MIDI_OUTPUT_OFFSET + MAX_MIDI_BYTES_PER_BLOCK;
 const SLOT_SIZE: usize = SLOT_CONTENT_BYTES.div_ceil(4096) * 4096;
-const FILE_SIZE: usize = FILE_HEADER_SIZE + SHARED_SLOT_COUNT * SLOT_SIZE;
+pub const FILE_SIZE: usize = FILE_HEADER_SIZE + SHARED_SLOT_COUNT * SLOT_SIZE;
 const MAGIC: &[u8; 8] = b"SHOOPFX\0";
 const COMPLETION_PORT_OFFSET: usize = 64;
+const EDITOR_VISIBILITY_OFFSET: usize = 68;
 
 const STATE_FREE: u32 = 0;
 const STATE_READY: u32 = 1;
@@ -41,6 +42,14 @@ const AUDIO_INPUTS_OFFSET: usize = 28;
 const AUDIO_OUTPUTS_OFFSET: usize = 32;
 const MIDI_INPUT_BYTES_OFFSET: usize = 36;
 const MIDI_OUTPUT_BYTES_OFFSET: usize = 40;
+const TIME_STATUS_OFFSET: usize = 44;
+const SOURCE_FRAME_OFFSET: usize = 48;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BlockTime {
+    pub source_frame: u64,
+    pub playing: bool,
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SharedBlockToken {
@@ -48,6 +57,7 @@ pub struct SharedBlockToken {
     pub sequence: BlockSequence,
     pub generation: ProcessGeneration,
     pub frames: usize,
+    pub time: Option<BlockTime>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -75,7 +85,32 @@ pub struct SharedBlockTransport {
     path: PathBuf,
     generation: ProcessGeneration,
     next_slot: usize,
+    next_time: Option<BlockTime>,
     completion: Completion,
+}
+
+#[cfg(feature = "native")]
+#[derive(Debug)]
+pub(crate) struct EditorVisibility(MmapMut);
+
+#[cfg(feature = "native")]
+impl EditorVisibility {
+    fn cell(&self) -> &AtomicU32 {
+        // The aligned header word is initialized before the worker opens the file.
+        unsafe { &*self.0.as_ptr().add(EDITOR_VISIBILITY_OFFSET).cast() }
+    }
+
+    pub(crate) fn store(&self, visible: bool) {
+        self.cell().store(1 + u32::from(visible), Ordering::Release);
+    }
+
+    pub(crate) fn get(&self) -> Option<bool> {
+        match self.cell().load(Ordering::Acquire) {
+            1 => Some(false),
+            2 => Some(true),
+            _ => None,
+        }
+    }
 }
 
 unsafe impl Send for SharedBlockTransport {}
@@ -116,6 +151,12 @@ impl SharedBlockTransport {
         let completion =
             Completion::create().context("could not create Carla completion notification")?;
         write_u32(&mut mapping, COMPLETION_PORT_OFFSET, completion.port());
+        unsafe {
+            std::ptr::write(
+                mapping.as_mut_ptr().add(EDITOR_VISIBILITY_OFFSET).cast(),
+                AtomicU32::new(0),
+            );
+        }
         for slot in 0..SHARED_SLOT_COUNT {
             unsafe {
                 std::ptr::write(
@@ -146,6 +187,7 @@ impl SharedBlockTransport {
             _temporary_file: Some(file),
             generation,
             next_slot: 0,
+            next_time: None,
             completion,
         })
     }
@@ -187,12 +229,24 @@ impl SharedBlockTransport {
             path: path.to_path_buf(),
             generation: expected_generation,
             next_slot: 0,
+            next_time: None,
             completion,
         })
     }
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    #[cfg(feature = "native")]
+    pub(crate) fn editor_visibility(&self) -> Result<EditorVisibility> {
+        let file = self
+            ._file
+            .as_ref()
+            .or_else(|| self._temporary_file.as_ref().map(NamedTempFile::as_file))
+            .context("Carla shared-memory file is unavailable")?;
+        let mapping = unsafe { MmapOptions::new().len(FILE_HEADER_SIZE).map_mut(file)? };
+        Ok(EditorVisibility(mapping))
     }
 
     pub fn generation(&self) -> ProcessGeneration {
@@ -205,6 +259,11 @@ impl SharedBlockTransport {
             .count()
     }
 
+    #[cfg(any(feature = "native", test))]
+    pub(crate) fn set_block_time(&mut self, time: Option<BlockTime>) {
+        self.next_time = time;
+    }
+
     pub fn submit(
         &mut self,
         sequence: BlockSequence,
@@ -214,6 +273,7 @@ impl SharedBlockTransport {
         midi_inputs: &[Vec<(u32, Vec<u8>)>],
         midi_input_counts: &[usize],
     ) -> std::result::Result<SharedBlockToken, SharedBlockError> {
+        let time = self.next_time.take();
         if sequence.0 == 0
             || frames == 0
             || frames > MAX_BLOCK_FRAMES
@@ -285,12 +345,23 @@ impl SharedBlockTransport {
             midi_bytes as u32,
         );
         write_u32(&mut self.mapping, base + MIDI_OUTPUT_BYTES_OFFSET, 0);
+        write_u32(
+            &mut self.mapping,
+            base + TIME_STATUS_OFFSET,
+            time.map_or(0, |time| 1 + u32::from(time.playing)),
+        );
+        write_u64(
+            &mut self.mapping,
+            base + SOURCE_FRAME_OFFSET,
+            time.map_or(0, |time| time.source_frame),
+        );
         self.state(slot).store(STATE_READY, Ordering::Release);
         Ok(SharedBlockToken {
             slot,
             sequence,
             generation: self.generation,
             frames,
+            time,
         })
     }
 
@@ -477,7 +548,12 @@ impl SharedBlockTransport {
             let generation = ProcessGeneration(self.slot_generation(slot).load(Ordering::Relaxed));
             let sequence = BlockSequence(self.sequence(slot).load(Ordering::Relaxed));
             let frames = read_u32(&self.mapping, base + FRAMES_OFFSET) as usize;
-            if generation != self.generation || frames == 0 || frames > MAX_BLOCK_FRAMES {
+            let time_status = read_u32(&self.mapping, base + TIME_STATUS_OFFSET);
+            if generation != self.generation
+                || frames == 0
+                || frames > MAX_BLOCK_FRAMES
+                || time_status > 2
+            {
                 self.state(slot).store(STATE_ABANDONED, Ordering::Release);
                 continue;
             }
@@ -486,6 +562,10 @@ impl SharedBlockTransport {
                 sequence,
                 generation,
                 frames,
+                time: (time_status != 0).then(|| BlockTime {
+                    source_frame: read_u64(&self.mapping, base + SOURCE_FRAME_OFFSET),
+                    playing: time_status == 2,
+                }),
             });
         }
         None
@@ -805,7 +885,7 @@ mod tests {
                 let deadline = Instant::now() + Duration::from_secs(2);
                 if reuse {
                     let mut count = 0;
-                    assert_no_alloc::assert_no_alloc(|| {
+                    shoop_wasm_test_support::heap::assert_no_heap(|| {
                         parent.wait_and_copy_reusing_midi(
                             token,
                             deadline,
@@ -835,13 +915,29 @@ mod tests {
         let generation = ProcessGeneration(4);
         let mut parent = SharedBlockTransport::create(generation, &nonce).unwrap();
         let mut worker = SharedBlockTransport::open(parent.path(), generation, &nonce).unwrap();
+        #[cfg(feature = "native")]
+        {
+            let observed = parent.editor_visibility().unwrap();
+            let published = worker.editor_visibility().unwrap();
+            assert_eq!(observed.get(), None);
+            published.store(true);
+            assert_eq!(observed.get(), Some(true));
+            published.store(false);
+            assert_eq!(observed.get(), Some(false));
+        }
         let inputs = vec![vec![0.25; 64], vec![-0.5; 64]];
         let midi = vec![vec![(7, vec![0x90, 64, 100])]];
+        let time = BlockTime {
+            source_frame: (1 << 36) + 128,
+            playing: true,
+        };
+        parent.set_block_time(Some(time));
         let token = parent
             .submit(BlockSequence(3), 64, &inputs, 2, &midi, &[])
             .unwrap();
         let worker_token = worker.worker_take().expect("ready block");
         assert_eq!(worker_token, token);
+        assert_eq!(worker_token.time, Some(time));
         let mut first = vec![0.0; 64];
         worker
             .worker_copy_audio_input(worker_token, 0, &mut first)
@@ -868,6 +964,11 @@ mod tests {
             .unwrap();
         assert_eq!(outputs, inputs);
         assert_eq!(output_midi, worker_midi);
+        let untimed = parent
+            .submit(BlockSequence(4), 64, &inputs, 2, &[], &[])
+            .unwrap();
+        assert!(untimed.time.is_none());
+        assert_eq!(worker.worker_take(), Some(untimed));
     }
 
     #[shoop_wasm_test_support::shoop_test]

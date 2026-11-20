@@ -272,6 +272,7 @@ impl<S: Sample> Shared<S> {
                 frame,
                 io,
                 false,
+                false,
             )
         })();
         for snapshot in snapshots.into_iter().flatten() {
@@ -291,6 +292,7 @@ impl<S: Sample> Shared<S> {
         frame: Frame,
         io: &mut ResourceIo<'_, S>,
         unobserved_source: bool,
+        defer_midi_admission: bool,
     ) -> Result<LiveWriterId, Error> {
         if self.live_for(fence.target).is_some() {
             return Err(Error::Busy);
@@ -436,7 +438,13 @@ impl<S: Sample> Shared<S> {
                     )
                     .map_err(runtime_error)?;
             }
-            Self::progress_live_job(&mut job, frame, 1, io)
+            if defer_midi_admission && snapshots[1].is_some() {
+                // Replacing already polls for readiness. Prepare its MIDI writer
+                // in callback maintenance, outside the command dispatch stack.
+                Ok(())
+            } else {
+                Self::progress_live_job(&mut job, frame, 1, io)
+            }
         })();
         self.live_building += usize::from(job.preparing());
         self.live[slot].value = Some(job);
@@ -715,7 +723,7 @@ impl<S: Sample> Shared<S> {
         q: usize,
         io: &mut ResourceIo<'_, S>,
     ) -> Result<(), Error> {
-        self.write_live_targets(source, frame, q, None, io)
+        self.write_live_targets(source, frame, q, None, true, io)
     }
 
     pub(in crate::runtime) fn write_processed(
@@ -732,20 +740,127 @@ impl<S: Sample> Shared<S> {
         }
         let slot = self.lookup[job.source.source as usize].ok_or(Error::InvalidId)?;
         let h = &mut self.histories[slot];
-        let channels = h
+        Self::copy_wet(h, q, ports)?;
+        self.write_live_targets(
+            job.source.source,
+            frame,
+            q,
+            Some(job.fence.target),
+            true,
+            io,
+        )
+    }
+
+    fn copy_wet(
+        history: &mut History<S>,
+        frames: usize,
+        ports: &AudioPorts<'_, S>,
+    ) -> Result<usize, Error> {
+        let channels = history
             .settings
             .audio
             .map_or(0, |config| config.channels as usize);
         for channel in 0..channels {
             let input = ports.input(channel).ok_or(Error::InvalidShape)?;
-            if input.len() != q {
+            if input.len() != frames {
                 return Err(Error::InvalidShape);
             }
             for (frame, sample) in input.iter().enumerate() {
-                h.wet_scratch[frame * channels + channel] = *sample;
+                history.wet_scratch[frame * channels + channel] = *sample;
             }
         }
-        self.write_live_targets(job.source.source, frame, q, Some(job.fence.target), io)
+        Ok(channels)
+    }
+
+    fn stage_wet(
+        wet: WetWriter,
+        position: u64,
+        frames: usize,
+        samples: &[S],
+        io: &mut ResourceIo<'_, S>,
+    ) -> Result<rt_runtime::resource::AudioWrite, Error> {
+        let mut spans = [shared_audio::ChannelWrite::default(); crate::windows::MAX_AUDIO_CHANNELS];
+        for (channel, destination) in spans[..wet.channels].iter_mut().enumerate() {
+            let span = crate::windows::write_span(
+                position,
+                wet.windows.audio[channel],
+                frames,
+                wet.frames,
+            );
+            *destination = shared_audio::ChannelWrite {
+                channel,
+                position: span.position,
+                offset: span.offset,
+                frames: span.frames,
+            };
+        }
+        io.render().stage_audio_window_write(
+            wet.resource,
+            wet.revision,
+            samples,
+            &spans[..wet.channels],
+        )
+    }
+
+    pub(in crate::runtime) fn write_replacement_input(
+        &mut self,
+        id: LiveWriterId,
+        frame: Frame,
+        frames: usize,
+        io: &mut ResourceIo<'_, S>,
+    ) -> Result<(), Error> {
+        let job = self.live_job(id)?;
+        if !job.active || !job.processed || job.kind != indexed_midi::WriteKind::Fixed {
+            return Err(Error::InvalidState);
+        }
+        self.write_live_targets(
+            job.source.source,
+            frame,
+            frames,
+            Some(job.fence.target),
+            false,
+            io,
+        )?;
+        self.live_job(id)?.failure.map_or(Ok(()), Err)
+    }
+
+    pub(in crate::runtime) fn write_replacement_wet(
+        &mut self,
+        id: LiveWriterId,
+        position: u64,
+        frames: usize,
+        ports: &AudioPorts<'_, S>,
+        io: &mut ResourceIo<'_, S>,
+    ) -> Result<(), Error> {
+        let job = self.live_job(id)?;
+        if !job.active
+            || !job.processed
+            || job.kind != indexed_midi::WriteKind::Fixed
+            || position >= job.frames
+        {
+            return Err(Error::InvalidState);
+        }
+        let Some(wet) = job.wet else { return Ok(()) };
+        let slot = self.lookup[job.source.source as usize].ok_or(Error::InvalidId)?;
+        let history = &mut self.histories[slot];
+        let channels = Self::copy_wet(history, frames, ports)?;
+        let staged = Self::stage_wet(
+            wet,
+            position,
+            frames,
+            &history.wet_scratch[..frames * channels],
+            io,
+        )?;
+        let revision = io.render().commit_audio_write(staged)?;
+        self.live[id.slot as usize]
+            .value
+            .as_mut()
+            .unwrap()
+            .wet
+            .as_mut()
+            .unwrap()
+            .revision = revision;
+        Ok(())
     }
 
     fn write_live_targets(
@@ -754,6 +869,7 @@ impl<S: Sample> Shared<S> {
         frame: Frame,
         q: usize,
         target: Option<LoopId>,
+        write_wet: bool,
         io: &mut ResourceIo<'_, S>,
     ) -> Result<(), Error> {
         let h = self.source(source)?;
@@ -833,31 +949,11 @@ impl<S: Sample> Shared<S> {
                     None
                 };
                 let wet_staged = (|| {
-                    let Some(wet) = job.wet else { return Ok(None) };
+                    let Some(wet) = job.wet.filter(|_| write_wet) else {
+                        return Ok(None);
+                    };
                     let channels = h.settings.audio.ok_or(Error::InvalidShape)?.channels as usize;
-                    let mut spans =
-                        [shared_audio::ChannelWrite::default(); crate::windows::MAX_AUDIO_CHANNELS];
-                    for (channel, destination) in spans[..wet.channels].iter_mut().enumerate() {
-                        let span = crate::windows::write_span(
-                            job.position,
-                            wet.windows.audio[channel],
-                            q,
-                            wet.frames,
-                        );
-                        *destination = shared_audio::ChannelWrite {
-                            channel,
-                            position: span.position,
-                            offset: span.offset,
-                            frames: span.frames,
-                        };
-                    }
-                    io.render()
-                        .stage_audio_window_write(
-                            wet.resource,
-                            wet.revision,
-                            &h.wet_scratch[..q * channels],
-                            &spans[..wet.channels],
-                        )
+                    Self::stage_wet(wet, job.position, q, &h.wet_scratch[..q * channels], io)
                         .map(Some)
                 })();
                 let wet_staged = match wet_staged {

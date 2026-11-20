@@ -28,7 +28,7 @@ use alloc::sync::Arc;
 use serde::{Deserialize, Serialize};
 use shoop_app_api::*;
 
-pub const VERSION: u16 = 45;
+pub const VERSION: u16 = 50;
 pub const CHUNK_BYTES: usize = 1024;
 pub const MAX_MEDIA_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_SNAPSHOT_BYTES: usize = 8 * 1024 * 1024;
@@ -720,7 +720,10 @@ pub struct LoopMedia {
 }
 impl LoopMedia {
     pub fn valid(&self) -> bool {
-        if !self.loop_id.is_valid() || self.audio.len() > 16 || self.midi.len() > 16 {
+        if !self.loop_id.is_valid()
+            || self.audio.len() > persistence::MAX_SESSION_AUDIO_CHANNELS
+            || self.midi.len() > 16
+        {
             return false;
         }
         let mut bytes = 0usize;

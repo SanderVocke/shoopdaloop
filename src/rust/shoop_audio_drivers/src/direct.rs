@@ -174,6 +174,7 @@ mod tests {
             page_bytes: 256,
             midi_events: events,
             midi_bytes: 512,
+            midi_output_limit_bytes: None,
             smoothing_frames: 0,
             smoothing_limit_frames: 8,
             ramp_frames: 4,

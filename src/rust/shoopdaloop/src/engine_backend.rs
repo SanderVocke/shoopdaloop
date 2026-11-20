@@ -49,7 +49,7 @@ impl EngineHost {
             .take()
             .ok_or_else(|| anyhow!("native host is already managed"))?;
         let (owner, controller) =
-            shoop_host::audio_driver::controller(host, settings, preferences)?;
+            shoop_host::audio_driver::controller(host, settings, preferences, Default::default())?;
         self.owner = Some(owner);
         Ok(Some(controller))
     }

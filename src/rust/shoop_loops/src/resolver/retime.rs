@@ -336,6 +336,7 @@ impl Resolver {
             }
             let state = self.state(change.target)?;
             if state.writes()
+                || state.capture_pending()
                 || state.content_length != change.expected_length
                 || state.content_revision != change.expected_revision
                 || change.revision <= state.content_revision
@@ -405,6 +406,7 @@ impl Resolver {
     pub fn recording_armed(&self, target: LoopId) -> Result<bool, Error> {
         let state = self.state(target)?;
         Ok(state.writes()
+            || state.capture_pending()
             || self.records.iter().flatten().any(|record| {
                 record.terminal.is_none()
                     && record.request.target == target

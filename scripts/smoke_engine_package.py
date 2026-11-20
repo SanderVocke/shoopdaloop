@@ -11,7 +11,28 @@ import tempfile
 import zipfile
 
 
-def smoke(archive: Path, platform: str) -> None:
+def smoke_carla(host: Path, component: Path, cwd: Path, editor: bool) -> None:
+    environment = dict(os.environ)
+    for key in ("SHOOP_CARLA_NATIVE_LIBRARY", "SHOOP_CARLA_RESOURCE_DIR"):
+        environment.pop(key, None)
+    if not component.is_dir():
+        raise RuntimeError(f"Carla component is missing from the installed package: {component}")
+    command = [str(host), "--probe-carla-native"]
+    subprocess.run(command, cwd=cwd, env=environment, check=True, timeout=60)
+    if editor:
+        subprocess.run(
+            [str(host), "--probe-carla-native-ui"],
+            cwd=cwd, env=environment, check=True, timeout=60,
+        )
+    component.rename(component.with_name("carla-runtime.disabled"))
+    unavailable = subprocess.run(
+        command, cwd=cwd, env=environment, capture_output=True, text=True, timeout=60,
+    )
+    if unavailable.returncode == 0 or "Carla Native runtime is unavailable" not in unavailable.stderr:
+        raise RuntimeError(f"missing Carla runtime was not reported: {unavailable.stderr}")
+
+
+def smoke(archive: Path, platform: str, carla: str | None = None) -> None:
     with tempfile.TemporaryDirectory(prefix="Shoop Δ engine ") as directory:
         root = Path(directory)
         if archive.suffix == ".zip":
@@ -25,6 +46,11 @@ def smoke(archive: Path, platform: str) -> None:
             app /= "ShoopDaLoop.app/Contents/MacOS/shoopdaloop"
         else:
             app /= "shoopdaloop.exe" if platform == "windows" else "shoopdaloop"
+        if carla is not None:
+            host = app.with_name("shoop_host.exe" if platform == "windows" else "shoop_host")
+            component_base = app.parent.parent / "Frameworks" if platform == "macos" else app.parent
+            smoke_carla(host, component_base / "carla-runtime", root, carla == "editor")
+            return
         environment = dict(os.environ)
         environment.pop("SHOOP_SRC_TREE", None)
         manager = app.with_name("shoop_host_manager.exe" if platform == "windows" else "shoop_host_manager")
@@ -72,11 +98,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--platform", choices=("linux", "macos", "windows"), required=True)
     parser.add_argument("--artifacts", type=Path, required=True)
+    parser.add_argument("--carla", choices=("native", "editor"), help="probe the installed Carla runtime")
     args = parser.parse_args()
     archives = sorted(p for p in args.artifacts.iterdir() if p.suffix == ".zip" or p.name.endswith(".tar.gz"))
     if len(archives) != 1:
         raise RuntimeError(f"expected one native archive, found {archives}")
-    smoke(archives[0], args.platform)
+    smoke(archives[0], args.platform, args.carla)
 
 
 if __name__ == "__main__":

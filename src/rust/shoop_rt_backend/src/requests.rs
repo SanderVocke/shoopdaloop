@@ -50,6 +50,8 @@ pub(crate) enum Purpose {
     Persistence,
     CancelReads,
     Input,
+    ProcessorLogs,
+    ProcessorCheckpoint,
 }
 
 #[derive(Clone, Debug)]

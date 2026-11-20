@@ -13,6 +13,7 @@
 
 use alloc::boxed::Box;
 use core::sync::atomic::Ordering;
+use core::task::Poll;
 
 use crate::endpoint::{
     completion_refusal, execution_outcome, loop_id, ControlEndpoint, Purpose, RuntimeResult,
@@ -23,7 +24,9 @@ use crate::topology::{TopologyLoop, RECORD_BYTES};
 use rt_runtime::executor::Command;
 use rt_runtime::{Frame, NodeId};
 use shoop_loops::audio::Smoothing;
-use shoop_loops::runtime::{GraphStageId, NodePairInitial, NodePairStageId, Operation, Reply};
+use shoop_loops::runtime::{
+    GraphStageId, NodePairInitial, NodePairStageId, Operation, Reply, WorkerCaptureSource,
+};
 use shoop_loops::topology::staging::StageId;
 use shoop_loops::{Timing, Transition};
 use shoop_rt_protocol::{LoopSlotId, Outcome, Refusal};
@@ -566,6 +569,13 @@ impl ControlEndpoint {
         if let Kind::Family { commit } = job.kind {
             return self.step_family(job, commit);
         }
+        if job.replacing() {
+            match self.poll_replacement_checkpoint() {
+                Poll::Pending => return false,
+                Poll::Ready(Err(reason)) => job.fail(reason),
+                Poll::Ready(Ok(())) => {}
+            }
+        }
         if job.cancelled && !matches!(job.phase, Phase::Cleanup | Phase::Finishing) {
             job.phase = Phase::Cleanup;
             return true;
@@ -1005,7 +1015,10 @@ impl ControlEndpoint {
                 if self.model.bus(bus.id).and_then(|old| old.processor) == bus.processor {
                     continue;
                 }
-                let Some(slot) = bus.processor.and_then(|owner| owner.slot) else {
+                let Some(owner) = bus.processor else {
+                    continue;
+                };
+                let Some(slot) = owner.slot else {
                     continue;
                 };
                 let node = self.pool.processor(slot.index as usize);
@@ -1013,11 +1026,13 @@ impl ControlEndpoint {
                     Some(EngineOp::ProcessorClaim {
                         generation: slot.generation,
                     }),
-                    Some(EngineOp::ProcessorParameter {
-                        generation: slot.generation,
-                        parameter: shoop_rt_protocol::processors::WIDTH,
-                        value: bus.channels as f32,
-                    }),
+                    (owner.kind == shoop_rt_protocol::ProcessorKind::BuiltInFx).then_some(
+                        EngineOp::ProcessorParameter {
+                            generation: slot.generation,
+                            parameter: shoop_rt_protocol::processors::WIDTH,
+                            value: bus.channels as f32,
+                        },
+                    ),
                     if job.replacing() {
                         self.replacement.bus_processor_states[index].map(|control| {
                             EngineOp::ProcessorControl {
@@ -1051,6 +1066,16 @@ impl ControlEndpoint {
             }
             if count + bus_count > 0 {
                 return true;
+            }
+        }
+        if job.replacing() {
+            match self.start_replacement_checkpoint() {
+                Ok(true) => return true,
+                Ok(false) => {}
+                Err(reason) => {
+                    job.fail(reason);
+                    return true;
+                }
             }
         }
         if !self.room(3 + self.configuration_nodes()) {
@@ -1230,6 +1255,19 @@ impl ControlEndpoint {
                 if before == after {
                     continue;
                 }
+                let worker_source = self.next.loops[slot]
+                    .and_then(|entry| self.next.strip(entry.strip?))
+                    .and_then(|strip| {
+                        let slot = strip.processor?.slot?;
+                        let index = slot.index as usize;
+                        let delay_frames = self.processor_catalog.worker_delays[index];
+                        (delay_frames != 0).then_some(WorkerCaptureSource {
+                            strip_generation: strip.id.0.generation,
+                            processor: self.pool.processor(index),
+                            processor_generation: slot.generation,
+                            delay_frames,
+                        })
+                    });
                 let initial = match after {
                     None => None,
                     Some(created) if job.replacing() => {
@@ -1254,6 +1292,7 @@ impl ControlEndpoint {
                         let entry = self.next.loops[slot].expect("candidate loop");
                         Some(NodePairInitial {
                             history_source: entry.strip.expect("primitive owner").0.index,
+                            worker_source,
                             audio_widths: self
                                 .next
                                 .strip(entry.strip.expect("primitive owner"))
@@ -1289,6 +1328,7 @@ impl ControlEndpoint {
                         let entry = self.next.loops[slot].expect("new loop");
                         Some(NodePairInitial {
                             history_source: entry.strip.expect("primitive owner").0.index,
+                            worker_source,
                             audio_widths: self
                                 .next
                                 .strip(entry.strip.expect("primitive owner"))
@@ -2070,6 +2110,8 @@ impl ControlEndpoint {
                         | Outcome::TimingApplied(_)
                         | Outcome::ContentApplied { .. }
                         | Outcome::ContentPrepared { .. }
+                        | Outcome::ProcessorLogs { .. }
+                        | Outcome::ProcessorCheckpoint { .. }
                         | Outcome::Input(_)
                         | Outcome::InputCapacity(_),
                     ) => Some(Refusal::Internal),

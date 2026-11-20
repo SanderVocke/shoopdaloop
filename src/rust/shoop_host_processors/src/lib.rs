@@ -1,5 +1,5 @@
 //! Host-only preparation. No factory or DSP constructor runs after callbacks start.
-use rt_buffered::{Backend, BufferLimits, MidiLimits, Timing};
+use rt_buffered::{Backend, BufferLimits, MidiLimits};
 use rt_runtime::{graph::PortCounts, Quantum};
 use shoop_rt_engine::{EngineDescription, PreparedProcessor, PreparedProcessors, ProcessorPreset};
 use shoop_rt_protocol::{
@@ -33,10 +33,11 @@ fn mul(a: u64, b: u64) -> Result<u64, Error> {
 /// delay storage per channel/stereo bank, plus explicit staging and unit metadata.
 /// Feedback decay time changes gains, not allocated delay lengths.
 fn fx_bytes(d: &EngineDescription) -> Result<u64, Error> {
+    let channels = ProcessorKind::BuiltInFx.prepared_audio_channels(d.strip_channels.into()) as u64;
     add(
         add(
-            mul(mul(d.sample_rate as u64, 128)?, d.strip_channels as u64 + 1)?,
-            mul(d.quantum as u64, d.strip_channels as u64 * 16)?,
+            mul(mul(d.sample_rate as u64, 128)?, channels + 1)?,
+            mul(d.quantum as u64, channels * 16)?,
         )?,
         1 << 20,
     )
@@ -76,10 +77,7 @@ fn limits(d: &EngineDescription) -> Result<BufferLimits, Error> {
 }
 fn reservation(d: &EngineDescription, effective: Effective, q: Quantum) -> Result<u64, Error> {
     let mut total = 0;
-    let timing = Timing {
-        batch_quanta: 1,
-        slack_quanta: 0,
-    };
+    let timing = PreparedProcessor::INLINE_TIMING;
     for (kind, count) in [
         (ProcessorKind::BuiltInFx, effective.fx_instances),
         (ProcessorKind::OxiSynth, effective.synth_instances),
@@ -87,11 +85,7 @@ fn reservation(d: &EngineDescription, effective: Effective, q: Quantum) -> Resul
         if count == 0 {
             continue;
         }
-        let channels = if kind == ProcessorKind::OxiSynth {
-            2
-        } else {
-            d.strip_channels as usize
-        };
+        let channels = kind.prepared_audio_channels(d.strip_channels.into());
         let ports = PortCounts {
             audio_inputs: channels,
             audio_outputs: channels,
@@ -139,7 +133,7 @@ fn backend(kind: ProcessorKind, d: &EngineDescription) -> Result<Box<dyn Backend
                     shoop_dsp::backends::FxBackend::prepare(
                         d.sample_rate as f32,
                         d.quantum,
-                        d.strip_channels as usize,
+                        kind.prepared_audio_channels(d.strip_channels.into()),
                     )
                     .map_err(|_| Error::Preparation("Built-in FX"))?,
                 ))
@@ -162,9 +156,12 @@ fn backend(kind: ProcessorKind, d: &EngineDescription) -> Result<Box<dyn Backend
                 Err(Error::Preparation("Built-in Synth is not compiled"))
             }
         }
-        ProcessorKind::External => Err(Error::Preparation(
-            "external processors do not own inline DSP",
-        )),
+        ProcessorKind::External
+        | ProcessorKind::CarlaRack
+        | ProcessorKind::CarlaPatchbay
+        | ProcessorKind::CarlaPatchbay16x => {
+            Err(Error::Preparation("processor has no inline DSP factory"))
+        }
     }
 }
 pub fn reservation_bytes(d: &EngineDescription) -> Result<u64, Error> {
@@ -172,7 +169,7 @@ pub fn reservation_bytes(d: &EngineDescription) -> Result<u64, Error> {
         d.processors
             .resolve_for_channels(support(), d.sample_rate, d.strip_channels)?;
     let q = Quantum::new(d.quantum).map_err(|_| Error::Capacity)?;
-    if !(1..=8).contains(&d.strip_channels) {
+    if !(1..=shoop_rt_protocol::MAX_STRIP_CHANNELS).contains(&usize::from(d.strip_channels)) {
         return Err(Error::Capacity);
     }
     reservation(d, effective, q)
@@ -183,7 +180,7 @@ pub fn prepare(d: &EngineDescription) -> Result<PreparedProcessors, Error> {
         d.processors
             .resolve_for_channels(support(), d.sample_rate, d.strip_channels)?;
     let q = Quantum::new(d.quantum).map_err(|_| Error::Capacity)?;
-    if !(1..=8).contains(&d.strip_channels) {
+    if !(1..=shoop_rt_protocol::MAX_STRIP_CHANNELS).contains(&usize::from(d.strip_channels)) {
         return Err(Error::Capacity);
     }
     let reserved_bytes = reservation(d, effective, q)?;
@@ -197,6 +194,7 @@ pub fn prepare(d: &EngineDescription) -> Result<PreparedProcessors, Error> {
                 instances.push(PreparedProcessor {
                     kind,
                     backend: backend(kind, d)?,
+                    timing: PreparedProcessor::INLINE_TIMING,
                 });
             }
         }
@@ -309,6 +307,7 @@ mod tests {
                         fx_instances: 1,
                         synth_instances: 1,
                         memory_mb: 128,
+                        carla: Default::default(),
                     },
                     ..EngineDescription::default()
                 };
@@ -357,6 +356,7 @@ mod tests {
                 strip_channels: channels,
                 processors: ProcessorSettings {
                     memory_mb: 512,
+                    carla: Default::default(),
                     ..ProcessorSettings::default()
                 },
                 ..EngineDescription::default()

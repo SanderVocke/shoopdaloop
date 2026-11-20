@@ -9,7 +9,7 @@ use anyhow::{anyhow, ensure, Result};
 use shoop_app::{ConnectionId, Service, ServiceOptions};
 use shoop_app_protocol::{codec, *};
 use shoop_rt_backend::{RtBackend, Sleep};
-use shoop_rt_host_native::{DriverConfig, NativeConfig};
+use shoop_rt_host_native::{CarlaHostOptions, DriverConfig, NativeConfig};
 use shoop_transport::{RecordPort, MAX_RECORD_BYTES};
 use shoop_transport_socket::setup::Listener;
 use std::{
@@ -38,6 +38,8 @@ pub struct StartOptions {
     pub driver_preferences: Option<PathBuf>,
     #[serde(default)]
     pub use_configured_driver: bool,
+    #[serde(skip)]
+    pub carla_worker: Option<PathBuf>,
 
     pub name: String,
 }
@@ -54,6 +56,7 @@ impl StartOptions {
             log_file: None,
             driver_preferences: None,
             use_configured_driver: false,
+            carla_worker: None,
 
             name: "ShoopDaLoop".into(),
         })
@@ -238,7 +241,7 @@ fn connect_backend(
     Ok(Box::new(backend))
 }
 
-fn start_backend(config: &HostConfig) -> Result<StartedBackend> {
+fn start_backend(config: &HostConfig, carla: &CarlaHostOptions) -> Result<StartedBackend> {
     #[cfg(feature = "fpga-reference")]
     if config.settings.backend == shoop_app_api::BackendType::RustFpga {
         ensure!(
@@ -298,7 +301,7 @@ fn start_backend(config: &HostConfig) -> Result<StartedBackend> {
         #[cfg(not(feature = "testing"))]
         let _ = &mut native;
         native.engine.processors = config.settings.processors;
-        let started = match shoop_rt_host_native::start(&native) {
+        let started = match shoop_rt_host_native::start_with_carla(&native, carla.clone()) {
             Ok(started) => started,
             Err(error)
                 if !matches!(native.driver, DriverConfig::Dummy(_))
@@ -317,7 +320,7 @@ fn start_backend(config: &HostConfig) -> Result<StartedBackend> {
                         ..engine::engine_description(&config.pools, dummy.buffer_size)
                     },
                 };
-                let started = shoop_rt_host_native::start(&fallback)?;
+                let started = shoop_rt_host_native::start_with_carla(&fallback, carla.clone())?;
                 started
             }
             Err(error) => return Err(error.into()),
@@ -373,6 +376,17 @@ pub fn run_with_ready(
         "LAN hosts require socket delivery"
     );
     ensure!(options.name.len() <= 128, "invalid host identity or name");
+    #[cfg(feature = "carla")]
+    let (mut carla_ui, carla_dispatcher) = (config.settings.processors.carla.hosting
+        == shoop_app_api::CarlaHosting::InProcess)
+        .then(shoop_carla::native::CarlaMainThreadUiService::new)
+        .unzip();
+    let mut carla = CarlaHostOptions::default();
+    carla.worker.clone_from(&options.carla_worker);
+    #[cfg(feature = "carla")]
+    {
+        carla.ui = carla_dispatcher;
+    }
     let StartedBackend {
         #[cfg(feature = "fpga-reference")]
         mut reference_driver,
@@ -380,7 +394,7 @@ pub fn run_with_ready(
         backend,
         warnings,
         settings,
-    } = start_backend(&config)?;
+    } = start_backend(&config, &carla)?;
     let config = HostConfig { settings, ..config };
     let mut service = Service::new(
         backend,
@@ -398,6 +412,7 @@ pub fn run_with_ready(
             native_host,
             config.settings.clone(),
             crate::audio_driver::preference_writer(options.driver_preferences.clone()),
+            carla,
         )?;
         service.set_audio_driver_controller(controller)?;
         driver_owner = Some(owner);
@@ -524,6 +539,10 @@ pub fn run_with_ready(
     let mut finished = None;
     let mut cleanup_deadline = None;
     loop {
+        #[cfg(feature = "carla")]
+        if let Some(ui) = &mut carla_ui {
+            ui.pump();
+        }
         for _ in 0..4 {
             let Ok(mut port) = data.ports.try_recv() else {
                 break;

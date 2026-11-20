@@ -105,6 +105,10 @@ pub const BUILTIN_SCRIPTS: SettingKey<StringToggleList> =
     SettingKey::new("scripting.builtins.scripts");
 pub const USER_SCRIPTS: SettingKey<StringToggleList> = SettingKey::new("scripting.user_scripts");
 pub const CARLA_HOSTING_MODE: SettingKey<String> = SettingKey::new("carla.hosting_mode");
+pub const CARLA_RACK_INSTANCES: SettingKey<u32> = SettingKey::new("carla.rack_instances");
+pub const CARLA_PATCHBAY_INSTANCES: SettingKey<u32> = SettingKey::new("carla.patchbay_instances");
+pub const CARLA_PATCHBAY_16X_INSTANCES: SettingKey<u32> =
+    SettingKey::new("carla.patchbay16x_instances");
 
 pub const LOOP_EDGE_SMOOTHING_MS: SettingKey<u32> = SettingKey::new("audio.loop_edge_smoothing_ms");
 pub const RUNTIME_PROFILING: SettingKey<bool> = SettingKey::new("developer.runtime_profiling");
@@ -644,18 +648,38 @@ pub fn register_carla_settings(
             shoop_settings::CarlaHostingMode::InProcess.as_str().to_owned(),
             "Carla",
             "Hosting mode",
-            "Run Carla in this process or in a supervised subprocess. This is a global machine setting, is not stored in sessions, and takes effect after restart.",
+            "Select how a native Socket or Shared Memory session host runs Carla. Restart the host to apply changes.",
         )
         .category_order(7)
         .setting_order(10)
         .effect(SettingEffect::RestartRequired)
         .editor(shoop_settings::SettingEditor::StringChoice {
             choices: &[
-                ("in_process", "In application process"),
+                ("in_process", "In session host"),
                 ("subprocess", "One subprocess per FX chain"),
             ],
         }),
-    )
+    )?;
+    for (key, label, order) in [
+        (CARLA_RACK_INSTANCES, "Rack instances", 11),
+        (CARLA_PATCHBAY_INSTANCES, "Stereo Patchbay instances", 12),
+        (CARLA_PATCHBAY_16X_INSTANCES, "Patchbay 16x instances", 13),
+    ] {
+        builder.register(
+            SettingDefinition::new(
+                key,
+                0,
+                "Carla",
+                label,
+                "Capacity reserved when the host starts. Set all instance counts to zero to disable Carla.",
+            )
+            .category_order(7)
+            .setting_order(order)
+            .effect(SettingEffect::RestartRequired)
+            .editor(SettingEditor::UnsignedInteger { min: 0, max: 64 }),
+        )?;
+    }
+    Ok(())
 }
 
 pub fn carla_hosting_mode_from_snapshot(
@@ -719,6 +743,7 @@ pub const PROCESSOR_MEMORY_MB: SettingKey<u32> = SettingKey::new("audio.processo
 
 pub fn processor_settings_from_snapshot(
     snapshot: &SettingsSnapshot,
+    backend: crate::BackendType,
 ) -> Result<shoop_app_api::ProcessorSettings, String> {
     let policy = |key| -> Result<shoop_app_api::ProcessorPolicy, String> {
         let value: String = snapshot.get(key).map_err(|error| error.to_string())?;
@@ -735,7 +760,7 @@ pub fn processor_settings_from_snapshot(
     let synth: u32 = snapshot
         .get(PROCESSOR_SYNTH_INSTANCES)
         .map_err(|error| error.to_string())?;
-    let settings = shoop_app_api::ProcessorSettings {
+    let mut settings = shoop_app_api::ProcessorSettings {
         builtin_fx: policy(PROCESSOR_FX_POLICY)?,
         oxisynth: policy(PROCESSOR_SYNTH_POLICY)?,
         fx_instances: u16::try_from(fx).map_err(|error| error.to_string())?,
@@ -743,7 +768,31 @@ pub fn processor_settings_from_snapshot(
         memory_mb: snapshot
             .get(PROCESSOR_MEMORY_MB)
             .map_err(|error| error.to_string())?,
+        carla: Default::default(),
     };
+    if backend == crate::BackendType::Native {
+        let carla_slots = |key: SettingKey<u32>| match snapshot.get(key) {
+            Ok(count) => u16::try_from(count).map_err(|error| error.to_string()),
+            Err(shoop_settings::SettingsAccessError::UnknownKey(_)) => Ok(0),
+            Err(error) => Err(error.to_string()),
+        };
+        settings.carla.rack_instances = carla_slots(CARLA_RACK_INSTANCES)?;
+        settings.carla.patchbay_instances = carla_slots(CARLA_PATCHBAY_INSTANCES)?;
+        settings.carla.patchbay16x_instances = carla_slots(CARLA_PATCHBAY_16X_INSTANCES)?;
+        if settings.carla.rack_instances != 0
+            || settings.carla.patchbay_instances != 0
+            || settings.carla.patchbay16x_instances != 0
+        {
+            settings.carla.hosting = match carla_hosting_mode_from_snapshot(snapshot)? {
+                shoop_settings::CarlaHostingMode::InProcess => {
+                    shoop_app_api::CarlaHosting::InProcess
+                }
+                shoop_settings::CarlaHostingMode::Subprocess => {
+                    shoop_app_api::CarlaHosting::Subprocess
+                }
+            };
+        }
+    }
     settings.validate().map_err(|error| error.to_string())?;
     Ok(settings)
 }
@@ -758,6 +807,8 @@ pub fn backend_from_snapshot(snapshot: &SettingsSnapshot) -> Result<crate::Backe
 pub fn register_audio_backend_settings(
     builder: &mut SettingsRegistryBuilder,
 ) -> Result<(), SettingsRegistryError> {
+    #[cfg(not(target_arch = "wasm32"))]
+    register_carla_settings(builder)?;
     builder.register(
         SettingDefinition::new(
             BACKEND,
@@ -861,12 +912,12 @@ pub fn register_audio_backend_settings(
             NEW_ENGINE_CHANNELS,
             defaults.channels,
             "Track channels",
-            "Most audio channels of a track input or output in the new engine backend.",
+            "Maximum audio channels per track input or output. Native hosts support up to 16. FPGA backends support up to 8.",
             1,
-            8,
+            shoop_app_api::BackendType::Native.max_session_channels(),
         ),
         (55, NEW_ENGINE_BUSES, defaults.buses, "Buses", "Output buses prepared at startup, including the default bus.", 1, 8),
-        (56, NEW_ENGINE_BUS_CHANNELS, defaults.bus_channels, "Bus channels", "Maximum audio channels per output bus.", 2, 8),
+        (56, NEW_ENGINE_BUS_CHANNELS, defaults.bus_channels, "Bus channels", "Maximum audio channels per output bus. Native hosts support up to 16. FPGA backends support up to 8.", 2, shoop_app_api::BackendType::Native.max_session_channels()),
         (
             54,
             NEW_ENGINE_LOOP_MEMORY_MB,
@@ -4336,7 +4387,10 @@ mod tests {
         draft.set(NEW_ENGINE_QUANTUM, "17".to_owned());
         assert!(registry.validate_draft(&draft).is_err());
         draft.set(NEW_ENGINE_QUANTUM, "32".to_owned());
-        draft.set(NEW_ENGINE_CHANNELS, 9);
+        draft.set(NEW_ENGINE_CHANNELS, 16);
+        draft.set(NEW_ENGINE_BUS_CHANNELS, 16);
+        assert!(registry.validate_draft(&draft).is_ok());
+        draft.set(NEW_ENGINE_CHANNELS, 17);
         assert!(registry.validate_draft(&draft).is_err());
         for kind in crate::BackendType::ALL {
             assert_eq!(kind.id().parse::<crate::BackendType>().unwrap(), kind);

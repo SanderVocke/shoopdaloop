@@ -154,14 +154,21 @@ mod tests {
             fx_instances: 5,
             synth_instances: 3,
             memory_mb: 384,
+            carla: Default::default(),
         };
         let decoded: super::HostConfig =
             serde_json::from_slice(&serde_json::to_vec(&custom).unwrap()).unwrap();
         assert_eq!(decoded.pools.quantum, 64);
         assert_eq!(decoded.processors, custom.processors);
-        let mut invalid_width = config.clone();
-        invalid_width.pools.channels = 9;
-        assert!(invalid_width.validate().is_err());
+        let mut wide = config.clone();
+        wide.pools.channels = 16;
+        wide.pools.bus_channels = 16;
+        wide.validate().unwrap();
+        wide.settings.backend = shoop_app_api::BackendType::RustFpga;
+        assert!(wide.settings.validate().is_err());
+        wide.settings.backend = shoop_app_api::BackendType::Native;
+        wide.pools.channels = 17;
+        assert!(wide.validate().is_err());
         custom.settings.pools.quantum = 17;
         assert!(custom.validate().is_err());
         assert!(serde_json::from_str::<super::HostConfig>(r#"{"misspelled_setting":7}"#).is_err());

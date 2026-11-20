@@ -100,6 +100,13 @@ impl TrackProcessorTypeId {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    pub fn is_carla(&self) -> bool {
+        matches!(
+            self.as_str(),
+            Self::CARLA_RACK | Self::CARLA_PATCHBAY | Self::CARLA_PATCHBAY_16X
+        )
+    }
 }
 
 impl fmt::Display for TrackProcessorTypeId {
@@ -2662,6 +2669,7 @@ pub enum TrackAction {
     FxClearLogs,
     BuiltInFx(BuiltInFxControl),
     OxiSynth(OxiSynthControl),
+    FxReadLogs,
 }
 
 pub type TrackWidgetAction = TrackAction;
@@ -2681,6 +2689,7 @@ pub enum BusAction {
     FxClearLogs,
     BuiltInFx(BuiltInFxControl),
     FxProcessorChanged(Option<TrackProcessorTypeId>),
+    FxReadLogs,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -3103,6 +3112,7 @@ impl TrackAction {
             Self::FxToggleOrRecover => "track.fx_toggle_or_recover",
             Self::FxRestoreState(_) => "track.fx_restore_state",
             Self::FxClearLogs => "track.fx_clear_logs",
+            Self::FxReadLogs => "track.fx_read_logs",
             Self::BuiltInFx(control) => control.kind(),
             Self::OxiSynth(control) => control.kind(),
         }
@@ -3122,6 +3132,7 @@ impl BusAction {
             Self::FxToggleOrRecover => "bus.fx_toggle_or_recover",
             Self::FxRestoreState(_) => "bus.fx_restore_state",
             Self::FxClearLogs => "bus.fx_clear_logs",
+            Self::FxReadLogs => "bus.fx_read_logs",
             Self::BuiltInFx(control) => control.kind(),
             Self::FxProcessorChanged(_) => "bus.fx_processor",
         }
@@ -4215,6 +4226,13 @@ pub enum BackendType {
     RtlSim,
 }
 impl BackendType {
+    pub const fn max_session_channels(self) -> u32 {
+        match self {
+            Self::Native => 16,
+            _ => 8,
+        }
+    }
+
     pub const ALL: [Self; 3] = [Self::Native, Self::RustFpga, Self::RtlSim];
     pub const fn id(self) -> &'static str {
         match self {
@@ -4287,11 +4305,12 @@ impl HostSettings {
         if !matches!(self.pools.quantum, 1 | 16 | 32 | 64 | 128) {
             return Err("processing quantum must be 1, 16, 32, 64 or 128 frames");
         }
+        let channels = self.backend.max_session_channels();
         if !(1..=8).contains(&self.pools.buses)
-            || !(2..=8).contains(&self.pools.bus_channels)
+            || !(2..=channels).contains(&self.pools.bus_channels)
             || !(1..=64).contains(&self.pools.tracks)
             || !(1..=256).contains(&self.pools.loops)
-            || !(1..=8).contains(&self.pools.channels)
+            || !(1..=channels).contains(&self.pools.channels)
             || !(1..=1024).contains(&self.pools.loop_memory_mb)
         {
             return Err("session engine capacities exceed supported bounds");
@@ -4315,4 +4334,7 @@ impl HostSettings {
     }
 }
 
-pub use shoop_processor_protocol::{Policy as ProcessorPolicy, Settings as ProcessorSettings};
+pub use shoop_processor_protocol::{
+    CarlaHosting, Policy as ProcessorPolicy, Settings as ProcessorSettings,
+    MAX_OPAQUE_STATE_ENVELOPE_BYTES,
+};

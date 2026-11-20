@@ -156,6 +156,11 @@ impl Assembly {
                         left = left.saturating_sub(12 + length);
                     }
                 }
+                ObjectKind::ProcessorCheckpoint => {
+                    let used = (active.object.bytes.len() - active.offset).min(left);
+                    left -= used;
+                    active.offset += used;
+                }
                 ObjectKind::Metadata => return Err(Refusal::Invalid),
             }
             if active.offset != active.object.bytes.len() {
@@ -168,6 +173,9 @@ impl Assembly {
             self.payloads.push(match active.object.description.kind {
                 ObjectKind::Audio => Payload::Audio(Arc::new(active.audio)),
                 ObjectKind::Midi => Payload::Midi(active.midi.into()),
+                ObjectKind::ProcessorCheckpoint => {
+                    Payload::ProcessorCheckpoint(Arc::new(active.object.bytes))
+                }
                 _ => unreachable!(),
             });
         }

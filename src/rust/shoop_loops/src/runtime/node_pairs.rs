@@ -75,6 +75,7 @@ pub struct NodePairInitial<S: Sample = f32> {
     pub auxiliary: Option<NodePairSourceId>,
     pub dry_wet: bool,
     pub history_source: u32,
+    pub worker_source: Option<super::WorkerCaptureSource>,
     /// Logical primary and auxiliary widths within the prepared port banks.
     pub audio_widths: Option<[u8; 2]>,
     pub midi: Option<NodePairSourceId>,

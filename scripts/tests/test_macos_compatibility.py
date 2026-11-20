@@ -102,7 +102,18 @@ class MacOSPackageMetadataTests(unittest.TestCase):
 class CatalinaRuntimeNormalizationTests(unittest.TestCase):
     def normalize_fixture(self, root, replace):
         upstream = root / "upstream"
-        for name in ("lib/libcarla_native-plugin.dylib", "lib/libcrypto.3.dylib", "lib/liblzma.5.dylib", "carla-discovery-native", "carla-bridge-native", "resources/carla-plugin", "resources/carla-plugin-patchbay", "resources/lib/PyQt5/QtDesigner.so", "resources/lib/PyQt5/QtHelp.so"):
+        for name in (
+            "lib/libcarla_native-plugin.dylib",
+            "lib/libcarla_utils.dylib",
+            "lib/libcrypto.3.dylib",
+            "lib/liblzma.5.dylib",
+            "carla-discovery-native",
+            "carla-bridge-native",
+            "resources/carla-plugin",
+            "resources/carla-plugin-patchbay",
+            "resources/lib/PyQt5/QtDesigner.so",
+            "resources/lib/PyQt5/QtHelp.so",
+        ):
             path = upstream / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b"upstream")
@@ -134,6 +145,7 @@ class CatalinaRuntimeNormalizationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output = self.normalize_fixture(Path(directory), False)
             self.assertEqual((output / "lib/libcrypto.3.dylib").read_bytes(), b"upstream")
+            self.assertEqual((output / "libcarla_utils.dylib").read_bytes(), b"upstream")
             self.assertTrue((output / "resources/lib/PyQt5/QtDesigner.so").is_file())
 
 

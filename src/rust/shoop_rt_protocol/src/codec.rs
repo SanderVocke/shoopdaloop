@@ -116,7 +116,7 @@ macro_rules! tags {
     };
 }
 
-tags!(ProcessorKind { 0 => ProcessorKind::External, 1 => ProcessorKind::BuiltInFx, 2 => ProcessorKind::OxiSynth });
+tags!(ProcessorKind { 0 => ProcessorKind::External, 1 => ProcessorKind::BuiltInFx, 2 => ProcessorKind::OxiSynth, 3 => ProcessorKind::CarlaRack, 4 => ProcessorKind::CarlaPatchbay, 5 => ProcessorKind::CarlaPatchbay16x });
 tags!(LoopMode { 0 => LoopMode::Stopped, 1 => LoopMode::Playing, 2 => LoopMode::Recording, 3 => LoopMode::PlayingDryThroughWet, 4 => LoopMode::RecordingDryIntoWet, 5 => LoopMode::Replacing });
 tags!(PortKind { 0 => PortKind::AudioIn, 1 => PortKind::AudioOut, 2 => PortKind::MidiIn, 3 => PortKind::MidiOut, 4 => PortKind::AudioSend, 5 => PortKind::AudioReturn, 6 => PortKind::MidiSend });
 tags!(Refusal {
@@ -226,15 +226,29 @@ impl Wire for ChannelWindow {
 }
 impl Wire for PlaybackWindows {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
-        for channel in &self.audio {
+        let channels = self
+            .audio
+            .iter()
+            .rposition(|window| *window != ChannelWindow::default())
+            .map_or(0, |last| last + 1);
+        w.u8(channels as u8)?;
+        for channel in &self.audio[..channels] {
             channel.put(w)?;
         }
         self.midi.put(w)
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         let mut value = Self::default();
-        for channel in &mut value.audio {
+        let channels = usize::from(r.u8()?);
+        let audio = value.audio.get_mut(..channels).ok_or(CodecError::Invalid)?;
+        for channel in audio.iter_mut() {
             *channel = ChannelWindow::get(r)?;
+        }
+        if audio
+            .last()
+            .is_some_and(|window| *window == ChannelWindow::default())
+        {
+            return Err(CodecError::Invalid);
         }
         value.midi = ChannelWindow::get(r)?;
         Ok(value)
@@ -300,6 +314,15 @@ impl Wire for TimingState {
             raw_midi_frames: r.u64()?,
             windows: PlaybackWindows::get(r)?,
         })
+    }
+}
+
+impl Wire for bool {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.bool(*self)
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        r.bool()
     }
 }
 
@@ -520,6 +543,44 @@ tags!(crate::processors::Phase {
     4 => crate::processors::Phase::Faulted,
 });
 
+tags!(crate::processors::HostedLifecycle {
+    0 => crate::processors::HostedLifecycle::Stopped,
+    1 => crate::processors::HostedLifecycle::Starting,
+    2 => crate::processors::HostedLifecycle::Running,
+    3 => crate::processors::HostedLifecycle::Degraded,
+    4 => crate::processors::HostedLifecycle::Crashed,
+    5 => crate::processors::HostedLifecycle::Restarting,
+    6 => crate::processors::HostedLifecycle::Unavailable,
+});
+
+tags!(crate::processors::HostedFailure {
+    0 => crate::processors::HostedFailure::Startup,
+    1 => crate::processors::HostedFailure::Protocol,
+    2 => crate::processors::HostedFailure::UnexpectedExit,
+    3 => crate::processors::HostedFailure::Unresponsive,
+    4 => crate::processors::HostedFailure::Disconnected,
+});
+
+impl Wire for crate::processors::HostedStatus {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        w.u64(self.generation)?;
+        self.lifecycle.put(w)?;
+        w.bool(self.active)?;
+        self.failure.put(w)?;
+        self.editor_visible.put(w)
+    }
+
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(Self {
+            generation: r.u64()?,
+            lifecycle: crate::processors::HostedLifecycle::get(r)?,
+            active: r.bool()?,
+            failure: Option::get(r)?,
+            editor_visible: Option::get(r)?,
+        })
+    }
+}
+
 impl Wire for crate::processors::Control {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
@@ -567,6 +628,47 @@ impl Wire for crate::processors::Control {
         }
     }
 }
+impl Wire for crate::processors::WorkerDiagnostics {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        if self.pending > self.peak_pending
+            || self.last_completion_frames > self.peak_completion_frames
+        {
+            return Err(CodecError::Invalid);
+        }
+        w.u32(self.pending)?;
+        w.u32(self.peak_pending)?;
+        w.u64(self.missed)?;
+        w.u64(self.stale)?;
+        w.u64(self.rejected)?;
+        w.u64(self.failed)?;
+        w.u64(self.invalid)?;
+        w.u64(self.last_completion_frames)?;
+        w.u64(self.peak_completion_frames)
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        let pending = r.u32()?;
+        let peak_pending = r.u32()?;
+        if pending > peak_pending {
+            return Err(CodecError::Invalid);
+        }
+        let result = Self {
+            pending,
+            peak_pending,
+            missed: r.u64()?,
+            stale: r.u64()?,
+            rejected: r.u64()?,
+            failed: r.u64()?,
+            invalid: r.u64()?,
+            last_completion_frames: r.u64()?,
+            peak_completion_frames: r.u64()?,
+        };
+        if result.last_completion_frames > result.peak_completion_frames {
+            return Err(CodecError::Invalid);
+        }
+        Ok(result)
+    }
+}
+
 impl Wire for crate::processors::Snapshot {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         w.u64(self.source_frame)?;
@@ -581,6 +683,8 @@ impl Wire for crate::processors::Snapshot {
                 .latest_cc
                 .map_or(0, |data| u32::from_le_bytes([data[0], data[1], data[2], 1])),
         )?;
+        self.worker.put(w)?;
+        self.hosted.put(w)?;
         for value in self.values {
             w.f32(value)?;
         }
@@ -610,6 +714,8 @@ impl Wire for crate::processors::Snapshot {
         if usize::from(global_midi.pending) > crate::processors::midi::CONTROL_KEYS {
             return Err(CodecError::Invalid);
         }
+        let worker = Option::get(r)?;
+        let hosted = Option::get(r)?;
         let mut values = [0.; crate::processors::STATE_SCALARS];
         for value in &mut values {
             *value = r.f32()?;
@@ -618,6 +724,8 @@ impl Wire for crate::processors::Snapshot {
             source_frame,
             phase,
             global_midi,
+            worker,
+            hosted,
             values,
         })
     }
@@ -799,10 +907,20 @@ impl Wire for Request {
                 w.u64(id)
             }
             Self::InputCapacity => w.u8(52),
-            Self::CreateProcessedBus { bus, channels } => {
+            Self::CreateProcessedBus {
+                bus,
+                channels,
+                kind,
+            } => {
                 w.u8(72)?;
                 bus.put(w)?;
-                w.u8(channels)
+                w.u8(channels)?;
+                kind.put(w)
+            }
+            Self::SetBusProcessorKind { bus, kind } => {
+                w.u8(73)?;
+                bus.put(w)?;
+                kind.put(w)
             }
             Self::SetBusProcessor { bus, enabled } => {
                 w.u8(70)?;
@@ -818,6 +936,50 @@ impl Wire for Request {
                 w.u8(37)?;
                 strip.put(w)?;
                 control.put(w)
+            }
+            Self::ProcessorEditor {
+                target,
+                slot,
+                visible,
+            } => {
+                w.u8(74)?;
+                target.put(w)?;
+                slot.put(w)?;
+                visible.put(w)
+            }
+            Self::ProcessorClearLogs {
+                target,
+                slot,
+                worker_generation,
+            } => {
+                w.u8(75)?;
+                target.put(w)?;
+                slot.put(w)?;
+                w.u64(worker_generation)
+            }
+            Self::ProcessorLogs {
+                target,
+                slot,
+                worker_generation,
+                command,
+            } => {
+                w.u8(76)?;
+                target.put(w)?;
+                slot.put(w)?;
+                w.u64(worker_generation)?;
+                command.put(w)
+            }
+            Self::ProcessorCheckpoint {
+                target,
+                slot,
+                worker_generation,
+                command,
+            } => {
+                w.u8(77)?;
+                target.put(w)?;
+                slot.put(w)?;
+                w.u64(worker_generation)?;
+                command.put(w)
             }
             Self::StripDefaultPlayback {
                 strip,
@@ -956,6 +1118,16 @@ impl Wire for Request {
                 w.u8(20)?;
                 w.u64(id)?;
                 edit.put(w)
+            }
+            Self::ReplacementCheckpoint {
+                id,
+                target,
+                command,
+            } => {
+                w.u8(78)?;
+                w.u64(id)?;
+                target.put(w)?;
+                command.put(w)
             }
             Self::ReplacementPrepare { id } => {
                 w.u8(21)?;
@@ -1213,6 +1385,11 @@ impl Wire for Request {
             72 => Self::CreateProcessedBus {
                 bus: BusId::get(r)?,
                 channels: r.u8()?,
+                kind: ProcessorKind::get(r)?,
+            },
+            73 => Self::SetBusProcessorKind {
+                bus: BusId::get(r)?,
+                kind: Option::get(r)?,
             },
             70 => Self::SetBusProcessor {
                 bus: BusId::get(r)?,
@@ -1225,6 +1402,28 @@ impl Wire for Request {
             37 => Self::ProcessorControl {
                 strip: StripId::get(r)?,
                 control: crate::processors::Control::get(r)?,
+            },
+            74 => Self::ProcessorEditor {
+                target: ProcessorTarget::get(r)?,
+                slot: ProcessorSlot::get(r)?,
+                visible: Option::get(r)?,
+            },
+            75 => Self::ProcessorClearLogs {
+                target: ProcessorTarget::get(r)?,
+                slot: ProcessorSlot::get(r)?,
+                worker_generation: r.u64()?,
+            },
+            76 => Self::ProcessorLogs {
+                target: ProcessorTarget::get(r)?,
+                slot: ProcessorSlot::get(r)?,
+                worker_generation: r.u64()?,
+                command: ProcessorLogCommand::get(r)?,
+            },
+            77 => Self::ProcessorCheckpoint {
+                target: ProcessorTarget::get(r)?,
+                slot: ProcessorSlot::get(r)?,
+                worker_generation: r.u64()?,
+                command: ProcessorCheckpointCommand::get(r)?,
             },
             36 => Self::StripDefaultPlayback {
                 strip: StripId::get(r)?,
@@ -1310,6 +1509,11 @@ impl Wire for Request {
                 id: r.u64()?,
                 edit: crate::ReplacementEdit::get(r)?,
             },
+            78 => Self::ReplacementCheckpoint {
+                id: r.u64()?,
+                target: ProcessorTarget::get(r)?,
+                command: crate::ReplacementCheckpointCommand::get(r)?,
+            },
             21 => Self::ReplacementPrepare { id: r.u64()? },
             22 => Self::ReplacementCommit { id: r.u64()? },
             23 => Self::ReplacementCancel { id: r.u64()? },
@@ -1331,9 +1535,55 @@ impl Wire for Request {
     }
 }
 
+impl Wire for crate::ReplacementCheckpointCommand {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        match *self {
+            Self::Begin { bytes } => {
+                if bytes == 0 || bytes as usize > MAX_PROCESSOR_CHECKPOINT_BYTES {
+                    return Err(CodecError::Invalid);
+                }
+                w.u8(0)?;
+                w.u32(bytes)
+            }
+            Self::Write { offset, data } => {
+                w.u8(1)?;
+                w.u32(offset)?;
+                w.u16(data.as_bytes().len() as u16)?;
+                w.bytes(data.as_bytes())
+            }
+        }
+    }
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(match r.u8()? {
+            0 => {
+                let bytes = r.u32()?;
+                if bytes == 0 || bytes as usize > MAX_PROCESSOR_CHECKPOINT_BYTES {
+                    return Err(CodecError::Invalid);
+                }
+                Self::Begin { bytes }
+            }
+            1 => {
+                let offset = r.u32()?;
+                let len = r.u16()? as usize;
+                let data = crate::ContentChunk::new(r.bytes(len)?).ok_or(CodecError::Invalid)?;
+                Self::Write { offset, data }
+            }
+            _ => return Err(CodecError::Invalid),
+        })
+    }
+}
+
 impl Wire for crate::ReplacementEdit {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match *self {
+            Self::CarlaBus { bus, kind } => {
+                if !kind.is_carla() {
+                    return Err(CodecError::Invalid);
+                }
+                w.u8(12)?;
+                bus.put(w)?;
+                kind.put(w)
+            }
             Self::BusProcessor { bus, state } => {
                 w.u8(11)?;
                 bus.put(w)?;
@@ -1438,6 +1688,14 @@ impl Wire for crate::ReplacementEdit {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
+            12 => {
+                let bus = BusId::get(r)?;
+                let kind = ProcessorKind::get(r)?;
+                if !kind.is_carla() {
+                    return Err(CodecError::Invalid);
+                }
+                Self::CarlaBus { bus, kind }
+            }
             11 => Self::BusProcessor {
                 bus: BusId::get(r)?,
                 state: crate::processors::Control::get(r)?,
@@ -1529,6 +1787,131 @@ impl Wire for crate::StripPreset {
     }
 }
 
+impl Wire for ProcessorLogCommand {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        match *self {
+            Self::Open => w.u8(0),
+            Self::Read {
+                snapshot,
+                generation_index,
+                stderr,
+                offset,
+            } => {
+                w.u8(1)?;
+                w.u64(snapshot)?;
+                w.u8(generation_index)?;
+                w.bool(stderr)?;
+                w.u32(offset)
+            }
+            Self::Close { snapshot } => {
+                w.u8(2)?;
+                w.u64(snapshot)
+            }
+        }
+    }
+
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(match r.u8()? {
+            0 => Self::Open,
+            1 => Self::Read {
+                snapshot: r.u64()?,
+                generation_index: r.u8()?,
+                stderr: r.bool()?,
+                offset: r.u32()?,
+            },
+            2 => Self::Close { snapshot: r.u64()? },
+            _ => return Err(CodecError::Invalid),
+        })
+    }
+}
+
+impl Wire for ProcessorLogPage {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        if !self.valid() {
+            return Err(CodecError::Invalid);
+        }
+        w.u64(self.generation)?;
+        w.u64(self.dropped)?;
+        w.u32(self.total)?;
+        w.u32(self.offset)?;
+        w.u16(self.len)?;
+        w.bytes(&self.bytes[..usize::from(self.len)])
+    }
+
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        let mut page = Self {
+            generation: r.u64()?,
+            dropped: r.u64()?,
+            total: r.u32()?,
+            offset: r.u32()?,
+            len: r.u16()?,
+            bytes: [0; BULK_CHUNK_BYTES],
+        };
+        if !page.valid() {
+            return Err(CodecError::Invalid);
+        }
+        page.bytes[..usize::from(page.len)].copy_from_slice(r.bytes(usize::from(page.len))?);
+        Ok(page)
+    }
+}
+
+impl Wire for ProcessorCheckpointCommand {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        match *self {
+            Self::Open => w.u8(0),
+            Self::Read { snapshot, offset } => {
+                w.u8(1)?;
+                w.u64(snapshot)?;
+                w.u32(offset)
+            }
+            Self::Close { snapshot } => {
+                w.u8(2)?;
+                w.u64(snapshot)
+            }
+        }
+    }
+
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        Ok(match r.u8()? {
+            0 => Self::Open,
+            1 => Self::Read {
+                snapshot: r.u64()?,
+                offset: r.u32()?,
+            },
+            2 => Self::Close { snapshot: r.u64()? },
+            _ => return Err(CodecError::Invalid),
+        })
+    }
+}
+
+impl Wire for ProcessorCheckpointPage {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        if !self.valid() {
+            return Err(CodecError::Invalid);
+        }
+        w.u64(self.snapshot)?;
+        w.u32(self.offset)?;
+        w.u32(self.total)?;
+        w.u16(self.len)?;
+        w.bytes(&self.bytes[..usize::from(self.len)])
+    }
+
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        let mut page = Self {
+            snapshot: r.u64()?,
+            offset: r.u32()?,
+            total: r.u32()?,
+            len: r.u16()?,
+            bytes: [0; BULK_CHUNK_BYTES],
+        };
+        if !page.valid() {
+            return Err(CodecError::Invalid);
+        }
+        page.bytes[..usize::from(page.len)].copy_from_slice(r.bytes(usize::from(page.len))?);
+        Ok(page)
+    }
+}
+
 impl Wire for Outcome {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
@@ -1559,6 +1942,23 @@ impl Wire for Outcome {
                 w.u8(3)?;
                 w.u64(*revision)
             }
+            Self::ProcessorLogs {
+                snapshot,
+                generations,
+            } => {
+                w.u8(8)?;
+                w.u64(*snapshot)?;
+                w.u8(*generations)
+            }
+            Self::ProcessorCheckpoint { snapshot, bytes } => {
+                if *snapshot == 0 || *bytes == 0 || *bytes as usize > MAX_PROCESSOR_CHECKPOINT_BYTES
+                {
+                    return Err(CodecError::Invalid);
+                }
+                w.u8(9)?;
+                w.u64(*snapshot)?;
+                w.u32(*bytes)
+            }
             Self::Refused(refusal) => {
                 w.u8(1)?;
                 refusal.put(w)
@@ -1577,6 +1977,25 @@ impl Wire for Outcome {
             0 => Self::Done,
             2 => Self::ContentApplied { revision: r.u64()? },
             3 => Self::ContentPrepared { revision: r.u64()? },
+            8 => {
+                let snapshot = r.u64()?;
+                let generations = r.u8()?;
+                if snapshot == 0 || usize::from(generations) > PROCESSOR_LOG_GENERATIONS {
+                    return Err(CodecError::Invalid);
+                }
+                Self::ProcessorLogs {
+                    snapshot,
+                    generations,
+                }
+            }
+            9 => {
+                let snapshot = r.u64()?;
+                let bytes = r.u32()?;
+                if snapshot == 0 || bytes == 0 || bytes as usize > MAX_PROCESSOR_CHECKPOINT_BYTES {
+                    return Err(CodecError::Invalid);
+                }
+                Self::ProcessorCheckpoint { snapshot, bytes }
+            }
             1 => Self::Refused(Refusal::get(r)?),
             _ => return Err(CodecError::Invalid),
         })
@@ -1965,6 +2384,8 @@ impl Wire for crate::processors::Unavailable {
             2 => Self::SampleRate,
             3 => Self::NoCapacity,
             4 => Self::ChannelCapacity,
+            5 => Self::Runtime,
+            6 => Self::Memory,
             _ => return Err(CodecError::Invalid),
         })
     }
@@ -1975,27 +2396,42 @@ impl Wire for ProcessorLimits {
         w.u16(self.effective.synth_instances)?;
         self.effective.fx_unavailable.put(w)?;
         self.effective.synth_unavailable.put(w)?;
+        w.u16(self.effective.carla.rack_instances)?;
+        w.u16(self.effective.carla.patchbay_instances)?;
+        w.u16(self.effective.carla.patchbay16x_instances)?;
+        self.effective.carla.unavailable.put(w)?;
         w.u64(self.effective.memory_bytes)?;
         w.u64(self.reserved_bytes)?;
         w.u8(self.channels)?;
-        w.u32(self.builtin_latency_frames)
+        w.u32(self.builtin_latency_frames)?;
+        w.u32(self.carla_latency_frames)
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         let fx_instances = r.u16()?;
         let synth_instances = r.u16()?;
         let fx_unavailable = Option::get(r)?;
         let synth_unavailable = Option::get(r)?;
+        let carla = crate::processors::EffectiveCarla {
+            rack_instances: r.u16()?,
+            patchbay_instances: r.u16()?,
+            patchbay16x_instances: r.u16()?,
+            unavailable: Option::get(r)?,
+        };
+        let carla_instances = carla.instances();
         let memory_bytes = r.u64()?;
         let reserved_bytes = r.u64()?;
         let channels = r.u8()?;
         let builtin_latency_frames = r.u32()?;
-        if u32::from(fx_instances) + u32::from(synth_instances)
+        let carla_latency_frames = r.u32()?;
+        if u32::from(fx_instances) + u32::from(synth_instances) + carla_instances
             > u32::from(crate::processors::MAX_INSTANCES)
             || reserved_bytes > memory_bytes
-            || !(1..=8).contains(&channels)
+            || !(1..=MAX_STRIP_CHANNELS).contains(&usize::from(channels))
             || builtin_latency_frames == 0
             || (fx_instances > 0 && fx_unavailable.is_some())
             || (synth_instances > 0 && synth_unavailable.is_some())
+            || (carla_instances == 0) != carla.unavailable.is_some()
+            || (carla_instances == 0) != (carla_latency_frames == 0)
         {
             return Err(CodecError::Invalid);
         }
@@ -2006,13 +2442,38 @@ impl Wire for ProcessorLimits {
                 fx_unavailable,
                 synth_unavailable,
                 memory_bytes,
+                carla,
             },
             reserved_bytes,
             channels,
             builtin_latency_frames,
+            carla_latency_frames,
         })
     }
 }
+impl Wire for ProcessorTarget {
+    fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        match self {
+            Self::Strip(strip) => {
+                w.u8(0)?;
+                strip.put(w)
+            }
+            Self::Bus(bus) => {
+                w.u8(1)?;
+                bus.put(w)
+            }
+        }
+    }
+
+    fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
+        match r.u8()? {
+            0 => Ok(Self::Strip(StripId::get(r)?)),
+            1 => Ok(Self::Bus(BusId::get(r)?)),
+            _ => Err(CodecError::Invalid),
+        }
+    }
+}
+
 impl Wire for ProcessorSlot {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         if self.index >= 128 || self.generation == 0 {
@@ -2055,6 +2516,9 @@ impl Wire for ProcessorPreset {
 
 impl Wire for RecordedProcessorState {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
+        if self.kind.scalar_count() == 0 {
+            return Err(CodecError::Invalid);
+        }
         w.u64(self.source_frame)?;
         self.kind.put(w)?;
         for value in self.values {
@@ -2065,7 +2529,7 @@ impl Wire for RecordedProcessorState {
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         let source_frame = r.u64()?;
         let kind = ProcessorKind::get(r)?;
-        if kind == ProcessorKind::External {
+        if kind.scalar_count() == 0 {
             return Err(CodecError::Invalid);
         }
         let mut values = [0.; crate::processors::STATE_SCALARS];
@@ -2083,19 +2547,22 @@ impl Wire for RecordedProcessorState {
 impl Wire for StateRecord {
     fn put(&self, w: &mut Writer<'_>) -> Result<(), CodecError> {
         match self {
-            Self::BusProcessor { bus, slot } => {
+            Self::BusProcessor { bus, slot, kind } => {
                 w.u8(30)?;
                 bus.put(w)?;
-                slot.put(w)
+                slot.put(w)?;
+                kind.put(w)
             }
             Self::BusProcessorState {
                 bus,
                 slot,
+                kind,
                 snapshot,
             } => {
                 w.u8(31)?;
                 bus.put(w)?;
                 slot.put(w)?;
+                kind.put(w)?;
                 snapshot.put(w)
             }
             Self::RecordedProcessorState {
@@ -2271,15 +2738,30 @@ impl Wire for StateRecord {
     }
     fn get(r: &mut Reader<'_>) -> Result<Self, CodecError> {
         Ok(match r.u8()? {
-            30 => Self::BusProcessor {
-                bus: BusId::get(r)?,
-                slot: Option::get(r)?,
-            },
-            31 => Self::BusProcessorState {
-                bus: BusId::get(r)?,
-                slot: ProcessorSlot::get(r)?,
-                snapshot: crate::processors::Snapshot::get(r)?,
-            },
+            30 => {
+                let bus = BusId::get(r)?;
+                let slot: Option<ProcessorSlot> = Option::get(r)?;
+                let kind: Option<ProcessorKind> = Option::get(r)?;
+                if kind.is_some() != slot.is_some() || kind.is_some_and(|kind| !kind.supports_bus())
+                {
+                    return Err(CodecError::Invalid);
+                }
+                Self::BusProcessor { bus, slot, kind }
+            }
+            31 => {
+                let bus = BusId::get(r)?;
+                let slot = ProcessorSlot::get(r)?;
+                let kind = ProcessorKind::get(r)?;
+                if !kind.supports_bus() {
+                    return Err(CodecError::Invalid);
+                }
+                Self::BusProcessorState {
+                    bus,
+                    slot,
+                    kind,
+                    snapshot: crate::processors::Snapshot::get(r)?,
+                }
+            }
             17 => Self::RecordedProcessorState {
                 loop_id: LoopSlotId::get(r)?,
                 content_revision: r.u64()?,
@@ -2796,6 +3278,16 @@ impl Wire for EngineMessage {
                 w.u64(*correlation)?;
                 outcome.put(w)
             }
+            Self::ProcessorLogPage { correlation, page } => {
+                w.u8(14)?;
+                w.u64(*correlation)?;
+                page.put(w)
+            }
+            Self::ProcessorCheckpointPage { correlation, page } => {
+                w.u8(15)?;
+                w.u64(*correlation)?;
+                page.put(w)
+            }
             Self::Telemetry(telemetry) => {
                 w.u8(3)?;
                 telemetry.put(w)
@@ -2866,6 +3358,14 @@ impl Wire for EngineMessage {
             2 => Self::Result {
                 correlation: r.u64()?,
                 outcome: Outcome::get(r)?,
+            },
+            14 => Self::ProcessorLogPage {
+                correlation: r.u64()?,
+                page: ProcessorLogPage::get(r)?,
+            },
+            15 => Self::ProcessorCheckpointPage {
+                correlation: r.u64()?,
+                page: ProcessorCheckpointPage::get(r)?,
             },
             3 => Self::Telemetry(Telemetry::get(r)?),
             4 => Self::State(StateRecord::get(r)?),

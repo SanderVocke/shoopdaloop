@@ -4484,6 +4484,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e660451e55124f798a69a5af3f49ccfbefbd41910eefd25caf2393e1f3473ec1"
 dependencies = [
  "memchr",
+ "serde",
 ]
 
 [[package]]
@@ -4776,6 +4777,7 @@ name = "rt_buffered"
 version = "0.3.0"
 dependencies = [
  "rt_runtime",
+ "rtrb",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",
 ]
@@ -5352,6 +5354,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_carla"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "getrandom 0.4.3",
+ "libc",
+ "libloading 0.9.0",
+ "memmap2",
+ "quick-xml",
+ "rfd",
+ "rt_buffered",
+ "rt_runtime",
+ "serde",
+ "shoop_plugin_protocol",
+ "shoop_tracing",
+ "shoop_wasm_test_support",
+ "tempfile",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "shoop_common"
 version = "0.3.0"
 dependencies = [
@@ -5433,22 +5457,18 @@ dependencies = [
  "arc-swap",
  "assert2",
  "assert_no_alloc",
- "base64",
  "cpal 0.18.2",
  "enum-iterator",
  "jack",
  "jack-sys",
  "libc",
- "libloading 0.9.0",
  "log",
- "memmap2",
  "midir",
  "num_enum",
  "regex",
- "rfd",
  "rtrb",
  "rubato",
- "serde_json",
+ "shoop_carla",
  "shoop_common",
  "shoop_dsp",
  "shoop_latency",
@@ -5498,7 +5518,6 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",
- "cpal 0.18.2",
  "directories",
  "getrandom 0.4.3",
  "jack",
@@ -5516,6 +5535,7 @@ dependencies = [
  "shoop_app_protocol",
  "shoop_audio_drivers",
  "shoop_backend",
+ "shoop_carla",
  "shoop_deployment_protocol",
  "shoop_format_conversion",
  "shoop_host",
@@ -5672,6 +5692,7 @@ dependencies = [
  "shoop_app_api",
  "shoop_app_protocol",
  "shoop_loops",
+ "shoop_plugin_protocol",
  "shoop_processor_protocol",
  "shoop_script_resources",
  "shoop_session",
@@ -5683,8 +5704,11 @@ dependencies = [
 name = "shoop_plugin_protocol"
 version = "0.3.0"
 dependencies = [
+ "anyhow",
+ "base64",
  "serde",
  "serde_json",
+ "shoop_processor_protocol",
  "shoop_wasm_test_support",
  "wasm-bindgen-test",
 ]
@@ -5777,10 +5801,13 @@ version = "0.3.0"
 dependencies = [
  "cpal 0.18.2",
  "jack",
+ "rt_buffered",
  "rt_runtime",
  "shoop_audio_drivers",
+ "shoop_carla",
  "shoop_host_processors",
  "shoop_jack",
+ "shoop_plugin_protocol",
  "shoop_port_graph",
  "shoop_rt_engine",
  "shoop_rt_protocol",
@@ -5796,7 +5823,11 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "cpal 0.18.2",
+ "rt_buffered",
+ "rt_runtime",
  "shoop_backend",
+ "shoop_carla",
+ "shoop_plugin_protocol",
  "shoop_rt_backend",
  "shoop_rt_engine",
  "shoop_rt_host_native",
