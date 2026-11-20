@@ -73,12 +73,12 @@ CodeQL flagged the initial TCP decoder. The updated decoder rejects positional r
 
 A CI restart reached new stream generations while wet output stayed silent. The client now consumes the pending socket and its notification together so a reconnect cannot discard the replacement socket. A fresh Carla instance keeps its restored activation through its first batch. The restart fixture reports the service-side stream counters when a check fails. [Client reconnect](src/rust/shoop_remote_fx/src/client.rs) · [Failure diagnostics](scripts/verify_remote_fx.py)
 
-The installed workflow passed on implementation revision `bbd7cc64` with two active chains at 48 kHz across isolated Linux network endpoints. Each 30-minute soak used a 128-frame driver period, a 32-frame graph quantum, and 576 frames (12 ms) of node buffering. Both kept their stream generations and returned the expected wet audio before and after the run. The artifacts record the source revision, platform, CPU placement, timing, callback load, and impairment and recovery results. [Native Remote Carla FX workflow](https://github.com/SanderVocke/shoopdaloop/actions/runs/44754428127)
+The installed workflow passed on revision `d3243630` with two active chains at 48 kHz across isolated Linux network endpoints. Each 30-minute soak used a 128-frame driver period, a 32-frame graph quantum, and 576 frames (12 ms) of node buffering. Both kept their stream generations and returned the expected wet audio before and after the run. The artifacts record the source revision, platform, CPU placement, timing, callback load, and impairment and recovery results. [Native Remote Carla FX workflow](https://github.com/SanderVocke/shoopdaloop/actions/runs/44768415719)
 
 | Profile | Wet misses across both chains | Driver xruns | Peak worker completion age | Peak client queue | Peak desktop datagrams/s |
 | --- | --- | --- | --- | --- | --- |
-| [Stereo](https://github.com/SanderVocke/shoopdaloop/actions/runs/44754428127/artifacts/14641462259) | 0 | 0 | 256 frames | 3 batches | 12,090 |
-| [16 channels](https://github.com/SanderVocke/shoopdaloop/actions/runs/44754428127/artifacts/14641542930) | 0 | 10 | 384 frames | 4 batches | 25,320 |
+| [Stereo](https://github.com/SanderVocke/shoopdaloop/actions/runs/44768415719/artifacts/14650268082) | 0 | 0 | 256 frames | 3 batches | 12,120 |
+| [16 channels](https://github.com/SanderVocke/shoopdaloop/actions/runs/44768415719/artifacts/14649982784) | 0 | 0 | 128 frames | 2 batches | 25,325 |
 
 The FPGA requirements check also fails against the base branch's requirements file. The FPGA synthesis and Zynq USB jobs are outside the Native delivery scope. [PR checks](https://github.com/SanderVocke/shoopdaloop/pull/1023/checks)
 
