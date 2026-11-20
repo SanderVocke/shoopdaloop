@@ -1703,7 +1703,10 @@ mod tests {
         let (instance, _descriptor, _state) = test_native_instance();
         let (other, _other_descriptor, _other_state) = test_native_instance();
         let read = |host: &HostContext| unsafe {
-            *host_get_time_info((host as *const HostContext).cast_mut().cast())
+            host_get_time_info((host as *const HostContext).cast_mut().cast())
+                .as_ref()
+                .copied()
+                .expect("a valid host supplies its clock")
         };
         let host = instance.host_context.as_ref();
         let other_host = other.host_context.as_ref();
