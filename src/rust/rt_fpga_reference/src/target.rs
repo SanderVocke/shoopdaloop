@@ -7,8 +7,8 @@ use crate::{
 };
 use alloc::vec::Vec;
 use rt_fpga_compiler::{
-    CompileError, InitialValue, LogicalStateProgram, Operation, ProgramLimits, Resources,
-    StateProgramTarget,
+    CompileError, InitialValue, LogicalStateProgram, MidiOperation, Operation, ProgramLimits,
+    Resources, StateProgramTarget,
 };
 
 pub struct RustTarget<'a> {
@@ -115,18 +115,58 @@ impl StateProgramTarget for RustTarget<'_> {
                 })
             })
             .collect::<Result<Vec<_>, CompileError>>()?;
+        if logical
+            .work_pass
+            .iter()
+            .any(|op| matches!(op, Operation::Midi { .. }))
+        {
+            return Err(CompileError::InvalidProgram);
+        }
         let instructions = logical
             .work_pass
             .iter()
             .map(|op| match *op {
-                Operation::Midi {
-                    phase,
-                    loop_id,
-                    context,
-                } => Instruction::ProcessMidi {
-                    phase,
-                    loop_id: loop_id.map(id),
-                    context,
+                Operation::Midi { .. } => unreachable!("legacy MIDI phases rejected"),
+                Operation::MidiData(operation) => match operation {
+                    MidiOperation::Input { port, destination } => Instruction::ProcessMidiInput {
+                        port,
+                        destination: crate::midi::BufferId(destination),
+                    },
+                    MidiOperation::Capture {
+                        loop_id,
+                        sequence,
+                        source,
+                    } => Instruction::ProcessMidiCapture {
+                        loop_id: id(loop_id),
+                        sequence: crate::midi::SequenceId(sequence),
+                        source: crate::midi::BufferId(source),
+                    },
+                    MidiOperation::Playback {
+                        loop_id,
+                        sequence,
+                        cursor,
+                        channels,
+                        destination,
+                    } => Instruction::ProcessMidiPlayback {
+                        loop_id: id(loop_id),
+                        sequence: crate::midi::SequenceId(sequence),
+                        cursor: crate::midi::CursorId(cursor),
+                        channels,
+                        destination: crate::midi::BufferId(destination),
+                    },
+                    MidiOperation::Merge {
+                        left,
+                        right,
+                        destination,
+                    } => Instruction::ProcessMidiMerge {
+                        left: crate::midi::BufferId(left),
+                        right: crate::midi::BufferId(right),
+                        destination: crate::midi::BufferId(destination),
+                    },
+                    MidiOperation::Output { source, port } => Instruction::ProcessMidiOutput {
+                        source: crate::midi::BufferId(source),
+                        port,
+                    },
                 },
                 Operation::Silence { destination } => Instruction::ProcessSilence {
                     destination: BufferId(destination as usize),

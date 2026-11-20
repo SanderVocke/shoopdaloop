@@ -55,6 +55,8 @@ pub struct LoopSlot {
     pulse_masked: bool,
     protected: Option<u64>,
     pub(crate) mode_plan: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) midi_capture_open: bool,
     pub(crate) mode_failures: u32,
 }
 impl LoopSlot {
@@ -68,6 +70,7 @@ impl LoopSlot {
             pulse_masked: false,
             protected: None,
             mode_plan,
+            midi_capture_open: false,
             mode_failures: 0,
         }
     }
@@ -112,6 +115,7 @@ impl LoopMemory {
                     pulse_masked: false,
                     protected: None,
                     mode_plan: false,
+                    midi_capture_open: false,
                     mode_failures: 0,
                 })
             })

@@ -176,6 +176,7 @@ impl StateProgramTarget for RtlTarget<'_> {
         }
         for op in &logical.work_pass {
             let instruction = match *op {
+                Operation::MidiData(_) => return Err(CompileError::InvalidProgram),
                 Operation::Midi {
                     phase,
                     loop_id,

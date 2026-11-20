@@ -44,7 +44,44 @@ pub struct BufferId(
 )]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum Job {
-    Midi(crate::midi::MidiJob),
+    MidiInput {
+        port: u16,
+        destination: crate::midi::BufferId,
+    },
+    MidiEmpty {
+        destination: crate::midi::BufferId,
+    },
+    MidiReadView {
+        owner: crate::records::Identity,
+        sequence: crate::midi::SequenceId,
+        cursor: crate::midi::CursorId,
+        position: u64,
+        frames: u32,
+        restart: bool,
+        channels: u16,
+        destination: crate::midi::BufferId,
+    },
+    MidiBeginCapture {
+        sequence: crate::midi::SequenceId,
+    },
+    MidiAppend {
+        sequence: crate::midi::SequenceId,
+        source: crate::midi::BufferId,
+        position: u64,
+        frames: u32,
+    },
+    MidiFinishCapture {
+        sequence: crate::midi::SequenceId,
+    },
+    MidiMerge {
+        left: crate::midi::BufferId,
+        right: crate::midi::BufferId,
+        destination: crate::midi::BufferId,
+    },
+    MidiOutput {
+        source: crate::midi::BufferId,
+        port: u16,
+    },
     Constant {
         value: i32,
         destination: BufferId,
@@ -178,7 +215,10 @@ pub trait Memory {
     fn prefetch(&mut self, _view: ViewId, _position: u64, _length: u64, _chunks: u64) {}
 }
 
+mod midi;
+
 pub struct JobProcessor {
+    midi: Option<crate::midi::Buffers>,
     quantum: usize,
     history: Vec<History>,
     buffers: Vec<Vec<Fixed>>,
@@ -198,6 +238,7 @@ impl JobProcessor {
     }
     pub fn with_history_slots(quantum: usize, buffers: usize, history_slots: usize) -> Self {
         Self {
+            midi: None,
             quantum,
             history: vec![History::default(); history_slots],
             buffers: vec![vec![Fixed::ZERO; quantum]; buffers],
@@ -230,9 +271,7 @@ impl JobProcessor {
         outputs: &mut [&mut [Fixed]],
         base: usize,
     ) -> Result<(), Error> {
-        self.run_at_mixed(queue, memory, inputs, outputs, base, &mut |_| {
-            Err(Error::UnsupportedJob)
-        })
+        self.run_at_mixed(queue, memory, inputs, outputs, base, None)
     }
     pub(crate) fn run_at_mixed(
         &mut self,
@@ -241,9 +280,12 @@ impl JobProcessor {
         inputs: &[&[Fixed]],
         outputs: &mut [&mut [Fixed]],
         base: usize,
-        midi: &mut impl FnMut(crate::midi::MidiJob) -> Result<(), Error>,
+        mut midi: Option<&mut crate::midi::Io<'_>>,
     ) -> Result<(), Error> {
         self.ready.fill(false);
+        if let Some(buffers) = &mut self.midi {
+            buffers.begin();
+        }
         for output in outputs.iter_mut() {
             output[base..base + self.quantum].fill(Fixed::ZERO);
         }
@@ -263,7 +305,17 @@ impl JobProcessor {
                 );
             }
             match job {
-                Job::Midi(job) => midi(job)?,
+                Job::MidiInput { .. }
+                | Job::MidiEmpty { .. }
+                | Job::MidiReadView { .. }
+                | Job::MidiBeginCapture { .. }
+                | Job::MidiAppend { .. }
+                | Job::MidiFinishCapture { .. }
+                | Job::MidiMerge { .. }
+                | Job::MidiOutput { .. } => {
+                    self.execute_midi(job, midi.as_deref_mut().ok_or(Error::UnsupportedJob)?, base)
+                        .map_err(Error::Midi)?;
+                }
                 job => self.execute_at(job, memory, inputs, outputs, base)?,
             }
         }
@@ -285,6 +337,13 @@ impl JobProcessor {
     }
 
     pub fn reset(&mut self) {
+        if let Some(buffers) = &mut self.midi {
+            buffers.begin();
+            buffers
+                .cursors
+                .fill(crate::midi::buffers::Cursor::default());
+            buffers.work = crate::midi::Work::default();
+        }
         self.ready.fill(false);
         self.history.fill(History::default());
     }
@@ -328,7 +387,14 @@ impl JobProcessor {
             return Err(Error::UnsupportedJob);
         }
         match job {
-            Job::Midi(_) => return Err(Error::UnsupportedJob),
+            Job::MidiInput { .. }
+            | Job::MidiEmpty { .. }
+            | Job::MidiReadView { .. }
+            | Job::MidiBeginCapture { .. }
+            | Job::MidiAppend { .. }
+            | Job::MidiFinishCapture { .. }
+            | Job::MidiMerge { .. }
+            | Job::MidiOutput { .. } => return Err(Error::UnsupportedJob),
             Job::Constant { value, destination } => {
                 self.destination(destination)?;
                 self.buffers[destination.0].fill(Fixed(value));
