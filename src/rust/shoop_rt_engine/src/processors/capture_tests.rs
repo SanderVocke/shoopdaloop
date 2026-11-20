@@ -22,11 +22,11 @@ const PORTS: PortCounts = PortCounts {
     midi_outputs: 0,
 };
 
-struct Echo(LocalTransport);
+struct Echo(LocalTransport, PortCounts);
 
 impl Backend for Echo {
     fn ports(&self) -> PortCounts {
-        PORTS
+        self.1
     }
 
     fn async_transport(&mut self) -> Option<&mut dyn AsyncTransport> {
@@ -80,6 +80,11 @@ fn target() -> LoopSlotId {
 
 impl Fixture {
     fn new() -> Self {
+        Self::for_processor(ProcessorKind::BuiltInFx, true)
+    }
+
+    fn for_processor(kind: ProcessorKind, dry_midi: bool) -> Self {
+        let builtin = kind == ProcessorKind::BuiltInFx;
         let description = EngineDescription {
             quantum: Q,
             max_frames: Q,
@@ -93,16 +98,28 @@ impl Fixture {
                 loops: 1,
             }],
             processors: ProcessorSettings {
-                builtin_fx: ProcessorPolicy::On,
+                builtin_fx: if builtin {
+                    ProcessorPolicy::On
+                } else {
+                    ProcessorPolicy::Off
+                },
                 oxisynth: ProcessorPolicy::Off,
                 fx_instances: 1,
                 synth_instances: 0,
                 memory_mb: 16,
-                carla: Default::default(),
+                carla: processors::CarlaSettings {
+                    hosting: if builtin {
+                        processors::CarlaHosting::Disabled
+                    } else {
+                        processors::CarlaHosting::InProcess
+                    },
+                    patchbay_instances: if builtin { 0 } else { 2 },
+                    ..Default::default()
+                },
             },
             ..EngineDescription::default()
         };
-        let effective = description
+        let mut effective = description
             .processors
             .resolve(
                 processors::Support {
@@ -112,6 +129,14 @@ impl Fixture {
                 description.sample_rate,
             )
             .unwrap();
+        if kind.is_carla() {
+            effective.carla.patchbay_instances = description.processors.carla.patchbay_instances;
+            effective.carla.unavailable = None;
+        }
+        let ports = PortCounts {
+            midi_outputs: usize::from(kind.is_carla()),
+            ..PORTS
+        };
         let timing = TIMING.prepare(Quantum::new(Q).unwrap()).unwrap();
         let capacity = description.processor_midi_input_capacity().unwrap();
         let limits = BufferLimits {
@@ -129,15 +154,15 @@ impl Fixture {
         let mut workers = Vec::new();
         for _ in 0..effective.slots() {
             let (endpoint, worker) =
-                LocalTransport::prepare(PORTS, timing, limits, timing.slots()).unwrap();
+                LocalTransport::prepare(ports, timing, limits, timing.slots()).unwrap();
             prepared.reserved_bytes +=
-                (LocalTransport::prepared_bytes(PORTS, timing, limits, timing.slots()).unwrap()
+                (LocalTransport::prepared_bytes(ports, timing, limits, timing.slots()).unwrap()
                     + limits
-                        .async_storage_bytes_for(PORTS, timing.quantum(), TIMING)
+                        .async_storage_bytes_for(ports, timing.quantum(), TIMING)
                         .unwrap()) as u64;
             prepared.instances.push(PreparedProcessor {
-                kind: ProcessorKind::BuiltInFx,
-                backend: Box::new(Echo(endpoint)),
+                kind,
+                backend: Box::new(Echo(endpoint, ports)),
                 timing: TIMING,
             });
             workers.push(worker);
@@ -157,16 +182,19 @@ impl Fixture {
             shape: StripShape {
                 audio_inputs: 2,
                 audio_outputs: 2,
-                midi_input: true,
+                midi_input: dry_midi,
                 midi_output: false,
             },
-            kind: ProcessorKind::BuiltInFx,
+            kind,
         });
         for (kind, index, host) in [
             (PortKind::AudioIn, 0, 0),
             (PortKind::AudioIn, 1, 1),
             (PortKind::MidiIn, 0, 4),
         ] {
+            if kind == PortKind::MidiIn && !dry_midi {
+                continue;
+            }
             fixture.done(Request::Connect {
                 port: EnginePort::Strip(StripPort { strip, kind, index }),
                 host: HostPortId(host),
@@ -185,11 +213,16 @@ impl Fixture {
     }
 
     fn step(&mut self) {
+        self.step_observing(|_, _| {});
+    }
+
+    fn step_observing(&mut self, mut observe: impl FnMut(usize, &Batch<'_, '_>)) {
         let frame = self.host.next_frame();
         assert_no_heap(|| {
-            for worker in &mut self.workers {
+            for (index, worker) in self.workers.iter_mut().enumerate() {
                 worker
                     .process_next(|_, batch| {
+                        observe(index, batch);
                         if self.fail_worker
                             || self.fail_source.is_some_and(|source| {
                                 (batch.tag.source.0..batch.tag.source.0 + batch.frames as u64)
@@ -308,6 +341,45 @@ impl Fixture {
             _ => None,
         })
     }
+}
+
+#[shoop_test]
+fn global_controls_reach_carla_track_without_dry_midi_and_bus_once() {
+    let kind = ProcessorKind::CarlaPatchbay;
+    let mut fixture = Fixture::for_processor(kind, false);
+    fixture.done(Request::CreateProcessedBus {
+        bus: BusId(SlotId::new(1, 1)),
+        channels: 2,
+        kind,
+    });
+    fixture.done(Request::Connect {
+        port: EnginePort::GlobalFxControl,
+        host: HostPortId(4),
+        connected: true,
+    });
+    fixture.done(Request::StripControl {
+        strip: StripId(SlotId::new(0, 1)),
+        control: StripControl::Monitoring(true),
+    });
+    for _ in 0..8 {
+        fixture.step();
+    }
+    let frame = fixture.host.next_frame();
+    let control = [0xb0, 99, 87];
+    fixture.host.midi_input_mut(0).push(3, Q, &control).unwrap();
+    let mut received = [0; 4];
+    for _ in 0..8 {
+        fixture.step_observing(|index, batch| {
+            for (offset, data) in batch.midi_input(0).unwrap().iter() {
+                if data == control {
+                    assert_eq!(batch.tag.source.0 + u64::from(offset), frame + 3);
+                    received[index] += 1;
+                }
+            }
+        });
+    }
+    received.sort_unstable();
+    assert_eq!(received, [0, 0, 1, 1]);
 }
 
 #[shoop_test]

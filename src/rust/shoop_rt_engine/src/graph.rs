@@ -139,14 +139,17 @@ impl Builder {
                         link(Endpoint::host(PortType::Midi, host as u32), midi(node, 0)),
                     )?;
                 }
-                if strip.processor.is_some() {
-                    for host in bits(model.global_midi) {
-                        push(
-                            &mut self.edges,
-                            &mut count,
-                            link(Endpoint::host(PortType::Midi, host as u32), midi(node, 2)),
-                        )?;
-                    }
+            }
+            if strip
+                .processor
+                .is_some_and(|owner| strip.shape.midi_input || owner.kind.is_carla())
+            {
+                for host in bits(model.global_midi) {
+                    push(
+                        &mut self.edges,
+                        &mut count,
+                        link(Endpoint::host(PortType::Midi, host as u32), midi(node, 2)),
+                    )?;
                 }
             }
             if strip
