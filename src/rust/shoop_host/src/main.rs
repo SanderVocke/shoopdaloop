@@ -122,6 +122,9 @@ fn run() -> anyhow::Result<()> {
                     .unwrap_or_else(|_| "info".into()),
             )
             .with_writer(std::io::stderr)
+            // A paired host can outlive the launcher holding its diagnostic pipe.
+            // A failed log write must not panic while serving that host.
+            .log_internal_errors(false)
             .with_ansi(false)
             .init();
     }
