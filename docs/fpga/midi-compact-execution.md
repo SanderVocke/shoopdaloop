@@ -56,7 +56,10 @@ an exhausted cursor needs no repeated DDR descriptor lookup.
 ## Work performed by the hardware
 
 Most instructions take three clocks: fetch the instruction, read operands, then
-execute it. One bounded 32-by-32 multiplier computes addresses; musical time,
+execute it. The instruction is registered alongside the operand read, keeping
+the ROM lookup separate from the arithmetic/write path. Global prepared/running
+flags have explicit one-bit updates rather than observing the working memory's
+general write-data selector. One bounded 32-by-32 multiplier computes addresses; musical time,
 durations and address additions remain 64-bit. The compiler rejects multiplication
 operands that it cannot establish fit 32 bits. A shared serial divider handles
 64-bit numerators with divisors of at most 32 bits. Constant expressions are

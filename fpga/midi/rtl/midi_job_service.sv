@@ -77,6 +77,8 @@ module midi_job_service #(
     reg [24-1:0] recovery_packet;
     reg [LOOP_BITS-1:0] head_write_index;
     reg [HEAD_BITS-1:0] head_write_data;
+    reg [1-1:0] prepared;
+    reg [1-1:0] running;
     reg [5:0] op;
     reg [63:0] a0;
     reg [63:0] a1;
@@ -229,6 +231,8 @@ module midi_job_service #(
             recovery_packet<=0;
             head_write_index<=0;
             head_write_data<=0;
+            prepared<=0;
+            running<=0;
             op<=0;
             a0<=0;
             a1<=0;
@@ -270,6 +274,8 @@ module midi_job_service #(
                     16'd37: recovery_packet<= 24'(operand_a);
                     16'd38: head_write_index<= LOOP_BITS'(operand_a);
                     16'd39: head_write_data<= HEAD_BITS'(operand_a);
+                    16'd40: prepared<= 1'(operand_a);
+                    16'd41: running<= 1'(operand_a);
                     16'd8: data_word<= 32'(operand_a);
                     16'd9: last_error<= 3'(operand_a);
                     16'd10: head_word<= 64'(operand_a);

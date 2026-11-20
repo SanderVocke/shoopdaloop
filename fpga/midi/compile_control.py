@@ -123,6 +123,8 @@ OUTPUTS = {
     "recovery_packet": "24",
     "head_write_index": "LOOP_BITS",
     "head_write_data": "HEAD_BITS",
+    "prepared": "1",
+    "running": "1",
 }
 IO_NAMES = list(dict.fromkeys(INPUTS + list(OUTPUTS)))
 IO_ID = {name: i for i, name in enumerate(IO_NAMES)}
@@ -1177,9 +1179,9 @@ class Compiler:
         rom += ["always @* begin", "    case(code_bank)"]
         for bank in range(bank_count):
             rom.append(
-                f"        MIDI_ROM_SELECT_BITS'({bank}): instruction=control_bank_{bank}_q;"
+                f"        MIDI_ROM_SELECT_BITS'({bank}): fetched_instruction=control_bank_{bank}_q;"
             )
-        rom += ["        default: instruction=0;", "    endcase", "end"]
+        rom += ["        default: fetched_instruction=0;", "    endcase", "end"]
         save_generated(ROOT / "rtl/midi_control_rom.svh", "\n".join(rom) + "\n", check)
         save_generated(
             ROOT / "program/control-layout.json",

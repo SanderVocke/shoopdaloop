@@ -8,7 +8,7 @@
         FAST_CONTEXT=34, FAST_CAPTURE=35, FAST_METADATA=36;
     reg [5:0] phase;
     reg [15:0] micro_pc;
-    reg [63:0] instruction,operand_a,operand_b;
+    reg [63:0] instruction,fetched_instruction,operand_a,operand_b;
     (* ram_style="block" *) reg [63:0] work_a[0:WORK_DEPTH-1];
     (* ram_style="block" *) reg [63:0] work_b[0:WORK_DEPTH-1];
     reg [WORK_BITS-1:0] work_index;
@@ -20,11 +20,10 @@
     reg [LOOP_BITS-1:0] merge_index,merge_slot;
     reg [HEAD_BITS-1:0] merge_best;
     reg merge_found;
-    reg fast_prepared,fast_running;
     wire fast_bound=summary_q[64] && summary_q[63:0]==a4 && a0<64'(LOOPS);
     wire fast_idle=summary_q[66:65]==0 && summary_q[68:67]==0 && !summary_q[69] &&
         !summary_q[70] && !summary_q[71] && !summary_q[74] && !summary_q[75];
-    wire fast_command=fast_prepared && fast_running && fast_bound &&
+    wire fast_command=prepared && running && fast_bound &&
         (op==25 && summary_q[66:65]!=1 || op==29 && a3==0 && fast_idle ||
          op==33 && a1==0 && fast_idle || op==30 && a1[1]!=(summary_q[70] || summary_q[71]));
     reg [WORK_BITS-1:0] merge_write_address;
@@ -107,11 +106,12 @@
     wire [WORK_BITS-1:0] work_read_address=phase==MERGE_RECOVERY ? WORK_BITS'(R_recovery)+WORK_BITS'(head_q[HEAD_BITS-1:59]) : phase==BULK_COUNT_READ ? WORK_BITS'(destination_register) :
         phase==BULK_RF_READ ? bulk_register : phase==CONTEXT_STORE_REQUEST ? WORK_BITS'(R_c)+WORK_BITS'(dirty_field) :
         phase==EXECUTE && operation==MC_CLOAD ? WORK_BITS'(R_c)+WORK_BITS'(operand_a[4:0]) : phase==EXECUTE ? operand_a[WORK_BITS-1:0] :
-        WORK_BITS'(operation==MC_MOVHI ? destination_register : instruction[27:18]);
+        WORK_BITS'(fetched_instruction[7:0]==MC_MOVHI ? fetched_instruction[17:8] : fetched_instruction[27:18]);
     always @(posedge clk) begin
+        if(phase==READ) instruction<=fetched_instruction;
         if(phase==MERGE_RECOVERY || phase==BULK_RF_READ || phase==BULK_COUNT_READ || phase==CONTEXT_STORE_REQUEST || phase==READ || phase==EXECUTE && (operation==MC_LOAD || operation==MC_CLOAD))
             operand_a<=work_a[work_read_address];
-        if(phase==READ) operand_b<=work_b[WORK_BITS'(instruction[37:28])];
+        if(phase==READ) operand_b<=work_b[WORK_BITS'(fetched_instruction[37:28])];
         if(work_write && !reset) begin
             work_a[work_write_address]<=work_write_data;
             work_b[work_write_address]<=work_write_data;
@@ -125,13 +125,10 @@
         if(reset) begin
             phase<=INIT;work_index<=0;micro_pc<=U_BOOT;
             merge_index<=0;merge_slot<=0;merge_best<=0;merge_found<=0;
-            fast_prepared<=0;fast_running<=0;
             bulk_source<=0;bulk_target<=0;bulk_remaining<=0;bulk_word<=0;bulk_field<=0;bulk_register<=0;
             context_dirty<=0;selected_dirty<=0;transfer_context<=0;fill_remaining<=0;multiply_a<=0;multiply_b<=0;multiply_result<=0;
             divide_remainder<=0;divide_dividend<=0;divide_divisor<=0;divide_quotient<=0;divide_bit<=0;
         end else begin
-        if(work_write && work_write_address==WORK_BITS'(R_prepared)) fast_prepared<=work_write_data[0];
-        if(work_write && work_write_address==WORK_BITS'(R_running)) fast_running<=work_write_data[0];
         case(phase)
             INIT: if(work_index==WORK_BITS'(WORK_DEPTH-1)) begin phase<=FETCH;micro_pc<=U_BOOT;end
                 else work_index<=work_index+1'b1;
