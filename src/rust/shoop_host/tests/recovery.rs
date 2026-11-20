@@ -16,6 +16,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[path = "support/shutdown.rs"]
+mod shutdown;
+
 struct Host {
     child: Child,
     root: tempfile::TempDir,
@@ -646,52 +649,7 @@ fn bus_lifecycle_uses_both_carriers_and_socket_recovery_does_not_recreate_master
     }
 }
 fn shutdown(host: &mut Host, client: &mut Client) {
-    let ClientMessage::Shutdown {
-        authority,
-        operation,
-    } = client.shutdown().unwrap()
-    else {
-        unreachable!()
-    };
-    let deadline = Instant::now() + Duration::from_secs(5);
-    let mut reply = connection::management(
-        &host.entry,
-        ManagementRequest::Shutdown {
-            authority,
-            operation,
-        },
-        deadline.saturating_duration_since(Instant::now()),
-    )
-    .unwrap();
-    loop {
-        match reply {
-            ManagementReply::Finished { result, .. } => {
-                assert!(
-                    matches!(result.outcome, Outcome::Confirmed { .. }),
-                    "{:?}",
-                    result.outcome
-                );
-                break;
-            }
-            ManagementReply::Accepted { .. } => {}
-            other => panic!("shutdown refused: {other:?}"),
-        }
-        assert!(Instant::now() < deadline, "shutdown timed out");
-        thread::sleep(Duration::from_millis(10));
-        reply = connection::management(
-            &host.entry,
-            ManagementRequest::Result {
-                authority,
-                operation,
-            },
-            deadline.saturating_duration_since(Instant::now()),
-        )
-        .unwrap();
-    }
-    while host.child.try_wait().unwrap().is_none() {
-        assert!(Instant::now() < deadline, "host did not exit after cleanup");
-        thread::sleep(Duration::from_millis(10));
-    }
+    let _ = shutdown::shutdown(&mut host.child, &host.entry, client);
     assert!(host.path.exists());
 }
 

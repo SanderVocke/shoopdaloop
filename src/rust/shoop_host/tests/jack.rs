@@ -22,6 +22,10 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[cfg(feature = "carla")]
+#[path = "support/shutdown.rs"]
+mod shutdown;
+
 struct Peer {
     source: jack::Port<jack::AudioOut>,
     sink: jack::Port<jack::AudioIn>,
@@ -59,7 +63,9 @@ impl jack::ProcessHandler for Peer {
 struct ChildOwner(Child);
 impl Drop for ChildOwner {
     fn drop(&mut self) {
-        let _ = self.0.kill();
+        if self.0.try_wait().ok().flatten().is_none() {
+            let _ = self.0.kill();
+        }
         let _ = self.0.wait();
     }
 }
@@ -840,6 +846,16 @@ fn native_carla_session_archive_survives_driver_rate_and_period_change() {
         let restored = snapshot.audio_drivers.active.as_ref().unwrap();
         assert_eq!((restored.sample_rate, restored.buffer_size), (96_000, 512));
         play(&mut fixture);
+        let Delivery::Remote {
+            _owner: owner,
+            entry,
+            ..
+        } = &mut fixture.delivery
+        else {
+            unreachable!("Carla archive qualification uses a standalone host");
+        };
+        let status = shutdown::shutdown(&mut owner.0, entry, &mut fixture.client);
+        assert!(status.success(), "Carla session host exited with {status}");
     }
 }
 
