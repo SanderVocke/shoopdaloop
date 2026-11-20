@@ -11,6 +11,7 @@ use std::{
 };
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Counters {
     pub sent_datagrams: u64,
     pub received_datagrams: u64,

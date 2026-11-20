@@ -8,6 +8,7 @@ use std::{
 
 pub const DEFAULT_COPIES: u8 = 2;
 pub const INITIAL_LIMIT: usize = 4096;
+pub(crate) const DESCRIPTION_LIMIT: usize = 32 * 1024;
 pub const STATE_LIMIT: usize = 23 * 1024 * 1024;
 const QUERY_TIMEOUT: Duration = Duration::from_secs(1);
 pub(crate) const CONTROL_TIMEOUT: Duration = Duration::from_secs(5);
@@ -44,6 +45,7 @@ pub enum Lifecycle {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Status {
     pub active: bool,
     pub lifecycle: Lifecycle,
@@ -52,6 +54,7 @@ pub struct Status {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Description {
     pub instance: String,
     pub pid: u32,
@@ -63,6 +66,7 @@ pub struct Description {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct Greeting {
     pub version: u8,
     pub intent: Intent,
@@ -78,7 +82,7 @@ impl Greeting {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub(crate) enum Intent {
     Describe,
     Shutdown { instance: String },
@@ -86,7 +90,7 @@ pub(crate) enum Intent {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub(crate) enum Welcome {
     Description {
         version: u8,
@@ -103,6 +107,7 @@ pub(crate) enum Welcome {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct Request {
     pub id: u64,
     pub action: Action,
@@ -119,6 +124,7 @@ pub enum Action {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct Response {
     pub id: u64,
     pub status: Status,
@@ -139,7 +145,20 @@ pub(crate) fn read_frame<T: DeserializeOwned>(
     }
     let mut bytes = vec![0; length];
     read_until(stream, &mut bytes, end)?;
-    serde_json::from_slice(&bytes).map_err(io::Error::other)
+    decode_frame(&bytes)
+}
+
+fn decode_frame<T: DeserializeOwned>(bytes: &[u8]) -> io::Result<T> {
+    // The framing schema allows a named JSON object or the unit shutdown reply.
+    // In particular, reject positional arrays that Serde otherwise accepts for structs.
+    let bytes = bytes.trim_ascii();
+    if !bytes.starts_with(b"{") && bytes != br#""shutdown""# {
+        return Err(io::ErrorKind::InvalidData.into());
+    }
+    let mut decoder = serde_json::Deserializer::from_slice(bytes);
+    let value = T::deserialize(&mut decoder).map_err(io::Error::other)?;
+    decoder.end().map_err(io::Error::other)?;
+    Ok(value)
 }
 
 fn read_until(stream: &mut TcpStream, mut data: &mut [u8], end: Instant) -> io::Result<()> {
@@ -173,11 +192,16 @@ pub(crate) fn write_frame(
 }
 
 pub(crate) fn connect(address: SocketAddr, intent: Intent) -> io::Result<(TcpStream, Welcome)> {
+    let reply_limit = if matches!(intent, Intent::Describe) {
+        DESCRIPTION_LIMIT
+    } else {
+        INITIAL_LIMIT
+    };
     let mut stream = TcpStream::connect_timeout(&address, QUERY_TIMEOUT)?;
     stream.set_nodelay(true)?;
     stream.set_write_timeout(Some(CONTROL_TIMEOUT))?;
     write_frame(&mut stream, &Greeting::new(intent), INITIAL_LIMIT)?;
-    let welcome = read_frame(&mut stream, INITIAL_LIMIT, CONTROL_TIMEOUT)?;
+    let welcome = read_frame(&mut stream, reply_limit, CONTROL_TIMEOUT)?;
     match welcome {
         Welcome::Refused(reason) => Err(io::Error::other(reason)),
         welcome => Ok((stream, welcome)),
@@ -244,4 +268,58 @@ pub(crate) fn prove_server(socket: &UdpSocket, peer: IpAddr, stream: u128) -> io
     Err(io::Error::other(
         "FX UDP return address verification timed out",
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{net::TcpListener, thread};
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn control_frames_require_named_records_and_known_fields() {
+        assert!(decode_frame::<Greeting>(br#" {"version":1,"intent":"describe"} "#).is_ok());
+        assert!(decode_frame::<Greeting>(br#"[1,"describe"]"#).is_err());
+        assert!(
+            decode_frame::<Greeting>(br#"{"version":1,"intent":"describe","extra":0}"#).is_err()
+        );
+        assert!(decode_frame::<Greeting>(br#"{"version":1,"intent":"describe"}{}"#).is_err());
+        assert!(decode_frame::<Greeting>(
+            br#"{"version":1,"intent":{"shutdown":{"instance":"fx","extra":0}}}"#
+        )
+        .is_err());
+        assert!(matches!(
+            decode_frame::<Welcome>(br#""shutdown""#),
+            Ok(Welcome::Shutdown)
+        ));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn inspection_can_return_counters_for_all_slots() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let report = Description {
+            instance: "desktop".into(),
+            pid: 1,
+            slots: 32,
+            reserved: 32,
+            active: 32,
+            kinds: vec![Kind::Rack],
+            streams: vec![Counters::default(); 32],
+        };
+        thread::scope(|scope| {
+            let server = scope.spawn(|| {
+                let (mut peer, _) = listener.accept().unwrap();
+                let greeting: Greeting =
+                    read_frame(&mut peer, INITIAL_LIMIT, CONTROL_TIMEOUT).unwrap();
+                assert!(matches!(greeting.intent, Intent::Describe));
+                let response = Welcome::Description {
+                    version: VERSION,
+                    description: report.clone(),
+                };
+                write_frame(&mut peer, &response, DESCRIPTION_LIMIT).unwrap();
+            });
+            assert_eq!(describe(address).unwrap(), report);
+            server.join().unwrap();
+        });
+    }
 }

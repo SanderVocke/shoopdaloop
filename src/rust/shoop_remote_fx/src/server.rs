@@ -1,7 +1,8 @@
 use crate::{
     control::{
         read_frame, write_frame, Action, Description, Greeting, Intent, Kind, Lifecycle, Request,
-        Response, Status, Welcome, CONTROL_TIMEOUT, INITIAL_LIMIT, LEASE, STATE_LIMIT,
+        Response, Status, Welcome, CONTROL_TIMEOUT, DESCRIPTION_LIMIT, INITIAL_LIMIT, LEASE,
+        STATE_LIMIT,
     },
     wire::VERSION,
     Config, Counters, Dsp, ServerMedia,
@@ -164,7 +165,7 @@ impl Server {
                     version: VERSION,
                     description: self.describe(),
                 },
-                INITIAL_LIMIT,
+                DESCRIPTION_LIMIT,
             ),
             Intent::Shutdown { instance } => {
                 let peer = tcp.peer_addr()?.ip();

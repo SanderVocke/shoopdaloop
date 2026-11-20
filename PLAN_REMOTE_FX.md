@@ -69,6 +69,8 @@ Depends on Stages 2–5. Run the full acceptance workflow on the final candidate
 
 An initial installed run at 12 ms reported a stereo wet miss after 19.4 seconds on the Cloud VM. The desktop media worker now wakes on UDP arrival and calls the existing Carla batch processor directly. This removes the extra desktop queue and worker handoff and preserves the transport and release schedule. The sustained gate records guest scheduling effects and checks continued processing under the acceptance criteria above.
 
+CodeQL flagged the initial TCP decoder. The updated decoder rejects positional records, unknown fields, and trailing JSON. Regression tests cover those refusals and an inspection response with counters for every advertised slot. The UDP media format and timing are unchanged. [Control wire schema](docs/design/remote-fx-wire.md#control)
+
 The final runs and automated review are tracked on the PR. The FPGA requirements check also fails against the base branch's requirements file. FPGA CI is outside the Native delivery scope. [PR checks](https://github.com/SanderVocke/shoopdaloop/pull/1023/checks)
 
 - [ ] Run the installed workflow unattended from fresh artifacts. Have the harness provision the desktop and network, drive Host Manager setup, verify stereo, wide, and concurrent processing, and exercise timed MIDI, editing, save and reload, wet recording, and live failure and recovery. Repeat the A7 sustained runs on the final build. Save exact builds, timing settings, runner and network conditions, plugin load, measured results, and failure logs. Tear down processes and network fixtures on completion or failure.
