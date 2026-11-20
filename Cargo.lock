@@ -5518,7 +5518,6 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",
- "cpal 0.18.2",
  "directories",
  "getrandom 0.4.3",
  "jack",
@@ -5692,8 +5691,8 @@ dependencies = [
  "serde",
  "shoop_app_api",
  "shoop_app_protocol",
- "shoop_plugin_protocol",
  "shoop_loops",
+ "shoop_plugin_protocol",
  "shoop_processor_protocol",
  "shoop_script_resources",
  "shoop_session",

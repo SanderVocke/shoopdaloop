@@ -62,7 +62,6 @@ shoop_transport_socket = { path = "../shoop_transport_socket" }
 shoop_transport_shared_memory = { path = "../shoop_transport_shared_memory" }
 
 [dev-dependencies]
-cpal={workspace=true}
 shoop_backend = { path = "../shoop_backend", features = ["legacy"] }
 shoop_persistence_codec = { path = "../shoop_persistence_codec" }
 shoop_host = { path = ".", default-features = false, features = ["testing"] }
