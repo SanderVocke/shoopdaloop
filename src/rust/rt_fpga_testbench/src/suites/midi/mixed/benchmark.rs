@@ -256,6 +256,7 @@ pub fn benchmark_64(
     loops: usize,
     frames: usize,
     quanta: usize,
+    ddr_delay: u64,
 ) -> Result<serde_json::Value> {
     let cap = [2048, 256, 2048, QUANTUM as u64, 512, 2, 2];
     let mut geometry = Geometry::new([512, 5_763_072, QUANTUM as u64], 32);
@@ -302,7 +303,14 @@ pub fn benchmark_64(
     sim.max_ps = 10_000_000_000_000_000;
     let size = sim.model.get("midi_arena_bytes") as usize + 32768;
     let midi_memory = Rc::new(RefCell::new(MidiMemory {
-        bus: Axi::new(size / 4, 0x30000000, 8, Box::new(Fixed::new(7)), 119).with_prefix("midi_"),
+        bus: Axi::new(
+            size / 4,
+            0x30000000,
+            8,
+            Box::new(Fixed::new(ddr_delay)),
+            119,
+        )
+        .with_prefix("midi_"),
         control: Control::default(),
     }));
     sim.agent(midi_memory.clone());
@@ -312,6 +320,11 @@ pub fn benchmark_64(
     }));
     sim.agent(output.clone());
     let mut driver = Pipeline::new(&mut sim, cap, geometry, Mode::Fixed, 1021)?;
+    if let Backend::Axi(memory) = &mut driver.store.memory.borrow_mut().backend {
+        memory.timing = Box::new(Fixed::new(ddr_delay));
+    } else {
+        panic!("benchmark requires the external AXI memory model");
+    }
     let mut reference = Reference::new(audio, loops, frames);
     let views = (0..if audio { loops * 2 } else { 0 })
         .map(|i| i as u64)
@@ -389,7 +402,8 @@ pub fn benchmark_64(
     }
     Ok(
         serde_json::json!({"scenario":if audio {"stereo_and_midi"} else {"midi_only"},"loops":loops,"sample_rate":SAMPLE_RATE,"quantum_frames":QUANTUM,"chunk_frames":QUANTUM,"sequence_frames":frames,
-        "memory":"two independent 64-bit AXI ports, fixed 7-clock service timing, no random bus stalls; excludes board DDR arbitration",
+        "ddr_added_delay_clocks":ddr_delay,
+        "memory":format!("two independent 64-bit AXI ports, fixed {ddr_delay}-clock service per 16-byte native request, no random bus stalls; AXI handshakes retained; excludes board DDR arbitration"),
         "scope":"full compiled SP, mixed queue and common JP; run acceptance through done; host loading/readback excluded",
         "preparation":"payloads and ready default-state comparison maps loaded outside measured quanta; hardware allocates MIDI descriptors/blocks and exported sample records are checked",
         "measurements":measurements}),

@@ -11,6 +11,7 @@ fn main() {
         option("--loops", 64),
         option("--frames", 1_440_000),
         option("--quanta", 16),
+        option("--ddr-delay", 7) as u64,
     )
     .unwrap();
     let text = serde_json::to_string_pretty(&value).unwrap();
