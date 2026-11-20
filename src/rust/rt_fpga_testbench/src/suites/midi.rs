@@ -91,6 +91,7 @@ impl Memory {
     }
 }
 mod mixed;
+pub use mixed::benchmark::benchmark_64;
 pub use mixed::compiled_mixed_conformance;
 impl Agent for Memory {
     fn drive(&mut self, m: &mut Model<'_>, e: Edges) {

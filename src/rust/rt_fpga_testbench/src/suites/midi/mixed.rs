@@ -12,6 +12,7 @@ use rt_fpga_reference::{
     transitions::Operation,
 };
 use std::{cell::RefCell, rc::Rc};
+pub mod benchmark;
 #[path = "../../../../rt_fpga_reference/tests/support/midi_session.rs"]
 #[allow(dead_code, unused_imports)]
 mod reference;
