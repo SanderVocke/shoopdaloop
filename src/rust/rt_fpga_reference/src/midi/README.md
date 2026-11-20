@@ -29,6 +29,14 @@ checkpoints, recording writers, and exports own the strong references. Reusing a
 snapshot slot cannot make an old comparison valid; avoiding a comparison-to-target
 strong reference also avoids an ownership cycle.
 
+Small loop metadata is stored separately from the prepared pool of per-loop
+activity interpreters. Cleanup/restore progress remains attached to its loop.
+Playback initializes activity only for the binding's owned channels, together
+with the shared reset marker. Completed cleanup leaves inactive activity in
+place; the next activation initializes every field that can be observed. This
+avoids copying or clearing all sixteen channels for a single-channel binding.
+The copied-byte counter reports the selected channel data and reset marker.
+
 ## Storage and history
 
 There is one allocation level: blocks of timestamped short events, filled by event

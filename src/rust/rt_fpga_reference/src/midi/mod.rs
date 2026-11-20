@@ -161,6 +161,11 @@ impl Interpreter {
             steps: 0,
         }
     }
+    fn initialize_activity(&mut self, state: &MidiState, channels: u16) -> u64 {
+        self.pending = None;
+        self.steps = 0;
+        self.state.copy_channels_from(state, channels) as u64
+    }
     pub fn state(&self) -> Result<&MidiState, Error> {
         if self.pending.is_some() {
             Err(Error::Busy)

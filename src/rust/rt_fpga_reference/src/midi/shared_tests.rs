@@ -8,6 +8,44 @@ use shoop_wasm_test_support::shoop_test;
 mod fixture;
 
 #[shoop_test]
+fn activity_initialization_copies_owned_channels_and_the_shared_reset_marker() {
+    for mask in [1u16, 0x8101, u16::MAX] {
+        let mut activity = Interpreter::default();
+        let mut source = Interpreter::default();
+        for channel in 0..16 {
+            activity
+                .apply(fixture::msg(&[0xb0 | channel, 1, 17]))
+                .unwrap();
+        }
+        source.apply(fixture::msg(&[0xff])).unwrap();
+        for channel in 0..16 {
+            source
+                .apply(fixture::msg(&[0xb0 | channel, 1, 80 + channel]))
+                .unwrap();
+            source
+                .apply(fixture::msg(&[0x90 | channel, 60, 90]))
+                .unwrap();
+        }
+        let before = *activity.state().unwrap();
+        let bytes = activity.initialize_activity(source.state().unwrap(), mask);
+        let result = activity.state().unwrap();
+        for channel in 0..16 {
+            let expected = if mask & (1 << channel) != 0 {
+                source.state().unwrap()
+            } else {
+                &before
+            };
+            assert_eq!(result.channel(channel), expected.channel(channel));
+        }
+        assert!(result.system_reset_seen());
+        assert_eq!(activity.steps(), 0);
+        if mask == 1 {
+            assert!(bytes < (size_of::<MidiState>() / 8) as u64);
+        }
+    }
+}
+
+#[shoop_test]
 fn shared_jobs_match_frozen_session_with_partial_output_and_pedals() {
     for q in [1, 16, 32, 64, 128] {
         let mut f = fixture::Fixture::new(q, 3);

@@ -306,6 +306,20 @@ impl Default for MidiState {
     }
 }
 impl MidiState {
+    pub(super) fn copy_channels_from(&mut self, source: &Self, mut channels: u16) -> usize {
+        if channels == u16::MAX {
+            *self = *source;
+            return size_of::<Self>();
+        }
+        let copied = channels.count_ones() as usize * size_of::<ChannelState>() + size_of::<bool>();
+        while channels != 0 {
+            let channel = channels.trailing_zeros() as usize;
+            self.channels[channel] = source.channels[channel];
+            channels &= channels - 1;
+        }
+        self.system_reset = source.system_reset;
+        copied
+    }
     pub(super) fn cell(&self, cell: usize) -> u64 {
         if cell == step::BASIC_STATE_CELLS - 1 {
             return u64::from(self.system_reset);

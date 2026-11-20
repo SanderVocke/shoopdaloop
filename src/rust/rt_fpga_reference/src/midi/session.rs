@@ -79,7 +79,6 @@ struct Context {
     view: Option<ViewId>,
     writer: Option<ViewId>,
     active: Option<ViewId>,
-    activity: Interpreter,
     transition: Option<StateTransition>,
     cleaning: bool,
     cursor: u32,
@@ -97,7 +96,6 @@ impl Context {
             view: None,
             writer: None,
             active: None,
-            activity: Interpreter::default(),
             transition: None,
             cleaning: false,
             cursor: 0,
@@ -117,6 +115,7 @@ pub struct MidiSession {
     inputs: Box<[Interpreter]>,
     histories: Box<[History]>,
     contexts: Box<[Context]>,
+    activities: Box<[Interpreter]>,
     recovery: Box<[u8]>,
     limits: SessionLimits,
     next_frame: Option<u64>,
@@ -179,6 +178,7 @@ impl MidiSession {
             contexts: array(usize::from(limits.loops), || {
                 Context::new(limits.store.max_events)
             })?,
+            activities: array(usize::from(limits.loops), Interpreter::default)?,
             recovery: array(usize::from(limits.destinations), || 32)?,
             limits,
             next_frame: None,
@@ -227,6 +227,7 @@ impl MidiSession {
                 .map(History::prepared_bytes)
                 .sum::<usize>()
             + self.contexts.len() * size_of::<Context>()
+            + self.activities.len() * size_of::<Interpreter>()
             + self.recovery.len()
             + self.old_views.capacity() * size_of::<ViewId>()
             + self.seeds.len() * size_of::<Option<SnapshotId>>()
@@ -299,7 +300,7 @@ impl MidiSession {
             != 32)
     }
     fn update_activity(&mut self, index: usize, message: Message) -> Result<(), Error> {
-        let a = &mut self.contexts[index].activity;
+        let a = &mut self.activities[index];
         let before = a.steps();
         a.apply(message)?;
         self.work.activity_steps = self.work.activity_steps.saturating_add(a.steps() - before);
@@ -539,8 +540,8 @@ impl MidiSession {
             let b = c.binding.unwrap();
             let (next, message) = if c.cleaning {
                 transition.propose(
-                    c.activity.state()?,
-                    c.activity.state()?,
+                    self.activities[index].state()?,
+                    self.activities[index].state()?,
                     &Differences::default(),
                 )
             } else {
@@ -654,7 +655,6 @@ impl MidiSession {
             let c = &mut self.contexts[index];
             c.active = None;
             c.cleaning = false;
-            c.activity = Interpreter::default();
         }
         Ok(())
     }
@@ -696,11 +696,9 @@ impl MidiSession {
             c.cursor = 0;
             c.position = 0;
             c.desynchronized = false;
-            c.activity = Interpreter::new(*self.store.state(d.initial)?);
-            self.work.state_copy_bytes = self
-                .work
-                .state_copy_bytes
-                .saturating_add(size_of::<MidiState>() as u64);
+            let copied = self.activities[index]
+                .initialize_activity(self.store.state(d.initial)?, c.binding.unwrap().channels);
+            self.work.state_copy_bytes = self.work.state_copy_bytes.saturating_add(copied);
             c.transition = Some(StateTransition::restore(c.binding.unwrap().channels));
         }
         self.transition(index, base, sink)?;

@@ -7,6 +7,75 @@ static ALLOCATOR: shoop_wasm_test_support::heap::TrackingAllocator =
     shoop_wasm_test_support::heap::TrackingAllocator;
 
 #[shoop_test]
+fn activity_pool_reuse_keeps_cleanup_progress_and_reinitializes_new_channel_ownership() {
+    let mut f = Fixture::new(32, 1);
+    assert_no_heap(|| {
+        for channel in [0u8, 1] {
+            f.midi.unbind(0).unwrap();
+            f.midi
+                .bind(
+                    0,
+                    Binding {
+                        loop_id: id(0),
+                        input: 0,
+                        destination: 0,
+                        channels: 1 << channel,
+                    },
+                )
+                .unwrap();
+            f.run(&[event(0, &[0xb0 | channel, 1, 40 + channel])]);
+            f.command(0, Operation::Record);
+            assert_eq!(
+                f.run(&[
+                    event(0, &[0x90 | channel, 60 + channel, 90]),
+                    event(1, &[0xb0 | channel, 64, 127]),
+                    event(2, &[0x80 | channel, 60 + channel, 0]),
+                ])
+                .error,
+                None
+            );
+            f.command(0, Operation::Stop);
+            assert_eq!(f.run(&[]).error, None);
+            let before = f.midi.work().state_copy_bytes;
+            f.command(
+                0,
+                Operation::Play {
+                    position: 0,
+                    retrigger: true,
+                },
+            );
+            f.emitted.clear();
+            assert_eq!(f.run(&[]).error, None);
+            assert!(f.midi.work().state_copy_bytes - before < (size_of::<MidiState>() / 8) as u64);
+            assert!(!f.emitted.is_empty());
+            assert!(f
+                .emitted
+                .iter()
+                .all(|e| e.message.as_bytes()[0] & 15 == channel));
+            f.command(0, Operation::Stop);
+            f.capacity = 1;
+            let mut completed = false;
+            for _ in 0..64 {
+                f.emitted.clear();
+                let report = f.run(&[]);
+                assert!(matches!(report.error, None | Some(Error::Capacity)));
+                assert!(f.emitted.len() <= 1);
+                assert!(f
+                    .emitted
+                    .iter()
+                    .all(|e| e.message.as_bytes()[0] & 15 == channel));
+                if f.midi.output_state(0).is_ok() {
+                    completed = true;
+                    break;
+                }
+            }
+            assert!(completed);
+            f.capacity = usize::MAX;
+        }
+    });
+}
+
+#[shoop_test]
 fn record_multiple_channels_restore_only_differences_and_keep_exact_event_offsets() {
     for q in [1, 16, 32, 64, 128] {
         let mut f = Fixture::new(q, 2);
