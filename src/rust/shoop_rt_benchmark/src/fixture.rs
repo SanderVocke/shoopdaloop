@@ -13,6 +13,33 @@ pub const FPGA_BLOCK_CHUNKS: usize = 32;
 pub const FPGA_BLOCK_FRAMES: usize = FPGA_CHUNK_FRAMES * FPGA_BLOCK_CHUNKS;
 pub const MEMORY_BYTES: usize = 16 * 1024 * 1024;
 pub const GAIN: f32 = 1. / 128.;
+pub const MIDI_BLOCK_EVENTS: u32 = 256;
+pub const MIDI_INPUT_CAPACITY: usize = 40;
+pub const MIDI_OUTPUT_CAPACITY: usize = MIDI_INPUT_CAPACITY * LOOPS as usize;
+pub const MIDI_SCRATCH_EVENTS: usize = 65536;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+pub enum Media {
+    Audio,
+    Midi,
+    AudioMidi,
+}
+impl Media {
+    pub fn audio(self) -> bool {
+        self != Self::Midi
+    }
+    pub fn midi(self) -> bool {
+        self != Self::Audio
+    }
+    pub fn audio_channels(self) -> usize {
+        if self.audio() {
+            CHANNELS as usize
+        } else {
+            0
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "kebab-case")]
@@ -90,6 +117,7 @@ pub struct Fixture {
     pub version: u32,
     pub preset: Preset,
     pub pattern: Pattern,
+    pub media: Media,
     pub loops: u32,
     pub channels: u32,
     pub quantum: usize,
@@ -103,11 +131,19 @@ pub struct Fixture {
     pub ramp_frames: u32,
     pub record_frames: usize,
     pub signal: String,
+    pub midi_signal: String,
+    pub midi_block_events: u32,
+    pub midi_input_capacity: usize,
+    pub midi_output_capacity: usize,
+    pub midi_scratch_events: usize,
     pub callbacks: usize,
     pub events: Vec<Event>,
 }
 impl Fixture {
     pub fn new(preset: Preset, pattern: Pattern) -> Self {
+        Self::with_media(preset, pattern, Media::Audio)
+    }
+    pub fn with_media(preset: Preset, pattern: Pattern, media: Media) -> Self {
         let mut events = Vec::new();
         let mut add = |callback, label: &str, action, first, count| {
             events.push(Event {
@@ -179,18 +215,19 @@ impl Fixture {
             }
         };
         Self {
-            version: 3,
+            version: 4,
             preset,
             pattern,
+            media,
             loops: LOOPS,
-            channels: CHANNELS,
+            channels: media.audio_channels() as u32,
             quantum: QUANTUM,
             sample_rate: SAMPLE_RATE,
             fpga_clock_hz: FPGA_CLOCK_HZ,
             fpga_chunk_frames: FPGA_CHUNK_FRAMES,
             fpga_block_chunks: FPGA_BLOCK_CHUNKS,
             memory_bytes: MEMORY_BYTES,
-            history_seconds: 1,
+            history_seconds: if pattern == Pattern::Grab { 1 } else { 0 },
             smoothing_frames: 0,
             ramp_frames: 0,
             record_frames: if pattern == Pattern::Grab {
@@ -199,9 +236,41 @@ impl Fixture {
                 span * QUANTUM
             },
             signal: "stereo-saw-v1".into(),
+            midi_signal: "burst-quiet-cc-v1: 40 messages every 16th quantum, 16 in the next seven, then eight silent quanta; ties and offsets 0/31".into(),
+            midi_block_events: MIDI_BLOCK_EVENTS,
+            midi_input_capacity: MIDI_INPUT_CAPACITY,
+            midi_output_capacity: MIDI_OUTPUT_CAPACITY,
+            midi_scratch_events: MIDI_SCRATCH_EVENTS,
             callbacks,
             events,
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MidiPacket {
+    pub offset: u32,
+    pub bytes: [u8; 3],
+}
+
+pub fn midi_input(frame: u64, packets: &mut Vec<MidiPacket>) {
+    packets.clear();
+    let quantum = frame / QUANTUM as u64;
+    let count = match quantum % 16 {
+        0 => 40,
+        1..=7 => 16,
+        _ => 0,
+    };
+    for index in 0..count {
+        let offset = (index * (QUANTUM - 1) / (count - 1)) as u32;
+        packets.push(MidiPacket {
+            offset,
+            bytes: [
+                0xb0 | (quantum % 16) as u8,
+                1 + (index % 31) as u8,
+                ((quantum * 17 + index as u64 * 3) % 128) as u8,
+            ],
+        });
     }
 }
 
@@ -229,7 +298,7 @@ mod tests {
             assert_eq!((f.loops, f.channels, f.quantum), (64, 2, 32));
             assert_eq!(
                 (f.version, f.fpga_chunk_frames, f.fpga_block_chunks),
-                (3, 32, 32)
+                (4, 32, 32)
             );
             assert!(f.record_frames > f.fpga_chunk_frames * f.fpga_block_chunks);
             assert!(f.events.windows(2).all(|v| v[0].callback < v[1].callback));

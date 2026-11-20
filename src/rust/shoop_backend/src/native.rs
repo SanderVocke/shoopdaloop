@@ -53,67 +53,10 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<std::ffi::OsStr>,
 {
-    let args = args
-        .into_iter()
-        .map(|value| {
-            value
-                .as_ref()
-                .to_str()
-                .map(str::to_owned)
-                .ok_or_else(|| anyhow!("Carla worker arguments must be valid UTF-8"))
-        })
-        .collect::<Result<Vec<_>>>()?;
-    if !args.iter().any(|argument| argument == "--carla-worker") {
+    let Some(options) = shoop_engine::carla_subprocess::worker_options(args)? else {
         return Ok(false);
-    }
-    let value = |name: &str| -> Result<String> {
-        let prefix = format!("{name}=");
-        for (index, argument) in args.iter().enumerate() {
-            if let Some(value) = argument.strip_prefix(&prefix) {
-                return Ok(value.to_owned());
-            }
-            if argument == name {
-                return args
-                    .get(index + 1)
-                    .cloned()
-                    .ok_or_else(|| anyhow!("missing value for {name}"));
-            }
-        }
-        Err(anyhow!("missing Carla worker argument {name}"))
     };
-    let nonce = value("--carla-worker-nonce")?;
-    if nonce.len() != 64 {
-        return Err(anyhow!("Carla worker nonce must contain 64 hex digits"));
-    }
-    let mut decoded_nonce = [0_u8; 32];
-    for (index, byte) in decoded_nonce.iter_mut().enumerate() {
-        *byte = u8::from_str_radix(&nonce[index * 2..index * 2 + 2], 16)
-            .map_err(|_| anyhow!("Carla worker nonce is not hexadecimal"))?;
-    }
-    let test_mode = args
-        .iter()
-        .position(|argument| {
-            argument == "--carla-worker-test-mode"
-                || argument.starts_with("--carla-worker-test-mode=")
-        })
-        .map(|_| value("--carla-worker-test-mode"))
-        .transpose()?
-        .map(|value| value.parse())
-        .transpose()?;
-    shoop_engine::carla_subprocess::run_carla_worker(
-        shoop_engine::carla_subprocess::CarlaWorkerOptions {
-            address: value("--carla-worker-address")?
-                .parse()
-                .map_err(|error| anyhow!("invalid Carla worker address: {error}"))?,
-            nonce: decoded_nonce,
-            chain_id: shoop_plugin_protocol::ChainId(value("--carla-worker-chain-id")?.parse()?),
-            generation: shoop_plugin_protocol::ProcessGeneration(
-                value("--carla-worker-generation")?.parse()?,
-            ),
-            shared_memory_path: value("--carla-worker-shared-memory")?.into(),
-            test_mode,
-        },
-    )?;
+    shoop_engine::carla_subprocess::run_carla_worker(options)?;
     Ok(true)
 }
 
@@ -5180,7 +5123,10 @@ impl Backend for NativeBackend {
             composite_receipts: Vec::new(),
             profiling: Default::default(),
             status: BackendStatus {
-                dsp_load_percent: driver.dsp_load_percent,
+                dsp: driver.jack_load_percent.and_then(|percent| {
+                    let sample = shoop_app_api::DspMeasurement::JackServer { percent };
+                    sample.percent().map(|_| sample)
+                }),
                 xruns: driver.xruns_since_last,
                 buffer_size: driver.buffer_size.max(driver.last_processed),
                 sample_rate: driver.sample_rate,
@@ -5548,6 +5494,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn native_dummy_exposes_a_disconnected_stereo_master() {
         let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 48_000,
             buffer_size: 128,
         }))
@@ -5596,6 +5543,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn native_dummy_supports_dynamic_multichannel_and_zero_bus_states() {
         let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 48_000,
             buffer_size: 128,
         }))
@@ -5641,6 +5589,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn native_dummy_bus_fx_builtin_round_trips_state_and_removes_cleanly() {
         let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 48_000,
             buffer_size: 128,
         }))
@@ -5747,6 +5696,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn native_dummy_bus_fx_new_processor_is_engine_active() {
         let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 48_000,
             buffer_size: 128,
         }))
@@ -5776,6 +5726,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn native_dummy_bus_fx_processor_switch_preserves_routed_audio() {
         let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 48_000,
             buffer_size: 128,
         }))
@@ -5901,6 +5852,7 @@ mod tests {
         let (mut carla_ui_service, carla_ui_dispatcher) = CarlaMainThreadUiService::new();
         configure_carla_ui_dispatcher(Some(carla_ui_dispatcher));
         let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 48_000,
             buffer_size: 2_048,
         }))
@@ -6132,6 +6084,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn native_dummy_exposes_engine_owned_composite_state_and_advancement() {
         let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 1_000,
             buffer_size: 1,
         });
@@ -6208,6 +6161,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn native_rejects_length_edits_while_recording_is_armed() {
         let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 48_000,
             buffer_size: 128,
         });
@@ -6248,6 +6202,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn native_rejects_take_corrections_while_recording_is_armed() {
         let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 48_000,
             buffer_size: 128,
         });
@@ -6307,6 +6262,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn native_new_loop_inherits_configured_processor_advance() {
         let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 48_000,
             buffer_size: 128,
         });
@@ -6354,6 +6310,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn native_rejects_armed_recording_offset_updates() {
         let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 48_000,
             buffer_size: 128,
         });
@@ -6422,6 +6379,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn native_sibling_preparation_preserves_armed_loop_latency() {
         let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 48_000,
             buffer_size: 4,
         });
@@ -6487,6 +6445,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn native_freezes_latency_while_dry_wet_playback_is_armed() {
         let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 48_000,
             buffer_size: 128,
         });
@@ -6543,6 +6502,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn native_rejects_new_recording_until_postroll_settles() {
         let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 48_000,
             buffer_size: 4,
         });
@@ -6632,6 +6592,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn native_take_alignment_rejects_incomplete_raw_windows_before_mutation() {
         let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 48_000,
             buffer_size: 128,
         });
@@ -6783,6 +6744,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn native_restore_keeps_automatic_latency_unresolved_when_saved_input_is_missing() {
         let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 48_000,
             buffer_size: 128,
         });
@@ -6824,6 +6786,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn native_dummy_satisfies_topology_capture_and_same_driver_switch() {
         let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 48_000,
             buffer_size: 128,
         });
@@ -6951,6 +6914,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn native_regular_dry_wet_recording_and_take_correction_use_processor_alignment() {
         let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 48_000,
             buffer_size: 64,
         }))
@@ -7034,6 +6998,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn native_track_midi_injection_uses_the_driver_independent_input_port() {
         let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 48_000,
             buffer_size: 128,
         }))
@@ -7052,6 +7017,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn native_builtin_fx_track_has_matching_audio_midi_and_transactional_state() {
         let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 48_000,
             buffer_size: 128,
         }))
@@ -7322,6 +7288,7 @@ mod tests {
         let switched = backend
             .switch_audio_driver(
                 &AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: 96_000,
                     buffer_size: 256,
                 }),
@@ -7375,6 +7342,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn native_oxisynth_track_has_fixed_ports_and_rejects_invalid_shapes() {
         let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 48_000,
             buffer_size: 128,
         }))
@@ -7540,6 +7508,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn targeted_content_update_preserves_native_session_callbacks_sync_and_graph() {
         let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 48_000,
             buffer_size: 64,
         }))
@@ -7786,6 +7755,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn native_dummy_external_track_preserves_roles_media_and_routing() {
         let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 48_000,
             buffer_size: 128,
         });
@@ -7906,6 +7876,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn native_fx_catalog_advertises_carla_facets_and_constraints() {
         let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 48_000,
             buffer_size: 128,
         }))
@@ -7959,6 +7930,7 @@ mod tests {
         let result = (|| {
             let mut backend =
                 NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: 48_000,
                     buffer_size: 128,
                 }))?;
@@ -8002,6 +7974,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn native_dummy_processed_track_wires_fake_fx_without_public_internal_ports() {
         let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 48_000,
             buffer_size: 4,
         });
@@ -8117,6 +8090,7 @@ mod tests {
         const NOTE_VELOCITY: u8 = 102;
 
         let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 48_000,
             buffer_size: FRAMES,
         }))
@@ -8263,6 +8237,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn native_track_removal_releases_ports_for_same_name_recreation() {
         let config = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 48_000,
             buffer_size: 128,
         });
@@ -8406,6 +8381,7 @@ mod tests {
             .unwrap();
         for index in 0..8 {
             let target = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                mode: Default::default(),
                 sample_rate: 48_000,
                 buffer_size: 64 + index * 16,
             });
@@ -8422,6 +8398,7 @@ mod tests {
         let mut backend = NativeBackend::new(AudioDriverConfig::default()).unwrap();
         let captured = backend.capture_session().unwrap();
         let target = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 44_100,
             buffer_size: 256,
         });
@@ -8565,6 +8542,7 @@ mod tests {
         backend.set_loop_smoothing_ms(9).unwrap();
         let session = backend.capture_session().unwrap();
         let target = AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: session.sample_rate,
             buffer_size: 128,
         });
@@ -8626,6 +8604,7 @@ mod tests {
     #[shoop_wasm_test_support::shoop_test]
     fn native_master_preview_is_transient_respects_master_controls_and_reconnects_after_load() {
         let mut backend = NativeBackend::new(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 48_000,
             buffer_size: 4,
         }))

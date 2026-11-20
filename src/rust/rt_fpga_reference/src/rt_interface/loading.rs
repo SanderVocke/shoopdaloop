@@ -1,5 +1,5 @@
 use super::*;
-use crate::{compiler::ProgramImage, storage::ViewId};
+use crate::{storage::ViewId, target::ProgramImage};
 use rt_fpga_compiler::ProgramLimits;
 use shoop_rt_protocol::immediate::{CommandRecord, Header, SwitchProgram, COMMANDS};
 
@@ -230,6 +230,22 @@ impl Engine {
         }
         if self.pipeline.switch_image(&mut image.image).is_err() {
             return Code::CannotApply;
+        }
+        for &logical in image.image.layout.changed_sources() {
+            let physical = image
+                .image
+                .layout
+                .loop_id(logical)
+                .expect("continuing loop");
+            self.pipeline
+                .clear_mode_plan(
+                    LoopId {
+                        slot: physical.slot,
+                        generation: physical.generation,
+                    },
+                    shoop_rt_protocol::immediate::ClearPlanned::Both as u8,
+                )
+                .expect("continuing loop");
         }
         for &history in image.image.layout.new_histories() {
             jobs.initialize_history(history as usize)

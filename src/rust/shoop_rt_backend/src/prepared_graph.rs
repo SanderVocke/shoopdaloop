@@ -1,10 +1,9 @@
 //! Control-owned graph preparation and explicit execution-program handoff.
-use crate::mirror::PortTarget;
 use crate::*;
-use shoop_backend::{BackendMutationCompletion, BackendTrackTopology, MASTER_BUS_ID};
+use shoop_backend::BackendMutationCompletion;
 use shoop_rt_protocol::{
-    immediate::{Batch, Code, Command, GraphLoop, PREPARED_GRAPH_LOOPS},
-    Direction, HostPort, HostPortId, HostPortKind, Name, Outcome, PortKind, Refusal, Request,
+    immediate::{Batch, Code, Command},
+    Direction, HostPort, HostPortId, HostPortKind, Name, Outcome, Refusal, Request,
 };
 
 #[derive(Default)]
@@ -13,6 +12,8 @@ pub(crate) struct PreparedGraph {
     pub pending: Option<u64>,
     pub revision: u64,
     pub dirty: bool,
+    pub committed: Option<Mirror>,
+    outgoing: alloc::collections::VecDeque<Batch>,
 }
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     pub(crate) fn prepared_graph_welcome(&mut self) {
@@ -39,6 +40,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 preferred: index != 0,
             })
             .collect();
+        self.prepared_graph.as_mut().unwrap().committed = Some(self.mirror.clone());
     }
     pub(crate) fn structure_mutable(&self) -> Result<()> {
         if self
@@ -69,28 +71,25 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         while let Some(pending) = self.requests.outgoing.pop_front() {
             let supported = draft
                 && match pending.request {
-                    Request::CreateStrip { shape, .. } => {
-                        shape.audio_inputs == 1
-                            && shape.audio_outputs == 1
-                            && !shape.midi_input
-                            && !shape.midi_output
-                    }
-                    Request::CreateLoop { .. }
+                    Request::CreateStrip { .. }
+                    | Request::CreateProcessedStrip { .. }
+                    | Request::CreateBus { .. }
+                    | Request::CreateProcessedBus { .. }
+                    | Request::RemoveBus { .. }
+                    | Request::CreateLoop { .. }
                     | Request::RemoveStrip { .. }
                     | Request::LoopSync { .. }
                     | Request::Connect { .. }
-                    | Request::Route { .. } => true,
-                    Request::SetSmoothing { frames } => frames == 0,
+                    | Request::Route { .. }
+                    | Request::StripControl { .. }
+                    | Request::BusControl { .. }
+                    | Request::LoopBalance { .. } => true,
+                    Request::SetSmoothing { .. } => true,
                     Request::LoopGain { .. } => !self.prepared_graph.as_ref().unwrap().active,
                     Request::CancelBulk => true,
                     _ => false,
                 };
-            if supported
-                && !matches!(
-                    pending.request,
-                    Request::SetSmoothing { .. } | Request::CancelBulk
-                )
-            {
+            if supported && !matches!(pending.request, Request::CancelBulk) {
                 self.prepared_graph.as_mut().unwrap().dirty = true;
             }
             self.answered(
@@ -119,143 +118,44 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         if state.active && !state.dirty {
             return Err(anyhow!("the prepared layout has not changed"));
         }
-        if self.mirror.loops.is_empty()
-            || self.mirror.loops.len() > PREPARED_GRAPH_LOOPS as usize
-            || self.mirror.buses.len() != 1
-        {
-            return Err(anyhow!(
-                "prepared reference supports 1-16 mono loops and the Master bus"
-            ));
-        }
-        let mut commands = Vec::new();
-        commands.push(Command::BeginGraph {
-            quantum: self.limits().quantum,
-            loops: self.mirror.loops.len() as u32,
-        });
-        for entry in self.mirror.loops.values() {
-            let track = &self.mirror.tracks[&entry
-                .track
-                .ok_or_else(|| anyhow!("composites are unsupported"))?];
-            if !matches!(
-                track.topology,
-                BackendTrackTopology::Direct {
-                    audio_channels: 1,
-                    midi: false
-                }
-            ) || !entry.confirmed
-                || entry.program.is_some()
-                || entry.balance != 0.0
-                || track.removing
-                || !track.confirmed
-                || track.controls.output_gain_db != 0.0
-                || track.controls.output_balance != 0.0
-                || track.controls.output_muted
-                || track.controls.input_gain_db != 0.0
-                || track.controls.input_balance != 0.0
-                || track.controls.input_monitoring
-                || track.automatic_enabled
-            {
-                return Err(anyhow!("prepared reference requires mono primitive loops"));
-            }
-            let mut input = None;
-            let mut output = false;
-            for &port in &track.ports {
-                match self.mirror.ports[&port].target {
-                    PortTarget::Strip {
-                        kind: PortKind::AudioIn,
-                        index: 0,
-                        ..
-                    } => {
-                        if self
-                            .mirror
-                            .links
-                            .iter()
-                            .any(|l| l.application_port_id == port)
-                        {
-                            input = Some(0);
-                        }
-                    }
-                    PortTarget::Strip {
-                        kind: PortKind::AudioOut,
-                        index: 0,
-                        ..
-                    } => {
-                        let channels = &self.mirror.buses[&MASTER_BUS_ID].channels;
-                        let routed = channels
-                            .iter()
-                            .filter(|c| {
-                                self.mirror.routes.iter().any(|r| {
-                                    r.source_port_id == port && r.destination_channel_id == c.id
-                                })
-                            })
-                            .count();
-                        if routed != 0 && routed != 2 {
-                            return Err(anyhow!(
-                                "mono outputs must route to both Master channels or neither"
-                            ));
-                        }
-                        output = routed == 2;
-                    }
-                    _ => {}
-                }
-            }
-            commands.push(Command::ConfigureLoop(GraphLoop {
-                slot: entry.slot.0.index,
-                generation: entry.slot.0.generation,
-                source: entry.sync.map(|s| self.mirror.loops[&s].slot.0.index),
-                input,
-                output,
-                gain: entry.gain,
-                repeat_sync: entry.repeat_sync,
-            }));
-        }
-        let master = &self.mirror.buses[&MASTER_BUS_ID];
-        if master.gain_db != 0.0 || master.balance != 0.0 || master.muted {
-            return Err(anyhow!("only default Master controls are supported"));
-        }
-        for link in &self.mirror.links {
-            let valid = match self.mirror.ports[&link.application_port_id].target {
-                PortTarget::Strip {
-                    kind: PortKind::AudioIn,
-                    index: 0,
-                    ..
-                } => link.host_port_id == "reference_in",
-                PortTarget::Bus(bus, channel) if bus == MASTER_BUS_ID => {
-                    link.host_port_id
-                        == if channel == 0 {
-                            "reference_left"
-                        } else {
-                            "reference_right"
-                        }
-                }
-                _ => false,
-            };
-            if !valid {
-                return Err(anyhow!("unsupported prepared graph host connection"));
-            }
-        }
-        if !master.channels.iter().enumerate().all(|(i, c)| {
-            self.mirror.links.iter().any(|l| {
-                l.application_port_id == c.output_port_id
-                    && l.host_port_id
-                        == if i == 0 {
-                            "reference_left"
-                        } else {
-                            "reference_right"
-                        }
-            })
-        }) {
-            return Err(anyhow!(
-                "prepared reference requires stereo Master host outputs"
-            ));
-        }
-        commands.push(Command::ActivateGraph);
+        let mut outgoing =
+            shoop_rt_protocol::graph::upload(&self.mirror, self.limits().quantum, state.revision)?
+                .into_iter()
+                .collect::<alloc::collections::VecDeque<_>>();
         self.client
-            .immediate(Batch::new(state.revision, state.revision, &commands).unwrap())
+            .immediate(*outgoing.front().unwrap())
             .map_err(|e| anyhow!("graph submission failed: {e:?}"))?;
+        outgoing.pop_front();
         let sequence = self.requests.reserve_mutation();
-        self.prepared_graph.as_mut().unwrap().pending = Some(sequence);
+        let graph = self.prepared_graph.as_mut().unwrap();
+        graph.pending = Some(sequence);
+        graph.outgoing = outgoing;
         Ok(())
+    }
+    pub(crate) fn send_prepared_graph_chunks(&mut self) -> usize {
+        if self.link != Link::Ready {
+            return 0;
+        }
+        let Some(graph) = &mut self.prepared_graph else {
+            return 0;
+        };
+        let Some(batch) = graph.outgoing.front().copied() else {
+            return 0;
+        };
+        match self.client.immediate(batch) {
+            Ok(()) => {
+                graph.outgoing.pop_front();
+                1
+            }
+            Err(shoop_rt_transport::client::ClientError::Carrier(
+                shoop_rt_transport::carrier::CarrierError::Full,
+            ))
+            | Err(shoop_rt_transport::client::ClientError::Busy) => 0,
+            Err(error) => {
+                self.lose(alloc::format!("graph submission failed: {error:?}"));
+                0
+            }
+        }
     }
     pub(crate) fn prepared_graph_response(
         &mut self,
@@ -280,13 +180,37 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             graph.active = true;
             graph.revision = response.header.graph();
             graph.dirty = false;
+            graph.committed = Some(self.mirror.clone());
+        } else {
+            graph.dirty = false;
+            if let Some(previous) = &graph.committed {
+                self.mirror.restore_prepared(previous.clone());
+            }
         }
         self.mutation_completions.push(BackendMutationCompletion {
             sequence,
             result: if success {
                 Ok(())
             } else {
-                Err("prepared graph was refused".into())
+                Err(response.header.code().capacity_resource().map_or_else(
+                    || {
+                        response
+                            .header
+                            .code()
+                            .unsupported_graph_feature()
+                            .map_or_else(
+                                || "prepared graph was refused".into(),
+                                |feature| {
+                                    alloc::format!("graph compiler does not support {feature}")
+                                },
+                            )
+                    },
+                    |resource| {
+                        alloc::format!(
+                            "insufficient capacity for {resource} while staging the graph"
+                        )
+                    },
+                ))
             },
         });
     }

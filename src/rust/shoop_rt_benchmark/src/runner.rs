@@ -22,6 +22,15 @@ impl std::error::Error for ProcessingFailure {
     }
 }
 
+#[derive(Debug)]
+struct Unsupported;
+impl std::fmt::Display for Unsupported {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("native CPU immediate-command transitions refuse MIDI loops; authored transport is a different control path")
+    }
+}
+impl std::error::Error for Unsupported {}
+
 #[derive(Clone, Copy, Default, Serialize)]
 pub struct Measurement {
     pub elapsed_ns: u64,
@@ -37,6 +46,18 @@ pub struct Measurement {
     pub axi_write_stall_cycles: u64,
     pub axi_response_stall_cycles: u64,
     pub dram_queue_stall_cycles: u64,
+    pub midi_axi_address_stall_cycles: u64,
+    pub midi_axi_write_stall_cycles: u64,
+    pub midi_axi_response_stall_cycles: u64,
+    pub midi_dram_queue_stall_cycles: u64,
+    pub midi_reads: u64,
+    pub midi_writes: u64,
+    pub midi_storage_blocks: Option<u64>,
+    pub midi_input_events: u64,
+    pub midi_output_events: u64,
+    pub midi_record_reads: Option<u64>,
+    pub midi_captured_events: Option<u64>,
+    pub midi_merged_events: Option<u64>,
 }
 
 pub trait Driver {
@@ -45,6 +66,12 @@ pub trait Driver {
     fn fill_input(&mut self);
     fn process(&mut self) -> Result<Measurement>;
     fn output(&self, channel: usize) -> &[f32];
+    fn midi_output(&self) -> &[fixture::MidiPacket] {
+        &[]
+    }
+    fn midi_latency_frames(&self) -> usize {
+        0
+    }
     fn latency_frames(&self) -> usize {
         0
     }
@@ -231,6 +258,8 @@ pub struct Callback {
     pub planned_slots_retired: u32,
     pub takes_replaced: u32,
     pub output_peak: [f32; 2],
+    pub midi_input_events: usize,
+    pub midi_output_events: usize,
 }
 #[derive(Serialize)]
 pub struct EventResult {
@@ -285,7 +314,9 @@ pub fn run<E: Endpoint, D: Driver>(
     match execute(&mut report, &mut control, &mut driver) {
         Ok(()) => report.status = "completed".into(),
         Err(error) => {
-            report.status = if error.downcast_ref::<ProcessingFailure>().is_some() {
+            report.status = if error.downcast_ref::<Unsupported>().is_some() {
+                "unsupported"
+            } else if error.downcast_ref::<ProcessingFailure>().is_some() {
                 "processing-failure"
             } else {
                 "incorrect-results"
@@ -321,6 +352,15 @@ fn execute<E: Endpoint, D: Driver>(
     let mut retired_plans = 0;
     let mut cold_block_boundary_verified = false;
     let origin = driver.next_frame();
+    let mut midi_input = Vec::with_capacity(fixture::MIDI_INPUT_CAPACITY);
+    let mut expected_midi = Vec::with_capacity(fixture::MIDI_OUTPUT_CAPACITY);
+    let mut delayed_midi = std::collections::VecDeque::new();
+    delayed_midi.extend((0..driver.midi_latency_frames() / QUANTUM).map(|_| Vec::new()));
+    let mut midi_events_checked = 0u64;
+    let mut midi_silent_callbacks = 0u64;
+    let mut midi_dense_callbacks = 0u64;
+    let mut cold_midi_events = 0usize;
+    let mut midi_block_boundary_verified = false;
     let mut delayed: [std::collections::VecDeque<f32>; 2] = std::array::from_fn(|_| {
         let mut queue = std::collections::VecDeque::with_capacity(driver.latency_frames() + 1);
         queue.extend(std::iter::repeat_n(0., driver.latency_frames()));
@@ -355,6 +395,12 @@ fn execute<E: Endpoint, D: Driver>(
         let mut control_ns = start.elapsed().as_nanos() as u64;
         driver.fill_input();
         let measurement = driver.process().map_err(ProcessingFailure)?;
+        if report.backend == "fpga-rtl" && report.fixture.media == fixture::Media::Midi {
+            ensure!(
+                measurement.reads == 0 && measurement.writes == 0,
+                "MIDI-only callback touched audio media memory"
+            );
+        }
         let start = Instant::now();
         control.pump()?;
         control.snapshot()?;
@@ -364,6 +410,24 @@ fn execute<E: Endpoint, D: Driver>(
             "snapshot frame mismatch: {} != {frame}",
             control.snapshot_frame
         );
+        if callback == 0
+            && report.backend == "cpu"
+            && report.fixture.media.midi()
+            && control
+                .responses
+                .iter()
+                .map(|r| r.records().len())
+                .sum::<usize>()
+                == commands.len()
+            && control.responses.iter().all(|r| {
+                r.header.code() == Code::Applied
+                    && r.records()
+                        .iter()
+                        .all(|record| record.code() == Code::Unsupported)
+            })
+        {
+            return Err(Unsupported.into());
+        }
         let mut completed = 0;
         for response in &control.responses {
             ensure!(
@@ -458,7 +522,11 @@ fn execute<E: Endpoint, D: Driver>(
             callback_retired += (previous[i].planned & !state.planned).count_ones() as u64;
         }
         let mut peaks = [0f32; 2];
-        for (channel, peak) in peaks.iter_mut().enumerate() {
+        for (channel, peak) in peaks
+            .iter_mut()
+            .enumerate()
+            .take(report.fixture.media.audio_channels())
+        {
             for (offset, &actual) in driver.output(channel).iter().enumerate() {
                 ensure!(
                     actual.is_finite(),
@@ -485,9 +553,57 @@ fn execute<E: Endpoint, D: Driver>(
                 }
             }
         }
+        let mut input_events = 0;
+        if report.fixture.media.midi() {
+            fixture::midi_input((callback * QUANTUM) as u64, &mut midi_input);
+            input_events = midi_input.len();
+            if let Some(captured) = measurement.midi_captured_events {
+                ensure!(
+                    captured == input_events as u64 * u64::from(recording),
+                    "MIDI capture work differs from recording stimulus"
+                );
+            }
+            if callback < report.fixture.record_frames / QUANTUM
+                && !matches!(report.fixture.pattern, fixture::Pattern::Grab)
+            {
+                cold_midi_events += input_events;
+                if cold_midi_events > fixture::MIDI_BLOCK_EVENTS as usize {
+                    if let Some(blocks) = measurement.midi_storage_blocks {
+                        ensure!(
+                            blocks >= 2 * u64::from(LOOPS),
+                            "MIDI recordings did not cross event blocks"
+                        );
+                    }
+                    midi_block_boundary_verified = true;
+                }
+            }
+            expected_midi.clear();
+            for (id, state) in control
+                .states
+                .iter()
+                .enumerate()
+                .filter(|(_, s)| s.mode == 1)
+            {
+                ensure!(
+                    state.position % QUANTUM as u64 == 0 && state.length % QUANTUM as u64 == 0,
+                    "unaligned fixture MIDI playback position"
+                );
+                fixture::midi_input(captures[id] + state.position, &mut midi_input);
+                expected_midi.extend(midi_input.iter().copied());
+            }
+            expected_midi.sort_by_key(|event| event.offset);
+            delayed_midi.push_back(expected_midi.clone());
+            let expected = delayed_midi.pop_front().unwrap();
+            ensure!(driver.midi_output() == expected, "MIDI bytes/timestamps/order mismatch at callback {callback}: actual {} events, expected {}; first actual {:?}, expected {:?}",
+                driver.midi_output().len(), expected.len(), driver.midi_output().first(), expected.first());
+            midi_events_checked += expected.len() as u64;
+            midi_silent_callbacks += u64::from(playing > 0 && expected.is_empty());
+            midi_dense_callbacks += u64::from(expected.len() > 256);
+        }
         growth += u64::from(measurement.storage_bytes > last_storage);
         released += u64::from(measurement.storage_bytes < last_storage);
         if callback == fixture::FPGA_BLOCK_FRAMES / QUANTUM
+            && report.fixture.media.audio()
             && !matches!(report.fixture.pattern, fixture::Pattern::Grab)
         {
             ensure!(
@@ -502,6 +618,8 @@ fn execute<E: Endpoint, D: Driver>(
             Some("storage-growth")
         } else if measurement.storage_bytes < last_storage {
             Some("storage-release")
+        } else if input_events == fixture::MIDI_INPUT_CAPACITY || driver.midi_output().len() > 256 {
+            Some("midi-burst")
         } else {
             None
         };
@@ -524,6 +642,8 @@ fn execute<E: Endpoint, D: Driver>(
             planned_slots_retired: callback_retired as u32,
             takes_replaced: callback_replaced as u32,
             output_peak: peaks,
+            midi_input_events: input_events,
+            midi_output_events: driver.midi_output().len(),
         });
     }
     ensure!(
@@ -531,7 +651,7 @@ fn execute<E: Endpoint, D: Driver>(
         "recordings did not grow across allocation boundaries"
     );
     ensure!(total_wraps >= LOOPS, "insufficient playback wrap coverage");
-    if !matches!(report.fixture.pattern, fixture::Pattern::Grab) {
+    if report.fixture.media.audio() && !matches!(report.fixture.pattern, fixture::Pattern::Grab) {
         ensure!(
             cold_block_boundary_verified,
             "missing cold block-boundary coverage"
@@ -547,9 +667,21 @@ fn execute<E: Endpoint, D: Driver>(
             "scheduled transitions were not exercised"
         );
     }
+    if report.fixture.media.midi() {
+        ensure!(
+            midi_block_boundary_verified
+                && midi_events_checked > 0
+                && midi_dense_callbacks > 0
+                && midi_silent_callbacks > 0,
+            "missing MIDI block/burst/quiet validation coverage"
+        );
+    }
     report.coverage = serde_json::json!({"storage_growth_callbacks":growth,"storage_release_callbacks":released,
         "wraps":total_wraps,"replaced_takes":replaced_takes,"retired_plan_slots":retired_plans,"complete_samples":report.callbacks.len()==report.fixture.callbacks,
         "cold_block_boundary_verified":cold_block_boundary_verified,
-        "stereo_samples_checked":true,"commands_verified":report.events.iter().map(|e| e.commands).sum::<usize>()});
+        "stereo_samples_checked":report.fixture.media.audio(),
+        "midi_events_checked":midi_events_checked,"midi_bytes_timestamps_order_checked":report.fixture.media.midi(),
+        "midi_silent_playback_callbacks":midi_silent_callbacks,"midi_dense_playback_callbacks":midi_dense_callbacks,
+        "midi_block_boundary_verified":midi_block_boundary_verified,"cold_midi_events_per_loop":cold_midi_events,"commands_verified":report.events.iter().map(|e| e.commands).sum::<usize>()});
     Ok(())
 }

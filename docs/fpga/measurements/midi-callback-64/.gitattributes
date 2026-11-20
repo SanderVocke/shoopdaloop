@@ -1,0 +1,2 @@
+*.log -whitespace linguist-generated=true
+*.svg -whitespace linguist-generated=true

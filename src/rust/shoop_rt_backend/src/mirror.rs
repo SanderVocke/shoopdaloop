@@ -112,6 +112,7 @@ impl Controls {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct Track {
     pub processor_visible: bool,
     pub processor_snapshot: Option<shoop_rt_protocol::processors::Snapshot>,
@@ -195,6 +196,7 @@ impl Default for LoopView {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct Loop {
     pub recorded: Option<(u64, shoop_rt_protocol::RecordedProcessorState)>,
     pub timing: shoop_rt_protocol::TimingState,
@@ -237,12 +239,15 @@ pub(crate) enum PortTarget {
     GlobalFx,
 }
 
+#[derive(Clone)]
 pub(crate) struct Port {
     pub descriptor: BackendPortDescriptor,
     pub target: PortTarget,
 }
 
+#[derive(Clone)]
 pub(crate) struct Bus {
+    pub processor_type: Option<String>,
     pub processor_slot: Option<shoop_rt_protocol::ProcessorSlot>,
     pub processor_snapshot: Option<shoop_rt_protocol::processors::Snapshot>,
     pub processor_visible: bool,
@@ -345,7 +350,9 @@ impl Slots {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct Mirror {
+    pub loop_smoothing_frames: u32,
     pub tracks: BTreeMap<BackendTrackId, Track>,
     pub loops: BTreeMap<BackendLoopId, Loop>,
     pub ports: BTreeMap<BackendPortId, Port>,
@@ -370,6 +377,25 @@ pub(crate) struct Mirror {
 }
 
 impl Mirror {
+    pub(crate) fn restore_prepared(&mut self, mut previous: Self) {
+        previous.next_track = self.next_track;
+        previous.next_loop = self.next_loop;
+        previous.next_port = self.next_port;
+        previous.next_bus = self.next_bus;
+        previous.next_channel = self.next_channel;
+        for (before, current) in [
+            (&mut previous.strip_slots, &self.strip_slots),
+            (&mut previous.loop_slots, &self.loop_slots),
+            (&mut previous.bus_slots, &self.bus_slots),
+        ] {
+            before.resize(current.capacity());
+            before.floor = before.floor.max(current.floor);
+            for (generation, current) in before.generations.iter_mut().zip(&current.generations) {
+                *generation = (*generation).max(*current);
+            }
+        }
+        *self = previous;
+    }
     pub fn replacement_image(&self) -> Self {
         let mut image = Self::new();
         image.buses.clear();
@@ -440,6 +466,7 @@ impl Mirror {
             );
         }
         Self {
+            loop_smoothing_frames: 0,
             tracks: BTreeMap::new(),
             loops: BTreeMap::new(),
             ports,
@@ -451,6 +478,7 @@ impl Mirror {
             buses: [(
                 MASTER_BUS_ID,
                 Bus {
+                    processor_type: None,
                     processor_slot: None,
                     processor_snapshot: None,
                     processor_visible: false,
@@ -837,6 +865,7 @@ impl Mirror {
         self.buses.insert(
             id,
             Bus {
+                processor_type: None,
                 processor_slot: None,
                 processor_snapshot: None,
                 processor_visible: false,

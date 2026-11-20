@@ -1,0 +1,22 @@
+[package]
+name="shoop_rt_host_marlin"
+version.workspace=true
+edition="2021"
+description="Single-owner optional Marlin endpoint and renderer"
+[lints]
+workspace=true
+[features]
+default=[]
+sim=["dep:rt_fpga_rtl","rt_fpga_rtl/sim","dep:rt_fpga_compiler","dep:rt_fpga_reference","dep:rt_runtime","dep:shoop_rt_protocol","dep:shoop_rt_transport","dep:shoop_rt_host_reference","dep:rtrb","dep:anyhow"]
+[target.'cfg(not(target_arch="wasm32"))'.dependencies]
+rt_fpga_rtl={path="../rt_fpga_rtl",features=["rt-interface"],optional=true}
+rt_fpga_compiler={path="../rt_fpga_compiler",optional=true}
+rt_fpga_reference={path="../rt_fpga_reference",features=["rt-interface"],optional=true}
+rt_runtime={path="../rt_runtime",optional=true}
+shoop_rt_protocol={path="../shoop_rt_protocol",optional=true}
+shoop_rt_transport={path="../shoop_rt_transport",features=["rt-interface"],optional=true}
+shoop_rt_host_reference={path="../shoop_rt_host_reference",features=["rtl"],optional=true}
+rtrb={workspace=true,optional=true}
+anyhow={workspace=true,features=["std"],optional=true}
+[dev-dependencies]
+shoop_wasm_test_support={path="../shoop_wasm_test_support"}

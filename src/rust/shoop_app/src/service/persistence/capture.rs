@@ -5,9 +5,21 @@ use alloc::vec::Vec;
 use super::*;
 use shoop_app_protocol::persistence_image as image;
 
+fn push_checkpoint(payloads: &mut Vec<image::Payload>, state: String) -> Result<u32> {
+    anyhow::ensure!(
+        !state.is_empty() && state.len() <= MAX_OPAQUE_STATE_ENVELOPE_BYTES,
+        "Carla checkpoint exceeds the transfer bounds"
+    );
+    payloads.push(image::Payload::ProcessorCheckpoint(Arc::new(
+        state.into_bytes(),
+    )));
+    Ok(u32::try_from(payloads.len())?)
+}
+
 pub(in crate::service) struct Cut {
     state: Arc<SessionSnapshot>,
     tracks: BTreeMap<TrackId, BackendTrackId>,
+    buses: BTreeMap<BusId, BackendBusId>,
     loops: BTreeMap<LoopId, BackendLoopId>,
     external: BTreeMap<PortId, BTreeSet<String>>,
     routes: BTreeSet<MixerRouteState>,
@@ -64,6 +76,11 @@ impl Cut {
                 .tracks
                 .iter()
                 .map(|(id, track)| (*id, track.backend))
+                .collect(),
+            buses: service
+                .buses
+                .iter()
+                .map(|(id, bus)| (*id, bus.backend))
                 .collect(),
             loops: service
                 .loops
@@ -149,6 +166,7 @@ impl Cut {
         &self,
         state: &LoopState,
         content: BackendLoopContent,
+        carla: bool,
         payloads: &mut Vec<image::Payload>,
     ) -> Result<image::Loop> {
         let mut audio = Vec::new();
@@ -207,8 +225,20 @@ impl Cut {
                 initial: channel.start_state,
             });
         }
+        let (recorded_processor_state, recorded_processor_checkpoint) = if carla {
+            (
+                None,
+                content
+                    .recorded_processor_state
+                    .map(|state| push_checkpoint(payloads, state))
+                    .transpose()?,
+            )
+        } else {
+            (self.recorded.get(&state.id).cloned().flatten(), None)
+        };
         Ok(image::Loop {
-            recorded_processor_state: self.recorded.get(&state.id).cloned().flatten(),
+            recorded_processor_checkpoint,
+            recorded_processor_state,
             sync_source: self.sync.get(&state.id).copied(),
             repeat_sync: state.repeat_sync,
             composite: self
@@ -263,6 +293,7 @@ impl Cut {
             }
         }
         for track in &self.state.tracks {
+            let carla = matches!(&track.topology, TrackTopology::DryWet { processor_type, .. } if processor_type.is_carla());
             let backend = self.tracks[&track.id];
             let position = capture
                 .tracks
@@ -284,6 +315,7 @@ impl Cut {
                 loops.push(self.content(
                     state,
                     captured.loops.swap_remove(position),
+                    carla,
                     &mut payloads,
                 )?);
             }
@@ -301,7 +333,18 @@ impl Cut {
                 }
                 None => (Vec::new(), Vec::new()),
             };
+            let processor_checkpoint =
+                if carla && matches!(target, persistence::Target::Session { .. }) {
+                    let state = captured
+                        .processor_state
+                        .take()
+                        .ok_or_else(|| anyhow!("Carla track checkpoint is unavailable"))?;
+                    Some(push_checkpoint(&mut payloads, state)?)
+                } else {
+                    None
+                };
             tracks.push(image::Track {
+                processor_checkpoint,
                 topology: track.topology.clone(),
                 default_playback_mode: track.default_playback_mode,
                 processor_state,
@@ -353,12 +396,36 @@ impl Cut {
                                     .fx
                                     .as_ref()
                                     .map(|fx| {
+                                        if fx.processor_type.is_carla() {
+                                            let state = capture
+                                                .buses
+                                                .iter_mut()
+                                                .find(|candidate| {
+                                                    candidate.source_id == self.buses[&bus.id].raw()
+                                                })
+                                                .and_then(|candidate| {
+                                                    candidate.processor_state.take()
+                                                })
+                                                .ok_or_else(|| {
+                                                    anyhow!("Carla bus checkpoint is unavailable")
+                                                })?;
+                                            return Ok(image::BusFx {
+                                                processor_checkpoint: Some(push_checkpoint(
+                                                    &mut payloads,
+                                                    state,
+                                                )?),
+                                                processor_type: fx.processor_type.clone(),
+                                                state: String::new(),
+                                                midi_cc_assignments: Vec::new(),
+                                            });
+                                        }
                                         let Some(TrackProcessorEditorState::BuiltInFx(editor)) =
                                             &fx.editor
                                         else {
                                             return Err(anyhow!("bus FX state unavailable"));
                                         };
                                         Ok(image::BusFx {
+                                            processor_checkpoint: None,
                                             processor_type: fx.processor_type.clone(),
                                             state: TrackProcessorEditorState::BuiltInFx(
                                                 editor.clone(),
@@ -429,15 +496,21 @@ impl Cut {
         if self.loops.get(&loop_id).map(|id| id.raw()) != Some(content.source_id) {
             return Err(anyhow!("capture returned another loop"));
         }
-        let state = self
+        let (track, state) = self
             .state
             .tracks
             .iter()
-            .flat_map(|track| &track.loops)
-            .find(|entry| entry.id == loop_id)
+            .find_map(|track| {
+                track
+                    .loops
+                    .iter()
+                    .find(|entry| entry.id == loop_id)
+                    .map(|state| (track, state))
+            })
             .ok_or_else(|| anyhow!("capture target disappeared"))?;
         let mut payloads = Vec::new();
-        let content = self.content(state, content, &mut payloads)?;
+        let carla = matches!(&track.topology, TrackTopology::DryWet { processor_type, .. } if processor_type.is_carla());
+        let content = self.content(state, content, carla, &mut payloads)?;
         let image = Arc::new(image::Image {
             manifest: image::Manifest::Loop {
                 sample_rate: self.state.status.sample_rate,

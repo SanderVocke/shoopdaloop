@@ -1,0 +1,310 @@
+WARNING: Default location for XILINX_HLS not found
+
+****** Vivado v2021.1 (64-bit)
+  **** SW Build 3247384 on Thu Jun 10 19:36:07 MDT 2021
+    ** Copyright 1986-2021 Xilinx, Inc. All Rights Reserved.
+
+INFO: [Common 17-724] Xilinx Tcl Store apps are automatically updated.
+source run.tcl
+# if {[version -short] ne {2021.1}} {error "This experiment requires Vivado 2021.1"}
+# set_param general.maxThreads 2
+# create_project -in_memory -part xc7z020clg484-1
+# set includes {}
+# set sources {}
+# foreach library {state_processor job_processor chunk_memory media_store axi_memory midi} {
+#     set directory source/fpga/$library/rtl
+#     if {![file isdirectory $directory]} {continue}
+#     lappend includes [file normalize $directory]
+#     foreach source [lsort [glob $directory/*.sv]] {lappend sources $source}
+# }
+# set_property include_dirs $includes [current_fileset]
+# lappend sources context.sv
+# read_verilog -sv $sources
+# read_xdc context.xdc
+# set f [open setup.txt w]
+# puts $f "Vivado: [version]\nPart: xc7z020clg484-1\nThreads: 2\nUncertainty: 0.2 ns\nFlow: OOC, rebuilt hierarchy, default placement/routing, post-place phys_opt"
+# close $f
+# proc reports {stage} {
+#     report_utilization -file ${stage}_utilization.rpt
+#     report_utilization -hierarchical -hierarchical_depth 8 -file ${stage}_hierarchical_utilization.rpt
+#     foreach component {audio midi} {
+#         set cells [get_cells -quiet $component/core_under_test]
+#         if {[llength $cells]} {report_utilization -cells $cells -file ${stage}_${component}_utilization.rpt}
+#     }
+#     report_timing_summary -delay_type min_max -report_unconstrained -check_timing_verbose -max_paths 20 -file ${stage}_timing_summary.rpt
+#     report_timing -delay_type max -max_paths 20 -path_type full_clock_expanded -file ${stage}_critical_paths.rpt
+#     check_timing -verbose -file ${stage}_check_timing.rpt
+#     set setup_paths [get_timing_paths -delay_type max -max_paths 1]
+#     set hold_paths [get_timing_paths -delay_type min -max_paths 1]
+#     set f [open ${stage}.json w]
+#     puts $f "{\"wns_ns\":[get_property SLACK $setup_paths],\"whs_ns\":[get_property SLACK $hold_paths]}"
+#     close $f
+# }
+# set stage synth
+Command: synth_design -top session_context -part xc7z020clg484-1 -mode out_of_context -flatten_hierarchy rebuilt
+Starting synth_design
+Attempting to get a license for feature 'Synthesis' and/or device 'xc7z020'
+INFO: [Common 17-349] Got license for feature 'Synthesis' and/or device 'xc7z020'
+INFO: [Device 21-403] Loading part xc7z020clg484-1
+INFO: [Synth 8-7079] Multithreading enabled for synth_design using a maximum of 2 processes.
+INFO: [Synth 8-7078] Launching helper process for spawning children vivado processes
+INFO: [Synth 8-7075] Helper process launched with PID 48
+WARNING: [Synth 8-6901] identifier 'arg4' is used before its declaration [/workspace/work/midi-vivado/before-150/source/fpga/state_processor/rtl/sp_engine.sv:94]
+WARNING: [Synth 8-6901] identifier 'arg3' is used before its declaration [/workspace/work/midi-vivado/before-150/source/fpga/state_processor/rtl/sp_engine.sv:94]
+WARNING: [Synth 8-6901] identifier 'arg2' is used before its declaration [/workspace/work/midi-vivado/before-150/source/fpga/state_processor/rtl/sp_engine.sv:94]
+WARNING: [Synth 8-6901] identifier 'arg1' is used before its declaration [/workspace/work/midi-vivado/before-150/source/fpga/state_processor/rtl/sp_engine.sv:94]
+WARNING: [Synth 8-6901] identifier 'arg0' is used before its declaration [/workspace/work/midi-vivado/before-150/source/fpga/state_processor/rtl/sp_engine.sv:94]
+WARNING: [Synth 8-6901] identifier 'hint_push_data' is used before its declaration [/workspace/work/midi-vivado/before-150/source/fpga/job_processor/rtl/audio_pipeline.sv:138]
+WARNING: [Synth 8-6901] identifier 'input_read' is used before its declaration [/workspace/work/midi-vivado/before-150/source/fpga/job_processor/rtl/job_processor.sv:167]
+WARNING: [Synth 8-6901] identifier 'output_write' is used before its declaration [/workspace/work/midi-vivado/before-150/source/fpga/job_processor/rtl/job_processor.sv:169]
+WARNING: [Synth 8-6901] identifier 'output_address' is used before its declaration [/workspace/work/midi-vivado/before-150/source/fpga/job_processor/rtl/job_processor.sv:171]
+WARNING: [Synth 8-6901] identifier 'dma_active' is used before its declaration [/workspace/work/midi-vivado/before-150/source/fpga/chunk_memory/rtl/chunk_memory.sv:87]
+WARNING: [Synth 8-6901] identifier 'handoff_request' is used before its declaration [/workspace/work/midi-vivado/before-150/source/fpga/media_store/rtl/media_audio_pipeline.sv:125]
+WARNING: [Synth 8-6901] identifier 'fence_issued' is used before its declaration [/workspace/work/midi-vivado/before-150/source/fpga/media_store/rtl/media_audio_pipeline.sv:125]
+WARNING: [Synth 8-6901] identifier 'fence_issued' is used before its declaration [/workspace/work/midi-vivado/before-150/source/fpga/media_store/rtl/media_audio_pipeline.sv:128]
+WARNING: [Synth 8-992] cancel_lookup is already implicitly declared earlier [/workspace/work/midi-vivado/before-150/source/fpga/media_store/rtl/media_store.sv:306]
+WARNING: [Synth 8-992] gc_retire_valid is already implicitly declared earlier [/workspace/work/midi-vivado/before-150/source/fpga/media_store/rtl/media_store.sv:324]
+WARNING: [Synth 8-992] gc_retire_ready is already implicitly declared earlier [/workspace/work/midi-vivado/before-150/source/fpga/media_store/rtl/media_store.sv:324]
+WARNING: [Synth 8-992] gc_retire_done is already implicitly declared earlier [/workspace/work/midi-vivado/before-150/source/fpga/media_store/rtl/media_store.sv:324]
+WARNING: [Synth 8-992] gc_retire_busy is already implicitly declared earlier [/workspace/work/midi-vivado/before-150/source/fpga/media_store/rtl/media_store.sv:324]
+WARNING: [Synth 8-992] gc_retire_error is already implicitly declared earlier [/workspace/work/midi-vivado/before-150/source/fpga/media_store/rtl/media_store.sv:325]
+WARNING: [Synth 8-992] advance is already implicitly declared earlier [/workspace/work/midi-vivado/before-150/source/fpga/media_store/rtl/media_store.sv:391]
+WARNING: [Synth 8-6901] identifier 'advance' is used before its declaration [/workspace/work/midi-vivado/before-150/source/fpga/media_store/rtl/media_store.sv:209]
+WARNING: [Synth 8-6901] identifier 'cm_arena_base' is used before its declaration [/workspace/work/midi-vivado/before-150/source/fpga/media_store/rtl/media_store.sv:218]
+WARNING: [Synth 8-6901] identifier 'gc_fault' is used before its declaration [/workspace/work/midi-vivado/before-150/source/fpga/media_store/rtl/media_store.sv:221]
+WARNING: [Synth 8-6901] identifier 'command_window' is used before its declaration [/workspace/work/midi-vivado/before-150/source/fpga/media_store/rtl/media_store.sv:239]
+WARNING: [Synth 8-6901] identifier 'gc_lock_held' is used before its declaration [/workspace/work/midi-vivado/before-150/source/fpga/media_store/rtl/media_store.sv:239]
+WARNING: [Synth 8-6901] identifier 'gc_lock_held' is used before its declaration [/workspace/work/midi-vivado/before-150/source/fpga/media_store/rtl/media_store.sv:241]
+WARNING: [Synth 8-6901] identifier 'advance' is used before its declaration [/workspace/work/midi-vivado/before-150/source/fpga/media_store/rtl/media_store.sv:241]
+WARNING: [Synth 8-6901] identifier 'metadata_request_valid' is used before its declaration [/workspace/work/midi-vivado/before-150/source/fpga/media_store/rtl/media_store.sv:355]
+WARNING: [Synth 8-6901] identifier 'metadata_request_valid' is used before its declaration [/workspace/work/midi-vivado/before-150/source/fpga/media_store/rtl/media_store.sv:356]
+---------------------------------------------------------------------------------
+Starting RTL Elaboration : Time (s): cpu = 00:00:04 ; elapsed = 00:00:05 . Memory (MB): peak = 2633.734 ; gain = 0.000 ; free physical = 452 ; free virtual = 12911
+---------------------------------------------------------------------------------
+INFO: [Synth 8-6157] synthesizing module 'session_context' [/workspace/work/midi-vivado/before-150/context.sv:805]
+WARNING: [Synth 8-4446] all outputs are unconnected for this instance and logic may be removed [/workspace/work/midi-vivado/before-150/context.sv:831]
+INFO: [Synth 8-6157] synthesizing module 'audio_context' [/workspace/work/midi-vivado/before-150/context.sv:2]
+	Parameter EXTERNAL_IO bound to: 1 - type: integer 
+	Parameter LIVE_LOADING bound to: 1 - type: integer 
+	Parameter EXPORT_SYNC_EVENTS bound to: 1 - type: integer 
+	Parameter PROGRAM_DEPTH bound to: 1024 - type: integer 
+	Parameter STATE_DEPTH bound to: 256 - type: integer 
+	Parameter JOB_DEPTH bound to: 1024 - type: integer 
+	Parameter MAX_FRAMES bound to: 32 - type: integer 
+	Parameter BUFFERS bound to: 512 - type: integer 
+	Parameter INPUT_PORTS bound to: 2 - type: integer 
+	Parameter OUTPUT_PORTS bound to: 2 - type: integer 
+	Parameter REUSE_VIEWS bound to: 1 - type: integer 
+	Parameter VIEWS bound to: 512 - type: integer 
+	Parameter SLOTS bound to: 5763072 - type: integer 
+	Parameter CHUNK_FRAMES bound to: 32 - type: integer 
+	Parameter BLOCK_CHUNKS bound to: 32 - type: integer 
+	Parameter RETIRED_TABLES bound to: 256 - type: integer 
+	Parameter TABLE_LINES bound to: 128 - type: integer 
+	Parameter REF_LINES bound to: 4 - type: integer 
+	Parameter STACK_LINES bound to: 2 - type: integer 
+	Parameter READ_BUFFERS bound to: 4 - type: integer 
+	Parameter WRITE_BUFFERS bound to: 4 - type: integer 
+	Parameter BURST_MEMORY bound to: 1 - type: integer 
+	Parameter AXI_DATA_WIDTH bound to: 64 - type: integer 
+	Parameter PHYSICAL_BASE bound to: 32'b00000001000000000000000000000000 
+	Parameter PHYSICAL_BYTES_LIMIT bound to: 64'b0000000000000000000000000000000001000000000000000000000000000000 
+INFO: [Synth 8-6157] synthesizing module 'media_audio_pipeline_axi' [/workspace/work/midi-vivado/before-150/source/fpga/axi_memory/rtl/media_audio_pipeline_axi.sv:4]
+	Parameter EXTERNAL_IO bound to: 1 - type: integer 
+	Parameter LIVE_LOADING bound to: 1 - type: integer 
+	Parameter EXPORT_SYNC_EVENTS bound to: 1 - type: integer 
+	Parameter PROGRAM_REGIONS bound to: 2 - type: integer 
+	Parameter PROGRAM_DEPTH bound to: 1024 - type: integer 
+	Parameter STATE_DEPTH bound to: 256 - type: integer 
+	Parameter JOB_DEPTH bound to: 1024 - type: integer 
+	Parameter MAX_FRAMES bound to: 32 - type: integer 
+	Parameter BUFFERS bound to: 512 - type: integer 
+	Parameter INPUT_PORTS bound to: 2 - type: integer 
+	Parameter OUTPUT_PORTS bound to: 2 - type: integer 
+	Parameter REUSE_VIEWS bound to: 1 - type: integer 
+	Parameter MAINTENANCE_AT_RUN bound to: 1 - type: integer 
+	Parameter VIEWS bound to: 512 - type: integer 
+	Parameter SLOTS bound to: 5763072 - type: integer 
+	Parameter CHUNK_FRAMES bound to: 32 - type: integer 
+	Parameter MEMORY_RESPONSE_CYCLES bound to: 1 - type: integer 
+	Parameter BLOCK_CHUNKS bound to: 32 - type: integer 
+	Parameter RETIRED_TABLES bound to: 256 - type: integer 
+	Parameter RECLAIM_BLOCKS bound to: 0 - type: integer 
+	Parameter RECLAIM_CYCLES bound to: 5000 - type: integer 
+	Parameter RECLAIM_GUARD bound to: 1024 - type: integer 
+	Parameter TABLE_PAGES bound to: 16119 - type: integer 
+	Parameter TABLE_LINES bound to: 128 - type: integer 
+	Parameter REF_LINES bound to: 4 - type: integer 
+	Parameter STACK_LINES bound to: 2 - type: integer 
+	Parameter READ_BUFFERS bound to: 4 - type: integer 
+	Parameter WRITE_BUFFERS bound to: 4 - type: integer 
+	Parameter BURST_MEMORY bound to: 1 - type: integer 
+	Parameter AXI_DATA_WIDTH bound to: 64 - type: integer 
+	Parameter PHYSICAL_BASE bound to: 32'b00000001000000000000000000000000 
+	Parameter PHYSICAL_BYTES_LIMIT bound to: 64'b0000000000000000000000000000000001000000000000000000000000000000 
+INFO: [Synth 8-6157] synthesizing module 'media_audio_pipeline' [/workspace/work/midi-vivado/before-150/source/fpga/media_store/rtl/media_audio_pipeline.sv:3]
+	Parameter EXTERNAL_IO bound to: 1 - type: integer 
+	Parameter LIVE_LOADING bound to: 1 - type: integer 
+	Parameter EXPORT_SYNC_EVENTS bound to: 1 - type: integer 
+	Parameter PROGRAM_REGIONS bound to: 2 - type: integer 
+	Parameter PROGRAM_DEPTH bound to: 1024 - type: integer 
+	Parameter STATE_DEPTH bound to: 256 - type: integer 
+	Parameter JOB_DEPTH bound to: 1024 - type: integer 
+	Parameter MAX_FRAMES bound to: 32 - type: integer 
+	Parameter BUFFERS bound to: 512 - type: integer 
+	Parameter INPUT_PORTS bound to: 2 - type: integer 
+	Parameter OUTPUT_PORTS bound to: 2 - type: integer 
+	Parameter REUSE_VIEWS bound to: 1 - type: integer 
+	Parameter MAINTENANCE_AT_RUN bound to: 1 - type: integer 
+	Parameter VIEWS bound to: 512 - type: integer 
+	Parameter SLOTS bound to: 5763072 - type: integer 
+	Parameter CHUNK_FRAMES bound to: 32 - type: integer 
+	Parameter MEMORY_RESPONSE_CYCLES bound to: 1 - type: integer 
+	Parameter BLOCK_CHUNKS bound to: 32 - type: integer 
+	Parameter RETIRED_TABLES bound to: 256 - type: integer 
+	Parameter RECLAIM_BLOCKS bound to: 0 - type: integer 
+	Parameter RECLAIM_CYCLES bound to: 5000 - type: integer 
+	Parameter RECLAIM_GUARD bound to: 1024 - type: integer 
+	Parameter TABLE_PAGES bound to: 16119 - type: integer 
+	Parameter TABLE_LINES bound to: 128 - type: integer 
+	Parameter REF_LINES bound to: 4 - type: integer 
+	Parameter STACK_LINES bound to: 2 - type: integer 
+	Parameter READ_BUFFERS bound to: 4 - type: integer 
+	Parameter WRITE_BUFFERS bound to: 4 - type: integer 
+	Parameter BURST_MEMORY bound to: 1 - type: integer 
+INFO: [Synth 8-6157] synthesizing module 'audio_pipeline' [/workspace/work/midi-vivado/before-150/source/fpga/job_processor/rtl/audio_pipeline.sv:3]
+	Parameter PROGRAM_DEPTH bound to: 1024 - type: integer 
+	Parameter LIVE_LOADING bound to: 1 - type: integer 
+	Parameter PROGRAM_REGIONS bound to: 2 - type: integer 
+	Parameter STATE_DEPTH bound to: 256 - type: integer 
+	Parameter JOB_DEPTH bound to: 1024 - type: integer 
+	Parameter EXTERNAL_IO bound to: 1 - type: integer 
+	Parameter MAX_FRAMES bound to: 32 - type: integer 
+	Parameter BUFFERS bound to: 512 - type: integer 
+	Parameter INPUT_PORTS bound to: 2 - type: integer 
+	Parameter OUTPUT_PORTS bound to: 2 - type: integer 
+	Parameter CHUNK_FRAMES bound to: 32 - type: integer 
+	Parameter ENABLE_MEDIA bound to: 1 - type: integer 
+INFO: [Synth 8-6157] synthesizing module 'sp_job_fifo' [/workspace/work/midi-vivado/before-150/source/fpga/state_processor/rtl/sp_job_fifo.sv:3]
+	Parameter DEPTH bound to: 1024 - type: integer 
+	Parameter COUNT_BITS bound to: 11 - type: integer 
+INFO: [Synth 8-6157] synthesizing module 'sp_ram' [/workspace/work/midi-vivado/before-150/source/fpga/state_processor/rtl/sp_ram.sv:1]
+	Parameter WIDTH bound to: 256 - type: integer 
+	Parameter DEPTH bound to: 1024 - type: integer 
+	Parameter ADDR_BITS bound to: 10 - type: integer 
+INFO: [Synth 8-6155] done synthesizing module 'sp_ram' (1#1) [/workspace/work/midi-vivado/before-150/source/fpga/state_processor/rtl/sp_ram.sv:1]
+INFO: [Synth 8-6155] done synthesizing module 'sp_job_fifo' (2#1) [/workspace/work/midi-vivado/before-150/source/fpga/state_processor/rtl/sp_job_fifo.sv:3]
+INFO: [Synth 8-6157] synthesizing module 'state_processor' [/workspace/work/midi-vivado/before-150/source/fpga/state_processor/rtl/state_processor.sv:3]
+	Parameter PROGRAM_DEPTH bound to: 1024 - type: integer 
+	Parameter PROGRAM_REGIONS bound to: 2 - type: integer 
+	Parameter STATE_DEPTH bound to: 256 - type: integer 
+	Parameter JOB_DEPTH bound to: 1024 - type: integer 
+	Parameter LOOP_DEPTH bound to: 256 - type: integer 
+INFO: [Synth 8-6157] synthesizing module 'sp_ram__parameterized0' [/workspace/work/midi-vivado/before-150/source/fpga/state_processor/rtl/sp_ram.sv:1]
+	Parameter WIDTH bound to: 96 - type: integer 
+	Parameter DEPTH bound to: 2048 - type: integer 
+	Parameter ADDR_BITS bound to: 11 - type: integer 
+INFO: [Synth 8-6155] done synthesizing module 'sp_ram__parameterized0' (2#1) [/workspace/work/midi-vivado/before-150/source/fpga/state_processor/rtl/sp_ram.sv:1]
+INFO: [Synth 8-6157] synthesizing module 'sp_ram__parameterized1' [/workspace/work/midi-vivado/before-150/source/fpga/state_processor/rtl/sp_ram.sv:1]
+	Parameter WIDTH bound to: 129 - type: integer 
+	Parameter DEPTH bound to: 256 - type: integer 
+	Parameter ADDR_BITS bound to: 8 - type: integer 
+INFO: [Synth 8-6155] done synthesizing module 'sp_ram__parameterized1' (2#1) [/workspace/work/midi-vivado/before-150/source/fpga/state_processor/rtl/sp_ram.sv:1]
+INFO: [Synth 8-6157] synthesizing module 'sp_engine' [/workspace/work/midi-vivado/before-150/source/fpga/state_processor/rtl/sp_engine.sv:4]
+	Parameter PROGRAM_DEPTH bound to: 1024 - type: integer 
+	Parameter STATE_DEPTH bound to: 256 - type: integer 
+	Parameter LOOP_DEPTH bound to: 256 - type: integer 
+	Parameter LOOP_MEMORY_BITS bound to: 12 - type: integer 
+	Parameter PROGRAM_ADDR_BITS bound to: 10 - type: integer 
+	Parameter STATE_ADDR_BITS bound to: 8 - type: integer 
+INFO: [Synth 8-6155] done synthesizing module 'sp_engine' (3#1) [/workspace/work/midi-vivado/before-150/source/fpga/state_processor/rtl/sp_engine.sv:4]
+INFO: [Synth 8-6157] synthesizing module 'sp_ram__parameterized2' [/workspace/work/midi-vivado/before-150/source/fpga/state_processor/rtl/sp_ram.sv:1]
+	Parameter WIDTH bound to: 64 - type: integer 
+	Parameter DEPTH bound to: 4096 - type: integer 
+	Parameter ADDR_BITS bound to: 12 - type: integer 
+INFO: [Synth 8-6155] done synthesizing module 'sp_ram__parameterized2' (3#1) [/workspace/work/midi-vivado/before-150/source/fpga/state_processor/rtl/sp_ram.sv:1]
+INFO: [Synth 8-6155] done synthesizing module 'state_processor' (4#1) [/workspace/work/midi-vivado/before-150/source/fpga/state_processor/rtl/state_processor.sv:3]
+INFO: [Synth 8-6157] synthesizing module 'job_processor' [/workspace/work/midi-vivado/before-150/source/fpga/job_processor/rtl/job_processor.sv:3]
+	Parameter EXTERNAL_IO bound to: 1 - type: integer 
+	Parameter MAX_FRAMES bound to: 32 - type: integer 
+	Parameter BUFFERS bound to: 512 - type: integer 
+	Parameter INPUT_PORTS bound to: 2 - type: integer 
+	Parameter OUTPUT_PORTS bound to: 2 - type: integer 
+	Parameter CHUNK_FRAMES bound to: 32 - type: integer 
+	Parameter ENABLE_MEDIA bound to: 1 - type: integer 
+INFO: [Synth 8-6157] synthesizing module 'jp_divider' [/workspace/work/midi-vivado/before-150/source/fpga/job_processor/rtl/jp_divider.sv:1]
+INFO: [Synth 8-6155] done synthesizing module 'jp_divider' (5#1) [/workspace/work/midi-vivado/before-150/source/fpga/job_processor/rtl/jp_divider.sv:1]
+INFO: [Synth 8-6157] synthesizing module 'jp_sample_ram' [/workspace/work/midi-vivado/before-150/source/fpga/job_processor/rtl/jp_sample_ram.sv:1]
+	Parameter DEPTH bound to: 16384 - type: integer 
+	Parameter ADDR_BITS bound to: 14 - type: integer 
+INFO: [Synth 8-6155] done synthesizing module 'jp_sample_ram' (6#1) [/workspace/work/midi-vivado/before-150/source/fpga/job_processor/rtl/jp_sample_ram.sv:1]
+INFO: [Synth 8-6157] synthesizing module 'sp_ram__parameterized3' [/workspace/work/midi-vivado/before-150/source/fpga/state_processor/rtl/sp_ram.sv:1]
+	Parameter WIDTH bound to: 128 - type: integer 
+	Parameter DEPTH bound to: 512 - type: integer 
+	Parameter ADDR_BITS bound to: 9 - type: integer 
+INFO: [Synth 8-6155] done synthesizing module 'sp_ram__parameterized3' (6#1) [/workspace/work/midi-vivado/before-150/source/fpga/state_processor/rtl/sp_ram.sv:1]
+INFO: [Synth 8-6155] done synthesizing module 'job_processor' (7#1) [/workspace/work/midi-vivado/before-150/source/fpga/job_processor/rtl/job_processor.sv:3]
+INFO: [Synth 8-6155] done synthesizing module 'audio_pipeline' (8#1) [/workspace/work/midi-vivado/before-150/source/fpga/job_processor/rtl/audio_pipeline.sv:3]
+INFO: [Synth 8-6157] synthesizing module 'media_store' [/workspace/work/midi-vivado/before-150/source/fpga/media_store/rtl/media_store.sv:1]
+	Parameter REUSE_VIEWS bound to: 1 - type: integer 
+	Parameter VIEWS bound to: 512 - type: integer 
+	Parameter SLOTS bound to: 5763072 - type: integer 
+	Parameter CHUNK_FRAMES bound to: 32 - type: integer 
+	Parameter BLOCK_CHUNKS bound to: 32 - type: integer 
+	Parameter RETIRED_TABLES bound to: 256 - type: integer 
+	Parameter RECLAIM_BLOCKS bound to: 0 - type: integer 
+	Parameter RECLAIM_CYCLES bound to: 5000 - type: integer 
+	Parameter RECLAIM_GUARD bound to: 1024 - type: integer 
+	Parameter TABLE_PAGES bound to: 16119 - type: integer 
+	Parameter TABLE_LINES bound to: 128 - type: integer 
+	Parameter REF_LINES bound to: 4 - type: integer 
+	Parameter STACK_LINES bound to: 2 - type: integer 
+	Parameter READ_BUFFERS bound to: 4 - type: integer 
+	Parameter WRITE_BUFFERS bound to: 4 - type: integer 
+	Parameter BURST_MEMORY bound to: 1 - type: integer 
+ERROR: [Synth 8-280] expression must be constant: first argument to $countones [/workspace/work/midi-vivado/before-150/source/fpga/media_store/rtl/media_store.sv:100]
+ERROR: [Synth 8-6156] failed synthesizing module 'media_store' [/workspace/work/midi-vivado/before-150/source/fpga/media_store/rtl/media_store.sv:1]
+ERROR: [Synth 8-6156] failed synthesizing module 'media_audio_pipeline' [/workspace/work/midi-vivado/before-150/source/fpga/media_store/rtl/media_audio_pipeline.sv:3]
+ERROR: [Synth 8-6156] failed synthesizing module 'media_audio_pipeline_axi' [/workspace/work/midi-vivado/before-150/source/fpga/axi_memory/rtl/media_audio_pipeline_axi.sv:4]
+ERROR: [Synth 8-6156] failed synthesizing module 'audio_context' [/workspace/work/midi-vivado/before-150/context.sv:2]
+ERROR: [Synth 8-6156] failed synthesizing module 'session_context' [/workspace/work/midi-vivado/before-150/context.sv:805]
+---------------------------------------------------------------------------------
+Finished RTL Elaboration : Time (s): cpu = 00:00:08 ; elapsed = 00:00:09 . Memory (MB): peak = 2633.734 ; gain = 0.000 ; free physical = 1174 ; free virtual = 13615
+---------------------------------------------------------------------------------
+RTL Elaboration failed
+INFO: [Common 17-83] Releasing license: Synthesis
+35 Infos, 30 Warnings, 0 Critical Warnings and 7 Errors encountered.
+synth_design failed
+# set status [catch {
+#     synth_design -top session_context -part xc7z020clg484-1 -mode out_of_context -flatten_hierarchy rebuilt
+#     write_checkpoint -force post_synth.dcp
+#     reports post_synth
+#     set stage opt
+#     opt_design
+#     reports post_opt
+#     write_checkpoint -force post_opt.dcp
+#     set stage place
+#     place_design
+#     phys_opt_design
+#     write_checkpoint -force post_place.dcp
+#     reports post_place
+#     set stage route
+#     route_design
+#     write_checkpoint -force post_route.dcp
+#     reports post_route
+#     report_route_status -file post_route_route_status.rpt
+#     report_drc -file post_route_drc.rpt
+# } message options]
+# set f [open outcome.txt w]
+# puts $f "stage=$stage\nstatus=$status\nmessage=$message"
+# close $f
+# if {$status} {
+#     puts stderr [dict get $options -errorinfo]
+#     exit 1
+# }
+RTL Elaboration failed
+    while executing
+"source -notrace ./.Xil/Vivado-41-5d8384c9d909/realtime/session_context.tcl"
+    invoked from within
+"synth_design -top session_context -part xc7z020clg484-1 -mode out_of_context -flatten_hierarchy rebuilt"
+INFO: [Common 17-206] Exiting Vivado at Thu Nov 19 17:55:00 2026...

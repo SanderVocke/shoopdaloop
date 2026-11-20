@@ -2,10 +2,14 @@
 #![no_std]
 #![forbid(unsafe_code)]
 extern crate alloc;
+#[cfg(test)]
+extern crate self as rt_fpga_reference;
+#[cfg(test)]
+extern crate std;
 pub mod chunk_memory;
-pub mod compiler;
 pub mod fixed;
 pub mod jobs;
+pub mod midi;
 pub mod pipeline;
 pub mod records;
 pub mod resolver;
@@ -15,12 +19,14 @@ pub mod rt_interface;
 mod serde_index;
 pub mod state;
 pub mod storage;
+pub mod target;
 pub mod transitions;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum Error {
+    Midi(midi::Error),
     Transition(transitions::TransitionError),
     InvalidState,
     InvalidBuffer,

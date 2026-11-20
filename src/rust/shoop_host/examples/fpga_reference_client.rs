@@ -104,12 +104,23 @@ fn loop_view(client: &Client, id: LoopId) -> Option<&LoopState> {
         .find(|l| l.id == id)
 }
 pub fn run_with(host: PathBuf, output: PathBuf) -> Result<()> {
+    run_backend(host, output, "rust-fpga")
+}
+pub fn run_backend(host: PathBuf, output: PathBuf, backend: &str) -> Result<()> {
+    run_configuration(host, output, backend, "socket")
+}
+pub fn run_configuration(
+    host: PathBuf,
+    output: PathBuf,
+    backend: &str,
+    transport: &str,
+) -> Result<()> {
     std::fs::create_dir_all(&output)?;
     let output = output.canonicalize()?;
-    let config = serde_json::json!({ "fpga_reference": true,
+    let config = serde_json::json!({ "backend": backend,
         "driver":{"Dummy":{"sample_rate":8000,"buffer_size":32}}, "loop_smoothing_ms":0,
         "processors":{"builtin_fx":"off","oxisynth":"off","fx_instances":0,"synth_instances":0,"memory_mb":16},
-        "pools":{"quantum":32,"tracks":2,"loops":16,"channels":1,"loop_memory_mb":16}, "transport":"socket" });
+        "pools":{"tracks":2,"loops":16,"channels":1,"loop_memory_mb":1}, "transport":transport });
     std::fs::write(
         output.join("config.json"),
         serde_json::to_vec_pretty(&config)?,
@@ -120,6 +131,8 @@ pub fn run_with(host: PathBuf, output: PathBuf) -> Result<()> {
     }
     let mut child = ChildGuard(
         Process::new(host)
+            .arg("--backend")
+            .arg(backend)
             .arg("--config")
             .arg(output.join("config.json"))
             .arg("--export-profile")
@@ -130,7 +143,9 @@ pub fn run_with(host: PathBuf, output: PathBuf) -> Result<()> {
             .stderr(std::fs::File::create(output.join("host.log"))?)
             .spawn()?,
     );
-    let deadline = Instant::now() + Duration::from_secs(20);
+    // A cold RTL-sim start builds the Verilator model before publishing the profile.
+    let startup_timeout = if backend == "rtl-sim" { 120 } else { 20 };
+    let deadline = Instant::now() + Duration::from_secs(startup_timeout);
     while !profile.exists() {
         ensure!(
             child.0.try_wait()?.is_none(),
@@ -204,7 +219,6 @@ pub fn run_with(host: PathBuf, output: PathBuf) -> Result<()> {
             connected: true,
         },
     )?;
-    accepted(&mut client, &mut connection, Command::ActivatePreparedGraph)?;
     ensure!(
         matches!(
             command(&mut client, &mut connection, Command::ActivatePreparedGraph)?,
@@ -221,7 +235,7 @@ pub fn run_with(host: PathBuf, output: PathBuf) -> Result<()> {
         )],
     )?;
     wait(&mut client, &mut connection, |c| {
-        loop_view(c, sync).is_some_and(|l| l.mode == LoopMode::Recording && l.length_frames >= 256)
+        loop_view(c, sync).is_some_and(|l| l.mode == LoopMode::Recording && l.length_frames > 1024)
     })?;
     let capture_before = loop_view(&client, sync).unwrap().length_frames;
     immediate(
@@ -236,7 +250,6 @@ pub fn run_with(host: PathBuf, output: PathBuf) -> Result<()> {
     let Outcome::LoopCreated { loop_id: added, .. } = created else {
         anyhow::bail!("missing added loop identity");
     };
-    accepted(&mut client, &mut connection, Command::ActivatePreparedGraph)?;
     wait(&mut client, &mut connection, |c| {
         loop_view(c, sync)
             .is_some_and(|l| l.mode == LoopMode::Recording && l.length_frames > capture_before)
@@ -300,7 +313,6 @@ pub fn run_with(host: PathBuf, output: PathBuf) -> Result<()> {
             connected: false,
         },
     )?;
-    accepted(&mut client, &mut connection, Command::ActivatePreparedGraph)?;
     wait(&mut client, &mut connection, |c| {
         loop_view(c, voice).is_some_and(|l| {
             l.mode == LoopMode::Playing && l.gain == 0.5 && l.length_frames == recorded
@@ -362,7 +374,6 @@ pub fn run_with(host: PathBuf, output: PathBuf) -> Result<()> {
             connected: true,
         },
     )?;
-    accepted(&mut client, &mut connection, Command::ActivatePreparedGraph)?;
     wait(&mut client, &mut connection, |c| {
         loop_view(c, replacement_voice)
             .is_some_and(|l| l.mode == LoopMode::Stopped && l.length_frames == 0 && l.gain == 1.0)

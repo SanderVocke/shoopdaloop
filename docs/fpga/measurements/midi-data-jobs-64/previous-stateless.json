@@ -1,0 +1,510 @@
+{
+  "mixed-ideal": {
+    "source_revision": "9c75aa49",
+    "original_file": "midi-stateless-final-ideal-mixed.json",
+    "original_sha256": "58f68b7457970c4a63388674c90732b6fcaefdca9b2bde3e3d5dab8a254f208b",
+    "state_tracking": false,
+    "measurements": [
+      {
+        "cycles": 714185,
+        "kind": "playback_start",
+        "midi_packets": 5,
+        "position": 0,
+        "us_at_100mhz": 7141.85
+      },
+      {
+        "cycles": 343815,
+        "kind": "steady",
+        "midi_packets": 5,
+        "position": 544,
+        "us_at_100mhz": 3438.15
+      },
+      {
+        "cycles": 343815,
+        "kind": "steady",
+        "midi_packets": 5,
+        "position": 576,
+        "us_at_100mhz": 3438.15
+      },
+      {
+        "cycles": 340724,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 608,
+        "us_at_100mhz": 3407.24
+      },
+      {
+        "cycles": 340724,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 640,
+        "us_at_100mhz": 3407.24
+      },
+      {
+        "cycles": 340724,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 672,
+        "us_at_100mhz": 3407.24
+      },
+      {
+        "cycles": 340724,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 704,
+        "us_at_100mhz": 3407.24
+      },
+      {
+        "cycles": 340724,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 736,
+        "us_at_100mhz": 3407.24
+      },
+      {
+        "cycles": 340724,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 768,
+        "us_at_100mhz": 3407.24
+      },
+      {
+        "cycles": 340724,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 800,
+        "us_at_100mhz": 3407.24
+      },
+      {
+        "cycles": 340724,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 832,
+        "us_at_100mhz": 3407.24
+      },
+      {
+        "cycles": 340724,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 864,
+        "us_at_100mhz": 3407.24
+      },
+      {
+        "cycles": 340724,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 896,
+        "us_at_100mhz": 3407.24
+      },
+      {
+        "cycles": 340724,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 928,
+        "us_at_100mhz": 3407.24
+      },
+      {
+        "cycles": 343815,
+        "kind": "steady",
+        "midi_packets": 5,
+        "position": 960,
+        "us_at_100mhz": 3438.15
+      },
+      {
+        "cycles": 343815,
+        "kind": "steady",
+        "midi_packets": 5,
+        "position": 992,
+        "us_at_100mhz": 3438.15
+      },
+      {
+        "cycles": 343815,
+        "kind": "steady",
+        "midi_packets": 5,
+        "position": 1024,
+        "us_at_100mhz": 3438.15
+      }
+    ]
+  },
+  "mixed-ddr": {
+    "source_revision": "9c75aa49",
+    "original_file": "midi-stateless-final-ddr-mixed.json",
+    "original_sha256": "fc5163422d3bdf99014eb1d6f06608c8172ea005e73eca3a0d13944de7b1c76f",
+    "state_tracking": false,
+    "measurements": [
+      {
+        "cycles": 755732,
+        "kind": "playback_start",
+        "midi_packets": 5,
+        "position": 0,
+        "us_at_100mhz": 7557.32
+      },
+      {
+        "cycles": 355519,
+        "kind": "steady",
+        "midi_packets": 5,
+        "position": 544,
+        "us_at_100mhz": 3555.19
+      },
+      {
+        "cycles": 355519,
+        "kind": "steady",
+        "midi_packets": 5,
+        "position": 576,
+        "us_at_100mhz": 3555.19
+      },
+      {
+        "cycles": 352281,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 608,
+        "us_at_100mhz": 3522.81
+      },
+      {
+        "cycles": 352281,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 640,
+        "us_at_100mhz": 3522.81
+      },
+      {
+        "cycles": 352281,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 672,
+        "us_at_100mhz": 3522.81
+      },
+      {
+        "cycles": 352281,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 704,
+        "us_at_100mhz": 3522.81
+      },
+      {
+        "cycles": 352281,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 736,
+        "us_at_100mhz": 3522.81
+      },
+      {
+        "cycles": 352281,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 768,
+        "us_at_100mhz": 3522.81
+      },
+      {
+        "cycles": 352281,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 800,
+        "us_at_100mhz": 3522.81
+      },
+      {
+        "cycles": 352281,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 832,
+        "us_at_100mhz": 3522.81
+      },
+      {
+        "cycles": 352281,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 864,
+        "us_at_100mhz": 3522.81
+      },
+      {
+        "cycles": 352281,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 896,
+        "us_at_100mhz": 3522.81
+      },
+      {
+        "cycles": 352281,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 928,
+        "us_at_100mhz": 3522.81
+      },
+      {
+        "cycles": 355519,
+        "kind": "steady",
+        "midi_packets": 5,
+        "position": 960,
+        "us_at_100mhz": 3555.19
+      },
+      {
+        "cycles": 355519,
+        "kind": "steady",
+        "midi_packets": 5,
+        "position": 992,
+        "us_at_100mhz": 3555.19
+      },
+      {
+        "cycles": 355519,
+        "kind": "steady",
+        "midi_packets": 5,
+        "position": 1024,
+        "us_at_100mhz": 3555.19
+      }
+    ]
+  },
+  "midi-ideal": {
+    "source_revision": "9c75aa49",
+    "original_file": "midi-stateless-final-ideal-midi.json",
+    "original_sha256": "bafa0b70325a9c8fbc40157cbbf5234ab5ebd38c20c6f9883f38fa017ce2b4ec",
+    "state_tracking": false,
+    "measurements": [
+      {
+        "cycles": 658930,
+        "kind": "playback_start",
+        "midi_packets": 5,
+        "position": 0,
+        "us_at_100mhz": 6589.3
+      },
+      {
+        "cycles": 309490,
+        "kind": "steady",
+        "midi_packets": 5,
+        "position": 544,
+        "us_at_100mhz": 3094.9
+      },
+      {
+        "cycles": 309490,
+        "kind": "steady",
+        "midi_packets": 5,
+        "position": 576,
+        "us_at_100mhz": 3094.9
+      },
+      {
+        "cycles": 306399,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 608,
+        "us_at_100mhz": 3063.99
+      },
+      {
+        "cycles": 306399,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 640,
+        "us_at_100mhz": 3063.99
+      },
+      {
+        "cycles": 306399,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 672,
+        "us_at_100mhz": 3063.99
+      },
+      {
+        "cycles": 306399,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 704,
+        "us_at_100mhz": 3063.99
+      },
+      {
+        "cycles": 306399,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 736,
+        "us_at_100mhz": 3063.99
+      },
+      {
+        "cycles": 306399,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 768,
+        "us_at_100mhz": 3063.99
+      },
+      {
+        "cycles": 306399,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 800,
+        "us_at_100mhz": 3063.99
+      },
+      {
+        "cycles": 306399,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 832,
+        "us_at_100mhz": 3063.99
+      },
+      {
+        "cycles": 306399,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 864,
+        "us_at_100mhz": 3063.99
+      },
+      {
+        "cycles": 306399,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 896,
+        "us_at_100mhz": 3063.99
+      },
+      {
+        "cycles": 306399,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 928,
+        "us_at_100mhz": 3063.99
+      },
+      {
+        "cycles": 309490,
+        "kind": "steady",
+        "midi_packets": 5,
+        "position": 960,
+        "us_at_100mhz": 3094.9
+      },
+      {
+        "cycles": 309490,
+        "kind": "steady",
+        "midi_packets": 5,
+        "position": 992,
+        "us_at_100mhz": 3094.9
+      },
+      {
+        "cycles": 309490,
+        "kind": "steady",
+        "midi_packets": 5,
+        "position": 1024,
+        "us_at_100mhz": 3094.9
+      }
+    ]
+  },
+  "midi-ddr": {
+    "source_revision": "9c75aa49",
+    "original_file": "midi-stateless-final-ddr-midi.json",
+    "original_sha256": "059147ee93a4765a9794e70044ce7fdea6eaea4513abe603b51e7aff31dbd4d3",
+    "state_tracking": false,
+    "measurements": [
+      {
+        "cycles": 691249,
+        "kind": "playback_start",
+        "midi_packets": 5,
+        "position": 0,
+        "us_at_100mhz": 6912.49
+      },
+      {
+        "cycles": 320305,
+        "kind": "steady",
+        "midi_packets": 5,
+        "position": 544,
+        "us_at_100mhz": 3203.05
+      },
+      {
+        "cycles": 320305,
+        "kind": "steady",
+        "midi_packets": 5,
+        "position": 576,
+        "us_at_100mhz": 3203.05
+      },
+      {
+        "cycles": 317067,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 608,
+        "us_at_100mhz": 3170.67
+      },
+      {
+        "cycles": 317067,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 640,
+        "us_at_100mhz": 3170.67
+      },
+      {
+        "cycles": 317067,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 672,
+        "us_at_100mhz": 3170.67
+      },
+      {
+        "cycles": 317067,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 704,
+        "us_at_100mhz": 3170.67
+      },
+      {
+        "cycles": 317067,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 736,
+        "us_at_100mhz": 3170.67
+      },
+      {
+        "cycles": 317067,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 768,
+        "us_at_100mhz": 3170.67
+      },
+      {
+        "cycles": 317067,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 800,
+        "us_at_100mhz": 3170.67
+      },
+      {
+        "cycles": 317067,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 832,
+        "us_at_100mhz": 3170.67
+      },
+      {
+        "cycles": 317067,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 864,
+        "us_at_100mhz": 3170.67
+      },
+      {
+        "cycles": 317067,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 896,
+        "us_at_100mhz": 3170.67
+      },
+      {
+        "cycles": 317067,
+        "kind": "steady",
+        "midi_packets": 4,
+        "position": 928,
+        "us_at_100mhz": 3170.67
+      },
+      {
+        "cycles": 320305,
+        "kind": "steady",
+        "midi_packets": 5,
+        "position": 960,
+        "us_at_100mhz": 3203.05
+      },
+      {
+        "cycles": 320305,
+        "kind": "steady",
+        "midi_packets": 5,
+        "position": 992,
+        "us_at_100mhz": 3203.05
+      },
+      {
+        "cycles": 320305,
+        "kind": "steady",
+        "midi_packets": 5,
+        "position": 1024,
+        "us_at_100mhz": 3203.05
+      }
+    ]
+  }
+}

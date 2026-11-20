@@ -84,6 +84,12 @@ and firmware digest. A device continues trusting the key provisioned in its
 loader; signing a bundle with another key does not update that trust. Loader/key
 replacement is outside the network updater's write surface.
 
+Archive the factory loader directory produced by `--loader-output`, including
+`factory.json`. For subsequent releases use `--factory-loader DIR` in place of
+`--loader-output`, and write the FIT outside `DIR`. The signing tool checks the
+archived loader digests and verifies the new FIT with its existing public key.
+This generates the update bundle without regenerating the provisioned boot files.
+
 `my-build.itb` is generic: it contains no device credential or network settings.
 The build ID is 1–40 ASCII letters, digits, `.`, `_` or `-`, and must match the
 identity compiled into the ELF. Production builds reject fixture symbols and
@@ -210,6 +216,12 @@ Success means the new running digest is **durably confirmed**, rather than merel
 transferred. It reports rollback/refusal/deadline errors distinctly. Default
 deadline is 300 seconds, adjustable with `--timeout 1..3600`.
 
+A requested update with a confirmed slot has a 30-second Fastboot idle window.
+New in-sequence commands and transfer packets refresh it. If the client stops
+before activating a staged candidate, U-Boot discards the pending selection and
+boots the confirmed slot. An explicit reboot activates a fully verified candidate.
+Recovery without a bootable slot stays available over Fastboot.
+
 The adjacent `profile.json.deployment.json` journal contains only public operation
 identity, target/digest and expected boot identity. `--journal` selects another
 path. Rerun the same command after a lost reply or interrupted workstation process;
@@ -234,6 +246,8 @@ A candidate is published only after payload/descriptor write/readback verificati
 It gets two durably consumed trials. Health requires valid identity/config,
 initialized service/listeners and observed render/broker progress, then redundant
 SD confirmation. The previous confirmed image remains as fallback after promotion.
+If programming the candidate's FPGA image returns an error before handoff,
+U-Boot clears the trial and resets into the confirmed slot if one exists.
 If a newly confirmed image hangs repeatedly, three failed boots return to that
 retained fallback. Sixty seconds of stable task progress or a clean shutdown
 clears its boot failure streak. Updating again explicitly retires the inactive

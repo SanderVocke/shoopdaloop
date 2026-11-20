@@ -168,6 +168,18 @@ impl<'a, S: Sample> AudioPorts<'a, S> {
         let start = port * self.stride + self.start;
         Some(&mut self.outputs[start..start + self.frames])
     }
+
+    pub fn copy_output(&mut self, source: usize, destination: usize) -> Result<(), Error> {
+        if source >= self.output_count || destination >= self.output_count {
+            return Err(Error::InvalidShape);
+        }
+        let start = source * self.stride + self.start;
+        self.outputs.copy_within(
+            start..start + self.frames,
+            destination * self.stride + self.start,
+        );
+        Ok(())
+    }
     /// Borrow selected contiguous port banks, preserving the current frame window.
     pub fn subset(
         &mut self,
@@ -307,6 +319,11 @@ impl MidiBuffer {
     }
     pub fn is_recovery(&self) -> bool {
         self.recovering
+    }
+    /// Replace this output quantum with the reserved all-sound/all-notes-off
+    /// recovery events at its start, regardless of normal packet capacity.
+    pub fn recover_notes(&mut self) {
+        self.force_reset(0);
     }
     pub fn remaining_events(&self) -> usize {
         if self.recovering {

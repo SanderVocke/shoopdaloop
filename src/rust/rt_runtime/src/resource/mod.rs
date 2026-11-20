@@ -10,7 +10,7 @@ pub(crate) mod memory;
 pub use memory::MemoryUsage;
 pub use reservation::ReservedSnapshotId;
 mod boundary;
-pub use boundary::{CaptureBoundaryIo, PlannerResourceIo};
+pub use boundary::{CaptureBoundaryIo, DelayedCaptureTake, DelayedCaptureTick, PlannerResourceIo};
 mod capture;
 mod format;
 mod group;

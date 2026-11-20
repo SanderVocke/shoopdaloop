@@ -15,12 +15,58 @@ use alloc::{
     sync::Arc,
 };
 use anyhow::{anyhow, bail, Result};
-use shoop_rt_protocol::{Outcome, Refusal, Request};
+use shoop_rt_protocol::{
+    ContentChunk, Outcome, ProcessorTarget, Refusal, ReplacementCheckpointCommand, Request,
+};
 use shoop_rt_transport::carrier::Carrier;
 
 pub(crate) enum Work {
     Request(Request),
     Upload { upload: Upload, begun: bool },
+    Checkpoint(CheckpointUpload),
+}
+
+pub(crate) struct CheckpointUpload {
+    id: u64,
+    target: ProcessorTarget,
+    state: String,
+    offset: Option<usize>,
+}
+
+impl CheckpointUpload {
+    pub(crate) fn new(id: u64, target: ProcessorTarget, state: &str) -> Self {
+        Self {
+            id,
+            target,
+            state: state.to_owned(),
+            offset: None,
+        }
+    }
+
+    fn next(&mut self, chunk_bytes: usize) -> Option<Request> {
+        let command = match self.offset {
+            None => {
+                self.offset = Some(0);
+                ReplacementCheckpointCommand::Begin {
+                    bytes: self.state.len() as u32,
+                }
+            }
+            Some(offset) => {
+                let bytes = &self.state.as_bytes()[offset..];
+                let data = ContentChunk::new(&bytes[..bytes.len().min(chunk_bytes)])?;
+                self.offset = Some(offset + data.as_bytes().len());
+                ReplacementCheckpointCommand::Write {
+                    offset: offset as u32,
+                    data,
+                }
+            }
+        };
+        Some(Request::ReplacementCheckpoint {
+            id: self.id,
+            target: self.target,
+            command,
+        })
+    }
 }
 pub(crate) struct Job {
     pub id: u64,
@@ -173,14 +219,20 @@ impl Job {
             && matches!(
                 request,
                 Request::ReplacementEdit {
-                    edit: shoop_rt_protocol::ReplacementEdit::ProcessedStrip { .. },
+                    edit: shoop_rt_protocol::ReplacementEdit::ProcessedStrip { .. }
+                        | shoop_rt_protocol::ReplacementEdit::CarlaBus { .. },
                     ..
                 }
             );
         if (self.retries < 1024 || retiring_wait)
             && !matches!(
                 request,
-                Request::ContentWrite { .. } | Request::ContentInitial { .. }
+                Request::ContentWrite { .. }
+                    | Request::ContentInitial { .. }
+                    | Request::ReplacementCheckpoint {
+                        command: ReplacementCheckpointCommand::Write { .. },
+                        ..
+                    }
             )
             && (outcome == Outcome::Refused(Refusal::Overloaded)
                 || (outcome == Outcome::Refused(Refusal::Busy)
@@ -233,6 +285,18 @@ impl Job {
         if !self.active.is_empty() {
             if self.error.is_some() || self.active.len() >= window {
                 return Ok(None);
+            }
+            if let Some(Work::Checkpoint(upload)) = self.work.front_mut() {
+                if !self.active.iter().all(|request| {
+                    matches!(request, Request::ReplacementCheckpoint {
+                    id, target, command: ReplacementCheckpointCommand::Write { .. },
+                } if *id == upload.id && *target == upload.target)
+                }) {
+                    return Ok(None);
+                }
+                let request = upload.next(chunk_bytes);
+                self.active.extend(request);
+                return Ok(request);
             }
             let id = match self.active.first() {
                 Some(Request::ContentInitial { id, .. } | Request::ContentWrite { id, .. }) => *id,
@@ -290,6 +354,14 @@ impl Job {
                 } else {
                     self.work.pop_front();
                     Request::ContentFinish { id }
+                }
+            }
+            Some(Work::Checkpoint(upload)) => {
+                if let Some(request) = upload.next(chunk_bytes) {
+                    request
+                } else {
+                    self.work.pop_front();
+                    return self.next(chunk_bytes, callbacks, window);
                 }
             }
             None => {

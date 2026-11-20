@@ -36,6 +36,20 @@ impl<S: Sample> LoopPlanner<S> {
                     target: row.binding.target,
                     reason: timeline_error(row.failure.unwrap_or(Error::InvalidState)),
                 });
+            } else if let Some(delayed) = row.delayed {
+                let target = row.binding.target;
+                if let Some(cut) = delayed.cut {
+                    let delay = row.worker_source.ok_or(Error::InvalidState)?.delay_frames;
+                    if cut.checked_add(delay)? == context.frame {
+                        self.failures.push(crate::Observation::CaptureReady {
+                            target,
+                            revision: row.active.ok_or(Error::InvalidState)?.revision,
+                        });
+                    }
+                } else {
+                    self.failures
+                        .push(crate::Observation::DelayCapture { target });
+                }
             } else if row.active.as_ref().is_some_and(|take| take.edit.is_some())
                 && row.failure.is_some()
             {

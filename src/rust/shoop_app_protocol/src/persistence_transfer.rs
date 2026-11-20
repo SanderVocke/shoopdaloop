@@ -93,6 +93,9 @@ impl Source {
                         .last()
                         .expect("MIDI prefix index"),
                 ),
+                Payload::ProcessorCheckpoint(bytes) => {
+                    (ObjectKind::ProcessorCheckpoint, bytes.len() as u64)
+                }
             }
         };
         Ok(ObjectDescription {
@@ -135,6 +138,10 @@ impl Source {
                             event += 1;
                         }
                     }
+                }
+                Payload::ProcessorCheckpoint(checkpoint) => {
+                    let start = offset as usize;
+                    bytes.copy_from_slice(&checkpoint[start..start + length]);
                 }
             }
         }

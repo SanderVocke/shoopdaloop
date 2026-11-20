@@ -60,6 +60,8 @@ pub struct MidiChannel {
 pub struct Loop {
     #[serde(default)]
     pub recorded_processor_state: Option<String>,
+    #[serde(default)]
+    pub recorded_processor_checkpoint: Option<u32>,
     pub id: LoopId,
     pub name: String,
     pub sync: bool,
@@ -107,6 +109,8 @@ pub struct Track {
     #[serde(default)]
     pub processor_state: Option<String>,
     #[serde(default)]
+    pub processor_checkpoint: Option<u32>,
+    #[serde(default)]
     pub builtin_fx_midi_cc_assignments: Vec<BuiltInFxMidiCcAssignment>,
     #[serde(default)]
     pub oxisynth_midi_cc_assignments: Vec<OxiSynthMidiCcAssignment>,
@@ -130,6 +134,8 @@ pub struct BusChannel {
 pub struct BusFx {
     pub processor_type: TrackProcessorTypeId,
     pub state: String,
+    #[serde(default)]
+    pub processor_checkpoint: Option<u32>,
     pub midi_cc_assignments: Vec<BuiltInFxMidiCcAssignment>,
 }
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -199,6 +205,7 @@ pub enum Manifest {
 pub enum Payload {
     Audio(Arc<Vec<f32>>),
     Midi(Arc<Vec<MidiEventState>>),
+    ProcessorCheckpoint(Arc<Vec<u8>>),
 }
 impl Payload {
     pub fn bytes(&self) -> Option<u64> {
@@ -207,6 +214,7 @@ impl Payload {
             Self::Midi(events) => events
                 .iter()
                 .try_fold(0u64, |n, event| n.checked_add(12 + event.data.len() as u64)),
+            Self::ProcessorCheckpoint(bytes) => Some(bytes.len() as u64),
         }
     }
 }

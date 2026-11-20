@@ -5,9 +5,15 @@ use shoop_egui::{
 use shoop_host::{config::HostConfig, remote::Target as HostEntry, serve::StartOptions};
 use std::process::{Child, Command, Stdio};
 
-struct Peer(Child);
+struct Peer(Child, std::path::PathBuf);
 impl Drop for Peer {
     fn drop(&mut self) {
+        if std::thread::panicking() {
+            eprintln!(
+                "peer log: {}",
+                std::fs::read_to_string(&self.1).unwrap_or_default()
+            );
+        }
         let _ = self.0.kill();
         let _ = self.0.wait();
     }
@@ -23,11 +29,13 @@ fn peer(name: &str, root: &Path) -> Peer {
             .env("SHOOP_UI_RECOVERY_FIXTURE", root)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stderr(std::fs::File::create(root.join(format!("{name}.log"))).unwrap())
             .spawn()
             .unwrap(),
+        root.join(format!("{name}.log")),
     )
 }
+#[track_caller]
 fn wait(runtime: &Runtime, done: impl Fn(&AppSnapshot) -> bool) -> Arc<AppSnapshot> {
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
@@ -37,8 +45,21 @@ fn wait(runtime: &Runtime, done: impl Fn(&AppSnapshot) -> bool) -> Arc<AppSnapsh
         }
         assert!(
             Instant::now() < deadline,
-            "UI recovery timed out: {:?}",
-            state.notifications
+            "UI recovery timed out at {}: {:?}; tracks={:?}",
+            std::panic::Location::caller(),
+            state.notifications,
+            state
+                .tracks
+                .iter()
+                .map(|t| (
+                    &t.name,
+                    t.structural_state,
+                    t.loops
+                        .iter()
+                        .map(|l| (l.mode, l.length_frames, l.structural_state))
+                        .collect::<Vec<_>>()
+                ))
+                .collect::<Vec<_>>()
         );
         std::thread::sleep(Duration::from_millis(4));
     }
@@ -69,7 +90,7 @@ fn host_peer() {
         return;
     };
     let root = std::path::PathBuf::from(root);
-    let config = HostConfig {
+    let mut config = HostConfig {
         settings: shoop_host::config::HostSettings {
             pools: shoop_egui::NewEnginePools {
                 quantum: 1,
@@ -85,6 +106,17 @@ fn host_peer() {
         test_signal: true,
         ..Default::default()
     };
+    if root.join("fpga-reference").exists() {
+        config.settings.backend = shoop_egui::BackendType::RustFpga;
+        config.settings.loop_smoothing_ms = 0;
+        config.settings.pools.quantum = 32;
+    }
+    if root.join("rtl-sim").exists() {
+        config.settings.backend = shoop_egui::BackendType::RtlSim;
+        config.settings.loop_smoothing_ms = 0;
+        config.settings.pools.quantum = 32;
+        config.settings.pools.loop_memory_mb = 1;
+    }
     let mut options = StartOptions::new().unwrap();
 
     options.export_profile = Some(root.join("profile.json"));
@@ -299,7 +331,7 @@ fn remote_profile_ui_workflow(external: Option<std::path::PathBuf>) {
         Some(peer("host_peer", root.path()))
     };
     let path = external.unwrap_or_else(|| root.path().join("profile.json"));
-    let deadline = Instant::now() + Duration::from_secs(15);
+    let deadline = Instant::now() + Duration::from_secs(300);
     while !path.exists() {
         assert!(host.as_mut().unwrap().0.try_wait().unwrap().is_none());
         assert!(Instant::now() < deadline);
@@ -400,6 +432,7 @@ fn remote_profile_ui_workflow(external: Option<std::path::PathBuf>) {
     let revision = app.settings.active().revision();
     app.handle_settings_action(SettingsAction::RequestAudioDriverSwitch {
         config: shoop_egui::AudioDriverConfig::Dummy(shoop_egui::DummyAudioDriverConfig {
+            mode: Default::default(),
             sample_rate: 32000,
             buffer_size: 256,
         }),
@@ -579,4 +612,212 @@ fn a_new_connection_cancels_old_inputs_and_cannot_consume_old_file_callbacks() {
         .reserve(shoop_egui::TaskId::from_raw(2))
         .is_ok());
     assert!(app.file_output.reserve().is_ok());
+}
+
+#[cfg(feature = "fpga-reference")]
+#[shoop_wasm_test_support::shoop_test]
+fn fpga_reference_ui_operates_and_live_loads_without_explicit_activation() {
+    prepared_ui_case("fpga-reference");
+}
+#[cfg(all(feature = "rtl-sim", target_os = "linux"))]
+#[shoop_wasm_test_support::shoop_test]
+fn marlin_ui_operates_and_live_loads_without_explicit_activation() {
+    prepared_ui_case("rtl-sim");
+}
+#[cfg(feature = "fpga-reference")]
+fn prepared_ui_case(marker: &str) {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join(marker), "").unwrap();
+    let mut host = peer("host_peer", root.path());
+    let path = root.path().join("profile.json");
+    let deadline = Instant::now() + Duration::from_secs(300);
+    while !path.exists() {
+        assert!(host.0.try_wait().unwrap().is_none());
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let mut app = ui(path.clone());
+    let context = egui::Context::default();
+    shoop_egui::initialize(&context);
+    let initial = app.runtime.snapshot();
+    assert!(!initial
+        .capabilities
+        .supports(shoop_egui::BackendCapability::BusManagement));
+    let sync_track = initial.tracks[0].id;
+    let sync = initial.tracks[0].loops[0].id;
+    app.runtime
+        .dispatch(AppIntent::Loop {
+            track_id: sync_track,
+            loop_id: sync,
+            action: LoopAction::RecordClicked,
+        })
+        .unwrap();
+    wait(&app.runtime, |s| s.tracks[0].loops[0].length_frames >= 128);
+    app.runtime
+        .dispatch(AppIntent::Loop {
+            track_id: sync_track,
+            loop_id: sync,
+            action: LoopAction::PlayClicked,
+        })
+        .unwrap();
+    wait(&app.runtime, |s| {
+        s.tracks[0].loops[0].mode == LoopMode::Playing
+    });
+    app.runtime
+        .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+            name: "Stereo".into(),
+            audio_channels: 2,
+            midi: false,
+        }))
+        .unwrap();
+    let stereo = wait(&app.runtime, |s| {
+        s.tracks.len() == 2
+            && s.tracks[1].structural_state == shoop_egui::StructuralState::Confirmed
+    });
+    app.runtime
+        .dispatch(AppIntent::Track {
+            track_id: stereo.tracks[1].id,
+            action: TrackAction::Remove,
+        })
+        .unwrap();
+    wait(&app.runtime, |s| s.tracks.len() == 1);
+    app.runtime
+        .dispatch(AppIntent::AddTrackWithTopology(shoop_egui::TrackSpec {
+            name: "FPGA UI".into(),
+            topology: shoop_egui::TrackSpecTopology::Direct {
+                audio_channels: 1,
+                midi: false,
+            },
+            latency: Default::default(),
+            initial_output_bus_names: vec!["Master".into()],
+            creation_request_id: None,
+        }))
+        .unwrap();
+    let state = wait(&app.runtime, |s| {
+        s.tracks.len() == 2
+            && s.tracks[1].structural_state == shoop_egui::StructuralState::Confirmed
+    });
+    assert_eq!(state.tracks[1].loops.len(), 8);
+    let track = state.tracks[1].id;
+    let voice = state.tracks[1].loops[0].id;
+    loop_action(&mut app.runtime, &state, LoopAction::RecordClicked);
+    let recorded = wait(&app.runtime, |s| s.tracks[1].loops[0].length_frames >= 128);
+    assert_eq!(recorded.tracks[1].loops[0].mode, LoopMode::Recording);
+    loop_action(&mut app.runtime, &recorded, LoopAction::StopClicked);
+    let stopped = wait(&app.runtime, |s| {
+        s.tracks[1].loops[0].mode == LoopMode::Stopped
+    });
+    let length = stopped.tracks[1].loops[0].length_frames;
+    loop_action(&mut app.runtime, &stopped, LoopAction::PlayClicked);
+    let playing = wait(&app.runtime, |s| {
+        s.tracks[1].loops[0].mode == LoopMode::Playing
+    });
+    loop_action(&mut app.runtime, &playing, LoopAction::GainChanged(0.5));
+    let state = wait(&app.runtime, |s| {
+        (s.tracks[1].loops[0].gain - 0.5).abs() < 0.001
+    });
+    let frame = state.status.processed_frames;
+    app.runtime
+        .dispatch(AppIntent::AddLoop { track_id: track })
+        .unwrap();
+    let state = wait(&app.runtime, |s| {
+        s.tracks[1].loops.len() == 9
+            && s.tracks[1].loops[8].structural_state == shoop_egui::StructuralState::Confirmed
+            && s.status.processed_frames > frame
+    });
+    assert_eq!(state.tracks[1].loops[0].id, voice);
+    assert_eq!(state.tracks[1].loops[0].length_frames, length);
+    assert_eq!(state.tracks[1].loops[0].mode, LoopMode::Playing);
+    assert!((state.tracks[1].loops[0].gain - 0.5).abs() < 0.001);
+    let mut output = context.run_ui(Default::default(), |ui| app.show(ui));
+    output.textures_delta.clear();
+    assert!(!output.shapes.is_empty());
+    loop_action(&mut app.runtime, &state, LoopAction::StopClicked);
+    wait(&app.runtime, |s| {
+        s.tracks[1].loops[0].mode == LoopMode::Stopped
+    });
+    app.runtime
+        .dispatch(AppIntent::Track {
+            track_id: track,
+            action: TrackAction::Remove,
+        })
+        .unwrap();
+    wait(&app.runtime, |s| s.tracks.len() == 1);
+    app.runtime
+        .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+            name: "Replacement".into(),
+            audio_channels: 1,
+            midi: false,
+        }))
+        .unwrap();
+    let replacement = wait(&app.runtime, |s| {
+        s.tracks.len() == 2
+            && s.tracks[1].structural_state == shoop_egui::StructuralState::Confirmed
+    });
+    assert_ne!(replacement.tracks[1].id, track);
+    assert_eq!(replacement.tracks[1].loops[0].length_frames, 0);
+    let frame = replacement.status.processed_frames;
+    drop(app);
+    let mut app = ui(path.clone());
+    let reattached = wait(&app.runtime, |s| s.status.processed_frames > frame);
+    assert_eq!(reattached.tracks[1].id, replacement.tracks[1].id);
+    app.handle_host_actions(&context, vec![shoop_egui::HostAction::CloseUiAndHost]);
+    app.exit
+        .start(HostEntry::read(&path).unwrap(), app.runtime.handle.clone());
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        let mut output = context.run_ui(Default::default(), |ui| app.show(ui));
+        let closed = output.viewport_output[&egui::ViewportId::ROOT]
+            .commands
+            .contains(&egui::ViewportCommand::Close);
+        output.textures_delta.clear();
+        if closed {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "reference UI shutdown failed: {:?}",
+            app.exit
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(host.0.wait().unwrap().success());
+}
+
+#[cfg(feature = "fpga-reference")]
+#[shoop_wasm_test_support::shoop_test]
+fn fpga_reference_in_process_backend_uses_public_selector() {
+    let mut builder = shoop_settings::SettingsRegistryBuilder::default();
+    shoop_egui::register_settings(&mut builder).unwrap();
+    shoop_egui::register_audio_settings(&mut builder).unwrap();
+    shoop_egui::register_audio_backend_settings(&mut builder).unwrap();
+    shoop_egui::register_script_settings(&mut builder).unwrap();
+    let registry = builder.finish();
+    let mut document = shoop_settings::SettingsDocument::empty("test");
+    document.values.insert(
+        shoop_egui::NEW_ENGINE_LOOP_MEMORY_MB.id().into(),
+        serde_json::json!(1),
+    );
+    let settings = registry.resolve(&document, 1).snapshot;
+    let args = AppArgs::try_parse_from(["shoopdaloop", "--backend", "rust-fpga"]).unwrap();
+    let mut runtime = Runtime::new(&settings, &args).unwrap();
+    wait(&runtime, |s| {
+        s.tracks.len() == 1 && s.status.processed_frames > 0
+    });
+    runtime
+        .dispatch(AppIntent::Global(GlobalControlAction::SetSync(false)))
+        .unwrap();
+    runtime
+        .dispatch(AppIntent::AddTrack(DirectTrackSpec {
+            name: "In-process reference".into(),
+            audio_channels: 1,
+            midi: false,
+        }))
+        .unwrap();
+    let state = wait(&runtime, |s| {
+        s.tracks.len() == 2
+            && s.tracks[1].structural_state == shoop_egui::StructuralState::Confirmed
+    });
+    loop_action(&mut runtime, &state, LoopAction::RecordClicked);
+    wait(&runtime, |s| s.tracks[1].loops[0].length_frames >= 128);
 }

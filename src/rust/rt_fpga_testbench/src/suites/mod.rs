@@ -5,6 +5,7 @@ pub mod chunk;
 pub mod direct;
 pub mod media;
 pub mod metadata;
+pub mod midi;
 pub mod pipeline;
 pub mod resolver;
 pub mod smoothing;

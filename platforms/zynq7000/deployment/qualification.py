@@ -49,11 +49,12 @@ def snapshot(path):
 
 
 class Qualification:
-    def __init__(self, artifacts, private, evidence, port_base=16400, updater_port=16554):
+    def __init__(self, artifacts, private, evidence, port_base=16400, updater_port=16554, board=None):
         self.artifacts, self.private, self.evidence = map(Path, (artifacts, private, evidence))
         self.evidence.mkdir(parents=True, exist_ok=True)
         (self.private / "cards").mkdir(parents=True, exist_ok=True)
         self.port_base, self.updater_port = port_base, updater_port
+        self.board = board
         self.loader = self.artifacts / "loader/u-boot.bin"
         self.profile = self.private / "profile.json"
         self.cli = Path(os.environ.get("SHOOP_DEPLOY_BIN", ROOT / "target/debug/shoop-deploy"))
@@ -65,12 +66,12 @@ class Qualification:
         self.seed += 1000
         loader = self.artifacts / "loader"
         card.create(path, {"BOOT    BIN": (loader / "boot.bin").read_bytes(), "U-BOOT  IMG": (loader / "u-boot.img").read_bytes()},
-                    (self.artifacts / "firmware-a.itb").read_bytes(), "firmware-a", (self.private / "credential").read_bytes(), self.seed, mode=mode)
+                    (self.artifacts / "firmware-a.itb").read_bytes(), "firmware-a", (self.private / "credential").read_bytes(), self.seed, mode=mode, board=self.board)
         return path
 
     def vm(self, image, label, block_url=None, tftp=None):
         return BootQemu(self.loader, image, self.evidence / label, port_base=self.port_base,
-                        updater_port=self.updater_port, block_url=block_url, tftp=tftp)
+                        updater_port=self.updater_port, block_url=block_url, tftp=tftp, board=self.board)
 
     def cli_command(self, *args, updater=None, journal=None):
         return [self.cli, "--profile", self.profile, "--updater", f"127.0.0.1:{updater or self.updater_port}",
@@ -124,8 +125,10 @@ class Qualification:
         self.protected(image, before, "roundtrip")
         self.record("roundtrip", boots=images, cold=cold)
 
-    def watchdogs(self):
+    def watchdogs(self, selected=None):
         for fault, expected in [("before-ready", 2), ("render", 3), ("control", 3), ("broker", 3), ("handoff-version", 2)]:
+            if selected is not None and fault != selected:
+                continue
             name = "watchdog-" + fault
             image = self.factory(name, mode=1)
             before = snapshot(image)
@@ -216,13 +219,15 @@ class Qualification:
             self.protected(image, before, name)
             self.record(name, mode=mode, seed=seed, match=match, after_fault=after, cold=cold)
 
-    def metadata_damage(self):
+    def metadata_damage(self, selected=None):
         variants = [("state-one", "state", [0], False), ("counter-one", "counter", [0], False),
                     ("config-one", "config", [0], False), ("state-both", "state", [0, 1], True),
                     ("counter-both", "counter", [0, 1], True), ("config-both", "config", [0, 1], True),
                     ("state-version", "state", [0, 1], True), ("config-version", "config", [0, 1], True),
                     ("counter-wrap", "counter", [0, 1], True), ("images-both", "images", [], True)]
         for name, region, copies, recovery in variants:
+            if selected is not None and name != selected:
+                continue
             image = self.factory(name)
             with image.open("r+b") as disk:
                 if region == "images":

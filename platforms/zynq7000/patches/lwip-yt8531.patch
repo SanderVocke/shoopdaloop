@@ -1,0 +1,35 @@
+--- a/ThirdParty/sw_services/lwip220/src/lwip-2.2.0/contrib/ports/xilinx/netif/xemacpsif_physpeed.c
++++ b/ThirdParty/sw_services/lwip220/src/lwip-2.2.0/contrib/ports/xilinx/netif/xemacpsif_physpeed.c
+@@ -112,6 +112,11 @@
+ #include "xparameters.h"
+ #include "xemac_ieee_reg.h"
+ 
++#ifdef SHOOP_BOARD_PHY_YT8531
++#include "yt8531.h"
++u32 shoop_yt8531_emacps_speed(XEmacPs *emac);
++#endif
++
+ #if defined (__aarch64__)
+ #include "bspconfig.h"
+ #include "xil_smc.h"
+@@ -271,6 +276,9 @@
+ 		XEmacPs_PhyRead(xemacpsp, phy_addr, PHY_IDENTIFIER_1_REG,
+ 				&phy_reg);
+ 		if ((phy_reg != PHY_MARVELL_IDENTIFIER) &&
++#ifdef SHOOP_BOARD_PHY_YT8531
++		    (phy_reg != SHOOP_YT8531_ID_HIGH) &&
++#endif
+ 		    (phy_reg != PHY_TI_IDENTIFIER) &&
+ 		    (phy_reg != PHY_REALTEK_IDENTIFIER) &&
+ 		    (phy_reg != PHY_ADI_IDENTIFIER)) {
+@@ -1230,6 +1238,10 @@
+ 
+ 	XEmacPs_PhyRead(xemacpsp, phy_addr, PHY_IDENTIFIER_1_REG,
+ 					&phy_identity);
++#ifdef SHOOP_BOARD_PHY_YT8531
++	if (phy_addr == SHOOP_BOARD_PHY_ADDRESS && phy_identity == SHOOP_YT8531_ID_HIGH)
++		return shoop_yt8531_emacps_speed(xemacpsp);
++#endif
+ 	if (phy_identity == PHY_TI_IDENTIFIER) {
+ 		if (!strcmp(PhyType, "sgmii")) {
+ 			RetStatus = get_TI_phy_speed_sgmii(xemacpsp, phy_addr);

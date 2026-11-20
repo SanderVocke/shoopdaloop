@@ -4,9 +4,12 @@ Implementation contract for [the persistence plan](https://github.com/SanderVock
 The core slice is implemented and validated;
 [acceptance evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/session-persistence.md) records its scope.
 The [feature backlog](feature-parity.md#missing-features) assigns remaining
-save/load/store/export requirements to Carla (P07), latency compensation (P09),
-take alignment (P10), duplication/MIDI state (P11) and session scripts/resources
-(P16). Historical P01/P02 are no longer standalone backlog items.
+save/load/store/export requirements to Carla (P07), latency compensation (P09)
+and take alignment (P10). P11 is complete for CPU-native basic MIDI under the
+[accepted scope](feature-parity.md#p11-basic-midi-scope); unsupported arbitrary
+state reconstruction is an explicit limit, not missing parity. P16 client-owned
+scripts/resources are implemented. Historical P01/P02 are no longer standalone
+backlog items.
 
 ## Shared audio reconciliation
 
@@ -47,7 +50,8 @@ uses fresh identities and stopped loops; old exports retain their original data.
 | Playback/recording position and pending musical commands | Do not persist transient execution | Load loops stopped; cancel/fence prior-session work at commit; never replay a saved operation |
 | Core composites | Preserve authored identities, original timing basis, frozen geometry, nested references, explicit sync and repeat intent; load stopped with fresh runtime identities | See the [composite contract](composites.md) and [acceptance evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/composites.md); captures exclude pending candidates and refuse active/scheduled/future recording |
 | Built-in FX/OxiSynth, External dry/wet, bus FX and dependent composite events | Preserve processor state/mappings, recorded settings, role media and authored modes | Supported under P03/P06/P08/P17 and the built-in portion of P07; prepare privately and publish atomically, without flattening or dropping state |
-| Carla and general latency/take controls | Refuse complete documents requiring unavailable capabilities | Remaining storage, capture, load and applicable export work belongs to P07/P09/P10 |
+| Native Carla track and bus projects and retained wet-take checkpoints | Preserve Native and legacy LV2 projects, media roles and mixer routes. Large checkpoints use checksummed archive members. | Native validates the plugin inventory and declared sources in a private bank before activation. Asset packaging and source-bound take checkpoints remain open under P07. |
+| General latency and take controls | Refuse complete documents that require unsupported adjustment settings | Signed adjustment and capture-window controls remain open under P09/P10. |
 | Session-owned scripts/resources | Bounded client archive composition and extraction preserve source and supported Markdown/PNG resources | [P16 contract](p16-client-scripts.md): source, resources and preferences stay client-owned; only musical data reaches the service; loaded scripts remain stopped |
 | MIDI control bindings (`id`, `message`, `action`, `target_id`) and session settings (`key`, typed `value`) | Save empty collections; reject nonempty collections, matching reference `session_bundle_to_backend` | These reserved document workflows have no current runtime implementation; machine preferences stay local |
 | File names, URLs, picker state, output bytes and task progress | Existing platform workflows and truthful completion/cancel/error states | Client-owned; never place filesystem paths or codecs in engine commands |
@@ -91,7 +95,7 @@ for archive, worker and client workflow changes.
 | Native wire turns | At most 64 persistence records per connection turn (≤64 KiB of media), with at most 64 upload records awaiting replies; ordinary commands retain their 16-record limit. Outbound accounting counts emitted records and bounds encoder cleanup separately. This batches file work across platform timer wakeups without increasing RT buffer ownership |
 | Wire chunk | 1024 bytes; fits the existing 1280-byte carriers with identities/envelope |
 | MIDI | At most 1,000,000 events per job, additionally bounded by decoded bytes and runtime packet/index capacities |
-| MIDI initial/preroll state | At most 16,384 short channel or System Reset packets per loop; parameter history that remains untracked after the complete prefix and vendor/system initial state refuse before activation (P11) |
+| MIDI initial/preroll state | At most 16,384 short channel or System Reset packets per loop; parameter history that remains untracked after the complete prefix and vendor/system initial state refuse before activation; arbitrary history reconstruction is outside the accepted P11 basic-MIDI scope |
 | Wire MIDI read index | At most 8 MiB plus one offset per object; built only for byte delivery, alongside retained immutable media |
 | Adapter read assembly | ≤16 outstanding bulk records per read. Audio fills final channels on arrival; MIDI has one ≤256 MiB byte builder and decodes ≤256 KiB per pump, with one complete ≤1 MiB packet atomic. Event/packet allocation remains bounded by one million events and the media budget |
 | Engine upload window | At most 64 queued writes when WIDE_CONTENT_UPLOAD is advertised, otherwise eight; cap the window by reliable credits. Both use a fixed pool of 32 prepared runtime buffers. Chunks divide a resource page and are at most 1024 bytes. Preparation adds at most 32 KiB of upload copy allowance per callback, separately from existing render/read reservations, and reserves validation for one MIDI chunk. Queue depth alone does not change these finite budgets |

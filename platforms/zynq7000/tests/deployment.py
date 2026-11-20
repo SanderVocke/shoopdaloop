@@ -15,6 +15,7 @@ sys.path.insert(0, str(PLATFORM / "deployment"))
 import boards
 import bundle
 from emulator import BootQemu, ROOT
+from qualification import Qualification
 from remote_profile import write_profile
 
 
@@ -22,10 +23,30 @@ def run(arguments, **kwargs):
     return subprocess.run([str(a) for a in arguments], cwd=ROOT, check=True, **kwargs)
 
 
+def qualify_recovery(board, private, keys):
+    artifacts = private / "recovery"
+    artifacts.mkdir()
+    for identity in ("firmware-a", "firmware-b", "fault-before-ready"):
+        args = [sys.executable, PLATFORM / "build.py", "--board", board.name,
+                "--app", "host", "--deployment", "--build-id", identity]
+        fault = identity.startswith("fault-")
+        if fault:
+            args += ["--deployment-test-fault", identity.removeprefix("fault-")]
+        run(args)
+        elf = board.build_dir(ROOT) / ("host-deployment-test.elf" if fault else "host-deployment.elf")
+        bundle.create(elf, identity, keys, artifacts / (identity + ".itb"), artifacts / "loader", board)
+    qualification = Qualification(artifacts, private, private / "recovery-evidence",
+                                  port_base=16420, updater_port=16574, board=board)
+    qualification.watchdogs("before-ready")
+    qualification.metadata_damage("images-both")
+    return qualification.results
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     boards.argument(parser)
     parser.add_argument("--directory", type=Path, required=True, help="New private test directory")
+    parser.add_argument("--recovery", action="store_true", help="Also qualify trial rollback and recovery for the board")
     args = parser.parse_args()
     board = boards.load(args.board)
     directory = args.directory.resolve()
@@ -50,11 +71,13 @@ def main():
     initial_build = json.loads(source.with_suffix(".json").read_text())["build_id"]
     identities = [initial_build, "board-update" if initial_build != "board-update" else "board-update-2"]
     loader = artifacts / "loader"
+    firmware = artifacts / "firmware"
+    firmware.mkdir()
     for index, identity in enumerate(identities):
         if index:
             run([sys.executable, PLATFORM / "build.py", "--board", args.board,
                  "--app", "host", "--deployment", "--build-id", identity])
-        elf = artifacts / (identity + ".elf")
+        elf = firmware / (identity + ".elf")
         shutil.copyfile(source, elf)
         shutil.copyfile(source.with_suffix(".json"), elf.with_suffix(".json"))
         bundle.create(elf, identity, keys, artifacts / (identity + ".itb"), loader, board)
@@ -91,6 +114,11 @@ def main():
             assert memory and memory[-1]["used"] == 0
             assert max(m["peak"] for m in memory) < board.memory["rust_mib"] * boards.MIB
     assert len(nonces) >= 3 and nonces == sorted(set(nonces)), "Boot authority was reused"
+    if args.recovery:
+        result["recovery"] = qualify_recovery(board, private, keys)
+        if board.name == "zturn-v2":
+            from fpga_update import qualify_fpga_update
+            result["fpga_update"] = qualify_fpga_update(board, private, keys, firmware / (identities[0] + ".elf"))
     result.update(passed=True, nonces=nonces, builds=identities)
     result_path.write_text(json.dumps(result, indent=2) + "\n")
     print(f"{args.board}: signed SD boot, A/B update, cleanup and persistent restart identity passed")

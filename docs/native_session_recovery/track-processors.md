@@ -24,13 +24,39 @@ FX supports 8,000–384,000 Hz. The pinned OxiSynth supports
 explicit On refuses startup. Initial real processing uses M=1, S=0 and thus one
 graph quantum of node latency. Host buffering is a separate delay.
 
-The per-side audio limit is the negotiated engine strip width, at most eight.
-FX slots support all widths from one through that limit, with distinct linked
+The Native engine supports up to 16 channels per side. Built-in FX slots support
+one through eight channels within the negotiated strip width, with distinct linked
 stereo and isolated non-stereo behavior. The complete maximum shape is eight dry
 plus eight wet channels. Synth is fixed at two dry/two wet/one dry MIDI; it ignores
 dry audio samples. FX also requires dry MIDI. External tracks support independent
 dry/wet widths and optional dry MIDI where native host ports support the shape.
-Bus catalogs advertise Built-in FX under the [bus contract](bus-fx.md). Bus and track FX share prepared slots and channel limits. Carla remains unavailable.
+Bus catalogs advertise Built-in FX under the [bus contract](bus-fx.md). Bus and track FX share prepared slots and channel limits.
+
+## Carla development builds
+
+An independent Native session host built with `shoop_host/carla` can advertise
+Rack, stereo Patchbay, and Patchbay 16x on tracks and buses when it discovers the
+Carla runtime and has prepared slots. The independent session host uses its own executable to launch
+isolated Carla workers. The separate RT engine companion uses
+`shoop_rt_host_process/carla-worker` for the same capability. The catalogue
+reports whether each type is available and how many instances the host prepared.
+
+In desktop settings, choose **Native** and an independent host under **Audio →
+Session delivery**. Under **Carla**, choose **In session host** or **One
+subprocess per FX chain**, and set the instance counts for the types you need.
+For Patchbay 16x, set **Track channels** to 16 under **Audio** and also set **Bus
+channels** to 16 to use all lanes on a bus. The startup pool reserves processor
+slots and their buffering within the processor memory budget. Set all instance
+counts to zero to disable Carla. Restart the owning host to apply changes. The
+host manager's **New host** dialog also accepts Carla mode and counts under
+**Track processors**. These settings belong to the host configuration.
+
+Linux development tests exercise both modes with the pinned runtime and actual
+Carla editors. In isolated mode the FX control can restart a crashed worker and
+reopen its editor. The host reports the new generation when the worker is ready.
+Full session saves include confirmed Carla track and bus projects. Selected loop
+media can be captured independently for export.
+See the plan for qualification scope and pending work. [Carla hosting plan](../../PLAN_CARLA_HOSTING.md#stage-4-host-stereo-carla-through-the-production-native-service)
 
 ## Routing and media matrix
 
@@ -78,17 +104,38 @@ recording global-only traffic. A dual-routed controller remains additive.
 | Backend / service | Confirmed operations, recovery projection, fenced replacement | Authoritative track processors, controls, MIDI projection and admission |
 | Persistence / client | Retained editors/roles/documents; production core codecs | Dry/wet images/media, recorded FX state, truthful UI/Lua and transactional restore |
 
-Audio/MIDI never travels to a separate processor executor. Control events retain
+Built-in DSP executes in the graph callback. Carla uses a prepared queue to hand
+blocks to the host's chain service, with a declared wet release delay. Control events retain
 source-frame ordering through batching and cannot mutate completed output.
 Render paths, worklet record pumping and slot admission allocate/free nothing.
 Processor storage is prepared, activated, retired/reset in bounded pieces, and
 destroyed off-render or after callbacks stop. Session candidates reserve their own
 bank; failure returns reservations and leaves current audio and media untouched.
 
+In a Carla-enabled Native host, choose an available Carla type when adding a
+Dry/Wet track or a bus. Buses use matching input and output widths. Select the
+track or bus FX control to open the Carla editor. The host's startup settings
+select in-process or isolated hosting and set the available instance counts.
+In isolation mode, the FX control can restart a failed worker. Linux desktop
+validation covered selecting an Audio File source in the editor, recording
+its stereo Rack output, and exporting the dry and wet channels in both modes.
+The track and bus FX menus open **Process logs** for isolated workers. Use
+**Refresh** to read the latest snapshot and **Clear** to discard retained logs.
+Each generation shows stdout, stderr, and the dropped-byte counts.
+Wet rerecord follows the dry loop across wraps and commits after the buffered
+output tail. A missing required block preserves the previous take.
+Selected loop media can be exported while Carla is active. Native session saves
+include the confirmed track and bus projects and any retained wet-take checkpoint.
+Loading a session checks the plugin inventory in a private bank before activation.
+File-based plugins resolve their sources on the owning host. Portable packaging
+of those source files and applying an individual take's checkpoint remain open
+under P07. [Persistence evidence](../../PLAN_CARLA_HOSTING.md#stage-5-complete-state-persistence-and-driver-switching)
+
 Changes to RT/app schemas and worklet configuration must version their wire
 contracts together. Generation-fenced reconnect publishes actual state rather
 than replaying mutations. UI disconnect does not reset voices or buffered output.
-Only implemented facets are advertised; general P09/P10 controls, Carla remains separately refused; Built-in bus FX follows the bus contract. P06 is complete within this contract; P07 remains open for Carla.
+The host advertises implemented facets. Built-in bus FX follows the bus contract.
+P06 is complete within this contract. P07 and general P09/P10 controls remain open.
 
 ## Delivery limitations
 

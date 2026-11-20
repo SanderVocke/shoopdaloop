@@ -6,7 +6,7 @@ use shoop_app_api::{
     TrackProcessorEditorDescriptor, TrackProcessorFeatures, TrackProcessorMidiPolicy,
     TrackProcessorPresetDescriptor, TrackProcessorTypeId,
 };
-use shoop_rt_protocol::{processors::Unavailable, Capabilities};
+use shoop_rt_protocol::{processors::Unavailable, Capabilities, ProcessorKind};
 use shoop_rt_transport::carrier::Carrier;
 
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
@@ -36,6 +36,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             }
         };
         let width = Some(u32::from(limits.channels));
+        let fx_width =
+            Some(ProcessorKind::BuiltInFx.prepared_audio_channels(limits.channels.into()) as u32);
         let fx = hosted
             && limits.effective.fx_instances > 0
             && limits.effective.fx_unavailable.is_none();
@@ -71,14 +73,63 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                                 bus.confirmed
                                     && !bus.removing
                                     && bus.processor_slot.is_some()
-                                    && kind == shoop_rt_protocol::ProcessorKind::BuiltInFx
+                                    && bus.processor_type.as_deref()
+                                        == Some(crate::processor_controls::processor_id(kind))
                             })
                             .count(),
                     ) as u16,
-                buffering_frames: limits.builtin_latency_frames,
+                buffering_frames: if kind.is_carla() {
+                    limits.carla_latency_frames
+                } else {
+                    limits.builtin_latency_frames
+                },
                 reserved_host_bytes: limits.reserved_bytes,
                 budget_host_bytes: limits.effective.memory_bytes,
             })
+        };
+        let carla = |kind: ProcessorKind, label: &str| {
+            let instances = limits.effective.instances(kind);
+            let available = hosted && instances != 0;
+            let channels = kind.prepared_audio_channels(limits.channels.into()) as u32;
+            let reason = if !available
+                && kind == ProcessorKind::CarlaPatchbay16x
+                && u32::from(limits.channels) < channels
+            {
+                Some("Carla Patchbay 16x requires 16 prepared track channels".into())
+            } else {
+                unavailable(
+                    available,
+                    limits
+                        .effective
+                        .carla
+                        .unavailable
+                        .or(Some(Unavailable::NoCapacity)),
+                )
+            };
+            TrackProcessorDescriptor {
+                resources: resources(kind, instances),
+                id: TrackProcessorTypeId::new(crate::processor_controls::processor_id(kind)),
+                label: label.into(),
+                available,
+                unavailable_reason: reason,
+                constraints: TrackProcessorConstraints {
+                    min_dry_audio_channels: Some(0),
+                    max_dry_audio_channels: Some(channels),
+                    min_wet_audio_channels: Some(0),
+                    max_wet_audio_channels: Some(channels),
+                    midi: TrackProcessorMidiPolicy::Optional,
+                    matching_audio_channels: false,
+                },
+                features: TrackProcessorFeatures {
+                    external_ui: available
+                        && self
+                            .capabilities
+                            .contains(Capabilities::EXTERNAL_PROCESSOR_EDITOR),
+                    logs: available && self.capabilities.contains(Capabilities::PROCESSOR_LOGS),
+                    ..Default::default()
+                },
+                editor: None,
+            }
         };
         Arc::from([
             TrackProcessorDescriptor {
@@ -107,9 +158,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 unavailable_reason: unavailable(fx, limits.effective.fx_unavailable),
                 constraints: TrackProcessorConstraints {
                     min_dry_audio_channels: Some(1),
-                    max_dry_audio_channels: width,
+                    max_dry_audio_channels: fx_width,
                     min_wet_audio_channels: Some(1),
-                    max_wet_audio_channels: width,
+                    max_wet_audio_channels: fx_width,
                     matching_audio_channels: true,
                     midi: TrackProcessorMidiPolicy::Required,
                 },
@@ -146,6 +197,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     presets: presets.into(),
                 }),
             },
+            carla(ProcessorKind::CarlaRack, "Carla Rack"),
+            carla(ProcessorKind::CarlaPatchbay, "Carla Patchbay"),
+            carla(ProcessorKind::CarlaPatchbay16x, "Carla Patchbay 16x"),
         ])
     }
 }

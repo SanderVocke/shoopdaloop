@@ -10,6 +10,25 @@ for upcoming parity work. Recovery is independent of disk persistence.
 
 For remote native UI connections, see [trusted-LAN setup and the Cortex-A adapter contract](../../../docs/trusted-lan-networking.md).
 
+## Experimental Rust FPGA reference
+
+`--backend native|rust-fpga|rtl-sim` selects the backend for a newly started host,
+including the default in-process mode and detached socket/shared-memory launches.
+The Audio settings' Backend preference supplies the default; an explicit CLI
+choice overrides it. Backend choice is a startup setting. An attaching UI uses
+the host's existing backend and accepts no `--backend` override. `native` remains
+the default.
+
+Build with `--features fpga-reference` for `--backend rust-fpga`, or with
+`--features rtl-sim` for the Marlin RTL simulation backend. Both can run in process
+or in a separate host with the UI attached. Direct multichannel strips and loops
+and flexible bus routing are supported by their shared graph compiler, subject
+to FPGA resource limits. Dummy, CPAL and JACK drivers provide pacing and audio
+according to the enabled build features. Graph edits activate automatically inside
+the host. Unsupported operations report errors when requested. See the
+[reference host instructions](../shoop_host/README.md#rust-fpga-reference-with-the-ui)
+for startup and the supported controls.
+
 ## Hosted track processors
 
 Default native and browser worklet builds include `builtin-fx` and `oxisynth`.
@@ -33,7 +52,9 @@ is reported separately. Regular playback uses the recorded wet take. Dry playbac
 feeds recorded dry audio/MIDI through the processor; rerecord changes wet media
 and preserves dry media. Embedded editors, MIDI Learn, track/bus global control
 MIDI, recorded-state restoration and role-aware files use the production service.
-External supports independent side widths. Built-in bus FX supports the negotiated FX width and shares track FX slots; Carla remains unavailable. See the [bus FX contract](../../../docs/native_session_recovery/bus-fx.md).
+External supports independent side widths. Built-in bus FX supports the
+negotiated FX width and shares track FX slots. A Carla-enabled independent
+Native host can prepare Rack tracks and stereo Patchbay banks. [Bus FX contract](../../../docs/native_session_recovery/bus-fx.md) · [Carla setup](../../../docs/native_session_recovery/track-processors.md#carla-development-builds)
 
 The packaged `--probe-hosted-processors --engine-transport socket` canary exercises
 UI/Lua commands, real DSP audio, role imports, save/reload and recovery. The `--probe-bus-fx --engine-transport socket` canary covers bus audio, bypass, Lua, files and reattachment. The native
@@ -142,11 +163,11 @@ supplies sample rate and buffer size. No profile files are required.
 Both native launch executables accept the same audio overrides:
 
 ```sh
-shoop_host --audio-driver jack --jack-client-name Studio
-shoopdaloop --audio-driver jack --session-transport socket
+shoop_host --driver jack --jack-client-name Studio
+shoopdaloop --driver jack --session-transport socket
 ```
 
-`--audio-driver` accepts `dummy`, `cpal`, or `jack`. `--jack-client-name` overrides
+`--driver` accepts `dummy`, `cpal`, or `jack`. `--jack-client-name` overrides
 the chosen JACK profile for this launch only. For `shoop_host --config FILE`, flags
 override the JSON driver configuration. Explicitly selecting a driver omitted from
 the build fails with a diagnostic. Audio overrides cannot be used when attaching to
@@ -229,8 +250,16 @@ shortcut in the extracted folder. Linux includes `shoop_host_manager.desktop` an
 the executables on `PATH` and the icon installed as `shoopdaloop.png`. Keep the
 three executables together when installing. On macOS, keep both app bundles
 together, for example by copying both to Applications.
-Carla runtime payloads and old worker/worklet payloads are
-not shipped; their sources/recipes and behavioral fixtures are preserved for parity.
+The default packages omit Carla. To build a package with Carla,
+build `shoopdaloop` and `shoop_host_manager` together, then build `shoop_host`
+with `--features carla` in a separate Cargo invocation using the same profile.
+Pass the normalized runtime directory as `--carla-runtime` to
+`package_artifacts.py native` and use `--with-carla` when verifying the archive.
+Archives with the component have a `-carla` suffix before the file extension.
+The session host resolves Carla beside the executables on Linux and Windows or
+under `Contents/Frameworks` on macOS. The release build checks the loader from
+an extracted archive with the component present and removed. The Linux release
+job also opens the bundled Carla editors under Xvfb. [Runtime lock and component layout](../../../third_party/carla/README.md)
 
 ## Runtime profiling
 
@@ -254,7 +283,8 @@ Track defaults map matching widths one-to-one and mono to every destination
 channel; absent/incompatible names leave a track unconnected. Explicit bus and
 direct system routes coexist. Lua bus indices follow stable logical order rather
 than mixer drag order, including after save/load. Built-in bus FX uses the
-negotiated FX width and shared track/bus instance budget. Carla is out of scope.
+negotiated FX width and shared track/bus instance budget. An optional Native
+Carla host offers Rack, stereo Patchbay, and Patchbay 16x bus FX with prepared slots. [Carla setup](../../../docs/native_session_recovery/track-processors.md#carla-development-builds)
 
 ## Browser
 
@@ -449,3 +479,6 @@ Periods must align to the host quantum (default 32; browser 128). The editor pre
 a valid effective end. Nonaligned API length requests refuse explicitly; offsets,
 pre-play and raw MIDI timestamps keep frame precision. See the
 [P12 evidence](https://github.com/SanderVocke/shoopdaloop/blob/a0304ac59f842b790337b914f52f404dcbfa0ccd/docs/native_session_recovery/evidence/loop-timing.md).
+
+Backend/driver selection, FPGA reference WebAudio builds and Marlin timing are
+documented in [shared drivers](../../../docs/shared_drivers.md).

@@ -833,6 +833,7 @@ mod tests {
             manifest: persistence_image::Manifest::Loop {
                 sample_rate: *sample_rate,
                 content: persistence_image::Loop {
+                    recorded_processor_checkpoint: None,
                     recorded_processor_state: None,
                     sync_source: None,
                     repeat_sync: false,

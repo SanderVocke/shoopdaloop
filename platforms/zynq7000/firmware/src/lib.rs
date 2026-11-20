@@ -8,6 +8,9 @@ use core::{
 };
 use linked_list_allocator::Heap;
 
+#[cfg(any(feature = "fpga-probe", feature = "fpga"))]
+mod fpga;
+
 extern "C" {
     static mut __rust_heap: u8;
     static mut __rust_heap_end: u8;
@@ -79,7 +82,25 @@ pub unsafe extern "C" fn shoop_rust_main() {
         assert_eq!(atomic.load(Ordering::SeqCst), 0x1_0000_0001);
         let _ = writeln!(Serial, "SHOOP_ALLOC_ATOMIC_PASS");
     }
+    #[cfg(feature = "native-i2s")]
+    {
+        extern "C" {
+            fn shoop_native_audio_available() -> i32;
+        }
+        if shoop_native_audio_available() == 0 {
+            let _ = writeln!(
+                Serial,
+                "SHOOP_NATIVE_I2S_UNAVAILABLE absent or incompatible PL"
+            );
+            return;
+        }
+    }
+    #[cfg(not(any(feature = "fpga-probe", feature = "fpga")))]
     shoop_host_freertos::run();
+    #[cfg(feature = "fpga-probe")]
+    fpga::probe();
+    #[cfg(feature = "fpga")]
+    fpga::serve();
 }
 #[no_mangle]
 pub unsafe extern "C" fn shoop_render_step(owner: *mut c_void, frames: usize) -> i32 {
@@ -91,6 +112,16 @@ pub unsafe extern "C" fn shoop_render_xruns(owner: *mut c_void, count: u32) {
     shoop_host_freertos::render_xruns(owner, count);
 }
 
+#[cfg(feature = "native-i2s")]
+#[no_mangle]
+pub unsafe extern "C" fn shoop_native_pcm_step(
+    owner: *mut c_void,
+    input: *const i32,
+    output: *mut i32,
+) -> i32 {
+    shoop_host_freertos::native_pcm_step(owner, input, output)
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn shoop_heap_stats(used: *mut usize, peak: *mut usize) {
     shoop_allocator_lock();
@@ -99,7 +130,7 @@ pub unsafe extern "C" fn shoop_heap_stats(used: *mut usize, peak: *mut usize) {
     shoop_allocator_unlock();
 }
 
-#[cfg(feature = "fixture")]
+#[cfg(all(feature = "fixture", not(feature = "native-i2s")))]
 #[no_mangle]
 pub unsafe extern "C" fn shoop_fixture_step(
     owner: *mut c_void,
@@ -109,7 +140,7 @@ pub unsafe extern "C" fn shoop_fixture_step(
 ) -> i32 {
     shoop_host_freertos::fixture_step(owner, frames, input, midi)
 }
-#[cfg(feature = "fixture")]
+#[cfg(all(feature = "fixture", not(feature = "native-i2s")))]
 #[no_mangle]
 pub unsafe extern "C" fn shoop_fixture_report(
     frame: *mut u32,

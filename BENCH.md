@@ -1,26 +1,63 @@
 # Standardized RT benchmark proposal
 
-Baseline: `feat/backend-replacement` at commit
-`3cd4c4cedf2e8258b67d4cdc311e5a9812bc0579`.
+Current upstream baseline: `feat/backend-replacement` at
+`cc410f27` (2026-11-20). The original proposal used `3cd4c4ce` on 2026-11-17.
 
 Build a **single deterministic fixture, driven through the RT transport endpoint,
-with small adapters for backend preparation, processing, and measurement**. The
-fixture describes musical operations at exact processing frames and retains every
-callback's timing so transition spikes remain visible.
+with small adapters for backend preparation, processing, and measurement**.
+The fixture and entry point live in
+[`shoop_rt_benchmark`](src/rust/shoop_rt_benchmark/README.md).
 
-Implementation is complete on `feat/standard-rt-benchmark`. See
-[`shoop_rt_benchmark`](src/rust/shoop_rt_benchmark/README.md) for the entry point,
-fixture contract, supported operations, and measurement boundaries.
+**Upstream refresh and MIDI matrix (revision 4).** The benchmark now selects
+`audio`, `midi`, or `audio-midi`; the default campaign runs all three. Each uses
+64 loops and Q=callback=32. Audio loops remain genuinely stereo, with 32-frame
+chunks and 32-chunk blocks. MIDI includes bursts, tied sample timestamps, silent
+intervals, synchronized allocation, event-block growth and retakes. The shared
+runner validates every output packet as well as every audio sample.
 
-The requested geometry update uses **32-frame chunks and 32-chunk blocks** on
-both FPGA adapters. Fixture revision 3 records for 1,056 frames so that all 64
-loops cross the 1,024-frame allocation boundary together. Its complete-callback
-cycle window and 150 MHz assumption are unchanged. The PDF overview names the
-geometry, and result validation checks both adapter metadata and elaborated RTL
-parameters. The updated campaign has passed local validation, including complete
-RTL replay and PDF regeneration from the retained results.
+Upstream audit:
 
-**Integration points and prerequisites identified at the baseline.**
+- Full `GraphView` compilation now supports multichannel loops, strips, buses and
+  routing. Remove the benchmark's old `GraphDescription`/`compile_with_geometry`
+  extensions and use the upstream compiler unchanged.
+- Native and FPGA hosts now share driver infrastructure. Remove the production
+  `SteppedDummy` addition and its cycle-access workaround; step the production
+  native renderer with benchmark-owned prepared buffers.
+- RTL encoding/model support moved into `rt_fpga_rtl`; update imports and reuse
+  upstream `apply_plan`, `clear_plan` and gain encoding. Preserve upstream's
+  compilation lock in the optimized, trace-free benchmark model session.
+- MIDI is now event-only data work through the common SP/JP queue. Use current
+  MIDI operations, storage and connected RTL, with no retired state-tracking or
+  MIDI-interpreter fixtures.
+- The native CPU immediate endpoint still refuses MIDI loop transitions.
+  Publish those cases as unsupported; its authored transport is a different
+  control path. The Rust FPGA reference endpoint needs a small MIDI-processing
+  extension that preserves its command FIFO and snapshots.
+- Audio and MIDI AXI responders must share one 150 MHz timing controller, with
+  one advance per fabric cycle and disjoint addresses. Independent DRAM models
+  would hide contention. Validate the resulting DRAM/fabric tick ratio too.
+- Adopt the new provisional Z-turn V2 DDR3-1066 x32 replay profile as the default.
+  Keep `--dram-config`/`SHOOP_DRAMSIM3_CONFIG` overrides and record its hash; the
+  historical report used the x16 model.
+- Native Carla and physical I2S/Ethernet changes require no benchmark device or
+  plugin. Keep this fixture device-free. The detached-host stderr handling is
+  now upstream; remove the branch's duplicate writer implementation.
+
+Indexed RAM observation replaces thousands of per-word probe ports. Reads are
+clock-free and checked against static probes without changing RTL state or time.
+
+The compact PDF remains capped at five pages, with its first three devoted to
+FPGA. Preserve separate media/pattern statistics, quiet MIDI playback, worst
+callback identities and audio/MIDI traffic. Host timing repetitions run serially;
+optional parallel RTL simulations start afterward. Old results remain available
+as historical configurations rather than being relabeled as new measurements.
+
+**Revision 4 validation.** Compiler/reference tests, common Rust media smoke
+tests with processing heap guards, shared-clock and indexed-observation checks,
+and reporter matrix/page-limit tests have passed. Complete DRAM-backed matrix
+capture and publication follow the implementation milestone.
+
+**Original integration gaps (2026-11-17; superseded by the audit above).**
 
 - Both `shoop_rt_engine::ControlEndpoint` and the FPGA reference endpoint implement
   [`shoop_rt_transport::carrier::Endpoint`](src/rust/shoop_rt_transport/src/carrier.rs).
@@ -41,8 +78,8 @@ requested 64-stereo result.
 `scripts/benchmark_rt.py`. Keep this independent of the application, UI, and
 existing backend test scenarios.
 
-The Rust runner owns a protocol client over `InProcess<E>`, where `E: Endpoint`,
-plus a dummy processing driver. Backend-specific adapters do only three things:
+The Rust runner owns an `E: Endpoint`, its bounded outbox, and a synchronous
+dummy processing driver. Backend-specific adapters do only three things:
 prepare the canonical layout, execute one callback, and return measurements.
 Initial preparation can use native graph transactions or FPGA compilation as
 appropriate; all measured control stimulus must travel through the endpoint.
@@ -54,11 +91,9 @@ Each callback follows a fixed sequence:
 3. Collect command responses, snapshots, and timing records.
 4. Verify the expected execution frame and state before continuing.
 
-The existing native `DummyMode::Controlled` provides a useful starting point:
-requested frames process without pacing or deadlines. Extend or factor its cycle
-machinery so the same dummy scheduling contract can drive the FPGA reference and
-RTL adapters. The reference host's current paced thread should not be used for
-this benchmark.
+Dummy callbacks process requested frames synchronously without pacing or
+deadlines. Each adapter uses its production renderer or processor with prepared
+buffers under this scheduling contract. No paced host thread is used.
 
 Command groups contain at most **32 commands**. Starting all 64 loops therefore
 requires two groups queued before processing begins. Assert that both response
@@ -69,16 +104,17 @@ waiting for its response repeatedly would miss the intended allocation storm.
 
 | Property | Standard |
 | --- | --- |
-| Loops | 64 primitive stereo audio loops |
+| Loops | 64 primitive loops: audio-only, MIDI-only, and stereo audio plus MIDI |
 | Routing | One stereo strip containing all 64 loops, mixed to a stereo master |
 | Timing | Q=32; callback size=32; sample rate=48 kHz |
 | FPGA media | 32-frame chunks; 32-chunk blocks; 1,024 frames per block |
 | Input | Deterministic, bounded, nonzero stereo signal generated in memory |
 | Output | In-memory sink; occasional checks outside timing regions |
 | Processing | Dummy driver, maximum speed, no deadline enforcement |
-| Features | No MIDI, plugins, or actual devices |
+| MIDI | Deterministic 40/16-event bursts and eight silent quanta; exact bytes/order/offset checks; 256-record storage blocks |
+| Features | No plugins or actual devices; no MIDI instrument-state interpretation |
 
-One strip keeps the initial comparison focused on loop processing and media
+One strip keeps each comparison focused on loop processing and media
 access. Its input history also provides a common source for simultaneous grabs.
 Additional strip layouts can become separately versioned fixtures later.
 
@@ -226,7 +262,7 @@ incomplete.
 - A single command runs the selected benchmark set and produces complete raw
   measurements, provenance, and a PDF that can be regenerated from saved data.
 
-**Implementation stages, in dependency order.**
+**Initial audio-only implementation stages (2026-11-17).**
 
 - [x] **Fixture and result contract:** define the versioned layout, patterns,
   event coverage, measurement boundaries, and artifact schema. Verify
@@ -247,7 +283,7 @@ incomplete.
   target, regenerate its PDF from raw data, and verify that all required event
   coverage and correctness checks passed.
 
-Verification: the complete 32×32 standard campaign at `2f3d34f4` accounted for all
+**Historical audio-only verification (2026-11-17).** The complete 32×32 standard campaign at `2f3d34f4` accounted for all
 21 runs: 17 completed and four explicitly unsupported FPGA grab runs. It retained
 46,015 callback measurements. Every completed run passed exact stereo samples,
 command-frame checks, allocation growth, storage release and wrapping. Mandatory
@@ -300,7 +336,7 @@ Fixture revision 3 supersedes revision 2's one-frame chunks, 128-chunk blocks an
 blocks, with 1,056-frame mandatory recordings; mixed turnover also uses 1,088 and
 1,152 frames. The complete-callback timing boundary, 64-stereo/Q32 layout and
 150 MHz memory timing are unchanged. Older reports remain regenerable with their
-original geometry labels, but fresh campaigns require revision 3. Grab storms
+original geometry labels, while fresh campaigns now require revision 4. Grab storms
 retain adjacent 32,768-frame history windows after filling the ring. Deterministic
 RTL replay defaults to one run; CPU timing retains three independent repetitions.
 Simulation uses an optimized model without waveform compilation.

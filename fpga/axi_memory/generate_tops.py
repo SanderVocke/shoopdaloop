@@ -36,7 +36,10 @@ def generate():
         public = [(p.replace("output reg", "output wire"), n) for p, n in ports if not n.startswith("memory_") or n == "memory_fault"]
         private = [(p, n) for p, n in ports if n.startswith("memory_") and n != "memory_fault"]
         text = '// Generated integration wrapper; do not edit by hand.\n`include "state_processor_defs.svh"\n\n'
-        text += f"module {name}_axi #(\n    {params},\n    parameter integer AXI_DATA_WIDTH = 32,\n    parameter [31:0] PHYSICAL_BASE = 32'h01000000\n) (\n"
+        text += f"module {name}_axi #(\n    {params},\n    parameter integer AXI_DATA_WIDTH = 32,\n    parameter [31:0] PHYSICAL_BASE = 32'h01000000"
+        if name == 'media_audio_pipeline':
+            text += ",\n    parameter [63:0] PHYSICAL_BYTES_LIMIT = 64'h100000000"
+        text += "\n) (\n"
         text += ",\n".join("    "+p+n for p, n in public+axi_ports)+"\n);\n"
         for prefix, port in private:
             prefix = re.sub(r"(?:input|output)\s+(?:wire|reg)", "wire", prefix)
@@ -58,6 +61,8 @@ endmodule
         else:
             text += "    localparam [63:0] STORAGE_WORDS = ((64'(SLOTS)*64'(CHUNK_FRAMES)+15)/16)*16 + 2*((64'(SLOTS/BLOCK_CHUNKS)+15)/16)*16 + 64'(TABLE_PAGES)*16 + 64'(RETIRED_TABLES)*16;\n"
             text += "    initial if ({32'b0,PHYSICAL_BASE}+STORAGE_WORDS*4 > 64'h100000000) $fatal(1,\"DDR arena exceeds AXI address range\");\n"
+            if name == 'media_audio_pipeline':
+                text += "    initial if (STORAGE_WORDS*4 > PHYSICAL_BYTES_LIMIT) $fatal(1,\"DDR arena exceeds reserved memory\");\n"
             text += "    shared_axi #(.DATA_WIDTH(AXI_DATA_WIDTH),.BURST_MEMORY(BURST_MEMORY),.MAX_SAMPLE_WORDS(32'(CHUNK_FRAMES)),.MAX_METADATA_WORDS(32'd16)) memory_endpoint (.arena_base(memory_arena_base),.arena_bytes(STORAGE_WORDS*4),.sample_bytes(arena_bytes),.*);\nendmodule\n"
         result[HERE/"rtl"/f"{name}_axi.sv"] = text
     return result

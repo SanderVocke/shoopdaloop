@@ -11,13 +11,14 @@
 //! lists, each a `u32` count followed by its items: pool segments as strip and
 //! loop counts; initial Master connections as Master channel and host audio
 //! output index; and the names of the host audio inputs, audio outputs, MIDI
-//! inputs and MIDI outputs, each a `u8` length and UTF-8 bytes.
+//! inputs and MIDI outputs, each a `u8` length and UTF-8 bytes. Finally come the
+//! backend selector and reference media capacity in MiB, both `u32`.
 
 use crate::lane::MAX_EVENT_BYTES;
 use shoop_rt_engine::{EngineDescription, HostPorts, Segment, MAX_HOST_PORTS};
 use shoop_rt_protocol::{Name, MAX_RECORD_BYTES};
 
-pub const CONFIG_VERSION: u32 = 7;
+pub const CONFIG_VERSION: u32 = 8;
 /// Largest configuration record.
 pub const MAX_CONFIG_BYTES: usize = 64 * 1024;
 pub const MAX_SEGMENTS: usize = 256;
@@ -32,6 +33,7 @@ pub const DEFAULT_RECORDS_PER_QUANTUM: usize = 8;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ConfigError {
     Version,
+    BackendUnavailable,
     Truncated,
     Trailing,
     /// A value does not fit its field or is outside the worklet's bounds.
@@ -40,8 +42,17 @@ pub enum ConfigError {
     Name,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum Backend {
+    #[default]
+    Native,
+    RustReference,
+    RtlSim,
+}
 #[derive(Clone, Debug, PartialEq)]
 pub struct WorkletConfig {
+    pub backend: Backend,
+    pub reference_memory_mb: u32,
     pub engine: EngineDescription,
     /// Client record bytes the module holds between quanta; at least one largest
     /// record.
@@ -60,6 +71,8 @@ impl WorkletConfig {
     /// A configuration with the default lane sizes.
     pub fn new(engine: EngineDescription) -> Self {
         Self {
+            backend: Backend::Native,
+            reference_memory_mb: 256,
             engine,
             records_in_bytes: DEFAULT_RECORDS_IN_BYTES,
             records_out_bytes: DEFAULT_RECORDS_OUT_BYTES,
@@ -72,6 +85,11 @@ impl WorkletConfig {
     /// The worklet's own bounds; the engine validates its description when it is
     /// prepared.
     pub fn validate(&self) -> Result<(), ConfigError> {
+        if self.engine.processors.carla != Default::default()
+            || self.engine.midi_output_limit_bytes.is_some()
+        {
+            return Err(ConfigError::BackendUnavailable);
+        }
         self.engine
             .processors
             .validate()
@@ -96,6 +114,10 @@ impl WorkletConfig {
             Ok(())
         }
         let engine = &self.engine;
+        if engine.processors.carla != Default::default() || engine.midi_output_limit_bytes.is_some()
+        {
+            return Err(ConfigError::BackendUnavailable);
+        }
         let mut out = Vec::new();
         for value in [
             CONFIG_VERSION as usize,
@@ -164,6 +186,8 @@ impl WorkletConfig {
                 out.extend_from_slice(bytes);
             }
         }
+        put(&mut out, self.backend as usize)?;
+        put(&mut out, self.reference_memory_mb as usize)?;
         if out.len() > MAX_CONFIG_BYTES {
             return Err(ConfigError::Range);
         }
@@ -190,6 +214,7 @@ impl WorkletConfig {
             fx_instances: r.narrow()?,
             synth_instances: r.narrow()?,
             memory_mb: r.u32()?,
+            carla: Default::default(),
         };
         processors.validate().map_err(|_| ConfigError::Range)?;
         let external_dry_wet = match r.u32()? {
@@ -248,10 +273,19 @@ impl WorkletConfig {
             midi_inputs: names()?,
             midi_outputs: names()?,
         };
+        let backend = match r.u32()? {
+            0 => Backend::Native,
+            1 => Backend::RustReference,
+            2 => Backend::RtlSim,
+            _ => return Err(ConfigError::Range),
+        };
+        let reference_memory_mb = r.u32()?;
         if !r.0.is_empty() {
             return Err(ConfigError::Trailing);
         }
         Ok(Self {
+            backend,
+            reference_memory_mb,
             engine: EngineDescription {
                 audio_render_mode: shoop_rt_engine::AudioRenderMode::Current,
                 audio_bench_only: false,
@@ -279,6 +313,7 @@ impl WorkletConfig {
                 page_bytes,
                 midi_events,
                 midi_bytes,
+                midi_output_limit_bytes: None,
                 pending_transitions,
                 reliable_credits,
                 bulk_credits,

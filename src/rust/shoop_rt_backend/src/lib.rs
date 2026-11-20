@@ -40,6 +40,7 @@ mod capture;
 mod clock;
 mod composites;
 mod family;
+mod graph_view;
 mod immediate;
 mod import;
 mod incoming;
@@ -49,8 +50,11 @@ mod outgoing;
 mod persistence;
 mod prepared;
 mod prepared_graph;
+pub use shoop_graph;
 mod preview;
+mod processor_checkpoints;
 mod processor_controls;
+mod processor_logs;
 mod processors;
 mod reads;
 mod requests;
@@ -99,7 +103,7 @@ struct Status {
     memory: Option<shoop_rt_protocol::MemoryReport>,
     frame: u64,
     callbacks: u64,
-    load: f32,
+    dsp: Option<shoop_rt_protocol::DspMeasurement>,
     /// The engine's xrun count when last reported, from the first engine record
     /// of this connection on.
     xruns_reported: Option<u32>,
@@ -192,6 +196,8 @@ pub struct RtBackend<C, K> {
     status: Status,
     mirror: Mirror,
     requests: Requests,
+    processor_checkpoints: processor_checkpoints::Capture,
+    processor_logs: processor_logs::Logs,
     reads: Reads,
     read_cancel_needed: bool,
     resync: Option<Vec<StateRecord>>,
@@ -259,6 +265,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             status: Status::default(),
             mirror: Mirror::new(),
             requests: Requests::default(),
+            processor_checkpoints: Default::default(),
+            processor_logs: Default::default(),
             reads: Reads::default(),
             read_cancel_needed: false,
             resync: None,
@@ -519,7 +527,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             self.advance_composites();
             self.advance_preview();
             self.advance_persistence();
+            self.advance_processor_checkpoints();
             let mut sent = self.send();
+            sent += self.send_prepared_graph_chunks();
             if !requested_snapshot
                 && self.is_ready()
                 && self.snapshots.delivery == SnapshotDelivery::Pull
@@ -748,6 +758,8 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
         self.disconnect_composites();
         self.requests.clear();
+        self.processor_checkpoints = Default::default();
+        self.processor_logs = Default::default();
         self.reads.clear();
         if let Some(preview) = &mut self.preview {
             preview.job.disconnected(reason.clone());

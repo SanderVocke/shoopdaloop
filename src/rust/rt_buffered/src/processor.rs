@@ -1,6 +1,6 @@
 use crate::{
-    Backend, Batch, BatchTag, InlineTestProcessor, ParameterEvent, PreparedTiming, SourceObserver,
-    Timing,
+    AsyncBatch, AsyncOutput, AsyncStats, Backend, Batch, BatchTag, InlineTestProcessor,
+    ParameterEvent, PreparedTiming, Release, SourceObserver, Timing,
 };
 use alloc::{boxed::Box, vec, vec::Vec};
 use rt_runtime::{
@@ -14,6 +14,7 @@ use rt_runtime::{
 
 pub const MAX_STORAGE_BYTES: usize = 32 * 1024 * 1024;
 const MAX_PORTS: usize = 64;
+const COMPLETIONS_PER_TICK: usize = 8;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct MidiLimits {
@@ -42,10 +43,30 @@ impl BufferLimits {
         quantum: Quantum,
         timing: Timing,
     ) -> Result<usize, Error> {
+        self.prepared_bytes(ports, quantum, timing, false)
+    }
+
+    /// Buffered node storage for a worker endpoint, excluding transport storage.
+    pub fn async_storage_bytes_for(
+        self,
+        ports: PortCounts,
+        quantum: Quantum,
+        timing: Timing,
+    ) -> Result<usize, Error> {
+        self.prepared_bytes(ports, quantum, timing, true)
+    }
+
+    fn prepared_bytes(
+        self,
+        ports: PortCounts,
+        quantum: Quantum,
+        timing: Timing,
+        asynchronous: bool,
+    ) -> Result<usize, Error> {
         if ports.total()? > MAX_PORTS {
             return Err(Error::Capacity);
         }
-        buffer_storage(ports, timing.prepare(quantum)?, self)
+        buffer_storage(ports, timing.prepare(quantum)?, self, asynchronous)
     }
 }
 impl Default for BufferLimits {
@@ -66,6 +87,13 @@ pub enum Lifecycle {
     Faulted,
 }
 
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum BatchStatus {
+    Pending,
+    Ready,
+    Missing,
+}
+
 struct Slot {
     generation: u64,
     audio_input: Box<[f32]>,
@@ -74,6 +102,7 @@ struct Slot {
     output: Box<[MidiBuffer]>,
     parameters: Vec<ParameterEvent>,
     tag: Option<BatchTag>,
+    status: BatchStatus,
     played_events: Box<[usize]>,
 }
 impl Slot {
@@ -83,11 +112,12 @@ impl Slot {
         }
         self.parameters.clear();
         self.tag = None;
+        self.status = BatchStatus::Ready;
         self.played_events.fill(0);
     }
 }
 
-/// A prepared render-owned node with synchronous computation and fixed release time.
+/// A prepared render-owned node with fixed release time.
 pub struct BufferedProcessor<B = InlineTestProcessor> {
     backend: B,
     ports: PortCounts,
@@ -105,6 +135,9 @@ pub struct BufferedProcessor<B = InlineTestProcessor> {
     pending_until: Frame,
     storage_bytes: usize,
     backend_latency: usize,
+    asynchronous: bool,
+    async_stats: AsyncStats,
+    last_release: Option<Release>,
 }
 
 fn product(a: usize, b: usize) -> Result<usize, Error> {
@@ -137,6 +170,7 @@ fn buffer_storage(
     ports: PortCounts,
     timing: PreparedTiming,
     limits: BufferLimits,
+    asynchronous: bool,
 ) -> Result<usize, Error> {
     rt_runtime::buffer::MidiCapacity {
         events: limits.midi_input.events_per_quantum,
@@ -155,7 +189,10 @@ fn buffer_storage(
         sum(
             sum(
                 product(
-                    midi_storage(limits.midi_input, if m == 1 { 0 } else { m })?,
+                    midi_storage(
+                        limits.midi_input,
+                        if m == 1 && !asynchronous { 0 } else { m },
+                    )?,
                     ports.midi_inputs,
                 )?,
                 product(midi_storage(limits.midi_output, m)?, ports.midi_outputs)?,
@@ -189,6 +226,7 @@ impl BufferedProcessor<InlineTestProcessor> {
             },
             timing.prepare(quantum)?,
             buffer_limits,
+            false,
         )?;
         Self::with_backend(
             InlineTestProcessor::new(limits.bytes_per_quantum),
@@ -205,7 +243,7 @@ impl BufferedProcessor<InlineTestProcessor> {
 
 impl<B: Backend> BufferedProcessor<B> {
     pub fn with_backend(
-        backend: B,
+        mut backend: B,
         quantum: Quantum,
         timing: Timing,
         limits: BufferLimits,
@@ -219,7 +257,8 @@ impl<B: Backend> BufferedProcessor<B> {
         if sum(timing.latency_frames(), backend_latency)? > crate::MAX_LATENCY_FRAMES {
             return Err(Error::Capacity);
         }
-        let storage_bytes = buffer_storage(ports, timing, limits)?;
+        let asynchronous = backend.async_transport().is_some();
+        let storage_bytes = buffer_storage(ports, timing, limits, asynchronous)?;
         let m = timing.timing().batch_quanta;
         let b = timing.batch_frames();
         let controls = product(limits.parameters_per_quantum, m)?;
@@ -247,11 +286,12 @@ impl<B: Backend> BufferedProcessor<B> {
                 input: midi_ports(
                     ports.midi_inputs,
                     limits.midi_input,
-                    if m == 1 { 0 } else { m },
+                    if m == 1 && !asynchronous { 0 } else { m },
                 )?,
                 output: midi_ports(ports.midi_outputs, limits.midi_output, m)?,
                 parameters,
                 tag: None,
+                status: BatchStatus::Ready,
                 played_events: vec![0; ports.midi_outputs].into_boxed_slice(),
             });
         }
@@ -272,6 +312,9 @@ impl<B: Backend> BufferedProcessor<B> {
             pending_until: Frame(0),
             storage_bytes,
             backend_latency,
+            asynchronous,
+            async_stats: AsyncStats::default(),
+            last_release: None,
         })
     }
 
@@ -282,7 +325,21 @@ impl<B: Backend> BufferedProcessor<B> {
         self.timing.latency_frames() + self.backend_latency
     }
     pub fn completed_batches(&self) -> u64 {
-        self.sequence
+        if self.asynchronous {
+            self.async_stats.completed
+        } else {
+            self.sequence
+        }
+    }
+    /// Worker endpoint diagnostics for the current stream generation.
+    pub fn async_stats(&self) -> Option<AsyncStats> {
+        self.asynchronous.then_some(self.async_stats)
+    }
+    pub fn is_worker_backed(&self) -> bool {
+        self.asynchronous
+    }
+    pub fn last_release(&self) -> Option<Release> {
+        self.last_release
     }
     pub fn generation(&self) -> u64 {
         self.generation
@@ -321,6 +378,9 @@ impl<B: Backend> BufferedProcessor<B> {
         }
         let frames = self.timing.batch_frames();
         self.slots.iter().find_map(|slot| {
+            if slot.status != BatchStatus::Ready {
+                return None;
+            }
             let tag = slot
                 .tag
                 .filter(|tag| tag.generation == self.generation && tag.source == source)?;
@@ -435,6 +495,8 @@ impl<B: Backend> BufferedProcessor<B> {
         self.batch_start = origin;
         self.pending_until = origin;
         self.sequence = 0;
+        self.last_release = None;
+        self.async_stats = AsyncStats::default();
         self.slots[0].clear();
         self.slots[0].generation = self.generation;
         Ok(())
@@ -479,13 +541,14 @@ impl<B: Backend> BufferedProcessor<B> {
         outputs: &mut [MidiBuffer],
         observer: &mut dyn SourceObserver,
     ) -> Result<(), Error> {
-        if !self.backend.supports_observation() {
+        if self.asynchronous || !self.backend.supports_observation() {
             return Err(Error::InvalidState);
         }
         self.process_ports_tick_inner(frame, quantum, audio, inputs, outputs, None, Some(observer))
     }
 
-    /// Merge borrowed controls while executing one complete source quantum.
+    /// Merge controls at their source quantum. Asynchronous batches copy them
+    /// into prepared storage during collection.
     pub fn process_ports_tick_controls(
         &mut self,
         frame: Frame,
@@ -496,13 +559,51 @@ impl<B: Backend> BufferedProcessor<B> {
         controls: Option<crate::MidiControls<'_>>,
         observer: Option<&mut dyn SourceObserver>,
     ) -> Result<(), Error> {
-        if self.timing.timing().batch_quanta != 1
+        if (!self.asynchronous && self.timing.timing().batch_quanta != 1)
             || inputs.len() != 1 && controls.is_some()
-            || observer.is_some() && !self.backend.supports_observation()
+            || observer.is_some() && (self.asynchronous || !self.backend.supports_observation())
         {
             return Err(Error::InvalidShape);
         }
         self.process_ports_tick_inner(frame, quantum, audio, inputs, outputs, controls, observer)
+    }
+
+    fn poll_worker(&mut self, frame: Frame) -> Result<(), Error> {
+        let transport = self.backend.async_transport().ok_or(Error::InvalidState)?;
+        let slots = self.slots.len() as u64;
+        let frames = self.timing.batch_frames() as u64;
+        let stats = &mut self.async_stats;
+        for _ in 0..COMPLETIONS_PER_TICK {
+            let Some(completion) = transport.try_completion() else {
+                break;
+            };
+            let tag = completion.tag;
+            let slot = &mut self.slots[(tag.sequence % slots) as usize];
+            if tag.generation != self.generation
+                || slot.tag != Some(tag)
+                || slot.status != BatchStatus::Pending
+            {
+                stats.stale = stats.stale.saturating_add(1);
+                continue;
+            }
+            stats.pending -= 1;
+            slot.status = BatchStatus::Missing;
+            let Ok(output) = completion.output else {
+                stats.failed = stats.failed.saturating_add(1);
+                continue;
+            };
+            let result = copy_worker_output(slot, output, self.timing, self.limits.midi_output);
+            if result.is_err() {
+                stats.invalid = stats.invalid.saturating_add(1);
+                continue;
+            }
+            let elapsed = frame.0.saturating_sub(tag.source.0.saturating_add(frames));
+            stats.last_completion_frames = elapsed;
+            stats.peak_completion_frames = stats.peak_completion_frames.max(elapsed);
+            stats.completed = stats.completed.saturating_add(1);
+            slot.status = BatchStatus::Ready;
+        }
+        Ok(())
     }
 
     fn process_ports_tick_inner(
@@ -520,6 +621,7 @@ impl<B: Backend> BufferedProcessor<B> {
         }
         let q = self.timing.quantum().frames();
         let b = self.timing.batch_frames();
+        let own_input = self.asynchronous || b != q;
         if quantum != self.timing.quantum() || frame != self.next {
             return Err(Error::InvalidFrame);
         }
@@ -574,6 +676,9 @@ impl<B: Backend> BufferedProcessor<B> {
                 }
             }
         }
+        if self.asynchronous {
+            self.poll_worker(frame)?;
+        }
         let playing = &self.slots[self.read];
         let playback = if let Some(tag) =
             playing.tag.filter(|tag| tag.generation == self.generation)
@@ -585,6 +690,9 @@ impl<B: Backend> BufferedProcessor<B> {
                     return Err(Error::InvalidState);
                 }
                 for (port, output) in outputs.iter().enumerate() {
+                    if playing.status != BatchStatus::Ready {
+                        break;
+                    }
                     let buffer = &playing.output[port];
                     let mut count = 0;
                     let mut bytes = 0;
@@ -603,7 +711,7 @@ impl<B: Backend> BufferedProcessor<B> {
                         return Err(Error::Capacity);
                     }
                 }
-                Some(offset)
+                Some((tag, offset))
             } else {
                 None
             }
@@ -613,24 +721,42 @@ impl<B: Backend> BufferedProcessor<B> {
         for c in 0..self.ports.audio_outputs {
             audio.output(c).ok_or(Error::InvalidShape)?.fill(0.);
         }
-        if let Some(offset) = playback {
+        self.last_release = None;
+        if let Some((tag, offset)) = playback {
             let slot = &mut self.slots[self.read];
-            for c in 0..self.ports.audio_outputs {
-                audio
-                    .output(c)
-                    .ok_or(Error::InvalidShape)?
-                    .copy_from_slice(&slot.audio_output[c * b + offset..c * b + offset + q]);
-            }
-            for (port, output) in outputs.iter_mut().enumerate() {
-                let buffer = &slot.output[port];
-                while let Some((at, packet)) = buffer.get(slot.played_events[port]) {
-                    if at as usize >= offset + q {
-                        break;
+            let available = slot.status == BatchStatus::Ready;
+            self.last_release = Some(Release {
+                tag,
+                offset,
+                available,
+            });
+            if available {
+                for c in 0..self.ports.audio_outputs {
+                    audio
+                        .output(c)
+                        .ok_or(Error::InvalidShape)?
+                        .copy_from_slice(&slot.audio_output[c * b + offset..c * b + offset + q]);
+                }
+                for (port, output) in outputs.iter_mut().enumerate() {
+                    let buffer = &slot.output[port];
+                    while let Some((at, packet)) = buffer.get(slot.played_events[port]) {
+                        if at as usize >= offset + q {
+                            break;
+                        }
+                        output
+                            .push(at - offset as u32, q, packet)
+                            .map_err(capacity)?;
+                        slot.played_events[port] += 1;
                     }
-                    output
-                        .push(at - offset as u32, q, packet)
-                        .map_err(capacity)?;
-                    slot.played_events[port] += 1;
+                }
+            } else if offset == 0 {
+                if slot.status == BatchStatus::Pending {
+                    self.async_stats.pending -= 1;
+                    slot.status = BatchStatus::Missing;
+                }
+                self.async_stats.missed = self.async_stats.missed.saturating_add(1);
+                for output in outputs.iter_mut() {
+                    output.recover_notes();
                 }
             }
             if offset + q == b {
@@ -652,10 +778,10 @@ impl<B: Backend> BufferedProcessor<B> {
                     dest.fill(0.);
                 }
             }
-            if self.state == Lifecycle::Running && b != q {
-                for (input, dest) in inputs.iter().zip(slot.input.iter_mut()) {
-                    for i in 0..input.len() {
-                        let (at, packet) = input.get(i).ok_or(Error::InvalidState)?;
+            if self.state == Lifecycle::Running && own_input {
+                for (port, (input, dest)) in inputs.iter().zip(slot.input.iter_mut()).enumerate() {
+                    let input = crate::MidiInput::new(input, controls.filter(|_| port == 0));
+                    for (at, packet) in input.iter() {
                         dest.push(at + self.filled as u32, b, packet)
                             .map_err(capacity)?;
                     }
@@ -668,48 +794,54 @@ impl<B: Backend> BufferedProcessor<B> {
                     sequence: self.sequence,
                     source: self.batch_start,
                 };
-                let mut batch = Batch {
-                    tag,
-                    frames: b,
-                    audio: AudioPorts::new(&slot.audio_input, &mut slot.audio_output, b, 0, b)?,
-                    midi_inputs: if b == q && self.state == Lifecycle::Running {
-                        inputs
+                if self.asynchronous {
+                    let transport = self.backend.async_transport().ok_or(Error::InvalidState)?;
+                    let result = transport.try_submit(AsyncBatch {
+                        tag,
+                        frames: b,
+                        audio: &slot.audio_input,
+                        midi: &slot.input,
+                        parameters: &slot.parameters,
+                    });
+                    let stats = &mut self.async_stats;
+                    if result.is_ok() {
+                        slot.status = BatchStatus::Pending;
+                        stats.submitted = stats.submitted.saturating_add(1);
+                        stats.pending += 1;
+                        stats.peak_pending = stats.peak_pending.max(stats.pending);
                     } else {
-                        &slot.input
-                    },
-                    midi_controls: controls,
-                    midi_outputs: &mut slot.output,
-                    parameters: &slot.parameters,
-                    observer,
-                };
-                if let Err(error) = self.backend.process(&mut batch) {
-                    self.state = Lifecycle::Faulted;
-                    return Err(capacity(error));
-                }
-                for buffer in &slot.output {
-                    let mut slice = 0;
-                    let mut count = 0;
-                    let mut bytes = 0;
-                    for i in 0..buffer.len() {
-                        let (at, packet) = buffer.get(i).ok_or(Error::InvalidState)?;
-                        if at as usize >= b {
-                            self.state = Lifecycle::Faulted;
-                            return Err(Error::InvalidEvent);
-                        }
-                        let current = at as usize / q;
-                        if current != slice {
-                            slice = current;
-                            count = 0;
-                            bytes = 0;
-                        }
-                        count += 1;
-                        bytes += packet.len();
-                        if count > self.limits.midi_output.events_per_quantum
-                            || bytes > self.limits.midi_output.bytes_per_quantum
-                        {
-                            self.state = Lifecycle::Faulted;
-                            return Err(Error::Capacity);
-                        }
+                        slot.status = BatchStatus::Missing;
+                        stats.rejected = stats.rejected.saturating_add(1);
+                    }
+                } else {
+                    let mut batch = Batch {
+                        tag,
+                        frames: b,
+                        audio: AudioPorts::new(&slot.audio_input, &mut slot.audio_output, b, 0, b)?,
+                        midi_inputs: if !own_input && self.state == Lifecycle::Running {
+                            inputs
+                        } else {
+                            &slot.input
+                        },
+                        midi_controls: controls,
+                        midi_outputs: &mut slot.output,
+                        parameters: &slot.parameters,
+                        observer,
+                    };
+                    let result =
+                        self.backend
+                            .process(&mut batch)
+                            .map_err(capacity)
+                            .and_then(|()| {
+                                validate_midi_output(
+                                    &slot.output,
+                                    self.timing,
+                                    self.limits.midi_output,
+                                )
+                            });
+                    if let Err(error) = result {
+                        self.state = Lifecycle::Faulted;
+                        return Err(error);
                     }
                 }
                 slot.tag = Some(tag);
@@ -726,6 +858,66 @@ impl<B: Backend> BufferedProcessor<B> {
         }
         Ok(())
     }
+}
+
+fn copy_worker_output(
+    slot: &mut Slot,
+    output: AsyncOutput<'_>,
+    timing: PreparedTiming,
+    limits: MidiLimits,
+) -> Result<(), Error> {
+    if output.frames != timing.batch_frames()
+        || output.audio.len() != slot.audio_output.len()
+        || output.midi.len() != slot.output.len()
+    {
+        return Err(Error::InvalidShape);
+    }
+    if output.audio.iter().any(|sample| !sample.is_finite()) {
+        return Err(Error::InvalidParameter);
+    }
+    if output.midi.iter().any(MidiBuffer::is_recovery) {
+        return Err(Error::InvalidEvent);
+    }
+    validate_midi_output(output.midi, timing, limits)?;
+    for (source, dest) in output.midi.iter().zip(slot.output.iter_mut()) {
+        for index in 0..source.len() {
+            let (at, packet) = source.get(index).ok_or(Error::InvalidState)?;
+            dest.push(at, output.frames, packet).map_err(capacity)?;
+        }
+    }
+    slot.audio_output.copy_from_slice(output.audio);
+    Ok(())
+}
+
+fn validate_midi_output(
+    buffers: &[MidiBuffer],
+    timing: PreparedTiming,
+    limits: MidiLimits,
+) -> Result<(), Error> {
+    let quantum = timing.quantum().frames();
+    for buffer in buffers {
+        let mut previous = 0;
+        let mut count = 0;
+        let mut bytes = 0;
+        for index in 0..buffer.len() {
+            let (at, packet) = buffer.get(index).ok_or(Error::InvalidState)?;
+            let offset = at as usize;
+            if offset >= timing.batch_frames() || offset < previous {
+                return Err(Error::InvalidEvent);
+            }
+            if offset / quantum != previous / quantum {
+                count = 0;
+                bytes = 0;
+            }
+            previous = offset;
+            count += 1;
+            bytes += packet.len();
+            if count > limits.events_per_quantum || bytes > limits.bytes_per_quantum {
+                return Err(Error::Capacity);
+            }
+        }
+    }
+    Ok(())
 }
 
 fn capacity(error: Error) -> Error {

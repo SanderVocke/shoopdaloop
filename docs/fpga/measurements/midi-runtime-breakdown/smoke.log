@@ -1,0 +1,25 @@
+[32m[1m   Compiling[0m[39m bench_top#16522084400372600904 (<repository>/work/marlin-suite/midi-64-benchmark/midi_audio_pipeline_axi-e0c5de6dd7a8a169/bench_top.sv)
+"verilator" "--cc" "-sv" "--build" "-j" "2" "-CFLAGS" "-shared -fpic -std=c++14 -DVL_TIME_CONTEXT" "-MAKEFLAGS" "CXX=c++" "--Mdir" "<repository>/work/marlin-suite/midi-64-benchmark/midi_audio_pipeline_axi-e0c5de6dd7a8a169/model/bench_top__workspace_work_current-backend_work_marlin-suite_midi-64-benchmark_midi__audio__pipeline__axi-e0c5de6dd7a8a169_bench__top.sv_16522084400372600904/obj_dir" "--top-module" "bench_top" "<repository>/fpga/axi_memory/rtl/axi_burst_mux.sv" "<repository>/fpga/axi_memory/rtl/axi_master.sv" "<repository>/fpga/axi_memory/rtl/chunk_axi.sv" "<repository>/fpga/axi_memory/rtl/chunk_dma.sv" "<repository>/fpga/axi_memory/rtl/media_store_axi.sv" "<repository>/fpga/axi_memory/rtl/shared_axi.sv" "<repository>/fpga/axi_memory/rtl/word_axi.sv" "<repository>/fpga/axi_memory/rtl/word_dma.sv" "<repository>/fpga/chunk_memory/rtl/chunk_memory.sv" "<repository>/fpga/chunk_memory/rtl/chunk_priority.sv" "<repository>/fpga/chunk_memory/rtl/chunk_ram.sv" "<repository>/fpga/job_processor/rtl/audio_pipeline.sv" "<repository>/fpga/job_processor/rtl/job_processor.sv" "<repository>/fpga/job_processor/rtl/jp_divider.sv" "<repository>/fpga/job_processor/rtl/jp_sample_ram.sv" "<repository>/fpga/media_store/rtl/media_metadata.sv" "<repository>/fpga/media_store/rtl/media_prefetch_resolver.sv" "<repository>/fpga/media_store/rtl/media_ram.sv" "<repository>/fpga/media_store/rtl/media_reclaimer.sv" "<repository>/fpga/media_store/rtl/media_store.sv" "<repository>/fpga/media_store/rtl/metadata_cache.sv" "<repository>/fpga/state_processor/rtl/sp_engine.sv" "<repository>/fpga/state_processor/rtl/sp_job_fifo.sv" "<repository>/fpga/state_processor/rtl/sp_ram.sv" "<repository>/fpga/state_processor/rtl/state_processor.sv" "<repository>/fpga/media_store/rtl/memory_delay.sv" "<repository>/fpga/media_store/rtl/media_audio_pipeline.sv" "<repository>/fpga/axi_memory/rtl/media_audio_pipeline_axi.sv" "<repository>/fpga/midi/rtl/midi_audio_pipeline_axi.sv" "<repository>/fpga/midi/rtl/midi_audio_pipeline.sv" "<repository>/fpga/midi/rtl/midi_job_port.sv" "<repository>/fpga/midi/rtl/midi_job_service.sv" "<repository>/fpga/midi/rtl/midi_store.sv" "<repository>/fpga/midi/rtl/midi_state_service.sv" "<repository>/fpga/midi/rtl/midi_state.sv" "<repository>/fpga/midi/rtl/midi_difference.sv" "<repository>/fpga/midi/rtl/midi_transition.sv" "<repository>/work/marlin-suite/midi-64-benchmark/midi_audio_pipeline_axi-e0c5de6dd7a8a169/bench_top.sv" "../ffi/ffi.cpp" "-I<repository>/fpga/state_processor/rtl" "-I<repository>/fpga/midi/rtl" "--trace"
+[32m[1m    Finished[0m[39m `verilator-O0` profile [unoptimized] target in 47.82s
+RTL prepared MIDI loop 1/2
+RTL prepared MIDI loop 2/2
+RTL MIDI-only quantum 0: 46749 clocks
+RTL MIDI-only quantum 1: 24334 clocks
+RTL MIDI-only quantum 2: 18898 clocks
+RTL MIDI-only quantum 3: 18898 clocks
+RTL MIDI-only quantum 4: 18898 clocks
+RTL MIDI-only quantum 5: 18898 clocks
+RTL MIDI-only quantum 6: 18898 clocks
+RTL MIDI-only quantum 7: 18898 clocks
+RTL MIDI-only quantum 8: 18898 clocks
+RTL MIDI-only quantum 9: 18898 clocks
+RTL MIDI-only quantum 10: 18898 clocks
+RTL MIDI-only quantum 11: 18898 clocks
+RTL MIDI-only quantum 12: 18898 clocks
+RTL MIDI-only quantum 13: 18898 clocks
+RTL MIDI-only quantum 14: 18898 clocks
+RTL MIDI-only quantum 15: 24331 clocks
+RTL MIDI-only quantum 16: 24334 clocks
+RTL MIDI-only quantum 17: 18898 clocks
+RTL MIDI-only quantum 18: 18898 clocks
+RTL MIDI-only quantum 19: 18898 clocks

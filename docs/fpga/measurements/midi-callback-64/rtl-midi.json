@@ -1,0 +1,133 @@
+{
+  "scenario": "midi_only",
+  "loops": 64,
+  "sample_rate": 48000,
+  "quantum_frames": 32,
+  "chunk_frames": 32,
+  "sequence_frames": 1440000,
+  "memory": "two independent 64-bit AXI ports, fixed 7-clock service per 16-byte native request, no random stalls; no board DDR arbitration",
+  "scope": "full compiled SP, mixed queue and common JP; run acceptance through done; host loading/readback excluded",
+  "preparation": "payloads and ready default-state comparison maps loaded outside measured quanta; hardware allocates MIDI descriptors/blocks and exported sample records are checked",
+  "capture": "Startup and quanta 17 through 32 captured from validated stdout of a longer run, intentionally stopped after quantum 32; current example defaults reproduce this window",
+  "measurements": [
+    {
+      "kind": "playback_start",
+      "quantum": 0,
+      "position": 0,
+      "cycles": 1825794,
+      "us_at_100mhz": 18257.94
+    },
+    {
+      "kind": "steady",
+      "quantum": 17,
+      "position": 544,
+      "cycles": 835196,
+      "us_at_100mhz": 8351.96
+    },
+    {
+      "kind": "steady",
+      "quantum": 18,
+      "position": 576,
+      "cycles": 835001,
+      "us_at_100mhz": 8350.01
+    },
+    {
+      "kind": "steady",
+      "quantum": 19,
+      "position": 608,
+      "cycles": 738871,
+      "us_at_100mhz": 7388.71
+    },
+    {
+      "kind": "steady",
+      "quantum": 20,
+      "position": 640,
+      "cycles": 739131,
+      "us_at_100mhz": 7391.31
+    },
+    {
+      "kind": "steady",
+      "quantum": 21,
+      "position": 672,
+      "cycles": 739391,
+      "us_at_100mhz": 7393.91
+    },
+    {
+      "kind": "steady",
+      "quantum": 22,
+      "position": 704,
+      "cycles": 739651,
+      "us_at_100mhz": 7396.51
+    },
+    {
+      "kind": "steady",
+      "quantum": 23,
+      "position": 736,
+      "cycles": 739391,
+      "us_at_100mhz": 7393.91
+    },
+    {
+      "kind": "steady",
+      "quantum": 24,
+      "position": 768,
+      "cycles": 739131,
+      "us_at_100mhz": 7391.31
+    },
+    {
+      "kind": "steady",
+      "quantum": 25,
+      "position": 800,
+      "cycles": 738871,
+      "us_at_100mhz": 7388.71
+    },
+    {
+      "kind": "steady",
+      "quantum": 26,
+      "position": 832,
+      "cycles": 738611,
+      "us_at_100mhz": 7386.11
+    },
+    {
+      "kind": "steady",
+      "quantum": 27,
+      "position": 864,
+      "cycles": 738871,
+      "us_at_100mhz": 7388.71
+    },
+    {
+      "kind": "steady",
+      "quantum": 28,
+      "position": 896,
+      "cycles": 739131,
+      "us_at_100mhz": 7391.31
+    },
+    {
+      "kind": "steady",
+      "quantum": 29,
+      "position": 928,
+      "cycles": 739391,
+      "us_at_100mhz": 7393.91
+    },
+    {
+      "kind": "steady",
+      "quantum": 30,
+      "position": 960,
+      "cycles": 835586,
+      "us_at_100mhz": 8355.86
+    },
+    {
+      "kind": "steady",
+      "quantum": 31,
+      "position": 992,
+      "cycles": 835391,
+      "us_at_100mhz": 8353.91
+    },
+    {
+      "kind": "steady",
+      "quantum": 32,
+      "position": 1024,
+      "cycles": 835196,
+      "us_at_100mhz": 8351.96
+    }
+  ]
+}

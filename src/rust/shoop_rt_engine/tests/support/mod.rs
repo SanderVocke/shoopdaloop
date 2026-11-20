@@ -50,6 +50,7 @@ pub fn description() -> EngineDescription {
         page_bytes: 256,
         midi_events: 64,
         midi_bytes: 512,
+        midi_output_limit_bytes: None,
         pending_transitions: 32,
         reliable_credits: 8,
         bulk_credits: 2,

@@ -61,19 +61,6 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
     ) -> Result<BackendTrackCreation> {
         self.ready()?;
         self.structure_mutable()?;
-        if self.prepared_graph.is_some()
-            && !matches!(
-                topology,
-                BackendTrackTopology::Direct {
-                    audio_channels: 1,
-                    midi: false
-                }
-            )
-        {
-            return Err(anyhow!(
-                "prepared reference supports mono audio tracks only"
-            ));
-        }
         let dry = topology.dry_audio_channels();
         let wet = topology.wet_audio_channels();
         let midi = topology.has_midi();
@@ -82,35 +69,33 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             BackendTrackTopology::DryWetExternal { .. } => {
                 Some(shoop_rt_protocol::ProcessorKind::External)
             }
-            BackendTrackTopology::DryWetProcessor { processor_type, .. } => {
-                Some(match processor_type.as_str() {
-                    shoop_app_api::TrackProcessorTypeId::BUILTIN_FX => {
-                        shoop_rt_protocol::ProcessorKind::BuiltInFx
-                    }
-                    shoop_app_api::TrackProcessorTypeId::OXISYNTH => {
-                        shoop_rt_protocol::ProcessorKind::OxiSynth
-                    }
-                    _ => return Err(anyhow!("unsupported track processor {processor_type}")),
-                })
+            BackendTrackTopology::DryWetProcessor { .. } if self.prepared_graph.is_some() => {
+                Some(shoop_rt_protocol::ProcessorKind::External)
             }
+            BackendTrackTopology::DryWetProcessor { processor_type, .. } => Some(
+                crate::processor_controls::processor_kind(processor_type.as_str())
+                    .ok_or_else(|| anyhow!("unsupported track processor {processor_type}"))?,
+            ),
         };
         if kind.is_some_and(|kind| kind != shoop_rt_protocol::ProcessorKind::External) {
             let kind = kind.expect("hosted processor");
-            if dry == 0
-                || dry != wet
-                || !midi
-                || (kind == shoop_rt_protocol::ProcessorKind::OxiSynth && dry != 2)
-            {
-                return Err(anyhow!("invalid audio/MIDI shape for this track processor"));
-            }
             let processors = self
                 .processors
                 .ok_or_else(|| anyhow!("host processor limits are unavailable"))?;
-            let available = if kind == shoop_rt_protocol::ProcessorKind::BuiltInFx {
-                processors.effective.fx_instances
+            let channels = kind.prepared_audio_channels(processors.channels.into()) as u32;
+            let valid = if kind.is_carla() {
+                dry <= channels && wet <= channels && (dry != 0 || wet != 0 || midi)
             } else {
-                processors.effective.synth_instances
+                dry != 0
+                    && dry == wet
+                    && dry <= channels
+                    && midi
+                    && (kind != shoop_rt_protocol::ProcessorKind::OxiSynth || dry == 2)
             };
+            if !valid {
+                return Err(anyhow!("invalid audio/MIDI shape for this track processor"));
+            }
+            let available = processors.effective.instances(kind);
             let used = self
                 .mirror
                 .tracks
@@ -128,9 +113,20 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     ) => before == after,
                     _ => false,
                 })
-                .count();
+                .count()
+                + self
+                    .mirror
+                    .buses
+                    .values()
+                    .filter(|bus| {
+                        bus.processor_type.as_deref()
+                            == Some(crate::processor_controls::processor_id(kind))
+                    })
+                    .count();
             if available == 0 {
-                let reason = if kind == shoop_rt_protocol::ProcessorKind::BuiltInFx {
+                let reason = if kind.is_carla() {
+                    processors.effective.carla.unavailable
+                } else if kind == shoop_rt_protocol::ProcessorKind::BuiltInFx {
                     processors.effective.fx_unavailable
                 } else {
                     processors.effective.synth_unavailable
@@ -157,13 +153,21 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 .ok_or_else(|| anyhow!("too many initial loops"))?,
         )?;
         let limits = self.limits();
-        if dry > u32::from(limits.strip_audio_channels)
-            || wet > u32::from(limits.strip_audio_channels)
-        {
+        let channels = if self.prepared_graph.is_some() {
+            shoop_rt_protocol::MAX_STRIP_CHANNELS as u32
+        } else {
+            u32::from(limits.strip_audio_channels)
+        };
+        if dry > channels || wet > channels {
             return Err(anyhow!(
                 "tracks of this engine have at most {} audio channels",
-                limits.strip_audio_channels
+                channels
             ));
+        }
+        if self.prepared_graph.is_some() && self.mirror.strip_slots.free() == 0 {
+            self.mirror
+                .strip_slots
+                .resize(self.mirror.strip_slots.capacity() + 1);
         }
         if self.mirror.strip_slots.free() == 0 {
             return Err(anyhow!(
@@ -363,8 +367,14 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         })
     }
 
-    fn require_loop_slots(&self, count: usize) -> Result<()> {
+    fn require_loop_slots(&mut self, count: usize) -> Result<()> {
         let free = self.mirror.loop_slots.free();
+        if self.prepared_graph.is_some() && free < count {
+            self.mirror
+                .loop_slots
+                .resize(self.mirror.loop_slots.capacity() + count - free);
+            return Ok(());
+        }
         if free < count {
             return Err(anyhow!(
                 "{free} of the engine's {} prepared loop slots are free; {count} are needed",
@@ -684,6 +694,7 @@ mod track_role_tests {
                 fx_instances: 1,
                 synth_instances: 1,
                 memory_mb: 256,
+                carla: Default::default(),
                 ..Default::default()
             },
             ..EngineDescription::default()

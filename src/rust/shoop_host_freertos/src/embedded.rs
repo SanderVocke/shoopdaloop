@@ -1,7 +1,12 @@
+#[cfg(feature = "fpga")]
+#[path = "fpga.rs"]
+mod fpga;
 #[path = "profiling.rs"]
 mod profiling;
 use alloc::{boxed::Box, string::String, vec, vec::Vec};
 use core::{ffi::c_void, time::Duration};
+#[cfg(feature = "fpga")]
+pub use fpga::run as run_fpga;
 use rt_runtime::buffer::{AudioBlock, MidiBlock, MidiBuffer};
 use shoop_app::{ConnectionId, Service, ServiceOptions};
 use shoop_app_api::{
@@ -11,7 +16,7 @@ use shoop_app_connection::{HeartbeatConfig, Management, Session};
 use shoop_app_protocol::{codec, WireMessage};
 use shoop_rt_backend::{EngineClock, RtBackend};
 use shoop_rt_engine::{prepare, HostStatus, Phase, Render};
-use shoop_rt_protocol::{DriverKind, DriverRunState, DriverStatus};
+use shoop_rt_protocol::{DriverKind, DriverRunState, DriverStatus, DspMeasurement};
 use shoop_rt_transport::{carrier::InProcess, client::ProtocolClient};
 use shoop_transport::{
     authenticated::Handshake,
@@ -447,7 +452,7 @@ pub unsafe fn render_step(owner: *mut c_void, frames: usize) -> i32 {
         AudioBlock {
             frame: dummy.render.next_frame(),
             frames,
-            inputs: &inputs,
+            inputs: &inputs[..crate::AUDIO_INPUTS],
             outputs: &mut outputs,
         },
         MidiBlock {
@@ -490,10 +495,12 @@ pub unsafe fn render_step(owner: *mut c_void, frames: usize) -> i32 {
             }
         }
     }
-    let period_ns = (frames as u64 * 1_000_000_000 / u64::from(crate::SAMPLE_RATE)).max(1);
-    dummy
-        .status
-        .set_load(profiling_now().saturating_sub(started) as f32 / period_ns as f32);
+    dummy.status.record_dsp(DspMeasurement::Callback {
+        elapsed_ns: profiling_now().saturating_sub(started),
+        frames: frames as u32,
+        sample_rate: crate::SAMPLE_RATE,
+        paced: true,
+    });
     if report.phase == Phase::Disconnected {
         dummy.reset = (0..crate::MIDI_PORTS).all(|port| {
             let mut reset = rt_runtime::midi::ResetState::default();
@@ -524,6 +531,23 @@ pub unsafe fn render_xruns(owner: *mut c_void, count: u32) {
     (&*owner.cast::<Dummy>()).status.add_xruns(count);
 }
 
+#[cfg(feature = "native-i2s")]
+pub unsafe fn native_pcm_step(owner: *mut c_void, input: *const i32, output: *mut i32) -> i32 {
+    let input = &*input.cast::<[i32; crate::QUANTUM]>();
+    let output = &mut *output.cast::<[[i32; crate::QUANTUM]; 2]>();
+    const SCALE: f32 = (1_u32 << 24) as f32;
+    for (slot, sample) in (&mut *owner.cast::<Dummy>()).input[0].iter_mut().zip(input) {
+        *slot = *sample as f32 / SCALE;
+    }
+    let result = render_step(owner, crate::QUANTUM);
+    for (lane, samples) in output.iter_mut().zip(&(&*owner.cast::<Dummy>()).output) {
+        for (slot, sample) in lane.iter_mut().zip(samples) {
+            *slot = (*sample * SCALE) as i32;
+        }
+    }
+    result
+}
+
 struct StoppedDummy {
     render: shoop_rt_engine::Stopped,
     reset: bool,
@@ -531,6 +555,40 @@ struct StoppedDummy {
 impl StoppedDummy {
     fn cleanup(&mut self) -> bool {
         self.reset && self.render.cleanup().is_ok()
+    }
+}
+
+struct DummyTask {
+    running: Option<*mut c_void>,
+    stopped: Option<StoppedDummy>,
+    cleaned: bool,
+}
+impl DummyTask {
+    fn cleanup(&mut self) -> Option<bool> {
+        if self.cleaned {
+            return Some(true);
+        }
+        if let Some(owner) = self.running {
+            match unsafe { shoop_stop_render() } {
+                1 => {
+                    self.stopped = Some(unsafe { retire_render(owner) });
+                    self.running = None;
+                }
+                2 => return None,
+                _ => return Some(false),
+            }
+        }
+        match unsafe { shoop_cleanup_allowed() } {
+            2 => None,
+            1 => {
+                self.cleaned = self.stopped.as_mut().is_some_and(StoppedDummy::cleanup);
+                if self.cleaned {
+                    self.stopped.take();
+                }
+                Some(self.cleaned)
+            }
+            _ => Some(false),
+        }
     }
 }
 unsafe fn retire_render(owner: *mut c_void) -> StoppedDummy {
@@ -626,8 +684,11 @@ pub fn run() {
         usb_scratch: [0; 2048],
     });
     let owner = Box::into_raw(dummy).cast::<c_void>();
-    let mut render_owner = Some(owner);
-    let mut stopped_owner: Option<StoppedDummy> = None;
+    let mut render_task = DummyTask {
+        running: Some(owner),
+        stopped: None,
+        cleaned: false,
+    };
     unsafe {
         shoop_start_render(owner);
     }
@@ -658,8 +719,10 @@ pub fn run() {
     service
         .set_host_settings(
             HostSettings {
+                backend: shoop_app_api::BackendType::Native,
                 processors: shoop_app_api::ProcessorSettings::disabled(),
                 driver: AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: crate::SAMPLE_RATE,
                     buffer_size: crate::QUANTUM as u32,
                 }),
@@ -676,7 +739,11 @@ pub fn run() {
                 loop_smoothing_ms: 3,
             },
             vec![
-                String::from("FreeRTOS / AMD lwIP; dummy audio"),
+                String::from(if cfg!(feature = "native-i2s") {
+                    "FreeRTOS / AMD lwIP with interrupt-paced Q32 I2S audio"
+                } else {
+                    "FreeRTOS / AMD lwIP; dummy audio"
+                }),
                 alloc::format!(
                     "Direct audio/MIDI loops; up to {} MiB session media and 65,536 MIDI events.",
                     crate::MEDIA_BYTES / (1024 * 1024),
@@ -684,6 +751,10 @@ pub fn run() {
             ],
         )
         .expect("settings");
+    serve(service, || render_task.cleanup());
+}
+
+fn serve(mut service: Service, mut cleanup_renderer: impl FnMut() -> Option<bool>) {
     for _ in 0..10_000 {
         if service.is_ready() {
             break;
@@ -717,7 +788,6 @@ pub fn run() {
     #[cfg(feature = "usb-midi")]
     let mut last_usb = last;
     let mut shutdown_at = None;
-    let mut render_cleaned = false;
     let mut updater_reset = false;
     let mut last_memory = last;
     assert_eq!(
@@ -784,27 +854,7 @@ pub fn run() {
         if service.shutdown_ready() {
             let update = service.updater_request();
             service.begin_host_cleanup().expect("shutdown authority");
-            let stopped = if render_owner.is_some() {
-                unsafe { shoop_stop_render() }
-            } else {
-                1
-            };
-            if stopped == 1 && render_owner.is_some() {
-                stopped_owner = Some(unsafe { retire_render(render_owner.take().unwrap()) });
-            }
-            let cleanup = if stopped != 1 {
-                stopped
-            } else if render_cleaned {
-                1
-            } else {
-                unsafe { shoop_cleanup_allowed() }
-            };
-            if cleanup != 2 {
-                render_cleaned = render_cleaned
-                    || (cleanup == 1 && stopped_owner.as_mut().is_some_and(StoppedDummy::cleanup));
-                if render_cleaned {
-                    stopped_owner.take();
-                }
+            if let Some(render_cleaned) = cleanup_renderer() {
                 let cleaned = render_cleaned
                     && update.is_none_or(|operation| unsafe {
                         shoop_deployment_request(

@@ -6,13 +6,22 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::io::{Read, Write};
 
-pub const PROTOCOL_VERSION: u32 = 3;
+mod hosted;
+mod midi_buffer;
+pub mod state;
+pub use hosted::{CarlaGenerationLog, CarlaProcessorInfo, CarlaProcessorLifecycle};
+pub use midi_buffer::{MidiBufferError, PreparedMidiBuffer};
+
+pub const PROTOCOL_VERSION: u32 = 6;
 pub const MAX_AUDIO_CHANNELS: usize = 16;
 pub const MAX_BLOCK_FRAMES: usize = 8192;
 pub const MAX_MIDI_EVENTS_PER_BLOCK: usize = 1024;
 pub const MAX_MIDI_BYTES_PER_BLOCK: usize = 8192;
-pub const MAX_CONTROL_PAYLOAD_BYTES: usize = 16 * 1024 * 1024;
-pub const MAX_STATE_BYTES: usize = 16 * 1024 * 1024;
+pub const MAX_NATIVE_MIDI_PACKET_BYTES: usize = 4;
+pub use shoop_processor_protocol::MAX_OPAQUE_STATE_BYTES as MAX_STATE_BYTES;
+/// Base64 state, including the legacy trailing NUL and envelope text.
+pub use shoop_processor_protocol::MAX_OPAQUE_STATE_ENVELOPE_BYTES as MAX_STATE_ENVELOPE_BYTES;
+pub const MAX_CONTROL_PAYLOAD_BYTES: usize = MAX_STATE_ENVELOPE_BYTES + 4096;
 pub const MAX_ERROR_MESSAGE_BYTES: usize = 4096;
 
 macro_rules! id_type {
@@ -201,7 +210,7 @@ impl ControlRequest {
             return Err(ValidationError::InvalidIdentity);
         }
         if let ControlRequestKind::RestoreState(state) = &self.kind {
-            if state.len() > MAX_STATE_BYTES {
+            if state.len() > MAX_STATE_ENVELOPE_BYTES {
                 return Err(ValidationError::StateTooLarge);
             }
         }
@@ -248,7 +257,7 @@ impl ControlResponse {
             return Err(ValidationError::InvalidIdentity);
         }
         match &self.kind {
-            ControlResponseKind::State(state) if state.len() > MAX_STATE_BYTES => {
+            ControlResponseKind::State(state) if state.len() > MAX_STATE_ENVELOPE_BYTES => {
                 Err(ValidationError::StateTooLarge)
             }
             ControlResponseKind::Error(error) => error.validate(),
@@ -559,8 +568,40 @@ mod tests {
         assert_eq!(request.validate(), Err(ValidationError::InvalidIdentity));
 
         request.request_id = RequestId(1);
-        request.kind = ControlRequestKind::RestoreState("x".repeat(MAX_STATE_BYTES + 1));
+        request.kind = ControlRequestKind::RestoreState("x".repeat(MAX_STATE_ENVELOPE_BYTES + 1));
         assert_eq!(request.validate(), Err(ValidationError::StateTooLarge));
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn a_full_size_native_state_fits_in_a_worker_request_and_reply() {
+        let state = format!(
+            "shoop-carla-native-state:2:patchbay16:{}==",
+            "A".repeat(MAX_STATE_BYTES.div_ceil(3) * 4 - 2)
+        );
+        let request = ControlRequest {
+            request_id: RequestId(u64::MAX),
+            chain_id: ChainId(u64::MAX),
+            generation: ProcessGeneration(u64::MAX),
+            kind: ControlRequestKind::RestoreState(state.clone()),
+        };
+        let mut wire = Vec::new();
+        request.validate().unwrap();
+        write_frame(&mut wire, &request).unwrap();
+        let decoded: ControlRequest = read_frame(&mut wire.as_slice()).unwrap();
+        assert_eq!(decoded, request);
+        drop((request, decoded));
+
+        let reply = ControlResponse {
+            request_id: RequestId(u64::MAX),
+            chain_id: ChainId(u64::MAX),
+            generation: ProcessGeneration(u64::MAX),
+            kind: ControlResponseKind::State(state),
+        };
+        wire.clear();
+        reply.validate().unwrap();
+        write_frame(&mut wire, &reply).unwrap();
+        let decoded: ControlResponse = read_frame(&mut wire.as_slice()).unwrap();
+        assert_eq!(decoded, reply);
     }
 
     #[shoop_wasm_test_support::shoop_test]

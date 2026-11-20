@@ -439,7 +439,10 @@ fn copy_midi(source: &MidiBuffer, target: &mut MidiBuffer, frames: usize) -> Res
 impl Processor<LoopPlanner, EngineOp> for StripInput {
     fn midi_buffer_settings(&self) -> Result<rt_runtime::processor::MidiBufferSettings, Error> {
         use rt_runtime::processor::{MidiBufferSettings, MidiPortCapacity};
-        let mut settings = MidiBufferSettings::default();
+        let mut settings = MidiBufferSettings {
+            reusable_input: Some(1),
+            ..MidiBufferSettings::default()
+        };
         for (index, (input, port, capacity)) in [
             (true, 1, self.midi_capacity.playback_merge),
             (true, 2, self.midi_capacity.global),
@@ -739,6 +742,18 @@ impl Processor<LoopPlanner, EngineOp> for EngineNode {
             Self::Loop(node) => node.process(block),
             Self::StripInput(node) => {
                 node.render(block)?;
+                if node
+                    .processor
+                    .is_some_and(|kind| kind != shoop_rt_protocol::ProcessorKind::External)
+                {
+                    block.domain.observe_worker_capture_input(
+                        node.slot,
+                        node.generation,
+                        block.frame,
+                        &mut block.audio,
+                        block.midi_outputs.first(),
+                    );
+                }
                 block.domain.observe_history(
                     node.slot as u32,
                     node.history_token,

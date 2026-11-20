@@ -44,12 +44,14 @@ pub(crate) enum Purpose {
     BusControl(BackendBusId, BackendBusControl),
     BusFxControl(BackendBusId, shoop_backend::BackendBusFxControl),
     InjectMidi(BackendTrackId),
-    Smoothing(u32),
+    Smoothing(u32, u32),
     Profiling,
     Preview,
     Persistence,
     CancelReads,
     Input,
+    ProcessorLogs,
+    ProcessorCheckpoint,
 }
 
 #[derive(Clone, Debug)]

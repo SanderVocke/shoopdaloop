@@ -3843,7 +3843,7 @@ impl AudioDriver {
     }
     pub fn get_state(&self) -> AudioDriverState {
         let i = self.inner.lock().unwrap();
-        let (last_processed, xruns_since_last, stale_graph_cycles, dsp_load_percent) =
+        let (last_processed, xruns_since_last, stale_graph_cycles, jack_load_percent) =
             if let Some(j) = i.jack.as_ref() {
                 let j = j.lock().unwrap_or_else(|e| e.into_inner());
                 (
@@ -3852,7 +3852,7 @@ impl AudioDriver {
                     j.stale_graph_cycles.load(Ordering::Relaxed),
                     // Pulled here rather than pushed from the callback: asking JACK costs
                     // a call the audio thread has no reason to make.
-                    j.client().cpu_load(),
+                    Some(j.client().cpu_load()),
                 )
             } else if let Some(c) = i.cpal.as_ref() {
                 let c = c.lock().unwrap_or_else(|e| e.into_inner());
@@ -3861,13 +3861,13 @@ impl AudioDriver {
                     c.xruns.swap(0, Ordering::Relaxed),
                     c.stale_graph_cycles.load(Ordering::Relaxed),
                     // cpal exposes no equivalent; left unreported rather than invented.
-                    0.0,
+                    None,
                 )
             } else {
-                (i.last_processed, 0, 0, 0.0)
+                (i.last_processed, 0, 0, None)
             };
         AudioDriverState {
-            dsp_load_percent,
+            jack_load_percent,
             xruns_since_last,
             stale_graph_cycles,
             maybe_instance_name: i.dummy.client_name().to_string(),

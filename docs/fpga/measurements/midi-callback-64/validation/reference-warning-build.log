@@ -1,0 +1,20 @@
+   Compiling syn v3.0.9
+   Compiling memchr v2.8.3
+   Compiling serde_json v1.0.151
+   Compiling serde_derive_internals v0.30.0
+   Compiling serde_derive v1.0.229
+   Compiling ref-cast-impl v1.0.27
+   Compiling schemars_derive v1.2.3
+   Compiling ref-cast v1.0.27
+   Compiling serde v1.0.229
+   Compiling bincode v2.0.1
+   Compiling schemars v1.2.3
+   Compiling profiling_protocol v0.3.0 (<repository>/src/rust/profiling_protocol)
+   Compiling shoop_graph v0.3.0 (<repository>/src/rust/shoop_graph)
+   Compiling rt_profiling v0.3.0 (<repository>/src/rust/rt_profiling)
+   Compiling shoop_rt_protocol v0.3.0 (<repository>/src/rust/shoop_rt_protocol)
+   Compiling rt_fpga_compiler v0.3.0 (<repository>/src/rust/rt_fpga_compiler)
+   Compiling rt_runtime v0.3.0 (<repository>/src/rust/rt_runtime)
+   Compiling shoop_rt_transport v0.3.0 (<repository>/src/rust/shoop_rt_transport)
+   Compiling rt_fpga_reference v0.3.0 (<repository>/src/rust/rt_fpga_reference)
+    Finished `dev` profile [unoptimized] target(s) in 20.07s

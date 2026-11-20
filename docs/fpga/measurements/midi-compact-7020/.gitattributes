@@ -1,0 +1,5 @@
+*.rpt -whitespace linguist-generated=true
+*.log -whitespace linguist-generated=true
+*.sv linguist-generated=true
+*.svg -whitespace linguist-generated=true
+domain/*_paths.txt -whitespace linguist-generated=true

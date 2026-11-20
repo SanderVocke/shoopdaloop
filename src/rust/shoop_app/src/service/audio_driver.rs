@@ -340,6 +340,8 @@ impl Service {
         job.phase = Phase::Starting;
         self.backend.close_connection();
         self.engine_closed = true;
+        self.dsp_peak = None;
+        self.observed.status.dsp = None;
         job.ticket = self.driver_work(DriverWork::Start {
             profile,
             exact_devices: !job.rollback,

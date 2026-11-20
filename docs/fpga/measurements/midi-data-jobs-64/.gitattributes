@@ -1,0 +1,3 @@
+*.json linguist-generated=true
+*.svg -whitespace linguist-generated=true
+*.csv linguist-generated=true

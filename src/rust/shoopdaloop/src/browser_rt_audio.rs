@@ -128,7 +128,9 @@ mod platform {
     };
     use web_time::Instant;
 
-    use super::{worklet_config, AudioSetup, RESERVED_CAPTURE_CHANNELS};
+    use super::{
+        worklet_config, AudioSetup, BROWSER_MAX_LOOP_MEMORY_MB, RESERVED_CAPTURE_CHANNELS,
+    };
     use crate::browser_midi::{BrowserMidiHub, BrowserMidiState, TrackForwarder};
 
     const PROCESSOR_NAME: &str = "shoop-rt-audio-processor";
@@ -144,23 +146,59 @@ mod platform {
     /// the worklet before that quantum.
     const MIDI_IN_LEAD_FRAMES: u64 = 2 * 128;
 
-    pub type NewEngineBackend = RtBackend<RecordClient<SharedPort>, NoWait>;
+    pub type NewEngineBackend = RtBackend<BrowserCarrier, NoWait>;
+    pub enum BrowserCarrier {
+        Native(RecordClient<SharedPort>),
+        #[cfg(feature = "fpga-reference")]
+        Reference(
+            shoop_rt_transport::carrier::InProcess<
+                shoop_rt_host_worklet::reference::Endpoint<SharedPort>,
+            >,
+        ),
+    }
+    impl shoop_rt_transport::carrier::Carrier for BrowserCarrier {
+        fn send(&mut self, m: shoop_rt_protocol::ClientMessage) -> Result<(), CarrierError> {
+            match self {
+                Self::Native(c) => c.send(m),
+                #[cfg(feature = "fpga-reference")]
+                Self::Reference(c) => c.send(m),
+            }
+        }
+        fn receive(&mut self) -> Option<shoop_rt_protocol::EngineMessage> {
+            match self {
+                Self::Native(c) => c.receive(),
+                #[cfg(feature = "fpga-reference")]
+                Self::Reference(c) => c.receive(),
+            }
+        }
+    }
 
     #[derive(Clone)]
     pub struct SharedPort {
         records: shoop_rt_transport_message_port::browser::Port,
         midi: Rc<RefCell<MidiInBatch>>,
+        #[cfg(feature = "fpga-reference")]
+        images: Rc<RefCell<std::collections::VecDeque<(u64, bool)>>>,
+        #[cfg(feature = "fpga-reference")]
+        target: MessagePort,
     }
     impl SharedPort {
         fn new(target: MessagePort, midi_capacity: usize) -> Self {
             let midi = Rc::new(RefCell::new(MidiInBatch::new(midi_capacity)));
             let outgoing = midi.clone();
             let records = shoop_rt_transport_message_port::browser::Port::with_sideband(
-                target,
+                target.clone(),
                 "midi",
                 Box::new(move || outgoing.borrow_mut().take()),
             );
-            Self { records, midi }
+            Self {
+                records,
+                midi,
+                #[cfg(feature = "fpga-reference")]
+                images: Rc::new(RefCell::new(std::collections::VecDeque::with_capacity(2))),
+                #[cfg(feature = "fpga-reference")]
+                target,
+            }
         }
         fn receive(&self, batch: &[u8]) {
             self.records.receive(batch);
@@ -189,6 +227,19 @@ mod platform {
         }
     }
 
+    #[cfg(feature = "fpga-reference")]
+    impl shoop_rt_host_worklet::reference::ImagePort for SharedPort {
+        fn upload(&mut self, bytes: &[u8]) -> Result<(), CarrierError> {
+            let message = Object::new();
+            Reflect::set(&message, &"kind".into(), &"image".into())
+                .and_then(|_| Reflect::set(&message, &"bytes".into(), &Uint8Array::from(bytes)))
+                .and_then(|_| self.target.post_message(&message))
+                .map_err(|_| CarrierError::Disconnected)
+        }
+        fn image_ready(&mut self) -> Option<(u64, bool)> {
+            self.images.borrow_mut().pop_front()
+        }
+    }
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     enum InputMode {
         Microphone,
@@ -236,6 +287,7 @@ mod platform {
         generation: u64,
         started: Option<Instant>,
         pools: NewEnginePools,
+        backend_type: shoop_app_api::BackendType,
         processors: shoop_app_api::ProcessorSettings,
         hub: BrowserMidiHub,
         graph: Option<Graph>,
@@ -293,6 +345,7 @@ mod platform {
     impl BrowserRtAudio {
         pub fn new(
             hub: BrowserMidiHub,
+            backend_type: shoop_app_api::BackendType,
             pools: NewEnginePools,
             processors: shoop_app_api::ProcessorSettings,
         ) -> Result<Self> {
@@ -301,6 +354,7 @@ mod platform {
                 generation: 0,
                 started: None,
                 pools,
+                backend_type,
                 processors,
                 hub,
                 graph: None,
@@ -737,6 +791,20 @@ mod platform {
         let pools = inner.borrow().pools;
         let (mut config, warnings) = worklet_config(&pools, &setup);
         config.engine.processors = inner.borrow().processors;
+        let backend_type = inner.borrow().backend_type;
+        config.backend = match backend_type {
+            shoop_app_api::BackendType::Native => shoop_rt_host_worklet::config::Backend::Native,
+            shoop_app_api::BackendType::RustFpga => {
+                shoop_rt_host_worklet::config::Backend::RustReference
+            }
+            shoop_app_api::BackendType::RtlSim => {
+                return Err(JsValue::from_str(
+                    "Marlin RTL simulation requires a native host",
+                ))
+            }
+        };
+        config.reference_memory_mb = pools.loop_memory_mb.min(BROWSER_MAX_LOOP_MEMORY_MB);
+
         let record = config.encode().map_err(|error| {
             JsValue::from_str(&format!("invalid engine configuration: {error:?}"))
         })?;
@@ -807,7 +875,36 @@ mod platform {
         }) as Box<dyn FnMut(_)>);
         context.set_onstatechange(Some(state_handler.as_ref().unchecked_ref()));
 
-        let client = ProtocolClient::new(RecordClient::new(port.clone()));
+        let carrier = match backend_type {
+            shoop_app_api::BackendType::Native => {
+                BrowserCarrier::Native(RecordClient::new(port.clone()))
+            }
+            #[cfg(feature = "fpga-reference")]
+            shoop_app_api::BackendType::RustFpga => {
+                let driver = shoop_rt_protocol::DriverStatus {
+                    kind: shoop_rt_protocol::DriverKind::WebAudio,
+                    state: shoop_rt_protocol::DriverRunState::Running,
+                    sample_rate: setup.sample_rate,
+                    buffer_frames: 128,
+                };
+                let endpoint = shoop_rt_host_worklet::reference::Endpoint::new(
+                    port.clone(),
+                    pools.quantum,
+                    driver,
+                )
+                .map_err(|e| JsValue::from_str(&e.to_string()))?;
+                BrowserCarrier::Reference(shoop_rt_transport::carrier::InProcess::new(
+                    endpoint,
+                    shoop_rt_transport::carrier::Outbox::new(64, 8, 0),
+                ))
+            }
+            _ => {
+                return Err(JsValue::from_str(
+                    "execution backend unavailable in this browser build",
+                ))
+            }
+        };
+        let client = ProtocolClient::new(carrier);
         let backend = RtBackend::begin(client, NoWait)
             .map_err(|error| JsValue::from_str(&format!("{error:#}")))?;
         tracing::info!(
@@ -958,6 +1055,15 @@ mod platform {
         let field = |name: &str| Reflect::get(data, &name.into()).unwrap_or(JsValue::UNDEFINED);
         match field("kind").as_string().as_deref() {
             Some("records") => port.receive(&Uint8Array::new(&field("bytes")).to_vec()),
+            #[cfg(feature = "fpga-reference")]
+            Some("image-ready") => {
+                if let Some(revision) = field("revision").as_string().and_then(|s| s.parse().ok()) {
+                    let mut ready = port.images.borrow_mut();
+                    if ready.len() < 2 {
+                        ready.push_back((revision, field("ok").as_bool().unwrap_or(false)));
+                    }
+                }
+            }
             Some("midi") => send_midi_out(inner, &Uint8Array::new(&field("bytes")).to_vec()),
             Some("failed") => {
                 let message = format!(

@@ -3,13 +3,54 @@ use crate::{mirror::Track, requests::Purpose, EngineClock, RtBackend};
 use alloc::{format, sync::Arc, vec::Vec};
 use anyhow::{anyhow, Result};
 use shoop_app_api::*;
-use shoop_backend::{BackendTrackFxControl, BackendTrackId, BackendTrackTopology};
+use shoop_backend::{BackendBusId, BackendTrackFxControl, BackendTrackId, BackendTrackTopology};
 use shoop_processor_protocol::{
-    state::State, Control, Kind, Phase, CC_BASE, CLEAR_CC, DRIVE_TYPE, MODULATION_TYPE,
-    REVERB_TYPE, STAGE_BASE, SYNTH_PANIC, SYNTH_PRESET,
+    state::State, Control, HostedFailure, HostedLifecycle, Kind, Phase, CC_BASE, CLEAR_CC,
+    DRIVE_TYPE, MODULATION_TYPE, REVERB_TYPE, STAGE_BASE, SYNTH_PANIC, SYNTH_PRESET,
 };
-use shoop_rt_protocol::Request;
+use shoop_rt_protocol::{Capabilities, ProcessorSlot, ProcessorTarget, Request};
 use shoop_rt_transport::carrier::Carrier;
+
+#[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+pub(crate) enum Target {
+    Track(BackendTrackId),
+    Bus(BackendBusId),
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub(crate) struct Owner {
+    pub target: ProcessorTarget,
+    pub slot: ProcessorSlot,
+    pub generation: u64,
+}
+
+impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
+    pub(crate) fn hosted_owner(&self, target: Target) -> Option<Owner> {
+        let (target, slot, snapshot) = match target {
+            Target::Track(id) => {
+                let track = self.mirror.live_track(id)?;
+                (
+                    ProcessorTarget::Strip(track.strip),
+                    track.processor_slot,
+                    track.processor_snapshot,
+                )
+            }
+            Target::Bus(id) => {
+                let bus = self.mirror.buses.get(&id).filter(|bus| !bus.removing)?;
+                (
+                    ProcessorTarget::Bus(bus.slot),
+                    bus.processor_slot,
+                    bus.processor_snapshot,
+                )
+            }
+        };
+        Some(Owner {
+            target,
+            slot: slot?,
+            generation: snapshot?.hosted?.generation,
+        })
+    }
+}
 
 pub(crate) fn snapshot_state(
     kind: Kind,
@@ -27,10 +68,26 @@ pub(crate) fn topology_kind(topology: &BackendTrackTopology) -> Option<Kind> {
     let BackendTrackTopology::DryWetProcessor { processor_type, .. } = topology else {
         return None;
     };
-    match processor_type.as_str() {
+    processor_kind(processor_type.as_str())
+}
+pub(crate) fn processor_kind(id: &str) -> Option<Kind> {
+    match id {
         TrackProcessorTypeId::BUILTIN_FX => Some(Kind::BuiltInFx),
         TrackProcessorTypeId::OXISYNTH => Some(Kind::OxiSynth),
+        TrackProcessorTypeId::CARLA_RACK => Some(Kind::CarlaRack),
+        TrackProcessorTypeId::CARLA_PATCHBAY => Some(Kind::CarlaPatchbay),
+        TrackProcessorTypeId::CARLA_PATCHBAY_16X => Some(Kind::CarlaPatchbay16x),
         _ => None,
+    }
+}
+pub(crate) fn processor_id(kind: Kind) -> &'static str {
+    match kind {
+        Kind::External => TrackProcessorTypeId::EXTERNAL,
+        Kind::BuiltInFx => TrackProcessorTypeId::BUILTIN_FX,
+        Kind::OxiSynth => TrackProcessorTypeId::OXISYNTH,
+        Kind::CarlaRack => TrackProcessorTypeId::CARLA_RACK,
+        Kind::CarlaPatchbay => TrackProcessorTypeId::CARLA_PATCHBAY,
+        Kind::CarlaPatchbay16x => TrackProcessorTypeId::CARLA_PATCHBAY_16X,
     }
 }
 
@@ -43,6 +100,11 @@ pub(crate) fn recorded_state(
     };
     let kind = topology_kind(topology)
         .ok_or_else(|| anyhow!("recorded state requires a hosted processor"))?;
+    if kind.is_carla() {
+        // Carla state is retained in host-owned canonical content.
+        session_checkpoint(Some(encoded))?;
+        return Ok(None);
+    }
     let mut state = State::decode(kind, encoded)?;
     if kind == Kind::BuiltInFx {
         state.values[55] = topology.dry_audio_channels() as f32;
@@ -54,6 +116,16 @@ pub(crate) fn recorded_state(
     }))
 }
 
+pub(crate) fn session_checkpoint(encoded: Option<&str>) -> Result<&str> {
+    let encoded = encoded.ok_or_else(|| anyhow!("session is missing a Carla checkpoint"))?;
+    if encoded.is_empty() || encoded.len() > shoop_rt_protocol::MAX_PROCESSOR_CHECKPOINT_BYTES {
+        return Err(anyhow!(
+            "session Carla checkpoint is outside the transfer limit"
+        ));
+    }
+    Ok(encoded)
+}
+
 pub(crate) fn bus_session_state(bus: &shoop_backend::BackendSessionBus) -> Result<Option<Control>> {
     let Some(kind) = bus.processor_type.as_deref() else {
         if bus.processor_state.is_some() || !bus.builtin_fx_midi_cc_assignments.is_empty() {
@@ -61,7 +133,17 @@ pub(crate) fn bus_session_state(bus: &shoop_backend::BackendSessionBus) -> Resul
         }
         return Ok(None);
     };
-    if kind != TrackProcessorTypeId::BUILTIN_FX {
+    let kind = processor_kind(kind).ok_or_else(|| anyhow!("unsupported bus processor"))?;
+    if kind.is_carla() {
+        if !bus.builtin_fx_midi_cc_assignments.is_empty()
+            || bus.channels.len() > kind.fixed_audio_channels().unwrap_or_default()
+        {
+            return Err(anyhow!("invalid Carla bus shape or MIDI mappings"));
+        }
+        session_checkpoint(bus.processor_state.as_deref())?;
+        return Ok(None);
+    }
+    if kind != Kind::BuiltInFx {
         return Err(anyhow!("unsupported bus processor"));
     }
     let mut state = match &bus.processor_state {
@@ -101,6 +183,15 @@ pub(crate) fn session_state(track: &shoop_backend::BackendSessionTrack) -> Resul
         }
         return Ok(None);
     };
+    if kind.is_carla() {
+        if !track.builtin_fx_midi_cc_assignments.is_empty()
+            || !track.oxisynth_midi_cc_assignments.is_empty()
+        {
+            return Err(anyhow!("Carla checkpoints carry their own MIDI mappings"));
+        }
+        session_checkpoint(track.processor_state.as_deref())?;
+        return Ok(None);
+    }
     let mut state = match &track.processor_state {
         Some(encoded) => State::decode(kind, encoded)?,
         None => State::new(kind)?,
@@ -162,7 +253,7 @@ pub(crate) fn track_fx_state(track: &Track) -> Option<TrackFxState> {
 }
 pub(crate) fn bus_fx_state(bus: &crate::mirror::Bus) -> Option<TrackFxState> {
     fx_state(
-        Kind::BuiltInFx,
+        processor_kind(bus.processor_type.as_deref()?)?,
         bus.processor_snapshot?,
         bus.processor_slot,
         bus.processor_visible,
@@ -257,24 +348,71 @@ fn fx_state(
                 .collect::<Vec<_>>()
                 .into(),
         }),
+        Kind::CarlaRack | Kind::CarlaPatchbay | Kind::CarlaPatchbay16x => {
+            let visible = snapshot
+                .hosted
+                .and_then(|status| status.editor_visible)
+                .unwrap_or(false);
+            return Some(processor_status(kind, snapshot, slot, visible, None));
+        }
         Kind::External => return None,
     };
-    Some(TrackFxState {
-        processor_type: TrackProcessorTypeId::new(match kind {
-            Kind::BuiltInFx => TrackProcessorTypeId::BUILTIN_FX,
-            _ => TrackProcessorTypeId::OXISYNTH,
-        }),
-        active: snapshot.phase == Phase::Running,
+    Some(processor_status(
+        kind,
+        snapshot,
+        slot,
         visible,
-        lifecycle: match snapshot.phase {
+        Some(editor),
+    ))
+}
+fn processor_status(
+    kind: Kind,
+    snapshot: shoop_rt_protocol::processors::Snapshot,
+    slot: Option<shoop_rt_protocol::ProcessorSlot>,
+    visible: bool,
+    editor: Option<TrackProcessorEditorState>,
+) -> TrackFxState {
+    let active =
+        snapshot.phase == Phase::Running && snapshot.hosted.is_none_or(|status| status.active);
+    let lifecycle = match snapshot.hosted.map(|status| status.lifecycle) {
+        Some(HostedLifecycle::Starting) => FxLifecycle::Starting,
+        Some(HostedLifecycle::Degraded) => FxLifecycle::Degraded,
+        Some(HostedLifecycle::Crashed) => FxLifecycle::Crashed,
+        Some(HostedLifecycle::Restarting) => FxLifecycle::Restarting,
+        Some(HostedLifecycle::Unavailable) => FxLifecycle::Unavailable,
+        Some(HostedLifecycle::Stopped) => FxLifecycle::Stopped,
+        None | Some(HostedLifecycle::Running) => match snapshot.phase {
             Phase::Running => FxLifecycle::Running,
             Phase::Faulted => FxLifecycle::Crashed,
             Phase::Free | Phase::Retiring => FxLifecycle::Unavailable,
             Phase::Owned => FxLifecycle::Stopped,
         },
-        generation: slot.map_or(0, |slot| u64::from(slot.generation)),
-        deadline_misses: 0,
-        stale_completions: 0,
+    };
+    let crash_summary = snapshot
+        .hosted
+        .and_then(|status| status.failure)
+        .map(|failure| {
+            match failure {
+                HostedFailure::Startup => "Carla worker could not start",
+                HostedFailure::Protocol => "Carla worker failed a protocol operation",
+                HostedFailure::UnexpectedExit => "Carla worker exited unexpectedly",
+                HostedFailure::Unresponsive => "Carla worker became unresponsive",
+                HostedFailure::Disconnected => "Carla worker disconnected from its host",
+            }
+            .into()
+        });
+    TrackFxState {
+        processor_type: TrackProcessorTypeId::new(processor_id(kind)),
+        active,
+        visible,
+        lifecycle,
+        generation: snapshot
+            .hosted
+            .map(|status| status.generation)
+            .filter(|generation| *generation != 0)
+            .unwrap_or_else(|| slot.map_or(0, |slot| u64::from(slot.generation))),
+        deadline_misses: snapshot.worker.map_or(0, |worker| worker.missed),
+        stale_completions: snapshot.worker.map_or(0, |worker| worker.stale),
         status_summary: if snapshot.phase == Phase::Faulted {
             Some("processor faulted".into())
         } else if snapshot.global_midi.pending > 0 {
@@ -285,10 +423,10 @@ fn fx_state(
         } else {
             None
         },
-        crash_summary: None,
+        crash_summary,
         logs: Arc::from([]),
-        editor: Some(editor),
-    })
+        editor,
+    }
 }
 fn cc_source(value: f32) -> Option<(u8, u8)> {
     (value >= 0.).then(|| ((value as u16 / 128) as u8, (value as u16 % 128) as u8))
@@ -300,6 +438,45 @@ fn cc_value(channel: u8, controller: u8) -> Result<f32> {
     Ok((u16::from(channel) * 128 + u16::from(controller)) as f32)
 }
 impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
+    fn external_editor_request(
+        &self,
+        target: ProcessorTarget,
+        slot: Option<ProcessorSlot>,
+        visible: Option<bool>,
+    ) -> Result<Request> {
+        if !self
+            .capabilities
+            .contains(Capabilities::EXTERNAL_PROCESSOR_EDITOR)
+        {
+            return Err(anyhow!(
+                "external processor editor unavailable on this host"
+            ));
+        }
+        Ok(Request::ProcessorEditor {
+            target,
+            slot: slot.ok_or_else(|| anyhow!("processor ownership is not confirmed"))?,
+            visible,
+        })
+    }
+
+    fn external_clear_logs_request(
+        target: ProcessorTarget,
+        slot: Option<ProcessorSlot>,
+        snapshot: Option<shoop_rt_protocol::processors::Snapshot>,
+    ) -> Result<Request> {
+        let slot = slot.ok_or_else(|| anyhow!("processor ownership is not confirmed"))?;
+        let worker_generation = snapshot
+            .and_then(|snapshot| snapshot.hosted)
+            .map(|status| status.generation)
+            .filter(|generation| *generation != 0)
+            .ok_or_else(|| anyhow!("Carla worker generation is not confirmed"))?;
+        Ok(Request::ProcessorClearLogs {
+            target,
+            slot,
+            worker_generation,
+        })
+    }
+
     fn processor_update(
         &self,
         kind: Kind,
@@ -413,19 +590,51 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         let slot = bus.slot;
         let width = bus.channels.len() as u32;
         let request = if let BusControl::SetProcessor(fx) = &control {
-            if let Some(fx) = fx {
+            let kind = if let Some(fx) = fx {
                 let fx = fx.clone().normalized(width as usize)?;
-                if fx.processor_type != TrackProcessorTypeId::BUILTIN_FX {
-                    return Err(anyhow!("unsupported bus processor"));
-                }
-            }
-            Request::SetBusProcessor {
-                bus: slot,
-                enabled: fx.is_some(),
-            }
+                let kind = processor_kind(&fx.processor_type)
+                    .filter(|kind| kind.supports_bus())
+                    .ok_or_else(|| anyhow!("unsupported bus processor"))?;
+                Some(kind)
+            } else {
+                None
+            };
+            Request::SetBusProcessorKind { bus: slot, kind }
         } else {
             if bus.processor_slot.is_none() {
                 return Err(anyhow!("bus has no processor"));
+            }
+            let kind = bus
+                .processor_type
+                .as_deref()
+                .and_then(processor_kind)
+                .ok_or_else(|| anyhow!("unknown bus processor"))?;
+            if kind.is_carla() {
+                if matches!(&control, BusControl::ClearLogs) {
+                    let request = Self::external_clear_logs_request(
+                        ProcessorTarget::Bus(slot),
+                        bus.processor_slot,
+                        bus.processor_snapshot,
+                    )?;
+                    self.requests
+                        .push(request, Purpose::BusFxControl(id, control));
+                    return Ok(());
+                }
+                let visible = match control {
+                    BusControl::SetVisible(visible) => Some(Some(visible)),
+                    BusControl::ToggleOrRecover => Some(None),
+                    _ => None,
+                };
+                if let Some(visible) = visible {
+                    let request = self.external_editor_request(
+                        ProcessorTarget::Bus(slot),
+                        bus.processor_slot,
+                        visible,
+                    )?;
+                    self.requests
+                        .push(request, Purpose::BusFxControl(id, control));
+                    return Ok(());
+                }
             }
             let track_control = match &control {
                 BusControl::SetVisible(value) => {
@@ -446,7 +655,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             };
             Request::BusProcessorControl {
                 bus: slot,
-                control: self.processor_update(Kind::BuiltInFx, width, &track_control)?,
+                control: self.processor_update(kind, width, &track_control)?,
             }
         };
         self.requests
@@ -463,8 +672,37 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             .mirror
             .live_track(id)
             .ok_or_else(|| anyhow!("unknown track {id:?}"))?;
-        let kind = track_kind(track).ok_or_else(|| anyhow!("track has no built-in processor"))?;
+        let kind = track_kind(track).ok_or_else(|| anyhow!("track has no hosted processor"))?;
         let strip = track.strip;
+        if kind.is_carla() {
+            if matches!(&control, BackendTrackFxControl::ClearLogs) {
+                self.require_mutation_capacity(1)?;
+                let request = Self::external_clear_logs_request(
+                    ProcessorTarget::Strip(strip),
+                    track.processor_slot,
+                    track.processor_snapshot,
+                )?;
+                self.requests
+                    .push(request, Purpose::ProcessorControl(id, control));
+                return Ok(());
+            }
+            let visible = match control {
+                BackendTrackFxControl::SetVisible(visible) => Some(Some(visible)),
+                BackendTrackFxControl::ToggleOrRecover => Some(None),
+                _ => None,
+            };
+            if let Some(visible) = visible {
+                self.require_mutation_capacity(1)?;
+                let request = self.external_editor_request(
+                    ProcessorTarget::Strip(strip),
+                    track.processor_slot,
+                    visible,
+                )?;
+                self.requests
+                    .push(request, Purpose::ProcessorControl(id, control));
+                return Ok(());
+            }
+        }
         match &control {
             BackendTrackFxControl::SetVisible(visible) => {
                 self.mirror

@@ -129,6 +129,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
             DriverKind::Dummy => (
                 AudioDriverKind::Dummy,
                 AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: driver.sample_rate,
                     buffer_size: driver.buffer_frames,
                 }),
@@ -303,6 +304,42 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     fn mutation_cursor(&self) -> u64 {
         self.requests.last_sequence()
     }
+    fn requires_shutdown_transitions(&self) -> bool {
+        self.prepared_graph.is_none()
+    }
+    fn commit_graph_changes(&mut self) -> Result<()> {
+        if self.prepared_graph.is_none() || self.graph_update_pending() {
+            return Ok(());
+        }
+        self.pump();
+        if self.prepared_graph.as_ref().is_some_and(|g| g.dirty) {
+            if let Err(error) = self.install_prepared_graph() {
+                self.cancel_graph_changes();
+                return Err(error);
+            }
+        }
+        Ok(())
+    }
+    fn cancel_graph_changes(&mut self) {
+        if self.prepared_graph.is_none() || self.graph_update_pending() {
+            return;
+        }
+        self.pump();
+        let graph = self.prepared_graph.as_mut().unwrap();
+        if graph.dirty {
+            if let Some(previous) = &graph.committed {
+                self.mirror.restore_prepared(previous.clone());
+            }
+            graph.dirty = false;
+        }
+    }
+    fn graph_update_pending(&self) -> bool {
+        self.prepared_graph.as_ref().is_some_and(|g| {
+            g.pending.is_some()
+                || (g.active
+                    && self.snapshots.observed_configuration != Some((g.revision, g.revision)))
+        })
+    }
     fn activate_prepared_graph(&mut self) -> Result<()> {
         self.install_prepared_graph()
     }
@@ -357,6 +394,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     }
 
     fn cancel_media_reads(&mut self) {
+        self.processor_checkpoints.cancel();
         self.reads.clear();
         self.capture_validation = None;
         self.prepared_content
@@ -381,7 +419,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         }
     }
     fn supports_audio_preview(&self) -> bool {
-        self.is_ready()
+        self.is_ready() && self.prepared_graph.is_none()
     }
     fn start_bus_audio_preview_async(
         &mut self,
@@ -426,7 +464,10 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
                 BackendCapability::LoopTimingEdits,
                 self.capabilities.contains(Capabilities::LOOP_TIMING),
             )
-            .with(BackendCapability::BusManagement, self.is_ready())
+            .with(
+                BackendCapability::BusManagement,
+                self.is_ready() && self.prepared_graph.is_none(),
+            )
             .with(
                 BackendCapability::BusFx,
                 self.capabilities.contains(Capabilities::BUS_PROCESSORS),
@@ -759,6 +800,10 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         control: BackendTrackFxControl,
     ) -> Result<()> {
         self.processor_control(track_id, control)
+    }
+
+    fn request_track_fx_logs(&mut self, track_id: BackendTrackId) -> Result<()> {
+        self.request_processor_logs(crate::processor_logs::Target::Track(track_id))
     }
 
     fn set_loop_gain(&mut self, loop_id: BackendLoopId, gain: f32) -> Result<()> {
@@ -1286,7 +1331,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         let sample_rate = self.driver.map_or(0, |driver| driver.sample_rate);
         let frames = u64::from(milliseconds) * u64::from(sample_rate) / 1000;
         let limit = self.limits().smoothing_limit_frames;
-        if frames > u64::from(limit) {
+        if self.prepared_graph.is_none() && frames > u64::from(limit) {
             return Err(anyhow!(
                 "loop boundary smoothing is limited to {} ms on this engine",
                 u64::from(limit) * 1000 / u64::from(sample_rate.max(1))
@@ -1296,7 +1341,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
             Request::SetSmoothing {
                 frames: u32::try_from(frames).unwrap_or(u32::MAX),
             },
-            Purpose::Smoothing(milliseconds),
+            Purpose::Smoothing(milliseconds, u32::try_from(frames).unwrap_or(u32::MAX)),
         );
         Ok(())
     }
@@ -1324,32 +1369,47 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
     fn create_bus(&mut self, request: BackendBusRequest) -> Result<BackendBusCreation> {
         self.ready()?;
         self.structure_mutable()?;
-        if self.prepared_graph.is_some() {
-            return Err(anyhow!("prepared reference supports the Master bus only"));
-        }
         let request = request.normalized()?;
-        if let Some(fx) = &request.fx {
-            if !self.capabilities.contains(Capabilities::BUS_PROCESSORS)
-                || fx.processor_type != shoop_app_api::TrackProcessorTypeId::BUILTIN_FX
+        let kind = if let Some(fx) = &request.fx {
+            let kind = crate::processor_controls::processor_kind(&fx.processor_type)
+                .filter(|kind| kind.supports_bus());
+            if self.prepared_graph.is_none()
+                && (!self.capabilities.contains(Capabilities::BUS_PROCESSORS) || kind.is_none())
             {
                 return Err(unavailable(BackendCapability::BusFx));
             }
             fx.clone().normalized(request.channel_count as usize)?;
-        }
-        if request.channel_count > u32::from(self.limits().bus_channels) {
+            kind.or(Some(shoop_rt_protocol::ProcessorKind::BuiltInFx))
+        } else {
+            None
+        };
+        if self.prepared_graph.is_none()
+            && request.channel_count > u32::from(self.limits().bus_channels)
+        {
             return Err(anyhow!("bus exceeds prepared channel limit"));
         }
         self.require_mutation_capacity(1)?;
+        if self.prepared_graph.is_some() && self.mirror.bus_slots.free() == 0 {
+            self.mirror
+                .bus_slots
+                .resize(self.mirror.bus_slots.capacity() + 1);
+        }
         let creation = self
             .mirror
             .create_bus(request.name, request.channel_count as u8)
             .ok_or_else(|| anyhow!("prepared bus capacity exhausted"))?;
+        self.mirror
+            .buses
+            .get_mut(&creation.bus_id)
+            .unwrap()
+            .processor_type = request.fx.as_ref().map(|fx| fx.processor_type.clone());
         let slot = self.mirror.buses[&creation.bus_id].slot;
         self.requests.push(
-            if request.fx.is_some() {
+            if let Some(kind) = kind {
                 Request::CreateProcessedBus {
                     bus: slot,
                     channels: request.channel_count as u8,
+                    kind,
                 }
             } else {
                 Request::CreateBus {
@@ -1389,11 +1449,17 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         let mut entries: Vec<_> = self
             .processor_descriptors()
             .iter()
-            .filter(|entry| entry.id.as_str() == shoop_app_api::TrackProcessorTypeId::BUILTIN_FX)
+            .filter(|entry| {
+                crate::processor_controls::processor_kind(entry.id.as_str())
+                    .is_some_and(|kind| kind.supports_bus())
+            })
             .cloned()
             .collect();
         for entry in &mut entries {
             entry.constraints.midi = shoop_app_api::TrackProcessorMidiPolicy::Unsupported;
+            entry.constraints.matching_audio_channels = true;
+            entry.constraints.min_dry_audio_channels = Some(1);
+            entry.constraints.min_wet_audio_channels = Some(1);
         }
         Ok(entries.into())
     }
@@ -1403,6 +1469,9 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         control: BackendBusFxControl,
     ) -> Result<()> {
         self.bus_processor_control(bus_id, control)
+    }
+    fn request_bus_fx_logs(&mut self, bus_id: BackendBusId) -> Result<()> {
+        self.request_processor_logs(crate::processor_logs::Target::Bus(bus_id))
     }
     fn bus_fx_state_string(
         &mut self,
@@ -1439,7 +1508,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         self.status.peaks_fresh = false;
         let status = BackendStatus {
             memory: self.status.memory,
-            dsp_load_percent: self.status.load * 100.0,
+            dsp: self.status.dsp.take(),
             xruns: self.status.take_xruns(),
             buffer_size: driver.map_or(0, |driver| driver.buffer_frames),
             sample_rate: driver.map_or(0, |driver| driver.sample_rate),
@@ -1463,7 +1532,8 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         for (id, track) in mirror.tracks.iter_mut() {
             if track.confirmed {
                 let mut state = Mirror::track_state(track);
-                if crate::processor_controls::track_kind(track).is_some() {
+                if crate::processor_controls::track_kind(track).is_some_and(|kind| !kind.is_carla())
+                {
                     state.latency.automatic_processor_advance_frames = Some(processor_latency);
                     state.latency.processor_adjustment =
                         BackendProcessorLatencyAdjustment::Automatic;
@@ -1512,7 +1582,7 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
         {
             profiling.groups = self.profiling_groups.1.clone();
         }
-        Ok(BackendSnapshot {
+        let mut snapshot = BackendSnapshot {
             composite_operations: self.composite_operations(),
             composite_receipts: core::mem::take(&mut self.composites.receipts),
             profiling,
@@ -1532,7 +1602,9 @@ impl<C: Carrier, K: EngineClock> Backend for RtBackend<C, K> {
                     .extract_if(.., |completion| completion.result.is_err())
                     .collect()
             },
-        })
+        };
+        self.display_processor_logs(&mut snapshot);
+        Ok(snapshot)
     }
 
     fn wait_idle(&mut self) {

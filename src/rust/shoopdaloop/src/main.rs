@@ -2433,7 +2433,8 @@ impl Runtime {
             settings,
             args,
             |driver, pools, transport| {
-                engine_backend::start_selected_with_processors(
+                engine_backend::start_selected_backend(
+                    args.selected_backend(settings)?,
                     driver,
                     pools,
                     transport,
@@ -2457,10 +2458,16 @@ impl Runtime {
         if let Some(target) = args.host_target()? {
             return Self::attach(settings, target);
         }
+        let backend_type = args.selected_backend(settings)?;
+        let backend_defaults = shoop_app_api::HostSettings::for_backend(backend_type);
         let mut startup_warnings = Vec::new();
         let configured_driver = match args.configured_audio_driver(settings) {
             Ok(driver) => driver,
-            Err(error) if args.audio.audio_driver.is_some() => anyhow::bail!(error),
+            Err(error)
+                if args.audio.audio_driver.is_some() || args.audio.dummy_buffer_size.is_some() =>
+            {
+                anyhow::bail!(error)
+            }
             Err(error) => {
                 startup_warnings.push(format!(
                     "Could not use preferred audio settings: {error}; using dummy / offline"
@@ -2474,31 +2481,40 @@ impl Runtime {
             ));
             shoop_egui::NewEnginePools::default()
         });
+        let pools = args.audio.apply_pools(pools);
         let transport = args.selected_engine_transport(settings)?;
         let started = start_engine(&configured_driver, &pools, transport)?;
         startup_warnings.extend(started.warnings);
         let mut engine_host = Some(started.host);
         let backend = started.backend;
         let (loop_smoothing_ms, loop_smoothing_warning) =
-            match shoop_egui::loop_edge_smoothing_ms(settings) {
-                Ok(milliseconds) => (milliseconds, None),
-                Err(error) => (
-                    3,
-                    Some(format!(
-                        "Could not use loop edge smoothing setting: {error}; using 3 ms"
-                    )),
-                ),
+            if backend_type != shoop_app_api::BackendType::Native {
+                (backend_defaults.loop_smoothing_ms, None)
+            } else {
+                match shoop_egui::loop_edge_smoothing_ms(settings) {
+                    Ok(milliseconds) => (milliseconds, None),
+                    Err(error) => (
+                        3,
+                        Some(format!(
+                            "Could not use loop edge smoothing setting: {error}; using 3 ms"
+                        )),
+                    ),
+                }
             };
         let (startup_scripts, script_paths, mut warnings) = configured_startup_scripts(settings)?;
         warnings.extend(loop_smoothing_warning);
-        let master_auto_connect = match shoop_egui::master_auto_connect(settings) {
-            Ok(enabled) => enabled,
-            Err(error) => {
-                let warning = format!(
+        let master_auto_connect = if backend_type != shoop_app_api::BackendType::Native {
+            backend_defaults.master_auto_connect
+        } else {
+            match shoop_egui::master_auto_connect(settings) {
+                Ok(enabled) => enabled,
+                Err(error) => {
+                    let warning = format!(
                     "Could not use Master auto-connect setting: {error}; using automatic connection"
                 );
-                warnings.push(warning);
-                true
+                    warnings.push(warning);
+                    true
+                }
             }
         };
         let graph = engine_host
@@ -2519,6 +2535,7 @@ impl Runtime {
             .unwrap()
             .enable_audio_driver_switching(
                 shoop_app_api::HostSettings {
+                    backend: backend_type,
                     driver: configured_driver,
                     pools,
                     processors: args.configured_processors(settings)?,
@@ -2536,7 +2553,7 @@ impl Runtime {
                 startup_warnings,
             },
             graph,
-            Some(driver),
+            driver,
         )?;
         let handle = runtime.handle();
         let preview_player = native_preview::NativePreviewPlayer::new(handle.clone())?;
@@ -3240,10 +3257,11 @@ type BrowserCatalogCompletion = (
 #[cfg(target_arch = "wasm32")]
 impl Runtime {
     fn new(settings: &shoop_settings::SettingsSnapshot, args: &AppArgs) -> anyhow::Result<Self> {
+        let backend = args.selected_backend(settings)?;
         args.selected_engine_transport(settings)?;
         anyhow::ensure!(!args.worker, "Worker mode was retired. The browser session service runs on the main thread and renders in an AudioWorklet.");
         let (midi, midi_service) = browser_midi::BrowserMidiController::new()?;
-        Self::new_engine(settings, args.offline, midi, midi_service)
+        Self::new_engine(settings, args.offline, backend, midi, midi_service)
     }
 
     /// The new engine backend: the application starts once browser audio is enabled and
@@ -3251,6 +3269,7 @@ impl Runtime {
     fn new_engine(
         settings: &shoop_settings::SettingsSnapshot,
         offline: bool,
+        backend: shoop_app_api::BackendType,
         midi: browser_midi::BrowserMidiController,
         midi_service: Box<dyn shoop_scripting::MidiControlService>,
     ) -> anyhow::Result<Self> {
@@ -3277,8 +3296,10 @@ impl Runtime {
             });
         let controller = browser_rt_audio::BrowserRtAudio::new(
             midi.hub(),
+            backend,
             pools,
-            shoop_egui::processor_settings_from_snapshot(settings).map_err(anyhow::Error::msg)?,
+            shoop_egui::processor_settings_from_snapshot(settings, backend)
+                .map_err(anyhow::Error::msg)?,
         )?;
         if offline {
             set_offline_audio_permission_presentation();
@@ -3290,8 +3311,16 @@ impl Runtime {
             runtime: None,
             pending_start: Some(PendingNewEngineStart {
                 midi_service,
-                master_auto_connect,
-                loop_smoothing_ms,
+                master_auto_connect: if backend == shoop_app_api::BackendType::Native {
+                    master_auto_connect
+                } else {
+                    true
+                },
+                loop_smoothing_ms: if backend == shoop_app_api::BackendType::Native {
+                    loop_smoothing_ms
+                } else {
+                    0
+                },
                 warnings,
             }),
             waiting_snapshot: Default::default(),
@@ -3709,8 +3738,6 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
     if args.ui_only || args.remote_profile.is_some() || args.host_address.is_some() {
         return Ok(false);
     }
-    let executable = std::env::current_exe()?;
-    let companion = shoop_host::launch::companion_path(&executable)?;
     let mut builder = SettingsRegistryBuilder::default();
     register_settings_with_appearance_defaults(&mut builder, 1.0, false)?;
     register_audio_settings_with_default_driver(&mut builder, default_audio_driver_kind())?;
@@ -3722,19 +3749,7 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
         return Ok(false);
     }
     let config = shoop_host::config::HostConfig {
-        settings: shoop_host::config::HostSettings {
-            processors: args.configured_processors(&settings)?,
-            driver: args
-                .configured_audio_driver(&settings)
-                .map_err(anyhow::Error::msg)?,
-            pools: shoop_egui::new_engine_pools_from_snapshot(&settings)
-                .map_err(anyhow::Error::msg)?,
-            master_auto_connect: shoop_egui::master_auto_connect(&settings)
-                .map_err(anyhow::Error::msg)?,
-            loop_smoothing_ms: shoop_egui::loop_edge_smoothing_ms(&settings)
-                .map_err(anyhow::Error::msg)?,
-            ..Default::default()
-        },
+        settings: args.configured_host_settings(&settings)?,
         transport: if transport == shoop_egui::EngineTransportKind::Socket {
             AppTransport::Socket
         } else {
@@ -3742,7 +3757,11 @@ fn independent_roles(args: &AppArgs) -> anyhow::Result<bool> {
         },
         ..Default::default()
     };
+    config.validate()?;
+    let executable = std::env::current_exe()?;
+    let companion = shoop_host::launch::companion_path(&executable)?;
     let mut options = StartOptions::new()?;
+    options.use_configured_driver = args.audio.dummy_buffer_size.is_some();
     if let Some(endpoint) = args.endpoint {
         options.endpoint = endpoint;
     }
@@ -4868,6 +4887,7 @@ mod tests {
         });
         app.handle_settings_action(SettingsAction::RequestAudioDriverSwitch {
             config: AudioDriverConfig::Dummy(shoop_egui::DummyAudioDriverConfig {
+                mode: Default::default(),
                 sample_rate: 32_000,
                 buffer_size: 128,
             }),
@@ -5020,6 +5040,7 @@ mod tests {
         runtime
             .dispatch(AppIntent::RequestAudioDriverSwitch {
                 config: AudioDriverConfig::Dummy(shoop_egui::DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: 32_000,
                     buffer_size: 128,
                 }),
@@ -5050,6 +5071,7 @@ mod tests {
         runtime
             .dispatch(AppIntent::RequestAudioDriverSwitch {
                 config: AudioDriverConfig::Dummy(shoop_egui::DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: 32_000,
                     buffer_size: 128,
                 }),
@@ -5430,6 +5452,7 @@ mod tests {
         runtime
             .dispatch(AppIntent::RequestAudioDriverSwitch {
                 config: AudioDriverConfig::Dummy(shoop_egui::DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: 44_100,
                     buffer_size: 128,
                 }),
@@ -5672,12 +5695,15 @@ mod tests {
         thread::sleep(Duration::from_millis(1000));
         let after = runtime.snapshot().status.clone();
         eprintln!(
-            "CPAL device: {} frames and {} xruns in one second, load {:.1}%",
+            "CPAL device: {} frames and {} xruns in one second, load {}",
             after
                 .processed_frames
                 .saturating_sub(before.processed_frames),
             after.xruns,
-            after.dsp_load_percent
+            after.dsp.and_then(|sample| sample.percent()).map_or_else(
+                || "unavailable".to_owned(),
+                |percent| format!("{percent:.1}%")
+            )
         );
         assert!(after.processed_frames > before.processed_frames);
 

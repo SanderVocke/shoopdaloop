@@ -1,0 +1,13 @@
+{
+  "rtl_revision": "c2d6e6ff",
+  "netlist_sha256": "9122d83e4886bd8daa77cfadda50bbda8fbdc9390c33ca816982866636336471",
+  "part": "xc7z020clg484-1",
+  "clock_mhz": 100,
+  "vivado": "2021.1",
+  "production_source_changes": false,
+  "experiments": [
+    "padded DDR strides: synthesis/optimization only",
+    "same-netlist failed-place replay",
+    "no-reset-replication constraint: failed placement"
+  ]
+}

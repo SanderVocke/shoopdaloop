@@ -46,47 +46,122 @@ directory is used. Saved driver preferences override configuration; explicit aud
 CLI flags override both. See the
 [audio-driver switching contract](../../../docs/native_session_recovery/audio-driver-switching.md).
 
-## Temporary Rust FPGA-reference client
+## Backend selection
 
-Build and run the live-graph application-API exercise without the UI:
+`--backend native|rust-fpga|rtl-sim` selects the execution implementation at host
+startup. `native` is the default. `rust-fpga` requires the `fpga-reference` Cargo
+feature. `rtl-sim` is available on Linux behind the `rtl-sim` Cargo feature.
+See [shared drivers](../../../docs/shared_drivers.md) for its serialized owner,
+latency and simulation deadline policy. Backend choice is independent of audio-driver
+and UI-transport selection; unsupported backend/driver combinations fail before
+starting a device. The old `--audio-backend` and `--fpga-reference` CLI switches
+are not accepted.
 
-```sh
-cargo build -p shoop_host --no-default-features --features fpga-reference --bin shoop_host --example fpga_reference_client
-cargo run -p shoop_host --no-default-features --features fpga-reference --example fpga_reference_client -- --host target/debug/shoop_host
+The same choice is stored as `backend` in host settings and is exposed by the
+application's startup preferences and Host Manager's New Host dialog. For example:
+
+```json
+{"backend":"rust-fpga"}
 ```
 
-The client launches a reference host, attaches over its real socket API, creates a
-mono track, connects its input and submits `ActivatePreparedGraph`. `RtBackend`
-collects the desired layout on the control side. Activation sends one bounded
-immediate group containing a graph header, loop descriptions and activation.
-The endpoint compiles that description through the shared compiler and `RustTarget`
-outside the processing thread. The ARM allocator reuses continuing allocations,
-initializes only unused slots, and stages a bound program for the independently
-paced worker. An ordered `SwitchProgram` selects it at a quantum boundary. The
-operation completes after the ownership fence; processing frames remain continuous.
+This minimal configuration uses the reference startup defaults. Explicit
+configuration values are preserved and validated. Native driver preferences are
+used for native hosts only. Host Manager retains its separate audio-driver
+selection; choose Dummy for the current reference implementation.
 
-The client then uses immediate transition plans, gain and plan clearing, checking
-their results through application snapshots. It records the sync loop, records a
-second loop between source pulses, plays it, changes gain and stops both loops.
-It replaces programs during recording and playback, changes input routing, and
-replaces the user track with eight new loops, including recycled logical identities.
-It writes `config.json`, `profile.json`, `host.log` and `report.json` under
-`work/fpga-reference-client` (override with `--output`). The same client is run by
-`cargo test -p shoop_host --no-default-features --features fpga-reference --test prepared_graph`.
+## Rust FPGA reference with the UI
 
-This profile supports the built-in sync track plus one mono audio track, up to
-16 primitive loops in total, acyclic sync relationships (self sync allowed),
-optional input connections and either both Master output channels or neither.
-Track/Master controls must remain at their defaults, with zero smoothing and
-automatic Master connections. The input supplies deterministic 0.25 samples;
-stereo output is computed without a physical audio device. Media import/export,
-processors, MIDI, monitoring, arbitrary routing and UI integration are outside
-this profile. One prepared update may be outstanding. Quantum, sample rate and
-physical I/O remain fixed. Unsupported legacy mutations receive
-refusals; they are never sent to the execution queues. Native execution remains
-the default. Select the reference host with `fpga_reference: true` in startup
-configuration and build with the corresponding feature.
+Build the host and UI, then start the reference host:
 
-`RtlTarget` accepts the same logical graph and its packed configurations still load
-through the testbench loader. Marlin does not yet have the runtime graph/command
-frontend used by this application client.
+```sh
+cargo build -p shoop_host -p shoopdaloop --no-default-features --features shoop_host/fpga-reference
+target/debug/shoop_host --backend rust-fpga --name "Rust FPGA reference"
+```
+
+Attach with Host Manager, or use the management address printed by the host:
+
+```sh
+target/debug/shoopdaloop --ui-only --host-address 127.0.0.1:PORT
+```
+
+Choose `--driver dummy` for device-free processing, `cpal` for system audio,
+or `jack` for direct JACK. The selected driver supplies timing and actual audio;
+Dummy input is silence unless a test fixture supplies a generator. Dummy pacing
+can be paced, unpaced or controlled. Saved driver preferences apply independently
+of backend selection. The reference has zero smoothing and automatic Master
+outputs. Its default standalone media pool is 256 MiB; memory capacity and quantum
+can be supplied with `--config PATH`. The quantum adapter reports one quantum of
+processing latency. JACK exposes fixed `audio_in_1`, `audio_out_1` and
+`audio_out_2` ports; CPAL uses the first input and first two outputs.
+
+The graph compiler supports direct audio strips and loops with multiple channels,
+multiple buses, arbitrary acyclic channel routing, gains, stereo balance, mute,
+manual input monitoring and boundary smoothing. Track, loop and channel counts
+are admitted by actual program resources and free physical state slots, including
+active graph ownership during a switch. Capacity refusals name the exhausted
+resource and restore the previous layout. The host still has one physical input
+and two outputs; wider internal layouts can share or omit those connections.
+
+These are compilation features, not a claim that every UI action has an immediate
+runtime implementation. Loop gain, record/play/stop, sync scheduling, selection,
+names and supported structural changes work through the current endpoint. Other
+immediate controls, media reads/import/export, loop clearing and copying still
+need endpoint support. MIDI, processors, composites, dry/wet execution and
+automatic monitoring are compiler refusals. Unsupported operations use the normal
+error path. Track removal and creation can provide fresh empty loops.
+
+The application service automatically commits a complete graph edit, including
+its loops and default connections. `RtBackend` collects that desired graph on the
+control side through the shared `GraphView` interface, including MIDI and
+unsupported layouts. The complete description reaches the ARM endpoint, where
+the shared compiler validates its supported subset and lowers through `RustTarget`
+outside the processing thread. Unsupported shapes receive a compiler refusal. The ARM allocator preserves
+continuing allocations and prepares unused slots only. The operation completes
+after the quantum-boundary program switch and ownership fence. Commands behind a
+pending switch wait in the existing application queue. Failed edits restore the
+last committed control-side graph without resetting running processor state.
+The UI sends its existing commands; it does not need `ActivatePreparedGraph`.
+Lower-level clients using `RtBackend` directly can still stage edits and request
+explicit activation.
+
+Routing is compiled from actual connections; an output can feed either Master
+channel, another bus, multiple destinations or none. Sync relationships must be
+acyclic (self sync is allowed). Quantum, sample rate and host I/O geometry stay
+fixed for a host's lifetime. Native execution remains the default.
+
+## Application and UI verification
+
+The temporary application client exercises recording, scheduled transitions,
+gain, plan clearing, live program replacement and recycled logical identities:
+
+```sh
+cargo run -p shoop_host --no-default-features --features fpga-reference --example fpga_reference_client -- --host target/debug/shoop_host
+cargo test -p shoop_host --no-default-features --features fpga-reference --test prepared_graph --test reference_activation
+cargo test -p shoopdaloop --no-default-features --features fpga-reference fpga_reference_ui_operates
+```
+
+The UI test starts the actual application runtime against a socket reference
+host, renders egui offscreen, records/plays/stops, changes loop gain, adds a loop
+during playback, removes/recreates the track, reattaches, and closes both UI and
+host. Separate tests hold
+the activation acknowledgment to check command ordering and operation completion,
+and inject transport/compiler refusals to check restoration and retry.
+The application client writes diagnostics under `work/fpga-reference-client`
+(override with `--output`).
+
+`RtlTarget` accepts the same logical graph and loads through the Marlin loader.
+The `rtl-sim` application host uses the same command, response and snapshot
+interfaces. Its UI and application tests exercise live loading through that host.
+
+## Dummy pacing
+
+Dummy startup accepts `--dummy-mode paced|unpaced|controlled`, independently of
+`--backend`. The same mode is stored in the Dummy driver's JSON `mode` field and
+in startup preferences/Host Manager. Omitted modes remain paced. Unpaced advances
+sample time continuously without sleeping; controlled mode waits for frame
+requests through the host driver's `DummyControl` handle. Attaching a UI does not
+change pacing and does not receive those startup overrides.
+
+Fixed-quantum renderers use a prepared adapter with one quantum of reported
+latency. Partial driver requests remain buffered; they do not cause padded engine
+quanta. Driver frames delivered and complete engine frames are distinct counters.

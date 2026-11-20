@@ -3,10 +3,12 @@
 
 module media_audio_pipeline_axi #(
     parameter integer EXTERNAL_IO = 0,
+    parameter integer ENABLE_MIDI = 0,
     parameter integer LIVE_LOADING = 0,
+    parameter integer EXPORT_SYNC_EVENTS = 0,
     parameter integer PROGRAM_REGIONS = LIVE_LOADING != 0 ? 2 : 1,
     parameter integer PROGRAM_DEPTH = 32, parameter integer STATE_DEPTH = 16,
-    parameter integer JOB_DEPTH = 32, parameter integer MAX_FRAMES = 32,
+    parameter integer JOB_DEPTH = 32, parameter integer READ_HINT_DEPTH = JOB_DEPTH, parameter integer MAX_FRAMES = 32,
     parameter integer BUFFERS = 16, parameter integer INPUT_PORTS = 2, parameter integer OUTPUT_PORTS = 2,
     parameter integer REUSE_VIEWS = 0,
     parameter integer MAINTENANCE_AT_RUN = 1,
@@ -20,8 +22,15 @@ module media_audio_pipeline_axi #(
     parameter integer TABLE_LINES = 8, parameter integer REF_LINES = 4, parameter integer STACK_LINES = 2,
     parameter integer READ_BUFFERS = 4, parameter integer WRITE_BUFFERS = 4, parameter integer BURST_MEMORY = 1,
     parameter integer AXI_DATA_WIDTH = 32,
-    parameter [31:0] PHYSICAL_BASE = 32'h01000000
+    parameter [31:0] PHYSICAL_BASE = 32'h01000000,
+    parameter [63:0] PHYSICAL_BYTES_LIMIT = 64'h100000000
 ) (
+    output wire midi_job_valid,
+    input wire midi_job_ready,
+    output wire [255:0] midi_job_data,
+    input wire midi_job_done,
+    input wire [3:0] midi_job_error,
+    output wire [3:0] midi_error_code,
     output wire sample_input_read,
     output wire [31:0] sample_input_address,
     input wire [31:0] sample_input_data,
@@ -64,6 +73,9 @@ module media_audio_pipeline_axi #(
     output wire [63:0] switch_first_frame,
     output wire [63:0] active_revision,
     output wire [63:0] sync_frame,
+    output wire sync_event_valid,
+    input wire sync_event_ready,
+    output wire [255:0] sync_event_data,
     input wire run_valid,
     output wire run_ready,
     input wire [31:0] run_instruction_count,
@@ -208,11 +220,14 @@ module media_audio_pipeline_axi #(
     wire [31:0] physical_base = PHYSICAL_BASE;
     media_audio_pipeline #(
         .EXTERNAL_IO(EXTERNAL_IO),
+        .ENABLE_MIDI(ENABLE_MIDI),
         .LIVE_LOADING(LIVE_LOADING),
+        .EXPORT_SYNC_EVENTS(EXPORT_SYNC_EVENTS),
         .PROGRAM_REGIONS(PROGRAM_REGIONS),
         .PROGRAM_DEPTH(PROGRAM_DEPTH),
         .STATE_DEPTH(STATE_DEPTH),
         .JOB_DEPTH(JOB_DEPTH),
+        .READ_HINT_DEPTH(READ_HINT_DEPTH),
         .MAX_FRAMES(MAX_FRAMES),
         .BUFFERS(BUFFERS),
         .INPUT_PORTS(INPUT_PORTS),
@@ -237,5 +252,6 @@ module media_audio_pipeline_axi #(
         .BURST_MEMORY(BURST_MEMORY)) core (.*);
     localparam [63:0] STORAGE_WORDS = ((64'(SLOTS)*64'(CHUNK_FRAMES)+15)/16)*16 + 2*((64'(SLOTS/BLOCK_CHUNKS)+15)/16)*16 + 64'(TABLE_PAGES)*16 + 64'(RETIRED_TABLES)*16;
     initial if ({32'b0,PHYSICAL_BASE}+STORAGE_WORDS*4 > 64'h100000000) $fatal(1,"DDR arena exceeds AXI address range");
+    initial if (STORAGE_WORDS*4 > PHYSICAL_BYTES_LIMIT) $fatal(1,"DDR arena exceeds reserved memory");
     shared_axi #(.DATA_WIDTH(AXI_DATA_WIDTH),.BURST_MEMORY(BURST_MEMORY),.MAX_SAMPLE_WORDS(32'(CHUNK_FRAMES)),.MAX_METADATA_WORDS(32'd16)) memory_endpoint (.arena_base(memory_arena_base),.arena_bytes(STORAGE_WORDS*4),.sample_bytes(arena_bytes),.*);
 endmodule

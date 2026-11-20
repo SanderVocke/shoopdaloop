@@ -1,5 +1,6 @@
 module word_axi #(
-    parameter integer DATA_WIDTH = 32
+    parameter integer DATA_WIDTH = 32,
+    parameter integer REGISTER_REQUEST = 0
 ) (
     input wire clk, input wire reset,
     input wire [63:0] arena_base, input wire [63:0] arena_bytes,
@@ -40,6 +41,6 @@ module word_axi #(
     wire completion_valid;
     wire completion_ready;
     wire completion_error;
-    word_dma #(.DATA_WIDTH(DATA_WIDTH)) transfer (.*);
+    word_dma #(.DATA_WIDTH(DATA_WIDTH),.REGISTER_REQUEST(REGISTER_REQUEST)) transfer (.*);
     axi_master #(.DATA_WIDTH(DATA_WIDTH)) endpoint (.*);
 endmodule

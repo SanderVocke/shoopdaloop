@@ -6,7 +6,9 @@
 use std::cell::RefCell;
 
 use crate::config::{WorkletConfig, MAX_CONFIG_BYTES};
-use crate::host::{Inbound, Outbound, PrepareFailure, Quantum, QuantumError, WorkletHost};
+use crate::host::{
+    CallbackTiming, Inbound, Outbound, PrepareFailure, Quantum, QuantumError, WorkletHost,
+};
 
 pub const PREPARED: u32 = 0;
 pub const ALREADY_PREPARED: u32 = 1;
@@ -33,6 +35,10 @@ pub const FRAMING_ERRORS: u32 = 5;
 
 struct Worklet {
     config: Option<Box<[u8]>>,
+    #[cfg(feature = "fpga-reference")]
+    image: Option<Box<[u8]>>,
+    #[cfg(feature = "fpga-reference")]
+    image_ok: bool,
     host: Option<WorkletHost>,
 }
 
@@ -40,6 +46,10 @@ thread_local! {
     static WORKLET: RefCell<Worklet> = const {
         RefCell::new(Worklet {
             config: None,
+            #[cfg(feature="fpga-reference")]
+            image:None,
+            #[cfg(feature="fpga-reference")]
+            image_ok:false,
             host: None,
         })
     };
@@ -111,6 +121,10 @@ pub extern "C" fn shoop_rt_worklet_release() {
         let mut worklet = worklet.borrow_mut();
         worklet.host = None;
         worklet.config = None;
+        #[cfg(feature = "fpga-reference")]
+        {
+            worklet.image = None;
+        }
     });
 }
 
@@ -180,21 +194,27 @@ pub extern "C" fn shoop_rt_worklet_commit(id: u32, len: usize) -> bool {
 }
 
 /// Render one quantum of `frames` frames starting at `currentFrame` `frame`.
-/// `load` is the previous quantum's processing time as a share of its period,
-/// or negative when unknown.
+/// The previous callback's duration is in nanoseconds, or negative when unknown.
 #[no_mangle]
 pub extern "C" fn shoop_rt_worklet_process(
     frames: u32,
     input_channels: u32,
     frame: f64,
-    load: f64,
+    previous_elapsed_ns: f64,
+    previous_frames: u32,
 ) -> u32 {
     with_host(NOT_PREPARED, |host| {
         let quantum = Quantum {
             frames: frames as usize,
             input_channels: input_channels as usize,
             frame: frame as u64,
-            load: (load >= 0.).then_some(load as f32),
+            previous_callback: (previous_elapsed_ns.is_finite()
+                && previous_elapsed_ns >= 0.
+                && previous_frames > 0)
+                .then_some(CallbackTiming {
+                    elapsed_ns: previous_elapsed_ns as u64,
+                    frames: previous_frames,
+                }),
         };
         match host.process(quantum) {
             Ok(()) => RENDERED,
@@ -296,4 +316,48 @@ pub extern "C" fn shoop_rt_worklet_profiling_end(ended_ns: f64, frames: u32) {
             );
         }
     });
+}
+
+#[cfg(feature = "fpga-reference")]
+#[no_mangle]
+pub extern "C" fn shoop_rt_worklet_image_buffer(len: usize) -> *mut u8 {
+    WORKLET.with(|cell| {
+        let mut w = cell.borrow_mut();
+        if len == 0 || len > crate::reference::MAX_IMAGE_BYTES || w.host.is_none() {
+            return std::ptr::null_mut();
+        }
+        w.image.insert(vec![0; len].into_boxed_slice()).as_mut_ptr()
+    })
+}
+#[cfg(feature = "fpga-reference")]
+#[no_mangle]
+pub extern "C" fn shoop_rt_worklet_image_commit() -> u32 {
+    WORKLET.with(|cell| {
+        let mut w = cell.borrow_mut();
+        let Some(bytes) = w.image.take() else {
+            return INVALID_CONFIG;
+        };
+        match w.host.as_mut().map(|h| h.load_reference_image(&bytes)) {
+            Some(Ok(())) => 0,
+            _ => ENGINE_REFUSED,
+        }
+    })
+}
+#[cfg(feature = "fpga-reference")]
+#[no_mangle]
+pub extern "C" fn shoop_rt_worklet_image_ready() -> u64 {
+    WORKLET.with(|cell| {
+        let mut w = cell.borrow_mut();
+        let Some((revision, ok)) = w.host.as_mut().and_then(WorkletHost::reference_image_ready)
+        else {
+            return 0;
+        };
+        w.image_ok = ok;
+        revision
+    })
+}
+#[cfg(feature = "fpga-reference")]
+#[no_mangle]
+pub extern "C" fn shoop_rt_worklet_image_ready_ok() -> u32 {
+    WORKLET.with(|cell| u32::from(cell.borrow().image_ok))
 }

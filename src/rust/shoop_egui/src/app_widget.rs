@@ -105,11 +105,16 @@ pub const BUILTIN_SCRIPTS: SettingKey<StringToggleList> =
     SettingKey::new("scripting.builtins.scripts");
 pub const USER_SCRIPTS: SettingKey<StringToggleList> = SettingKey::new("scripting.user_scripts");
 pub const CARLA_HOSTING_MODE: SettingKey<String> = SettingKey::new("carla.hosting_mode");
+pub const CARLA_RACK_INSTANCES: SettingKey<u32> = SettingKey::new("carla.rack_instances");
+pub const CARLA_PATCHBAY_INSTANCES: SettingKey<u32> = SettingKey::new("carla.patchbay_instances");
+pub const CARLA_PATCHBAY_16X_INSTANCES: SettingKey<u32> =
+    SettingKey::new("carla.patchbay16x_instances");
 
 pub const LOOP_EDGE_SMOOTHING_MS: SettingKey<u32> = SettingKey::new("audio.loop_edge_smoothing_ms");
 pub const RUNTIME_PROFILING: SettingKey<bool> = SettingKey::new("developer.runtime_profiling");
 pub const MASTER_AUTO_CONNECT: SettingKey<bool> = SettingKey::new("audio.master_auto_connect");
 pub const SELECTED_AUDIO_DRIVER: SettingKey<String> = SettingKey::new("audio.selected_driver");
+pub const DUMMY_MODE: SettingKey<String> = SettingKey::new("audio.dummy.mode");
 pub const DUMMY_SAMPLE_RATE: SettingKey<u32> = SettingKey::new("audio.dummy.sample_rate");
 pub const DUMMY_BUFFER_SIZE: SettingKey<u32> = SettingKey::new("audio.dummy.buffer_size");
 pub const JACK_CLIENT_NAME: SettingKey<String> = SettingKey::new("audio.jack.client_name");
@@ -126,7 +131,7 @@ pub const CPAL_CAPTURE_RING_FRAMES: SettingKey<u32> =
 pub const CPAL_MIDI_INPUTS: SettingKey<String> = SettingKey::new("audio.cpal.midi_inputs");
 pub const CPAL_MIDI_OUTPUTS: SettingKey<String> = SettingKey::new("audio.cpal.midi_outputs");
 pub const ENGINE_TRANSPORT: SettingKey<String> = SettingKey::new("audio.session_transport");
-pub const AUDIO_BACKEND: SettingKey<String> = SettingKey::new("audio.backend");
+pub const BACKEND: SettingKey<String> = SettingKey::new("host.backend");
 pub const NEW_ENGINE_QUANTUM: SettingKey<String> = SettingKey::new("audio.new_engine.quantum");
 pub const NEW_ENGINE_BUSES: SettingKey<u32> = SettingKey::new("audio.new_engine.buses");
 pub const NEW_ENGINE_BUS_CHANNELS: SettingKey<u32> =
@@ -440,6 +445,25 @@ pub fn register_audio_settings_with_default_driver(
     )?;
     builder.register(
         SettingDefinition::new(
+            DUMMY_MODE,
+            "paced".to_owned(),
+            "Audio",
+            "Dummy pacing",
+            "Run at sample rate, continuously, or only for requested frames.",
+        )
+        .category_order(5)
+        .setting_order(9)
+        .effect(effect)
+        .editor(SettingEditor::StringChoice {
+            choices: &[
+                ("paced", "Paced"),
+                ("unpaced", "Unpaced"),
+                ("controlled", "Controlled"),
+            ],
+        }),
+    )?;
+    builder.register(
+        SettingDefinition::new(
             DUMMY_SAMPLE_RATE,
             48_000,
             "Audio",
@@ -624,18 +648,38 @@ pub fn register_carla_settings(
             shoop_settings::CarlaHostingMode::InProcess.as_str().to_owned(),
             "Carla",
             "Hosting mode",
-            "Run Carla in this process or in a supervised subprocess. This is a global machine setting, is not stored in sessions, and takes effect after restart.",
+            "Select how a native Socket or Shared Memory session host runs Carla. Restart the host to apply changes.",
         )
         .category_order(7)
         .setting_order(10)
         .effect(SettingEffect::RestartRequired)
         .editor(shoop_settings::SettingEditor::StringChoice {
             choices: &[
-                ("in_process", "In application process"),
+                ("in_process", "In session host"),
                 ("subprocess", "One subprocess per FX chain"),
             ],
         }),
-    )
+    )?;
+    for (key, label, order) in [
+        (CARLA_RACK_INSTANCES, "Rack instances", 11),
+        (CARLA_PATCHBAY_INSTANCES, "Stereo Patchbay instances", 12),
+        (CARLA_PATCHBAY_16X_INSTANCES, "Patchbay 16x instances", 13),
+    ] {
+        builder.register(
+            SettingDefinition::new(
+                key,
+                0,
+                "Carla",
+                label,
+                "Capacity reserved when the host starts. Set all instance counts to zero to disable Carla.",
+            )
+            .category_order(7)
+            .setting_order(order)
+            .effect(SettingEffect::RestartRequired)
+            .editor(SettingEditor::UnsignedInteger { min: 0, max: 64 }),
+        )?;
+    }
+    Ok(())
 }
 
 pub fn carla_hosting_mode_from_snapshot(
@@ -646,35 +690,6 @@ pub fn carla_hosting_mode_from_snapshot(
         .map_err(|error| error.to_string())?
         .parse()
         .map_err(|error: shoop_settings::CarlaHostingModeParseError| error.to_string())
-}
-
-/// The audio backend the application starts with.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum AudioBackendKind {
-    /// The engine supports the core looping workflow.
-    #[default]
-    NewEngine,
-}
-
-impl AudioBackendKind {
-    pub const fn id(self) -> &'static str {
-        match self {
-            Self::NewEngine => "new_engine",
-        }
-    }
-}
-
-impl std::str::FromStr for AudioBackendKind {
-    type Err = String;
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        match value {
-            "new_engine" => Ok(Self::NewEngine),
-            _ => Err(format!(
-                "unknown audio backend {value:?}; expected new_engine"
-            )),
-        }
-    }
 }
 
 /// Native new-engine message delivery, selected at application startup.
@@ -728,6 +743,7 @@ pub const PROCESSOR_MEMORY_MB: SettingKey<u32> = SettingKey::new("audio.processo
 
 pub fn processor_settings_from_snapshot(
     snapshot: &SettingsSnapshot,
+    backend: crate::BackendType,
 ) -> Result<shoop_app_api::ProcessorSettings, String> {
     let policy = |key| -> Result<shoop_app_api::ProcessorPolicy, String> {
         let value: String = snapshot.get(key).map_err(|error| error.to_string())?;
@@ -744,7 +760,7 @@ pub fn processor_settings_from_snapshot(
     let synth: u32 = snapshot
         .get(PROCESSOR_SYNTH_INSTANCES)
         .map_err(|error| error.to_string())?;
-    let settings = shoop_app_api::ProcessorSettings {
+    let mut settings = shoop_app_api::ProcessorSettings {
         builtin_fx: policy(PROCESSOR_FX_POLICY)?,
         oxisynth: policy(PROCESSOR_SYNTH_POLICY)?,
         fx_instances: u16::try_from(fx).map_err(|error| error.to_string())?,
@@ -752,14 +768,66 @@ pub fn processor_settings_from_snapshot(
         memory_mb: snapshot
             .get(PROCESSOR_MEMORY_MB)
             .map_err(|error| error.to_string())?,
+        carla: Default::default(),
     };
+    if backend == crate::BackendType::Native {
+        let carla_slots = |key: SettingKey<u32>| match snapshot.get(key) {
+            Ok(count) => u16::try_from(count).map_err(|error| error.to_string()),
+            Err(shoop_settings::SettingsAccessError::UnknownKey(_)) => Ok(0),
+            Err(error) => Err(error.to_string()),
+        };
+        settings.carla.rack_instances = carla_slots(CARLA_RACK_INSTANCES)?;
+        settings.carla.patchbay_instances = carla_slots(CARLA_PATCHBAY_INSTANCES)?;
+        settings.carla.patchbay16x_instances = carla_slots(CARLA_PATCHBAY_16X_INSTANCES)?;
+        if settings.carla.rack_instances != 0
+            || settings.carla.patchbay_instances != 0
+            || settings.carla.patchbay16x_instances != 0
+        {
+            settings.carla.hosting = match carla_hosting_mode_from_snapshot(snapshot)? {
+                shoop_settings::CarlaHostingMode::InProcess => {
+                    shoop_app_api::CarlaHosting::InProcess
+                }
+                shoop_settings::CarlaHostingMode::Subprocess => {
+                    shoop_app_api::CarlaHosting::Subprocess
+                }
+            };
+        }
+    }
     settings.validate().map_err(|error| error.to_string())?;
     Ok(settings)
+}
+
+pub fn backend_from_snapshot(snapshot: &SettingsSnapshot) -> Result<crate::BackendType, String> {
+    snapshot
+        .get(BACKEND)
+        .unwrap_or_else(|_| "native".into())
+        .parse()
 }
 
 pub fn register_audio_backend_settings(
     builder: &mut SettingsRegistryBuilder,
 ) -> Result<(), SettingsRegistryError> {
+    #[cfg(not(target_arch = "wasm32"))]
+    register_carla_settings(builder)?;
+    builder.register(
+        SettingDefinition::new(
+            BACKEND,
+            "native".to_owned(),
+            "Audio",
+            "Backend",
+            "Execution implementation for a newly started host.",
+        )
+        .category_order(5)
+        .setting_order(48)
+        .effect(SettingEffect::RestartRequired)
+        .editor(SettingEditor::StringChoice {
+            choices: &[
+                ("native", "Native Rust"),
+                ("rust-fpga", "Rust FPGA reference"),
+                ("rtl-sim", "RTL simulation"),
+            ],
+        }),
+    )?;
     for (key, label, order) in [
         (PROCESSOR_FX_POLICY, "Built-in FX", 58),
         (PROCESSOR_SYNTH_POLICY, "Built-in Synth", 59),
@@ -844,12 +912,12 @@ pub fn register_audio_backend_settings(
             NEW_ENGINE_CHANNELS,
             defaults.channels,
             "Track channels",
-            "Most audio channels of a track input or output in the new engine backend.",
+            "Maximum audio channels per track input or output. Native hosts support up to 16. FPGA backends support up to 8.",
             1,
-            8,
+            shoop_app_api::BackendType::Native.max_session_channels(),
         ),
         (55, NEW_ENGINE_BUSES, defaults.buses, "Buses", "Output buses prepared at startup, including the default bus.", 1, 8),
-        (56, NEW_ENGINE_BUS_CHANNELS, defaults.bus_channels, "Bus channels", "Maximum audio channels per output bus.", 2, 8),
+        (56, NEW_ENGINE_BUS_CHANNELS, defaults.bus_channels, "Bus channels", "Maximum audio channels per output bus. Native hosts support up to 16. FPGA backends support up to 8.", 2, shoop_app_api::BackendType::Native.max_session_channels()),
         (
             54,
             NEW_ENGINE_LOOP_MEMORY_MB,
@@ -943,6 +1011,7 @@ fn audio_driver_config(
 ) -> Result<AudioDriverConfig, String> {
     match kind {
         AudioDriverKind::Dummy => Ok(AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+            mode: string(DUMMY_MODE)?.parse()?,
             sample_rate: unsigned(DUMMY_SAMPLE_RATE)?,
             buffer_size: unsigned(DUMMY_BUFFER_SIZE)?,
         })),
@@ -3171,16 +3240,9 @@ impl AppWidget {
                 ui.close();
             }
         });
-        ui.add(
-            egui::ProgressBar::new((state.status.dsp_load_percent / 100.0).clamp(0.0, 1.0))
-                .desired_width(86.0)
-                .desired_height(4.0)
-                .fill(colors::COLORED_HIGHLIGHT)
-                .corner_radius(0),
-        );
-        ui.label("DSP");
+        show_dsp(ui, state.status.dsp);
         ui.separator();
-        crate::memory::summary(ui, state.status.memory.as_ref());
+        crate::usage::summary(ui, state.status.memory.as_ref());
         ui.separator();
         let milliseconds = state
             .status
@@ -3345,6 +3407,40 @@ impl BackendHealth {
             Self::Failed => colors::STRONG_ERROR,
         }
     }
+}
+
+fn show_dsp(ui: &mut egui::Ui, sample: Option<crate::DspMeasurement>) {
+    let percent = sample.and_then(crate::DspMeasurement::percent);
+    let value = percent.map_or_else(|| "—".into(), |percent| format!("{percent:.1}%"));
+    let mut description = sample.map_or_else(
+        || "Waiting for a DSP measurement".to_owned(),
+        |sample| sample.label().to_owned(),
+    );
+    if let Some(period) = sample.and_then(crate::DspMeasurement::audio_period_us) {
+        let basis = match sample {
+            Some(crate::DspMeasurement::Callback { paced: true, .. }) => "Callback period",
+            _ => "Real-time audio duration",
+        };
+        description.push_str(&format!("\n{basis} {period:.1} µs"));
+    }
+    if let Some(crate::DspMeasurement::FpgaQuantum {
+        cycles, clock_hz, ..
+    }) = sample
+    {
+        let clock_mhz = f64::from(clock_hz) / 1_000_000.;
+        description.push_str(&format!("\n{cycles} cycles at {clock_mhz:.0} MHz"));
+    }
+    if let Some(percent) = percent {
+        ui.add(
+            egui::ProgressBar::new((percent / 100.).clamp(0., 1.) as f32)
+                .desired_width(86.0)
+                .desired_height(4.0)
+                .fill(colors::COLORED_HIGHLIGHT)
+                .corner_radius(0),
+        )
+        .on_hover_text(&description);
+    }
+    ui.label(format!("DSP {value}")).on_hover_text(description);
 }
 
 fn format_memory_usage(bytes: u64) -> String {
@@ -4037,6 +4133,45 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
+    fn dsp_status_shows_percent_when_available() {
+        let context = egui::Context::default();
+        let rtl = Some(crate::DspMeasurement::FpgaQuantum {
+            cycles: 30_000,
+            clock_hz: 150_000_000,
+            frames: 64,
+            sample_rate: 48_000,
+        });
+        let render = |sample| {
+            let mut output = context.run_ui(egui::RawInput::default(), |ui| {
+                ui.horizontal(|ui| show_dsp(ui, sample));
+            });
+            let text = output.shapes.iter().find_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) if text.galley.text().starts_with("DSP ") => {
+                    Some(text.galley.text().to_owned())
+                }
+                _ => None,
+            });
+            output.textures_delta.clear();
+            text.unwrap()
+        };
+        assert_eq!(render(rtl), "DSP 15.0%");
+        assert_eq!(
+            render(Some(crate::DspMeasurement::JackServer { percent: 125. })),
+            "DSP 125.0%"
+        );
+        assert_eq!(
+            render(Some(crate::DspMeasurement::Callback {
+                elapsed_ns: 4000,
+                frames: 0,
+                sample_rate: 48_000,
+                paced: true,
+            })),
+            "DSP —"
+        );
+        assert_eq!(render(None), "DSP —");
+    }
+
+    #[shoop_wasm_test_support::shoop_test]
     fn active_tracing_status_offers_save_action() {
         let context = egui::Context::default();
         crate::initialize(&context);
@@ -4178,17 +4313,21 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn audio_backend_settings_default_to_legacy_and_require_a_restart() {
+    fn backend_settings_default_to_native_and_require_a_restart() {
         let mut builder = SettingsRegistryBuilder::default();
         register_audio_backend_settings(&mut builder).unwrap();
         let registry = builder.finish();
         let defaults = registry.defaults(1);
-        assert!(registry.definition(AUDIO_BACKEND.id()).is_none());
+        assert_eq!(
+            backend_from_snapshot(&defaults).unwrap(),
+            crate::BackendType::Native
+        );
         assert_eq!(
             new_engine_pools_from_snapshot(&defaults).unwrap(),
             NewEnginePools::default()
         );
         for key in [
+            BACKEND.id(),
             ENGINE_TRANSPORT.id(),
             NEW_ENGINE_QUANTUM.id(),
             NEW_ENGINE_TRACKS.id(),
@@ -4248,12 +4387,15 @@ mod tests {
         draft.set(NEW_ENGINE_QUANTUM, "17".to_owned());
         assert!(registry.validate_draft(&draft).is_err());
         draft.set(NEW_ENGINE_QUANTUM, "32".to_owned());
-        draft.set(NEW_ENGINE_CHANNELS, 9);
+        draft.set(NEW_ENGINE_CHANNELS, 16);
+        draft.set(NEW_ENGINE_BUS_CHANNELS, 16);
+        assert!(registry.validate_draft(&draft).is_ok());
+        draft.set(NEW_ENGINE_CHANNELS, 17);
         assert!(registry.validate_draft(&draft).is_err());
-        for kind in [AudioBackendKind::NewEngine] {
-            assert_eq!(kind.id().parse::<AudioBackendKind>().unwrap(), kind);
+        for kind in crate::BackendType::ALL {
+            assert_eq!(kind.id().parse::<crate::BackendType>().unwrap(), kind);
         }
-        assert!("engine".parse::<AudioBackendKind>().is_err());
+        assert!("engine".parse::<crate::BackendType>().is_err());
     }
 
     #[shoop_wasm_test_support::shoop_test]

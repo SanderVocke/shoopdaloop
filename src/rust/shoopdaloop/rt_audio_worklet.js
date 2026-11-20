@@ -26,7 +26,8 @@ class ShoopRtAudioProcessor extends AudioWorkletProcessor {
   constructor(options) {
     super();
     this.inbound = { [RECORDS_IN]: [], [MIDI_IN]: [] };
-    this.load = -1;
+    this.previousElapsedNs = -1;
+    this.previousFrames = 0;
     this.port.onmessage = event => this.receive(event.data);
     try {
       const { wasmModule, config } = options.processorOptions;
@@ -88,6 +89,17 @@ class ShoopRtAudioProcessor extends AudioWorkletProcessor {
       case 'records':
         this.inbound[RECORDS_IN].push(bytesOf(data.bytes));
         break;
+      case 'image': {
+        try {
+          const bytes = bytesOf(data.bytes);
+          const pointer = this.wasm.shoop_rt_worklet_image_buffer?.(bytes.length) >>> 0;
+          if (!pointer) throw new RangeError('reference image exceeds the bounded loader capacity or backend is unavailable');
+          new Uint8Array(this.wasm.memory.buffer, pointer, bytes.length).set(bytes);
+          if (this.wasm.shoop_rt_worklet_image_commit() !== 0) throw new Error('reference image refused');
+          if (this.wasm.memory.buffer !== this.memory) this.views();
+        } catch (error) { this.fail('load', 0, String(error)); }
+        break;
+      }
       case 'midi':
         this.inbound[MIDI_IN].push(bytesOf(data.bytes));
         break;
@@ -170,7 +182,8 @@ class ShoopRtAudioProcessor extends AudioWorkletProcessor {
         frames,
         inputChannels,
         currentFrame,
-        this.load,
+        this.previousElapsedNs,
+        this.previousFrames,
       );
       if (code !== RENDERED && code !== FAULTED) {
         return this.fail('process', code, `the module refused a quantum of ${frames} frames`);
@@ -183,12 +196,15 @@ class ShoopRtAudioProcessor extends AudioWorkletProcessor {
       }
       this.post(RECORDS_OUT, 'records');
       this.post(MIDI_OUT, 'midi');
+      const ready = this.wasm.shoop_rt_worklet_image_ready?.() || 0n;
+      if (ready) this.port.postMessage({ kind: 'image-ready', revision: ready.toString(), ok: this.wasm.shoop_rt_worklet_image_ready_ok() !== 0 });
     } catch (error) {
       return this.fail('process', 0, String(error?.stack || error));
     }
     if (timer) {
       const ended = timer.now();
-      this.load = ((ended - started) * sampleRate) / (1000 * frames);
+      this.previousElapsedNs = (ended - started) * 1e6;
+      this.previousFrames = frames;
       if (profiling) this.wasm.shoop_rt_worklet_profiling_end(ended * 1e6, frames);
     }
     return true;

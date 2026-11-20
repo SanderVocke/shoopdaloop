@@ -1,0 +1,78 @@
+   Compiling profiling_protocol v0.3.0 (/workspace/work/midi-baseline/src/rust/profiling_protocol)
+   Compiling shoop_processor_protocol v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_processor_protocol)
+   Compiling shoop_dsp_metrics v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_dsp_metrics)
+   Compiling rt_audio_math v0.3.0 (/workspace/work/midi-baseline/src/rust/rt_audio_math)
+   Compiling shoop_transport v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_transport)
+   Compiling shoop_port_graph v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_port_graph)
+   Compiling shoop_latency v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_latency)
+   Compiling shoop_script_resources v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_script_resources)
+   Compiling serde_json v1.0.151
+   Compiling shoop_tracing v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_tracing)
+   Compiling rt_profiling v0.3.0 (/workspace/work/midi-baseline/src/rust/rt_profiling)
+   Compiling freertos_profiling v0.3.0 (/workspace/work/midi-baseline/src/rust/freertos_profiling)
+   Compiling shoop_dsp v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_dsp)
+   Compiling oxisynth-chorus v0.1.0 (/workspace/work/midi-baseline/third_party/oxisynth-chorus)
+   Compiling oxisynth-reverb v0.1.0 (/workspace/work/midi-baseline/third_party/oxisynth-reverb)
+   Compiling fundsp v0.23.0 (/workspace/work/midi-baseline/third_party/fundsp)
+   Compiling oxisynth v0.1.0 (/workspace/work/midi-baseline/third_party/oxisynth)
+   Compiling shoop_graph v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_graph)
+   Compiling shoop_loop_plan v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_loop_plan)
+   Compiling shoop_settings v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_settings)
+   Compiling rt_runtime v0.3.0 (/workspace/work/midi-baseline/src/rust/rt_runtime)
+   Compiling shoop_app_api v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_app_api)
+   Compiling shoop_rt_protocol v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_rt_protocol)
+   Compiling shoop_plugin_protocol v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_plugin_protocol)
+   Compiling shoop_jack v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_jack)
+   Compiling shoop_deployment_protocol v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_deployment_protocol)
+   Compiling shoop_transport_socket v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_transport_socket)
+   Compiling shoop_host_processes v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_host_processes)
+   Compiling shoop_transport_shared_memory v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_transport_shared_memory)
+   Compiling shoop_common v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_common)
+   Compiling egui_graph v0.19.1 (/workspace/work/midi-baseline/third_party/egui_graph)
+   Compiling rt_buffered v0.3.0 (/workspace/work/midi-baseline/src/rust/rt_buffered)
+   Compiling shoop_rt_transport v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_rt_transport)
+   Compiling shoop_loops v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_loops)
+   Compiling shoop_app_protocol v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_app_protocol)
+   Compiling shoop_format_conversion v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_format_conversion)
+   Compiling shoop_engine v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_engine)
+   Compiling shoop_audio_drivers v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_audio_drivers)
+   Compiling shoop_scripting v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_scripting)
+   Compiling shoop_rt_engine v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_rt_engine)
+   Compiling shoop_session v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_session)
+   Compiling shoop_host_processors v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_host_processors)
+   Compiling shoop_rt_host_native v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_rt_host_native)
+   Compiling shoop_app_client v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_app_client)
+   Compiling shoop_rt_transport_message_port v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_rt_transport_message_port)
+   Compiling shoop_test_macros v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_test_macros)
+   Compiling shoop_backend v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_backend)
+   Compiling shoopdaloop v0.3.0 (/workspace/work/midi-baseline/src/rust/shoopdaloop)
+   Compiling shoop_rt_host_worklet v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_rt_host_worklet)
+   Compiling shoop_wasm_test_support v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_wasm_test_support)
+   Compiling shoop_egui v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_egui)
+   Compiling shoop_persistence_codec v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_persistence_codec)
+   Compiling shoop_app v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_app)
+   Compiling shoop_rt_backend v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_rt_backend)
+   Compiling shoop_app_connection v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_app_connection)
+   Compiling shoop_host v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_host)
+   Compiling shoop_host_manager v0.3.0 (/workspace/work/midi-baseline/src/rust/shoop_host_manager)
+    Finished `test` profile [unoptimized] target(s) in 49.26s
+     Running unittests src/main.rs (/workspace/work/current-backend/target/debug/build/shoopdaloop/9947e7e7c706b9f9/out/shoopdaloop-9947e7e7c706b9f9)
+
+running 1 test
+test native_recovery_tests::a_new_connection_cancels_old_inputs_and_cannot_consume_old_file_callbacks ... FAILED
+
+failures:
+
+---- native_recovery_tests::a_new_connection_cancels_old_inputs_and_cannot_consume_old_file_callbacks stdout ----
+
+thread 'native_recovery_tests::a_new_connection_cancels_old_inputs_and_cannot_consume_old_file_callbacks' (92543) panicked at src/rust/shoopdaloop/src/native_recovery_tests.rs:571:67:
+called `Result::unwrap()` on an `Err` value: session engine could not start: engine preparation failed: Runtime(Capacity); check driver settings and engine capacities
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    native_recovery_tests::a_new_connection_cancels_old_inputs_and_cannot_consume_old_file_callbacks
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 112 filtered out; finished in 11.79s
+
+error: test failed, to rerun pass `-p shoopdaloop --bin shoopdaloop`

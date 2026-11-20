@@ -147,6 +147,7 @@ fn ramp(port: usize, frame: u64) -> f32 {
 
 pub fn engine(value: &EngineDescription) -> Result<EngineSettings> {
     Ok(EngineSettings {
+        processors: value.processors,
         history: value.history,
         composite_entries: value
             .composite_entries
@@ -230,6 +231,7 @@ pub fn engine(value: &EngineDescription) -> Result<EngineSettings> {
 }
 pub fn native_engine(value: EngineSettings) -> Result<EngineDescription> {
     Ok(EngineDescription {
+        processors: value.processors,
         audio_render_mode: Default::default(),
         audio_bench_only: false,
         history: value.history,

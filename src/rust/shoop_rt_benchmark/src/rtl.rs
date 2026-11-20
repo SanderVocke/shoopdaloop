@@ -5,16 +5,17 @@ use crate::{
 };
 use anyhow::{anyhow, ensure, Result};
 use rt_fpga_compiler::StateProgramTarget;
-use rt_fpga_testbench::{
+use rt_fpga_rtl::{
     bits::Bits,
-    compiler::{CompiledProgram, RtlTarget},
-    drivers::{pipeline::Pipeline, store::Geometry},
-    loop_image,
-    memory::{Backend, Mode},
     model::Probe,
     sim::{Agent, Sim},
-    suites,
-    timing::dram::Dram,
+    target::{CompiledProgram, RtlTarget},
+};
+use rt_fpga_testbench::{
+    drivers::{pipeline::Pipeline, store::Geometry},
+    loop_image,
+    memory::{axi::Axi, Backend, Control as MemoryControl, Memory, Mode, Shared},
+    timing::{dram::Dram, Fixed as FixedTiming, Timing},
 };
 use shoop_rt_protocol as protocol;
 use shoop_rt_protocol::{
@@ -26,10 +27,10 @@ use shoop_rt_protocol::{
 use shoop_rt_transport::{carrier::Outbox, rt};
 use std::{cell::RefCell, path::Path, rc::Rc, time::Instant};
 
-const CAPACITIES: [u64; 7] = [1024, 256, 1024, 32, 512, 2, 2];
+const CAPACITIES: [u64; 7] = [2048, 512, 2048, 32, 512, 2, 2];
 const MEMORY_SEED: u64 = 20261117;
-const STATE_RAM: &str = "core.pipeline.state_engine.loop_memory.memory";
-const OUTPUT_RAM: &str = "core.pipeline.sample_engine.local_io.outputs_memory.memory";
+const STATE_RAM: &str = "core.audio.core.pipeline.state_engine.loop_memory.memory";
+const OUTPUT_RAM: &str = "core.audio.core.pipeline.sample_engine.local_io.outputs_memory.memory";
 
 #[derive(Default, Clone, Copy)]
 struct Activity {
@@ -38,11 +39,7 @@ struct Activity {
     queue_peak: u64,
 }
 impl Agent for Activity {
-    fn sample(
-        &mut self,
-        model: &rt_fpga_testbench::model::Model<'_>,
-        edges: rt_fpga_testbench::clock::Edges,
-    ) {
+    fn sample(&mut self, model: &rt_fpga_rtl::model::Model<'_>, edges: rt_fpga_rtl::clock::Edges) {
         if edges.rises(0) {
             self.state += model.get("state_busy");
             self.jobs += model.get("jobs_busy");
@@ -55,7 +52,13 @@ fn external<T>(result: rt_fpga_testbench::Result<T>) -> Result<T> {
     result.map_err(|e| anyhow!("{e}"))
 }
 
-pub fn run(fixture: Fixture, memory_model: &str, output: &Path) -> Result<Run> {
+pub fn run(
+    fixture: Fixture,
+    memory_model: &str,
+    dram_config: Option<&Path>,
+    output: &Path,
+) -> Result<Run> {
+    let media = fixture.media;
     let mode = match memory_model {
         "dramsim3" => Mode::Dramsim3,
         "fixed" => Mode::Fixed,
@@ -69,33 +72,79 @@ pub fn run(fixture: Fixture, memory_model: &str, output: &Path) -> Result<Run> {
         ],
         FPGA_BLOCK_CHUNKS as u64,
     );
-    let logical = reference::graph()?;
-    let views: Vec<_> = (0..u64::from(LOOPS * CHANNELS)).collect();
+    let channels = media.audio_channels() as u32;
+    let logical = reference::graph(media)?;
+    let views: Vec<_> = (0..u64::from(LOOPS * channels)).collect();
     let compiled = RtlTarget::new(CAPACITIES, LOOPS, &views)
         .build(&logical)
         .map_err(|e| anyhow!("RTL lowering: {e:?}"))?;
     let directory = output.with_extension("rtl");
-    external(rt_fpga_testbench::report::configure(&directory, false))?;
-    let mut design = suites::pipeline::design(CAPACITIES, &geometry, 64, mode, 1);
-    for slot in 0..LOOPS {
-        for word in [0, 1, 3, 4, 5, 6, 8, 11, 14] {
-            design.probes.push(Probe::observe(&format!(
-                "{STATE_RAM}[{}]",
-                slot * 16 + word
-            )));
-        }
-    }
-    for index in 0..2 * QUANTUM {
+    external(rt_fpga_rtl::report::configure(&directory, false))?;
+    let mut design = rt_fpga_rtl::pipeline::design(
+        &geometry,
+        rt_fpga_compiler::ProgramLimits {
+            instructions: CAPACITIES[0] as u32,
+            state_values: CAPACITIES[1] as u32,
+            jobs: CAPACITIES[2] as u32,
+            quantum: CAPACITIES[3] as u32,
+            buffers: CAPACITIES[4] as u32,
+            input_ports: CAPACITIES[5] as u32,
+            output_ports: CAPACITIES[6] as u32,
+            loop_slots: LOOPS,
+            history_slots: 128,
+        },
+    );
+    design.memory = None;
+    design.parameters.insert("LIVE_LOADING".into(), "0".into());
+    design
+        .parameters
+        .insert("PROGRAM_REGIONS".into(), "1".into());
+    design.top = "midi_audio_pipeline_axi".into();
+    design.probes.clear();
+    design
+        .includes
+        .push(rt_fpga_rtl::root().join("fpga/midi/rtl"));
+    for name in [
+        "midi_audio_pipeline_axi",
+        "midi_audio_pipeline",
+        "midi_data_jobs",
+        "midi_store",
+    ] {
         design
-            .probes
-            .push(Probe::observe(&format!("{OUTPUT_RAM}[{index}]")));
+            .sources
+            .push(rt_fpga_rtl::root().join(format!("fpga/midi/rtl/{name}.sv")));
     }
+    let midi_limits = reference::midi_limits();
+    for (name, value) in [
+        ("MIDI_LOOPS", LOOPS as u64),
+        ("MIDI_INPUTS", 1),
+        ("MIDI_DESTINATIONS", 1),
+        ("MIDI_BUFFERS", 128),
+        ("MIDI_CURSORS", LOOPS as u64),
+        ("MIDI_SCRATCH_EVENTS", MIDI_SCRATCH_EVENTS as u64),
+        ("MIDI_BLOCK_EVENTS", MIDI_BLOCK_EVENTS as u64),
+        ("MIDI_BLOCKS", midi_limits.blocks as u64),
+        ("MIDI_MAX_EVENTS", midi_limits.max_events as u64),
+        ("MIDI_VIEWS", midi_limits.views as u64),
+        ("MIDI_RETIREMENTS", midi_limits.retirements as u64),
+        ("MIDI_MAINTENANCE", 64),
+        ("MIDI_AXI_DATA_WIDTH", 64),
+        ("MIDI_PHYSICAL_BASE", 0x03000000),
+        ("READ_HINT_DEPTH", 256),
+    ] {
+        design.parameters.insert(name.into(), value.to_string());
+    }
+    design
+        .probes
+        .push(Probe::observe("core.midi.content.free_count"));
+    design.probes.push(Probe::array(STATE_RAM));
+    design.probes.push(Probe::array(OUTPUT_RAM));
     for name in ["slot_count", "free_count"] {
         design
             .probes
-            .push(Probe::observe(&format!("core.media.{name}")));
+            .push(Probe::observe(&format!("core.audio.core.media.{name}")));
     }
-    let model = external(design.build(&rt_fpga_testbench::root().join("work/rt-benchmark-model")))?;
+    let model = external(design.build(&rt_fpga_rtl::root().join("work/rt-benchmark-model")))?;
     let mut sim = Sim::new(external(model.benchmark_session())?, &[("clk", 6666, 0)]);
     sim.max_ps = u64::MAX;
     let activity = Rc::new(RefCell::new(Activity::default()));
@@ -104,19 +153,62 @@ pub fn run(fixture: Fixture, memory_model: &str, output: &Path) -> Result<Run> {
         &mut sim,
         CAPACITIES,
         geometry,
-        mode,
+        Mode::Fixed,
         MEMORY_SEED,
     ))?;
-    if mode == Mode::Dramsim3 {
-        let timing = external(Dram::default(&directory.join("dram-150mhz"), FPGA_CLOCK_HZ))?;
-        let mut memory = pipeline.store.memory.borrow_mut();
-        if let Backend::Axi(axi) = &mut memory.backend {
-            axi.timing = Box::new(timing);
-        }
+    let timing: Box<dyn Timing> = if mode == Mode::Dramsim3 {
+        let root = rt_fpga_rtl::root();
+        let config = dram_config
+            .map(Path::to_path_buf)
+            .or_else(|| std::env::var_os("SHOOP_DRAMSIM3_CONFIG").map(std::path::PathBuf::from))
+            .unwrap_or_else(|| root.join("fpga/axi_memory/configs/zturn-v2-ddr3-1066-x32.ini"));
+        Box::new(external(Dram::new(
+            &root.join("work/dramsim3/build/libshoop_dram.so"),
+            &config,
+            &directory.join("shared-dram-150mhz"),
+            FPGA_CLOCK_HZ,
+        ))?)
+    } else {
+        Box::new(FixedTiming::new(7))
+    };
+    let controller = Rc::new(RefCell::new(timing));
+    if let Backend::Axi(axi) = &mut pipeline.store.memory.borrow_mut().backend {
+        axi.timing = Box::new(crate::rtl_memory::Port {
+            controller: controller.clone(),
+            advances_clock: true,
+        });
     }
+    let event_address = (sim.model.get("midi_arena_bytes") as usize + 15) & !15;
+    let midi_words = (event_address + MIDI_INPUT_CAPACITY * 16 + 256) / 4;
+    let midi_memory = Rc::new(RefCell::new(Memory {
+        control: MemoryControl::default(),
+        backend: Backend::Axi(Box::new(
+            Axi::new(
+                midi_words,
+                0x03000000,
+                8,
+                Box::new(crate::rtl_memory::Port {
+                    controller,
+                    advances_clock: false,
+                }),
+                MEMORY_SEED + 1,
+            )
+            .with_prefix("midi_"),
+        )),
+        words: midi_words,
+        base: 0x03000000,
+        width: 8,
+        sample_words: None,
+        sample_transactions: 0,
+    }));
+    sim.agent(midi_memory.clone());
+    let emitted = Rc::new(RefCell::new(MidiOutput(Vec::with_capacity(
+        MIDI_OUTPUT_CAPACITY,
+    ))));
+    sim.agent(emitted.clone());
     pipeline.audio.load_compiled(&mut sim, &compiled);
     pipeline.store.load(&mut sim, &serde_json::json!({"chunk_frames":FPGA_CHUNK_FRAMES,"block_chunks":FPGA_BLOCK_CHUNKS,"chunk_limit":MEMORY_BYTES/(FPGA_CHUNK_FRAMES*4),
-        "samples":[],"free_chunks":[],"views":(0..LOOPS*CHANNELS).map(|_| serde_json::json!({"chunks":[],"frames":0})).collect::<Vec<_>>()}));
+        "samples":[],"free_chunks":[],"views":(0..LOOPS*channels).map(|_| serde_json::json!({"chunks":[],"frames":0})).collect::<Vec<_>>()}));
     pipeline.store.memory.borrow_mut().control.stalls = false;
     let (control, execution) =
         rt::channel(256, 3, snapshot::capacity(1, LOOPS as usize, 1).unwrap())
@@ -126,7 +218,7 @@ pub fn run(fixture: Fixture, memory_model: &str, output: &Path) -> Result<Run> {
         rt::Settings {
             graph: 1,
             topology: 1,
-            limits: reference::limits(),
+            limits: reference::limits(media),
             driver: DriverStatus {
                 kind: DriverKind::Dummy,
                 state: DriverRunState::Running,
@@ -138,7 +230,37 @@ pub fn run(fixture: Fixture, memory_model: &str, output: &Path) -> Result<Run> {
     .map_err(|e| anyhow!("endpoint: {e:?}"))?;
     let mut control = Control::new(endpoint, Outbox::new(256, 256, 0))?;
     control.configuration = (1, 1);
+    sim.model.set_all(&[
+        ("midi_arena_base", 0),
+        ("midi_memory_arena_bytes", (midi_words * 4) as u64),
+        ("midi_event_address", event_address as u64),
+        ("midi_event_count", 0),
+        ("midi_command_op", 0),
+        ("midi_command_valid", 1),
+        ("midi_response_ready", 0),
+    ]);
+    sim.until(5_000_000, "MIDI format admission", |m| {
+        m.get("midi_command_ready") != 0
+    });
+    sim.idle(1);
+    sim.model.set("midi_command_valid", 0);
+    sim.until(5_000_000, "MIDI format completion", |m| {
+        m.get("midi_response_valid") != 0
+    });
+    ensure!(
+        sim.model.get("midi_response_error") == 0,
+        "MIDI format failed"
+    );
+    sim.model.set("midi_response_ready", 1);
+    sim.idle(1);
+    sim.model.set("midi_response_ready", 0);
     let driver = Rtl {
+        media,
+        midi_memory,
+        midi_packets: Vec::with_capacity(MIDI_INPUT_CAPACITY),
+        midi_result: Vec::with_capacity(MIDI_OUTPUT_CAPACITY),
+        emitted,
+        event_address,
         sim,
         pipeline,
         compiled,
@@ -163,6 +285,12 @@ struct Rtl<'a> {
     outputs: [Vec<f32>; 2],
     snapshot: Vec<u8>,
     mode: Mode,
+    media: Media,
+    midi_memory: Shared,
+    midi_packets: Vec<MidiPacket>,
+    midi_result: Vec<MidiPacket>,
+    emitted: Rc<RefCell<MidiOutput>>,
+    event_address: usize,
     activity: Rc<RefCell<Activity>>,
 }
 impl Rtl<'_> {
@@ -177,10 +305,10 @@ impl Rtl<'_> {
             _ => [0; 4],
         }
     }
-    fn word(&self, slot: u32, word: u32) -> u64 {
+    fn word(&mut self, slot: u32, word: u32) -> u64 {
         self.sim
             .model
-            .get(&format!("{STATE_RAM}[{}]", slot * 16 + word))
+            .read_indexed(STATE_RAM, u64::from(slot * 16 + word))
     }
     fn command(
         pipeline: &mut Pipeline,
@@ -198,87 +326,61 @@ impl Rtl<'_> {
         if id >= LOOPS {
             return Code::TargetUnavailable;
         }
-        match command {
+        let mut words: [u64; 16] = std::array::from_fn(|i| {
+            sim.model
+                .read_indexed(STATE_RAM, u64::from(id * 16 + i as u32))
+        });
+        use rt_fpga_rtl::host::control::{apply_plan, clear_plan, gain_value, loop_state};
+        let key = rt_fpga_compiler::Identity {
+            slot: id,
+            generation: 1,
+        };
+        let result = match command {
             Command::LoopGain(_, gain) => {
                 if !gain.is_finite() {
                     return Code::InvalidValue;
                 }
-                let address = compiled
+                let Some(address) = compiled
                     .bindings
                     .iter()
                     .find(|b| b.id.slot == id)
                     .and_then(|b| b.gain)
-                    .unwrap();
-                let value = rt_fpga_reference::fixed::Fixed::from_f32(gain).0;
-                let bits = Bits::from(rt_fpga_testbench::component::value_words(
-                    rt_fpga_testbench::component::Value::Ramp(rt_fpga_testbench::component::Ramp {
-                        start: value,
-                        target: value,
-                        duration: 0,
-                        elapsed: 0,
-                    }),
-                ))
-                .resized(129);
-                pipeline
-                    .audio
-                    .program
-                    .configure(sim, true, address.into(), Some(&bits), false);
-                Code::Applied
+                else {
+                    return Code::Unsupported;
+                };
+                pipeline.audio.program.configure(
+                    sim,
+                    true,
+                    address.into(),
+                    Some(&gain_value(gain)),
+                    false,
+                );
+                return Code::Applied;
             }
             Command::Transition(_, plan) => {
-                if plan.now.is_some() && (plan.first.is_some() || plan.second.is_some()) {
-                    return Code::Unsupported;
-                }
-                let mut row = Bits::zero(1024);
-                row.set(0, 64, sim.model.get(&format!("{STATE_RAM}[{}]", id * 16)));
-                let mut flags = sim.model.get(&format!("{STATE_RAM}[{}]", id * 16 + 1));
-                flags &= !(0x3ffu64 << 32);
-                row.set(64, 64, flags);
-                let mut install = |index: usize, mode: TransitionMode, pulse: bool, skip: u32| {
-                    let flag = 96 + index * 5;
-                    row.set(flag, 1, 1)
-                        .set(flag + 1, 1, u64::from(pulse))
-                        .set(flag + 2, 2, mode as u64)
-                        .set(flag + 4, 1, u64::from(mode == TransitionMode::Playing));
-                    let base = (10 + index * 3) * 64;
-                    row.set(base, 64, frame)
-                        .set(base + 64, 64, skip as u64)
-                        .set(base + 128, 64, 0);
-                };
-                if let Some(mode) = plan.now {
-                    install(0, mode, false, 0);
-                }
-                for (index, step) in [plan.first, plan.second].into_iter().enumerate() {
-                    if let Some(step) = step {
-                        install(index, step.mode, true, step.skip);
-                    }
-                }
-                row.set(56, 1, u64::from(plan.second.is_some()));
-                loop_image::write_plans(&mut pipeline.audio.program, sim, id, &row);
-                if plan.first.is_some() || plan.second.is_some() {
-                    Code::Scheduled
-                } else {
-                    Code::Applied
-                }
+                let state = loop_state(key, &words, None);
+                let source = (id != 0).then_some(rt_fpga_reference::transitions::LoopId {
+                    slot: 0,
+                    generation: 1,
+                });
+                apply_plan(&mut words, state, source, frame, plan)
             }
             Command::ClearPlannedTransitions(_, mask) => {
-                let mut flags =
-                    Bits::from_u64(sim.model.get(&format!("{STATE_RAM}[{}]", id * 16 + 1)))
-                        .resized(129);
-                for index in 0..2 {
-                    if mask as u8 & (1 << index) != 0 {
-                        flags.set(32 + index * 5, 1, 0);
-                    }
-                }
-                loop_image::access(
-                    &mut pipeline.audio.program,
-                    sim,
-                    id as u64 * 16 + 1,
-                    Some(&flags),
-                );
-                Code::Applied
+                clear_plan(&mut words, mask);
+                Ok(Code::Applied)
             }
             _ => unreachable!(),
+        };
+        match result {
+            Ok(code) => {
+                let mut row = Bits::zero(1024);
+                for (index, word) in words.into_iter().enumerate() {
+                    row.set(index * 64, 64, word);
+                }
+                loop_image::write_words(&mut pipeline.audio.program, sim, id, &row, 0, 16);
+                code
+            }
+            Err(code) => code,
         }
     }
     fn publish(&mut self) -> Result<()> {
@@ -311,17 +413,18 @@ impl Rtl<'_> {
             pos += codec::encode_snapshot(&record, &mut self.snapshot[pos..])
                 .map_err(|e| anyhow!("snapshot: {e:?}"))?;
             let flags = self.word(id, 1);
-            let step = |index: usize| -> Result<Option<protocol::immediate::PlannedTransition>> {
-                let base = 32 + index * 5;
-                if flags & (1 << base) == 0 {
-                    return Ok(None);
-                }
-                Ok(Some(protocol::immediate::PlannedTransition {
-                    mode: TransitionMode::from_raw(((flags >> (base + 2)) & 3) as u32)
-                        .ok_or_else(|| anyhow!("invalid RTL plan mode"))?,
-                    skip: self.word(id, if index == 0 { 11 } else { 14 }).try_into()?,
-                }))
-            };
+            let mut step =
+                |index: usize| -> Result<Option<protocol::immediate::PlannedTransition>> {
+                    let base = 32 + index * 5;
+                    if flags & (1 << base) == 0 {
+                        return Ok(None);
+                    }
+                    Ok(Some(protocol::immediate::PlannedTransition {
+                        mode: TransitionMode::from_raw(((flags >> (base + 2)) & 3) as u32)
+                            .ok_or_else(|| anyhow!("invalid RTL plan mode"))?,
+                        skip: self.word(id, if index == 0 { 11 } else { 14 }).try_into()?,
+                    }))
+                };
             let record = snapshot::Record::LoopPlan {
                 id: LoopSlotId(SlotId::new(id, 1)),
                 plan: protocol::immediate::TransitionPlan {
@@ -365,8 +468,26 @@ impl Driver for Rtl<'_> {
                 .0;
             }
         }
+        self.midi_packets.clear();
+        if self.media.midi() {
+            midi_input(self.frame, &mut self.midi_packets);
+            let mut memory = self.midi_memory.borrow_mut();
+            if let Backend::Axi(bus) = &mut memory.backend {
+                for (i, packet) in self.midi_packets.iter().enumerate() {
+                    let packed =
+                        u32::from_le_bytes([packet.bytes[0], packet.bytes[1], packet.bytes[2], 3]);
+                    let address = self.event_address / 4 + i * 4;
+                    bus.words[address..address + 4].copy_from_slice(&[0, packet.offset, packed, 0]);
+                }
+            }
+        }
     }
     fn process(&mut self) -> Result<Measurement> {
+        self.midi_result.clear();
+        self.emitted.borrow_mut().0.clear();
+        let midi_stalls_start = memory_stalls(&self.midi_memory);
+        let midi_reads = self.midi_memory.borrow().reads();
+        let midi_writes = self.midi_memory.borrow().writes();
         let start = Instant::now();
         self.activity.borrow_mut().queue_peak = 0;
         let activity_start = *self.activity.borrow();
@@ -406,7 +527,12 @@ impl Driver for Rtl<'_> {
             self.sim.model.get("sync_frame") == self.frame,
             "RTL frame counter mismatch"
         );
-        for (channel, samples) in self.inputs.iter().enumerate() {
+        for (channel, samples) in self
+            .inputs
+            .iter()
+            .enumerate()
+            .take(self.media.audio_channels())
+        {
             for (offset, &sample) in samples.iter().enumerate() {
                 self.pipeline.audio.sample_config(
                     &mut self.sim,
@@ -420,8 +546,9 @@ impl Driver for Rtl<'_> {
         self.pipeline.audio.clear_jobs();
         self.sim.model.set_all(&[
             ("run_buffers", self.pipeline.audio.buffers),
-            ("run_inputs", 2),
-            ("run_outputs", 2),
+            ("run_inputs", self.media.audio_channels() as u64),
+            ("run_outputs", self.media.audio_channels() as u64),
+            ("midi_event_count", self.midi_packets.len() as u64),
             ("job_enable", 1),
             ("drain_ready", 0),
         ]);
@@ -436,7 +563,7 @@ impl Driver for Rtl<'_> {
         ensure!(admitted, "RTL quantum admission failed");
         self.sim.model.set("run_valid", 0);
         self.sim
-            .until(2_000_000, "RTL quantum completion", |m| m.get("done") != 0);
+            .until(20_000_000, "RTL quantum completion", |m| m.get("done") != 0);
         ensure!(
             self.sim.model.get("error_code") == 0,
             "RTL processing fault at stage {}: {}",
@@ -448,16 +575,22 @@ impl Driver for Rtl<'_> {
             "RTL completion before processing retired"
         );
         self.sim.idle(1);
+        ensure!(
+            self.sim.model.get("midi_error_code") == 0,
+            "RTL MIDI processing fault: {}",
+            self.sim.model.get("midi_error_code")
+        );
         let fabric_cycles = self.sim.cycles - cycles;
         let elapsed_ns = start.elapsed().as_nanos() as u64;
         let activity = *self.activity.borrow();
         let stalls = self.stalls();
-        for channel in 0..2 {
+        self.midi_result.extend_from_slice(&self.emitted.borrow().0);
+        for channel in 0..self.media.audio_channels() {
             for offset in 0..QUANTUM {
                 let raw = self
                     .sim
                     .model
-                    .get(&format!("{OUTPUT_RAM}[{}]", channel * QUANTUM + offset))
+                    .read_indexed(OUTPUT_RAM, (channel * QUANTUM + offset) as u64)
                     as u32 as i32;
                 self.outputs[channel][offset] = raw as f32 / (1u32 << 24) as f32;
             }
@@ -465,15 +598,20 @@ impl Driver for Rtl<'_> {
         self.publish()?;
         self.frame += QUANTUM as u64;
         let memory = self.pipeline.store.memory.borrow();
+        let midi_stalls = memory_stalls(&self.midi_memory);
         Ok(Measurement {
             elapsed_ns,
             fabric_cycles: Some(fabric_cycles),
             reads: memory.reads() - reads,
             writes: memory.writes() - writes,
-            storage_bytes: (self.sim.model.get("core.media.slot_count")
-                - self.sim.model.get("core.media.free_count"))
+            storage_bytes: (self.sim.model.get("core.audio.core.media.slot_count")
+                - self.sim.model.get("core.audio.core.media.free_count"))
                 * FPGA_BLOCK_FRAMES as u64
-                * 4,
+                * 4
+                + (u64::from(reference::midi_limits().blocks)
+                    - self.sim.model.get("core.midi.content.free_count"))
+                    * u64::from(MIDI_BLOCK_EVENTS)
+                    * 16,
             reclaimed: 0,
             state_cycles: activity.state - activity_start.state,
             job_cycles: activity.jobs - activity_start.jobs,
@@ -482,18 +620,83 @@ impl Driver for Rtl<'_> {
             axi_write_stall_cycles: stalls[1] - stalls_start[1],
             axi_response_stall_cycles: stalls[2] - stalls_start[2],
             dram_queue_stall_cycles: stalls[3] - stalls_start[3],
+            midi_axi_address_stall_cycles: midi_stalls[0] - midi_stalls_start[0],
+            midi_axi_write_stall_cycles: midi_stalls[1] - midi_stalls_start[1],
+            midi_axi_response_stall_cycles: midi_stalls[2] - midi_stalls_start[2],
+            midi_dram_queue_stall_cycles: midi_stalls[3] - midi_stalls_start[3],
+            midi_storage_blocks: self.media.midi().then_some(
+                u64::from(reference::midi_limits().blocks)
+                    - self.sim.model.get("core.midi.content.free_count"),
+            ),
+            midi_reads: self.midi_memory.borrow().reads() - midi_reads,
+            midi_writes: self.midi_memory.borrow().writes() - midi_writes,
+            midi_input_events: self.midi_packets.len() as u64,
+            midi_output_events: self.midi_result.len() as u64,
+            ..Default::default()
         })
+    }
+    fn midi_output(&self) -> &[MidiPacket] {
+        &self.midi_result
     }
     fn output(&self, channel: usize) -> &[f32] {
         &self.outputs[channel]
     }
     fn finish(&mut self) -> Result<serde_json::Value> {
-        Ok(self.pipeline.store.memory.borrow_mut().report(true))
+        let mut value = self.pipeline.store.memory.borrow_mut().report(true);
+        value["midi_port"] = self.midi_memory.borrow_mut().report(false);
+        value["native_scope"] = serde_json::json!(
+            "one controller shared by audio and MIDI; do not add duplicate native counters"
+        );
+        Ok(value)
     }
     fn metadata(&self) -> serde_json::Value {
-        serde_json::json!({"driver":"stepped-dummy","numeric":"Q8.24","timing":"rtl-fabric-cycles","fabric_hz":FPGA_CLOCK_HZ,"memory_model":format!("{:?}",self.mode),"memory_seed":MEMORY_SEED,
+        serde_json::json!({"driver":"stepped-dummy","numeric":"Q8.24","timing":"rtl-fabric-cycles","fabric_hz":FPGA_CLOCK_HZ,"memory_model":format!("{:?}",self.mode),"memory_seed":MEMORY_SEED,"shared_memory_controller":true,"memory_topology":"audio and MIDI AXI ports share one timing controller; one advance per fabric cycle",
             "chunk_frames":FPGA_CHUNK_FRAMES,"block_chunks":FPGA_BLOCK_CHUNKS,"media_capacity_bytes":MEMORY_BYTES,
             "window":"command configuration, input upload, SP/JP/media execution, mandatory completion and queue drain; passive output/state probes do not advance clocks",
-            "arm_service_time":"not modeled","waveform_clock_period_ps":6666,"simulation_optimization":3,"simulation_tracing":false,"provenance":rt_fpga_testbench::report::provenance(),"memory":self.pipeline.store.memory.borrow_mut().report(false)})
+            "arm_service_time":"not modeled","waveform_clock_period_ps":6666,"simulation_optimization":3,"simulation_tracing":false,"provenance":rt_fpga_rtl::report::provenance(),"midi_memory":self.midi_memory.borrow_mut().report(false),"memory":self.pipeline.store.memory.borrow_mut().report(false)})
+    }
+}
+
+struct MidiOutput(Vec<MidiPacket>);
+impl Agent for MidiOutput {
+    fn drive(
+        &mut self,
+        model: &mut rt_fpga_rtl::model::Model<'_>,
+        edges: rt_fpga_rtl::clock::Edges,
+    ) {
+        if edges.rises(0) {
+            model.set_all(&[("midi_packet_ready", 1), ("midi_packet_refused", 0)]);
+        }
+    }
+    fn sample(&mut self, model: &rt_fpga_rtl::model::Model<'_>, edges: rt_fpga_rtl::clock::Edges) {
+        if edges.rises(0)
+            && model.get("reset") == 0
+            && model.get("midi_packet_valid") != 0
+            && model.get("midi_packet_ready") != 0
+        {
+            assert_eq!(model.get("midi_packet_length"), 3);
+            assert_eq!(model.get("midi_packet_destination"), 0);
+            assert!(
+                self.0.len() < self.0.capacity(),
+                "MIDI output exceeds declared fixture capacity"
+            );
+            let bytes = (model.get("midi_packet_data") as u32).to_le_bytes();
+            self.0.push(MidiPacket {
+                offset: model.get("midi_packet_offset") as u32,
+                bytes: bytes[..3].try_into().unwrap(),
+            });
+        }
+    }
+}
+
+fn memory_stalls(memory: &Shared) -> [u64; 4] {
+    match &memory.borrow().backend {
+        Backend::Axi(axi) => [
+            axi.address_stalls,
+            axi.write_stalls,
+            axi.response_stalls,
+            axi.submission_stalls,
+        ],
+        _ => [0; 4],
     }
 }

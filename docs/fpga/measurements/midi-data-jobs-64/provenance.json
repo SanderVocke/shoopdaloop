@@ -1,0 +1,62 @@
+{
+  "benchmark_revision": "b38278f5b38cab3178ee0a06f52eb2ff16a0c9c7",
+  "functional_rtl_revision": "0bc04a541c6c356be5cca63d99fb431d3fdb9bbc",
+  "date": "2026-11-20",
+  "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+  "verilator": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1+b2)",
+  "model_cache_id": "midi_audio_pipeline_axi-6b0fd994ca69018a",
+  "driver_profiles": {
+    "mixed-0": "release",
+    "mixed-7": "debug",
+    "audio-0": "debug",
+    "audio-7": "debug",
+    "midi-0": "debug",
+    "midi-7": "release"
+  },
+  "host_optimization": "Only simulated clocks are timed. Complete debug/release MIDI result JSON is identical, including traffic counts. Optimized driver builds accelerate untimed preparation.",
+  "clock_period_ps": 10000,
+  "assumed_clock_mhz": 100,
+  "loops": 64,
+  "frames_per_loop": 1440000,
+  "sample_rate": 48000,
+  "quantum_frames": 32,
+  "audio_chunk_frames": 32,
+  "audio_capacity": [
+    2048,
+    256,
+    2048,
+    32,
+    512,
+    2,
+    2
+  ],
+  "audio_views": 512,
+  "audio_slots": 5763072,
+  "audio_block_chunks": 32,
+  "audio_metadata_table_lines": 128,
+  "audio_read_hint_depth": 256,
+  "midi_sequences": 64,
+  "midi_cursors": 64,
+  "midi_buffers": 256,
+  "midi_scratch_events": 131072,
+  "midi_store": {
+    "views": 256,
+    "blocks": 2432,
+    "block_events": 256,
+    "max_events": 8192,
+    "retirements": 128
+  },
+  "ports": "two independent 64-bit AXI ports",
+  "memory_delay_clocks": [
+    0,
+    7
+  ],
+  "random_stalls": false,
+  "midi_output_ready": true,
+  "startup_quanta": 1,
+  "warmup_quanta": 16,
+  "steady_quanta": 16,
+  "regression_tests_passed": 104,
+  "physical_clock_timing_closed": false,
+  "hdl_changed_for_benchmarks": false
+}

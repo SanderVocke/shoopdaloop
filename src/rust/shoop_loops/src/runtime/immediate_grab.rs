@@ -171,6 +171,7 @@ impl<S: Sample> LoopPlanner<S> {
                     frame,
                     io,
                     false,
+                    false,
                 )?;
                 writer = Some(id);
                 if !shared.live_job(id)?.ready {

@@ -10,7 +10,9 @@ use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use rt_runtime::Frame;
 use shoop_loops::runtime::BoundaryObserver;
 use shoop_loops::{Decision, Event, Mode};
-use shoop_rt_protocol::{DriverKind, DriverRunState, DriverStatus, Peaks, MAX_STRIP_CHANNELS};
+use shoop_rt_protocol::{
+    dsp, DriverKind, DriverRunState, DriverStatus, DspMeasurement, Peaks, MAX_STRIP_CHANNELS,
+};
 
 /// Per-channel absolute peaks since the last read.
 #[derive(Default)]
@@ -299,7 +301,7 @@ pub(crate) struct Cells {
     pub bulk: ByteRing,
     driver: [AtomicU32; 4],
     xruns: AtomicU32,
-    load: AtomicU32,
+    pub(crate) dsp: dsp::Peak,
 }
 
 impl Cells {
@@ -329,7 +331,7 @@ impl Cells {
             bulk: ByteRing::new(bulk_bytes),
             driver: Default::default(),
             xruns: AtomicU32::new(0),
-            load: AtomicU32::new(0),
+            dsp: Default::default(),
         };
         cells.set_driver(driver);
         Arc::new(cells)
@@ -380,10 +382,6 @@ impl Cells {
     pub(crate) fn xruns(&self) -> u32 {
         self.xruns.load(Ordering::Relaxed)
     }
-    /// The largest load since the previous call.
-    pub(crate) fn take_load(&self) -> f32 {
-        f32::from_bits(self.load.swap(0, Ordering::Relaxed))
-    }
 }
 
 /// The host's handle for engine-owned driver status inputs. It may be used from
@@ -406,13 +404,8 @@ impl HostStatus {
             }
         }
     }
-    /// Callback time as a share of the callback period. Telemetry reports the largest
-    /// since its previous record.
-    pub fn set_load(&self, load: f32) {
-        // Non-negative floats order like their bit patterns.
-        self.0
-            .load
-            .fetch_max(load.max(0.).to_bits(), Ordering::Relaxed);
+    pub fn record_dsp(&self, sample: DspMeasurement) {
+        self.0.dsp.record(sample);
     }
 }
 

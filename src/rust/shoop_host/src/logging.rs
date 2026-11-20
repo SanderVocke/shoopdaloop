@@ -7,23 +7,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-/// A detached launcher may close its diagnostic pipe while the host is still running.
-pub struct Stderr;
-impl Write for Stderr {
-    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        match io::stderr().write(bytes) {
-            Err(error) if error.kind() == io::ErrorKind::BrokenPipe => Ok(bytes.len()),
-            result => result,
-        }
-    }
-    fn flush(&mut self) -> io::Result<()> {
-        match io::stderr().flush() {
-            Err(error) if error.kind() == io::ErrorKind::BrokenPipe => Ok(()),
-            result => result,
-        }
-    }
-}
-
 const LIMIT: u64 = 1024 * 1024;
 const BACKUPS: usize = 3;
 

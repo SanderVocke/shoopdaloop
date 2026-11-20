@@ -3,6 +3,7 @@ extern crate alloc;
 
 mod host_graph;
 pub use host_graph::*;
+pub use shoop_dsp_metrics::DspMeasurement;
 
 #[cfg(test)]
 extern crate std;
@@ -98,6 +99,13 @@ impl TrackProcessorTypeId {
 
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+
+    pub fn is_carla(&self) -> bool {
+        matches!(
+            self.as_str(),
+            Self::CARLA_RACK | Self::CARLA_PATCHBAY | Self::CARLA_PATCHBAY_16X
+        )
     }
 }
 
@@ -850,9 +858,44 @@ impl AudioDriverKind {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
+pub enum DummyMode {
+    #[default]
+    Paced,
+    Unpaced,
+    Controlled,
+}
+impl DummyMode {
+    pub const ALL: [Self; 3] = [Self::Paced, Self::Unpaced, Self::Controlled];
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::Paced => "paced",
+            Self::Unpaced => "unpaced",
+            Self::Controlled => "controlled",
+        }
+    }
+}
+impl core::str::FromStr for DummyMode {
+    type Err = String;
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "paced" => Ok(Self::Paced),
+            "unpaced" => Ok(Self::Unpaced),
+            "controlled" => Ok(Self::Controlled),
+            _ => Err(format!(
+                "unknown dummy mode {value:?}; expected paced, unpaced or controlled"
+            )),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(default))]
 pub struct DummyAudioDriverConfig {
+    pub mode: DummyMode,
     pub sample_rate: u32,
     pub buffer_size: u32,
 }
@@ -860,6 +903,7 @@ pub struct DummyAudioDriverConfig {
 impl Default for DummyAudioDriverConfig {
     fn default() -> Self {
         Self {
+            mode: DummyMode::Paced,
             sample_rate: 48_000,
             buffer_size: 256,
         }
@@ -1086,7 +1130,7 @@ impl ConversionTarget {
 pub struct StatusState {
     pub memory: Option<MemoryReport>,
     pub version: String,
-    pub dsp_load_percent: f32,
+    pub dsp: Option<DspMeasurement>,
     pub xruns: u32,
     pub buffer_size: u32,
     pub sample_rate: u32,
@@ -2625,6 +2669,7 @@ pub enum TrackAction {
     FxClearLogs,
     BuiltInFx(BuiltInFxControl),
     OxiSynth(OxiSynthControl),
+    FxReadLogs,
 }
 
 pub type TrackWidgetAction = TrackAction;
@@ -2644,6 +2689,7 @@ pub enum BusAction {
     FxClearLogs,
     BuiltInFx(BuiltInFxControl),
     FxProcessorChanged(Option<TrackProcessorTypeId>),
+    FxReadLogs,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -3066,6 +3112,7 @@ impl TrackAction {
             Self::FxToggleOrRecover => "track.fx_toggle_or_recover",
             Self::FxRestoreState(_) => "track.fx_restore_state",
             Self::FxClearLogs => "track.fx_clear_logs",
+            Self::FxReadLogs => "track.fx_read_logs",
             Self::BuiltInFx(control) => control.kind(),
             Self::OxiSynth(control) => control.kind(),
         }
@@ -3085,6 +3132,7 @@ impl BusAction {
             Self::FxToggleOrRecover => "bus.fx_toggle_or_recover",
             Self::FxRestoreState(_) => "bus.fx_restore_state",
             Self::FxClearLogs => "bus.fx_clear_logs",
+            Self::FxReadLogs => "bus.fx_read_logs",
             Self::BuiltInFx(control) => control.kind(),
             Self::FxProcessorChanged(_) => "bus.fx_processor",
         }
@@ -4159,10 +4207,58 @@ impl Default for NewEnginePools {
             quantum: 32,
             buses: 8,
             bus_channels: 8,
-            tracks: 16,
+            tracks: 32,
             loops: 128,
             channels: 2,
             loop_memory_mb: 256,
+        }
+    }
+}
+
+/// Execution implementation selected when a host starts.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
+pub enum BackendType {
+    #[default]
+    Native,
+    RustFpga,
+    RtlSim,
+}
+impl BackendType {
+    pub const fn max_session_channels(self) -> u32 {
+        match self {
+            Self::Native => 16,
+            _ => 8,
+        }
+    }
+
+    pub const ALL: [Self; 3] = [Self::Native, Self::RustFpga, Self::RtlSim];
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::Native => "native",
+            Self::RustFpga => "rust-fpga",
+            Self::RtlSim => "rtl-sim",
+        }
+    }
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Native => "Native Rust",
+            Self::RustFpga => "Rust FPGA reference",
+            Self::RtlSim => "RTL simulation",
+        }
+    }
+}
+impl core::str::FromStr for BackendType {
+    type Err = String;
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "native" => Ok(Self::Native),
+            "rust-fpga" => Ok(Self::RustFpga),
+            "rtl-sim" => Ok(Self::RtlSim),
+            _ => Err(format!(
+                "unknown backend {value:?}; expected native, rust-fpga or rtl-sim"
+            )),
         }
     }
 }
@@ -4172,6 +4268,7 @@ impl Default for NewEnginePools {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(default, deny_unknown_fields))]
 pub struct HostSettings {
+    pub backend: BackendType,
     pub driver: AudioDriverConfig,
     pub pools: NewEnginePools,
     pub processors: ProcessorSettings,
@@ -4181,6 +4278,7 @@ pub struct HostSettings {
 impl Default for HostSettings {
     fn default() -> Self {
         Self {
+            backend: BackendType::Native,
             driver: Default::default(),
             pools: Default::default(),
             processors: ProcessorSettings::default(),
@@ -4190,6 +4288,16 @@ impl Default for HostSettings {
     }
 }
 impl HostSettings {
+    pub fn for_backend(backend: BackendType) -> Self {
+        let mut settings = Self {
+            backend,
+            ..Default::default()
+        };
+        if backend != BackendType::Native {
+            settings.loop_smoothing_ms = 0;
+        }
+        settings
+    }
     pub fn validate(&self) -> Result<(), &'static str> {
         self.processors
             .validate()
@@ -4197,11 +4305,12 @@ impl HostSettings {
         if !matches!(self.pools.quantum, 1 | 16 | 32 | 64 | 128) {
             return Err("processing quantum must be 1, 16, 32, 64 or 128 frames");
         }
+        let channels = self.backend.max_session_channels();
         if !(1..=8).contains(&self.pools.buses)
-            || !(2..=8).contains(&self.pools.bus_channels)
+            || !(2..=channels).contains(&self.pools.bus_channels)
             || !(1..=64).contains(&self.pools.tracks)
             || !(1..=256).contains(&self.pools.loops)
-            || !(1..=8).contains(&self.pools.channels)
+            || !(1..=channels).contains(&self.pools.channels)
             || !(1..=1024).contains(&self.pools.loop_memory_mb)
         {
             return Err("session engine capacities exceed supported bounds");
@@ -4225,4 +4334,7 @@ impl HostSettings {
     }
 }
 
-pub use shoop_processor_protocol::{Policy as ProcessorPolicy, Settings as ProcessorSettings};
+pub use shoop_processor_protocol::{
+    CarlaHosting, Policy as ProcessorPolicy, Settings as ProcessorSettings,
+    MAX_OPAQUE_STATE_ENVELOPE_BYTES,
+};

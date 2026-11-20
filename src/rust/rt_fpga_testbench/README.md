@@ -6,10 +6,10 @@ independent Rust models and real RTL; jobs, state, errors, buffers and output
 samples are compared exactly. Existing vector tests remain independent checks.
 
 The shared [`rt_fpga_compiler`](../rt_fpga_compiler/README.md) emits fixed logical
-programs behind `StateProgramTarget`. `compiler::RtlTarget` produces packed
+programs behind `StateProgramTarget`. `target::RtlTarget` produces packed
 instructions, state/loop RAM images and physical control bindings. Its typed
 output is loaded directly by the state/audio drivers. The compiler and sync tests
-compare these programs against `compiler::RustTarget`, with deliberately different
+compare these programs against `target::RustTarget`, with deliberately different
 state addresses: 96 mono-loop SP quanta and 120 sync/smoothing SP/JP sample quanta.
 The reference's carrier tests use the same mono-loop fixture definition. The
 shared compiler also accepts the restricted mono graph descriptions used by the
@@ -67,12 +67,27 @@ in `third_party/marlin-verilator`.
 Focused runs:
 
 ```sh
+cargo test --locked -p rt_fpga_testbench --features sim --test midi -- --test-threads=1
 cargo run --locked -p rt_fpga_testbench --features sim -- state --config small
 cargo run --locked -p rt_fpga_testbench --features sim -- audio --config small
 cargo run --locked -p rt_fpga_testbench --features sim -- pipeline --config small --memory-model fixed
 cargo run --locked -p rt_fpga_testbench --features sim -- pipeline --config small --memory-model dramsim3 --axi-data-width 32
 cargo run --locked -p rt_fpga_testbench --features sim -- deferred --memory-model dramsim3
+cargo run --locked --release -p rt_fpga_testbench --features sim --example midi_data_quantum_64 -- --scenario mixed --ddr-delay 7
 ```
+
+The [64-loop playback benchmark](../../../docs/fpga/midi-data-jobs-benchmarks.md)
+also accepts `--scenario audio`/`midi` and `--ddr-delay 0` for ideal memory. It
+checks all jobs, output, and loop clocks against Rust while measuring RTL clocks.
+
+The `midi` test target compares the event-only RTL with the Rust FPGA reference:
+compiled SP/shared-JP job traces, mixed audio/MIDI output, all supported quantum
+sizes in the data unit, block crossings, shared ranges, duplication and retakes,
+publication fences, capacity failures, output refusal, input validation, and
+AXI32/64 stalls/faults. It includes 3,000-message recording/playback and a
+1,200-message merge, without a per-quantum message quota. Rust and RTL both omit
+instrument-state tracking/restoration. See the [implementation and protocol](../../../fpga/midi/README.md).
+The previous phase/session MIDI fixtures and their measurements are historical.
 
 `pipeline` is the TP-free SP -> JP -> media/cache execution harness. Explicit
 instructions, initial state and samples exercise exact output, recording/readback,

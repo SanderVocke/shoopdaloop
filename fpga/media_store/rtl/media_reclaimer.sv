@@ -3,6 +3,7 @@ module media_reclaimer #(
 ) (
     input wire clk, input wire reset, input wire enable, input wire drain,
     input wire grant, input wire [31:0] grant_cycles, input wire [31:0] grant_blocks,
+    input wire grant_above_guard, input wire grant_above_next,
     input wire [31:0] pending_tables, input wire [31:0] free_count, input wire [31:0] allocated_count,
     output wire lock_request, input wire lock_grant, output reg lock_held,
     output reg request_valid, input wire request_ready, output reg [3:0] request_opcode,
@@ -67,8 +68,8 @@ module media_reclaimer #(
             if (maintenance_charge && cycle_budget != 0) cycle_budget <= cycle_budget-1'b1;
             if (grant) begin
                 cycle_budget <= grant_cycles;
-                budget_above_guard <= grant_cycles > 32'(GUARD_CYCLES);
-                budget_above_next <= grant_cycles > 32'(GUARD_CYCLES)+1;
+                budget_above_guard <= grant_above_guard;
+                budget_above_next <= grant_above_next;
                 blocks_left <= grant_blocks; block_limited <= grant_blocks != 0;
                 blocks_available <= grant_blocks != 0;
             end

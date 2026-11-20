@@ -21,6 +21,7 @@ use std::{
     time::{Duration, Instant},
 };
 const TIMEOUT: Duration = Duration::from_secs(10);
+const START_TIMEOUT: Duration = Duration::from_secs(30);
 type Input = Arc<Mutex<ChildStdin>>;
 struct Monitor {
     thread: Option<JoinHandle<()>>,
@@ -309,7 +310,12 @@ impl Pending {
         let len = codec::encode_host_request(&request, &mut buf)
             .map_err(|e| anyhow::anyhow!("host request codec: {e:?}"))?;
         let control = self.control.as_mut().unwrap();
-        let deadline = Instant::now() + TIMEOUT;
+        let deadline = Instant::now()
+            + if matches!(request, HostRequest::Start) {
+                START_TIMEOUT
+            } else {
+                TIMEOUT
+            };
         loop {
             match control.post(&buf[..len]) {
                 Ok(()) => break,

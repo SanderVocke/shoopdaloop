@@ -1,0 +1,20 @@
+--- a/arch/arm/dts/zynq-zturn.dts
++++ b/arch/arm/dts/zynq-zturn.dts
+@@ -4,12 +4,14 @@
+ /include/ "zynq-zturn-common.dtsi"
+ 
+ / {
+-	model = "Zynq Z-Turn MYIR Board";
++	model = "MYIR Z-turn Board V2";
+ 	compatible = "myir,zynq-zturn", "xlnx,zynq-7000";
+ };
+ 
+ &gem0 {
+-	ethernet_phy: ethernet-phy@0 {
+-		reg = <0x0>;
++	phy-handle = <&ethernet_phy>;
++	/delete-node/ ethernet-phy@0;
++	ethernet_phy: ethernet-phy@7 {
++		reg = <0x7>;
+ 	};
+ };

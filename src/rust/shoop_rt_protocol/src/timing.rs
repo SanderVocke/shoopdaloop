@@ -35,13 +35,24 @@ pub struct ChannelTimingUpdate {
     pub start_offset: Option<i32>,
     pub preplay: Option<u32>,
 }
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TimingEdit {
     pub length: Option<u64>,
     pub start_offset: Option<i32>,
     pub preplay: Option<u32>,
     pub count: u8,
     pub channels: [ChannelTimingUpdate; MAX_TIMING_UPDATES],
+}
+impl Default for TimingEdit {
+    fn default() -> Self {
+        Self {
+            length: None,
+            start_offset: None,
+            preplay: None,
+            count: 0,
+            channels: [ChannelTimingUpdate::default(); MAX_TIMING_UPDATES],
+        }
+    }
 }
 impl TimingEdit {
     pub fn canonical(self) -> bool {

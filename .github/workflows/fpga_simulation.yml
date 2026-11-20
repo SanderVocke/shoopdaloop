@@ -13,8 +13,14 @@ on:
       - 'Cargo.lock'
       - 'src/rust/rt_audio_math/**'
       - 'src/rust/rt_backend_testbench/**'
+      - 'src/rust/shoop_graph/**'
       - 'src/rust/rt_fpga_compiler/**'
       - 'src/rust/rt_fpga_testbench/**'
+      - 'src/rust/rt_fpga_rtl/**'
+      - 'src/rust/shoop_rt_host_marlin/**'
+      - 'src/rust/shoop_rt_host_reference/**'
+      - 'src/rust/shoop_audio_drivers/**'
+      - 'src/rust/shoop_rt_host_worklet/**'
       - 'src/rust/rt_fpga_reference/**'
       - 'src/rust/shoop_rt_benchmark/**'
       - 'scripts/benchmark_rt.py'
@@ -45,6 +51,12 @@ on:
     paths:
       - 'fpga/**'
       - 'src/rust/rt_fpga_testbench/**'
+      - 'src/rust/rt_fpga_rtl/**'
+      - 'src/rust/shoop_rt_host_marlin/**'
+      - 'src/rust/shoop_rt_host_reference/**'
+      - 'src/rust/shoop_audio_drivers/**'
+      - 'src/rust/shoop_rt_host_worklet/**'
+      - 'src/rust/shoop_graph/**'
       - 'src/rust/rt_fpga_compiler/**'
       - 'src/rust/rt_fpga_reference/**'
       - 'src/rust/shoop_rt_benchmark/**'
@@ -88,21 +100,34 @@ jobs:
           shared-key: fpga-rust-reference
       - name: Check shared compiler and functional processors
         run: |
-          cargo test --locked -p rt_fpga_compiler
+          cargo test --locked -p shoop_graph -p rt_fpga_compiler
           cargo build --locked -p rt_fpga_reference --no-default-features
           cargo test --locked -p rt_fpga_reference --no-default-features
           cargo test --locked -p rt_fpga_reference --all-features
+      - name: Check portable rendering and reference worklet transport
+        run: |
+          cargo test --locked -p shoop_rt_host_reference
+          cargo test --locked -p shoop_rt_host_worklet --no-default-features --features fpga-reference,exports
       - name: Check command transport and protocol
         run: cargo test --locked -p shoop_rt_protocol -p shoop_rt_transport --all-features
+      - name: Install native application and UI dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libasound2-dev libjack-jackd2-dev libudev-dev libxkbcommon-dev
       - name: Exercise live loading through the application API
-        run: cargo test --locked -p shoop_host --no-default-features --features fpga-reference --test prepared_graph
+        run: cargo test --locked -p shoop_host --no-default-features --features fpga-reference --test prepared_graph --test reference_activation --test reference_resources
+      - name: Exercise the reference backend through the UI runtime
+        run: |
+          cargo test --locked -p shoop_egui --lib
+          cargo test --locked -p shoopdaloop --no-default-features --features fpga-reference fpga_reference_
+          cargo test --locked -p shoop_host_manager --no-default-features --features fpga-reference --lib
       - name: Validate shared RT benchmark fixture and Rust adapters
         run: cargo test --locked -p shoop_rt_benchmark
 
   marlin:
     name: Complete native Marlin verification
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 180
     env:
       RUSTFLAGS: -D warnings
       CARGO_BUILD_JOBS: "2"
@@ -118,7 +143,8 @@ jobs:
       - name: Install simulation tools
         run: |
           sudo apt-get update
-          sudo apt-get install --yes autoconf flex bison libfl-dev zlib1g-dev g++ cmake patch python3-venv
+          sudo apt-get install --yes autoconf flex bison libfl-dev zlib1g-dev g++ cmake patch python3-venv \
+            libasound2-dev libjack-jackd2-dev
           python3 -m venv .venv
           .venv/bin/pip install -r scripts/rt_backend_testbench/requirements.txt
           .venv/bin/pip install 'matplotlib>=3.9,<4'
@@ -141,20 +167,35 @@ jobs:
           python scripts/check_fpga_testbench_coverage.py
           python scripts/check_shoop_test_usage.py
           python fpga/axi_memory/generate_tops.py --check
+          python fpga/host_bridge/generate_registers.py --check
+          python fpga/host_bridge/generate_top.py --check
       - name: Run retained component and execution matrices
         run: |
           mkdir -p work/marlin-suite
           set -o pipefail
           cargo test --locked -p rt_fpga_testbench --features sim -- --nocapture 2>&1 | tee work/marlin-suite/regression.log
           cargo check --locked -p rt_fpga_testbench
+      - name: Verify 16 and 64 loops with the Z-turn V2 DDR3 model
+        env:
+          SHOOP_DRAMSIM3_CONFIG: ${{ github.workspace }}/fpga/axi_memory/configs/zturn-v2-ddr3-1066-x32.ini
+        run: |
+          set -o pipefail
+          cargo test --locked -p rt_fpga_testbench --features sim --test loading \
+            looping_workloads_with_thirty_two_frame_chunks_and_dram_timing -- --nocapture \
+            2>&1 | tee work/marlin-suite/zturn-v2-ddr3.log
+      - name: Check serialized Marlin application and bridge
+        run: |
+          cargo test --locked -p rt_fpga_rtl --features sim,rt-interface
+          cargo test --locked -p shoop_rt_host_marlin --features sim
+          cargo test --locked -p shoop_host --no-default-features --features rtl-sim --test marlin_application --test marlin_drivers --test reference_resources
       - name: Verify production CPU numeric checks
         run: |
           cargo test --locked -p rt_backend_testbench
           python -m unittest discover -s scripts/tests -p test_rt_backend_testbench.py
       - name: Validate shared benchmark reporting
         run: python -m unittest discover -s scripts/tests -p test_benchmark_rt.py
-      - name: Run shared 64-stereo RT smoke campaign
-        run: python scripts/benchmark_rt.py --preset smoke --output work/shared-rt-smoke
+      - name: Run shared 64-loop audio and MIDI RT smoke campaign
+        run: python scripts/benchmark_rt.py --preset smoke --rtl-jobs 2 --output work/shared-rt-smoke
       - uses: actions/upload-artifact@v7
         if: always()
         with:

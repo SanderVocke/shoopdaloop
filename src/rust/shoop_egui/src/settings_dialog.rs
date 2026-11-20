@@ -919,8 +919,11 @@ impl SettingsDialog {
 
     fn show_audio_backend(&mut self, ui: &mut egui::Ui) {
         ui.heading("Session engine");
-        ui.colored_label(colors::WARNING, "Host placement and engine capacities apply at startup. Core looping is available; content save/load, FX, composite loops, grab and live driver switching are unavailable.");
+        ui.label("Backend, host placement and engine capacities apply when starting a host.");
         {
+            if let Some(backend) = self.registry.definition(crate::BACKEND.id()).cloned() {
+                self.show_definition_cards(ui, vec![backend], None);
+            }
             #[cfg(not(target_arch = "wasm32"))]
             if let Some(transport) = self
                 .registry
@@ -2094,6 +2097,7 @@ mod tests {
         };
         let target = crate::ResolvedAudioDriverConfig {
             configured: crate::AudioDriverConfig::Dummy(crate::DummyAudioDriverConfig {
+                mode: Default::default(),
                 sample_rate: 44_100,
                 buffer_size: 128,
             }),
@@ -2189,7 +2193,7 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn audio_backend_choice_shows_new_engine_pools_only_when_selected() {
+    fn backend_selection_and_capacities_are_startup_settings() {
         let mut builder = SettingsRegistryBuilder::default();
         crate::register_audio_settings(&mut builder).unwrap();
         crate::register_audio_backend_settings(&mut builder).unwrap();
@@ -2216,9 +2220,9 @@ mod tests {
         assert_eq!(
             cards,
             if cfg!(target_arch = "wasm32") {
-                [9, 9]
-            } else {
                 [10, 10]
+            } else {
+                [11, 11]
             }
         );
     }
@@ -2267,8 +2271,8 @@ mod tests {
             dialog.setting_card_rects.len()
         };
 
-        // Loop audio and the dummy driver's rate and buffer.
-        assert_eq!(frame(&mut dialog, Vec::new()), 4);
+        // Loop audio and the dummy driver's mode, rate and buffer.
+        assert_eq!(frame(&mut dialog, Vec::new()), 5);
         let cpal = dialog
             .driver_choice_rects
             .iter()

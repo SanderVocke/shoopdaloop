@@ -16,6 +16,85 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 const RAMP: usize = 4;
 
 #[shoop_test]
+fn wide_bus_and_strip_preserve_channel_identity_through_render_and_resync() {
+    for mode in audio_modes() {
+        let mut description = audio_description(mode);
+        description.host = shoop_rt_engine::HostPorts::numbered(16, 16, 1);
+        description.strip_channels = 16;
+        description.bus_channels = 16;
+        description.ramp_frames = 0;
+        description.master_connections.clear();
+        let mut h = Harness::new(&description);
+        let source = strip(0, 1);
+        let bus = BusId(SlotId::new(7, 1));
+        h.done(Request::CreateStrip {
+            strip: source,
+            shape: shape(16, 16, false),
+        });
+        h.done(Request::CreateBus { bus, channels: 16 });
+        for index in 0..16 {
+            h.done(Request::Connect {
+                port: port(source, PortKind::AudioIn, index),
+                host: HostPortId(u32::from(index)),
+                connected: true,
+            });
+            h.done(Request::Route {
+                port: StripPort {
+                    strip: source,
+                    kind: PortKind::AudioOut,
+                    index,
+                },
+                bus: BusPort { bus, index },
+                connected: true,
+            });
+            h.done(Request::Connect {
+                port: EnginePort::Bus(BusPort { bus, index }),
+                host: HostPortId(16 + u32::from(index)),
+                connected: true,
+            });
+        }
+        h.done(Request::StripControl {
+            strip: source,
+            control: StripControl::Monitoring(true),
+        });
+        let signals = [0usize, 7, 8, 15];
+        for (frame, channel) in signals.into_iter().enumerate() {
+            h.host.input_mut(channel)[..4].fill(0.);
+            h.host.input_mut(channel)[frame] = 0.25 * (frame + 1) as f32;
+        }
+        assert_no_heap(|| h.host.process(4)).unwrap();
+        h.pump();
+        for channel in 0..16 {
+            let mut expected = [0.; 4];
+            if let Some(frame) = signals.iter().position(|&signal| signal == channel) {
+                expected[frame] = 0.25 * (frame + 1) as f32;
+            }
+            assert_eq!(
+                &h.host.output(channel)[..4],
+                &expected,
+                "{mode:?} channel {channel}"
+            );
+        }
+        h.states.clear();
+        assert_no_heap(|| h.host.client.resync()).unwrap();
+        h.run(2, 1);
+        let routes: Vec<_> = h
+            .states
+            .iter()
+            .filter_map(|record| match record {
+                StateRecord::Route { port, bus: target } if target.bus == bus => {
+                    assert_eq!(port.strip, source);
+                    assert_eq!(port.index, target.index);
+                    Some(target.index)
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(routes, (0..16).collect::<Vec<_>>());
+    }
+}
+
+#[shoop_test]
 fn ordinary_buses_sum_independently_and_last_removal_keeps_direct_audio() {
     for mode in audio_modes() {
         let mut h = Harness::new(&audio_description(mode));

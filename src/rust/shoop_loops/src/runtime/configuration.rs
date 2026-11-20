@@ -24,6 +24,21 @@ impl<S: Sample> LoopPlanner<S> {
         if initial.is_some_and(|i| i.preserve_input && !row.assigned) {
             return Err(Error::InvalidState);
         }
+        if let Some((initial, owner)) =
+            initial.and_then(|i| i.worker_source.map(|owner| (i, owner)))
+        {
+            if !initial.dry_wet
+                || !self.worker_inputs.as_ref().is_some_and(|inputs| {
+                    inputs.accepts(
+                        initial.history_source as usize,
+                        owner,
+                        row.binding.auxiliary_channels,
+                    )
+                })
+            {
+                return Err(Error::InvalidShape);
+            }
+        }
         self.node_pairs
             .append(id, edit, row.binding, &mut self.ledger, io)
     }
@@ -69,7 +84,7 @@ impl<S: Sample> LoopPlanner<S> {
             }
             if let Some(previous) = edit.previous {
                 let mode = self.resolver.state(previous)?.mode;
-                if mode != Mode::Stopped && !(replace_all && mode == Mode::Playing) {
+                if mode != Mode::Stopped && !(replace_all && mode.playback_mode()) {
                     return Err(crate::Error::InvalidState.into());
                 }
             }
@@ -102,7 +117,12 @@ impl<S: Sample> LoopPlanner<S> {
                     return Err(Error::InvalidState.into());
                 }
                 let node = candidate.node(initial.target)?;
-                if node.kind != LoopKind::Primitive || node.length != initial.frames {
+                if node.kind != LoopKind::Primitive
+                    || node.length != initial.frames
+                    || initial
+                        .worker_source
+                        .is_some_and(|source| !permit.candidate().contains(source.processor))
+                {
                     return Err(Error::InvalidShape.into());
                 }
             }
@@ -176,6 +196,7 @@ impl<S: Sample> LoopPlanner<S> {
                 row.binding.target = initial.target;
                 row.dry_wet = initial.dry_wet;
                 row.history_source = initial.history_source;
+                row.worker_source = initial.worker_source;
                 row.audio_widths = initial
                     .audio_widths
                     .map(|widths| widths.map(usize::from))
@@ -188,6 +209,7 @@ impl<S: Sample> LoopPlanner<S> {
                 }
             } else {
                 row.reset_input = false;
+                row.worker_source = None;
             }
             row.failure = None;
             row.aborted = false;

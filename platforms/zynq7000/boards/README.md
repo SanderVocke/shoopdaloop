@@ -1,6 +1,7 @@
 # Zynq-7000 board profiles
 
-Select a board with `--board qemu` (the default) or `--board zedboard` on
+Select a board with `--board qemu` (the default), `--board zedboard`, or
+`--board zturn-v2` on
 `build.py`, `run.py`, `integration.py`, `deployment/build_boot.py`,
 `deployment/bundle.py`, `deployment/card.py` and `deployment/emulator.py`.
 Existing reference suite commands retain their default board and output paths.
@@ -8,20 +9,22 @@ The full deployment/watchdog and USB suites qualify the QEMU reference profile.
 Other profiles can exercise their firmware on the emulated processing system;
 QEMU does not model their physical wiring or DDR initialization.
 
-| Contract | `qemu` | `zedboard` |
-| --- | --- | --- |
-| CPU family | Zynq-7000, one Cortex-A9 | Zynq-7000, one Cortex-A9 |
-| PS DDR | 1024 MiB | 512 MiB |
-| Low reservation | 0–1 MiB | 0–1 MiB |
-| Platform code/heaps/stacks/DMA | 1–128 MiB | 1–64 MiB |
-| Rust arena | 128–896 MiB | 64–384 MiB |
-| Two update buffers | 896–960 MiB | 384–448 MiB |
-| Loader/stack reservation | 960–1024 MiB | 448–512 MiB |
-| Recording pages | 128 MiB | 32 MiB |
-| Decoded session media | 64 MiB | 16 MiB |
-| Boot initialization | Pinned upstream ZC702 | Pinned upstream ZedBoard |
-| Audio | Dummy stereo, 48 kHz | Dummy stereo, 48 kHz |
-| MIDI | Dummy or optional USB0 | Dummy; USB wiring not yet qualified |
+| Contract | `qemu` | `zedboard` | `zturn-v2` |
+| --- | --- | --- | --- |
+| CPU family | Zynq-7000, one Cortex-A9 | Zynq-7000, one Cortex-A9 | Zynq-7000, one Cortex-A9 |
+| PS DDR | 1024 MiB | 512 MiB | 1024 MiB |
+| Low reservation | 0–1 MiB | 0–1 MiB | 0–1 MiB |
+| Platform code/heaps/stacks/DMA | 1–128 MiB | 1–64 MiB | 1–128 MiB |
+| Rust arena | 128–896 MiB | 64–384 MiB | 128–768 MiB |
+| PL arena | — | — | 768–896 MiB |
+| Two update buffers | 896–960 MiB | 384–448 MiB | 896–960 MiB |
+| Loader/stack reservation | 960–1024 MiB | 448–512 MiB | 960–1024 MiB |
+| Recording pages | 128 MiB | 32 MiB | 128 MiB |
+| Decoded session media | 64 MiB | 16 MiB | 32 MiB |
+| Native loop slots | 64 | 32 | 64 |
+| Boot initialization | Pinned upstream ZC702 | Pinned upstream ZedBoard | Pinned upstream Z-turn development baseline |
+| Audio | Dummy stereo, 48 kHz | Dummy stereo, 48 kHz | Dummy stereo, 48 kHz |
+| MIDI | Dummy or optional USB0 | Dummy | Dummy |
 
 The JSON profile is the authority for board-specific settings. `boards.py`
 validates it and generates `shoop_board.h`, the linker script and a resolved
@@ -46,6 +49,31 @@ TFTP and Fastboot use the profile's staging address. The boot record, signed FIT
 and firmware/loader manifests identify the board. Packaging and provisioning
 reject mixed board artifacts. Changing a board's memory or ABI contract requires
 a new deployment profile identifier; deployed loaders keep their original policy.
+
+## MYIR Z-turn V2 development profile
+
+The profile targets `xc7z020clg400-2`. The MYIR V2 schematic confirms two
+256M×16 DDR3 devices, GEM0 RGMII on MIO 16–27, MDIO on MIO 52–53, UART1 on
+MIO 48–49, and PHY address 7. Ethernet reset follows board power-good. The
+schematic labels the part `YT8531SC` and the product page lists `YT8531SH`. The
+firmware checks the Motorcomm YT8531 MDIO ID before configuring the RGMII delays
+and enabling negotiation. Physical bring-up must confirm the populated part,
+link at the advertised speeds, and the board's exact DDR training parameters.
+[MYIR schematic](https://www.myirtech.com/down-load1.asp?id=1027) ·
+[MYIR specifications](https://www.myirtech.com/list.asp?id=708)
+
+The schematic used for the development profile has SHA-256
+`7fe273655dee3b5a2cade185efc584f68f3e6b86e9b658df405ae679615198ae`.
+The upstream U-Boot Z-turn PS initialization is pinned for reproducible builds.
+The V2-specific PS initialization and physical SD boot are qualification items.
+The DTS overlay selects address 7 in U-Boot. Direct-load QEMU uses the built-in
+Marvell PHY model at the same address. [Pinned Z-turn PS baseline](https://github.com/u-boot/u-boot/blob/5508406582f6f7120dce0c4b3059819a41788db2/board/xilinx/zynq/zynq-zturn/ps7_init_gpl.c)
+
+`python3 platforms/zynq7000/tests/fpga_probe.py` cross-builds a diagnostic ELF
+and checks that it returns cleanly in QEMU before accessing an unconfigured PL.
+With a configured bitstream, the probe checks the mailbox ABI, fabric clock and
+DDR arena. The board profile generates the register aperture and fabric clock
+for both the ELF and the Vivado build.
 
 ## Choose JTAG development or SD deployment
 

@@ -639,6 +639,8 @@ impl ControlEndpoint {
                 | Outcome::TimingApplied(_)
                 | Outcome::ContentApplied { .. }
                 | Outcome::ContentPrepared { .. }
+                | Outcome::ProcessorLogs { .. }
+                | Outcome::ProcessorCheckpoint { .. }
                 | Outcome::Input(_)
                 | Outcome::InputCapacity(_) => Some(Refusal::Internal),
                 Outcome::Refused(reason) => Some(reason),

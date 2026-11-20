@@ -1,0 +1,22 @@
+{
+  "id": "0x53484e41",
+  "version": 1,
+  "quantum": 32,
+  "sample_rate": 48000,
+  "registers": {
+    "ID": "0x000",
+    "VERSION": "0x004",
+    "QUANTUM": "0x008",
+    "SAMPLE_RATE": "0x00c",
+    "CLOCK_HZ": "0x010",
+    "ENABLE": "0x014",
+    "STATUS": "0x018",
+    "SEQUENCE": "0x01c",
+    "COMPLETE": "0x020",
+    "XRUNS": "0x024",
+    "PEAK_CYCLES": "0x028",
+    "RX_BASE": "0x100",
+    "TX_BASE": "0x200"
+  },
+  "status_bits": {"PENDING": 0, "FAULT": 1}
+}

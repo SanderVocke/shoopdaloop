@@ -407,3 +407,38 @@ fn reconnect_discards_pending_old_responses_without_cancelling_execution() {
     endpoint.poll(&mut out);
     assert_eq!(out.pop(), None);
 }
+
+#[shoop_test]
+fn publisher_failure_disconnects_without_audio_and_survives_full_reply_space() {
+    let (mut endpoint, mut execution) = prepare(8);
+    let mut out = Outbox::new(1, 0, 0);
+    deliver(
+        &mut endpoint,
+        &mut out,
+        ClientMessage::Hello {
+            version: PROTOCOL_VERSION,
+        },
+    );
+    deliver(
+        &mut endpoint,
+        &mut out,
+        ClientMessage::Immediate(batch(0.5)),
+    );
+    complete(&mut execution, 16);
+    execution.snapshots.fail();
+    assert_no_heap(|| endpoint.poll(&mut out));
+    assert!(matches!(out.pop(), Some(EngineMessage::Welcome { .. })));
+    assert_no_heap(|| endpoint.poll(&mut out));
+    let Some(EngineMessage::ImmediateResponse(response)) = out.pop() else {
+        panic!("completed response before disconnect");
+    };
+    assert_eq!(response.header.frame(), 16);
+    assert_eq!(response.records()[0].code(), Code::Applied);
+    assert_no_heap(|| endpoint.poll(&mut out));
+    assert_eq!(
+        out.pop(),
+        Some(EngineMessage::Disconnected(DisconnectReason::Fault))
+    );
+    assert_no_heap(|| endpoint.poll(&mut out));
+    assert!(out.pop().is_none());
+}

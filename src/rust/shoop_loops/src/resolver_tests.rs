@@ -2,6 +2,128 @@ use super::*;
 use shoop_wasm_test_support::{heap::assert_no_heap, shoop_test};
 
 #[shoop_test]
+fn delayed_capture_retains_committed_content_until_the_matching_tail() {
+    let target = LoopId::from_parts(0, 1).unwrap();
+    let description = TopologyDescription {
+        loops: vec![LoopSpec {
+            id: target,
+            kind: LoopKind::Primitive,
+            length: 16,
+            sync_source: None,
+        }],
+        ..Default::default()
+    };
+    for fail in [false, true] {
+        let mut resolver = Resolver::prepare(
+            compile(Limits::default(), &description).unwrap(),
+            rt_runtime::Quantum::new(16).unwrap(),
+        )
+        .unwrap();
+        assert_no_heap(|| {
+            let request = |sequence, at, transition| Request {
+                target,
+                sequence: Sequence(sequence),
+                at: Frame(at),
+                timing: Timing::At,
+                transition,
+            };
+            let record = Transition::Record {
+                monitor_previous: false,
+            };
+            resolver.submit(request(1, 0, record)).unwrap();
+            let tick = |resolver: &mut Resolver, observations: &[Observation]| {
+                resolver.preview_tick(observations).unwrap();
+                resolver.commit().unwrap();
+                resolver.finish().unwrap();
+            };
+            tick(&mut resolver, &[]);
+            tick(&mut resolver, &[]);
+            let cut = resolver
+                .submit(request(
+                    2,
+                    32,
+                    Transition::Play {
+                        position: 16,
+                        retrigger: true,
+                    },
+                ))
+                .unwrap();
+            tick(&mut resolver, &[Observation::DelayCapture { target }]);
+            assert_eq!(
+                resolver.completion(cut).unwrap().unwrap().outcome,
+                Outcome::Applied { frame: Frame(32) }
+            );
+            let state = resolver.state(target).unwrap();
+            assert_eq!(state.mode, Mode::Stopped);
+            assert!(state.capture_pending());
+            assert_eq!(state.capture_frames, 32);
+            assert_eq!(
+                (state.content_revision, state.content_length),
+                (Revision(0), 16)
+            );
+            assert!(resolver.recording_armed(target).unwrap());
+            assert_eq!(resolver.edit_length(target, 32), Err(Error::InvalidState));
+            let restart = resolver.submit(request(3, 48, record)).unwrap();
+            tick(&mut resolver, &[]);
+            assert_eq!(
+                resolver.completion(restart).unwrap().unwrap().outcome,
+                Outcome::Failed {
+                    frame: Frame(48),
+                    reason: Error::InvalidState,
+                }
+            );
+            assert_eq!(
+                resolver.preview_tick(&[Observation::CaptureReady {
+                    target,
+                    revision: Revision(0),
+                }]),
+                Err(Error::InvalidState)
+            );
+            let tail = if fail {
+                Observation::CaptureAborted {
+                    target,
+                    reason: Error::InvalidState,
+                }
+            } else {
+                Observation::CaptureReady {
+                    target,
+                    revision: Revision(1),
+                }
+            };
+            resolver.preview_tick(&[tail]).unwrap();
+            let decision = resolver.decisions().unwrap()[0];
+            let state = decision.state;
+            assert!(!state.capture_pending());
+            if fail {
+                assert_eq!(
+                    (
+                        state.capture_incomplete,
+                        state.mode,
+                        state.content_revision,
+                        state.content_length
+                    ),
+                    (true, Mode::Stopped, Revision(0), 16)
+                );
+                assert!(!decision.playback_discontinuity);
+            } else {
+                assert_eq!(
+                    (
+                        state.mode,
+                        state.content_revision,
+                        state.content_length,
+                        state.position
+                    ),
+                    (Mode::Playing, Revision(1), 32, 16)
+                );
+                assert!(decision.playback_discontinuity);
+            }
+            resolver.commit().unwrap();
+            resolver.finish().unwrap();
+        });
+    }
+}
+
+#[shoop_test]
 fn program_probe_stops_before_old_child_actions_and_never_publishes_shadow_work() {
     let id = |slot| LoopId::from_parts(slot, 1).unwrap();
     let description = TopologyDescription {

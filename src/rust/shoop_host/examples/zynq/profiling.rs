@@ -5,7 +5,7 @@ use shoop_app_api::{
 };
 use shoop_app_protocol::Command;
 
-pub(super) fn run(client: &mut Client, connection: &mut Connection) {
+pub(super) fn run(client: &mut Client, connection: &mut Connection, render_task: &str) {
     let deadline = Instant::now() + Duration::from_secs(30);
     let stream = loop {
         if let Some(source) = client
@@ -58,7 +58,7 @@ pub(super) fn run(client: &mut Client, connection: &mut Connection) {
     let view = &client.diagnostics().tasks;
     let sample = view.sample.as_ref().unwrap();
     assert!(sample.valid() && sample.complete);
-    assert!(sample.tasks.iter().any(|t| t.name.as_str() == "render"));
+    assert!(sample.tasks.iter().any(|t| t.name.as_str() == render_task));
     assert!(sample.tasks.iter().any(|t| t.name.as_str() == "control"));
     assert!(sample
         .tasks

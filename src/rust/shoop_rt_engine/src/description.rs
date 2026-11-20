@@ -86,6 +86,8 @@ pub struct EngineDescription {
     /// Admitted live-input MIDI capacity per fixed tick; output storage is derived.
     pub midi_events: usize,
     pub midi_bytes: usize,
+    /// Maximum storage reported by a physical MIDI output for one period.
+    pub midi_output_limit_bytes: Option<usize>,
     /// Loop transitions that may be pending at once, including delayed ones.
     pub pending_transitions: usize,
     pub reliable_credits: u16,
@@ -127,6 +129,7 @@ impl Default for EngineDescription {
             page_bytes: 4096,
             midi_events: 256,
             midi_bytes: 2048,
+            midi_output_limit_bytes: None,
             pending_transitions: 128,
             reliable_credits: 256,
             bulk_credits: 8,

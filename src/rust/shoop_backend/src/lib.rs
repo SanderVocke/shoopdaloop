@@ -602,7 +602,7 @@ pub enum BackendDriverState {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct BackendStatus {
     pub memory: Option<shoop_app_api::MemoryReport>,
-    pub dsp_load_percent: f32,
+    pub dsp: Option<shoop_app_api::DspMeasurement>,
     pub xruns: u32,
     pub buffer_size: u32,
     pub sample_rate: u32,
@@ -1247,6 +1247,19 @@ pub struct BackendTransitionPlanState {
     pub failures: u32,
 }
 pub trait Backend {
+    /// Whether driver shutdown needs loop-mode commands before processing ends.
+    fn requires_shutdown_transitions(&self) -> bool {
+        true
+    }
+    /// Commit the graph edits made by one complete application operation.
+    fn commit_graph_changes(&mut self) -> Result<()> {
+        Ok(())
+    }
+    /// Discard graph edits that have not been installed. Running processor state is retained.
+    fn cancel_graph_changes(&mut self) {}
+    fn graph_update_pending(&self) -> bool {
+        false
+    }
     fn activate_prepared_graph(&mut self) -> Result<()> {
         Err(anyhow!("prepared graph activation is unavailable"))
     }
@@ -1552,6 +1565,9 @@ pub trait Backend {
     fn track_fx_state_string(&mut self, _track_id: BackendTrackId) -> Result<Option<String>> {
         Ok(None)
     }
+    fn request_track_fx_logs(&mut self, _track_id: BackendTrackId) -> Result<()> {
+        Ok(())
+    }
     fn set_loop_gain(&mut self, loop_id: BackendLoopId, gain: f32) -> Result<()>;
     fn set_loop_balance(&mut self, loop_id: BackendLoopId, balance: f32) -> Result<()>;
     fn grab_loops(&mut self, requests: &[BackendGrabRequest]) -> Result<()>;
@@ -1780,6 +1796,9 @@ pub trait Backend {
     }
     fn bus_fx_state_string(&mut self, _bus_id: BackendBusId) -> Result<Option<String>> {
         Ok(None)
+    }
+    fn request_bus_fx_logs(&mut self, _bus_id: BackendBusId) -> Result<()> {
+        Ok(())
     }
     fn advance(&mut self, elapsed: Duration);
     fn poll(&mut self) -> Result<BackendSnapshot>;

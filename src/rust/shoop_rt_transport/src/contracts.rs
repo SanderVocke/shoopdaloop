@@ -135,7 +135,7 @@ impl Endpoint for TestEndpoint {
                 frame: 1,
                 callbacks: 1,
                 xruns: 0,
-                load: 0.1,
+                dsp: None,
                 input_peak: 0.5,
                 output_peak: 0.25,
                 driver: DRIVER,

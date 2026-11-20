@@ -17,7 +17,6 @@ mod global_controls;
 mod host_controls;
 mod key_input;
 mod loop_widget;
-mod memory;
 mod meter_ballistics;
 mod midi_sequence_widget;
 mod optimistic_value;
@@ -30,11 +29,12 @@ mod settings_dialog;
 mod track_controls;
 mod track_widget;
 mod tracks_widget;
+mod usage;
 mod waveform;
 mod waveform_widget;
 
 pub use app_widget::{
-    audio_driver_config_from_draft, audio_driver_config_from_snapshot,
+    audio_driver_config_from_draft, audio_driver_config_from_snapshot, backend_from_snapshot,
     carla_hosting_mode_from_snapshot, default_builtins_location, engine_transport_from_snapshot,
     format_output_bus_names, loop_edge_smoothing_ms, master_auto_connect,
     new_engine_pools_from_snapshot, parse_output_bus_names, processor_settings_from_snapshot,
@@ -43,17 +43,18 @@ pub use app_widget::{
     register_carla_settings, register_script_settings, register_settings,
     register_settings_with_appearance_defaults, register_settings_with_ui_scale_default,
     selected_audio_driver, set_selected_audio_driver, show_new_track_configuration, AppWidget,
-    AppWidgetResponse, AudioBackendKind, BusOption, EngineTransportKind, NewEnginePools,
-    NewTrackConfiguration, TrackDefaultSaveResult, APC_MINI_SCRIPT_ENABLED, AUDIO_BACKEND,
-    BUILTINS_LOCATION, BUILTIN_SCRIPTS, CARLA_HOSTING_MODE, CPAL_BUFFER_SIZE,
-    CPAL_CAPTURE_RING_FRAMES, CPAL_CLIENT_NAME, CPAL_HOST, CPAL_INPUT_CHANNELS, CPAL_INPUT_DEVICE,
-    CPAL_MIDI_INPUTS, CPAL_MIDI_OUTPUTS, CPAL_OUTPUT_CHANNELS, CPAL_OUTPUT_DEVICE,
-    CPAL_SAMPLE_RATE, DEFAULT_NEW_TRACK_AUDIO_CHANNELS, DEFAULT_NEW_TRACK_DRY_MIDI,
-    DEFAULT_NEW_TRACK_MIDI, DEFAULT_NEW_TRACK_MODE, DEFAULT_NEW_TRACK_PROCESSOR, DUMMY_BUFFER_SIZE,
-    DUMMY_SAMPLE_RATE, ENGINE_TRANSPORT, JACK_CLIENT_NAME, KEYBOARD_SCRIPT_ENABLED,
-    LOOP_EDGE_SMOOTHING_MS, MASTER_AUTO_CONNECT, NEW_ENGINE_CHANNELS, NEW_ENGINE_LOOPS,
-    NEW_ENGINE_LOOP_MEMORY_MB, NEW_ENGINE_QUANTUM, NEW_ENGINE_TRACKS, RUNTIME_PROFILING,
-    SELECTED_AUDIO_DRIVER, TOUCH_MODE, UI_SCALE_FACTOR, USER_SCRIPTS,
+    AppWidgetResponse, BusOption, EngineTransportKind, NewEnginePools, NewTrackConfiguration,
+    TrackDefaultSaveResult, APC_MINI_SCRIPT_ENABLED, BACKEND, BUILTINS_LOCATION, BUILTIN_SCRIPTS,
+    CARLA_HOSTING_MODE, CARLA_PATCHBAY_16X_INSTANCES, CARLA_PATCHBAY_INSTANCES,
+    CARLA_RACK_INSTANCES, CPAL_BUFFER_SIZE, CPAL_CAPTURE_RING_FRAMES, CPAL_CLIENT_NAME, CPAL_HOST,
+    CPAL_INPUT_CHANNELS, CPAL_INPUT_DEVICE, CPAL_MIDI_INPUTS, CPAL_MIDI_OUTPUTS,
+    CPAL_OUTPUT_CHANNELS, CPAL_OUTPUT_DEVICE, CPAL_SAMPLE_RATE, DEFAULT_NEW_TRACK_AUDIO_CHANNELS,
+    DEFAULT_NEW_TRACK_DRY_MIDI, DEFAULT_NEW_TRACK_MIDI, DEFAULT_NEW_TRACK_MODE,
+    DEFAULT_NEW_TRACK_PROCESSOR, DUMMY_BUFFER_SIZE, DUMMY_MODE, DUMMY_SAMPLE_RATE,
+    ENGINE_TRANSPORT, JACK_CLIENT_NAME, KEYBOARD_SCRIPT_ENABLED, LOOP_EDGE_SMOOTHING_MS,
+    MASTER_AUTO_CONNECT, NEW_ENGINE_CHANNELS, NEW_ENGINE_LOOPS, NEW_ENGINE_LOOP_MEMORY_MB,
+    NEW_ENGINE_QUANTUM, NEW_ENGINE_TRACKS, RUNTIME_PROFILING, SELECTED_AUDIO_DRIVER, TOUCH_MODE,
+    UI_SCALE_FACTOR, USER_SCRIPTS,
 };
 pub use bus_controls::BusControls;
 pub use composite_loop_widget::CompositeLoopWidget;
@@ -63,7 +64,6 @@ pub(crate) use details_pane::MediaView;
 pub use global_controls::GlobalControls;
 pub use host_controls::{HostAction, HostConnectionState, HostLocation, HostUiState};
 pub use loop_widget::{LoopWidget, LoopWidgetResponse};
-pub use memory::details as show_memory_usage;
 pub use midi_sequence_widget::MidiSequenceWidget;
 pub use piano_pane::{c_label, is_black, PianoLayout, PianoPane, MIDDLE_C, MIDI_NOTE_COUNT};
 pub use settings_dialog::{
@@ -74,6 +74,7 @@ pub use shoop_settings::*;
 pub use track_controls::TrackControls;
 pub use track_widget::{TrackWidget, TrackWidgetResponse};
 pub use tracks_widget::{TracksWidget, TracksWidgetResponse};
+pub use usage::details as show_resource_usage;
 pub use waveform::{waveform_bins, WaveformBin};
 pub use waveform_widget::WaveformWidget;
 

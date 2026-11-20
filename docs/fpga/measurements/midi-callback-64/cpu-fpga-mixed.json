@@ -1,0 +1,42 @@
+{
+  "cc_per_second_per_loop": 100,
+  "chunk_frames": 32,
+  "destinations": 8,
+  "loops": 64,
+  "metadata": {
+    "backend": "fpga",
+    "scenario": "stereo_and_midi"
+  },
+  "quantum_frames": 32,
+  "runs": [
+    {
+      "callbacks": 9000,
+      "max_us": 1022.018,
+      "mean_us": 75.73213955555555,
+      "p50_us": 69.562,
+      "p95_us": 96.681,
+      "p99_us": 175.911
+    },
+    {
+      "callbacks": 9000,
+      "max_us": 5347.712,
+      "mean_us": 78.48154155555555,
+      "p50_us": 69.535,
+      "p95_us": 100.815,
+      "p99_us": 191.406
+    },
+    {
+      "callbacks": 9000,
+      "max_us": 3443.805,
+      "mean_us": 77.82018488888889,
+      "p50_us": 69.378,
+      "p95_us": 96.026,
+      "p99_us": 172.032
+    }
+  ],
+  "sample_rate": 48000,
+  "sequence_frames": 1440000,
+  "start_playback_midi_packets": 5,
+  "start_playback_us": 356.251,
+  "warmup_callbacks": 150
+}

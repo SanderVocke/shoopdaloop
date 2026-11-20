@@ -7,7 +7,9 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
     let (root, mut host, entry) = launch_with_settings(
         transport,
         HostSettings {
+            backend: BackendType::Native,
             driver: AudioDriverConfig::Dummy(DummyAudioDriverConfig {
+                mode: Default::default(),
                 sample_rate: 8000,
                 buffer_size: 128,
             }),
@@ -26,6 +28,7 @@ pub fn run(transport: EngineTransportKind) -> Result<()> {
                 fx_instances: 1,
                 synth_instances: 0,
                 memory_mb: 64,
+                carla: Default::default(),
             },
             master_auto_connect: true,
             loop_smoothing_ms: 0,

@@ -353,3 +353,30 @@ fn retiring_a_connection_preserves_the_endpoint_and_running_host() {
     assert!(report.midi_reset);
     assert!(report.stopped.is_ok());
 }
+
+#[shoop_test(no_wasm = "native unpaced execution and lifecycle")]
+fn unpaced_mode_advances_without_frame_requests_and_stops_cleanly() {
+    let Started { host, client } = start(&config(DummyConfig {
+        mode: DummyMode::Unpaced,
+        buffer_frames: 32,
+        ..Default::default()
+    }))
+    .unwrap();
+    let begun = Instant::now();
+    while host.status().next_frame < 320 {
+        assert!(begun.elapsed() < Duration::from_secs(5));
+        std::thread::yield_now();
+    }
+    assert_eq!(host.status().next_frame % 32, 0);
+    assert!(matches!(
+        host.driver_config(),
+        DriverConfig::Dummy(DummyConfig {
+            mode: DummyMode::Unpaced,
+            ..
+        })
+    ));
+    drop(client);
+    let report = host.stop();
+    assert!(report.midi_reset);
+    assert!(report.stopped.is_ok());
+}

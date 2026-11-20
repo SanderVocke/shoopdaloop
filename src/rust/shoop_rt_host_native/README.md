@@ -1,5 +1,8 @@
 # New engine backend: native host
 
+Native engine preparation and cleanup compose the backend-independent
+[`shoop_audio_drivers`](../shoop_audio_drivers) callbacks and lifecycle.
+
 `shoop_rt_host_native` runs the [engine](../shoop_rt_engine) natively. It opens a
 driver, prepares the engine for the opened device, renders it on the driver's
 real-time thread. `start` returns an in-process protocol client; `start_endpoint`

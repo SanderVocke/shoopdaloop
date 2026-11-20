@@ -1,0 +1,1218 @@
+{
+  "service": "pipeline/core_under_test/core/midi/service",
+  "primitive_types": {
+    "GND": 166,
+    "VCC": 7,
+    "LUT2": 3064,
+    "LUT6": 4225,
+    "FDRE": 6630,
+    "LUT3": 1868,
+    "DSP48E1": 15,
+    "CARRY4": 1305,
+    "LUT4": 2612,
+    "LUT5": 2090,
+    "MUXF7": 349,
+    "FDSE": 173,
+    "LUT1": 563,
+    "MUXF8": 103,
+    "RAMB36E1": 3
+  },
+  "ff_banks": {
+    "a0": {
+      "bits": 64,
+      "D_cone_lut_primitives": 49,
+      "CE_cone_lut_primitives": 4,
+      "R_cone_lut_primitives": 0
+    },
+    "a1": {
+      "bits": 64,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 4,
+      "R_cone_lut_primitives": 0
+    },
+    "a2": {
+      "bits": 64,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 4,
+      "R_cone_lut_primitives": 0
+    },
+    "a3": {
+      "bits": 64,
+      "D_cone_lut_primitives": 49,
+      "CE_cone_lut_primitives": 4,
+      "R_cone_lut_primitives": 0
+    },
+    "a4": {
+      "bits": 64,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 4,
+      "R_cone_lut_primitives": 0
+    },
+    "activity_channel": {
+      "bits": 5,
+      "D_cone_lut_primitives": 5,
+      "CE_cone_lut_primitives": 15,
+      "R_cone_lut_primitives": 0
+    },
+    "alignment_bit": {
+      "bits": 6,
+      "D_cone_lut_primitives": 6,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "alignment_remainder": {
+      "bits": 63,
+      "D_cone_lut_primitives": 207,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "alignment_return": {
+      "bits": 4,
+      "D_cone_lut_primitives": 4,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "alignment_value": {
+      "bits": 64,
+      "D_cone_lut_primitives": 128,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "best_frame": {
+      "bits": 32,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 42,
+      "R_cone_lut_primitives": 0
+    },
+    "best_length": {
+      "bits": 2,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 42,
+      "R_cone_lut_primitives": 0
+    },
+    "best_packet": {
+      "bits": 24,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 42,
+      "R_cone_lut_primitives": 0
+    },
+    "best_slot": {
+      "bits": 6,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 42,
+      "R_cone_lut_primitives": 0
+    },
+    "c": {
+      "bits": 1024,
+      "D_cone_lut_primitives": 1172,
+      "CE_cone_lut_primitives": 503,
+      "R_cone_lut_primitives": 123
+    },
+    "change_word_index": {
+      "bits": 32,
+      "D_cone_lut_primitives": 32,
+      "CE_cone_lut_primitives": 12,
+      "R_cone_lut_primitives": 0
+    },
+    "changed_bits": {
+      "bits": 32,
+      "D_cone_lut_primitives": 77,
+      "CE_cone_lut_primitives": 12,
+      "R_cone_lut_primitives": 0
+    },
+    "checkpoint_index": {
+      "bits": 9,
+      "D_cone_lut_primitives": 223,
+      "CE_cone_lut_primitives": 38,
+      "R_cone_lut_primitives": 0
+    },
+    "checkpoint_order": {
+      "bits": 32,
+      "D_cone_lut_primitives": 35,
+      "CE_cone_lut_primitives": 14,
+      "R_cone_lut_primitives": 0
+    },
+    "checkpoint_return": {
+      "bits": 7,
+      "D_cone_lut_primitives": 14,
+      "CE_cone_lut_primitives": 38,
+      "R_cone_lut_primitives": 0
+    },
+    "checkpoint_snapshot": {
+      "bits": 64,
+      "D_cone_lut_primitives": 130,
+      "CE_cone_lut_primitives": 14,
+      "R_cone_lut_primitives": 0
+    },
+    "checkpoint_word": {
+      "bits": 32,
+      "D_cone_lut_primitives": 32,
+      "CE_cone_lut_primitives": 52,
+      "R_cone_lut_primitives": 0
+    },
+    "context_return": {
+      "bits": 8,
+      "D_cone_lut_primitives": 27,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "context_slot": {
+      "bits": 6,
+      "D_cone_lut_primitives": 26,
+      "CE_cone_lut_primitives": 207,
+      "R_cone_lut_primitives": 0
+    },
+    "copy_count": {
+      "bits": 3,
+      "D_cone_lut_primitives": 4,
+      "CE_cone_lut_primitives": 16,
+      "R_cone_lut_primitives": 0
+    },
+    "copy_index": {
+      "bits": 32,
+      "D_cone_lut_primitives": 32,
+      "CE_cone_lut_primitives": 20,
+      "R_cone_lut_primitives": 0
+    },
+    "copy_return": {
+      "bits": 6,
+      "D_cone_lut_primitives": 7,
+      "CE_cone_lut_primitives": 16,
+      "R_cone_lut_primitives": 0
+    },
+    "copy_source": {
+      "bits": 26,
+      "D_cone_lut_primitives": 43,
+      "CE_cone_lut_primitives": 16,
+      "R_cone_lut_primitives": 0
+    },
+    "copy_target": {
+      "bits": 64,
+      "D_cone_lut_primitives": 118,
+      "CE_cone_lut_primitives": 16,
+      "R_cone_lut_primitives": 0
+    },
+    "cursor": {
+      "bits": 32,
+      "D_cone_lut_primitives": 33,
+      "CE_cone_lut_primitives": 968,
+      "R_cone_lut_primitives": 0
+    },
+    "cursor_reg_rep": {
+      "bits": 3,
+      "D_cone_lut_primitives": 4,
+      "CE_cone_lut_primitives": 968,
+      "R_cone_lut_primitives": 0
+    },
+    "cursor_reg_rep__0": {
+      "bits": 3,
+      "D_cone_lut_primitives": 4,
+      "CE_cone_lut_primitives": 968,
+      "R_cone_lut_primitives": 0
+    },
+    "cursor_reg_rep__1": {
+      "bits": 3,
+      "D_cone_lut_primitives": 4,
+      "CE_cone_lut_primitives": 968,
+      "R_cone_lut_primitives": 0
+    },
+    "cursor_reg_rep__2": {
+      "bits": 2,
+      "D_cone_lut_primitives": 3,
+      "CE_cone_lut_primitives": 968,
+      "R_cone_lut_primitives": 0
+    },
+    "cursor_reg_rep__3": {
+      "bits": 1,
+      "D_cone_lut_primitives": 2,
+      "CE_cone_lut_primitives": 968,
+      "R_cone_lut_primitives": 0
+    },
+    "data_word": {
+      "bits": 32,
+      "D_cone_lut_primitives": 147,
+      "CE_cone_lut_primitives": 117,
+      "R_cone_lut_primitives": 0
+    },
+    "density": {
+      "bits": 32,
+      "D_cone_lut_primitives": 125,
+      "CE_cone_lut_primitives": 15,
+      "R_cone_lut_primitives": 0
+    },
+    "derive_base_snapshot": {
+      "bits": 41,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 16,
+      "R_cone_lut_primitives": 0
+    },
+    "derive_changes": {
+      "bits": 18,
+      "D_cone_lut_primitives": 14,
+      "CE_cone_lut_primitives": 15,
+      "R_cone_lut_primitives": 0
+    },
+    "derive_return": {
+      "bits": 3,
+      "D_cone_lut_primitives": 18,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "derive_source_snapshot": {
+      "bits": 41,
+      "D_cone_lut_primitives": 41,
+      "CE_cone_lut_primitives": 15,
+      "R_cone_lut_primitives": 0
+    },
+    "established": {
+      "bits": 1,
+      "D_cone_lut_primitives": 7,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "event_base": {
+      "bits": 64,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 193,
+      "R_cone_lut_primitives": 0
+    },
+    "event_count": {
+      "bits": 32,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 193,
+      "R_cone_lut_primitives": 0
+    },
+    "event_index": {
+      "bits": 32,
+      "D_cone_lut_primitives": 33,
+      "CE_cone_lut_primitives": 99,
+      "R_cone_lut_primitives": 0
+    },
+    "event_input": {
+      "bits": 32,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 15,
+      "R_cone_lut_primitives": 0
+    },
+    "event_length": {
+      "bits": 2,
+      "D_cone_lut_primitives": 2,
+      "CE_cone_lut_primitives": 13,
+      "R_cone_lut_primitives": 0
+    },
+    "event_offset": {
+      "bits": 32,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 12,
+      "R_cone_lut_primitives": 0
+    },
+    "event_packet": {
+      "bits": 24,
+      "D_cone_lut_primitives": 24,
+      "CE_cone_lut_primitives": 13,
+      "R_cone_lut_primitives": 0
+    },
+    "event_return": {
+      "bits": 3,
+      "D_cone_lut_primitives": 47,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "failed_destination": {
+      "bits": 32,
+      "D_cone_lut_primitives": 32,
+      "CE_cone_lut_primitives": 11,
+      "R_cone_lut_primitives": 0
+    },
+    "failure_return": {
+      "bits": 5,
+      "D_cone_lut_primitives": 4,
+      "CE_cone_lut_primitives": 16,
+      "R_cone_lut_primitives": 0
+    },
+    "failure_saved_scan": {
+      "bits": 32,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 16,
+      "R_cone_lut_primitives": 17
+    },
+    "found": {
+      "bits": 1,
+      "D_cone_lut_primitives": 44,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "frames": {
+      "bits": 1,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 193,
+      "R_cone_lut_primitives": 0
+    },
+    "h": {
+      "bits": 768,
+      "D_cone_lut_primitives": 778,
+      "CE_cone_lut_primitives": 123,
+      "R_cone_lut_primitives": 0
+    },
+    "head_return": {
+      "bits": 1,
+      "D_cone_lut_primitives": 4,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "head_write_data": {
+      "bits": 62,
+      "D_cone_lut_primitives": 224,
+      "CE_cone_lut_primitives": 172,
+      "R_cone_lut_primitives": 0
+    },
+    "head_write_index": {
+      "bits": 6,
+      "D_cone_lut_primitives": 6,
+      "CE_cone_lut_primitives": 172,
+      "R_cone_lut_primitives": 0
+    },
+    "head_write": {
+      "bits": 1,
+      "D_cone_lut_primitives": 172,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "high": {
+      "bits": 32,
+      "D_cone_lut_primitives": 32,
+      "CE_cone_lut_primitives": 69,
+      "R_cone_lut_primitives": 0
+    },
+    "high_snapshot": {
+      "bits": 32,
+      "D_cone_lut_primitives": 32,
+      "CE_cone_lut_primitives": 44,
+      "R_cone_lut_primitives": 0
+    },
+    "history_return": {
+      "bits": 8,
+      "D_cone_lut_primitives": 12,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "import_needed": {
+      "bits": 32,
+      "D_cone_lut_primitives": 124,
+      "CE_cone_lut_primitives": 2,
+      "R_cone_lut_primitives": 0
+    },
+    "index": {
+      "bits": 32,
+      "D_cone_lut_primitives": 97,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "initial_snapshot": {
+      "bits": 64,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 2,
+      "R_cone_lut_primitives": 0
+    },
+    "input_slot": {
+      "bits": 2,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "last_blocks": {
+      "bits": 32,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "last_error": {
+      "bits": 3,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "last_events": {
+      "bits": 32,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "last_frame": {
+      "bits": 64,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "last_handle": {
+      "bits": 64,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "last_initial": {
+      "bits": 64,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "last_input_offset": {
+      "bits": 32,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 94,
+      "R_cone_lut_primitives": 94
+    },
+    "last_length": {
+      "bits": 2,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "last_order": {
+      "bits": 32,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "last_owner": {
+      "bits": 32,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "last_packet": {
+      "bits": 24,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "last_references": {
+      "bits": 32,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "last_state": {
+      "bits": 34,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "last_status": {
+      "bits": 32,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "low": {
+      "bits": 32,
+      "D_cone_lut_primitives": 33,
+      "CE_cone_lut_primitives": 69,
+      "R_cone_lut_primitives": 0
+    },
+    "memory_return": {
+      "bits": 8,
+      "D_cone_lut_primitives": 19,
+      "CE_cone_lut_primitives": 129,
+      "R_cone_lut_primitives": 0
+    },
+    "middle": {
+      "bits": 32,
+      "D_cone_lut_primitives": 63,
+      "CE_cone_lut_primitives": 14,
+      "R_cone_lut_primitives": 0
+    },
+    "next_checkpoint": {
+      "bits": 64,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 3,
+      "R_cone_lut_primitives": 0
+    },
+    "next_frame": {
+      "bits": 64,
+      "D_cone_lut_primitives": 65,
+      "CE_cone_lut_primitives": 8,
+      "R_cone_lut_primitives": 0
+    },
+    "op": {
+      "bits": 6,
+      "D_cone_lut_primitives": 8,
+      "CE_cone_lut_primitives": 4,
+      "R_cone_lut_primitives": 0
+    },
+    "op_reg_rep": {
+      "bits": 3,
+      "D_cone_lut_primitives": 6,
+      "CE_cone_lut_primitives": 4,
+      "R_cone_lut_primitives": 0
+    },
+    "op_reg_rep__0": {
+      "bits": 3,
+      "D_cone_lut_primitives": 6,
+      "CE_cone_lut_primitives": 4,
+      "R_cone_lut_primitives": 0
+    },
+    "op_reg_rep__1": {
+      "bits": 2,
+      "D_cone_lut_primitives": 5,
+      "CE_cone_lut_primitives": 4,
+      "R_cone_lut_primitives": 0
+    },
+    "op_reg_rep__2": {
+      "bits": 1,
+      "D_cone_lut_primitives": 3,
+      "CE_cone_lut_primitives": 4,
+      "R_cone_lut_primitives": 0
+    },
+    "own_address": {
+      "bits": 64,
+      "D_cone_lut_primitives": 1186,
+      "CE_cone_lut_primitives": 129,
+      "R_cone_lut_primitives": 0
+    },
+    "own_data": {
+      "bits": 32,
+      "D_cone_lut_primitives": 790,
+      "CE_cone_lut_primitives": 40,
+      "R_cone_lut_primitives": 0
+    },
+    "owners": {
+      "bits": 128,
+      "D_cone_lut_primitives": 48,
+      "CE_cone_lut_primitives": 92,
+      "R_cone_lut_primitives": 0
+    },
+    "packet_destination": {
+      "bits": 32,
+      "D_cone_lut_primitives": 32,
+      "CE_cone_lut_primitives": 177,
+      "R_cone_lut_primitives": 0
+    },
+    "packet_offset": {
+      "bits": 32,
+      "D_cone_lut_primitives": 40,
+      "CE_cone_lut_primitives": 183,
+      "R_cone_lut_primitives": 0
+    },
+    "pc": {
+      "bits": 8,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "pc_reg_rep": {
+      "bits": 8,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "pc_reg_rep__0": {
+      "bits": 8,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "pc_reg_rep__1": {
+      "bits": 8,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "pc_reg_rep__2": {
+      "bits": 8,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "pc_reg_rep__3": {
+      "bits": 8,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "pc_reg_rep__4": {
+      "bits": 8,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "pc_reg_rep__5": {
+      "bits": 8,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "pc_reg_rep__6": {
+      "bits": 8,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "pc_reg_rep__10": {
+      "bits": 7,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "pc_reg_rep__7": {
+      "bits": 7,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "pc_reg_rep__8": {
+      "bits": 7,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "pc_reg_rep__9": {
+      "bits": 7,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "pc_reg_rep__11": {
+      "bits": 6,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "pc_reg_rep__12": {
+      "bits": 6,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "pc_reg_rep__13": {
+      "bits": 6,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "pc_reg_rep__14": {
+      "bits": 6,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "pc_reg_rep__15": {
+      "bits": 5,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "pc_reg_rep__16": {
+      "bits": 4,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "pc_reg_rep__17": {
+      "bits": 2,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "pc_reg_rep__18": {
+      "bits": 2,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "pc_reg_rep__19": {
+      "bits": 1,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "pc_reg_rep__20": {
+      "bits": 1,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "pc_reg_rep__21": {
+      "bits": 1,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "pc_reg_rep__22": {
+      "bits": 1,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "pc_reg_rep__23": {
+      "bits": 1,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "pc_reg_rep__24": {
+      "bits": 1,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "pending_writer": {
+      "bits": 64,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 3,
+      "R_cone_lut_primitives": 0
+    },
+    "prepare_amount": {
+      "bits": 32,
+      "D_cone_lut_primitives": 96,
+      "CE_cone_lut_primitives": 24,
+      "R_cone_lut_primitives": 0
+    },
+    "prepare_budget": {
+      "bits": 32,
+      "D_cone_lut_primitives": 141,
+      "CE_cone_lut_primitives": 5,
+      "R_cone_lut_primitives": 0
+    },
+    "prepare_cursor": {
+      "bits": 32,
+      "D_cone_lut_primitives": 64,
+      "CE_cone_lut_primitives": 23,
+      "R_cone_lut_primitives": 0
+    },
+    "prepare_destination": {
+      "bits": 35,
+      "D_cone_lut_primitives": 64,
+      "CE_cone_lut_primitives": 29,
+      "R_cone_lut_primitives": 0
+    },
+    "prepare_entry": {
+      "bits": 25,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 12,
+      "R_cone_lut_primitives": 0
+    },
+    "prepare_is_derive": {
+      "bits": 1,
+      "D_cone_lut_primitives": 30,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "prepare_map": {
+      "bits": 25,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 12,
+      "R_cone_lut_primitives": 0
+    },
+    "prepare_ready": {
+      "bits": 1,
+      "D_cone_lut_primitives": 25,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "prepare_return": {
+      "bits": 6,
+      "D_cone_lut_primitives": 3,
+      "CE_cone_lut_primitives": 2,
+      "R_cone_lut_primitives": 0
+    },
+    "prepared": {
+      "bits": 1,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "publication_bindings": {
+      "bits": 32,
+      "D_cone_lut_primitives": 95,
+      "CE_cone_lut_primitives": 19,
+      "R_cone_lut_primitives": 0
+    },
+    "query_frame": {
+      "bits": 64,
+      "D_cone_lut_primitives": 64,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "range_end": {
+      "bits": 64,
+      "D_cone_lut_primitives": 64,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "range_failure": {
+      "bits": 3,
+      "D_cone_lut_primitives": 8,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "range_index": {
+      "bits": 32,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 14,
+      "R_cone_lut_primitives": 0
+    },
+    "range_order": {
+      "bits": 32,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 2,
+      "R_cone_lut_primitives": 0
+    },
+    "range_start": {
+      "bits": 64,
+      "D_cone_lut_primitives": 64,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "range_view": {
+      "bits": 64,
+      "D_cone_lut_primitives": 129,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "recovery_destination": {
+      "bits": 32,
+      "D_cone_lut_primitives": 32,
+      "CE_cone_lut_primitives": 46,
+      "R_cone_lut_primitives": 0
+    },
+    "recovery_offset": {
+      "bits": 32,
+      "D_cone_lut_primitives": 32,
+      "CE_cone_lut_primitives": 19,
+      "R_cone_lut_primitives": 0
+    },
+    "recovery_packet": {
+      "bits": 5,
+      "D_cone_lut_primitives": 11,
+      "CE_cone_lut_primitives": 25,
+      "R_cone_lut_primitives": 0
+    },
+    "recovery": {
+      "bits": 48,
+      "D_cone_lut_primitives": 20,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "recovery_return": {
+      "bits": 1,
+      "D_cone_lut_primitives": 20,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "replay_index": {
+      "bits": 32,
+      "D_cone_lut_primitives": 64,
+      "CE_cone_lut_primitives": 16,
+      "R_cone_lut_primitives": 0
+    },
+    "reservation_context": {
+      "bits": 6,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 6,
+      "R_cone_lut_primitives": 0
+    },
+    "reservation_return": {
+      "bits": 2,
+      "D_cone_lut_primitives": 15,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "reservation_saved_scan": {
+      "bits": 32,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 6,
+      "R_cone_lut_primitives": 0
+    },
+    "reservation_scan": {
+      "bits": 32,
+      "D_cone_lut_primitives": 1,
+      "CE_cone_lut_primitives": 27,
+      "R_cone_lut_primitives": 28
+    },
+    "reserved_blocks": {
+      "bits": 32,
+      "D_cone_lut_primitives": 162,
+      "CE_cone_lut_primitives": 50,
+      "R_cone_lut_primitives": 0
+    },
+    "reserved_snapshots": {
+      "bits": 32,
+      "D_cone_lut_primitives": 116,
+      "CE_cone_lut_primitives": 14,
+      "R_cone_lut_primitives": 15
+    },
+    "response_count": {
+      "bits": 32,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 7,
+      "R_cone_lut_primitives": 0
+    },
+    "response_error": {
+      "bits": 4,
+      "D_cone_lut_primitives": 658,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "response_frame": {
+      "bits": 64,
+      "D_cone_lut_primitives": 193,
+      "CE_cone_lut_primitives": 5,
+      "R_cone_lut_primitives": 0
+    },
+    "response_handle": {
+      "bits": 64,
+      "D_cone_lut_primitives": 128,
+      "CE_cone_lut_primitives": 3,
+      "R_cone_lut_primitives": 0
+    },
+    "response_length": {
+      "bits": 2,
+      "D_cone_lut_primitives": 6,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "response_packet": {
+      "bits": 24,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 3,
+      "R_cone_lut_primitives": 0
+    },
+    "response_state": {
+      "bits": 25,
+      "D_cone_lut_primitives": 62,
+      "CE_cone_lut_primitives": 66,
+      "R_cone_lut_primitives": 0
+    },
+    "running": {
+      "bits": 1,
+      "D_cone_lut_primitives": 190,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "scan": {
+      "bits": 35,
+      "D_cone_lut_primitives": 79,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "search_return": {
+      "bits": 3,
+      "D_cone_lut_primitives": 7,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "seen_quantum": {
+      "bits": 1,
+      "D_cone_lut_primitives": 5,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "service_return": {
+      "bits": 8,
+      "D_cone_lut_primitives": 51,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "snapshot_base": {
+      "bits": 34,
+      "D_cone_lut_primitives": 68,
+      "CE_cone_lut_primitives": 18,
+      "R_cone_lut_primitives": 0
+    },
+    "snapshot_id": {
+      "bits": 64,
+      "D_cone_lut_primitives": 193,
+      "CE_cone_lut_primitives": 127,
+      "R_cone_lut_primitives": 0
+    },
+    "start_frame": {
+      "bits": 64,
+      "D_cone_lut_primitives": 63,
+      "CE_cone_lut_primitives": 193,
+      "R_cone_lut_primitives": 0
+    },
+    "state_activity": {
+      "bits": 25,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 187,
+      "R_cone_lut_primitives": 0
+    },
+    "state_at_return": {
+      "bits": 3,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "state_changes": {
+      "bits": 18,
+      "D_cone_lut_primitives": 22,
+      "CE_cone_lut_primitives": 187,
+      "R_cone_lut_primitives": 0
+    },
+    "state_channels": {
+      "bits": 16,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 187,
+      "R_cone_lut_primitives": 0
+    },
+    "state_count": {
+      "bits": 13,
+      "D_cone_lut_primitives": 79,
+      "CE_cone_lut_primitives": 215,
+      "R_cone_lut_primitives": 0
+    },
+    "state_current": {
+      "bits": 34,
+      "D_cone_lut_primitives": 188,
+      "CE_cone_lut_primitives": 215,
+      "R_cone_lut_primitives": 0
+    },
+    "state_first": {
+      "bits": 13,
+      "D_cone_lut_primitives": 50,
+      "CE_cone_lut_primitives": 215,
+      "R_cone_lut_primitives": 0
+    },
+    "state_length": {
+      "bits": 2,
+      "D_cone_lut_primitives": 21,
+      "CE_cone_lut_primitives": 187,
+      "R_cone_lut_primitives": 0
+    },
+    "state_map": {
+      "bits": 25,
+      "D_cone_lut_primitives": 52,
+      "CE_cone_lut_primitives": 215,
+      "R_cone_lut_primitives": 0
+    },
+    "state_op": {
+      "bits": 3,
+      "D_cone_lut_primitives": 3,
+      "CE_cone_lut_primitives": 215,
+      "R_cone_lut_primitives": 0
+    },
+    "state_packet": {
+      "bits": 24,
+      "D_cone_lut_primitives": 56,
+      "CE_cone_lut_primitives": 187,
+      "R_cone_lut_primitives": 0
+    },
+    "state_pairs": {
+      "bits": 29,
+      "D_cone_lut_primitives": 340,
+      "CE_cone_lut_primitives": 215,
+      "R_cone_lut_primitives": 0
+    },
+    "state_target": {
+      "bits": 34,
+      "D_cone_lut_primitives": 59,
+      "CE_cone_lut_primitives": 215,
+      "R_cone_lut_primitives": 0
+    },
+    "state_track_activity": {
+      "bits": 1,
+      "D_cone_lut_primitives": 218,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "state_track_changes": {
+      "bits": 1,
+      "D_cone_lut_primitives": 199,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "store_arg0": {
+      "bits": 64,
+      "D_cone_lut_primitives": 854,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "store_arg1": {
+      "bits": 64,
+      "D_cone_lut_primitives": 76,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "store_length": {
+      "bits": 2,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "store_op": {
+      "bits": 4,
+      "D_cone_lut_primitives": 41,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "store_packet": {
+      "bits": 24,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "store_snapshot": {
+      "bits": 64,
+      "D_cone_lut_primitives": 231,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "store_view": {
+      "bits": 64,
+      "D_cone_lut_primitives": 232,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "target_count": {
+      "bits": 32,
+      "D_cone_lut_primitives": 32,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "target_index": {
+      "bits": 32,
+      "D_cone_lut_primitives": 41,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "target_list": {
+      "bits": 64,
+      "D_cone_lut_primitives": 64,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "target_seen": {
+      "bits": 128,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 0,
+      "R_cone_lut_primitives": 0
+    },
+    "transfer_cells": {
+      "bits": 32,
+      "D_cone_lut_primitives": 128,
+      "CE_cone_lut_primitives": 6,
+      "R_cone_lut_primitives": 0
+    },
+    "transfer_events": {
+      "bits": 32,
+      "D_cone_lut_primitives": 63,
+      "CE_cone_lut_primitives": 7,
+      "R_cone_lut_primitives": 0
+    },
+    "transfer_metadata": {
+      "bits": 32,
+      "D_cone_lut_primitives": 63,
+      "CE_cone_lut_primitives": 7,
+      "R_cone_lut_primitives": 0
+    },
+    "trim_order": {
+      "bits": 32,
+      "D_cone_lut_primitives": 0,
+      "CE_cone_lut_primitives": 15,
+      "R_cone_lut_primitives": 0
+    }
+  },
+  "logical_ff_control_groups_midi": 300,
+  "singleton_groups_midi": 1
+}

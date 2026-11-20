@@ -11,6 +11,7 @@ import struct
 import subprocess
 import boards
 import engine_policy
+import fpga_pair
 
 ROOT = Path(__file__).resolve().parents[2]
 PLATFORM = Path(__file__).resolve().parent
@@ -35,6 +36,10 @@ def build():
     parser.add_argument("--app", choices=["echo", "host"], default="echo")
     parser.add_argument("--credential-file", type=Path)
     parser.add_argument("--fixture", action="store_true")
+    fpga = parser.add_mutually_exclusive_group()
+    fpga.add_argument("--fpga-probe", action="store_true", help="Build the FPGA mailbox bring-up probe")
+    fpga.add_argument("--fpga", action="store_true", help="Serve sessions with the FPGA looping renderer")
+    fpga.add_argument("--native-i2s", action="store_true", help="Render on ARM at Q32 with the Z-turn V2 I2S adapter")
     parser.add_argument("--usb", action="store_true", help="Use the TinyUSB USB0 MIDI host")
     parser.add_argument("--deployment", action="store_true")
     parser.add_argument("--build-id", default="direct-dev")
@@ -43,7 +48,8 @@ def build():
     boards.argument(parser)
     args = parser.parse_args()
     board = boards.load(args.board)
-    policy = engine_policy.load(args.engine_config)
+    pool = {"loops": 66} if args.native_i2s else board.firmware.get("engine_pool")
+    policy = engine_policy.load(args.engine_config, pool=pool, usb=args.usb)
     global BUILD
     BUILD = board.build_dir(ROOT)
     if args.usb and board.firmware["midi"] != "usb-optional":
@@ -57,6 +63,12 @@ def build():
         parser.error("Deployment test faults require --deployment")
     if args.usb and args.app != "host":
         parser.error("USB MIDI requires the host app")
+    if args.fpga_probe and (args.app != "host" or not board.pl_bytes or args.deployment or args.usb or args.credential_file):
+        parser.error("FPGA probe requires a development host for a board with a PL arena")
+    if args.fpga and (args.app != "host" or not board.pl_bytes or args.usb or args.engine_config):
+        parser.error("FPGA renderer requires a host for a board with a PL arena and uses hardware pool capacities")
+    if args.native_i2s and (args.app != "host" or board.name != "zturn-v2" or args.usb):
+        parser.error("Native I2S requires the Z-turn V2 host without USB")
     BUILD.mkdir(parents=True, exist_ok=True)
     if args.fetch:
         SOURCE.parent.mkdir(parents=True, exist_ok=True)
@@ -101,6 +113,9 @@ def build():
     sources += [lwip / "src/netif/ethernet.c", port / "sys_arch.c", port / "sys_arch_raw.c"]
     sources += [port / "netif" / f for f in ("xadapter.c", "xpqueue.c", "xemacpsif.c", "xemacpsif_dma.c", "xemacpsif_hw.c", "xemacpsif_physpeed.c")]
     sources += [PLATFORM / "platform.c", PLATFORM / "profiling_identity.c", PLATFORM / (args.app + ".c")]
+    if board.bsp.get("phy") == "yt8531":
+        includes.append(PLATFORM / "boards")
+        sources.append(PLATFORM / "boards/yt8531.c")
     if args.usb:
         sources.append(PLATFORM / "boards" / (board.firmware["usb_reset"] + "_usb.c"))
         if args.fetch:
@@ -125,12 +140,18 @@ def build():
         sources += [p for p in (drivers / "sdps/src").glob("*.c") if not p.name.endswith("_g.c")]
     if args.app == "host":
         sources += [PLATFORM / name for name in ("sockets.c", "diagnostics.c")]
-    if args.fixture:
+    if args.fixture and not args.native_i2s:
         sources.append(PLATFORM / "fixture.c")
+    if args.native_i2s:
+        sources.append(PLATFORM / "native_audio.c")
+        if args.fixture:
+            sources.append(PLATFORM / "tests/native_audio_fixture.c")
     patches = {}
     for original, patch_name in [
         (drivers / "emacps/src/xemacps_intr.c", "emacps-read-clear.patch"),
         (kernel / "portable/GCC/ARM_CA9/portZynq7000.c", "freertos-fpu-irq.patch"),
+        *([(port / "netif/xemacpsif_physpeed.c", "lwip-yt8531.patch")]
+          if board.bsp.get("phy") == "yt8531" else []),
         *([(TINYUSB / "src/portable/ehci/ehci.c", "tinyusb-zynq-ehci.patch")] if args.usb else []),
         *([(TINYUSB / "src/class/midi/midi_host.c", "tinyusb-midi-error.patch")] if args.usb else []),
         *([(TINYUSB / "src/host/usbh.c", "tinyusb-enumeration-bounds.patch")] if args.usb else []),
@@ -148,11 +169,12 @@ def build():
         patches[patch_name] = hashlib.sha256(patch.read_bytes()).hexdigest()
     rust_library = None
     if args.app == "host":
-        if not args.deployment and (args.credential_file is None or len(args.credential_file.read_bytes()) != 32):
+        has_credential = not (args.deployment or args.fpga_probe)
+        if has_credential and (args.credential_file is None or len(args.credential_file.read_bytes()) != 32):
             raise SystemExit("Host requires --credential-file containing exactly 32 bytes")
         credential = BUILD / "credential.c"
         definition = "const char shoop_build_identity[] = " + json.dumps(args.build_id) + ";\n"
-        if not args.deployment:
+        if has_credential:
             definition += "const unsigned char shoop_credential[32] = {" + ",".join(str(b) for b in args.credential_file.read_bytes()) + "};\n"
         credential.write_text(definition)
         sources.append(credential)
@@ -160,6 +182,12 @@ def build():
         rust_flags = "-D warnings -C target-cpu=cortex-a9 -C target-feature=+neon"
         cargo = ["cargo", "+" + PINS["rust"], "build", "--locked", "--release", "--target", "armv7a-none-eabihf", "--manifest-path", manifest]
         features = (["fixture"] if args.fixture else []) + (["usb-midi"] if args.usb else [])
+        if args.fpga_probe:
+            features.append("fpga-probe")
+        if args.fpga:
+            features.append("fpga")
+        if args.native_i2s:
+            features.append("native-i2s")
         if features:
             cargo += ["--features", ",".join(features)]
         rust_target = (PLATFORM / "firmware/target" if board.name == boards.DEFAULT else BUILD.parent / "firmware-target")
@@ -178,6 +206,12 @@ def build():
     flags += ["-include", str(PLATFORM / "include/xparameters.h")]
     if args.fixture:
         flags += ["-DSHOOP_FIXTURE"]
+    if args.fpga_probe:
+        flags += ["-DSHOOP_FPGA_PROBE"]
+    if args.fpga:
+        flags += ["-DSHOOP_FPGA"]
+    if args.native_i2s:
+        flags += ["-DSHOOP_NATIVE_I2S"]
     if args.usb:
         flags += ["-DSHOOP_USB_MIDI"]
     if args.deployment:
@@ -201,6 +235,7 @@ def build():
         raise SystemExit("\n".join(errors))
     objects = [obj for obj, _ in results]
     elf = BUILD / (args.app + ("-usb" if args.usb else "") + ("-fixture" if args.fixture else "") + ("-deployment" if args.deployment else "") +
+                   ("-fpga-probe" if args.fpga_probe else "-fpga" if args.fpga else "-native-i2s" if args.native_i2s else "") +
                    ("-test" if args.deployment_test_fault else "") + ".elf")
     # Rust's compiler_builtins defines weak, generic memory routines. Pull newlib's optimized
     # strong ones from libc before the Rust library so they win for both C and Rust callers.
@@ -217,7 +252,13 @@ def build():
     symbols = subprocess.check_output([nm, "-g", elf], text=True)
     if not args.fixture and ("shoop_fixture_" in symbols or b"SHOOP_FPU_PASS" in image):
         raise SystemExit("Fixture hooks leaked into production firmware")
-    if args.deployment and "shoop_credential" in symbols:
+    if (b"SHOOP_FPGA_PROBE_" in image) != args.fpga_probe:
+        raise SystemExit("FPGA probe does not match the selected variant")
+    if (b"SHOOP_FPGA_HOST_UNAVAILABLE" in image) != args.fpga:
+        raise SystemExit("FPGA host does not match the selected variant")
+    if (b"SHOOP_NATIVE_I2S_UNAVAILABLE" in image) != args.native_i2s:
+        raise SystemExit("Native I2S host does not match the selected variant")
+    if (args.deployment or args.fpga_probe) and "shoop_credential" in symbols:
         raise SystemExit("Generic firmware contains a compiled credential")
     if not args.deployment_test_fault and b"SHOOP_DEPLOY_TEST_" in image:
         raise SystemExit("Deployment fault hooks leaked into production firmware")
@@ -250,7 +291,7 @@ def build():
             source_hash.update(name + b"\0" + hashlib.sha256(path.read_bytes()).digest())
     elf.with_suffix(".json").write_text(json.dumps({**board.manifest(), "embeddedsw": REVISION,
         "tinyusb": PINS["tinyusb"] if args.usb else None, "usb_midi": args.usb,
-        "engine_policy": policy,
+        "engine_policy": policy if not args.fpga else None,
         "compiler": subprocess.check_output([cc, "--version"], text=True).splitlines()[0],
         "sources": len(sources), "patch_sha256": patches,
         "elf_sha256": hashlib.sha256(image).hexdigest(),
@@ -258,6 +299,9 @@ def build():
         "git_head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "rust_target": "armv7a-none-eabihf" if rust_library else None,
         "fixture": args.fixture, "deployment": args.deployment, "build_id": args.build_id,
+        "fpga_probe": args.fpga_probe, "fpga_renderer": args.fpga, "native_i2s": args.native_i2s,
+        "fpga_contract": fpga_pair.contract(board, fpga_pair.NATIVE_AUDIO_ABI if args.native_i2s else fpga_pair.RTL_ABI)
+        if args.fpga_probe or args.fpga or args.native_i2s else None,
         "deployment_test_fault": args.deployment_test_fault,
         "ram_bytes": board.ram, "load_regions": regions, "elf": str(elf.relative_to(ROOT))}, indent=2) + "\n")
     if args.usb:

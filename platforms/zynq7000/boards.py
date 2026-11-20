@@ -42,8 +42,12 @@ class Board:
         return self.platform_end + self.memory["rust_mib"] * MIB
 
     @property
+    def pl_bytes(self):
+        return self.memory.get("pl_mib", 0) * MIB
+
+    @property
     def stage(self):
-        return self.rust_end
+        return self.rust_end + self.pl_bytes
 
     @property
     def loader_min(self):
@@ -60,8 +64,14 @@ class Board:
             raise ValueError("Invalid Zynq-7000 platform/DDR window")
         if self.memory["bundle_mib"] != 32:
             raise ValueError("The deployment protocol requires a 32 MiB bundle bound")
+        fpga = self.data.get("fpga")
+        if self.pl_bytes and (not isinstance(fpga, dict) or set(fpga) != {"register_base", "clock_hz"} or
+                              any(type(value) is not int for value in fpga.values()) or
+                              not 0x40000000 <= fpga["register_base"] <= 0x7ffff000 or
+                              fpga["register_base"] % 4096 or not 1 <= fpga["clock_hz"] <= 250_000_000):
+            raise ValueError("Invalid FPGA register aperture or clock")
         if self.loader_min + self.memory["loader_mib"] * MIB > self.ram:
-            raise ValueError("Firmware, two staging buffers and loader exceed board DDR")
+            raise ValueError("Firmware, PL arena, two staging buffers and loader exceed board DDR")
         fw = self.firmware
         if any(type(fw[k]) is not int or fw[k] <= 0 for k in ("recording_mib", "media_mib", "runtime_reserve_mib")):
             raise ValueError("Firmware budgets must be positive integer MiB values")
@@ -72,6 +82,10 @@ class Board:
             raise ValueError("Recording, media replacement overlap and runtime reserve exceed Rust arena")
         if fw["audio"] != "dummy" or fw["midi"] not in ("dummy", "usb-optional"):
             raise ValueError("Unsupported audio/MIDI implementation")
+        pool = fw.get("engine_pool", {})
+        if (not isinstance(pool, dict) or set(pool) - {"tracks", "loops"} or
+                any(type(value) is not int or not 1 <= value <= 65535 for value in pool.values())):
+            raise ValueError("Invalid firmware engine pool")
         if self.bsp["gem_base"] not in (0xe000b000, 0xe000c000) or self.bsp["uart_base"] not in (0xe0000000, 0xe0001000):
             raise ValueError("Unsupported PS peripheral selection")
         if self.bsp["sd_base"] not in (0xe0100000, 0xe0101000):
@@ -85,6 +99,8 @@ class Board:
             raise ValueError("GEM clock divisors must be pairs in 1..63 for each link speed")
         if type(self.bsp["phy_address"]) is not int or not 0 <= self.bsp["phy_address"] <= 31:
             raise ValueError("PHY address must be in 0..31")
+        if self.bsp.get("phy") not in (None, "yt8531"):
+            raise ValueError("Unsupported board PHY")
         tree = self.boot["device_tree"]
         if (not re.fullmatch(r"zynq-[a-z0-9-]+", tree) or
                 self.boot["ps_init"] != f"board/xilinx/zynq/{tree}/ps7_init_gpl.c" or
@@ -117,6 +133,12 @@ class Board:
             for i, value in enumerate(divs):
                 values[f"GEM_{speed}_DIV{i}"] = value
         lines = ["/* Generated board contract. */", "#ifndef SHOOP_BOARD_H", "#define SHOOP_BOARD_H"]
+        if self.pl_bytes:
+            values.update(PL_DDR_BASE=self.rust_end, PL_DDR_BYTES=self.pl_bytes,
+                          PL_REG_BASE=self.data["fpga"]["register_base"],
+                          PL_CLOCK_HZ=self.data["fpga"]["clock_hz"], PL_IRQ=61)
+        if b.get("phy") == "yt8531":
+            values.update(BOARD_PHY_YT8531=1, BOARD_PHY_ADDRESS=b["phy_address"])
         lines += [f"#define SHOOP_{key} {value:#x}u" for key, value in values.items()]
         lines += [f"#define SHOOP_BOARD_PROFILE {json.dumps(self.profile)}", "#endif", ""]
         return "\n".join(lines)

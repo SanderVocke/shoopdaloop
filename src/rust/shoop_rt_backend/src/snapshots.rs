@@ -208,6 +208,14 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         } else if !records.iter().all(known) {
             return;
         }
+        if self.prepared_graph.is_some() {
+            self.snapshots
+                .loop_generations
+                .resize(self.mirror.loop_slots.capacity(), 0);
+            self.snapshots
+                .strip_generations
+                .resize(self.mirror.strip_slots.capacity(), 0);
+        }
         self.snapshots.loop_generations.fill(0);
         self.snapshots.strip_generations.fill(0);
         self.snapshots.bus_generations.fill(0);
@@ -305,6 +313,10 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
         }
         self.snapshots.accepted = chunk.sequence;
         self.snapshots.frame = Some(header.frame);
+        if self.prepared_graph.is_some() {
+            self.status.frame = header.frame;
+            self.status.callbacks = header.frame / u64::from(self.limits().quantum.max(1));
+        }
         self.snapshots.observed_configuration = Some((header.graph, header.topology));
         if header.frame > self.snapshots.after {
             self.telemetry_fresh = true;

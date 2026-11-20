@@ -14,7 +14,9 @@
 use crate::endpoint::ControlEndpoint;
 use crate::jobs::Job;
 use crate::model::Change;
-use shoop_rt_protocol::{BusId, BusPort, EnginePort, Outcome, PortKind, Refusal, Request};
+use shoop_rt_protocol::{
+    BusId, BusPort, EnginePort, Outcome, PortKind, ProcessorKind, Refusal, Request,
+};
 
 /// A pending transaction changes the slot's connections, routes or sync source.
 pub(crate) const SOFT: u8 = 1;
@@ -35,6 +37,7 @@ fn structural(request: &Request) -> bool {
         Request::CreateProcessedBus { .. }
             | Request::CreateBus { .. }
             | Request::SetBusProcessor { .. }
+            | Request::SetBusProcessorKind { .. }
             | Request::RemoveBus { .. }
             | Request::CreateStrip { .. }
             | Request::CreateProcessedStrip { .. }
@@ -113,6 +116,7 @@ impl ControlEndpoint {
                 | Request::Composite(shoop_rt_protocol::CompositeCommand::Cancel { .. })
                 | Request::ReplacementBegin { .. }
                 | Request::ReplacementEdit { .. }
+                | Request::ReplacementCheckpoint { .. }
                 | Request::ReplacementPrepare { .. }
                 | Request::ReplacementCommit { .. }
                 | Request::ReplacementCancel { .. }
@@ -228,6 +232,7 @@ impl ControlEndpoint {
             Request::ContentFamilyEdit { edit, .. } => loop_(edit.loop_id.0.index, SOFT),
             Request::ContentFamilyCommit { .. } | Request::ContentFamilyCancel { .. } => false,
             Request::SetBusProcessor { bus: id, .. }
+            | Request::SetBusProcessorKind { bus: id, .. }
             | Request::CreateProcessedBus { bus: id, .. }
             | Request::CreateBus { bus: id, .. }
             | Request::RemoveBus { bus: id } => bus(id, WAITING),
@@ -235,6 +240,7 @@ impl ControlEndpoint {
             Request::Diagnostic(_) | Request::PreviewStop | Request::CancelBulk => false,
             Request::ReplacementBegin { .. }
             | Request::ReplacementEdit { .. }
+            | Request::ReplacementCheckpoint { .. }
             | Request::ReplacementPrepare { .. }
             | Request::ReplacementCommit { .. }
             | Request::ReplacementCancel { .. } => false,
@@ -247,6 +253,22 @@ impl ControlEndpoint {
             Request::StripControl { strip: id, .. }
             | Request::StripDefaultPlayback { strip: id, .. }
             | Request::ProcessorControl { strip: id, .. }
+            | Request::ProcessorEditor {
+                target: shoop_rt_protocol::ProcessorTarget::Strip(id),
+                ..
+            }
+            | Request::ProcessorClearLogs {
+                target: shoop_rt_protocol::ProcessorTarget::Strip(id),
+                ..
+            }
+            | Request::ProcessorLogs {
+                target: shoop_rt_protocol::ProcessorTarget::Strip(id),
+                ..
+            }
+            | Request::ProcessorCheckpoint {
+                target: shoop_rt_protocol::ProcessorTarget::Strip(id),
+                ..
+            }
             | Request::InjectMidi { strip: id, .. } => strip(id.0.index, HARD),
             Request::LoopTransition { loop_id, delay, .. } => {
                 let owner = self
@@ -265,9 +287,24 @@ impl ControlEndpoint {
             Request::LoopClear { loop_id } | Request::ContentApply { loop_id, .. } => {
                 loop_(loop_id.0.index, SOFT)
             }
-            Request::BusProcessorControl { bus: id, .. } | Request::BusControl { bus: id, .. } => {
-                bus(id, HARD)
+            Request::BusProcessorControl { bus: id, .. }
+            | Request::BusControl { bus: id, .. }
+            | Request::ProcessorEditor {
+                target: shoop_rt_protocol::ProcessorTarget::Bus(id),
+                ..
             }
+            | Request::ProcessorClearLogs {
+                target: shoop_rt_protocol::ProcessorTarget::Bus(id),
+                ..
+            }
+            | Request::ProcessorLogs {
+                target: shoop_rt_protocol::ProcessorTarget::Bus(id),
+                ..
+            }
+            | Request::ProcessorCheckpoint {
+                target: shoop_rt_protocol::ProcessorTarget::Bus(id),
+                ..
+            } => bus(id, HARD),
             Request::SetSmoothing { .. } => false,
             Request::CreateStrip { strip: id, .. }
             | Request::CreateProcessedStrip { strip: id, .. } => strip(id.0.index, WAITING),
@@ -353,6 +390,7 @@ impl ControlEndpoint {
             | Request::CancelBulk => {}
             Request::ReplacementBegin { .. }
             | Request::ReplacementEdit { .. }
+            | Request::ReplacementCheckpoint { .. }
             | Request::ReplacementPrepare { .. }
             | Request::ReplacementCommit { .. }
             | Request::ReplacementCancel { .. } => {}
@@ -365,6 +403,22 @@ impl ControlEndpoint {
             Request::StripControl { strip: id, .. }
             | Request::StripDefaultPlayback { strip: id, .. }
             | Request::ProcessorControl { strip: id, .. }
+            | Request::ProcessorEditor {
+                target: shoop_rt_protocol::ProcessorTarget::Strip(id),
+                ..
+            }
+            | Request::ProcessorClearLogs {
+                target: shoop_rt_protocol::ProcessorTarget::Strip(id),
+                ..
+            }
+            | Request::ProcessorLogs {
+                target: shoop_rt_protocol::ProcessorTarget::Strip(id),
+                ..
+            }
+            | Request::ProcessorCheckpoint {
+                target: shoop_rt_protocol::ProcessorTarget::Strip(id),
+                ..
+            }
             | Request::InjectMidi { strip: id, .. }
             | Request::CreateStrip { strip: id, .. }
             | Request::CreateProcessedStrip { strip: id, .. }
@@ -387,7 +441,24 @@ impl ControlEndpoint {
                 }
             }
             Request::SetBusProcessor { bus, .. }
+            | Request::SetBusProcessorKind { bus, .. }
             | Request::BusProcessorControl { bus, .. }
+            | Request::ProcessorEditor {
+                target: shoop_rt_protocol::ProcessorTarget::Bus(bus),
+                ..
+            }
+            | Request::ProcessorClearLogs {
+                target: shoop_rt_protocol::ProcessorTarget::Bus(bus),
+                ..
+            }
+            | Request::ProcessorLogs {
+                target: shoop_rt_protocol::ProcessorTarget::Bus(bus),
+                ..
+            }
+            | Request::ProcessorCheckpoint {
+                target: shoop_rt_protocol::ProcessorTarget::Bus(bus),
+                ..
+            }
             | Request::CreateProcessedBus { bus, .. }
             | Request::CreateBus { bus, .. }
             | Request::RemoveBus { bus }
@@ -493,15 +564,7 @@ impl ControlEndpoint {
         kind: shoop_rt_protocol::ProcessorKind,
         excluding: Option<BusId>,
     ) -> Result<crate::model::ProcessorOwner, Staged> {
-        let limit = match kind {
-            shoop_rt_protocol::ProcessorKind::BuiltInFx => {
-                self.processor_catalog.effective.fx_instances
-            }
-            shoop_rt_protocol::ProcessorKind::OxiSynth => {
-                self.processor_catalog.effective.synth_instances
-            }
-            _ => 0,
-        };
+        let limit = self.processor_catalog.effective.instances(kind);
         if limit == 0 {
             return Err(Staged::Refused(Refusal::Unsupported));
         }
@@ -554,34 +617,57 @@ impl ControlEndpoint {
         }
         Err(Staged::Refused(Refusal::Capacity))
     }
+
+    fn reserve_bus_processor(
+        &self,
+        kind: ProcessorKind,
+        channels: u8,
+        excluding: Option<BusId>,
+    ) -> Result<crate::model::ProcessorOwner, Staged> {
+        if !kind.supports_bus() {
+            return Err(Staged::Refused(Refusal::Unsupported));
+        }
+        let width = kind.prepared_audio_channels(self.shape.processor_channels);
+        if usize::from(channels) > width || usize::from(channels) > self.shape.processor_channels {
+            return Err(Staged::Refused(Refusal::Capacity));
+        }
+        self.reserve_processor(kind, excluding)
+    }
+
+    fn stage_bus_processor(
+        &self,
+        bus: BusId,
+        kind: Option<ProcessorKind>,
+        replacing: bool,
+    ) -> Staged {
+        let Some(entry) = self.next.bus(bus) else {
+            return Staged::Refused(Refusal::InvalidId);
+        };
+        if !replacing && self.model.bus(bus).is_none() {
+            return Staged::Wait;
+        }
+        match kind
+            .map(|kind| self.reserve_bus_processor(kind, entry.channels, Some(bus)))
+            .transpose()
+        {
+            Ok(processor) => Staged::Change(Change::BusProcessor { bus, processor }),
+            Err(staged) => staged,
+        }
+    }
     /// Validate a structural request against the staged model.
     pub(crate) fn stage(&self, request: Request, replacing: bool) -> Staged {
         let next = &self.next;
         match request {
-            Request::SetBusProcessor { bus, enabled } => {
-                let Some(entry) = next.bus(bus) else {
-                    return Staged::Refused(Refusal::InvalidId);
-                };
-                if !replacing && self.model.bus(bus).is_none() {
-                    return Staged::Wait;
-                }
-                if enabled && entry.channels as usize > self.shape.processor_channels {
-                    return Staged::Refused(Refusal::Capacity);
-                }
-                let processor = if enabled {
-                    match self
-                        .reserve_processor(shoop_rt_protocol::ProcessorKind::BuiltInFx, Some(bus))
-                    {
-                        Ok(owner) => Some(owner),
-                        Err(staged) => return staged,
-                    }
-                } else {
-                    None
-                };
-                Staged::Change(Change::BusProcessor { bus, processor })
+            Request::SetBusProcessor { bus, enabled } => self.stage_bus_processor(
+                bus,
+                enabled.then_some(ProcessorKind::BuiltInFx),
+                replacing,
+            ),
+            Request::SetBusProcessorKind { bus, kind } => {
+                self.stage_bus_processor(bus, kind, replacing)
             }
             Request::CreateBus { bus, channels }
-            | Request::CreateProcessedBus { bus, channels } => {
+            | Request::CreateProcessedBus { bus, channels, .. } => {
                 let slot = bus.0.index as usize;
                 if slot >= next.buses.len()
                     || channels == 0
@@ -596,13 +682,8 @@ impl ControlEndpoint {
                 } else if !replacing && self.model.buses[slot].is_some() {
                     Staged::Wait
                 } else {
-                    let processor = if matches!(request, Request::CreateProcessedBus { .. }) {
-                        if channels as usize > self.shape.processor_channels {
-                            return Staged::Refused(Refusal::Capacity);
-                        }
-                        match self
-                            .reserve_processor(shoop_rt_protocol::ProcessorKind::BuiltInFx, None)
-                        {
+                    let processor = if let Request::CreateProcessedBus { kind, .. } = request {
+                        match self.reserve_bus_processor(kind, channels, None) {
                             Ok(owner) => Some(owner),
                             Err(staged) => return staged,
                         }
@@ -637,10 +718,23 @@ impl ControlEndpoint {
                         }
                         Some(crate::model::ProcessorOwner { kind, slot: None })
                     } else {
-                        if !shape.midi_input
+                        if kind.is_carla() {
+                            let width = kind.fixed_audio_channels().unwrap_or_default();
+                            if usize::from(shape.audio_inputs) > width
+                                || usize::from(shape.audio_outputs) > width
+                                || (shape.audio_inputs == 0
+                                    && shape.audio_outputs == 0
+                                    && !shape.midi_input
+                                    && !shape.midi_output)
+                            {
+                                return Staged::Refused(Refusal::InvalidValue);
+                            }
+                        } else if !shape.midi_input
                             || shape.midi_output
                             || shape.audio_inputs == 0
                             || shape.audio_inputs != shape.audio_outputs
+                            || usize::from(shape.audio_inputs)
+                                > kind.prepared_audio_channels(self.shape.processor_channels)
                             || (kind == shoop_rt_protocol::ProcessorKind::OxiSynth
                                 && shape.audio_inputs != 2)
                         {
@@ -870,19 +964,15 @@ impl ControlEndpoint {
                     Staged::Refused(Refusal::InvalidValue)
                 }
                 Some(entry) => {
-                    let (channel, target) = (
-                        port.index as usize,
-                        bus.0.index as usize * shoop_rt_protocol::MAX_STRIP_CHANNELS
-                            + index as usize,
-                    );
+                    let channel = port.index as usize;
                     let mask = entry.outputs.buses[entry.outputs.active][channel];
-                    if (mask & (1 << target) != 0) == connected {
+                    if mask.contains(bus.0.index as usize, index as usize) == connected {
                         Staged::Done
                     } else {
                         Staged::Change(Change::Route {
                             strip: port.strip,
                             channel,
-                            target,
+                            target: BusPort { bus, index },
                             connected,
                         })
                     }

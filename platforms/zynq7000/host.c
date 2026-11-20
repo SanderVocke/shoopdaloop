@@ -13,6 +13,9 @@
 #include "deployment/runtime.h"
 #include "profiling.h"
 #include "diagnostics.h"
+#ifdef SHOOP_NATIVE_I2S
+#include "native_audio.h"
+#endif
 #ifdef SHOOP_USB_MIDI
 #include "usb/host.h"
 #endif
@@ -25,12 +28,18 @@ extern void shoop_render_xruns(void *, uint32_t);
 extern const unsigned char shoop_credential[32];
 #endif
 extern const char shoop_build_identity[];
+#ifndef SHOOP_FPGA_PROBE
 static struct netif interface;
+#endif
 static TaskHandle_t render_task;
 static _Atomic int render_done;
+#ifdef SHOOP_NATIVE_I2S
+static _Atomic int render_stopping;
+#else
 static uint32_t phase;
+#endif
 static uint32_t render_stack_remaining;
-#ifdef SHOOP_FIXTURE
+#if defined(SHOOP_FIXTURE) && !defined(SHOOP_NATIVE_I2S)
 extern int shoop_fixture_paused(void);
 extern unsigned shoop_fixture_frames(void);
 extern void shoop_fixture_irq(void);
@@ -99,6 +108,10 @@ uint64_t shoop_boot_nonce(void) {
 
 void vApplicationTickHook(void) {
     shoop_deploy_tick();
+#if defined(SHOOP_NATIVE_I2S) && defined(SHOOP_FIXTURE)
+    shoop_fixture_native_audio_tick();
+#endif
+#ifndef SHOOP_NATIVE_I2S
 #ifdef SHOOP_FIXTURE
     shoop_fixture_irq();
     if (shoop_fixture_paused()) return;
@@ -111,8 +124,9 @@ void vApplicationTickHook(void) {
         vTaskNotifyGiveFromISR(render_task, &wake);
         portYIELD_FROM_ISR(wake);
     }
+#endif
 }
-#ifndef SHOOP_FIXTURE
+#if !defined(SHOOP_FIXTURE) && !defined(SHOOP_NATIVE_I2S)
 /* Render outranks the control task, whose heartbeats keep app sessions alive.
    Under overload, cap render's share of each window and drop the excess quanta
    as xruns instead of starving control. */
@@ -125,6 +139,21 @@ static void render(void *owner) {
     uint32_t fpscr;
     __asm__ volatile("vmrs %0, fpscr" : "=r"(fpscr));
     __asm__ volatile("vmsr fpscr, %0" :: "r"(fpscr | (1u << 24) | (1u << 25)));
+#ifdef SHOOP_NATIVE_I2S
+    if (!shoop_native_audio_start()) {
+        shoop_logf("SHOOP_NATIVE_I2S_UNAVAILABLE IRQ setup failed\r\n");
+        atomic_store(&render_done, -1);
+        vTaskSuspend(NULL);
+    }
+    for (;;) {
+        int result = shoop_native_audio_wait(owner, atomic_load(&render_stopping));
+        shoop_deploy_render();
+        if (result != 0) {
+            atomic_store(&render_done, result == 1 ? 1 : -1);
+            vTaskSuspend(NULL);
+        }
+    }
+#else
 #ifndef SHOOP_FIXTURE
     const uint64_t window = shoop_timer_hz() * RENDER_WINDOW_MS / 1000;
     uint64_t window_start = shoop_timer_ticks(), busy = 0;
@@ -159,17 +188,51 @@ static void render(void *owner) {
         busy += shoop_timer_ticks() - started;
 #endif
     }
+#endif
 }
 void shoop_start_render(void *owner) {
     configASSERT(!render_task);
     configASSERT(xTaskCreate(render, "render", 65536, owner, 6, &render_task) == pdPASS);
-#ifdef SHOOP_FIXTURE
+#if defined(SHOOP_FIXTURE) && !defined(SHOOP_NATIVE_I2S)
     shoop_fixture_start();
 #endif
 }
 void shoop_render_wake(void) { if (render_task) xTaskNotifyGive(render_task); }
+#ifdef SHOOP_FPGA
+static TaskHandle_t fpga_task;
+static int (*fpga_entry)(void *);
+static _Atomic int fpga_done, fpga_stop;
+static void fpga_owner(void *owner) {
+    atomic_store(&fpga_done, fpga_entry(owner) == 1 ? 1 : -1);
+    vTaskSuspend(NULL);
+}
+int shoop_start_fpga_task(int (*entry)(void *), void *owner) {
+    configASSERT(!fpga_task);
+    fpga_entry = entry;
+    return xTaskCreate(fpga_owner, "fpga-owner", 32768, owner, 5, &fpga_task) == pdPASS;
+}
+int shoop_fpga_stop_requested(void) { return atomic_load(&fpga_stop); }
+void shoop_fpga_task_progress(void) { shoop_deploy_render(); }
+int shoop_stop_fpga_task(void) {
+    configASSERT(fpga_task);
+    static uint64_t deadline;
+    if (!deadline) {
+        deadline = shoop_millis() + 5000;
+        atomic_store(&fpga_stop, 1);
+        xTaskNotifyGive(fpga_task);
+    }
+    int done = atomic_load(&fpga_done);
+    if (!done) return shoop_millis() < deadline ? 2 : 0;
+    vTaskDelete(fpga_task); fpga_task = NULL;
+    if (done == 1) shoop_deploy_render_stopped();
+    return done;
+}
+#endif
 int shoop_stop_render(void) {
-#ifdef SHOOP_FIXTURE
+#ifdef SHOOP_NATIVE_I2S
+    if (!atomic_exchange(&render_stopping, 1)) shoop_render_wake();
+#endif
+#if defined(SHOOP_FIXTURE) && !defined(SHOOP_NATIVE_I2S)
     extern void shoop_fixture_stopping(void);
     shoop_fixture_stopping();
     shoop_render_wake();
@@ -192,7 +255,7 @@ int shoop_cleanup_allowed(void) {
     static unsigned failed;
     if (!failed++) { shoop_logf("SHOOP_DEPLOY_TEST_CLEANUP_REFUSED\r\n"); return 0; }
 #endif
-#ifdef SHOOP_FIXTURE
+#if defined(SHOOP_FIXTURE) && !defined(SHOOP_NATIVE_I2S)
     extern int shoop_fixture_fail_cleanup(void);
     return !shoop_fixture_fail_cleanup();
 #else
@@ -213,6 +276,7 @@ void shoop_memory_report(void) {
         (unsigned)lwip_stats.memp[MEMP_TCP_PCB]->used, (unsigned)lwip_stats.memp[MEMP_NETCONN]->used,
         shoop_socket_count());
 }
+#ifndef SHOOP_FPGA_PROBE
 static void stacks_report(void) {
     static TaskStatus_t tasks[32];
     unsigned count = uxTaskGetSystemState(tasks, 32, NULL);
@@ -221,9 +285,15 @@ static void stacks_report(void) {
         shoop_logf("SHOOP_STACK name=%s free_words=%u\r\n", tasks[i].pcTaskName, (unsigned)tasks[i].usStackHighWaterMark);
     }
 }
+#endif
 
 static void network(void *unused) {
     (void)unused;
+#ifdef SHOOP_FPGA_PROBE
+    shoop_rust_main();
+    shoop_logf("SHOOP_FPGA_PROBE_RETURNED\r\n");
+    vTaskDelete(NULL);
+#else
     ip_addr_t ip, mask, gateway;
 #ifdef SHOOP_DEPLOYMENT
     configASSERT(shoop_deploy_init());
@@ -246,6 +316,7 @@ static void network(void *unused) {
     shoop_memory_report();
     shoop_logf("SHOOP_HOST_RETURNED\r\n");
     vTaskDelete(NULL);
+#endif
 }
 int main(void) {
     shoop_platform_init();

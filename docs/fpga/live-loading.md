@@ -7,9 +7,26 @@ Contract: [LOADING_DESIGN.md](../../LOADING_DESIGN.md).
 `rt_fpga_compiler::loading::Allocator` owns one current and one pending layout.
 It reserves loop, typed value and history allocations against the current
 occupancy, assigns physical generations, and binds instructions to those
-addresses. Retained identities must keep compatible state roles. Revisions and
+addresses. Logical identity numbers do not consume physical address space;
+logical compilation checks counts and target resource budgets, and allocation
+checks the simultaneous old/new occupancy. Application track and loop tables grow
+with the draft; they do not impose an extra graph-size profile. Graph descriptions
+may span bounded command groups, and only ActivateGraph publishes a complete
+upload. A refusal names the exhausted resource and preserves current ownership.
+Retained identities must keep compatible state roles. Revisions and
 slot generations use checked increments. Cancellation burns their identifiers;
 it cannot make an old image current again.
+
+Graph compilation supplies stable value bindings by owner (strip, loop or bus),
+purpose and channel. Continuing loop media channel sets must match; incompatible
+channel changes require a new loop identity. Smoothing histories are independent
+per channel. Immutable coefficient identities include their value, so changing a
+gain, balance or mute stages fresh configuration without writing active RAM.
+Unchanged coefficients and runtime loop gain values remain owned and untouched.
+Media views use the independently allocated view-state addresses, not loop cursor
+slots. Reference, browser and Marlin media tables match the state-value capacity.
+Only fresh views are prepared; background reclamation inspects actual active
+media operands before clearing an unused view.
 
 `RustTarget::build_image` and `RtlTarget::build_image` lower the same logical
 program using that layout. Only new allocations receive initializers. Carried
@@ -26,7 +43,8 @@ access remains available for explicit test fixtures and is not hardware isolatio
 ## Rust real-time path
 
 The reference host keeps its state processor, job processor, media pool and frame
-clock alive across graph changes. Graph descriptions stop at the ARM endpoint:
+clock alive across graph changes. Complete `GraphView` snapshots, including unsupported shapes and MIDI information,
+stop at the ARM endpoint:
 compilation and allocation run there, outside processing. Typed bound artifacts
 cross a bounded program-memory handoff. Unused media views are prepared
 incrementally. The execution side reports readiness before ARM publishes a switch
@@ -40,7 +58,8 @@ snapshot metadata move with the instance, rather than a temporary binding index.
 
 The header names the expected old revision; the small `SwitchProgram` record
 contains the next revision, instruction region and instruction/sync/state/job/
-buffer counts. RT protocol version 37 includes this record. The FPGA profile uses
+buffer counts. RT protocol version 39 includes complete semantic graph uploads and resource/feature-specific graph refusals.
+The FPGA profile uses
 the same monotonic value for graph and topology. Old-revision commands following
 a switch receive `StaleConfiguration`, including commands to retained loops.
 
@@ -59,10 +78,22 @@ audio continues. Fence errors retain the relevant image and ownership instead of
 destroying its program storage during processing or returning a false completion.
 
 `RtBackend` maintains an editable prepared graph and a committed runtime revision.
-Structural mutations alter the prepared graph; `ActivatePreparedGraph` installs
-it. Immediate runtime commands keep using committed identities/revisions.
-Pending handoffs exclude another structural activation. The temporary application
-client exercises this through the real `shoop_host` socket/application API.
+Structural mutations alter the prepared graph. The application service commits
+one complete operation (including its default connections) automatically, and
+tracks its completion through the ownership fence. Later application commands
+wait behind a pending switch. Lower-level clients can still stage mutations and
+request explicit activation. Immediate runtime commands use committed identities
+and revisions. Failed preparation restores the last committed control-side mirror,
+retaining monotonically allocated identities and slot generations; it does not
+roll back executing processor state.
+
+The Rust-reference host can be used with the UI through shared Dummy, CPAL or
+JACK drivers. Its portable renderer has no private pacing thread. Backend
+selection is a host startup setting. Unsupported operations use the existing
+refusal path. The [Usage panel](../runtime_profiling.md#backend-resource-usage)
+reports the active program and storage limits. See the
+[host instructions](../../src/rust/shoop_host/README.md#rust-fpga-reference-with-the-ui)
+for startup and the supported graph subset.
 
 ## RTL and Marlin
 
@@ -129,7 +160,7 @@ Run the focused gates with:
 ```sh
 cargo test -p rt_fpga_compiler -p rt_fpga_reference --all-features
 cargo test -p shoop_rt_protocol -p shoop_rt_transport --all-features
-cargo test -p rt_fpga_testbench --features sim --test loading --test compiler --test sync
+cargo test -p rt_fpga_testbench --features sim --test loading --test targets --test sync
 cargo test -p shoop_host --no-default-features --features fpga-reference --test prepared_graph
 ```
 
@@ -185,7 +216,7 @@ without restarting time. The loader does not introduce another processing clock.
 
 - Compiler/reference suites, including no-heap recording switches and six FIFO
   loading scenarios, pass.
-- All sixteen selected RTL compiler, state, audio, smoothing, sync, reference and
+- All sixteen selected RTL target, state, audio, smoothing, sync, reference and
   live-loading tests pass. The retained pipeline matrix also passes with instant,
   fixed-latency, DRAMsim3 and legacy memory.
 - Protocol/transport: 36 tests pass. Native RT backend/engine: 294 pass; loop

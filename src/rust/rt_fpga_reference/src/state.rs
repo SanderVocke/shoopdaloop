@@ -9,8 +9,13 @@ use crate::{
 };
 use alloc::vec::Vec;
 pub mod sync;
-use crate::transitions::{Event, LoopId, LoopState, TransitionError, TransitionPlan};
-pub use sync::{LoopSlot, ModePlan, ModeStep, PlannedTransition, Resolution, SyncInstruction};
+use crate::transitions::{
+    Event, EventKind, LoopId, LoopState, Operation, TransitionError, TransitionPlan,
+};
+pub use sync::{
+    apply_mode_command, LoopSlot, ModePlan, ModeStep, PlannedTransition, Resolution,
+    SyncInstruction,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -29,6 +34,39 @@ pub struct Program {
     #[cfg_attr(feature = "serde", serde(with = "crate::serde_index"))]
     #[cfg_attr(feature = "schema", schemars(with = "u32"))]
     pub jobs_per_quantum: usize,
+}
+
+impl Program {
+    pub(crate) fn check_job_budget(&self) -> Result<(), Error> {
+        let has_midi = self.instructions.iter().any(|i| {
+            matches!(
+                i,
+                Instruction::ProcessMidiInput { .. }
+                    | Instruction::ProcessMidiPlayback { .. }
+                    | Instruction::ProcessMidiCapture { .. }
+                    | Instruction::ProcessMidiMerge { .. }
+                    | Instruction::ProcessMidiOutput { .. }
+            )
+        });
+        if has_midi {
+            let needed = self
+                .instructions
+                .iter()
+                .try_fold(0usize, |n, op| {
+                    n.checked_add(match op {
+                        Instruction::ProcessMidiCapture { .. } => 3,
+                        Instruction::ProcessLogicalCapture { .. }
+                        | Instruction::ProcessLoopCapture { .. } => 2,
+                        _ => 1,
+                    })
+                })
+                .ok_or(Error::QueueFull)?;
+            if needed > self.jobs_per_quantum {
+                return Err(Error::QueueFull);
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -81,6 +119,31 @@ impl Value {
 )]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum Instruction {
+    ProcessMidiInput {
+        port: u16,
+        destination: crate::midi::BufferId,
+    },
+    ProcessMidiPlayback {
+        loop_id: Identity,
+        sequence: crate::midi::SequenceId,
+        cursor: crate::midi::CursorId,
+        channels: u16,
+        destination: crate::midi::BufferId,
+    },
+    ProcessMidiCapture {
+        loop_id: Identity,
+        sequence: crate::midi::SequenceId,
+        source: crate::midi::BufferId,
+    },
+    ProcessMidiMerge {
+        left: crate::midi::BufferId,
+        right: crate::midi::BufferId,
+        destination: crate::midi::BufferId,
+    },
+    ProcessMidiOutput {
+        source: crate::midi::BufferId,
+        port: u16,
+    },
     ProcessSilence {
         destination: BufferId,
     },
@@ -166,7 +229,7 @@ impl StateProcessor {
             loops.reserve_loading(limits.loop_slots as usize);
         }
     }
-    pub(crate) fn switch_image(&mut self, image: &mut crate::compiler::ProgramImage) {
+    pub(crate) fn switch_image(&mut self, image: &mut crate::target::ProgramImage) {
         for &(address, value) in &image.initializers {
             self.memory[address.0] = value;
         }
@@ -211,6 +274,43 @@ impl StateProcessor {
             .as_ref()
             .ok_or(TransitionError::InvalidState)?
             .slot(id)
+    }
+    pub(crate) fn validate_midi_contents(
+        &self,
+        updates: &[(LoopId, u64)],
+    ) -> Result<(), TransitionError> {
+        let q = self.quantum().ok_or(TransitionError::InvalidState)?;
+        for &(id, frames) in updates {
+            if frames % u64::from(q) != 0 {
+                return Err(TransitionError::InvalidFrame);
+            }
+            self.loop_state(id)?
+                .state
+                .revision_watermark
+                .checked_add(1)
+                .ok_or(TransitionError::Exhausted)?;
+        }
+        Ok(())
+    }
+    pub(crate) fn publish_midi_contents(
+        &mut self,
+        updates: &[(LoopId, u64)],
+    ) -> Result<(), TransitionError> {
+        self.validate_midi_contents(updates)?;
+        let loops = self.loops.as_mut().ok_or(TransitionError::InvalidState)?;
+        for &(id, frames) in updates {
+            let slot = loops.slot_mut(id)?;
+            let mut state = slot.state;
+            state.content_length = frames;
+            state.revision_watermark += 1;
+            state.content_revision = state.revision_watermark;
+            state.mode = crate::transitions::Mode::Stopped;
+            state.position = 0;
+            state.capture_frames = 0;
+            state.cycles = 0;
+            *slot = LoopSlot::initial(state, slot.mode_plan);
+        }
+        Ok(())
     }
     pub fn loop_states(&self) -> impl Iterator<Item = LoopState> + '_ {
         self.loops.iter().flat_map(|loops| {
@@ -406,6 +506,7 @@ impl StateProcessor {
         loops: Option<SettledRecords<'_>>,
         sink: &mut impl FnMut(crate::resolver::ReadIntent),
     ) -> Result<(), Error> {
+        program.check_job_budget()?;
         if !queue.is_empty() || queue.remaining() < program.jobs_per_quantum {
             return Err(Error::QueueFull);
         }
@@ -444,7 +545,102 @@ impl StateProcessor {
             Ok::<(), Error>(())
         };
         for &instruction in &program.instructions {
+            if let Instruction::ProcessMidiCapture {
+                loop_id, sequence, ..
+            } = instruction
+            {
+                if loops.is_some() {
+                    return Err(Error::InvalidState);
+                }
+                let slot = self
+                    .loops
+                    .as_mut()
+                    .ok_or(Error::InvalidState)?
+                    .slot_mut(loop_id)
+                    .map_err(Error::Transition)?;
+                let recording = slot.render.mode == Mode::Recording;
+                if slot.midi_capture_open && (!recording || slot.render.begin_capture) {
+                    emit(Job::MidiFinishCapture { sequence })?;
+                    slot.midi_capture_open = false;
+                }
+                if recording && !slot.midi_capture_open {
+                    emit(Job::MidiBeginCapture { sequence })?;
+                    slot.midi_capture_open = true;
+                }
+            }
+        }
+        for &instruction in &program.instructions {
             match instruction {
+                Instruction::ProcessMidiInput { port, destination } => {
+                    emit(Job::MidiInput { port, destination })?
+                }
+                Instruction::ProcessMidiMerge {
+                    left,
+                    right,
+                    destination,
+                } => emit(Job::MidiMerge {
+                    left,
+                    right,
+                    destination,
+                })?,
+                Instruction::ProcessMidiOutput { source, port } => {
+                    emit(Job::MidiOutput { source, port })?
+                }
+                Instruction::ProcessMidiPlayback {
+                    loop_id,
+                    sequence,
+                    cursor,
+                    channels,
+                    destination,
+                } => {
+                    let r = self.loop_record(loops, loop_id)?;
+                    if r.mode == Mode::Playing && r.position < r.content_length {
+                        let seek = self.loops.as_ref().is_some_and(|memory| {
+                            memory.events.iter().any(|event| {
+                                event.target == loop_id
+                                    && matches!(
+                                        event.kind,
+                                        EventKind::Transition(Operation::Seek { .. })
+                                    )
+                            })
+                        });
+                        let restart = r.position == 0
+                            || seek
+                            || self.loop_state(loop_id).is_ok_and(|s| s.pulse_this_quantum);
+                        emit(Job::MidiReadView {
+                            owner: loop_id,
+                            sequence,
+                            cursor,
+                            position: r.position,
+                            frames: program.quantum,
+                            restart,
+                            channels,
+                            destination,
+                        })?;
+                    } else {
+                        emit(Job::MidiEmpty { destination })?;
+                    }
+                }
+                Instruction::ProcessMidiCapture {
+                    loop_id,
+                    sequence,
+                    source,
+                } => {
+                    let slot = self.loop_state(loop_id).map_err(Error::Transition)?;
+                    if slot.render.mode == Mode::Recording {
+                        let position = slot
+                            .state
+                            .capture_frames
+                            .checked_sub(u64::from(program.quantum))
+                            .ok_or(Error::InvalidState)?;
+                        emit(Job::MidiAppend {
+                            sequence,
+                            source,
+                            position,
+                            frames: program.quantum,
+                        })?;
+                    }
+                }
                 Instruction::ProcessSilence { destination } => emit(Job::Silence { destination })?,
                 Instruction::ProcessConstant { value, destination } => {
                     emit(Job::Constant { value, destination })?

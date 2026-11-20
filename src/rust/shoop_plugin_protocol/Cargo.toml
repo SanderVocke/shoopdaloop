@@ -12,8 +12,11 @@ default = []
 wasm-test-browser = ["shoop_wasm_test_support/wasm-test-browser"]
 
 [dependencies]
+anyhow = { workspace = true, features = ["std"] }
+base64 = { workspace = true }
 serde = { workspace = true, features = ["std", "derive"] }
 serde_json = { workspace = true }
+shoop_processor_protocol = { path = "../shoop_processor_protocol" }
 
 [dev-dependencies]
 shoop_wasm_test_support = { path = "../shoop_wasm_test_support" }

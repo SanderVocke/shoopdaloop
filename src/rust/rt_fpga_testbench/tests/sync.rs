@@ -1,4 +1,6 @@
 #![cfg(all(feature = "sim", not(target_arch = "wasm32")))]
+#[path = "../../rt_fpga_compiler/tests/support/programs.rs"]
+mod programs;
 use rt_fpga_reference::{
     fixed::{Fixed, Ramp},
     jobs::JobQueue,
@@ -589,12 +591,10 @@ fn integrated_sync_and_audio_instructions_drive_jp_with_exact_rust_samples() {
     sim.agent(events.clone());
     let mut random = Random::new(20261116);
     for q in [1, 16, 32] {
-        use rt_fpga_compiler::{FixedProgram, StateProgramTarget};
-        use rt_fpga_reference::compiler::RustTarget;
-        use rt_fpga_testbench::compiler::RtlTarget;
-        let logical = FixedProgram::SyncSmoothing { quantum: q as u32 }
-            .emit()
-            .unwrap();
+        use rt_fpga_compiler::StateProgramTarget;
+        use rt_fpga_reference::target::RustTarget;
+        use rt_fpga_testbench::target::RtlTarget;
+        let logical = programs::sync_smoothing(q as u32);
         let rust = RustTarget::new(&[]).build(&logical).unwrap();
         let mut target = RtlTarget::new(capacities, 1, &[]);
         target.state_base = 4;

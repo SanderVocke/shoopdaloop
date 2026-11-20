@@ -2,6 +2,8 @@
 //! Connections and carriers are provided by `shoop_rt_transport`.
 #![no_std]
 #![forbid(unsafe_code)]
+extern crate alloc;
+pub mod graph;
 
 #[cfg(test)]
 extern crate std;
@@ -23,20 +25,22 @@ pub mod timing;
 
 pub use composite::{CompositeCommand, CompositeDescription, CompositeKind, CompositeSpan};
 pub use content::{ContentChunk, ContentDescription, ContentFamilyEdit};
+pub use dsp::DspMeasurement;
 pub use ids::{BusId, HostPortId, LoopSlotId, SlotId, StripId};
 pub use message::{ClientMessage, DisconnectReason, EngineMessage, Lane};
-pub use replacement::{ReplacementEdit, StripPreset};
+pub use replacement::{ReplacementCheckpointCommand, ReplacementEdit, StripPreset};
 pub use schema::*;
+pub use shoop_dsp_metrics as dsp;
 pub use timing::*;
 
 /// Version spoken by this crate; both sides must agree exactly.
-pub const PROTOCOL_VERSION: u16 = 37;
+pub const PROTOCOL_VERSION: u16 = 51;
 /// Reserved names for prepared I/O slots that are addressable by the host only.
 pub const HOST_IO_PREFIX: &str = "@host-io/";
 /// Longest host port or device name, in UTF-8 bytes.
 pub const MAX_NAME_BYTES: usize = 64;
 /// Most audio channels per strip direction reported in telemetry.
-pub const MAX_STRIP_CHANNELS: usize = 8;
+pub const MAX_STRIP_CHANNELS: usize = 16;
 /// Prepared bus slots; route masks cover all bus channels.
 pub const MAX_BUSES: usize = 8;
 /// Longest inline MIDI message.

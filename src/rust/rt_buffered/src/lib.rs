@@ -12,12 +12,18 @@ shoop_wasm_test_support::wasm_bindgen_test_configure!(run_in_browser);
 
 mod backend;
 mod inline;
+mod local;
 mod midi;
 mod processor;
 mod timing;
+mod transport;
 
 pub use backend::{Backend, Batch, BatchTag, ParameterEvent, SourceObserver};
 pub use inline::InlineTestProcessor;
+pub use local::{LocalTransport, LocalWorker};
 pub use midi::{MidiControls, MidiEvents, MidiInput};
 pub use processor::{BufferLimits, BufferedProcessor, Lifecycle, MidiLimits, MAX_STORAGE_BYTES};
 pub use timing::{PreparedTiming, Timing, MAX_BATCH_FRAMES, MAX_LATENCY_FRAMES};
+pub use transport::{
+    AsyncBatch, AsyncCompletion, AsyncOutput, AsyncStats, AsyncTransport, Release,
+};

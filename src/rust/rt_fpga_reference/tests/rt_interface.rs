@@ -1,12 +1,14 @@
 #![cfg(feature = "rt-interface")]
-use rt_fpga_compiler::{compile, FixedProgram};
+#[path = "../../rt_fpga_compiler/tests/support/programs.rs"]
+mod programs;
+use rt_fpga_compiler::StateProgramTarget;
 use rt_fpga_reference::{
-    compiler::RustTarget,
     fixed::Fixed,
     jobs::JobProcessor,
     pipeline::Pipeline,
     rt_interface::{Configuration, Endpoint, LoopBinding, Processor, Settings},
     storage::MediaStore,
+    target::RustTarget,
     transitions::{self as model, LoopId},
 };
 use shoop_rt_engine::{testing::OfflineHost, EngineDescription, HostPorts, Segment};
@@ -68,15 +70,12 @@ fn prepare(
     config: Configuration,
     n: usize,
 ) -> (Controller, Processor, JobProcessor, MediaStore) {
-    let fixed = FixedProgram::MonoLoops {
-        quantum: q,
-        loops: n as u32,
-    };
+    let logical = programs::mono_loops(q, n as u32);
     let mut media = MediaStore::new(1).unwrap();
     let views = (0..n)
         .map(|_| media.create_recording().unwrap().0 as u64)
         .collect::<Vec<_>>();
-    let compiled = compile(fixed, &RustTarget::new(&views)).unwrap();
+    let compiled = RustTarget::new(&views).build(&logical).unwrap();
     let resources = compiled.resources;
     let bindings = compiled
         .bindings
@@ -823,7 +822,7 @@ fn invalid_blocks_preserve_commands_and_processing_faults_reject_future_groups()
     let mut memory = Inject {
         media,
         control,
-        publish: None,
+        publish: Some(Batch::new(1, 2, &[Command::LoopGain(0, 0.5)]).unwrap()),
         fail: true,
     };
     let mut output = [Fixed(99); 15];
@@ -849,25 +848,111 @@ fn invalid_blocks_preserve_commands_and_processing_faults_reject_future_groups()
         ),
         Err(PipelineError::Jobs(Error::MemoryFull))
     );
-    assert_eq!(
-        memory.control.response().unwrap().records()[0].code(),
-        Code::Applied
-    );
     assert!(memory.control.snapshot_error().is_some());
-    memory
-        .control
-        .submit(Batch::new(1, 2, &[Command::LoopGain(0, 0.5)]).unwrap())
-        .unwrap();
+    let fault_frame = endpoint.pipeline().state().frame();
+    memory.fail = false;
+    let mut output = [Fixed(99); 16];
     assert_eq!(
         endpoint.process(
             &mut jobs,
             &mut memory,
             &[&[Fixed::ZERO; 16]],
-            &mut [&mut [Fixed::ZERO; 16]]
+            &mut [&mut output]
         ),
         Err(PipelineError::Jobs(Error::MemoryFull))
+    );
+    assert_eq!(output, [Fixed::ZERO; 16]);
+    assert_eq!(endpoint.pipeline().state().frame(), fault_frame);
+    assert_eq!(
+        memory.control.response().unwrap().records()[0].code(),
+        Code::Applied
     );
     let response = memory.control.response().unwrap();
     assert_eq!(response.header.code(), Code::CannotApply);
     assert_eq!(response.records()[0].code(), Code::CannotApply);
+    assert_eq!(
+        memory.control.0.poll(),
+        Some(EngineMessage::Disconnected(DisconnectReason::Fault))
+    );
+}
+
+#[shoop_test]
+fn invalid_midi_input_preserves_pending_endpoint_commands_for_retry() {
+    use rt_fpga_reference::midi::{BufferLimits, InputEvent, Message, MidiMemory, StoreLimits};
+    let config = Configuration {
+        graph: 1,
+        topology: 2,
+        frame: 0,
+    };
+    let (mut control, mut processor, mut jobs, mut audio) = prepare(32, config, 1);
+    jobs.prepare_midi(BufferLimits {
+        buffers: 2,
+        cursors: 1,
+        scratch_events: 256,
+        input_ports: 1,
+        output_ports: 1,
+    })
+    .unwrap();
+    let mut midi = MidiMemory::prepare(
+        StoreLimits {
+            block_events: 16,
+            blocks: 16,
+            max_events: 256,
+            views: 4,
+            retirements: 4,
+        },
+        1,
+    )
+    .unwrap();
+    control
+        .submit(
+            Batch::new(
+                1,
+                2,
+                &[Command::Transition(0, TransitionMode::Recording.into())],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    assert!(control.response().is_none());
+    let invalid = [InputEvent {
+        input: 0,
+        offset: 32,
+        message: Message::parse(&[0xb0, 1, 42]).unwrap(),
+    }];
+    let input = [Fixed::ZERO; 32];
+    let mut output = [Fixed::from_f32(1.); 32];
+    let result = assert_no_heap(|| {
+        processor.process_with_midi(
+            &mut jobs,
+            &mut audio,
+            &[&input],
+            &mut [&mut output],
+            32,
+            &mut midi,
+            &invalid,
+            &mut |_| Ok(()),
+        )
+    });
+    assert!(result.is_err());
+    assert_eq!(processor.pipeline().state().frame(), 0);
+    assert!(processor.pipeline().fault().is_none());
+    assert!(output.iter().all(|&sample| sample == Fixed::ZERO));
+    assert!(control.response().is_none());
+    processor
+        .process_with_midi(
+            &mut jobs,
+            &mut audio,
+            &[&input],
+            &mut [&mut output],
+            32,
+            &mut midi,
+            &[],
+            &mut |_| Ok(()),
+        )
+        .unwrap();
+    assert_eq!(processor.pipeline().state().frame(), 32);
+    let response = control.response().unwrap();
+    assert_eq!(response.header.frame(), 0);
+    assert_eq!(response.records()[0].code(), Code::Applied);
 }

@@ -314,6 +314,10 @@ impl Service {
                 )?;
                 Ok(Effect::BusControl(id))
             }
+            BusAction::FxReadLogs => {
+                self.backend.request_bus_fx_logs(backend)?;
+                Ok(Effect::None)
+            }
             BusAction::FxActiveChanged(_)
             | BusAction::FxVisibilityChanged(_)
             | BusAction::FxToggleOrRecover
@@ -588,6 +592,10 @@ impl Service {
                     return Err(CommandError::unsupported(BackendCapability::DryWetModes));
                 }
                 self.set_default_playback(id, mode)?;
+                return Ok(Effect::None);
+            }
+            TrackAction::FxReadLogs => {
+                self.backend.request_track_fx_logs(backend)?;
                 return Ok(Effect::None);
             }
             action @ (TrackAction::FxActiveChanged(_)
@@ -1295,7 +1303,9 @@ impl Service {
             self.piano(PianoAction::ReleaseAll)?;
             self.midi_panic(true)?;
         }
-        self.transition(self.ordered_loops(), BackendLoopMode::Stopped, None, None)?;
+        if self.backend.requires_shutdown_transitions() {
+            self.transition(self.ordered_loops(), BackendLoopMode::Stopped, None, None)?;
+        }
         Ok(Effect::Shutdown)
     }
 

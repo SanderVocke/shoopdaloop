@@ -8,10 +8,17 @@ client-side Lua. The feature parity ledger tracks remaining features.
 Enabling it
 ~~~~~~~~~~~
 
-Choose the audio driver, session delivery and prepared capacities in
-**Settings → Audio** before starting a host. Existing hosts retain their
-configuration when a UI attaches. ``--audio-backend new_engine`` remains a
-compatibility option; the legacy backend is unavailable in production.
+Choose the backend, audio driver, session delivery and prepared capacities in
+**Settings → Audio** before starting a host. ``--backend native|rust-fpga|rtl-sim``
+overrides the saved backend for that launch. Native execution is the default;
+``rust-fpga`` requires the optional ``fpga-reference`` build feature and ``rtl-sim``
+requires ``rtl-sim``. Both support direct multichannel loops and strips through
+the shared FPGA graph compiler, within the available instruction, state and audio
+memory. They use the selected driver for timing and audio. Unsupported operations
+report an error when requested. The old ``--audio-backend`` option has been removed.
+
+Existing hosts retain their configuration when a UI attaches. An attaching UI
+does not select the backend.
 
 Drivers
 ~~~~~~~
@@ -20,9 +27,9 @@ Native builds support dummy, CPAL and native JACK drivers according to compiled
 features. Native JACK publishes track and bus ports dynamically. Startup
 failures and unavailable devices are reported by the host launch flow.
 
-The new engine cannot switch drivers while it runs. Instead, the **Audio
-driver** section of **Settings → Audio** offers the dummy and CPAL drivers and
-saves their settings for the next start.
+Choose the driver in **Settings → Audio**. Native hosts support switching drivers
+while running; FPGA reference and RTL simulation hosts currently require a restart
+for a driver change.
 
 In the browser, the new engine runs in its own AudioWorklet and uses the same
 permissions dialog as the legacy engine: **Enable microphone audio** or
@@ -39,10 +46,11 @@ audio is enabled:
 Capacities
 ~~~~~~~~~~
 
-The new engine prepares its tracks, loops and loop memory at startup and does
-not grow them while it runs. When **Audio backend** is set to the new engine,
-**Settings → Audio** also shows these capacity settings. Changes apply after a
-restart.
+The native engine prepares its tracks, loops and loop memory at startup and does
+not grow them while it runs. **Settings → Audio** shows these capacity settings.
+Changes apply after a restart. FPGA backends admit graphs according to the
+compiled program's resource requirements and the loader's available slots.
+Resource exhaustion and unsupported operations report specific errors.
 
 .. list-table::
    :header-rows: 1

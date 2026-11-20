@@ -4,89 +4,10 @@ use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Duration;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct CarlaProcessorInfo {
-    pub chain_type: FXChainType,
-    pub audio_inputs: usize,
-    pub audio_outputs: usize,
-    pub midi_inputs: usize,
-    pub midi_outputs: usize,
-}
+pub type CarlaProcessorInfo = shoop_plugin_protocol::CarlaProcessorInfo<FXChainType>;
+pub use shoop_plugin_protocol::{CarlaGenerationLog, CarlaProcessorLifecycle};
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum CarlaProcessorLifecycle {
-    #[default]
-    Stopped,
-    Starting,
-    Running,
-    Degraded,
-    Crashed,
-    Restarting,
-    Unavailable,
-}
-
-impl CarlaProcessorLifecycle {
-    pub fn is_operational(self) -> bool {
-        matches!(self, Self::Running | Self::Degraded)
-    }
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct CarlaGenerationLog {
-    pub generation: u64,
-    pub stdout: Vec<u8>,
-    pub stderr: Vec<u8>,
-    pub stdout_dropped_bytes: u64,
-    pub stderr_dropped_bytes: u64,
-}
-
-#[derive(Debug)]
-pub struct CarlaMidiBuffer {
-    events: Vec<shoop_plugin_protocol::MidiEvent>,
-    count: usize,
-}
-
-impl CarlaMidiBuffer {
-    pub fn new(event_capacity: usize, event_byte_capacity: usize) -> Self {
-        Self {
-            events: (0..event_capacity)
-                .map(|_| shoop_plugin_protocol::MidiEvent {
-                    frame_offset: 0,
-                    data: Vec::with_capacity(event_byte_capacity),
-                })
-                .collect(),
-            count: 0,
-        }
-    }
-
-    pub fn clear(&mut self) {
-        self.count = 0;
-    }
-
-    pub fn push(&mut self, frame_offset: u32, data: &[u8]) -> Result<()> {
-        let event = self
-            .events
-            .get_mut(self.count)
-            .ok_or_else(|| anyhow::anyhow!("Carla MIDI event capacity exceeded"))?;
-        if data.len() > event.data.capacity() {
-            anyhow::bail!("Carla MIDI event byte capacity exceeded");
-        }
-        event.frame_offset = frame_offset;
-        event.data.clear();
-        event.data.extend_from_slice(data);
-        self.count += 1;
-        Ok(())
-    }
-
-    pub fn as_slice(&self) -> &[shoop_plugin_protocol::MidiEvent] {
-        &self.events[..self.count]
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    pub(crate) fn storage_mut(&mut self) -> (&mut [shoop_plugin_protocol::MidiEvent], &mut usize) {
-        (&mut self.events, &mut self.count)
-    }
-}
+pub use shoop_plugin_protocol::PreparedMidiBuffer as CarlaMidiBuffer;
 
 pub trait CarlaExternalUi: Send + Sync + Debug {
     fn set_visible(&self, visible: bool) -> Result<()>;

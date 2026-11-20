@@ -144,6 +144,35 @@ name = "rt_buffered"
 version = "0.3.0"
 dependencies = [
  "rt_runtime",
+ "rtrb",
+]
+
+[[package]]
+name = "rt_fpga_compiler"
+version = "0.3.0"
+dependencies = [
+ "libm",
+ "shoop_graph",
+]
+
+[[package]]
+name = "rt_fpga_reference"
+version = "0.3.0"
+dependencies = [
+ "rt_fpga_compiler",
+ "rtrb",
+ "shoop_rt_protocol",
+ "shoop_rt_transport",
+]
+
+[[package]]
+name = "rt_fpga_rtl"
+version = "0.3.0"
+dependencies = [
+ "rt_fpga_compiler",
+ "rt_fpga_reference",
+ "serde",
+ "shoop_rt_protocol",
 ]
 
 [[package]]
@@ -235,6 +264,7 @@ dependencies = [
  "profiling_protocol",
  "rt_profiling",
  "serde",
+ "shoop_dsp_metrics",
  "shoop_latency",
  "shoop_port_graph",
  "shoop_processor_protocol",
@@ -282,11 +312,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_dsp_metrics"
+version = "0.3.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "shoop_graph"
+version = "0.3.0"
+dependencies = [
+ "bincode",
+ "serde",
+]
+
+[[package]]
 name = "shoop_host_freertos"
 version = "0.3.0"
 dependencies = [
  "freertos_profiling",
  "profiling_protocol",
+ "rt_fpga_rtl",
  "rt_runtime",
  "shoop_app",
  "shoop_app_api",
@@ -295,6 +341,7 @@ dependencies = [
  "shoop_deployment_protocol",
  "shoop_rt_backend",
  "shoop_rt_engine",
+ "shoop_rt_host_reference",
  "shoop_rt_protocol",
  "shoop_rt_transport",
  "shoop_transport",
@@ -343,6 +390,7 @@ dependencies = [
  "rt_profiling",
  "shoop_app_api",
  "shoop_backend",
+ "shoop_graph",
  "shoop_loop_plan",
  "shoop_processor_protocol",
  "shoop_rt_protocol",
@@ -366,11 +414,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "shoop_rt_host_reference"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "rt_fpga_compiler",
+ "rt_fpga_reference",
+ "rt_fpga_rtl",
+ "rt_runtime",
+ "rtrb",
+ "shoop_graph",
+ "shoop_rt_protocol",
+ "shoop_rt_transport",
+]
+
+[[package]]
 name = "shoop_rt_protocol"
 version = "0.3.0"
 dependencies = [
  "profiling_protocol",
  "serde",
+ "shoop_dsp_metrics",
+ "shoop_graph",
  "shoop_processor_protocol",
  "shoop_transport",
 ]
@@ -402,6 +467,7 @@ name = "shoop_zynq_firmware"
 version = "0.3.0"
 dependencies = [
  "linked_list_allocator",
+ "rt_fpga_rtl",
  "shoop_host_freertos",
 ]
 

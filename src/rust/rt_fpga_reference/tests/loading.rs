@@ -1,14 +1,18 @@
+#[path = "../../rt_fpga_compiler/tests/support/mono.rs"]
+mod mono;
+use rt_fpga_compiler::{compile, CompileContext};
+#[path = "../../rt_fpga_compiler/tests/support/programs.rs"]
+mod programs;
 use rt_fpga_compiler::{
-    graph::*, loading::Allocator, FixedProgram, Identity, LogicalStateProgram, Operation,
-    ProgramLimits,
+    loading::Allocator, Identity, LogicalStateProgram, Operation, ProgramLimits,
 };
 use rt_fpga_reference::{
-    compiler::{ProgramImage, RustTarget},
     fixed::Fixed,
     jobs::JobProcessor,
     pipeline::Pipeline,
     state::{ModePlan, ModeStep},
     storage::MediaStore,
+    target::{ProgramImage, RustTarget},
     transitions::{LoopId, Mode},
 };
 use shoop_wasm_test_support::{
@@ -30,24 +34,28 @@ fn limits() -> ProgramLimits {
     }
 }
 fn graph(ids: &[u32]) -> LogicalStateProgram {
-    GraphDescription {
-        quantum: 16,
-        loops: ids
-            .iter()
-            .map(|&slot| LoopDescription {
-                id: Identity {
-                    slot,
-                    generation: 1,
-                },
-                source: (slot != 0).then_some(0),
-                input: true,
-                output: true,
-                gain: 1.0,
-                repeat_sync: false,
-            })
-            .collect(),
-    }
-    .compile()
+    compile(
+        &mono::session(
+            &(ids
+                .iter()
+                .map(|&slot| mono::MonoLoop {
+                    id: Identity {
+                        slot,
+                        generation: 1,
+                    },
+                    source: (slot != 0).then_some(0),
+                    input: true,
+                    output: true,
+                    gain: 1.0,
+                    repeat_sync: false,
+                })
+                .collect::<Vec<_>>()),
+        ),
+        CompileContext {
+            quantum: 16,
+            limits: Default::default(),
+        },
+    )
     .unwrap()
 }
 fn image(allocator: &mut Allocator, logical: &LogicalStateProgram, views: &[u64]) -> ProgramImage {
@@ -202,9 +210,9 @@ fn staging_never_reinitializes_live_recording_and_switch_keeps_plans_and_frame()
 
 #[shoop_test]
 fn smoothing_history_and_gain_ramp_survive_changed_scratch_assignments() {
-    let logical = FixedProgram::SyncSmoothing { quantum: 16 }.emit().unwrap();
+    let logical = programs::sync_smoothing(16);
     let mut modified = logical.clone();
-    for op in &mut modified.audio_pass {
+    for op in &mut modified.work_pass {
         match op {
             Operation::Input { destination, .. } => *destination += 3,
             Operation::Gain {
@@ -271,4 +279,162 @@ fn smoothing_history_and_gain_ramp_survive_changed_scratch_assignments() {
             .unwrap();
         assert_eq!(out, expected, "tick {tick}");
     }
+}
+
+#[shoop_test]
+fn explicit_midi_capture_survives_image_switch_and_refuses_writer_rebinding() {
+    use rt_fpga_compiler::MidiOperation as M;
+    use rt_fpga_reference::midi::{
+        BufferLimits, InputEvent, Message, MidiMemory, SequenceId, StoreLimits,
+    };
+    let logical = |ids: &[u32], sequence| {
+        let mut p = graph(ids);
+        p.resources.buffers = p.resources.buffers.max(2);
+        p.clone()
+            .with_midi_data(&[
+                M::Input {
+                    port: 0,
+                    destination: 0,
+                },
+                M::Capture {
+                    loop_id: p.loops[0].id,
+                    sequence,
+                    source: 0,
+                },
+                M::Playback {
+                    loop_id: p.loops[0].id,
+                    sequence,
+                    cursor: 0,
+                    channels: u16::MAX,
+                    destination: 1,
+                },
+                M::Output { source: 1, port: 0 },
+            ])
+            .unwrap()
+    };
+    let mut media = MediaStore::new(1).unwrap();
+    let views: Vec<_> = (0..8)
+        .map(|_| media.create_recording().unwrap().0 as u64)
+        .collect();
+    let mut allocator = Allocator::new(limits());
+    let first = image(&mut allocator, &logical(&[0], 0), &views);
+    let revision = first.layout.revision;
+    let loop_id = id(&first.layout, 0);
+    let mut pipeline = Pipeline::from_image(first, limits()).unwrap();
+    allocator.publish(revision).unwrap();
+    allocator.complete(revision).unwrap();
+    let mut jobs = JobProcessor::with_history_slots(16, 32, 32);
+    jobs.prepare_midi(BufferLimits {
+        buffers: 2,
+        cursors: 1,
+        scratch_events: 1024,
+        input_ports: 1,
+        output_ports: 1,
+    })
+    .unwrap();
+    let mut midi = MidiMemory::prepare(
+        StoreLimits {
+            block_events: 8,
+            blocks: 64,
+            max_events: 128,
+            views: 16,
+            retirements: 16,
+        },
+        2,
+    )
+    .unwrap();
+    pipeline
+        .write_mode_plan(
+            loop_id,
+            ModePlan {
+                now: Some(Mode::Recording),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let mut output = Vec::new();
+    let mut tick = |pipeline: &mut Pipeline,
+                    jobs: &mut JobProcessor,
+                    media: &mut MediaStore,
+                    midi: &mut MidiMemory,
+                    events: &[InputEvent]| {
+        output.clear();
+        pipeline
+            .process_with_midi(
+                jobs,
+                media,
+                &[&[Fixed::ZERO; 16]],
+                &mut [&mut [Fixed::ZERO; 16], &mut [Fixed::ZERO; 16]],
+                16,
+                midi,
+                events,
+                &mut |e| {
+                    output.push(e);
+                    Ok(())
+                },
+            )
+            .unwrap();
+        output.clone()
+    };
+    let note = Message::parse(&[0x90, 60, 80]).unwrap();
+    tick(
+        &mut pipeline,
+        &mut jobs,
+        &mut media,
+        &mut midi,
+        &[InputEvent {
+            input: 0,
+            offset: 2,
+            message: note,
+        }],
+    );
+    let mut invalid = image(&mut allocator, &logical(&[0, 1], 1), &views);
+    assert_eq!(
+        pipeline.switch_image(&mut invalid),
+        Err(rt_fpga_reference::pipeline::PipelineError::State(
+            rt_fpga_reference::Error::InvalidState
+        ))
+    );
+    allocator.cancel(invalid.layout.revision).unwrap();
+    let mut next = image(&mut allocator, &logical(&[0, 1], 0), &views);
+    pipeline.switch_image(&mut next).unwrap();
+    allocator.publish(next.layout.revision).unwrap();
+    allocator.complete(next.layout.revision).unwrap();
+    let cc = Message::parse(&[0xb0, 1, 40]).unwrap();
+    tick(
+        &mut pipeline,
+        &mut jobs,
+        &mut media,
+        &mut midi,
+        &[InputEvent {
+            input: 0,
+            offset: 7,
+            message: cc,
+        }],
+    );
+    let view = midi.view(SequenceId(0)).unwrap().unwrap();
+    assert_eq!(midi.store.describe(view).unwrap().events, 2);
+    pipeline
+        .write_mode_plan(
+            loop_id,
+            ModePlan {
+                now: Some(Mode::Playing),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        tick(&mut pipeline, &mut jobs, &mut media, &mut midi, &[])
+            .iter()
+            .map(|e| (e.offset, e.message))
+            .collect::<Vec<_>>(),
+        vec![(2, note)]
+    );
+    assert_eq!(
+        tick(&mut pipeline, &mut jobs, &mut media, &mut midi, &[])
+            .iter()
+            .map(|e| (e.offset, e.message))
+            .collect::<Vec<_>>(),
+        vec![(7, cc)]
+    );
 }

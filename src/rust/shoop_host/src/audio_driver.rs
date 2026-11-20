@@ -2,7 +2,7 @@ use anyhow::{anyhow, ensure, Result};
 use shoop_app::{AudioDriverController, DriverCompletion, DriverReply, DriverWork};
 use shoop_app_api::*;
 use shoop_rt_backend::{RtBackend, Sleep};
-use shoop_rt_host_native::{NativeConfig, NativeHost};
+use shoop_rt_host_native::{CarlaHostOptions, NativeConfig, NativeHost};
 use std::{
     sync::mpsc::{self, Receiver, SyncSender},
     thread::{self, JoinHandle},
@@ -151,6 +151,7 @@ pub fn controller(
     host: NativeHost,
     settings: HostSettings,
     mut preferences: PreferenceWriter,
+    carla: CarlaHostOptions,
 ) -> Result<(Owner, Box<dyn AudioDriverController>)> {
     let (sender, requests) = mpsc::sync_channel(2);
     let (results, receiver) = mpsc::sync_channel(1);
@@ -239,7 +240,8 @@ pub fn controller(
                                 }
                                 #[cfg(not(feature = "cpal"))]
                                 let _ = exact_devices;
-                                let started = shoop_rt_host_native::start(&native)?;
+                                let started =
+                                    shoop_rt_host_native::start_with_carla(&native, carla.clone())?;
                                 ensure!(
                                     !exact_devices || started.host.warnings().is_empty(),
                                     "the target audio configuration could not be honored: {}",

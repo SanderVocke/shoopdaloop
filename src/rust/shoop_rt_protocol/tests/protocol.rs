@@ -74,6 +74,11 @@ fn client_samples() -> Vec<ClientMessage> {
         Request::CreateProcessedBus {
             bus: BusId::MASTER,
             channels: 8,
+            kind: ProcessorKind::BuiltInFx,
+        },
+        Request::SetBusProcessorKind {
+            bus: BusId::MASTER,
+            kind: Some(ProcessorKind::CarlaRack),
         },
         Request::SetBusProcessor {
             bus: BusId::MASTER,
@@ -86,6 +91,22 @@ fn client_samples() -> Vec<ClientMessage> {
         Request::BusProcessorControl {
             bus: BusId::MASTER,
             control: processors::Control::Active(false),
+        },
+        Request::ProcessorEditor {
+            target: ProcessorTarget::Bus(BusId::MASTER),
+            slot: ProcessorSlot {
+                index: 2,
+                generation: 7,
+            },
+            visible: Some(true),
+        },
+        Request::ProcessorEditor {
+            target: ProcessorTarget::Strip(strip(0)),
+            slot: ProcessorSlot {
+                index: 1,
+                generation: 5,
+            },
+            visible: None,
         },
         Request::ReplacementEdit {
             id: 9,
@@ -624,6 +645,7 @@ fn engine_samples() -> Vec<EngineMessage> {
         EngineMessage::State(StateRecord::BusProcessor {
             bus: BusId::MASTER,
             slot: None,
+            kind: None,
         }),
         EngineMessage::State(StateRecord::BusProcessor {
             bus: BusId::MASTER,
@@ -631,14 +653,34 @@ fn engine_samples() -> Vec<EngineMessage> {
                 index: 63,
                 generation: 123,
             }),
+            kind: Some(ProcessorKind::CarlaRack),
         }),
         EngineMessage::State(StateRecord::BusProcessorState {
             bus: BusId::MASTER,
+            kind: ProcessorKind::CarlaRack,
             slot: ProcessorSlot {
                 index: 63,
                 generation: 123,
             },
             snapshot: processors::Snapshot {
+                hosted: Some(processors::HostedStatus {
+                    generation: 5,
+                    lifecycle: processors::HostedLifecycle::Crashed,
+                    active: false,
+                    failure: Some(processors::HostedFailure::UnexpectedExit),
+                    editor_visible: Some(false),
+                }),
+                worker: Some(processors::WorkerDiagnostics {
+                    pending: 2,
+                    peak_pending: 4,
+                    missed: 20,
+                    stale: 12,
+                    rejected: 3,
+                    failed: 2,
+                    invalid: 1,
+                    last_completion_frames: 48,
+                    peak_completion_frames: 96,
+                }),
                 source_frame: 42,
                 phase: processors::Phase::Running,
                 global_midi: processors::GlobalMidiDiagnostics {
@@ -655,6 +697,8 @@ fn engine_samples() -> Vec<EngineMessage> {
                 generation: 123,
             },
             snapshot: processors::Snapshot {
+                hosted: None,
+                worker: None,
                 source_frame: u64::MAX,
                 phase: processors::Phase::Running,
                 global_midi: processors::GlobalMidiDiagnostics::default(),
@@ -685,10 +729,12 @@ fn engine_samples() -> Vec<EngineMessage> {
                 fx_unavailable: None,
                 synth_unavailable: None,
                 memory_bytes: 256 << 20,
+                carla: Default::default(),
             },
             reserved_bytes: 4 << 20,
             channels: 8,
             builtin_latency_frames: 32,
+            carla_latency_frames: 0,
         })),
         EngineMessage::State(StateRecord::ProcessorPreset(ProcessorPreset {
             bank: 128,
@@ -891,6 +937,45 @@ fn every_message_round_trips_through_bounded_records() {
 }
 
 #[shoop_test]
+fn dsp_measurements_round_trip_with_their_original_timing_basis() {
+    let rtl = DspMeasurement::FpgaQuantum {
+        cycles: 30_000,
+        clock_hz: 150_000_000,
+        frames: 64,
+        sample_rate: 48_000,
+    };
+    assert_eq!(rtl.microseconds(), Some(200.));
+    assert!((rtl.percent().unwrap() - 15.).abs() < 1e-12);
+    let jack = DspMeasurement::JackServer { percent: 125. };
+    assert_eq!(jack.percent(), Some(125.));
+    assert_eq!(jack.microseconds(), None);
+    let mut buf = [0; MAX_RECORD_BYTES];
+    for dsp in [
+        None,
+        Some(rtl),
+        Some(jack),
+        Some(DspMeasurement::Callback {
+            elapsed_ns: 750_000,
+            frames: 24,
+            sample_rate: 48_000,
+            paced: false,
+        }),
+    ] {
+        let message = EngineMessage::Telemetry(Telemetry::Engine {
+            frame: 64,
+            callbacks: 1,
+            xruns: 0,
+            dsp,
+            input_peak: 0.,
+            output_peak: 0.,
+            driver: DRIVER,
+        });
+        let len = encode_engine(&message, &mut buf).unwrap();
+        assert_eq!(decode_engine(&buf[..len]), Ok(message));
+    }
+}
+
+#[shoop_test]
 fn malformed_records_are_refused_without_panicking() {
     let mut buf = [0; MAX_RECORD_BYTES];
     for message in engine_samples() {
@@ -967,16 +1052,18 @@ fn processor_catalog_wire_refuses_capacity_and_resource_inconsistency() {
             fx_unavailable: None,
             synth_unavailable: Some(processors::Unavailable::Disabled),
             memory_bytes: 256 << 20,
+            carla: Default::default(),
         },
         reserved_bytes: 4 << 20,
-        channels: 8,
+        channels: MAX_STRIP_CHANNELS as u8,
         builtin_latency_frames: 32,
+        carla_latency_frames: 0,
     };
     let mut bytes = [0; MAX_RECORD_BYTES];
     for invalid in 0..4 {
         let valid = limits;
         match invalid {
-            0 => limits.channels = 9,
+            0 => limits.channels = MAX_STRIP_CHANNELS as u8 + 1,
             1 => limits.reserved_bytes = limits.effective.memory_bytes + 1,
             2 => limits.effective.fx_instances = 65,
             _ => limits.effective.fx_unavailable = Some(processors::Unavailable::NotCompiled),
@@ -1083,6 +1170,130 @@ fn input_progress_capacity_and_terminal_phases_round_trip_with_exact_frames() {
 }
 
 #[shoop_test]
+fn hosted_processor_log_pages_fit_in_a_reliable_record_and_reject_invalid_ranges() {
+    let page = ProcessorLogPage {
+        generation: 2,
+        dropped: 33,
+        total: PROCESSOR_LOG_STREAM_BYTES as u32,
+        offset: (PROCESSOR_LOG_STREAM_BYTES - BULK_CHUNK_BYTES) as u32,
+        len: BULK_CHUNK_BYTES as u16,
+        bytes: core::array::from_fn(|index| index as u8),
+    };
+    let message = |page| EngineMessage::ProcessorLogPage {
+        correlation: 10,
+        page,
+    };
+    let mut bytes = [0; MAX_RECORD_BYTES];
+    let len = encode_engine(&message(page), &mut bytes).unwrap();
+    assert_eq!(decode_engine(&bytes[..len]).unwrap(), message(page));
+    let past_end = ProcessorLogPage {
+        offset: page.offset + 1,
+        ..page
+    };
+    assert_eq!(
+        encode_engine(&message(past_end), &mut bytes),
+        Err(CodecError::Invalid)
+    );
+    let request = ClientMessage::Request {
+        correlation: 10,
+        request: Request::ProcessorLogs {
+            target: ProcessorTarget::Strip(StripId(SlotId::new(2, 3))),
+            slot: ProcessorSlot {
+                index: 4,
+                generation: 5,
+            },
+            worker_generation: 6,
+            command: ProcessorLogCommand::Read {
+                snapshot: 7,
+                generation_index: 1,
+                stderr: true,
+                offset: page.offset,
+            },
+        },
+    };
+    let len = encode_client(&request, &mut bytes).unwrap();
+    assert_eq!(decode_client(&bytes[..len]).unwrap(), request);
+}
+
+#[shoop_test]
+fn hosted_checkpoints_bound_the_snapshot_and_require_a_complete_page() {
+    let mut wire = [0; MAX_RECORD_BYTES];
+    let total = MAX_PROCESSOR_CHECKPOINT_BYTES as u32;
+    let metadata = EngineMessage::Result {
+        correlation: 11,
+        outcome: Outcome::ProcessorCheckpoint {
+            snapshot: 8,
+            bytes: total,
+        },
+    };
+    let len = encode_engine(&metadata, &mut wire).unwrap();
+    assert_eq!(decode_engine(&wire[..len]).unwrap(), metadata);
+    let oversize = EngineMessage::Result {
+        correlation: 11,
+        outcome: Outcome::ProcessorCheckpoint {
+            snapshot: 8,
+            bytes: total + 1,
+        },
+    };
+    assert_eq!(
+        encode_engine(&oversize, &mut wire),
+        Err(CodecError::Invalid)
+    );
+    let page = ProcessorCheckpointPage {
+        snapshot: 8,
+        offset: total - 1,
+        total,
+        len: 1,
+        bytes: core::array::from_fn(|index| if index == 0 { b'}' } else { 0 }),
+    };
+    let message = |page| EngineMessage::ProcessorCheckpointPage {
+        correlation: 12,
+        page,
+    };
+    let len = encode_engine(&message(page), &mut wire).unwrap();
+    assert_eq!(decode_engine(&wire[..len]).unwrap(), message(page));
+    for invalid in [
+        ProcessorCheckpointPage {
+            offset: total,
+            ..page
+        },
+        ProcessorCheckpointPage { len: 2, ..page },
+    ] {
+        assert_eq!(
+            encode_engine(&message(invalid), &mut wire),
+            Err(CodecError::Invalid)
+        );
+    }
+    let upload = |command| ClientMessage::Request {
+        correlation: 13,
+        request: Request::ReplacementCheckpoint {
+            id: 1,
+            target: ProcessorTarget::Strip(StripId(SlotId::new(2, 3))),
+            command,
+        },
+    };
+    for command in [
+        ReplacementCheckpointCommand::Begin { bytes: total },
+        ReplacementCheckpointCommand::Write {
+            offset: total - shoop_rt_protocol::content::CONTENT_CHUNK_BYTES as u32,
+            data: ContentChunk::new(&[b'a'; shoop_rt_protocol::content::CONTENT_CHUNK_BYTES])
+                .unwrap(),
+        },
+    ] {
+        let message = upload(command);
+        let len = encode_client(&message, &mut wire).unwrap();
+        assert_eq!(decode_client(&wire[..len]).unwrap(), message);
+    }
+    assert_eq!(
+        encode_client(
+            &upload(ReplacementCheckpointCommand::Begin { bytes: total + 1 }),
+            &mut wire
+        ),
+        Err(CodecError::Invalid)
+    );
+}
+
+#[shoop_test]
 fn capability_flags_do_not_alias_other_features() {
     let flags = [
         Capabilities::MIDI_INJECTION,
@@ -1096,6 +1307,8 @@ fn capability_flags_do_not_alias_other_features() {
         Capabilities::TRACK_PROCESSORS,
         Capabilities::GLOBAL_FX_CONTROL,
         Capabilities::EXTERNAL_DRY_WET,
+        Capabilities::PROCESSOR_LOGS,
+        Capabilities::PROCESSOR_CHECKPOINTS,
         Capabilities::LOOP_TIMING,
         Capabilities::INPUT_BATCH,
         Capabilities::REPLACING,

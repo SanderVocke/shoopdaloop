@@ -17,6 +17,9 @@ The crate is `no_std` with `alloc`. It contains:
 - `fixed`, `records`: independent arithmetic/ramps and explicit read-only records.
 - `storage`, `chunk_memory`, `resolver`: logical media ownership, slices,
   recording/readback, chunk storage and advisory read resolution.
+- `midi`: shared event views, stepped musical state, incremental differences,
+  history grabs, bounded transfers, and multi-loop execution on the SP clock. See the
+  [MIDI component guide](src/midi/README.md).
 
 The core models have no TP command admission, retained request table or old ARM
 protocol. The optional `rt-interface` implements the current command/response and
@@ -24,6 +27,18 @@ snapshot profile, and an optional `shoop_host` profile provides restricted
 application integration. Native CPU request processing remains in the production
 runtime. `serde` and `schema` describe fixtures and values, rather than a transport
 contract.
+
+The programmatic MIDI path uses `midi::MidiSession` and
+`Pipeline::process_midi_session`. It supports prepared multi-loop recording,
+playback/repeat/stop, immutable content views, initial-state transitions, continuing
+history, atomic multi-loop grabs, and retained import/export/duplication. Pipeline
+methods publish MIDI content and timing metadata together at quantum boundaries.
+Compile an audio graph, then use `LogicalStateProgram::with_midi` to bind MIDI
+context slots to its loop identities before target lowering/loading. The compiled
+mixed work pass emits explicit MIDI jobs through the same SP, queue and JP as
+audio. `MidiSession` supplies prepared content/state services; it has no quantum
+scheduler. Direct application graph MIDI wiring, the RT endpoint and application
+host remain outside this profile. See [execution and mapping](../../../docs/fpga/midi-shared-jobs.md).
 
 ## SP configuration and execution
 
@@ -71,18 +86,12 @@ below; SP does not allocate or manage program lifetimes itself.
 ## Shared program preparation
 
 [`rt_fpga_compiler`](../rt_fpga_compiler/README.md) supplies the shared logical
-program and `StateProgramTarget` trait. Its graph frontend accepts one to sixteen
-mono primitive loops with explicit input/output routing and sync relationships.
-For prepared native/offline clients, `GraphDescription::compile_with_channels`
-supports up to 64 mono or stereo loops with independent media per channel. The
-`compile_with_geometry` variant also selects media chunk size; the shared
-benchmark uses 32-frame chunks with 32-chunk allocation blocks. Existing graph
-entry points preserve their one-frame media profile. The
-application prepared-graph protocol remains limited to sixteen mono loops.
-The `MonoLoops` and `SyncSmoothing` fixed fixtures remain available.
-`compiler::RustTarget` builds the typed SP
-program, initial state, prepared loop plan, resources and bindings. Media-view
-handles are supplied by the caller after preparing media resources.
+program and `StateProgramTarget` trait. Its single graph compiler consumes the
+full `GraphView`, supporting direct multichannel loops and strips, multiple buses,
+channel routing, gain/balance/mute, manual monitoring and boundary smoothing within
+target resource limits. `target::RustTarget` encodes the typed SP program, initial
+state, loop plan, resources and bindings. Media-view handles are supplied by the
+caller after preparing media resources. Raw instruction vectors live in test support.
 
 The carrier fixtures use this preparation path for their mono loop programs and
 derive their gain/meter bindings from its result. RTL targets consume the same
@@ -91,7 +100,7 @@ layout. Neither target requires binary compatibility with the other.
 
 ## Internal RT interface
 
-Enable `rt-interface` for a compiled mono primitive-loop graph. The public control
+Enable `rt-interface` for a compiled primitive-loop graph. The public control
 endpoint is `rt_interface::Endpoint`, a re-export of the concrete queue-backed
 `shoop_rt_transport::rt::Endpoint`. It implements `carrier::Endpoint` directly
 and works with `ProtocolClient`, `InProcess` and record carriers. There is no
@@ -183,15 +192,21 @@ Invalid callback shapes preserve pending commands. A pipeline failure latches,
 marks publication failure, silences output and makes later groups return
 `CannotApply`; computed state and accepted commands are not rolled back.
 
-This endpoint supports unedited mono audio windows. Topology changes use a staged
-program and ordered switch, rather than mutating the running graph in place.
-Balance, strip/bus controls, MIDI, grabs/history and arbitrary media edits remain
-unsupported. Native physical capture-resource preflight is not modeled;
+This endpoint supports unedited audio media through channel-specific views.
+Topology changes use a staged program and ordered switch, rather than mutating the running graph in place.
+Immediate balance and strip/bus commands, MIDI, grabs/history and arbitrary media
+edits remain unsupported. Balance and strip/bus controls can be part of compiled
+graph configurations. Native physical capture-resource preflight is not modeled;
 media/job failures use the reference pipeline fault contract. Arbitrary partial
 host callbacks and native host buffering are outside this endpoint. The endpoint
 supports the existing carrier protocol subset. The optional `shoop_host`
-`fpga-reference` feature selects a restricted application profile, exercised by
-its temporary application client; it does not provide general UI integration.
+`fpga-reference` feature uses the shared graph compiler and automatic host-managed
+activation. The UI can operate multichannel loops and strips within resource
+limits. Dummy, CPAL and JACK drivers supply timing and audio according to build
+features; the current renderer exposes one capture and two playback channels.
+See the [host instructions](../shoop_host/README.md#rust-fpga-reference-with-the-ui)
+for startup and supported controls. Application clients and UI-runtime tests
+exercise live graph replacement through the outward-facing socket API.
 
 The `rt_interface` tests compare responses and all four loop snapshot record
 classes through the carrier endpoint exactly against the production native
@@ -208,11 +223,11 @@ cargo test --locked -p rt_fpga_reference --all-features --test rt_interface
 cargo test --locked -p shoop_rt_transport --features rt-interface --test rt_endpoint
 ```
 
-Only Rust implements this new command/profile integration. RTL and Marlin still
-exercise the earlier direct component interface; their RTL command/snapshot frontend and matching
-mode-plan execution are follow-up work. The concrete queue-backed carrier endpoint
-is reusable by a future simulator driver without coupling delivery/polling to
-simulation clock advancement.
+Rust reference, browser reference and Marlin hosts share ARM-side graph
+compilation/allocation and use the same command/response queues and snapshots.
+Marlin encodes the program with `RtlTarget` and drives the RTL command/snapshot
+frontend. Driver-owned rendering remains independent of carrier delivery and
+polling; Marlin serializes simulator operations on one owner thread.
 
 ## Audio and memory
 

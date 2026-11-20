@@ -2,7 +2,9 @@
 //! driver. Every value has a bounded size so it can be encoded without allocation.
 
 use crate::ids::{BusId, HostPortId, LoopSlotId, StripId};
-use crate::{BULK_CHUNK_BYTES, BULK_CHUNK_SAMPLES, MAX_MIDI_BYTES, MAX_STRIP_CHANNELS};
+use crate::{
+    ProcessorKind, BULK_CHUNK_BYTES, BULK_CHUNK_SAMPLES, MAX_MIDI_BYTES, MAX_STRIP_CHANNELS,
+};
 
 pub use profiling_protocol::Name;
 
@@ -135,6 +137,12 @@ pub struct StripShape {
     pub midi_output: bool,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProcessorTarget {
+    Strip(StripId),
+    Bus(BusId),
+}
+
 /// A reliable request. The client chooses slot IDs; the engine refuses an ID whose
 /// slot is occupied, unprepared or not newer than its last generation.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -164,10 +172,15 @@ pub enum Request {
     CreateProcessedBus {
         bus: BusId,
         channels: u8,
+        kind: ProcessorKind,
     },
     SetBusProcessor {
         bus: BusId,
         enabled: bool,
+    },
+    SetBusProcessorKind {
+        bus: BusId,
+        kind: Option<ProcessorKind>,
     },
     BusProcessorControl {
         bus: BusId,
@@ -176,6 +189,29 @@ pub enum Request {
     ProcessorControl {
         strip: StripId,
         control: crate::processors::Control,
+    },
+    ProcessorEditor {
+        target: ProcessorTarget,
+        slot: ProcessorSlot,
+        /// None toggles the confirmed visibility.
+        visible: Option<bool>,
+    },
+    ProcessorClearLogs {
+        target: ProcessorTarget,
+        slot: ProcessorSlot,
+        worker_generation: u64,
+    },
+    ProcessorLogs {
+        target: ProcessorTarget,
+        slot: ProcessorSlot,
+        worker_generation: u64,
+        command: ProcessorLogCommand,
+    },
+    ProcessorCheckpoint {
+        target: ProcessorTarget,
+        slot: ProcessorSlot,
+        worker_generation: u64,
+        command: ProcessorCheckpointCommand,
     },
     CreateProcessedStrip {
         strip: StripId,
@@ -247,6 +283,11 @@ pub enum Request {
     ReplacementEdit {
         id: u64,
         edit: crate::ReplacementEdit,
+    },
+    ReplacementCheckpoint {
+        id: u64,
+        target: ProcessorTarget,
+        command: crate::ReplacementCheckpointCommand,
     },
     ReplacementPrepare {
         id: u64,
@@ -374,8 +415,77 @@ pub enum Outcome {
     TimingApplied(crate::TimingState),
     ContentPrepared { revision: u64 },
     ContentApplied { revision: u64 },
+    ProcessorLogs { snapshot: u64, generations: u8 },
+    ProcessorCheckpoint { snapshot: u64, bytes: u32 },
     Done,
     Refused(Refusal),
+}
+
+pub const PROCESSOR_LOG_GENERATIONS: usize = 9;
+pub const PROCESSOR_LOG_STREAM_BYTES: usize = 64 * 1024;
+pub use shoop_processor_protocol::MAX_OPAQUE_STATE_ENVELOPE_BYTES as MAX_PROCESSOR_CHECKPOINT_BYTES;
+pub const PROCESSOR_CHECKPOINT_READ_WINDOW: usize = 32;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProcessorCheckpointCommand {
+    Open,
+    Read { snapshot: u64, offset: u32 },
+    Close { snapshot: u64 },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProcessorCheckpointPage {
+    pub snapshot: u64,
+    pub offset: u32,
+    pub total: u32,
+    pub len: u16,
+    pub bytes: [u8; BULK_CHUNK_BYTES],
+}
+
+impl ProcessorCheckpointPage {
+    pub(crate) fn valid(&self) -> bool {
+        self.snapshot != 0
+            && self.total as usize <= MAX_PROCESSOR_CHECKPOINT_BYTES
+            && self.total.checked_sub(self.offset).is_some_and(|left| {
+                left != 0 && usize::from(self.len) == (left as usize).min(BULK_CHUNK_BYTES)
+            })
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProcessorLogCommand {
+    Open,
+    Read {
+        snapshot: u64,
+        generation_index: u8,
+        stderr: bool,
+        offset: u32,
+    },
+    Close {
+        snapshot: u64,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProcessorLogPage {
+    pub generation: u64,
+    pub dropped: u64,
+    pub total: u32,
+    pub offset: u32,
+    pub len: u16,
+    pub bytes: [u8; BULK_CHUNK_BYTES],
+}
+
+impl ProcessorLogPage {
+    pub(crate) fn valid(&self) -> bool {
+        self.generation != 0
+            && usize::from(self.len) <= BULK_CHUNK_BYTES
+            && self.total as usize <= PROCESSOR_LOG_STREAM_BYTES
+            && self
+                .offset
+                .checked_add(u32::from(self.len))
+                .is_some_and(|end| end <= self.total)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -436,6 +546,9 @@ impl Capabilities {
     /// Single-install mono graph profile; fixed virtual input and stereo Master outputs.
     pub const PREPARED_GRAPH: Self = Self(1 << 15);
     pub const LIVE_PROGRAMS: Self = Self(1 << 16);
+    pub const EXTERNAL_PROCESSOR_EDITOR: Self = Self(1 << 17);
+    pub const PROCESSOR_LOGS: Self = Self(1 << 18);
+    pub const PROCESSOR_CHECKPOINTS: Self = Self(1 << 19);
     pub const INPUT_BATCH: Self = Self(1 << 12);
     pub const REPLACING: Self = Self(1 << 13);
     pub const PROFILING: Self = Self(1 << 6);
@@ -517,8 +630,8 @@ pub enum Telemetry {
         /// Callbacks rendered since preparation.
         callbacks: u64,
         xruns: u32,
-        /// Callback time as a share of the callback period.
-        load: f32,
+        /// Peak DSP measurement since the previous record.
+        dsp: Option<crate::DspMeasurement>,
         /// Largest absolute sample on any host audio input and output since the
         /// previous engine record.
         input_peak: f32,
@@ -571,6 +684,7 @@ pub struct ProcessorLimits {
     pub reserved_bytes: u64,
     pub channels: u8,
     pub builtin_latency_frames: u32,
+    pub carla_latency_frames: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -587,10 +701,12 @@ pub enum StateRecord {
     BusProcessor {
         bus: BusId,
         slot: Option<ProcessorSlot>,
+        kind: Option<ProcessorKind>,
     },
     BusProcessorState {
         bus: BusId,
         slot: ProcessorSlot,
+        kind: ProcessorKind,
         snapshot: crate::processors::Snapshot,
     },
     RecordedProcessorState {

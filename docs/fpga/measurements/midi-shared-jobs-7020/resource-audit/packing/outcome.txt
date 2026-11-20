@@ -1,0 +1,3 @@
+place_status=1
+message=ERROR: [Common 17-69] Command failed: Placer could not place all instances
+

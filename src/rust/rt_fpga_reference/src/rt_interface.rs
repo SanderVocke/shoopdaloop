@@ -147,6 +147,15 @@ impl Processor {
     pub fn pipeline(&self) -> &Pipeline {
         &self.engine.pipeline
     }
+    pub fn publish_initial_snapshot(&mut self) {
+        let mut publication = Publication {
+            loops: &mut self.engine.loops,
+            configuration: self.engine.configuration,
+            bytes: &mut self.snapshot_bytes,
+            publisher: &mut self.ports.snapshots,
+        };
+        publication.settled(self.engine.pipeline.state());
+    }
     pub fn handoff_pending(&self) -> bool {
         self.pending_switch.is_some()
     }
@@ -173,6 +182,48 @@ impl Processor {
         outputs: &mut [&mut [Fixed]],
         frames: usize,
     ) -> Result<(), PipelineError> {
+        self.process_block_mixed(jobs, memory, inputs, outputs, frames, None)
+    }
+    pub fn process_with_midi(
+        &mut self,
+        jobs: &mut JobProcessor,
+        memory: &mut impl Memory,
+        inputs: &[&[Fixed]],
+        outputs: &mut [&mut [Fixed]],
+        frames: usize,
+        midi: &mut crate::midi::MidiMemory,
+        events: &[crate::midi::InputEvent],
+        sink: &mut impl FnMut(crate::midi::OutputEvent) -> Result<(), crate::midi::Error>,
+    ) -> Result<crate::midi::Work, PipelineError> {
+        if let Some(error) = self.engine.pipeline.fault() {
+            for output in outputs {
+                output.fill(Fixed::ZERO);
+            }
+            return Err(error);
+        }
+        if let Err(error) = jobs.begin_midi_callback(events, frames) {
+            for output in outputs {
+                output.fill(Fixed::ZERO);
+            }
+            return Err(PipelineError::Jobs(Error::Midi(error)));
+        }
+        let mut io = crate::midi::Io {
+            memory: midi,
+            inputs: events,
+            sink,
+        };
+        self.process_block_mixed(jobs, memory, inputs, outputs, frames, Some(&mut io))?;
+        Ok(jobs.midi_work())
+    }
+    fn process_block_mixed(
+        &mut self,
+        jobs: &mut JobProcessor,
+        memory: &mut impl Memory,
+        inputs: &[&[Fixed]],
+        outputs: &mut [&mut [Fixed]],
+        frames: usize,
+        mut midi: Option<&mut crate::midi::Io<'_>>,
+    ) -> Result<(), PipelineError> {
         let quantum = self.engine.pipeline.program().quantum as usize;
         if frames == 0
             || frames % quantum != 0
@@ -190,7 +241,14 @@ impl Processor {
             output.fill(Fixed::ZERO);
         }
         let result = (0..frames).step_by(quantum).try_for_each(|base| {
-            self.prepare_staging(memory)?;
+            let fault = self.engine.pipeline.fault();
+            if let Some(error) = fault {
+                if self.pending_switch.is_some() {
+                    return Err(error);
+                }
+            } else {
+                self.prepare_staging(memory)?;
+            }
             let frame = self.engine.pipeline.state().frame();
             let mut switched = false;
             if base == 0 || self.programs.is_some() {
@@ -225,7 +283,8 @@ impl Processor {
                     continue;
                 }
                 let header = group.header;
-                if self.retired_program.is_some()
+                if fault.is_none()
+                    && self.retired_program.is_some()
                     && group
                         .commands()
                         .any(|r| matches!(r.command(), Command::SwitchProgram(_)))
@@ -244,7 +303,7 @@ impl Processor {
                     Code::StaleConfiguration
                 } else if header.deadline().is_some_and(|limit| frame > limit) {
                     Code::DeadlineMissed
-                } else if self.engine.pipeline.fault().is_some() || malformed {
+                } else if fault.is_some() || malformed {
                     Code::CannotApply
                 } else {
                     Code::Applied
@@ -306,21 +365,37 @@ impl Processor {
                     r
                 });
             }
+            if let Some(error) = fault {
+                return Err(error);
+            }
             let mut observer = Publication {
                 loops: &mut self.engine.loops,
                 configuration: self.engine.configuration,
                 bytes: &mut self.snapshot_bytes,
                 publisher: &mut self.ports.snapshots,
             };
-            self.engine.pipeline.process_quantum(
-                jobs,
-                memory,
-                inputs,
-                outputs,
-                base,
-                &mut observer,
-                base == 0 || switched,
-            )
+            if let Some(io) = midi.as_deref_mut() {
+                self.engine.pipeline.process_quantum_mixed(
+                    jobs,
+                    memory,
+                    inputs,
+                    outputs,
+                    base,
+                    &mut observer,
+                    base == 0 || switched,
+                    Some(io),
+                )
+            } else {
+                self.engine.pipeline.process_quantum(
+                    jobs,
+                    memory,
+                    inputs,
+                    outputs,
+                    base,
+                    &mut observer,
+                    base == 0 || switched,
+                )
+            }
         });
         if let Err(error) = result {
             self.engine.pipeline.latch_fault(error);
@@ -517,7 +592,9 @@ impl Observer for Publication<'_> {
             }
         }
         snapshot::Header {
-            frame: state.frame() - u64::from(state.quantum().expect("owned loop state")),
+            frame: state
+                .frame()
+                .saturating_sub(u64::from(state.quantum().unwrap_or(0))),
             graph: self.configuration.graph,
             topology: self.configuration.topology,
             records,

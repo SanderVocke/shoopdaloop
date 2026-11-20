@@ -20,38 +20,45 @@ pub struct AppArgs {
     #[arg(long)]
     pub log_file: Option<std::path::PathBuf>,
     #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long)]
+    #[arg(help_heading = "Remote Host", long)]
     pub endpoint: Option<std::net::SocketAddr>,
     #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long)]
+    #[arg(help_heading = "Remote Host", long)]
     pub export_profile: Option<std::path::PathBuf>,
     #[cfg(not(target_arch = "wasm32"))]
     #[arg(
+        help_heading = "Remote Host",
         long = "host-profile",
         visible_alias = "remote-profile",
         group = "host_target",
-        conflicts_with = "audio_options"
+        conflicts_with_all = ["audio_options", "backend"]
     )]
     pub remote_profile: Option<std::path::PathBuf>,
     #[cfg(not(target_arch = "wasm32"))]
     /// Connect to a host's data or management address (HOST:PORT).
-    #[arg(long, group = "host_target", conflicts_with = "audio_options")]
+    #[arg(help_heading = "Remote Host", long, group = "host_target", conflicts_with_all = ["audio_options", "backend"])]
     pub host_address: Option<String>,
     #[cfg(not(target_arch = "wasm32"))]
     #[arg(
+        help_heading = "Remote Host",
         long,
         hide = true,
         group = "host_target",
-        conflicts_with = "audio_options",
+        conflicts_with_all = ["audio_options", "backend"],
         requires = "ui_only"
     )]
     pub host_stdin: bool,
     #[cfg(not(target_arch = "wasm32"))]
-    #[arg(long, requires = "host_target")]
+    #[arg(help_heading = "Remote Host", long, requires = "host_target")]
     pub ui_only: bool,
     #[cfg(not(target_arch = "wasm32"))]
     /// Shut down the selected ownerless host using current management authority.
-    #[arg(long, requires = "host_target", conflicts_with = "ui_only")]
+    #[arg(
+        help_heading = "Remote Host",
+        long,
+        requires = "host_target",
+        conflicts_with = "ui_only"
+    )]
     pub shutdown_host: bool,
     /// Open a .shoop session from a filesystem path or URL on startup.
     #[arg(long)]
@@ -67,11 +74,12 @@ pub struct AppArgs {
     pub tracing_engine_detail: bool,
     #[arg(long, hide = true, requires = "tracing")]
     pub tracing_smoke_test: bool,
-    /// Compatibility option: new_engine is the sole application backend.
-    #[arg(long, value_parser = |value: &str| value.parse::<shoop_egui::AudioBackendKind>())]
-    pub audio_backend: Option<shoop_egui::AudioBackendKind>,
+    /// Execution backend for a newly started host: native, rust-fpga or rtl-sim.
+    #[cfg_attr(not(target_arch = "wasm32"), arg(conflicts_with = "host_target"))]
+    #[arg(help_heading = "Backend", long, value_parser = |value: &str| value.parse::<shoop_app_api::BackendType>())]
+    pub backend: Option<shoop_app_api::BackendType>,
     /// Session delivery: in_process, socket (recoverable) or shared_memory (restart required).
-    #[arg(long = "session-transport", visible_alias = "engine-transport", value_parser = |value: &str| value.parse::<shoop_egui::EngineTransportKind>())]
+    #[arg(help_heading = "Remote Host", long = "session-transport", visible_alias = "engine-transport", value_parser = |value: &str| value.parse::<shoop_egui::EngineTransportKind>())]
     pub engine_transport: Option<shoop_egui::EngineTransportKind>,
     #[cfg(not(target_arch = "wasm32"))]
     /// Validate packaged external built-in scripts and exit.
@@ -143,6 +151,22 @@ pub struct AppArgs {
 }
 
 impl AppArgs {
+    pub fn selected_backend(
+        &self,
+        settings: &shoop_settings::SettingsSnapshot,
+    ) -> anyhow::Result<shoop_app_api::BackendType> {
+        let backend = self
+            .backend
+            .map(Ok)
+            .unwrap_or_else(|| shoop_egui::backend_from_snapshot(settings))
+            .map_err(anyhow::Error::msg)?;
+        #[cfg(target_arch = "wasm32")]
+        anyhow::ensure!(
+            backend == shoop_app_api::BackendType::Native || (backend == shoop_app_api::BackendType::RustFpga && cfg!(feature="fpga-reference")),
+            "browser backend unavailable: build with fpga-reference for rust-fpga; rtl-sim requires a native host"
+        );
+        Ok(backend)
+    }
     #[cfg(not(target_arch = "wasm32"))]
     pub fn configured_audio_driver(
         &self,
@@ -158,12 +182,38 @@ impl AppArgs {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
+    pub fn configured_host_settings(
+        &self,
+        settings: &shoop_settings::SettingsSnapshot,
+    ) -> anyhow::Result<shoop_app_api::HostSettings> {
+        let backend = self.selected_backend(settings)?;
+        let mut config = shoop_app_api::HostSettings::for_backend(backend);
+        config.driver = self
+            .configured_audio_driver(settings)
+            .map_err(anyhow::Error::msg)?;
+        config.pools = self.audio.apply_pools(
+            shoop_egui::new_engine_pools_from_snapshot(settings).map_err(anyhow::Error::msg)?,
+        );
+        config.processors = self.configured_processors(settings)?;
+        if backend == shoop_app_api::BackendType::Native {
+            config.loop_smoothing_ms =
+                shoop_egui::loop_edge_smoothing_ms(settings).map_err(anyhow::Error::msg)?;
+            config.master_auto_connect =
+                shoop_egui::master_auto_connect(settings).map_err(anyhow::Error::msg)?;
+        }
+        Ok(config)
+    }
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn configured_processors(
         &self,
         settings: &shoop_settings::SettingsSnapshot,
     ) -> anyhow::Result<shoop_app_api::ProcessorSettings> {
         self.audio.apply_processors(
-            shoop_egui::processor_settings_from_snapshot(settings).map_err(anyhow::Error::msg)?,
+            shoop_egui::processor_settings_from_snapshot(
+                settings,
+                self.selected_backend(settings)?,
+            )
+            .map_err(anyhow::Error::msg)?,
         )
     }
 
@@ -278,6 +328,66 @@ fn hex_digit(value: u8) -> Result<u8, clap::error::ErrorKind> {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod native_tests {
     use super::*;
+
+    #[shoop_wasm_test_support::shoop_test]
+    fn saved_backend_and_cli_override_feed_host_settings() {
+        use shoop_app_api::BackendType;
+        let mut builder = shoop_settings::SettingsRegistryBuilder::default();
+        shoop_egui::register_audio_backend_settings(&mut builder).unwrap();
+        shoop_egui::register_audio_settings(&mut builder).unwrap();
+        let registry = builder.finish();
+        let mut draft = shoop_settings::SettingsDraft::from_snapshot(&registry.defaults(1));
+        draft.set(shoop_egui::BACKEND, "rust-fpga".into());
+        draft.set(shoop_egui::NEW_ENGINE_QUANTUM, "16".into());
+        draft.set(shoop_egui::CARLA_HOSTING_MODE, "subprocess".into());
+        draft.set(shoop_egui::CARLA_RACK_INSTANCES, 2);
+        draft.set(shoop_egui::CARLA_PATCHBAY_INSTANCES, 1);
+        draft.set(shoop_egui::CARLA_PATCHBAY_16X_INSTANCES, 3);
+        let document = registry
+            .document_from_draft(
+                &shoop_settings::SettingsDocument::empty("test"),
+                &draft,
+                "test",
+            )
+            .unwrap();
+        let settings = registry.resolve(&document, 2).snapshot;
+        let args = AppArgs::default();
+        let config = args.configured_host_settings(&settings).unwrap();
+        assert_eq!(config.backend, BackendType::RustFpga);
+        assert_eq!(config.pools.quantum, 16);
+        assert_eq!(config.loop_smoothing_ms, 0);
+        assert_eq!(config.processors.carla, Default::default());
+        assert!(matches!(
+            config.driver,
+            shoop_app_api::AudioDriverConfig::Dummy(_)
+        ));
+        let args = AppArgs::try_parse_from([
+            "shoopdaloop",
+            "--dummy-buffer-size",
+            "64",
+            "--quantum",
+            "32",
+        ])
+        .unwrap();
+        let config = args.configured_host_settings(&settings).unwrap();
+        let shoop_app_api::AudioDriverConfig::Dummy(driver) = config.driver else {
+            panic!("dummy driver expected");
+        };
+        assert_eq!(driver.buffer_size, 64);
+        assert_eq!(config.pools.quantum, 32);
+        assert_eq!(settings.get(shoop_egui::NEW_ENGINE_QUANTUM).unwrap(), "16");
+        assert_eq!(settings.get(shoop_egui::DUMMY_BUFFER_SIZE).unwrap(), 256);
+        let args = AppArgs::try_parse_from(["shoopdaloop", "--backend", "native"]).unwrap();
+        let config = args.configured_host_settings(&settings).unwrap();
+        assert_eq!(config.backend, BackendType::Native);
+        assert_eq!(
+            config.processors.carla.hosting,
+            shoop_app_api::CarlaHosting::Subprocess
+        );
+        assert_eq!(config.processors.carla.rack_instances, 2);
+        assert_eq!(config.processors.carla.patchbay_instances, 1);
+        assert_eq!(config.processors.carla.patchbay16x_instances, 3);
+    }
 
     #[shoop_wasm_test_support::shoop_test]
     fn native_host_roles_do_not_require_profile_or_config_files() {
@@ -400,7 +510,7 @@ mod native_tests {
                 "shoopdaloop",
                 "--session-transport",
                 transport,
-                "--audio-driver",
+                "--driver",
                 "jack",
                 "--jack-client-name",
                 "Live",
@@ -424,7 +534,7 @@ mod native_tests {
         for target in ["--host-address", "--host-profile", "--remote-profile"] {
             assert!(AppArgs::try_parse_from([
                 "shoopdaloop",
-                "--audio-driver",
+                "--driver",
                 "jack",
                 target,
                 "existing-host",
@@ -433,7 +543,7 @@ mod native_tests {
         }
         let original = [
             "--session-transport=socket",
-            "--audio-driver=jack",
+            "--driver=jack",
             "--jack-client-name",
             "Live",
         ];
@@ -447,20 +557,25 @@ mod native_tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn cli_overrides_the_audio_backend() {
-        use shoop_egui::AudioBackendKind;
+    fn backend_cli_selects_all_types_and_rejects_retired_options() {
         assert_eq!(
-            AppArgs::try_parse_from(["shoopdaloop"])
-                .unwrap()
-                .audio_backend,
+            AppArgs::try_parse_from(["shoopdaloop"]).unwrap().backend,
             None
         );
-        for (value, kind) in [("new_engine", AudioBackendKind::NewEngine)] {
-            let args = AppArgs::try_parse_from(["shoopdaloop", "--audio-backend", value]).unwrap();
-            assert_eq!(args.audio_backend, Some(kind));
+        for kind in shoop_app_api::BackendType::ALL {
+            let args = AppArgs::try_parse_from(["shoopdaloop", "--backend", kind.id()]).unwrap();
+            assert_eq!(args.backend, Some(kind));
         }
-        let error = AppArgs::try_parse_from(["shoopdaloop", "--audio-backend=engine"]).unwrap_err();
-        assert!(error.to_string().contains("expected new_engine"));
+        assert!(AppArgs::try_parse_from(["shoopdaloop", "--audio-backend", "new_engine"]).is_err());
+        assert!(AppArgs::try_parse_from(["shoopdaloop", "--backend", "unknown"]).is_err());
+        assert!(AppArgs::try_parse_from([
+            "shoopdaloop",
+            "--host-address",
+            "localhost:1",
+            "--backend",
+            "native"
+        ])
+        .is_err());
     }
 }
 
@@ -504,14 +619,12 @@ mod tests {
     }
 
     #[shoop_wasm_test_support::shoop_test]
-    fn web_query_overrides_the_audio_backend() {
-        use shoop_egui::AudioBackendKind;
-        assert_eq!(parse_web_query("").unwrap().audio_backend, None);
-        let args = parse_web_query("?audio-backend=new_engine&new-engine-self-test=1").unwrap();
-        assert_eq!(args.audio_backend, Some(AudioBackendKind::NewEngine));
+    fn web_query_selects_backend() {
+        assert_eq!(parse_web_query("").unwrap().backend, None);
+        let args = parse_web_query("?backend=native&new-engine-self-test=1").unwrap();
+        assert_eq!(args.backend, Some(shoop_app_api::BackendType::Native));
         assert!(args.new_engine_self_test);
-        assert!(parse_web_query("?audio-backend=legacy").is_err());
-        assert!(parse_web_query("?audio-backend=engine").is_err());
+        assert!(parse_web_query("?backend=unknown").is_err());
     }
 
     #[shoop_wasm_test_support::shoop_test]

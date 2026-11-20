@@ -19,6 +19,8 @@ pub enum Mode {
     Invalid,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct LoopRecord {
     pub id: Identity,
     pub mode: Mode,

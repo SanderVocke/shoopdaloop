@@ -1,4 +1,4 @@
-// Canonical RT protocol and worklet configuration v7 records.
+// Canonical RT protocol and worklet configuration v8 records.
 import { protocolVersion } from '/protocol.js';
 const u16 = value => [value & 255, (value >>> 8) & 255];
 const u32 = value => [value & 255, (value >>> 8) & 255, (value >>> 16) & 255, value >>> 24];
@@ -6,7 +6,7 @@ const u64 = value => [...u32(value), 0, 0, 0, 0];
 const id = [...u32(0), ...u32(1)];
 const float = value => Array.from(new Uint8Array(new Float32Array([value]).buffer));
 function configuration() {
-  const values = [7, 8000, 128, 16, 1, 2, 1, 0, 64, 0, 2, 2, 2, 2, 0, 0, 0, 0,
+  const values = [8, 8000, 128, 16, 1, 2, 1, 0, 64, 0, 2, 2, 2, 2, 0, 0, 0, 0,
     512, 256, 64, 512, 32, 128, 8, 0, 0, 64, 64, 512, 2,
     16384, 16384, 4096, 4096, 8, 256, 1024, 512, 1, 2, 4, 2, 0, 0, 1, 1];
   const bytes = values.flatMap(u32);
@@ -14,6 +14,7 @@ function configuration() {
     bytes.push(...u32(names.length));
     for (const name of names) bytes.push(name.length, ...new TextEncoder().encode(name));
   }
+  bytes.push(...u32(0), ...u32(256)); // Native backend and reference memory in MiB.
   return new Uint8Array(bytes).buffer;
 }
 

@@ -75,9 +75,9 @@ module state_processor #(
     wire cfg_in_range = cfg_loop ? ({16'b0,cfg_address} < 32'(LOOP_DEPTH*16)) : cfg_state
         ? ({16'b0, cfg_address} < 32'(STATE_DEPTH))
         : ({16'b0, cfg_address} < 32'(PROGRAM_DEPTH*PROGRAM_REGIONS));
-    wire cfg_program_access = cfg_accept && !cfg_loop && !cfg_state && cfg_in_range;
-    wire cfg_state_access = cfg_accept && !cfg_loop && cfg_state && cfg_in_range;
-    wire cfg_loop_access = cfg_accept && cfg_loop && cfg_in_range;
+    wire cfg_program_access = cfg_accept && !cfg_loop && !cfg_state && ({16'b0,cfg_address} < 32'(PROGRAM_DEPTH*PROGRAM_REGIONS));
+    wire cfg_state_access = cfg_accept && !cfg_loop && cfg_state && ({16'b0,cfg_address} < 32'(STATE_DEPTH));
+    wire cfg_loop_access = cfg_accept && cfg_loop && ({16'b0,cfg_address} < 32'(LOOP_DEPTH*16));
     wire program_read_enable;
     wire [PROGRAM_ADDR_BITS-1:0] program_read_address;
     wire [`SHOOP_SP_INSTRUCTION_BITS-1:0] program_read_data;

@@ -1,0 +1,20 @@
+{
+  "input_stage": "post_opt",
+  "input_checkpoint_sha256": "dd19c281656dcc990ba6f01892f83cf35a812034cc1a29ec39053cdc5000f22e",
+  "clock_mhz": 150,
+  "registered_component_boundaries": true,
+  "placed": false,
+  "routed": false,
+  "command": [
+    "vivado",
+    "-mode",
+    "batch",
+    "-nojournal",
+    "-log",
+    "vivado.log",
+    "-source",
+    "run.tcl",
+    "-tclargs",
+    "../post_opt.dcp"
+  ]
+}

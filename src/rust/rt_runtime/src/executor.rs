@@ -1,6 +1,6 @@
 //! Single-owner graph executor with stable processor slots and transactional plans.
 
-use crate::buffer::{AudioBlock, AudioPorts, MidiBlock, MidiBuffer};
+use crate::buffer::{AudioBlock, AudioPorts, MidiBlock, MidiBuffer, MidiCapacity};
 use crate::graph::activation::{GraphAccess, GraphStages, StageId};
 use crate::graph::{
     compile, Catalog, Connection, Endpoint, GraphDescription, NodeSpec, PlanValidator, PortCounts,
@@ -273,7 +273,7 @@ impl<S: Sample> Buffers<S> {
             (0..count)
                 .map(|port| {
                     let capacity = if overrides {
-                        settings.capacity(input, port, default)
+                        settings.owned_capacity(input, port, default)
                     } else {
                         default
                     };
@@ -350,6 +350,22 @@ impl<S: Sample> Buffers<S> {
             port.clear();
         }
     }
+    fn attach_reusable_input(
+        &mut self,
+        reusable: &mut Option<MidiBuffer>,
+    ) -> Result<Option<usize>, Error> {
+        if let Some(port) = self.midi_settings.reusable_input {
+            let buffer = reusable.as_mut().ok_or(Error::InvalidState)?;
+            core::mem::swap(&mut self.midi_input[port], buffer);
+        }
+        Ok(self.midi_settings.reusable_input)
+    }
+    fn release_reusable_input(&mut self, port: usize, reusable: &mut Option<MidiBuffer>) {
+        let input = &mut self.midi_input[port];
+        self.midi_input_recovery[port] |= input.is_recovery();
+        input.clear();
+        core::mem::swap(input, reusable.as_mut().expect("attached MIDI input"));
+    }
 }
 struct Slot<P, S: Sample = f32> {
     id: NodeId,
@@ -403,6 +419,7 @@ impl<P, S: Sample> crate::immediate::Processors<P> for ImmediateProcessors<'_, P
 
 pub struct GraphRuntime<P, L: Planner<S> = NoPlanner, Q: ProcessorOperation = (), S: Sample = f32> {
     audio_arena: Option<crate::audio_refs::RenderArena<S>>,
+    reusable_input: Option<MidiBuffer>,
     host_sequences: Box<[crate::audio_refs::AudioSequence<S>]>,
     snapshot_observer: Option<Box<dyn crate::snapshot::Observer<P, L>>>,
     snapshot_callback: Option<Frame>,
@@ -555,19 +572,38 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
             node.processor.admit(node.id, &planner)?;
         }
         let limits = config.limits();
-        let default = crate::buffer::MidiCapacity {
+        let default = MidiCapacity {
             events: limits.midi_events_per_port,
             bytes: limits.midi_bytes_per_port,
         };
         let mut midi_bytes = 0usize;
+        let mut reusable = None;
         for node in &nodes {
+            let settings = node.midi_settings?;
             midi_bytes = midi_bytes
-                .checked_add(node.midi_settings?.prepared_bytes(node.ports, default)?)
+                .checked_add(settings.prepared_bytes(node.ports, default)?)
+                .ok_or(Error::Capacity)?;
+            if let Some(port) = settings.reusable_input {
+                let capacity = settings.capacity(true, port, default);
+                if reusable
+                    .replace(capacity)
+                    .is_some_and(|previous| previous != capacity)
+                {
+                    return Err(Error::InvalidConfig);
+                }
+            }
+        }
+        if let Some(capacity) = reusable {
+            midi_bytes = midi_bytes
+                .checked_add(capacity.prepared_bytes()?)
                 .ok_or(Error::Capacity)?;
         }
         if midi_bytes > i32::MAX as usize {
             return Err(Error::Capacity);
         }
+        let reusable_input = reusable
+            .map(|capacity| MidiBuffer::new(capacity.events, capacity.bytes))
+            .transpose()?;
         let mut slots: Vec<_> = (0..limits.max_nodes).map(|_| None).collect();
         let audio_ports = nodes.iter().try_fold(0usize, |count, node| {
             count
@@ -615,6 +651,7 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
             control,
             Self {
                 audio_arena,
+                reusable_input,
                 host_sequences: vec![
                     crate::audio_refs::AudioSequence::default();
                     limits.audio_inputs
@@ -1543,76 +1580,86 @@ impl<P: Processor<L, Q, S>, L: Planner<S>, Q: ProcessorOperation, S: Sample>
             self.profiling.layout_done();
         }
         for step in &plan.descriptor().steps {
-            self.slots[step.node.slot() as usize]
-                .as_mut()
-                .ok_or(Error::InvalidId)?
-                .buffers
-                .clear(q, 0, q);
-            for edge in &plan.descriptor().connections[first..step.input_end] {
-                record_midi_overflow(
-                    route_offset(&mut self.slots, *edge, audio, midi, q, start, q, 0),
-                    &mut self.diagnostics,
-                )?;
+            let index = step.node.slot() as usize;
+            let buffers = &mut self.slots[index].as_mut().ok_or(Error::InvalidId)?.buffers;
+            let reusable = buffers.attach_reusable_input(&mut self.reusable_input)?;
+            buffers.clear(q, 0, q);
+            let result: Result<(), Error> = (|| {
+                for edge in &plan.descriptor().connections[first..step.input_end] {
+                    record_midi_overflow(
+                        route_offset(&mut self.slots, *edge, audio, midi, q, start, q, 0),
+                        &mut self.diagnostics,
+                    )?;
+                    increment(
+                        &mut self.diagnostics.connections_processed,
+                        &mut self.diagnostics.counter_overflow,
+                    );
+                }
+                let slot = self.slots[step.node.slot() as usize]
+                    .as_mut()
+                    .ok_or(Error::InvalidId)?;
+                let buffers = &mut slot.buffers;
+                for (input, injected) in buffers.midi_input.iter_mut().zip(&mut buffers.injected) {
+                    record_midi_overflow(input.merge(injected, q), &mut self.diagnostics)?;
+                    injected.clear();
+                }
+                for (input, recovery) in buffers
+                    .midi_input
+                    .iter_mut()
+                    .zip(&buffers.midi_input_recovery)
+                {
+                    if *recovery {
+                        input.clear();
+                    }
+                }
+                let processor = slot.processor.as_mut().ok_or(Error::InvalidId)?;
+                let result = processor.process(&mut ProcessBlock {
+                    node: step.node,
+                    graph_epoch: self.epoch,
+                    callback_start,
+                    frame,
+                    frames: q,
+                    quantum,
+                    audio: AudioPorts::new(&buffers.input, &mut buffers.output, q, 0, q)?,
+                    midi_inputs: &buffers.midi_input,
+                    midi_outputs: &mut buffers.midi_output,
+                    midi_forwarded: &mut buffers.midi_forwarded,
+                    resources: self.resources.io(),
+                    domain: &mut self.planner,
+                });
+                if result == Err(Error::Full) {
+                    buffers.midi_forwarded.fill(false);
+                    for out in &mut buffers.midi_output {
+                        out.force_reset(0);
+                    }
+                }
+                for ((output, recovery), forwarded) in buffers
+                    .midi_output
+                    .iter_mut()
+                    .zip(&buffers.midi_output_recovery)
+                    .zip(&mut buffers.midi_forwarded)
+                {
+                    if *recovery {
+                        *forwarded = false;
+                        output.clear();
+                    }
+                }
+                record_midi_overflow(result, &mut self.diagnostics)?;
                 increment(
-                    &mut self.diagnostics.connections_processed,
+                    &mut self.diagnostics.nodes_processed,
                     &mut self.diagnostics.counter_overflow,
                 );
+                self.profiling.node_ready(u64::from(step.node.slot()));
+                Ok(())
+            })();
+            if let Some(port) = reusable {
+                self.slots[index]
+                    .as_mut()
+                    .expect("prepared node remains attached during processing")
+                    .buffers
+                    .release_reusable_input(port, &mut self.reusable_input);
             }
-            let slot = self.slots[step.node.slot() as usize]
-                .as_mut()
-                .ok_or(Error::InvalidId)?;
-            let buffers = &mut slot.buffers;
-            for (input, injected) in buffers.midi_input.iter_mut().zip(&mut buffers.injected) {
-                record_midi_overflow(input.merge(injected, q), &mut self.diagnostics)?;
-                injected.clear();
-            }
-            for (input, recovery) in buffers
-                .midi_input
-                .iter_mut()
-                .zip(&buffers.midi_input_recovery)
-            {
-                if *recovery {
-                    input.clear();
-                }
-            }
-            let processor = slot.processor.as_mut().ok_or(Error::InvalidId)?;
-            let result = processor.process(&mut ProcessBlock {
-                node: step.node,
-                graph_epoch: self.epoch,
-                callback_start,
-                frame,
-                frames: q,
-                quantum,
-                audio: AudioPorts::new(&buffers.input, &mut buffers.output, q, 0, q)?,
-                midi_inputs: &buffers.midi_input,
-                midi_outputs: &mut buffers.midi_output,
-                midi_forwarded: &mut buffers.midi_forwarded,
-                resources: self.resources.io(),
-                domain: &mut self.planner,
-            });
-            if result == Err(Error::Full) {
-                buffers.midi_forwarded.fill(false);
-                for out in &mut buffers.midi_output {
-                    out.force_reset(0);
-                }
-            }
-            for ((output, recovery), forwarded) in buffers
-                .midi_output
-                .iter_mut()
-                .zip(&buffers.midi_output_recovery)
-                .zip(&mut buffers.midi_forwarded)
-            {
-                if *recovery {
-                    *forwarded = false;
-                    output.clear();
-                }
-            }
-            record_midi_overflow(result, &mut self.diagnostics)?;
-            increment(
-                &mut self.diagnostics.nodes_processed,
-                &mut self.diagnostics.counter_overflow,
-            );
-            self.profiling.node_ready(u64::from(step.node.slot()));
+            result?;
             first = step.input_end;
         }
         for edge in &plan.descriptor().connections[first..] {

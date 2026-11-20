@@ -174,7 +174,7 @@ The processor script uses these; pointers are byte offsets into `memory`.
 | `shoop_rt_worklet_audio_input_ptr()`, `_audio_output_ptr()` | Planar `f32` channels, `max_frames` apart |
 | `shoop_rt_worklet_buffer_ptr(id)`, `_capacity(id)`, `_len(id)` | Buffers 0 records in, 1 records out, 2 MIDI in, 3 MIDI out; an inbound length is where the next bytes go, an outbound length is the last quantum's bytes |
 | `shoop_rt_worklet_commit(id, len) -> bool` | Accept bytes written at an inbound buffer's length |
-| `shoop_rt_worklet_process(frames, input_channels, frame, load) -> code` | 0 rendered, 1 not prepared, 2 invalid quantum (nothing ran), 3 faulted; `frame` is `currentFrame`, `load` the previous quantum's share of its period or negative |
+| `shoop_rt_worklet_process(frames, input_channels, frame, previous_elapsed_ns, previous_frames) -> code` | 0 rendered, 1 not prepared, 2 invalid quantum (nothing ran), 3 faulted. `frame` is `currentFrame`. Pass the previous callback's duration in nanoseconds (negative if unavailable) and its frame count. |
 | `shoop_rt_worklet_counter(id) -> u32` | 0 discontinuities, 1 overruns, 2 MIDI-in dropped, 3 MIDI-in late, 4 MIDI-out dropped, 5 framing errors |
 
 The crate is `#![deny(unsafe_code)]`; the exports module allows it only for
@@ -261,3 +261,8 @@ MIDI and the worklet ABI. They create a strip and a loop, record and play it bac
 xruns and load, timestamped MIDI in and out, bounded delivery per quantum,
 framing errors and reconnection. Every module call is heap-guarded. A separate
 test exercises the exported functions.
+
+With `fpga-reference`, the browser main side compiles bounded Rust-target images
+and the worklet loads them from its MessagePort handler outside rendering. The
+render contract, quantum adapter and ownership/fence rules match native hosting.
+See [shared drivers](../../../docs/shared_drivers.md) for startup and latency.

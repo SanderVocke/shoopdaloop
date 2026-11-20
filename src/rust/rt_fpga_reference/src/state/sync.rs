@@ -43,6 +43,7 @@ pub struct ModePlan {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LoopSlot {
     /// Logical state at the next quantum boundary after the sync instruction runs.
     pub state: LoopState,
@@ -54,6 +55,8 @@ pub struct LoopSlot {
     pulse_masked: bool,
     protected: Option<u64>,
     pub(crate) mode_plan: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) midi_capture_open: bool,
     pub(crate) mode_failures: u32,
 }
 impl LoopSlot {
@@ -67,6 +70,7 @@ impl LoopSlot {
             pulse_masked: false,
             protected: None,
             mode_plan,
+            midi_capture_open: false,
             mode_failures: 0,
         }
     }
@@ -111,6 +115,7 @@ impl LoopMemory {
                     pulse_masked: false,
                     protected: None,
                     mode_plan: false,
+                    midi_capture_open: false,
                     mode_failures: 0,
                 })
             })
@@ -245,57 +250,16 @@ impl LoopMemory {
         Ok(())
     }
     /// Apply an immediate mode and replace the two ordered source-pulse steps.
-    pub fn write_mode_plan(
-        &mut self,
-        id: LoopId,
-        mut plan: ModePlan,
-    ) -> Result<(), TransitionError> {
+    pub fn write_mode_plan(&mut self, id: LoopId, plan: ModePlan) -> Result<(), TransitionError> {
         let slot = self.slot(id)?;
         if !slot.mode_plan && slot.planned.iter().any(Option::is_some) {
             return Err(TransitionError::InvalidState);
         }
-        let source = self.plan.specs[id.slot as usize]
-            .unwrap()
-            .sync_source
-            .unwrap_or(id);
-        if source == id && slot.state.mode != Mode::Playing && plan.now.is_none() {
-            if plan.steps.iter().flatten().count() == 2 {
-                return Err(TransitionError::InvalidState);
-            }
-            if let Some(step) = plan.steps.into_iter().flatten().next() {
-                plan.now = Some(step.mode);
-                plan.steps = [None; 2];
-            }
-        }
-        if plan.steps.iter().any(Option::is_some)
-            && source == id
-            && self.slot(source)?.state.mode != Mode::Playing
-            && plan.now != Some(Mode::Playing)
-        {
-            return Err(TransitionError::InvalidState);
-        }
-        if let Some(mode) = plan.now {
-            self.apply_mode(id, mode, false)?;
-        }
+        let source = self.plan.specs[id.slot as usize].unwrap().sync_source;
         let frame = self.frame;
         let slot = self.slot_mut(id)?;
+        slot.planned = apply_mode_command(&mut slot.state, source, frame, plan)?;
         slot.mode_plan = true;
-        slot.planned = plan.steps.map(|step| {
-            step.map(|step| PlannedTransition {
-                sequence: 0,
-                effective: frame,
-                on_pulse: true,
-                remaining_ticks: u64::from(step.skip),
-                operation: match step.mode {
-                    Mode::Stopped => Operation::Stop,
-                    Mode::Recording => Operation::Record,
-                    Mode::Playing => Operation::Play {
-                        position: 0,
-                        retrigger: true,
-                    },
-                },
-            })
-        });
         Ok(())
     }
     fn apply_mode(
@@ -589,6 +553,66 @@ fn render(state: LoopState) -> LoopRecord {
         content_length: state.content_length,
         begin_capture: state.mode == Mode::Recording && state.capture_frames == 0,
     }
+}
+/// Apply a command to actual boundary state; sync execution remains in the SP.
+pub fn apply_mode_command(
+    state: &mut LoopState,
+    source: Option<LoopId>,
+    frame: u64,
+    mut plan: ModePlan,
+) -> Result<[Option<PlannedTransition>; 2], TransitionError> {
+    let source = source.unwrap_or(state.id);
+    if source == state.id && state.mode != Mode::Playing && plan.now.is_none() {
+        if plan.steps.iter().flatten().count() == 2 {
+            return Err(TransitionError::InvalidState);
+        }
+        if let Some(step) = plan.steps.into_iter().flatten().next() {
+            plan.now = Some(step.mode);
+            plan.steps = [None; 2];
+        }
+    }
+    if plan.steps.iter().any(Option::is_some)
+        && source == state.id
+        && state.mode != Mode::Playing
+        && plan.now != Some(Mode::Playing)
+    {
+        return Err(TransitionError::InvalidState);
+    }
+    let mut next = *state;
+    if let Some(mode) = plan.now {
+        if !((mode == Mode::Recording && next.mode == Mode::Recording)
+            || (mode == Mode::Stopped && next.mode == Mode::Stopped))
+        {
+            apply_operation(
+                &mut next,
+                match mode {
+                    Mode::Stopped => Operation::Stop,
+                    Mode::Recording => Operation::Record,
+                    Mode::Playing => Operation::Play {
+                        position: 0,
+                        retrigger: true,
+                    },
+                },
+            )?;
+        }
+    }
+    *state = next;
+    Ok(plan.steps.map(|s| {
+        s.map(|s| PlannedTransition {
+            sequence: 0,
+            effective: frame,
+            on_pulse: true,
+            remaining_ticks: u64::from(s.skip),
+            operation: match s.mode {
+                Mode::Stopped => Operation::Stop,
+                Mode::Recording => Operation::Record,
+                Mode::Playing => Operation::Play {
+                    position: 0,
+                    retrigger: true,
+                },
+            },
+        })
+    }))
 }
 fn apply_operation(state: &mut LoopState, operation: Operation) -> Result<bool, TransitionError> {
     match operation {

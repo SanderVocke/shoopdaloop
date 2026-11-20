@@ -2398,6 +2398,7 @@ impl ApplicationModel {
                 | TrackAction::FxToggleOrRecover
                 | TrackAction::FxRestoreState(_)
                 | TrackAction::FxClearLogs
+                | TrackAction::FxReadLogs
                 | TrackAction::BuiltInFx(_)
                 | TrackAction::OxiSynth(_) => require(Capability::TrackFx),
                 _ => Ok(()),
@@ -2409,6 +2410,7 @@ impl ApplicationModel {
                 | BusAction::FxToggleOrRecover
                 | BusAction::FxRestoreState(_)
                 | BusAction::FxClearLogs
+                | BusAction::FxReadLogs
                 | BusAction::BuiltInFx(_)
                 | BusAction::FxProcessorChanged(_) => require(Capability::BusFx),
                 _ => Ok(()),
@@ -6006,6 +6008,7 @@ impl ApplicationModel {
                 | BusAction::FxToggleOrRecover
                 | BusAction::FxRestoreState(_)
                 | BusAction::FxClearLogs
+                | BusAction::FxReadLogs
                 | BusAction::BuiltInFx(_)
                 | BusAction::FxProcessorChanged(_)
         ) {
@@ -6022,6 +6025,7 @@ impl ApplicationModel {
             | BusAction::FxToggleOrRecover
             | BusAction::FxRestoreState(_)
             | BusAction::FxClearLogs
+            | BusAction::FxReadLogs
             | BusAction::BuiltInFx(_)
             | BusAction::FxProcessorChanged(_) => unreachable!(),
         };
@@ -6074,6 +6078,11 @@ impl ApplicationModel {
             .get(&bus_id)
             .map(|bus| bus.backend_id)
             .ok_or_else(|| format!("stale or unknown bus {bus_id}"))?;
+        if action == BusAction::FxReadLogs {
+            return backend
+                .request_bus_fx_logs(backend_id)
+                .map_err(|error| error.to_string());
+        }
         let control = match action {
             BusAction::FxActiveChanged(value) => BackendBusFxControl::SetActive(value),
             BusAction::FxVisibilityChanged(value) => BackendBusFxControl::SetVisible(value),
@@ -6253,6 +6262,11 @@ impl ApplicationModel {
                 return backend
                     .set_track_fx_control(track.backend_id, BackendTrackFxControl::ClearLogs)
                     .map_err(|error| format!("could not update track FX {track_id}: {error}"));
+            }
+            TrackAction::FxReadLogs => {
+                return backend
+                    .request_track_fx_logs(track.backend_id)
+                    .map_err(|error| error.to_string());
             }
             TrackAction::BuiltInFx(builtin_fx) => {
                 let control = BackendTrackFxControl::BuiltInFx(builtin_fx);
@@ -9813,7 +9827,7 @@ impl ApplicationModel {
         if switch.status != AudioDriverSwitchStatus::Idle {
             self.audio_drivers.switch = switch;
         }
-        self.status.dsp_load_percent = snapshot.status.dsp_load_percent;
+        self.status.dsp = snapshot.status.dsp;
         let callback_xruns =
             if snapshot.status.callback_budget_overruns >= self.last_callback_budget_overruns {
                 snapshot
@@ -16757,6 +16771,7 @@ mod tests {
         runtime
             .dispatch(AppIntent::RequestAudioDriverSwitch {
                 config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: 44_100,
                     buffer_size: 256,
                 }),
@@ -19753,6 +19768,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::RequestAudioDriverSwitch {
                 config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: 1_000,
                     buffer_size: 2,
                 }),
@@ -22074,6 +22090,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
             .request_audio_driver_switch(
                 &mut backend,
                 AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: 44_100,
                     buffer_size: 128,
                 }),
@@ -23111,6 +23128,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::RequestAudioDriverSwitch {
                 config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: 32_000,
                     buffer_size: 128,
                 }),
@@ -23232,6 +23250,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::RequestAudioDriverSwitch {
                 config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: 24_000,
                     buffer_size: 64,
                 }),
@@ -23312,6 +23331,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::RequestAudioDriverSwitch {
                 config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: 24_000,
                     buffer_size: 64,
                 }),
@@ -23353,6 +23373,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::RequestAudioDriverSwitch {
                 config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: 32_000,
                     buffer_size: 128,
                 }),
@@ -23396,6 +23417,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::RequestAudioDriverSwitch {
                 config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: 44_100,
                     buffer_size: 256,
                 }),
@@ -23466,6 +23488,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::RequestAudioDriverSwitch {
                 config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: 32_000,
                     buffer_size: 128,
                 }),
@@ -23631,6 +23654,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::RequestAudioDriverSwitch {
                 config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: 44_100,
                     buffer_size: 128,
                 }),
@@ -23685,6 +23709,7 @@ c.register_one_shot_timer_cb(1, function() d.open('Other') end)
         runtime
             .dispatch(AppIntent::RequestAudioDriverSwitch {
                 config: AudioDriverConfig::Dummy(shoop_app_api::DummyAudioDriverConfig {
+                    mode: Default::default(),
                     sample_rate: 44_100,
                     buffer_size: 256,
                 }),

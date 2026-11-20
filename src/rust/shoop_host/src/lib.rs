@@ -16,3 +16,6 @@ mod private;
 pub mod serve;
 
 pub mod remote;
+
+#[cfg(feature = "rtl-sim")]
+pub mod rtl_sim;

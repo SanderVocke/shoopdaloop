@@ -1,0 +1,856 @@
+Copyright 1986-2021 Xilinx, Inc. All Rights Reserved.
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2021.1 (lin64) Build 3247384 Thu Jun 10 19:36:07 MDT 2021
+| Date         : Fri Nov 20 08:56:17 2026
+| Host         : b38c3a906b7f running 64-bit Ubuntu 20.04.4 LTS
+| Command      : report_timing -from [get_cells -quiet -hierarchical -filter {IS_SEQUENTIAL && NAME =~ pipeline/core_under_test/core/midi/*}] -delay_type max -max_paths 10 -path_type full_clock_expanded -file post_place_midi_from_paths.rpt
+| Design       : session_context
+| Device       : 7z020-clg484
+| Speed File   : -1  PRODUCTION 1.12 2019-11-22
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Timing Report
+
+Slack (VIOLATED) :        -5.397ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/midi/service/work_a_reg_0/CLKBWRCLK
+                            (rising edge-triggered cell RAMB36E1 clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Destination:            pipeline/core_under_test/core/midi/service/work_a_reg_0/DIADI[7]
+                            (rising edge-triggered cell RAMB36E1 clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.667ns  (core rise@6.667ns - core rise@0.000ns)
+  Data Path Delay:        11.564ns  (logic 3.570ns (30.872%)  route 7.994ns (69.128%))
+  Logic Levels:           9  (LUT3=1 LUT5=2 LUT6=6)
+  Clock Path Skew:        -0.024ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.752ns = ( 8.419 - 6.667 ) 
+    Source Clock Delay      (SCD):    1.943ns
+    Clock Pessimism Removal (CPR):    0.167ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=30364, unset)        1.943     1.943    pipeline/core_under_test/core/midi/service/clk
+    RAMB36_X3Y28         RAMB36E1                                     r  pipeline/core_under_test/core/midi/service/work_a_reg_0/CLKBWRCLK
+  -------------------------------------------------------------------    -------------------
+    RAMB36_X3Y28         RAMB36E1 (Prop_ramb36e1_CLKBWRCLK_DOBDO[27])
+                                                      2.454     4.397 r  pipeline/core_under_test/core/midi/service/work_a_reg_0/DOBDO[27]
+                         net (fo=56, estimated)       1.642     6.039    pipeline/core_under_test/core/midi/service/operand_a[27]
+    SLICE_X36Y140        LUT3 (Prop_lut3_I0_O)        0.124     6.163 r  pipeline/core_under_test/core/midi/service/phase[4]_i_22__1/O
+                         net (fo=1, estimated)        1.061     7.224    pipeline/core_under_test/core/midi/service/phase[4]_i_22__1_n_0
+    SLICE_X31Y139        LUT5 (Prop_lut5_I1_O)        0.124     7.348 r  pipeline/core_under_test/core/midi/service/phase[4]_i_16__2/O
+                         net (fo=2, estimated)        0.689     8.037    pipeline/core_under_test/core/midi/service/phase[4]_i_16__2_n_0
+    SLICE_X27Y136        LUT6 (Prop_lut6_I0_O)        0.124     8.161 r  pipeline/core_under_test/core/midi/service/work_b_reg_0_i_1203/O
+                         net (fo=1, estimated)        0.598     8.759    pipeline/core_under_test/core/midi/service/work_b_reg_0_i_1203_n_0
+    SLICE_X27Y133        LUT6 (Prop_lut6_I5_O)        0.124     8.883 r  pipeline/core_under_test/core/midi/service/work_b_reg_0_i_1032/O
+                         net (fo=1, estimated)        0.860     9.743    pipeline/core_under_test/core/midi/service/work_b_reg_0_i_1032_n_0
+    SLICE_X38Y133        LUT6 (Prop_lut6_I5_O)        0.124     9.867 f  pipeline/core_under_test/core/midi/service/work_b_reg_0_i_838/O
+                         net (fo=1, estimated)        0.783    10.650    pipeline/core_under_test/core/midi/service/p_12_out
+    SLICE_X52Y131        LUT6 (Prop_lut6_I2_O)        0.124    10.774 r  pipeline/core_under_test/core/midi/service/work_b_reg_0_i_594/O
+                         net (fo=1, estimated)        0.537    11.311    pipeline/core_under_test/core/midi/service/work_b_reg_0_i_594_n_0
+    SLICE_X59Y131        LUT5 (Prop_lut5_I4_O)        0.124    11.435 r  pipeline/core_under_test/core/midi/service/work_b_reg_0_i_382/O
+                         net (fo=1, estimated)        0.638    12.073    pipeline/core_under_test/core/midi/service/work_b_reg_0_i_382_n_0
+    SLICE_X59Y137        LUT6 (Prop_lut6_I1_O)        0.124    12.197 r  pipeline/core_under_test/core/midi/service/work_b_reg_0_i_200/O
+                         net (fo=1, estimated)        0.543    12.740    pipeline/core_under_test/core/midi/service/work_b_reg_0_i_200_n_0
+    SLICE_X59Y138        LUT6 (Prop_lut6_I2_O)        0.124    12.864 r  pipeline/core_under_test/core/midi/service/work_b_reg_0_i_47/O
+                         net (fo=2, estimated)        0.643    13.507    pipeline/core_under_test/core/midi/service/work_b_reg_0_i_47_n_0
+    RAMB36_X3Y28         RAMB36E1                                     r  pipeline/core_under_test/core/midi/service/work_a_reg_0/DIADI[7]
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)       6.667     6.667 r  
+                                                      0.000     6.667 r  clk (IN)
+                         net (fo=30364, unset)        1.752     8.419    pipeline/core_under_test/core/midi/service/clk
+    RAMB36_X3Y28         RAMB36E1                                     r  pipeline/core_under_test/core/midi/service/work_a_reg_0/CLKARDCLK
+                         clock pessimism              0.167     8.586    
+                         clock uncertainty           -0.235     8.351    
+    RAMB36_X3Y28         RAMB36E1 (Setup_ramb36e1_CLKARDCLK_DIADI[7])
+                                                     -0.241     8.110    pipeline/core_under_test/core/midi/service/work_a_reg_0
+  -------------------------------------------------------------------
+                         required time                          8.110    
+                         arrival time                         -13.507    
+  -------------------------------------------------------------------
+                         slack                                 -5.397    
+
+Slack (VIOLATED) :        -5.240ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg[3]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Destination:            pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[28]/R
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.667ns  (core rise@6.667ns - core rise@0.000ns)
+  Data Path Delay:        11.031ns  (logic 4.088ns (37.059%)  route 6.943ns (62.941%))
+  Logic Levels:           17  (CARRY4=6 LUT2=1 LUT5=3 LUT6=7)
+  Clock Path Skew:        -0.117ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.719ns = ( 8.386 - 6.667 ) 
+    Source Clock Delay      (SCD):    1.967ns
+    Clock Pessimism Removal (CPR):    0.131ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=30364, unset)        1.967     1.967    pipeline/core_under_test/core/midi/service/states/difference_engine/clk
+    SLICE_X95Y133        FDRE                                         r  pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg[3]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X95Y133        FDRE (Prop_fdre_C_Q)         0.419     2.386 r  pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg[3]/Q
+                         net (fo=2, estimated)        1.009     3.395    pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg_n_0_[3]
+    SLICE_X94Y133        LUT6 (Prop_lut6_I1_O)        0.299     3.694 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_69/O
+                         net (fo=1, routed)           0.000     3.694    pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_69_n_0
+    SLICE_X94Y133        CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     4.227 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_62/CO[3]
+                         net (fo=1, estimated)        0.000     4.227    pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_62_n_0
+    SLICE_X94Y134        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     4.344 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_46/CO[3]
+                         net (fo=1, estimated)        0.000     4.344    pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_46_n_0
+    SLICE_X94Y135        CARRY4 (Prop_carry4_CI_CO[2])
+                                                      0.229     4.573 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_37/CO[2]
+                         net (fo=2, estimated)        0.459     5.032    pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_37_n_1
+    SLICE_X93Y135        LUT6 (Prop_lut6_I3_O)        0.310     5.342 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_23/O
+                         net (fo=1, estimated)        0.405     5.747    pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_23_n_0
+    SLICE_X93Y135        LUT5 (Prop_lut5_I0_O)        0.124     5.871 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_13/O
+                         net (fo=1, estimated)        0.675     6.546    pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_13_n_0
+    SLICE_X87Y134        LUT6 (Prop_lut6_I3_O)        0.124     6.670 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_8/O
+                         net (fo=34, estimated)       0.576     7.246    pipeline/core_under_test/core/midi/service/states/difference_engine/different
+    SLICE_X86Y134        LUT6 (Prop_lut6_I2_O)        0.124     7.370 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[3]_i_4/O
+                         net (fo=3, estimated)        0.752     8.122    pipeline/core_under_test/core/midi/service/states/difference_engine/cell_index_reg[4]_2
+    SLICE_X86Y136        LUT6 (Prop_lut6_I0_O)        0.124     8.246 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_i_30/O
+                         net (fo=1, routed)           0.000     8.246    pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_i_30_n_0
+    SLICE_X86Y136        CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     8.779 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_23/CO[3]
+                         net (fo=1, estimated)        0.000     8.779    pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_23_n_0
+    SLICE_X86Y137        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     8.896 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_19/CO[3]
+                         net (fo=1, estimated)        0.000     8.896    pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_19_n_0
+    SLICE_X86Y138        CARRY4 (Prop_carry4_CI_CO[2])
+                                                      0.229     9.125 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_18/CO[2]
+                         net (fo=1, estimated)        0.437     9.562    pipeline/core_under_test/core/midi/service/states/difference_engine/memory_valid2
+    SLICE_X83Y138        LUT6 (Prop_lut6_I2_O)        0.310     9.872 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_i_15/O
+                         net (fo=1, estimated)        0.485    10.357    pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_3__0_1
+    SLICE_X83Y138        LUT5 (Prop_lut5_I3_O)        0.124    10.481 r  pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_10/O
+                         net (fo=1, estimated)        0.356    10.837    pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_10_n_0
+    SLICE_X82Y138        LUT6 (Prop_lut6_I5_O)        0.124    10.961 r  pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_3__0/O
+                         net (fo=1, estimated)        0.354    11.315    pipeline/core_under_test/midi_memory/transfer/midi_memory_valid
+    SLICE_X82Y138        LUT5 (Prop_lut5_I0_O)        0.124    11.439 r  pipeline/core_under_test/midi_memory/transfer/command_write_i_1__0/O
+                         net (fo=102, estimated)      0.683    12.122    pipeline/core_under_test/midi_memory/transfer/request_address0
+    SLICE_X81Y142        LUT2 (Prop_lut2_I1_O)        0.124    12.246 r  pipeline/core_under_test/midi_memory/transfer/memory_read_data[31]_i_1/O
+                         net (fo=32, estimated)       0.752    12.998    pipeline/core_under_test/midi_memory/transfer/memory_read_data[31]_i_1_n_0
+    SLICE_X86Y142        FDRE                                         r  pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[28]/R
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)       6.667     6.667 r  
+                                                      0.000     6.667 r  clk (IN)
+                         net (fo=30364, unset)        1.719     8.386    pipeline/core_under_test/midi_memory/transfer/clk
+    SLICE_X86Y142        FDRE                                         r  pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[28]/C
+                         clock pessimism              0.131     8.517    
+                         clock uncertainty           -0.235     8.282    
+    SLICE_X86Y142        FDRE (Setup_fdre_C_R)       -0.524     7.758    pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[28]
+  -------------------------------------------------------------------
+                         required time                          7.758    
+                         arrival time                         -12.998    
+  -------------------------------------------------------------------
+                         slack                                 -5.240    
+
+Slack (VIOLATED) :        -5.240ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg[3]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Destination:            pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[29]/R
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.667ns  (core rise@6.667ns - core rise@0.000ns)
+  Data Path Delay:        11.031ns  (logic 4.088ns (37.059%)  route 6.943ns (62.941%))
+  Logic Levels:           17  (CARRY4=6 LUT2=1 LUT5=3 LUT6=7)
+  Clock Path Skew:        -0.117ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.719ns = ( 8.386 - 6.667 ) 
+    Source Clock Delay      (SCD):    1.967ns
+    Clock Pessimism Removal (CPR):    0.131ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=30364, unset)        1.967     1.967    pipeline/core_under_test/core/midi/service/states/difference_engine/clk
+    SLICE_X95Y133        FDRE                                         r  pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg[3]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X95Y133        FDRE (Prop_fdre_C_Q)         0.419     2.386 r  pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg[3]/Q
+                         net (fo=2, estimated)        1.009     3.395    pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg_n_0_[3]
+    SLICE_X94Y133        LUT6 (Prop_lut6_I1_O)        0.299     3.694 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_69/O
+                         net (fo=1, routed)           0.000     3.694    pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_69_n_0
+    SLICE_X94Y133        CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     4.227 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_62/CO[3]
+                         net (fo=1, estimated)        0.000     4.227    pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_62_n_0
+    SLICE_X94Y134        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     4.344 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_46/CO[3]
+                         net (fo=1, estimated)        0.000     4.344    pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_46_n_0
+    SLICE_X94Y135        CARRY4 (Prop_carry4_CI_CO[2])
+                                                      0.229     4.573 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_37/CO[2]
+                         net (fo=2, estimated)        0.459     5.032    pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_37_n_1
+    SLICE_X93Y135        LUT6 (Prop_lut6_I3_O)        0.310     5.342 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_23/O
+                         net (fo=1, estimated)        0.405     5.747    pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_23_n_0
+    SLICE_X93Y135        LUT5 (Prop_lut5_I0_O)        0.124     5.871 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_13/O
+                         net (fo=1, estimated)        0.675     6.546    pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_13_n_0
+    SLICE_X87Y134        LUT6 (Prop_lut6_I3_O)        0.124     6.670 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_8/O
+                         net (fo=34, estimated)       0.576     7.246    pipeline/core_under_test/core/midi/service/states/difference_engine/different
+    SLICE_X86Y134        LUT6 (Prop_lut6_I2_O)        0.124     7.370 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[3]_i_4/O
+                         net (fo=3, estimated)        0.752     8.122    pipeline/core_under_test/core/midi/service/states/difference_engine/cell_index_reg[4]_2
+    SLICE_X86Y136        LUT6 (Prop_lut6_I0_O)        0.124     8.246 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_i_30/O
+                         net (fo=1, routed)           0.000     8.246    pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_i_30_n_0
+    SLICE_X86Y136        CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     8.779 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_23/CO[3]
+                         net (fo=1, estimated)        0.000     8.779    pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_23_n_0
+    SLICE_X86Y137        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     8.896 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_19/CO[3]
+                         net (fo=1, estimated)        0.000     8.896    pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_19_n_0
+    SLICE_X86Y138        CARRY4 (Prop_carry4_CI_CO[2])
+                                                      0.229     9.125 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_18/CO[2]
+                         net (fo=1, estimated)        0.437     9.562    pipeline/core_under_test/core/midi/service/states/difference_engine/memory_valid2
+    SLICE_X83Y138        LUT6 (Prop_lut6_I2_O)        0.310     9.872 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_i_15/O
+                         net (fo=1, estimated)        0.485    10.357    pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_3__0_1
+    SLICE_X83Y138        LUT5 (Prop_lut5_I3_O)        0.124    10.481 r  pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_10/O
+                         net (fo=1, estimated)        0.356    10.837    pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_10_n_0
+    SLICE_X82Y138        LUT6 (Prop_lut6_I5_O)        0.124    10.961 r  pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_3__0/O
+                         net (fo=1, estimated)        0.354    11.315    pipeline/core_under_test/midi_memory/transfer/midi_memory_valid
+    SLICE_X82Y138        LUT5 (Prop_lut5_I0_O)        0.124    11.439 r  pipeline/core_under_test/midi_memory/transfer/command_write_i_1__0/O
+                         net (fo=102, estimated)      0.683    12.122    pipeline/core_under_test/midi_memory/transfer/request_address0
+    SLICE_X81Y142        LUT2 (Prop_lut2_I1_O)        0.124    12.246 r  pipeline/core_under_test/midi_memory/transfer/memory_read_data[31]_i_1/O
+                         net (fo=32, estimated)       0.752    12.998    pipeline/core_under_test/midi_memory/transfer/memory_read_data[31]_i_1_n_0
+    SLICE_X86Y142        FDRE                                         r  pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[29]/R
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)       6.667     6.667 r  
+                                                      0.000     6.667 r  clk (IN)
+                         net (fo=30364, unset)        1.719     8.386    pipeline/core_under_test/midi_memory/transfer/clk
+    SLICE_X86Y142        FDRE                                         r  pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[29]/C
+                         clock pessimism              0.131     8.517    
+                         clock uncertainty           -0.235     8.282    
+    SLICE_X86Y142        FDRE (Setup_fdre_C_R)       -0.524     7.758    pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[29]
+  -------------------------------------------------------------------
+                         required time                          7.758    
+                         arrival time                         -12.998    
+  -------------------------------------------------------------------
+                         slack                                 -5.240    
+
+Slack (VIOLATED) :        -5.240ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg[3]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Destination:            pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[5]/R
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.667ns  (core rise@6.667ns - core rise@0.000ns)
+  Data Path Delay:        11.031ns  (logic 4.088ns (37.059%)  route 6.943ns (62.941%))
+  Logic Levels:           17  (CARRY4=6 LUT2=1 LUT5=3 LUT6=7)
+  Clock Path Skew:        -0.117ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.719ns = ( 8.386 - 6.667 ) 
+    Source Clock Delay      (SCD):    1.967ns
+    Clock Pessimism Removal (CPR):    0.131ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=30364, unset)        1.967     1.967    pipeline/core_under_test/core/midi/service/states/difference_engine/clk
+    SLICE_X95Y133        FDRE                                         r  pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg[3]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X95Y133        FDRE (Prop_fdre_C_Q)         0.419     2.386 r  pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg[3]/Q
+                         net (fo=2, estimated)        1.009     3.395    pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg_n_0_[3]
+    SLICE_X94Y133        LUT6 (Prop_lut6_I1_O)        0.299     3.694 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_69/O
+                         net (fo=1, routed)           0.000     3.694    pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_69_n_0
+    SLICE_X94Y133        CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     4.227 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_62/CO[3]
+                         net (fo=1, estimated)        0.000     4.227    pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_62_n_0
+    SLICE_X94Y134        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     4.344 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_46/CO[3]
+                         net (fo=1, estimated)        0.000     4.344    pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_46_n_0
+    SLICE_X94Y135        CARRY4 (Prop_carry4_CI_CO[2])
+                                                      0.229     4.573 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_37/CO[2]
+                         net (fo=2, estimated)        0.459     5.032    pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_37_n_1
+    SLICE_X93Y135        LUT6 (Prop_lut6_I3_O)        0.310     5.342 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_23/O
+                         net (fo=1, estimated)        0.405     5.747    pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_23_n_0
+    SLICE_X93Y135        LUT5 (Prop_lut5_I0_O)        0.124     5.871 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_13/O
+                         net (fo=1, estimated)        0.675     6.546    pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_13_n_0
+    SLICE_X87Y134        LUT6 (Prop_lut6_I3_O)        0.124     6.670 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_8/O
+                         net (fo=34, estimated)       0.576     7.246    pipeline/core_under_test/core/midi/service/states/difference_engine/different
+    SLICE_X86Y134        LUT6 (Prop_lut6_I2_O)        0.124     7.370 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[3]_i_4/O
+                         net (fo=3, estimated)        0.752     8.122    pipeline/core_under_test/core/midi/service/states/difference_engine/cell_index_reg[4]_2
+    SLICE_X86Y136        LUT6 (Prop_lut6_I0_O)        0.124     8.246 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_i_30/O
+                         net (fo=1, routed)           0.000     8.246    pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_i_30_n_0
+    SLICE_X86Y136        CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     8.779 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_23/CO[3]
+                         net (fo=1, estimated)        0.000     8.779    pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_23_n_0
+    SLICE_X86Y137        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     8.896 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_19/CO[3]
+                         net (fo=1, estimated)        0.000     8.896    pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_19_n_0
+    SLICE_X86Y138        CARRY4 (Prop_carry4_CI_CO[2])
+                                                      0.229     9.125 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_18/CO[2]
+                         net (fo=1, estimated)        0.437     9.562    pipeline/core_under_test/core/midi/service/states/difference_engine/memory_valid2
+    SLICE_X83Y138        LUT6 (Prop_lut6_I2_O)        0.310     9.872 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_i_15/O
+                         net (fo=1, estimated)        0.485    10.357    pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_3__0_1
+    SLICE_X83Y138        LUT5 (Prop_lut5_I3_O)        0.124    10.481 r  pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_10/O
+                         net (fo=1, estimated)        0.356    10.837    pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_10_n_0
+    SLICE_X82Y138        LUT6 (Prop_lut6_I5_O)        0.124    10.961 r  pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_3__0/O
+                         net (fo=1, estimated)        0.354    11.315    pipeline/core_under_test/midi_memory/transfer/midi_memory_valid
+    SLICE_X82Y138        LUT5 (Prop_lut5_I0_O)        0.124    11.439 r  pipeline/core_under_test/midi_memory/transfer/command_write_i_1__0/O
+                         net (fo=102, estimated)      0.683    12.122    pipeline/core_under_test/midi_memory/transfer/request_address0
+    SLICE_X81Y142        LUT2 (Prop_lut2_I1_O)        0.124    12.246 r  pipeline/core_under_test/midi_memory/transfer/memory_read_data[31]_i_1/O
+                         net (fo=32, estimated)       0.752    12.998    pipeline/core_under_test/midi_memory/transfer/memory_read_data[31]_i_1_n_0
+    SLICE_X86Y142        FDRE                                         r  pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[5]/R
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)       6.667     6.667 r  
+                                                      0.000     6.667 r  clk (IN)
+                         net (fo=30364, unset)        1.719     8.386    pipeline/core_under_test/midi_memory/transfer/clk
+    SLICE_X86Y142        FDRE                                         r  pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[5]/C
+                         clock pessimism              0.131     8.517    
+                         clock uncertainty           -0.235     8.282    
+    SLICE_X86Y142        FDRE (Setup_fdre_C_R)       -0.524     7.758    pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[5]
+  -------------------------------------------------------------------
+                         required time                          7.758    
+                         arrival time                         -12.998    
+  -------------------------------------------------------------------
+                         slack                                 -5.240    
+
+Slack (VIOLATED) :        -5.240ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg[3]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Destination:            pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[6]/R
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.667ns  (core rise@6.667ns - core rise@0.000ns)
+  Data Path Delay:        11.031ns  (logic 4.088ns (37.059%)  route 6.943ns (62.941%))
+  Logic Levels:           17  (CARRY4=6 LUT2=1 LUT5=3 LUT6=7)
+  Clock Path Skew:        -0.117ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.719ns = ( 8.386 - 6.667 ) 
+    Source Clock Delay      (SCD):    1.967ns
+    Clock Pessimism Removal (CPR):    0.131ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=30364, unset)        1.967     1.967    pipeline/core_under_test/core/midi/service/states/difference_engine/clk
+    SLICE_X95Y133        FDRE                                         r  pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg[3]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X95Y133        FDRE (Prop_fdre_C_Q)         0.419     2.386 r  pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg[3]/Q
+                         net (fo=2, estimated)        1.009     3.395    pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg_n_0_[3]
+    SLICE_X94Y133        LUT6 (Prop_lut6_I1_O)        0.299     3.694 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_69/O
+                         net (fo=1, routed)           0.000     3.694    pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_69_n_0
+    SLICE_X94Y133        CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     4.227 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_62/CO[3]
+                         net (fo=1, estimated)        0.000     4.227    pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_62_n_0
+    SLICE_X94Y134        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     4.344 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_46/CO[3]
+                         net (fo=1, estimated)        0.000     4.344    pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_46_n_0
+    SLICE_X94Y135        CARRY4 (Prop_carry4_CI_CO[2])
+                                                      0.229     4.573 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_37/CO[2]
+                         net (fo=2, estimated)        0.459     5.032    pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_37_n_1
+    SLICE_X93Y135        LUT6 (Prop_lut6_I3_O)        0.310     5.342 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_23/O
+                         net (fo=1, estimated)        0.405     5.747    pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_23_n_0
+    SLICE_X93Y135        LUT5 (Prop_lut5_I0_O)        0.124     5.871 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_13/O
+                         net (fo=1, estimated)        0.675     6.546    pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_13_n_0
+    SLICE_X87Y134        LUT6 (Prop_lut6_I3_O)        0.124     6.670 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_8/O
+                         net (fo=34, estimated)       0.576     7.246    pipeline/core_under_test/core/midi/service/states/difference_engine/different
+    SLICE_X86Y134        LUT6 (Prop_lut6_I2_O)        0.124     7.370 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[3]_i_4/O
+                         net (fo=3, estimated)        0.752     8.122    pipeline/core_under_test/core/midi/service/states/difference_engine/cell_index_reg[4]_2
+    SLICE_X86Y136        LUT6 (Prop_lut6_I0_O)        0.124     8.246 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_i_30/O
+                         net (fo=1, routed)           0.000     8.246    pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_i_30_n_0
+    SLICE_X86Y136        CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     8.779 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_23/CO[3]
+                         net (fo=1, estimated)        0.000     8.779    pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_23_n_0
+    SLICE_X86Y137        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     8.896 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_19/CO[3]
+                         net (fo=1, estimated)        0.000     8.896    pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_19_n_0
+    SLICE_X86Y138        CARRY4 (Prop_carry4_CI_CO[2])
+                                                      0.229     9.125 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_18/CO[2]
+                         net (fo=1, estimated)        0.437     9.562    pipeline/core_under_test/core/midi/service/states/difference_engine/memory_valid2
+    SLICE_X83Y138        LUT6 (Prop_lut6_I2_O)        0.310     9.872 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_i_15/O
+                         net (fo=1, estimated)        0.485    10.357    pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_3__0_1
+    SLICE_X83Y138        LUT5 (Prop_lut5_I3_O)        0.124    10.481 r  pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_10/O
+                         net (fo=1, estimated)        0.356    10.837    pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_10_n_0
+    SLICE_X82Y138        LUT6 (Prop_lut6_I5_O)        0.124    10.961 r  pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_3__0/O
+                         net (fo=1, estimated)        0.354    11.315    pipeline/core_under_test/midi_memory/transfer/midi_memory_valid
+    SLICE_X82Y138        LUT5 (Prop_lut5_I0_O)        0.124    11.439 r  pipeline/core_under_test/midi_memory/transfer/command_write_i_1__0/O
+                         net (fo=102, estimated)      0.683    12.122    pipeline/core_under_test/midi_memory/transfer/request_address0
+    SLICE_X81Y142        LUT2 (Prop_lut2_I1_O)        0.124    12.246 r  pipeline/core_under_test/midi_memory/transfer/memory_read_data[31]_i_1/O
+                         net (fo=32, estimated)       0.752    12.998    pipeline/core_under_test/midi_memory/transfer/memory_read_data[31]_i_1_n_0
+    SLICE_X86Y142        FDRE                                         r  pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[6]/R
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)       6.667     6.667 r  
+                                                      0.000     6.667 r  clk (IN)
+                         net (fo=30364, unset)        1.719     8.386    pipeline/core_under_test/midi_memory/transfer/clk
+    SLICE_X86Y142        FDRE                                         r  pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[6]/C
+                         clock pessimism              0.131     8.517    
+                         clock uncertainty           -0.235     8.282    
+    SLICE_X86Y142        FDRE (Setup_fdre_C_R)       -0.524     7.758    pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[6]
+  -------------------------------------------------------------------
+                         required time                          7.758    
+                         arrival time                         -12.998    
+  -------------------------------------------------------------------
+                         slack                                 -5.240    
+
+Slack (VIOLATED) :        -5.240ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg[3]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Destination:            pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[7]/R
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.667ns  (core rise@6.667ns - core rise@0.000ns)
+  Data Path Delay:        11.031ns  (logic 4.088ns (37.059%)  route 6.943ns (62.941%))
+  Logic Levels:           17  (CARRY4=6 LUT2=1 LUT5=3 LUT6=7)
+  Clock Path Skew:        -0.117ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.719ns = ( 8.386 - 6.667 ) 
+    Source Clock Delay      (SCD):    1.967ns
+    Clock Pessimism Removal (CPR):    0.131ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=30364, unset)        1.967     1.967    pipeline/core_under_test/core/midi/service/states/difference_engine/clk
+    SLICE_X95Y133        FDRE                                         r  pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg[3]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X95Y133        FDRE (Prop_fdre_C_Q)         0.419     2.386 r  pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg[3]/Q
+                         net (fo=2, estimated)        1.009     3.395    pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg_n_0_[3]
+    SLICE_X94Y133        LUT6 (Prop_lut6_I1_O)        0.299     3.694 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_69/O
+                         net (fo=1, routed)           0.000     3.694    pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_69_n_0
+    SLICE_X94Y133        CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     4.227 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_62/CO[3]
+                         net (fo=1, estimated)        0.000     4.227    pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_62_n_0
+    SLICE_X94Y134        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     4.344 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_46/CO[3]
+                         net (fo=1, estimated)        0.000     4.344    pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_46_n_0
+    SLICE_X94Y135        CARRY4 (Prop_carry4_CI_CO[2])
+                                                      0.229     4.573 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_37/CO[2]
+                         net (fo=2, estimated)        0.459     5.032    pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_37_n_1
+    SLICE_X93Y135        LUT6 (Prop_lut6_I3_O)        0.310     5.342 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_23/O
+                         net (fo=1, estimated)        0.405     5.747    pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_23_n_0
+    SLICE_X93Y135        LUT5 (Prop_lut5_I0_O)        0.124     5.871 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_13/O
+                         net (fo=1, estimated)        0.675     6.546    pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_13_n_0
+    SLICE_X87Y134        LUT6 (Prop_lut6_I3_O)        0.124     6.670 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_8/O
+                         net (fo=34, estimated)       0.576     7.246    pipeline/core_under_test/core/midi/service/states/difference_engine/different
+    SLICE_X86Y134        LUT6 (Prop_lut6_I2_O)        0.124     7.370 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[3]_i_4/O
+                         net (fo=3, estimated)        0.752     8.122    pipeline/core_under_test/core/midi/service/states/difference_engine/cell_index_reg[4]_2
+    SLICE_X86Y136        LUT6 (Prop_lut6_I0_O)        0.124     8.246 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_i_30/O
+                         net (fo=1, routed)           0.000     8.246    pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_i_30_n_0
+    SLICE_X86Y136        CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     8.779 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_23/CO[3]
+                         net (fo=1, estimated)        0.000     8.779    pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_23_n_0
+    SLICE_X86Y137        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     8.896 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_19/CO[3]
+                         net (fo=1, estimated)        0.000     8.896    pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_19_n_0
+    SLICE_X86Y138        CARRY4 (Prop_carry4_CI_CO[2])
+                                                      0.229     9.125 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_18/CO[2]
+                         net (fo=1, estimated)        0.437     9.562    pipeline/core_under_test/core/midi/service/states/difference_engine/memory_valid2
+    SLICE_X83Y138        LUT6 (Prop_lut6_I2_O)        0.310     9.872 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_i_15/O
+                         net (fo=1, estimated)        0.485    10.357    pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_3__0_1
+    SLICE_X83Y138        LUT5 (Prop_lut5_I3_O)        0.124    10.481 r  pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_10/O
+                         net (fo=1, estimated)        0.356    10.837    pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_10_n_0
+    SLICE_X82Y138        LUT6 (Prop_lut6_I5_O)        0.124    10.961 r  pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_3__0/O
+                         net (fo=1, estimated)        0.354    11.315    pipeline/core_under_test/midi_memory/transfer/midi_memory_valid
+    SLICE_X82Y138        LUT5 (Prop_lut5_I0_O)        0.124    11.439 r  pipeline/core_under_test/midi_memory/transfer/command_write_i_1__0/O
+                         net (fo=102, estimated)      0.683    12.122    pipeline/core_under_test/midi_memory/transfer/request_address0
+    SLICE_X81Y142        LUT2 (Prop_lut2_I1_O)        0.124    12.246 r  pipeline/core_under_test/midi_memory/transfer/memory_read_data[31]_i_1/O
+                         net (fo=32, estimated)       0.752    12.998    pipeline/core_under_test/midi_memory/transfer/memory_read_data[31]_i_1_n_0
+    SLICE_X86Y142        FDRE                                         r  pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[7]/R
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)       6.667     6.667 r  
+                                                      0.000     6.667 r  clk (IN)
+                         net (fo=30364, unset)        1.719     8.386    pipeline/core_under_test/midi_memory/transfer/clk
+    SLICE_X86Y142        FDRE                                         r  pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[7]/C
+                         clock pessimism              0.131     8.517    
+                         clock uncertainty           -0.235     8.282    
+    SLICE_X86Y142        FDRE (Setup_fdre_C_R)       -0.524     7.758    pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[7]
+  -------------------------------------------------------------------
+                         required time                          7.758    
+                         arrival time                         -12.998    
+  -------------------------------------------------------------------
+                         slack                                 -5.240    
+
+Slack (VIOLATED) :        -5.239ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg[3]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Destination:            pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[14]/R
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.667ns  (core rise@6.667ns - core rise@0.000ns)
+  Data Path Delay:        11.126ns  (logic 4.088ns (36.743%)  route 7.038ns (63.257%))
+  Logic Levels:           17  (CARRY4=6 LUT2=1 LUT5=3 LUT6=7)
+  Clock Path Skew:        -0.116ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.720ns = ( 8.387 - 6.667 ) 
+    Source Clock Delay      (SCD):    1.967ns
+    Clock Pessimism Removal (CPR):    0.131ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=30364, unset)        1.967     1.967    pipeline/core_under_test/core/midi/service/states/difference_engine/clk
+    SLICE_X95Y133        FDRE                                         r  pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg[3]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X95Y133        FDRE (Prop_fdre_C_Q)         0.419     2.386 r  pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg[3]/Q
+                         net (fo=2, estimated)        1.009     3.395    pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg_n_0_[3]
+    SLICE_X94Y133        LUT6 (Prop_lut6_I1_O)        0.299     3.694 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_69/O
+                         net (fo=1, routed)           0.000     3.694    pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_69_n_0
+    SLICE_X94Y133        CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     4.227 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_62/CO[3]
+                         net (fo=1, estimated)        0.000     4.227    pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_62_n_0
+    SLICE_X94Y134        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     4.344 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_46/CO[3]
+                         net (fo=1, estimated)        0.000     4.344    pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_46_n_0
+    SLICE_X94Y135        CARRY4 (Prop_carry4_CI_CO[2])
+                                                      0.229     4.573 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_37/CO[2]
+                         net (fo=2, estimated)        0.459     5.032    pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_37_n_1
+    SLICE_X93Y135        LUT6 (Prop_lut6_I3_O)        0.310     5.342 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_23/O
+                         net (fo=1, estimated)        0.405     5.747    pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_23_n_0
+    SLICE_X93Y135        LUT5 (Prop_lut5_I0_O)        0.124     5.871 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_13/O
+                         net (fo=1, estimated)        0.675     6.546    pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_13_n_0
+    SLICE_X87Y134        LUT6 (Prop_lut6_I3_O)        0.124     6.670 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_8/O
+                         net (fo=34, estimated)       0.576     7.246    pipeline/core_under_test/core/midi/service/states/difference_engine/different
+    SLICE_X86Y134        LUT6 (Prop_lut6_I2_O)        0.124     7.370 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[3]_i_4/O
+                         net (fo=3, estimated)        0.752     8.122    pipeline/core_under_test/core/midi/service/states/difference_engine/cell_index_reg[4]_2
+    SLICE_X86Y136        LUT6 (Prop_lut6_I0_O)        0.124     8.246 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_i_30/O
+                         net (fo=1, routed)           0.000     8.246    pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_i_30_n_0
+    SLICE_X86Y136        CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     8.779 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_23/CO[3]
+                         net (fo=1, estimated)        0.000     8.779    pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_23_n_0
+    SLICE_X86Y137        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     8.896 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_19/CO[3]
+                         net (fo=1, estimated)        0.000     8.896    pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_19_n_0
+    SLICE_X86Y138        CARRY4 (Prop_carry4_CI_CO[2])
+                                                      0.229     9.125 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_18/CO[2]
+                         net (fo=1, estimated)        0.437     9.562    pipeline/core_under_test/core/midi/service/states/difference_engine/memory_valid2
+    SLICE_X83Y138        LUT6 (Prop_lut6_I2_O)        0.310     9.872 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_i_15/O
+                         net (fo=1, estimated)        0.485    10.357    pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_3__0_1
+    SLICE_X83Y138        LUT5 (Prop_lut5_I3_O)        0.124    10.481 r  pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_10/O
+                         net (fo=1, estimated)        0.356    10.837    pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_10_n_0
+    SLICE_X82Y138        LUT6 (Prop_lut6_I5_O)        0.124    10.961 r  pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_3__0/O
+                         net (fo=1, estimated)        0.354    11.315    pipeline/core_under_test/midi_memory/transfer/midi_memory_valid
+    SLICE_X82Y138        LUT5 (Prop_lut5_I0_O)        0.124    11.439 r  pipeline/core_under_test/midi_memory/transfer/command_write_i_1__0/O
+                         net (fo=102, estimated)      0.683    12.122    pipeline/core_under_test/midi_memory/transfer/request_address0
+    SLICE_X81Y142        LUT2 (Prop_lut2_I1_O)        0.124    12.246 r  pipeline/core_under_test/midi_memory/transfer/memory_read_data[31]_i_1/O
+                         net (fo=32, estimated)       0.847    13.093    pipeline/core_under_test/midi_memory/transfer/memory_read_data[31]_i_1_n_0
+    SLICE_X87Y144        FDRE                                         r  pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[14]/R
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)       6.667     6.667 r  
+                                                      0.000     6.667 r  clk (IN)
+                         net (fo=30364, unset)        1.720     8.387    pipeline/core_under_test/midi_memory/transfer/clk
+    SLICE_X87Y144        FDRE                                         r  pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[14]/C
+                         clock pessimism              0.131     8.518    
+                         clock uncertainty           -0.235     8.283    
+    SLICE_X87Y144        FDRE (Setup_fdre_C_R)       -0.429     7.854    pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[14]
+  -------------------------------------------------------------------
+                         required time                          7.854    
+                         arrival time                         -13.093    
+  -------------------------------------------------------------------
+                         slack                                 -5.239    
+
+Slack (VIOLATED) :        -5.239ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg[3]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Destination:            pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[15]/R
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.667ns  (core rise@6.667ns - core rise@0.000ns)
+  Data Path Delay:        11.126ns  (logic 4.088ns (36.743%)  route 7.038ns (63.257%))
+  Logic Levels:           17  (CARRY4=6 LUT2=1 LUT5=3 LUT6=7)
+  Clock Path Skew:        -0.116ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.720ns = ( 8.387 - 6.667 ) 
+    Source Clock Delay      (SCD):    1.967ns
+    Clock Pessimism Removal (CPR):    0.131ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=30364, unset)        1.967     1.967    pipeline/core_under_test/core/midi/service/states/difference_engine/clk
+    SLICE_X95Y133        FDRE                                         r  pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg[3]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X95Y133        FDRE (Prop_fdre_C_Q)         0.419     2.386 r  pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg[3]/Q
+                         net (fo=2, estimated)        1.009     3.395    pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg_n_0_[3]
+    SLICE_X94Y133        LUT6 (Prop_lut6_I1_O)        0.299     3.694 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_69/O
+                         net (fo=1, routed)           0.000     3.694    pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_69_n_0
+    SLICE_X94Y133        CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     4.227 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_62/CO[3]
+                         net (fo=1, estimated)        0.000     4.227    pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_62_n_0
+    SLICE_X94Y134        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     4.344 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_46/CO[3]
+                         net (fo=1, estimated)        0.000     4.344    pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_46_n_0
+    SLICE_X94Y135        CARRY4 (Prop_carry4_CI_CO[2])
+                                                      0.229     4.573 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_37/CO[2]
+                         net (fo=2, estimated)        0.459     5.032    pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_37_n_1
+    SLICE_X93Y135        LUT6 (Prop_lut6_I3_O)        0.310     5.342 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_23/O
+                         net (fo=1, estimated)        0.405     5.747    pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_23_n_0
+    SLICE_X93Y135        LUT5 (Prop_lut5_I0_O)        0.124     5.871 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_13/O
+                         net (fo=1, estimated)        0.675     6.546    pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_13_n_0
+    SLICE_X87Y134        LUT6 (Prop_lut6_I3_O)        0.124     6.670 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_8/O
+                         net (fo=34, estimated)       0.576     7.246    pipeline/core_under_test/core/midi/service/states/difference_engine/different
+    SLICE_X86Y134        LUT6 (Prop_lut6_I2_O)        0.124     7.370 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[3]_i_4/O
+                         net (fo=3, estimated)        0.752     8.122    pipeline/core_under_test/core/midi/service/states/difference_engine/cell_index_reg[4]_2
+    SLICE_X86Y136        LUT6 (Prop_lut6_I0_O)        0.124     8.246 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_i_30/O
+                         net (fo=1, routed)           0.000     8.246    pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_i_30_n_0
+    SLICE_X86Y136        CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     8.779 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_23/CO[3]
+                         net (fo=1, estimated)        0.000     8.779    pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_23_n_0
+    SLICE_X86Y137        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     8.896 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_19/CO[3]
+                         net (fo=1, estimated)        0.000     8.896    pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_19_n_0
+    SLICE_X86Y138        CARRY4 (Prop_carry4_CI_CO[2])
+                                                      0.229     9.125 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_18/CO[2]
+                         net (fo=1, estimated)        0.437     9.562    pipeline/core_under_test/core/midi/service/states/difference_engine/memory_valid2
+    SLICE_X83Y138        LUT6 (Prop_lut6_I2_O)        0.310     9.872 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_i_15/O
+                         net (fo=1, estimated)        0.485    10.357    pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_3__0_1
+    SLICE_X83Y138        LUT5 (Prop_lut5_I3_O)        0.124    10.481 r  pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_10/O
+                         net (fo=1, estimated)        0.356    10.837    pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_10_n_0
+    SLICE_X82Y138        LUT6 (Prop_lut6_I5_O)        0.124    10.961 r  pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_3__0/O
+                         net (fo=1, estimated)        0.354    11.315    pipeline/core_under_test/midi_memory/transfer/midi_memory_valid
+    SLICE_X82Y138        LUT5 (Prop_lut5_I0_O)        0.124    11.439 r  pipeline/core_under_test/midi_memory/transfer/command_write_i_1__0/O
+                         net (fo=102, estimated)      0.683    12.122    pipeline/core_under_test/midi_memory/transfer/request_address0
+    SLICE_X81Y142        LUT2 (Prop_lut2_I1_O)        0.124    12.246 r  pipeline/core_under_test/midi_memory/transfer/memory_read_data[31]_i_1/O
+                         net (fo=32, estimated)       0.847    13.093    pipeline/core_under_test/midi_memory/transfer/memory_read_data[31]_i_1_n_0
+    SLICE_X87Y144        FDRE                                         r  pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[15]/R
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)       6.667     6.667 r  
+                                                      0.000     6.667 r  clk (IN)
+                         net (fo=30364, unset)        1.720     8.387    pipeline/core_under_test/midi_memory/transfer/clk
+    SLICE_X87Y144        FDRE                                         r  pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[15]/C
+                         clock pessimism              0.131     8.518    
+                         clock uncertainty           -0.235     8.283    
+    SLICE_X87Y144        FDRE (Setup_fdre_C_R)       -0.429     7.854    pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[15]
+  -------------------------------------------------------------------
+                         required time                          7.854    
+                         arrival time                         -13.093    
+  -------------------------------------------------------------------
+                         slack                                 -5.239    
+
+Slack (VIOLATED) :        -5.239ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg[3]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Destination:            pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[22]/R
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.667ns  (core rise@6.667ns - core rise@0.000ns)
+  Data Path Delay:        11.126ns  (logic 4.088ns (36.743%)  route 7.038ns (63.257%))
+  Logic Levels:           17  (CARRY4=6 LUT2=1 LUT5=3 LUT6=7)
+  Clock Path Skew:        -0.116ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.720ns = ( 8.387 - 6.667 ) 
+    Source Clock Delay      (SCD):    1.967ns
+    Clock Pessimism Removal (CPR):    0.131ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=30364, unset)        1.967     1.967    pipeline/core_under_test/core/midi/service/states/difference_engine/clk
+    SLICE_X95Y133        FDRE                                         r  pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg[3]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X95Y133        FDRE (Prop_fdre_C_Q)         0.419     2.386 r  pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg[3]/Q
+                         net (fo=2, estimated)        1.009     3.395    pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg_n_0_[3]
+    SLICE_X94Y133        LUT6 (Prop_lut6_I1_O)        0.299     3.694 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_69/O
+                         net (fo=1, routed)           0.000     3.694    pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_69_n_0
+    SLICE_X94Y133        CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     4.227 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_62/CO[3]
+                         net (fo=1, estimated)        0.000     4.227    pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_62_n_0
+    SLICE_X94Y134        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     4.344 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_46/CO[3]
+                         net (fo=1, estimated)        0.000     4.344    pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_46_n_0
+    SLICE_X94Y135        CARRY4 (Prop_carry4_CI_CO[2])
+                                                      0.229     4.573 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_37/CO[2]
+                         net (fo=2, estimated)        0.459     5.032    pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_37_n_1
+    SLICE_X93Y135        LUT6 (Prop_lut6_I3_O)        0.310     5.342 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_23/O
+                         net (fo=1, estimated)        0.405     5.747    pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_23_n_0
+    SLICE_X93Y135        LUT5 (Prop_lut5_I0_O)        0.124     5.871 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_13/O
+                         net (fo=1, estimated)        0.675     6.546    pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_13_n_0
+    SLICE_X87Y134        LUT6 (Prop_lut6_I3_O)        0.124     6.670 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_8/O
+                         net (fo=34, estimated)       0.576     7.246    pipeline/core_under_test/core/midi/service/states/difference_engine/different
+    SLICE_X86Y134        LUT6 (Prop_lut6_I2_O)        0.124     7.370 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[3]_i_4/O
+                         net (fo=3, estimated)        0.752     8.122    pipeline/core_under_test/core/midi/service/states/difference_engine/cell_index_reg[4]_2
+    SLICE_X86Y136        LUT6 (Prop_lut6_I0_O)        0.124     8.246 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_i_30/O
+                         net (fo=1, routed)           0.000     8.246    pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_i_30_n_0
+    SLICE_X86Y136        CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     8.779 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_23/CO[3]
+                         net (fo=1, estimated)        0.000     8.779    pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_23_n_0
+    SLICE_X86Y137        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     8.896 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_19/CO[3]
+                         net (fo=1, estimated)        0.000     8.896    pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_19_n_0
+    SLICE_X86Y138        CARRY4 (Prop_carry4_CI_CO[2])
+                                                      0.229     9.125 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_18/CO[2]
+                         net (fo=1, estimated)        0.437     9.562    pipeline/core_under_test/core/midi/service/states/difference_engine/memory_valid2
+    SLICE_X83Y138        LUT6 (Prop_lut6_I2_O)        0.310     9.872 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_i_15/O
+                         net (fo=1, estimated)        0.485    10.357    pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_3__0_1
+    SLICE_X83Y138        LUT5 (Prop_lut5_I3_O)        0.124    10.481 r  pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_10/O
+                         net (fo=1, estimated)        0.356    10.837    pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_10_n_0
+    SLICE_X82Y138        LUT6 (Prop_lut6_I5_O)        0.124    10.961 r  pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_3__0/O
+                         net (fo=1, estimated)        0.354    11.315    pipeline/core_under_test/midi_memory/transfer/midi_memory_valid
+    SLICE_X82Y138        LUT5 (Prop_lut5_I0_O)        0.124    11.439 r  pipeline/core_under_test/midi_memory/transfer/command_write_i_1__0/O
+                         net (fo=102, estimated)      0.683    12.122    pipeline/core_under_test/midi_memory/transfer/request_address0
+    SLICE_X81Y142        LUT2 (Prop_lut2_I1_O)        0.124    12.246 r  pipeline/core_under_test/midi_memory/transfer/memory_read_data[31]_i_1/O
+                         net (fo=32, estimated)       0.847    13.093    pipeline/core_under_test/midi_memory/transfer/memory_read_data[31]_i_1_n_0
+    SLICE_X87Y144        FDRE                                         r  pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[22]/R
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)       6.667     6.667 r  
+                                                      0.000     6.667 r  clk (IN)
+                         net (fo=30364, unset)        1.720     8.387    pipeline/core_under_test/midi_memory/transfer/clk
+    SLICE_X87Y144        FDRE                                         r  pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[22]/C
+                         clock pessimism              0.131     8.518    
+                         clock uncertainty           -0.235     8.283    
+    SLICE_X87Y144        FDRE (Setup_fdre_C_R)       -0.429     7.854    pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[22]
+  -------------------------------------------------------------------
+                         required time                          7.854    
+                         arrival time                         -13.093    
+  -------------------------------------------------------------------
+                         slack                                 -5.239    
+
+Slack (VIOLATED) :        -5.239ns  (required time - arrival time)
+  Source:                 pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg[3]/C
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Destination:            pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[23]/R
+                            (rising edge-triggered cell FDRE clocked by core  {rise@0.000ns fall@3.333ns period=6.667ns})
+  Path Group:             core
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.667ns  (core rise@6.667ns - core rise@0.000ns)
+  Data Path Delay:        11.126ns  (logic 4.088ns (36.743%)  route 7.038ns (63.257%))
+  Logic Levels:           17  (CARRY4=6 LUT2=1 LUT5=3 LUT6=7)
+  Clock Path Skew:        -0.116ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    1.720ns = ( 8.387 - 6.667 ) 
+    Source Clock Delay      (SCD):    1.967ns
+    Clock Pessimism Removal (CPR):    0.131ns
+  Clock Uncertainty:      0.235ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.200ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock core rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  clk (IN)
+                         net (fo=30364, unset)        1.967     1.967    pipeline/core_under_test/core/midi/service/states/difference_engine/clk
+    SLICE_X95Y133        FDRE                                         r  pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg[3]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X95Y133        FDRE (Prop_fdre_C_Q)         0.419     2.386 r  pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg[3]/Q
+                         net (fo=2, estimated)        1.009     3.395    pipeline/core_under_test/core/midi/service/states/difference_engine/current_value_reg_n_0_[3]
+    SLICE_X94Y133        LUT6 (Prop_lut6_I1_O)        0.299     3.694 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_69/O
+                         net (fo=1, routed)           0.000     3.694    pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_69_n_0
+    SLICE_X94Y133        CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     4.227 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_62/CO[3]
+                         net (fo=1, estimated)        0.000     4.227    pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_62_n_0
+    SLICE_X94Y134        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     4.344 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_46/CO[3]
+                         net (fo=1, estimated)        0.000     4.344    pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_46_n_0
+    SLICE_X94Y135        CARRY4 (Prop_carry4_CI_CO[2])
+                                                      0.229     4.573 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_37/CO[2]
+                         net (fo=2, estimated)        0.459     5.032    pipeline/core_under_test/core/midi/service/states/difference_engine/payload_reg[31]_i_37_n_1
+    SLICE_X93Y135        LUT6 (Prop_lut6_I3_O)        0.310     5.342 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_23/O
+                         net (fo=1, estimated)        0.405     5.747    pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_23_n_0
+    SLICE_X93Y135        LUT5 (Prop_lut5_I0_O)        0.124     5.871 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_13/O
+                         net (fo=1, estimated)        0.675     6.546    pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_13_n_0
+    SLICE_X87Y134        LUT6 (Prop_lut6_I3_O)        0.124     6.670 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[31]_i_8/O
+                         net (fo=34, estimated)       0.576     7.246    pipeline/core_under_test/core/midi/service/states/difference_engine/different
+    SLICE_X86Y134        LUT6 (Prop_lut6_I2_O)        0.124     7.370 r  pipeline/core_under_test/core/midi/service/states/difference_engine/payload[3]_i_4/O
+                         net (fo=3, estimated)        0.752     8.122    pipeline/core_under_test/core/midi/service/states/difference_engine/cell_index_reg[4]_2
+    SLICE_X86Y136        LUT6 (Prop_lut6_I0_O)        0.124     8.246 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_i_30/O
+                         net (fo=1, routed)           0.000     8.246    pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_i_30_n_0
+    SLICE_X86Y136        CARRY4 (Prop_carry4_S[1]_CO[3])
+                                                      0.533     8.779 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_23/CO[3]
+                         net (fo=1, estimated)        0.000     8.779    pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_23_n_0
+    SLICE_X86Y137        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.117     8.896 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_19/CO[3]
+                         net (fo=1, estimated)        0.000     8.896    pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_19_n_0
+    SLICE_X86Y138        CARRY4 (Prop_carry4_CI_CO[2])
+                                                      0.229     9.125 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_reg_i_18/CO[2]
+                         net (fo=1, estimated)        0.437     9.562    pipeline/core_under_test/core/midi/service/states/difference_engine/memory_valid2
+    SLICE_X83Y138        LUT6 (Prop_lut6_I2_O)        0.310     9.872 r  pipeline/core_under_test/core/midi/service/states/difference_engine/command_write_i_15/O
+                         net (fo=1, estimated)        0.485    10.357    pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_3__0_1
+    SLICE_X83Y138        LUT5 (Prop_lut5_I3_O)        0.124    10.481 r  pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_10/O
+                         net (fo=1, estimated)        0.356    10.837    pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_10_n_0
+    SLICE_X82Y138        LUT6 (Prop_lut6_I5_O)        0.124    10.961 r  pipeline/core_under_test/core/midi/service/states/state_engine/command_write_i_3__0/O
+                         net (fo=1, estimated)        0.354    11.315    pipeline/core_under_test/midi_memory/transfer/midi_memory_valid
+    SLICE_X82Y138        LUT5 (Prop_lut5_I0_O)        0.124    11.439 r  pipeline/core_under_test/midi_memory/transfer/command_write_i_1__0/O
+                         net (fo=102, estimated)      0.683    12.122    pipeline/core_under_test/midi_memory/transfer/request_address0
+    SLICE_X81Y142        LUT2 (Prop_lut2_I1_O)        0.124    12.246 r  pipeline/core_under_test/midi_memory/transfer/memory_read_data[31]_i_1/O
+                         net (fo=32, estimated)       0.847    13.093    pipeline/core_under_test/midi_memory/transfer/memory_read_data[31]_i_1_n_0
+    SLICE_X87Y144        FDRE                                         r  pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[23]/R
+  -------------------------------------------------------------------    -------------------
+
+                         (clock core rise edge)       6.667     6.667 r  
+                                                      0.000     6.667 r  clk (IN)
+                         net (fo=30364, unset)        1.720     8.387    pipeline/core_under_test/midi_memory/transfer/clk
+    SLICE_X87Y144        FDRE                                         r  pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[23]/C
+                         clock pessimism              0.131     8.518    
+                         clock uncertainty           -0.235     8.283    
+    SLICE_X87Y144        FDRE (Setup_fdre_C_R)       -0.429     7.854    pipeline/core_under_test/midi_memory/transfer/memory_read_data_reg[23]
+  -------------------------------------------------------------------
+                         required time                          7.854    
+                         arrival time                         -13.093    
+  -------------------------------------------------------------------
+                         slack                                 -5.239    
+
+
+
+

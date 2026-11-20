@@ -19,6 +19,17 @@ fn parse_snapshot_hz(value: &str) -> Result<u32, String> {
 }
 #[cfg(not(target_arch = "wasm32"))]
 fn run() -> anyhow::Result<()> {
+    #[cfg(feature = "carla")]
+    {
+        if let Some(worker) = shoop_carla::child::worker_options(std::env::args_os())? {
+            return shoop_carla::child::run(worker);
+        }
+        match std::env::args().nth(1).as_deref() {
+            Some("--probe-carla-native") => return shoop_carla::native::smoke_test_carla_runtime(),
+            Some("--probe-carla-native-ui") => return shoop_carla::native::smoke_test_carla_ui(),
+            _ => {}
+        }
+    }
     use clap::Parser;
     use std::{io::Read, path::PathBuf};
     #[derive(Parser)]
@@ -27,32 +38,35 @@ fn run() -> anyhow::Result<()> {
         audio: shoop_host::audio_args::AudioArgs,
         #[arg(long)]
         config: Option<PathBuf>,
-        #[arg(long)]
+        /// Execution backend: native, rust-fpga or rtl-sim.
+        #[arg(help_heading = "Backend", long, value_parser = |value: &str| value.parse::<shoop_app_api::BackendType>())]
+        backend: Option<shoop_app_api::BackendType>,
+        #[arg(help_heading = "Backend", long)]
         driver_preferences: Option<PathBuf>,
-        #[arg(long, hide = true, conflicts_with_all = ["config", "audio_options"])]
+        #[arg(help_heading = "Remote Host", long, hide = true, conflicts_with_all = ["config", "audio_options", "backend"])]
         launch_stdin: bool,
-        #[arg(long)]
+        #[arg(help_heading = "Remote Host", long)]
         lan: bool,
-        #[arg(long, default_value = "127.0.0.1:0")]
+        #[arg(help_heading = "Remote Host", long, default_value = "127.0.0.1:0")]
         management_endpoint: std::net::SocketAddr,
-        #[arg(long)]
+        #[arg(help_heading = "Remote Host", long)]
         advertise_data: Option<String>,
-        #[arg(long)]
+        #[arg(help_heading = "Remote Host", long)]
         advertise_management: Option<String>,
-        #[arg(long)]
+        #[arg(help_heading = "Remote Host", long)]
         export_profile: Option<PathBuf>,
-        #[arg(long, default_value_t = 1000)]
+        #[arg(help_heading = "Remote Host", long, default_value_t = 1000)]
         heartbeat_interval_ms: u64,
-        #[arg(long, default_value_t = 5000)]
+        #[arg(help_heading = "Remote Host", long, default_value_t = 5000)]
         heartbeat_timeout_ms: u64,
         /// Session snapshots per second on each data connection, 1-60, or 0 or `unlimited`.
-        #[arg(long, default_value = "30", value_parser = parse_snapshot_hz)]
+        #[arg(help_heading = "Remote Host", long, default_value = "30", value_parser = parse_snapshot_hz)]
         snapshot_hz: u32,
-        #[arg(long, default_value = "127.0.0.1:0")]
+        #[arg(help_heading = "Remote Host", long, default_value = "127.0.0.1:0")]
         endpoint: std::net::SocketAddr,
         #[arg(long)]
         log_file: Option<PathBuf>,
-        #[arg(long, default_value = "ShoopDaLoop")]
+        #[arg(help_heading = "Remote Host", long, default_value = "ShoopDaLoop")]
         name: String,
     }
     let args = Args::parse();
@@ -107,29 +121,49 @@ fn run() -> anyhow::Result<()> {
                 tracing_subscriber::EnvFilter::try_from_default_env()
                     .unwrap_or_else(|_| "info".into()),
             )
-            .with_writer(|| shoop_host::logging::Stderr)
+            .with_writer(std::io::stderr)
+            // A paired host can outlive the launcher holding its diagnostic pipe.
+            // A failed log write must not panic while serving that host.
+            .log_internal_errors(false)
             .with_ansi(false)
             .init();
     }
     let mut config = match startup_config {
         Some(config) => config,
-        None if args.config.is_none() => shoop_host::config::HostConfig::default(),
+        None if args.config.is_none() => shoop_host::config::HostConfig {
+            settings: shoop_app_api::HostSettings::for_backend(args.backend.unwrap_or_default()),
+            ..Default::default()
+        },
         None => {
             let mut bytes = Vec::new();
             std::fs::File::open(args.config.as_ref().unwrap())?
                 .take(65537)
                 .read_to_end(&mut bytes)?;
             anyhow::ensure!(bytes.len() <= 65536, "host configuration exceeds 64 KiB");
-            serde_json::from_slice(&bytes)?
+            let mut value: serde_json::Value = serde_json::from_slice(&bytes)?;
+            if let Some(backend) = args.backend {
+                let object = value
+                    .as_object_mut()
+                    .ok_or_else(|| anyhow::anyhow!("expected a host configuration object"))?;
+                object.insert("backend".into(), serde_json::to_value(backend)?);
+            }
+            serde_json::from_value(value)?
         }
     };
-    if let Some(path) = &options.driver_preferences {
-        if let Some(profile) = shoop_host::audio_driver::read_preferences(path)? {
-            config.settings.driver = profile;
+    if !options.use_configured_driver {
+        if let Some(path) = options.driver_preferences.as_ref() {
+            if let Some(profile) = shoop_host::audio_driver::read_preferences(path)? {
+                config.settings.driver = profile;
+            }
         }
     }
     config.settings.driver = args.audio.apply(config.settings.driver)?;
+    config.settings.pools = args.audio.apply_pools(config.settings.pools);
     config.settings.processors = args.audio.apply_processors(config.settings.processors)?;
+    #[cfg(feature = "carla")]
+    if config.settings.processors.carla.hosting == shoop_app_api::CarlaHosting::Subprocess {
+        options.carla_worker = Some(std::env::current_exe()?);
+    }
     config.validate()?;
     tracing::info!(
         "Starting host {} (PID {})",

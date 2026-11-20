@@ -37,6 +37,7 @@ impl Progress {
         }
         let mut frames = vec![0; image.payloads.len()];
         let mut referenced = BTreeSet::new();
+        let mut checkpoints = Vec::new();
         let mut check = |channel: &Channel, midi: bool| -> Result<(), Refusal> {
             if !channel.gain.is_finite()
                 || channel.frames > u32::MAX as u64
@@ -112,33 +113,55 @@ impl Progress {
                     return Err(Refusal::Invalid);
                 }
                 if session.tracks.iter().any(|track| {
+                    let carla = matches!(&track.topology, TrackTopology::DryWet { processor_type, .. } if processor_type.is_carla());
                     track
                         .processor_state
                         .as_ref()
                         .is_some_and(|s| s.len() > 1024)
+                        || track.processor_checkpoint.is_some() && (!carla || track.processor_state.is_some())
+                        || track.loops.iter().any(|content| content.recorded_processor_checkpoint.is_some() && !carla)
                         || track.builtin_fx_midi_cc_assignments.len() > 23
                         || track.oxisynth_midi_cc_assignments.len() > 2
                 }) {
                     return Err(Refusal::Invalid);
                 }
                 if session.buses.len() > 8
-                    || session
-                        .buses
-                        .iter()
-                        .any(|bus| bus.channels.is_empty() || bus.channels.len() > 8)
+                    || session.buses.iter().any(|bus| {
+                        bus.channels.is_empty()
+                            || bus.channels.len() > MAX_SESSION_CHANNELS_PER_ROLE
+                    })
                     || session.bus_display_order.len() != session.buses.len()
                 {
                     return Err(Refusal::Invalid);
                 }
                 if session.buses.iter().any(|bus| {
                     bus.fx.as_ref().is_some_and(|fx| {
-                        fx.processor_type.as_str() != TrackProcessorTypeId::BUILTIN_FX
-                            || fx.state.len() > 1024
-                            || fx.midi_cc_assignments.len() > BuiltInFxParameter::ALL.len()
+                        if fx.processor_type.is_carla() {
+                            !fx.state.is_empty()
+                                || fx.processor_checkpoint.is_none()
+                                || !fx.midi_cc_assignments.is_empty()
+                        } else {
+                            fx.processor_type.as_str() != TrackProcessorTypeId::BUILTIN_FX
+                                || fx.state.len() > 1024
+                                || fx.processor_checkpoint.is_some()
+                                || fx.midi_cc_assignments.len() > BuiltInFxParameter::ALL.len()
+                        }
                     })
                 }) {
                     return Err(Refusal::Invalid);
                 }
+                checkpoints.extend(
+                    session
+                        .tracks
+                        .iter()
+                        .filter_map(|track| track.processor_checkpoint),
+                );
+                checkpoints.extend(
+                    session
+                        .buses
+                        .iter()
+                        .filter_map(|bus| bus.fx.as_ref()?.processor_checkpoint),
+                );
                 let ids = session.buses.iter().map(|b| b.id).collect::<BTreeSet<_>>();
                 let order = session
                     .bus_display_order
@@ -176,7 +199,7 @@ impl Progress {
             } => {
                 if *sample_rate == 0
                     || frames.is_some_and(|f| f > u32::MAX as u64)
-                    || audio.len() > 16
+                    || audio.len() > MAX_SESSION_AUDIO_CHANNELS
                     || midi.len() > 1
                 {
                     return Err(Refusal::Invalid);
@@ -196,12 +219,14 @@ impl Progress {
                 || !content.gain.is_finite()
                 || !(-1.0..=1.0).contains(&content.balance)
                 || content.name.len() > 128
-                || content.audio.len() > 16
+                || content.audio.len() > MAX_SESSION_AUDIO_CHANNELS
                 || content.midi.len() > 1
                 || content
                     .recorded_processor_state
                     .as_ref()
                     .is_some_and(|s| s.len() > 1024)
+                || content.recorded_processor_checkpoint.is_some()
+                    && (content.recorded_processor_state.is_some() || content.composite.is_some())
             {
                 return Err(Refusal::Invalid);
             }
@@ -220,9 +245,9 @@ impl Progress {
                 .iter()
                 .filter(|c| c.mode == ChannelMode::Wet)
                 .count();
-            if direct > 8
-                || dry > 8
-                || wet > 8
+            if direct > MAX_SESSION_CHANNELS_PER_ROLE
+                || dry > MAX_SESSION_CHANNELS_PER_ROLE
+                || wet > MAX_SESSION_CHANNELS_PER_ROLE
                 || (direct > 0 && dry + wet > 0)
                 || content
                     .audio
@@ -253,6 +278,18 @@ impl Progress {
             }
             for channel in &content.midi {
                 check(&channel.channel, true)?;
+            }
+            checkpoints.extend(content.recorded_processor_checkpoint);
+        }
+        for object in checkpoints {
+            let index = object.checked_sub(1).ok_or(Refusal::Identity)? as usize;
+            if !referenced.insert(object) {
+                return Err(Refusal::Identity);
+            }
+            match image.payloads.get(index) {
+                Some(Payload::ProcessorCheckpoint(bytes))
+                    if !bytes.is_empty() && bytes.len() <= MAX_OPAQUE_STATE_ENVELOPE_BYTES => {}
+                _ => return Err(Refusal::Invalid),
             }
         }
         if referenced.len() != image.payloads.len() {
@@ -338,6 +375,19 @@ impl Progress {
                         left = left.saturating_sub(used);
                     }
                     if self.position != events.len() {
+                        break;
+                    }
+                }
+                Payload::ProcessorCheckpoint(bytes) => {
+                    let end = bytes.len().min(self.position.saturating_add(left));
+                    let used = end - self.position;
+                    self.bytes = self
+                        .bytes
+                        .checked_add(used as u64)
+                        .ok_or(Refusal::Invalid)?;
+                    left -= used;
+                    self.position = end;
+                    if end != bytes.len() {
                         break;
                     }
                 }

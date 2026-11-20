@@ -125,7 +125,14 @@ pub(super) fn convert(
         unreachable!()
     };
     session.sample_rate = target.sample_rate;
-    let mut charge = 0_u64;
+    let mut charge = source
+        .payloads
+        .iter()
+        .filter_map(|payload| match payload {
+            image::Payload::ProcessorCheckpoint(checkpoint) => Some(checkpoint.len() as u64),
+            _ => None,
+        })
+        .sum::<u64>();
     let mut midi_events = 0_usize;
     let mut maps = Vec::new();
     for loop_ in &mut session.tracks.iter_mut().flat_map(|t| &mut t.loops) {
@@ -187,6 +194,9 @@ pub(super) fn convert(
                         timing.length(samples.len() as u64)?.checked_mul(4)
                     }
                     image::Payload::Midi(_) => payload.bytes(),
+                    image::Payload::ProcessorCheckpoint(_) => {
+                        return Err(anyhow!("a media channel refers to a processor checkpoint"))
+                    }
                 }
                 .ok_or_else(|| anyhow!("conversion capacity overflow"))?;
                 charge = charge
@@ -199,10 +209,6 @@ pub(super) fn convert(
                             .is_some_and(|n| n <= limits.media_bytes.saturating_mul(2)),
                     "source and converted session exceed driver conversion budget"
                 );
-                ensure!(
-                    maps.len() + 1 < limits.objects as usize,
-                    "converted session exceeds its object budget"
-                );
                 let source_frames = original
                     .tracks
                     .iter()
@@ -211,11 +217,9 @@ pub(super) fn convert(
                     .find(|c| c.channel.object == Some(object))
                     .map_or(0, |c| c.channel.frames);
                 maps.push((object, timing, !midi && origin == 0 && old_frames > 0 && matches!(payload, image::Payload::Audio(samples) if samples.len() as u64 == old_frames), source_frames));
-                channel.object = Some(maps.len() as u32);
             }
         }
     }
-    result.payloads = Vec::with_capacity(maps.len());
     for (object, timing, periodic, source_frames) in maps {
         let payload = match &source.payloads[object as usize - 1] {
             image::Payload::Audio(samples) if timing.scale.is_identity() => {
@@ -255,8 +259,11 @@ pub(super) fn convert(
                         .collect::<Result<Vec<_>>>()?,
                 ))
             }
+            image::Payload::ProcessorCheckpoint(_) => {
+                return Err(anyhow!("a media channel refers to a processor checkpoint"))
+            }
         };
-        result.payloads.push(payload);
+        result.payloads[object as usize - 1] = payload;
     }
     result
         .validate()

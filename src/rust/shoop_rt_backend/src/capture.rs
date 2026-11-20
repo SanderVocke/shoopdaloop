@@ -6,6 +6,7 @@ use alloc::vec::Vec;
 use crate::{
     mirror::Mirror,
     prepared::Validation,
+    processor_controls::Target,
     reads::{empty_audio, empty_midi, Outcome},
     EngineClock, RtBackend,
 };
@@ -84,6 +85,7 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     shoop_rt_protocol::Request::CreateBus { .. }
                     | shoop_rt_protocol::Request::CreateProcessedBus { .. }
                     | shoop_rt_protocol::Request::SetBusProcessor { .. }
+                    | shoop_rt_protocol::Request::SetBusProcessorKind { .. }
                     | shoop_rt_protocol::Request::BusProcessorControl { .. }
                     | shoop_rt_protocol::Request::RemoveBus { .. }
                     | shoop_rt_protocol::Request::CreateStrip { .. }
@@ -155,6 +157,9 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 _ => false,
             })
         {
+            if only.is_none() {
+                self.processor_checkpoints.cancel();
+            }
             bail!("stop recording and settle pending recording transitions before saving or exporting");
         }
         self.canonical_content
@@ -353,6 +358,18 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                 bail!("session capture exceeds the host media budget");
             }
         }
+        let mut checkpoints = if only.is_none() {
+            match self.capture_processor_checkpoints(self.resource_limits.media_bytes - bytes) {
+                Ok(Some(checkpoints)) => checkpoints,
+                Ok(None) => return Ok(self.capture_pending(ids.len(), ids.len().saturating_add(1))),
+                Err(error) => {
+                    self.processor_checkpoints.cancel();
+                    return Err(error);
+                }
+            }
+        } else {
+            Default::default()
+        };
         let port = |id: BackendPortId| -> BackendSessionPort {
             BackendSessionPort {
                 source_id: id.raw(),
@@ -435,12 +452,13 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                         }
                     }
                 }
-                let processor_state =
+                let processor_state = checkpoints.remove(&Target::Track(*id)).or_else(|| {
                     crate::processor_controls::track_kind(track).and_then(|kind| {
                         let mut state = shoop_processor_protocol::state::State::new(kind).ok()?;
                         state.values = track.processor_snapshot?.values;
                         Some(state.encode())
-                    });
+                    })
+                });
                 BackendSessionTrack {
                     source_id: id.raw(),
                     port_name_base: track.port_name_base.clone(),
@@ -546,20 +564,23 @@ impl<C: Carrier, K: EngineClock> RtBackend<C, K> {
                     gain_db: bus.gain_db,
                     balance: bus.balance,
                     muted: bus.muted,
-                    processor_type: bus.processor_slot.map(|_| {
-                        alloc::string::String::from(shoop_app_api::TrackProcessorTypeId::BUILTIN_FX)
+                    processor_type: bus.processor_type.clone(),
+                    processor_state: checkpoints.remove(&Target::Bus(*id)).or_else(|| {
+                        bus.processor_snapshot
+                            .filter(|_| {
+                                bus.processor_type.as_deref()
+                                    == Some(shoop_app_api::TrackProcessorTypeId::BUILTIN_FX)
+                            })
+                            .map(|snapshot| {
+                                crate::processor_controls::snapshot_state(
+                                    shoop_rt_protocol::ProcessorKind::BuiltInFx,
+                                    snapshot.values,
+                                )
+                                .map(|state| state.encode())
+                            })
+                            .transpose()
+                            .expect("validated processor snapshot")
                     }),
-                    processor_state: bus
-                        .processor_snapshot
-                        .map(|snapshot| {
-                            crate::processor_controls::snapshot_state(
-                                shoop_rt_protocol::ProcessorKind::BuiltInFx,
-                                snapshot.values,
-                            )
-                            .map(|state| state.encode())
-                        })
-                        .transpose()
-                        .expect("validated processor snapshot"),
                     builtin_fx_midi_cc_assignments: crate::processor_controls::bus_fx_state(bus)
                         .and_then(|fx| fx.editor)
                         .and_then(|editor| match editor {

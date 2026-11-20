@@ -31,4 +31,9 @@ pub mod lane;
 pub mod main_thread;
 
 pub use config::{ConfigError, WorkletConfig};
-pub use host::{Counters, Inbound, Outbound, PrepareFailure, Quantum, QuantumError, WorkletHost};
+pub use host::{
+    CallbackTiming, Counters, Inbound, Outbound, PrepareFailure, Quantum, QuantumError, WorkletHost,
+};
+
+#[cfg(feature = "fpga-reference")]
+pub mod reference;

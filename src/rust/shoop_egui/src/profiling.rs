@@ -2,6 +2,7 @@
 mod graph;
 
 use crate::{colors, ProfilingView, StatusState};
+use shoop_app_api::DspMeasurement;
 
 #[derive(Clone, Copy, Default, PartialEq)]
 pub(crate) enum Units {
@@ -18,18 +19,32 @@ impl Units {
             }
         }
     }
+
+    fn dsp_value(self, sample: DspMeasurement) -> Option<f64> {
+        match self {
+            Self::Microseconds => sample.microseconds(),
+            Self::Budget => sample.percent(),
+        }
+    }
+
+    fn format_dsp(self, value: f64) -> String {
+        match self {
+            Self::Microseconds => format!("{value:.3} µs"),
+            Self::Budget => format!("{value:.1}%"),
+        }
+    }
 }
 
-/// Overall DSP load over the last `SPAN_S` seconds, sampled while the window is shown.
+/// Overall DSP measurements over the last `SPAN_S` seconds.
 #[derive(Default)]
 pub(crate) struct DspHistory {
-    samples: std::collections::VecDeque<(f64, f32)>,
+    samples: std::collections::VecDeque<(f64, Option<DspMeasurement>)>,
 }
 impl DspHistory {
     const SPAN_S: f64 = 30.;
     const INTERVAL_S: f64 = 0.05;
 
-    fn record(&mut self, now: f64, percent: f32) {
+    fn record(&mut self, now: f64, sample: Option<DspMeasurement>) {
         if self.samples.back().is_some_and(|&(time, _)| now < time) {
             self.samples.clear();
         }
@@ -40,7 +55,7 @@ impl DspHistory {
         {
             return;
         }
-        self.samples.push_back((now, percent));
+        self.samples.push_back((now, sample));
         while self
             .samples
             .front()
@@ -50,44 +65,61 @@ impl DspHistory {
         }
     }
 
-    fn peak(&self) -> f32 {
+    fn peak(&self, units: Units) -> Option<f64> {
         self.samples
             .iter()
-            .map(|&(_, percent)| percent)
-            .fold(0., f32::max)
+            .filter_map(|&(_, sample)| units.dsp_value(sample?))
+            .reduce(f64::max)
     }
 
-    fn show(&self, ui: &mut egui::Ui, now: f64) {
+    fn show(&self, ui: &mut egui::Ui, now: f64, units: Units, peak: Option<f64>) {
         let (rect, _) =
             ui.allocate_exact_size(egui::vec2(ui.available_width(), 72.), egui::Sense::hover());
         let painter = ui.painter_at(rect);
         painter.rect_filled(rect, 4., ui.visuals().extreme_bg_color);
-        // Keep 100% in view and grow the scale for overloads.
-        let top = self.peak().max(100.);
-        let y = |percent: f32| rect.bottom() - rect.height() * (percent / top).clamp(0., 1.);
+        let top = match units {
+            Units::Budget => peak.unwrap_or(0.).max(100.),
+            Units::Microseconds => peak.filter(|&value| value > 0.).unwrap_or(1.),
+        };
+        let y = |value: f64| rect.bottom() - rect.height() * (value / top).clamp(0., 1.) as f32;
         let x = |time: f64| rect.right() - rect.width() * ((now - time) / Self::SPAN_S) as f32;
-        for level in [25., 50., 75.] {
+        let grid_top = if units == Units::Budget { 100. } else { top };
+        for fraction in [0.25, 0.5, 0.75] {
             painter.hline(
                 rect.x_range(),
-                y(level),
+                y(fraction * grid_top),
                 egui::Stroke::new(1., colors::MUTED_FOREGROUND.gamma_multiply(0.35)),
             );
         }
-        painter.hline(
-            rect.x_range(),
-            y(100.),
-            egui::Stroke::new(1., colors::ERROR.gamma_multiply(0.6)),
-        );
-        let points: Vec<_> = self
-            .samples
-            .iter()
-            .map(|&(time, percent)| egui::pos2(x(time), y(percent)))
-            .collect();
-        if points.len() > 1 {
-            painter.add(egui::Shape::line(
-                points,
-                egui::Stroke::new(1.5, colors::COLORED_HIGHLIGHT),
-            ));
+        if units == Units::Budget {
+            painter.hline(
+                rect.x_range(),
+                y(100.),
+                egui::Stroke::new(1., colors::ERROR.gamma_multiply(0.6)),
+            );
+        }
+        let stroke = egui::Stroke::new(1.5, colors::COLORED_HIGHLIGHT);
+        let positions = self.samples.iter().map(|&(time, sample)| {
+            units
+                .dsp_value(sample?)
+                .map(|value| egui::pos2(x(time), y(value)))
+        });
+        let mut points = Vec::new();
+        for position in positions.chain(core::iter::once(None)) {
+            if let Some(point) = position {
+                points.push(point);
+            } else {
+                match points.as_slice() {
+                    [] => {}
+                    [point] => {
+                        painter.circle_filled(*point, stroke.width, stroke.color);
+                        points.clear();
+                    }
+                    _ => {
+                        painter.add(egui::Shape::line(core::mem::take(&mut points), stroke));
+                    }
+                }
+            }
         }
         ui.ctx()
             .request_repaint_after(std::time::Duration::from_secs_f64(Self::INTERVAL_S));
@@ -365,6 +397,11 @@ fn show_inner(
             (status.sample_rate > 0 && status.quantum_frames > 0)
                 .then(|| f64::from(status.quantum_frames) * 1e9 / f64::from(status.sample_rate))
         });
+    let now = ui.input(|input| input.time);
+    dsp.record(now, status.dsp);
+    let percent_available = budget.is_some()
+        || status.dsp.and_then(DspMeasurement::percent).is_some()
+        || dsp.peak(Units::Budget).is_some();
     let mut changed = None;
     ui.horizontal(|ui| {
         let mut requested = view.requested;
@@ -385,32 +422,39 @@ fn show_inner(
             "Profiling off"
         });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.add_enabled_ui(budget.is_some(), |ui| {
+            ui.add_enabled_ui(percent_available, |ui| {
                 ui.selectable_value(units, Units::Budget, "% budget");
             });
             ui.selectable_value(units, Units::Microseconds, "µs");
         });
     });
     ui.add_space(12.);
-    let now = ui.input(|input| input.time);
-    dsp.record(now, status.dsp_load_percent);
+    let current = status.dsp.and_then(|sample| units.dsp_value(sample));
+    let peak = dsp.peak(*units);
     egui::Frame::group(ui.style())
         .inner_margin(12)
         .corner_radius(8)
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.label("Overall DSP")
-                    .on_hover_text("The largest callback load since the previous update.");
+                ui.label("Overall DSP").on_hover_text(
+                    status
+                        .dsp
+                        .map_or("Waiting for a DSP measurement", |sample| sample.label()),
+                );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.monospace(format!("{:.1}%", status.dsp_load_percent));
-                    ui.weak(format!(
-                        "peak {:.1}% · last {:.0} s",
-                        dsp.peak(),
-                        DspHistory::SPAN_S
-                    ));
+                    ui.monospace(
+                        current.map_or_else(|| "—".into(), |value| units.format_dsp(value)),
+                    );
+                    if let Some(peak) = peak {
+                        ui.weak(format!(
+                            "peak {} · last {:.0} s",
+                            units.format_dsp(peak),
+                            DspHistory::SPAN_S
+                        ));
+                    }
                 });
             });
-            dsp.show(ui, now);
+            dsp.show(ui, now, *units, peak);
             if let Some(budget) = budget {
                 ui.small(format!(
                     "{} frames @ {} Hz · {:.3} µs per quantum",
@@ -421,8 +465,8 @@ fn show_inner(
             }
         });
     ui.add_space(10.);
-    ui.collapsing("Memory", |ui| {
-        crate::show_memory_usage(ui, status.memory.as_ref())
+    ui.collapsing("Usage", |ui| {
+        crate::show_resource_usage(ui, status.memory.as_ref())
     });
     ui.horizontal(|ui| {
         ui.selectable_value(table, false, "Graph");
@@ -673,7 +717,7 @@ mod tests {
         use crate::{diagnostics_protocol as protocol, task_profiling as tasks};
         let stream = tasks::stream(77);
         let mut diagnostics = crate::DiagnosticsView {
-            sources: vec![crate::ProfilingSource {
+            sources: vec![shoop_app_api::ProfilingSource {
                 descriptor: protocol::Descriptor {
                     stream,
                     name: protocol::Name::new("host.freertos.tasks").unwrap(),
@@ -955,6 +999,51 @@ mod tests {
         assert_eq!(click(false), None);
     }
     #[shoop_test]
+    fn dsp_history_uses_each_samples_audio_period_and_keeps_missing_values() {
+        let mut history = DspHistory::default();
+        let callback = |elapsed_ns, frames| {
+            Some(DspMeasurement::Callback {
+                elapsed_ns,
+                frames,
+                sample_rate: 1000,
+                paced: true,
+            })
+        };
+        history.record(0., callback(4_000_000, 8));
+        history.record(0.1, callback(8_000_000, 32));
+        assert_eq!(history.peak(Units::Microseconds), Some(8_000.));
+        assert_eq!(history.peak(Units::Budget), Some(50.));
+        let context = egui::Context::default();
+        let points = |units| {
+            let mut output = context.run_ui(egui::RawInput::default(), |ui| {
+                history.show(ui, 0.1, units, history.peak(units));
+            });
+            output.textures_delta.clear();
+            output
+                .shapes
+                .into_iter()
+                .find_map(|shape| match shape.shape {
+                    egui::Shape::Path(path) => Some(path.points),
+                    _ => None,
+                })
+                .unwrap()
+        };
+        let time = points(Units::Microseconds);
+        let percent = points(Units::Budget);
+        assert!(time[0].y > time[1].y);
+        assert!(percent[0].y < percent[1].y);
+
+        let jack = DspMeasurement::JackServer { percent: 125. };
+        history.record(0.2, Some(jack));
+        assert_eq!(Units::Microseconds.dsp_value(jack), None);
+        assert_eq!(history.peak(Units::Microseconds), Some(8_000.));
+        assert_eq!(history.peak(Units::Budget), Some(125.));
+
+        history.record(DspHistory::SPAN_S + 1., None);
+        assert_eq!(history.peak(Units::Microseconds), None);
+        assert_eq!(history.peak(Units::Budget), None);
+    }
+    #[shoop_test]
     fn table_renders_known_statistics_and_clears_on_generation_reset() {
         let context = egui::Context::default();
         let mut profiling = ProfilingView {
@@ -987,7 +1076,12 @@ mod tests {
                         &StatusState {
                             sample_rate: 48000,
                             quantum_frames: 32,
-                            dsp_load_percent: 23.4,
+                            dsp: Some(DspMeasurement::Callback {
+                                elapsed_ns: 156_000,
+                                frames: 32,
+                                sample_rate: 48_000,
+                                paced: true,
+                            }),
                             ..Default::default()
                         },
                         &mut capture,
@@ -1017,6 +1111,8 @@ mod tests {
             "Callback exit",
             "2.000",
             "4.000",
+            "156.000 µs",
+            "peak 156.000 µs · last 30 s",
         ] {
             assert!(
                 labels.iter().any(|text| text == expected),
@@ -1024,7 +1120,7 @@ mod tests {
             );
         }
         let percentages = render(&profiling, false, Units::Budget);
-        for expected in ["0.19", "0.45", "23.4%"] {
+        for expected in ["0.19", "0.45", "23.4%", "peak 23.4% · last 30 s"] {
             assert!(
                 percentages.iter().any(|text| text == expected),
                 "missing {expected}: {percentages:?}"

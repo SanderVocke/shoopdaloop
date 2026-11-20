@@ -1054,6 +1054,7 @@ impl Service {
                 target: None,
                 routes: Vec::new(),
                 tracks: vec![image::Track {
+                    processor_checkpoint: None,
                     topology: shoop_app_api::TrackTopology::Direct,
                     default_playback_mode: Default::default(),
                     processor_state: None,
@@ -1100,6 +1101,7 @@ impl Service {
                         ),
                     ],
                     loops: vec![image::Loop {
+                        recorded_processor_checkpoint: None,
                         recorded_processor_state: None,
                         sync_source: None,
                         repeat_sync: false,

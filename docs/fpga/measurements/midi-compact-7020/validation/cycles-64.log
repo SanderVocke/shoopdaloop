@@ -1,0 +1,97 @@
+    Finished `dev` profile [unoptimized] target(s) in 6.76s
+     Running `target/debug/examples/midi_cycles_64 --active-loops 64 --events-per-quantum 16`
+64 stopped bindings, no input: 12529 clocks, 0 output packets
+begin recordings: 5163835 clocks, 0 output packets
+record CC messages: 1073623 clocks, 0 output packets
+record CC messages: 1207737 clocks, 0 output packets
+finish recordings: 497176 clocks, 0 output packets
+begin playback: 796236 clocks, 0 output packets
+playback, first CC window: 463671 clocks, 64 output packets
+playback, second CC window: 456695 clocks, 64 output packets
+{
+  "active_loops": 64,
+  "admitted_input_events_per_quantum": 16,
+  "destinations_available": 8,
+  "destinations_bound": 4,
+  "history_retention_frames": 128,
+  "idle_only": false,
+  "loops": 64,
+  "measurements": [
+    {
+      "cycles": 12529,
+      "input_events": 0,
+      "microseconds_at_100mhz": 125.29,
+      "microseconds_at_150mhz": 83.52666666666667,
+      "operation": "64 stopped bindings, no input",
+      "output_events": 0
+    },
+    {
+      "cycles": 5163835,
+      "input_events": 0,
+      "microseconds_at_100mhz": 51638.35,
+      "microseconds_at_150mhz": 34425.566666666666,
+      "operation": "begin recordings",
+      "output_events": 0
+    },
+    {
+      "cycles": 1073623,
+      "input_events": 16,
+      "microseconds_at_100mhz": 10736.23,
+      "microseconds_at_150mhz": 7157.486666666667,
+      "operation": "record CC messages",
+      "output_events": 0
+    },
+    {
+      "cycles": 1207737,
+      "input_events": 16,
+      "microseconds_at_100mhz": 12077.37,
+      "microseconds_at_150mhz": 8051.58,
+      "operation": "record CC messages",
+      "output_events": 0
+    },
+    {
+      "cycles": 497176,
+      "input_events": 0,
+      "microseconds_at_100mhz": 4971.76,
+      "microseconds_at_150mhz": 3314.5066666666667,
+      "operation": "finish recordings",
+      "output_events": 0
+    },
+    {
+      "cycles": 796236,
+      "input_events": 0,
+      "microseconds_at_100mhz": 7962.36,
+      "microseconds_at_150mhz": 5308.24,
+      "operation": "begin playback",
+      "output_events": 0
+    },
+    {
+      "cycles": 463671,
+      "input_events": 0,
+      "microseconds_at_100mhz": 4636.71,
+      "microseconds_at_150mhz": 3091.14,
+      "operation": "playback, first CC window",
+      "output_events": 64
+    },
+    {
+      "cycles": 456695,
+      "input_events": 0,
+      "microseconds_at_100mhz": 4566.95,
+      "microseconds_at_150mhz": 3044.633333333333,
+      "operation": "playback, second CC window",
+      "output_events": 64
+    }
+  ],
+  "memory": "deterministic randomized word acknowledgements and backpressure from the conformance driver",
+  "quantum_frames": 32,
+  "sample_rate": 48000,
+  "scope": "MIDI service jobs only; SP, shared JP dispatch, audio and board DDR are excluded",
+  "store": {
+    "block_events": 256,
+    "blocks": 2432,
+    "max_events": 8192,
+    "retirements": 128,
+    "snapshots": 384,
+    "views": 256
+  }
+}

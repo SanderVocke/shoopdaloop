@@ -1,7 +1,10 @@
-use rt_fpga_compiler::{graph::*, Identity, StateProgramTarget};
+#[path = "../../rt_fpga_compiler/tests/support/mono.rs"]
+mod mono;
+use rt_fpga_compiler::{compile, CompileContext};
+use rt_fpga_compiler::{Identity, StateProgramTarget};
 use rt_fpga_reference::{
-    compiler::RustTarget, fixed::Fixed, jobs::JobProcessor, pipeline::Pipeline, state::ModePlan,
-    storage::MediaStore, transitions::Mode,
+    fixed::Fixed, jobs::JobProcessor, pipeline::Pipeline, state::ModePlan, storage::MediaStore,
+    target::RustTarget, transitions::Mode,
 };
 use shoop_wasm_test_support::shoop_test;
 
@@ -9,10 +12,9 @@ use shoop_wasm_test_support::shoop_test;
 fn compiled_graph_records_routes_and_sums_exact_samples() {
     for quantum in [1, 16, 128] {
         for count in [1, 2, 16] {
-            let description = GraphDescription {
-                quantum,
-                loops: (0..count)
-                    .map(|i| LoopDescription {
+            let description = mono::session(
+                &((0..count)
+                    .map(|i| mono::MonoLoop {
                         id: Identity {
                             slot: i,
                             generation: 2,
@@ -23,9 +25,16 @@ fn compiled_graph_records_routes_and_sums_exact_samples() {
                         gain: 0.5,
                         repeat_sync: false,
                     })
-                    .collect(),
-            };
-            let logical = description.compile().unwrap();
+                    .collect::<Vec<_>>()),
+            );
+            let logical = compile(
+                &description,
+                CompileContext {
+                    quantum,
+                    limits: Default::default(),
+                },
+            )
+            .unwrap();
             let mut media = MediaStore::new(1).unwrap();
             let views = (0..count)
                 .map(|_| media.create_recording().unwrap().0 as u64)
