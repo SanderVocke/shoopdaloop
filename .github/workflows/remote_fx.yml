@@ -23,10 +23,19 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: native-remote-fx-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   native-remote-fx:
+    name: Native remote FX (${{ matrix.width }} channels)
     runs-on: ubuntu-24.04
     timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        width: [2, 16]
     env:
       RUSTFLAGS: -D warnings
       SOAK_SECONDS: ${{ inputs.soak_seconds || (github.event.pull_request.draft && '0' || '1800') }}
@@ -43,7 +52,8 @@ jobs:
       - name: Build pinned Carla component and Native package
         run: |
           bash scripts/prepare_carla_linux.sh
-          cargo build --locked --release -p shoopdaloop -p shoop_host -p shoop_host_manager --features shoop_host/carla
+          cargo build --locked --release -p shoopdaloop -p shoop_host_manager
+          cargo build --locked --release -p shoop_host --features carla
           python3 src/rust/shoopdaloop/package_artifacts.py native \
             --platform linux --arch x86_64 --profile release --binary target/release/shoopdaloop \
             --carla-runtime .carla-component --output-dir artifacts
@@ -64,9 +74,10 @@ jobs:
           sudo env PATH="$PATH" python3 scripts/verify_remote_fx.py \
             --host installed/shoopdaloop/shoop_host --manager installed/shoopdaloop/shoop_host_manager \
             --recovery-test "$(cat recovery-path.txt)" --archive-test "$(cat jack-path.txt)" \
-            --soak-seconds "$SOAK_SECONDS" --slack 14 --restart --impairment one-copy |& tee -a remote-fx-results.txt
+            --soak-seconds "$SOAK_SECONDS" --slack 14 --width '${{ matrix.width }}' \
+            --restart --impairment one-copy |& tee -a remote-fx-results.txt
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: native-remote-fx-${{ github.run_id }}-${{ github.run_attempt }}
+          name: native-remote-fx-${{ matrix.width }}ch-${{ github.run_id }}-${{ github.run_attempt }}
           path: remote-fx-results.txt

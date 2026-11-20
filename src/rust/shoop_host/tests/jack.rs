@@ -445,14 +445,14 @@ impl Fixture {
         persistence_transfer::assemble(objects).unwrap()
     }
     fn load(&mut self, image: Arc<persistence_image::Image>) {
-        let key = self.upload(image);
+        let key = self.upload(image, 2);
         self.command(protocol::Command::CommitPersistence(key));
         self.until(|client| client.snapshot().unwrap().persistence_epoch != key.epoch);
     }
-    fn upload(&mut self, image: Arc<persistence_image::Image>) -> p::Key {
+    fn upload(&mut self, image: Arc<persistence_image::Image>, transfer: u64) -> p::Key {
         let state = self.client.snapshot().unwrap();
         let key = p::Key {
-            transfer: TransferId(2),
+            transfer: TransferId(transfer),
             epoch: state.persistence_epoch,
         };
         let target = p::Target::Session {
@@ -527,6 +527,11 @@ fn native_carla_session_archive_survives_driver_rate_and_period_change() {
         }
         let settings = HostSettings {
             processors,
+            loop_smoothing_ms: if hosting == CarlaHosting::Remote {
+                0
+            } else {
+                HostSettings::default().loop_smoothing_ms
+            },
             driver: AudioDriverConfig::Dummy(DummyAudioDriverConfig {
                 buffer_size: if hosting == CarlaHosting::Remote {
                     128
@@ -809,13 +814,32 @@ fn native_carla_session_archive_survives_driver_rate_and_period_change() {
             let seconds = std::env::var("SHOOP_REMOTE_FX_SOAK_SECONDS")
                 .ok()
                 .map_or(0, |value| value.parse().unwrap());
-            let end = Instant::now() + Duration::from_secs(seconds);
+            let started = Instant::now();
+            let end = started + Duration::from_secs(seconds);
+            let clean_soak = seconds != 0 && std::env::var_os("SHOOP_REMOTE_FX_IMPAIRED").is_none();
+            let mut next_log = started + Duration::from_secs(300);
             let frames = state_before.status.processed_frames;
             while Instant::now() < end {
                 fixture.tick();
+                if clean_soak {
+                    let observed = fx_stats(&fixture.client);
+                    assert_eq!(
+                        before.map(|(generation, misses, _)| (generation, misses)),
+                        observed.map(|(generation, misses, _)| (generation, misses)),
+                        "wet deadline miss after {:.1}s at width {width}",
+                        started.elapsed().as_secs_f64()
+                    );
+                    if Instant::now() >= next_log {
+                        eprintln!(
+                            "Remote Carla {width} channels: {} seconds, zero wet misses",
+                            started.elapsed().as_secs()
+                        );
+                        next_log += Duration::from_secs(300);
+                    }
+                }
                 thread::sleep(Duration::from_millis(5));
             }
-            let state = fixture.client.snapshot().unwrap();
+            let state = fixture.client.snapshot().unwrap().clone();
             let after = fx_stats(&fixture.client);
             let completion = state
                 .tracks
@@ -826,11 +850,12 @@ fn native_carla_session_archive_survives_driver_rate_and_period_change() {
                 .as_ref()
                 .and_then(|fx| fx.status_summary.as_deref());
             eprintln!("remote Carla {width}-channel soak {seconds}s: {delay} frames of buffering, {} frames rendered, {} xruns, DSP {:?}, worker {:?} → {:?}, {completion:?}", state.status.processed_frames - frames, state.status.xruns, state.status.dsp, before, after);
-            if seconds != 0 && std::env::var_os("SHOOP_REMOTE_FX_IMPAIRED").is_none() {
+            if clean_soak {
                 assert_eq!(
                     before.map(|(generation, misses, _)| (generation, misses)),
                     after.map(|(generation, misses, _)| (generation, misses))
                 );
+                continue;
             }
             if let Some(restart) = std::env::var_os("SHOOP_REMOTE_FX_RESTART_FILE") {
                 let last_frame = state.status.processed_frames;
@@ -855,6 +880,7 @@ fn native_carla_session_archive_survives_driver_rate_and_period_change() {
                         .all(|((generation, _, _), previous)| *generation > previous.0)
                         && expected_audio(client)
                 });
+                continue;
             }
             if let Ok(mode) = std::env::var("SHOOP_REMOTE_FX_IMPAIRED") {
                 let copies = std::env::var("SHOOP_REMOTE_FX_COPIES").unwrap_or_else(|_| "2".into());
@@ -977,7 +1003,7 @@ fn native_carla_session_archive_survives_driver_rate_and_period_change() {
                         .unwrap()
                         .into_bytes(),
                 ));
-                let key = fixture.upload(Arc::new(rejected));
+                let key = fixture.upload(Arc::new(rejected), 5);
                 assert!(matches!(
                     fixture.outcome(Command::CommitPersistence(key)),
                     Outcome::Refused { .. }
