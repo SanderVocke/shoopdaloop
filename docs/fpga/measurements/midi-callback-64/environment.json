@@ -1,0 +1,79 @@
+{
+  "date": "2026-11-20",
+  "base_commit": "55bd4475",
+  "rust_change_commit": "ad68e282",
+  "cpu_model": "Intel Xeon Platinum 8573C (KVM cloud VM, 5 online virtual CPUs)",
+  "cpu_benchmark_affinity": [
+    4
+  ],
+  "concurrent_rtl_affinity": [
+    0,
+    3
+  ],
+  "rustc": "1.100.0 (0ef1bc386 2026-11-09)",
+  "llvm": "23.1.5",
+  "verilator": "5.032 (Debian 5.032-1+b2)",
+  "kernel": "Linux 6.18.57 x86_64",
+  "cargo_profile": "release",
+  "RUSTFLAGS": "-D warnings",
+  "target_cpu": "default",
+  "cpu_callbacks_per_case": 27000,
+  "cpu_batches_per_case": 3,
+  "cpu_warmup_callbacks": 150,
+  "rtl_steady_quanta_per_case": 16,
+  "rtl_additional_warmup_quanta": 16,
+  "rtl_clock_assumption_mhz": 100,
+  "sample_rate": 48000,
+  "quantum_frames": 32,
+  "audio_chunk_frames": 32,
+  "loops": 64,
+  "frames_per_loop": 1440000,
+  "midi_events_per_loop": 3000,
+  "audio_views": 128,
+  "midi_destinations": 8,
+  "production_strips": 8,
+  "history_retention_frames": 0,
+  "external_instruments_or_effects": false,
+  "rtl_memory": {
+    "ports": 2,
+    "width_bits_each": 64,
+    "native_request_bytes": 16,
+    "fixed_service_clocks": 7,
+    "random_stalls": false,
+    "board_ddr_arbitration": false,
+    "ideal_repeat_service_clocks": 0
+  },
+  "limitations": [
+    "CPU timings include cloud scheduling noise",
+    "CPU backends have different surrounding routing/control work",
+    "Production MIDI-only content has silent backing but no audio sample reads/writes",
+    "Only early playback is sampled in RTL",
+    "100 MHz has not closed setup timing"
+  ],
+  "benchmark_commit": "eb845fbf52610134093433161c4ba2f6aa4a7fa5",
+  "rtl_capture_benchmark_commit": "e42ac1fd",
+  "production_telemetry_interval_frames": 800,
+  "midi_capacity": {
+    "blocks": 2432,
+    "block_events": 256,
+    "max_events_per_sequence": 8192,
+    "views": 256,
+    "snapshots": 384,
+    "retirements": 128,
+    "input_events_per_quantum": 16,
+    "maintenance_steps": 64
+  },
+  "audio_rtl_geometry": {
+    "views": 512,
+    "chunk_slots": 5763072,
+    "chunk_frames": 32,
+    "block_chunks": 32,
+    "table_cache_lines": 128,
+    "read_hint_depth": 256
+  },
+  "ideal_ddr_benchmark_commit": "209362f3",
+  "rtl_ddr_added_delay_clocks": [
+    7,
+    0
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "cc_per_second_per_loop": 100,
+  "chunk_frames": 32,
+  "destinations": 8,
+  "loops": 64,
+  "metadata": {
+    "backend": "production",
+    "scenario": "stereo_and_midi"
+  },
+  "quantum_frames": 32,
+  "runs": [
+    {
+      "callbacks": 9000,
+      "max_us": 58335.964,
+      "mean_us": 239.92691888888888,
+      "p50_us": 203.811,
+      "p95_us": 339.027,
+      "p99_us": 695.556
+    },
+    {
+      "callbacks": 9000,
+      "max_us": 19073.187,
+      "mean_us": 233.87630322222222,
+      "p50_us": 203.748,
+      "p95_us": 324.784,
+      "p99_us": 638.048
+    },
+    {
+      "callbacks": 9000,
+      "max_us": 10896.152,
+      "mean_us": 239.23745911111112,
+      "p50_us": 208.128,
+      "p95_us": 343.376,
+      "p99_us": 616.066
+    }
+  ],
+  "sample_rate": 48000,
+  "sequence_frames": 1440000,
+  "start_playback_midi_packets": 4101,
+  "start_playback_us": 437.773,
+  "warmup_callbacks": 150
+}

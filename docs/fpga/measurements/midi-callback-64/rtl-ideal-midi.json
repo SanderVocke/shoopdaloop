@@ -1,0 +1,133 @@
+{
+  "chunk_frames": 32,
+  "ddr_added_delay_clocks": 0,
+  "loops": 64,
+  "measurements": [
+    {
+      "cycles": 1311833,
+      "kind": "playback_start",
+      "midi_packets": 5,
+      "position": 0,
+      "us_at_100mhz": 13118.33
+    },
+    {
+      "cycles": 594067,
+      "kind": "steady",
+      "midi_packets": 5,
+      "position": 544,
+      "us_at_100mhz": 5940.67
+    },
+    {
+      "cycles": 593872,
+      "kind": "steady",
+      "midi_packets": 5,
+      "position": 576,
+      "us_at_100mhz": 5938.72
+    },
+    {
+      "cycles": 543914,
+      "kind": "steady",
+      "midi_packets": 4,
+      "position": 608,
+      "us_at_100mhz": 5439.14
+    },
+    {
+      "cycles": 544174,
+      "kind": "steady",
+      "midi_packets": 4,
+      "position": 640,
+      "us_at_100mhz": 5441.74
+    },
+    {
+      "cycles": 544434,
+      "kind": "steady",
+      "midi_packets": 4,
+      "position": 672,
+      "us_at_100mhz": 5444.34
+    },
+    {
+      "cycles": 544694,
+      "kind": "steady",
+      "midi_packets": 4,
+      "position": 704,
+      "us_at_100mhz": 5446.94
+    },
+    {
+      "cycles": 544434,
+      "kind": "steady",
+      "midi_packets": 4,
+      "position": 736,
+      "us_at_100mhz": 5444.34
+    },
+    {
+      "cycles": 544174,
+      "kind": "steady",
+      "midi_packets": 4,
+      "position": 768,
+      "us_at_100mhz": 5441.74
+    },
+    {
+      "cycles": 543914,
+      "kind": "steady",
+      "midi_packets": 4,
+      "position": 800,
+      "us_at_100mhz": 5439.14
+    },
+    {
+      "cycles": 543654,
+      "kind": "steady",
+      "midi_packets": 4,
+      "position": 832,
+      "us_at_100mhz": 5436.54
+    },
+    {
+      "cycles": 543914,
+      "kind": "steady",
+      "midi_packets": 4,
+      "position": 864,
+      "us_at_100mhz": 5439.14
+    },
+    {
+      "cycles": 544174,
+      "kind": "steady",
+      "midi_packets": 4,
+      "position": 896,
+      "us_at_100mhz": 5441.74
+    },
+    {
+      "cycles": 544434,
+      "kind": "steady",
+      "midi_packets": 4,
+      "position": 928,
+      "us_at_100mhz": 5444.34
+    },
+    {
+      "cycles": 594457,
+      "kind": "steady",
+      "midi_packets": 5,
+      "position": 960,
+      "us_at_100mhz": 5944.57
+    },
+    {
+      "cycles": 594262,
+      "kind": "steady",
+      "midi_packets": 5,
+      "position": 992,
+      "us_at_100mhz": 5942.62
+    },
+    {
+      "cycles": 594067,
+      "kind": "steady",
+      "midi_packets": 5,
+      "position": 1024,
+      "us_at_100mhz": 5940.67
+    }
+  ],
+  "memory": "two independent 64-bit AXI ports, fixed 0-clock service per 16-byte native request, no random bus stalls; AXI handshakes retained; excludes board DDR arbitration",
+  "preparation": "payloads and ready default-state comparison maps loaded outside measured quanta; hardware allocates MIDI descriptors/blocks and exported sample records are checked",
+  "quantum_frames": 32,
+  "sample_rate": 48000,
+  "scenario": "midi_only",
+  "scope": "full compiled SP, mixed queue and common JP; run acceptance through done; host loading/readback excluded",
+  "sequence_frames": 1440000
+}

@@ -1,0 +1,35 @@
+   Compiling shoop_processor_protocol v0.3.0 (<repository>/src/rust/shoop_processor_protocol)
+   Compiling rt_runtime v0.3.0 (<repository>/src/rust/rt_runtime)
+   Compiling rt_fpga_reference v0.3.0 (<repository>/src/rust/rt_fpga_reference)
+   Compiling shoop_rt_protocol v0.3.0 (<repository>/src/rust/shoop_rt_protocol)
+   Compiling shoop_rt_transport v0.3.0 (<repository>/src/rust/shoop_rt_transport)
+   Compiling rt_fpga_testbench v0.3.0 (<repository>/src/rust/rt_fpga_testbench)
+    Finished `test` profile [unoptimized] target(s) in 12.98s
+     Running tests/midi.rs (target/debug/build/rt_fpga_testbench/13fa027fe74d073d/out/midi-13fa027fe74d073d)
+
+running 18 tests
+test midi_context_unbind_requires_cleanup_and_preserves_pinned_exports ... ok
+test midi_ddr_axi32_and_axi64_record_playback_bounds_and_faults ... ok
+test midi_compiled_sp_and_shared_jp_match_audio_messages_and_job_traces has been running for over 60 seconds
+test midi_ddr_128_loop_group_grab_and_eight_destination_playback_match_rust has been running for over 60 seconds
+test midi_ddr_all_quantum_sizes_and_history_checkpoint_edges_match_rust has been running for over 60 seconds
+test midi_ddr_all_quantum_sizes_and_history_checkpoint_edges_match_rust ... ok
+test midi_ddr_difference_initialization_and_incremental_updates_match_reference ... ok
+test midi_ddr_existing_channel_owner_keeps_its_note_off_before_handoff ... ok
+test midi_ddr_group_replace_clear_and_metadata_grants_are_atomic ... ok
+test midi_ddr_capacity_protects_capture_and_rejects_private_writer_edits has been running for over 60 seconds
+test midi_ddr_import_export_duplicate_and_retake_stay_coherent_during_playback ... ok
+test midi_ddr_independent_input_histories_and_incremental_snapshots_match_rust ... ok
+test midi_ddr_interpreter_matches_reference_with_delayed_memory ... ok
+test midi_ddr_ordered_restoration_and_cleanup_match_reference ... ok
+test midi_ddr_output_refusal_recovery_and_partial_stop_cleanup_match_rust ... ok
+test midi_ddr_recording_exhaustion_keeps_input_tracking_and_rejects_playback ... ok
+test midi_ddr_restoration_updates_output_state_and_all_prepared_differences ... ok
+test midi_ddr_session_record_restore_repeat_stop_and_history_grab_match_rust ... ok
+test midi_ddr_shared_views_snapshots_capacity_and_incremental_retirement_match_reference ... ok
+test midi_ddr_128_loop_group_grab_and_eight_destination_playback_match_rust ... ok
+test midi_compiled_sp_and_shared_jp_match_audio_messages_and_job_traces ... ok
+test midi_ddr_capacity_protects_capture_and_rejects_private_writer_edits ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 619.00s
+

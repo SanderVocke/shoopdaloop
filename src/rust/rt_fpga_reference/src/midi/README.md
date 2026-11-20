@@ -190,6 +190,11 @@ at `1d081bf8`; ordering derives from `shoop_loops` at `9eb71d04`. No production
 runtime dependency was added. Local evidence and memory/timing results are in
 [the storage milestone](../../../../../docs/fpga/midi-reference-storage.md).
 
+The [64-loop callback comparison](../../../../../docs/fpga/midi-reference-layout-benchmarks.md)
+covers stereo-plus-MIDI and MIDI-only playback in the Rust FPGA reference,
+production renderer and full RTL pipeline. It includes repeatable benchmark
+examples and separates CPU measurements from simulated hardware clock counts.
+
 
 ## Shared execution
 
