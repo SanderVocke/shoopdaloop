@@ -244,7 +244,8 @@ def render(output, manifest, runs, summary):
         return " *" if len(hashes) > 1 else ""
 
     with PdfPages(output / "report.pdf") as pdf:
-        fig = page("FPGA RTL — audio, MIDI and combined", f'64 loops · stereo where audio is enabled · Q=callback=32 · 48 kHz · preset: {manifest.get("preset", "unreported")}\n' + geometry + "\nDRAM profile: " + Path(manifest.get("dram_config") or (rtl[0].get("metadata", {}).get("memory", {}).get("native", {}).get("configuration", {}).get("config", "unreported") if rtl else "unreported")).name)
+        memory_profile = "Diagnostic fixed-latency memory" if manifest.get("memory_model") == "fixed" else "DRAM profile: " + Path(manifest.get("dram_config") or (rtl[0].get("metadata", {}).get("memory", {}).get("native", {}).get("configuration", {}).get("config", "unreported") if rtl else "unreported")).name
+        fig = page("FPGA RTL — audio, MIDI and combined", f'64 loops · stereo where audio is enabled · Q=callback=32 · 48 kHz · preset: {manifest.get("preset", "unreported")}\n' + geometry + "\n" + memory_profile)
         campaign = f'{len(runs)}/{manifest.get("expected_runs", len(runs))} run slots · {counts["completed"]} completed · {counts["unsupported"]} unsupported · {sum(v for k,v in counts.items() if k not in ("completed", "unsupported"))} failed'
         fig.text(.055, .817, ("VALIDATED AVAILABLE COMPARISONS" if all_valid else "INCOMPLETE / INVALID CAMPAIGN") + " — " + campaign,
                  fontsize=10, weight="bold", color="#176B43" if all_valid else "#AE2C2C")
@@ -275,7 +276,7 @@ def render(output, manifest, runs, summary):
         else:
             ax.axis("off"); ax.text(0, .6, "RTL was not selected or has no completed results.\nSee validation/status details for missing or failed runs.", fontsize=12)
         block(fig, .055, .125, ["Percentiles require N≥20/100 for p95/p99. Distributions pool completed repeats; detailed per-repeat statistics remain in summary.json.",
-            "* Multiple fixture hashes in a group: values span different fixtures; consult raw provenance before comparing." if any(pooled_note(g) for g in grouped.values()) else "MIDI: up to 40 input / 2,560 output events per quantum, silent intervals, 256-record blocks. One shared memory controller."], lines=3, size=8.5)
+            "* Multiple fixture hashes in a group: values span different fixtures; consult raw provenance before comparing." if any(pooled_note(g) for g in grouped.values()) else "MIDI: up to 40 input / 2,560 output events per quantum, silent intervals, 256-record blocks. One shared memory controller."], width=150, lines=4, size=8.5)
         pdf.savefig(fig); plt.close(fig)
 
         if rtl:
@@ -398,7 +399,9 @@ def render(output, manifest, runs, summary):
         metadata = rtl[0].get("metadata", {}) if rtl else {}
         native = metadata.get("memory", {}).get("native", {})
         provenance = metadata.get("provenance", {})
-        fixtures = sorted({(media_kind(r) + "/" + r.get("fixture", {}).get("pattern", "unknown"), r.get("fixture_sha256", "unreported")) for r in completed})
+        fixtures = sorted({(media_kind(r), r.get("fixture", {}).get("pattern", "unknown"), r.get("fixture_sha256", "unreported")) for r in completed})
+        shown_fixtures = [next((f for f in fixtures if f[:2] == (kind, "lifecycle")), next(f for f in fixtures if f[0] == kind))
+                          for kind in sorted({f[0] for f in fixtures})]
         provenance_lines = [f'Source: {manifest.get("revision", "unreported")}',
             f'Captured: {manifest.get("created_at", "unreported")}',
             f'Preset / repeats: {manifest.get("preset", "unreported")} / {manifest.get("repeats", "unreported")}',
@@ -407,7 +410,7 @@ def render(output, manifest, runs, summary):
             f'Memory model / seed: {metadata.get("memory_model", manifest.get("memory_model", "unreported"))} / {metadata.get("memory_seed", "unreported")}',
             'Memory configuration: ' + str(Path(native.get("configuration", {}).get("config", "unreported")).name),
             'Binary SHA256: ' + str(manifest.get("binary_sha256", "unreported"))]
-        provenance_lines += [f'{name} fixture SHA256: {digest}' for name, digest in fixtures[:3]]
+        provenance_lines += [f'{kind}/{pattern} fixture SHA256: {digest}' for kind, pattern, digest in shown_fixtures]
         block(fig, .525, .833, provenance_lines, width=66, lines=22, size=8)
         issues = Counter((r["backend"], r["status"], r.get("error") or "") for r in runs if r["status"] != "completed")
         notes = [f'{count}× {backend}: {state}. {error}' for (backend, state, error), count in sorted(issues.items())]
