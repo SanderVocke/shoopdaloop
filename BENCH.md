@@ -24,7 +24,7 @@ Upstream audit:
   `SteppedDummy` addition and its cycle-access workaround; step the production
   native renderer with benchmark-owned prepared buffers.
 - RTL encoding/model support moved into `rt_fpga_rtl`; update imports and reuse
-  upstream `apply_plan`, `clear_plan` and gain encoding. Preserve upstream's
+  upstream `apply_plan`, `clear_plan`, `loop_plan` and gain encoding. Preserve upstream's
   compilation lock in the optimized, trace-free benchmark model session.
 - MIDI is now event-only data work through the common SP/JP queue. Use current
   MIDI operations, storage and connected RTL, with no retired state-tracking or
@@ -46,16 +46,51 @@ Upstream audit:
 Indexed RAM observation replaces thousands of per-word probe ports. Reads are
 clock-free and checked against static probes without changing RTL state or time.
 
+The upstream [64-loop MIDI playback measurements](docs/fpga/midi-data-jobs-benchmarks.md)
+exercise sparse playback (normally four or five messages per quantum), at an
+assumed 100 MHz with independent ideal/fixed-delay memory ports. This fixture
+adds synchronized recording, dense merges, allocation growth and retakes, at
+150 MHz with shared DRAM timing. Retain the event counts and memory configuration
+when interpreting the different timing results.
+
 The compact PDF remains capped at five pages, with its first three devoted to
 FPGA. Preserve separate media/pattern statistics, quiet MIDI playback, worst
 callback identities and audio/MIDI traffic. Host timing repetitions run serially;
 optional parallel RTL simulations start afterward. Old results remain available
 as historical configurations rather than being relabeled as new measurements.
 
-**Revision 4 validation.** Compiler/reference tests, common Rust media smoke
-tests with processing heap guards, shared-clock and indexed-observation checks,
-and reporter matrix/page-limit tests have passed. Complete DRAM-backed matrix
-capture and publication follow the implementation milestone.
+**Revision 4 validation.** The complete three-media smoke matrix captured at
+`73cf1d75` accounts for all 27 requested slots: 15 completed, 12 explicitly
+unsupported, none failed. It retains 8,863 callbacks, verifies every stereo
+sample in 11 audio-bearing runs and exactly checks 851,968 MIDI messages across
+eight MIDI-bearing runs. Fixture hashes match across available backends; every
+RTL run passed shared DRAM/fabric clock validation and finished with memory idle
+and zero final drain ticks. The [five-page PDF and raw bundle](benchmarks/rt-audio-midi-smoke/README.md)
+are published together. Regenerating from the extracted archive preserves
+`summary.json` and `callbacks.csv` byte for byte.
+
+The observed RTL maxima are 113,424 cycles / 756.16 µs for audio, 1,989,492 cycles /
+13,263.28 µs for MIDI, and 2,031,651 cycles / 13,544.34 µs for combined processing.
+The MIDI peaks occur when all 64 loops begin playback and emit 2,560 messages;
+their 63 balanced merges produce substantial DDR list traffic. Quiet MIDI-only
+playback takes 79.43 µs, while quiet MIDI playback with stereo audio takes about
+371.5 µs. These populations remain separate in the PDF and summary.
+
+Validation also passed 112 scoped Rust tests across compiler/reference, RTL
+runtime and benchmark packages, including processing heap guards, shared-clock
+and clock-free observation checks; 12 reporter tests; formatting/test-policy
+checks; and warning-denying release builds. The full workspace suite was not
+rerun. Capture took about 54 minutes with three RTL workers and a prebuilt
+binary/model cache; report-only regeneration took 2.4 seconds. This published
+campaign uses the shorter smoke preset, with two lifecycle iterations and one
+repetition. The default standard campaign retains eight iterations and three
+independent CPU/reference repetitions.
+
+After capture, the final duplicate packed-plan decoder was replaced with
+upstream's passive `loop_plan` helper. A fresh 298-callback RTL audio lifecycle
+replay preserved every fabric/traffic/stage measurement, fixture hash, command
+event and coverage result. Observation advances no clocks; the published matrix
+retains its original measured source and binary fingerprint.
 
 **Original integration gaps (2026-11-17; superseded by the audit above).**
 

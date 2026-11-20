@@ -37,6 +37,15 @@ def elapsed_us(row):
     return cycles * 1_000_000 / FPGA_CLOCK_HZ if cycles is not None else m["elapsed_ns"] / 1000
 
 
+def midi_population(row):
+    if row["playing"] > 0 and row["recording"] == 0:
+        if row.get("midi_input_events") == 0 and row.get("midi_output_events") == 0:
+            return "quiet MIDI playback"
+        if row.get("midi_output_events", 0) > 256:
+            return "dense MIDI playback (>256 out)"
+    return None
+
+
 def stats(values):
     values = sorted(values)
     if not values:
@@ -142,9 +151,8 @@ def summarize(run, filename):
         groups.setdefault(group, []).append(elapsed_us(row))
     midi_populations = {}
     if media_kind(run) != "audio":
-        quiet = [row for row in rows if row["playing"] > 0 and row["recording"] == 0
-            and row.get("midi_input_events") == 0 and row.get("midi_output_events") == 0]
-        midi_populations["quiet MIDI playback"] = stats([elapsed_us(row) for row in quiet])
+        for name in ("quiet MIDI playback", "dense MIDI playback (>256 out)"):
+            midi_populations[name] = stats([elapsed_us(row) for row in rows if midi_population(row) == name])
     worst = max(rows, key=elapsed_us) if rows else None
     return dict(file=filename, backend=run["backend"], media=media_kind(run), pattern=run.get("fixture", {}).get("pattern"),
                 repeat=run.get("repeat", 0), status=run["status"], error=run.get("error"),
@@ -284,26 +292,33 @@ def render(output, manifest, runs, summary):
             for run in rtl:
                 for row in run["callbacks"]:
                     event_groups[(media_kind(run), run["fixture"]["pattern"], group_name(row))].append(elapsed_us(row))
-                    if media_kind(run) != "audio" and row["playing"] > 0 and row["recording"] == 0 and row.get("midi_input_events") == 0 and row.get("midi_output_events") == 0:
-                        event_groups[(media_kind(run), run["fixture"]["pattern"], "quiet MIDI playback")].append(elapsed_us(row))
+                    population = midi_population(row) if media_kind(run) != "audio" else None
+                    if population:
+                        event_groups[(media_kind(run), run["fixture"]["pattern"], population)].append(elapsed_us(row))
             ranked = sorted(event_groups.items(), key=lambda item: max(item[1]), reverse=True)
             kinds = sorted({key[0] for key in event_groups})
             selected = []
             quota = 22 // len(kinds)
             for kind in kinds:
-                quiet = [item for item in ranked if item[0][0] == kind and item[0][2] == "quiet MIDI playback"]
-                selected.extend(quiet)
-                selected.extend([item for item in ranked if item[0][0] == kind and item not in quiet][:quota - len(quiet)])
+                anchors = []
+                for name in ("cold-record-all", "reuse-record-all", "storage-growth"):
+                    candidates = [item for item in ranked if item[0][0] == kind and item[0][2] == name]
+                    if candidates:
+                        anchors.append(next((item for item in candidates if item[0][1] == "lifecycle"), candidates[0]))
+                playback = [item for item in ranked if item[0][0] == kind and item[0][2] in ("quiet MIDI playback", "dense MIDI playback (>256 out)")]
+                preferred = (anchors + playback)[:quota]
+                selected.extend(preferred)
+                selected.extend([item for item in ranked if item[0][0] == kind and item not in preferred][:quota - len(preferred)])
             selected += [item for item in ranked if item not in selected][:22 - len(selected)]
             selected.sort(key=lambda item: (item[0][0], item[0][1], -max(item[1])))
-            fig = page("FPGA RTL — stress events and steady processing", f"{len(selected)} stress/quiet populations of {len(event_groups)} · counts include completed repeats")
+            fig = page("FPGA RTL — stress events and steady processing", f"{len(selected)} stress/playback populations of {len(event_groups)} · cold starts, retakes and growth retained for each media profile")
             event_rows = []
             for (kind, pattern, name), values in selected:
                 s = stats(values)
                 event_rows.append([kind + "/" + pattern, name, f'{s["count"]:,}', *[number(s.get(k)) for k in ("median_us", "p95_us", "p99_us", "max_us")], s["budget_exceedances"]])
             table(fig, [.055, .15, .89, .69], ["Media / pattern", "Event / steady population", "N", "Median µs", "p95 µs", "p99 µs", "Max µs", "Over budget"], event_rows,
                   [.22, .30, .06, .09, .09, .09, .09, .10], size=8)
-            block(fig, .055, .105, ["Cold starts and reuse are separate. Quiet MIDI playback (no input/output events) is an overlapping diagnostic population.",
+            block(fig, .055, .105, ["Quiet/dense MIDI playback excludes recording; quiet has no input/output events, dense has >256 output events. Populations overlap.",
                 "All populations and samples remain in summary.json and callbacks.csv. Small event populations have no extreme percentiles."], width=135, lines=4, size=8.5)
             pdf.savefig(fig); plt.close(fig)
 
@@ -321,7 +336,7 @@ def render(output, manifest, runs, summary):
             for pattern in sorted(worst): headers += [pattern + "\nfirst", pattern + "\nworst"]
             metric_rows = []
             metrics = [(None, "Complete callback µs"), ("state_cycles", "SP active µs"), ("job_cycles", "JP active µs"),
-                ("axi_response_stall_cycles", "Audio response stall µs"), ("midi_axi_response_stall_cycles", "MIDI response stall µs"),
+                ("axi_response_stall_cycles", "Audio response backpressure µs"), ("midi_axi_response_stall_cycles", "MIDI response backpressure µs"),
                 ("midi_dram_queue_stall_cycles", "MIDI DRAM queue stall µs"), ("dram_queue_stall_cycles", "Audio DRAM queue stall µs"),
                 ("reads", "Audio AXI reads"), ("writes", "Audio AXI writes"),
                 ("midi_reads", "MIDI AXI reads"), ("midi_writes", "MIDI AXI writes"), ("queue_peak", "Shared job queue peak")]
@@ -336,12 +351,13 @@ def render(output, manifest, runs, summary):
             columns = len(headers) - 1
             table(fig, [.055, .25, .89, .405], headers, metric_rows, [.28] + [.72 / columns] * columns, size=8)
             notes = ["SP, JP and stall intervals may overlap; do not add them. These counters do not isolate allocator, reclamation and cache costs."]
+            notes.append("AXI reads/writes count transactions. Response backpressure counts ready responses waiting for RTL, not JP time waiting for memory.")
             for pattern, (run, row) in sorted(worst.items()):
                 index = row["callback"]
                 following = f'; next callback {elapsed_us(run["callbacks"][index + 1]):.2f} µs' if index + 1 < len(run["callbacks"]) else ""
                 final = run.get("metadata", {}).get("finalization", {}).get("native", {})
                 notes.append(f'{pattern}: peak {row.get("event") or "steady"}{following}. Final memory idle={final.get("idle", "unreported")}; drain={final.get("final_drain_dram_ticks", "unreported")} DRAM ticks.')
-            block(fig, .055, .20, notes, lines=6, size=8.5)
+            block(fig, .055, .20, notes, width=135, lines=8, size=8.5)
             pdf.savefig(fig); plt.close(fig)
 
         if hosts:

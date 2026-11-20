@@ -47,6 +47,19 @@ def midi_result(kind="midi"):
 
 
 class BenchmarkReportTests(unittest.TestCase):
+    def test_midi_populations_keep_active_input_and_recording_out_of_playback_baselines(self):
+        run = midi_result()
+        for index in (8, 9, 10, 11):
+            run["callbacks"][index].update(playing=64, recording=0)
+        run["callbacks"][8].update(midi_input_events=0, midi_output_events=0)
+        run["callbacks"][10].update(midi_input_events=16, midi_output_events=0)
+        run["callbacks"][11].update(recording=32)
+        populations = BENCH.summarize(run, "run.json")["midi_populations"]
+        self.assertEqual(populations["quiet MIDI playback"]["count"], 1)
+        self.assertEqual(populations["quiet MIDI playback"]["max_us"], 9)
+        self.assertEqual(populations["dense MIDI playback (>256 out)"]["count"], 1)
+        self.assertEqual(populations["dense MIDI playback (>256 out)"]["max_us"], 10)
+
     def test_fpga_cycles_are_authoritative_and_percentiles_use_observation_counts(self):
         run = result()
         BENCH.validate(run)

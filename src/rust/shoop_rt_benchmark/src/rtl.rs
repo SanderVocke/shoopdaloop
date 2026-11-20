@@ -7,6 +7,7 @@ use anyhow::{anyhow, ensure, Result};
 use rt_fpga_compiler::StateProgramTarget;
 use rt_fpga_rtl::{
     bits::Bits,
+    host::control::{apply_plan, clear_plan, gain_value, loop_plan, loop_state},
     model::Probe,
     sim::{Agent, Sim},
     target::{CompiledProgram, RtlTarget},
@@ -17,10 +18,9 @@ use rt_fpga_testbench::{
     memory::{axi::Axi, Backend, Control as MemoryControl, Memory, Mode, Shared},
     timing::{dram::Dram, Fixed as FixedTiming, Timing},
 };
-use shoop_rt_protocol as protocol;
 use shoop_rt_protocol::{
     codec,
-    immediate::{Code, Command, CommandRecord, TransitionMode},
+    immediate::{Code, Command, CommandRecord},
     snapshot, DriverKind, DriverRunState, DriverStatus, LoopMode, LoopSlotId, Peaks, SlotId,
     Telemetry,
 };
@@ -305,11 +305,6 @@ impl Rtl<'_> {
             _ => [0; 4],
         }
     }
-    fn word(&mut self, slot: u32, word: u32) -> u64 {
-        self.sim
-            .model
-            .read_indexed(STATE_RAM, u64::from(slot * 16 + word))
-    }
     fn command(
         pipeline: &mut Pipeline,
         sim: &mut Sim<'_>,
@@ -330,7 +325,6 @@ impl Rtl<'_> {
             sim.model
                 .read_indexed(STATE_RAM, u64::from(id * 16 + i as u32))
         });
-        use rt_fpga_rtl::host::control::{apply_plan, clear_plan, gain_value, loop_state};
         let key = rt_fpga_compiler::Identity {
             slot: id,
             generation: 1,
@@ -386,8 +380,12 @@ impl Rtl<'_> {
     fn publish(&mut self) -> Result<()> {
         let mut pos = snapshot::HEADER;
         for id in 0..LOOPS {
-            let flags = self.word(id, 0);
-            let mode = (flags >> 33) & 3;
+            let words: [u64; 16] = std::array::from_fn(|word| {
+                self.sim
+                    .model
+                    .read_indexed(STATE_RAM, u64::from(id * 16 + word as u32))
+            });
+            let mode = (words[0] >> 33) & 3;
             let record = snapshot::Record::Telemetry(Telemetry::Loop {
                 loop_id: LoopSlotId(SlotId::new(id, 1)),
                 mode: match mode {
@@ -398,40 +396,23 @@ impl Rtl<'_> {
                 },
                 next_mode: None,
                 next_delay: None,
-                content_revision: self.word(id, 6),
+                content_revision: words[6],
                 recording_armed: false,
                 capture_incomplete: false,
                 timing_revision: 0,
                 length: if mode == 2 {
-                    self.word(id, 4).saturating_sub(QUANTUM as u64)
+                    words[4].saturating_sub(QUANTUM as u64)
                 } else {
-                    self.word(id, 3)
+                    words[3]
                 },
-                position: self.word(id, 8),
+                position: words[8],
                 peaks: Peaks::default(),
             });
             pos += codec::encode_snapshot(&record, &mut self.snapshot[pos..])
                 .map_err(|e| anyhow!("snapshot: {e:?}"))?;
-            let flags = self.word(id, 1);
-            let mut step =
-                |index: usize| -> Result<Option<protocol::immediate::PlannedTransition>> {
-                    let base = 32 + index * 5;
-                    if flags & (1 << base) == 0 {
-                        return Ok(None);
-                    }
-                    Ok(Some(protocol::immediate::PlannedTransition {
-                        mode: TransitionMode::from_raw(((flags >> (base + 2)) & 3) as u32)
-                            .ok_or_else(|| anyhow!("invalid RTL plan mode"))?,
-                        skip: self.word(id, if index == 0 { 11 } else { 14 }).try_into()?,
-                    }))
-                };
             let record = snapshot::Record::LoopPlan {
                 id: LoopSlotId(SlotId::new(id, 1)),
-                plan: protocol::immediate::TransitionPlan {
-                    now: None,
-                    first: step(0)?,
-                    second: step(1)?,
-                },
+                plan: loop_plan(&words),
                 failures: 0,
             };
             pos += codec::encode_snapshot(&record, &mut self.snapshot[pos..])

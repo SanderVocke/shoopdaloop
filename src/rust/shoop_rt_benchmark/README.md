@@ -54,6 +54,12 @@ simultaneous retakes are covered. MIDI storage uses 256-record blocks, 512 block
 initial recordings cross event blocks as well as audio blocks. No messages are
 silently dropped or truncated at 256 events/quantum.
 
+This is a stress workload. Upstream's [64-loop playback measurements](../../../docs/fpga/midi-data-jobs-benchmarks.md)
+normally emit four or five messages per quantum, assume 100 MHz and use independent
+ideal/fixed-delay memory ports. This fixture reaches 2,560 messages on one merged
+output and measures recording, growth, wraps and retakes with shared DRAM at
+150 MHz. The raw counts distinguish quiet callbacks from dense processing.
+
 All measured controls use `shoop_rt_transport::carrier::Endpoint`. The runner
 stages complete 32-command groups before releasing a callback and validates their
 execution frame, responses and snapshots afterward. The Rust reference endpoint
@@ -64,7 +70,8 @@ adapter reuses simulation drivers and AXI responders as infrastructure.
 The native CPU immediate endpoint currently refuses MIDI-bearing loop transitions.
 The first command responses are checked, and those cases are reported
 **unsupported**, including combined audio/MIDI, rather
-than timing a different authored-transport path. Future endpoint support automatically enables timing and exact validation.
+than timing a different authored-transport path. The adapter checks actual endpoint
+responses on each run.
 MIDI-only and combined results are available for the Rust FPGA reference and connected RTL. FPGA history/grabs
 remain unsupported; MIDI history/grabs are also unsupported. Audio history grabs
 still run on native CPU after filling and wrapping a one-second ring, using
@@ -106,6 +113,8 @@ checks both port clocks and the measured fabric-to-DRAM tick ratio, including
 separately reported final drain. Per-callback diagnostics retain SP/JP activity,
 queue peaks, separate audio/MIDI AXI reads/writes and stalls, and MIDI event counts.
 Stage/stall intervals overlap and must not be added.
+AXI read/write counts are transactions. Response backpressure counts an available
+response waiting for RTL readiness; it does not measure JP time waiting for DRAM.
 
 The PDF stays within **five landscape pages** as the matrix and repetitions grow.
 The first three cover FPGA media/pattern statistics and distributions, stress and
@@ -121,6 +130,11 @@ needs no backend/compiler and still accepts older fixture versions with their
 original media and geometry labels. Revisions 2/3 and the pre-refresh audio report
 are historical configurations; rerun the matrix for an upstream performance
 comparison.
+
+The published [audio/MIDI smoke report and raw bundle](../../../benchmarks/rt-audio-midi-smoke/README.md)
+cover all three media profiles. Capture took about 54 minutes with three RTL
+workers and a prebuilt binary/model cache on the recorded host; regenerating its
+five-page report took 2.4 seconds.
 
 Validation:
 
