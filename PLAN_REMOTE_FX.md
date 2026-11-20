@@ -71,6 +71,8 @@ An initial installed run at 12 ms reported a stereo wet miss after 19.4 seconds 
 
 CodeQL flagged the initial TCP decoder. The updated decoder rejects positional records, unknown fields, and trailing JSON. Regression tests cover those refusals and an inspection response with counters for every advertised slot. The UDP media format and timing are unchanged. [Control wire schema](docs/design/remote-fx-wire.md#control)
 
+A CI restart reached new stream generations while wet output stayed silent. The client now consumes the pending socket and its notification together so a reconnect cannot discard the replacement socket. A fresh Carla instance keeps its restored activation through its first batch. The restart fixture reports the service-side stream counters when a check fails. [Client reconnect](src/rust/shoop_remote_fx/src/client.rs) · [Failure diagnostics](scripts/verify_remote_fx.py)
+
 The final runs and automated review are tracked on the PR. The FPGA requirements check also fails against the base branch's requirements file. FPGA CI is outside the Native delivery scope. [PR checks](https://github.com/SanderVocke/shoopdaloop/pull/1023/checks)
 
 - [ ] Run the installed workflow unattended from fresh artifacts. Have the harness provision the desktop and network, drive Host Manager setup, verify stereo, wide, and concurrent processing, and exercise timed MIDI, editing, save and reload, wet recording, and live failure and recovery. Repeat the A7 sustained runs on the final build. Save exact builds, timing settings, runner and network conditions, plugin load, measured results, and failure logs. Tear down processes and network fixtures on completion or failure.

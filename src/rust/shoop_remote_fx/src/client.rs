@@ -119,6 +119,25 @@ struct Shared {
     media: Mutex<Option<MediaSession>>,
 }
 
+impl Shared {
+    fn replace_media(&self, session: Option<MediaSession>) {
+        let mut pending = self.media.lock().unwrap();
+        *pending = session;
+        self.media_changed.store(true, Ordering::Release);
+    }
+
+    fn take_media_update(&self) -> Option<Option<MediaSession>> {
+        if !self.media_changed.load(Ordering::Acquire) {
+            return None;
+        }
+        let mut pending = self.media.lock().unwrap();
+        // Consume the flag with its socket so a reconnect cannot leave a second,
+        // empty update behind after its replacement socket has been taken.
+        self.media_changed.store(false, Ordering::Relaxed);
+        Some(pending.take())
+    }
+}
+
 struct Lifetime {
     shared: Arc<Shared>,
 }
@@ -271,8 +290,7 @@ fn media_loop(shared: &Shared, mut worker: ClientMedia) {
     let mut session: Option<MediaSession> = None;
     let mut published = Instant::now();
     while !shared.closing.load(Ordering::Acquire) {
-        if shared.media_changed.swap(false, Ordering::AcqRel) {
-            let next = shared.media.lock().unwrap().take();
+        if let Some(next) = shared.take_media_update() {
             if session.is_some() {
                 worker.disconnect();
             }
@@ -359,8 +377,7 @@ fn control_loop(
                 observation.connected = true;
                 observation.status = status;
                 observation.generation = observation.generation.wrapping_add(1);
-                *shared.media.lock().unwrap() = Some(media);
-                shared.media_changed.store(true, Ordering::Release);
+                shared.replace_media(Some(media));
             }
         }
         if connection.is_some() && owner_reset != shared.reset_done.load(Ordering::Relaxed) {
@@ -434,6 +451,5 @@ fn disconnect(shared: &Shared, connection: &mut Option<Connection>) {
         lifecycle: Lifecycle::Unavailable,
         ..Status::default()
     };
-    *shared.media.lock().unwrap() = None;
-    shared.media_changed.store(true, Ordering::Release);
+    shared.replace_media(None);
 }

@@ -102,7 +102,7 @@ fn make_chain(
 
 struct RemoteDsp {
     processor: Processor,
-    previous: Option<BatchTag>,
+    previous: Option<(BatchTag, bool)>,
     midi: PreparedMidiBuffer,
 }
 
@@ -113,8 +113,11 @@ impl Dsp for RemoteDsp {
         output: &mut [f32],
         midi: &mut [MidiBuffer],
     ) -> Result<(), Error> {
-        let discontinuous = self.previous.is_none_or(|previous| {
-            previous.generation != input.tag.generation
+        // A fresh Carla instance has no prior MIDI or audio to flush. Preserve the
+        // restored chain's activation when the first batch arrives after a reconnect.
+        let discontinuous = self.previous.is_some_and(|(previous, failed)| {
+            failed
+                || previous.generation != input.tag.generation
                 || previous.sequence.checked_add(1) != Some(input.tag.sequence)
                 || previous.source.checked_add(input.frames).ok() != Some(input.tag.source)
         });
@@ -134,7 +137,7 @@ impl Dsp for RemoteDsp {
                 observer: None,
             },
         );
-        self.previous = result.is_ok().then_some(input.tag);
+        self.previous = Some((input.tag, result.is_err()));
         result
     }
 }

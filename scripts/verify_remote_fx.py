@@ -147,6 +147,7 @@ def run_archive(args, env, width, restart=None):
     command = affinity(args.looper_cpus) + [args.archive_test, "--exact", "native_carla_session_archive_survives_driver_rate_and_period_change", "--nocapture"]
     sample = {"datagrams_per_second": 0.0, "peak_processing_us": 0, "peak_pending": 0}
     previous = None
+    streams = []
     began = time.monotonic()
     with subprocess.Popen(command, env=env) as test:
         try:
@@ -170,6 +171,7 @@ def run_archive(args, env, width, restart=None):
                     sample[key] = max(sample[key], *(item[key] for item in streams)) if streams else sample[key]
                 time.sleep(1)
             if test.returncode:
+                print(f"Last desktop stream state for {width} channels {json.dumps(streams)}", file=sys.stderr)
                 raise subprocess.CalledProcessError(test.returncode, command)
         finally:
             stop(test)
