@@ -45,6 +45,8 @@ The jobs are ordinary variants of the common `Job` enum:
 Data producers must precede their consumers in the program. Audio and MIDI jobs
 can be interleaved. Their typed buffer IDs refer to separate prepared audio and
 MIDI storage, so the same numeric buffer slot can be used for each kind of data.
+MIDI buffer and port IDs are checked against their prepared MIDI limits during
+execution; they do not enlarge the compiled program's audio buffer or port counts.
 
 ## Event storage and views
 

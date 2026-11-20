@@ -90,6 +90,7 @@ pub struct MidiBinding {
 }
 
 /// Concrete MIDI data operations, emitted by SP in program order.
+/// Buffer and port IDs address separately prepared MIDI resources.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum MidiOperation {
@@ -361,7 +362,7 @@ impl LogicalStateProgram {
         self.resources.queue_capacity = self.resources.queue_capacity.max(self.jobs_per_quantum);
         Ok(self)
     }
-    /// Append explicit data jobs; MIDI buffers use the logical buffer-number space.
+    /// Append data jobs using independently prepared MIDI buffers and ports.
     pub fn with_midi_data(mut self, operations: &[MidiOperation]) -> Result<Self, CompileError> {
         if self
             .work_pass
@@ -484,28 +485,16 @@ impl LogicalStateProgram {
         for op in &self.work_pass {
             match *op {
                 Operation::MidiData(operation) => match operation {
-                    MidiOperation::Input { port, destination } => {
-                        buffer(u32::from(destination))?;
-                        if u32::from(port) >= r.input_ports {
-                            return Err(InvalidProgram);
-                        }
-                    }
-                    MidiOperation::Capture {
-                        loop_id: id,
-                        source,
-                        ..
-                    } => {
+                    MidiOperation::Input { .. } | MidiOperation::Output { .. } => {}
+                    MidiOperation::Capture { loop_id: id, .. } => {
                         loop_id(id)?;
-                        buffer(u32::from(source))?;
                     }
                     MidiOperation::Playback {
                         loop_id: id,
                         channels,
-                        destination,
                         ..
                     } => {
                         loop_id(id)?;
-                        buffer(u32::from(destination))?;
                         if channels == 0 {
                             return Err(InvalidProgram);
                         }
@@ -515,16 +504,7 @@ impl LogicalStateProgram {
                         right,
                         destination,
                     } => {
-                        buffer(u32::from(left))?;
-                        buffer(u32::from(right))?;
-                        buffer(u32::from(destination))?;
                         if destination == left || destination == right {
-                            return Err(InvalidProgram);
-                        }
-                    }
-                    MidiOperation::Output { source, port } => {
-                        buffer(u32::from(source))?;
-                        if u32::from(port) >= r.output_ports {
                             return Err(InvalidProgram);
                         }
                     }

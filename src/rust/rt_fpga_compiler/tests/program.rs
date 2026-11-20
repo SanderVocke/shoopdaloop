@@ -197,3 +197,65 @@ fn explicit_midi_data_jobs_validate_resources_and_reject_conflicting_writers() {
         );
     }
 }
+
+#[shoop_test]
+fn midi_buffers_and_ports_are_independent_of_audio_resources() {
+    let audio = programs::mono_loops(32, 1);
+    let operations = [
+        MidiOperation::Input {
+            port: 7,
+            destination: 200,
+        },
+        MidiOperation::Capture {
+            loop_id: audio.loops[0].id,
+            sequence: 0,
+            source: 200,
+        },
+        MidiOperation::Playback {
+            loop_id: audio.loops[0].id,
+            sequence: 0,
+            cursor: 0,
+            channels: 1,
+            destination: 201,
+        },
+        MidiOperation::Merge {
+            left: 200,
+            right: 201,
+            destination: 202,
+        },
+        MidiOperation::Output {
+            source: 202,
+            port: 7,
+        },
+    ];
+    audio
+        .clone()
+        .with_midi_data(&operations)
+        .unwrap()
+        .validate(ProgramLimits::default())
+        .unwrap();
+    let mut midi_only = audio.clone();
+    midi_only.work_pass.clear();
+    midi_only.jobs_per_quantum = 0;
+    midi_only.resources.queue_capacity = 0;
+    midi_only.resources.buffers = 0;
+    midi_only.resources.input_ports = 0;
+    midi_only.resources.output_ports = 0;
+    for binding in &mut midi_only.bindings {
+        binding.meter = None;
+    }
+    midi_only
+        .with_midi_data(&operations)
+        .unwrap()
+        .validate(ProgramLimits::default())
+        .unwrap();
+    let mut invalid_audio = audio;
+    invalid_audio.work_pass[0] = Operation::Input {
+        port: 7,
+        destination: 0,
+    };
+    assert_eq!(
+        invalid_audio.validate(ProgramLimits::default()),
+        Err(CompileError::InvalidProgram)
+    );
+}
