@@ -15,6 +15,7 @@ use rt_fpga_reference::{
     transitions::{LoopKind, LoopSpec},
 };
 use std::{cell::RefCell, rc::Rc};
+mod profiling;
 
 #[path = "../../../../../rt_fpga_reference/examples/support/session_64.rs"]
 mod session;
@@ -257,6 +258,7 @@ pub fn benchmark_64(
     frames: usize,
     quanta: usize,
     ddr_delay: u64,
+    profile: bool,
 ) -> Result<serde_json::Value> {
     let cap = [2048, 256, 2048, QUANTUM as u64, 512, 2, 2];
     let mut geometry = Geometry::new([512, 5_763_072, QUANTUM as u64], 32);
@@ -265,6 +267,9 @@ pub fn benchmark_64(
     let mut design = crate::suites::pipeline::design(cap, &geometry, 64, Mode::Fixed, 1);
     design.top = "midi_audio_pipeline_axi".into();
     design.probes.clear();
+    if profile {
+        design.probes = profiling::probes();
+    }
     design.includes.push(crate::root().join("fpga/midi/rtl"));
     for name in [
         "midi_audio_pipeline_axi",
@@ -300,6 +305,10 @@ pub fn benchmark_64(
     }
     let compiled = design.build(&crate::root().join("work/marlin-suite/midi-64-benchmark"))?;
     let mut sim = Sim::new(compiled.session(None)?, &[("clk", 10_000, 0)]);
+    let profiler = Rc::new(RefCell::new(profiling::Profile::default()));
+    if profile {
+        sim.agent(profiler.clone());
+    }
     sim.max_ps = 10_000_000_000_000_000;
     let size = sim.model.get("midi_arena_bytes") as usize + 32768;
     let midi_memory = Rc::new(RefCell::new(MidiMemory {
@@ -361,6 +370,11 @@ pub fn benchmark_64(
         assert_eq!(report.error, None);
         reference.validate();
         driver.audio.clear_jobs();
+        let sampled = profile && matches!(tick, 17 | 19);
+        if sampled {
+            profiler.borrow_mut().begin();
+            midi_memory.borrow_mut().bus.records.clear();
+        }
         sim.model.set_all(&[
             ("run_buffers", driver.audio.buffers),
             ("run_inputs", if audio { 2 } else { 0 }),
@@ -373,6 +387,14 @@ pub fn benchmark_64(
             m.get("done") != 0
         });
         let cycles = sim.cycles - start + 1;
+        let detail = if sampled {
+            let mut profiler = profiler.borrow_mut();
+            profiler.enabled = false;
+            assert_eq!(profiler.cycles, cycles);
+            Some(profiler.finish(&midi_memory.borrow().bus, loops))
+        } else {
+            None
+        };
         assert_eq!(sim.model.get("error_code"), 0);
         assert_eq!(sim.model.get("midi_error_code"), 0);
         assert_eq!(
@@ -393,7 +415,11 @@ pub fn benchmark_64(
             }
         }
         if tick == 0 || tick >= 17 {
-            measurements.push(serde_json::json!({"kind":if tick==0 {"playback_start"} else {"steady"},"position":reference.position(),"cycles":cycles,"us_at_100mhz":cycles as f64/100.0,"midi_packets":reference.emitted.len()}));
+            let mut measurement = serde_json::json!({"kind":if tick==0 {"playback_start"} else {"steady"},"position":reference.position(),"cycles":cycles,"us_at_100mhz":cycles as f64/100.0,"midi_packets":reference.emitted.len()});
+            if let Some(detail) = detail {
+                measurement["profile"] = detail;
+            }
+            measurements.push(measurement);
         }
         eprintln!(
             "RTL {} quantum {tick}: {cycles} clocks",

@@ -65,6 +65,9 @@ Compress CSVs with `gzip -n`, place the outputs here and run `summarize.py`.
 Summary generation uses Python's standard library; rendering the figure also
 requires Matplotlib. `environment.json` records tool versions and host details;
 `sources.sha256` identifies the measured implementation and benchmark sources.
+Those hashes refer to the revisions recorded in `environment.json`. Later
+testbench changes add optional profiling; the follow-up breakdown verifies that
+its observed quantum counts match this original recording exactly.
 
 `validation/` retains local build/test logs. The full workspace and browser/device
 suites were not rerun: this change is confined to the FPGA reference and testbench,

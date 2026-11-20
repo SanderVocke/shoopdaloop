@@ -1,0 +1,190 @@
+[
+  {
+    "position": 608,
+    "messages": 4,
+    "cycles": 543914,
+    "groups": {
+      "Preparing playback windows": 213936,
+      "Other per-loop servicing": 102784,
+      "Finding state trackers": 174720,
+      "Other work": 52474
+    },
+    "categories": {
+      "apply_state_and_service_handshakes": 376,
+      "compare_changed_state_value": 7410,
+      "controller_instruction_execution": 306486,
+      "controller_memory_response_wait": 9306,
+      "fast_job_paths": 968,
+      "loop_context_staging": 8516,
+      "multiply_or_divide": 14384,
+      "next_event_selection": 985,
+      "send_recorded_packet": 4,
+      "snapshot_validity_checks": 3640,
+      "sp_jp_and_job_admission": 17119,
+      "tracker_directory_walk": 174720
+    },
+    "job_cycles": {
+      "24": 3052,
+      "25": 320,
+      "27": 6886,
+      "29": 36928,
+      "30": 31936,
+      "31": 213936,
+      "32": 199667,
+      "33": 33600,
+      "34": 470
+    },
+    "memory_requests": 27851,
+    "memory_regions": {
+      "activity_states": {
+        "axi_occupied_cycles": 40,
+        "reads": 16,
+        "requested_bytes": 80,
+        "writes": 4
+      },
+      "comparison_bitmaps": {
+        "axi_occupied_cycles": 520,
+        "reads": 260,
+        "requested_bytes": 1040,
+        "writes": 0
+      },
+      "comparison_directory": {
+        "axi_occupied_cycles": 49920,
+        "reads": 24960,
+        "requested_bytes": 99840,
+        "writes": 0
+      },
+      "event_block_tables": {
+        "axi_occupied_cycles": 136,
+        "reads": 68,
+        "requested_bytes": 272,
+        "writes": 0
+      },
+      "event_payloads": {
+        "axi_occupied_cycles": 544,
+        "reads": 272,
+        "requested_bytes": 1088,
+        "writes": 0
+      },
+      "history_and_snapshot_info": {
+        "axi_occupied_cycles": 150,
+        "reads": 51,
+        "requested_bytes": 300,
+        "writes": 24
+      },
+      "output_states": {
+        "axi_occupied_cycles": 560,
+        "reads": 276,
+        "requested_bytes": 1120,
+        "writes": 4
+      },
+      "snapshots": {
+        "axi_occupied_cycles": 1560,
+        "reads": 780,
+        "requested_bytes": 3120,
+        "writes": 0
+      },
+      "view_descriptors": {
+        "axi_occupied_cycles": 2272,
+        "reads": 1120,
+        "requested_bytes": 4544,
+        "writes": 16
+      }
+    },
+    "comparison_pairs": 520
+  },
+  {
+    "position": 544,
+    "messages": 5,
+    "cycles": 594067,
+    "groups": {
+      "Preparing playback windows": 214044,
+      "Other per-loop servicing": 102784,
+      "Finding state trackers": 218400,
+      "Other work": 58839
+    },
+    "categories": {
+      "apply_state_and_service_handshakes": 470,
+      "compare_changed_state_value": 9490,
+      "controller_instruction_execution": 309303,
+      "controller_memory_response_wait": 9432,
+      "fast_job_paths": 969,
+      "loop_context_staging": 8549,
+      "multiply_or_divide": 14598,
+      "next_event_selection": 1182,
+      "send_recorded_packet": 5,
+      "snapshot_validity_checks": 4550,
+      "sp_jp_and_job_admission": 17119,
+      "tracker_directory_walk": 218400
+    },
+    "job_cycles": {
+      "24": 3052,
+      "25": 320,
+      "27": 6886,
+      "29": 36928,
+      "30": 31936,
+      "31": 214044,
+      "32": 249712,
+      "33": 33600,
+      "34": 470
+    },
+    "memory_requests": 34447,
+    "memory_regions": {
+      "activity_states": {
+        "axi_occupied_cycles": 50,
+        "reads": 20,
+        "requested_bytes": 100,
+        "writes": 5
+      },
+      "comparison_bitmaps": {
+        "axi_occupied_cycles": 650,
+        "reads": 325,
+        "requested_bytes": 1300,
+        "writes": 0
+      },
+      "comparison_directory": {
+        "axi_occupied_cycles": 62400,
+        "reads": 31200,
+        "requested_bytes": 124800,
+        "writes": 0
+      },
+      "event_block_tables": {
+        "axi_occupied_cycles": 138,
+        "reads": 69,
+        "requested_bytes": 276,
+        "writes": 0
+      },
+      "event_payloads": {
+        "axi_occupied_cycles": 552,
+        "reads": 276,
+        "requested_bytes": 1104,
+        "writes": 0
+      },
+      "history_and_snapshot_info": {
+        "axi_occupied_cycles": 150,
+        "reads": 51,
+        "requested_bytes": 300,
+        "writes": 24
+      },
+      "output_states": {
+        "axi_occupied_cycles": 700,
+        "reads": 345,
+        "requested_bytes": 1400,
+        "writes": 5
+      },
+      "snapshots": {
+        "axi_occupied_cycles": 1950,
+        "reads": 975,
+        "requested_bytes": 3900,
+        "writes": 0
+      },
+      "view_descriptors": {
+        "axi_occupied_cycles": 2304,
+        "reads": 1136,
+        "requested_bytes": 4608,
+        "writes": 16
+      }
+    },
+    "comparison_pairs": 520
+  }
+]

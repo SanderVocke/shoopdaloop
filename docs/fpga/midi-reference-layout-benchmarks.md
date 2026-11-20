@@ -160,9 +160,14 @@ changed state value, the RTL walks the starting-state/output directory in DDR,
 reading whole 12-word active entries before filtering out other outputs. Sixty-four
 independent starting snapshots across eight outputs already imply 512 entries.
 It compares only the changed state value, but locating all affected trackers is
-still expensive. This is a concrete optimization candidate from code inspection,
-not a measured attribution of all the cycles. It does not require making Rust
+still expensive. These access patterns are a concrete optimization target.
+They do not require making Rust
 execute the RTL controller's instruction sequence.
+
+The follow-up [execution-time breakdown](midi-runtime-breakdown.md) adds measured
+counters. It attributes about 58% of an ideal-DDR quantum to per-loop servicing
+and 32% to finding difference trackers, and explains the repeated reads behind
+those costs.
 
 ## Validation and reproduction
 

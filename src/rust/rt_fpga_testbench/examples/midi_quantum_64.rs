@@ -12,6 +12,7 @@ fn main() {
         option("--frames", 1_440_000),
         option("--quanta", 16),
         option("--ddr-delay", 7) as u64,
+        args.iter().any(|arg| arg == "--profile"),
     )
     .unwrap();
     let text = serde_json::to_string_pretty(&value).unwrap();
