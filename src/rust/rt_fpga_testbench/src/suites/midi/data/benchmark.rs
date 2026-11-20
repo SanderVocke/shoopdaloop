@@ -1,0 +1,402 @@
+//! Full-session playback timing with an independent Rust/output oracle.
+mod workload;
+use self::workload::*;
+use super::packed;
+use crate::{
+    Result,
+    bits::Bits,
+    clock::Edges,
+    drivers::{pipeline::Pipeline, store::Geometry},
+    memory::{Backend, Control, Memory, Mode, Shared, axi::Axi},
+    model::Model,
+    sim::{Agent, Sim},
+    timing::Fixed,
+};
+use rt_fpga_compiler::StateProgramTarget;
+use rt_fpga_reference::{
+    midi::{Message, OutputEvent},
+    transitions::{LoopKind, LoopSpec},
+};
+use serde_json::{Value, json};
+use std::{cell::RefCell, rc::Rc};
+
+#[derive(Default)]
+struct Output(Vec<OutputEvent>);
+impl Agent for Output {
+    fn drive(&mut self, m: &mut Model<'_>, e: Edges) {
+        if e.rises(0) {
+            m.set_all(&[("midi_packet_ready", 1), ("midi_packet_refused", 0)]);
+        }
+    }
+    fn sample(&mut self, m: &Model<'_>, e: Edges) {
+        if e.rises(0) && m.get("reset") == 0 && m.get("midi_packet_valid") != 0 {
+            let data = (m.get("midi_packet_data") as u32).to_le_bytes();
+            self.0.push(OutputEvent {
+                destination: m.get("midi_packet_destination") as u16,
+                offset: m.get("midi_packet_offset") as u32,
+                message: Message::parse(&data[..m.get("midi_packet_length") as usize]).unwrap(),
+            });
+        }
+    }
+}
+fn control(sim: &mut Sim<'_>, op: u64, args: [u64; 5]) -> [u64; 4] {
+    sim.model.set("midi_command_op", op);
+    for (i, a) in args.into_iter().enumerate() {
+        sim.model.set(&format!("midi_command_arg{i}"), a);
+    }
+    sim.model
+        .set_all(&[("midi_command_valid", 1), ("midi_response_ready", 0)]);
+    sim.until(2_000_000, "benchmark control admission", |m| {
+        m.get("midi_command_ready") != 0
+    });
+    sim.idle(1);
+    sim.model.set("midi_command_valid", 0);
+    sim.until(2_000_000, "benchmark control response", |m| {
+        m.get("midi_response_valid") != 0
+    });
+    assert_eq!(sim.model.get("midi_response_error"), 0, "command {op}");
+    let mut result = ["handle", "frame", "packet", "count"]
+        .map(|n| sim.model.get(&format!("midi_response_{n}")));
+    result[2] |= sim.model.get("midi_response_length") << 24;
+    sim.model.set("midi_response_ready", 1);
+    sim.idle(1);
+    sim.model.set("midi_response_ready", 0);
+    result
+}
+fn rows(driver: &mut Pipeline, sim: &mut Sim<'_>, reference: &Reference, all: bool) {
+    for slot in 0..reference.loops {
+        let state = reference.pipeline.state().loop_state(id(slot)).unwrap();
+        let spec = LoopSpec {
+            id: id(slot),
+            kind: LoopKind::Primitive,
+            length: reference.frames as u64,
+            sync_source: None,
+            repeat_sync: false,
+            timeline: None,
+        };
+        let image = crate::loop_image::image(state, &spec, None);
+        if all {
+            crate::loop_image::write_words(
+                &mut driver.audio.program,
+                sim,
+                slot as u32,
+                &image,
+                0,
+                16,
+            );
+        } else {
+            crate::loop_image::write_plans(&mut driver.audio.program, sim, slot as u32, &image);
+        }
+    }
+}
+fn load_audio(driver: &mut Pipeline, sim: &mut Sim<'_>, reference: &Reference) {
+    driver.store.reset(sim);
+    let snapshot = reference.audio.snapshot();
+    let blocks = snapshot.samples.len() / QUANTUM / 32;
+    if let Backend::Axi(memory) = &mut driver.store.memory.borrow_mut().backend {
+        for (target, value) in memory.words.iter_mut().zip(&snapshot.samples) {
+            *target = value.0 as u32;
+        }
+    } else {
+        panic!("benchmark needs AXI memory");
+    }
+    driver
+        .store
+        .write_config(sim, 0, 3, driver.store.geometry.blocks());
+    for (index, view) in snapshot.views.iter().enumerate() {
+        let view = view.as_ref().unwrap();
+        for (ordinal, chunk) in view.chunks.iter().step_by(32).enumerate() {
+            let address = driver.store.table_address(index as u64, ordinal as u64);
+            driver
+                .store
+                .write_config(sim, 2, address, (chunk.0 / 32) as u64);
+        }
+        let mut descriptor = Bits::zero(160);
+        descriptor.set(0, 1, 1).set(64, 64, view.frames).set(
+            128,
+            32,
+            view.chunks.len().div_ceil(32) as u64,
+        );
+        driver
+            .store
+            .configure(sim, 1, index as u64, Some(&descriptor), false);
+    }
+    for block in 0..blocks {
+        driver.store.write_config(sim, 3, block as u64, 1);
+    }
+    for (i, value) in [snapshot.views.len(), blocks, 0].into_iter().enumerate() {
+        driver.store.write_config(sim, 0, i as u64, value as u64);
+    }
+    driver.store.memory.borrow_mut().control.stalls = false;
+}
+fn load_midi(sim: &mut Sim<'_>, memory: &Shared, reference: &Reference) {
+    let limits = limits();
+    let entries = limits.max_events.div_ceil(limits.block_events) as usize + 1;
+    let table = limits.views as usize * 64;
+    let event = table + limits.views as usize * entries * 4 + limits.blocks as usize * 8;
+    let bytes = (event
+        + limits.blocks as usize * limits.block_events as usize * 16
+        + limits.retirements as usize * 8
+        + 15)
+        & !15;
+    assert_eq!(
+        sim.model.get("midi_arena_bytes") as usize,
+        bytes + 131072 * 16
+    );
+    control(sim, 0, [0; 5]);
+    if !reference.has_midi {
+        return;
+    }
+    let helper = control(sim, 8, [0; 5])[0];
+    for slot in 0..reference.loops {
+        let view = control(sim, 8, [0; 5])[0];
+        let view_slot = view as u32 as usize;
+        let records = records(slot, reference.frames);
+        for (ordinal, chunk) in records.chunks(limits.block_events as usize).enumerate() {
+            let first = chunk[0];
+            control(
+                sim,
+                9,
+                [view, first.frame, u64::from(packed(first.message)), 0, 0],
+            );
+            {
+                let mut memory = memory.borrow_mut();
+                let Backend::Axi(bus) = &mut memory.backend else {
+                    unreachable!()
+                };
+                let block = bus.words[table / 4 + view_slot * entries + ordinal] as usize;
+                let start = event / 4 + block * limits.block_events as usize * 4;
+                for (offset, record) in chunk.iter().enumerate() {
+                    bus.words[start + offset * 4..start + offset * 4 + 4].copy_from_slice(&[
+                        record.frame as u32,
+                        (record.frame >> 32) as u32,
+                        record.order,
+                        packed(record.message),
+                    ]);
+                }
+                let count = ordinal * limits.block_events as usize + chunk.len();
+                bus.words[view_slot * 16 + 5] = count as u32;
+                bus.words[view_slot * 16 + 12] = count as u32;
+            }
+            // Changing view reloads the store's working descriptor after host preparation.
+            control(sim, 12, [helper, 0, 0, 0, 0]);
+        }
+        control(sim, 10, [view, reference.frames as u64, 0, 0, 0]);
+        for index in [0, records.len() / 2, records.len() - 1] {
+            let result = control(sim, 12, [view, index as u64, 0, 0, 0]);
+            assert_eq!(
+                (result[1], result[2], result[3]),
+                (
+                    records[index].frame,
+                    u64::from(packed(records[index].message)),
+                    records[index].order as u64
+                )
+            );
+        }
+        control(sim, 5, [slot as u64, view, 0, 0, 0]);
+        control(sim, 13, [view, 0, 0, 0, 0]);
+        eprintln!("Prepared RTL MIDI loop {}/{}", slot + 1, reference.loops);
+    }
+    control(sim, 13, [helper, 0, 0, 0, 0]);
+    control(sim, 20, [64, 0, 0, 0, 0]);
+}
+fn traffic(memory: &Shared) -> [u64; 4] {
+    let memory = memory.borrow();
+    let Backend::Axi(bus) = &memory.backend else {
+        unreachable!()
+    };
+    [bus.reads, bus.writes, bus.native_reads, bus.native_writes]
+}
+
+pub fn run(
+    audio: bool,
+    midi: bool,
+    loops: usize,
+    frames: usize,
+    quanta: usize,
+    delay: u64,
+) -> Result<Value> {
+    assert!(quanta > 0 && (quanta + 17) * QUANTUM <= frames);
+    let cap = [2048, 256, 2048, QUANTUM as u64, 512, 2, 2];
+    let mut geometry = Geometry::new([512, 5_763_072, QUANTUM as u64], 32);
+    geometry.reuse_views = true;
+    geometry.table_lines = 128;
+    let mut design = crate::suites::pipeline::design(cap, &geometry, 64, Mode::Fixed, 1);
+    design.top = "midi_audio_pipeline_axi".into();
+    design.probes.clear();
+    design.includes.push(crate::root().join("fpga/midi/rtl"));
+    for name in [
+        "midi_audio_pipeline_axi",
+        "midi_audio_pipeline",
+        "midi_data_jobs",
+        "midi_store",
+    ] {
+        design
+            .sources
+            .push(crate::root().join(format!("fpga/midi/rtl/{name}.sv")));
+    }
+    for (name, value) in [
+        ("MIDI_LOOPS", 64),
+        ("MIDI_INPUTS", 1),
+        ("MIDI_DESTINATIONS", 8),
+        ("MIDI_BUFFERS", 256),
+        ("MIDI_CURSORS", 64),
+        ("MIDI_SCRATCH_EVENTS", 131072),
+        ("MIDI_BLOCK_EVENTS", 256),
+        ("MIDI_BLOCKS", 2432),
+        ("MIDI_MAX_EVENTS", 8192),
+        ("MIDI_VIEWS", 256),
+        ("MIDI_RETIREMENTS", 128),
+        ("MIDI_MAINTENANCE", 64),
+        ("MIDI_AXI_DATA_WIDTH", 64),
+        ("READ_HINT_DEPTH", 256),
+    ] {
+        design.parameters.insert(name.into(), value.to_string());
+    }
+    let compiled = design.build(&crate::root().join("work/marlin-suite/midi-data-benchmark"))?;
+    let mut sim = Sim::new(compiled.session(None)?, &[("clk", 10_000, 0)]);
+    sim.max_ps = 10_000_000_000_000_000;
+    let size = sim.model.get("midi_arena_bytes") as usize + 32768;
+    let midi_memory = Rc::new(RefCell::new(Memory {
+        control: Control::default(),
+        backend: Backend::Axi(Box::new(
+            Axi::new(size / 4, 0x30000000, 8, Box::new(Fixed::new(delay)), 119)
+                .with_prefix("midi_"),
+        )),
+        words: size / 4,
+        base: 0x30000000,
+        width: 8,
+        sample_words: None,
+        sample_transactions: 0,
+    }));
+    sim.agent(midi_memory.clone());
+    let output = Rc::new(RefCell::new(Output::default()));
+    sim.agent(output.clone());
+    let mut driver = Pipeline::new(&mut sim, cap, geometry, Mode::Fixed, 1021)?;
+    if let Backend::Axi(memory) = &mut driver.store.memory.borrow_mut().backend {
+        memory.timing = Box::new(Fixed::new(delay));
+    }
+    let mut reference = Reference::new(audio, midi, loops, frames);
+    let views: Vec<_> = (0..if audio { loops * 2 } else { 0 })
+        .map(|i| i as u64)
+        .collect();
+    let image = crate::target::RtlTarget::new(cap, 256, &views).build(&reference.logical)?;
+    driver.audio.load_compiled(&mut sim, &image);
+    sim.model.set_all(&[
+        ("run_quantum", QUANTUM as u64),
+        ("sync_event_ready", 1),
+        ("midi_arena_base", 0),
+        ("midi_memory_arena_bytes", size as u64),
+        ("midi_event_count", 0),
+        ("midi_event_address", ((size - 32768 + 271) & !15) as u64),
+        ("midi_publication_commit", 1),
+    ]);
+    load_audio(&mut driver, &mut sim, &reference);
+    for channel in 0..if audio { 2 } else { 0 } {
+        for offset in 0..QUANTUM {
+            driver.audio.sample_config(
+                &mut sim,
+                0,
+                (channel * QUANTUM + offset) as u64,
+                Some(0),
+                false,
+            );
+        }
+    }
+    rows(&mut driver, &mut sim, &reference, true);
+    load_midi(&mut sim, &midi_memory, &reference);
+    sim.model.set("midi_publication_commit", 0);
+    reference.play();
+    rows(&mut driver, &mut sim, &reference, false);
+    let mut measurements = Vec::new();
+    for tick in 0..quanta + 17 {
+        reference.callback();
+        reference.validate();
+        driver.audio.clear_jobs();
+        let audio_before = traffic(&driver.store.memory);
+        let midi_before = traffic(&midi_memory);
+        sim.model.set_all(&[
+            ("run_buffers", driver.audio.buffers),
+            ("run_inputs", if audio { 2 } else { 0 }),
+            ("run_outputs", driver.audio.outputs),
+            ("job_enable", 1),
+        ]);
+        driver.audio.start(&mut sim);
+        let start = sim.cycles - 1;
+        sim.until(20_000_000, "64-loop MIDI data-job completion", |m| {
+            m.get("done") != 0
+        });
+        let cycles = sim.cycles - start;
+        assert_eq!(sim.model.get("error_code"), 0);
+        assert_eq!(sim.model.get("midi_error_code"), 0);
+        assert_eq!(
+            std::mem::take(&mut output.borrow_mut().0),
+            reference.emitted
+        );
+        assert_eq!(
+            driver.audio.consumed(),
+            reference
+                .pipeline
+                .emitted_jobs()
+                .iter()
+                .map(|j| serde_json::to_value(j).unwrap())
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            sim.model.get("sync_frame"),
+            reference.pipeline.state().frame()
+        );
+        let audio_traffic =
+            std::array::from_fn::<_, 4, _>(|i| traffic(&driver.store.memory)[i] - audio_before[i]);
+        let midi_traffic =
+            std::array::from_fn::<_, 4, _>(|i| traffic(&midi_memory)[i] - midi_before[i]);
+        sim.idle(2);
+        for channel in 0..reference.outputs.len() {
+            for offset in 0..QUANTUM {
+                let actual = driver.audio.sample_config(
+                    &mut sim,
+                    1,
+                    (channel * QUANTUM + offset) as u64,
+                    None,
+                    false,
+                );
+                assert_eq!(actual, reference.outputs[channel][offset].0);
+            }
+        }
+        for slot in 0..loops {
+            let actual =
+                crate::loop_image::read_loop(&mut driver.audio.program, &mut sim, slot as u32);
+            let expected = reference.pipeline.state().loop_state(id(slot)).unwrap();
+            assert_eq!(actual.get(33, 2), 1);
+            assert_eq!(actual.get(128, 64), expected.state.position);
+            assert_eq!(actual.get(192, 64), expected.state.content_length);
+            assert_eq!(actual.get(512, 64), expected.render.position);
+        }
+        if !audio {
+            assert_eq!(audio_traffic, [0; 4]);
+        }
+        if !midi {
+            assert!(reference.emitted.is_empty());
+        }
+        measurements.push(json!({
+            "kind":if tick==0 {"playback_start"} else if tick<17 {"warmup"} else {"steady"},
+            "position":reference.position(), "cycles":cycles, "us_at_100mhz":cycles as f64/100.0,
+            "midi_packets":reference.emitted.len(), "jobs":driver.audio.consumed().len(),
+            "audio_axi_reads_writes_native_reads_writes":audio_traffic,
+            "midi_axi_reads_writes_native_reads_writes":midi_traffic,
+        }));
+        eprintln!("RTL audio={audio} midi={midi}, delay={delay}, quantum {tick}: {cycles} clocks");
+    }
+    Ok(json!({
+        "scenario":if audio && midi {"stereo_and_midi"} else if audio {"audio_only"} else {"midi_only"},
+        "loops":loops, "sample_rate":SAMPLE_RATE, "quantum_frames":QUANTUM, "chunk_frames":QUANTUM,
+        "sequence_frames":frames, "midi_events_per_loop":if midi {records(0,frames).len()} else {0},
+        "ddr_added_delay_clocks":delay,
+        "memory":format!("two independent 64-bit AXI ports, fixed {delay}-clock service per 16-byte native request, no random bus stalls; AXI handshakes retained; excludes board DDR arbitration/row/refresh effects"),
+        "scope":"same connected top in every case; full compiled SP, shared queue and JP; acceptance through done, including input validation/cleanup; preparation/readback excluded",
+        "preparation":"RTL allocates view/block metadata; host loads event payloads/counts outside timing and reloads working descriptors; first/middle/last records checked by public export reads",
+        "compiled_instructions":image.instructions.len(), "maximum_jobs":image.jobs_per_quantum,
+        "validation":"every SP job, MIDI message, stereo sample, sync frame and all loop positions/lengths match Rust; sample/event formulas independently checked",
+        "midi_state_tracking":false, "measurements":measurements,
+    }))
+}

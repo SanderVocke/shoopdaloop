@@ -19,6 +19,7 @@ use rt_fpga_reference::{
 };
 use std::{cell::RefCell, rc::Rc};
 pub mod axi;
+pub mod benchmark;
 pub mod pipeline;
 #[path = "../../../../rt_fpga_compiler/tests/support/programs.rs"]
 mod programs;
