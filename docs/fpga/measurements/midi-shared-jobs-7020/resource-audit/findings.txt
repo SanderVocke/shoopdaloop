@@ -1,0 +1,112 @@
+MIDI RESOURCE INVESTIGATION — 64 stereo + MIDI loops, Zynq-7020, 100 MHz target
+
+Method
+Read the committed optimized Vivado 2021.1 netlist (RTL c2d6e6ff), exported primitive
+cells and MIDI pin connectivity, counted register banks and DSPs, inspected RTL,
+and replayed failed placement with detailed control-set reporting. Ran an isolated
+synthesis experiment with padded MIDI DDR strides. Production source is unchanged.
+No CI results/review feedback were consulted.
+
+Reliable whole-design increment over fresh audio-only baseline:
+  LUTs:       49,841 - 27,993 = 21,848
+  Flip-flops: 36,303 - 23,253 = 13,050
+  BRAM36 equivalents: 68 - 55 = 13
+  DSP48:      23 - 4 = 19
+
+Where the LUTs go (hierarchical estimates, not perfectly additive because of packing):
+  MIDI job service's own coordination/working-data logic: 11,775
+  MIDI event/view/snapshot allocator and store:             6,166
+  State interpreter + differences + restore/cleanup:       2,621
+  MIDI job-port glue:                                          3
+  MIDI DDR AXI adapter:                                      279
+  Remainder of total increment: about 1,000 (shared execution, glue/mapping).
+  Shared SP total rises 3,364 -> 3,870 LUTs; shared JP 5,351 -> 5,598.
+
+Flip-flops:
+  MIDI service/port: 11,161; adapter: 151. Together 11,312 actual new hardware FFs.
+  Other actual hardware: +167 FFs. Measurement boundary: +1,571 FFs.
+  These sum exactly to +13,050. Boundary is 5,160 -> 6,731 FFs.
+  Main MIDI controller alone: 6,803 FFs. Its c[32] and h[24] work banks contain
+  1,024 + 768 = 1,792 FFs. Store desc[16] adds 512 FFs; payload adds 128.
+  The main controller contains 30 full 64-bit register banks and 51 32-bit banks,
+  in addition to narrower fields/arrays and replicated control bits.
+  Its 249 state labels use an 8-bit source PC, not 249 one-hot state FFs.
+  Synthesis makes PC replicas; PC and replicated copies total 143 FFs.
+
+On-chip memory:
+  Program memory: 5.5 -> 11 BRAM equivalents (+5.5).
+  Job queue:      7.5 -> 14.5 (+7).
+  Audio hints:    5.5 -> 3 (-2.5).
+  MIDI context table: +2. MIDI per-quantum event-head table: +1.
+  Net +13. Program/job expansion follows 1,030 instructions and 1,158 worst-case
+  jobs exceeding old 1,024-entry limits. BRAM is not the binding device limit.
+  No full recordings or all musical state fields accidentally live in flip-flops.
+
+DSPs:
+  Eight snapshot-stride calculations, two activity-stride calculations, four
+  difference-map strides, four directory strides, one within-state channel stride.
+  All 19 extra DSPs implement addresses. None uses MREG or PREG pipeline registers;
+  some use input registers. Sequential calls to a Verilog function do not guarantee
+  one physical arithmetic unit: the expression is expanded at call sites.
+
+Concrete design inefficiencies:
+  - A general-purpose, 249-step bookkeeping service remains behind the common JP.
+    SP/JP integration changes scheduling authority but does not make this engine small.
+  - Opaque 32-bit word arrays c/h/desc are loaded/stored serially but updated through
+    many parallel field assignments. They become FF banks and large selection networks.
+  - Many working pointers, handles, arguments and counters retain separate registers
+    even when operations have disjoint lifetimes. Some bounded quantities stay 32-bit.
+  - Known context indices are converted to 64-bit addresses, range-classified, then
+    converted back to an on-chip context RAM index. Direct indexed access would be simpler.
+  - Address arithmetic is often performed before choosing the result. A selected,
+    registered address datapath would better suit the already serialized DDR port.
+  - Slow import/group/history/reservation orchestration and real-time streaming share
+    the large service. Their exact separate feature costs cannot be read from the
+    hierarchy because they share logic. Preparation could use CPU orchestration and/or
+    smaller bounded hardware primitives, with explicit ownership/publication rules.
+
+Padding experiment (same feature/capacity configuration; synthesis only, not a
+functionally validated replacement and no placement/routing claim):
+  State/snapshot strides 16,900/16,916 -> 32,768 bytes.
+  Comparison masks 532 -> 1,024 bytes; directory entries 48 -> 64 bytes.
+  MIDI DDR allocation 19,560,876 -> 28,367,968 bytes (18.655 -> 27.054 MiB).
+  Whole-design LUTs 49,841 -> 49,894 (+53).
+  Whole-design FFs 36,303 -> 36,385 (+82).
+  BRAM unchanged at 68. DSPs 23 -> 5 (removes 18 of MIDI's 19).
+  Estimated, unplaced setup slack -5.558 -> -5.515 ns; this is not routed timing.
+  Conclusion: odd strides explain DSP usage, but removing those multipliers does
+  not solve the LUT shortage. Do not sell padding as a demonstrated area fix.
+
+Packing investigation:
+  Optimized pre-placement netlist: 675 control sets, 1,641 unused register locations.
+  Replayed failed placement: 2,602 sets, minimum 315, physical replication adds
+  2,287. It leaves 11,890 unused register locations; 1,159 groups drive <4 registers.
+  Original failed-run error prints 2,600; replay error also prints 2,600, whereas
+  the subsequent detailed report counts 2,602. Distinguish these report points.
+  Many differing reset sources are copies named pipeline/reset_repN_*.
+  Enable/reset-name grouping before/after: MIDI 297 -> 890; audio 375 -> 1,644;
+  wrapper/global 3 -> 68. Classification by net names is approximate.
+  These numbers show substantial physical reset/control replication. The original
+  placer message alone did not prove intrinsically excessive source-level enables.
+
+Reset-replication policy experiment:
+  Starting from the same optimized netlist, added DONT_TOUCH to only the measured
+  wrapper reset register and its net. No RTL/feature change; no placement success.
+  Detailed control sets fall 2,602 -> 675, physical replication 2,287 -> 0.
+  Unused FF locations fall 11,890 -> 1,651.
+  Packer still needs 9,644 slices while only 7,815 remain, versus 9,668 originally.
+  The shortfall improves by only 24 slices (1,853 -> 1,829).
+  This does not qualify timing and is not a recommended release constraint.
+  Conclusion: control-set/reset replication is real but not the main explanation
+  of the fit failure. My earlier control-group explanation was too strong.
+
+Assessment
+The event blocks/views, immutable starting states, incremental comparisons,
+accepted-output progress and SP-owned musical timing remain sound choices.
+The state algorithms are a modest share of area. The literal RTL implementation
+retains too much general bookkeeping machinery and too many wide data/control
+selection paths. This is an implementation problem, not evidence that full
+MIDI state support inherently needs this area or must be removed.
+A hardware-focused redesign of the service's working storage, selected arithmetic,
+request pipeline and reset policy is warranted. Rust need not simulate these blocks.
+No promised savings or guaranteed 7020 timing/fit should precede measurement.

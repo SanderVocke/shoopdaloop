@@ -154,3 +154,16 @@ PS7, DDR arbitration, board I/O and a new application control transport remain
 embedding work. See the [architecture](midi-shared-jobs.md),
 [validation](midi-shared-jobs-validation.md), and
 [raw reports, configuration, source hashes and reproduction steps](measurements/midi-shared-jobs-7020/README.md).
+
+## Follow-up resource investigation
+
+The [netlist audit and isolated experiments](measurements/midi-shared-jobs-7020/resource-audit/findings.txt)
+trace most extra logic to the controller and storage-management implementation.
+The main service has 6,803 working flip-flops, including 1,792 in its context/history
+staging arrays. All 19 added DSPs calculate addresses. Padding DDR strides removes
+18 DSPs, but changes total LUTs from 49,841 to 49,894, so it does not solve the
+logic shortage. Preventing reset replication reduces detailed control sets from
+2,602 to 675, yet improves the failed-placement slice shortfall by only 24.
+The earlier control-group explanation was incomplete: reducing those groups alone
+does not rescue the design. The working datapath, value selection and repeated
+memory-access machinery need a more compact hardware implementation.
