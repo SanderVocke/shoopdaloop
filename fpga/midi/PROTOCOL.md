@@ -1,174 +1,116 @@
-# Shared MIDI job boundary
+# Event-only MIDI RTL protocol
 
-The new pipeline uses SP opcode `0x0e` and JP job kinds `0x20..0x2a`:
-begin window, finish capture, begin capture, observe input/history, append,
-cleanup, claim ownership, read until timestamp, ordered output, complete and
-maintenance. The instruction names a prepared context and loop generation;
-jobs contain settled operands. Time is in frames, including when audio chunks
-contain multiple frames. `midi_error_code` is four bits; code 8 means incomplete
-content and code 7 remains a memory fault. MIDI errors do not silence audio.
+This revision intentionally has no instrument-state ABI. It is not a compatible
+reader for earlier state-capable RTL memory images. Reformat/reload the arena.
+The Rust FPGA reference retains its independent, state-capable interface.
 
-The isolated job service exposes these operations as commands 24..34 for tests.
-The pipeline control port accepts only commands below 24: command 2 now unbinds a
-stopped, cleaned-up context. Whole-quantum command 3 is removed. The control port
-cannot submit execution jobs. Group-changing controls use the publication fence
-in [the architecture contract](../../docs/fpga/midi-shared-jobs.md#content-publication)
-before reporting completion. Controls/program loading are embedding interfaces;
-no new application endpoint is enabled.
+## Composition and handshakes
 
-The embedding must validate all target SP loops before submitting a content
-publication and serialize loop/program configuration until the fence is
-acknowledged. The service cannot validate the separate SP RAM itself.
+`midi_audio_pipeline_axi` is the connected SP/mixed-queue/JP top. The isolated
+`midi_job_service` and `midi_job_service_axi` expose the same service commands for
+testing. Commands, responses, memory transactions and output packets use
+ready/valid handshakes. A packet remains stable while the receiver is not ready.
+A receiver reports `packet_refused` with its ready acknowledgement; the affected
+playback loop then suppresses subsequent events until retrigger. No recovery or
+cleanup packets are generated. A memory error invalidates the prepared image;
+a new format/load is required.
 
-The descriptions below apply to the historical standalone controller.
+SP remains responsible for loop modes, positions and transitions. The service
+uses those settled values. Host publication must update corresponding SP rows
+and acknowledge `midi_publication_commit` before another quantum can start.
 
-# MIDI component protocol
+## Memory layout
 
-All interfaces use one clock. Configuration (`arena_base`, `quantum_frames`, AXI
-mapping and arena limits) stays stable during commands. One runtime command is
-active at a time. Admission is `command_valid && command_ready`; responses remain
-valid until `response_ready`. Pools are positive and bindings number at most 128.
+All offsets below are relative to `arena_base`. Let V be views, T table entries
+per view, B event blocks, E events per block, R retirement entries, L loops and I
+inputs.
 
-The memory interface issues one aligned byte address, read/write flag and 32-bit
-payload, then waits for acknowledgement. Writes must be visible before dependent
-state/ownership changes. The AXI wrapper uses narrow single-word transactions,
-with correct lanes on both bus widths. A response follows all acknowledged writes.
+| Region | Offset | Bytes |
+|---|---:|---:|
+| View descriptors | 0 | V × 64 |
+| View block-ID tables | V × 64 | V × T × 4 |
+| Block reference counts | end of tables | B × 4 |
+| Free block stack | end of references | B × 4 |
+| Event records | end of free stack | B × E × 16 |
+| Retirement queue | end of records | R × 8 |
+| Reserved logical loop-descriptor window | end of queue | L × 128 |
+| Input history metadata | end of descriptor window | I × 96 |
 
-Output proposals stay stable while `packet_valid && !packet_ready`. A handshake
-with `packet_refused == 0` accepts a packet; one with `packet_refused == 1` refuses
-it. Destination and quantum-relative sample offset accompany each packet. Only
-acceptance advances musical state.
+Loop descriptors are primary BRAM in the generated service; their reserved
+logical address window is not accessed in DDR. `arena_bytes` reports the entire
+logical window above. No state, snapshot, checkpoint, difference-map or directory
+regions are allocated. Staging buffers must lie after `arena_bytes` and within
+the caller-provided memory window.
 
-## Values and lifetime
+A record holds timestamp u64, insertion order u32 and packed message u32.
+Packed message bits 23:0 contain bytes in transmission order, bits 25:24 contain
+length (1–3), and bits 31:26 are zero.
 
-Handles are `{generation:u32, slot:u32}` in 64 bits. Zero means no handle. Preparing
-an image starts a new lifetime and invalidates old handles. Bindings are immutable
-within that lifetime. Logical loop identities use the same shape but are distinct
-from finite binding-slot indices.
+A view has sixteen u32 words:
 
-Packed packets contain status/data bytes in bits 0–23, length in bits 24–25, and
-reserved zeros above. Unused bytes have canonical zero padding. Input-window
-records have four words: input index, sample offset, packed packet, reserved.
-Offsets are globally ordered; equal-time order is retained.
+| Word | Meaning |
+|---:|---|
+| 0–2 | Generation, references, status |
+| 3–5 | Block count, first-event offset, event count |
+| 6–7 | Time origin u64 |
+| 8–9 | Duration u64 |
+| 10–11 | Reserved zero; no starting-state handle |
+| 12–13 | Next insertion order, event limit |
+| 14–15 | Reserved zero, writer owner (0 public, 1 history, 2 capture) |
 
-Event payloads have four words: backing timestamp low/high, insertion order and
-packed packet. A view subtracts its time origin when returning a record. Start
-is inclusive, end exclusive; silence occupies duration metadata.
+Status is empty=0, recording=1, complete=2, incomplete=3, retired=4. Handles combine
+slot in bits 31:0 and nonzero generation in bits 63:32. Completed views can share
+blocks. Range views select events in [start,end), rebase timestamps by their
+origin and need no checkpoint or replay. A retained export survives replacement.
+Final release enqueues bounded retirement of blocks and then the view.
 
-Import/export/history-range handles are owned and must be released. Publication
-handles name content owned by bindings; export before retaining an independent
-version. Starting-state addresses remain valid while the view is owned. Current
-input/output-state query addresses are borrowed: inspect while commands remain
-quiescent.
+## Public commands
 
-## Commands
+Commands preserve their existing numbers where practical. Arguments not listed
+are reserved and ignored. Removed state commands return Unsupported (2) on a
+prepared image. `response_state` and the SNAPSHOTS capacity parameter are removed.
 
-Arguments are 64 bits; unused fields are zero. Unlisted response fields have no
-meaning. State/event staging addresses must be aligned and accessible in the
-mapped arena. Caller staging buffers stay immutable until the command completes
-and must not overwrite core-owned regions.
-These are memory operations, not file formats.
+| Op | Action | Arguments |
+|---:|---|---|
+| 0 | Format | none |
+| 1 | Bind loop context | slot, loop identity, input, destination, channel mask |
+| 2 | Unbind stopped context | slot |
+| 4 | Grab history into group | input, start, end, target-slot-list address, count |
+| 5 | Replace loop content | slot, view |
+| 6 | Duplicate loop content | source slot, target slot |
+| 7 | Clear loop content | slot |
+| 8 | Begin import | none; returns recording view handle |
+| 9 | Append import event | view, timestamp, packed message |
+| 10 | Finish import | view, duration; returns ready=1 on success |
+| 11 | Retain/export loop view | slot; returns handle, duration, event count |
+| 12 | Read exported record | view, event index |
+| 13 | Release exported/import view | view |
+| 14 | Send direct output | destination, packed message, sample offset |
+| 15 | Obtain history range view | input, start, end |
+| 16 | Configure history retention before processing | input, frames |
+| 17 | Removed state recovery | Unsupported |
+| 18 | Invalidate image after engine fault | none |
+| 19 | Removed instrument-state query | Unsupported |
+| 20 | Bounded maintenance | maximum work, capped at 64 |
+| 21 | Set stopped loop's recording limit | slot, events |
+| 22 | Atomically clear group | target-slot-list address, count |
+| 23 | Atomically replace group | view, target-slot-list address, count |
 
-| Op | Operation | Arguments 0–4 | Result |
-| --- | --- | --- | --- |
-| 0 | Prepare | zero | Fresh image, states and histories. |
-| 1 | Bind | slot, logical identity, input, destination, mask | Immutable binding; duplicate identity refused. |
-| 2 | SP record | slot, mode, position, length, begin-capture | Record for next processing command. |
-| 3 | Process | start frame, quantum frames, input address, count, 0 | Output stream; response frame is interval end. |
-| 4 | Group grab | input, start, end, target-list address, count | Shared view owned by bindings; duration/state address. |
-| 5 | Replace | slot, view, 0, 0, 0 | Retains complete, prepared content. |
-| 6 | Duplicate | source slot, target slot, 0, 0, 0 | Shares source content. |
-| 7 | Clear | slot, 0, 0, 0, 0 | Releases content/writer ownership. |
-| 8 | Begin import | starting-state address, 0, 0, 0, 0 | Owned private writer. |
-| 9 | Import event | writer, frame, packet, 0, 0 | One event transfer. |
-| 10 | Finish import | writer, duration, comparison budget, 0, 0 | Count 1: prepared; 0: call again. Budget capped at 256. |
-| 11 | Export | slot, 0, 0, 0, 0 | Owned view, duration, event count, starting-state address. |
-| 12 | Export event | view, index, 0, 0, 0 | Frame, order in count, packet/length; length 0 at end. |
-| 13 | Release | owned view, 0, 0, 0, 0 | Releases one reference. |
-| 14 | Send | destination, packet, sample offset, 0, 0 | Explicit tracked output. |
-| 15 | History range | input, start, end, 0, 0 | Owned view, duration, count, starting-state address. |
-| 16 | Retention | input, retained frames, 0, 0, 0 | Before processing only; zero keeps a rolling prefix. |
-| 17 | Recovery | sample offset, 0, 0, 0, 0 | Resumable; no time advance. Works after DDR failure. |
-| 18 | Pipeline fault | zero | Marks destinations/contexts for recovery. |
-| 19 | State query | kind (0 input, 1 output), index, 0, 0, 0 | Borrowed address; output can be busy. |
-| 20 | Maintenance | budget, 0, 0, 0, 0 | Steps in count; budget capped at 64. |
-| 21 | Record limit | slot, event limit, 0, 0, 0 | Stopped binding only; 1 through `MAX_EVENTS`. |
-| 22 | Group clear | target-list address, count, 0, 0, 0 | Atomic clear. |
-| 23 | Group replace | view, target-list address, count, 0, 0 | Atomic retained-content publication. |
+Imports no longer read a starting-state pointer or prepare comparison maps.
+Transfer grants replenish per quantum: 64 events, 64 metadata operations and 128
+published bindings. Capture/history reservations preserve admitted recording
+capacity when UI imports allocate blocks. No comparison-cell grant remains.
 
-Modes are 0 stopped, 1 recording, 2 playing. SP supplies position and timing.
-Processing preflights the input window; calls are contiguous and span one
-configured quantum. Playback starts/restarts at position zero. Target lists hold
-distinct 32-bit binding slots. Published lengths are quantum multiples. Publication
-stops/resets affected loop metadata; the embedding commits the same content
-lengths/revisions to SP before its next execution.
+## Jobs and errors
 
-Control grants are shared across calls. Import comparison initialization resumes
-and stays current as output changes. Binding requires ready destination maps.
-History ranges have positive duration but can contain zero events. Direct
-content-store ranges additionally permit zero duration.
+Internal ops 24–34 retain the compiled Rust job encoding: begin, finish capture,
+begin capture, observe input, append capture, prepare window/release playback,
+claim (compatibility no-op), read until, output, complete and maintain. The shared
+JP dispatches these alongside audio jobs. Claim jobs neither inspect nor update
+instrument state or channel ownership.
 
-Errors: 0 success, 1 invalid packet/window, 2 unsupported, 3 capacity/output
-refusal, 4 invalid/stale/incomplete state, 5 busy, 6 overflow, 7 memory fault.
-Capacity/refusal leaves the image usable. Memory failure invalidates it; recovery
-then uses on-chip acceptance counters without DDR. Queries/processing require a
-new image. Recovery does not claim unreadable state was restored.
-
-## DDR layout
-
-Offsets are relative to `arena_base`. Let `V` be views, `T` table entries, `B`
-event blocks, `E` events per block, `S` snapshots and `R` retirements.
-
-| Content region | Offset | Bytes |
-| --- | --- | --- |
-| View descriptors | 0 | `64 V` |
-| Block tables | previous end | `4 V T` |
-| Block references | previous end | `4 B` |
-| Free-block stack | previous end | `4 B` |
-| Snapshot slots | previous end | `16916 S` |
-| Event payload | previous end | `16 B E` |
-| Retirement records | previous end | `8 R` |
-
-A view has sixteen words: generation, references, status, blocks, first-event
-offset, event count, origin low/high, duration low/high, snapshot slot/generation,
-next order, event limit, reserved, owner. Status: 0 unused, 1 writer, 2 complete,
-3 incomplete, 4 retired. Owner: 0 imported/external, 1 history, 2 recording.
-Capture ownership prevents UI import edits. Each snapshot has four header words
-(generation, references, two reserved), followed by 4,225 state words.
-
-The runtime reserves a private window for 128-byte loop descriptors. These live
-in primary BRAM (at most 16 KiB); the corresponding DDR address space is unused.
-Following that window, DDR contains input/output/activity states
-(16,900 bytes each); 96-byte history descriptors; checkpoint rings (16 bytes × `S`
-per input); 532-byte changed-cell maps per input; 532-byte comparison maps per
-snapshot/destination; 48-byte comparison directory entries; and one 532-byte
-replay-change map. Loop-activity states remain in DDR; their size differs greatly
-from the small loop descriptors. Other on-chip data is temporary working values
-and finite counters.
-
-Comparison entries contain twelve words: valid, reserved, target address low/high,
-current-state address low/high, bitmap address low/high, snapshot-header address
-low/high, expected generation, initialized-cell count. Output updates check live
-matching-generation targets and only initialized cells. Derived maps publish
-count 4,225 after copying their base and patching changed cells.
-
-## State image
-
-Sixteen channels each occupy 264 words, followed by System-Reset-seen. This is an
-explicit hardware representation, not a Rust structure dump.
-
-| Channel cell | Value |
-| --- | --- |
-| 0–127 | Velocity in bits 0–7, held/sostenuto flags in bits 8/9, pressure in bits 16–23. |
-| 128–255 | Last known controller value. |
-| 256 | Loaded program. |
-| 257–258 | Bank MSB/LSB used when loading that program. |
-| 259 | Fourteen-bit pitch bend, initially 8,192. |
-| 260 | Channel pressure. |
-| 261 | Reset Controllers seen. |
-| 262–263 | Basic-state reserved fields, zero. |
-
-Optional seven-bit values use 128 for unknown, distinct from known zero. Notes
-start with zero velocity/flags and unknown pressure. Sustain/sostenuto/Hold 2
-start known zero. Parameter-editing controllers are unknown. Reset-history flags
-are retained but do not request synthetic reset packets during restoration.
+Error codes remain invalid event=1, unsupported=2, capacity=3, invalid state or
+handle=4, busy/desynchronized playback=5, overflow=6, memory fault=7 and incomplete
+content=8. Here “invalid state” concerns service lifecycle or handles, not MIDI
+instrument state. Input ordering, density limits, duration alignment, generation
+checks and atomic publication validation remain enforced.

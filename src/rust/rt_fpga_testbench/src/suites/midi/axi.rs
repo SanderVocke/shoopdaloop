@@ -1,11 +1,11 @@
-use super::{command, projection, runtime::Sink};
+use super::{command, runtime::Sink};
 use crate::{
     Result,
     memory::{Backend, Memory, Mode},
     model::Design,
     sim::Sim,
 };
-use rt_fpga_reference::midi::{Message, MidiState, OutputEvent};
+use rt_fpga_reference::midi::{Message, OutputEvent};
 use std::{cell::RefCell, rc::Rc};
 
 fn issue(s: &mut Sim<'_>, op: u64, args: [u64; 5]) -> u64 {
@@ -16,15 +16,7 @@ fn issue(s: &mut Sim<'_>, op: u64, args: [u64; 5]) -> u64 {
     command(s)
 }
 pub fn axi_conformance(width: u64) -> Result<()> {
-    let sources = [
-        "midi_job_service_axi",
-        "midi_job_service",
-        "midi_store",
-        "midi_state_service",
-        "midi_state",
-        "midi_difference",
-        "midi_transition",
-    ];
+    let sources = ["midi_job_service_axi", "midi_job_service", "midi_store"];
     let mut paths: Vec<_> = sources
         .iter()
         .map(|p| crate::root().join(format!("fpga/midi/rtl/{p}.sv")))
@@ -46,7 +38,6 @@ pub fn axi_conformance(width: u64) -> Result<()> {
             ("BLOCKS", 32),
             ("MAX_EVENTS", 16),
             ("VIEWS", 8),
-            ("SNAPSHOTS", 16),
             ("RETIREMENTS", 8),
             ("INPUT_EVENTS", 4),
             ("MAINTENANCE", 4),
@@ -135,13 +126,7 @@ pub fn axi_conformance(width: u64) -> Result<()> {
             }
         ]
     );
-    assert_eq!(issue(&mut s, 19, [1, 0, 0, 0, 0]), 0);
-    let offset = (s.model.get("response_state") - LOGICAL) as usize / 4;
-    let actual = Memory::read(&memory, &mut s);
-    assert_eq!(
-        &actual[offset..offset + 4225],
-        projection(&MidiState::default())
-    );
+    assert_eq!(issue(&mut s, 19, [1, 0, 0, 0, 0]), 2);
     if let Backend::Axi(a) = &memory.borrow().backend {
         assert!(a.reads > 0 && a.writes > 0);
         assert!(a.records.iter().all(|r| r.length == 0));
@@ -151,8 +136,8 @@ pub fn axi_conformance(width: u64) -> Result<()> {
     assert_eq!(issue(&mut s, 19, [0, 0, 0, 0, 0]), 4);
     let reads = memory.borrow().reads();
     let writes = memory.borrow().writes();
-    assert_eq!(issue(&mut s, 17, [0; 5]), 0);
-    assert_eq!(sink.borrow().messages().len(), 34);
+    assert_eq!(issue(&mut s, 17, [0; 5]), 4);
+    assert_eq!(sink.borrow().messages().len(), 2);
     assert_eq!(memory.borrow().reads(), reads);
     assert_eq!(memory.borrow().writes(), writes);
     s.model.set("reset", 1);

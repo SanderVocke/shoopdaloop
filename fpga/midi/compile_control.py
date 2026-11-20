@@ -57,20 +57,16 @@ OPS = [
     "MEMREAD",
     "MEMWRITE",
     "CONTENT",
-    "STATE",
     "HEADREAD",
     "HEADWRITE",
     "PACKET",
     "PKTERR",
-    "EXPENSIVE",
     "FILL",
     "FIRSTBIT",
-    "INITIALCELL",
     "CTXREAD",
     "CTXWRITE",
     "BULKCOPY",
     "BULKZERO",
-    "BULKINIT",
     "BULKIN",
     "BULKOUT",
     "CTXZERO",
@@ -98,7 +94,6 @@ OUTPUTS = {
     "response_error": "4",
     "response_handle": "64",
     "response_frame": "64",
-    "response_state": "64",
     "response_count": "32",
     "response_packet": "24",
     "response_length": "2",
@@ -106,21 +101,8 @@ OUTPUTS = {
     "packet_offset": "32",
     "own_address": "64",
     "own_data": "32",
-    "state_op": "3",
-    "state_current": "64",
-    "state_target": "64",
-    "state_map": "64",
-    "state_activity": "64",
-    "state_track_activity": "1",
-    "state_track_changes": "1",
-    "state_changes": "64",
-    "state_channels": "16",
-    "state_packet": "24",
-    "state_length": "2",
-    "state_first": "13",
-    "state_count": "13",
-    "state_pairs": "32",
-    "recovery_packet": "24",
+    "send_packet": "24",
+    "send_length": "2",
     "head_write_index": "LOOP_BITS",
     "head_write_data": "HEAD_BITS",
     "prepared": "1",
@@ -185,19 +167,9 @@ class Compiler:
             )
         ).read_text()
         header = (ROOT / "rtl/midi_functions.svh").read_text()
-        sources = [program] + [
-            (ROOT / f"rtl/{n}.sv").read_text()
-            for n in [
-                "midi_store",
-                "midi_state_service",
-                "midi_state",
-                "midi_difference",
-                "midi_transition",
-            ]
-        ]
-        text = "\n".join(
-            s.replace('`include "midi_functions.svh"', header) for s in sources
-        )
+        text = program.replace('`include "midi_functions.svh"', header)
+        if not content:
+            text += "\n" + (ROOT / "rtl/midi_store.sv").read_text().replace('`include "midi_functions.svh"', header)
         self.compilation = Compilation()
         self.compilation.addSyntaxTree(SyntaxTree.fromText(text))
         self.body = next(
@@ -272,8 +244,6 @@ class Compiler:
                 "h": "24",
                 "desc": "16",
                 "payload": "4",
-                "owners": "DESTINATIONS",
-                "recovery": "DESTINATIONS",
                 "density": "INPUTS",
             }.get(name)
             if size is None:
@@ -471,7 +441,6 @@ class Compiler:
             bounded = bool(identifiers) and identifiers <= {
                 "LOOP_BITS",
                 "INPUT_BITS",
-                "SNAP_BITS",
                 "DEST_BITS",
                 "VIEW_BITS",
                 "TABLE_BITS",
@@ -661,12 +630,10 @@ class Compiler:
         if k == "CallExpression":
             name = e.subroutineName
             args = [self.expr(x, env) for x in e.arguments]
-            if name in ["packet_error", "expensive", "initial_cell", "first_set_bit"]:
+            if name in ["packet_error", "first_set_bit"]:
                 out = self.fresh()
                 opcode = {
                     "packet_error": "PKTERR",
-                    "expensive": "EXPENSIVE",
-                    "initial_cell": "INITIALCELL",
                     "first_set_bit": "FIRSTBIT",
                 }[name]
                 self.emit(
@@ -980,7 +947,6 @@ class Compiler:
             "READ_WAIT",
             "WRITE_WAIT",
             "STORE_WAIT",
-            "STATE_WAIT",
             "CONTEXT_READ_NEXT",
             "CONTEXT_WRITE_NEXT",
             "HISTORY_READ_NEXT",
@@ -1028,7 +994,7 @@ class Compiler:
             elif name == "BOOT_CONTEXTS":
                 self.emit("CTXZERO")
                 self.write(("reg", self.variable("scan"), None, None), constant(0))
-                self.emit("JUMP", target="BOOT_DIRECTORY")
+                self.emit("JUMP", target="BOOT_HISTORIES")
                 continue
             elif name in ["HISTORY_READ", "HISTORY_WRITE"]:
                 f = next(n for n in self.body if n.name == "history_address")
@@ -1079,13 +1045,11 @@ class Compiler:
                 "READ_REQUEST",
                 "WRITE_REQUEST",
                 "STORE_START",
-                "STATE_START",
             ]:
                 opcode = {
                     "READ_REQUEST": "MEMREAD",
                     "WRITE_REQUEST": "MEMWRITE",
                     "STORE_START": "CONTENT",
-                    "STATE_START": "STATE",
                 }[name]
                 self.emit(opcode, target="memory_fault")
                 ret = (
@@ -1096,7 +1060,7 @@ class Compiler:
                 symbol = next(s for s in self.body if s.name == ret)
                 self.emit("JIND", a=self.allocate(symbol))
                 continue
-            elif name == "PANIC_EMIT":
+            elif name == "EMIT_PACKET":
                 self.emit("PACKET")
             elif name == "JOB_SELECT":
                 symbol = next(s for s in self.body if s.name == "scan")
@@ -1208,7 +1172,7 @@ class Compiler:
 
     def compile_content(self):
         for name, body in self.states.items():
-            if name in ["READ_WAIT", "WRITE_WAIT", "SNAP_COPY_WRITE", "SNAP_COPY_NEXT"]:
+            if name in ["READ_WAIT", "WRITE_WAIT"]:
                 continue
             self.temp = 0
             self.io_cache = {}
@@ -1216,41 +1180,10 @@ class Compiler:
             if name == "IDLE":
                 assert kind(body) == "ConditionalStatement"
                 body = body.ifTrue
-            elif name == "SNAP_COPY":
-                default = self.label("initialize")
-                done = self.label("snapshot_done")
-                copy = self.binary("AND", self.variable("arg1"), constant(1))
-                self.emit("JZERO", a=self.reg(copy), target=default)
-                count = self.reg(constant(4225))
-                self.emit(
-                    "BULKCOPY",
-                    rd=count,
-                    a=self.variable("arg0"),
-                    b=self.variable("response_state"),
-                    target="S_memory_fault",
-                )
-                self.emit("JUMP", target=done)
-                self.mark(default)
-                count = self.reg(constant(4225))
-                self.emit(
-                    "BULKINIT",
-                    rd=count,
-                    a=self.reg(constant(0)),
-                    b=self.variable("response_state"),
-                    target="S_memory_fault",
-                )
-                self.mark(done)
-                self.write(("reg", self.variable("cursor"), None, None), constant(4224))
-                self.write(
-                    ("reg", self.variable("initial_field"), None, None), constant(0)
-                )
-                self.emit("JUMP", target="S_RESPONSE")
-                continue
             elif name == "RESPONSE":
                 fields = {
                     "last_error": "response_error",
                     "last_handle": "response_handle",
-                    "last_state": "response_state",
                     "last_frame": "response_frame",
                     "last_order": "response_order",
                     "last_packet": "response_packet",
@@ -1278,15 +1211,6 @@ class Compiler:
                         ("reg", self.other_body.variable(target), None, None),
                         Value("r", desc.data + "+" + str(index)),
                     )
-                initial = self.binary(
-                    "OR",
-                    self.binary("SHL", Value("r", desc.data + "+11"), constant(32)),
-                    Value("r", desc.data + "+10"),
-                )
-                self.write(
-                    ("reg", self.other_body.variable("last_initial"), None, None),
-                    initial,
-                )
                 error = self.binary("NE", self.variable("response_error"), constant(7))
                 self.emit("JZERO", a=self.reg(error), target="memory_fault")
                 self.emit("JIND", a=self.other_body.variable("service_return"))
@@ -1319,7 +1243,6 @@ def combined():
     for name, source in {
         "command_op": "store_op",
         "command_view": "store_view",
-        "command_snapshot": "store_snapshot",
         "command_arg0": "store_arg0",
         "command_arg1": "store_arg1",
         "command_packet": "store_packet",
@@ -1329,7 +1252,6 @@ def combined():
     for name, field in [("free_blocks", "free_count"), ("store_work", "response_work")]:
         control.external_values[name] = lambda c, field=field: content.variable(field)
     for name, field, capacity in [
-        ("free_snapshots", "used_snapshots", "SNAPSHOTS"),
         ("free_views", "used_views", "VIEWS"),
         ("free_retirements", "queue_count", "RETIREMENTS"),
     ]:

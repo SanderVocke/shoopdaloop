@@ -2,7 +2,7 @@ module midi_job_service_axi #(
     parameter integer DATA_WIDTH=32,
     parameter integer LOOPS=128, INPUTS=1, DESTINATIONS=8,
     parameter integer BLOCK_EVENTS=256, BLOCKS=4864, MAX_EVENTS=8192,
-    parameter integer VIEWS=512, SNAPSHOTS=768, RETIREMENTS=256,
+    parameter integer VIEWS=512, RETIREMENTS=256,
     parameter integer INPUT_EVENTS=256, MAINTENANCE=64,
     parameter integer TABLE_ENTRIES=(MAX_EVENTS+2*BLOCK_EVENTS+BLOCK_EVENTS-1)/BLOCK_EVENTS+1
 ) (
@@ -13,7 +13,7 @@ module midi_job_service_axi #(
     input wire [63:0] command_arg3, input wire [63:0] command_arg4,
     output wire response_valid, input wire response_ready, output reg [3:0] response_error,
     output reg [63:0] response_handle, output reg [63:0] response_frame,
-    output reg [63:0] response_state, output reg [31:0] response_count,
+    output reg [31:0] response_count,
     output reg [23:0] response_packet, output reg [1:0] response_length,
     output wire packet_valid, input wire packet_ready, input wire packet_refused,
     output wire [23:0] packet_data, output wire [1:0] packet_length,
@@ -41,7 +41,7 @@ module midi_job_service_axi #(
     wire [31:0] memory_write_data,memory_read_data;
     midi_job_service #(.LOOPS(LOOPS),.INPUTS(INPUTS),.DESTINATIONS(DESTINATIONS),
         .BLOCK_EVENTS(BLOCK_EVENTS),.BLOCKS(BLOCKS),.MAX_EVENTS(MAX_EVENTS),
-        .VIEWS(VIEWS),.SNAPSHOTS(SNAPSHOTS),.RETIREMENTS(RETIREMENTS),
+        .VIEWS(VIEWS),.RETIREMENTS(RETIREMENTS),
         .INPUT_EVENTS(INPUT_EVENTS),.MAINTENANCE(MAINTENANCE),.TABLE_ENTRIES(TABLE_ENTRIES)) core (.*);
     word_axi #(.DATA_WIDTH(DATA_WIDTH),.REGISTER_REQUEST(1)) memory (
         .arena_base(arena_base),.arena_bytes(memory_arena_bytes),.*

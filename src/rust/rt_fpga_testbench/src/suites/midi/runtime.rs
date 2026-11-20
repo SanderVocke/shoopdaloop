@@ -1,4 +1,4 @@
-use super::{Memory, command, projection};
+use super::{Memory, command};
 use crate::{
     Result,
     clock::Edges,
@@ -7,7 +7,7 @@ use crate::{
     sim::{Agent, Sim},
 };
 use rt_fpga_reference::{
-    midi::{InputEvent, Message, MidiState, OutputEvent},
+    midi::{InputEvent, Message, OutputEvent},
     records::{LoopRecord, Mode},
 };
 use std::{cell::RefCell, rc::Rc};
@@ -55,14 +55,7 @@ impl Agent for Sink {
     }
 }
 pub fn compile(loops: u64) -> Result<Compiled> {
-    let sources = [
-        "midi_job_service",
-        "midi_store",
-        "midi_state_service",
-        "midi_state",
-        "midi_difference",
-        "midi_transition",
-    ];
+    let sources = ["midi_job_service", "midi_store"];
     let mut d = Design::new(
         "midi_job_service",
         sources
@@ -79,7 +72,6 @@ pub fn compile(loops: u64) -> Result<Compiled> {
         ("BLOCKS", 128),
         ("MAX_EVENTS", 128),
         ("VIEWS", 64),
-        ("SNAPSHOTS", 64),
         ("RETIREMENTS", 32),
         ("INPUT_EVENTS", 16),
         ("MAINTENANCE", 8),
@@ -87,14 +79,7 @@ pub fn compile(loops: u64) -> Result<Compiled> {
     .build(&crate::root().join("work/marlin-suite/midi"))
 }
 pub fn compile_limits(l: rt_fpga_reference::midi::SessionLimits) -> Result<Compiled> {
-    let sources = [
-        "midi_job_service",
-        "midi_store",
-        "midi_state_service",
-        "midi_state",
-        "midi_difference",
-        "midi_transition",
-    ];
+    let sources = ["midi_job_service", "midi_store"];
     let mut d = Design::new(
         "midi_job_service",
         sources
@@ -111,7 +96,6 @@ pub fn compile_limits(l: rt_fpga_reference::midi::SessionLimits) -> Result<Compi
         ("BLOCKS", u64::from(l.store.blocks)),
         ("MAX_EVENTS", u64::from(l.store.max_events)),
         ("VIEWS", u64::from(l.store.views)),
-        ("SNAPSHOTS", u64::from(l.store.snapshots)),
         ("RETIREMENTS", u64::from(l.store.retirements)),
         ("INPUT_EVENTS", u64::from(l.input_events_per_quantum)),
         ("MAINTENANCE", u64::from(l.maintenance_steps)),
@@ -194,22 +178,8 @@ impl<'a> Driver<'a> {
         self.memory.borrow_mut().words[address as usize / 4..address as usize / 4 + words.len()]
             .copy_from_slice(words);
     }
-    pub fn write_state(&mut self, address: u64, state: &MidiState) {
-        self.write(address, &projection(state));
-    }
-    pub fn verify_memory_state(&self, address: u64, state: &MidiState) {
-        assert_eq!(self.read(address, 4225), projection(state));
-    }
     pub fn read(&self, address: u64, count: usize) -> Vec<u32> {
         self.memory.borrow().words[address as usize / 4..address as usize / 4 + count].to_vec()
-    }
-    pub fn verify_state(&mut self, kind: u64, index: u64, state: &MidiState) {
-        assert_eq!(self.issue(19, [kind, index, 0, 0, 0]), 0);
-        let address = self.sim.model.get("response_state") as usize / 4;
-        assert_eq!(
-            &self.memory.borrow().words[address..address + 4225],
-            projection(state)
-        );
     }
     pub fn process(
         &mut self,

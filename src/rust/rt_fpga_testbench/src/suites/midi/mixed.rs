@@ -1,4 +1,4 @@
-use super::{Memory, projection};
+use super::Memory;
 use crate::{
     Result,
     clock::Edges,
@@ -152,17 +152,6 @@ fn quantum(
         "Q={}",
         f.q
     );
-    for destination in 0..2 {
-        match f.midi.output_state(destination as u16) {
-            Ok(state) => {
-                assert_eq!(control(s, 19, [1, destination, 0, 0, 0]), 0);
-                let at = s.model.get("midi_response_state") as usize / 4;
-                assert_eq!(&memory.borrow().words[at..at + 4225], projection(state));
-            }
-            Err(reference::Error::Busy) => assert_eq!(control(s, 19, [1, destination, 0, 0, 0]), 5),
-            Err(error) => panic!("unexpected reference state: {error:?}"),
-        }
-    }
     println!("mixed Q={} cycles={}", f.q, s.cycles - start);
 }
 fn publish(audio: &mut Audio, s: &mut Sim<'_>, f: &reference::Fixture, op: u64, args: [u64; 5]) {
@@ -213,10 +202,6 @@ pub fn compiled_mixed_conformance() -> Result<()> {
         "midi_job_port",
         "midi_job_service",
         "midi_store",
-        "midi_state_service",
-        "midi_state",
-        "midi_difference",
-        "midi_transition",
     ] {
         design
             .sources
@@ -230,7 +215,6 @@ pub fn compiled_mixed_conformance() -> Result<()> {
         ("MIDI_BLOCKS", 128),
         ("MIDI_MAX_EVENTS", 128),
         ("MIDI_VIEWS", 64),
-        ("MIDI_SNAPSHOTS", 64),
         ("MIDI_RETIREMENTS", 32),
         ("MIDI_INPUT_EVENTS", 16),
         ("MIDI_MAINTENANCE", 8),
@@ -297,8 +281,8 @@ pub fn compiled_mixed_conformance() -> Result<()> {
             }
             let events = if tick < 2 {
                 vec![
-                    reference::event(0, &[0x90, 60, 80]),
-                    reference::event(q - 1, &[0x91, 61, 90]),
+                    reference::event(0, &[0xb0, 1, 80]),
+                    reference::event(q - 1, &[0xb1, 1, 90]),
                 ]
             } else {
                 vec![]
@@ -308,23 +292,6 @@ pub fn compiled_mixed_conformance() -> Result<()> {
             );
         }
         if q == 32 {
-            for i in 0..2 {
-                f.command(
-                    i,
-                    Operation::Play {
-                        position: 0,
-                        retrigger: true,
-                    },
-                );
-            }
-            f.capacity = 1;
-            quantum(&mut audio, &mut s, &mut f, &memory, &output, address, &[]);
-            for i in 0..2 {
-                f.command(i, Operation::Stop);
-            }
-            quantum(&mut audio, &mut s, &mut f, &memory, &output, address, &[]);
-            f.capacity = usize::MAX;
-            quantum(&mut audio, &mut s, &mut f, &memory, &output, address, &[]);
             let end = f.pipeline.state().frame();
             f.pipeline
                 .grab_midi(&mut f.midi, 0, end - u64::from(q), end, &[0, 1])
@@ -378,17 +345,8 @@ pub fn compiled_mixed_conformance() -> Result<()> {
             );
             assert!(matches!(failed, Err(reference::ProcessError::Pipeline(_))));
             assert_eq!(s.model.get("sync_frame"), f.pipeline.state().frame());
-            f.midi
-                .drain_recovery(0, &mut |e| {
-                    f.emitted.push(e);
-                    Ok(())
-                })
-                .unwrap();
-            assert_eq!(control(&mut s, 17, [0; 5]), 0);
-            assert_eq!(
-                std::mem::take(&mut output.borrow_mut().events),
-                std::mem::take(&mut f.emitted)
-            );
+            assert_eq!(control(&mut s, 17, [0; 5]), 4);
+            assert!(output.borrow().events.is_empty());
         }
     }
     Ok(())

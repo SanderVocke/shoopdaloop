@@ -10,10 +10,7 @@ use crate::{
     timing::Fixed,
 };
 use rt_fpga_compiler::StateProgramTarget;
-use rt_fpga_reference::{
-    midi::MidiState,
-    transitions::{LoopKind, LoopSpec},
-};
+use rt_fpga_reference::transitions::{LoopKind, LoopSpec};
 use std::{cell::RefCell, rc::Rc};
 mod profiling;
 
@@ -86,11 +83,7 @@ fn load_audio(driver: &mut Pipeline, sim: &mut Sim<'_>, reference: &Reference) {
 
 struct MidiLayout {
     table: usize,
-    snapshot: usize,
     event: usize,
-    output: usize,
-    map: usize,
-    directory: usize,
     bytes: usize,
 }
 impl MidiLayout {
@@ -98,48 +91,13 @@ impl MidiLayout {
         let l = limits(loops);
         let s = l.store;
         let table = s.views as usize * 64;
-        let snapshot = table + s.views as usize * 35 * 4 + s.blocks as usize * 8;
-        let event = snapshot + s.snapshots as usize * 16916;
+        let event = table + s.views as usize * 35 * 4 + s.blocks as usize * 8;
         let content =
             event + s.blocks as usize * s.block_events as usize * 16 + s.retirements as usize * 8;
-        let input = content + loops * 128;
-        let output = input + 16900;
-        let history = output + DESTINATIONS * 16900 + loops * 16900;
-        let map = history + 96 + s.snapshots as usize * 16 + 532;
-        let directory = map + s.snapshots as usize * DESTINATIONS * 532;
         Self {
             table,
-            snapshot,
             event,
-            output,
-            map,
-            directory,
-            bytes: directory + s.snapshots as usize * DESTINATIONS * 48 + 532,
-        }
-    }
-    fn prepare_maps(&self, memory: &mut [u32], snapshot: u64) {
-        let slot = snapshot as u32 as usize;
-        let header = self.snapshot + slot * 16916;
-        for destination in 0..DESTINATIONS {
-            let pair = slot * DESTINATIONS + destination;
-            let map = self.map + pair * 532;
-            memory[map / 4..map / 4 + 133].fill(0);
-            let output = self.output + destination * 16900;
-            let address = self.directory / 4 + pair * 12;
-            memory[address..address + 12].copy_from_slice(&[
-                1,
-                0,
-                (header + 16) as u32,
-                0,
-                output as u32,
-                0,
-                map as u32,
-                0,
-                header as u32,
-                0,
-                (snapshot >> 32) as u32,
-                4225,
-            ]);
+            bytes: content + loops * 128 + 96,
         }
     }
 }
@@ -148,9 +106,6 @@ fn load_midi(sim: &mut Sim<'_>, memory: &Rc<RefCell<MidiMemory>>, loops: usize, 
     let layout = MidiLayout::new(loops);
     assert_eq!(sim.model.get("midi_arena_bytes") as usize, layout.bytes);
     let scratch = layout.bytes.div_ceil(16) * 16 + 256;
-    let initial = super::super::projection(&MidiState::default());
-    memory.borrow_mut().bus.words[scratch / 4..scratch / 4 + initial.len()]
-        .copy_from_slice(&initial);
     assert_eq!(control(sim, 0, [0; 5]), 0);
     assert_eq!(control(sim, 16, [0, 0, 0, 0, 0]), 0);
     sim.model.set("midi_publication_commit", 1);
@@ -201,13 +156,6 @@ fn load_midi(sim: &mut Sim<'_>, memory: &Rc<RefCell<MidiMemory>>, loops: usize, 
             let count = ordinal * 256 + chunk.len();
             words[descriptor + 5] = count as u32;
             words[descriptor + 12] = count as u32;
-        }
-        {
-            let mut memory = memory.borrow_mut();
-            let words = &mut memory.bus.words;
-            let snapshot =
-                u64::from(words[descriptor + 10]) | u64::from(words[descriptor + 11]) << 32;
-            layout.prepare_maps(words, snapshot);
         }
         assert_eq!(control(sim, 10, [view, frames as u64, 65536, 0, 0]), 0);
         assert_eq!(sim.model.get("midi_response_count"), 1);
@@ -277,10 +225,6 @@ pub fn benchmark_64(
         "midi_job_port",
         "midi_job_service",
         "midi_store",
-        "midi_state_service",
-        "midi_state",
-        "midi_difference",
-        "midi_transition",
     ] {
         design
             .sources
@@ -294,7 +238,6 @@ pub fn benchmark_64(
         ("MIDI_BLOCKS", 2432),
         ("MIDI_MAX_EVENTS", 8192),
         ("MIDI_VIEWS", 256),
-        ("MIDI_SNAPSHOTS", 384),
         ("MIDI_RETIREMENTS", 128),
         ("MIDI_INPUT_EVENTS", 16),
         ("MIDI_MAINTENANCE", 64),
@@ -430,8 +373,9 @@ pub fn benchmark_64(
         serde_json::json!({"scenario":if audio {"stereo_and_midi"} else {"midi_only"},"loops":loops,"sample_rate":SAMPLE_RATE,"quantum_frames":QUANTUM,"chunk_frames":QUANTUM,"sequence_frames":frames,
         "ddr_added_delay_clocks":ddr_delay,
         "memory":format!("two independent 64-bit AXI ports, fixed {ddr_delay}-clock service per 16-byte native request, no random bus stalls; AXI handshakes retained; excludes board DDR arbitration"),
+        "midi_state_tracking":false,
         "scope":"full compiled SP, mixed queue and common JP; run acceptance through done; host loading/readback excluded",
-        "preparation":"payloads and ready default-state comparison maps loaded outside measured quanta; hardware allocates MIDI descriptors/blocks and exported sample records are checked",
+        "preparation":"event payloads loaded outside measured quanta; hardware allocates MIDI descriptors/blocks and exported sample records are checked; RTL has no instrument state",
         "measurements":measurements}),
     )
 }

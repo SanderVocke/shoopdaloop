@@ -41,7 +41,6 @@ module midi_audio_pipeline #(
     parameter integer MIDI_BLOCKS = 4864,
     parameter integer MIDI_MAX_EVENTS = 8192,
     parameter integer MIDI_VIEWS = 512,
-    parameter integer MIDI_SNAPSHOTS = 768,
     parameter integer MIDI_RETIREMENTS = 256,
     parameter integer MIDI_INPUT_EVENTS = 256,
     parameter integer MIDI_MAINTENANCE = 64
@@ -221,7 +220,6 @@ module midi_audio_pipeline #(
     output wire [3:0] midi_response_error,
     output wire [63:0] midi_response_handle,
     output wire [63:0] midi_response_frame,
-    output wire [63:0] midi_response_state,
     output wire [31:0] midi_response_count,
     output wire [23:0] midi_response_packet,
     output wire [1:0] midi_response_length,
@@ -462,7 +460,6 @@ module midi_audio_pipeline #(
         .BLOCKS(MIDI_BLOCKS),
         .MAX_EVENTS(MIDI_MAX_EVENTS),
         .VIEWS(MIDI_VIEWS),
-        .SNAPSHOTS(MIDI_SNAPSHOTS),
         .RETIREMENTS(MIDI_RETIREMENTS),
         .INPUT_EVENTS(MIDI_INPUT_EVENTS),
         .MAINTENANCE(MIDI_MAINTENANCE)
@@ -490,7 +487,6 @@ module midi_audio_pipeline #(
         .response_error(midi_response_error),
         .response_handle(midi_response_handle),
         .response_frame(midi_response_frame),
-        .response_state(midi_response_state),
         .response_count(midi_response_count),
         .response_packet(midi_response_packet),
         .response_length(midi_response_length),

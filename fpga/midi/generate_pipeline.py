@@ -10,7 +10,7 @@ sys.path.insert(0, str(HERE.parent / 'axi_memory'))
 from generate_tops import header
 
 MIDI_PARAMS = dict(LOOPS=128, INPUTS=1, DESTINATIONS=8, BLOCK_EVENTS=256,
-                   BLOCKS=4864, MAX_EVENTS=8192, VIEWS=512, SNAPSHOTS=768,
+                   BLOCKS=4864, MAX_EVENTS=8192, VIEWS=512,
                    RETIREMENTS=256, INPUT_EVENTS=256, MAINTENANCE=64)
 
 def generate():

@@ -1,7 +1,7 @@
 module midi_job_port #(
     parameter integer LOOPS=128, INPUTS=1, DESTINATIONS=8,
     parameter integer BLOCK_EVENTS=256, BLOCKS=4864, MAX_EVENTS=8192,
-    parameter integer VIEWS=512, SNAPSHOTS=768, RETIREMENTS=256,
+    parameter integer VIEWS=512, RETIREMENTS=256,
     parameter integer INPUT_EVENTS=256, MAINTENANCE=64,
     parameter integer TABLE_ENTRIES=(MAX_EVENTS+2*BLOCK_EVENTS+BLOCK_EVENTS-1)/BLOCK_EVENTS+1
 ) (
@@ -17,7 +17,7 @@ module midi_job_port #(
     input wire [63:0] command_arg3, input wire [63:0] command_arg4,
     output wire response_valid, input wire response_ready, output wire [3:0] response_error,
     output wire [63:0] response_handle, output wire [63:0] response_frame,
-    output wire [63:0] response_state, output wire [31:0] response_count,
+    output wire [31:0] response_count,
     output wire [23:0] response_packet, output wire [1:0] response_length,
     output wire packet_valid, input wire packet_ready, input wire packet_refused,
     output wire [23:0] packet_data, output wire [1:0] packet_length,
@@ -74,7 +74,7 @@ module midi_job_port #(
     end
     midi_job_service #(.LOOPS(LOOPS),.INPUTS(INPUTS),.DESTINATIONS(DESTINATIONS),
         .BLOCK_EVENTS(BLOCK_EVENTS),.BLOCKS(BLOCKS),.MAX_EVENTS(MAX_EVENTS),
-        .VIEWS(VIEWS),.SNAPSHOTS(SNAPSHOTS),.RETIREMENTS(RETIREMENTS),
+        .VIEWS(VIEWS),.RETIREMENTS(RETIREMENTS),
         .INPUT_EVENTS(INPUT_EVENTS),.MAINTENANCE(MAINTENANCE),.TABLE_ENTRIES(TABLE_ENTRIES)) service (
         .command_valid(service_valid),.command_ready(service_ready),.command_op(service_op),
         .command_arg0(take_fault ? 0 : arg0),.command_arg1(arg1),.command_arg2(arg2),.command_arg3(arg3),.command_arg4(arg4),

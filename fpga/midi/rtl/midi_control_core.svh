@@ -1,9 +1,9 @@
     localparam integer WORK_BITS=$clog2(MIDI_WORK_WORDS), WORK_DEPTH=1<<WORK_BITS;
     localparam [5:0] FETCH=0, READ=1, EXECUTE=2, INIT=3, INDIRECT=4, FILL=5,
-        MEMORY_WAIT=7, STATE_WAIT=9, HEAD_WAIT=10,
+        MEMORY_WAIT=7, HEAD_WAIT=10,
         MULTIPLY=11, MULTIPLIED=12, DIVIDE=13, CONTEXT_STORE_REQUEST=16, CONTEXT_STORE_WRITE=17,
         BULK_COUNT_READ=18, BULK_START=19, BULK_READ_REQUEST=20, BULK_READ_WAIT=21,
-        BULK_WRITE_REQUEST=22, BULK_WRITE_WAIT=23, BULK_RF_READ=24, CONTEXT_ZERO=25, CONTEXT_CELL=26, MERGE_READ=27, MERGE_RECOVERY=28, MERGE_COMPARE=29,
+        BULK_WRITE_REQUEST=22, BULK_WRITE_WAIT=23, BULK_RF_READ=24, CONTEXT_ZERO=25, CONTEXT_CELL=26, MERGE_READ=27, MERGE_LATCH=28, MERGE_COMPARE=29,
         MERGE_RESULT=30, META_LATCH=31, COMMAND_CHECK=32, FAST_REPLY=33,
         FAST_CONTEXT=34, FAST_CAPTURE=35, FAST_METADATA=36;
     reg [5:0] phase;
@@ -22,10 +22,10 @@
     reg merge_found;
     wire fast_bound=summary_q[64] && summary_q[63:0]==a4 && a0<64'(LOOPS);
     wire fast_idle=summary_q[66:65]==0 && summary_q[68:67]==0 && !summary_q[69] &&
-        !summary_q[70] && !summary_q[71] && !summary_q[74] && !summary_q[75];
+        !summary_q[70] && !summary_q[71];
     wire fast_command=prepared && running && fast_bound &&
         (op==25 && summary_q[66:65]!=1 || op==29 && a3==0 && fast_idle ||
-         op==33 && a1==0 && fast_idle || op==30 && a1[1]!=(summary_q[70] || summary_q[71]));
+         op==33 && a1==0 && fast_idle || op==30);
     reg [WORK_BITS-1:0] merge_write_address;
     reg [63:0] merge_write_data;
     always @* begin
@@ -39,16 +39,13 @@
     end
     reg [63:0] bulk_source,bulk_target;
     reg [31:0] bulk_remaining,bulk_word;
-    reg [8:0] bulk_field;
     reg [WORK_BITS-1:0] bulk_register;
     wire bulk_to_ram=operation==MC_BULKIN;
     wire bulk_from_ram=operation==MC_BULKOUT;
     wire bulk_reads=operation==MC_BULKCOPY || bulk_to_ram;
     wire bulk_request=phase==BULK_READ_REQUEST || phase==BULK_WRITE_REQUEST;
     wire bulk_wait=phase==BULK_READ_WAIT || phase==BULK_WRITE_WAIT;
-    wire [31:0] bulk_write_data=operation==MC_BULKINIT ?
-        (bulk_remaining==1 ? 0 : initial_cell({23'b0,bulk_field})) : bulk_from_ram ? operand_a[31:0] :
-        operation==MC_BULKZERO ? 0 : bulk_word;
+    wire [31:0] bulk_write_data=bulk_from_ram ? operand_a[31:0] : operation==MC_BULKZERO ? 0 : bulk_word;
     wire bulk_ram_write=phase==BULK_READ_WAIT && memory_response_valid && !memory_response_error && bulk_to_ram;
     reg [31:0] multiply_a,multiply_b;
     reg [63:0] multiply_result,divide_remainder,divide_dividend,divide_divisor,divide_quotient;
@@ -83,15 +80,13 @@
             MC_INV: alu_result=~operand_a;
             MC_IOREAD: alu_result=io_read_data;
             MC_PKTERR: alu_result={61'b0,packet_error(operand_a[23:0],operand_b[1:0])};
-            MC_INITIALCELL: alu_result={32'b0,initial_cell(32'(operand_a))};
             MC_FIRSTBIT: alu_result={32'b0,first_set_bit(operand_a[31:0])};
-            MC_EXPENSIVE: alu_result={63'b0,expensive(operand_a[23:0])};
             default: alu_result=0;
         endcase
     end
     wire alu_writes=operation==MC_MOV || operation==MC_MOVI || operation==MC_MOVHI ||
         (operation>=MC_ADD && operation<=MC_INV) || operation==MC_IOREAD ||
-        operation==MC_PKTERR || operation==MC_EXPENSIVE || operation==MC_FIRSTBIT || operation==MC_INITIALCELL;
+        operation==MC_PKTERR || operation==MC_FIRSTBIT;
     wire work_write=phase==FAST_CONTEXT || phase==FAST_CAPTURE || phase==MERGE_RESULT || phase==CONTEXT_CELL || bulk_ram_write || phase==INIT || phase==FILL || phase==INDIRECT || phase==MULTIPLIED ||
         (phase==DIVIDE && divide_bit==0) || (phase==EXECUTE && (alu_writes || operation==MC_STORE || operation==MC_CSTORE));
     wire [WORK_BITS-1:0] work_write_address=phase==FAST_CONTEXT ? WORK_BITS'(R_context_slot) :
@@ -103,13 +98,13 @@
             (operation==MC_DIV ? {divide_quotient[62:0],!division_subtract[64]} :
              division_subtract[64] ? division_trial[63:0] : division_subtract[63:0]) :
         operation==MC_STORE || operation==MC_CSTORE ? operand_b : alu_result;
-    wire [WORK_BITS-1:0] work_read_address=phase==MERGE_RECOVERY ? WORK_BITS'(R_recovery)+WORK_BITS'(head_q[HEAD_BITS-1:59]) : phase==BULK_COUNT_READ ? WORK_BITS'(destination_register) :
+    wire [WORK_BITS-1:0] work_read_address=phase==BULK_COUNT_READ ? WORK_BITS'(destination_register) :
         phase==BULK_RF_READ ? bulk_register : phase==CONTEXT_STORE_REQUEST ? WORK_BITS'(R_c)+WORK_BITS'(dirty_field) :
         phase==EXECUTE && operation==MC_CLOAD ? WORK_BITS'(R_c)+WORK_BITS'(operand_a[4:0]) : phase==EXECUTE ? operand_a[WORK_BITS-1:0] :
         WORK_BITS'(fetched_instruction[7:0]==MC_MOVHI ? fetched_instruction[17:8] : fetched_instruction[27:18]);
     always @(posedge clk) begin
         if(phase==READ) instruction<=fetched_instruction;
-        if(phase==MERGE_RECOVERY || phase==BULK_RF_READ || phase==BULK_COUNT_READ || phase==CONTEXT_STORE_REQUEST || phase==READ || phase==EXECUTE && (operation==MC_LOAD || operation==MC_CLOAD))
+        if(phase==MERGE_LATCH || phase==BULK_RF_READ || phase==BULK_COUNT_READ || phase==CONTEXT_STORE_REQUEST || phase==READ || phase==EXECUTE && (operation==MC_LOAD || operation==MC_CLOAD))
             operand_a<=work_a[work_read_address];
         if(phase==READ) operand_b<=work_b[WORK_BITS'(fetched_instruction[37:28])];
         if(work_write && !reset) begin
@@ -125,7 +120,7 @@
         if(reset) begin
             phase<=INIT;work_index<=0;micro_pc<=U_BOOT;
             merge_index<=0;merge_slot<=0;merge_best<=0;merge_found<=0;
-            bulk_source<=0;bulk_target<=0;bulk_remaining<=0;bulk_word<=0;bulk_field<=0;bulk_register<=0;
+            bulk_source<=0;bulk_target<=0;bulk_remaining<=0;bulk_word<=0;bulk_register<=0;
             context_dirty<=0;selected_dirty<=0;transfer_context<=0;fill_remaining<=0;multiply_a<=0;multiply_b<=0;multiply_result<=0;
             divide_remainder<=0;divide_dividend<=0;divide_divisor<=0;divide_quotient<=0;divide_bit<=0;
         end else begin
@@ -142,10 +137,10 @@
                     MC_COMMAND: if(command_valid) begin micro_pc<=micro_pc+1'b1;phase<=COMMAND_CHECK;end
                     MC_REPLY: if(response_ready) begin micro_pc<=micro_pc+1'b1;phase<=FETCH;end
                     MC_PACKET: if(packet_ready) begin micro_pc<=micro_pc+1'b1;phase<=FETCH;end
-                    MC_BULKCOPY,MC_BULKZERO,MC_BULKINIT,MC_BULKIN,MC_BULKOUT: begin
+                    MC_BULKCOPY,MC_BULKZERO,MC_BULKIN,MC_BULKOUT: begin
                         bulk_source<=operand_a;bulk_target<=operand_b;
                         bulk_register<=operation==MC_BULKIN ? operand_b[WORK_BITS-1:0] : operand_a[WORK_BITS-1:0];
-                        bulk_field<=0;phase<=BULK_COUNT_READ;
+                        phase<=BULK_COUNT_READ;
                     end
                     MC_MERGE: begin merge_index<=0;merge_found<=0;merge_best<=0;merge_slot<=0;phase<=MERGE_READ;end
                     MC_CTXZERO: begin transfer_context<=0;work_index<=0;phase<=CONTEXT_ZERO;end
@@ -160,7 +155,6 @@
                         work_index<=operand_a[WORK_BITS-1:0];fill_remaining<=operand_b[15:0];phase<=FILL;end
                         else begin micro_pc<=micro_pc+1'b1;phase<=FETCH;end
                     MC_MEMREAD,MC_MEMWRITE: if(memory_ready) phase<=MEMORY_WAIT;
-                    MC_STATE: if(state_ready) phase<=STATE_WAIT;
                     MC_HEADREAD: if(operand_a<64'(LOOPS)) phase<=HEAD_WAIT;
                         else begin micro_pc<=micro_pc+1'b1;phase<=FETCH;end
                     MC_MUL32: begin multiply_a<=operand_a[31:0];multiply_b<=operand_b[31:0];phase<=MULTIPLY;end
@@ -180,10 +174,10 @@
             FAST_METADATA: if(work_index==3) phase<=FAST_REPLY;else work_index<=work_index+1'b1;
             FAST_REPLY: if(response_ready) begin micro_pc<=U_IDLE;phase<=FETCH;end
             META_LATCH: phase<=FETCH;
-            MERGE_READ: phase<=MERGE_RECOVERY;
-            MERGE_RECOVERY: phase<=MERGE_COMPARE;
+            MERGE_READ: phase<=MERGE_LATCH;
+            MERGE_LATCH: phase<=MERGE_COMPARE;
             MERGE_COMPARE: begin
-                if(head_q[58] && operand_a==32 && (!merge_found || head_q[31:0]<merge_best[31:0])) begin
+                if(head_q[58] && (!merge_found || head_q[31:0]<merge_best[31:0])) begin
                     merge_found<=1;merge_best<=head_q;merge_slot<=merge_index;
                 end
                 if(merge_index==LOOP_BITS'(LOOPS-1)) begin work_index<=0;phase<=MERGE_RESULT;end
@@ -223,7 +217,6 @@
                 else begin
                     bulk_source<=bulk_source+4;bulk_target<=bulk_target+4;
                     bulk_register<=bulk_register+1'b1;bulk_remaining<=bulk_remaining-1'b1;
-                    bulk_field<=bulk_field==263 ? 0 : bulk_field+1'b1;
                     phase<=bulk_reads ? BULK_READ_REQUEST : bulk_from_ram ? BULK_RF_READ : BULK_WRITE_REQUEST;
                 end
             end
@@ -248,7 +241,6 @@
             MEMORY_WAIT: if(memory_response_valid) begin
                 micro_pc<=memory_response_error ? target_pc : micro_pc+1'b1;phase<=FETCH;
             end
-            STATE_WAIT: if(state_valid) begin micro_pc<=state_error==7 ? target_pc : micro_pc+1'b1;phase<=FETCH;end
             default: phase<=INIT;
         endcase
         end
